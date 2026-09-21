@@ -197,6 +197,33 @@ export const FIXTURE_VILLAGE_MIXED = {
 };
 
 /**
+ * ONE verified find, and the venue behind it is the one three households have answered
+ * about — the village the nearby-count pair below is graded on.
+ *
+ * Its own constant rather than FIXTURE_VILLAGE_MIXED, for the reason the clause gate
+ * makes load-bearing: the count attaches only to a body carrying EVERY distinctive word
+ * of the offer's title, so a title the reply would routinely shorten ("Central Library
+ * story time" → "story time at Bloor/Gladstone") grades whether the model wrote the
+ * longer name rather than whether the gate works. The title here is the whole name a
+ * reply uses, and the VENUE is a different string from it — which is the point: the
+ * households answered about the branch, the body names the programme (founder decision
+ * 2), and the pair proves the clause can land while saying neither one twice.
+ */
+export const FIXTURE_VILLAGE_POOLED = {
+  candidates: [
+    {
+      title: 'Riverdale storytime',
+      kind: 'drop_in',
+      summary: 'Free indoor drop-in, all ages welcome.',
+      venue: 'Riverdale Library',
+      when: 'Sat, Aug 8',
+    },
+  ],
+  inVerification: 0,
+  standingOption: null,
+};
+
+/**
  * Nothing has checked out yet — the founder's launch-day text, reproduced as a fixture.
  *
  * There is still no ACTIVITY to name, and there never was. What is new is that being
@@ -975,6 +1002,63 @@ export const COACH_CHANNEL_FIXTURES = [
       mustAsk: true,
       mustMention: ['link'],
       forbidden: [...HEDGES, 'the app'],
+    },
+  },
+  /**
+   * THE NEARBY COUNT, both directions, on one text and one village.
+   *
+   * The count is Hale-composed and the model never sees it: `nearby` is an input to the
+   * post-processor, appended after the fit, exactly as the plan offer and the referral
+   * are. So the pair does not grade a sentence. It grades the two things the surface
+   * rests on, and they are only checkable against a real reply:
+   *
+   *   AT k>=3 the clause has to actually attach — which it does only if the model's own
+   *   answer names the offer in full. A gate nothing ever clears is a dead branch, and
+   *   the unit tests cannot tell the difference because they hand `toSmsReply` a body
+   *   they wrote themselves.
+   *
+   *   AT k=2 `readSubjectVerdicts` is below MIN_FAMILIES_FOR_AGGREGATE, so
+   *   `renderVerdictClause` returns null, `nearbyClauseTarget` returns null and the
+   *   runtime passes no `nearby` at all. The fixture is the negative control the
+   *   positive one needs: it proves the count only ever comes from Hale's appended
+   *   clause, and that the model, handed the same find and the same question, reaches
+   *   for no count of its own.
+   */
+  {
+    id: 'nearby-count-three-families',
+    text: 'anything going on for the kids this saturday',
+    village: FIXTURE_VILLAGE_POOLED,
+    nearby: {
+      // Byte-for-byte what renderVerdictClause composes for this venue at k=3: the
+      // positive count, no denominator, no adjective, the VENUE and not the programme.
+      clause: '3 families near you say Riverdale Library is worth it.',
+      title: 'Riverdale storytime',
+      otherTitles: [],
+    },
+    note: 'The offered find is the one three households already answered about. The reply must name the find whole - that is what lets the count attach - and the count must arrive VERBATIM, because the parent is being told a number about a real place and a paraphrase of it is a different claim.',
+    expect: {
+      mustCall: ['search_village'],
+      mustNotDraft: true,
+      // Two assertions, deliberately split: the first says the model named the offer,
+      // the second says the gate attached the count to it. One failure message tells
+      // you which half broke.
+      mustMention: [
+        'riverdale storytime',
+        '3 families near you say riverdale library is worth it.',
+      ],
+      forbidden: [...HEDGES],
+    },
+  },
+  {
+    id: 'nearby-count-below-threshold',
+    text: 'anything going on for the kids this saturday',
+    village: FIXTURE_VILLAGE_POOLED,
+    note: 'The same text and the same find with two households answered instead of three. Nothing is passed to the post-processor, so nothing may be appended - and nothing in the reply may say how many families think anything, which is the half a model could break on its own.',
+    expect: {
+      mustCall: ['search_village'],
+      mustNotDraft: true,
+      mustMention: ['riverdale storytime'],
+      forbidden: [...HEDGES, 'families near you'],
     },
   },
 ];

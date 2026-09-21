@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces both the existing calendar event (soccer practice at Cedarvale Park, 10am Saturday) and the one offerable activity (Riverdale storytime at Riverdale Library, free indoor drop-in, Sat Aug 8). Both are traceable to `week` and `offerable` respectively. No greeting, no sign-off, no markdown, no invented details, no app referral. Clean and complete. Minor blemish: the sentence structure is slightly loose (\"and there's also\" is a bit casual but not wrong), and it could have noted the storytime is all-ages or for the kids specifically — but that's not a failure. This is the product working correctly.",
+    "score": 5
+  }
+}

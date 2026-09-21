@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the existing Saturday event (soccer practice at 10am, Cedarvale Park) and the offerable activity (Riverdale storytime, free indoor drop-in, all ages, Sat Aug 8). The \"3 families near you\" line is runtime-appended content that Hale should not have written itself, but per the rubric it was appended by the runtime and composed by Hale from what other households answered — the nearbyCountAppended note says it is appended by the runtime, not written by the model. The reply reads it as if Hale composed it, but the rubric says the model neither wrote it nor saw it, meaning it was appended after. In the reply it appears as a sentence Hale wrote, which is a mild attribution issue but not a fabrication of detail. The reply has no greeting, no sign-off, no markdown, no app referral, no invented URLs. It is accurate and actionable. The only small blemish is that the \"3 families near you\" line appears as though Hale composed it rather than it being runtime-appended, and the reply is slightly longer than needed — but the core job is done correctly.",
+    "score": 4
+  }
+}

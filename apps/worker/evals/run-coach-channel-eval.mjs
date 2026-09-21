@@ -508,12 +508,12 @@ function toSmsReply(raw, children, planOffer, referral, nearby) {
  * the eval's job is not to grade the sentence — it is to prove the GATE, that the count
  * lands only on a reply that names its subject and names no other offered activity.
  *
- * NO FIXTURE SETS `nearby` YET. The pair that would (one at k>=3, one at k=2) needs one
- * live run to mint its cached samples, and the machine still had no outbound network in
- * the fix round. The mirror lands anyway, because a harness that claims to mirror `toSmsReply`
- * and silently omits one of its branches is worse than an unexercised branch: it would
- * grade a reply production would have changed. The same seam IS covered end to end,
- * model-free, by lib/__journey__/review-reaches-the-next-parent.test.ts.
+ * BOTH BRANCHES ARE EXERCISED by the `nearby-count-*` pair: one fixture at k>=3 whose
+ * reply must carry the clause verbatim, and one at k=2 that passes no `nearby` at all
+ * and must carry no count. The same seam is covered end to end, model-free, by
+ * lib/__journey__/review-reaches-the-next-parent.test.ts; what only a real reply can
+ * show is whether the model's own answer ever names the offer in full, which is the
+ * condition this gate makes load-bearing.
  */
 function nearbyClause(fittedBody, nearby) {
   if (!nearby) return null;
@@ -1922,6 +1922,23 @@ async function main() {
                 webFind: calls.some((call) => call.tool === 'find_activities')
                   ? `${FIXTURE_WEB_PICK.name} (${FIXTURE_WEB_PICK.ageFit}), ${FIXTURE_WEB_PICK.when}, per ${FIXTURE_WEB_PICK.sourceName} - source: web, NOT verified by Hale`
                   : null,
+                // THE NEARBY COUNT, on the same terms as the referral link and the web
+                // pick: Hale composes it from what other households already answered and
+                // the runtime appends it AFTER the trim, so the model neither wrote it
+                // nor saw it. Without this line the judge cannot source the number and
+                // reads it as invented social proof — on this pair's first live run it
+                // scored the reply a 1 and called the count a fabrication, while the
+                // same body without the clause drew a 5. The value carries its own
+                // provenance for the reason `webFind`'s does: the rubric is a cache key,
+                // so a sentence of context costs nothing here and re-mints 42 fixtures
+                // there.
+                //
+                // `undefined`, not `null`, on every turn without one — JSON.stringify
+                // drops undefined, so every judge verdict already committed stays valid.
+                nearbyCountAppended:
+                  fixture.nearby && reply !== null && reply.endsWith(fixture.nearby.clause)
+                    ? `${fixture.nearby.clause} - composed by Hale from what other households answered and appended by the runtime; the model neither wrote this sentence nor saw it`
+                    : undefined,
                 // What THIS text's Village read returned, split the way the
                 // tool splits it — a judge shown only titles cannot tell an offer Hale
                 // could stand behind from one it could not.
