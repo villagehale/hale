@@ -557,6 +557,10 @@ async function recordBooking(
 ): Promise<BookingOutcome> {
   if (!input.booked) return 'booked_dark';
   const { extraction } = input;
+  // THE SAME ANSWER THE SENTENCE WAS BUILT FROM, from the same call rather than from half
+  // of it: the row and the text can only name the class differently if this is two calls.
+  // `booked` is true by the line above, so `effectiveKind` is the extraction's own kind.
+  const rendered = renderedTitle(extraction.event.title, extraction.kind);
   const draft = bookingDraft({
     kind: extraction.kind,
     event: extraction.event,
@@ -566,10 +570,12 @@ async function recordBooking(
     sourceConfidence: extraction.sourceConfidence,
     matchedEventRef: extraction.matchedEventRef,
     // The VENDOR's own name for the class, through the renderer's own fold — so the row
-    // and the message can never name the class differently — but NOT through its
-    // `|| GENERIC_TITLE` fallback: those words are the object of the sentence, not a name,
-    // and `bookingDraft` refuses an email that leaves nothing behind them.
-    title: sanitizedTitle(extraction.event.title),
+    // and the message can never name the class differently — and the FLAG beside it,
+    // because Hale's `GENERIC_TITLE` words are the object of the sentence rather than a
+    // name: `bookingDraft` refuses an email that leaves nothing behind them, and a key
+    // built from them would file every nameless receipt under one "session".
+    title: rendered.text,
+    titleIsFallback: rendered.fallback,
     // The same fold the offer row's place goes through, and the same function.
     location: foldedPlace(extraction.event.location),
     now: input.now,
@@ -617,11 +623,23 @@ async function recordBooking(
   return recorded.outcome;
 }
 
-/** The title the renderer put on the wire: the vendor's own, folded, or Hale's words when
+/**
+ * The title the renderer put on the wire: the vendor's own, folded, or Hale's words when
  * that survives sanitising as nothing at all. ONE definition, read by the sentence and by
- * the row. */
-function renderedTitle(raw: string, kind: ExtractionKind): string {
-  return sanitizedTitle(raw) || GENERIC_TITLE[kind];
+ * the row — which it now actually is, because `recordBooking` reads it here rather than
+ * calling half of it a second time.
+ *
+ * IT RETURNS THE FALLBACK FLAG BESIDE THE TEXT, because the two readers need opposite
+ * things from one answer: the sentence needs Hale's words so the message is still true,
+ * and the row needs to know they ARE Hale's words — a booking has no name to ask about
+ * four days later, and a session key built from them would file every nameless receipt
+ * from one host at one instant under a single "session" (going.ts).
+ */
+function renderedTitle(raw: string, kind: ExtractionKind): { text: string; fallback: boolean } {
+  const vendor = sanitizedTitle(raw);
+  return vendor === ''
+    ? { text: GENERIC_TITLE[kind], fallback: true }
+    : { text: vendor, fallback: false };
 }
 
 export interface GmailSweepAlertInput {
@@ -907,7 +925,7 @@ const GENERIC_TITLE: Record<ExtractionKind, string> = {
  */
 export function renderEmailAlert(input: EmailAlertRenderInput): string {
   const kind = effectiveKind(input.kind, input.booked);
-  const title = renderedTitle(input.event.title, kind);
+  const { text: title } = renderedTitle(input.event.title, kind);
 
   if (input.teenContent) {
     // Category only. The pipeline has already replaced the title with its own generic

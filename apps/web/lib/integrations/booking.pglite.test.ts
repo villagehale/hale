@@ -246,6 +246,7 @@ const DRAFT_INPUT = {
   sourceConfidence: 0.92,
   matchedEventRef: null,
   title: 'Swim Level 2',
+  titleIsFallback: false,
   location: 'the Leisure Centre',
   now: NOW,
 };
@@ -261,6 +262,9 @@ describe('bookingDraft', () => {
         firstSessionAt: new Date(FIRST_SESSION),
         location: 'the Leisure Centre',
         eventId: null,
+        // The session, folded once and here. The stored string is what the count is read
+        // on, so it is pinned by value rather than by "not null".
+        sessionKey: 'recreation.brookfield.example.ca|swim level 2|2026-09-26T13:00:00.000Z',
       },
     });
   });
@@ -297,6 +301,13 @@ describe('bookingDraft', () => {
     // already refused this same email on the same emptiness, so the row would outlive a
     // CTA that was never printed.
     expect(bookingDraft({ ...DRAFT_INPUT, title: '' })).toEqual({
+      ok: false,
+      reason: 'no_title',
+    });
+    // ...and the same refusal when the renderer's OWN words arrive under the flag rather
+    // than as an empty string. Both shapes reach this function now that `renderedTitle`
+    // hands over one answer, and a row titled "a spot" is the thing neither may write.
+    expect(bookingDraft({ ...DRAFT_INPUT, title: 'a spot', titleIsFallback: true })).toEqual({
       ok: false,
       reason: 'no_title',
     });

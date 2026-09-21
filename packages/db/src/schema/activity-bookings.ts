@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { channelMessages } from './channel-messages.js';
 import { families } from './families.js';
@@ -81,6 +82,21 @@ export const activityBookings = pgTable(
     firstSessionAt: timestamp('first_session_at', { withTimezone: true }).notNull(),
     location: text('location'),
     /**
+     * THE SESSION, as one string — `provider_host`, the folded title and the first
+     * instant, computed ONCE at write time by `lib/integrations/going.ts`'s `sessionKey`
+     * and compared by plain equality. Stored rather than folded in the read, because a
+     * normalisation written in SQL beside the TypeScript copy that wrote the row is one
+     * rule in two languages, and the day they disagree the count reads as an empty room.
+     *
+     * NULLABLE, and NULL is the only refusal this feature has: a fallback title, a
+     * freemail sender, or a title that folds to nothing. A NULL-keyed booking is a real
+     * booking whose follow-up still asks — it is simply not countable in EITHER
+     * direction, and it is never counted about either.
+     *
+     * It discloses nothing new: all three parts are already columns on this row.
+     */
+    sessionKey: text('session_key'),
+    /**
      * THE PROVIDER CALLED IT OFF — set when a later email from the same `provider_host`
      * cancels the same class, and the follow-up reader's `IS NULL`.
      *
@@ -119,6 +135,12 @@ export const activityBookings = pgTable(
     // The follow-up reader's working set. Plain, not partial: the window is relative to
     // `now`, so there is no constant predicate to make it partial with.
     dueIdx: index('activity_bookings_due_idx').on(table.familyId, table.firstSessionAt),
+    // The count reads ACROSS families on one key, so the due index above cannot serve it.
+    // PARTIAL, because here there IS a constant predicate: a cancelled booking is never
+    // counted by anybody.
+    sessionIdx: index('activity_bookings_session_idx')
+      .on(table.sessionKey)
+      .where(sql`${table.cancelledAt} IS NULL`),
   }),
 );
 
