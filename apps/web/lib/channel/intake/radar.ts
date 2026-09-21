@@ -21,7 +21,7 @@ import {
   type RadarDecision,
   decideRadar,
 } from './radar-decide';
-import { composeRadarMessage, promisesFirstFind } from './radar-voice';
+import { type RadarMessage, composeRadarMessage, promisesFirstFind } from './radar-voice';
 
 /** Words too generic to prove the checkpoint reached the parent. */
 const CHECKPOINT_STOPWORDS = new Set([
@@ -150,6 +150,15 @@ export interface RadarPayload {
    * make a message that named nothing into a find.
    */
   weekendPickOffered: boolean;
+  /**
+   * The three rule #11 outcomes of the one turn, carried so a test and any future
+   * caller can read what the log line below says. See {@link RadarMessage}: an
+   * `actionMove` WITH an `actionHeld` is the compute-and-hold state the dark flag
+   * exists to produce.
+   */
+  actionMove: RadarMessage['actionMove'];
+  actionHeld: RadarMessage['actionHeld'];
+  voiceFallback: RadarMessage['voiceFallback'];
 }
 
 export interface RadarComposer {
@@ -389,10 +398,29 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       // that registrations already gone were still to come — and, being a
       // short-circuit, it hid the between-cycles answer that names the same town
       // truthfully. Toronto composes from the decision like every other town.
-      const message = await composeRadarMessage(decision, {
+      const radar = await composeRadarMessage(decision, {
         familyId: input.familyId,
         database: deps.database,
         client: deps.client,
+        // The first reply has NO language of its own yet - machine.ts says so where it
+        // appends the bare WATCH_OFFER rather than WATCH_OFFER_BY_LANGUAGE - so 'en' is
+        // stated here rather than defaulted inside the composer, and the French twins
+        // sit written and tested until the turn has a language to choose with.
+        language: 'en',
+      });
+      const message = radar.body;
+
+      // Rule #11, and the dark flag's whole instrument. One line beside the
+      // checkpoint-drop warn below, which is the pattern this file already uses for
+      // exactly this class of fact. A family uuid and four enums: no PII, and a night of
+      // real intakes says which move each first reply WOULD have carried, how often the
+      // tail would not have fit, and how often the composed voice lost - before one
+      // parent sees a URL.
+      console.info('radar action line', {
+        familyId: input.familyId,
+        actionMove: radar.actionMove,
+        actionHeld: radar.actionHeld,
+        voiceFallback: radar.voiceFallback,
       });
 
       // Launch-day review P0 (2026-08-11): the decision yielding at DECIDE is not
@@ -441,6 +469,9 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
         // promise Hale never made. Cheaper than the checkpoint's containment guard
         // because the beat is a FIXED sentence — there is no paraphrase to survive.
         firstFindPromised: promisesFirstFind(message),
+        actionMove: radar.actionMove,
+        actionHeld: radar.actionHeld,
+        voiceFallback: radar.voiceFallback,
       };
     },
   };

@@ -111,6 +111,10 @@ const SMS_COPY_SOURCES = [
   // carrier bill on every evening, forever.
   'lib/channel/checkin/copy.ts',
   'lib/channel/intake/copy.ts',
+  // The one deterministic line the first reply appends under the radar message. Its FR
+  // twin is written and unwired, which is exactly the shape this scan exists for: a `ç`
+  // or an `ê` in a sentence nobody sends yet is a doubled carrier bill the day it ships.
+  'lib/channel/intake/action-line.ts',
   'lib/channel/intake/adult-learn.ts',
   'lib/channel/intake/official-page.ts',
   'lib/channel/intake/live-lookup.ts',

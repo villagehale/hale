@@ -62,6 +62,11 @@ export const fakeRadar: RadarComposer = {
       checkpointTold: null,
       weekendPickOffered: false,
       firstFindPromised: false,
+      // No decision, so no move and nothing held it: the stand-in composes nothing and
+      // says so, rather than reporting a move it never computed.
+      actionMove: null,
+      actionHeld: 'no_move',
+      voiceFallback: null,
     };
   },
 };

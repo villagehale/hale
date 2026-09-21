@@ -6,7 +6,9 @@ import { WATCH_OFFER } from './copy.js';
 import { asciiCopy } from './radar-decide.js';
 import type { RadarDecision } from './radar-decide.js';
 import {
+  FIRST_FIND_BEAT,
   MAX_PAYLOAD_SEGMENTS,
+  radarMessageFault,
   parseRadarVoiceAnswer,
   radarFactSlots,
   radarVoiceContext,
@@ -190,42 +192,42 @@ describe('parseRadarVoiceAnswer', () => {
 describe('usableRadarMessage', () => {
   it('accepts a grounded, short message', () => {
     expect(
-      usableRadarMessage('Riverdale Farm drop-in on Saturday looks good for Maya and Leo.', BOTH),
+      usableRadarMessage('Riverdale Farm drop-in on Saturday looks good for Maya and Leo.', BOTH, ''),
     ).toBe(true);
   });
 
   it('rejects a message that invents a time nobody gave it', () => {
-    expect(usableRadarMessage('Riverdale Farm drop-in starts at 9:15 on Saturday.', BOTH)).toBe(false);
+    expect(usableRadarMessage('Riverdale Farm drop-in starts at 9:15 on Saturday.', BOTH, '')).toBe(false);
   });
 
   it('rejects a message that invents a link', () => {
-    expect(usableRadarMessage('Sign up at https://riverdale.example.com today.', BOTH)).toBe(false);
+    expect(usableRadarMessage('Sign up at https://riverdale.example.com today.', BOTH, '')).toBe(false);
   });
 
   it('rejects a message that re-asks the watch question the shell is about to append', () => {
-    expect(usableRadarMessage(`Saturday looks good. ${WATCH_OFFER}`, BOTH)).toBe(false);
+    expect(usableRadarMessage(`Saturday looks good. ${WATCH_OFFER}`, BOTH, '')).toBe(false);
   });
 
   it('rejects a checkpoint message that turns an administrative window into a claim about the child', () => {
     // Hale has never seen a child's record. "Maya is behind" is a diagnosis, and M8's
     // framing lint is what keeps a model from writing one into the third block.
-    expect(usableRadarMessage('Maya is behind on her 18-month visit.', CHECKPOINT_ONLY)).toBe(false);
-    expect(usableRadarMessage('You must book the 18-month visit.', CHECKPOINT_ONLY)).toBe(false);
+    expect(usableRadarMessage('Maya is behind on her 18-month visit.', CHECKPOINT_ONLY, '')).toBe(false);
+    expect(usableRadarMessage('You must book the 18-month visit.', CHECKPOINT_ONLY, '')).toBe(false);
     expect(
-      usableRadarMessage('Ontario runs a longer 18-month well-baby visit for Maya.', CHECKPOINT_ONLY),
+      usableRadarMessage('Ontario runs a longer 18-month well-baby visit for Maya.', CHECKPOINT_ONLY, ''),
     ).toBe(true);
   });
 
   it('rejects a message that blows the segment budget once the offer is appended', () => {
     const long = `${'Saturday looks good for Maya. '.repeat(20)}`;
     expect(smsSegments(`${long}\n\n${WATCH_OFFER}`)).toBeGreaterThan(MAX_PAYLOAD_SEGMENTS);
-    expect(usableRadarMessage(long, BOTH)).toBe(false);
+    expect(usableRadarMessage(long, BOTH, '')).toBe(false);
   });
 });
 
 describe('renderRadarDeterministically', () => {
   it('names the pick, its day, and the kids it fits — nothing else', () => {
-    const message = renderRadarDeterministically(PICK_ONLY);
+    const message = renderRadarDeterministically(PICK_ONLY, '');
     expect(message).toContain('Riverdale Farm drop-in');
     expect(message).toContain('Saturday');
     expect(message).toContain('Maya');
@@ -233,50 +235,50 @@ describe('renderRadarDeterministically', () => {
   });
 
   it('names the registration open date and the kid it is for', () => {
-    const message = renderRadarDeterministically(BOTH);
+    const message = renderRadarDeterministically(BOTH, '');
     expect(message).toContain('Aug 11, 6:30 a.m.');
     expect(message).toContain('Markham');
   });
 
   it('says Hale is still learning rather than inventing a pick', () => {
-    const message = renderRadarDeterministically({ ...BOTH, weekendPick: null });
+    const message = renderRadarDeterministically({ ...BOTH, weekendPick: null }, '');
     expect(message.toLowerCase()).toContain('still learning');
   });
 
   it('leads with the registration date, then the pick — the cascade, not the field order', () => {
-    const message = renderRadarDeterministically(BOTH);
+    const message = renderRadarDeterministically(BOTH, '');
     expect(message.indexOf('Markham')).toBeLessThan(message.indexOf('Riverdale Farm drop-in'));
   });
 
   it('leads on the checkpoint when geography is empty, and still promises the pick', () => {
-    const message = renderRadarDeterministically(CHECKPOINT_ONLY);
+    const message = renderRadarDeterministically(CHECKPOINT_ONLY, '');
     expect(message).toContain('Maya');
     expect(message).toContain('18-month well-baby visit');
     expect(message.toLowerCase()).toContain('still learning');
   });
 
   it('never shrugs: with nothing at all it maps, and says when the first find lands', () => {
-    const message = renderRadarDeterministically(NOTHING);
+    const message = renderRadarDeterministically(NOTHING, '');
     expect(message).toContain('Your first weekend find lands in a day or two.');
     expect(message.toLowerCase()).not.toContain('still getting to know');
   });
 
   it('never writes the watch question — the shell appends it exactly once', () => {
     for (const decision of [PICK_ONLY, BOTH, NOTHING, CHECKPOINT_ONLY, ALL_THREE]) {
-      expect(renderRadarDeterministically(decision)).not.toContain(WATCH_OFFER);
+      expect(renderRadarDeterministically(decision, '')).not.toContain(WATCH_OFFER);
     }
   });
 
   it('is itself grounded and within budget in every shape', () => {
     for (const decision of [PICK_ONLY, BOTH, NOTHING, CHECKPOINT_ONLY, ALL_THREE]) {
-      expect(usableRadarMessage(renderRadarDeterministically(decision), decision)).toBe(true);
+      expect(usableRadarMessage(renderRadarDeterministically(decision, ''), decision, '')).toBe(true);
     }
   });
 
   it('stays plain ASCII so the payload is billed as GSM-7, not UCS-2', () => {
     for (const decision of [PICK_ONLY, BOTH, NOTHING, CHECKPOINT_ONLY, ALL_THREE]) {
       // biome-ignore lint/suspicious/noControlCharactersInRegex: the ASCII range check IS the assertion
-      expect(renderRadarDeterministically(decision)).toMatch(/^[\x0A\x20-\x7E]*$/);
+      expect(renderRadarDeterministically(decision, '')).toMatch(/^[\x0A\x20-\x7E]*$/);
     }
   });
 });
@@ -333,7 +335,7 @@ describe('the between-cycles absence', () => {
   });
 
   it('renders the reason rather than the shrug — the defect, in one assertion', () => {
-    const message = renderRadarDeterministically(BETWEEN_CYCLES);
+    const message = renderRadarDeterministically(BETWEEN_CYCLES, '');
     expect(message).toContain('Halton Hills');
     expect(message).toContain('Fall 2026');
     expect(message).toContain('Sep 1, 7:00 a.m.');
@@ -343,32 +345,32 @@ describe('the between-cycles absence', () => {
   });
 
   it('leads on the town fact, not on the mapping line — it is the one real thing known', () => {
-    const message = renderRadarDeterministically(BETWEEN_CYCLES);
+    const message = renderRadarDeterministically(BETWEEN_CYCLES, '');
     expect(message.indexOf('Halton Hills')).toBeLessThan(message.indexOf('mapping'));
   });
 
   it('still says when the first find lands — the absence replaces no promise', () => {
-    expect(renderRadarDeterministically(BETWEEN_CYCLES)).toContain(
+    expect(renderRadarDeterministically(BETWEEN_CYCLES, '')).toContain(
       'Your first weekend find lands in a day or two.',
     );
   });
 
   it('names no season it was not given, and promises no text about one', () => {
-    const message = renderRadarDeterministically(PICK_BETWEEN_CYCLES);
+    const message = renderRadarDeterministically(PICK_BETWEEN_CYCLES, '');
     expect(message).toContain('Toronto');
     expect(message).not.toMatch(/Winter|Spring|Summer/);
     expect(message).not.toMatch(/I'll (text|let you know|tell you)/i);
   });
 
   it('pads a lone pick with the reason, where the bare no-window line used to go', () => {
-    const message = renderRadarDeterministically(PICK_BETWEEN_CYCLES);
+    const message = renderRadarDeterministically(PICK_BETWEEN_CYCLES, '');
     expect(message).toContain('Riverdale Farm drop-in');
     expect(message).toContain('already opened');
     expect(message).not.toContain('Nothing has a registration date coming up just yet.');
   });
 
   it('keeps the plain no-window line when there is no absence to explain', () => {
-    expect(renderRadarDeterministically(PICK_ONLY)).toContain(
+    expect(renderRadarDeterministically(PICK_ONLY, '')).toContain(
       'Nothing has a registration date coming up just yet.',
     );
   });
@@ -406,7 +408,7 @@ describe('the between-cycles absence', () => {
         stillOpen: null,
       },
     };
-    const message = renderRadarDeterministically(richest);
+    const message = renderRadarDeterministically(richest, '');
     // The positive control: a derivation that quietly yielded an empty label would make
     // every assertion below pass on a message that costs nothing to send.
     expect(longestCycleLabel.length).toBeGreaterThan(60);
@@ -415,13 +417,13 @@ describe('the between-cycles absence', () => {
     // biome-ignore lint/suspicious/noControlCharactersInRegex: GSM-7 is the whole point
     expect(message).toMatch(/^[\x0A\x20-\x7E]*$/);
     expect(smsSegments(`${message}\n\n${WATCH_OFFER}`)).toBeLessThanOrEqual(MAX_PAYLOAD_SEGMENTS);
-    expect(usableRadarMessage(message, richest)).toBe(true);
+    expect(usableRadarMessage(message, richest, '')).toBe(true);
   });
 
   it('is grounded, question-free and ASCII in every between-cycles shape', () => {
     for (const decision of [BETWEEN_CYCLES, PICK_BETWEEN_CYCLES]) {
-      const message = renderRadarDeterministically(decision);
-      expect(usableRadarMessage(message, decision)).toBe(true);
+      const message = renderRadarDeterministically(decision, '');
+      expect(usableRadarMessage(message, decision, '')).toBe(true);
       expect(message).not.toContain(WATCH_OFFER);
       // biome-ignore lint/suspicious/noControlCharactersInRegex: the ASCII range check IS the assertion
       expect(message).toMatch(/^[\x0A\x20-\x7E]*$/);
@@ -454,7 +456,7 @@ describe('the still-open absence', () => {
   };
 
   it('claims a town, a cycle and a date — and drops the sentence that says they missed it', () => {
-    const message = renderRadarDeterministically(STILL_OPEN);
+    const message = renderRadarDeterministically(STILL_OPEN, '');
     expect(message).toContain('Toronto Fall 2026 registration opened Sep 15, 7:00 a.m.');
     expect(message).not.toContain('already');
     expect(message).not.toContain('not posted yet');
@@ -464,7 +466,7 @@ describe('the still-open absence', () => {
   /** R7 — Hale has never read the page, so it may never speak about what is left on it. */
   it('never claims availability, spots or urgency', () => {
     for (const decision of [STILL_OPEN, PICK_STILL_OPEN]) {
-      const message = renderRadarDeterministically(decision).toLowerCase();
+      const message = renderRadarDeterministically(decision, '').toLowerCase();
       for (const claim of ['still room', 'spots', 'spaces left', 'fills up', 'before it', 'hurry']) {
         expect(message).not.toContain(claim);
       }
@@ -491,7 +493,7 @@ describe('the still-open absence', () => {
       ...STILL_OPEN,
       registrationAbsence: { ...STILL_OPEN.registrationAbsence!, stillOpen: null },
     };
-    expect(renderRadarDeterministically(gone)).toBe(
+    expect(renderRadarDeterministically(gone, '')).toBe(
       [
         'Toronto Fall 2026 registration already opened Sep 15, 7:00 a.m. - Winter 2027 dates are not posted yet.',
         "I'm mapping what's near you now - nothing to point you to yet.",
@@ -521,7 +523,7 @@ describe('the still-open absence', () => {
     for (const decision of shapes) {
       const absence = decision.registrationAbsence;
       if (!absence) throw new Error('every R10 shape must carry an absence');
-      const message = renderRadarDeterministically(decision);
+      const message = renderRadarDeterministically(decision, '');
       expect(message).toContain(townLabel(absence.cycleRef.municipality));
       expect(message).toContain(absence.lastOpenedAtLocal);
     }
@@ -529,11 +531,147 @@ describe('the still-open absence', () => {
 
   it('is grounded, question-free, ASCII and inside the budget in both tenses', () => {
     for (const decision of [STILL_OPEN, PICK_STILL_OPEN]) {
-      const message = renderRadarDeterministically(decision);
-      expect(usableRadarMessage(message, decision)).toBe(true);
+      const message = renderRadarDeterministically(decision, '');
+      expect(usableRadarMessage(message, decision, '')).toBe(true);
       expect(message).not.toContain(WATCH_OFFER);
       // biome-ignore lint/suspicious/noControlCharactersInRegex: the ASCII range check IS the assertion
       expect(message).toMatch(/^[\x0A\x20-\x7E]*$/);
     }
+  });
+});
+
+/**
+ * THE TAIL: the one deterministic action line the shell appends under the message.
+ *
+ * It is measured here rather than only in action-line.test.ts because the thing that
+ * can go wrong is arithmetic, not copy: a payload over MAX_PAYLOAD_SEGMENTS is silently
+ * discarded and the parent gets nothing, so the render has to spend a block to make
+ * room for a line it does not itself print.
+ */
+describe('the appended action line and the block budget', () => {
+  /** The longest url the seeded dataset actually carries, derived rather than pasted so
+   * a longer one landing in the data fails this file instead of a parent's handset. */
+  const LONGEST_SEED_URL = [...REGISTRATION_WINDOWS]
+    .map((seed) => seed.sourceUrl)
+    .sort((a, b) => b.length - a.length)[0] as string;
+  const TAIL = `\n\nThe page is here: ${LONGEST_SEED_URL}`;
+
+  it('never prints the tail itself — the caller owns the payload shape', () => {
+    for (const decision of [PICK_ONLY, BOTH, NOTHING, BETWEEN_CYCLES]) {
+      expect(renderRadarDeterministically(decision, TAIL)).not.toContain(LONGEST_SEED_URL);
+    }
+  });
+
+  /** R8a — a tail costs a block. A parent handed a registration morning AND the page has
+   * one thing to do; the Saturday storytime underneath it is noise. */
+  it('spends a block to make room for the tail, and keeps both without one', () => {
+    const withTail = renderRadarDeterministically(ALL_THREE, TAIL);
+    const without = renderRadarDeterministically(ALL_THREE, '');
+    expect(withTail.split('\n\n')).toHaveLength(1);
+    expect(without.split('\n\n')).toHaveLength(2);
+    // The block that survives is the one the cascade puts first, either way.
+    expect(withTail).toBe(without.split('\n\n')[0]);
+  });
+
+  /**
+   * R8b — on the 0-block path there is no block to spend, and MAX_BLOCKS never governs
+   * that return at all. The honest thing to drop is the mapping clause: the parent HAS
+   * been pointed at something. FIRST_FIND_BEAT stays unconditionally, because
+   * `emptyHanded` is what the commitments ledger keys on and a beat dropped at render
+   * with a debt recorded at send is the told-marker defect in a new costume.
+   */
+  it('spends the mapping clause instead, where there is no block to spend', () => {
+    const withTail = renderRadarDeterministically(BETWEEN_CYCLES, TAIL);
+    expect(withTail).not.toContain("I'm mapping what's near you now");
+    expect(withTail).toContain(FIRST_FIND_BEAT);
+    // …and without a tail it is byte-identical to what main sends today.
+    expect(renderRadarDeterministically(BETWEEN_CYCLES, '')).toContain(
+      "I'm mapping what's near you now - nothing to point you to yet.",
+    );
+  });
+
+  /**
+   * THE WORST CASE, DERIVED. For EVERY row the seeded dataset carries, build the
+   * decision it produces and render it with the longest seed url riding, then assert the
+   * whole payload fits. A new town with a 70-character cycle label or a 140-character
+   * url fails HERE — this is the only thing that will catch it, and a hand-picked
+   * "richest decision" literal would have passed while production sent 487 septets.
+   */
+  it('fits the budget for every seeded registration row, with the longest url riding', () => {
+    // The positive control: the derivation really found a long url, so the assertions
+    // below are not passing on an empty tail.
+    expect(LONGEST_SEED_URL.length).toBeGreaterThan(100);
+
+    for (const seed of REGISTRATION_WINDOWS) {
+      const absence: RadarDecision = {
+        ...PICK_ONLY,
+        registrationAbsence: {
+          cycleRef: {
+            municipality: seed.municipality,
+            programDomain: seed.programDomain,
+            cycleLabel: asciiCopy(seed.cycleLabel),
+          },
+          lastOpenedAtLocal: 'Sep 15, 2025, 11:30 a.m.',
+          nextCycleLabel: 'Winter 2027',
+          stillOpen: { registerUrl: LONGEST_SEED_URL, kidNames: ['Maya'] },
+        },
+      };
+      for (const decision of [absence, { ...absence, weekendPick: null }]) {
+        const body = `${renderRadarDeterministically(decision, TAIL)}${TAIL}`;
+        expect(
+          smsSegments(`${body}\n\n${WATCH_OFFER}`),
+          `${seed.municipality} ${seed.cycleLabel} went over budget`,
+        ).toBeLessThanOrEqual(MAX_PAYLOAD_SEGMENTS);
+        expect(usableRadarMessage(renderRadarDeterministically(decision, TAIL), decision, TAIL)).toBe(
+          true,
+        );
+      }
+    }
+  });
+
+  /** R10 again, now in BOTH tail states: the town and the date survive either way. */
+  it('names the town and the date it opened whether or not a tail rides', () => {
+    const stillOpenDecision: RadarDecision = {
+      ...NOTHING,
+      registrationAbsence: {
+        cycleRef: { municipality: 'toronto', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
+        lastOpenedAtLocal: 'Sep 15, 7:00 a.m.',
+        nextCycleLabel: 'Winter 2027',
+        stillOpen: { registerUrl: LONGEST_SEED_URL, kidNames: ['Maya'] },
+      },
+    };
+    for (const decision of [BETWEEN_CYCLES, PICK_BETWEEN_CYCLES, stillOpenDecision]) {
+      for (const tail of ['', TAIL]) {
+        const absence = decision.registrationAbsence;
+        if (!absence) throw new Error('every R10 shape must carry an absence');
+        const message = renderRadarDeterministically(decision, tail);
+        expect(message).toContain(townLabel(absence.cycleRef.municipality));
+        expect(message).toContain(absence.lastOpenedAtLocal);
+      }
+    }
+  });
+
+  it('rejects a composed message that only fits because the tail was not counted', () => {
+    // The skill's own 250-character ceiling, which the eval gates independently. No
+    // clock time and no link in it: those are the GROUNDING check's business, and this
+    // test is about the arithmetic one.
+    const atCeiling = 'There is plenty on around you this weekend and I will keep looking. '
+      .repeat(4)
+      .slice(0, 250);
+    expect(atCeiling.length).toBe(250);
+    expect(usableRadarMessage(atCeiling, NOTHING, '')).toBe(true);
+    expect(usableRadarMessage(atCeiling, NOTHING, TAIL)).toBe(false);
+  });
+
+  /** The two failures share one console line on main. Splitting them is how the probe
+   * tells "the model fabricated" from "the link did not fit" — opposite problems with
+   * opposite fixes (rule #11). */
+  it('names WHICH check a composed message lost on', () => {
+    expect(radarMessageFault('Riverdale Farm drop-in on Saturday for Maya and Leo.', BOTH, '')).toBeNull();
+    expect(radarMessageFault('Sign up at https://riverdale.example.com today.', BOTH, '')).toBe(
+      'grounding',
+    );
+    expect(radarMessageFault(`Saturday looks good. ${WATCH_OFFER}`, BOTH, '')).toBe('grounding');
+    expect(radarMessageFault('x'.repeat(400), BOTH, '')).toBe('budget');
   });
 });
