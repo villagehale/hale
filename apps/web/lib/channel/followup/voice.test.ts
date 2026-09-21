@@ -100,6 +100,25 @@ describe('refusals', () => {
     expect(refusals('Did you end up connecting with the other family? No pressure.', INTRO)).toEqual([]);
     expect(refusals('Did the 2 of you connect?', INTRO)).toEqual(['invented_number']);
   });
+
+  /**
+   * VIL-360 · THE DAYCARE ASK PINS ITS PROVIDER ONLY WHEN IT HAS ONE, and both halves
+   * of that are load-bearing. With a name, the same rule the activity keeps: a body
+   * that does not carry it is not provably about the place the parent named. Without
+   * one there is nothing to be provably about, and a subject gate that still fired
+   * would refuse every honest generic ask until the window passed — which is what a
+   * provider Hale cannot print now produces, so this path is reachable in production.
+   */
+  it('pins a named daycare and gates nothing when the name was not captured', () => {
+    const named = { kind: 'daycare', provider: 'Little Sprouts' } as const;
+    expect(refusals('How is Little Sprouts going? No pressure to reply.', named)).toEqual([]);
+    expect(refusals('How is daycare going? No pressure to reply.', named)).toEqual([
+      'subject_missing',
+    ]);
+
+    const unnamed = { kind: 'daycare', provider: null } as const;
+    expect(refusals('How is daycare going? No pressure to reply.', unnamed)).toEqual([]);
+  });
 });
 
 describe('followupVoiceUserMessage', () => {
@@ -109,6 +128,16 @@ describe('followupVoiceUserMessage', () => {
   it('hands the model the kind and the title and nothing else', () => {
     expect(followupVoiceUserMessage(ACTIVITY)).toBe('{"kind":"activity","activity":"Swim class"}');
     expect(followupVoiceUserMessage(INTRO)).toBe('{"kind":"intro"}');
+  });
+
+  /** VIL-360 · an unnamed daycare OMITS the key rather than sending `provider: null`.
+   * An absent field is nothing to fill in; a null one is an invitation to. Asserted on
+   * the exact bytes because the eval replicates this shape and a change re-keys it. */
+  it('omits an absent provider instead of sending a null one', () => {
+    expect(followupVoiceUserMessage({ kind: 'daycare', provider: 'Little Sprouts' })).toBe(
+      '{"kind":"daycare","provider":"Little Sprouts"}',
+    );
+    expect(followupVoiceUserMessage({ kind: 'daycare', provider: null })).toBe('{"kind":"daycare"}');
   });
 
   it('carries the refused attempts and their named problems on a recompose', () => {
