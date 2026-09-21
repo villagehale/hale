@@ -562,6 +562,38 @@ describe('which reply is the answer', () => {
     expect(reader.calls).toEqual([]);
   });
 
+  /**
+   * THE PRODUCTION CASE, and the one that made every other test in this file a green
+   * dead path: a parent's reply falls through to the coach, and the router persists
+   * Hale's answer to it seconds later (`route.ts` — direction 'out', category 'reply',
+   * status `acceptedStatus`). So by the time the hourly tick looks back, something is
+   * ALWAYS newer than the ask. The reader is asked as of the reply, not as of the tick.
+   */
+  it('reads the answer even though Hale replied to it five seconds later', async () => {
+    const seeded = await seed();
+    await seedReply(seeded, 'She loved it.');
+    await db.database.insert(schema.channelMessages).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'reply',
+      templateKey: null,
+      status: 'queued',
+      body: null,
+      createdAt: new Date(REPLIED_AT.getTime() + 5_000),
+    });
+    const reader = fakeReader(WORTH_IT);
+
+    const result = await run(reader);
+
+    expect({ recorded: result.recorded, askClosed: result.askClosed }).toEqual({
+      recorded: 1,
+      askClosed: 0,
+    });
+    expect(reader.calls).toEqual(['She loved it.']);
+  });
+
   /** The ask lapses at 08:00 local, and a tick after that must still capture a reply
    * that arrived while the question was standing. */
   it('reads a reply that arrived before the lapse even when the tick runs after it', async () => {

@@ -296,6 +296,20 @@ describe('a review reaches the next parent', () => {
       createdAt: repliedAt,
     });
 
+    // AND HALE ANSWERED THEM, five seconds later — every reply that falls through to
+    // the coach gets one (`route.ts`), so this row is present on the real timeline of
+    // every captured review. The tick an hour later still reads the answer, because the
+    // ledger is read as of the reply rather than as of the tick.
+    await db.database.insert(schema.channelMessages).values({
+      familyId: home.familyId,
+      parentUserId: home.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'reply',
+      status: 'queued',
+      createdAt: new Date(repliedAt.getTime() + 5_000),
+    });
+
     const captured = await runReviewCapture(db.database, {
       askOpen: activityFollowupAskOpen,
       verdict: reader(MEASURED_VERDICT),
