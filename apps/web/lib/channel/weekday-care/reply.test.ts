@@ -45,6 +45,43 @@ describe('readWeekdayCare', () => {
     }
   });
 
+  /**
+   * A NEGATION ONLY COUNTS WHEN IT GOVERNS THE CARE WORD.
+   *
+   * The ask is an either/or, so the answers that mean `daycare` are full of negatives:
+   * the parent is refusing the first half of the question before naming the second.
+   * A rule that asked only whether a negative and a care word appear ANYWHERE in the
+   * same sentence filed `home` for every one of these — the wrong DURABLE fact, which
+   * switches the weekday find off and stops the daycare follow-up ever firing for a
+   * household that said daycare.
+   *
+   * Two things separate the two sets, and each one is decidable from the text:
+   * ADJACENCY (a negation reaches its care word across determiners and prepositions
+   * and nothing else) and the CLAUSE BOUNDARY a parent typed (a comma is the only
+   * evidence a text message gives that "no" was an answer rather than a determiner).
+   * "nope" and "nah" are answer particles that cannot modify a noun at all, which is
+   * what tells "nope daycare" from "no daycare".
+   */
+  it('reads daycare through a negation that governs something else', () => {
+    for (const body of [
+      'no, daycare',
+      'nope daycare',
+      "no she's at daycare",
+      'daycare, not home',
+      'not home, daycare',
+      'at daycare not with me',
+      "she's in daycare, no complaints",
+    ]) {
+      expect(care(body), body).toBe('daycare');
+    }
+  });
+
+  it('still reads home when the negation does govern the care word', () => {
+    for (const body of ['home, not daycare', 'not daycare, home', "we don't do daycare"]) {
+      expect(care(body), body).toBe('home');
+    }
+  });
+
   describe('starting_soon', () => {
     it('reads a start that has not happened', () => {
       for (const body of [
@@ -69,6 +106,18 @@ describe('readWeekdayCare', () => {
 
     it('never fires on a bare "looking"', () => {
       expect(care("we're looking for a swim class")).toBe('nothing_stated');
+    });
+
+    /**
+     * "start" IS ONLY A CARE WORD NEXT TO ONE. A parent answering the ask names the
+     * rest of their week in the same breath — "we start swimming Saturday" — and
+     * reading that as a daycare start files the wrong durable fact for a household
+     * that just said it is home. `starts` and `starting` are the inflections a start
+     * DATE comes in; bare `start` is the one that collides with every other activity.
+     */
+    it('reads a bare "start" as care only when the sentence is about care', () => {
+      expect(care("she's home with me, we start swimming Saturday")).toBe('home');
+      expect(care('we start daycare next month')).toBe('starting_soon');
     });
   });
 
@@ -95,10 +144,84 @@ describe('readWeekdayCare', () => {
       expect(vague).toEqual({ status: 'read', care: 'daycare', provider: null });
     });
 
+    /**
+     * TERMINAL PUNCTUATION MUST NOT EAT THE LAST WORD. A rule that required every
+     * captured word to be followed by WHITESPACE kept only "Little" out of "Little
+     * Sprouts." — and that truncation is durable twice over: it is persisted in the
+     * fact and then pinned verbatim into the follow-up's voice ("How is Little
+     * going?"), where the subject the model is told to name no longer exists.
+     */
+    it('keeps the whole name when the sentence ends or a comma follows', () => {
+      expect(readWeekdayCare('She goes to Little Sprouts.')).toMatchObject({
+        provider: 'Little Sprouts',
+      });
+      expect(readWeekdayCare("She's at Little Sprouts, three days a week")).toMatchObject({
+        provider: 'Little Sprouts',
+      });
+      expect(readWeekdayCare('he goes to Little Sprouts!')).toMatchObject({
+        provider: 'Little Sprouts',
+      });
+    });
+
     it('may be a person, which is why it never leaves the family', () => {
       expect(readWeekdayCare("she's at Nana's during the week")).toMatchObject({
         care: 'daycare',
         provider: "Nana's",
+      });
+    });
+
+    /**
+     * A CURLY APOSTROPHE IS WHAT AN iPHONE TYPES, and U+2019 is not in the GSM-7 basic
+     * alphabet. Persisting it would hand the follow-up voice a subject it can only
+     * refuse — `not_gsm7` if it echoes the character, `subject_missing` if it
+     * straightens it — three compose calls a tick until the window passes. Decided at
+     * capture instead: straighten what can be straightened, and drop the pin (ask
+     * generically) for anything left that a phone cannot print.
+     */
+    it('is straightened to something a phone can print, or dropped', () => {
+      expect(readWeekdayCare('she’s at Nana’s during the week')).toMatchObject({
+        care: 'daycare',
+        provider: "Nana's",
+      });
+      // The name is still evidence of daycare; only the PIN is dropped. (`é` IS in the
+      // GSM-7 basic alphabet and survives; `â` is not, which is the whole difference.)
+      expect(readWeekdayCare('she goes to Café Enfants')).toEqual({
+        status: 'read',
+        care: 'daycare',
+        provider: 'Café Enfants',
+      });
+      expect(readWeekdayCare('she goes to Château Enfants')).toEqual({
+        status: 'read',
+        care: 'daycare',
+        provider: null,
+      });
+    });
+
+    /**
+     * ONE SEGMENT'S NAME NEVER ATTACHES TO ANOTHER'S ANSWER. Reading the provider off
+     * the WHOLE body while the care word was read off one sentence let a refused
+     * sentence — somebody else's child — hand its daycare to the sentence that
+     * answered the question.
+     */
+    it('never crosses a sentence boundary', () => {
+      expect(
+        readWeekdayCare('My sister put hers in daycare at Little Sprouts. Mine is home with me.'),
+      ).toEqual({ status: 'read', care: 'home', provider: null });
+      expect(readWeekdayCare("My sister's kid goes to Little Sprouts. Mine is home with me.")).toEqual(
+        { status: 'read', care: 'home', provider: null },
+      );
+    });
+
+    /**
+     * A CAPITALISED WORD AFTER A BARE "at" IS THE WEAKEST EVIDENCE THIS READER HAS, so
+     * a home phrase in the same sentence outranks it. "at Shopify" is where a parent
+     * works, not where their child is.
+     */
+    it('never outranks a home phrase in the same sentence', () => {
+      expect(readWeekdayCare('home with me, I work at Shopify')).toEqual({
+        status: 'read',
+        care: 'home',
+        provider: null,
       });
     });
   });

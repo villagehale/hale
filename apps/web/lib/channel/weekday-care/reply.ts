@@ -1,5 +1,6 @@
 import type { WeekdayCare } from '~/lib/care/weekday';
-import { segmentsOf } from '~/lib/channel/stated-state';
+import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
+import { segmentsOf, words } from '~/lib/channel/stated-state';
 
 /**
  * WHAT A PARENT SAID ABOUT THEIR WEEKDAYS — read deterministically.
@@ -32,9 +33,12 @@ export type WeekdayCareReading =
   | { status: 'nothing_stated' };
 
 /** The words that make a message ABOUT organised childcare. `segmentsOf` closes up
- * apostrophes and sweeps punctuation to spaces, so "day-care" arrives as "day care". */
-const CARE_WORD =
-  /\b(?:daycare|day care|childcare|child care|nursery|creche|montessori|after school)\b/;
+ * apostrophes and sweeps punctuation to spaces, so "day-care" arrives as "day care".
+ * Written once as an alternation because the negation rule below has to name the same
+ * set — two lists would drift, and the drift would be invisible. */
+const CARE_WORDS = 'daycare|day care|childcare|child care|nursery|creche|montessori|after school';
+
+const CARE_WORD = new RegExp(`\\b(?:${CARE_WORDS})\\b`);
 
 /**
  * It has not started yet, and this is tested BEFORE the negation rule on purpose.
@@ -44,7 +48,16 @@ const CARE_WORD =
  * weeks from a start date. Under R9 the two readings differ only in what the follow-up
  * does, which makes the misread quieter and worse.
  */
-const STARTS_SOON = /\b(?:starts|starting|start)\b|\bnot yet\b|\bwait list\b|\bwaitlist\b|\bon a list\b/;
+const STARTS_SOON = /\b(?:starts|starting)\b|\bnot yet\b|\bwait list\b|\bwaitlist\b|\bon a list\b/;
+
+/**
+ * Bare "start" is only a care word next to one. A parent answering the either/or names
+ * the rest of their week in the same breath — "we start swimming Saturday" — and
+ * reading that as a start DATE files `starting_soon` for a household that just said it
+ * is home. `starts` and `starting` are the inflections a start date arrives in; the
+ * bare stem is the one that collides with every other activity a family does.
+ */
+const BARE_START = /\bstart\b/;
 
 /** Never a bare "looking": "looking for a swim class" is not a childcare answer. */
 const LOOKING_FOR_CARE =
@@ -53,8 +66,49 @@ const LOOKING_FOR_CARE =
 /** `yet` only counts as "not started" when the sentence is about care at all. */
 const YET = /\byet\b/;
 
-const NEGATED =
-  /\b(?:no|not|nope|nah|never|dont|doesnt|didnt|isnt|arent|wasnt|werent|havent|hasnt)\b/;
+/**
+ * A NEGATION THAT GOVERNS THE CARE WORD — not one that merely shares a sentence with it.
+ *
+ * The ask is an either/or, so the replies that mean `daycare` are full of negatives:
+ * the parent refuses the first half of the question and then names the second. "no,
+ * daycare", "daycare, not home", "at daycare not with me" and "she's in daycare, no
+ * complaints" all carry a negative and all mean daycare, and a rule that asked only
+ * whether both appear ANYWHERE in the segment filed `home` for every one of them — the
+ * wrong DURABLE fact, which switches the weekday find off and stops the daycare
+ * follow-up ever firing for a household that said daycare.
+ *
+ * So the negation has to REACH the care word, across determiners and the prepositions
+ * that carry an arrangement and nothing else. "no daycare" and "we don't do daycare"
+ * reach it; "no she's at daycare" does not, because a pronoun is not in the window.
+ *
+ * `nope` and `nah` are deliberately absent, and their absence is the rule rather than
+ * an oversight: they are answer particles and cannot modify a noun at all, so "nope
+ * daycare" can only be the answer "nope" followed by the answer, where "no daycare" is
+ * a grammatical negated noun phrase. That distinction is the whole difference between
+ * the two, and it is decidable from the words.
+ */
+const NEGATION = 'no|not|never|dont|doesnt|didnt|isnt|arent|wasnt|werent|havent|hasnt';
+
+/** What a negation may cross to reach its care word: determiners and the prepositions
+ * and light verbs that carry an arrangement. A pronoun is deliberately not here. */
+const REACHES = 'in|at|the|a|an|any|to|go|goes|going|do|doing|does|did|using|use';
+
+const NEGATED_CARE = new RegExp(
+  `\\b(?:${NEGATION})\\b(?:\\s+(?:${REACHES})\\b)*\\s+(?:${CARE_WORDS})\\b`,
+);
+
+/**
+ * A comma is the only evidence a text message gives that "no" was an ANSWER rather than
+ * a determiner: "no daycare" negates the noun, "no, daycare" answers the first half of
+ * the either/or and then names the second. So the governing test runs per CLAUSE, and a
+ * clause boundary is exactly what a negation may not reach across.
+ */
+function clausesOf(sentence: string): string[] {
+  return sentence
+    .split(/[,;]/)
+    .map(words)
+    .filter((clause) => clause.length > 0);
+}
 
 /** A parent, a grandparent, a nanny — all the same to the finder, because the axis is
  * whether a weekday-morning drop-in is useful to this household. */
@@ -66,9 +120,13 @@ const HOME =
  * relations that appear in a HOME answer (mom, dad, grandma, nanny) are exactly the
  * ones that must not be here, because "my mom has him three days" is this household's
  * own arrangement. What is left is the relations with children of their own.
+ *
+ * THE PLURALS ARE LOAD-BEARING, for the reason `stated-state`'s own visit words state:
+ * `words` closes up apostrophes, so the possessive that introduces most of these — "my
+ * sister's kid goes to Little Sprouts" — reaches this pattern as "sisters".
  */
 const OTHER_HOUSEHOLD =
-  /\b(?:sister|brother|cousin|friend|friends|neighbour|neighbours|neighbor|neighbors|coworker|colleague|someone else|somebody else)\b/;
+  /\b(?:(?:sister|brother|cousin|friend|neighbour|neighbor|coworker|colleague)s?|someone else|somebody else)\b/;
 
 /** Hale's own words handed back, or a third party's. */
 const REPORTED = /\b(?:you said|said|says|saying|told|heard|apparently|supposedly)\b/;
@@ -83,24 +141,74 @@ const COUNTERFACTUAL =
 const BLOCKERS = [OTHER_HOUSEHOLD, REPORTED, INSTRUCTION, COUNTERFACTUAL] as const;
 
 /**
- * The provider, read from the ORIGINAL-CASE body and only when the parent named one in
- * so many words.
+ * The provider, read from ONE SENTENCE in its original case, and only when the parent
+ * named one in so many words.
  *
  * A capitalised proper noun of one to four words, adjacent to `at` / `goes to` /
  * `attends`, and nothing else. A parent who types all lowercase loses the name; that
  * costs one missing subject, and the alternative is Hale inventing a business name.
+ *
+ * ONE SENTENCE, never the whole body: reading the name off the body while the care word
+ * was read off a sentence let a REFUSED sentence hand its daycare to the sentence that
+ * answered the question ("My sister put hers in daycare at Little Sprouts. Mine is home
+ * with me.").
  *
  * IT IS NOT NECESSARILY A BUSINESS. "at Nana's" and "goes to Sarah's daycare" both pass,
  * so the string may be a person's name — which is why it lives in exactly one
  * family-scoped row, never in `audit_log` (a boolean goes there), never in a log line,
  * and never across a family boundary.
  */
-const PROVIDER = /\b(?:at|goes to|attends)\s+((?:[A-Z][\w'’-]*(?:\s+|$)){1,4})/;
+/** A capitalised word in ANY alphabet, because "Château Enfants" and "École Polly" are
+ * ordinary Ontario daycare names and an ASCII-only capture read them as no answer at
+ * all — throwing away the parent's reply rather than just its pin. What a phone cannot
+ * print is decided below, on the captured string, not by refusing to see it. */
+const PROVIDER_WORD = String.raw`\p{Lu}[\p{L}\p{N}_'\u2018\u2019-]*`;
 
-function providerIn(body: string): string | null {
-  const match = PROVIDER.exec(body);
-  const captured = match?.[1]?.trim();
-  return captured !== undefined && captured.length > 0 ? captured : null;
+/**
+ * Each captured word ends at whitespace, at terminal punctuation, or at the end of the
+ * message. Requiring WHITESPACE alone dropped the last word of every name a parent
+ * punctuated — "She goes to Little Sprouts." captured "Little" — and that truncation is
+ * durable twice over: it is persisted in the fact, and then pinned verbatim into the
+ * follow-up's voice, which is asked to name a place that does not exist.
+ */
+const PROVIDER_TAIL = String.raw`(?:\s+|(?=[.,!?;:)\]"]|$))`;
+
+/** `goes to` / `attends` NAME A DESTINATION, so they carry the daycare reading on their
+ * own. A bare `at` does not — see {@link readWeekdayCare}'s order. */
+const NAMED_DESTINATION = new RegExp(
+  `\\b(?:goes to|attends)\\s+((?:${PROVIDER_WORD}${PROVIDER_TAIL}){1,4})`,
+  'u',
+);
+
+const NAMED_AT = new RegExp(`\\bat\\s+((?:${PROVIDER_WORD}${PROVIDER_TAIL}){1,4})`, 'u');
+
+/**
+ * What an `at` / `goes to` phrase named, and whether it named anything at all.
+ *
+ * The two are DIFFERENT and rule #11 does not let them share a value: a name Hale
+ * cannot print is still a parent saying their child goes somewhere, so the care reads
+ * and only the pin is dropped.
+ */
+interface ProviderCapture {
+  named: boolean;
+  provider: string | null;
+}
+
+const NOTHING_NAMED: ProviderCapture = { named: false, provider: null };
+
+/**
+ * A curly apostrophe is what an iPhone types, and U+2019 is not in the GSM-7 basic
+ * alphabet. Persisting one would hand the follow-up voice a subject it can only refuse
+ * — `not_gsm7` if it echoes the character, `subject_missing` if it straightens it —
+ * three compose calls a tick until the window passes. Decided here instead, where the
+ * string is still a candidate: straighten what can be straightened, and drop the PIN
+ * (the follow-up then asks generically) for anything a phone still cannot print.
+ */
+function captureProvider(sentence: string, pattern: RegExp): ProviderCapture {
+  const captured = pattern.exec(sentence)?.[1]?.trim();
+  if (captured === undefined || captured.length === 0) return NOTHING_NAMED;
+  const straightened = captured.replace(/[\u2018\u2019\u02bc]/g, "'");
+  return { named: true, provider: isPrintableGsm7Basic(straightened) ? straightened : null };
 }
 
 /**
@@ -121,29 +229,59 @@ function expandAreContraction(body: string): string {
 }
 
 /**
+ * The message, cut into sentences that are still in their own case.
+ *
+ * `segmentsOf` is the shared normaliser and stays the only one — it is handed each
+ * sentence in turn rather than the whole body — but the provider is read from the
+ * ORIGINAL case, so the reader needs both halves of the same sentence side by side. It
+ * used to read the provider off the whole body while reading the care word off one
+ * sentence, and a refused sentence then handed its daycare to the sentence that
+ * answered the question: "My sister put hers in daycare at Little Sprouts. Mine is home
+ * with me." filed daycare at a place the parent's child has never been.
+ */
+function sentencesOf(body: string): { raw: string; words: string; question: boolean }[] {
+  return (body.match(/[^.!?\n]+[.!?\n]*/g) ?? []).flatMap((raw) => {
+    const segment = segmentsOf(raw)[0];
+    return segment === undefined ? [] : [{ raw, ...segment }];
+  });
+}
+
+/**
  * THE ORDER IS THE SPEC: `starting_soon`, then the negated care word, then the care
- * word, then the home phrases. Reversing the first two is the misread this grammar was
- * rewritten to prevent.
+ * word, then a named destination, then the home phrases, and a bare "at <Name>" LAST.
+ * Reversing the first two is the misread this grammar was rewritten to prevent; putting
+ * the bare `at` capture before the home phrases is the one that reads "home with me, I
+ * work at Shopify" as daycare.
  */
 export function readWeekdayCare(body: string): WeekdayCareReading {
-  for (const segment of segmentsOf(expandAreContraction(body))) {
-    if (segment.question) continue;
-    const text = segment.words;
+  for (const sentence of sentencesOf(expandAreContraction(body))) {
+    if (sentence.question) continue;
+    const text = sentence.words;
     if (BLOCKERS.some((blocker) => blocker.test(text))) continue;
 
     const careWord = CARE_WORD.test(text);
-    if (STARTS_SOON.test(text) || LOOKING_FOR_CARE.test(text) || (careWord && YET.test(text))) {
+    if (
+      STARTS_SOON.test(text) ||
+      LOOKING_FOR_CARE.test(text) ||
+      (careWord && (YET.test(text) || BARE_START.test(text)))
+    ) {
       return { status: 'read', care: 'starting_soon', provider: null };
     }
-    if (careWord && NEGATED.test(text)) {
+    if (clausesOf(sentence.raw).some((clause) => NEGATED_CARE.test(clause))) {
       return { status: 'read', care: 'home', provider: null };
     }
-    const provider = providerIn(body);
-    if (careWord || provider !== null) {
-      return { status: 'read', care: 'daycare', provider };
+
+    const destination = captureProvider(sentence.raw, NAMED_DESTINATION);
+    const atSomewhere = captureProvider(sentence.raw, NAMED_AT);
+    const named = destination.named ? destination : atSomewhere;
+    if (careWord || destination.named) {
+      return { status: 'read', care: 'daycare', provider: named.provider };
     }
     if (HOME.test(text)) {
       return { status: 'read', care: 'home', provider: null };
+    }
+    if (atSomewhere.named) {
+      return { status: 'read', care: 'daycare', provider: atSomewhere.provider };
     }
   }
   return { status: 'nothing_stated' };
