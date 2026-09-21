@@ -1,3 +1,4 @@
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { cityRecLine } from '~/lib/channel/rec-morning';
@@ -87,6 +88,38 @@ function composer(db: ReturnType<typeof makeFakeDb>) {
 
 const MAYA = { name: 'Maya', ageMonths: 48, agePrecision: 'years' } as const;
 
+/**
+ * Two composed sentences for the SAME decision: one that names the seeded candidate and
+ * one that does not. The MECHANICS of the voice call are faked so that a stamping rule
+ * can be exercised over a text the composer did not write itself — what Hale actually
+ * says is the eval's job against real cached Claude (rule #8), which is why neither
+ * sentence is asserted for quality.
+ */
+const KEEPS_THE_PICK = 'Saturday: Library story time looks like the one for Maya.';
+const DROPS_THE_PICK = "Got it - I'm mapping what's near you now. More in a day or two.";
+
+function voiceReturning(message: string): AgentClient {
+  return {
+    messages: {
+      async create() {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ message }) }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        };
+      },
+    },
+  } as unknown as AgentClient;
+}
+
+function voicedComposer(db: ReturnType<typeof makeFakeDb>, message: string) {
+  return createRadarComposer({
+    database: db.db,
+    weather: fakeWeather([]),
+    client: voiceReturning(message),
+    now: () => NOW,
+  });
+}
+
 describe('createRadarComposer', () => {
   it('names a real candidate and a real registration window it read for this family', async () => {
     const db = makeFakeDb();
@@ -120,6 +153,45 @@ describe('createRadarComposer', () => {
     });
 
     expect(payload.weekendPickOffered).toBe(false);
+  });
+
+  /**
+   * THE STAMP IS READ OFF THE COMPOSED TEXT, and only a composed text can show it.
+   *
+   * `weekendPickSurvivedCompose` is unit-tested below, but a composer that went back to
+   * reading `decision.weekendPick !== null` would leave every one of those green: the
+   * deterministic render always names the pick it was handed, so the two rules agree on
+   * every other test in this file. These two disagree — same decision, same candidate,
+   * two sentences — which is the only shape that pins which one the composer used.
+   */
+  it('does not stamp the D23 anchor on a composed message that dropped the pick', async () => {
+    const db = makeFakeDb();
+    seedCandidate(db);
+
+    const payload = await voicedComposer(db, DROPS_THE_PICK).compose({
+      familyId: FAMILY_ID,
+      children: [MAYA],
+      areaCoarse: 'M5V',
+    });
+
+    // The composed sentence is what shipped - so this is the flag disagreeing with the
+    // decision, not a quiet fall back to the deterministic render (which names the pick).
+    expect(payload.message).toBe(DROPS_THE_PICK);
+    expect(payload.weekendPickOffered).toBe(false);
+  });
+
+  it('stamps it when the composed message carries the pick', async () => {
+    const db = makeFakeDb();
+    seedCandidate(db);
+
+    const payload = await voicedComposer(db, KEEPS_THE_PICK).compose({
+      familyId: FAMILY_ID,
+      children: [MAYA],
+      areaCoarse: 'M5V',
+    });
+
+    expect(payload.message).toBe(KEEPS_THE_PICK);
+    expect(payload.weekendPickOffered).toBe(true);
   });
 
   it('never writes the watch question — the state machine appends it', async () => {

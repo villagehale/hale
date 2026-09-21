@@ -39,6 +39,7 @@ import { productionChannelCoach } from '~/lib/channel/coach/runtime';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { recordStatedState } from '~/lib/channel/stated-state';
 import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
+import { childBelongsToFamily } from '~/lib/companion/log-write';
 import { daycareFollowupQuestion } from '~/lib/channel/followup/question';
 import { recordWeekdayCare } from '~/lib/care/weekday';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
@@ -636,9 +637,17 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
       const ask = await weekdayCareQuestion(db, input);
       if (!ask) return { status: 'no_open_ask' as const };
       const sameDoor = await answeredOnTheSameChannel(db, ask.id, input.inboundChannelMessageId);
-      return sameDoor
+      if (!sameDoor) return { status: 'wrong_channel' as const };
+      // AND THE CHILD IS STILL HERE. The ask names one by id and nothing about the
+      // ledger row it rides on is bound to the roster, so a child removed from the
+      // account during the 48h window leaves the question standing and pointing at a
+      // row that no longer exists. Reading it HERE is what keeps the fact's foreign key
+      // from being the thing that says so: a constraint violation is thrown from inside
+      // the write, out through the gate, and retried into the same wall until the
+      // question closes.
+      return (await childBelongsToFamily(db, input.familyId, ask.childId))
         ? { status: 'open' as const, childId: ask.childId }
-        : { status: 'wrong_channel' as const };
+        : { status: 'child_gone' as const };
     },
     recordWeekdayCare,
     // VIL-293. The view is read beside the model call, and the mint is bound here for

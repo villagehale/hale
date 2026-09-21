@@ -302,12 +302,16 @@ describe('the weekday-care arc', () => {
     expect(JSON.stringify(context.memoryFacts)).toContain('weekday_care');
 
     // ── the payoff, the following week ────────────────────────────────────────
-    // A week later, so the nudge's own 7-day cap has rolled over. The Tuesday session
-    // was in this family's feed the whole time; the weekend rule is what was discarding
-    // it, and the answer is what lifted that.
-    const nextFriday = new Date('2026-08-10T14:00:00.000Z');
+    // 10:00 Toronto on MONDAY 2026-08-10 — the tick before the Tuesday session, not a
+    // second Friday. The day matters: {@link TUESDAY_KEY} is 08-11, and any tick after
+    // it would be refused as `weekday_date_past` rather than reaching the find at all.
+    // The nudge's own 7-day cap is not what this date is buying — `openGate` stubs
+    // `countProactiveSends` to 0, so the cap plays no part in this journey either way.
+    // What the find needed was the ANSWER: the Tuesday session was in this family's feed
+    // the whole time and the weekend rule was discarding it.
+    const theMondayAfter = new Date('2026-08-10T14:00:00.000Z');
     const findTransport = new FakeTransport();
-    const found = await runNudgeCron(db.database, nudgeDeps(findTransport), nextFriday);
+    const found = await runNudgeCron(db.database, nudgeDeps(findTransport), theMondayAfter);
 
     expect(found.sent).toBe(1);
     const findBody = findTransport.sent[0]?.body ?? '';

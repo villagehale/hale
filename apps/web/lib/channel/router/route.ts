@@ -377,9 +377,13 @@ export interface ChannelRouterDeps {
    * One dep rather than two, because the two questions behind it are one question: an
    * ask that is open and an answer that came through a DIFFERENT door are both "not an
    * answer to this", and the router has nothing useful to do with either half alone.
-   * Both refusals are named rather than folded into a null (rule #11) — `wrong_channel`
+   * Every refusal is named rather than folded into a null (rule #11) — `wrong_channel`
    * is a forwarded email landing inside the window, and it is a different thing to know
-   * than a question nobody asked.
+   * than a question nobody asked, which is a different thing again from `child_gone`.
+   *
+   * `open` MEANS THE CHILD IS STILL THERE. The answer is filed against the child the
+   * ask named, so the one reader that supplies that id is the one place a removed child
+   * can be caught before the fact's foreign key catches it instead.
    *
    * Non-nullable, and paired with the writer below: a router that could be assembled
    * without either would hear "she's home with me" in answer to a question Hale asked
@@ -394,7 +398,10 @@ export interface ChannelRouterDeps {
       now: Date;
     },
   ): Promise<
-    { status: 'open'; childId: string } | { status: 'no_open_ask' } | { status: 'wrong_channel' }
+    | { status: 'open'; childId: string }
+    | { status: 'no_open_ask' }
+    | { status: 'wrong_channel' }
+    | { status: 'child_gone' }
   >;
   /** Write down how this household covers its weekdays (lib/care/weekday.ts). */
   recordWeekdayCare(
@@ -804,9 +811,11 @@ export async function routeChannelMessage(
       );
     } else if (outcome.status === 'not_recorded') {
       // The open-question list said this was standing and the ask's own reader did not:
-      // `wrong_channel` is a forwarded email inside the window, and `no_open_ask` is the
-      // two readers disagreeing across the same turn. Both are things to know, and
-      // folding either into silence is the bucket-that-means-something-else defect.
+      // `wrong_channel` is a forwarded email inside the window, `no_open_ask` is the two
+      // readers disagreeing across the same turn, and `child_gone` is a child removed
+      // from the account while the question was still standing. All three are things to
+      // know, and folding any of them into silence is the
+      // bucket-that-means-something-else defect.
       deps.log.warn(
         { familyId: turn.familyId, reason: outcome.reason },
         'channel router: the weekday-care ask was standing and this message could not answer it',
@@ -1053,7 +1062,7 @@ interface UnplacedAnswer {
 type WeekdayCareReplyOutcome =
   | { status: 'recorded' }
   | { status: 'unreadable' }
-  | { status: 'not_recorded'; reason: 'no_open_ask' | 'wrong_channel' };
+  | { status: 'not_recorded'; reason: 'no_open_ask' | 'wrong_channel' | 'child_gone' };
 
 /**
  * Read the answer, write the fact, say nothing — and REPORT which of those happened.
