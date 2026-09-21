@@ -3553,7 +3553,7 @@ describe('the weekday-care answer', () => {
     expect(coach.calls).toBe(1);
   });
 
-  it('does not answer an SMS question through a different door', async () => {
+  it('does not answer an SMS question through a different door, and says so', async () => {
     const { h, written } = careHarness({
       target: async () => ({ status: 'wrong_channel' as const }),
     });
@@ -3561,6 +3561,12 @@ describe('the weekday-care answer', () => {
     await routeChannelMessage(h.deps, job());
 
     expect(written).toEqual([]);
+    // NAMED, not swallowed (rule #11). An email landing inside an SMS question's window
+    // is a different thing to know from a question nobody asked, and a refusal nothing
+    // records is a refusal nobody can tell from a turn where the gate never ran.
+    expect(JSON.stringify(h.logs)).toContain('wrong_channel');
+    // ...and still never the words themselves.
+    expect(JSON.stringify(h.logs)).not.toContain("she's home with me");
   });
 
   it('costs nothing when Hale is holding no such question', async () => {

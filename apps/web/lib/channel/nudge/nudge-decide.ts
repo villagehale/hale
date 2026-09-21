@@ -642,6 +642,11 @@ export function decideWeekdayCareAsk(input: DecideNudgeInput): LegOutcome<Weekda
 
   if (context.askedBefore) return { nudge: null, skips: ['already_asked'] };
   if (!context.weekendFindSent) return { nudge: null, skips: ['no_weekend_find_sent'] };
+  // UNFILTERED BY AGE, deliberately, where the find strips a teen's fact out first.
+  // The two directions are not the same question: a 13+ child's fact may never UNLOCK
+  // an outbound (rule #1, which is why the find filters), but anybody's answer is proof
+  // this household has already been through this and must not be asked again. A fact
+  // may suppress; it may not unlock.
   if (context.stated.length > 0) return { nudge: null, skips: ['already_stated'] };
 
   // `isTeen` is read off the roster the sweep built from live dates of birth, and the
@@ -649,12 +654,11 @@ export function decideWeekdayCareAsk(input: DecideNudgeInput): LegOutcome<Weekda
   // is the one that holds if this band is ever widened.
   const eligible = input.healthChildren
     .filter((child) => !child.isTeen)
-    .filter((child) => child.ageMonths !== null)
     .filter((child) => {
-      const stage = stageFromAgeInMonths(child.ageMonths as number);
+      const stage = stageFromAgeInMonths(child.ageMonths);
       return stage === 'newborn' || stage === 'toddler';
     })
-    .sort((a, b) => (a.ageMonths as number) - (b.ageMonths as number));
+    .sort((a, b) => a.ageMonths - b.ageMonths);
   const child = eligible[0];
   if (!child) return { nudge: null, skips: ['no_eligible_child'] };
 

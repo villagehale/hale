@@ -787,7 +787,31 @@ export async function routeChannelMessage(
   // what supplies the CHILD: the parent's words say "she's home with me" and name
   // nobody, so the subject comes from the ask's own dedupe key.
   if ((await turn.openQuestions()).some((question) => question.kind === 'weekday_care')) {
-    await recordWeekdayCareAnswer(deps, turn);
+    // EVERY OUTCOME IS OBSERVED, in one place, and none of them is the words themselves
+    // — GATE 2c's own logger is the precedent (`{familyId, state, reason}`, never the
+    // body), and a message about a child's care arrangement is the last thing that
+    // belongs in a log line. `recorded` is the one that needs no line: it leaves an
+    // immutable audit row carrying the state it wrote.
+    const outcome = await recordWeekdayCareAnswer(deps, turn);
+    if (outcome.status === 'unreadable') {
+      // WARN, NOT ERROR. A bare "yes" or "no" to an either/or is ordinary parent
+      // behaviour, not a fault: it is the signal the grammar has drifted, and it is
+      // worth a line only because nothing else makes it visible. Logging it at ERROR
+      // would make a routine turn indistinguishable from the ones that need somebody.
+      deps.log.warn(
+        { familyId: turn.familyId, status: outcome.status },
+        'channel router: the weekday-care ask is standing and the reply settles neither side',
+      );
+    } else if (outcome.status === 'not_recorded') {
+      // The open-question list said this was standing and the ask's own reader did not:
+      // `wrong_channel` is a forwarded email inside the window, and `no_open_ask` is the
+      // two readers disagreeing across the same turn. Both are things to know, and
+      // folding either into silence is the bucket-that-means-something-else defect.
+      deps.log.warn(
+        { familyId: turn.familyId, reason: outcome.reason },
+        'channel router: the weekday-care ask was standing and this message could not answer it',
+      );
+    }
   }
 
   // GATE 3 — can we afford to think. Counted only here, so a deterministic answer never
@@ -1032,11 +1056,15 @@ type WeekdayCareReplyOutcome =
   | { status: 'not_recorded'; reason: 'no_open_ask' | 'wrong_channel' };
 
 /**
- * Read the answer, write the fact, say nothing.
+ * Read the answer, write the fact, say nothing — and REPORT which of those happened.
  *
  * The child comes from the ASK, never from the words: "she's home with me" names
  * nobody, and a reader that let the message choose its own subject would be a reader any
  * sentence could aim at any child.
+ *
+ * Every refusal is a named variant rather than a silent return, and the caller is what
+ * turns each one into a log line: three of them are invisible any other way, and a
+ * reason nothing observes is decoration (rule #11).
  */
 async function recordWeekdayCareAnswer(
   deps: ChannelRouterDeps,
@@ -1056,21 +1084,7 @@ async function recordWeekdayCareAnswer(
   if (target.status !== 'open') return { status: 'not_recorded', reason: target.status };
 
   const reading = readWeekdayCare(turn.body);
-  if (reading.status === 'nothing_stated') {
-    // {familyId, status} and NOTHING else — GATE 2c's own logger is the precedent, and
-    // the body of a message about a child's care arrangement is the last thing that
-    // belongs in a log line.
-    //
-    // WARN, NOT ERROR. A bare "yes" or "no" to an either/or is ordinary parent
-    // behaviour, not a fault: it is the signal the grammar has drifted, and it is worth
-    // a line only because nothing else makes it visible. Logging it at ERROR would make
-    // a routine turn indistinguishable from the ones that need somebody.
-    deps.log.warn(
-      { familyId: turn.familyId, status: 'unreadable' },
-      'channel router: the weekday-care ask is standing and the reply settles neither side',
-    );
-    return { status: 'unreadable' };
-  }
+  if (reading.status === 'nothing_stated') return { status: 'unreadable' };
 
   await deps.recordWeekdayCare(deps.database, {
     familyId: turn.familyId,
