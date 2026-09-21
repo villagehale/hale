@@ -18,11 +18,12 @@ import type { ChannelRouterDeps, HandlerContext } from '~/lib/channel/router/rou
 import { routeChannelMessage } from '~/lib/channel/router/route';
 import type { OpenQuestion } from '~/lib/channel/router/open-questions';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { nightlyOccasion } from '~/lib/channel/variant';
 import {
   CHECK_IN_ACK_TEMPLATE_KEY,
   CHECK_IN_ASK_TEMPLATE_KEY,
   CHECK_IN_DAILY_ACK,
-  CHECK_IN_NOTED_ACK,
+  checkInNotedAck,
   CHECK_IN_NOT_KEPT_ACK,
   CHECK_IN_OFF_ACK,
   CHECK_IN_STEP_DOWN_TEMPLATE_KEY,
@@ -45,6 +46,17 @@ const ASKED_AT = new Date('2026-07-06T00:17:00.000Z');
 /** 21:40 the same local evening — a parent answering from the couch. */
 const ANSWERED_AT = new Date('2026-07-06T01:40:00.000Z');
 const TZ = 'America/Toronto';
+
+/**
+ * The thank-you THIS household reads on THIS evening. The ack is pooled (five per
+ * language, rotating once per family-local day — variant.ts), so the expected string is a
+ * function of the seeded family's id and the clock rather than a constant. Computed
+ * through the production selector, so a test cannot quietly disagree with the lane about
+ * which member tonight is.
+ */
+function notedAck(familyId: string, now: Date, language: 'en' | 'fr' = 'en'): string {
+  return checkInNotedAck(language, familyId, nightlyOccasion(now, TZ));
+}
 
 let db: TestDb;
 
@@ -287,7 +299,10 @@ describe('what the parent said about their day', () => {
       inboundChannelMessageId: inbound,
       now: ANSWERED_AT,
     });
-    expect(outcome).toEqual({ status: 'note_stored', reply: CHECK_IN_NOTED_ACK.en });
+    expect(outcome).toEqual({
+      status: 'note_stored',
+      reply: notedAck(seeded.familyId, ANSWERED_AT),
+    });
 
     const notes = await readNotes(seeded.familyId);
     expect(notes).toHaveLength(1);
@@ -432,7 +447,7 @@ describe('the handler in the chain', () => {
     expect(verdict).toEqual({
       claimed: true,
       outcome: 'note_stored',
-      reply: CHECK_IN_NOTED_ACK.en,
+      reply: notedAck(seeded.familyId, ANSWERED_AT),
       templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
     });
   });
@@ -842,6 +857,12 @@ describe("the floor after Hale's own thank-you, through the real router", () => 
       disambiguation: createDisambiguationStore(),
       reconcileView: loadReconcileView,
       recordStatedState: async () => ({ status: 'nothing_stated' }),
+      weekdayCareAnswerTarget: async () => ({ status: 'no_open_ask' as const }),
+      recordWeekdayCare: async (_db, input) => ({
+        status: 'recorded' as const,
+        care: input.care,
+        providerNamed: input.provider !== null,
+      }),
       recordRegistrationWatch: async () => ({ status: 'recorded' }),
       armWatchedSpot: async () => ({ status: 'armed', spotId: 'spot-1' }),
       dispatchDeepResearch: async () => ({ status: 'enqueued' }),
@@ -910,7 +931,7 @@ describe("the floor after Hale's own thank-you, through the real router", () => 
 
     const answered = await text(seeded, 'quiet one', ANSWERED_AT);
     expect(answered.handler).toBe('evening_check_in');
-    expect(transport.bodies()).toEqual([CHECK_IN_NOTED_ACK.en]);
+    expect(transport.bodies()).toEqual([notedAck(seeded.familyId, ANSWERED_AT)]);
     // The thank-you is NAMED in the ledger — the whole of what makes the next turn work.
     expect(await outboundKeys(seeded.familyId)).toEqual([
       CHECK_IN_ASK_TEMPLATE_KEY,
@@ -919,7 +940,10 @@ describe("the floor after Hale's own thank-you, through the real router", () => 
 
     const dropped = await text(seeded, 'NO', NEXT_AFTERNOON);
     expect(dropped.handler).toBe('evening_check_in');
-    expect(transport.bodies()).toEqual([CHECK_IN_NOTED_ACK.en, CHECK_IN_OFF_ACK.en]);
+    expect(transport.bodies()).toEqual([
+      notedAck(seeded.familyId, ANSWERED_AT),
+      CHECK_IN_OFF_ACK.en,
+    ]);
     expect((await readPrefs(seeded.familyId))?.cadence).toBe('off');
   });
 

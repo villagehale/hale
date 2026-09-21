@@ -867,7 +867,10 @@ describe('the readiness writer', () => {
     );
 
     expect(outcome.status).toBe('readiness_recorded');
-    expect(outcome.reply).toContain('you told me');
+    // Case-insensitive: the ack now OPENS on the attribution (docs/voice.md rule 3 took
+    // the `Noted - ` prefix off it), and what this pins is that the sentence is the
+    // parent's own statement rather than a claim of Hale's.
+    expect(outcome.reply).toMatch(/you told me/i);
     expect((await sequenceRow()).readinessReady).toBe(true);
     const [audit] = await auditRows('registration_readiness_stated');
     expect(audit).toMatchObject({ actor: parentUserId, targetId: inboundId });

@@ -114,6 +114,9 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
       emailAlertOffers: async () => [],
       eveningCheckIn: async () => null,
       activityFollowupAsk: async () => null,
+      weekdayCare: async () => null,
+      daycareFollowup: async () => null,
+      forwardAddressRevoke: async () => null,
     });
 
     const questions = await reader.open({} as never, {
@@ -191,6 +194,9 @@ describe('the registration-readiness question on the open list', () => {
       emailAlertOffers: async () => [],
       eveningCheckIn: async () => null,
       activityFollowupAsk: async () => null,
+      weekdayCare: async () => null,
+      daycareFollowup: async () => null,
+      forwardAddressRevoke: async () => null,
     });
 
     const questions = await reader.open({} as never, {
@@ -226,6 +232,9 @@ describe('the registration-readiness question on the open list', () => {
       emailAlertOffers: async () => [],
       eveningCheckIn: async () => null,
       activityFollowupAsk: async () => null,
+      weekdayCare: async () => null,
+      daycareFollowup: async () => null,
+      forwardAddressRevoke: async () => null,
     });
 
     const questions = await reader.open({} as never, {
@@ -235,5 +244,88 @@ describe('the registration-readiness question on the open list', () => {
     });
 
     expect(questions).toEqual([]);
+  });
+});
+
+/**
+ * VIL-352 round 6 · the forwarding-address revoke confirm (D17).
+ *
+ * The one kind on this list whose YES DESTROYS a credential, and the reason it is here at
+ * all: five rounds of regex could not tell "should I turn off my forwarding address?"
+ * from an instruction, so the turn-off half stopped acting and started asking. What the
+ * list has to get right is the arbitration — a revoke must never be claimed off a bare
+ * word that could just as easily have been meant for something else.
+ */
+describe('the forwarding-address revoke confirm on the open list', () => {
+  it('lets a bare YES through while it is the only thing open (positive control)', () => {
+    const solo = [question('forward_address_revoke', { askedAt: T0, solicited: true })];
+
+    expect(soleOpenKind(solo, 'forward_address_revoke')).toBe(true);
+  });
+
+  it('makes a bare YES ambiguous for every other kind while it is open', () => {
+    const questions = [
+      question('approval'),
+      question('forward_address_revoke', { askedAt: T0, solicited: true }),
+    ];
+
+    expect(soleOpenKind(questions, 'approval')).toBe(false);
+    expect(soleOpenKind(questions, 'forward_address_revoke')).toBe(false);
+  });
+
+  /**
+   * THE HELPER SAYS YES HERE AND THE HANDLER STILL SAYS NO, and that gap is deliberate
+   * rather than a bug this test enshrines. `newestSolicitedKind` exists so a parent doing
+   * exactly what the last message told them to do lands on that message's question — a
+   * good rule for an offer, and not good enough for a revoke, which a parent cannot undo
+   * by saying "no thanks" to the next text. So the handler requires EVERY open question
+   * to be this one, and forward-revoke.pglite.test.ts drives that through the real chain.
+   */
+  it('wins recency over an older solicited ask, which is exactly why the handler is stricter', () => {
+    const questions = [
+      question('email_alert_add', { askedAt: T0, solicited: true }),
+      question('forward_address_revoke', { askedAt: T1, solicited: true }),
+    ];
+
+    expect(newestSolicitedKind(questions)).toBe('forward_address_revoke');
+    expect(questions.every((each) => each.kind === 'forward_address_revoke')).toBe(false);
+  });
+
+  it('is read off its own source, dated by the ask row and marked solicited', async () => {
+    const reader = createOpenQuestionReader({
+      activityFollowupAsk: async () => null,
+      weekdayCare: async () => null,
+      daycareFollowup: async () => null,
+      pendingApprovals: async () => [],
+      introOptInOpen: async () => false,
+      introProposal: async () => null,
+      planOffer: async () => null,
+      checkupOffer: async () => null,
+      founderWelcomeOffer: async () => null,
+      activityPromise: async () => null,
+      registrationReadiness: async () => null,
+      coParentAssent: async () => null,
+      emailAlertOffers: async () => [],
+      eveningCheckIn: async () => null,
+      forwardAddressRevoke: async () => ({ id: 'ask-1', askedAt: T1 }),
+    });
+
+    const questions = await reader.open({} as never, {
+      familyId: 'fam-1',
+      parentUserId: 'parent-1',
+      now: T1,
+    });
+
+    expect(questions).toHaveLength(1);
+    expect(questions[0]).toMatchObject({
+      id: 'ask-1',
+      kind: 'forward_address_revoke',
+      subject: 'turning off your forwarding address',
+      answerable: { yes: true, no: true },
+      askedAt: T1,
+      solicited: true,
+    });
+    // Rule #1: the description goes to a model, and it carries no address and no token.
+    expect(questions[0]?.description).not.toMatch(/hale\+|@/);
   });
 });

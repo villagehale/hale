@@ -1,8 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import sitemap from './sitemap.js';
-import PrivacyPage, { generateMetadata as privacyGenerateMetadata } from './[locale]/privacy/page.js';
+import PrivacyPage, {
+  generateMetadata as privacyGenerateMetadata,
+} from './[locale]/privacy/page.js';
 import TermsPage, { generateMetadata as termsGenerateMetadata } from './[locale]/terms/page.js';
+import sitemap from './sitemap.js';
 
 const EN = () => ({ params: Promise.resolve({ locale: 'en' as const }) });
 
@@ -342,6 +346,117 @@ describe('privacy — the scaffold the template supplies, in PIPEDA vocabulary',
   it('separates the rights the law gives you from the switches in the product', () => {
     expect(privacyHtml).toContain('id="your-rights"');
     expect(privacyHtml).toContain('id="your-choices"');
+  });
+
+  it('names what is read from each connected source, and what it is read for', () => {
+    // PIPEDA purpose limitation is per-source and per-use, not one paragraph: a
+    // parent connecting Gmail is owed the fields Hale reads off a message and the
+    // reason, in the same breath.
+    expect(privacyHtml).toContain('the subject, the sender, the first line');
+    expect(privacyHtml).toContain('an event’s title, its notes, start, end, place');
+    // The one retention rule the code actually keeps, stated because it is kept:
+    // NOTE_RETENTION_DAYS = 30, purged on the delete sweep.
+    expect(privacyHtml).toContain('for thirty days');
+  });
+
+  it('names EVERY field the sync really ingests, per source, derived from the sync', () => {
+    // A policy that lists four of the five fields a connector collects is an
+    // understatement of collection, which is the PIPEDA defect this section
+    // exists to prevent — and it happened: the Calendar block listed title,
+    // start, end and place and omitted `description`, the one field that
+    // routinely carries meeting links and other people's names.
+    //
+    // So the list is not typed here either. The payload keys come out of
+    // `syncGoogleCalendar` / `syncGmail` themselves, and a field added there
+    // fails this test until someone decides what to call it for a reader.
+    // (The same read appears in `landing-v5.test.ts`, where the landing makes
+    // the shorter version of the same promise; it is six lines, and a shared
+    // module under lib/ would be a runtime `readFileSync` into apps/web that a
+    // component could one day import.)
+    const sync = readFileSync(
+      fileURLToPath(new URL('../../web/lib/integrations/sync.ts', import.meta.url)),
+      'utf8',
+    );
+    const payloadKeys = (source: 'gcal' | 'gmail'): string[] => {
+      const body = new RegExp(
+        `ingested\\('${source}', connection\\.familyId, \\{([\\s\\S]*?)\\}`,
+      ).exec(sync)?.[1];
+      if (body === undefined) throw new Error(`apps/web moved the ${source} ingest payload`);
+      return [...body.matchAll(/^\s{6,}(\w+)[,:]/gm)].map((m) => m[1] as string);
+    };
+
+    /** Each ingested field and the words the policy uses for it. `id` is the
+     * provider's own handle for the row and names no new fact about a family,
+     * so it is deliberately unnamed rather than accidentally missing. */
+    const NAMED: Record<'gcal' | 'gmail', Record<string, string | null>> = {
+      gcal: {
+        id: null,
+        summary: 'title',
+        description: 'notes',
+        location: 'place',
+        start: 'start',
+        end: 'end',
+      },
+      gmail: { id: null, subject: 'subject', from: 'sender', snippet: 'first line' },
+    };
+    const block = (label: string): string => {
+      const found = new RegExp(`<li><strong>${label}\\.</strong>([\\s\\S]*?)</li>`).exec(
+        privacyHtml,
+      )?.[1];
+      if (found === undefined) throw new Error(`the ${label} purpose block does not render`);
+      return found;
+    };
+
+    for (const [source, li] of [
+      ['gcal', 'Calendar \\(optional\\)'],
+      ['gmail', 'Gmail \\(optional\\)'],
+    ] as const) {
+      expect(payloadKeys(source).sort(), `${source} ingest`).toEqual(
+        Object.keys(NAMED[source]).sort(),
+      );
+      const text = block(li);
+      for (const [field, words] of Object.entries(NAMED[source])) {
+        if (words === null) continue;
+        expect(text, `${source}.${field} is collected and must be named`).toContain(words);
+      }
+    }
+  });
+
+  it('states no retention promise for the Gmail envelope, because nothing purges it', () => {
+    // Checked against the code before this block was written: `syncGmail` reads
+    // messageId, subject, from, snippet and receivedAt into `events.payload`, a
+    // jsonb column with no TTL, and NOTHING in apps/web or packages issues a
+    // delete against the events table — the only erasure is the families cascade
+    // when an account is erased. A retention sentence a public privacy page makes
+    // and the code does not keep is a worse defect than any wording above it, so
+    // the Gmail block says what is read and why, and says nothing about how long
+    // it is held. (The account-level erasure is stated where it is true, under
+    // residency and retention.)
+    // Scoped to the Gmail <li> alone: the two blocks beside it legitimately say
+    // "thirty days", because that IS the rule the code keeps for a day note.
+    const gmail =
+      /<li><strong>Gmail \(optional\)\.<\/strong>([\s\S]*?)<\/li>/.exec(privacyHtml)?.[1] ?? '';
+    expect(gmail, 'the Gmail purpose block must render').toContain(
+      'the subject, the sender, the first line',
+    );
+    expect(gmail, 'the Gmail purpose block must say what it is read for').toContain('Why:');
+    for (const promise of ['deleted', 'discarded', 'kept', 'retain', 'days', 'as long as']) {
+      expect(gmail, `${promise} must not appear in the Gmail block`).not.toContain(promise);
+    }
+    // Positive control: a retention promise IS made elsewhere on this page, for
+    // the one thing the code purges — so the absence above is a claim withheld
+    // rather than a page that never mentions retention.
+    expect(privacyHtml).toContain('for thirty days');
+  });
+
+  it('opens no purpose block for a purpose nothing serves', () => {
+    // A purpose statement for an unbuilt feature is the same defect as a landing
+    // claim for one. Travel and shared reviews arrive with their code.
+    for (const unbuilt of ['Travel', 'shared reviews', 'what other families thought']) {
+      expect(privacyHtml, `${unbuilt} must not have a purpose block`).not.toContain(unbuilt);
+    }
+    // Positive control: the page DOES carry per-source purpose blocks.
+    expect(privacyHtml).toContain('Calendar (optional)');
   });
 
   it('states plainly that no decision is made by machine alone (Law 25)', () => {

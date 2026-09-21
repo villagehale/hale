@@ -13,6 +13,7 @@ import {
   decideRadar,
   parseAgeRange,
   upcomingWeekend,
+  weekdayOf,
 } from './radar-decide.js';
 
 /**
@@ -55,6 +56,7 @@ function candidate(overrides: Partial<RadarCandidate> = {}): RadarCandidate {
     seasons: null,
     childId: null,
     confidence: 0.8,
+    source: null,
     ...overrides,
   };
 }
@@ -703,5 +705,27 @@ describe('decideRadar — registration absence (between cycles)', () => {
   it('carries ASCII spacing, because one narrow no-break space doubles the SMS cost', () => {
     const decision = decide({ windows: [], pastCycle: past(HALTON_FALL) });
     expect(decision.registrationAbsence?.lastOpenedAtLocal).not.toMatch(/[\u202f\u00a0\u2009]/);
+  });
+});
+
+/**
+ * VIL-360 — exported so the weekday branch asks this question the same way the weekend
+ * one does. The property that matters is that it reads the KEY and never a zone: a
+ * family-local day key run through a local-time parse lands on the day before in every
+ * negative-offset zone, which is how a Wednesday becomes a Tuesday.
+ */
+describe('weekdayOf', () => {
+  it('reads the day key itself, not the machine the key is parsed on', () => {
+    expect(weekdayOf('2026-08-02')).toBe(0); // Sunday
+    expect(weekdayOf('2026-08-03')).toBe(1); // Monday
+    expect(weekdayOf('2026-08-07')).toBe(5); // Friday
+    expect(weekdayOf('2026-08-08')).toBe(6); // Saturday
+  });
+
+  it('does not drift across a DST boundary', () => {
+    // Toronto leaves DST on 2026-11-01; the two days either side of it are still a
+    // Saturday and a Monday.
+    expect(weekdayOf('2026-10-31')).toBe(6);
+    expect(weekdayOf('2026-11-02')).toBe(1);
   });
 });

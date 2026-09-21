@@ -5,7 +5,14 @@ import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { CATEGORY_CAPS, SEND_RETRIES_EXHAUSTED } from './config';
 import { SENT_STATUSES, acceptedStatus } from './ledger';
-import type { Channel, ChannelKind, LoopCategory, LoopMessage, RenderedContent } from './types';
+import type {
+  Channel,
+  ChannelKind,
+  LoopCategory,
+  LoopMessage,
+  RenderedContent,
+  VoiceOutcome,
+} from './types';
 
 /**
  * F11 · The Sunday Loop — the dispatch (VIL-213 · A2). THE one place loop policy
@@ -128,6 +135,18 @@ export interface LegResult {
    * instead of re-reading the row it just caused (VIL-249).
    */
   reason?: string;
+  /**
+   * What the template's composed-voice slot did on THIS render (docs/voice.md, "The two
+   * SMS folds"). Present only on a leg that reached a renderer with such a slot; absent
+   * everywhere else, which is the difference between "this message has no voice" and
+   * 'absent' (VoiceOutcome, types.ts).
+   *
+   * THE RENDER IS WHERE IT IS KNOWN AND NOWHERE EARLIER. The composer runs at the Saturday
+   * or evening converge tick, hours before this leg exists and without knowing which
+   * channel the family is on — so the compose run's own `voiced` can only ever mean "a
+   * voice was composed". Whether a parent READ one is decided here.
+   */
+  voice?: VoiceOutcome;
 }
 
 /** A per-leg accounting the caller / X1 can aggregate (no counter subsystem exists
@@ -255,6 +274,10 @@ async function dispatchLeg(
   }
 
   const rendered = ports.renderer.render(msg, channel, prefs.childNameLevel);
+  // Carried on every leg from here down, the failures included: a template whose voice the
+  // fold refused and a template whose send the provider refused are two different things
+  // to go and look at, and reading one from the other is guesswork (rule #11).
+  const voice = rendered.kind === 'sms' ? rendered.voice : undefined;
   // THE CHOKE POINT'S OWN HONESTY GATE (VIL-293), and it is the ledger-FREE half of the
   // reconciliation primitive on purpose. This seam has no database handle by design — it
   // is a decision engine over injected ports — so it cannot ask whether a promise has a
@@ -269,12 +292,12 @@ async function dispatchLeg(
   const unbacked = claimsNoLedgerCanBack(claimText(rendered));
   if (unbacked.length > 0) {
     await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'unbacked_claim' });
-    return { channel, outcome: 'failed', reason: 'unbacked_claim' };
+    return { channel, outcome: 'failed', reason: 'unbacked_claim', voice };
   }
   const adapter = ports.channels[channel];
   if (!adapter) {
     await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'channel_unavailable' });
-    return { channel, outcome: 'failed', reason: 'channel_unavailable' };
+    return { channel, outcome: 'failed', reason: 'channel_unavailable', voice };
   }
 
   const result = await adapter.send({ userId: msg.parentUserId, rendered });
@@ -315,7 +338,11 @@ async function dispatchLeg(
         : 'channel_sent',
       targetTable: 'channel_messages',
       targetId: id,
-      after: { channel, category: msg.category, templateKey: msg.templateKey },
+      // `voice` is an enum about Hale's own pipeline and never content, so it is safe on
+      // an immutable PIPEDA-exportable row — and it is the only DURABLE count there is:
+      // the drain discards the DispatchResult, so an outcome that stopped at the leg
+      // would be the same silence in production that naming it exists to end.
+      after: { channel, category: msg.category, templateKey: msg.templateKey, voice },
     });
     // THE THREAD, which is where the parent's answer will be read. AFTER the send, like
     // every other post-send write here: a leg that a suppression or a refusal stopped is
@@ -328,13 +355,13 @@ async function dispatchLeg(
         body: rendered.text,
       });
     }
-    return { channel, outcome: 'sent' };
+    return { channel, outcome: 'sent', voice };
   }
 
   // Permanent error OR a skip (not configured / disabled / no address).
   const errorCode = result.status === 'error' ? result.code : result.reason;
   await writeLedgerRow(ports, msg, channel, 'failed', { errorCode });
-  return { channel, outcome: 'failed', reason: errorCode };
+  return { channel, outcome: 'failed', reason: errorCode, voice };
 }
 
 /** The words a parent will actually read, whatever the channel renders them into. An

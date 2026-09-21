@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, integer, uniqueIndex } from 'drizzle-orm/pg-core';
 import { onboardingStageEnum, planTierEnum } from './enums.js';
 
 export const families = pgTable('families', {
@@ -41,9 +41,22 @@ export const families = pgTable('families', {
    * ics_share_token = :token, so nulling it revokes the feed (same share-token
    * pattern as villageCandidates). Null = no feed minted yet. */
   icsShareToken: text('ics_share_token').unique(),
+  /** The tokenized, revocable secret in the family's FORWARDING address
+   * `hale+<token>@<inbound domain>` (VIL-352). Deliberately a SECOND secret beside
+   * ics_share_token rather than a reuse of it: revoking a forwarding address must not
+   * also kill every calendar link the family holds, and revoking the calendar feed must
+   * not silently stop their mail being read. Lowercase hex, because the inbound parser
+   * lowercases every address it sees. Null = no address minted yet. */
+  inboundForwardToken: text('inbound_forward_token'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+  // A unique INDEX, matching the migration: past the re-runnable watermark a bare
+  // ADD CONSTRAINT (what Drizzle's `.unique()` emits) raises on the second apply.
+  inboundForwardTokenUniq: uniqueIndex('families_inbound_forward_token_uniq').on(
+    table.inboundForwardToken,
+  ),
+}));
 
 export type Family = typeof families.$inferSelect;
 export type NewFamily = typeof families.$inferInsert;

@@ -7,11 +7,20 @@ import {
   coverageOf,
   parseAgeRange,
   upcomingWeekend,
+  weekdayOf,
 } from '~/lib/channel/intake/radar-decide';
-import { formatWhenPhrase } from '~/lib/format/datetime';
+import type { WeekdayCareContext } from '~/lib/care/weekday';
+import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
+import { CIVIC_SOURCE } from '~/lib/civic/project';
+import {
+  GENERIC_WEEKDAY_CHILD_PHRASE,
+  weekdayChildPhrase,
+} from '~/lib/channel/nudge/weekday-care-copy';
+import { dayKeyOf, formatWhenPhrase } from '~/lib/format/datetime';
 import { priceBandLabel } from '~/lib/format/labels';
 import type { HealthRegion } from '~/lib/health/checkpoints';
 import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
+import { stageFromAgeInMonths } from '@hale/types';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import { type Season, seasonOf } from '~/lib/village/visibility';
 import { type DailyOutlook, isOutdoorFriendly, outdoorBlocker } from '~/lib/weather/open-meteo';
@@ -112,7 +121,77 @@ export interface HealthCheckpointNudge {
   teenCount: number;
 }
 
-export type Nudge = RegistrationNudge | HealthCheckpointNudge | WeatherSwapNudge;
+/** The five days the weekend rule throws away. A closed set, so a fact slot can be
+ * checked exhaustively wherever it appears. */
+export type WeekdayName = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday';
+
+const WEEKDAY_NAMES: Record<number, WeekdayName> = {
+  1: 'monday',
+  2: 'tuesday',
+  3: 'wednesday',
+  4: 'thursday',
+  5: 'friday',
+};
+
+/**
+ * VIL-360 · a WEEKDAY drop-in, for a household whose child is home midweek.
+ *
+ * These rows are already in this family's feed and the weekend rule discards them:
+ * the civic sweep ingests EarlyON weekday mornings and library storytimes into
+ * `village_candidates` under `run_type = 'civic'`, and both surfaces that send
+ * unprompted finds - the intake radar's `placements` and the weather swap's
+ * `fittedFor` - independently require a Saturday or a Sunday. This is a filter over
+ * data already on the row, not a new source.
+ */
+export interface WeekdayDropInNudge {
+  kind: 'weekday_dropin';
+  /** The id is for us; the title/venue are the only renderable parts. */
+  candidateRef: { id: string; title: string; venueName: string | null };
+  /** The session's own family-local day key, and the weekday name derived from it.
+   * Both ride along because the composer may only restate a fact this file emitted,
+   * and the name is the one a parent reads. */
+  eventDate: string;
+  weekday: WeekdayName;
+  kidNames: string[];
+}
+
+/**
+ * VIL-360 · THE ASK — "Those are all weekend finds. Is Mia home with you during the
+ * week, or at daycare?"
+ *
+ * D23: Hale asks about what it SAW, never about what it did not see. The premise of
+ * this question is a SEND of Hale's own — the weekend find that went to this family —
+ * and never the shape of a connected calendar. An empty calendar and a quiet inbox are
+ * not evidence about a household (a parent keeps a paper calendar), and a question
+ * built on one is both wrong and a purpose-limitation breach: the connector was
+ * authorised to spot a date, not to profile a family by what is missing from it.
+ */
+export interface WeekdayCareAsk {
+  kind: 'weekday_care';
+  /** WHICH child is being asked about. The answer is filed against this id, parsed back
+   * out of the ask's own dedupe key, so the grammar never has to guess a subject. */
+  childId: string;
+  /** The name the sentence prints, or the generic phrase. Already GSM-7 checked. */
+  childPhrase: string;
+}
+
+export type Nudge =
+  | RegistrationNudge
+  | HealthCheckpointNudge
+  | WeatherSwapNudge
+  | WeekdayDropInNudge
+  | WeekdayCareAsk;
+
+/**
+ * WHAT THE WEEKDAY LEGS KNOW ABOUT THIS HOUSEHOLD, or the one word that says the
+ * behaviour is not armed.
+ *
+ * `'disarmed'` is a named state rather than an absent dependency (rule #11): the two
+ * weekday legs do not run and emit NO skip counters at all, so a SILENT counter means
+ * the flag is off, where a zero counter would have meant the legs ran and found
+ * nothing. Those are different facts and the probe reads both.
+ */
+export type WeekdayCareInput = WeekdayCareContext | 'disarmed';
 
 export interface DecideNudgeInput {
   children: readonly RadarChild[];
@@ -141,6 +220,8 @@ export interface DecideNudgeInput {
    * family: a claim defers one date, it does not mute the class.
    */
   claimedWindowIds: ReadonlySet<string>;
+  /** VIL-360 — the weekday legs' inputs, or `'disarmed'`. See {@link WeekdayCareInput}. */
+  weekdayCare: WeekdayCareInput;
   now: Date;
   timeZone: string;
 }
@@ -361,6 +442,272 @@ function decideWeatherSwap(input: DecideNudgeInput): WeatherSwapNudge | null {
   );
 }
 
-export function decideNudge(input: DecideNudgeInput): Nudge | null {
-  return decideRegistration(input) ?? decideHealthCheckpoint(input) ?? decideWeatherSwap(input);
+// ── priority 4: a weekday civic drop-in ──────────────────────────────────────
+
+/**
+ * Why `decideWeekdayDropIn` had nothing to offer. Every one of these is a DIFFERENT
+ * state and none of them may share a bucket (rule #11) — "the parent said daycare"
+ * and "nobody has told us" call for opposite next moves, and folding them into one
+ * `care_not_home` is what rev 1 of this design did.
+ */
+export type WeekdayDropInSkip =
+  /** A live fact says daycare. `starting_soon` does NOT skip — a child who starts in
+   * September is home now, which is exactly the household this is for. */
+  | 'care_is_daycare'
+  /** No fact at all. The ordinary state, and the one the ask exists to change. */
+  | 'care_unstated'
+  | 'no_civic_candidate'
+  | 'no_weekday_date'
+  /** A Mon-Fri row the weekly sweep has not re-dated yet — see {@link decideWeekdayDropIn}. */
+  | 'weekday_date_past'
+  /** A candidate dropped rather than sent as UCS-2. Counted, and another may still win. */
+  | 'not_gsm7_printable';
+
+/** decideWeekdayCareAsk's reasons. */
+export type WeekdayCareAskSkip =
+  | 'already_asked'
+  | 'no_weekend_find_sent'
+  | 'already_stated'
+  | 'no_eligible_child'
+  | 'no_weekday_offer'
+  /** Fell back to the generic child phrase. COUNTED, and the ask still goes. */
+  | 'name_not_printable';
+
+export type NudgeSkipReason = WeekdayDropInSkip | WeekdayCareAskSkip;
+
+export type NudgeSkipCounts = Partial<Record<NudgeSkipReason, number>>;
+
+/**
+ * What the whole decide produced: the one thing worth texting, and every reason a leg
+ * counted on the way there.
+ *
+ * `skips` RIDES ALONG WITH A NUDGE TOO, rather than being the alternative to one. A leg
+ * can both produce a nudge and count a refusal — an unprintable candidate dropped
+ * before a later one won, a child name that had to go generic — and a shape where the
+ * counter only exists on the silent branch would lose exactly those, which is the
+ * bucket-that-means-something-else defect this counter exists to remove.
+ *
+ * The three original legs are NOT retrofitted with reasons. They return null today,
+ * this change does not own them, and half-retrofitting is how a counter starts lying
+ * about which legs it covers — so an empty `skips` is honest (it says nothing about a
+ * leg that reports nothing) and the retrofit is its own ticket.
+ */
+export interface NudgeDecision {
+  nudge: Nudge | null;
+  skips: NudgeSkipCounts;
+}
+
+/** One leg's answer: what it produced, and every reason it counted getting there. A
+ * leg can produce a nudge AND count a reason — a dropped candidate, a name that had
+ * to go generic — so these are not alternatives. */
+interface LegOutcome<T> {
+  nudge: T | null;
+  skips: readonly NudgeSkipReason[];
+}
+
+function bump(counts: NudgeSkipCounts, reasons: readonly NudgeSkipReason[]): void {
+  for (const reason of reasons) counts[reason] = (counts[reason] ?? 0) + 1;
+}
+
+/** Renderable here means the strings this nudge actually puts in a message. The
+ * candidate's `summary` is not among them and is not even selected by the reader, so
+ * guarding it would be a check that always passes; if a later change renders it, it
+ * adds the column AND this guard in the same commit. */
+function renderablePrintable(candidate: RadarCandidate): boolean {
+  if (!isPrintableGsm7Basic(candidate.title)) return false;
+  return candidate.venueName === null || isPrintableGsm7Basic(candidate.venueName);
+}
+
+/**
+ * THE OFFER ITSELF, with no care gate in front of it: is there a weekday session this
+ * family could be sent today or later?
+ *
+ * Split out because BOTH weekday legs need exactly this question and they need it for
+ * opposite reasons. The find asks it about a household that HAS said its child is home;
+ * the ask asks it about a household that has said nothing, to be sure it can pay off a
+ * "home with me" before it puts the question. One predicate, called twice - a second
+ * copy is how "Hale asks" and "Hale can deliver" start disagreeing.
+ */
+function availableWeekdayDropIn(input: DecideNudgeInput): LegOutcome<WeekdayDropInNudge> {
+  const teen = new Set(input.teenChildIds);
+  const civic = input.candidates.filter(
+    (candidate) =>
+      candidate.source === CIVIC_SOURCE &&
+      (candidate.childId === null || !teen.has(candidate.childId)),
+  );
+  if (civic.length === 0) return { nudge: null, skips: ['no_civic_candidate'] };
+
+  const weekdays = civic.filter((candidate) => {
+    if (candidate.eventDate === null) return false;
+    const dow = weekdayOf(candidate.eventDate);
+    return dow >= 1 && dow <= 5;
+  });
+  if (weekdays.length === 0) return { nudge: null, skips: ['no_weekday_date'] };
+
+  const today = dayKeyOf(input.now, input.timeZone);
+  const ahead = weekdays.filter((candidate) => (candidate.eventDate as string) >= today);
+  if (ahead.length === 0) return { nudge: null, skips: ['weekday_date_past'] };
+
+  const skips: NudgeSkipReason[] = [];
+  const printable: RadarCandidate[] = [];
+  for (const candidate of ahead) {
+    if (renderablePrintable(candidate)) printable.push(candidate);
+    else skips.push('not_gsm7_printable');
+  }
+  if (printable.length === 0) return { nudge: null, skips };
+
+  // Soonest first, then the same stable tie-break the weekend pick uses.
+  const pick = [...printable].sort(
+    (a, b) =>
+      (a.eventDate as string).localeCompare(b.eventDate as string) ||
+      b.confidence - a.confidence ||
+      a.title.localeCompare(b.title),
+  )[0] as RadarCandidate;
+
+  const eventDate = pick.eventDate as string;
+  return {
+    nudge: {
+      kind: 'weekday_dropin',
+      candidateRef: { id: pick.id, title: pick.title, venueName: pick.venueName },
+      eventDate,
+      weekday: WEEKDAY_NAMES[weekdayOf(eventDate)] as WeekdayName,
+      // Named, never filtered on: a free civic drop-in with a stated band this
+      // household misses is still worth naming nobody over, and an extra refusal
+      // reason here would be a state nothing acts on.
+      kidNames: namesOf(input.children, coverageOf(input.children, parseAgeRange(pick.ageRange))),
+    },
+    skips,
+  };
+}
+
+/**
+ * The soonest weekday civic session to OFFER this family, or the reasons there is not
+ * one.
+ *
+ * TWO GATES MAKE THE CLAIM SAFE, and each is one comparison.
+ *
+ * `source === CIVIC_SOURCE`, because this message asserts a DAY. A civic row is dated
+ * by the sweep from a feed it verified and its strings are built deterministically; an
+ * LLM-discovered row's date and url are frequently model output (village/discover.ts),
+ * and a wrong Tuesday is a family standing outside a library.
+ *
+ * `eventDate >= today`, because `nextOccurrenceDay` dates a session to its next
+ * occurrence AT THE MOMENT THE SWEEP RUNS, and that sweep runs weekly on Monday. A
+ * Tuesday storytime projected on Monday still reads as that Tuesday on Saturday, so
+ * without this clause a soonest-first pick texts LAST Tuesday's session. The weather
+ * swap never hits this because its date is drawn from `upcomingWeekend` and is a
+ * future date by construction; the weekday branch has no such anchor.
+ *
+ * THE COST, NAMED: the weekday offer therefore exists mostly on Monday, Tuesday and
+ * Wednesday ticks. That is correct behaviour and it will be mistaken for a bug.
+ */
+export function decideWeekdayDropIn(input: DecideNudgeInput): LegOutcome<WeekdayDropInNudge> {
+  if (input.weekdayCare === 'disarmed') return { nudge: null, skips: [] };
+
+  // Only a fact about a child this channel may speak about at all. A 13+ child's
+  // fact could only exist through a direct call, and it must not unlock a find.
+  const teen = new Set(input.teenChildIds);
+  const stated = input.weekdayCare.stated.filter((fact) => !teen.has(fact.childId));
+  if (stated.length === 0) return { nudge: null, skips: ['care_unstated'] };
+  if (!stated.some((fact) => fact.care === 'home' || fact.care === 'starting_soon')) {
+    return { nudge: null, skips: ['care_is_daycare'] };
+  }
+
+  return availableWeekdayDropIn(input);
+}
+
+// ── priority 5: the weekday-care ask ─────────────────────────────────────────
+
+/**
+ * The ask, or the reason there is not one — FIVE conjunctive preconditions, and the
+ * two that carry the design are the first and the last.
+ *
+ * R1.2 is D23: the question rests on a find Hale actually sent, so "those are all
+ * weekend finds" is checkable against one ledger row rather than against the whole
+ * product.
+ *
+ * R1.5 is the promise behind it: Hale does not ask a question whose good answer it
+ * cannot pay off. The predicate is `decideWeekdayDropIn` ITSELF, called rather than
+ * restated, so the thing the ask promises and the thing the find delivers can never
+ * be two different rules.
+ *
+ * ONE ASK PER FAMILY, about the youngest child for whom weekday care is genuinely an
+ * open question — newborn or toddler by the code's own bands, never a four- or
+ * five-year-old (a JK child's parent reading "is she in daycare?" is reading Hale not
+ * know the most basic thing about their week), and never a teenager.
+ */
+export function decideWeekdayCareAsk(input: DecideNudgeInput): LegOutcome<WeekdayCareAsk> {
+  if (input.weekdayCare === 'disarmed') return { nudge: null, skips: [] };
+  const context = input.weekdayCare;
+
+  if (context.askedBefore) return { nudge: null, skips: ['already_asked'] };
+  if (!context.weekendFindSent) return { nudge: null, skips: ['no_weekend_find_sent'] };
+  // UNFILTERED BY AGE, deliberately, where the find strips a teen's fact out first.
+  // The two directions are not the same question: a 13+ child's fact may never UNLOCK
+  // an outbound (rule #1, which is why the find filters), but anybody's answer is proof
+  // this household has already been through this and must not be asked again. A fact
+  // may suppress; it may not unlock.
+  if (context.stated.length > 0) return { nudge: null, skips: ['already_stated'] };
+
+  // `isTeen` is read off the roster the sweep built from live dates of birth, and the
+  // stage band is strictly narrower than it. Two independent gates, and the teen one
+  // is the one that holds if this band is ever widened.
+  const eligible = input.healthChildren
+    .filter((child) => !child.isTeen)
+    .filter((child) => {
+      const stage = stageFromAgeInMonths(child.ageMonths);
+      return stage === 'newborn' || stage === 'toddler';
+    })
+    .sort((a, b) => a.ageMonths - b.ageMonths);
+  const child = eligible[0];
+  if (!child) return { nudge: null, skips: ['no_eligible_child'] };
+
+  // THE FIND'S OWN PREDICATE, called rather than restated — minus the care gate, which
+  // is the one thing the two legs cannot share: the find runs for a household that HAS
+  // answered and this runs for one that has not. Its reasons are not folded in here.
+  // This call is a question ("could we pay a yes off?"), and counting its refusals as
+  // the ask's would double every weekday counter on a tick where both legs ran.
+  if (availableWeekdayDropIn(input).nudge === null) {
+    return { nudge: null, skips: ['no_weekday_offer'] };
+  }
+
+  const childPhrase = weekdayChildPhrase(child.name);
+  const skips: NudgeSkipReason[] =
+    childPhrase === GENERIC_WEEKDAY_CHILD_PHRASE && child.name !== null
+      ? ['name_not_printable']
+      : [];
+  return { nudge: { kind: 'weekday_care', childId: child.id, childPhrase }, skips };
+}
+
+/**
+ * THE LADDER, and the two new rungs sit at the bottom of it on purpose.
+ *
+ * A weather swap only fires when a forecast makes one weekend option clearly better —
+ * a genuinely expiring fact. A weekly EarlyON drop-in recurs, so losing a week costs
+ * almost nothing, and the weekday find ranks below it. The ASK ranks last of all
+ * because it is a cost rather than a payoff: it may only occupy a week Hale would
+ * otherwise have been silent in, which this file's own header calls the most common
+ * correct outcome.
+ */
+export function decideNudge(input: DecideNudgeInput): NudgeDecision {
+  const skips: NudgeSkipCounts = {};
+
+  const registration = decideRegistration(input);
+  if (registration) return { nudge: registration, skips };
+
+  const health = decideHealthCheckpoint(input);
+  if (health) return { nudge: health, skips };
+
+  const swap = decideWeatherSwap(input);
+  if (swap) return { nudge: swap, skips };
+
+  const dropIn = decideWeekdayDropIn(input);
+  bump(skips, dropIn.skips);
+  if (dropIn.nudge) return { nudge: dropIn.nudge, skips };
+
+  const ask = decideWeekdayCareAsk(input);
+  bump(skips, ask.skips);
+  if (ask.nudge) return { nudge: ask.nudge, skips };
+
+  return { nudge: null, skips };
 }

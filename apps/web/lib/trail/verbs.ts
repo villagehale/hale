@@ -179,9 +179,21 @@ export const AUDIT_VERBS = [
   // ── proactive nudges + the watch offer ──────────────────────────────────
   'proactive_nudge_sent',
   'proactive_nudge_skipped',
+  'weekday_care_recorded',
+  'followup_daycare_asked',
   'email_alert_sent',
   'email_alert_event_added',
   'calendar_alert_sent',
+  // ── the forwarding door (VIL-352) ───────────────────────────────────────
+  'email_forward_address_minted',
+  'email_forward_address_revoke_asked',
+  'email_forward_address_revoked',
+  'email_forward_received',
+  'email_forward_sender_asked',
+  'email_forward_sender_allowed',
+  'email_forward_sender_blocked',
+  'email_forward_raw_purged',
+  'email_forward_refused',
   'proactive_watch_granted',
   'proactive_watch_declined',
   // ── caregiver invites ───────────────────────────────────────────────────
@@ -572,6 +584,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   // ── proactive nudges + the watch offer ──────────────────────────────────
   proactive_nudge_sent: { sentence: 'Hale texted you something worth knowing', family: 'done' },
+  weekday_care_recorded: {
+    sentence: 'you told Hale how your weeks are covered',
+    family: 'done',
+  },
+  followup_daycare_asked: { sentence: 'Hale asked how daycare is going', family: 'note' },
   // Read in a connected mailbox, not guessed. The sentence says WHERE it came from,
   // because that is the part a parent has to be able to check: the row is the receipt for
   // Hale having looked at their email at all.
@@ -591,6 +608,52 @@ const VERBS: Record<AuditVerb, Verb> = {
   calendar_alert_sent: {
     sentence: 'Hale texted you about a change on your calendar',
     family: 'done',
+  },
+  // The forwarding door. Every sentence says WHOSE decision it was, because the whole
+  // rung is about a family deciding what Hale may read: only the arrival and the address
+  // are Hale's, and the three allowlist rows are the parent's own word.
+  email_forward_address_minted: {
+    sentence: 'your forwarding address was set up',
+    family: 'done',
+  },
+  // THE ASK IS ITS OWN ROW because it is its own decision (round 6, D17). Hale proposing
+  // to destroy a credential is a thing that happened whether or not the parent said yes,
+  // and a trail that showed only the revokes could not answer "why did Hale think I
+  // wanted that" for the asks nobody answered.
+  email_forward_address_revoke_asked: {
+    sentence: 'Hale asked whether to turn off your forwarding address',
+    family: 'awaiting',
+  },
+  email_forward_address_revoked: {
+    sentence: 'you turned off your forwarding address',
+    family: 'done',
+  },
+  email_forward_received: {
+    sentence: 'you forwarded something to Hale',
+    family: 'note',
+  },
+  email_forward_sender_asked: {
+    sentence: 'Hale asked whether it may read mail from that sender',
+    family: 'awaiting',
+  },
+  email_forward_sender_allowed: {
+    sentence: 'you let Hale read mail from that sender',
+    family: 'done',
+  },
+  email_forward_sender_blocked: {
+    sentence: 'you told Hale not to read mail from that sender',
+    family: 'done',
+  },
+  email_forward_raw_purged: {
+    sentence: 'the forwarded message was deleted',
+    family: 'done',
+  },
+  // Every way the door says no, under one sentence: the reason lives in `after` as the
+  // outcome token, which is an operator's word rather than a parent's. What a parent
+  // needs to see is that something reached Hale and Hale did not act on it.
+  email_forward_refused: {
+    sentence: 'Hale did not act on something forwarded to it',
+    family: 'problem',
   },
   proactive_nudge_skipped: {
     // The quiet-operator promise, made visible: a deliberate silence is a real

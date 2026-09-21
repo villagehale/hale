@@ -45,7 +45,7 @@ describe('the caregiver week', () => {
     expect(rendered).toEqual({
       kind: 'sms',
       text:
-        'Hale: this week for Mia and Leo - Tue 4:15 Gymnastics at Stouffville Leisure Centre - Thu 9:00 Preschool drop-off',
+        'This week for Mia and Leo - Tue 4:15 Gymnastics at Stouffville Leisure Centre - Thu 9:00 Preschool drop-off',
     });
   });
 
@@ -73,7 +73,7 @@ describe('the caregiver week', () => {
         children: [{ id: 'c1', name: 'Mia' }],
       }) as { text: string }
     ).text;
-    expect(text).toBe('Hale: this week for Mia - Library visit');
+    expect(text).toBe('This week for Mia - Library visit');
   });
 
   it('says "this week" with no name when nothing in scope concerns a child', () => {
@@ -84,7 +84,7 @@ describe('the caregiver week', () => {
         children: [],
       }) as { text: string }
     ).text;
-    expect(text).toBe('Hale: this week - Tue 4:15 Family dinner');
+    expect(text).toBe('This week - Tue 4:15 Family dinner');
   });
 
   it('holds three segments on a long week, keeping the nearest days and counting the rest', () => {
@@ -123,7 +123,7 @@ describe('the caregiver reminder', () => {
       }),
     ).toEqual({
       kind: 'sms',
-      text: 'Hale: in an hour - Swim class at 4:15, Stouffville Public School',
+      text: 'In an hour - Swim class at 4:15, Stouffville Public School',
     });
   });
 
@@ -138,7 +138,7 @@ describe('the caregiver reminder', () => {
         ],
       }) as { text: string }
     ).text;
-    expect(text).toBe('Hale: tomorrow - Swim class at 4:15, Soccer at 6:00, Memorial Park');
+    expect(text).toBe('Tomorrow - Swim class at 4:15, Soccer at 6:00, Memorial Park');
     expect(text).not.toMatch(/https?:\/\//);
   });
 
@@ -182,5 +182,35 @@ describe('the renderers refuse a leg a caregiver cannot receive', () => {
 
   it('renders the sms leg', () => {
     expect(caregiverPlanRenderer.render(message, 'sms', 'generic').kind).toBe('sms');
+  });
+});
+
+describe('the broadcast header', () => {
+  it('is gone from both caregiver texts (docs/voice.md rule 2)', () => {
+    // `Hale: ` is a broadcast header, and a caregiver who accepted an invite is in a
+    // thread with Hale and knows who is texting. It survives in exactly one place —
+    // party/guest-copy.ts, where the recipient has no way to know.
+    const week = (
+      renderCaregiverPlanSms({
+        weekStart: '2026-01-19',
+        items: [item({ title: 'Library visit', startsAt: null })],
+        children: [{ id: 'c1', name: 'Mia' }],
+      }) as { text: string }
+    ).text;
+    const reminder = (
+      renderCaregiverReminderSms({
+        offset: '-PT1H',
+        timeZone: 'America/Toronto',
+        events: [
+          { eventRef: 'e1', title: 'Swim class', startsAt: '2026-07-25T20:15:00Z', location: null },
+        ],
+      }) as { text: string }
+    ).text;
+    for (const text of [week, reminder]) {
+      expect(text, text).not.toMatch(/^Hale:/);
+      expect(text, text).not.toContain('Hale:');
+      // Sentence case, not the lowercase that only read right after a label.
+      expect(text[0], text).toBe(text[0]?.toUpperCase());
+    }
   });
 });

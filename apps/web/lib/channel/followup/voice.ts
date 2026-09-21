@@ -45,7 +45,15 @@ const LINK_SHAPE = /https?:\/\/|www\./i;
 
 export type FollowupVoiceRequest =
   | { kind: 'activity'; activity: string }
-  | { kind: 'intro' };
+  | { kind: 'intro' }
+  /**
+   * VIL-360 · weeks ago a parent said their child had started daycare. `provider` is
+   * the name they typed, or null when the grammar captured none - a parent who types
+   * all lowercase, or who never named a place. Null is ordinary and is NOT a gap for
+   * the model to fill: there is no gate that can catch an invented business name, so
+   * the field is omitted from the request entirely rather than sent as an empty one.
+   */
+  | { kind: 'daycare'; provider: string | null };
 
 /**
  * Why a composed body may not be sent. Every one is mechanical, and every one is fed
@@ -75,16 +83,30 @@ export function refusals(body: string, request: FollowupVoiceRequest): AskRefusa
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length !== 1) found.push('not_one_question');
 
-  // The title is stripped before the digit check rather than after: "Gym 2 Grow" is the
-  // name of the place, and a number Hale itself put in front of the model is not one the
-  // model invented.
+  // The subject is stripped before the digit check rather than after: "Gym 2 Grow" is
+  // the name of the place, and a number Hale itself put in front of the model is not one
+  // the model invented.
+  //
+  // A DAYCARE ASK PINS ITS PROVIDER ONLY WHEN THERE IS ONE. With a name, the same rule
+  // the activity keeps: a message that does not carry it is not provably about the place
+  // the parent named. Without one there is nothing to pin, and inventing the check would
+  // mean refusing every generic "how is daycare going?" - which is the only honest ask
+  // available in that case.
   let withoutSubject = body;
-  if (request.kind === 'activity') {
-    if (!body.toLowerCase().includes(request.activity.toLowerCase())) found.push('subject_missing');
-    withoutSubject = body.replace(new RegExp(escapeRegExp(request.activity), 'gi'), ' ');
+  const subject = subjectOf(request);
+  if (subject !== null) {
+    if (!body.toLowerCase().includes(subject.toLowerCase())) found.push('subject_missing');
+    withoutSubject = body.replace(new RegExp(escapeRegExp(subject), 'gi'), ' ');
   }
   if (/\d/.test(withoutSubject)) found.push('invented_number');
   return found;
+}
+
+/** The string this ask must be provably about, or null when it has none. */
+function subjectOf(request: FollowupVoiceRequest): string | null {
+  if (request.kind === 'activity') return request.activity;
+  if (request.kind === 'daycare') return request.provider;
+  return null;
 }
 
 function escapeRegExp(value: string): string {
@@ -107,11 +129,20 @@ export function followupVoiceUserMessage(
   request: FollowupVoiceRequest,
   rejected: readonly RejectedAttempt[] = [],
 ): string {
-  const base =
-    request.kind === 'activity'
-      ? { kind: 'activity', activity: request.activity }
-      : { kind: 'intro' };
+  const base = baseRequest(request);
   return JSON.stringify(rejected.length === 0 ? base : { ...base, rejected });
+}
+
+function baseRequest(request: FollowupVoiceRequest): Record<string, unknown> {
+  if (request.kind === 'activity') return { kind: 'activity', activity: request.activity };
+  if (request.kind === 'daycare') {
+    // The key is OMITTED rather than sent as null: an absent field is nothing to fill
+    // in, and `provider: null` is an invitation to.
+    return request.provider === null
+      ? { kind: 'daycare' }
+      : { kind: 'daycare', provider: request.provider };
+  }
+  return { kind: 'intro' };
 }
 
 /**

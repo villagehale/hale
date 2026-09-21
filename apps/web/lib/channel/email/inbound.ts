@@ -1,14 +1,21 @@
 import { type Database, schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
-import { type EmailType, recordOptOut } from '~/lib/cron/email-compliance';
-import { UNSUBSCRIBABLE_STREAMS } from './streams';
 import { emailBlindIndex } from '~/lib/crypto/blind-index';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { parseEmailAddress } from './address';
 import { automationKind } from './automated';
+import {
+  familyForForwardToken,
+  forwardAddress,
+  forwardClaimKey,
+  forwardRecipient,
+} from './forward-address';
+import { type EmailForwardOutcome, routeEmailForward } from './forward';
+import type { EmailReplyDeps } from './reply-send';
 import { type EmailInboundConfig, emailInboundConfig } from './config';
+import { honourEmailUnsubscribe } from './unsubscribe';
 import type { InboundContentReader } from './content';
 import { resolveEmailSender } from './identity';
 import { type InboundEmailEvent, parseInboundEmailEvent } from './payload';
@@ -92,6 +99,14 @@ export interface EmailInboundDeps {
    * only distinguishable from "nobody emails us" if every one is written down as a
    * rate. Wired to a counter that never throws. */
   countOutcome: (outcome: EmailInboundOutcome) => Promise<void>;
+  /**
+   * How Hale answers on the FORWARDING door (forward.ts). A thunk for the same reason
+   * `content` is one: building it reaches for a provider client, and a forged request
+   * must never cause one. Required, never nullable (rule #11) — a door that asks a
+   * family whether it may read a school's mail and cannot send the question is a door
+   * that holds their document and says nothing.
+   */
+  reply: () => EmailReplyDeps;
 }
 
 export type EmailInboundOutcome =
@@ -127,7 +142,11 @@ export type EmailInboundOutcome =
   /** Filed, but the queue refused it: the row is left unmarked for the reconciler, and
    * the parent is owed a reply Hale has not yet given. Never folded into `handed_off` —
    * that value is a claim that C1 has the email. */
-  | 'enqueue_failed';
+  | 'enqueue_failed'
+  /** The forwarding door's own outcomes (forward.ts). Folded into this union rather than
+   * mapped onto it, because every one of them names a state the reply door has no word
+   * for, and collapsing them would make the counter read as something it is not. */
+  | EmailForwardOutcome;
 
 /**
  * Route one authenticated inbound email. Exported so every routing decision is testable
@@ -142,16 +161,42 @@ export async function routeEmailInbound(
   const sender = parseEmailAddress(event.from);
   if (!sender) return 'invalid_sender';
 
+  // THE PRE-FETCH BUDGET, and whose it is. Keyed on the SENDER on the reply door, where
+  // the sender is the parent. On the forwarding door the sender is the school, so one busy
+  // newsletter forwarded by several families would share a single bucket and the noisiest
+  // household would silence the rest — the tag is keyed instead whenever `data.to` already
+  // carries one.
+  //
+  // A TAG IS ONLY A BUDGET'S NAME ONCE IT NAMES A FAMILY. Reading a tag costs a regex and
+  // proves nothing: 30 hex characters is a well-formed tag whoever wrote it, so keying on
+  // an unverified one would let a single sender rotate guesses and draw a fresh bucket
+  // for each — every one of them costing the content fetch this limit exists to bound.
+  // One indexed lookup settles it, and a tag that resolves to nothing falls back to the
+  // sender's own bucket rather than minting its own. Residual, named: when the tag is
+  // only recoverable from the headers (which arrive with the fetch), this key stays the
+  // sender.
+  const tagged = forwardRecipient({ to: event.to, headers: {} }, config);
+  // Resolved ONCE, and read twice: it is the budget's name below and the dedupe's scope
+  // just after. One lookup rather than two of the same, and — more to the point — the two
+  // questions cannot disagree about which household this delivery is for.
+  const taggedFamilyId =
+    tagged.kind === 'forward' ? await familyForForwardToken(deps.database, tagged.token) : null;
+  const budgetKey =
+    tagged.kind === 'forward' && taggedFamilyId
+      ? forwardAddress(tagged.token, config)
+      : sender.address;
   const decision = await deps.limiter.check(
-    emailBlindIndex(sender.address),
+    emailBlindIndex(budgetKey),
     INBOUND_ROUTE,
     RATE_LIMITS[INBOUND_ROUTE],
   );
   if (!decision.allowed) return 'rate_limited';
 
   // Before the fetch: a provider retry must not cost a second round-trip, and must never
-  // produce a second ledger row. The Message-ID is the sender's own idempotency key.
-  if (await alreadyRecorded(deps.database, event.messageId)) return 'duplicate';
+  // produce a second ledger row. The Message-ID is the sender's own idempotency key — on
+  // the reply door by itself, on the forwarding door only once the family is named with
+  // it, because there the sender is a school rather than the household (see below).
+  if (await alreadyRecorded(deps.database, event.messageId, taggedFamilyId)) return 'duplicate';
 
   const fetched = await deps.content().fetch(event.emailId);
   if (fetched.status === 'failed') {
@@ -163,8 +208,32 @@ export async function routeEmailInbound(
     return fetched.transient ? 'content_fetch_transient' : 'content_unavailable';
   }
   const { headers, text } = fetched.content;
+  const machine = automationKind({ from: event.from, headers }, config.inboundDomain);
 
-  if (automationKind({ from: event.from, headers }, config.inboundDomain)) {
+  // THE FORK, and it sits here because three of the four places a forward tag can hide are
+  // headers, which only exist after the fetch. Everything above — sender parse, the
+  // sender-keyed limit, the pre-fetch dedupe, the fetch itself — is unchanged.
+  //
+  // A `hale+` tag STOPS here whatever happens next, including one we cannot read. Falling
+  // through would hand the message to the reply door, where `From` silently becomes the
+  // identity again — and on a filter auto-forward that `From` is the school.
+  const recipient = forwardRecipient({ to: event.to, headers }, config);
+  if (recipient.kind === 'malformed') return 'forward_unknown_token';
+  if (recipient.kind === 'forward') {
+    return routeEmailForward(
+      {
+        database: deps.database,
+        limiter: deps.limiter,
+        reply: deps.reply,
+        now: deps.now ?? ((): Date => new Date()),
+        log: deps.log,
+      },
+      config,
+      { event, sender, token: recipient.token, ref: recipient.ref, text, machine, headers },
+    );
+  }
+
+  if (machine) {
     return 'automated';
   }
 
@@ -198,7 +267,7 @@ export async function routeEmailInbound(
   // not read here: this path unsubscribes and replies with nothing, so ARRET and STOP
   // have the same one job.
   if (matchKeyword(body)?.keyword === 'stop') {
-    return unsubscribe(deps, owner);
+    return honourEmailUnsubscribe(deps.database, owner);
   }
 
   if (!body) return 'empty_after_extraction';
@@ -207,14 +276,43 @@ export async function routeEmailInbound(
 }
 
 /**
- * Has this exact Message-ID already been filed? The index A2 left on
- * `provider_message_id` is what makes this cheap enough to run before the fetch.
+ * Has this exact message already been filed? The index A2 left on `provider_message_id`
+ * is what makes this cheap enough to run before the fetch.
  *
- * The id is re-checked over the returned rows rather than trusted to the `where` alone —
+ * IT ASKS THE QUESTION EACH DOOR MEANS, and that is the whole of `forwardFamilyId`. On
+ * the reply door a Message-ID is the parent's own envelope handle, so it is a sound
+ * identity by itself and the global index answers. On the FORWARDING door the id belongs
+ * to the school whose newsletter was forwarded, and two households can hold the same one
+ * — so the identity there is (family, Message-ID) and the key is the ledger row's
+ * `dedupe_key` (forward-address.ts `forwardClaimKey`). Asking the global question there
+ * dropped the second household in silence.
+ *
+ * RESIDUAL, and named for the same reason the budget key above names its own: the family
+ * is only known here when the tag was in `data.to`. A filter auto-forward that hides the
+ * tag in a header falls to the global branch, which can no longer match a forward at all
+ * (those rows carry no `provider_message_id`), so a redelivery of one costs one extra
+ * content fetch and is then refused by the claim itself. A wasted round-trip, never a
+ * wrong answer.
+ *
+ * The key is re-checked over the returned rows rather than trusted to the `where` alone —
  * the same defense in depth `resolveVerifiedChannelByPhone` documents. A dedupe that
  * matched the wrong row would silently swallow a real message.
  */
-async function alreadyRecorded(database: Database, messageId: string): Promise<boolean> {
+async function alreadyRecorded(
+  database: Database,
+  messageId: string,
+  forwardFamilyId: string | null,
+): Promise<boolean> {
+  if (forwardFamilyId) {
+    const key = forwardClaimKey(forwardFamilyId, messageId);
+    const seen = await database
+      .select({ dedupeKey: schema.channelMessages.dedupeKey })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.dedupeKey, key))
+      .limit(1);
+    return seen.some((row) => row.dedupeKey === key);
+  }
+
   const seen = await database
     .select({
       id: schema.channelMessages.id,
@@ -224,59 +322,6 @@ async function alreadyRecorded(database: Database, messageId: string): Promise<b
     .where(eq(schema.channelMessages.providerMessageId, messageId))
     .limit(1);
   return seen.some((row) => row.providerMessageId === messageId);
-}
-
-/**
- * A CASL unsubscribe arriving by email.
- *
- * It writes to `email_opt_outs`, the store the app ALREADY treats as the live answer to
- * "may we email this person" — the absence of a row is the consent. Minting a second
- * store for the same question would create two readers that can disagree, and the wrong
- * one would email a parent who asked us to stop.
- *
- * It opts the sender out of EVERY stream, which is what the word means when a person
- * types it: a parent who writes "unsubscribe" has not asked to be removed from one
- * category and kept on five others. That is the same scope a texted STOP has, which
- * revokes the channel outright rather than one message class.
- *
- * Nothing is sent back. SMS answers a STOP because carriers require one final
- * confirmation; email has no such rule, and emailing someone who just asked not to be
- * emailed is the thing they asked us not to do.
- *
- * The write goes through `recordOptOut`, the same function the unsubscribe LINK and the
- * settings toggle call, rather than a second inline insert that could drift from it. It
- * is idempotent on the unique (user, stream) index and reports whether THIS call was the
- * one that changed anything.
- *
- * That report is used, because an unsubscribe writes no `channel_messages` row and is
- * therefore invisible to the Message-ID dedupe above — every redelivery re-runs this. The
- * audit row is written only when a stream ACTUALLY changed, so a retried webhook does not
- * make the trail read as a parent unsubscribing over and over. Rule #6 asks for a row per
- * ACTION, and opting out something already opted out is not one; this is the same
- * reasoning as X1's STOP alert firing once per unsubscribe rather than once per click.
- */
-async function unsubscribe(
-  deps: EmailInboundDeps,
-  args: { userId: string; familyId: string },
-): Promise<EmailInboundOutcome> {
-  await deps.database.transaction(async (tx) => {
-    const changed: EmailType[] = [];
-    for (const emailType of UNSUBSCRIBABLE_STREAMS) {
-      const first = await recordOptOut(tx as unknown as Database, args.userId, emailType);
-      if (first) changed.push(emailType);
-    }
-    if (changed.length === 0) return;
-
-    await tx.insert(schema.auditLog).values({
-      familyId: args.familyId,
-      actor: args.userId,
-      actionTaken: 'email_unsubscribe_received',
-      targetTable: 'email_opt_outs',
-      targetId: args.userId,
-      after: { streams: changed, via: 'inbound_email' },
-    });
-  });
-  return 'unsubscribed';
 }
 
 /**

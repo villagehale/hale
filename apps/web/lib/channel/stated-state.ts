@@ -45,7 +45,7 @@ export type StatedState = 'health_visit_handled';
  * "haven't" as "havent", everything else that is not a letter or digit swept to a space.
  * The same shape the affirmative vocabulary normalizes to, so the patterns below can be
  * written once in plain words. */
-function words(text: string): string {
+export function words(text: string): string {
   return text
     .toLowerCase()
     .normalize('NFD')
@@ -55,7 +55,7 @@ function words(text: string): string {
     .trim();
 }
 
-interface Segment {
+export interface Segment {
   words: string;
   question: boolean;
 }
@@ -70,8 +70,13 @@ const ASKED =
 /** Sentence-ish, keeping only whether the sentence was ASKED. Terminal punctuation is
  * the whole grammar of a text message, and a parent's capitalisation is not evidence of
  * anything — so this splits where the outbound extractor's `sentencesOf` deliberately
- * does not, on any terminator at all. */
-function segmentsOf(body: string): Segment[] {
+ * does not, on any terminator at all.
+ *
+ * EXPORTED, with `words`, for the weekday-care reader (VIL-360) — one export keyword and
+ * no behaviour change. A second reader of a parent's own words needs the SAME
+ * normalisation or the two start disagreeing about what "it's" is, and a shared corpus
+ * test holds them to it. */
+export function segmentsOf(body: string): Segment[] {
   return [...body.matchAll(/([^.!?\n]+)([.!?\n]*)/g)]
     .map((match) => {
       const text = words(match[1] ?? '');

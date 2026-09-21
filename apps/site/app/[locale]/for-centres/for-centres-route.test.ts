@@ -153,12 +153,16 @@ describe('the exchange on this page is the landing’s, not a second one', () =>
     const landing = renderToStaticMarkup(
       await LandingPage({ params: Promise.resolve({ locale: 'en' as const }) }),
     );
-    const heroStart = landing.indexOf('v4-hero-thread');
-    expect(heroStart, 'the homepage hero no longer carries a thread').toBeGreaterThan(-1);
-    const hero = bubbles(landing.slice(heroStart, landing.indexOf('</div>', heroStart)));
+    // The homepage's FIRST BEAT — the parent's opening text and Hale's answer.
+    // v5 turned the hero into one five-beat loop, so the slice is the first beat
+    // rather than a whole hero thread; this page still borrows it rather than
+    // writing a second demo beside it.
+    const beatStart = landing.indexOf('class="v5-beat"');
+    expect(beatStart, 'the homepage hero no longer carries a loop').toBeGreaterThan(-1);
+    const firstBeat = bubbles(landing.slice(beatStart, landing.indexOf('</li>', beatStart)));
 
-    expect(hero.length).toBeGreaterThan(0);
-    expect(bubbles(await render('en')), 'this page is showing a second exchange').toEqual(hero);
+    expect(firstBeat.length).toBe(3);
+    expect(bubbles(await render('en')), 'this page is showing a second exchange').toEqual(firstBeat);
   });
 
   it('names every speaker, and lets the parent speak first', async () => {
