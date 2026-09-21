@@ -491,7 +491,11 @@ function toSmsReply(raw, children, planOffer, referral, nearby) {
     NOW,
   );
   if (!suffix) {
-    const fittedAlone = fitToBudget(redacted, MAX_REPLY_SEGMENTS);
+    // Measured WITH the body, mirroring reply.ts: the count is protected from the trim,
+    // not from the budget, and room is reserved only when the answer as composed names
+    // its subject.
+    const reserved = nearbyClause(redacted, nearby) ?? '';
+    const fittedAlone = fitToBudget(redacted, MAX_REPLY_SEGMENTS, reserved);
     const clause = fittedAlone === null ? null : nearbyClause(fittedAlone, nearby);
     return clause === null ? fittedAlone : `${fittedAlone} ${clause}`;
   }
@@ -505,8 +509,8 @@ function toSmsReply(raw, children, planOffer, referral, nearby) {
  * lands only on a reply that names its subject and names no other offered activity.
  *
  * NO FIXTURE SETS `nearby` YET. The pair that would (one at k>=3, one at k=2) needs one
- * live run to mint its cached samples, and the machine had no outbound network when this
- * shipped. The mirror lands anyway, because a harness that claims to mirror `toSmsReply`
+ * live run to mint its cached samples, and the machine still had no outbound network in
+ * the fix round. The mirror lands anyway, because a harness that claims to mirror `toSmsReply`
  * and silently omits one of its branches is worse than an unexercised branch: it would
  * grade a reply production would have changed. The same seam IS covered end to end,
  * model-free, by lib/__journey__/review-reaches-the-next-parent.test.ts.
@@ -514,15 +518,17 @@ function toSmsReply(raw, children, planOffer, referral, nearby) {
 function nearbyClause(fittedBody, nearby) {
   if (!nearby) return null;
   const haystack = [fittedBody.toLowerCase()];
-  if (!mentionsActivity(haystack, nearby.title)) return null;
+  if (!namesInFull(haystack[0], nearby.title)) return null;
   if ((nearby.otherTitles ?? []).some((title) => mentionsActivity(haystack, title))) return null;
   return nearby.clause;
 }
 
-/** Mirrors `distinctiveWords` / `mentionsActivity` in followup/screen.ts. */
+/** Mirrors `distinctiveWords` / `mentionsActivity` in followup/screen.ts, and reply.ts's
+ * own stricter reading of them: EVERY distinctive word to attach the count, ANY ONE of
+ * them to be confused with another offer. */
 const NEARBY_GENERIC_WORDS = new Set(['with', 'from', 'this', 'that', 'your', 'our']);
-function mentionsActivity(bodies, title) {
-  const words = [
+function distinctiveWords(title) {
+  return [
     ...new Set(
       String(title)
         .toLowerCase()
@@ -530,6 +536,13 @@ function mentionsActivity(bodies, title) {
         .filter((word) => word.length >= 4 && !NEARBY_GENERIC_WORDS.has(word)),
     ),
   ];
+}
+function namesInFull(body, title) {
+  const words = distinctiveWords(title);
+  return words.length > 0 && words.every((word) => body.includes(word));
+}
+function mentionsActivity(bodies, title) {
+  const words = distinctiveWords(title);
   if (words.length === 0) return false;
   return bodies.some((body) => words.some((word) => body.includes(word)));
 }
