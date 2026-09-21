@@ -37,7 +37,22 @@ export type VerdictOutcome =
    * uncaptured and says so; it never falls back to a guess (rule #11). */
   | { status: 'deferred'; reason: 'client_unavailable' | 'skill_unavailable' }
   /** The call ran and its answer could not be parsed. Named, never silent. */
-  | { status: 'extraction_failed'; reason: string };
+  | { status: 'extraction_failed'; reason: ExtractionFailure };
+
+/**
+ * WHY AN EXTRACTION FAILED, AS A CODE — never the thrown error's message.
+ *
+ * `schema.parse` quotes the value it rejected, and that value is model output over the
+ * parent's own sentence: an invented verdict can be a phrase lifted out of what they
+ * typed, and this outcome is logged. A closed list cannot carry a word of it (rule #1),
+ * and each member is something a reader would do a different thing about — raise the cap
+ * or drop thinking, tighten the skill, or look at the provider.
+ */
+export type ExtractionFailure =
+  | 'truncated'
+  | 'no_tool_call'
+  | 'schema_rejected'
+  | 'call_failed';
 
 export interface VerdictReader {
   read(body: string): Promise<VerdictOutcome>;
@@ -113,10 +128,7 @@ export function createVerdictReader(client: () => AgentClient): VerdictReader {
         });
         value = result.value;
       } catch (err) {
-        return {
-          status: 'extraction_failed',
-          reason: err instanceof Error ? err.message : String(err),
-        };
+        return { status: 'extraction_failed', reason: extractionFailure(err) };
       }
 
       const { tags, dropped } = keepKnownTags(value.tags ?? []);
@@ -129,6 +141,19 @@ export function createVerdictReader(client: () => AgentClient): VerdictReader {
       };
     },
   };
+}
+
+/**
+ * The two named throws are `forceToolJson`'s own, matched on the part of the sentence it
+ * composes rather than rebuilt: if either ever changes wording this reports
+ * `call_failed`, which is a duller answer and never a wrong or a leaky one.
+ */
+export function extractionFailure(err: unknown): ExtractionFailure {
+  if (err instanceof z.ZodError) return 'schema_rejected';
+  const message = err instanceof Error ? err.message : '';
+  if (message.includes('tool call truncated at max_tokens')) return 'truncated';
+  if (message.includes('model returned no')) return 'no_tool_call';
+  return 'call_failed';
 }
 
 /**

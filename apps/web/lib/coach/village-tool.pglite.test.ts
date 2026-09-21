@@ -168,6 +168,24 @@ describe('a venue three families near you did not rate', () => {
     ]);
   });
 
+  /** `vercel env add` from a piped echo stores 'true\n', which a truthiness check reads
+   * as ON. The capture flag has this test; the surface flag is the one that decides what
+   * a parent is shown, so it has it too. */
+  it("is offered when the flag reads 'true\\n' — a trailing newline is OFF", async () => {
+    vi.stubEnv(ACTIVITY_REVIEWS_SURFACE_ENV, 'true\n');
+    const familyId = await seedAsker();
+    await seedReview('one', POOR_PLACE, 'not_worth_it');
+    await seedReview('two', POOR_PLACE, 'not_worth_it');
+    await seedReview('three', POOR_PLACE, 'worth_it');
+
+    const result = await search(familyId);
+
+    expect(result.candidates.map((c) => c.title)).toEqual([
+      'Eastside tumbling',
+      'Riverdale storytime',
+    ]);
+  });
+
   it('is offered while only two households have answered — three is the floor', async () => {
     vi.stubEnv(ACTIVITY_REVIEWS_SURFACE_ENV, 'true');
     const familyId = await seedAsker();

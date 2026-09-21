@@ -403,7 +403,7 @@ describe('what is recorded', () => {
     await seedReply(seeded, 'Loved it.');
 
     const result = await run(
-      fakeReader({ status: 'extraction_failed', reason: 'schema mismatch' }),
+      fakeReader({ status: 'extraction_failed', reason: 'schema_rejected' }),
     );
 
     expect(result.extractionFailed).toBe(1);
