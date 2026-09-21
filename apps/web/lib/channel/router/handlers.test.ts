@@ -542,8 +542,7 @@ describe('recMorningHandler', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, founder_welcome, co_parent_assent, weekday_care, daycare_followup, health, email_alert_add, coach_plan, registration, rec_morning, name_capture, evening_check_in, inbound_canary', async () => {
-  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, health, email_alert_add, coach_plan, registration, rec_morning, name_capture, evening_check_in, inbound_canary', async () => {
+  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, weekday_care, daycare_followup, health, email_alert_add, coach_plan, registration, rec_morning, name_capture, evening_check_in, inbound_canary', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
