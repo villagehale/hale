@@ -1,6 +1,6 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTestDb, seedChild, seedFamily, type TestDb } from '~/lib/testing/pglite';
 
 /**
@@ -20,15 +20,16 @@ const MIGRATION = '0084_memory_fact_one_live_per_key.sql';
 
 let db: TestDb;
 
+/** A database at the schema version immediately before the migration under test.
+ * Booted in the hook, not the test body: the boot plus 83 migrations is the slow
+ * part, and inside `it()` it counted against the 5 s test timeout under CI load. */
+beforeEach(async () => {
+  db = await createTestDb(PREVIOUS_MIGRATION);
+}, 30_000);
+
 afterEach(async () => {
   await db?.close();
 });
-
-/** A database at the schema version immediately before the migration under test. */
-async function dbBeforeMigration() {
-  db = await createTestDb(PREVIOUS_MIGRATION);
-  return db;
-}
 
 async function factsFor(familyId: string) {
   return db.database
@@ -39,7 +40,6 @@ async function factsFor(familyId: string) {
 
 describe('migration 0084 — one live fact per key', () => {
   it('closes pre-existing duplicates, keeping the highest-confidence row', async () => {
-    await dbBeforeMigration();
     const { familyId } = await seedFamily(db.database);
     await db.database.insert(schema.familyMemoryFacts).values([
       {
@@ -88,7 +88,6 @@ describe('migration 0084 — one live fact per key', () => {
   });
 
   it('breaks a confidence tie by recency, not arbitrarily', async () => {
-    await dbBeforeMigration();
     const { familyId } = await seedFamily(db.database);
     await db.database.insert(schema.familyMemoryFacts).values([
       {
@@ -119,7 +118,6 @@ describe('migration 0084 — one live fact per key', () => {
   });
 
   it('leaves rows that only LOOK like duplicates alone', async () => {
-    await dbBeforeMigration();
     const { familyId } = await seedFamily(db.database);
     const ella = await seedChild(db.database, familyId, 'Ella', 30);
     const noah = await seedChild(db.database, familyId, 'Noah', 84);
@@ -147,7 +145,6 @@ describe('migration 0084 — one live fact per key', () => {
   });
 
   it('refuses a second live fact on the same key from then on', async () => {
-    await dbBeforeMigration();
     const { familyId } = await seedFamily(db.database);
     await db.applyMigration(MIGRATION);
 
@@ -169,7 +166,6 @@ describe('migration 0084 — one live fact per key', () => {
   it('still refuses a duplicate when the fact is family-wide (child_id NULL)', async () => {
     // Postgres treats NULLs as distinct in a unique index by default, which would
     // exempt every family-wide fact — the majority of them — from the constraint.
-    await dbBeforeMigration();
     const { familyId } = await seedFamily(db.database);
     await db.applyMigration(MIGRATION);
 
