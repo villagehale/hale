@@ -143,6 +143,12 @@ function deps(
     transport,
     handlers: defaultHandlers(),
     questions: defaultOpenQuestionReader(),
+    weekdayCareAnswerTarget: async () => ({ status: 'no_open_ask' as const }),
+    recordWeekdayCare: async (_db, input) => ({
+      status: 'recorded' as const,
+      care: input.care,
+      providerNamed: input.provider !== null,
+    }),
     offDomain: { consider: async () => ({ status: 'in_domain', fallback: null }) },
     coach: {
       async respond() {

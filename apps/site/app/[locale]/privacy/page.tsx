@@ -112,8 +112,8 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
     >
       <LegalSectionBlock id="who-we-are" title="Who we are">
         <p>
-          Hale is an AI assistant for families that you reach by text message. You (a parent or
-          legal guardian) text the number and tell Hale about your children; there is no account to
+          Hale is a phone number families text — an AI service you reach by text message. You (a
+          parent or legal guardian) text the number and tell Hale about your children; there is no account to
           create, though you may sign in to the web app, and you may optionally connect tools you
           already use. Hale watches for things that matter, drafts helpful suggestions, and — only
           with your approval — helps carry them out. Hale is operated by Village Hale Technologies Inc., a
@@ -178,6 +178,29 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           family&rsquo;s timeline. You control which integrations are connected and can disconnect
           them.
         </p>
+        <p>
+          PIPEDA asks for the purpose to be identified before the collection, and that is
+          per-source and per-use rather than one paragraph. So, for each thing you can connect:
+        </p>
+        <ul>
+          <li>
+            <strong>Gmail (optional).</strong> What is read: the subject, the sender, the first
+            line, and the time it arrived. When a message looks like it carries a date your family
+            has to be somewhere, that message is opened. Why: to notice the date and offer to put
+            it on your week. What is never read: anything you have not connected, and any message
+            that does not look like a family date.
+          </li>
+          <li>
+            <strong>Calendar (optional).</strong> What is read: an event&rsquo;s title, its notes,
+            start, end, place, and whether it was cancelled or moved. Why: so a change to your
+            week reaches you as a text rather than as a surprise.
+          </li>
+          <li>
+            <strong>How it went.</strong> What is stored: your one-line answer to Hale&rsquo;s
+            evening question, for thirty days, readable only by you and never shown to another
+            family.
+          </li>
+        </ul>
         <p>
           <strong>What Hale works out for itself.</strong> A structured memory of facts and patterns
           Hale infers from your family&rsquo;s activity — for example, a usual nap window or a

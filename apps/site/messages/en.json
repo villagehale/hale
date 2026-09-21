@@ -5,10 +5,10 @@
     "skipToContent": "Skip to content"
   },
   "HomeMeta": {
-    "title": "Hale · the family assistant you text",
-    "description": "Hale is a family assistant you text — no app, no account. It watches registration day across the GTA — city swim, camps, after-school care — preps everything the night before, and nudges you the minute a window opens. Nothing sent without your say-so. Your data stays in Canada.",
-    "ogDescription": "The family assistant you text. It watches GTA registration day — swim, camps, after-school care — preps everything the night before, and nudges you the minute a window opens. Nothing sent without your say-so. Your data stays in Canada.",
-    "twitterDescription": "The family assistant you text. Registration day watched, everything prepped the night before, nothing sent without your say-so. Your data stays in Canada."
+    "title": "Hale · a number you text for what’s on near your kids",
+    "description": "Text Hale your postal code and your kids’ ages. It finds what’s actually running near you — swim, camps, drop-ins, the EarlyON down the road — watches the sign-up mornings across {count} GTA municipalities, hands you the town’s own link the night before, and comes back to ask how it went. No app, no account. Your data stays in Canada.",
+    "ogDescription": "Text Hale your postal code and your kids’ ages. It finds what’s actually running near you and watches the sign-up mornings across {count} GTA municipalities, then comes back to ask how it went. No app, no account. Your data stays in Canada.",
+    "twitterDescription": "What’s on near your kids, found. The sign-up morning, caught. And someone who asks how it went. No app, no account. Your data stays in Canada."
   },
   "Header": {
     "navPricing": "Pricing",
@@ -17,7 +17,7 @@
     "signIn": "Sign in"
   },
   "Footer": {
-    "blurb": "Hale is the family assistant you text — always prepared, never acting without you.",
+    "blurb": "Hale is a number you text — always prepared, never acting without you.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— Hawaiian for home.",
@@ -56,106 +56,95 @@
     "copied": "Copied ✓"
   },
   "Landing": {
-    "eyebrow": "Hale · /HAH-leh/ · Hawaiian for home",
-    "heroH1a": "The family assistant",
-    "heroH1b": "you",
-    "heroH1Accent": "text.",
-    "heroSub": "Swim, camps and registration day, caught before the spots are gone.",
-    "heroThread": [
+    "heroH1a": "I find it.",
+    "heroH1b": "You don’t",
+    "heroH1Accent": "miss it.",
+    "heroSub": "Swim, camps, drop-ins, the EarlyON down the road — and the sign-up morning that fills by 7:02. Send me your kids’ ages and a postal code; I’ll take it from there.",
+    "heroLoopCap": "One family’s thread with Hale, start to finish",
+    "heroLoop": [
       {
-        "dir": "out",
-        "text": "Hi — Mia is 4, we’re in Stouffville, L4A. Swim and the fall programs."
+        "elapsed": "The first text",
+        "rows": [
+          { "dir": "out", "text": "Mia’s 3, we’re in Vaughan. Swim, and anything nearby." },
+          {
+            "dir": "in",
+            "text": "Three near you. Parent & tot swim, ages 2 - 4, Saturdays 9:15 a.m., off the town’s rec guide. Preschool playtime, ages 18 months - 4 years, drop-in, off the library’s page. Little movers, ages 2 - 5 — the community centre lists it, but the winter times aren’t posted yet. Want me to keep an eye on all of this for you? (how I handle your family’s info: villagehale.com/privacy)"
+          },
+          { "dir": "out", "text": "YES" }
+        ]
       },
       {
-        "dir": "in",
-        "text": "Got it. Stouffville’s fall registration already opened, and the winter dates aren’t posted yet. Say YES and I’ll watch for them, then send your link the night before and again fifteen minutes out."
+        "elapsed": "A week later, the night before",
+        "rows": [
+          {
+            "dir": "in",
+            "text": "Tomorrow: Vaughan swim lessons opens 7:00 a.m. for Mia. Sign in tonight and have this open: vaughan.ca/residential/recreation-programs-and-fitness/recreation-programs"
+          }
+        ]
       },
       {
-        "dir": "out",
-        "text": "YES"
+        "elapsed": "The next morning",
+        "rows": [
+          {
+            "dir": "in",
+            "text": "Vaughan swim lessons opens 7:00 a.m. Your link: vaughan.ca/residential/recreation-programs-and-fitness/recreation-programs"
+          }
+        ]
+      },
+      {
+        "elapsed": "Four hours later",
+        "rows": [
+          {
+            "dir": "in",
+            "text": "How did Vaughan swim lessons go? Reply “got in”, “waitlisted #12” or “missed it”."
+          },
+          { "dir": "out", "text": "got in" },
+          { "dir": "in", "text": "That’s a spot — you’re in for Vaughan swim lessons." }
+        ]
+      },
+      {
+        "elapsed": "That evening",
+        "rows": [
+          { "dir": "in", "text": "How did today go with Mia? One line is plenty." },
+          { "dir": "out", "text": "Cried at drop-off, then didn’t want to leave." },
+          { "dir": "in", "text": "Thanks — that helps. Reply NO to drop these." }
+        ]
       }
     ],
     "heroFounding": "Founding families join free — and keep the founding rate for good.",
-    "heroThreadCap": "An example first text to Hale, and the reply",
     "bubbleYou": "You:",
     "bubbleHale": "Hale:",
-    "threadEyebrow": "Texting Hale looks like this",
-    "threadH2a": "Text me like you’d text",
-    "threadH2Accent": "a friend.",
-    "threadLede": "No app, no menus — and nothing sent without your say-so.",
-    "threadCap": "Your thread with Hale",
-    "threadBubbles": [
+    "findEyebrow": "What I’d send you tonight",
+    "findH2a": "Three things,",
+    "findH2Accent": "not thirty.",
+    "findLede": "You tell me the ages and the postal code. I go and look at what is actually running near you this season — the city’s rec guide, the EarlyON, the library, the Y, the studio two streets over — and I come back with three, not a list.",
+    "findCap": "An example of what comes back",
+    "finds": [
       {
-        "dir": "time",
-        "text": "A week before · Tue 10:04 a.m."
+        "name": "Parent & tot swim",
+        "ageFit": "ages 2 - 4",
+        "when": "Saturdays, 9:15 a.m.",
+        "sourceName": "the town’s rec guide"
       },
       {
-        "dir": "in",
-        "text": "Halton Hills fall recreation programs registration opens Tuesday at 7:00 a.m. for Mia. Your postal code gets the residents-first date. Reply YES and I’ll run the morning with you."
+        "name": "Preschool playtime",
+        "ageFit": "ages 18 months - 4 years",
+        "when": "Drop-in, Tuesday and Thursday mornings",
+        "sourceName": "the library"
       },
       {
-        "dir": "out",
-        "text": "YES"
-      },
-      {
-        "dir": "time",
-        "text": "The evening before · Mon 7:04 p.m."
-      },
-      {
-        "dir": "in",
-        "text": "Tomorrow: Halton Hills fall recreation programs opens 7:00 a.m. for Mia. Sign in tonight and have this open: haltonhills.ca/Play/Recreation/Programs"
-      },
-      {
-        "dir": "time",
-        "text": "Fifteen minutes before · Tue 6:45 a.m."
-      },
-      {
-        "dir": "in",
-        "text": "Halton Hills fall recreation programs opens 7:00 a.m. Your link: haltonhills.ca/Play/Recreation/Programs"
-      },
-      {
-        "dir": "time",
-        "text": "Four hours later · Tue 11:02 a.m."
-      },
-      {
-        "dir": "in",
-        "text": "How did Halton Hills fall recreation programs go? Reply “got in”, “waitlisted #12” or “missed it”."
-      },
-      {
-        "dir": "out",
-        "text": "got in 🙌"
-      },
-      {
-        "dir": "in",
-        "text": "That’s a spot. Noted: Halton Hills fall recreation programs registered."
+        "name": "Little movers",
+        "ageFit": "ages 2 - 5",
+        "when": null,
+        "sourceName": "the community centre"
       }
     ],
-    "howEyebrow": "How Hale works",
-    "howH2a": "One text to start.",
-    "howH2Accent": "Then I keep watch.",
-    "steps": [
-      {
-        "when": "Right now",
-        "step": "You text names, ages, and a postal code",
-        "body": "One text. No app, no account."
-      },
-      {
-        "when": "In the same thread",
-        "step": "I text back your week",
-        "body": "Names, ages, a postal code — and I reply with every registration date I’m now watching for you."
-      },
-      {
-        "when": "Then every week",
-        "step": "I keep watch",
-        "body": "A brief on Sunday, the plan the night before, a nudge as it opens."
-      }
-    ],
-    "howRail": "How Hale works, in three steps",
-    "consentLine": "I suggest, I prepare — and with your ok, I handle it. Receipts for everything, and nothing happens without your yes.",
-    "watchEyebrow": "What I watch",
-    "watchH2Count": "{count} municipalities,",
-    "watchH2Accent": "by name.",
-    "watchLede": "I watch all {count} calendars so nobody has to.",
+    "findNoTime": "Winter times not posted yet",
+    "findHonesty": "If a page hasn’t posted its winter times yet, I tell you that instead of guessing one.",
+    "watchEyebrow": "The part that matters",
+    "watchH2a": "The morning it opens,",
+    "watchH2Accent": "I’m already awake.",
+    "watchLede": "{count} municipalities, every calendar, so nobody has to.",
     "contrast": [
       {
         "title": "Without me",
@@ -171,59 +160,28 @@
         "title": "Swim lessons",
         "body": "Fill in minutes — some towns register them on their own date."
       },
-      {
-        "title": "Camps",
-        "body": "The winter-break camps quietly open back in August."
-      },
-      {
-        "title": "After-school care",
-        "body": "Some cities book it apart, on its own morning."
-      },
-      {
-        "title": "Waitlist clocks",
-        "body": "A day to accept in some towns, two in others."
-      }
+      { "title": "Camps", "body": "The winter-break camps quietly open back in August." },
+      { "title": "After-school care", "body": "Some cities book it apart, on its own morning." },
+      { "title": "Waitlist clocks", "body": "A day to accept in some towns, two in others." }
     ],
     "watchRail": "What I watch",
-    "coachingEyebrow": "When you ask me something",
-    "coachingH2a": "Sleep, solids, potty —",
-    "coachingH2Accent": "answered, then planned.",
-    "coachingLede": "Registration day is why families text me first. The 3 a.m. question is why the thread stays open.",
-    "coaching": [
-      {
-        "step": "You ask",
-        "body": "Two sentences back, pitched at your child’s actual age — and the thing to try tonight."
-      },
-      {
-        "step": "I offer the whole plan",
-        "body": "The real method, by name — Ferber’s check-in tables, the three-day potty protocol, Health Canada’s allergen introduction."
-      },
-      {
-        "step": "A few days later, I ask how it went",
-        "body": "I name the day in the plan and set that reminder myself."
-      }
+    "watchSpots": "And when the class you wanted is already full, I keep watching it and text you the minute a place opens.",
+    "seeH2a": "Then I come back",
+    "seeH2Accent": "and ask.",
+    "seeBody": "Four hours after the window opens I ask whether you got in. A few days after the first class I ask how it went. And in the evening, one line — how was today. Reply LESS and that becomes weekly, NO and it stops. What you tell me stays between us: no other family sees it, and the words themselves are gone in thirty days.",
+    "howH2a": "It is a phone number,",
+    "howH2Accent": "and that is the whole of it.",
+    "howLines": [
+      "You text it first — no menus, and I never text a number that hasn’t texted me.",
+      "You text names, ages, and a postal code. That is the whole setup — one text. No app, no account.",
+      "Your co-parent gets the same dates and nudges on their own number. Always free.",
+      "A grandparent or a sitter can be added by one text, with just the schedule in scope — nothing else of yours."
     ],
-    "coachingStopTitle": "Where I stop",
-    "coachingStopBody": "I don’t diagnose and I never name a dose — and a plan names the one situation worth raising with your doctor.",
-    "helpersEyebrow": "Your helpers",
-    "helpersH2a": "Your helpers,",
-    "helpersH2Accent": "only what they need.",
-    "caregivers": [
-      {
-        "title": "Grandparents and the nanny",
-        "body": "Added by one text, with just the schedule in scope — nothing else of yours."
-      },
-      {
-        "title": "Your co-parent",
-        "body": "Always free. The same week and reminders, on their own number."
-      }
-    ],
-    "helpersRail": "Your helpers",
-    "privacyEyebrow": "Privacy",
-    "privacyH2a": "Privacy, the",
-    "privacyH2Accent": "Canadian way.",
-    "privacyBody1": "Your family’s data stays in Canada, and a child’s information is sensitive by default. Every permission is granted in a text and withdrawn in a text.",
+    "howConnectors": "If you connect Gmail, I read the subject, the sender and the first line of each new message — enough to notice a date your family has to be somewhere — and I only open a message when it looks like one. From your calendar I read what an event says about itself: its title, its notes, where it is and when. That is all I ask for, and it is all I use it for.",
     "privacyLink": "How I handle your data",
+    "consentLine": "I suggest, I prepare — and with your ok, I handle it. Receipts for everything, and nothing happens without your yes.",
+    "centresLine": "Run an EarlyON, a library branch or a centre? Here is what to tell a parent about Hale.",
+    "centresLink": "For centres",
     "closingH2a": "Founding families join",
     "closingH2Accent": "free.",
     "closingSub": "Free while I’m new — and families who start now keep their founding rate for good. No countdown, just the number.",
@@ -232,7 +190,7 @@
   },
   "About": {
     "metaTitle": "About · Hale",
-    "metaDescription": "Hale is a number your family texts — the family assistant for the dates, the forms, and the small things that slip. Built by Anzhe Dong at Village Hale Technologies Inc. in Georgetown, Ontario.",
+    "metaDescription": "Hale is a number your family texts — for the dates, the forms, and the small things that slip. Built by Anzhe Dong at Village Hale Technologies Inc. in Georgetown, Ontario.",
     "eyebrow": "About Hale",
     "headline": [
       {
@@ -248,7 +206,7 @@
     ],
     "lede": "Once, a family had a village — elders who knew which class was worth it, neighbors who carried the small things, a grandmother who said this is normal, you are doing fine. That knowing hasn’t disappeared. It just has nowhere to live now except one parent’s memory — and no app fixes a memory problem by asking for more of your attention. So Hale is a number you text.",
     "missionEyebrow": "Our mission",
-    "mission": "Every parent deserves a family assistant — someone who holds the dates, the forms, and the small things that slip, and hands back the evening. Across every stage of childhood, from the first months to almost grown.",
+    "mission": "Every parent should have someone who knows what’s on near them, remembers the date that fills in two minutes, and asks how it went. Across every stage of childhood, from the first months to almost grown.",
     "howEyebrow": "How Hale works",
     "howHeadline": [
       {
@@ -266,7 +224,7 @@
         "title": "Hale suggests",
         "line": "The thing worth knowing this week, and why it matters now.",
         "checks": [
-          "A brief on Sunday",
+          "Three things worth doing near you, not thirty",
           "A heads-up the week a registration opens"
         ],
         "linkLabel": "Parenting guides"
@@ -326,7 +284,7 @@
   "PricingSection": {
     "eyebrow": "Three sizes of help",
     "headline": "The whole core is free. Paid plans are for the doing, never the watching.",
-    "lede": "Everything Hale does today — the watching, the plans, the answers — is free, for every stage and every child. Paid plans open only when Hale can do more of the work itself. Families who start now keep their founding rate for good. A co-parent is always free.",
+    "lede": "Everything Hale does today — the finding, the watching, the plans, the answers — is free, for every stage and every child. Paid plans open only when Hale can do more of the work itself. Families who start now keep their founding rate for good. A co-parent is always free.",
     "foundingTitle": "Founding families join free.",
     "foundingNote": "The first 100 families get a permanent founding badge — and first access when Plus and Family open.",
     "annualNote": "billed yearly — about three months free",
@@ -336,12 +294,7 @@
       "plus": "For when you want Hale to do more: once it has earned your trust, it acts on your approval — reminders, drafts, and your calendar, every child, as integrations roll out.",
       "family": "For when you want Hale to handle it: full autonomy on your approval, commerce and booking as they roll out, concierge and priority support."
     },
-    "freeFeatures": [
-      "Text Hale",
-      "Rec dates watched",
-      "Answers",
-      "Founding rate"
-    ]
+    "freeFeatures": ["Text Hale", "Rec dates watched", "Answers", "Founding rate"]
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
@@ -399,7 +352,7 @@
       }
     ],
     "getLede": "A parent sends the first message — Hale never texts a family first. This is one of them, and what came back.",
-    "getAfter": "A short plan on Sunday, the link the night before a registration opens, and a nudge fifteen minutes out.",
+    "getAfter": "Between the things that matter it stays out of the way: the link the night before a registration opens, a nudge fifteen minutes out, and one line in the evening asking how the day went.",
     "waysEyebrow": "How to point a family at Hale",
     "waysHeadline": [
       {
@@ -520,7 +473,7 @@
     "items": [
       {
         "question": "What is Hale?",
-        "answer": "A phone number your family texts. Hale watches the registration dates and programs where you live, plans the week, answers the parenting questions, and does the admin once you say yes — all in one text thread. There is no app to install and no account to create."
+        "answer": "A phone number your family texts. It finds what is actually running near your kids — swim, camps, drop-ins, the EarlyON down the road — watches the sign-up mornings where you live, hands you the town’s own link the night before, and comes back to ask how it went. It answers the parenting questions too, and does the admin once you say yes. There is no app to install and no account to create."
       },
       {
         "question": "How do I start?",
@@ -540,23 +493,35 @@
       },
       {
         "question": "What does Hale actually watch?",
-        "answer": "Municipal registration across 21 GTA municipalities — recreation programs, swim lessons, camps and after-school care — including the resident head start, the towns that register swimming on their own date, and the winter-break camps that open back in August. It also watches the waitlist clock, which is a day in some towns and two in others."
+        "answer": "Municipal registration across 21 GTA municipalities — recreation programs, swim lessons, camps and after-school care — including the resident head start, the towns that register swimming on their own date, and the winter-break camps that open back in August. It also watches the waitlist clock, which is a day in some towns and two in others. And when the class you wanted is already full, Hale keeps watching it and texts you the minute a place opens."
       },
       {
         "question": "How often will Hale text me?",
-        "answer": "A brief on Sunday, and then only when something needs you: a heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. STOP works at any time."
+        "answer": "A heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. In the evening Hale asks one line about how the day went — reply LESS and that becomes weekly, NO and it stops. STOP works at any time."
       },
       {
         "question": "Can Hale answer parenting questions, or only scheduling ones?",
-        "answer": "Both. Ask about sleep, starting solids, potty training, picky eating, tantrums, screen time or routines and you get an answer pitched at your child’s age, plus the offer of the whole plan — two or three texts you can start tonight. Three days later Hale asks how it went. It never diagnoses and never names a dose."
+        "answer": "Both. Ask about sleep, starting solids, potty training, picky eating, tantrums, screen time or routines and you get an answer pitched at your child’s age, plus the offer of the whole plan — two or three texts you can start tonight. A few days later Hale asks how it went. It never diagnoses and never names a dose."
       },
       {
         "question": "Is Hale free?",
-        "answer": "Hale is free while it is new, and families who start now keep their founding rate. A co-parent is always free — the same week and reminders on their own number, never a second household to pay for."
+        "answer": "Hale is free while it is new, and families who start now keep their founding rate. A co-parent is always free — the same dates and nudges on their own number, never a second household to pay for."
       },
       {
         "question": "Do I need to use the website?",
         "answer": "No. Everything happens in the text thread, and Hale will never send you to a website to finish a job you texted it to do. The full record of what Hale has done is yours whenever you want it — ask for it in the thread, or sign in with your phone number and read it there."
+      },
+      {
+        "question": "Will you tell me whether a class is any good?",
+        "answer": "Not yet. Today Hale asks how it went. Telling the next parent what other families thought is what Hale wants to build next, and when it does it will be a count and a verdict — never anyone’s words."
+      },
+      {
+        "question": "Can you help when we travel?",
+        "answer": "Not yet. Today I watch registration and what’s on where you live, in the GTA."
+      },
+      {
+        "question": "Can you tell me who else is going?",
+        "answer": "Not yet. Today I only tell you about your own family, never anyone else’s."
       },
       {
         "question": "Is Hale available outside Canada?",
@@ -583,7 +548,7 @@
     "linkTorontoSwim": "Toronto swim",
     "linkBramptonSwim": "Brampton swim (non-residents Sept 21)",
     "ctaHeading": "Ask Hale what’s worth doing this weekend",
-    "ctaSub": "Text Hale a question about your week and get an answer pitched at your kids’ ages. Registration-day watching is the GTA for now. Free to start — your data stays in Canada."
+    "ctaSub": "Text Hale your kids’ ages and a postal code and get three things worth doing near you, not thirty. Registration-day watching is the GTA for now. Free to start — your data stays in Canada."
   },
   "ActivityCity": {
     "metaTitle": "Things to do with kids in {city} · Hale",
@@ -593,7 +558,7 @@
     "commonQuestions": "Common questions about {city}",
     "disclaimer": "Programs and locations change — treat this as a starting point and confirm details with your city or the program directly. Last reviewed {date, date, long}.",
     "ctaHeading": "Ask Hale what’s worth doing this weekend in {city}",
-    "ctaSub": "Text Hale a question about your week and get an answer pitched at your kids’ ages. Registration-day watching is the GTA for now. Free to start — your data stays in Canada."
+    "ctaSub": "Text Hale your kids’ ages and a postal code and get three things worth doing near you, not thirty. Registration-day watching is the GTA for now. Free to start — your data stays in Canada."
   },
   "Answers": {
     "metaTitle": "Parenting guides · Hale",
@@ -642,8 +607,8 @@
   },
   "Text": {
     "metaTitle": "Text Hale",
-    "metaDescription": "Start a conversation with Hale — the family assistant you text. It finds activities that fit your child and watches registration day where you live.",
-    "headline": "The family assistant you text.",
+    "metaDescription": "Start a conversation with Hale — a number you text for what’s on near your kids. It finds activities that fit your child and watches registration day where you live.",
+    "headline": "A number you text for what’s on near your kids.",
     "lede": "Hale finds activities that fit your little one, keeps sign-up mornings from sneaking up, and checks in on how it goes.",
     "sentLabel": "What you’ll send:",
     "sentGloss": "Hi Hale 👋 ready to get started",
@@ -694,7 +659,7 @@
     ]
   },
   "Jsonld": {
-    "orgDescription": "Hale is the family assistant you text — it watches city registration windows, plans the week, and handles the admin with your say-so. Every family’s data stays in Canada.",
-    "appDescription": "A number your family texts: Hale watches registration dates across the GTA, plans the week, and executes with your approval — receipts for everything, and your family’s data never leaves Canada."
+    "orgDescription": "Hale is a number you text — it finds what’s on near your kids, watches city registration windows, comes back to ask how it went, and handles the admin with your say-so. Every family’s data stays in Canada.",
+    "appDescription": "A number your family texts: Hale watches registration dates across the GTA, comes back to ask how it went, and executes with your approval — receipts for everything, and your family’s data never leaves Canada."
   }
 }

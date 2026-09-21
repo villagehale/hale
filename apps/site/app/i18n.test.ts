@@ -188,6 +188,24 @@ describe('no bundle promises quiet, in any locale', () => {
     }
   });
 
+  it('claims no Sunday brief in any locale — that one needs a SECOND flag', () => {
+    // Same shape as the quiet promise, same reason: the Sunday text's SEND is
+    // gated by LOOP_SEND_ENABLED (default OFF) on top of F14, so it is a
+    // separate release event and no surface may describe it in the present
+    // tense yet. Named per locale because "Sunday" is not the word in two of
+    // the three.
+    const SUNDAY: Record<string, string[]> = {
+      en: ['sunday'],
+      fr: ['dimanche'],
+      zh: ['周日', '星期日'],
+    };
+    for (const { locale, raw } of files) {
+      for (const phrase of SUNDAY[locale] ?? []) {
+        expect(raw.toLowerCase(), `${locale}.json must not claim "${phrase}"`).not.toContain(phrase);
+      }
+    }
+  });
+
   it('positive control: every bundle still says what Hale DOES send', () => {
     // The subtraction must leave the cadence described, not the page silent about
     // it — otherwise these absences would also pass on an empty bundle.
@@ -195,6 +213,46 @@ describe('no bundle promises quiet, in any locale', () => {
     for (const { locale, raw } of files) {
       expect(raw.toLowerCase()).toContain(say[locale].toLowerCase());
     }
+  });
+});
+
+describe('the positioning noun is gone from every bundle', () => {
+  const files = (['en', 'fr', 'zh'] as const).map((locale) => ({
+    locale,
+    raw: readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
+  }));
+
+  /**
+   * "Family assistant" is the category the pre-F14 site sold. It is not what the
+   * product says about itself: the live intake greeting and /for-centres both
+   * describe the loop — it finds what is on, it watches the sign-up morning, it
+   * comes back and asks how it went — with no "assistant" in them. The site was
+   * behind its own machine, not ahead of it.
+   *
+   * The ban is on the POSITIONING PHRASE, never on the word: the anti-scam
+   * disclosure ("Hale is an AI assistant, and it never pretends otherwise") is a
+   * different sentence doing a different job, and it survives. A phrase-level ban
+   * is what lets one gate hold both facts at once.
+   */
+  const BANNED: Record<string, string[]> = {
+    en: ['family assistant'],
+    fr: ['assistant familial'],
+    zh: ['家庭助手', '家庭助理'],
+  };
+
+  it('never sells a "family assistant" in any locale', () => {
+    for (const { locale, raw } of files) {
+      for (const phrase of BANNED[locale] ?? []) {
+        expect(raw.toLowerCase(), `${locale}.json must not say "${phrase}"`).not.toContain(
+          phrase.toLowerCase(),
+        );
+      }
+    }
+  });
+
+  it('positive control: the AI disclosure the ban must not reach is still there', () => {
+    const en = files.find((f) => f.locale === 'en')?.raw ?? '';
+    expect(en).toContain('Hale is an AI assistant, and it never pretends otherwise.');
   });
 });
 
@@ -207,7 +265,7 @@ describe('the FAQ translation source mirrors the canonical English list', () => 
   });
 });
 
-describe('VIL-325 designer-locked intake copy — homepage steps and About.cta', () => {
+describe('VIL-325 designer-locked intake copy — the first-text sentence and About.cta', () => {
   const bundles = Object.fromEntries(
     (['en', 'fr', 'zh'] as const).map((locale) => [
       locale,
@@ -217,35 +275,43 @@ describe('VIL-325 designer-locked intake copy — homepage steps and About.cta',
     ]),
   );
 
-  it('pins English Landing.steps[0] and About.cta exactly', () => {
-    expect(bundles.en.Landing.steps[0]).toEqual({
-      when: 'Right now',
-      step: 'You text names, ages, and a postal code',
-      body: 'One text. No app, no account.',
-    });
+  /**
+   * The founder locked a SENTENCE, not an array index.
+   *
+   * It was pinned as `Landing.steps[0]`, an object in a three-step card grid that
+   * v5 retired — the sequence is the hero's spine now. So the pin follows the
+   * words into the how-it-works prose rather than dying with the array: what is
+   * locked is that the first text is names, ages and a postal code (never "hi"),
+   * that there is no app and no account, and that the thread has no menus. A pin
+   * on where the sentence sat would have made a layout change look like a
+   * founder decision being overturned.
+   */
+  const LOCKED: Record<string, string[]> = {
+    en: ['You text names, ages, and a postal code', 'No app, no account.', 'no menus'],
+    fr: ['les noms, les âges et un code postal', 'Pas d’appli, pas de compte.', 'pas de menus'],
+    zh: ['名字、年龄和一个邮编', '不用装应用，不用注册账号。', '没有菜单'],
+  };
+
+  it('keeps the locked words in the Landing namespace of every locale', () => {
+    for (const locale of ['en', 'fr', 'zh'] as const) {
+      const landing = JSON.stringify(bundles[locale].Landing);
+      for (const phrase of LOCKED[locale] ?? []) {
+        expect(landing, `${locale}.Landing must still say "${phrase}"`).toContain(phrase);
+      }
+      expect(landing, `${locale} must not reopen "you say hi"`).not.toMatch(/You say hi|dites bonjour/i);
+    }
+    expect(JSON.stringify(bundles.en.Landing)).not.toMatch(/no forms/i);
+  });
+
+  it('pins About.cta exactly, in all three locales', () => {
     expect(bundles.en.About.cta).toBe(
       'It starts with names, ages, and a postal code. No app, no account.',
     );
-    expect(bundles.en.Landing.threadLede).toContain('no menus');
-    expect(JSON.stringify(bundles.en.Landing.steps[0])).not.toMatch(/You say hi|no forms/i);
-    expect(bundles.en.About.cta).not.toMatch(/no form/i);
-  });
-
-  it('mirrors the same keys in FR and ZH without inventing extra English', () => {
-    expect(bundles.fr.Landing.steps[0]).toEqual({
-      when: 'Tout de suite',
-      step: 'Vous textez les noms, les âges et un code postal',
-      body: 'Un texto. Pas d’appli, pas de compte.',
-    });
     expect(bundles.fr.About.cta).toBe(
       'Ça commence par les noms, les âges et un code postal. Pas d’appli, pas de compte.',
     );
-    expect(bundles.zh.Landing.steps[0]).toEqual({
-      when: '现在就可以',
-      step: '你发来名字、年龄和一个邮编',
-      body: '一条短信就行。不用装应用，不用注册账号。',
-    });
     expect(bundles.zh.About.cta).toBe('一切从名字、年龄和一个邮编开始。不用装应用，不用注册账号。');
+    expect(bundles.en.About.cta).not.toMatch(/no form/i);
   });
 
   it('renders the locked About.cta on /about', async () => {

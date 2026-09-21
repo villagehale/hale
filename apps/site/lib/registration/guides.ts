@@ -36,7 +36,7 @@ export const TORONTO_FALL: RegistrationGuide = {
     { text: 'Toronto fall recreation registration 2026:' },
     { text: 'the mornings, and what is left', accent: true },
   ],
-  lede: 'The morning that mattered was the district of the centre you were booking, not the street you live on — and those mornings have gone: Sept 9, Sept 15, Sept 16. If you live outside Toronto, yours is still ahead: Friday, Sept 25 at 7 a.m., ten days after registration starts for the activity you want. I’m Barton, Sebastian’s dad. Hale is a texted GTA family assistant — no app — and founding families are free at villagehale.com.',
+  lede: 'The morning that mattered was the district of the centre you were booking, not the street you live on — and those mornings have gone: Sept 9, Sept 15, Sept 16. If you live outside Toronto, yours is still ahead: Friday, Sept 25 at 7 a.m., ten days after registration starts for the activity you want. I’m Barton, Sebastian’s dad. Hale is a number GTA parents text — no app — and founding families are free at villagehale.com.',
   updated: '2026-09-18',
   placement: 'toronto_fall_rec',
   datesEyebrow: 'Fall 2026',

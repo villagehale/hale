@@ -176,3 +176,42 @@ export const INTRO_MENTIONS = [
 export function mentionsIntro(bodies: readonly string[]): boolean {
   return bodies.some((body) => INTRO_MENTIONS.some((phrase) => body.includes(phrase)));
 }
+
+/**
+ * The daycare vocabulary — the ways a parent says something about the place their child
+ * goes, in the words they actually use.
+ *
+ * The same discipline {@link INTRO_MENTIONS} keeps and for the same reason: a bare
+ * "settling" or "drop off" would fire on any ordinary week. Every entry takes at least
+ * two words to say by accident, and it screens on the SUBJECT rather than the
+ * sentiment - "she still cries at drop off" is as much an answer to "how is it going?"
+ * as "she loves it", and asking again after either is the redundancy this prevents.
+ *
+ * The PROVIDER's own name is screened separately by the caller, because it is the one
+ * word that is certainly about this family's daycare and it is not in any fixed list.
+ */
+export const DAYCARE_MENTIONS = [
+  'at daycare',
+  'the daycare',
+  'her daycare',
+  'his daycare',
+  'their daycare',
+  'at day care',
+  'the day care',
+  'daycare is',
+  'daycare has',
+  'daycare was',
+  'drop off',
+  'drop offs',
+  'dropoff',
+  'settling in',
+  'settled in',
+  'first week there',
+] as const;
+
+/** Has the family already said something about daycare since they told Hale about it?
+ * `provider`, when there is one, is screened as a phrase of its own. */
+export function mentionsDaycare(bodies: readonly string[], provider: string | null): boolean {
+  const phrases = [...DAYCARE_MENTIONS, ...(provider === null ? [] : [provider.toLowerCase()])];
+  return bodies.some((body) => phrases.some((phrase) => body.includes(phrase)));
+}

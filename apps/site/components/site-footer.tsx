@@ -1,5 +1,5 @@
 import { LanguageSelect } from '~/components/language-select';
-import { FooterThemeSwitch } from '~/components/landing/v4/theme-switch';
+import { FooterThemeSwitch } from '~/components/landing/v5/theme-switch';
 import { LogoMark } from '~/components/logo-mark';
 import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';

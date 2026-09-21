@@ -179,6 +179,8 @@ export const AUDIT_VERBS = [
   // ── proactive nudges + the watch offer ──────────────────────────────────
   'proactive_nudge_sent',
   'proactive_nudge_skipped',
+  'weekday_care_recorded',
+  'followup_daycare_asked',
   'email_alert_sent',
   'email_alert_event_added',
   'calendar_alert_sent',
@@ -580,6 +582,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   // ── proactive nudges + the watch offer ──────────────────────────────────
   proactive_nudge_sent: { sentence: 'Hale texted you something worth knowing', family: 'done' },
+  weekday_care_recorded: {
+    sentence: 'you told Hale how your weeks are covered',
+    family: 'done',
+  },
+  followup_daycare_asked: { sentence: 'Hale asked how daycare is going', family: 'note' },
   // Read in a connected mailbox, not guessed. The sentence says WHERE it came from,
   // because that is the part a parent has to be able to check: the row is the receipt for
   // Hale having looked at their email at all.
