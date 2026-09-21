@@ -99,6 +99,9 @@ export interface FamilyExportDocument {
     firstSessionAt: string;
     providerHost: string;
     addedToCalendar: boolean;
+    /** Set when the provider called the class off, so the copy does not read as a place
+     * the family still holds. */
+    cancelledAt: string | null;
   }[];
   /**
    * VIL-353 · the evening check-in: how often this household is asked how the day went,
