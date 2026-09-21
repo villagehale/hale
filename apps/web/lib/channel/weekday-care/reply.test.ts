@@ -40,6 +40,10 @@ describe('readWeekdayCare', () => {
       'yes, daycare',
       'he goes to Little Sprouts',
       'childcare 3 days a week',
+      // Ontario's own word for it, and the commonest answer for a three-year-old -
+      // which is squarely inside the band the ask targets.
+      'she is in preschool',
+      'he does pre-school mornings',
     ]) {
       expect(care(body), body).toBe('daycare');
     }
@@ -80,6 +84,41 @@ describe('readWeekdayCare', () => {
     for (const body of ['home, not daycare', 'not daycare, home', "we don't do daycare"]) {
       expect(care(body), body).toBe('home');
     }
+  });
+
+  /**
+   * A NEGATED HOME PHRASE SETTLES NOTHING, and this is the SYMMETRIC half of the rule
+   * above. The ask literally offers "home with you" as one side of an either/or, so the
+   * ordinary way to refuse that side is to negate it — and a reader that saw only the
+   * word "home" filed `home` for every one of these: the exact OPPOSITE of what the
+   * parent said, for a household that is at daycare. The cost is a durable fact, so
+   * these fail CLOSED rather than guessing the other side: the coach answers in its own
+   * voice and the question can be asked again by a person.
+   */
+  it('settles nothing when the negation governs the home phrase', () => {
+    for (const body of [
+      'not home',
+      'not with me',
+      "she's not home",
+      'no, not with me',
+      "she's not at home",
+      "she isn't home with me",
+      "he's not with us during the week",
+      'not with my mom',
+    ]) {
+      expect(care(body), body).toBe('nothing_stated');
+    }
+    // The positive control, without which this is an absence test that passes by not
+    // looking: strip the negation and the same words DO read.
+    expect(care('home with me')).toBe('home');
+    expect(care('with my mom')).toBe('home');
+  });
+
+  /** A negation reaches no further than the clause the parent typed it in, and a later
+   * sentence still settles the question. */
+  it('lets a care word in the same breath answer the question anyway', () => {
+    expect(care("she's not home, she's at daycare")).toBe('daycare');
+    expect(care("not home. she's in daycare.")).toBe('daycare');
   });
 
   describe('starting_soon', () => {
@@ -222,6 +261,28 @@ describe('readWeekdayCare', () => {
         status: 'read',
         care: 'home',
         provider: null,
+      });
+    });
+
+    /**
+     * IT BELONGS TO THE CLAUSE THAT NAMED THE CARE. "I work at Shopify, she is at
+     * daycare" carries a care word and a capitalised `at` phrase, and reading the name
+     * off the whole sentence pinned the PARENT'S EMPLOYER to the child - persisted in
+     * the fact, then handed verbatim to the follow-up voice ("How is Shopify going?").
+     * Fail closed: a clause that did not name the care names nobody, and the follow-up
+     * asks generically, which it already knows how to do.
+     */
+    it('is read from the clause that carries the care word, never a neighbour', () => {
+      expect(readWeekdayCare('I work at Shopify, she is at daycare')).toEqual({
+        status: 'read',
+        care: 'daycare',
+        provider: null,
+      });
+      // The positive control: the naming clause is the care clause, and the name lands.
+      expect(readWeekdayCare('I work from home, she goes to Little Sprouts')).toEqual({
+        status: 'read',
+        care: 'daycare',
+        provider: 'Little Sprouts',
       });
     });
   });

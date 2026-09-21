@@ -36,7 +36,8 @@ export type WeekdayCareReading =
  * apostrophes and sweeps punctuation to spaces, so "day-care" arrives as "day care".
  * Written once as an alternation because the negation rule below has to name the same
  * set — two lists would drift, and the drift would be invisible. */
-const CARE_WORDS = 'daycare|day care|childcare|child care|nursery|creche|montessori|after school';
+const CARE_WORDS =
+  'daycare|day care|childcare|child care|preschool|pre school|nursery|creche|montessori|after school';
 
 const CARE_WORD = new RegExp(`\\b(?:${CARE_WORDS})\\b`);
 
@@ -103,17 +104,46 @@ const NEGATED_CARE = new RegExp(
  * the either/or and then names the second. So the governing test runs per CLAUSE, and a
  * clause boundary is exactly what a negation may not reach across.
  */
-function clausesOf(sentence: string): string[] {
+interface Clause {
+  /** Still in its own case, because the provider is read off the original. */
+  raw: string;
+  words: string;
+}
+
+function clausesOf(sentence: string): Clause[] {
   return sentence
     .split(/[,;]/)
-    .map(words)
-    .filter((clause) => clause.length > 0);
+    .map((raw) => ({ raw, words: words(raw) }))
+    .filter((clause) => clause.words.length > 0);
 }
 
 /** A parent, a grandparent, a nanny — all the same to the finder, because the axis is
- * whether a weekday-morning drop-in is useful to this household. */
-const HOME =
-  /\b(?:home|with me|with us|stay at home|sahm)\b|\b(?:my|his|her|our) (?:mom|mum|mother|dad|father|grandma|grandmother|grandpa|grandfather|nana|nanny|sitter|babysitter|aunt|uncle)\b/;
+ * whether a weekday-morning drop-in is useful to this household. Written once as an
+ * alternation for the reason {@link CARE_WORDS} is: the negation rule below names the
+ * same set, and two lists would drift invisibly. */
+const HOME_WORDS =
+  'home|with me|with us|stay at home|sahm|(?:with )?(?:my|his|her|our) (?:mom|mum|mother|dad|father|grandma|grandmother|grandpa|grandfather|nana|nanny|sitter|babysitter|aunt|uncle)';
+
+const HOME = new RegExp(`\\b(?:${HOME_WORDS})\\b`);
+
+/**
+ * A NEGATION THAT GOVERNS THE HOME PHRASE — the symmetric half of {@link NEGATED_CARE},
+ * and its absence was a live defect.
+ *
+ * The ask offers "home with you" as one SIDE of an either/or, so the ordinary way to
+ * refuse that side is to negate it: "not home", "she's not with me", "he's not with us
+ * during the week". Every one of those reads as the word `home` and, without this rule,
+ * filed the OPPOSITE of what the parent said — a durable fact that switches the weekday
+ * find on for a household at daycare and stops the daycare follow-up ever firing.
+ *
+ * It settles NOTHING rather than flipping to `daycare`: "not home" leaves the other side
+ * unsaid (a grandparent's, a nanny's, a half-week), and guessing it is the same defect
+ * one turn later. The turn reads `unreadable`, the coach answers in its own voice, and
+ * nothing durable is written. Same reach, same clause rule, same list as the care half.
+ */
+const NEGATED_HOME = new RegExp(
+  `\\b(?:${NEGATION})\\b(?:\\s+(?:${REACHES})\\b)*\\s+(?:${HOME_WORDS})\\b`,
+);
 
 /**
  * SOMEBODY ELSE'S CHILD. Deliberately narrower than `stated-state.ts`'s list: the
@@ -248,7 +278,8 @@ function sentencesOf(body: string): { raw: string; words: string; question: bool
 
 /**
  * THE ORDER IS THE SPEC: `starting_soon`, then the negated care word, then the care
- * word, then a named destination, then the home phrases, and a bare "at <Name>" LAST.
+ * word, then a named destination, then the NEGATED home phrase (which settles nothing
+ * and refuses the sentence), then the home phrases, and a bare "at <Name>" LAST.
  * Reversing the first two is the misread this grammar was rewritten to prevent; putting
  * the bare `at` capture before the home phrases is the one that reads "home with me, I
  * work at Shopify" as daycare.
@@ -259,29 +290,40 @@ export function readWeekdayCare(body: string): WeekdayCareReading {
     const text = sentence.words;
     if (BLOCKERS.some((blocker) => blocker.test(text))) continue;
 
-    const careWord = CARE_WORD.test(text);
+    const clauses = clausesOf(sentence.raw);
     if (
       STARTS_SOON.test(text) ||
       LOOKING_FOR_CARE.test(text) ||
-      (careWord && (YET.test(text) || BARE_START.test(text)))
+      (CARE_WORD.test(text) && (YET.test(text) || BARE_START.test(text)))
     ) {
       return { status: 'read', care: 'starting_soon', provider: null };
     }
-    if (clausesOf(sentence.raw).some((clause) => NEGATED_CARE.test(clause))) {
+    if (clauses.some((clause) => NEGATED_CARE.test(clause.words))) {
       return { status: 'read', care: 'home', provider: null };
     }
 
-    const destination = captureProvider(sentence.raw, NAMED_DESTINATION);
-    const atSomewhere = captureProvider(sentence.raw, NAMED_AT);
-    const named = destination.named ? destination : atSomewhere;
-    if (careWord || destination.named) {
-      return { status: 'read', care: 'daycare', provider: named.provider };
+    // THE NAME BELONGS TO THE CLAUSE THAT NAMED THE CARE, and nowhere else. "I work at
+    // Shopify, she is at daycare" carries both a care word and a capitalised `at`
+    // phrase, and reading the name off the whole sentence pinned the PARENT'S EMPLOYER
+    // to the child — persisted in the fact, then handed verbatim to the follow-up voice.
+    // A care clause that names nobody names NOBODY: the follow-up already knows how to
+    // ask generically, and a wrong name is the one thing it cannot recover from.
+    const carer = clauses.find(
+      (clause) => CARE_WORD.test(clause.words) || NAMED_DESTINATION.test(clause.raw),
+    );
+    if (carer) {
+      const destination = captureProvider(carer.raw, NAMED_DESTINATION);
+      const capture = destination.named ? destination : captureProvider(carer.raw, NAMED_AT);
+      return { status: 'read', care: 'daycare', provider: capture.provider };
     }
+    if (clauses.some((clause) => NEGATED_HOME.test(clause.words))) continue;
     if (HOME.test(text)) {
       return { status: 'read', care: 'home', provider: null };
     }
-    if (atSomewhere.named) {
-      return { status: 'read', care: 'daycare', provider: atSomewhere.provider };
+    const somewhere = clauses.find((clause) => NAMED_AT.test(clause.raw));
+    if (somewhere) {
+      const capture = captureProvider(somewhere.raw, NAMED_AT);
+      if (capture.named) return { status: 'read', care: 'daycare', provider: capture.provider };
     }
   }
   return { status: 'nothing_stated' };
