@@ -133,7 +133,7 @@ function harness(
         if (over.classifyThrows) throw new Error('gmail messages.get 503');
         return over.classification ?? classified();
       },
-      gate: async () => over.verdict ?? { allowed: true, optOut: 'full' },
+      gate: async () => over.verdict ?? { allowed: true, optOut: 'full', priorSendsInWindow: 0 },
       resolvePhone: async () => (over.phone === undefined ? PHONE : over.phone),
       transport: over.sendThrows
         ? {

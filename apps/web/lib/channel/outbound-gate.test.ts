@@ -96,7 +96,7 @@ function callGate(now: Date, state: Partial<FakeState> = {}) {
 
 describe('assertProactiveSendAllowed', () => {
   it('allows a send when every check passes', async () => {
-    await expect(callGate(MIDDAY).verdict).resolves.toEqual({ allowed: true, optOut: 'short' });
+    await expect(callGate(MIDDAY).verdict).resolves.toEqual({ allowed: true, optOut: 'short', priorSendsInWindow: 0 });
   });
 
   it('holds when the parent has no live channel — the STOP gate', async () => {
@@ -133,7 +133,7 @@ describe('assertProactiveSendAllowed', () => {
         },
       },
     );
-    expect(verdict).toEqual({ allowed: true, optOut: 'short' });
+    expect(verdict).toEqual({ allowed: true, optOut: 'short', priorSendsInWindow: 0 });
     expect(seen).not.toBeNull();
     const { since, familyId } = seen as unknown as { since: Date; familyId: string };
     // Per FAMILY (not per parent) — a co-parent must not double the family's budget.
@@ -162,6 +162,7 @@ describe('assertProactiveSendAllowed', () => {
     await expect(callGate(new Date('2026-07-15T12:00:00.000Z')).verdict).resolves.toEqual({
       allowed: true,
       optOut: 'short',
+      priorSendsInWindow: 0,
     });
   });
 
@@ -171,6 +172,7 @@ describe('assertProactiveSendAllowed', () => {
     await expect(callGate(new Date('2026-01-15T01:30:00.000Z')).verdict).resolves.toEqual({
       allowed: true,
       optOut: 'short',
+      priorSendsInWindow: 0,
     });
     await expect(callGate(new Date('2026-07-15T01:30:00.000Z')).verdict).resolves.toEqual({
       allowed: false,
@@ -184,6 +186,7 @@ describe('assertProactiveSendAllowed', () => {
     await expect(callGate(evening, { timeZone: 'America/Vancouver' }).verdict).resolves.toEqual({
       allowed: true,
       optOut: 'short',
+      priorSendsInWindow: 0,
     });
     await expect(callGate(evening, { timeZone: 'America/Toronto' }).verdict).resolves.toEqual({
       allowed: false,
@@ -227,7 +230,7 @@ describe('the registration-sequence class', () => {
 
   it('never even counts the family’s recent sends', async () => {
     const { calls, verdict } = callSequenceGate(MIDDAY, { recentSends: 99 });
-    await expect(verdict).resolves.toEqual({ allowed: true, optOut: 'short' });
+    await expect(verdict).resolves.toEqual({ allowed: true, optOut: 'short', priorSendsInWindow: null });
     expect(calls).toEqual(['enrolled', 'consent', 'tz', 'opt_out']);
   });
 
@@ -259,7 +262,7 @@ describe('the registration-sequence class', () => {
       allowed: false,
       reason: 'quiet_hours',
     });
-    await expect(callSequenceGate(dawn, {}, true).verdict).resolves.toEqual({ allowed: true, optOut: 'short' });
+    await expect(callSequenceGate(dawn, {}, true).verdict).resolves.toEqual({ allowed: true, optOut: 'short', priorSendsInWindow: null });
   });
 
   it('does NOT let a nudge claim the same exemption', async () => {
@@ -340,10 +343,12 @@ describe('the opt-out line', () => {
     await expect(callGate(MIDDAY, { contactedThisPeriod: false }).verdict).resolves.toEqual({
       allowed: true,
       optOut: 'full',
+      priorSendsInWindow: 0,
     });
     await expect(callGate(MIDDAY, { contactedThisPeriod: true }).verdict).resolves.toEqual({
       allowed: true,
       optOut: 'short',
+      priorSendsInWindow: 0,
     });
   });
 
@@ -386,7 +391,7 @@ describe('the opt-out line', () => {
           },
         },
       ),
-    ).resolves.toEqual({ allowed: true, optOut: 'full' });
+    ).resolves.toEqual({ allowed: true, optOut: 'full', priorSendsInWindow: 0 });
   });
 
   it('still decides the form for an urgent leg that skips the clock', async () => {
@@ -402,7 +407,7 @@ describe('the opt-out line', () => {
         },
         ports({ contactedThisPeriod: false }).ports,
       ),
-    ).resolves.toEqual({ allowed: true, optOut: 'full' });
+    ).resolves.toEqual({ allowed: true, optOut: 'full', priorSendsInWindow: null });
   });
 
   it('is not read at all for a message that was held', async () => {
@@ -446,7 +451,7 @@ describe('the watched-spot proactive classes', () => {
         },
         ports().ports,
       ),
-    ).resolves.toEqual({ allowed: true, optOut: 'short' });
+    ).resolves.toEqual({ allowed: true, optOut: 'short', priorSendsInWindow: 0 });
   });
 
   it('still holds spot_open_instant when it does not claim urgency', async () => {
@@ -501,7 +506,7 @@ describe('the watched-spot proactive classes', () => {
         { familyId: FAMILY, parentUserId: PARENT, kind: 'email_alert', now: MIDDAY },
         ports({ recentSends: 2 }).ports,
       ),
-    ).resolves.toEqual({ allowed: true, optOut: 'short' });
+    ).resolves.toEqual({ allowed: true, optOut: 'short', priorSendsInWindow: 2 });
   });
 
   it('never lets a calendar alert claim urgency — a moved Thursday keeps until 08:00', async () => {
@@ -535,7 +540,7 @@ describe('the watched-spot proactive classes', () => {
         { familyId: FAMILY, parentUserId: PARENT, kind: 'calendar_alert', now: MIDDAY },
         ports({ recentSends: 2 }).ports,
       ),
-    ).resolves.toEqual({ allowed: true, optOut: 'short' });
+    ).resolves.toEqual({ allowed: true, optOut: 'short', priorSendsInWindow: 2 });
   });
 
   it('counts the calendar apart from the inbox', () => {
@@ -595,7 +600,7 @@ describe('the travel brief class', () => {
         { familyId: FAMILY, parentUserId: PARENT, kind: 'travel_brief', now: MIDDAY },
         ports({ recentSends: 0 }).ports,
       ),
-    ).resolves.toEqual({ allowed: true, optOut: 'short' });
+    ).resolves.toEqual({ allowed: true, optOut: 'short', priorSendsInWindow: 0 });
     expect(PROACTIVE_CAP.travel_brief).toEqual({ max: 1, windowHours: 24 * 7 });
   });
 
@@ -676,3 +681,73 @@ function sourceFiles(dir: string): string[] {
   }
   return out;
 }
+
+/**
+ * The count the gate ALREADY TOOK, carried out on the verdict.
+ *
+ * The chokepoint reads `countProactiveSends` to enforce the cap and then throws the
+ * number away. It is the one fact about a household that an alert's own composer cannot
+ * derive and would otherwise have to re-query — so the verdict carries it, and the
+ * standing discipline holds: the gate still looks at nothing it is not entitled to act on.
+ *
+ * REQUIRED on the allowed branch, not optional, for the reason `PROACTIVE_CAP` is a
+ * `Record`: a compile error is the enforcement. `null` means the count was genuinely
+ * never taken, which is true of exactly the classes bounded by a ladder or an index.
+ */
+describe('the verdict carries the count the cap was judged on', () => {
+  it('reports the prior sends for a capped class', async () => {
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'email_alert', now: MIDDAY },
+        ports({ recentSends: 2 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short', priorSendsInWindow: 2 });
+  });
+
+  it('reports null for an uncapped class, and never reads the ledger for one', async () => {
+    const fake = ports({ recentSends: 7 });
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'activity_followup', now: MIDDAY },
+        fake.ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short', priorSendsInWindow: null });
+    expect(fake.calls).not.toContain('cap');
+  });
+
+  it('carries the count out of the URGENT branch, which returns before the clock read', async () => {
+    // `spot_open_instant` is capped AND exempt from quiet hours, so it is the one shape
+    // that leaves the function at the early return. A count hoisted only as far as the
+    // quiet-hours path would hand this branch an undefined.
+    const fake = ports({ recentSends: 3 });
+    await expect(
+      assertProactiveSendAllowed(
+        {
+          familyId: FAMILY,
+          parentUserId: PARENT,
+          kind: 'spot_open_instant',
+          now: new Date('2026-07-16T02:00:00.000Z'),
+          urgent: true,
+        },
+        fake.ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short', priorSendsInWindow: 3 });
+    expect(fake.calls).not.toContain('tz');
+  });
+
+  it('takes the count ONCE - a second query would be a second answer', async () => {
+    let reads = 0;
+    const verdict = await assertProactiveSendAllowed(
+      { familyId: FAMILY, parentUserId: PARENT, kind: 'email_alert', now: MIDDAY },
+      {
+        ...ports().ports,
+        async countProactiveSends() {
+          reads += 1;
+          return 1;
+        },
+      },
+    );
+    expect(verdict).toEqual({ allowed: true, optOut: 'short', priorSendsInWindow: 1 });
+    expect(reads).toBe(1);
+  });
+});

@@ -87,7 +87,7 @@ function harness(
     threaded,
     timeZoneReads,
     ports: {
-      gate: async () => over.verdict ?? { allowed: true, optOut: 'full' },
+      gate: async () => over.verdict ?? { allowed: true, optOut: 'full', priorSendsInWindow: 0 },
       resolvePhone: async () => (over.phone === undefined ? PHONE : over.phone),
       transport: over.sendThrows
         ? {

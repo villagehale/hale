@@ -173,7 +173,28 @@ const HOLD_STATUS: Record<ProactiveHoldReason, ProactiveHoldStatus> = {
  * re-derives the same answer.
  */
 export type ProactiveSendVerdict =
-  | { allowed: true; optOut: OptOutForm }
+  | {
+      allowed: true;
+      optOut: OptOutForm;
+      /**
+       * Proactive sends of THIS CLASS that already reached THIS FAMILY inside the class's
+       * own `cap.windowHours` — the number {@link PROACTIVE_CAP} was just judged against,
+       * counted by `countFamilyProactiveSends` below: household-wide, class-wide,
+       * sender-blind, direction out, status in `SENT_STATUSES`. It does NOT count how
+       * many the parent being texted actually saw.
+       *
+       * Carried out rather than re-derived, because it is the one fact about a household
+       * a composer cannot work out for itself and a second query would be a second
+       * answer. Nothing new is read: the gate takes this count to enforce the cap, and
+       * the standing discipline — look at nothing you are not entitled to act on — is
+       * why it is `null` for a class bounded by a ladder or a partial index rather than
+       * by a counter.
+       *
+       * REQUIRED, not optional, for the reason `PROACTIVE_CAP` is a `Record`: a compile
+       * error is the enforcement.
+       */
+      priorSendsInWindow: number | null;
+    }
   | { allowed: false; reason: ProactiveHoldReason };
 
 /**
@@ -454,9 +475,14 @@ export async function assertProactiveSendAllowed(
   }
 
   const cap = PROACTIVE_CAP[request.kind];
+  // ONE read, held above the comparison and carried into BOTH returns below. Taking it
+  // again to put it on the verdict would be a second answer to the same question, from a
+  // ledger another connection's send can have landed in between the two.
+  let priorSendsInWindow: number | null = null;
   if (cap !== null) {
     const since = new Date(request.now.getTime() - cap.windowHours * 3_600_000);
-    if ((await ports.countProactiveSends(request.familyId, request.kind, since)) >= cap.max) {
+    priorSendsInWindow = await ports.countProactiveSends(request.familyId, request.kind, since);
+    if (priorSendsInWindow >= cap.max) {
       return { allowed: false, reason: 'frequency_cap' };
     }
   }
@@ -465,7 +491,7 @@ export async function assertProactiveSendAllowed(
   // the clock: in both cases the answer could not change the verdict, and the gate's
   // standing discipline is to look at nothing it is not entitled to act on.
   if (request.urgent === true && URGENCY_ALLOWED[request.kind]) {
-    return { allowed: true, optOut: await optOutForm(ports, request) };
+    return { allowed: true, optOut: await optOutForm(ports, request), priorSendsInWindow };
   }
 
   const timeZone = await ports.parentTimeZone(request.parentUserId);
@@ -480,7 +506,7 @@ export async function assertProactiveSendAllowed(
     return { allowed: false, reason: 'quiet_hours' };
   }
 
-  return { allowed: true, optOut: await optOutForm(ports, request) };
+  return { allowed: true, optOut: await optOutForm(ports, request), priorSendsInWindow };
 }
 
 /**

@@ -174,7 +174,9 @@ function harness(
         };
       },
       gate: async () =>
-        over.gateHold ? { allowed: false, reason: over.gateHold } : { allowed: true, optOut: 'full' },
+        over.gateHold
+          ? { allowed: false, reason: over.gateHold }
+          : { allowed: true, optOut: 'full', priorSendsInWindow: 0 },
       resolvePhone: async () => PHONE,
       transport: over.sendThrows
         ? {
