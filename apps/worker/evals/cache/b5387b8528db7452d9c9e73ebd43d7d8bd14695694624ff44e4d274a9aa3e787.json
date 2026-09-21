@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The acknowledgment parrot-echoes the parent's exact words back verbatim, which reads like a database/receipt echo rather than a warm, plain-spoken human reply. It adds nothing false, but mechanically restating \"Zoé is 5 and André is 7 - got it\" is the least natural way to confirm; a competent person would say something like \"Got it — Zoé (5) and André (7).\" or simply \"Got it, Zoé and André!\" The facts are all correct and nothing is invented, but the robotic mirror of the parent's own sentence is a voice failure.",
+    "score": 2
+  }
+}

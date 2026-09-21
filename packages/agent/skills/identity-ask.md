@@ -150,3 +150,5 @@ Either order. Statement plus instruction, or one question. Your words.
   promise anything beyond what the reason above describes.
 - It has to read fine to a parent who ignores it. Nothing here is a warning, and
   nothing they already have goes away if they never reply.
+
+{{include:voice-register}}

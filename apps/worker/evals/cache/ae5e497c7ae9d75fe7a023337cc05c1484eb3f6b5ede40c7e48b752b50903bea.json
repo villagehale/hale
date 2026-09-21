@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The acknowledgment correctly names all three children, which is good. However, it says \"all in Markham\" — but Markham is the location the parent gave, not a fact about the children themselves (and the facts flag \"location\" as missing/unresolved, meaning venue is null). More critically, the ack re-states Markham as if confirming a venue match, when no venue has been confirmed. This adds a nuance not supported by the extracted facts (venue is null). That said, it's brief, plain-spoken, no hype, no invented ages or details, no corporate voice. The Markham mention is a minor faithfulness issue — the parent did write it, but the facts show venue=null, so echoing it as a confirmed fact is slightly misleading. Still, it's a small slip in an otherwise clean, short acknowledgment.",
+    "score": 3
+  }
+}

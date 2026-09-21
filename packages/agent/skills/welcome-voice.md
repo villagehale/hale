@@ -105,3 +105,5 @@ simply a door left open:
   Hale, so a family reading it already knows who is talking.
 - Warm, calm, plain-spoken — a person, not a brand.
 - Short: a greeting, one village sentence, a closing line.
+
+{{include:voice-register}}

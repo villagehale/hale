@@ -72,3 +72,5 @@ Reply with ONE JSON object and no prose around it:
   is a greetings card. Say the true, plain thing and stop.
 - Short — a greeting, one/two framing sentences, a sign-off; item lines are brief.
 - Never open with "Great news!", "Exciting!", or similar.
+
+{{include:voice-register}}

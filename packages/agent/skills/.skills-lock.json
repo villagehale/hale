@@ -17,11 +17,11 @@
   },
   "calendar-email-ask.md": {
     "file": "calendar-email-ask.md",
-    "sha256": "9631c857dc1ad44cd892ef948aff8bc87010eff6ab52c4cc1d3e82f76c5b75d0"
+    "sha256": "dee39b5ffa124c1ad4426ad8a819be231a7c74e860b99895353da326ade928a6"
   },
   "calendar-invite-note.md": {
     "file": "calendar-invite-note.md",
-    "sha256": "8ff7ac05f207b124e36708d1ea874001a3d95dd87d8a768f2abdefe914550978"
+    "sha256": "c6506cf2c2843859d080ad490726448896c10b6f9592e3d11b47b12cd1b6b38d"
   },
   "capability-table.md": {
     "file": "capability-table.md",
@@ -57,7 +57,7 @@
   },
   "followup-voice.md": {
     "file": "followup-voice.md",
-    "sha256": "45f91a04b8abbae5b7330f2f722f144b655be5d960021e2616d88062c6c23367"
+    "sha256": "a40250614e7e1db958d96f55362ae1c46c6ca418b717e2ac9f842c7068837b79"
   },
   "general-answer.md": {
     "file": "general-answer.md",
@@ -65,7 +65,7 @@
   },
   "identity-ask.md": {
     "file": "identity-ask.md",
-    "sha256": "8a4b031f21f97c69b2a5298e05aea434d2ef7e18e19fc0b30d0be6249502c989"
+    "sha256": "85602f9dcaedf34dc490c99f42bf272ebc3555c40efddf2ef1eb553d1224c36c"
   },
   "inbound-lane.md": {
     "file": "inbound-lane.md",
@@ -93,11 +93,11 @@
   },
   "intake-voice.md": {
     "file": "intake-voice.md",
-    "sha256": "886097480805945cea7ca38ab38f5e504d9c9b478ba8dab4cf59f7c615f33b57"
+    "sha256": "c5fdc928d94454b2b82d2dfd8fe7f6836aab9833cf816818a892b76b4d4c416b"
   },
   "intro-voice.md": {
     "file": "intro-voice.md",
-    "sha256": "329d7363f6481f3a2eb92276c7b6fb1b4a012a08e632195bf9b3cb269a77a443"
+    "sha256": "bc6fe6af049867f0e7c0e99c0a546d64a429c61c002e5c86ccf15f3561b63cf5"
   },
   "medical-sanitize.md": {
     "file": "medical-sanitize.md",
@@ -109,7 +109,7 @@
   },
   "nudge-voice.md": {
     "file": "nudge-voice.md",
-    "sha256": "c29d2e5e2aef22f1922df4810946c70aeb0641ea3a938aaed4edb645fcae79a3"
+    "sha256": "0058da39817bb85138bf334ab1b2e4f17cea042fb2de46cba4a82af95471a11c"
   },
   "parse-civic-hours.md": {
     "file": "parse-civic-hours.md",
@@ -133,7 +133,7 @@
   },
   "reminder-voice.md": {
     "file": "reminder-voice.md",
-    "sha256": "815632c1ee462406c2ae6485c1e1079b240cdca62621fd873b52ca607be75617"
+    "sha256": "56d0a6cdec4cd84d4673243872ef5112de9ae6d62fbd59702395f85026f9ba23"
   },
   "reply-intent.md": {
     "file": "reply-intent.md",
@@ -165,10 +165,10 @@
   },
   "week-summary.md": {
     "file": "week-summary.md",
-    "sha256": "45146aa76de2af1f3dbdb32494e99159276a4acffc8c8f62fd03632ce3fc83cb"
+    "sha256": "2a01ea52cfc2cd1268bc23c60f15fbbc11e95eab00365169f9164a6e06331e50"
   },
   "welcome-voice.md": {
     "file": "welcome-voice.md",
-    "sha256": "6157201032643cc876df70c4e36835c021da322c7ce7b6168ff8222d5203bd1c"
+    "sha256": "de89851d9163a632d8b4dc0c0662f0f78b8d815df80862b13f5796b33a38d302"
   }
 }

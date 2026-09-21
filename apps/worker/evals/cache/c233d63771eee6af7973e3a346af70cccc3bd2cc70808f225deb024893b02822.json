@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CfG397KQ6zUx1EVviADnz",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "```json\n{\n  \"greeting\": \"Hi Avery, I'm glad you're here.\",\n  \"villageLine\": \"Think of me as the village around your family — I'll keep bringing you the people, places, and small help that make life with kids a little lighter.\",\n  \"closingNote\": \"If something comes up, just reply — I'm listening.\"\n}\n```"
+      }
+    ],
+    "usage": {
+      "input_tokens": 21,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2674,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 89,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}
