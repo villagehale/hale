@@ -60,6 +60,21 @@ export type ActionLineHeld =
    * earns its place.
    */
   | 'access_unknown'
+  /**
+   * The line is about the PICK, and the pick is not in the message.
+   *
+   * A tail costs a block (R8a) and R10 decides which block survives it: whenever this
+   * family's town carries a past cycle, the town sentence is the block that stays. A
+   * `just_go` / `sign_up` line under THAT sentence is a receipt for a thing the message
+   * never names - "No sign-up needed, 9:30 a.m.-11:00 a.m.: <url>" directly beneath an
+   * apology about the season having gone.
+   *
+   * Held rather than reshuffled, and held HERE rather than remembered downstream: this
+   * is the one place that knows which block the line is about, so the renderer's rule
+   * that the town sentence wins the slot becomes true by construction instead of being
+   * a thing every future edit has to keep true.
+   */
+  | 'pick_displaced'
   /** The row carries no url. `village_candidates.source_url` is nullable, so this is a
    *  real null to fail closed on rather than an impossible one. */
   | 'no_url'
@@ -171,6 +186,11 @@ export function renderActionLine(decision: RadarDecision, language: ReplyLanguag
   if (pick === null) return { line: null, held: 'no_move' };
   if (pick.access === 'unknown') return { line: null, held: 'access_unknown' };
   if (pick.verifiedUrl === null) return { line: null, held: 'no_url' };
+  // The row can produce a line; the MESSAGE has no room to name what it is about. The
+  // two data-quality holds above come first deliberately - "nobody recorded the access"
+  // is a fact about the feed the probe can act on, and it is true whether or not this
+  // family's town happens to carry a past cycle.
+  if (decision.registrationAbsence !== null) return { line: null, held: 'pick_displaced' };
   return render(
     pick.access === 'register_at_venue' ? 'sign_up' : 'just_go',
     language,

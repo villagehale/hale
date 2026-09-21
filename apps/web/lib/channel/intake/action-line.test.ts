@@ -150,6 +150,40 @@ describe('renderActionLine — what it refuses, and why', () => {
   });
 
   /**
+   * THE SUBJECT OF THE LINE HAS TO BE IN THE MESSAGE.
+   *
+   * A tail costs a block (R8a) and R10 decides which block survives it: whenever this
+   * family's town has a past cycle, the town sentence is the one that stays. So a
+   * `just_go` / `sign_up` line under that sentence is a receipt for a thing the message
+   * never names - "No sign-up needed, 9:30 a.m.-11:00 a.m.: <url>" directly beneath an
+   * apology about the season having gone, with the pick nowhere in sight.
+   *
+   * The registration moves do not have this problem and must not be held by it: their
+   * subject IS the sentence that survives.
+   */
+  it('holds a pick move when the town sentence takes the block the pick would have had', () => {
+    const betweenCycles: RadarDecision = {
+      ...pick(),
+      registrationAbsence: { ...stillOpen().registrationAbsence!, stillOpen: null },
+    };
+    expect(renderActionLine(betweenCycles, 'en')).toEqual({ line: null, held: 'pick_displaced' });
+    expect(
+      renderActionLine({ ...betweenCycles, weekendPick: pick({ access: 'register_at_venue' }).weekendPick }, 'en'),
+    ).toEqual({ line: null, held: 'pick_displaced' });
+  });
+
+  /** The positive control the hold above cannot do without: the SAME pick, in a town
+   *  with no past cycle, still rides. Without it the rule could hold every pick move
+   *  and this file would not notice. */
+  it('still sends the pick page when no town sentence is competing for the block', () => {
+    expect(renderActionLine(pick(), 'en')).toEqual({
+      line: `No sign-up needed, 9:30 a.m.-11:00 a.m.: ${VENUE_URL}`,
+      url: VENUE_URL,
+      move: 'just_go',
+    });
+  });
+
+  /**
    * R5, with the positive control it cannot do without. Every seeded URL is printable
    * GSM-7 basic today, so an absence test here would pass on a renderer that emitted
    * nothing at all — the control is an ASCII URL of the SAME LENGTH, which must be

@@ -402,9 +402,12 @@ export function renderRadarDeterministically(decision: RadarDecision, tail: stri
   // R8a costs a block, and R10 decides WHICH block survives it. Slicing by position
   // alone drops whatever the cascade happened to put second — and for a pick above a
   // still-open town that is the town sentence itself, silently erased by a rung that
-  // did not render, which is the whole defect this rung's tense exists to avoid. The
-  // block the tail is ABOUT is the registration one: a municipal page underneath a
-  // Saturday storytime is two subjects in one text, and only one of them is actionable.
+  // did not render, which is the whole defect this rung's tense exists to avoid.
+  //
+  // A tail that arrives here alongside an absence is therefore ABOUT that absence, and
+  // that is a guarantee rather than an assumption: `renderActionLine` holds every pick
+  // move with `pick_displaced` the moment the decision carries an absence, precisely so
+  // this line can never leave a receipt pointing at a block the body does not carry.
   if (tail.length > 0 && absenceLine !== null) return absenceLine;
   return blocks.slice(0, maxBlocks(tail)).join('\n\n');
 }

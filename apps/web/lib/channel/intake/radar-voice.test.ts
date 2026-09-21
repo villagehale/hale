@@ -1,12 +1,14 @@
-import type { Municipality } from '@hale/db';
-import { describe, expect, it } from 'vitest';
+import type { Database, Municipality } from '@hale/db';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { REGISTRATION_WINDOWS } from '~/lib/registration/registration-windows-data';
+import { type ActionMove, FIRST_REPLY_ACTION_LINE_ENV, renderActionLine } from './action-line.js';
 import { WATCH_OFFER } from './copy.js';
 import { asciiCopy } from './radar-decide.js';
 import type { RadarDecision } from './radar-decide.js';
 import {
   FIRST_FIND_BEAT,
+  composeRadarMessage,
   MAX_PAYLOAD_SEGMENTS,
   radarMessageFault,
   parseRadarVoiceAnswer,
@@ -104,6 +106,10 @@ const PICK_BETWEEN_CYCLES: RadarDecision = {
     stillOpen: null,
   },
 };
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('radarVoiceContext', () => {
   it('hands the model the decision facts and no internal identifiers', () => {
@@ -673,5 +679,151 @@ describe('the appended action line and the block budget', () => {
     );
     expect(radarMessageFault(`Saturday looks good. ${WATCH_OFFER}`, BOTH, '')).toBe('grounding');
     expect(radarMessageFault('x'.repeat(400), BOTH, '')).toBe('budget');
+  });
+});
+
+/**
+ * THE SUBJECT OF THE APPENDED LINE IS IN THE MESSAGE, in every shape that emits one.
+ *
+ * R8a costs a block and R10 decides which block survives it, so the two rules together
+ * can leave a receipt pointing at a thing the body never names. That is not a case to
+ * remember at the render; it is a property of the pair, and it is asserted as one.
+ */
+describe('the appended line and the block it is about', () => {
+  const CIVIC_URL = 'https://www.toronto.ca/community-people/children-parenting/earlyon/';
+  const CIVIC_PICK: RadarDecision['weekendPick'] = {
+    candidateRef: {
+      id: 'cand-uuid-9',
+      title: 'Saturday family drop-in',
+      venueName: 'Queen West EarlyON',
+    },
+    day: 'saturday',
+    kidNames: ['Maya'],
+    whyFacts: ['free', 'indoor'],
+    access: 'drop_in',
+    when: '9:30 a.m.-11:00 a.m.',
+    verifiedUrl: CIVIC_URL,
+  };
+
+  const SHAPES: Array<{ id: string; decision: RadarDecision }> = [
+    { id: 'civic pick alone', decision: { ...PICK_ONLY, weekendPick: CIVIC_PICK } },
+    {
+      id: 'civic pick over a town between cycles',
+      decision: { ...PICK_BETWEEN_CYCLES, weekendPick: CIVIC_PICK },
+    },
+    {
+      id: 'civic pick over a town whose cycle is still open',
+      decision: {
+        ...PICK_BETWEEN_CYCLES,
+        weekendPick: CIVIC_PICK,
+        registrationAbsence: {
+          ...PICK_BETWEEN_CYCLES.registrationAbsence!,
+          stillOpen: { registerUrl: 'https://www.toronto.ca/example/fall', kidNames: ['Maya'] },
+        },
+      },
+    },
+    { id: 'an upcoming registration morning', decision: BOTH },
+    { id: 'a town between cycles with nothing else', decision: BETWEEN_CYCLES },
+  ];
+
+  it('never appends a line about a block the rendered body does not carry', () => {
+    const movesSeen: ActionMove[] = [];
+    for (const { id, decision } of SHAPES) {
+      const action = renderActionLine(decision, 'en');
+      if (action.line === null) continue;
+      movesSeen.push(action.move);
+      const tail = `\n\n${action.line}`;
+      const body = renderRadarDeterministically(decision, tail);
+      const subject =
+        action.move === 'sign_up' || action.move === 'just_go'
+          ? (decision.weekendPick?.candidateRef.title as string)
+          : townLabel(
+              (decision.registrationAbsence?.cycleRef ?? decision.registrationLine?.windowRef)
+                ?.municipality as Municipality,
+            );
+      expect(body, `${id}: the line names something the body never says`).toContain(subject);
+    }
+    // The positive control. An invariant asserted over a loop that emitted only
+    // registration lines would pass on a renderActionLine that held every pick forever,
+    // which is the failure mode the hold itself could become.
+    expect(movesSeen).toContain('just_go');
+    expect(movesSeen).toContain('register_open');
+    expect(movesSeen).toContain('register_later');
+  });
+});
+
+/**
+ * The whole payload, assembled: the model's words (or the grounded render), the one
+ * appended line, and the named reason when there is none. `client: null` is a
+ * first-class outcome here — there is no model in this path at all, so nothing is
+ * mocked (rule #8) and what is asserted is the shell's own arithmetic.
+ */
+describe('composeRadarMessage — the payload and its named outcomes', () => {
+  const CIVIC_URL = 'https://www.toronto.ca/community-people/children-parenting/earlyon/';
+  const PICK_OVER_A_GONE_SEASON: RadarDecision = {
+    ...PICK_BETWEEN_CYCLES,
+    weekendPick: {
+      candidateRef: {
+        id: 'cand-uuid-9',
+        title: 'Saturday family drop-in',
+        venueName: 'Queen West EarlyON',
+      },
+      day: 'saturday',
+      kidNames: ['Maya'],
+      whyFacts: ['free', 'indoor'],
+      access: 'drop_in',
+      when: '9:30 a.m.-11:00 a.m.',
+      verifiedUrl: CIVIC_URL,
+    },
+  };
+
+  /** No query runs on this path: a null client returns the grounded render before the
+   *  skill is loaded, let alone a trace written. */
+  const deps = (language: 'en' | 'fr' = 'en') => ({
+    familyId: 'fam-1',
+    database: null as unknown as Database,
+    client: null,
+    language,
+  });
+
+  it('holds the pick line, by name, rather than pointing at a find it had to drop', async () => {
+    vi.stubEnv(FIRST_REPLY_ACTION_LINE_ENV, 'true');
+    const radar = await composeRadarMessage(PICK_OVER_A_GONE_SEASON, deps());
+    expect(radar.actionMove).toBeNull();
+    expect(radar.actionHeld).toBe('pick_displaced');
+    expect(radar.body).not.toContain('http');
+    // R10 survives the hold, and so does the find: with no tail the render keeps both.
+    expect(radar.body).toContain('Toronto Fall 2026 registration already opened Sep 8, 7:00 a.m.');
+    expect(radar.body).toContain('Saturday family drop-in');
+  });
+
+  /**
+   * M9 — the flag is read with STRICT equality on the literal, and nothing pinned it.
+   * `vercel env add` from a piped `echo` stores a TRAILING NEWLINE, so a value that
+   * prints as `true` is really 'true\n' and a truthiness check reads that as ON: the
+   * dark launch would have been live from the moment the variable was set.
+   */
+  it('reads the flag strictly, so a trailing newline is OFF and not ON', async () => {
+    const stillOpen: RadarDecision = {
+      ...NOTHING,
+      registrationAbsence: {
+        cycleRef: { municipality: 'toronto', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
+        lastOpenedAtLocal: 'Sep 15, 7:00 a.m.',
+        nextCycleLabel: 'Winter 2027',
+        stillOpen: { registerUrl: 'https://www.toronto.ca/example/fall', kidNames: ['Maya'] },
+      },
+    };
+    for (const value of ['true\n', ' true', 'True', 'TRUE', '1', 'yes', '']) {
+      vi.stubEnv(FIRST_REPLY_ACTION_LINE_ENV, value);
+      const radar = await composeRadarMessage(stillOpen, deps());
+      expect(radar.actionHeld, `${JSON.stringify(value)} must not turn the flag on`).toBe('flag_off');
+      expect(radar.actionMove).toBe('register_open');
+      expect(radar.body).not.toContain('http');
+    }
+    // The positive control: the one literal that IS on.
+    vi.stubEnv(FIRST_REPLY_ACTION_LINE_ENV, 'true');
+    const on = await composeRadarMessage(stillOpen, deps());
+    expect(on.actionHeld).toBeNull();
+    expect(on.body).toContain('The page is here: https://www.toronto.ca/example/fall');
   });
 });
