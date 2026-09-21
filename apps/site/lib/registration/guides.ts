@@ -23,7 +23,7 @@ const UNOFFICIAL =
   'Hale is unofficial. Confirm every date on the official link in this block — if the city page has moved, the city page wins.';
 
 const FOOTER =
-  'Hale is a number you text, not an app. Founding families keep their rate. Your data stays in Canada.';
+  'Hale is a planner for your kids’ year, not an app. Founding families keep their rate. Your data stays in Canada.';
 
 export const TORONTO_FALL: RegistrationGuide = {
   slug: 'toronto-fall-recreation-registration',
@@ -36,7 +36,7 @@ export const TORONTO_FALL: RegistrationGuide = {
     { text: 'Toronto fall recreation registration 2026:' },
     { text: 'the mornings, and what is left', accent: true },
   ],
-  lede: 'The morning that mattered was the district of the centre you were booking, not the street you live on — and those mornings have gone: Sept 9, Sept 15, Sept 16. If you live outside Toronto, yours is still ahead: Friday, Sept 25 at 7 a.m., ten days after registration starts for the activity you want. I’m Barton, Sebastian’s dad. Hale is a number GTA parents text — no app — and founding families are free at villagehale.com.',
+  lede: 'The morning that mattered was the district of the centre you were booking, not the street you live on — and those mornings have gone: Sept 9, Sept 15, Sept 16. If you live outside Toronto, yours is still ahead: Friday, Sept 25 at 7 a.m., ten days after registration starts for the activity you want. I’m Barton, Sebastian’s dad. Hale is a planner for your kids’ year — no app — and founding families are free at villagehale.com.',
   updated: '2026-09-18',
   placement: 'toronto_fall_rec',
   datesEyebrow: 'Fall 2026',
@@ -214,7 +214,7 @@ export const TORONTO_FALL: RegistrationGuide = {
   ],
   ctaHeading: 'Non-residents register Sept 25. Winter is not posted yet.',
   ctaSub:
-    'Text Hale — founding families free. Start at villagehale.com. I’m Barton, Sebastian’s dad; Hale is a number you text, not an app.',
+    'Text Hale — founding families free. Start at villagehale.com. I’m Barton, Sebastian’s dad; Hale is a planner for your kids’ year, not an app.',
   footerNote: FOOTER,
 };
 

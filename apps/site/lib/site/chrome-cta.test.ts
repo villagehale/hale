@@ -16,7 +16,7 @@ describe('site chrome CTA', () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
     const cta = chromeCta();
     expect(cta.label).toBe('Text Hale');
-    expect(cta.href).toBe('sms:+16475551234?&body=Hi%20Hale%20%F0%9F%91%8B%20ready%20to%20get%20started');
+    expect(cta.href).toBe('sms:+16475551234?&body=What%20is%20worth%20doing%20with%20the%20kids%20near%20us%3F');
     expect(cta.href).not.toContain('/onboarding');
   });
 

@@ -24,7 +24,7 @@ describe('product FAQ', () => {
 });
 
 describe('the FAQ this build serves', () => {
-  it('describes a number you text rather than an app you sign up for', () => {
+  it('describes a planner for the kids’ year rather than an app you sign up for', () => {
     const answers = FAQ.map((item) => item.answer).join(' ');
     expect(answers).toContain('text');
     expect(answers).toContain('no account to create');

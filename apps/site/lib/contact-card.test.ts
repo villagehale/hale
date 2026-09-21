@@ -66,7 +66,7 @@ describe('buildVCard — envelope and fields', () => {
   it('points at the site and says what Hale is', () => {
     const lines = unfold(card);
     expect(lines).toContain(`URL:${SITE_URL}`);
-    expect(lines).toContain('NOTE:Hale — a number you text for what’s on near your kids.');
+    expect(lines).toContain('NOTE:Hale — a planner for your kids’ year.');
   });
 });
 
@@ -115,7 +115,7 @@ describe('foldLine — the rule iOS is strict about', () => {
   it('keeps multi-byte characters whole', () => {
     // The NOTE's em dash is three octets; a fold that counted characters could
     // split it and hand the phone a mojibake note.
-    const note = 'NOTE:Hale — a number you text for what’s on near your kids.';
+    const note = 'NOTE:Hale — a planner for your kids’ year.';
     const folded = foldLine(note, 12);
     for (const physical of folded.split('\r\n')) expect(octets(physical)).toBeLessThanOrEqual(12);
     expect(folded.replace(/\r\n /g, '')).toBe(note);

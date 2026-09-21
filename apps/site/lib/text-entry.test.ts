@@ -68,23 +68,27 @@ describe('buildSmsBody (what the parent sends)', () => {
   it('is the locked hello when no venue sent them — a real first message, no dummy family', () => {
     // Founder lock 2026-09-01 /text expectations — the parent says hi; Hale asks
     // for names, ages, and postal itself. Nothing to edit before sending.
-    expect(buildSmsBody(null)).toBe("Hi Hale 👋 ready to get started");
+    expect(buildSmsBody(null)).toBe("What is worth doing with the kids near us?");
   });
 
   it('appends the venue as a trailing "(via …)" token', () => {
-    expect(buildSmsBody('earlyon-richmondhill')).toBe("Hi Hale 👋 ready to get started (via earlyon-richmondhill)");
+    expect(buildSmsBody('earlyon-richmondhill')).toBe(
+      "What is worth doing with the kids near us? (via earlyon-richmondhill)",
+    );
   });
 });
 
 describe('buildSmsHref (the deep link)', () => {
   it('is an sms: URI whose body is percent-encoded, carrying the source token', () => {
     expect(buildSmsHref('+16475551234', 'earlyon-richmondhill')).toBe(
-      "sms:+16475551234?&body=Hi%20Hale%20%F0%9F%91%8B%20ready%20to%20get%20started%20(via%20earlyon-richmondhill)",
+      "sms:+16475551234?&body=What%20is%20worth%20doing%20with%20the%20kids%20near%20us%3F%20(via%20earlyon-richmondhill)",
     );
   });
 
   it('pre-fills the locked hello with no source', () => {
-    expect(buildSmsHref('+16475551234', null)).toBe("sms:+16475551234?&body=Hi%20Hale%20%F0%9F%91%8B%20ready%20to%20get%20started");
+    expect(buildSmsHref('+16475551234', null)).toBe(
+      "sms:+16475551234?&body=What%20is%20worth%20doing%20with%20the%20kids%20near%20us%3F",
+    );
   });
 });
 
@@ -122,12 +126,14 @@ describe('readWhatsAppNumber (NEXT_PUBLIC_HALE_WHATSAPP_NUMBER)', () => {
 describe('buildWaHref (the wa.me deep link)', () => {
   it('carries the SAME pre-filled body as the sms: link, digits without the plus', () => {
     expect(buildWaHref('+16475551234', 'earlyon-richmondhill')).toBe(
-      "https://wa.me/16475551234?text=Hi%20Hale%20%F0%9F%91%8B%20ready%20to%20get%20started%20(via%20earlyon-richmondhill)",
+      "https://wa.me/16475551234?text=What%20is%20worth%20doing%20with%20the%20kids%20near%20us%3F%20(via%20earlyon-richmondhill)",
     );
   });
 
   it('pre-fills the locked hello with no source', () => {
-    expect(buildWaHref('+16475551234', null)).toBe("https://wa.me/16475551234?text=Hi%20Hale%20%F0%9F%91%8B%20ready%20to%20get%20started");
+    expect(buildWaHref('+16475551234', null)).toBe(
+      "https://wa.me/16475551234?text=What%20is%20worth%20doing%20with%20the%20kids%20near%20us%3F",
+    );
   });
 });
 

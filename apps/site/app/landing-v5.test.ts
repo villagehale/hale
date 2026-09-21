@@ -732,7 +732,9 @@ describe('T4 · no claim the code cannot back', () => {
 
   it('emits JSON-LD describing the page a visitor sees', () => {
     expect(html).toContain('application/ld+json');
-    expect(html).toContain('A number your family texts');
+    expect(html).toContain('A planner for your kids’ year');
+    expect(html).not.toContain('A number your family texts');
+    expect(html).not.toContain('executes with your approval');
     expect(html).not.toContain('passive household assistant');
     // The graph is the answer-engine copy of the same claims, so it is held to
     // the same flags. "plans the week" outlived the Sunday plan's removal from
@@ -769,11 +771,6 @@ describe('T4b · every first-person claim on the page has a line of code under i
   type Klass = 'LIVE' | 'BUILT-DARK (F14)';
   const CLAIMS: [sentence: string, source: string, klass: Klass][] = [
     [
-      'I find it.',
-      'apps/web/lib/channel/activity/tools.ts:62-70 find_activities — the h1’s first half is the finder',
-      'LIVE',
-    ],
-    [
       'What I’d send you tonight',
       'apps/web/lib/channel/activity/lane.ts:155 ActivityPick — the §1 eyebrow, and the picks below it are that shape',
       'LIVE',
@@ -786,11 +783,6 @@ describe('T4b · every first-person claim on the page has a line of code under i
     [
       'How I handle your data.',
       'the link label on the connector sentence — it goes to /privacy, which states the same collection field by field',
-      'LIVE',
-    ],
-    [
-      'Send me your kids’ ages and a postal code; I’ll take it from there.',
-      'apps/web/lib/channel/intake/copy.ts COLD_START_ASK — the greeting asks for exactly this and nothing else',
       'LIVE',
     ],
     [
@@ -864,9 +856,14 @@ describe('T4b · every first-person claim on the page has a line of code under i
       'LIVE',
     ],
     [
-      'I suggest, I prepare — and with your ok, I handle it.',
-      'hard rule #4 — the approval ladder; nothing executes without an explicit yes',
+      'I suggest and I prepare.',
+      'apps/web/lib/channel/activity/lane.ts ActivityPick (suggest) + apps/web/lib/registration/sequence/copy.ts battle plan (prepare)',
       'LIVE',
+    ],
+    [
+      'I ask how it went.',
+      'apps/web/lib/channel/followup/run.ts:102-103 — 1-4 days after the first session',
+      'BUILT-DARK (F14)',
     ],
     [
       'Free while I’m new — and families who start now keep their founding rate for good.',
@@ -987,14 +984,14 @@ describe('the page’s own shape — two eyebrows, one card grid, no arrow', () 
     expect([...html.matchAll(/<h1[\s>]/g)]).toHaveLength(1);
     const h1 = html.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
     expect(h1).toContain('v4-display');
-    expect(visibleText(h1)).toBe('I find it. You don’t miss it.');
+    expect(visibleText(h1)).toBe('Find what’s on. Hear how it went.');
     expect(h1).not.toContain('7:02');
-    // The sub answers the pronoun the h1 opens on, in the next line.
-    expect(text).toContain('the sign-up morning that fills by 7:02');
+    // 2026-09-21 lock: the deck under the h1.
+    expect(text).toContain('What’s worth doing with the kids.');
     // The accent span is STRUCTURE (WordsPullUp and the h1 both segment on it),
     // not a coloured word — .v4-accent is `color: inherit`. It also carries the
     // nowrap class, because it is the h1's last clause and at 390px the line
-    // broke inside it ("You don’t miss / it.").
+    // broke inside it ("You don’t miss / it."). The locked clause is now "it went."
     expect(h1).toContain('class="v4-accent v5-hero-tail"');
   });
 
@@ -1095,7 +1092,7 @@ describe('the page’s own shape — two eyebrows, one card grid, no arrow', () 
 
   it('orders the page the way the argument runs', () => {
     const order = [
-      'I find it.',
+      'Find what’s on.',
       'The first text',
       'Three things, not thirty.',
       'The morning it opens, I’m already awake.',
@@ -1163,7 +1160,9 @@ describe('the page’s own shape — two eyebrows, one card grid, no arrow', () 
     expect(text).toContain('just the schedule in scope');
     expect(text).toContain('I suggest');
     expect(text).toContain('I prepare');
-    expect(text).toContain('with your ok, I handle it');
+    expect(text).toContain('I ask how it went');
+    expect(text).toContain('Nothing is booked');
+    expect(text).not.toContain('I handle it');
     expect(text.toLowerCase()).toContain('receipts');
     expect(text).toContain('nothing happens without your yes');
   });

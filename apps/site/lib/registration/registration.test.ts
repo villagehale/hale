@@ -311,7 +311,7 @@ describe('the rules that make parents miss', () => {
     // the page as the residents' record, never as the morning Hale will watch.
     expect(guide.lede).toContain('Sept 9');
     expect(guide.lede).toContain('Sept 21');
-    expect(guide.smsPrefill).toBe("Hi Hale 👋 ready to get started");
+    expect(guide.smsPrefill).toBe("What is worth doing with the kids near us?");
   });
 
   it('keeps YMCA on My Y at 9 a.m. with a membership gate', () => {

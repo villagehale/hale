@@ -9,17 +9,13 @@ import { socialCardCopy } from './social-card-copy';
  */
 
 describe('homepage share card copy', () => {
-  it('sells the number you text', () => {
+  it('sells the kids-year planner', () => {
     const copy = socialCardCopy();
-    expect(copy.headline).toBe('A number your family texts');
-    // The category is now the JOB, not a noun for the software: the product's own
-    // voice (the live intake greeting, /for-centres) describes finding what is on,
-    // watching the sign-up morning and asking how it went — with no "assistant" in
-    // it. "chief of staff" was always About-page vision language, never an
-    // acquisition surface.
-    expect(copy.alt).toContain('what’s on near your kids');
+    expect(copy.headline).toBe('Find what’s on. Hear how it went.');
+    expect(copy.alt).toContain('a planner for your kids’ year');
     expect(`${copy.headline} ${copy.subline} ${copy.alt}`).not.toContain('assistant');
     expect(copy.alt).not.toContain('chief of staff');
+    expect(`${copy.headline} ${copy.subline} ${copy.alt}`).not.toContain('number you text');
     // The card has room for three beats and the residency line does not fit
     // beside them; the page's own metadata still carries it (HomeMeta), and the
     // card's job is the loop. Pinned so dropping the third beat is a choice.
