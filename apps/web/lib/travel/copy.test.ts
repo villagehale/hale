@@ -33,7 +33,13 @@ const ZOO = pick({
   sourceName: 'Central Park Zoo',
 });
 
+/** The BODY, which is what all but one of these tests are about. The render's other half
+ * — which picks actually made it in — has its own test below. */
 function brief(overrides: Partial<Parameters<typeof renderTravelBrief>[0]> = {}) {
+  return renderBrief(overrides).body;
+}
+
+function renderBrief(overrides: Partial<Parameters<typeof renderTravelBrief>[0]> = {}) {
   return renderTravelBrief({
     city: 'New York',
     startsOn: '2026-09-12',
@@ -89,8 +95,14 @@ describe('renderTravelBrief', () => {
 
   it('carries at most two picks — the third is dropped, not linked', () => {
     const third = pick({ name: 'Brooklyn Childrens Museum', sourceName: 'Brooklyn Childrens Museum' });
-    const body = brief({ picks: [pick(), ZOO, third] });
-    expect(body).not.toContain('Brooklyn Childrens Museum');
+    const render = renderBrief({ picks: [pick(), ZOO, third] });
+    expect(render.body).not.toContain('Brooklyn Childrens Museum');
+    // AND IT SAYS SO. `rendered` is what the sweep's audit row counts; counting the picks
+    // the LANE handed up instead put a three on the receipt for a text that named two.
+    expect(render.rendered.map((entry) => entry.name)).toEqual([
+      'American Museum of Natural History',
+      'Central Park Zoo',
+    ]);
   });
 
   /**
@@ -107,11 +119,14 @@ describe('renderTravelBrief', () => {
         'USD 17 per person over one year old, members free, EBT card holders USD 3, and a family membership that covers two adults and up to four children for the year',
       sourceName: 'Long Island Childrens Museum',
     });
-    const body = brief({ picks: [pick(), long] });
+    const render = renderBrief({ picks: [pick(), long] });
+    const body = render.body;
     expect(body).toContain('USD 28 adults / 16 kids (their site).');
     expect(body).not.toContain('USD 17');
     expect(body).not.toContain('USD 1');
     expect(smsSegments(withOptOut(body, 'full'))).toBeLessThanOrEqual(MAX_TRAVEL_BRIEF_SEGMENTS);
+    // A pick dropped for length is a pick the receipt must not count either.
+    expect(render.rendered).toHaveLength(1);
   });
 
   it('throws rather than shortening when the body cannot be trusted', () => {

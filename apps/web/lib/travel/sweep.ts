@@ -20,7 +20,7 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { activityClient } from '~/lib/pipeline/client';
-import { TRAVEL_BRIEF_TEMPLATE_KEY, renderTravelBrief } from './copy';
+import { TRAVEL_BRIEF_TEMPLATE_KEY, type TravelBriefRender, renderTravelBrief } from './copy';
 import { localCalendarDay } from './detect';
 import { travelBriefEnabled, travelBriefEnabledFor, travelBriefAllowlist } from './flag';
 import { TRAVEL_SUBJECT, travelDestination, travelWindow } from './query';
@@ -379,9 +379,9 @@ async function briefOne(
     return;
   }
 
-  let body: string;
+  let rendered: TravelBriefRender;
   try {
-    body = renderTravelBrief({
+    rendered = renderTravelBrief({
       city: trip.destinationCity,
       startsOn: trip.startsOn,
       endsOn: trip.endsOn,
@@ -439,7 +439,7 @@ async function briefOne(
   try {
     ({ providerMessageId } = await deps.transport.send({
       to,
-      body: withOptOut(body, verdict.optOut),
+      body: withOptOut(rendered.body, verdict.optOut),
     }));
   } catch (err) {
     const code = err instanceof TwilioSendError ? err.code : 'unknown';
@@ -486,7 +486,7 @@ async function briefOne(
   await deps.threadMessage(database, {
     familyId: trip.familyId,
     parentUserId: trip.parentUserId,
-    body,
+    body: rendered.body,
   });
 
   await database.insert(schema.auditLog).values({
@@ -497,7 +497,10 @@ async function briefOne(
     targetId: claimed.id,
     // COUNTS, NOT NAMES. Never the city, never the venues, never the dates: an audit row a
     // support agent can read is a copy of the text in a table that is never redacted.
-    after: { picks: found.picks.length, merged: merged.length },
+    // `rendered.length`, not `found.picks.length`: the lane may hand up three and the
+    // assembly renders at most two, so the finder's count is a receipt that disagrees with
+    // the message the parent got.
+    after: { picks: rendered.rendered.length, merged: merged.length },
   });
 
   result.sent += 1;

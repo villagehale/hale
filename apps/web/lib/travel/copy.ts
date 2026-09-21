@@ -154,6 +154,23 @@ export function travelBriefViolations(body: string, context: TravelBriefContext)
   return violations;
 }
 
+export interface TravelBriefRender {
+  body: string;
+  /**
+   * THE PICKS THE PARENT WAS ACTUALLY TOLD ABOUT, and the reason this is a return value
+   * rather than something the caller recomputes.
+   *
+   * How many picks are in the body is a decision only the assembly below makes: the lane
+   * may hand up three, {@link SLOTS_IN_TEXT} caps it at two, and the segment ceiling can
+   * drop the second as well. The sweep's `travel_brief_sent` audit row counted
+   * `found.picks.length` instead — so the receipt a parent reads in the trail said THREE
+   * on a text that named two, live, on the very first recorded New York find. A count
+   * derived a second time from a different object is a count that can disagree with the
+   * message; this one is the assembly's own.
+   */
+  rendered: readonly ActivityPick[];
+}
+
 /**
  * The body, or nothing at all.
  *
@@ -164,7 +181,7 @@ export function travelBriefViolations(body: string, context: TravelBriefContext)
  * is not tidiness: a cut that lands inside "USD 2" publishes a wrong price. A second pick
  * that would push past the ceiling is dropped entire.
  */
-export function renderTravelBrief(input: TravelBriefInput): string {
+export function renderTravelBrief(input: TravelBriefInput): TravelBriefRender {
   const dayPhrase = tripDayPhrase(input.startsOn, input.endsOn);
   const opening = `You're in ${input.city} ${dayPhrase}. A couple of things on for ${childPhrase([...input.childNames])}:`;
 
@@ -190,5 +207,5 @@ export function renderTravelBrief(input: TravelBriefInput): string {
   if (violations.length > 0) {
     throw new Error(`travel brief copy refused: ${violations.join(', ')}`);
   }
-  return body;
+  return { body, rendered };
 }
