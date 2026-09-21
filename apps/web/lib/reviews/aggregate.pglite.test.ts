@@ -298,6 +298,7 @@ describe('what is spoken and what is only ranked', () => {
 describe('which offer the clause may be attached to', () => {
   const offer = (title: string, placeId: string | null, civicVenueId: string | null = null) => ({
     title,
+    venue: `${title} branch`,
     candidateId: `cand-${title}`,
     placeId,
     civicVenueId,
@@ -323,9 +324,11 @@ describe('which offer the clause may be attached to', () => {
       verdicts,
     );
 
+    // The clause names the VENUE and the target names the TITLE: the households answered
+    // about a place, and the body is what has to mention the programme.
     expect(target).toEqual({
       title: 'Saturday storytime',
-      clause: '3 families near you say Saturday storytime is worth it.',
+      clause: '3 families near you say Saturday storytime branch is worth it.',
       otherTitles: ['Tuesday swim'],
     });
   });

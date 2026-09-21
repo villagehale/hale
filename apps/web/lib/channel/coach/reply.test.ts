@@ -470,10 +470,40 @@ describe('the nearby count', () => {
     expect(reply).not.toContain('families near you');
   });
 
+  /**
+   * One distinctive word is what the follow-up screen matches on, and it is the wrong
+   * rule here: there a false hit costs a question, and here it puts a count about one
+   * activity on a sentence about another.
+   */
+  it('says nothing when the reply brushes ONE word of the title', () => {
+    const reply = toSmsReply('Storytime is usually at 10 on the weekend.', {
+      children: [],
+      now,
+      nearby: NEARBY,
+    });
+
+    expect(reply).toBe('Storytime is usually at 10 on the weekend.');
+  });
+
   it('says nothing when the reply names neither', () => {
     const reply = toSmsReply('I will look into it.', { children: [], now, nearby: NEARBY });
 
     expect(reply).toBe('I will look into it.');
+  });
+
+  /** The clause is protected from the trim, not from the BUDGET: an answer that fits on
+   * its own and no longer fits with the count is trimmed to make room, exactly as it is
+   * for a plan offer. A message going out as three segments is the alternative. */
+  it('never sends the answer and the count past the two-segment ceiling', () => {
+    const body = `Riverdale storytime runs Saturdays at 10. ${'They have a craft table and a singalong too. '.repeat(5)}`.trim();
+    // The control on the setup itself: the answer ALONE is inside the ceiling, so only
+    // the appended clause can push it over.
+    expect(smsSegments(body)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+
+    const reply = toSmsReply(body, { children: [], now, nearby: NEARBY });
+
+    expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+    expect(reply.endsWith(NEARBY.clause)).toBe(true);
   });
 
   /** After the fit, and un-trimmed at the ceiling: the whole reason it travels

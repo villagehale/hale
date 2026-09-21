@@ -160,6 +160,7 @@ describe('the turn offer ledger, through the production ports', () => {
     expect(ledger.read()).toEqual([
       {
         title: TITLE,
+        venue: 'Riverdale branch',
         candidateId: seeded.candidateId,
         placeId: 'places/riverdale-library',
         civicVenueId: null,

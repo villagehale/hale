@@ -311,12 +311,16 @@ describe('the offer ledger beside the offer', () => {
     expect(offered).toEqual([
       {
         title: 'Saturday storytime',
+        // The verified venue rides along, because a pooled verdict is about the place
+        // rather than the programme and the clause has to be able to name it.
+        venue: 'Wychwood Barns',
         candidateId: 'cand-1',
         placeId: 'places/abc',
         civicVenueId: null,
       },
       {
         title: 'EarlyON drop-in',
+        venue: 'Wychwood Barns',
         candidateId: 'cand-2',
         placeId: null,
         civicVenueId: 'venue-9',

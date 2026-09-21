@@ -293,6 +293,7 @@ describe('propose_calendar_add', () => {
   const OFFERED: OfferedCandidate[] = [
     {
       title: 'Saturday storytime',
+      venue: 'Riverdale branch',
       candidateId: 'cand-1',
       placeId: 'places/abc',
       civicVenueId: null,

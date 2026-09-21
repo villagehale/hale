@@ -190,8 +190,13 @@ export function nearbyClauseTarget(
   const withClause = offers
     .map((offer) => {
       const subject = offeredSubject(offer);
+      // THE VENUE, NOT THE PROGRAMME. The subject is a place or a civic venue, so the
+      // three households answered about the branch — "the Saturday storytime is worth
+      // it" would put their answer on a timetable they were never asked about (founder
+      // decision 2). The TITLE is still what the body has to name, because that is what
+      // the model wrote about.
       const clause = subject
-        ? renderVerdictClause(offer.title, verdicts.get(subjectKey(subject)))
+        ? renderVerdictClause(offer.venue, verdicts.get(subjectKey(subject)))
         : null;
       return clause === null ? null : { title: offer.title, clause };
     })

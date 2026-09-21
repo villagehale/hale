@@ -57,6 +57,9 @@ const ASK_AT = new Date('2026-09-14T14:00:00.000Z');
 /** The registry venue three households are about to agree on. */
 const VENUE_ID = '9f1c2b6a-7d31-4c2e-9a54-0a2b3c4d5e6f';
 const TITLE = 'Georgetown EarlyON drop-in';
+/** The branch itself — what the three households actually answered about, and so what
+ * the clause names (founder decision 2: venue grain, silent about the programme). */
+const VENUE = 'Georgetown Library';
 
 /**
  * `activity-verdict-fixtures.mjs#two-clauses`, verbatim — the reply and the answer the
@@ -239,7 +242,7 @@ async function anotherFamilySays(
 
 /** What `search_village` reported to the turn — the offer ledger, not the sentences. */
 const OFFERED: OfferedCandidate[] = [
-  { title: TITLE, candidateId: 'cand-next', placeId: null, civicVenueId: VENUE_ID },
+  { title: TITLE, venue: VENUE, candidateId: 'cand-next', placeId: null, civicVenueId: VENUE_ID },
 ];
 
 describe('a review reaches the next parent', () => {
@@ -347,7 +350,7 @@ describe('a review reaches the next parent', () => {
     // ── 4. THREE households. The clause exists, and the reply carries it. ────
     await anotherFamilySays('third', 'worth_it');
     const nearby = await nearbySaidFor(db.database, home.familyId, OFFERED);
-    expect(nearby?.clause).toBe(`3 families near you say ${TITLE} is worth it.`);
+    expect(nearby?.clause).toBe(`3 families near you say ${VENUE} is worth it.`);
 
     const nextParentsReply = toSmsReply(`${TITLE} runs Saturday mornings.`, {
       children: [],
@@ -355,7 +358,7 @@ describe('a review reaches the next parent', () => {
       nearby: nearby ?? undefined,
     });
     expect(nextParentsReply).toBe(
-      `${TITLE} runs Saturday mornings. 3 families near you say ${TITLE} is worth it.`,
+      `${TITLE} runs Saturday mornings. 3 families near you say ${VENUE} is worth it.`,
     );
 
     // ── 5. and it goes when a household does (PIPEDA, no recompute anywhere) ─

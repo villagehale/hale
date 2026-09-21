@@ -150,6 +150,11 @@ interface OfferableActivity {
  */
 export interface OfferedCandidate {
   title: string;
+  /** The verified venue the offer named — the grain a pooled verdict is actually about,
+   * since the subject behind it is a place or a civic venue and never a programme. A
+   * count that named the title would say three families rated the Saturday storytime
+   * when what they rated was the branch it runs in. */
+  venue: string;
   candidateId: string;
   placeId: string | null;
   civicVenueId: string | null;
@@ -295,6 +300,7 @@ export function searchVillageTool(
           offer: row
             ? {
                 title: view.title,
+                venue,
                 candidateId: row.id,
                 placeId: row.placeId,
                 civicVenueId: row.civicVenueId,

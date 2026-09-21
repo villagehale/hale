@@ -1,5 +1,5 @@
 import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import { mentionsActivity } from '~/lib/channel/followup/screen';
+import { distinctiveWords, mentionsActivity } from '~/lib/channel/followup/screen';
 import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
 
@@ -303,7 +303,13 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     args.now,
   );
   if (suffix === '') {
-    const fittedAlone = fitToBudget(redacted, MAX_REPLY_SEGMENTS, '', args.onTrimmed);
+    // MEASURED WITH THE BODY, like the two above it: a clause appended to an answer
+    // already at the ceiling is how a two-segment reply quietly becomes three, and the
+    // count is the one part of this message nobody is paying attention to. Room is
+    // reserved only when the answer as composed names the target, and the clause is
+    // dropped anyway if the trim took the name away with it.
+    const reserved = nearbyClause(redacted, args.nearby) ?? '';
+    const fittedAlone = fitToBudget(redacted, MAX_REPLY_SEGMENTS, reserved, args.onTrimmed);
     const nearby = nearbyClause(fittedAlone, args.nearby);
     return nearby === null ? fittedAlone : `${fittedAlone} ${nearby}`;
   }
@@ -327,9 +333,12 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
  * every failure is silence.
  *
  * The fitted body must name the subject of the count and must name no other activity the
- * turn offered. "Names" reuses `mentionsActivity`/`distinctiveWords`, the same matcher
- * the follow-up screen uses to decide whether a parent already raised an activity, rather
- * than a second opinion about what naming something means.
+ * turn offered — and the two tests are DELIBERATELY ASYMMETRIC, because both fail closed
+ * in opposite directions. Naming the target takes EVERY distinctive word of its title;
+ * naming another offer takes any one of them (`mentionsActivity`, the follow-up screen's
+ * own matcher). Under the any-word rule in both places, "Saturday works, add it" counts
+ * as naming "Saturday storytime", and a count about one activity lands on a sentence
+ * about another.
  *
  * PRECEDENCE: a turn that also registered a plan offer or a referral drops this
  * altogether (see the caller). A count is the least important thing in any message that
@@ -341,9 +350,16 @@ function nearbyClause(
 ): string | null {
   if (!nearby) return null;
   const haystack = [fittedBody.toLowerCase()];
-  if (!mentionsActivity(haystack, nearby.title)) return null;
+  if (!namesInFull(haystack[0] as string, nearby.title)) return null;
   if (nearby.otherTitles.some((title) => mentionsActivity(haystack, title))) return null;
   return nearby.clause;
+}
+
+/** Every distinctive word of the title, and there has to be at least one — a title with
+ * none ("Drop-in class") is a title this cannot tell apart from an ordinary sentence. */
+function namesInFull(body: string, title: string): boolean {
+  const words = distinctiveWords(title);
+  return words.length > 0 && words.every((word) => body.includes(word));
 }
 
 /**
