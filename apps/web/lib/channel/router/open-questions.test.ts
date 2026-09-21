@@ -290,6 +290,8 @@ describe('the forwarding-address revoke confirm on the open list', () => {
 
   it('is read off its own source, dated by the ask row and marked solicited', async () => {
     const reader = createOpenQuestionReader({
+      weekdayCare: async () => null,
+      daycareFollowup: async () => null,
       pendingApprovals: async () => [],
       introOptInOpen: async () => false,
       introProposal: async () => null,

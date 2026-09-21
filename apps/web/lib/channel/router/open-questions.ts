@@ -131,7 +131,8 @@ export type OpenQuestionKind =
    * after "how is daycare going?" with one drafted action pending would have executed
    * that action.
    */
-  | 'daycare_followup';
+  | 'daycare_followup'
+  /**
    * "Turn off your forwarding address? ... Reply YES to turn it off, or ignore this." —
    * the confirm in front of a revoke (VIL-352 round 6, email/forward-request.ts).
    *
@@ -632,6 +633,10 @@ export interface OpenQuestionSources {
    * Per-PARENT, because the follow-up lane sends to one seat.
    */
   daycareFollowup(
+    database: Database,
+    input: { familyId: string; parentUserId: string; now: Date },
+  ): Promise<{ id: string; askedAt: Date } | null>;
+  /**
    * The forwarding-address revoke confirm this parent has not answered, or null
    * (VIL-352 round 6, email/forward-request.ts).
    *
@@ -857,6 +862,8 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           answerable: KIND_ANSWERABLE.daycare_followup,
           askedAt: daycareFollowup.askedAt,
           solicited: SOLICITED.daycare_followup,
+        });
+      }
       if (revokeConfirm) {
         questions.push({
           id: revokeConfirm.id,

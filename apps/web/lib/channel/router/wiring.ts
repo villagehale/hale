@@ -62,7 +62,6 @@ import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
 import { answeredOnTheSameChannel, eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
-import { eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
 import { forwardRevokeAsk } from '~/lib/channel/email/forward-request';
 import {
   approvalHandler,
