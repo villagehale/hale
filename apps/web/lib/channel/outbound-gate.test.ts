@@ -1,8 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   type OutboundGatePorts,
   PROACTIVE_CAP,
   PROACTIVE_CATEGORY,
+  holdStatus,
   PROACTIVE_QUIET_HOURS,
   assertProactiveSendAllowed,
 } from './outbound-gate.js';
@@ -550,5 +554,85 @@ describe('the watched-spot proactive classes', () => {
         ports({ recentSends: 4 }).ports,
       ),
     ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
+  });
+});
+
+describe('the travel brief class', () => {
+  /** 02:00 Toronto — inside the 21:00-08:00 proactive quiet window. */
+  const TWO_AM = new Date('2026-07-15T06:00:00.000Z');
+
+  it('never claims urgency — a trip next week is worth the same at 08:00', async () => {
+    // Kills URGENCY_ALLOWED.travel_brief = true. There is no version of "here is what is
+    // on in New York in seven days" that is worth waking a house for, and the exemption is
+    // read per CLASS so a sweep cannot reach it by setting a flag.
+    await expect(
+      assertProactiveSendAllowed(
+        {
+          familyId: FAMILY,
+          parentUserId: PARENT,
+          kind: 'travel_brief',
+          now: TWO_AM,
+          urgent: true,
+        },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+
+  it('holds the second trip inside one week, on a counter of its own', async () => {
+    // Kills PROACTIVE_CAP.travel_brief = null, which the two nulls above make an easy
+    // copy. The per-trip bound is the claim keyed on the trip id, so this counter only
+    // binds when something upstream went wrong — or in the one honest case the design
+    // names out loud, a household with two trips in one seven-day window.
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'travel_brief', now: MIDDAY },
+        ports({ recentSends: 1 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'travel_brief', now: MIDDAY },
+        ports({ recentSends: 0 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
+    expect(PROACTIVE_CAP.travel_brief).toEqual({ max: 1, windowHours: 24 * 7 });
+  });
+
+  it('counts apart from the inbox it was detected in', () => {
+    // Kills PROACTIVE_CATEGORY.travel_brief = 'email_alert', which would make three school
+    // emails silence a family's one travel text — and then read the inbox cap as spent by
+    // a message the alert path never sent.
+    expect(PROACTIVE_CATEGORY.travel_brief).toBe('travel_brief');
+  });
+});
+
+describe('holdStatus — one copy, beside the union it is keyed on', () => {
+  /**
+   * It was a module-private `Record` in `integrations/email-alert.ts` and AGAIN in
+   * `integrations/calendar-alert.ts`; the travel sweep needed a third, so it was hoisted
+   * here instead. A `Record` over `ProactiveHoldReason`, so a fifth hold reason cannot be
+   * added without choosing what its receipt says.
+   */
+  it('maps every hold reason to the suppression the ledger records', () => {
+    expect(holdStatus('quiet_hours')).toBe('suppressed_quiet_hours');
+    expect(holdStatus('frequency_cap')).toBe('suppressed_cap');
+    expect(holdStatus('not_enrolled')).toBe('suppressed_consent');
+    expect(holdStatus('no_watch_consent')).toBe('suppressed_consent');
+  });
+
+  it('is the ONLY copy left — the two alert files import it', () => {
+    // A private copy re-appearing is the drift this hoist exists to prevent, and it is not
+    // catchable by types: a second literal compiles perfectly.
+    const root = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '');
+    for (const file of [
+      'lib/integrations/email-alert.ts',
+      'lib/integrations/calendar-alert.ts',
+      'lib/travel/sweep.ts',
+    ]) {
+      const source = readFileSync(join(root, file), 'utf8');
+      expect(source, `${file} must not re-declare HOLD_STATUS`).not.toContain('HOLD_STATUS');
+      expect(source, `${file} must import holdStatus`).toContain('holdStatus');
+    }
   });
 });

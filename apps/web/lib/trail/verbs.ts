@@ -189,6 +189,7 @@ export const AUDIT_VERBS = [
   // ── the travel brief (v5) ───────────────────────────────────────────────
   'travel_trip_noticed',
   'travel_booking_passed_over',
+  'travel_brief_sent',
   // ── the forwarding door (VIL-352) ───────────────────────────────────────
   'email_forward_address_minted',
   'email_forward_address_revoke_asked',
@@ -645,6 +646,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   travel_booking_passed_over: {
     sentence: 'Hale saw a booking and left it alone',
     family: 'note',
+  },
+  // The text itself. 'done' rather than 'note': this row IS the interruption, and a parent
+  // reading the trail should see the thing that arrived on their phone and not a
+  // observation about it. The `after` payload carries two counts and nothing else - never
+  // the city, never the venues, never the dates.
+  travel_brief_sent: {
+    sentence: 'Hale texted you what is on where you are going',
+    family: 'done',
   },
   // The forwarding door. Every sentence says WHOSE decision it was, because the whole
   // rung is about a family deciding what Hale may read: only the arrival and the address

@@ -61,6 +61,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/activity/sweep.ts':
     'records via deliverFollowUp recordSend port (activity_followup category)',
   'apps/web/lib/channel/nudge/run.ts': 'records its own rows (nudge category)',
+  'apps/web/lib/travel/sweep.ts':
+    'records its own rows (travel_brief category) — the claim-first insert keyed travel_brief:<tripId> is written BEFORE the transport, and a hold writes its own keyed suppression row (travel_brief_hold:<tripId>:<reason>) instead',
   'apps/web/lib/channel/spots/sweep.ts': 'records its own rows (spot_open category)',
   'apps/web/lib/cron/connector-sync.ts':
     'the connector sweep wires both alert paths off one proactiveSendPorts(); every send is claimed and recorded before it reaches the transport — alertParentForEmail (email_alert category) and alertParentForCalendarChanges (calendar_alert category)',

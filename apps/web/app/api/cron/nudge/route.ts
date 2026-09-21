@@ -5,6 +5,7 @@ import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 import { runActivityFollowUpSweep } from '~/lib/channel/activity/sweep';
+import { runTravelBriefSweep } from '~/lib/travel/sweep';
 import { runEveningCheckInSweep } from '~/lib/channel/checkin/sweep';
 import { runPlanCheckInSweep } from '~/lib/channel/plan/check-in';
 import { runVillageIntroSweep } from '~/lib/village/intros/run';
@@ -56,6 +57,14 @@ export const maxDuration = 300;
  * rather than a preference (20:00 local, see EVENING_CHECK_IN_HOUR_LOCAL), so in any
  * given hour it selects a single band of timezones and does nothing for everyone else.
  *
+ * THE TRAVEL BRIEF rides here too, after the evening check-in and BEFORE the activity
+ * follow-up, which is the same ordering rule: a travel brief CHOOSES to interrupt, so it
+ * runs ahead of the one stage that discharges a debt. No new Vercel cron minute — this
+ * needs exactly the cadence the route already has, and vercel-crons.test.ts polices the
+ * schedule as a load profile. It has its OWN dark-launch flag (TRAVEL_BRIEF_ENABLED and
+ * its allowlist) on top of F14's, because arming the messaging surface for a household
+ * must not silently start reading that household's booking emails.
+ *
  * THE 08:00 RE-DRIVES ride here last of all — the contact card a family's intake owed
  * them, and the departure notice a co-parent's erasure owed the parent who stayed. They
  * are one leg in two halves and not two mechanisms: the same local hour, the same
@@ -85,6 +94,7 @@ export const GET = cronRoute('nudge', async () => {
     const followups = await runFollowupSweep(db());
     const planCheckIns = await runPlanCheckInSweep(db());
     const eveningCheckIns = await runEveningCheckInSweep(db());
+    const travelBriefs = await runTravelBriefSweep(db());
     const activityFollowUps = await runActivityFollowUpSweep(db());
     const welcomeCards = await runWelcomeCardRedrive(db(), { ports: welcomeCardRedrivePorts() });
     const departureNotices = await runDepartureNoticeRedrive(db(), {
@@ -103,6 +113,7 @@ export const GET = cronRoute('nudge', async () => {
         followups,
         planCheckIns,
         eveningCheckIns,
+        travelBriefs,
         activityFollowUps,
         welcomeCards,
         departureNotices,

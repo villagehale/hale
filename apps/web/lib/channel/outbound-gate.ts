@@ -104,7 +104,18 @@ export type ProactiveSendKind =
    * Unprompted by construction — the departing parent acted, the staying one did not —
    * so it belongs here rather than beside the departure receipt.
    */
-  | 'co_parent_departed';
+  | 'co_parent_departed'
+  /**
+   * A booking email said the family is going somewhere with the children, and a week
+   * before they go Hale texts a couple of things that are on there.
+   *
+   * THE LOWEST-FREQUENCY PROACTIVE CLASS IN THE PRODUCT, and the counter below is not the
+   * bound — the bound is the trip, held by a claim keyed on the trip id. What the counter
+   * is for is the OTHER failure: a detection pass that starts writing trips it should not
+   * would otherwise produce a text per phantom trip, and one a week is the most that bug
+   * can cost before it stops.
+   */
+  | 'travel_brief';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -113,6 +124,36 @@ export type ProactiveHoldReason =
   | 'no_watch_consent'
   | 'frequency_cap'
   | 'quiet_hours';
+
+/**
+ * WHICH SUPPRESSION THE LEDGER RECORDS, per hold — dispatch.ts's four statuses, chosen by
+ * the gate's four reasons.
+ *
+ * HOISTED HERE (v5 travel) from two module-private copies. It was a six-line
+ * `Record<ProactiveHoldReason, …>` in `integrations/email-alert.ts` and AGAIN in
+ * `integrations/calendar-alert.ts`, which is already one more than the rule allows before
+ * a shape is made unexpressible — and the travel sweep needed a third. It belongs beside
+ * the union it is keyed on, in the direction the imports already run (outbound-gate.ts
+ * imports `ledger`, never the other way), next to `acceptedStatus`'s mirror there.
+ *
+ * A `Record`, so a fifth hold reason cannot be added without choosing what its receipt
+ * says.
+ */
+export type ProactiveHoldStatus =
+  | 'suppressed_quiet_hours'
+  | 'suppressed_cap'
+  | 'suppressed_consent';
+
+export function holdStatus(reason: ProactiveHoldReason): ProactiveHoldStatus {
+  return HOLD_STATUS[reason];
+}
+
+const HOLD_STATUS: Record<ProactiveHoldReason, ProactiveHoldStatus> = {
+  quiet_hours: 'suppressed_quiet_hours',
+  frequency_cap: 'suppressed_cap',
+  not_enrolled: 'suppressed_consent',
+  no_watch_consent: 'suppressed_consent',
+};
 
 /**
  * `optOut` is the SECOND thing this gate decides, and it lives here for the same reason the
@@ -229,6 +270,15 @@ export const PROACTIVE_CAP: Record<
   // on that same pair. A counter over it could do only one thing the index cannot: drop
   // the notice for a household that had already heard something else this week.
   co_parent_departed: null,
+  // The trip brief. ONE A WEEK, and the number is chosen against the failure mode rather
+  // than against a travelling family: the per-trip bound is the claim keyed on the trip
+  // id, so this counter only ever binds when something upstream has gone wrong — or in the
+  // one honest case the design names out loud, a household with TWO trips inside one
+  // seven-day window, where the second is held as `frequency_cap` and either comes due
+  // again when the window rolls or closes `overtaken`. A family with two trips in a week
+  // is not the launch cohort, and raising the cap to serve them would raise it for every
+  // household.
+  travel_brief: { max: 1, windowHours: 24 * 7 },
 };
 
 /**
@@ -284,6 +334,9 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // theirs, and waking somebody at 23:00 to tell them their co-parent left is the
   // cruellest hour this message could pick.
   co_parent_departed: false,
+  // A brief about next week is worth exactly as much at 08:00. There is no version of
+  // "here is what is on in New York in seven days" that is worth waking a house for.
+  travel_brief: false,
 };
 
 /**
@@ -332,6 +385,7 @@ export const PROACTIVE_CATEGORY: Record<
   | 'calendar_alert'
   | 'evening_check_in'
   | 'co_parent_departed'
+  | 'travel_brief'
 > = {
   nudge: 'nudge',
   registration_sequence: 'registration_sequence',
@@ -345,6 +399,7 @@ export const PROACTIVE_CATEGORY: Record<
   calendar_alert: 'calendar_alert',
   evening_check_in: 'evening_check_in',
   co_parent_departed: 'co_parent_departed',
+  travel_brief: 'travel_brief',
 };
 
 export interface OutboundGatePorts {

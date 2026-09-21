@@ -136,6 +136,12 @@ const SMS_COPY_SOURCES = [
   'lib/party/tally.ts',
   'lib/village/intros/copy.ts',
   'lib/channel/rec-morning/copy.ts',
+  // The travel brief - the LONGEST deterministic proactive text in the product, at four
+  // segments against the full opt-out form. It is also the one whose body concatenates
+  // strings a VENUE wrote, so the composer's own words have the least headroom of any
+  // copy module here: one typographic dash in them and the whole text flips to UCS-2 and
+  // its budget halves.
+  'lib/travel/copy.ts',
   // The three receipts a Gmail alert's YES/NO gets. Its sibling email-alert.ts is NOT
   // here and cannot be: that file's whole job includes a fold table of the characters
   // GSM-7 lacks.
