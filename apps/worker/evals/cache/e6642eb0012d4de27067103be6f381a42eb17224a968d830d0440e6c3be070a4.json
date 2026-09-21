@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": false,
+    "confidence": 0.95,
+    "rationale": "Work email about a business project timeline; no connection to child's scheduled activity or appointment."
+  },
+  "latencyMs": 985
+}

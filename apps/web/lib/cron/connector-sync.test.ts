@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CALENDAR_ALERT_OUTCOMES } from '~/lib/integrations/calendar-alert';
-import { EMAIL_ALERT_OUTCOMES } from '~/lib/integrations/email-alert';
+import { BOOKING_OUTCOMES, EMAIL_ALERT_OUTCOMES } from '~/lib/integrations/email-alert';
 import { googleGetFetch, runConnectorSync } from './connector-sync';
 
 const NO_ALERTS = {
@@ -114,8 +114,21 @@ describe('runConnectorSync', () => {
       buildDeps: () => ({}) as never,
       syncOne: async (connection) =>
         connection.id === 'i1'
-          ? { ...NO_ALERTS, emailAlerts: ['sent', 'not_parenting', 'not_parenting'] as const }
-          : { ...NO_ALERTS, emailAlerts: ['dark', 'gate_refused:quiet_hours'] as const },
+          ? {
+              ...NO_ALERTS,
+              emailAlerts: [
+                { alert: 'sent', booking: 'recorded' },
+                { alert: 'not_parenting', booking: null },
+                { alert: 'not_parenting', booking: null },
+              ] as const,
+            }
+          : {
+              ...NO_ALERTS,
+              emailAlerts: [
+                { alert: 'dark', booking: null },
+                { alert: 'gate_refused:quiet_hours', booking: null },
+              ] as const,
+            },
     });
 
     expect(summary.emailAlerts).toMatchObject({
@@ -128,6 +141,36 @@ describe('runConnectorSync', () => {
     // dashboard reads as "never happens", which is a different claim from "did not today".
     expect(Object.keys(summary.emailAlerts).sort()).toEqual([...EMAIL_ALERT_OUTCOMES].sort());
     expect(Object.values(summary.emailAlerts).reduce((a, b) => a + b, 0)).toBe(5);
+  });
+
+  it('tallies bookings on their OWN axis, and counts nothing for an envelope that never got there', async () => {
+    // Two independent answers per envelope: whether a text went, and whether a place the
+    // family now holds was written down. `booking: null` means "the alert never reached
+    // the decision", which is already counted by name on the alert axis - folding it into
+    // a booking bucket would be a counter that means two things (rule #11).
+    const summary = await runConnectorSync({
+      listConnections: async () => [conn('i1', FAMILY_A)],
+      decryptTokens: decryptOk,
+      loadChildNames: async () => [],
+      buildDeps: () => ({}) as never,
+      syncOne: async () => ({
+        ...NO_ALERTS,
+        emailAlerts: [
+          { alert: 'sent', booking: 'recorded' },
+          { alert: 'sent', booking: 'teen_content' },
+          { alert: 'sent', booking: 'booked_dark' },
+          { alert: 'dark', booking: null },
+        ] as const,
+      }),
+    });
+
+    expect(summary.bookings).toMatchObject({ recorded: 1, teen_content: 1, booked_dark: 1 });
+    // Three envelopes reached the decision; the fourth never did.
+    expect(Object.values(summary.bookings).reduce((a, b) => a + b, 0)).toBe(3);
+    expect(Object.values(summary.emailAlerts).reduce((a, b) => a + b, 0)).toBe(4);
+    // Every named outcome present as a zero rather than absent — a missing key reads as
+    // "never happens", which is a different claim from "did not today".
+    expect(Object.keys(summary.bookings).sort()).toEqual([...BOOKING_OUTCOMES].sort());
   });
 
   it('tallies calendar outcomes on their OWN counter, never the inbox one', async () => {
@@ -153,7 +196,7 @@ describe('runConnectorSync', () => {
                 'pending_outside_window',
               ] as const,
             }
-          : { ...NO_ALERTS, emailAlerts: ['sent'] as const },
+          : { ...NO_ALERTS, emailAlerts: [{ alert: 'sent', booking: null }] as const },
     });
 
     expect(summary.calendarAlerts).toMatchObject({
@@ -195,7 +238,7 @@ describe('runConnectorSync', () => {
       buildDeps: () => ({}) as never,
       syncOne: async (connection) => {
         if (connection.id === 'i2') throw new Error('boom');
-        return { ...NO_ALERTS, emailAlerts: ['sent'] as const };
+        return { ...NO_ALERTS, emailAlerts: [{ alert: 'sent', booking: null }] as const };
       },
     });
     expect(summary.emailAlerts.sent).toBe(1);

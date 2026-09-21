@@ -57,7 +57,7 @@ const TRIAGE_TOOL_SCHEMA = {
 const EXTRACT_TOOL_SCHEMA = {
   type: 'object',
   properties: {
-    kind: { type: 'string', enum: ['cancellation', 'reschedule', 'new_event', 'reminder_only', 'unclear'] },
+    kind: { type: 'string', enum: ['cancellation', 'reschedule', 'new_event', 'reminder_only', 'unclear', 'booking_confirmation'] },
     event: {
       type: 'object',
       properties: {

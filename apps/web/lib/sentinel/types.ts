@@ -28,7 +28,17 @@ export interface FamilyChildRef {
   ageInMonths: number;
 }
 
-export type ExtractionKind = 'cancellation' | 'reschedule' | 'new_event' | 'reminder_only' | 'unclear';
+export type ExtractionKind =
+  | 'cancellation'
+  | 'reschedule'
+  | 'new_event'
+  | 'reminder_only'
+  | 'unclear'
+  /** A provider confirming this family now HOLDS a place — a registration receipt, an
+   * enrolment confirmation. Distinguished from `new_event` by who is being told what: an
+   * announcement tells a community that a thing exists, a confirmation tells one family
+   * that they are in it. */
+  | 'booking_confirmation';
 
 /** The typed extraction event fields (ticket's `event` sub-object). */
 export interface ExtractedEvent {
@@ -66,6 +76,18 @@ export interface SentinelClassification {
     sourceConfidence: number;
     quoteEvidence: string | null;
     teenContent: boolean;
+    /**
+     * A 13+ child is the SUBJECT of this extraction — resolved from `event.childRef`
+     * against the family's own children and their ages, with no model flag in it.
+     *
+     * Separate from `teenContent`, which carries a deliberate carve-out: a confident
+     * logistics notice about a teen stays un-redacted, because a parent should be told
+     * their 15-year-old's practice was cancelled. That carve-out is about a SENTENCE.
+     * Anything that writes a teen's activity down and acts on it later reads THIS instead
+     * — a booking Hale would ask about in four days is not a sentence that has been said
+     * and is over.
+     */
+    teenAttributed: boolean;
     matchedEventRef: CorrelatedEventRef | null;
   } | null;
   usage: {

@@ -121,6 +121,7 @@ import {
 } from './coach-channel-fixtures.mjs';
 import { menuShape } from './coach-channel-menu-gate.mjs';
 import { inventedName } from './coach-channel-name-gate.mjs';
+import { VOICE_TELLS } from './coach-channel-voice-tells.mjs';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
@@ -199,18 +200,10 @@ const PRIVATE_EVENT_WHAT = 'A private calendar item';
  * tightened by one: nothing in this corpus needs a fourth sentence. */
 const MAX_SENTENCES = 3;
 
-/**
- * The habits the skill bans, as regexes — an assistant sign-off, an invitation to come
- * back, and Hale narrating its own plumbing. Each is a specific sentence the skill names
- * and a specific thing a parent does not want in a text.
- */
-const VOICE_TELLS = [
-  [/\b(?:reach out|feel free|don'?t hesitate)\b/i, 'signs off like an assistant'],
-  [/\blet me know\b/i, 'ends on a generic "let me know"'],
-  [/\bhappy to help\b/i, 'chirpy filler'],
-  [/\b(?:i can only|more than i can|in one message|my limit)\b/i,
-    'explains its own limits instead of the parent\'s week'],
-];
+/* VOICE_TELLS — the habits the skill and the register both ban, imported above. It is a
+ * sibling module for the same reason the menu gate is: the four register classes added
+ * with docs/voice.md fire on no fixture in this corpus, so the only thing that can prove
+ * they are live is a test that feeds them the sentences they exist to catch. */
 
 const NOW = new Date(FIXTURE_NOW);
 

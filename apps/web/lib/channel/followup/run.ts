@@ -23,6 +23,7 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import type { ReminderChild } from '~/lib/loop/templates/reminder/payload';
 import { discoverableUserIds } from '~/lib/village/intros/consent';
+import { readDueBookings } from '~/lib/integrations/booking';
 import {
   type DaycareSubject,
   type WeekdayCareFact,
@@ -206,11 +207,28 @@ export interface DueIntro {
   introducedAt: Date;
 }
 
-/** A Hale-placed calendar item whose start time has passed. Carries exactly the fields
- * `isPrivateEvent` reads, plus the title the ask renders. */
+/**
+ * Something that happened, old enough to ask about. Carries exactly the fields
+ * `isPrivateEvent` reads, plus the title the ask renders and the parent it goes to.
+ *
+ * `ref` rather than a bare `eventId`, mirroring `CorrelatedEventRef`, because there are
+ * now two sources: a calendar row Hale PLACED, and a booking a provider CONFIRMED. The
+ * dedupe key and the audit row both key on it, and uuids do not collide across tables, so
+ * a placement's key is byte-identical to what it was before this union existed.
+ *
+ * `parentUserId` IS THE ITEM'S, NEVER THE FAMILY'S, and that is the whole reason it is on
+ * this interface. The alert texts the CONNECTING user (`integrations.user_id`) and the
+ * offer is answerable only by them, but this sweep used to send to the family's
+ * `primary_parent`: co-parent B's Gmail would have produced a question on primary parent
+ * A's phone, one to four days after a class A may not know B registered for. Neither
+ * parent consented to that crossing (rule #5, D13), and Hale's own doctrine — ask about
+ * what it SAW — says it saw this in B's mailbox. Any future reader added to the union
+ * that returns `family.parentUserId` re-opens it silently.
+ */
 export interface DueActivity {
-  eventId: string;
+  ref: { table: 'family_events' | 'activity_bookings'; id: string };
   familyId: string;
+  parentUserId: string;
   title: string;
   startsAt: Date;
   childId: string | null;
@@ -260,7 +278,10 @@ export interface FollowupSweepDeps {
    * latest-row-wins. Reused verbatim from the intros lane so the two can never disagree
    * about what "opted out" means. */
   discoverableUserIds(database: Database, userIds: readonly string[]): Promise<Set<string>>;
-  loadDueActivities(database: Database, familyId: string, now: Date): Promise<DueActivity[]>;
+  /** THE FAMILY, not just its id: a placement's parent is the household's primary and a
+   * booking's is the mailbox the receipt arrived in, so the reader needs both to answer
+   * (rule #5). */
+  loadDueActivities(database: Database, family: FollowupFamily, now: Date): Promise<DueActivity[]>;
   /**
    * VIL-360 · the daycare answers this family gave inside the window, SUPERSEDED ONES
    * INCLUDED, and the live picture to compare them against.
@@ -606,7 +627,7 @@ async function runActivityFollowups(
 
   for (const family of families) {
     try {
-      const due = await deps.loadDueActivities(database, family.familyId, now);
+      const due = await deps.loadDueActivities(database, family, now);
       if (due.length === 0) continue;
       const children = await deps.loadChildren(database, family.familyId);
 
@@ -628,19 +649,32 @@ async function runActivityFollowups(
 
         const outcome = await sendFollowup(database, deps, {
           familyId: family.familyId,
-          parentUserId: family.parentUserId,
+          // THE ITEM'S OWN PARENT, never the family's primary. See DueActivity.
+          parentUserId: event.parentUserId,
           ask: { kind: 'activity', activity: event.title },
           // Anchored at the event's own start, so the scan asks "did they say anything
           // about this SINCE it happened" — a mention from before it is a plan, not a
           // report, and suppressing on one would drop the follow-up for every activity
           // the family had ever discussed.
+          //
+          // FAMILY-SCOPED ON PURPOSE, even though the send is now per-parent: for a
+          // co-parent's booking, the primary parent's words can suppress the ask. That is
+          // the correct direction — this screen can only ever send FEWER texts, and the
+          // messages are family-scoped in the ledger already. A "fix" to a per-parent read
+          // would start asking twice.
           alreadyDiscussed: async () =>
             mentionsActivity(
               await deps.loadInboundSince(database, family.familyId, event.startsAt),
               event.title,
             ),
           templateKey: ACTIVITY_FOLLOWUP_ASK_TEMPLATE_KEY,
-          dedupeKey: activityFollowupAskDedupeKey(event.eventId),
+          // BYTE-IDENTICAL for a placement, where `ref.id` IS the event id: nothing
+          // already claimed is re-asked across this refactor. A booking's key is its own
+          // uuid, and uuids do not collide across tables, so the key space needs no
+          // prefix — and the review capture that reads this key back resolves a booking
+          // id against `family_events`, finds nothing, and counts `no_placing_action`
+          // before any model sees a word.
+          dedupeKey: activityFollowupAskDedupeKey(event.ref.id),
           now,
         });
         if (!tally(result, outcome)) continue;
@@ -650,8 +684,8 @@ async function runActivityFollowups(
           familyId: family.familyId,
           actor: 'system',
           actionTaken: 'followup_activity_asked',
-          targetTable: 'family_events',
-          targetId: event.eventId,
+          targetTable: event.ref.table,
+          targetId: event.ref.id,
           // The title is NOT recorded. It is family calendar content, the audit row
           // already points at the row that holds it, and a trail that copies content
           // is a second place to leak it from (rule #1).
@@ -868,13 +902,14 @@ async function readDueIntros(database: Database, now: Date): Promise<DueIntro[]>
  * `deleted_at IS NULL` is the not-cancelled test: `calendar_cancel` soft-deletes the
  * placement rather than erasing it, so a live row is one that was never called off.
  */
-async function readDueActivities(
+async function readDuePlacements(
   database: Database,
   familyId: string,
+  parentUserId: string,
   now: Date,
 ): Promise<DueActivity[]> {
   const { floor, latest } = activityFollowupWindow(now);
-  return database
+  const rows = await database
     .select({
       eventId: schema.familyEvents.id,
       familyId: schema.familyEvents.familyId,
@@ -894,6 +929,65 @@ async function readDueActivities(
       ),
     )
     .orderBy(asc(schema.familyEvents.startsAt));
+  return rows.map((row) => ({
+    ref: { table: 'family_events', id: row.eventId },
+    familyId: row.familyId,
+    // A PLACEMENT'S parent is the family's, and that is not a default slipping through:
+    // Hale placed it from an artifact the household approved, so there is no mailbox it
+    // came from. A BOOKING's parent is the booking's own — see readDueBookings.
+    parentUserId,
+    title: row.title,
+    startsAt: row.startsAt,
+    childId: row.childId,
+    sensitive: row.sensitive,
+  }));
+}
+
+/**
+ * The two things Hale may ask how it went about — what it PLACED, and what a provider
+ * CONFIRMED — as one list, oldest first.
+ *
+ * A booking whose YES placed a `source='parent'` row is invisible to the placement reader
+ * (which filters `source='placement'`), and a booking matched to a placement is excluded
+ * by `readDueBookings` so the placement reader owns it. One ask, not two, and not zero.
+ */
+async function readDueActivities(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+  now: Date,
+): Promise<DueActivity[]> {
+  const window = activityFollowupWindow(now);
+  const [placements, bookings] = await Promise.all([
+    readDuePlacements(database, familyId, parentUserId, now),
+    readDueBookings(database, familyId, window),
+  ]);
+  const fromBookings: DueActivity[] = bookings.map((booking) => ({
+    ref: { table: 'activity_bookings', id: booking.bookingId },
+    familyId: booking.familyId,
+    // THE ITEM'S OWN PARENT — whose mailbox the receipt arrived in (rule #5).
+    parentUserId: booking.parentUserId,
+    title: booking.title,
+    startsAt: booking.firstSessionAt,
+    // A booking binds no child, for the reason the offer path gives: `childRef` is
+    // suggestive and never a binding, and a guess here would be a guess handed to the
+    // teen age gate. A teen's confirmation writes no booking row at all, which is what
+    // makes the null safe rather than permissive.
+    childId: null,
+    // `sensitive` is a column `family_events` carries and `activity_bookings` does not, so
+    // a booking reaches `isPrivateEvent` as an ordinary class and that screen can only
+    // ever pass it. Said plainly rather than implied: a health-flavoured receipt that
+    // clears triage IS asked about. The bound is that it goes to the parent who already
+    // received a text naming the same title, and the voice is handed that title and
+    // nothing else - and closing it properly needs a sensitivity signal the extraction
+    // contract does not carry today, not a default invented here.
+    sensitive: false,
+  }));
+  // Oldest first across BOTH sources: with one slot a day, the item closest to falling
+  // out of its window is the one worth spending it on.
+  return [...placements, ...fromBookings].sort(
+    (a, b) => a.startsAt.getTime() - b.startsAt.getTime(),
+  );
 }
 
 async function readFollowupChildren(
@@ -931,7 +1025,8 @@ export function defaultFollowupSweepDeps(): FollowupSweepDeps {
     selectFamilies: (database) => selectFollowupFamilies(database),
     loadDueIntros: readDueIntros,
     discoverableUserIds,
-    loadDueActivities: readDueActivities,
+    loadDueActivities: (database, family, now) =>
+      readDueActivities(database, family.familyId, family.parentUserId, now),
     loadDaycareSubjects,
     loadWeekdayCare,
     loadChildren: readFollowupChildren,

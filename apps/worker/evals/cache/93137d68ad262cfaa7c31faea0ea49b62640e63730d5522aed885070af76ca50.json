@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The voice demonstrates calm and faithfulness across all components. The greeting \"Here's your week ahead.\" opens warmly in proper sentence case. The weekFraming accurately names the two most notable supplied items (Sadie's checkup and Rowan's appointment) in just two sentences without inventing details or adding unsupported health claims. ItemLines are brief, appropriate framings that don't restate times/dates—line 0 acknowledges the milestone meaningfully, line 1 respectfully acknowledges Rowan's privacy by not specifying the appointment type. The sign-off \"Have a good week.\" is warm and measured. No alarming tone, no invented details, no diagnosis or medical specifics beyond item titles, and all information is directly supported by the supplied items."
+  }
+}

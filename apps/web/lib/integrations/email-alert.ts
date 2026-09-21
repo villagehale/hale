@@ -20,7 +20,18 @@ import type {
   InboxEnvelope,
   SentinelClassification,
 } from '~/lib/sentinel';
-import { type EmailAlertOfferDraft, recordEmailAlertOffer } from './email-alert-offer';
+import { bookedDetectionEnabledFor } from './booked';
+import {
+  bookingCancellationKey,
+  bookingDraft,
+  closeCancelledBookings,
+  recordActivityBooking,
+} from './booking';
+import {
+  type EmailAlertOfferDraft,
+  recordEmailAlertOffer,
+  withdrawEmailAlertOffer,
+} from './email-alert-offer';
 
 /**
  * A parenting email in a connected Gmail becomes ONE text to the parent.
@@ -77,6 +88,11 @@ export interface GmailAlertEnvelope {
 export const EMAIL_ALERT_OUTCOMES = [
   'sent',
   'not_parenting',
+  // This sweep had ALREADY read the provider calling this exact class off, and a batch is
+  // read newest first — so the receipt is the older email and there is nothing true left
+  // to say about it. Its own name rather than silence, because "Hale chose not to speak"
+  // is a fact about a mailbox and a counter is the only place it is recorded.
+  'cancelled_in_sweep',
   'already_sent',
   'dark',
   'no_parent_user',
@@ -99,6 +115,56 @@ export type EmailAlertCounts = Record<EmailAlertOutcome, number>;
 
 export function emptyEmailAlertCounts(): EmailAlertCounts {
   return Object.fromEntries(EMAIL_ALERT_OUTCOMES.map((o) => [o, 0])) as EmailAlertCounts;
+}
+
+/**
+ * Every way one envelope can end as a BOOKING (rule #11) — a second, independent axis
+ * beside the outcome above, because "the alert never got that far" and "the booking was
+ * refused" are two facts about one envelope.
+ *
+ * `booked_dark` and not `dark`: `EmailAlertOutcome.dark` already means F14, and two
+ * counters called `dark` in one cron summary is a number nobody can read.
+ *
+ * `record_failed` is a CAUGHT write failure — the text went out, the row did not. It is
+ * NOT the same as an uncaught throw in the post-send stretch, which the sweep records as
+ * `alert_failed` and which would skip the thread and the alert's own audit row, leaving a
+ * parent's thread the coach reads a reply to with nothing above it.
+ */
+export const BOOKING_OUTCOMES = [
+  'recorded',
+  'already_recorded',
+  'booked_dark',
+  'not_a_booking',
+  // The model's own flag, and the child's date of birth. Two counters, because which of
+  // the two teen gates is actually holding the line is the thing worth being able to read.
+  'teen_content',
+  'teen_attributed',
+  'no_first_session',
+  'below_confidence',
+  // The vendor named no class Hale can repeat. The text still went, in Hale's own words.
+  'no_title',
+  'record_failed',
+] as const;
+
+export type BookingOutcome = (typeof BOOKING_OUTCOMES)[number];
+
+export type BookingCounts = Record<BookingOutcome, number>;
+
+export function emptyBookingCounts(): BookingCounts {
+  return Object.fromEntries(BOOKING_OUTCOMES.map((o) => [o, 0])) as BookingCounts;
+}
+
+/**
+ * One envelope's two answers.
+ *
+ * `booking: null` for every envelope that never reached the booking decision — `dark`,
+ * `already_sent`, `not_parenting`, the four holds, `no_send_target`, `send_failed`. NOT a
+ * booking outcome meaning "n/a": a bucket that means two things is the counter rule #11
+ * exists to prevent.
+ */
+export interface EmailAlertResult {
+  alert: EmailAlertOutcome;
+  booking: BookingOutcome | null;
 }
 
 /** At most this many messages per connection per sweep reach the classifier, newest
@@ -148,6 +214,17 @@ export interface EmailAlertInput {
   integrationId: string;
   messageId: string;
   envelope: { subject: string; from: string; snippet: string; receivedAt: string };
+  /**
+   * WHAT THIS SWEEP HAS ALREADY BEEN TOLD IS OFF — {@link bookingCancellationKey} per
+   * cancellation read so far, written by this function and read by it.
+   *
+   * Required rather than optional, and a caller's own Set rather than one minted here: a
+   * batch is read newest first, so the cancellation reaches the closer BEFORE the receipt
+   * it cancels exists in the table, and the only thing that can carry that fact the few
+   * milliseconds forward is the loop that owns both envelopes. A default would make the
+   * hole re-openable by forgetting an argument.
+   */
+  cancelledThisSweep: Set<string>;
   timeZone: string;
   now: Date;
 }
@@ -156,15 +233,15 @@ export async function alertParentForEmail(
   database: Database,
   input: EmailAlertInput,
   ports: EmailAlertPorts,
-): Promise<EmailAlertOutcome> {
+): Promise<EmailAlertResult> {
   const { familyId, parentUserId, integrationId, messageId, now } = input;
-  if (!f14EnabledFor(familyId)) return 'dark';
+  if (!f14EnabledFor(familyId)) return { alert: 'dark', booking: null };
 
   const dedupeKey = emailAlertDedupeKey(integrationId, messageId);
   // Read BEFORE the classifier, not only via the claim below: a re-fired sweep over a
   // mailbox it has already read must cost nothing, and the claim happens after two model
   // calls have already been paid for.
-  if (await dedupeActive(dedupeKey, database)) return 'already_sent';
+  if (await dedupeActive(dedupeKey, database)) return { alert: 'already_sent', booking: null };
 
   let classification: SentinelClassification;
   try {
@@ -186,11 +263,62 @@ export async function alertParentForEmail(
       { familyId, err: err instanceof Error ? err.constructor.name : 'unknown' },
       'email alert: the sentinel could not read this message - no text, and the key is unspent',
     );
-    return 'classifier_failed';
+    return { alert: 'classifier_failed', booking: null };
   }
 
   const extraction = classification.extraction;
-  if (classification.status !== 'classified' || extraction === null) return 'not_parenting';
+  if (classification.status !== 'classified' || extraction === null) {
+    return { alert: 'not_parenting', booking: null };
+  }
+
+  // ONE read of the flag per envelope, threaded into every call below rather than read
+  // again: the closer, the sentence and the row it promises must be built from the same
+  // answer.
+  const booked = bookedDetectionEnabledFor(familyId);
+
+  // THE PROVIDER CANCELLED IT, so Hale stops holding it — and this runs ABOVE THE GATE,
+  // which is the whole point of where it sits. A hold returns before every post-send line,
+  // and the Gmail cursor advanced past this message the moment the sweep read it, so
+  // nothing will offer it again: a closer placed after the send would leave a 23:40
+  // cancellation permanently unread and the follow-up asking, four days later, how a class
+  // the provider called off went. Closing a booking is not speaking to anybody, so the
+  // chokepoint has no say in it.
+  //
+  // ONE KEY, TWO USES: the closer matches the table on it, and the sweep remembers it.
+  const cancellationKey = bookingCancellationKey(
+    input.envelope.from,
+    sanitizedTitle(extraction.event.title),
+  );
+  if (booked && extraction.kind === 'cancellation') {
+    await closeBookingsFor(database, {
+      familyId,
+      from: input.envelope.from,
+      title: extraction.event.title,
+      now,
+    });
+    // ...AND THE REST OF THIS SWEEP HEARS ABOUT IT. The closer above can only stamp rows
+    // that already exist, and the receipt for this class may still be three envelopes
+    // away — older, therefore read later.
+    if (cancellationKey !== null) input.cancelledThisSweep.add(cancellationKey);
+  }
+
+  // A RECEIPT FOR A CLASS THIS SWEEP HAS ALREADY BEEN TOLD IS OFF. Nothing true is left to
+  // say: the batch is newest-first, so this email is older than the cancellation, and
+  // "you're in for Swim Level 2" would contradict a text this same run put on the same
+  // phone. No text, no CTA, no offer row, no booking — the suppression sits ABOVE the gate
+  // and above the claim so none of the three is minted for a message nobody is told about.
+  if (
+    booked &&
+    extraction.kind === 'booking_confirmation' &&
+    cancellationKey !== null &&
+    input.cancelledThisSweep.has(cancellationKey)
+  ) {
+    console.warn(
+      { familyId },
+      'email alert: a receipt for a class this sweep already read the cancellation of - staying quiet',
+    );
+    return { alert: 'cancelled_in_sweep', booking: null };
+  }
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'email_alert', now });
   if (!verdict.allowed) {
@@ -213,7 +341,7 @@ export async function alertParentForEmail(
       status: HOLD_STATUS[verdict.reason],
     });
     console.warn({ familyId, reason: verdict.reason }, 'email alert: held by the outbound gate');
-    return `gate_refused:${verdict.reason}`;
+    return { alert: `gate_refused:${verdict.reason}`, booking: null };
   }
 
   const message = renderEmailAlert({
@@ -222,6 +350,7 @@ export async function alertParentForEmail(
     event: extraction.event,
     teenContent: extraction.teenContent,
     matchedEventRef: extraction.matchedEventRef,
+    booked,
     timeZone: input.timeZone,
     now,
   });
@@ -232,6 +361,7 @@ export async function alertParentForEmail(
     event: extraction.event,
     teenContent: extraction.teenContent,
     matchedEventRef: extraction.matchedEventRef,
+    booked,
     now,
   });
 
@@ -252,7 +382,7 @@ export async function alertParentForEmail(
     })
     .onConflictDoNothing()
     .returning({ id: schema.channelMessages.id });
-  if (!claimed) return 'already_sent';
+  if (!claimed) return { alert: 'already_sent', booking: null };
 
   const to = await ports.resolvePhone(database, parentUserId);
   if (!to) {
@@ -268,7 +398,7 @@ export async function alertParentForEmail(
       { familyId, parentUserId },
       'email alert: the gate allowed a parent with no sendable number',
     );
-    return 'no_send_target';
+    return { alert: 'no_send_target', booking: null };
   }
 
   let providerMessageId: string;
@@ -284,7 +414,7 @@ export async function alertParentForEmail(
       .set({ status: 'failed', errorCode: code })
       .where(eq(schema.channelMessages.id, claimed.id));
     console.error({ familyId, code }, 'email alert: the provider refused the text');
-    return 'send_failed';
+    return { alert: 'send_failed', booking: null };
   }
 
   await database
@@ -310,6 +440,28 @@ export async function alertParentForEmail(
     });
   }
 
+  // THE BOOKING, in the same post-send stretch and for the same reason: the evidence is
+  // the provider's receipt, not the parent's reply, so it is written at DETECTION rather
+  // than on the YES — a parent who keeps their own calendar says NO and is still booked.
+  //
+  // IN ITS OWN CATCH, and that is the difference between `record_failed` being a real
+  // outcome and an unreachable one. An uncaught throw here becomes `alert_failed` at the
+  // sweep's boundary and SKIPS the thread and the audit below — leaving a parent's thread
+  // that the coach reads a reply to with nothing above it. The text went out; the row not
+  // landing must not take the two receipts for it down as well.
+  const booking = await recordBooking(database, {
+    familyId,
+    parentUserId,
+    integrationId,
+    messageId,
+    channelMessageId: claimed.id,
+    from: input.envelope.from,
+    extraction,
+    message,
+    booked,
+    now,
+  });
+
   // The composed sentence, not the wire body — the CASL line belongs on the wire, and
   // the coach re-reads this row next turn (channel/thread.ts).
   await ports.threadMessage(database, { familyId, parentUserId, body: message });
@@ -325,7 +477,151 @@ export async function alertParentForEmail(
     after: { kind: extraction.kind, teenContent: extraction.teenContent },
   });
 
-  return 'sent';
+  return { alert: 'sent', booking };
+}
+
+/**
+ * A provider's cancellation, applied to what this family still holds from that provider.
+ *
+ * ONE AUDIT ROW PER BOOKING CLOSED, carrying ONE FLAG. The verb, the table and the target
+ * id say everything else true here; the title is the email, and an audit row a support
+ * agent reads is a table that is never redacted (rule #1), so `targetId` points at the row
+ * that holds the name and nothing is copied. `offerWithdrawn` is there because a second
+ * thing happened — a standing question was taken down — and an effect nobody can read in
+ * the trail is an effect nobody can audit (rule #11).
+ *
+ * The sender goes over WHOLE and is folded to a host inside `closeCancelledBookings`, by
+ * the same private function that wrote the row's host — so a cancellation is matched on
+ * exactly the domain the booking was written with. The title goes through `sanitizedTitle`
+ * for the same reason: it is the fold the stored title already took, and comparing a raw
+ * vendor string against a folded one is a match that silently never fires.
+ *
+ * AND IT TAKES THE CALENDAR OFFER DOWN WITH IT. The receipt wrote two rows — a booking and
+ * a standing "Want it on your calendar?" — and closing only the first leaves a YES that
+ * still places the cancelled class, reminders and all. One email, one identity
+ * (connection, message), both rows.
+ */
+async function closeBookingsFor(
+  database: Database,
+  input: { familyId: string; from: string; title: string; now: Date },
+): Promise<void> {
+  const closed = await closeCancelledBookings(database, {
+    familyId: input.familyId,
+    from: input.from,
+    title: sanitizedTitle(input.title),
+    now: input.now,
+  });
+  for (const booking of closed) {
+    const offer = await withdrawEmailAlertOffer(database, {
+      integrationId: booking.integrationId,
+      messageId: booking.messageId,
+      now: input.now,
+    });
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'activity_booking_cancelled',
+      targetTable: 'activity_bookings',
+      targetId: booking.id,
+      after: { offerWithdrawn: offer === 'withdrawn' },
+    });
+  }
+}
+
+/**
+ * The booking decision, the write and its own audit row — everything after the send that
+ * belongs to this feature, behind one boundary.
+ *
+ * THE AUDIT ROW CARRIES ONE BOOLEAN. `provider_host` is the sender's domain, and this
+ * module's own rule for `after` is "enums and flags only — not the title, NOT THE SENDER,
+ * not the subject", because an audit row a support agent can read is a copy of the email
+ * in a table that is never redacted. `markham.ca` beside a family id is the sender in that
+ * table, and it is the provider identity D13 calls the family's business. `offered` is the
+ * one fact the trail actually needs: did the parent get a CTA with this. `targetId`
+ * already points at the row that holds the host.
+ */
+async function recordBooking(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    integrationId: string;
+    messageId: string;
+    channelMessageId: string;
+    from: string;
+    extraction: NonNullable<SentinelClassification['extraction']>;
+    message: string;
+    booked: boolean;
+    now: Date;
+  },
+): Promise<BookingOutcome> {
+  if (!input.booked) return 'booked_dark';
+  const { extraction } = input;
+  const draft = bookingDraft({
+    kind: extraction.kind,
+    event: extraction.event,
+    from: input.from,
+    teenContent: extraction.teenContent,
+    teenAttributed: extraction.teenAttributed,
+    sourceConfidence: extraction.sourceConfidence,
+    matchedEventRef: extraction.matchedEventRef,
+    // The VENDOR's own name for the class, through the renderer's own fold — so the row
+    // and the message can never name the class differently — but NOT through its
+    // `|| GENERIC_TITLE` fallback: those words are the object of the sentence, not a name,
+    // and `bookingDraft` refuses an email that leaves nothing behind them.
+    title: sanitizedTitle(extraction.event.title),
+    // The same fold the offer row's place goes through, and the same function.
+    location: foldedPlace(extraction.event.location),
+    now: input.now,
+  });
+  if (!draft.ok) return draft.reason;
+
+  let recorded: Awaited<ReturnType<typeof recordActivityBooking>>;
+  try {
+    recorded = await recordActivityBooking(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      integrationId: input.integrationId,
+      messageId: input.messageId,
+      channelMessageId: input.channelMessageId,
+      draft: draft.draft,
+    });
+  } catch (err) {
+    // The CLASS only — a rejection here can carry a title or an address in its message
+    // (rule #1).
+    console.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.constructor.name : 'unknown' },
+      'email alert: the text went out and the booking row did not - the ask will not happen',
+    );
+    return 'record_failed';
+  }
+
+  // Rule #6, and only for the pass that actually wrote it: a conflicted redrive changed
+  // nothing, and audit_log is append-only, so a second row would be a second claim.
+  //
+  // OUTSIDE the catch above, deliberately. `record_failed` means "the text went, the row
+  // did not"; a failure here is the opposite — the row is there and the ask WILL happen —
+  // so reporting it as a missing booking would be a counter saying the opposite of the
+  // table. It propagates instead, exactly as this module's own `email_alert_sent` audit
+  // already does.
+  if (recorded.bookingId !== null) {
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'activity_booking_recorded',
+      targetTable: 'activity_bookings',
+      targetId: recorded.bookingId,
+      after: { offered: input.message.endsWith(BOOKING_CTA) },
+    });
+  }
+  return recorded.outcome;
+}
+
+/** The title the renderer put on the wire: the vendor's own, folded, or Hale's words when
+ * that survives sanitising as nothing at all. ONE definition, read by the sentence and by
+ * the row. */
+function renderedTitle(raw: string, kind: ExtractionKind): string {
+  return sanitizedTitle(raw) || GENERIC_TITLE[kind];
 }
 
 export interface GmailSweepAlertInput {
@@ -353,24 +649,33 @@ export async function alertParentForGmailSweep(
   database: Database,
   input: GmailSweepAlertInput,
   ports: EmailAlertPorts,
-): Promise<readonly EmailAlertOutcome[]> {
+): Promise<readonly EmailAlertResult[]> {
   const { parentUserId, envelopes } = input;
-  if (parentUserId === null) return envelopes.map(() => 'no_parent_user');
-  if (input.seeding) return envelopes.map(() => 'seeding_run');
+  if (parentUserId === null) {
+    return envelopes.map(() => ({ alert: 'no_parent_user', booking: null }));
+  }
+  if (input.seeding) return envelopes.map(() => ({ alert: 'seeding_run', booking: null }));
 
-  const outcomes: EmailAlertOutcome[] = [];
+  const outcomes: EmailAlertResult[] = [];
   const dated: Array<GmailAlertEnvelope & { receivedAt: string }> = [];
   for (const envelope of envelopes) {
-    if (envelope.receivedAt === undefined) outcomes.push('no_received_at');
+    if (envelope.receivedAt === undefined)
+      outcomes.push({ alert: 'no_received_at', booking: null });
     else dated.push({ ...envelope, receivedAt: envelope.receivedAt });
   }
   dated.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
-  for (let i = EMAIL_ALERT_MAX_PER_SWEEP; i < dated.length; i += 1) outcomes.push('over_sweep_cap');
+  for (let i = EMAIL_ALERT_MAX_PER_SWEEP; i < dated.length; i += 1) {
+    outcomes.push({ alert: 'over_sweep_cap', booking: null });
+  }
 
   const considered = dated.slice(0, EMAIL_ALERT_MAX_PER_SWEEP);
   if (considered.length === 0) return outcomes;
 
   const timeZone = await ports.timeZone(parentUserId);
+  // ONE SET FOR THE WHOLE BATCH. The sort above is what makes it sound: every envelope
+  // read after a cancellation is OLDER than that cancellation, so a receipt that lands in
+  // this set is a receipt the provider has since called off.
+  const cancelledThisSweep = new Set<string>();
   for (const envelope of considered) {
     outcomes.push(
       await alertParentForEmail(
@@ -386,6 +691,7 @@ export async function alertParentForGmailSweep(
             snippet: envelope.snippet,
             receivedAt: envelope.receivedAt,
           },
+          cancelledThisSweep,
           timeZone,
           now: input.now,
         },
@@ -406,8 +712,26 @@ export interface EmailAlertRenderInput {
   /** The family occasion this email already matched, or null. It decides whether the text
    * may END with an offer — see {@link emailAlertOfferDraft}. */
   matchedEventRef: CorrelatedEventRef | null;
+  /** Whether BOOKED DETECTION is armed for this family (lib/integrations/booked.ts).
+   * Dark, a `booking_confirmation` is rendered and offered as a `new_event` in every
+   * respect — see {@link effectiveKind}. */
+  booked: boolean;
   timeZone: string;
   now: Date;
+}
+
+/**
+ * THE KIND THE SENTENCE AND THE OFFER ARE BUILT FROM.
+ *
+ * One subtraction rather than three gates. Dark, `booking_confirmation` simply IS
+ * `new_event` here: it picks the same frame, the same CTA, the same generic title and
+ * the same offered instant, so the flag-off body is byte-identical to what that email
+ * produces today by construction rather than by three branches that have to agree. The
+ * kind itself never changes — it stays in `EXTRACTION_KINDS` in both states, because a
+ * flag that changed what the model may return would re-key the eval cache on every flip.
+ */
+function effectiveKind(kind: ExtractionKind, booked: boolean): ExtractionKind {
+  return kind === 'booking_confirmation' && !booked ? 'new_event' : kind;
 }
 
 /** The clamps that keep the composed body inside TWO GSM-7 segments once the full
@@ -459,7 +783,9 @@ const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
  *     nobody would write.
  *   · The family must not already TRACK it (`matchedEventRef`). A reschedule of a class
  *     Hale already holds would be placed beside the old one — two copies of one Saturday,
- *     from a text that promised to tidy it.
+ *     from a text that promised to tidy it. This is also what stops a REGISTRATION
+ *     RECEIPT for a class the family already has being offered a second time, and it is
+ *     reachable for a booking only because `correlate.ts` maps the kind to a time.
  *
  * Everything else ends with today's sentence, and that is still the common case.
  */
@@ -468,19 +794,34 @@ export function emailAlertOfferDraft(input: {
   event: ExtractedEvent;
   teenContent: boolean;
   matchedEventRef: CorrelatedEventRef | null;
+  booked: boolean;
   now: Date;
 }): EmailAlertOfferDraft | null {
   if (input.teenContent || input.matchedEventRef !== null) return null;
-  const startsAt = instant(OFFERED_TIME[input.kind](input.event));
+  const kind = effectiveKind(input.kind, input.booked);
+  const startsAt = instant(OFFERED_TIME[kind](input.event));
   if (startsAt === null || startsAt.getTime() <= input.now.getTime()) return null;
   const title = sanitizedTitle(input.event.title);
   if (title === '') return null;
-  // The extraction's own place, folded and clamped like everything else this file keeps:
-  // the row's strings reach a wire later, in a reminder. Unlike {@link venue}, a digit is
-  // allowed — a room number on your own calendar is the useful half of an address, and
-  // that rule is about what goes out in a text, not about what the family holds.
-  const place = clamp(gsm7(input.event.location ?? ''), TITLE_MAX);
-  return { kind: input.kind, title, startsAt, location: place === '' ? null : place };
+  const place = foldedPlace(input.event.location);
+  // The EFFECTIVE kind on the row too, so a dark booking is a `new_event` offer in the
+  // ledger exactly as it is on the wire — and so a lit one is the thing `stampBookingEvent`
+  // can recognise when the parent says yes.
+  return { kind, title, startsAt, location: place };
+}
+
+/**
+ * The place as a ROW keeps it — folded and clamped like everything else this file writes
+ * down, because these strings reach a wire later, in a reminder or in an ask.
+ *
+ * ONE function, read by the offer row and by the booking row, so the two rows born from
+ * one email can never hold the place differently. Unlike {@link venue} a digit is allowed:
+ * a room number on your own calendar is the useful half of an address, and that rule is
+ * about what goes out in a text rather than about what the family holds.
+ */
+function foldedPlace(location: string | null): string | null {
+  const place = clamp(gsm7(location ?? ''), TITLE_MAX);
+  return place === '' ? null : place;
 }
 
 /** WHICH time field is the occasion, per kind. A move's destination, a new date's date,
@@ -490,6 +831,9 @@ const OFFERED_TIME: Record<ExtractionKind, (event: ExtractedEvent) => string | n
   new_event: (event) => event.newTime,
   reschedule: (event) => event.newTime,
   reminder_only: (event) => event.originalTime,
+  // The first session. This entry is the whole of what makes the YES path work for a
+  // booking: the offer, the row and the placement are the ones that already exist.
+  booking_confirmation: (event) => event.newTime,
   cancellation: () => null,
   unclear: () => null,
 };
@@ -501,6 +845,38 @@ const OFFERED_TIME: Record<ExtractionKind, (event: ExtractedEvent) => string | n
  * because by then the parent has written (email-alert-offer.ts). */
 const OFFER_CTA = 'Reply YES and it goes on your week.';
 
+/**
+ * The booking's own ending. A receipt has already told the parent they are in, so
+ * "Reply YES and it goes on your week" would answer a question they did not ask; what is
+ * genuinely open is the calendar.
+ *
+ * IT CLEARS THE CLAIM TAXONOMY, and that is checked rather than assumed:
+ * `SCHEDULED_ASSERTION` (channel/reconcile/claims.ts) matches `is/are/'s/'re on your
+ * calendar` — a copula immediately before the phrase — and this sentence has none. The
+ * email-alert path does not run `refuseUnbackedSend`, so this is a copy discipline the
+ * module's suite pins rather than a gate that would catch it.
+ */
+const BOOKING_CTA = 'Want it on your calendar?';
+
+/**
+ * WHICH ENDING, per kind — and the reason this is a Record and not a constant.
+ *
+ * `renderEmailAlert` appends a CTA if and only if `emailAlertOfferDraft` returned a
+ * draft, which is exactly when a row will be written. That single line is what stops a
+ * question ever being asked with nothing behind it (#649), so the booking's question
+ * lives HERE and never inside `compose`: a frame that carried it would ask it in every
+ * draft-null case, and after the correlation fix the most common such case is precisely
+ * the booking for a class the family already holds.
+ */
+const CTA: Record<ExtractionKind, string> = {
+  cancellation: OFFER_CTA,
+  reschedule: OFFER_CTA,
+  new_event: OFFER_CTA,
+  reminder_only: OFFER_CTA,
+  unclear: OFFER_CTA,
+  booking_confirmation: BOOKING_CTA,
+};
+
 /** What the sentence says when it has nothing specific, per kind — the fallback when a
  * vendor title survives sanitising as nothing at all (a subject line entirely outside the
  * Latin alphabet). Hale's own words, so the message is still true, and each one is
@@ -511,6 +887,10 @@ const GENERIC_TITLE: Record<ExtractionKind, string> = {
   new_event: 'a new date',
   reminder_only: 'there is something coming up',
   unclear: 'a possible schedule change',
+  // A lowercase noun phrase, not the pipeline's standalone sentence of the same name:
+  // this one is written to read as the OBJECT of its frame — "Riverside Pool says you're
+  // in for a spot - first one Saturday, Sep 26 at 9:00 a.m."
+  booking_confirmation: 'a spot',
 };
 
 /**
@@ -526,25 +906,28 @@ const GENERIC_TITLE: Record<ExtractionKind, string> = {
  * a verb, and no offer at the end (see above).
  */
 export function renderEmailAlert(input: EmailAlertRenderInput): string {
-  const title = sanitizedTitle(input.event.title);
+  const kind = effectiveKind(input.kind, input.booked);
+  const title = renderedTitle(input.event.title, kind);
 
   if (input.teenContent) {
     // Category only. The pipeline has already replaced the title with its own generic
     // line; dropping the sender and the time is this renderer's half of the same rule,
     // because who wrote and when are the disclosure a 13+ child is owed protection from.
-    return `${title || GENERIC_TITLE[input.kind]}. ${TEEN_CLOSER}`;
+    return `${title}. ${TEEN_CLOSER}`;
   }
 
   const body = compose(
     input,
+    kind,
     clamp(gsm7(senderLabel(input.from)), SENDER_MAX).replace(TRAILING_PUNCTUATION, ''),
-    title || GENERIC_TITLE[input.kind],
+    title,
   );
   // The offer, decided by the one function that also decides whether the row gets
   // written. Appended AFTER `compose`, never inside it: every frame in there ends through
   // `end()`, and a clause spliced before that would put Hale's own offer inside the
-  // vendor's sentence.
-  return emailAlertOfferDraft(input) === null ? body : `${body} ${OFFER_CTA}`;
+  // vendor's sentence. The ENDING is per kind (see {@link CTA}) and the condition is not:
+  // a question is asked if and only if a row will exist to keep it.
+  return emailAlertOfferDraft(input) === null ? body : `${body} ${CTA[kind]}`;
 }
 
 /**
@@ -561,11 +944,16 @@ function sanitizedTitle(raw: string): string {
 }
 
 /** One sentence per kind, and they are all the same sentence: who, what, when. */
-function compose(input: EmailAlertRenderInput, sender: string, title: string): string {
+function compose(
+  input: EmailAlertRenderInput,
+  kind: ExtractionKind,
+  sender: string,
+  title: string,
+): string {
   const { event, timeZone, now } = input;
   const at = (iso: string | null): string | null => longWhen(iso, timeZone, now);
 
-  switch (input.kind) {
+  switch (kind) {
     case 'cancellation': {
       const { text: head } = changeHead(sender, title, CHANGE.cancellation);
       const was = at(event.originalTime);
@@ -597,10 +985,28 @@ function compose(input: EmailAlertRenderInput, sender: string, title: string): s
       // a dash standing in for the verb ("says Pediatric checkup - Saturday").
       const relayed = VERBISH.test(title);
       const head = sender === '' ? title : `${sender} ${relayed ? 'says' : 'has'} ${title}`;
-      const on = at(input.kind === 'new_event' ? event.newTime : event.originalTime);
-      const place = input.kind === 'new_event' ? venue(event.location) : '';
+      const on = at(kind === 'new_event' ? event.newTime : event.originalTime);
+      const place = kind === 'new_event' ? venue(event.location) : '';
       const when = on === null ? '' : relayed ? ` - ${on}` : ` on ${on}`;
       return end(`${head}${place}${when}`);
+    }
+    case 'booking_confirmation': {
+      // THE PROVIDER IS THE SUBJECT, as in every other frame here, and that is what keeps
+      // Hale from asserting a thing it did not see: the receipt says the family is in, so
+      // the sentence says the receipt says it. "you're in" clears SCHEDULED_ASSERTION
+      // where "you're registered" and "is confirmed" do not (claims.ts).
+      //
+      // IT ENDS WITH A PERIOD AND CONTAINS NO QUESTION. The question is the CTA, appended
+      // one level up and only when a row will exist behind it.
+      //
+      // The title is relayed flat — no "says X is open" grammar to weld onto — because a
+      // confirmation's title is the CLASS ("Swim Level 2"), not a sentence about it.
+      const head = sender === '' ? title : `${sender} says you're in for ${title}`;
+      const first = at(event.newTime);
+      if (first === null) return end(head);
+      // The place LAST, after the instant, unlike the new_event frame: what a parent
+      // reading a receipt needs first is which session is the first one.
+      return end(`${head} - first one ${first}${venue(event.location)}`);
     }
     case 'unclear':
       return end(

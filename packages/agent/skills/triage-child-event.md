@@ -18,16 +18,25 @@ envelope.
 
 ## The question
 
-`child_related`: would this email, if fully read, plausibly describe a change to
+`child_related`: would this email, if fully read, plausibly describe or confirm
 a specific dated occasion in a child's week — a class or appointment being
-cancelled or moved, a new invite or event, or a reminder about one already
-scheduled? Think cancellations, reschedules, invites (Evite/Paperless Post/e-vite
-patterns), picture day, recital/practice notices, appointment reminders.
+cancelled or moved, a new invite or event, a reminder about one already
+scheduled, or a confirmation that the child now HAS A PLACE in one? Think
+cancellations, reschedules, invites (Evite/Paperless Post/e-vite patterns),
+picture day, recital/practice notices, appointment reminders, and registration
+or enrolment confirmations from a rec centre, pool, camp, school or club
+("you're registered", "your spot is confirmed", "enrolment confirmed"),
+including ones formatted as a receipt.
 
 Answer `false` for: newsletters and general updates with no single dated
 change, marketing/promotional email (even if it mentions "kids" or "family"),
-work/unrelated mail, shipping/order notifications, policy or handbook updates,
-and anything with no plausible connection to a child's schedule.
+work/unrelated mail, shipping and delivery notifications for GOODS (a parcel,
+an order of clothing or equipment), policy or handbook updates, and anything
+with no plausible connection to a child's schedule. A receipt confirming a
+place in a dated program is NOT a shipping/order notification, however much it
+is formatted like one — answer `true`. A purchase confirmation with no dated
+occasion behind it (a membership renewal, a gift card, a newsletter
+subscription) is still `false`.
 
 ## Output contract
 

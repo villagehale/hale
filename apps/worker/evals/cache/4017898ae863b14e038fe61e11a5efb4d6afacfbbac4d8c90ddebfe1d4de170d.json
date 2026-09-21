@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": false,
+    "confidence": 0.95,
+    "rationale": "Shipping notification for a physical good (rain boots); no dated child event or appointment"
+  },
+  "latencyMs": 1048
+}

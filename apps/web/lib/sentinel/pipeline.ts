@@ -47,7 +47,31 @@ const GENERIC_TITLE: Record<ExtractionKind, string> = {
   new_event: 'A new event was mentioned',
   reminder_only: 'A reminder about a scheduled activity',
   unclear: 'A possible schedule change',
+  booking_confirmation: 'A registration notice',
 };
+
+/**
+ * THE DETERMINISTIC HALF, and the only fact a date of birth can answer on its own: does
+ * this extraction attribute itself to a child who is 13+?
+ *
+ * No model flag, no kind, no confidence — just the childRef the extraction chose and the
+ * child's age. It is computed here rather than at each consumer because `childRef` is an
+ * id and resolving it needs the family's children, which only this stage holds; and it is
+ * SEPARATE from `teenContent` below because the two answer different questions. Teen
+ * CONTENT is "is this a 13+ child's personal correspondence, which must be redacted before
+ * a parent sees it" — a probabilistic call with a deliberate carve-out for logistics. Teen
+ * ATTRIBUTION is "is a 13+ child the subject of this at all", which is exactly the floor a
+ * write that outlives the message needs: a booking Hale will act on a week later must not
+ * be held about a teenager, carve-out or no carve-out.
+ */
+function resolveTeenAttributed(
+  childRef: string | null,
+  children: readonly FamilyChildRef[],
+): boolean {
+  if (childRef === null) return false;
+  const child = children.find((c) => c.id === childRef);
+  return child !== undefined && stageFromAgeInMonths(child.ageInMonths) === 'teenager';
+}
 
 /**
  * Rule #1 backstop: the extraction's own `teen_content` is a probabilistic
@@ -58,18 +82,19 @@ const GENERIC_TITLE: Record<ExtractionKind, string> = {
  * is deliberately NOT forced true, per the ticket's explicit carve-out: school/
  * logistics notices about a teen are fine to surface with full detail. Only
  * genuine ambiguity defaults to the more restrictive read.
+ *
+ * THAT CARVE-OUT IS ABOUT A SENTENCE, NOT ABOUT A ROW. Anything that persists a teen's
+ * activity past the text reads {@link resolveTeenAttributed} instead — see
+ * `bookingDraft`, whose two refusals are this flag and that one.
  */
 function resolveTeenContent(
   llmFlag: boolean,
   kind: ExtractionKind,
   sourceConfidence: number,
-  childRef: string | null,
-  children: readonly FamilyChildRef[],
+  teenAttributed: boolean,
 ): boolean {
   if (llmFlag) return true;
-  if (childRef === null) return false;
-  const child = children.find((c) => c.id === childRef);
-  if (!child || stageFromAgeInMonths(child.ageInMonths) !== 'teenager') return false;
+  if (!teenAttributed) return false;
   return kind === 'unclear' || sourceConfidence < CONFIDENCE_FLOOR;
 }
 
@@ -107,12 +132,12 @@ export async function classifyChildEventEmail(
     deps.client,
   );
 
+  const teenAttributed = resolveTeenAttributed(extracted.event.childRef, deps.children);
   const teenContent = resolveTeenContent(
     extracted.teenContent,
     extracted.kind,
     extracted.sourceConfidence,
-    extracted.event.childRef,
-    deps.children,
+    teenAttributed,
   );
 
   const matchedEventRef = correlateExtraction(
@@ -140,6 +165,7 @@ export async function classifyChildEventEmail(
       sourceConfidence: extracted.sourceConfidence,
       quoteEvidence: teenContent ? null : extracted.quoteEvidence,
       teenContent,
+      teenAttributed,
       matchedEventRef,
     },
     usage: { triage: triage.usage, extract: extracted.usage },

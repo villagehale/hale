@@ -6,9 +6,9 @@
 //
 // Categories, each covered at least twice per the ticket's corpus spec:
 // cancellations, reschedules, e-vites (Evite/Paperless Post patterns), picture
-// day, doctor reminders, daycare newsletters (noise), promo spam mentioning
-// "kids" (hard negatives), French-language notices, and the teen personal-vs-
-// logistics line.
+// day, doctor reminders, registration confirmations, daycare newsletters
+// (noise), promo spam mentioning "kids" (hard negatives), French-language
+// notices, and the teen personal-vs-logistics line.
 
 export const RECEIVED_AT = '2026-07-20T09:00:00Z'; // a Monday
 export const FAMILY_TIMEZONE = 'America/Toronto';
@@ -150,6 +150,45 @@ export const FIXTURES = [
     },
     body: 'Hi!\n\nWe had so much fun last time — would love to set up a playdate at Riverside Park this Saturday, July 25th at 3:00 PM if you\'re free. Let me know!\n\nJenny',
     expected: { triagePositive: true, kind: 'new_event', requiresNewTime: true, expectedChildRef: null },
+  },
+
+  // ── registration confirmations ──────────────────────────────────────────
+  // The kind triage can silently kill: a municipal receipt reads as an order
+  // notification, and the negative list used to say so in those words. Each of
+  // these asserts the TRIAGE answer as well as the kind, because a confirmation
+  // dropped at stage one is a feature that passes every test below it.
+  {
+    id: 'booking-municipal-rec-receipt',
+    envelope: {
+      subject: 'Registration Confirmation #RC-88214 — Leo Tremblay',
+      from: 'City of Brookfield Recreation <noreply@recreation.brookfield.example.ca>',
+      snippet: 'Thank you for your registration. Preschool Swim Level 2, Saturdays 9:00 AM, begins August 1. Total paid: $96.00.',
+    },
+    body: 'Thank you for your registration.\n\nConfirmation number: RC-88214\nParticipant: Leo Tremblay\nProgram: Preschool Swim Level 2\nSessions: Saturdays 9:00 AM - 9:45 AM, August 1 to September 19, 2026\nLocation: Brookfield Leisure Centre, Pool 2\nTotal paid: $96.00 (Visa ending 4412)\n\nPlease arrive ten minutes early for the first class. Withdrawals are accepted up to seven days before the session start.\n\nCity of Brookfield Recreation',
+    expected: { triagePositive: true, kind: 'booking_confirmation', requiresNewTime: true, expectedChildRef: 'leo' },
+  },
+  {
+    id: 'booking-swim-school-enrolment',
+    envelope: {
+      subject: "You're in! Fall session enrolment confirmed",
+      from: 'Sunnybrook Swim School <registrar@sunnybrookswim.example.com>',
+      snippet: "Leo's spot in Level 3 is confirmed. First class Tuesday, September 8th at 4:30 PM.",
+    },
+    body: "Hi there,\n\nGreat news - Leo's spot in Level 3 is confirmed for our fall session. First class is Tuesday, September 8th at 4:30 PM at the Sunnybrook pool, and the session runs ten weeks.\n\nNo further action needed. See you in September!\n\nSunnybrook Swim School",
+    expected: { triagePositive: true, kind: 'booking_confirmation', requiresNewTime: true, expectedChildRef: 'leo' },
+  },
+  {
+    // THE HARD NEGATIVE, and the one the 0.7 floor alone would not stop. It uses
+    // the exact confirmation vocabulary and confirms nothing dated: a booking
+    // written from it becomes "how did the fall newsletter go?" on a Tuesday.
+    id: 'booking-negative-newsletter-signup',
+    envelope: {
+      subject: "You're registered! Welcome to the Parenting Weekly list",
+      from: 'Parenting Weekly <newsletter@parentingweekly.example.com>',
+      snippet: "You're registered for our newsletter — your first issue arrives this Friday.",
+    },
+    body: "Welcome!\n\nYou're registered for the Parenting Weekly newsletter. Your first issue arrives this Friday, and every Friday after that. You can unsubscribe at any time from the link at the bottom of any issue.\n\nParenting Weekly",
+    expected: { triagePositive: false },
   },
 
   // ── hard negatives / noise ─────────────────────────────────────────────

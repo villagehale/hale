@@ -1,0 +1,36 @@
+{
+  "response": {
+    "id": "msg_011CfG3p7GWEfdhz3kRomnDb",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EsYDCpABCBIYAipANEAvcCSnUmJuI5w1lWDCgdCQVN8IKCLnFSLtIEKJplwwgkZH0Ode8XDIPA0yGnWxrFKPQBIpVQ8Cz5B2YCntEjIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAfqGw9UGEgzP8lCASfwn8NHgJgEaDEGrYA5HK+2UmPvxniIwnlxnbH/x/W/3K64pPEAC4lvUxZVvaYfSVHN4L+QYrXfPp2EhPm2IQGZ7Drw9Chz2KuIBh6nc2n3U4UOGSw+JWbmAlGPUkdp/FvVwt/uP3xKj/xyeTZezxKFVMIst7cgl6uKt0HmiSHpxrNv06ODmLVsgQS8zLXRbhG9J3oknczuLQHjSq7ObvaehBwFELqeeBvaJQG84o9ZC0WlAUIAIahN5BNzAJN+w/KaQGyjO8vx3AdMWR/beNcMzudDxrs4UgI6iB58n4vxMl0FI1aOWoZ2D3njtEjGeCVdLXJARfP3SgnsWGFUEYP+Xt9UpBR8FtopfkOdukaXyrD645Xw3Etq5ZoEFuqG0XwyOMOVf8cGKsqj9XBgB"
+      },
+      {
+        "type": "text",
+        "text": "I don't have a gymnastics class on file to add - nothing's come up in what I've checked for your area. What's the class called and when does it run?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 634,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18182,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 116,
+      "output_tokens_details": {
+        "thinking_tokens": 70
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

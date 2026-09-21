@@ -5,6 +5,7 @@ import { SENT_STATUSES } from '~/lib/channel/ledger';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractionKind } from '~/lib/sentinel';
+import { stampBookingEvent } from './booking';
 
 /**
  * THE YES AT THE END OF AN EMAIL ALERT — the row it lands in, and what it does.
@@ -126,6 +127,12 @@ export interface OpenEmailAlertOffer {
   title: string;
   startsAt: Date;
   location: string | null;
+  /** WHICH EMAIL this offer came from — the pair that is also the identity of the
+   * `activity_bookings` row born from the same message, which is how the placement stamps
+   * the event onto the booking without a third id threaded through the router. The select
+   * below was already a full-row `select()`; these two were simply dropped by the mapper. */
+  integrationId: string;
+  messageId: string;
   /** The event this offer already placed, or null — see the column's own note. */
   eventId: string | null;
   /** When the alert that carried the offer went out. The open-question reader's recency
@@ -169,6 +176,8 @@ export async function loadOpenEmailAlertOffers(
     title: row.title,
     startsAt: row.startsAt,
     location: row.location,
+    integrationId: row.integrationId,
+    messageId: row.messageId,
     eventId: row.eventId,
     askedAt: row.createdAt,
   }));
@@ -344,6 +353,66 @@ async function placeOfferedEvent(
       after: { kind: offer.kind },
     });
   }
+
+  // THE BOOKING THIS EMAIL ALSO WROTE, now on the calendar. Two rows from one email, so
+  // the (connection, message) pair addresses both and no third id crosses the router.
+  //
+  // `no_booking` is the ORDINARY answer for the other five kinds and for a booking the
+  // flag was dark for — nothing to stamp. For a `booking_confirmation` offer it is an
+  // inconsistency: the same post-send stretch wrote both rows, so the booking should be
+  // there. Logged rather than swallowed, and never thrown: the parent's event is already
+  // placed and the receipt is already owed (rule #11).
+  const stamped = await stampBookingEvent(database, {
+    integrationId: offer.integrationId,
+    messageId: offer.messageId,
+    eventId,
+  });
+  if (stamped === 'no_booking' && offer.kind === 'booking_confirmation') {
+    console.error(
+      { familyId: input.familyId, offerId: offer.id },
+      'email alert offer: a booking offer was placed with no booking row to stamp - the follow-up ask will not happen',
+    );
+  }
+}
+
+/**
+ * THE PROVIDER CALLED THE CLASS OFF, so the question Hale asked about it is no longer
+ * answerable — stop the offer standing.
+ *
+ * WHY THIS EXISTS. The offer stands for a day, and a cancellation that lands in hour three
+ * leaves the last live path from a called-off class to the family's calendar wide open: a
+ * parent reading their texts at bedtime says YES to the morning's "Want it on your
+ * calendar?", and `placeOfferedEvent` writes the `family_events` row, the converger
+ * schedules two reminders for it and the weekly plan prints it — a class Hale's own text
+ * said was off.
+ *
+ * BY EXPIRY, NOT BY RESOLUTION, and that is the honest shape rather than a convenient one.
+ * `expires_at` is documented as "when the offer stops being answerable", applied at the one
+ * reader, which is exactly what happened here. A resolution would be a lie in the other
+ * direction: the vocabulary is `added | declined`, the parent did neither, and the table's
+ * own CHECK makes a resolution without the outbound message that carried it unwritable —
+ * because a resolution is something Hale TOLD the parent, and nothing is told here.
+ *
+ * Guarded on still-open and still-standing so a redrive withdraws once and an offer the
+ * parent already answered is left exactly as they left it.
+ */
+export async function withdrawEmailAlertOffer(
+  database: Database,
+  input: { integrationId: string; messageId: string; now: Date },
+): Promise<'withdrawn' | 'nothing_standing'> {
+  const withdrawn = await database
+    .update(schema.emailAlertOffers)
+    .set({ expiresAt: input.now })
+    .where(
+      and(
+        eq(schema.emailAlertOffers.integrationId, input.integrationId),
+        eq(schema.emailAlertOffers.messageId, input.messageId),
+        isNull(schema.emailAlertOffers.resolvedAt),
+        gt(schema.emailAlertOffers.expiresAt, input.now),
+      ),
+    )
+    .returning({ id: schema.emailAlertOffers.id });
+  return withdrawn.length > 0 ? 'withdrawn' : 'nothing_standing';
 }
 
 /**

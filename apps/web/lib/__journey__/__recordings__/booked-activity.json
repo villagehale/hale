@@ -1,0 +1,64 @@
+{
+  "f21c8b80108afed8156242b8022161fd59ed453d0d61ba7ea7b56f70940881d2": {
+    "key": "f21c8b80108afed8156242b8022161fd59ed453d0d61ba7ea7b56f70940881d2",
+    "recordedAt": "2026-09-20T21:28:46.116Z",
+    "request": {
+      "model": "claude-haiku-4-5",
+      "userMessage": "{\"envelope\":{\"subject\":\"Registration Confirmation #RC-88214 — Leo Tremblay\",\"from\":\"City of Brookfield Recreation <noreply@recreation.brookfield.example.ca>\",\"snippet\":\"Thank you for your registration. Preschool Swim Level 2, Saturdays 9:00 AM, begins August 1. Total paid: $96.00.\"},\"children\":[\"Leo\",\"Maya\"]}"
+    },
+    "response": {
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "transcoded-triage",
+          "name": "triage",
+          "input": {
+            "child_related": true,
+            "confidence": 0.98,
+            "rationale": "Registration confirmation for a dated, recurring child program (Preschool Swim Level 2, Saturdays 9:00 AM starting August 1) from an official rec centre"
+          }
+        }
+      ],
+      "stop_reason": "tool_use",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  },
+  "e796ca10c42d1a854aad5648e67125e6d49d6f954012a2b23459aff94372ca0f": {
+    "key": "e796ca10c42d1a854aad5648e67125e6d49d6f954012a2b23459aff94372ca0f",
+    "recordedAt": "2026-09-20T21:28:46.117Z",
+    "request": {
+      "model": "claude-sonnet-5",
+      "userMessage": "{\"email\":{\"subject\":\"Registration Confirmation #RC-88214 — Leo Tremblay\",\"from\":\"City of Brookfield Recreation <noreply@recreation.brookfield.example.ca>\",\"body\":\"Thank you for your registration.\\n\\nConfirmation number: RC-88214\\nParticipant: Leo Tremblay\\nProgram: Preschool Swim Level 2\\nSessions: Saturdays 9:00 AM - 9:45 AM, August 1 to September 19, 2026\\nLocation: Brookfield Leisure Centre, Pool 2\\nTotal paid: $96.00 (Visa ending 4412)\\n\\nPlease arrive ten minutes early for the first class. Withdrawals are accepted up to seven days before the session start.\\n\\nCity of Brookfield Recreation\"},\"received_at\":\"2026-07-20T09:00:00Z\",\"family_timezone\":\"America/Toronto\",\"children\":[{\"id\":\"child-leo\",\"name\":\"Leo\",\"ageInMonths\":60},{\"id\":\"child-maya\",\"name\":\"Maya\",\"ageInMonths\":168}]}"
+    },
+    "response": {
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "transcoded-extraction",
+          "name": "extraction",
+          "input": {
+            "event": {
+              "title": "Preschool Swim Level 2",
+              "child_ref": "child-leo",
+              "original_time": null,
+              "new_time": "2026-08-01T09:00:00-04:00",
+              "location": "Brookfield Leisure Centre, Pool 2"
+            },
+            "kind": "booking_confirmation",
+            "source_confidence": 0.95,
+            "quote_evidence": "Sessions: Saturdays 9:00 AM - 9:45 AM, August 1 to September 19, 2026",
+            "teen_content": false
+          }
+        }
+      ],
+      "stop_reason": "tool_use",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  }
+}

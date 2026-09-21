@@ -67,6 +67,13 @@ function fakeDb(args: {
     lastAnsweredAt: Date | null;
   };
   checkInNotes?: { notedOn: string; note: string; expiresAt: Date }[];
+  bookings?: {
+    title: string;
+    firstSessionAt: Date;
+    providerHost: string;
+    eventId: string | null;
+    cancelledAt: Date | null;
+  }[];
   activityReviews?: {
     subjectSource: 'place' | 'civic_venue';
     subjectRef: string;
@@ -115,6 +122,11 @@ function fakeDb(args: {
     return { orderBy: vi.fn().mockResolvedValue(args.watches ?? []) };
   });
 
+  const bookingsWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue(args.bookings ?? []) };
+  });
+
   const checkInPrefsWhere = vi.fn((cond: unknown) => {
     whereFamilyIds.push(cond);
     return {
@@ -134,8 +146,8 @@ function fakeDb(args: {
 
   // Route each select to the right terminal by call order: family, children,
   // members, the village-saves join, this parent's assistant grants, the registration
-  // preparation join, the watched spots, the evening check-in prefs and notes, then the
-  // household's activity verdicts.
+  // preparation join, the watched spots, the activity bookings, the evening check-in
+  // prefs and notes, then the household's activity verdicts.
   let selectCall = 0;
   const select = vi.fn(() => {
     const which = selectCall++;
@@ -146,8 +158,9 @@ function fakeDb(args: {
     if (which === 4) return { from: () => ({ innerJoin: () => ({ where: assistantsWhere }) }) };
     if (which === 5) return { from: () => ({ innerJoin: () => ({ where: preparationsWhere }) }) };
     if (which === 6) return { from: () => ({ where: watchesWhere }) };
-    if (which === 7) return { from: () => ({ where: checkInPrefsWhere }) };
-    if (which === 8) return { from: () => ({ where: checkInNotesWhere }) };
+    if (which === 7) return { from: () => ({ where: bookingsWhere }) };
+    if (which === 8) return { from: () => ({ where: checkInPrefsWhere }) };
+    if (which === 9) return { from: () => ({ where: checkInNotesWhere }) };
     return { from: () => ({ where: activityReviewsWhere }) };
   });
 
@@ -404,6 +417,82 @@ describe('assembleFamilyExport', () => {
     expect(serialized).not.toContain('positive pregnancy test');
   });
 
+  it('carries the classes this family signed up for, with the host and no receipt detail', async () => {
+    // A booking is a fact Hale HOLDS and acts on a week later, so a right-to-access copy
+    // without it omits the thing Hale is doing on the family's behalf. The host and not
+    // the address; no confirmation number, no amount, no child, because the table has no
+    // column for any of them.
+    const { db } = fakeDb({
+      family: FAMILY,
+      children: [],
+      members: [],
+      bookings: [
+        {
+          title: 'Swim Level 2',
+          firstSessionAt: new Date('2026-09-26T13:00:00Z'),
+          providerHost: 'recreation.brookfield.example.ca',
+          eventId: null,
+          cancelledAt: null,
+        },
+        {
+          title: 'Fall soccer',
+          firstSessionAt: new Date('2026-10-03T14:00:00Z'),
+          providerHost: 'riversidesoccer.example.com',
+          eventId: 'e7f0f0cc-0000-4000-8000-000000000001',
+          cancelledAt: null,
+        },
+        // THE PROVIDER CALLED IT OFF. Without `cancelledAt` a right-to-access copy reads
+        // as a place this family still holds, which is a fact about them that is no
+        // longer true - and the one Hale itself stopped acting on.
+        {
+          title: 'Winter skating',
+          firstSessionAt: new Date('2026-12-05T15:00:00Z'),
+          providerHost: 'recreation.brookfield.example.ca',
+          eventId: null,
+          cancelledAt: new Date('2026-11-20T18:30:00Z'),
+        },
+      ],
+    });
+
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+    });
+
+    expect(doc.activityBookings).toEqual([
+      {
+        title: 'Swim Level 2',
+        firstSessionAt: '2026-09-26T13:00:00.000Z',
+        providerHost: 'recreation.brookfield.example.ca',
+        addedToCalendar: false,
+        cancelledAt: null,
+      },
+      {
+        title: 'Fall soccer',
+        firstSessionAt: '2026-10-03T14:00:00.000Z',
+        providerHost: 'riversidesoccer.example.com',
+        addedToCalendar: true,
+        cancelledAt: null,
+      },
+      {
+        title: 'Winter skating',
+        firstSessionAt: '2026-12-05T15:00:00.000Z',
+        providerHost: 'recreation.brookfield.example.ca',
+        addedToCalendar: false,
+        cancelledAt: '2026-11-20T18:30:00.000Z',
+      },
+    ]);
+    // Present-and-empty for a family with none, so a parent can tell "Hale holds none of
+    // this" from "Hale did not look".
+    const { db: empty } = fakeDb({ family: FAMILY, children: [], members: [] });
+    await expect(
+      assembleFamilyExport(empty, FAMILY_ID, {
+        actorUserId: ACTOR_USER_ID,
+        loadTrail: async () => [],
+      }).then((d) => d.activityBookings),
+    ).resolves.toEqual([]);
+  });
+
   it('scopes every read to the requested family id, never a global dump', async () => {
     const { db, spies } = fakeDb({ family: FAMILY, children: [], members: [] });
 
@@ -412,12 +501,12 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Ten scoped selects (family, children, members, village saves, this parent's
-    // assistant grants, the registration preparations, the watched spots, the evening
-    // check-in prefs and notes, and the activity verdicts) each recorded a
-    // where-condition; none was left unscoped. (The condition objects are opaque
-    // Drizzle SQL, so we assert on arity — every select passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(10);
+    // Eleven scoped selects (family, children, members, village saves, this parent's
+    // assistant grants, the registration preparations, the watched spots, the activity
+    // bookings, the evening check-in prefs and notes, and the activity verdicts) each
+    // recorded a where-condition; none was left unscoped. (The condition objects are
+    // opaque Drizzle SQL, so we assert on arity — every select passed through a where.)
+    expect(spies.whereFamilyIds).toHaveLength(11);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 

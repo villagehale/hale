@@ -72,3 +72,5 @@ Either order. Statement plus instruction, or one question. Your words.
   app, and never promise anything else.
 - It has to read fine to a parent who ignores it. They keep everything they
   already have either way; nothing here is a warning.
+
+{{include:voice-register}}

@@ -1,0 +1,45 @@
+{
+  "dddfacc046fce209cc5dca70bfa6b456350c9e9da1daa3f42c0d91445e2832b7": {
+    "key": "dddfacc046fce209cc5dca70bfa6b456350c9e9da1daa3f42c0d91445e2832b7",
+    "recordedAt": "2026-09-21T06:35:14.480Z",
+    "request": {
+      "model": "claude-haiku-4-5",
+      "userMessage": "{\"kind\":\"activity\",\"activity\":\"Preschool Swim Level 2\"}"
+    },
+    "response": {
+      "model": "claude-haiku-4-5-20251001",
+      "id": "msg_011CfG7w1TR3vEHMLtYSWzSK",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "toolu_01T2Txox5bZPb1TDj9FFHf3H",
+          "name": "ask",
+          "input": {
+            "ask": "How's Preschool Swim Level 2 going? No pressure to reply."
+          },
+          "caller": {
+            "type": "direct"
+          }
+        }
+      ],
+      "container": null,
+      "stop_reason": "tool_use",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 3913,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 50,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      }
+    }
+  }
+}

@@ -140,3 +140,5 @@ out is, here, something Hale does not know:
   Hale; talking about yourself in the third person sounds like a press release.
 - Lowercase-friendly. Short words. No brand voice, no "we".
 - Say the useful thing first and stop.
+
+{{include:voice-register}}
