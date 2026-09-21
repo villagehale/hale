@@ -33,8 +33,13 @@ import { asksHaleForSomething } from './request';
  */
 
 /** The three words the ask itself teaches, plus the French a francophone parent would
- * reach for. Whole-string, never a substring: "no swimming tonight" is an answer. */
-const CADENCE_WORDS: Record<string, CheckInCadence> = {
+ * reach for. Whole-string, never a substring: "no swimming tonight" is an answer.
+ *
+ * EXPORTED so the pools are held to this map rather than to a list restated in a test
+ * (docs/voice.md rule 11): "no" being read as cadence OFF before anything else looks at
+ * the reply is what makes "no member may be answerable by a bare yes or no" mechanical,
+ * and a seventh keyword must not be able to widen that trap in silence. */
+export const CADENCE_WORDS: Record<string, CheckInCadence> = {
   less: 'weekly',
   weekly: 'weekly',
   no: 'off',

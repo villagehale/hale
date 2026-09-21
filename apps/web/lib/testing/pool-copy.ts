@@ -91,15 +91,26 @@ const AUXILIARY_OPENERS = [
 /**
  * The questions in `body` that a bare yes or no answers. Empty is the pass.
  *
- * A question is a run of text ending in "?"; its first word is what decides, after any
- * leading punctuation. A body with no question at all yields nothing, which is correct —
- * an ack that asks nothing cannot be answered wrongly.
+ * A question is a run of text ending in "?". Rule 11 says "AFTER THE OPTIONAL NAME SLOT",
+ * and that clause is load-bearing: "Mia, did swim go ok?" is exactly as answerable by a
+ * bare "no" as "Did swim go ok?" is, and reading only the first word of the whole run
+ * would pass it. So the run is split on the separators a name slot or a run-up clause ends
+ * with — a comma, or a spaced dash, colon or semicolon — and EVERY segment's opening word
+ * is checked. A question with no separator in it is one segment, which is the common case.
+ *
+ * Intra-word hyphens are left alone (the dash must be spaced), so "How was drop-off?" is
+ * one segment. A body with no question at all yields nothing, which is correct — an ack
+ * that asks nothing cannot be answered wrongly.
  */
 export function bareYesNoQuestions(body: string): string[] {
   return (body.match(/[^.!?]*\?/g) ?? [])
     .map((question) => question.trim())
-    .filter((question) => {
-      const first = question.toLowerCase().match(/[\p{L}']+/u)?.[0] ?? '';
-      return (AUXILIARY_OPENERS as readonly string[]).includes(first);
-    });
+    .filter((question) =>
+      question
+        .split(/,\s*|\s+[-–—:;]\s+/)
+        .some((segment) => {
+          const first = segment.toLowerCase().match(/[\p{L}']+/u)?.[0] ?? '';
+          return (AUXILIARY_OPENERS as readonly string[]).includes(first);
+        }),
+    );
 }

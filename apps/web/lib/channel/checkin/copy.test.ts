@@ -6,6 +6,7 @@ import {
   bareYesNoQuestions,
   nearDuplicatePairs,
 } from '~/lib/testing/pool-copy';
+import { CADENCE_WORDS, readCadenceWord } from './reply';
 import {
   CHECK_IN_DAILY_ACK,
   CHECK_IN_NOTED_ACK_POOL,
@@ -138,10 +139,50 @@ describe('the evening asks', () => {
       expect((body.match(/\?/g) ?? []).length, body).toBe(1);
       expect(bareYesNoQuestions(body), body).toEqual([]);
     }
-    // The mutation control: the shape rule 11 forbids, which must be caught.
+    // The mutation controls: the shapes rule 11 forbids, which must be caught. The rule is
+    // "AFTER THE OPTIONAL NAME SLOT", so a child's name in front of the auxiliary does not
+    // hide it, and neither does a clause — a parent answers the question, not the run-up.
     expect(bareYesNoQuestions('Did Mia make it to swim today?')).toEqual([
       'Did Mia make it to swim today?',
     ]);
+    expect(bareYesNoQuestions('Mia, did swim go ok?')).toEqual(['Mia, did swim go ok?']);
+    expect(bareYesNoQuestions('Swim today - was it any good?')).toEqual([
+      'Swim today - was it any good?',
+    ]);
+    // Positive controls on the same predicate, because a rule that rejected everything
+    // would pass the half above: the register the pools are written in stays clean, name
+    // slot and all.
+    expect(bareYesNoQuestions('How did swim go for Mia?')).toEqual([]);
+    expect(bareYesNoQuestions('How was today, Mia?')).toEqual([]);
+    expect(bareYesNoQuestions('Mia and Leo - how did today go?')).toEqual([]);
+  });
+
+  it('is held to the cadence words themselves, not to a list restated here', () => {
+    // WHY THE RULE IS MECHANICAL: a whole-string "no" is read as cadence OFF before
+    // anything else looks at the reply, so the trap is a property of THIS map and not a
+    // style opinion. The map is imported rather than restated, so a seventh keyword
+    // cannot widen the trap in silence.
+    expect(Object.keys(CADENCE_WORDS)).toContain('no');
+    expect(readCadenceWord('no')).toBe('off');
+
+    // THE OTHER HALF OF THE TRAP: a pooled ASK may not PRINT a cadence keyword either. The
+    // aux-opener rule keeps out the questions a bare yes or no answers; this keeps out the
+    // ones that hand a parent a keyword to answer the question with. Only the first ask
+    // teaches them, because only the first ask has to — and the acks, which ask nothing,
+    // are where the way out is deliberately repeated.
+    const keyword = new RegExp(`\\b(?:${Object.keys(CADENCE_WORDS).join('|')})\\b`, 'i');
+    for (const body of [...laterAsks(), ...laterAsks([]), ...anchoredAsks()]) {
+      expect(keyword.test(body), body).toBe(false);
+    }
+    // Positive control on the same regex, or the loop above would pass on a pattern that
+    // matches nothing: the one ask that DOES teach the keywords is caught by it.
+    const first = composeCheckInAsk({
+      first: true,
+      childNames: ['Mia'],
+      familyId: 'fam',
+      occasion: 0,
+    }).body;
+    expect(keyword.test(first), first).toBe(true);
   });
 
   it('are five sentences and not one sentence five ways', () => {
