@@ -427,7 +427,16 @@ function anthropicClient(): AgentClient {
  * queue indistinguishable from one asked for by tap (rule #3/#4/#6).
  */
 export function productionChannelCoach(database: Database): ChannelCoachRuntime {
-  return channelCoachRuntime({
+  return channelCoachRuntime(productionChannelCoachPorts(database));
+}
+
+/**
+ * The ports themselves, exported so a test can drive the REAL ones. Two lines below —
+ * the village tool's ledger callback and the add verb's read of it — are a pair that
+ * compiles perfectly when either half is missing, and a fake port cannot fail on that.
+ */
+export function productionChannelCoachPorts(database: Database): ChannelCoachPorts {
+  return {
     client: anthropicClient,
     loadSkill: () => loadCronSkill('coach-channel-sms'),
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
@@ -497,7 +506,7 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
       });
     },
     now: () => new Date(),
-  });
+  };
 }
 
 async function loadReplyChildren(database: Database, familyId: string): Promise<ReplyChild[]> {

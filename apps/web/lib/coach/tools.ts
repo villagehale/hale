@@ -7,6 +7,13 @@ import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { dayKeyOf, formatCalendarDayLabel } from '~/lib/format/datetime';
 import { CONFIDENCE_FLOOR, writeFact } from '~/lib/memory/facts';
+import {
+  activityReviewsSurfaceEnabled,
+  familyAreaKey,
+  offeredSubject,
+  readSubjectVerdicts,
+  subjectKey,
+} from '~/lib/reviews/aggregate';
 import { toVillageCandidateView } from '~/lib/village/mappers';
 import { type StandingOption, selectStandingOption } from '~/lib/village/standing-option';
 import { visibleCandidates } from '~/lib/village/visibility';
@@ -148,6 +155,53 @@ export interface OfferedCandidate {
   civicVenueId: string | null;
 }
 
+/** One row as both halves see it: what the model is shown, and what the process keeps
+ * about it. Paired rather than two arrays so a drop can never take one and leave the
+ * other — that divergence is a count attached to the wrong activity. */
+interface OfferableEntry {
+  candidate: OfferableActivity;
+  offer: OfferedCandidate | null;
+}
+
+/**
+ * THE OTHER HALF OF "NEGATIVES ARE NEVER SPOKEN, ONLY RANKED" (founder decision 3).
+ *
+ * A subject three or more households near this family have answered about, mostly
+ * unfavourably, is DROPPED from what the model is shown whenever there is anything else
+ * to show — so the parent is never offered it rather than warned about it. Nothing is
+ * said about it anywhere, here or downstream: `renderVerdictClause` returns null for the
+ * same pool, and this function returns a list, never a sentence.
+ *
+ * WHEN EVERY OFFER IS IN THAT STATE THEY ALL STAND, in the order they came. Sorting them
+ * last is what dropping them already is when there is an alternative, and a parent asking
+ * what is on this week is owed the honest list rather than silence.
+ *
+ * It FAILS OPEN INTO THE ORDINARY ORDER at every step — dark flag, no shared identity, no
+ * FSA-shaped area — because the pooled opinion is an improvement on the ranking, never a
+ * precondition for answering.
+ */
+async function withoutPooledNegatives(
+  database: Database,
+  familyId: string,
+  offerable: readonly OfferableEntry[],
+): Promise<readonly OfferableEntry[]> {
+  if (!activityReviewsSurfaceEnabled()) return offerable;
+  const subjectOf = (entry: OfferableEntry) => (entry.offer ? offeredSubject(entry.offer) : null);
+  const subjects = offerable
+    .map(subjectOf)
+    .filter((subject): subject is NonNullable<typeof subject> => subject !== null);
+  if (subjects.length === 0) return offerable;
+  const areaKey = await familyAreaKey(database, familyId);
+  if (areaKey === null) return offerable;
+
+  const verdicts = await readSubjectVerdicts(database, subjects, areaKey);
+  const kept = offerable.filter((entry) => {
+    const subject = subjectOf(entry);
+    return subject === null || verdicts.get(subjectKey(subject))?.majorityNegative !== true;
+  });
+  return kept.length === 0 ? offerable : kept;
+}
+
 /**
  * The Village read, as ONE definition shared by every surface that offers it — Ask in
  * the app and Hale over text (VIL-221 · C2). "Improvements compound across surfaces"
@@ -220,8 +274,7 @@ export function searchVillageTool(
         );
 
       const rowsById = new Map(currentRunRows.map((row) => [row.id, row]));
-      const candidates: OfferableActivity[] = [];
-      const offered: OfferedCandidate[] = [];
+      const offerable: OfferableEntry[] = [];
       let inVerification = 0;
       for (const view of views) {
         if (view.teenAttributed) continue;
@@ -230,23 +283,29 @@ export function searchVillageTool(
           inVerification += 1;
           continue;
         }
-        candidates.push({
-          title: view.title,
-          kind: view.kind,
-          summary: view.summary,
-          venue,
-          when: formatCalendarDayLabel(view.eventDate, now),
-        });
         const row = rowsById.get(view.id);
-        if (row) {
-          offered.push({
+        offerable.push({
+          candidate: {
             title: view.title,
-            candidateId: row.id,
-            placeId: row.placeId,
-            civicVenueId: row.civicVenueId,
-          });
-        }
+            kind: view.kind,
+            summary: view.summary,
+            venue,
+            when: formatCalendarDayLabel(view.eventDate, now),
+          },
+          offer: row
+            ? {
+                title: view.title,
+                candidateId: row.id,
+                placeId: row.placeId,
+                civicVenueId: row.civicVenueId,
+              }
+            : null,
+        });
       }
+
+      const offerableNow = await withoutPooledNegatives(database, ctx.familyId, offerable);
+      const candidates = offerableNow.map((entry) => entry.candidate);
+      const offered = offerableNow.flatMap((entry) => (entry.offer ? [entry.offer] : []));
       // EXACTLY the rows that went out as `candidates` — never the in-verification
       // count and never a teen-attributed row, which has no venue and no date and must
       // not be nameable at all (rule #1).
