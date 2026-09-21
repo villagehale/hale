@@ -168,6 +168,15 @@ const TRAVEL_CO_TOKENS: readonly RegExp[] = [
  * regex, so the regex has to be narrow instead.
  *
  * A false negative is silence, which is this whole feature's chosen direction.
+ *
+ * THE RESIDUAL THIS LEAVES, NAMED so the trade is the founder's to take rather than a
+ * surprise: a restaurant booking is the one non-travel email that clears both lists —
+ * "Reservation confirmed - Canoe" with a snippet that says "Table for 4 guests at 7pm"
+ * carries `reservation` and `guests`. That email's body and the children's first names
+ * cross the border and the pass ends at `no_destination`, having written nothing. It is
+ * the `guests` token that carries it, and `guests` is what an Airbnb and a hotel
+ * confirmation both say; dropping it would close this residual and cost real bookings the
+ * silence this feature prefers, so the choice is a real one and it is not made here.
  */
 export function looksLikeBooking(envelope: { subject: string; snippet: string }): boolean {
   const subject = envelope.subject ?? '';
