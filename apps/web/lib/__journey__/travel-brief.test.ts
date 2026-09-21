@@ -307,7 +307,7 @@ function syncDeps(subject: string, recorded: ReturnType<typeof model>): SyncDeps
     refreshTokens: async () => ({ accessToken: 'ya29.journey' }),
     saveTokens: async () => {},
     alertGmailEnvelopes: async (batch) =>
-      batch.envelopes.map(() => ({ alert: 'dark' as const, booking: null })),
+      batch.envelopes.map(() => ({ alert: 'dark' as const, booking: null, going: null })),
     alertCalendarChanges: async () => ({ changes: [], reoffers: [] }),
     detectTravelBookings: async (batch) =>
       detectTravelBookingsForSweep(

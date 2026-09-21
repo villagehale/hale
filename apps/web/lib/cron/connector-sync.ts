@@ -23,6 +23,7 @@ import {
   emptyBookingCounts,
   emptyEmailAlertCounts,
 } from '~/lib/integrations/email-alert';
+import { type GoingCounts, emptyGoingCounts } from '~/lib/integrations/going';
 import { decryptTokens } from '~/lib/integrations/token-vault';
 import {
   type ActiveConnectorConnection,
@@ -106,6 +107,12 @@ export interface ConnectorSyncSummary {
    * place the family now holds was written down. `booked_dark` is this flag's off state -
    * never `dark`, which is F14's. */
   bookings: BookingCounts;
+  /** One count per named GOING outcome (rule #11) - the third axis. Its own tally, because
+   * an envelope has three independent answers: whether a text went, whether a place the
+   * family now holds was written down, and whether a number about OTHER households was
+   * spoken. `below_floor` will be the answer ten thousand times, and that is exactly why
+   * it is a counter rather than a column on the audit row. */
+  going: GoingCounts;
   /** The same, for the calendar. Its own tally rather than a shared one: the two
    * connectors fail in different ways, and a sweep where every calendar change is
    * `outside_window` reads nothing like one where every email is `not_parenting`. */
@@ -135,6 +142,7 @@ export async function runConnectorSync(
   const childNamesByFamily = new Map<string, string[]>();
   const emailAlerts = emptyEmailAlertCounts();
   const bookings = emptyBookingCounts();
+  const going = emptyGoingCounts();
   const calendarAlerts = emptyCalendarAlertCounts();
   const travelDetections = emptyTravelDetectCounts();
   let calendarDroppedNoId = 0;
@@ -167,6 +175,9 @@ export async function runConnectorSync(
         // Only the envelopes that actually reached the decision. A null is "the alert
         // never got that far", which is already counted by name on the line above.
         if (outcome.booking !== null) bookings[outcome.booking] += 1;
+        // ...and the same rule on the third axis: a null never reached the going decision
+        // at all, which the two lines above have already named.
+        if (outcome.going !== null) going[outcome.going] += 1;
       }
       for (const outcome of result.calendarAlerts) calendarAlerts[outcome] += 1;
       for (const outcome of result.travelDetections) travelDetections[outcome] += 1;
@@ -179,6 +190,7 @@ export async function runConnectorSync(
     connections: connections.length,
     emailAlerts,
     bookings,
+    going,
     calendarAlerts,
     calendarDroppedNoId,
     travelDetections,

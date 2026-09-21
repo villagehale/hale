@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or } from 'drizzle-orm';
 import type { CorrelatedEventRef, ExtractedEvent, ExtractionKind } from '~/lib/sentinel';
+import { sessionKey } from './going';
 
 /**
  * THE BOOKING — a provider's receipt says this family holds a place, written down so Hale
@@ -56,6 +57,14 @@ export interface BookingDraft {
    * is not a calendar row.
    */
   eventId: string | null;
+  /**
+   * THE SESSION, as one string, or NULL for a booking nothing may count (`going.ts`).
+   *
+   * Computed HERE, under the BOOKED flag rather than under the count's own one: the key is
+   * part of the row, and a key that only started appearing after a third flag flipped
+   * would need exactly the backfill this design exists to avoid.
+   */
+  sessionKey: string | null;
 }
 
 /**
@@ -104,6 +113,12 @@ export function bookingDraft(input: {
    * re-folded here, because a second copy of that fold is a booking titled differently
    * from the message that announced it. Empty is a refusal, not a substitution. */
   title: string;
+  /** The renderer fell back to HALE'S OWN WORDS for this kind, because the vendor's title
+   * survived sanitising as nothing. Handed in beside the title rather than re-derived,
+   * because it is the same `renderedTitle` answer the sentence was built from — and it is
+   * two refusals at once: no row at all, and (were one ever written) no session key, since
+   * every nameless receipt from one host at one instant would key into one "session". */
+  titleIsFallback: boolean;
   /** The place, through the SAME fold the offer row keeps (`gsm7`, clamped), for the same
    * reason: this string reaches a parent later, in a reminder. */
   location: string | null;
@@ -115,19 +130,28 @@ export function bookingDraft(input: {
   if (input.sourceConfidence < BOOKING_CONFIDENCE_FLOOR) {
     return { ok: false, reason: 'below_confidence' };
   }
-  if (input.title === '') return { ok: false, reason: 'no_title' };
+  if (input.title === '' || input.titleIsFallback) return { ok: false, reason: 'no_title' };
   const firstSessionAt = instant(input.event.newTime);
   if (firstSessionAt === null || firstSessionAt.getTime() <= input.now.getTime()) {
     return { ok: false, reason: 'no_first_session' };
   }
+  const providerHost = senderHost(input.from);
   return {
     ok: true,
     draft: {
-      providerHost: senderHost(input.from),
+      providerHost,
       title: input.title,
       firstSessionAt,
       location: input.location,
       eventId: input.matchedEventRef?.table === 'family_events' ? input.matchedEventRef.id : null,
+      // One decision, two readers - the row the count is read from and the row it is
+      // written on carry the SAME string, because there is one function and one call.
+      sessionKey: sessionKey({
+        providerHost,
+        title: input.title,
+        titleIsFallback: input.titleIsFallback,
+        firstSessionAt,
+      }),
     },
   };
 }
@@ -164,6 +188,7 @@ export async function recordActivityBooking(
       title: input.draft.title,
       firstSessionAt: input.draft.firstSessionAt,
       location: input.draft.location,
+      sessionKey: input.draft.sessionKey,
       eventId: input.draft.eventId,
       channelMessageId: input.channelMessageId,
     })
