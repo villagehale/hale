@@ -64,9 +64,20 @@ function absence(over = {}) {
     cycleRef: { municipality: 'toronto', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
     lastOpenedAtLocal: 'Sep 15, 7:00 a.m.',
     nextCycleLabel: null,
+    // The TENSE, defaulting to history so every fixture written before it keys the same
+    // way it always did. Set to a `{ registerUrl, kidNames }` and the SAME cycle is news
+    // instead: it opened inside the age bound and a child of this family is in its band,
+    // so the municipal page is still where a parent should be sent.
+    stillOpen: null,
     ...over,
   };
 }
+
+/** Toronto's own release for the Fall 2026 cycle - the real seed row's `source_url`
+ * (apps/web/lib/registration/registration-windows-data.ts), hand-verified, NOT NULL by
+ * construction, and the page the appended action line sends a parent to. */
+const TORONTO_FALL_2026_RELEASE =
+  'https://www.toronto.ca/news/city-of-toronto-releases-listings-for-fall-recreation-activities/';
 
 /** Rows lifted VERBATIM from the reviewed Ontario table (apps/web/lib/health/
  * checkpoints.ts). No wording is invented here — a fixture that softened a task would
@@ -188,7 +199,10 @@ export const RADAR_FIXTURES = [
       registration(),
       checkpoint('immunization_18_months', CHECKPOINT_18_MONTH_SCHEDULE, ['Maya']),
     ),
-    expect: { orderedRecall: ['6:30', '18 months'] },
+    // The checkpoint half is the reviewed row's fact, in either of the two ways English
+    // writes it: the row says "a visit at 18 months" and a message that says "an
+    // 18-month visit" has delivered exactly that.
+    expect: { orderedRecall: ['6:30', ['18 months', '18-month']] },
   },
   {
     id: 'checkpoint-fabrication-trap',
@@ -303,6 +317,91 @@ export const RADAR_FIXTURES = [
       registration({ kidNames: [] }),
     ),
     expect: { mustRecall: ['Riverdale', '6:30'] },
+  },
+  /**
+   * THE HEADLINE SHAPE. A Toronto parent texts on the afternoon of Sep 20; the city's
+   * fall registration opened on the 15th and its page is live. Today Hale tells them
+   * their season has gone. The tense is what stops that, and the three `forbidden`
+   * tokens are the three tells that the model wrote the missed-it sentence anyway -
+   * scored, not merely budgeted, because a message that reads "already opened, next
+   * dates aren't posted" under a link to the open page is worse than either half alone.
+   */
+  {
+    id: '1kid-registration-still-open',
+    decision: decision(
+      null,
+      null,
+      null,
+      absence({
+        nextCycleLabel: 'Winter 2027',
+        stillOpen: { registerUrl: TORONTO_FALL_2026_RELEASE, kidNames: ['Maya'] },
+      }),
+    ),
+    expect: {
+      mustRecall: ['Toronto', 'Fall 2026', 'Sep 15'],
+      forbidden: [
+        'already',
+        'not posted',
+        "aren't posted",
+        'Winter 2027',
+        'radar yet',
+        'http',
+        "I'll text",
+        // R7 in scored form. Hale knows the morning the town opened and has never read
+        // the page, so every one of these is a promise about what is left on it.
+        'sign up',
+        'register now',
+        'spots',
+        'still room',
+        'still open',
+        'filling',
+      ],
+    },
+  },
+  {
+    id: '1kid-pick-and-registration-still-open',
+    // The same news with a find above it: the cascade still puts the registration
+    // sentence first, and the pick follows it.
+    decision: decision(
+      pick(),
+      null,
+      null,
+      absence({
+        nextCycleLabel: 'Winter 2027',
+        stillOpen: { registerUrl: TORONTO_FALL_2026_RELEASE, kidNames: ['Maya'] },
+      }),
+    ),
+    expect: {
+      orderedRecall: ['Toronto', 'Riverdale'],
+      mustRecall: ['Sep 15'],
+      forbidden: [
+        'already',
+        'not posted',
+        "aren't posted",
+        'Winter 2027',
+        'http',
+        'sign up',
+        'spots',
+        'still open',
+      ],
+    },
+  },
+  {
+    id: '1kid-between-cycles-past-the-open-window',
+    // THE CONTROL. The same town and the same cycle, read past OPEN_NOW_MAX_AGE_DAYS:
+    // `stillOpen` is null, no line is appended, and the between-cycles sentence Hale
+    // sends correctly today must come back whole. Without this, the tense could delete
+    // the town fact everywhere and the corpus would never notice.
+    decision: decision(
+      null,
+      null,
+      null,
+      absence({ lastOpenedAtLocal: 'Aug 11, 7:00 a.m.', nextCycleLabel: 'Winter 2027' }),
+    ),
+    expect: {
+      mustRecall: ['Toronto', 'Fall 2026', 'Aug 11', 'Winter 2027'],
+      forbidden: ['radar yet', 'http', "I'll text", 'let you know'],
+    },
   },
   {
     id: '2kid-pick-only-window-absent',

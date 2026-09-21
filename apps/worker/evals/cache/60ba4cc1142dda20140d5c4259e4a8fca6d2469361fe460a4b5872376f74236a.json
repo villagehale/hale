@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message opens with \"I found\" - a first-person verb of finding in the lead sentence - and delivers the useful fact (free outdoor option at Riverdale Farm for Maya on Saturday) in that same sentence. This scores 5: the attribution is present in the first sentence as a half-clause that introduces the finding, not a preamble. The facts presented (activity name, location, day, child's name, weather rationale) all appear in the payload and are not invented details like postal codes or checked-area scope. The message reports back on work already done, with proper attribution of the search itself."
+  }
+}

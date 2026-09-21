@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message is plain-spoken and specific, leading with the useful registration timing fact. It includes the mandatory \"I checked\" lead phrase stating Hale already looked. It names only facts from the object (town, cycle, time, the activity, venue, day, and the weather detail from whyFacts). It does not invent details, pad with corporate voice, or list fields like a database. The structure is clean: registration info first, then the weekend pick with its context. No exclamation marks or hype. The facts do not carry firstFindBeat, age range, or kidNames specifics, and the message does not fabricate them. This is a competent neighbour reporting what they found."
+  }
+}

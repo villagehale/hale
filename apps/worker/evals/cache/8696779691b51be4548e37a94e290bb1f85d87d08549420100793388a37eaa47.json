@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message follows the contract precisely. It leads with the competent neighbour voice (\"I checked,\" \"I found\") as required. It states the registration fact plainly: the cycle name, the open date, and that it's current—without padding or warnings about closure. It gives the useful weekend activity next: what it is, where, and the relevant facts the parent needs (free, outdoor, dry forecast). It names only facts from the facts object and invents nothing. The registration absence is handled correctly with `stillOpenPage: true`—the message states when it opened and stops, exactly as instructed. No unnecessary clauses about next cycles or closures. Plain-spoken, specific, short, and actionable."
+  }
+}

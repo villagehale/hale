@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message opens with \"I checked Markham's calendar\" - a first-person verb of checking in the lead sentence that attributes the finding to work Hale already did. The useful fact (Fall 2026 registration opens Aug 11 at 6:30 a.m.) lands in that same first sentence immediately after the attribution. The message reports back on a specific look already taken, with the facts matching the payload: town (Markham), cycle (Fall 2026), time (Aug 11, 6:30 a.m.), and child name (Maya) all given in the facts. Nothing is invented; the scope is not stated but that's not required. This is textbook reporting-back on work done."
+  }
+}

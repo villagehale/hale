@@ -151,6 +151,13 @@ export function radarVoiceContext(decision: RadarDecision): unknown {
           lastCycle: decision.registrationAbsence.cycleRef.cycleLabel,
           lastOpenedAtLocal: decision.registrationAbsence.lastOpenedAtLocal,
           nextCycle: decision.registrationAbsence.nextCycleLabel,
+          // The TENSE, and the model needs it or it argues with the line beneath it:
+          // the skill's instruction for a bare absence is the missed-it sentence, and
+          // a composed "already opened, the next dates are not posted yet" under a link
+          // to the page that is open is worse than either half alone. A boolean and
+          // nothing else — the date is already above it, and the URL is the one fact
+          // this stage may never be handed (R3, facts-lint.ts).
+          stillOpenPage: decision.registrationAbsence.stillOpen !== null,
         }
       : null,
     // The row id stays behind with the candidate uuid: `task` is the whole fact, and it

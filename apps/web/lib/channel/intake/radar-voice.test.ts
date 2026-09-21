@@ -490,6 +490,33 @@ describe('the still-open absence', () => {
   });
 
   /**
+   * B1 — the MODEL is told the tense, or its sentence contradicts the line underneath.
+   *
+   * Without this key the composer is handed a byte-identical context in both tenses,
+   * and the skill's instruction for a bare `registrationAbsence` is verbatim the
+   * missed-it sentence: "already opened ... the next dates are not posted yet". Shipped
+   * over a link to the page that is open, that is a message arguing with its own
+   * receipt. A boolean and nothing else, because the model already has the date and the
+   * link is the one fact it may never write (R3).
+   */
+  it('tells the composer which tense this is, and still not the page', () => {
+    const gone: RadarDecision = {
+      ...STILL_OPEN,
+      registrationAbsence: { ...STILL_OPEN.registrationAbsence!, stillOpen: null },
+    };
+    const open = radarVoiceContext(STILL_OPEN) as {
+      registrationAbsence: Record<string, unknown>;
+    };
+    const past = radarVoiceContext(gone) as { registrationAbsence: Record<string, unknown> };
+
+    expect(open.registrationAbsence.stillOpenPage).toBe(true);
+    expect(past.registrationAbsence.stillOpenPage).toBe(false);
+    // The whole point, stated as the thing that was true on main and must not be again.
+    expect(JSON.stringify(open)).not.toBe(JSON.stringify(past));
+    expect(JSON.stringify(open)).not.toContain('http');
+  });
+
+  /**
    * THE POSITIVE CONTROL for the unflagged half (B2). Past the age bound the decision
    * carries no `stillOpen`, and the render must be what main sends today, to the byte.
    * Without this, "the season has gone" could be silently deleted from every town.

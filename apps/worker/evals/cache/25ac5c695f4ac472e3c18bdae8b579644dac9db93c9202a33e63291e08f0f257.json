@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message nails the core instructions. It includes the required lead phrase (\"I checked\"), states the specific facts from the registration object (town, cycle, time), names the kid (Maya), and handles the absent `weekendPick` with the instructed copy: a plain clause saying Hale is still learning the area and will have a pick soon. The venue, price, and age range are absent from facts and correctly absent from the message—no padding, no placeholders. No invented details. Voice is quiet and plain-spoken, leading with the useful thing (when registration opens). No hype, no corporate framing, no database listing.",
+    "score": 5
+  }
+}

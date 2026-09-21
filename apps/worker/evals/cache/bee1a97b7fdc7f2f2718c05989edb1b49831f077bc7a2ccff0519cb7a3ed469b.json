@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is plain-spoken and leads with the useful thing (the weekend pick for Maya). It includes the required \"I checked\" language in the lead sentence. It states only facts from the given object: the town name, cycle name, and opening date/time from registrationAbsence are all present; the activity, venue, day, and conditions from weekendPick are all stated accurately. It does not invent details. The message correctly treats the null fields (firstFindBeat, registration, checkpoint) by their absence—it doesn't pad or create placeholders. The registrationAbsence with stillOpenPage: true is handled correctly: it names the cycle and opening time without claiming registration has closed or warning the parent has missed it. The tone is specific and neighborly, not corporate or hyped.",
+    "score": 5
+  }
+}

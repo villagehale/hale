@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The message follows the contract well: it includes the mandatory lead phrase \"I checked\" establishing that Hale looked something up, and it uses the instructed copy for the null registration state (\"Nothing has a registration date coming up yet\"). The checkpoint task is reproduced plainly as given in the facts. However, the message does not include the other instructed clause for when weekendPick is null—the short statement that Hale is still learning the area and will have a pick soon. Since both registration and registrationAbsence are null (not the condition triggering the weekendPick clause), the message is incomplete by the contract's three requirements. The voice is plain and specific, naming only what was given (Ontario, the 18-month visit detail), but it misses the second required element covering the absence of a weekend pick."
+  }
+}

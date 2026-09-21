@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message meets all contract requirements. It opens with \"I checked\" (mandatory lead phrase showing Hale looked something up). It delivers the two core facts plainly: the last cycle opened Sep 1 and the next dates aren't posted. It includes the `firstFindBeat` verbatim as required. No invented details - no placeholder venue, no speculative language, no padding. The tone is quiet and plain-spoken, like a neighbour reporting what they found. It states what is true (Fall 2026 opened, Winter 2027 dates absent) without hype or warning language, which is exactly right when `stillOpenPage` is false and the season has passed. The message is specific, short, and leads with the useful thing."
+  }
+}

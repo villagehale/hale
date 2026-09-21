@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message meets all contract requirements cleanly: it opens with \"I checked\" (mandatory lead phrase showing work done), states plainly that the last cycle opened Sep 1 and the next dates aren't posted (required copy for when registrationAbsence.stillOpenPage is false), reproduces the firstFindBeat verbatim without padding, and names no venue or other invented details. It's specific, short, plain-spoken, and leads with the useful thing - exactly the neighbor voice required."
+  }
+}

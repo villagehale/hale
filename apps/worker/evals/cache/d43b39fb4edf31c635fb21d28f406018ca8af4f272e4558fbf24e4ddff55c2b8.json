@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message opens with \"I checked Markham's Fall 2026 registration\" - a first-person verb of checking in the lead sentence that attributes the finding directly to work Hale already completed. The facts (Markham, Fall 2026, Aug 11 at 6:30 a.m., resident access) all appear in the facts payload and are reported back in that opening sentence. The second finding (\"Family swim at Angus Glen Community Centre\") arrives in the next sentence also as reported fact without invented scope. The attribution is clear and immediate."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is plain-spoken and specific, leading with the useful registration fact. It correctly names the town, cycle, kids, date, and time from the facts. It adds \"I checked\" as required by contract. The second sentence cleanly states the climbing session details (paid, indoor, age range, day) without invention. No fields are padded with placeholders or invented details. The message is short and neighborly, doing exactly what a 5 should do: state the given facts plainly and stop. The null venue for climbing is handled correctly by omission—not marking it down.",
+    "score": 5
+  }
+}

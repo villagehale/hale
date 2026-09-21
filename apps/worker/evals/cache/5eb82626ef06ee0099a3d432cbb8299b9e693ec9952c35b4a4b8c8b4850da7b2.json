@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message opens with \"I checked and Toronto's Fall 2026 registration already opened Sep 15\" - a first-person verb of checking in the lead sentence that immediately delivers the fact. The attribution work (checking) and the fact (registration opened Sep 15) land together in the first sentence, making clear this is a report back from work Hale already did for this family. The fact uses only given elements from the payload (town: Toronto, lastCycle: Fall 2026, lastOpenedAtLocal: Sep 15) with no invented scope."
+  }
+}

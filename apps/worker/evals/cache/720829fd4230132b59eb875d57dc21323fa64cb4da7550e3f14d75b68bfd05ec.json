@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message opens with \"I checked Toronto's registration calendar\" - a first-person verb of checking (\"I checked\") in the lead sentence that clearly attributes the facts to work Hale already performed. The useful facts (Fall 2026 opened Sep 15 at 7:00 a.m., page still up) land in that same sentence. The attribution is embedded in the lead, not separated from it. The scope mentioned (Toronto's registration calendar) is given in the facts object (town: Toronto, registrationAbsence). This scores 5."
+  }
+}

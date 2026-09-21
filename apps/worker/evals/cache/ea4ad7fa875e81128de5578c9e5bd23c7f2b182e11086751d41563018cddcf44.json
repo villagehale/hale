@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message meets all contract requirements perfectly. It opens with \"I checked\" (mandatory lead phrase per contract). It accurately states the registrationAbsence facts: the town (Toronto), the last cycle name (Fall 2026), the opening date and time (Sep 15, 7:00 a.m.), and notes the page is still current (stillOpenPage: true). It correctly reproduces the firstFindBeat verbatim without invention. The tone is plain-spoken, specific, and short - a competent neighbour sharing what they looked up. There is no padding, no invention, no hype. The absence of weekendPick is handled by the instructed firstFindBeat clause as required. Nothing is listed like a database row, and the useful fact (registration status and when it opened) leads clearly."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message follows the contract precisely. It opens with the required signal \"I checked and found\" showing Hale already looked something up. It leads with the useful fact (the checkpoint task) plainly and specifically without padding. It handles two null fields correctly: acknowledging no weekend pick and no registration dates with the instructed copy about still mapping the area, which is exactly what the contract requires when both registration and registrationAbsence are null and weekendPick is null. No invented details, no hype, no database listing, no corporate voice. Quiet, specific, short, and doing the job."
+  }
+}
