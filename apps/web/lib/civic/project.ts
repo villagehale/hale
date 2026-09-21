@@ -195,9 +195,12 @@ export interface ProjectedCivicCandidate {
   access: CandidateAccess;
   /** The session's own time in the source's words — the same label {@link summaryFor}
    * puts in the card, carried as a field so nothing has to parse the card back apart.
-   * ASCII-folded at the write: an occurrence's label comes from Intl, which emits a
-   * narrow no-break space around "a.m." on some ICU builds, and one non-ASCII character
-   * doubles what the whole SMS quoting it costs to send. */
+   * ASCII-folded at the write, and the fold is a guard rather than a correction: the
+   * weekly band is a plain hyphen between two {@link formatMinuteOfDay} strings and an
+   * occurrence's Intl label is plain ASCII on the ICU this repo builds against (checked
+   * this run), but Intl's spacing around "a.m." is an ICU-version detail Hale does not
+   * pin, and one character outside the basic alphabet doubles what the whole SMS
+   * quoting this costs to send. */
   whenLabel: string;
 }
 

@@ -114,6 +114,27 @@ describe('the first reply says what to do about the find', () => {
       confidence: 1,
       sourceUrl: 'https://www.toronto.ca/community-people/children-parenting/earlyon/',
     });
+
+    // The OTHER access mode, on a weekday so it cannot win the weekend pick. Its only
+    // job is to make the projection's write of `access` measurable: with one seeded
+    // session the insert could hard-code the mode it happens to want and every gate
+    // here would stay green.
+    await database.insert(schema.civicSessions).values({
+      venueId: (venue as { id: string }).id,
+      externalId: 'loc-1-wed-1000',
+      title: 'Wednesday baby time',
+      recurrence: 'weekly',
+      dayOfWeek: 3,
+      startMinute: 10 * 60,
+      endMinute: 11 * 60,
+      ageMinMonths: 0,
+      ageMaxMonths: 71,
+      isFree: true,
+      registrationRequired: true,
+      extraction: 'structured',
+      confidence: 1,
+      sourceUrl: 'https://www.toronto.ca/community-people/children-parenting/earlyon/',
+    });
   });
 
   afterEach(async () => {
@@ -186,17 +207,25 @@ describe('the first reply says what to do about the find', () => {
 
     // The projection really wrote the two columns — otherwise the pick below would be
     // 'unknown' and this whole journey would pass by saying nothing.
-    const [candidate] = await database
+    const persisted = await database
       .select({
+        title: schema.villageCandidates.title,
         access: schema.villageCandidates.access,
         whenLabel: schema.villageCandidates.whenLabel,
         source: schema.villageCandidates.source,
       })
       .from(schema.villageCandidates)
       .where(eq(schema.villageCandidates.familyId, familyId));
-    expect(candidate).toMatchObject({
+    // BOTH modes, out of the same insert: a hard-coded `access` on the write passes a
+    // one-session seed whichever value it hard-codes, so the two are asserted together.
+    expect(persisted.find((row) => row.title === 'Saturday family drop-in')).toMatchObject({
       access: 'drop_in',
       whenLabel: '9:30 a.m.-11:00 a.m.',
+      source: 'civic_registry',
+    });
+    expect(persisted.find((row) => row.title === 'Wednesday baby time')).toMatchObject({
+      access: 'register_at_venue',
+      whenLabel: '10:00 a.m.-11:00 a.m.',
       source: 'civic_registry',
     });
 
