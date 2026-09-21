@@ -1,3 +1,4 @@
+import type { AgentClient } from '@hale/agent';
 import type { Database, Municipality } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { smsSegments } from '~/lib/channel/sms-segments';
@@ -382,9 +383,10 @@ describe('the between-cycles absence', () => {
   });
 
   /**
-   * The budget is arithmetic, not style: `usableRadarMessage` silently discards a
-   * payload over MAX_PAYLOAD_SEGMENTS and falls back to THIS render, so a fallback that
-   * does not fit is a message no family ever receives. The worst case is the longest
+   * The budget is arithmetic, not style: `usableRadarMessage` discards a COMPOSED
+   * payload over MAX_PAYLOAD_SEGMENTS and falls back to THIS render, and nothing below
+   * this module measures anything — so a fallback that does not fit is not refused, it
+   * is sent and billed a fourth segment on every reply. The worst case is the longest
    * town, the longest cycle label the dataset actually carries, a dated open with a
    * year on it, a watched next cycle, AND a weekend pick above it.
    *
@@ -573,20 +575,24 @@ describe('the still-open absence', () => {
   });
 });
 
+/** The longest url the seeded dataset actually carries, derived rather than pasted so
+ * a longer one landing in the data fails this file instead of a parent's handset.
+ * Module scope because both the block budget and the composed payload measure against
+ * it, and two derivations of one number drift. */
+const LONGEST_SEED_URL = [...REGISTRATION_WINDOWS]
+  .map((seed) => seed.sourceUrl)
+  .sort((a, b) => b.length - a.length)[0] as string;
+
 /**
  * THE TAIL: the one deterministic action line the shell appends under the message.
  *
  * It is measured here rather than only in action-line.test.ts because the thing that
- * can go wrong is arithmetic, not copy: a payload over MAX_PAYLOAD_SEGMENTS is silently
- * discarded and the parent gets nothing, so the render has to spend a block to make
- * room for a line it does not itself print.
+ * can go wrong is arithmetic, not copy: a payload over MAX_PAYLOAD_SEGMENTS costs a
+ * fourth segment on every first reply that hits it — nothing downstream refuses an
+ * over-long body (this module is the only reader of that constant) — so the render has
+ * to spend a block to make room for a line it does not itself print.
  */
 describe('the appended action line and the block budget', () => {
-  /** The longest url the seeded dataset actually carries, derived rather than pasted so
-   * a longer one landing in the data fails this file instead of a parent's handset. */
-  const LONGEST_SEED_URL = [...REGISTRATION_WINDOWS]
-    .map((seed) => seed.sourceUrl)
-    .sort((a, b) => b.length - a.length)[0] as string;
   const TAIL = `\n\nThe page is here: ${LONGEST_SEED_URL}`;
 
   it('never prints the tail itself — the caller owns the payload shape', () => {
@@ -852,5 +858,162 @@ describe('composeRadarMessage — the payload and its named outcomes', () => {
     const on = await composeRadarMessage(stillOpen, deps());
     expect(on.actionHeld).toBeNull();
     expect(on.body).toContain('The page is here: https://www.toronto.ca/example/fall');
+  });
+
+  /** The town sentence with the longest page the dataset actually publishes under it —
+   *  the shape where the tail is long enough to decide the arithmetic. */
+  const STILL_OPEN_LONGEST_URL: RadarDecision = {
+    ...NOTHING,
+    registrationAbsence: {
+      cycleRef: { municipality: 'toronto', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
+      lastOpenedAtLocal: 'Sep 15, 7:00 a.m.',
+      nextCycleLabel: 'Winter 2027',
+      stillOpen: { registerUrl: LONGEST_SEED_URL, kidNames: ['Maya'] },
+    },
+  };
+
+  /** A client whose one call answers with `message` (or throws, for the outage), and a
+   *  database that swallows the `agent_runs` row composeVoice records — the pair
+   *  lib/loop/voice/compose.test.ts already uses, and the only way to reach the
+   *  composed BRANCH from a unit test. */
+  function scriptedDeps(message: string | { throws: true }) {
+    return {
+      familyId: '11111111-1111-4111-8111-111111111111',
+      database: {
+        insert: () => ({
+          values: () => ({ returning: () => Promise.resolve([{ id: 'run-1' }]) }),
+        }),
+      } as unknown as Database,
+      client: {
+        messages: {
+          create: vi.fn(async () => {
+            if (typeof message !== 'string') throw new Error('model unavailable');
+            return {
+              content: [{ type: 'text', text: JSON.stringify({ message }) }],
+              usage: { input_tokens: 100, output_tokens: 20 },
+            };
+          }),
+        },
+      } as unknown as AgentClient,
+      language: 'en' as const,
+    };
+  }
+
+  /**
+   * THE COMPOSED PATH'S OWN WIRING — pinned here because the function that does the
+   * arithmetic is not the thing that can be wrong.
+   *
+   * `radarMessageFault` measures the tail, and its own test proves it. What no pure
+   * test can see is whether the composed path HANDS it the tail: a call site passing
+   * '' measures a shorter string than the one that ships, every unit stays green, and
+   * the payload goes out a segment over. That is the defect the eval harness itself had
+   * (it budgeted a tail-less message), so it is not hypothetical here, and it is the
+   * "pin production wiring, not just units" shape: every test that injects the tail by
+   * hand is blind to the one caller that does it for real.
+   *
+   * Rule #8 is satisfied the way compose.test.ts satisfies it — the scripted client
+   * drives the SEAM and its fallback branches, never the voice's quality. Quality is
+   * measured against real cached Claude in apps/worker/evals/run-radar-eval.mjs.
+   */
+  it('measures the tail against the COMPOSED message, not only against the render', async () => {
+    // The skill's own 250-character ceiling: grounded, question-free, no clock time and
+    // no link — so the only thing it can lose on is the arithmetic.
+    const atCeiling = 'There is plenty on around you this weekend and I will keep looking. '
+      .repeat(4)
+      .slice(0, 250);
+    const tail = `\n\nThe page is here: ${LONGEST_SEED_URL}`;
+
+    vi.stubEnv(FIRST_REPLY_ACTION_LINE_ENV, 'true');
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const overBudget = await composeRadarMessage(STILL_OPEN_LONGEST_URL, scriptedDeps(atCeiling));
+    quiet.mockRestore();
+
+    expect(overBudget.voiceFallback).toBe('budget');
+    expect(overBudget.body).toBe(
+      `${renderRadarDeterministically(STILL_OPEN_LONGEST_URL, tail)}${tail}`,
+    );
+    expect(overBudget.actionMove).toBe('register_open');
+    // The line itself was never held — it fit; the model's words were what did not.
+    expect(overBudget.actionHeld).toBeNull();
+    expect(smsSegments(`${overBudget.body}\n\n${WATCH_OFFER}`)).toBeLessThanOrEqual(
+      MAX_PAYLOAD_SEGMENTS,
+    );
+
+    // THE POSITIVE CONTROL. The same 250 characters ship untouched when the flag holds
+    // the tail, so what rejected them above was the tail's length and not some other
+    // fault in the message — without this, the assertion passes on a composer that has
+    // stopped composing at all.
+    vi.stubEnv(FIRST_REPLY_ACTION_LINE_ENV, '');
+    const composed = await composeRadarMessage(STILL_OPEN_LONGEST_URL, scriptedDeps(atCeiling));
+    expect(composed.voiceFallback).toBeNull();
+    expect(composed.body).toBe(atCeiling);
+    expect(composed.actionHeld).toBe('flag_off');
+  });
+
+  /**
+   * The budget guard's wiring, the same way round: the check that names `over_budget`
+   * measures the tail BESIDE the render, and a call site that drops it appends a link
+   * the payload cannot carry.
+   *
+   * No seeded row reaches this state — the worst-case test above proves every one of
+   * them fits with the longest seeded url riding — so the shape that gets here is the
+   * one the dark night exists to count: a town publishing a longer page than anything
+   * in the dataset today.
+   */
+  it('holds a tail the grounded render cannot carry, and rides the same one shortened', async () => {
+    vi.stubEnv(FIRST_REPLY_ACTION_LINE_ENV, 'true');
+    const withUrl = (registerUrl: string): RadarDecision => ({
+      ...STILL_OPEN_LONGEST_URL,
+      registrationAbsence: {
+        ...(STILL_OPEN_LONGEST_URL.registrationAbsence as NonNullable<
+          RadarDecision['registrationAbsence']
+        >),
+        stillOpen: { registerUrl, kidNames: ['Maya'] },
+      },
+    });
+    const tooLong = `${LONGEST_SEED_URL}/${'a'.repeat(200)}`;
+
+    const held = await composeRadarMessage(withUrl(tooLong), deps());
+    expect(held.actionHeld).toBe('over_budget');
+    // Computed and logged, not lost: the dark night counts the move it would have sent.
+    expect(held.actionMove).toBe('register_open');
+    expect(held.body).not.toContain('http');
+    expect(held.body).toBe(renderRadarDeterministically(withUrl(tooLong), ''));
+    // What held it was the tail, not the message: the body alone is nowhere near the cap.
+    expect(smsSegments(`${held.body}\n\n${WATCH_OFFER}`)).toBeLessThan(MAX_PAYLOAD_SEGMENTS);
+
+    const rode = await composeRadarMessage(withUrl(LONGEST_SEED_URL), deps());
+    expect(rode.actionHeld).toBeNull();
+    expect(rode.body).toContain(`The page is here: ${LONGEST_SEED_URL}`);
+  });
+
+  /**
+   * AN OUTAGE IS NOT A FABRICATION, and the dark night's numbers are read by a founder
+   * deciding whether to spend another skill edit on recovering the composed voice
+   * (Decision #4). Both failures end in the same deterministic render, which is exactly
+   * why the reason has to be carried out separately: "the model made something up" is a
+   * prompt problem and "the call did not come back" is an availability one, and folding
+   * the second into the bucket named for the first is the shape rule #11 forbids.
+   */
+  it('counts a model outage apart from a model fabrication', async () => {
+    vi.stubEnv(FIRST_REPLY_ACTION_LINE_ENV, '');
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const outage = await composeRadarMessage(BETWEEN_CYCLES, scriptedDeps({ throws: true }));
+    expect(outage.voiceFallback).toBe('voice_unavailable');
+
+    // The control, and the pair is what makes either assertion mean anything: an
+    // invented link — the fact lint's own business — still reports 'grounding'.
+    const fabricated = await composeRadarMessage(
+      BETWEEN_CYCLES,
+      scriptedDeps('Sign up at https://halton.example.com before it fills.'),
+    );
+    expect(fabricated.voiceFallback).toBe('grounding');
+    quiet.mockRestore();
+
+    // Either way the parent gets the grounded render, whole.
+    for (const radar of [outage, fabricated]) {
+      expect(radar.body).toBe(renderRadarDeterministically(BETWEEN_CYCLES, ''));
+    }
   });
 });

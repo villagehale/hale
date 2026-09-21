@@ -389,7 +389,8 @@ export function renderRadarDeterministically(decision: RadarDecision, tail: stri
       const lead = absenceLine;
       // R8b. This return is not sliced by maxBlocks at all — there is no block to spend
       // — so a tail costs the MAPPING_ONLY clause instead, and the worst seeded cycle
-      // label stops being unsendable at 487 septets. The honest half to drop is the one
+      // label stops costing a fourth billed segment at 487 septets (nothing below this
+      // module refuses an over-long body; it ships). The honest half to drop is the one
       // saying Hale has nothing to point them to: it has just pointed them at a page.
       // FIRST_FIND_BEAT stays unconditionally — `emptyHanded` is what the commitments
       // ledger keys on, and a beat dropped at render against a debt recorded at send is
@@ -439,9 +440,23 @@ export interface RadarMessage {
    * founder decision asked for the second. So the pair is read together.
    */
   actionHeld: ActionLineHeld | null;
-  /** The composed voice lost and the deterministic render went out, with WHICH check
-   *  lost it. Null when the composed message shipped. */
-  voiceFallback: 'grounding' | 'budget' | 'skill_load' | 'no_client' | null;
+  /**
+   * The composed voice lost and the deterministic render went out, with WHICH check
+   * lost it. Null when the composed message shipped.
+   *
+   * 'grounding' means the model's ANSWER was wrong — a fabricated fact or an answer
+   * that would not parse. An outage is 'voice_unavailable' and never 'grounding':
+   * "the model made something up" and "the call did not come back" are opposite
+   * problems with opposite fixes, and a probe that folds one into the other reads its
+   * own numbers backwards (rule #11).
+   */
+  voiceFallback:
+    | 'grounding'
+    | 'voice_unavailable'
+    | 'budget'
+    | 'skill_load'
+    | 'no_client'
+    | null;
 }
 
 /**
@@ -509,7 +524,7 @@ export async function composeRadarMessage(
     return fallback('skill_load');
   }
 
-  const { voice } = await composeVoice<RadarVoice>({
+  const { voice, reason } = await composeVoice<RadarVoice>({
     skill,
     context: radarVoiceContext(decision),
     factSlots: radarFactSlots(decision),
@@ -523,7 +538,11 @@ export async function composeRadarMessage(
     maxTokens: VOICE_MAX_TOKENS,
   });
 
-  if (!voice) return fallback('grounding');
+  // An outage is not a fabrication. `composeVoice` names which one it was, and the two
+  // are counted apart here rather than folded into the bucket whose name means the
+  // other thing (rule #11) — the dark night's 'grounding' rate is a prompt signal, and
+  // its 'voice_unavailable' rate is an availability one.
+  if (!voice) return fallback(reason === 'unavailable' ? 'voice_unavailable' : 'grounding');
   const fault = radarMessageFault(voice.message, decision, tail);
   if (fault !== null) {
     console.error(
