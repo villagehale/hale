@@ -45,6 +45,9 @@ interface Captured {
   alerted: GmailAlertBatch[];
   /** Every calendar batch handed to the alert port, in order. */
   calendarAlerted: CalendarAlertBatch[];
+  /** Every gmail batch handed to the TRAVEL detect port, in order. The third alert-shaped
+   * port on SyncDeps, and non-nullable for the reason the other two are. */
+  travelDetected: GmailAlertBatch[];
 }
 
 /** The single enqueued event, asserting exactly one was emitted (narrows away the
@@ -58,7 +61,13 @@ function onlyEvent(cap: Captured): EnqueuedEvent {
 
 /** Deps stub: capture enqueue + cursor/error/token writes without a real queue/db. */
 function stubDeps(overrides: Partial<Parameters<typeof syncConnection>[1]> = {}) {
-  const cap: Captured = { enqueued: [], errored: false, alerted: [], calendarAlerted: [] };
+  const cap: Captured = {
+    enqueued: [],
+    errored: false,
+    alerted: [],
+    calendarAlerted: [],
+    travelDetected: [],
+  };
   const deps: Parameters<typeof syncConnection>[1] = {
     googleFetch: overrides.googleFetch ?? routedFetch([]).fetchImpl,
     enqueue: async (event) => {
@@ -78,11 +87,15 @@ function stubDeps(overrides: Partial<Parameters<typeof syncConnection>[1]> = {})
     },
     alertGmailEnvelopes: async (batch) => {
       cap.alerted.push(batch);
-      return batch.envelopes.map(() => ({ alert: 'dark' as const, booking: null }));
+      return batch.envelopes.map(() => ({ alert: 'dark' as const, booking: null, going: null }));
     },
     alertCalendarChanges: async (batch) => {
       cap.calendarAlerted.push(batch);
       return { changes: batch.changes.map(() => 'dark' as const), reoffers: [] };
+    },
+    detectTravelBookings: async (batch) => {
+      cap.travelDetected.push(batch);
+      return batch.envelopes.map(() => 'dark' as const);
     },
     ...overrides,
   };
@@ -683,7 +696,7 @@ describe('syncConnection — the gmail alert hand-off', () => {
     // already saved — otherwise a slow alert pass would re-enqueue the whole batch next run.
     const ok = stubDeps({ googleFetch: mailbox('1789000000000') });
     const result = await syncConnection(connection('gmail', { historyId: '9002' }), ok.deps);
-    expect(result.emailAlerts).toEqual([{ alert: 'dark', booking: null }]);
+    expect(result.emailAlerts).toEqual([{ alert: 'dark', booking: null, going: null }]);
     expect(ok.cap.cursor).toEqual({ historyId: '9100' });
   });
 
@@ -709,10 +722,45 @@ describe('syncConnection — the gmail alert hand-off', () => {
     // The PAIR, with a null booking and not a booking outcome: the alert pass threw, so
     // the booking decision was never reached, which is a different fact from a booking
     // that was refused (rule #11).
-    expect(thrown.emailAlerts).toEqual([{ alert: 'alert_failed', booking: null }]);
+    expect(thrown.emailAlerts).toEqual([{ alert: 'alert_failed', booking: null, going: null }]);
     expect(cap.errored).toBe(false);
     expect(cap.cursor).toEqual({ historyId: '9100' });
     // The ingest half is untouched: the message still reached the queue.
+    expect(cap.enqueued).toHaveLength(1);
+  });
+
+  it('hands the SAME batch to the travel detect pass, after the alert pass', async () => {
+    // It reuses the envelopes and the access token this run already holds, so noticing a
+    // trip costs no second Gmail call and no second token read.
+    const { deps, cap } = stubDeps({ googleFetch: mailbox('1789000000000') });
+    const result = await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+    expect(result.travelDetections).toEqual(['dark']);
+    expect(cap.travelDetected).toHaveLength(1);
+    expect(cap.travelDetected[0]?.envelopes).toEqual(cap.alerted[0]?.envelopes);
+    expect(cap.travelDetected[0]?.accessToken).toBe(cap.alerted[0]?.accessToken);
+  });
+
+  it('a throw from the TRAVEL path is named, and never marks the mailbox broken', async () => {
+    // Its own boundary, for exactly the reason the alert pass has one: a bug in Hale's
+    // travel path must not mark the CONNECTION errored and stop the ingest. One envelope
+    // in, one named outcome out (rule #11).
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { deps, cap } = stubDeps({
+      googleFetch: mailbox('1789000000000'),
+      detectTravelBookings: async () => {
+        throw new Error('boom');
+      },
+    });
+    const thrown = await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+    expect(logged).toHaveBeenCalledTimes(1);
+    logged.mockRestore();
+
+    expect(thrown.travelDetections).toEqual(['detect_failed']);
+    // The connection is healthy, the cursor advanced, the email alert still ran, and the
+    // ingest still happened — the whole point of a boundary of its own.
+    expect(cap.errored).toBe(false);
+    expect(cap.cursor).toEqual({ historyId: '9100' });
+    expect(thrown.emailAlerts).toEqual([{ alert: 'dark', booking: null, going: null }]);
     expect(cap.enqueued).toHaveLength(1);
   });
 });

@@ -1,0 +1,11 @@
+{
+  "value": {
+    "destination_city": "New York",
+    "destination_region": "NY",
+    "start_date": "2026-09-12",
+    "end_date": "2026-09-15",
+    "child_evidence": "named_traveller",
+    "confidence": 0.97
+  },
+  "stopReason": "tool_use"
+}

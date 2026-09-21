@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
@@ -24,6 +24,7 @@ import {
   emailAlertDedupeKey,
   renderEmailAlert,
 } from './email-alert';
+import { GOING_COUNT_ENABLED_ENV, type GoingCount, sessionKey } from './going';
 
 /**
  * The join between the sentinel and the outbound chokepoint, against the REAL DDL.
@@ -466,6 +467,16 @@ describe('alertParentForGmailSweep', () => {
   });
 });
 
+/**
+ * The BODY only.
+ *
+ * `renderEmailAlert` returns the sentence AND what the going count actually did, because
+ * the measured fold can drop the clause and `over_segment_budget` has to be able to leave
+ * the renderer (rule #11). Every assertion about the WORDS reads the first half through
+ * here; the tests that are about the count read the second half directly.
+ */
+const sentence = (input: EmailAlertRenderInput): string => renderEmailAlert(input).body;
+
 describe('the text itself', () => {
   const RENDER = {
     from: 'Riverside Pool <info@riverside.example>',
@@ -482,6 +493,7 @@ describe('the text itself', () => {
     // DARK by default, so every frame below is asserted against the behaviour every
     // family has today. The booking frame's own describe arms it explicitly.
     booked: false,
+    going: null,
     timeZone: 'America/Toronto',
     now: NOW,
   };
@@ -496,7 +508,7 @@ describe('the text itself', () => {
    */
   const CTA = ' Reply YES and it goes on your week.';
   const frame = (input: EmailAlertRenderInput): string =>
-    renderEmailAlert(input).replace(CTA, '');
+    sentence(input).replace(CTA, '');
 
   it('is a plain sentence: the sender did it, the time is a clause, and it ends there', () => {
     // The first cut opened "From your email:" and closed "I can add it to your week -
@@ -506,7 +518,7 @@ describe('the text itself', () => {
     // any kind (lib/channel/router/open-questions.ts: nine kinds, none of them this), so
     // a parent who replied YES either got the coach or, with one unrelated draft pending,
     // approved THAT. The offer is gone until something can keep it.
-    const body = renderEmailAlert(RENDER);
+    const body = sentence(RENDER);
     expect(body).toBe(
       'Riverside Pool cancelled Saturday swim class - it was Saturday, Sep 19 at 9:00 a.m.',
     );
@@ -951,6 +963,13 @@ describe('the text itself', () => {
     // one verbose school subject line becomes a three-segment bill per family per email.
     // The OFFER CLAUSE is inside this bound too — `renderEmailAlert` is called here, not
     // `frame` — because the shapes that can carry it are exactly the long ones.
+    //
+    // ...AND SO IS THE GOING CLAUSE, in the same matrix rather than in a second test that
+    // could prove the bound on a different sentence. Two additions earn their place: a
+    // FIVE-LETTER count word ("three"), which is the longest form the spelled range has,
+    // and a WEDNESDAY-NOON OTHER-YEAR instant, whose `longWhen` is the 37-septet worst
+    // case ("Wednesday, Sep 29, 2027 at 12:00 p.m.") that the January dates below are two
+    // short of. Together they are the 287-of-306 arithmetic, executed.
     const nasty = 'Registration — '.repeat(40);
     const kinds: ExtractionKind[] = [
       'cancellation',
@@ -960,33 +979,49 @@ describe('the text itself', () => {
       'unclear',
       'booking_confirmation',
     ];
+    const goings: Array<GoingCount | null> = [
+      null,
+      { shown: true, others: 2 },
+      { shown: true, others: 3 },
+      { shown: true, others: 99 },
+      { shown: false, reason: 'below_floor' },
+    ];
+    /** The January pair the matrix started with, and the Wednesday-noon 2027 worst case. */
+    const instants: Array<{ originalTime: string; newTime: string }> = [
+      { originalTime: '2027-01-05T13:00:00.000Z', newTime: '2027-01-06T13:00:00.000Z' },
+      { originalTime: '2027-09-28T16:00:00.000Z', newTime: '2027-09-29T16:00:00.000Z' },
+    ];
     for (const kind of kinds) {
       for (const teenContent of [false, true]) {
         // BOTH flag states, because the booking frame and its longer CTA only exist in
         // one of them: a bound proved dark is a bound proved on the old sentence.
         for (const booked of [false, true]) {
-          for (const from of [
-            `"${nasty}" <${'a'.repeat(60)}@${'d'.repeat(60)}.example>`,
-            `${'x'.repeat(200)}@${'y'.repeat(80)}.example`,
-            'no-at-sign-at-all',
-            '',
-          ]) {
-            const body = renderEmailAlert({
-              ...RENDER,
-              from,
-              kind,
-              teenContent,
-              booked,
-              event: {
-                title: nasty,
-                childRef: null,
-                originalTime: '2027-01-05T13:00:00.000Z',
-                newTime: '2027-01-06T13:00:00.000Z',
-                location: 'somewhere',
-              },
-            });
-            expect(isPrintableGsm7Basic(body)).toBe(true);
-            expect(smsSegments(`${body}\n\n${OPT_OUT_LINE}`)).toBeLessThanOrEqual(2);
+          for (const going of goings) {
+            for (const times of instants) {
+              for (const from of [
+                `"${nasty}" <${'a'.repeat(60)}@${'d'.repeat(60)}.example>`,
+                `${'x'.repeat(200)}@${'y'.repeat(80)}.example`,
+                'no-at-sign-at-all',
+                '',
+              ]) {
+                const body = sentence({
+                  ...RENDER,
+                  from,
+                  kind,
+                  teenContent,
+                  booked,
+                  going,
+                  event: {
+                    title: nasty,
+                    childRef: null,
+                    ...times,
+                    location: 'somewhere',
+                  },
+                });
+                expect(isPrintableGsm7Basic(body)).toBe(true);
+                expect(smsSegments(`${body}\n\n${OPT_OUT_LINE}`)).toBeLessThanOrEqual(2);
+              }
+            }
           }
         }
       }
@@ -1010,6 +1045,7 @@ describe('the booking frame', () => {
     teenContent: false,
     matchedEventRef: null,
     booked: true,
+    going: null,
     timeZone: 'America/Toronto',
     now: NOW,
     event: {
@@ -1022,7 +1058,7 @@ describe('the booking frame', () => {
   };
 
   it('relays the provider as the subject, names the first session, and ends on the one ask', () => {
-    expect(renderEmailAlert(BOOKING)).toBe(
+    expect(sentence(BOOKING)).toBe(
       "Riverside Pool says you're in for Swim Level 2 - first one Saturday, Sep 26 at 9:00 a.m." +
         ' at the Leisure Centre. Want it on your calendar?',
     );
@@ -1033,7 +1069,7 @@ describe('the booking frame', () => {
     // no CTA is appended. What is left IS the composed frame, and it must not ask
     // anything: a question with no offer row behind it is #649 verbatim, and after the
     // correlation fix this is the most common draft-null booking there is.
-    const tracked = renderEmailAlert({
+    const tracked = sentence({
       ...BOOKING,
       matchedEventRef: { table: 'family_events', id: randomUUID() },
     });
@@ -1044,14 +1080,14 @@ describe('the booking frame', () => {
     expect(tracked).not.toContain('?');
     // MUTATION: move 'Want it on your calendar?' inside `compose` and this goes red,
     // while the happy-path assertion above stays green. That asymmetry is the test.
-    expect(renderEmailAlert(BOOKING).match(/\?/g)).toHaveLength(1);
+    expect(sentence(BOOKING).match(/\?/g)).toHaveLength(1);
   });
 
   it('asserts no row Hale does not hold - the claim taxonomy, with its mutation', () => {
     // SCHEDULED_ASSERTION matches "you're registered", "is confirmed", "is on your
     // calendar". "you're in for" and "Want it on your calendar?" clear it, and the
     // email-alert path runs no `refuseUnbackedSend`, so this file is the only gate.
-    expect(extractStateClaims(renderEmailAlert(BOOKING))).toEqual([]);
+    expect(extractStateClaims(sentence(BOOKING))).toEqual([]);
 
     // THE MUTATION, as an executable control rather than a note: the same sentence with
     // the banned wording DOES produce a claim. Without it this is an absence test, and
@@ -1063,8 +1099,8 @@ describe('the booking frame', () => {
   it('renders byte-identically to a new_event while the flag is off', () => {
     // The WHOLE claim of the dark state, asserted rather than narrated. Same extraction,
     // same instant, same everything: dark, a booking IS a new_event on the wire.
-    const dark = renderEmailAlert({ ...BOOKING, booked: false });
-    const asNewEvent = renderEmailAlert({ ...BOOKING, kind: 'new_event', booked: false });
+    const dark = sentence({ ...BOOKING, booked: false });
+    const asNewEvent = sentence({ ...BOOKING, kind: 'new_event', booked: false });
     expect(dark).toBe(asNewEvent);
     expect(dark).toBe(
       'Riverside Pool has Swim Level 2 at the Leisure Centre on Saturday, Sep 26 at 9:00 a.m.' +
@@ -1073,7 +1109,7 @@ describe('the booking frame', () => {
   });
 
   it('says only what it has when the receipt named no first session', () => {
-    const undated = renderEmailAlert({
+    const undated = sentence({
       ...BOOKING,
       event: { ...BOOKING.event, newTime: null, location: null },
     });
@@ -1083,7 +1119,7 @@ describe('the booking frame', () => {
   });
 
   it('keeps the teen text category-only, as every other kind does', () => {
-    expect(renderEmailAlert({ ...BOOKING, teenContent: true })).toBe(
+    expect(sentence({ ...BOOKING, teenContent: true })).toBe(
       "Swim Level 2. I've kept the details out of this text.",
     );
   });
@@ -1095,6 +1131,7 @@ const RENDER_FOR_OFFER = {
   teenContent: false,
   matchedEventRef: null,
   booked: false,
+  going: null as GoingCount | null,
   timeZone: 'America/Toronto',
   now: NOW,
 };
@@ -1208,7 +1245,7 @@ describe('the offer at the end', () => {
   });
 
   it('puts the clause after the sentence ends, once, and never inside a teen text', () => {
-    const body = renderEmailAlert({
+    const body = sentence({
       ...RENDER_FOR_OFFER,
       event: {
         title: 'Picture day',
@@ -1223,7 +1260,7 @@ describe('the offer at the end', () => {
 
     // The teen text is category-only and returns before the frame runs at all.
     expect(
-      renderEmailAlert({
+      sentence({
         ...RENDER_FOR_OFFER,
         teenContent: true,
         event: {
@@ -1245,4 +1282,414 @@ describe('the gate registration', () => {
     expect(PROACTIVE_CATEGORY.email_alert).toBe('email_alert');
     expect(PROACTIVE_CAP.email_alert).toEqual({ max: 3, windowHours: 24 });
   });
+});
+
+/**
+ * WHO ELSE IS GOING — the clause inside the frame, the fold that measures it, and the dark
+ * state that never asks.
+ *
+ * The count itself is `going.pglite.test.ts`'s job (the SQL, the floor, the key). What is
+ * under test here is everything the alert path does with an answer: where the words land,
+ * what the audit row carries, and — the one that cannot be seen from the count's side —
+ * that a dark sweep never issues the query at all.
+ */
+describe('who else is going', () => {
+  const BOOKING: EmailAlertRenderInput = {
+    from: 'Riverside Pool <info@riverside.example>',
+    kind: 'booking_confirmation',
+    teenContent: false,
+    matchedEventRef: null,
+    booked: true,
+    going: null,
+    timeZone: 'America/Toronto',
+    now: NOW,
+    event: {
+      title: 'Swim Level 2',
+      childRef: null,
+      originalTime: null,
+      newTime: '2026-09-26T13:00:00.000Z',
+      location: 'the Leisure Centre',
+    },
+  };
+
+  it('rides INSIDE the frame, before the full stop and before the CTA', () => {
+    // A clause, never its own sentence: `coach-channel-sms.md`'s house rule, and the shape
+    // the D25 voice brief is trying to keep. A bolted-on second sentence would also land
+    // AFTER the period, which is how "with two other Hale families" stops being part of
+    // the thing it counts.
+    const { body, going } = renderEmailAlert({ ...BOOKING, going: { shown: true, others: 2 } });
+    expect(body).toBe(
+      "Riverside Pool says you're in for Swim Level 2 - first one Saturday, Sep 26 at 9:00 a.m." +
+        ' at the Leisure Centre, with two other Hale families. Want it on your calendar?',
+    );
+    expect(going).toEqual({ shown: true, others: 2 });
+  });
+
+  it('names the POPULATION it counts — Hale families, never families', () => {
+    // The one wording rule that is not negotiable. "two other families are in this swim
+    // class" is a claim about the class roster Hale cannot back; "two other Hale families"
+    // is true about a set Hale can enumerate.
+    const { body } = renderEmailAlert({ ...BOOKING, going: { shown: true, others: 3 } });
+    expect(body).toContain('three other Hale families');
+    // The positive above pairs with this negative: the bare phrase must not appear, and a
+    // search that allowed "other Hale families" to satisfy it would prove nothing.
+    expect(body).not.toMatch(/(?<!Hale )other families/);
+  });
+
+  it('adds NO state claim, and the banned wording does — the mutation, executed', () => {
+    // SCHEDULED_ASSERTION (channel/reconcile/claims.ts) needs a first-person verb or a
+    // copula before `booked|scheduled|confirmed`. A bare prepositional clause has neither.
+    const { body } = renderEmailAlert({ ...BOOKING, going: { shown: true, others: 2 } });
+    expect(extractStateClaims(body)).toEqual([]);
+    // THE MUTATION: the same clause written as an assertion DOES produce a claim, so this
+    // is a gate rather than an absence test.
+    expect(
+      extractStateClaims(body.replace(', with two other Hale families', '')
+        .replace('.', ' and two other Hale families are booked.')).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('measures the clause against the bound, at the clamp maxima, and reports what it did', () => {
+    // EVERY CLAMP AT ITS MAXIMUM and the longest of everything: a 40-septet sender, a
+    // 60-septet title, a 30-septet place, the 37-septet Wednesday-noon other-year instant,
+    // the five-letter count word, the booking CTA and the FULL opt-out.
+    const max: EmailAlertRenderInput = {
+      ...BOOKING,
+      from: `"${'S'.repeat(60)}" <info@brookfield.example>`,
+      event: {
+        title: 'T'.repeat(80),
+        childRef: null,
+        originalTime: null,
+        newTime: '2027-09-29T16:00:00.000Z',
+        location: 'L'.repeat(30),
+      },
+    };
+    const withCount = renderEmailAlert({ ...max, going: { shown: true, others: 3 } });
+    const wire = `${withCount.body}\n\n${OPT_OUT_LINE}`;
+    // R2's ARITHMETIC, EXECUTED rather than argued: 287 septets of 306. The exact number,
+    // not `<= 2`, because the claim that matters is the HEADROOM — nineteen septets — and
+    // only an exact assertion notices it being spent. Widen TITLE_MAX by twenty and this
+    // goes red before a parent gets a three-segment bill.
+    expect(wire.length).toBe(287);
+    expect(smsSegments(wire)).toBe(2);
+    // ...so at the maximum the clause SURVIVES, and the renderer says so.
+    expect(withCount.body).toContain(', with three other Hale families');
+    expect(withCount.going).toEqual({ shown: true, others: 3 });
+
+    // AND THE FOLD ITSELF, stated rather than faked. Nineteen septets of headroom means NO
+    // input today's clamps admit can cross the bound - the longest count word is five
+    // letters and the longest numeral `String` will print is twenty-one digits, both inside
+    // it - so `over_segment_budget` is a GUARD and not a live path. It is kept because the
+    // frame is the thing that moves (a longer CTA, a wider clamp, the D25 re-wording) and a
+    // third segment is billed per family per email; and it returns a named outcome rather
+    // than dropping quietly, so the day it does fire the cron summary says so instead of a
+    // parent's bill. What is asserted here is the trigger it reads: twenty more septets and
+    // this body is over, which is exactly when the clause has to go.
+    const overBound = `${withCount.body.slice(0, -1)}${'x'.repeat(20)}.`;
+    expect(smsSegments(`${overBound}\n\n${OPT_OUT_LINE}`)).toBeGreaterThan(2);
+  });
+
+  it('is byte-identical to the booked chain’s frame when there is no count', () => {
+    // The dark state, asserted rather than narrated: the same input with `going: null` is
+    // the sentence every booked family gets today.
+    expect(renderEmailAlert({ ...BOOKING, going: null }).body).toBe(
+      "Riverside Pool says you're in for Swim Level 2 - first one Saturday, Sep 26 at 9:00 a.m." +
+        ' at the Leisure Centre. Want it on your calendar?',
+    );
+    // ...and so is every refusal, including the ones that mean something happened.
+    for (const reason of ['below_floor', 'no_session', 'repeat_receipt', 'going_dark'] as const) {
+      expect(renderEmailAlert({ ...BOOKING, going: { shown: false, reason } }).body).toBe(
+        renderEmailAlert({ ...BOOKING, going: null }).body,
+      );
+    }
+  });
+});
+
+/**
+ * ...and the same feature through the REAL alert path, where the question is not what the
+ * words are but whether the query runs at all.
+ */
+describe('the going count in the alert path', () => {
+  const RECEIPT = {
+    subject: 'Registration Confirmation - Swim Level 2',
+    from: 'Brookfield Recreation <noreply@recreation.brookfield.example.ca>',
+    snippet: "You're registered for Swim Level 2.",
+    receivedAt: '2026-09-17T14:00:00.000Z',
+  };
+  const FIRST_SESSION = '2026-09-26T13:00:00.000Z';
+  /** The fragment only the going count's own SELECT carries — how "the query was never
+   * issued" is observed rather than inferred from an answer that would look the same
+   * either way. */
+  const COUNT_QUERY = '"activity_bookings"."session_key" =';
+
+  function receipt(): SentinelClassification {
+    return classified({
+      kind: 'booking_confirmation',
+      title: 'Swim Level 2',
+      originalTime: null,
+      newTime: FIRST_SESSION,
+      location: 'the Leisure Centre',
+    });
+  }
+
+  /** Another household already holding this session — a ROW, because their booking is data
+   * rather than behaviour under test. The key is computed by the SHIPPED function, so a
+   * change to the fold moves the fixture with it. */
+  async function otherFamilyBooked(name: string): Promise<string> {
+    const other = await seedFamily(db.database, name);
+    counted.push(other.familyId);
+    const [message] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: other.familyId,
+        parentUserId: other.parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'email_alert',
+        status: 'sent',
+      })
+      .returning({ id: schema.channelMessages.id });
+    await db.database.insert(schema.activityBookings).values({
+      familyId: other.familyId,
+      parentUserId: other.parentUserId,
+      integrationId: randomUUID(),
+      messageId: randomUUID(),
+      providerHost: 'recreation.brookfield.example.ca',
+      title: 'Swim Level 2',
+      firstSessionAt: new Date(FIRST_SESSION),
+      sessionKey: sessionKey({
+        providerHost: 'recreation.brookfield.example.ca',
+        title: 'Swim Level 2',
+        titleIsFallback: false,
+        firstSessionAt: new Date(FIRST_SESSION),
+      }),
+      channelMessageId: message?.id as string,
+    });
+    return other.familyId;
+  }
+
+  /** Every statement the driver actually ran this call. The observation point the pglite
+   * harness documents for exactly this: an invariant the caller's ANSWER cannot show. */
+  async function statementsDuring<T>(run: () => Promise<T>): Promise<{ sql: string[]; out: T }> {
+    const sql: string[] = [];
+    const query = db.client.query.bind(db.client);
+    const exec = db.client.exec.bind(db.client);
+    db.client.query = ((text: string, ...rest: unknown[]) => {
+      sql.push(String(text));
+      return (query as (...a: unknown[]) => unknown)(text, ...rest);
+    }) as typeof db.client.query;
+    db.client.exec = ((text: string, ...rest: unknown[]) => {
+      sql.push(String(text));
+      return (exec as (...a: unknown[]) => unknown)(text, ...rest);
+    }) as typeof db.client.exec;
+    try {
+      return { sql, out: await run() };
+    } finally {
+      db.client.query = query;
+      db.client.exec = exec;
+    }
+  }
+
+  /** The households seeded as already holding the session, this test only. */
+  let counted: string[] = [];
+
+  beforeEach(async () => {
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+    counted = [];
+    // The pglite instance is shared across this file and the count reads ACROSS families,
+    // so an earlier describe's bookings would be counted into this one's sentence.
+    await db.database.delete(schema.activityBookings);
+  });
+
+  it('speaks the count, audits the NUMBER and nothing else, and writes no row on the other side', async () => {
+    vi.stubEnv(GOING_COUNT_ENABLED_ENV, 'true');
+    await otherFamilyBooked('Other A');
+    await otherFamilyBooked('Other B');
+    const h = harness({ classification: receipt() });
+
+    await expect(alertPair(h, 'm1', { envelope: RECEIPT })).resolves.toEqual({
+      alert: 'sent',
+      booking: 'recorded',
+      going: 'shown',
+    });
+    expect(h.transport.sent[0]?.body).toContain('with two other Hale families');
+
+    const sent = (await auditRows()).find((row) => row.actionTaken === 'email_alert_sent');
+    // `toEqual` rather than `toMatchObject`: the rule for this row is enums and flags only,
+    // and a subset match would pass with the provider's domain sitting beside the number.
+    expect(sent?.after).toEqual({
+      kind: 'booking_confirmation',
+      teenContent: false,
+      othersCount: 2,
+    });
+    const trail = JSON.stringify(sent?.after);
+    for (const leak of ['brookfield', 'Swim Level 2', FIRST_SESSION]) {
+      expect(trail).not.toContain(leak);
+    }
+
+    // THE FOURTH-AXIS ASSERTION: the counted households get NO audit row and NO message. A
+    // row in their trail saying their booking was counted would tell them another Hale
+    // family is in their child's class — the same disclosure, in reverse, unasked. This is
+    // the one that would catch anybody "improving" the design by auditing the subjects.
+    expect(counted).toHaveLength(2);
+    for (const id of counted) {
+      await expect(
+        db.database.select().from(schema.auditLog).where(eq(schema.auditLog.familyId, id)),
+      ).resolves.toEqual([]);
+      // Exactly the one row this fixture wrote to hang their booking off, and nothing Hale
+      // sent: no second text, no suppression receipt, no thread.
+      await expect(
+        db.database
+          .select()
+          .from(schema.channelMessages)
+          .where(eq(schema.channelMessages.familyId, id)),
+      ).resolves.toHaveLength(1);
+    }
+  });
+
+  it('says nothing, and audits null, when only one other family holds the session', async () => {
+    vi.stubEnv(GOING_COUNT_ENABLED_ENV, 'true');
+    await otherFamilyBooked('Other A');
+    const h = harness({ classification: receipt() });
+
+    await expect(alertPair(h, 'm1', { envelope: RECEIPT })).resolves.toMatchObject({
+      going: 'below_floor',
+    });
+    expect(h.transport.sent[0]?.body).not.toContain('Hale families');
+    const sent = (await auditRows()).find((row) => row.actionTaken === 'email_alert_sent');
+    expect(sent?.after).toEqual({
+      kind: 'booking_confirmation',
+      teenContent: false,
+      othersCount: null,
+    });
+  });
+
+  it('never speaks twice about one session — the second receipt is a repeat', async () => {
+    vi.stubEnv(GOING_COUNT_ENABLED_ENV, 'true');
+    await otherFamilyBooked('Other A');
+    await otherFamilyBooked('Other B');
+    const first = harness({ classification: receipt() });
+    await expect(alertPair(first, 'm1', { envelope: RECEIPT })).resolves.toMatchObject({
+      going: 'shown',
+    });
+
+    // A provider that sends "Registration confirmed" and then "Payment receipt" is two
+    // receipts for one session. Reading 2 at 09:00 and 3 at 14:00 would tell this family
+    // that exactly one household registered in between.
+    const second = harness({ classification: receipt() });
+    await expect(alertPair(second, 'm2', { envelope: RECEIPT })).resolves.toMatchObject({
+      going: 'repeat_receipt',
+    });
+    expect(second.transport.sent[0]?.body).not.toContain('Hale families');
+  });
+
+  it('DARK: the query is not issued at all, and the body is byte-identical', async () => {
+    await otherFamilyBooked('Other A');
+    await otherFamilyBooked('Other B');
+    const lit = harness({ classification: receipt() });
+    vi.stubEnv(GOING_COUNT_ENABLED_ENV, 'true');
+    await alertPair(lit, 'm1', { envelope: RECEIPT });
+    const spoken = lit.transport.sent[0]?.body ?? '';
+
+    // ...and now with the flag in its `vercel env add` failure shape.
+    vi.stubEnv(GOING_COUNT_ENABLED_ENV, 'true\n');
+    const dark = harness({ classification: receipt() });
+    const { sql, out } = await statementsDuring(() =>
+      alertPair(dark, 'm2', { envelope: RECEIPT }),
+    );
+    expect(out.going).toBe('going_dark');
+    expect(sql.some((text) => text.includes(COUNT_QUERY))).toBe(false);
+    expect(dark.transport.sent[0]?.body).toBe(spoken.replace(', with two other Hale families', ''));
+    // The positive control for the observation itself: the LIT run does issue it.
+    const litAgain = harness({ classification: receipt() });
+    vi.stubEnv(GOING_COUNT_ENABLED_ENV, 'true');
+    const observed = await statementsDuring(() => alertPair(litAgain, 'm3', { envelope: RECEIPT }));
+    expect(observed.sql.some((text) => text.includes(COUNT_QUERY))).toBe(true);
+  });
+
+  it('DARK-BOOKED: a family whose bookings are not recorded reads nobody else’s', async () => {
+    // Two flags, two questions, and the count is downstream of both: dark-booked there is
+    // no booking frame to carry a clause, so reading other households' rows for it would
+    // be a disclosure query run for a sentence that cannot exist.
+    vi.stubEnv(GOING_COUNT_ENABLED_ENV, 'true');
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'false');
+    await otherFamilyBooked('Other A');
+    await otherFamilyBooked('Other B');
+    const h = harness({ classification: receipt() });
+    const { sql, out } = await statementsDuring(() => alertPair(h, 'm1', { envelope: RECEIPT }));
+    expect(out).toEqual({ alert: 'sent', booking: 'booked_dark', going: null });
+    expect(sql.some((text) => text.includes(COUNT_QUERY))).toBe(false);
+  });
+
+  it('withholds the count for a 13+ child, and says which gate did it', async () => {
+    vi.stubEnv(GOING_COUNT_ENABLED_ENV, 'true');
+    await otherFamilyBooked('Other A');
+    await otherFamilyBooked('Other B');
+    const h = harness({
+      classification: classified({
+        kind: 'booking_confirmation',
+        title: 'Swim Level 2',
+        originalTime: null,
+        newTime: FIRST_SESSION,
+        location: null,
+        teenAttributed: true,
+      }),
+    });
+    // No booking, therefore no count — and the going axis keeps the teen reason rather than
+    // folding it into "never reached the decision", because that rate is rule #1's.
+    await expect(alertPair(h, 'm1', { envelope: RECEIPT })).resolves.toEqual({
+      alert: 'sent',
+      booking: 'teen_attributed',
+      going: 'teen_attributed',
+    });
+    expect(h.transport.sent[0]?.body).not.toContain('Hale families');
+  });
+
+  it('ERASURE: deleting one counted family drops the count and the clause with it', async () => {
+    vi.stubEnv(GOING_COUNT_ENABLED_ENV, 'true');
+    const erasedId = await otherFamilyBooked('Other A');
+    await otherFamilyBooked('Other B');
+    // THE POSITIVE CONTROL FIRST, on a household of its own: without it the assertion below
+    // passes on a count that was never 2. Note that this leg WRITES a third booking, which
+    // is why both it and Other A are erased next - the claim is about the cascade, and a
+    // count that fell because one household was never in it would prove nothing.
+    const control = await sweepDetail('Third', 'm1');
+    expect(control.result.going).toBe('shown');
+    expect(control.body).toContain('with two other Hale families');
+
+    // The cascade IS the erasure path - `runDeletionSweep` issues one DELETE FROM families
+    // and lets it take the bookings - so it is asserted rather than trusted, and the count
+    // is a query rather than an aggregate precisely so nothing has to recompute.
+    await db.database
+      .delete(schema.families)
+      .where(inArray(schema.families.id, [erasedId, control.familyId]));
+
+    const { result, body } = await sweepDetail('Fifth', 'm2');
+    expect(result.going).toBe('below_floor');
+    expect(body).not.toContain('Hale families');
+  });
+
+  /** One fresh household receiving this same receipt - the shape both erasure legs need. */
+  async function sweepDetail(
+    name: string,
+    messageId: string,
+  ): Promise<{ familyId: string; result: EmailAlertResult; body: string }> {
+    const household = await seedFamily(db.database, name);
+    const h = harness({ classification: receipt() });
+    const result = await alertParentForEmail(
+      db.database,
+      {
+        familyId: household.familyId,
+        parentUserId: household.parentUserId,
+        integrationId: randomUUID(),
+        messageId,
+        envelope: RECEIPT,
+        cancelledThisSweep: new Set<string>(),
+        timeZone: 'America/Toronto',
+        now: NOW,
+      },
+      h.ports,
+    );
+    return { familyId: household.familyId, result, body: h.transport.sent[0]?.body ?? '' };
+  }
 });

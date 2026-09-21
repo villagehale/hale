@@ -3,13 +3,13 @@ import { eq } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
-import { withOptOut } from '~/lib/channel/opt-out';
-import type {
-  ProactiveHoldReason,
-  ProactiveSendRequest,
-  ProactiveSendVerdict,
+import {
+  type ProactiveSendRequest,
+  type ProactiveSendVerdict,
+  holdStatus,
 } from '~/lib/channel/outbound-gate';
-import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
+import { withOptOut } from '~/lib/channel/opt-out';
+import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { formatDayHeading } from '~/lib/format/datetime';
@@ -22,11 +22,21 @@ import type {
 } from '~/lib/sentinel';
 import { bookedDetectionEnabledFor } from './booked';
 import {
+  type BookingDraftResult,
   bookingCancellationKey,
   bookingDraft,
   closeCancelledBookings,
   recordActivityBooking,
 } from './booking';
+import {
+  type GoingCount,
+  type GoingOutcome,
+  goingClause,
+  goingCount,
+  goingCountEnabled,
+  goingOutcome,
+  readSessionGoing,
+} from './going';
 import {
   type EmailAlertOfferDraft,
   recordEmailAlertOffer,
@@ -165,6 +175,17 @@ export function emptyBookingCounts(): BookingCounts {
 export interface EmailAlertResult {
   alert: EmailAlertOutcome;
   booking: BookingOutcome | null;
+  /**
+   * What the WHO-ELSE-IS-GOING count did (lib/integrations/going.ts) — a third
+   * independent axis, because "a text went", "a place was written down" and "a number
+   * about other households was spoken" are three facts about one envelope.
+   *
+   * `null` for every envelope that never reached the going decision: booked dark, and
+   * every booking refusal but the teen one, which keeps its own name here as well as on
+   * the booking axis because how often a disclosure is withheld for a 13+ child is a rate
+   * rule #1 wants readable in both flag states.
+   */
+  going: GoingOutcome | null;
 }
 
 /** At most this many messages per connection per sweep reach the classifier, newest
@@ -174,18 +195,6 @@ export interface EmailAlertResult {
 export const EMAIL_ALERT_MAX_PER_SWEEP = 10;
 
 export const EMAIL_ALERT_TEMPLATE_KEY = 'connector:email_alert';
-
-/** Which suppression the ledger records, per hold — dispatch.ts's four statuses, chosen
- * by the gate's four reasons. */
-const HOLD_STATUS: Record<
-  ProactiveHoldReason,
-  'suppressed_quiet_hours' | 'suppressed_cap' | 'suppressed_consent'
-> = {
-  quiet_hours: 'suppressed_quiet_hours',
-  frequency_cap: 'suppressed_cap',
-  not_enrolled: 'suppressed_consent',
-  no_watch_consent: 'suppressed_consent',
-};
 
 /** Keyed on the CONNECTION and the provider's message id, so re-connecting a mailbox
  * that re-seeds the same messages mints new keys while a re-run of the same sweep does
@@ -235,13 +244,13 @@ export async function alertParentForEmail(
   ports: EmailAlertPorts,
 ): Promise<EmailAlertResult> {
   const { familyId, parentUserId, integrationId, messageId, now } = input;
-  if (!f14EnabledFor(familyId)) return { alert: 'dark', booking: null };
+  if (!f14EnabledFor(familyId)) return { alert: 'dark', booking: null, going: null };
 
   const dedupeKey = emailAlertDedupeKey(integrationId, messageId);
   // Read BEFORE the classifier, not only via the claim below: a re-fired sweep over a
   // mailbox it has already read must cost nothing, and the claim happens after two model
   // calls have already been paid for.
-  if (await dedupeActive(dedupeKey, database)) return { alert: 'already_sent', booking: null };
+  if (await dedupeActive(dedupeKey, database)) return { alert: 'already_sent', booking: null, going: null };
 
   let classification: SentinelClassification;
   try {
@@ -263,12 +272,12 @@ export async function alertParentForEmail(
       { familyId, err: err instanceof Error ? err.constructor.name : 'unknown' },
       'email alert: the sentinel could not read this message - no text, and the key is unspent',
     );
-    return { alert: 'classifier_failed', booking: null };
+    return { alert: 'classifier_failed', booking: null, going: null };
   }
 
   const extraction = classification.extraction;
   if (classification.status !== 'classified' || extraction === null) {
-    return { alert: 'not_parenting', booking: null };
+    return { alert: 'not_parenting', booking: null, going: null };
   }
 
   // ONE read of the flag per envelope, threaded into every call below rather than read
@@ -317,7 +326,7 @@ export async function alertParentForEmail(
       { familyId },
       'email alert: a receipt for a class this sweep already read the cancellation of - staying quiet',
     );
-    return { alert: 'cancelled_in_sweep', booking: null };
+    return { alert: 'cancelled_in_sweep', booking: null, going: null };
   }
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'email_alert', now });
@@ -338,19 +347,32 @@ export async function alertParentForEmail(
       category: 'email_alert',
       templateKey: EMAIL_ALERT_TEMPLATE_KEY,
       dedupeKey: null,
-      status: HOLD_STATUS[verdict.reason],
+      status: holdStatus(verdict.reason),
     });
     console.warn({ familyId, reason: verdict.reason }, 'email alert: held by the outbound gate');
-    return { alert: `gate_refused:${verdict.reason}`, booking: null };
+    return { alert: `gate_refused:${verdict.reason}`, booking: null, going: null };
   }
 
-  const message = renderEmailAlert({
+  // THE BOOKING DECISION MOVES AHEAD OF THE SENTENCE (R3), and its result is reused by the
+  // post-send write rather than made a second time: the clause speaks a count read off the
+  // very key the row will be written with, so the two cannot disagree about which session
+  // this is. The same one-decision-two-readers discipline `emailAlertOfferDraft` states
+  // for itself.
+  const draft = bookingDraftFor(extraction, input.envelope.from, booked, now);
+  // ...and the count sits between the draft and the render. Gated on `draft.ok`, which is
+  // gated on `booked`: dark, `effectiveKind` renders a `booking_confirmation` as a
+  // `new_event` in every respect, so there is no booking frame to carry a clause - and a
+  // dark-booked family's sweep must never read other families' bookings for a sentence
+  // that cannot exist.
+  const counted = await readGoingFor(database, familyId, draft);
+  const { body: message, going } = renderEmailAlert({
     from: input.envelope.from,
     kind: extraction.kind,
     event: extraction.event,
     teenContent: extraction.teenContent,
     matchedEventRef: extraction.matchedEventRef,
     booked,
+    going: counted,
     timeZone: input.timeZone,
     now,
   });
@@ -382,7 +404,7 @@ export async function alertParentForEmail(
     })
     .onConflictDoNothing()
     .returning({ id: schema.channelMessages.id });
-  if (!claimed) return { alert: 'already_sent', booking: null };
+  if (!claimed) return { alert: 'already_sent', booking: null, going: null };
 
   const to = await ports.resolvePhone(database, parentUserId);
   if (!to) {
@@ -398,7 +420,7 @@ export async function alertParentForEmail(
       { familyId, parentUserId },
       'email alert: the gate allowed a parent with no sendable number',
     );
-    return { alert: 'no_send_target', booking: null };
+    return { alert: 'no_send_target', booking: null, going: null };
   }
 
   let providerMessageId: string;
@@ -414,7 +436,7 @@ export async function alertParentForEmail(
       .set({ status: 'failed', errorCode: code })
       .where(eq(schema.channelMessages.id, claimed.id));
     console.error({ familyId, code }, 'email alert: the provider refused the text');
-    return { alert: 'send_failed', booking: null };
+    return { alert: 'send_failed', booking: null, going: null };
   }
 
   await database
@@ -455,11 +477,8 @@ export async function alertParentForEmail(
     integrationId,
     messageId,
     channelMessageId: claimed.id,
-    from: input.envelope.from,
-    extraction,
+    draft,
     message,
-    booked,
-    now,
   });
 
   // The composed sentence, not the wire body — the CASL line belongs on the wire, and
@@ -474,10 +493,106 @@ export async function alertParentForEmail(
     targetId: claimed.id,
     // Enums and flags only. Not the title, not the sender, not the subject: an audit row
     // a support agent can read is a copy of the email in a table that is never redacted.
-    after: { kind: extraction.kind, teenContent: extraction.teenContent },
+    //
+    // `othersCount` is EXACTLY what the text said, and a bare integer about no identifiable
+    // person is a flag: it is what makes this row able to answer "what did Hale tell me
+    // about other families". `null` whenever nothing was shown - the REASON lives in the
+    // cron counter, because `below_floor` will be the answer ten thousand times and a
+    // column full of it is noise rather than a receipt.
+    //
+    // IT IS THE ONLY ROW THIS DISCLOSURE WRITES. The counted families get none: a row in
+    // their trail saying their booking was counted into a text to another family would tell
+    // them another Hale family is in their child's class - the same disclosure, in reverse,
+    // to a household that was never asked.
+    after: {
+      kind: extraction.kind,
+      teenContent: extraction.teenContent,
+      othersCount: going?.shown ? going.others : null,
+    },
   });
 
-  return { alert: 'sent', booking };
+  return {
+    alert: 'sent',
+    booking,
+    going: going === null ? null : goingOutcome(going),
+  };
+}
+
+/**
+ * The booking decision, made ONCE and before the sentence (R3).
+ *
+ * `null` and not a refusal when booked detection is dark: "this family's receipts are not
+ * being recorded" is a different fact from "this receipt was refused", and `recordBooking`
+ * turns the two into `booked_dark` and the reason respectively.
+ */
+function bookingDraftFor(
+  extraction: NonNullable<SentinelClassification['extraction']>,
+  from: string,
+  booked: boolean,
+  now: Date,
+): BookingDraftResult | null {
+  if (!booked) return null;
+  // THE SAME ANSWER THE SENTENCE IS BUILT FROM, from the same call rather than from half
+  // of it: the row and the text can only name the class differently if this is two calls.
+  // `booked` is true by the line above, so `effectiveKind` is the extraction's own kind.
+  const rendered = renderedTitle(extraction.event.title, extraction.kind);
+  return bookingDraft({
+    kind: extraction.kind,
+    event: extraction.event,
+    from,
+    teenContent: extraction.teenContent,
+    teenAttributed: extraction.teenAttributed,
+    sourceConfidence: extraction.sourceConfidence,
+    matchedEventRef: extraction.matchedEventRef,
+    // The VENDOR's own name for the class, through the renderer's own fold - so the row
+    // and the message can never name the class differently - and the FLAG beside it,
+    // because Hale's `GENERIC_TITLE` words are the object of the sentence rather than a
+    // name: `bookingDraft` refuses an email that leaves nothing behind them, and a key
+    // built from them would file every nameless receipt under one "session".
+    title: rendered.text,
+    titleIsFallback: rendered.fallback,
+    // The same fold the offer row's place goes through, and the same function.
+    location: foldedPlace(extraction.event.location),
+    now,
+  });
+}
+
+/**
+ * HOW MANY OTHER HALE FAMILIES HOLD THIS SESSION - or the named reason there is no number.
+ *
+ * `null` is "never reached the going decision", exactly as `booking: null` is on the other
+ * axis. The ONE booking refusal that keeps its own name here is the teen one: how often a
+ * disclosure is withheld for a 13+ child is a rate rule #1 wants readable, and burying it
+ * under `going_dark` would make it unreadable for the whole dark period - which is the
+ * period that matters.
+ *
+ * DARK MEANS THE QUERY IS NOT RUN AT ALL, not run and discarded. No flag-off read of
+ * another household's bookings.
+ */
+async function readGoingFor(
+  database: Database,
+  familyId: string,
+  draft: BookingDraftResult | null,
+): Promise<GoingCount | null> {
+  if (draft === null) return null;
+  if (!draft.ok) {
+    return draft.reason === 'teen_attributed' ? { shown: false, reason: 'teen_attributed' } : null;
+  }
+  if (!goingCountEnabled()) return { shown: false, reason: 'going_dark' };
+  const sessionKey = draft.draft.sessionKey;
+  if (sessionKey === null) return { shown: false, reason: 'no_session' };
+  try {
+    return goingCount(await readSessionGoing(database, { familyId, sessionKey }));
+  } catch (err) {
+    // THE TEXT STILL GOES. The count is the least important thing in this message, and a
+    // silent zero would be indistinguishable from an empty room. The error CLASS only - a
+    // query rejection can carry parameter values, and the key is a title (rule #1).
+    console.error(
+      { familyId, err: err instanceof Error ? err.constructor.name : 'unknown' },
+      'email alert: the going count could not be read - the text goes without the clause',
+    );
+    return { shown: false, reason: 'count_unavailable' };
+  }
 }
 
 /**
@@ -529,8 +644,13 @@ async function closeBookingsFor(
 }
 
 /**
- * The booking decision, the write and its own audit row — everything after the send that
- * belongs to this feature, behind one boundary.
+ * The booking WRITE and its own audit row — everything after the send that belongs to this
+ * feature, behind one boundary.
+ *
+ * THE DECISION IS NOT MADE HERE ANY MORE: it is `bookingDraftFor`, called before the
+ * sentence so the clause can speak a count read off the key this row will carry (R3). One
+ * decision, two readers — a second call here would be a row keyed differently from the
+ * number the parent was just told.
  *
  * THE AUDIT ROW CARRIES ONE BOOLEAN. `provider_host` is the sender's domain, and this
  * module's own rule for `after` is "enums and flags only — not the title, NOT THE SENDER,
@@ -548,32 +668,13 @@ async function recordBooking(
     integrationId: string;
     messageId: string;
     channelMessageId: string;
-    from: string;
-    extraction: NonNullable<SentinelClassification['extraction']>;
+    /** `null` when booked detection is dark — the one state that is not a refusal. */
+    draft: BookingDraftResult | null;
     message: string;
-    booked: boolean;
-    now: Date;
   },
 ): Promise<BookingOutcome> {
-  if (!input.booked) return 'booked_dark';
-  const { extraction } = input;
-  const draft = bookingDraft({
-    kind: extraction.kind,
-    event: extraction.event,
-    from: input.from,
-    teenContent: extraction.teenContent,
-    teenAttributed: extraction.teenAttributed,
-    sourceConfidence: extraction.sourceConfidence,
-    matchedEventRef: extraction.matchedEventRef,
-    // The VENDOR's own name for the class, through the renderer's own fold — so the row
-    // and the message can never name the class differently — but NOT through its
-    // `|| GENERIC_TITLE` fallback: those words are the object of the sentence, not a name,
-    // and `bookingDraft` refuses an email that leaves nothing behind them.
-    title: sanitizedTitle(extraction.event.title),
-    // The same fold the offer row's place goes through, and the same function.
-    location: foldedPlace(extraction.event.location),
-    now: input.now,
-  });
+  const { draft } = input;
+  if (draft === null) return 'booked_dark';
   if (!draft.ok) return draft.reason;
 
   let recorded: Awaited<ReturnType<typeof recordActivityBooking>>;
@@ -617,11 +718,23 @@ async function recordBooking(
   return recorded.outcome;
 }
 
-/** The title the renderer put on the wire: the vendor's own, folded, or Hale's words when
+/**
+ * The title the renderer put on the wire: the vendor's own, folded, or Hale's words when
  * that survives sanitising as nothing at all. ONE definition, read by the sentence and by
- * the row. */
-function renderedTitle(raw: string, kind: ExtractionKind): string {
-  return sanitizedTitle(raw) || GENERIC_TITLE[kind];
+ * the row — which it now actually is, because `recordBooking` reads it here rather than
+ * calling half of it a second time.
+ *
+ * IT RETURNS THE FALLBACK FLAG BESIDE THE TEXT, because the two readers need opposite
+ * things from one answer: the sentence needs Hale's words so the message is still true,
+ * and the row needs to know they ARE Hale's words — a booking has no name to ask about
+ * four days later, and a session key built from them would file every nameless receipt
+ * from one host at one instant under a single "session" (going.ts).
+ */
+function renderedTitle(raw: string, kind: ExtractionKind): { text: string; fallback: boolean } {
+  const vendor = sanitizedTitle(raw);
+  return vendor === ''
+    ? { text: GENERIC_TITLE[kind], fallback: true }
+    : { text: vendor, fallback: false };
 }
 
 export interface GmailSweepAlertInput {
@@ -652,20 +765,20 @@ export async function alertParentForGmailSweep(
 ): Promise<readonly EmailAlertResult[]> {
   const { parentUserId, envelopes } = input;
   if (parentUserId === null) {
-    return envelopes.map(() => ({ alert: 'no_parent_user', booking: null }));
+    return envelopes.map(() => ({ alert: 'no_parent_user', booking: null, going: null }));
   }
-  if (input.seeding) return envelopes.map(() => ({ alert: 'seeding_run', booking: null }));
+  if (input.seeding) return envelopes.map(() => ({ alert: 'seeding_run', booking: null, going: null }));
 
   const outcomes: EmailAlertResult[] = [];
   const dated: Array<GmailAlertEnvelope & { receivedAt: string }> = [];
   for (const envelope of envelopes) {
     if (envelope.receivedAt === undefined)
-      outcomes.push({ alert: 'no_received_at', booking: null });
+      outcomes.push({ alert: 'no_received_at', booking: null, going: null });
     else dated.push({ ...envelope, receivedAt: envelope.receivedAt });
   }
   dated.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
   for (let i = EMAIL_ALERT_MAX_PER_SWEEP; i < dated.length; i += 1) {
-    outcomes.push({ alert: 'over_sweep_cap', booking: null });
+    outcomes.push({ alert: 'over_sweep_cap', booking: null, going: null });
   }
 
   const considered = dated.slice(0, EMAIL_ALERT_MAX_PER_SWEEP);
@@ -716,8 +829,23 @@ export interface EmailAlertRenderInput {
    * Dark, a `booking_confirmation` is rendered and offered as a `new_event` in every
    * respect — see {@link effectiveKind}. */
   booked: boolean;
+  /**
+   * HOW MANY OTHER HALE FAMILIES hold this session, already decided (going.ts). An INPUT
+   * rather than a read, so this function stays sync and pure and the property test can
+   * call it directly — and so the number the parent is told is the number the audit row
+   * carries. `null` when the envelope never reached the going decision.
+   */
+  going: GoingCount | null;
   timeZone: string;
   now: Date;
+}
+
+/** The sentence, and what the count ACTUALLY did — which is not always what it was handed,
+ * because the measured fold can drop the clause (rule #11: the outcome has to be able to
+ * leave the renderer or `over_segment_budget` is decorative). */
+export interface EmailAlertRendered {
+  body: string;
+  going: GoingCount | null;
 }
 
 /**
@@ -905,29 +1033,48 @@ const GENERIC_TITLE: Record<ExtractionKind, string> = {
  * it was Saturday, Sep 19 at 9:00 a.m." No label in front of it, no dash standing in for
  * a verb, and no offer at the end (see above).
  */
-export function renderEmailAlert(input: EmailAlertRenderInput): string {
+export function renderEmailAlert(input: EmailAlertRenderInput): EmailAlertRendered {
   const kind = effectiveKind(input.kind, input.booked);
-  const title = renderedTitle(input.event.title, kind);
+  const { text: title } = renderedTitle(input.event.title, kind);
 
   if (input.teenContent) {
     // Category only. The pipeline has already replaced the title with its own generic
     // line; dropping the sender and the time is this renderer's half of the same rule,
     // because who wrote and when are the disclosure a 13+ child is owed protection from.
-    return `${title}. ${TEEN_CLOSER}`;
+    return { body: `${title}. ${TEEN_CLOSER}`, going: input.going };
   }
 
-  const body = compose(
-    input,
-    kind,
-    clamp(gsm7(senderLabel(input.from)), SENDER_MAX).replace(TRAILING_PUNCTUATION, ''),
-    title,
+  const sender = clamp(gsm7(senderLabel(input.from)), SENDER_MAX).replace(
+    TRAILING_PUNCTUATION,
+    '',
   );
   // The offer, decided by the one function that also decides whether the row gets
   // written. Appended AFTER `compose`, never inside it: every frame in there ends through
   // `end()`, and a clause spliced before that would put Hale's own offer inside the
   // vendor's sentence. The ENDING is per kind (see {@link CTA}) and the condition is not:
   // a question is asked if and only if a row will exist to keep it.
-  return emailAlertOfferDraft(input) === null ? body : `${body} ${CTA[kind]}`;
+  const offered = emailAlertOfferDraft(input) !== null;
+  const assemble = (clause: string): string => {
+    const body = compose(input, kind, sender, title, clause);
+    return offered ? `${body} ${CTA[kind]}` : body;
+  };
+
+  const clause = goingClause(input.going);
+  if (clause === '') return { body: assemble(''), going: input.going };
+  const spoken = assemble(clause);
+  // THE MEASURED FOLD (R2), and it is measured rather than argued. At the clamp maxima the
+  // worst case is 287 septets of 306 - sender 40, title 60, the longest `longWhen`
+  // ("Wednesday, Sep 30, 2027 at 12:00 p.m.", 37), a 30-character place, the longest count
+  // word, the CTA and the FULL opt-out - which is nineteen of headroom, thin enough that it
+  // has to be a test and not a paragraph.
+  //
+  // THE COUNT IS THE FIRST THING DROPPED AND IT IS DROPPED WHOLE. Never a cut inside the
+  // clause ("with two other Hale fam"), and never a third segment: this text is billed per
+  // family per email and the module's two-segment property is what makes the clamps
+  // load-bearing. The drop is a COUNTED outcome rather than silence, because if it ever
+  // fires in prod the arithmetic above moved.
+  if (smsSegments(withOptOut(spoken, 'full')) <= 2) return { body: spoken, going: input.going };
+  return { body: assemble(''), going: { shown: false, reason: 'over_segment_budget' } };
 }
 
 /**
@@ -949,6 +1096,10 @@ function compose(
   kind: ExtractionKind,
   sender: string,
   title: string,
+  /** The going clause, or '' — inside the frame and before `end()`'s period, because a
+   * count is never its own sentence (`coach-channel-sms.md`). Only the booking frame can
+   * carry one: it is the only kind a booking, and therefore a session key, exists for. */
+  clause: string,
 ): string {
   const { event, timeZone, now } = input;
   const at = (iso: string | null): string | null => longWhen(iso, timeZone, now);
@@ -1001,12 +1152,18 @@ function compose(
       //
       // The title is relayed flat — no "says X is open" grammar to weld onto — because a
       // confirmation's title is the CLASS ("Swim Level 2"), not a sentence about it.
+      //
+      // THE COUNT RIDES LAST, inside the sentence: "... - first one Saturday, Sep 26 at
+      // 9:00 a.m. at the Leisure Centre, with two other Hale families." It is written by
+      // code and handed to no model - the only lint on the voice seam catches clock times
+      // and URLs, so a composed count would be unguarded, and the one place in the repo
+      // that does guard a number treats any ungiven digit as invented.
       const head = sender === '' ? title : `${sender} says you're in for ${title}`;
       const first = at(event.newTime);
-      if (first === null) return end(head);
+      if (first === null) return end(`${head}${clause}`);
       // The place LAST, after the instant, unlike the new_event frame: what a parent
       // reading a receipt needs first is which session is the first one.
-      return end(`${head} - first one ${first}${venue(event.location)}`);
+      return end(`${head} - first one ${first}${venue(event.location)}${clause}`);
     }
     case 'unclear':
       return end(

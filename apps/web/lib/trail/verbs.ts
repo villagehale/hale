@@ -186,6 +186,10 @@ export const AUDIT_VERBS = [
   'activity_booking_recorded',
   'activity_booking_cancelled',
   'calendar_alert_sent',
+  // ── the travel brief (v5) ───────────────────────────────────────────────
+  'travel_trip_noticed',
+  'travel_booking_passed_over',
+  'travel_brief_sent',
   // ── the forwarding door (VIL-352) ───────────────────────────────────────
   'email_forward_address_minted',
   'email_forward_address_revoke_asked',
@@ -623,6 +627,32 @@ const VERBS: Record<AuditVerb, Verb> = {
   // the one above names the inbox: the row is the receipt for Hale having read it.
   calendar_alert_sent: {
     sentence: 'Hale texted you about a change on your calendar',
+    family: 'done',
+  },
+  // A booking email said the family is going somewhere with the children. 'note', not
+  // 'done': nothing was sent yet and nothing was decided - Hale read a confirmation and
+  // wrote down that a trip is coming. The row's `after` carries an evidence enum and a
+  // night count and nothing else; the destination and the dates live on the trip row,
+  // which the rights export serves to the parent whose mailbox it came from.
+  travel_trip_noticed: {
+    sentence: 'Hale noticed a trip coming up',
+    family: 'note',
+  },
+  // THE DELIBERATE SILENCE, made visible - the `proactive_nudge_skipped` doctrine applied
+  // to a booking. A confirmation that gave no sign the children were on it writes NO trip
+  // row at all, so without this line the fact that Hale read a booking email and chose to
+  // say nothing would exist only as a counter in a cron response that nobody keeps. It
+  // carries the word 'none' and nothing else: no city, no dates, no subject.
+  travel_booking_passed_over: {
+    sentence: 'Hale saw a booking and left it alone',
+    family: 'note',
+  },
+  // The text itself. 'done' rather than 'note': this row IS the interruption, and a parent
+  // reading the trail should see the thing that arrived on their phone and not a
+  // observation about it. The `after` payload carries two counts and nothing else - never
+  // the city, never the venues, never the dates.
+  travel_brief_sent: {
+    sentence: 'Hale texted you what is on where you are going',
     family: 'done',
   },
   // The forwarding door. Every sentence says WHOSE decision it was, because the whole
@@ -1224,6 +1254,11 @@ const TARGET_NOUNS: Record<string, string> = {
   village_candidates: 'village suggestion',
   consent_records: 'consent',
   activity_bookings: 'a class you signed up for',
+  // A BARE noun, like every value here ('draft', 'plan', 'child'): an article baked into
+  // the value is an article the renderer may double. Deliberately absent from
+  // TARGET_ROUTES - there is no receipts page for a trip, so targetLink correctly
+  // returns null rather than a dead link.
+  family_trips: 'trip',
   teen_access_grants: 'teen privacy request',
   conversations: 'Hale',
   messages: 'Hale',

@@ -95,6 +95,7 @@ const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const ACTIVITY_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder.md');
 const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
+const TRAVEL_QUERY_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'travel', 'query.ts');
 
 // Mirrors the lane's own constants (activity/lane.ts, activity/followup-note.ts).
 const MAX_PICKS = 3;
@@ -801,6 +802,50 @@ const JUDGE_SYSTEM = [
 ].join(' ');
 
 /**
+ * THE TRAVEL RUBRIC — the picks alone, because the caller writes its own text.
+ *
+ * A `composesOwnText` fixture is graded on the FINDS and nothing else, and it needs its
+ * own bar rather than the one above: the message criteria there are most of that rubric,
+ * and half of them ("leads with the best one by name", "two segments is a hard ceiling")
+ * are about a composer this query shape never reaches.
+ *
+ * What it asks instead is the one question the travel brief turns on, and the one the
+ * skill's own instructions pull the wrong way on: is this an answer for a family who are
+ * THERE FOR FOUR DAYS, or is it the fall term?
+ *
+ * Its own tag (`activity-finder-travel`) keeps it in a separate cache namespace, so this
+ * rubric can be tuned without re-minting a single sample of the eight-fixture corpus above.
+ */
+const TRAVEL_JUDGE_SYSTEM = [
+  'You are a strict reviewer scoring what Hale FOUND for a family who are visiting a city',
+  'they do not live in, with a young child, for a few days. Hale searched the live web and',
+  'saw only a de-identified subject, the destination and a coarse stage - never the child.',
+  'You are given the subject, the destination, the stage, the dates, the picks, and',
+  'watchFor (fixture-specific notes). There is NO MESSAGE to score: the caller composes the',
+  'text deterministically from these picks, so judge the FINDS. Score 1-5.',
+  'A 5: every pick is a real, specific, named place in that destination that this family',
+  'could TURN UP TO inside those dates - a museum, a zoo, an aquarium, a science centre, a',
+  'park, a library or a drop-in - and at most three of them.',
+  'THE FAILURE THIS RUBRIC EXISTS FOR, and score it 1 or 2 wherever it appears: a pick that',
+  'is a TERM rather than a visit. A multi-week session, a weekly class, a programme whose',
+  'value to the parent is a registration date, a "fall session starts in September" - all of',
+  'those are correct answers to a question about a family who LIVE there, and useless to one',
+  'who will be on a plane home. One such pick is a serious fault even if the other two are',
+  'right.',
+  'A pick whose `when` or `price` is NULL is CORRECT and is never a fault. This lane reads',
+  'search snippets and does not open pages, so an unpublished admission price is a gap the',
+  'caller names rather than a find to withhold - and requiring a price is what once lost',
+  'this corpus a real find outright. Score DOWN only an invented figure: a time or a price',
+  'that appears in the pick but nowhere in what a source would have published.',
+  'A LOW score is also: a venue that looks invented or generic ("a local playground"); a',
+  'pick in a different city; a directory-style list; a pick whose source is an aggregator or',
+  'a travel-blog listicle rather than the place\'s own site or its municipality.',
+  'Seasonal reality is not a fault: a city in late December where much is closed should come',
+  'back with the things that are OPEN, and three of them is better than a longer list.',
+  'Reply with ONLY the score tool.',
+].join(' ');
+
+/**
  * The deterministic broken stand-in - one failure per gate, so `--broken` proves each one
  * bites. Runs fully offline (no API calls).
  *
@@ -905,6 +950,25 @@ async function main() {
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
+  // THE TRAVEL FIXTURES' SUBJECT IS THE PRODUCT'S, READ FROM THE PRODUCT. A `.mjs`
+  // corpus cannot import a TS constant, so the three travel fixtures carry a copy - and a
+  // copy that has drifted is a corpus grading a query nobody sends, silently and forever.
+  // The runner holds the seam instead: the strings are compared byte for byte before any
+  // call is made, cached or live, and a drift is a hard exit rather than a warning.
+  const { TRAVEL_SUBJECT } = await tsImport(TRAVEL_QUERY_SRC, import.meta.url);
+  for (const fixture of ACTIVITY_FIXTURES) {
+    if (fixture.id.startsWith('travel-') && fixture.subject !== TRAVEL_SUBJECT) {
+      console.error(
+        [
+          `${fixture.id}: the fixture subject is not TRAVEL_SUBJECT (lib/travel/query.ts).`,
+          `  fixture: ${fixture.subject}`,
+          `  product: ${TRAVEL_SUBJECT}`,
+          'Update the fixture and re-mint live: the cache key moves with the subject.',
+        ].join('\n'),
+      );
+      process.exit(1);
+    }
+  }
   const skill = await agent.loadSkill(ACTIVITY_SKILL);
   const model = agent.pickModel(skill.meta.task);
   // SONNET, NOT HAIKU: this rubric is ~4k characters and Haiku was marking down two
@@ -915,6 +979,15 @@ async function main() {
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'activity-finder', cachedOnly, getClient, cost, {
     samples: JUDGE_SAMPLES_MEDIAN,
   });
+  const travelJudge = makeJudge(
+    judgeModel,
+    TRAVEL_JUDGE_SYSTEM,
+    'activity-finder-travel',
+    cachedOnly,
+    getClient,
+    cost,
+    { samples: JUDGE_SAMPLES_MEDIAN },
+  );
 
   console.log(
     `activity-finder eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | lane=${model} judge=${judgeModel}`,
@@ -1005,7 +1078,51 @@ async function main() {
       if (untraceable.length > 0) failures.push(`invented_picks:${untraceable.length}`);
     }
 
-    // ── phase 3: THE FOLLOW-UP TEXT ──────────────────────────────────────────
+    // ── phase 3: THE FOLLOW-UP TEXT — unless the caller writes its own ───────
+    //
+    // `composesOwnText` is the travel brief, and skipping this phase for it is the same
+    // rule this file's header states about the tool list, one layer up: DO NOT SCORE A
+    // TURN PRODUCTION DOES NOT MAKE. `createActivityFinder` ends at the picks; the
+    // follow-up composer below is `followup-note.ts`, which the coach reaches and the
+    // travel sweep never does — it hands the picks to `renderTravelBrief`, which is
+    // deterministic, has no model call in it at all, and writes to a four-segment ceiling
+    // rather than this one's two. Running it here would have scored the travel query on
+    // the coach's composer and reported the result as a fact about the travel brief.
+    //
+    // Nothing is weakened by the skip: every HARD ZERO above — the identity leak, the
+    // grounding, the fabricated pick, the half find, the directory, and `no_picks` — runs
+    // on these fixtures exactly as it does on the rest, and the quality bar becomes
+    // TRAVEL_JUDGE_SYSTEM, which asks the question this query shape is actually for.
+    if (fixture.composesOwnText === true) {
+      // Skipped in broken mode for the same reason the other judge is: the deterministic
+      // layer proves the calibration, and `brokenPicks` hands an `expectPicks` fixture an
+      // empty list, so `no_picks` above is already red here.
+      if (!broken) {
+        const verdict = await travelJudge(fixture.id, {
+          subject: fixture.subject,
+          destination: fixture.town,
+          stage: fixture.stage,
+          dates: fixture.window,
+          picks: kept,
+          watchFor: fixture.watchFor,
+        });
+        if (verdict.score < JUDGE_MIN) {
+          failures.push(`judge:${verdict.score} of ${verdict.samples.join('/')} (${verdict.reason})`);
+        }
+      }
+      results.push({
+        fixture,
+        picks: kept,
+        body: '(the caller composes its own text)',
+        searchCount: ground.searchCount,
+        pagesRead: ground.pagesRead,
+        pagesRefused: ground.pagesRefused,
+        failures,
+        firstDraftViolations: [],
+      });
+      continue;
+    }
+
     // COMPOSED, GATED, RECOMPOSED - the runtime's loop (followup-note.ts), not one shot.
     // What reaches a parent is never the first draft: a body that breaks a gate is refused
     // with the reason and rewritten, up to MAX_FOLLOWUP_ATTEMPTS, and only then deferred.

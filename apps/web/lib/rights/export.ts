@@ -148,6 +148,36 @@ export interface FamilyExportDocument {
     tags: string[];
     createdAt: string;
   }[];
+  /**
+   * The trips Hale read out of THIS REQUESTER'S mailbox — the destination, the dates, why
+   * Hale thought the children were on it, and how it ended.
+   *
+   * REQUESTER-SCOPED, like the day notes and the assistant grants and unlike everything
+   * else in this document, and the scope is the whole of the decision. Every other fact
+   * about a trip says it belongs to one parent: it is detected from ONE parent's mailbox,
+   * texted to THAT parent's phone, and cascades on THAT user's row. The export is the one
+   * durable file that leaves the app, so it was the single surface on which parent A's
+   * booking could reach parent B — and Hale supports separated co-parents, which makes a
+   * solo travel date exactly the disclosure the privacy moat exists to prevent.
+   *
+   * Present-and-empty rather than omitted, the rule the whole document keeps: a copy that
+   * omits a section leaves a parent unable to tell "Hale holds none of this" from "Hale
+   * did not look".
+   *
+   * WHAT A CO-PARENT STILL SEES, stated because it is the residue rather than a bug: the
+   * trail is family-scoped, so they read "Hale noticed a trip coming up" with a date and
+   * no destination. That is the existing posture for every connector verb, and narrowing
+   * it is a change to the trail rather than to this block.
+   */
+  trips: {
+    destinationCity: string;
+    destinationRegion: string | null;
+    startsOn: string;
+    endsOn: string;
+    childEvidence: string;
+    closedAt: string | null;
+    closedReason: string | null;
+  }[];
   /** The full, teen-redacted audit trail — the right-to-access record. */
   trail: TrailView[];
 }
@@ -412,6 +442,36 @@ export async function assembleFamilyExport(
     createdAt: row.createdAt.toISOString(),
   }));
 
+  const tripRows = await database
+    .select({
+      destinationCity: schema.familyTrips.destinationCity,
+      destinationRegion: schema.familyTrips.destinationRegion,
+      startsOn: schema.familyTrips.startsOn,
+      endsOn: schema.familyTrips.endsOn,
+      childEvidence: schema.familyTrips.childEvidence,
+      closedAt: schema.familyTrips.closedAt,
+      closedReason: schema.familyTrips.closedReason,
+    })
+    .from(schema.familyTrips)
+    .where(
+      and(
+        eq(schema.familyTrips.familyId, familyId),
+        // THE FILTER IS THE FEATURE. Without it this block is the one place a co-parent
+        // reads where the other parent went and when — see the doc comment above.
+        eq(schema.familyTrips.parentUserId, deps.actorUserId),
+      ),
+    )
+    .orderBy(schema.familyTrips.startsOn);
+  const trips = tripRows.map((row) => ({
+    destinationCity: row.destinationCity,
+    destinationRegion: row.destinationRegion,
+    startsOn: row.startsOn,
+    endsOn: row.endsOn,
+    childEvidence: row.childEvidence,
+    closedAt: row.closedAt?.toISOString() ?? null,
+    closedReason: row.closedReason,
+  }));
+
   await database.insert(schema.auditLog).values({
     familyId,
     actor: deps.actorUserId,
@@ -438,6 +498,7 @@ export async function assembleFamilyExport(
     activityBookings,
     eveningCheckIn,
     activityReviews,
+    trips,
     trail,
   };
 }

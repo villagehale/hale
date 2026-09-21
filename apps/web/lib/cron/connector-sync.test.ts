@@ -1,12 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CALENDAR_ALERT_OUTCOMES } from '~/lib/integrations/calendar-alert';
 import { BOOKING_OUTCOMES, EMAIL_ALERT_OUTCOMES } from '~/lib/integrations/email-alert';
+import { GOING_OUTCOMES } from '~/lib/integrations/going';
+import { TRAVEL_DETECT_OUTCOMES } from '~/lib/travel/detect';
 import { googleGetFetch, runConnectorSync } from './connector-sync';
 
 const NO_ALERTS = {
   emailAlerts: [] as const,
   calendarAlerts: [] as const,
   calendarDroppedNoId: 0,
+  travelDetections: [] as const,
 };
 
 const FAMILY_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -117,16 +120,16 @@ describe('runConnectorSync', () => {
           ? {
               ...NO_ALERTS,
               emailAlerts: [
-                { alert: 'sent', booking: 'recorded' },
-                { alert: 'not_parenting', booking: null },
-                { alert: 'not_parenting', booking: null },
+                { alert: 'sent', booking: 'recorded', going: null },
+                { alert: 'not_parenting', booking: null, going: null },
+                { alert: 'not_parenting', booking: null, going: null },
               ] as const,
             }
           : {
               ...NO_ALERTS,
               emailAlerts: [
-                { alert: 'dark', booking: null },
-                { alert: 'gate_refused:quiet_hours', booking: null },
+                { alert: 'dark', booking: null, going: null },
+                { alert: 'gate_refused:quiet_hours', booking: null, going: null },
               ] as const,
             },
     });
@@ -156,10 +159,10 @@ describe('runConnectorSync', () => {
       syncOne: async () => ({
         ...NO_ALERTS,
         emailAlerts: [
-          { alert: 'sent', booking: 'recorded' },
-          { alert: 'sent', booking: 'teen_content' },
-          { alert: 'sent', booking: 'booked_dark' },
-          { alert: 'dark', booking: null },
+          { alert: 'sent', booking: 'recorded', going: null },
+          { alert: 'sent', booking: 'teen_content', going: null },
+          { alert: 'sent', booking: 'booked_dark', going: null },
+          { alert: 'dark', booking: null, going: null },
         ] as const,
       }),
     });
@@ -171,6 +174,34 @@ describe('runConnectorSync', () => {
     // Every named outcome present as a zero rather than absent — a missing key reads as
     // "never happens", which is a different claim from "did not today".
     expect(Object.keys(summary.bookings).sort()).toEqual([...BOOKING_OUTCOMES].sort());
+  });
+
+  it('tallies EVERY going outcome on its own third axis, one bucket per name', async () => {
+    // The third answer an envelope has: whether a number about OTHER households was spoken.
+    // Every member is driven through, because a name that no counter can ever show is a
+    // name nobody can act on (rule #11) - and `below_floor` is precisely why this is a
+    // counter and not a column on the audit row: it will be the answer ten thousand times.
+    const summary = await runConnectorSync({
+      listConnections: async () => [conn('i1', FAMILY_A)],
+      decryptTokens: decryptOk,
+      loadChildNames: async () => [],
+      buildDeps: () => ({}) as never,
+      syncOne: async () => ({
+        ...NO_ALERTS,
+        emailAlerts: GOING_OUTCOMES.map((going) => ({
+          alert: 'sent' as const,
+          booking: 'recorded' as const,
+          going,
+        })).concat([{ alert: 'dark', booking: null, going: null }] as never),
+      }),
+    });
+
+    for (const name of GOING_OUTCOMES) expect(summary.going[name]).toBe(1);
+    // The null never reached the going decision, and is already named on the alert axis.
+    expect(Object.values(summary.going).reduce((a, b) => a + b, 0)).toBe(GOING_OUTCOMES.length);
+    // Every named outcome present as a zero rather than absent - a missing key in a
+    // dashboard reads as "never happens", which is a different claim from "did not today".
+    expect(Object.keys(summary.going).sort()).toEqual([...GOING_OUTCOMES].sort());
   });
 
   it('tallies calendar outcomes on their OWN counter, never the inbox one', async () => {
@@ -196,7 +227,7 @@ describe('runConnectorSync', () => {
                 'pending_outside_window',
               ] as const,
             }
-          : { ...NO_ALERTS, emailAlerts: [{ alert: 'sent', booking: null }] as const },
+          : { ...NO_ALERTS, emailAlerts: [{ alert: 'sent', booking: null, going: null }] as const },
     });
 
     expect(summary.calendarAlerts).toMatchObject({
@@ -211,6 +242,46 @@ describe('runConnectorSync', () => {
     expect(Object.values(summary.calendarAlerts).reduce((a, b) => a + b, 0)).toBe(5);
     // Nothing was dropped here — the control for the tally below.
     expect(summary.calendarDroppedNoId).toBe(0);
+  });
+
+  it('tallies travel detections on their OWN counter, summed across connections', async () => {
+    // The surface the founder reads the precision trade off week to week: `trip_written`
+    // beside `no_child_evidence` is the miss rate, counted once per email. Its own tally
+    // and not a widening of the inbox one, because an envelope has two independent
+    // answers — whether a text went about it, and whether a trip was written down.
+    const summary = await runConnectorSync({
+      listConnections: async () => [conn('i1', FAMILY_A), conn('i2', FAMILY_B)],
+      decryptTokens: decryptOk,
+      loadChildNames: async () => [],
+      buildDeps: () => ({}) as never,
+      syncOne: async (connection) =>
+        connection.id === 'i1'
+          ? {
+              ...NO_ALERTS,
+              travelDetections: [
+                'trip_written',
+                'no_child_evidence',
+                'not_booking_shaped',
+              ] as const,
+              emailAlerts: [{ alert: 'sent', booking: null, going: null }] as const,
+            }
+          : { ...NO_ALERTS, travelDetections: ['no_child_evidence', 'dark'] as const },
+    });
+
+    expect(summary.travelDetections).toMatchObject({
+      trip_written: 1,
+      no_child_evidence: 2,
+      not_booking_shaped: 1,
+      dark: 1,
+    });
+    expect(Object.values(summary.travelDetections).reduce((a, b) => a + b, 0)).toBe(5);
+    // Every named outcome present as a zero rather than absent — a missing key reads as
+    // "never happens", which is a different claim from "did not today".
+    expect(Object.keys(summary.travelDetections).sort()).toEqual([
+      ...TRAVEL_DETECT_OUTCOMES,
+    ].sort());
+    // And it did NOT land on the inbox counter: one email alert, five detections.
+    expect(Object.values(summary.emailAlerts).reduce((a, b) => a + b, 0)).toBe(1);
   });
 
   it('carries the un-keyable calendar items into the summary, summed across connections', async () => {
@@ -238,7 +309,7 @@ describe('runConnectorSync', () => {
       buildDeps: () => ({}) as never,
       syncOne: async (connection) => {
         if (connection.id === 'i2') throw new Error('boom');
-        return { ...NO_ALERTS, emailAlerts: [{ alert: 'sent', booking: null }] as const };
+        return { ...NO_ALERTS, emailAlerts: [{ alert: 'sent', booking: null, going: null }] as const };
       },
     });
     expect(summary.emailAlerts.sent).toBe(1);

@@ -1,0 +1,11 @@
+{
+  "value": {
+    "destination_city": "Toronto",
+    "destination_region": "Ontario",
+    "start_date": "2026-05-22",
+    "end_date": "2026-05-24",
+    "child_evidence": "named_traveller",
+    "confidence": 0.97
+  },
+  "stopReason": "tool_use"
+}

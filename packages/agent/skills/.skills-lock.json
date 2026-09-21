@@ -59,6 +59,10 @@
     "file": "extract-child-event.md",
     "sha256": "4989569d42cf0eb4ce3950082b53e3920a0fe002bec774c2a23e00a731a17dd6"
   },
+  "extract-travel-booking.md": {
+    "file": "extract-travel-booking.md",
+    "sha256": "093b7bc5296211420219f72cb09d29cc84166854913360b3e3b5cb814b39a7dd"
+  },
   "followup-voice.md": {
     "file": "followup-voice.md",
     "sha256": "a40250614e7e1db958d96f55362ae1c46c6ca418b717e2ac9f842c7068837b79"

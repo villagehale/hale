@@ -1,0 +1,11 @@
+{
+  "value": {
+    "destination_city": "Mont-Tremblant",
+    "destination_region": "Quebec",
+    "start_date": "2027-01-08",
+    "end_date": "2027-01-11",
+    "child_evidence": "named_traveller",
+    "confidence": 0.95
+  },
+  "stopReason": "tool_use"
+}

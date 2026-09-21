@@ -10,6 +10,7 @@ import {
   type ProactiveSendVerdict,
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
+  holdStatus,
 } from '~/lib/channel/outbound-gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
@@ -45,18 +46,6 @@ export const DEPARTURE_NOTICE_TEMPLATE_KEY = 'co_parent:departed';
 export function departureNoticeDedupeKey(familyId: string, departedUserId: string): string {
   return `co_parent_departed:${familyId}:${departedUserId}`;
 }
-
-/** Which suppression the ledger records, per hold — the dispatch statuses, chosen by the
- * gate's four reasons (the shape `integrations/email-alert.ts` established). */
-const HOLD_STATUS: Record<
-  ProactiveHoldReason,
-  'suppressed_quiet_hours' | 'suppressed_cap' | 'suppressed_consent'
-> = {
-  quiet_hours: 'suppressed_quiet_hours',
-  frequency_cap: 'suppressed_cap',
-  not_enrolled: 'suppressed_consent',
-  no_watch_consent: 'suppressed_consent',
-};
 
 /**
  * Every way this can end, named (rule #11). `no_staying_parent` is the household whose
@@ -172,7 +161,7 @@ export async function tellStayingParent(
       category: 'co_parent_departed',
       templateKey: DEPARTURE_NOTICE_TEMPLATE_KEY,
       dedupeKey: null,
-      status: HOLD_STATUS[verdict.reason],
+      status: holdStatus(verdict.reason),
     });
     console.warn(
       { familyId, reason: verdict.reason },

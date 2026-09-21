@@ -195,6 +195,81 @@ export function deidentifyActivityQuery(input: {
   };
 }
 
+/**
+ * THE SAME GATE, THE SAME CEILING, THE SAME SCRUB — and the town supplied by CODE from a
+ * trip row rather than by the model.
+ *
+ * A sibling of {@link deidentifyActivityQuery} and not a parameter on it: every existing
+ * caller fills `town` from `townFor(municipality)` over the closed GTA union, which is the
+ * one thing a destination cannot be. `ActivityQuery` is unchanged and already
+ * city-agnostic — `town` is passed to the search payload verbatim and there is no
+ * `user_location` on the `web_search` tool, so geography rides in the query text — which is
+ * why the whole change is a new CALLER and `lane.ts`, `createActivityFinder` and the
+ * `activity-finder` skill are untouched.
+ *
+ * The destination goes through the same {@link gateFreeText} as everything else, so it
+ * cannot be the one field that skips the scrub and the household-name refusal. It has
+ * already passed `destinationShape` at write time, so what reaches this gate is a place
+ * name rather than whatever a model wrote.
+ */
+export type TravelQueryRefusal = ActivityDeidRefusal | 'destination_unusable';
+
+export type TravelQueryResult =
+  | { ok: true; query: ActivityQuery }
+  | { ok: false; refusal: TravelQueryRefusal };
+
+export function travelQueryFor(input: {
+  subject: string;
+  /** Composed WITHOUT a year and NOT in ISO form — see lib/travel/query.ts, where the
+   * reason and the test that holds it live. */
+  window: string;
+  /** "New York, NY" — code-composed from a family_trips row, never a model's string. */
+  destination: string;
+  stage: FamilyStage | null;
+  householdNames: readonly string[];
+}): TravelQueryResult {
+  const subject = gateFreeText(input.subject, input.householdNames);
+  if (!subject.ok) {
+    if (subject.refusal === 'empty') return { ok: false, refusal: 'empty_subject' };
+    if (subject.refusal === 'too_long') return { ok: false, refusal: 'subject_too_long' };
+    return { ok: false, refusal: 'names_a_person' };
+  }
+
+  const window = gateFreeText(input.window, input.householdNames);
+  if (!window.ok) {
+    if (window.refusal === 'too_long') return { ok: false, refusal: 'window_too_long' };
+    if (window.refusal === 'names_a_person') return { ok: false, refusal: 'names_a_person' };
+    return { ok: false, refusal: 'window_too_long' };
+  }
+
+  // A DESTINATION THAT REFUSES IS A REFUSAL, never a null town — unlike the municipality
+  // path, where a null town is a family whose postal code names no single municipality and
+  // the search runs without one. Here the town IS the question: "things to do on a short
+  // visit" with no place is a search for nothing. A child called Paris and a trip to Paris
+  // lands here as `names_a_person`, which is the honest ending.
+  const destination = gateFreeText(input.destination, input.householdNames);
+  if (!destination.ok) {
+    if (destination.refusal === 'names_a_person') return { ok: false, refusal: 'names_a_person' };
+    // EMPTY OR OVER-LONG, and counted as a DESTINATION rather than folded into the
+    // subject's refusal: the subject here is a constant `query.ts` composes, so a counter
+    // reading `subject_too_long` would point whoever read it at the one field that cannot
+    // be at fault. Unreachable through the sweep today — `destination_city` is NOT NULL and
+    // `destinationShape` caps each column at 60 characters — which is why it is a named
+    // outcome rather than a throw.
+    return { ok: false, refusal: 'destination_unusable' };
+  }
+
+  return {
+    ok: true,
+    query: {
+      subject: subject.value,
+      window: window.value,
+      town: destination.value,
+      stage: input.stage,
+    },
+  };
+}
+
 /** The sentence the model reads when phase 0 refuses — it answers by calling again.
  * Never echoes the subject back: the refusal exists because that string held something
  * that must not be repeated (rule #1). */

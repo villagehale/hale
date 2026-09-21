@@ -1,0 +1,291 @@
+{
+  "165474a7c849e37786711cc38936b3f97b2354f3f10a55db107d08ced7c68db8": {
+    "key": "165474a7c849e37786711cc38936b3f97b2354f3f10a55db107d08ced7c68db8",
+    "recordedAt": "2026-09-21T09:48:01.514Z",
+    "request": {
+      "model": "claude-sonnet-5",
+      "userMessage": "{\"email\":{\"subject\":\"Your itinerary for AC 704\",\"from\":\"Air Canada <noreply@aircanada.ca>\",\"body\":\"AIR CANADA - ELECTRONIC TICKET ITINERARY\\n\\nAC 704  Toronto Pearson (YYZ) -> New York LaGuardia (LGA)\\nDeparts Sat 12 Sep 2026 07:45   Arrives 09:10\\n\\nAC 711  New York LaGuardia (LGA) -> Toronto Pearson (YYZ)\\nDeparts Tue 15 Sep 2026 18:20   Arrives 20:05\\n\\nPassengers:\\n  CHEN/SARAH MS        Seat 14A\\n  CHEN/MIA MISS        Seat 14B\\n\\nBooking reference: QRT4LM\\nTotal charged: CAD 812.44\"},\"received_at\":\"2026-09-01T14:12:00.000Z\",\"household_child_first_names\":[\"Mia\",\"Leo\"]}"
+    },
+    "response": {
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "transcoded-travel_booking",
+          "name": "travel_booking",
+          "input": {
+            "destination_city": "New York",
+            "destination_region": "NY",
+            "start_date": "2026-09-12",
+            "end_date": "2026-09-15",
+            "child_evidence": "named_traveller",
+            "confidence": 0.97
+          }
+        }
+      ],
+      "stop_reason": "tool_use",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  },
+  "da5707af9697541f29f1a4d226b65d1d4c1595816ccac91f0bcfcd1e80b295d4": {
+    "key": "da5707af9697541f29f1a4d226b65d1d4c1595816ccac91f0bcfcd1e80b295d4",
+    "recordedAt": "2026-09-21T09:48:01.515Z",
+    "request": {
+      "model": "claude-sonnet-5",
+      "userMessage": "{\"subject\":\"things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds\",\"town\":\"New York, NY\",\"stage\":\"preschool\",\"window\":\"September 12 to 15\"}"
+    },
+    "response": {
+      "content": [
+        {
+          "type": "text",
+          "text": "Based on my research, here's what I found for a family with a preschooler visiting NYC September 12–15:\n{\"picks\":\"[{\\\"name\\\": \\\"Children's Museum of Manhattan (CMOM)\\\", \\\"age_fit\\\": \\\"designed especially for children ages 0-6\\\", \\\"source_name\\\": \\\"Children's Museum of Manhattan\\\"}, {\\\"name\\\": \\\"Tisch Children's Zoo at Central Park Zoo\\\", \\\"age_fit\\\": \\\"a playful adventure for our youngest guests, with goats, sheep, unique ducks and a cow\\\", \\\"when\\\": \\\"opens daily at 10am; grounds close 5pm Mon-Fri and 5:30pm weekends/holidays through October, per their site\\\", \\\"source_name\\\": \\\"Central Park Zoo\\\"}, {\\\"name\\\": \\\"PlayQuarium at New York Aquarium\\\", \\\"age_fit\\\": \\\"bilingual children's exhibit with a touch pool\\\", \\\"when\\\": \\\"aquarium opens daily at 10am, per their site\\\", \\\"source_name\\\": \\\"New York Aquarium\\\"}]\"}"
+        },
+        {
+          "type": "web_search_tool_result",
+          "tool_use_id": "srvtu_transcoded",
+          "content": [
+            {
+              "type": "web_search_result",
+              "url": "https://cmom.org/visit/",
+              "title": "Visit - Children's Museum of Manhattan",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://cmom.org/visit/discounted-admissions/",
+              "title": "Discounted Admissions - Children's Museum of Manhattan",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://cmom.org/about-us/who-we-are/",
+              "title": "Who We Are - Children's Museum of Manhattan",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://cmom.org/visit/visitor-guidelines/",
+              "title": "Visitor Guidelines & FAQs - Children's Museum of Manhattan",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://www.storyhunt.io/en/articles/childrens-museum-of-manhattan",
+              "title": "Children's Museum Of Manhattan NYC: 2026 Guide",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://cmom.org/exhibits/current-exhibits/",
+              "title": "Current Exhibits - Children's Museum of Manhattan",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://cmom.org/education/early-childhood-classes/",
+              "title": "Early Childhood Classes - Children's Museum of Manhattan",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://www.yelp.com/biz/childrens-museum-of-manhattan-new-york",
+              "title": "CHILDREN’S MUSEUM OF MANHATTAN - Updated July 2026 - 493 Photos & 275 Reviews - 212 W 83rd St, New York, New York - Party & Event Planning - Phone Number - Yelp",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://cmom.org/",
+              "title": "Children's Museum of Manhattan",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://www.viator.com/tours/New-York-City/Total-Experience-Tickets/d687-156679P2",
+              "title": "Central Park Zoo Admission Ticket 2026 - New York City - BOOK NOW",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://centralparkzoo.com/plan-your-visit/faqs",
+              "title": "FAQs - Central Park Zoo",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://www.booking.com/attractions/us/pr7awqqbw5pq-central-park-zoo-admission.en-gb.html",
+              "title": "Central Park Zoo Admission New York – Booking.com",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://centralparkzoo.com/shop/ticket-options",
+              "title": "Tickets - Central Park Zoo",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://centralparkzoo.com/plan-your-visit/hours-and-rates",
+              "title": "Hours & Rates - Central Park Zoo",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://www.hellotickets.com/us/new-york/central-park-zoo-tickets/sc-1-3169",
+              "title": "New York's Central Park Zoo Tickets - Hellotickets",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://centralparkzoo.com/plan-your-visit",
+              "title": "Central Park Zoo Plan Your Visit",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://centralparkzoo.com/plan-your-visit?os=os",
+              "title": "Central Park Zoo",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://www.newyorkwelcome.net/explore/what-to-see/parks/central-park-zoo.htm",
+              "title": "Central Park Zoo: What to See, Hours, Tickets & Family Tips",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://www.viator.com/tours/Brooklyn/Value-Admission-Tickets/d22371-156679P4",
+              "title": "New York City: New York Aquarium Advance Admission Tickets 2026 - Brooklyn - BOOK NOW",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://aquariumofniagara.org/admissions/",
+              "title": "Admissions - Aquarium of Niagara",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://thebettervacation.com/new-york/new-york-aquarium/",
+              "title": "New York Aquarium 2026: Tickets, Hours, Exhibits, and Visitor Guide",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://www.yelp.com/biz/new-york-aquarium-brooklyn",
+              "title": "NEW YORK AQUARIUM - Updated September 2026 - 1880 Photos & 591 Reviews - 602 Surf Ave & W 8th St, Brooklyn, New York - Zoos - Phone Number - Yelp",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://feverup.com/m/111689",
+              "title": "New York Aquarium (New York City) Tickets | Fever",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://nyaquarium.com/plan-your-visit/hours-and-rates",
+              "title": "Hours & Rates - New York Aquarium",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://www.ticketstodo.com/new-york/new-york-aquarium-tickets",
+              "title": "New York Aquarium Tickets 2026 | Book TicketsToDo Online",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://nyaquarium.com/shop/ticket-options",
+              "title": "Tickets - New York Aquarium",
+              "encrypted_content": "",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "url": "https://www.expedia.com/zh/things-to-do/new-york-aquarium-value-admission-tickets.a2877911.activity-details",
+              "title": "new york aquarium value admission tickets.a2877911.activity details",
+              "encrypted_content": "",
+              "page_age": null
+            }
+          ]
+        }
+      ],
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  },
+  "56dc560d15eb0529d6b3b7a3c1bcfa604add668ca948234227a07a5bddce3316": {
+    "key": "56dc560d15eb0529d6b3b7a3c1bcfa604add668ca948234227a07a5bddce3316",
+    "recordedAt": "2026-09-21T09:48:01.515Z",
+    "request": {
+      "model": "claude-sonnet-5",
+      "userMessage": "{\"subject\":\"things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds\",\"town\":\"New York, NY\",\"stage\":\"preschool\",\"window\":\"September 12 to 15\",\"research_notes\":\"Based on my research, here's what I found for a family with a preschooler visiting NYC September 12–15:\\n{\\\"picks\\\":\\\"[{\\\\\\\"name\\\\\\\": \\\\\\\"Children's Museum of Manhattan (CMOM)\\\\\\\", \\\\\\\"age_fit\\\\\\\": \\\\\\\"designed especially for children ages 0-6\\\\\\\", \\\\\\\"source_name\\\\\\\": \\\\\\\"Children's Museum of Manhattan\\\\\\\"}, {\\\\\\\"name\\\\\\\": \\\\\\\"Tisch Children's Zoo at Central Park Zoo\\\\\\\", \\\\\\\"age_fit\\\\\\\": \\\\\\\"a playful adventure for our youngest guests, with goats, sheep, unique ducks and a cow\\\\\\\", \\\\\\\"when\\\\\\\": \\\\\\\"opens daily at 10am; grounds close 5pm Mon-Fri and 5:30pm weekends/holidays through October, per their site\\\\\\\", \\\\\\\"source_name\\\\\\\": \\\\\\\"Central Park Zoo\\\\\\\"}, {\\\\\\\"name\\\\\\\": \\\\\\\"PlayQuarium at New York Aquarium\\\\\\\", \\\\\\\"age_fit\\\\\\\": \\\\\\\"bilingual children's exhibit with a touch pool\\\\\\\", \\\\\\\"when\\\\\\\": \\\\\\\"aquarium opens daily at 10am, per their site\\\\\\\", \\\\\\\"source_name\\\\\\\": \\\\\\\"New York Aquarium\\\\\\\"}]\\\"}\"}"
+    },
+    "response": {
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "transcoded-activity_picks",
+          "name": "activity_picks",
+          "input": {
+            "picks": [
+              {
+                "name": "Children's Museum of Manhattan (CMOM)",
+                "age_fit": "designed especially for children ages 0-6",
+                "source_name": "Children's Museum of Manhattan"
+              },
+              {
+                "name": "Tisch Children's Zoo at Central Park Zoo",
+                "age_fit": "a playful adventure for our youngest guests, with goats, sheep, unique ducks and a cow",
+                "when": "opens daily at 10am; grounds close 5pm Mon-Fri and 5:30pm weekends/holidays through October, per their site",
+                "source_name": "Central Park Zoo"
+              },
+              {
+                "name": "PlayQuarium at New York Aquarium",
+                "age_fit": "bilingual children's exhibit with a touch pool",
+                "when": "aquarium opens daily at 10am, per their site",
+                "source_name": "New York Aquarium"
+              }
+            ]
+          }
+        }
+      ],
+      "stop_reason": "tool_use",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  }
+}

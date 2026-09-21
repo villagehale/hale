@@ -109,4 +109,60 @@ describe('the evening check-in in a right-to-access copy', () => {
     ]);
     expect(JSON.stringify(doc)).not.toContain('until eight');
   });
+
+  /**
+   * ONE PARENT'S TRIP MUST NOT REACH THE OTHER, and the export is the only surface where
+   * it could. Every other fact about a trip says it belongs to one parent — detected from
+   * ONE mailbox, texted to THAT phone, cascading on THAT user's row — and this file is the
+   * one durable copy that leaves the app. Hale supports separated co-parents, so a solo
+   * travel date is exactly the disclosure the privacy moat exists to prevent.
+   *
+   * THE POSITIVE CONTROL IS THE TEST. `trips: []` passes just as happily on a block that
+   * is always empty, so the same trip is read back as its own parent in the same `it`.
+   */
+  it("serves a trip only to the parent whose mailbox it came from", async () => {
+    const [family] = await db.database
+      .insert(schema.families)
+      .values({ displayName: 'Ana + Sam', provinceOrState: 'ON' })
+      .returning({ id: schema.families.id });
+    const familyId = family?.id as string;
+    const anaId = await seedParent(familyId, 'ana', 'primary_parent');
+    const samId = await seedParent(familyId, 'sam', 'co_parent');
+
+    await db.database.insert(schema.familyTrips).values({
+      familyId,
+      parentUserId: anaId,
+      integrationId: '99999999-9999-4999-8999-999999999999',
+      messageId: 'gmail-trip-1',
+      destinationCity: 'New York',
+      destinationRegion: 'NY',
+      startsOn: '2026-09-12',
+      endsOn: '2026-09-15',
+      childEvidence: 'named_traveller',
+    });
+
+    const sams = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: samId,
+      loadTrail: async () => [],
+    });
+    expect(sams.trips).toEqual([]);
+    // Not just the block: nowhere in Sam's whole copy.
+    expect(JSON.stringify(sams)).not.toContain('New York');
+
+    const anas = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: anaId,
+      loadTrail: async () => [],
+    });
+    expect(anas.trips).toEqual([
+      {
+        destinationCity: 'New York',
+        destinationRegion: 'NY',
+        startsOn: '2026-09-12',
+        endsOn: '2026-09-15',
+        childEvidence: 'named_traveller',
+        closedAt: null,
+        closedReason: null,
+      },
+    ]);
+  });
 });

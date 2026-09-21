@@ -6,6 +6,7 @@ import type {
   CalendarChange,
 } from './calendar-alert';
 import type { EmailAlertResult, GmailAlertEnvelope } from './email-alert';
+import type { TravelDetectOutcome } from '~/lib/travel/detect';
 import type { ConnectorProvider } from './google-oauth';
 import type { ActiveConnectorConnection } from './store';
 import {
@@ -76,6 +77,17 @@ export interface SyncDeps {
    * caller makes out loud, never by withholding a port (rule #11).
    */
   alertCalendarChanges: (input: CalendarAlertBatch) => Promise<CalendarAlertSweep>;
+  /**
+   * The same contract a THIRD time, for the travel brief's detection pass
+   * (lib/travel/detect.ts), and non-nullable for the reason the two above are: "nothing
+   * is wired to notice a trip" is a decision a caller makes out loud by passing a port
+   * that says so, never by withholding one.
+   *
+   * It reuses the batch this sweep is already handed, so there is no second Gmail call
+   * and no second token read — the body fetch for the handful of booking-shaped
+   * envelopes rides the access token already in hand.
+   */
+  detectTravelBookings: (input: GmailAlertBatch) => Promise<readonly TravelDetectOutcome[]>;
 }
 
 /** One connection's Gmail envelopes, as the alert path needs them. The access token is
@@ -109,6 +121,12 @@ export interface SyncConnectionResult {
    * no alert outcome — they never reached the alert path — and a drop with no number
    * beside it is a connector going blind without anyone being able to tell (rule #11). */
   calendarDroppedNoId: number;
+  /** One outcome per Gmail envelope the travel detect pass looked at, INCLUDING the ones
+   * it declined to look at. Its own list rather than a widening of `emailAlerts`: an
+   * envelope has two independent answers — whether a text went about it, and whether a
+   * trip was written down — and a bucket that means two things is the counter rule #11
+   * exists to prevent. */
+  travelDetections: readonly TravelDetectOutcome[];
 }
 
 const GONE = 410;
@@ -145,6 +163,7 @@ export async function syncConnection(
   let emailAlerts: readonly EmailAlertResult[] = [];
   let calendarAlerts: readonly CalendarAlertOutcome[] = [];
   let calendarDroppedNoId = 0;
+  let travelDetections: readonly TravelDetectOutcome[] = [];
   try {
     const accessToken = await ensureFreshToken(connection, deps);
     const result = await runProviderSync(connection, accessToken, deps.googleFetch);
@@ -185,9 +204,38 @@ export async function syncConnection(
           },
           'connector sync: the email alert pass threw - the mailbox is fine, the alert is not',
         );
-        // The PAIR, with a null booking: the alert pass threw, so the booking decision
-        // was never reached - which is a different fact from a booking that was refused.
-        emailAlerts = envelopes.map(() => ({ alert: 'alert_failed' as const, booking: null }));
+        // THE TRIPLE, with a null booking and a null going: the alert pass threw, so
+        // neither the booking decision nor the count was ever reached - which is a
+        // different fact from a booking that was refused or a count that was below the
+        // floor.
+        emailAlerts = envelopes.map(() => ({
+          alert: 'alert_failed' as const,
+          booking: null,
+          going: null,
+        }));
+      }
+      // THE TRAVEL PASS, after the alert pass and behind its OWN boundary, for exactly the
+      // reason the alert pass has one: a bug in Hale's travel path must not mark the
+      // CONNECTION errored and stop the ingest. It runs second because the alert is the
+      // older contract and this one spends model calls on what the alert already read.
+      try {
+        travelDetections = await deps.detectTravelBookings({
+          connection,
+          accessToken,
+          seeding,
+          envelopes,
+        });
+      } catch (err) {
+        // The class only: a rejection from a body fetch or a model can carry a subject
+        // line (rule #1).
+        console.error(
+          {
+            connectionId: connection.id,
+            err: err instanceof Error ? err.constructor.name : 'unknown',
+          },
+          'connector sync: the travel detect pass threw - the mailbox is fine, the detection is not',
+        );
+        travelDetections = envelopes.map(() => 'detect_failed' as const);
       }
     }
     if (result.calendar) {
@@ -222,7 +270,7 @@ export async function syncConnection(
     );
     await deps.markError(connection.id, code);
   }
-  return { emailAlerts, calendarAlerts, calendarDroppedNoId };
+  return { emailAlerts, calendarAlerts, calendarDroppedNoId, travelDetections };
 }
 
 /** Refresh + persist an expiring access token; returns the token to use for this
