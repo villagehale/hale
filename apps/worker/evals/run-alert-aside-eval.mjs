@@ -95,6 +95,15 @@ const EDGE_WORDS = 2;
  */
 const MIN_RATE = 0.8;
 
+/**
+ * SIX OF TWENTY-FOUR — the founder's restraint bar, as a property of the CORPUS rather
+ * than of one run. `chirped === 0` below grades the fixtures labelled `quiet`, and against
+ * a corpus that labelled none it would be zero out of zero, green, forever. The first
+ * spelling of this pin read a field no fixture carries (`expectClause`), counted all 24
+ * and could not fail; this one counts the label the corpus actually has.
+ */
+const MIN_QUIET_FIXTURES = 6;
+
 /** The three refusals that close the DOOR. Reported on their own line rather than folded
  * into a refusal count, because they are the only failure here with a consequence beyond a
  * bad sentence: an offer-shaped clause invites a bare YES, and a bare YES on these lanes is
@@ -217,8 +226,9 @@ async function main() {
   console.log(
     `alert-aside eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
   );
+  const mustBeQuietCount = fixtures.filter((f) => f.expect === 'quiet').length;
   console.log(
-    `corpus: ${fixtures.length} alerts (${fixtures.filter((f) => !f.expectClause).length} whose right answer is no clause)\n`,
+    `corpus: ${fixtures.length} alerts (${mustBeQuietCount} whose right answer is no clause)\n`,
   );
 
   const results = [];
@@ -362,6 +372,9 @@ async function main() {
     `declined altogether:     ${quiet}/${results.length}  (the founder's restraint bar is at least ${mustBeQuiet.length})`,
   );
   console.log(
+    `restraint fixtures:      ${mustBeQuiet.length}/${results.length}  (>= ${MIN_QUIET_FIXTURES} required - the bar is a property of the corpus, not of one run)`,
+  );
+  console.log(
     `other refusals:          ${otherRefused.length}  (each one costs today's message nothing - it ships as written)`,
   );
   console.log(
@@ -380,6 +393,7 @@ async function main() {
 
   const allPass =
     doors.length === 0 &&
+    mustBeQuiet.length >= MIN_QUIET_FIXTURES &&
     chirped.length === 0 &&
     judgeFails.length === 0 &&
     spokeRate >= MIN_RATE &&

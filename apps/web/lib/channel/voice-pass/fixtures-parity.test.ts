@@ -51,7 +51,7 @@ interface EmailFixture {
   ctaSuffix: string | null;
   priorAlertsToHousehold24h: number | null;
   matchedAKnownOccasion: boolean;
-  expectClause: boolean;
+  expect: 'quiet' | 'clause' | 'either';
   watchFor: string;
 }
 
@@ -68,7 +68,7 @@ interface CalendarFixture {
   ctaSuffix: null;
   priorAlertsToHousehold24h: number | null;
   matchedAKnownOccasion: boolean;
-  expectClause: boolean;
+  expect: 'quiet' | 'clause' | 'either';
   watchFor: string;
 }
 
@@ -106,7 +106,11 @@ describe('the eval corpus is still what the lanes render', () => {
     // The positive control for every `for` loop below: an empty or unreadable corpus
     // would make all of them vacuously green.
     expect(fixtures.length).toBeGreaterThanOrEqual(24);
-    expect(fixtures.filter((f) => !f.expectClause).length).toBeGreaterThanOrEqual(6);
+    // SIX OF TWENTY-FOUR, on the field the corpus actually carries. The first spelling of
+    // this read `!f.expectClause` against a field no fixture has, so it counted all 24 and
+    // would have passed against a corpus with no restraint arm at all — the founder's
+    // restraint bar pinned by an expression that cannot fail.
+    expect(fixtures.filter((f) => f.expect === 'quiet').length).toBeGreaterThanOrEqual(6);
   });
 
   for (const fixture of fixtures) {
