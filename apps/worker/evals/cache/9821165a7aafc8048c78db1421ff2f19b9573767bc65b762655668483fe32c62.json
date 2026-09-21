@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to add a gymnastics class to the calendar. There is no gymnastics class in `week`, no `offerable` results, no `webFind`, and `stillBeingChecked` is 0 — so Hale genuinely has nothing to go on. The correct move is to ask for the details needed to draft the event (name, day, time). The reply does exactly that: it explains it has nothing on file and asks what the class is called and when it runs. That is the right shape. One small issue: \"nothing's come up in what I've checked for your area\" slightly over-explains Hale's internal search process, but it's a minor clause and not misleading. The core ask is clean and correct. No drafting was possible without the details, no app referral, no invented details. This is a solid, appropriate reply with only a minor blemish.",
+    "score": 4
+  }
+}

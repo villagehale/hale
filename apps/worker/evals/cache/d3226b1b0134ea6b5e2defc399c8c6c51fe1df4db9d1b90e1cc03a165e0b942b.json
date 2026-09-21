@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread is empty and there are two swim lessons on the week (Mon 4:30pm at West pool, Thu 5:15pm at East pool). \"Which of the two\" almost certainly refers to those two swim lessons — they are the only pair of the same type of event visible. Hale had enough context to ask \"the two swim lessons — Monday at West pool or Thursday at East pool?\" instead of a blank \"I don't have that context yet.\" That said, the text is genuinely ambiguous in isolation (no prior thread, no named activity), so asking for clarification is not wrong in principle. The problem is the reply is a cold, slightly terse deflection that gives Sam nothing to work with and doesn't even surface the obvious candidate pair. A better version would have named the likely pair and asked if that's what they meant. Still, asking for clarification when the thread is empty and the referent is ambiguous is not the same failure as handing the job back or sending the parent to the app. It's a weak but defensible move — it just missed the obvious two swim lessons it could have named to help Sam confirm quickly. That earns a 3: the shape is right (one question, no markdown, no sign-off) but the content is thin and misses naming the obvious candidate pair, which would have resolved the ambiguity in one exchange instead of two.",
+    "score": 3
+  }
+}
