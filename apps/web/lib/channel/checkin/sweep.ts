@@ -1,6 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import {
+  PRIVATE_EVENT_WHAT,
+  type ScheduleEvent,
+  channelScheduleReader,
+} from '~/lib/channel/coach/tools';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -12,9 +17,12 @@ import {
 } from '~/lib/channel/outbound-gate';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
+import { nightlyOccasion } from '~/lib/channel/variant';
 import { readinessQuestion } from '~/lib/registration/sequence/prepare-reply';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { dayKeyIn } from '~/lib/plan/spine';
 import {
   type CheckInDecision,
   type CheckInSkipReason,
@@ -82,6 +90,78 @@ import {
  * left. */
 export const MAX_CHECK_INS_PER_RUN = 100;
 
+const DAY_MS = 86_400_000;
+
+/**
+ * THE ANCHOR'S OWN FLAG — the only change in this lane that reads NEW data into an
+ * unprompted nightly message, so the only one worth being able to turn off without a
+ * revert. It narrows; it never widens. The whole lane still sits behind F14.
+ *
+ * OFF IS NOT DEGRADED. Off is the deterministic day question, which is the message this
+ * lane has shipped all along.
+ *
+ * STRICT equality on the literal 'true', the f14 gate's reason verbatim: `vercel env add`
+ * from a piped `echo` stores a TRAILING NEWLINE, so a value that prints as `true` is
+ * really `'true\n'` — and a truthiness check would read that as ON. Set it with
+ * `printf '%s'`.
+ */
+export const CHECK_IN_ANCHOR_ENABLED_ENV = 'CHECK_IN_ANCHOR_ENABLED';
+
+export function checkInAnchorEnabled(): boolean {
+  return process.env[CHECK_IN_ANCHOR_ENABLED_ENV] === 'true';
+}
+
+/**
+ * Why this evening's question named an activity, or did not.
+ *
+ * EVERY VALUE IS A REAL STATE AND THE SWEEP COUNTS IT (rule #11). "Nothing happened
+ * today" and "something happened and Hale would not say what" are never the same number:
+ * `private_event` climbing is a run to look at, and `placement_lane` is the number that
+ * proves the evening anchor and the composed follow-up stayed out of each other's way.
+ */
+export type AnchorOutcome =
+  /** Named. */
+  | 'anchored'
+  /** This household's first evening question ever — it prints the keywords and is never
+   * anchored, so the anchor lane did not run rather than finding nothing. */
+  | 'first_ask'
+  /** CHECK_IN_ANCHOR_ENABLED is not 'true'. */
+  | 'flag_off'
+  /** Nothing of this family's started today before now. */
+  | 'no_event_today'
+  /** A teen's or a sensitive row. It exists and it is not Hale's to name — and saying
+   * nothing at all is stronger than genericising it, because the evening message then
+   * does not disclose that a private item existed. */
+  | 'private_event'
+  /** Hale put that one there, so the composed follow-up lane owns asking how it went. */
+  | 'placement_lane'
+  /** A family-wide row with no child on it. */
+  | 'no_child'
+  /** A title Hale cannot spell inside the budget. */
+  | 'not_gsm7'
+  /** Composed, measured, did not fit one segment with the opt-out on it. */
+  | 'over_segment'
+  /** The read threw. Counted rather than swallowed: a reader that started failing would
+   * otherwise look exactly like a product where nothing ever happens. */
+  | 'read_failed';
+
+/**
+ * What the activity reader found — the title, or the reason there is none.
+ *
+ * THE ABSENCE IS NAMED IN THE RETURN VALUE (rule #11) rather than being a bare null. The
+ * sweep counts these, and a null that meant five different things would be a metric that
+ * cannot tell a quiet Tuesday from a lane that stopped working.
+ */
+export type TodayActivity =
+  | { anchor: string }
+  | {
+      anchor: null;
+      reason: Extract<
+        AnchorOutcome,
+        'no_event_today' | 'private_event' | 'placement_lane' | 'no_child' | 'not_gsm7'
+      >;
+    };
+
 export interface EveningCheckInResult {
   /** False when neither the flag nor the allowlist armed the sweep. */
   enabled: boolean;
@@ -106,6 +186,9 @@ export interface EveningCheckInResult {
   /** Already sent this evening — a second cron tick inside the same local hour. */
   duplicate: number;
   failed: number;
+  /** One entry per household this run actually ASKED (the step-down notice asks nothing,
+   * so it is not counted here). Same shape as `skipped` and `held`, for the same reason. */
+  anchor: Record<AnchorOutcome, number>;
 }
 
 function emptyResult(enabled: boolean): EveningCheckInResult {
@@ -121,6 +204,18 @@ function emptyResult(enabled: boolean): EveningCheckInResult {
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
     duplicate: 0,
     failed: 0,
+    anchor: {
+      anchored: 0,
+      first_ask: 0,
+      flag_off: 0,
+      no_event_today: 0,
+      private_event: 0,
+      placement_lane: 0,
+      no_child: 0,
+      not_gsm7: 0,
+      over_segment: 0,
+      read_failed: 0,
+    },
   };
 }
 
@@ -134,6 +229,24 @@ export interface EveningCheckInDeps {
   selectFamilies(database: Database): Promise<CheckInFamily[]>;
   /** The children this question may NAME — under-13s only, stripped at the source. */
   loadNamableChildren(database: Database, familyId: string, now: Date): Promise<string[]>;
+  /**
+   * The activity this evening's question may name, or the reason there is none.
+   *
+   * REQUIRED (rule #11), the reason `transport` is: a sweep that silently lost its reader
+   * would step every household back to the generic ask and nobody would know — the
+   * message would still send, still be one segment, and still read perfectly.
+   *
+   * The production implementation goes through `channelScheduleReader`, the door the
+   * texted schedule already comes through, so its rows arrive ALREADY PROJECTED and this
+   * file never names the table (teen-access-outbound.test.ts keeps that door count at
+   * three).
+   */
+  readTodayActivity(
+    database: Database,
+    familyId: string,
+    timeZone: string,
+    now: Date,
+  ): Promise<TodayActivity>;
   readState: typeof readCheckInState;
   buildGate(database: Database): OutboundGatePorts;
   /** The registration ladder's own reader for its own question (the one-reader-per-
@@ -280,14 +393,32 @@ async function runForFamily(
   }
 
   // Composed only AFTER the gate and the dedupe: a family already asked, or over budget,
-  // must not cost a read of their children's names.
-  const message =
-    decision.kind === 'step_down'
-      ? CHECK_IN_STEP_DOWN
-      : composeCheckInAsk({
-          first: decision.first,
-          childNames: await deps.loadNamableChildren(database, family.familyId, now),
-        });
+  // must not cost a read of their children's names — nor, now, a read of their calendar.
+  let message: string;
+  // Whether tonight's question named an activity — the one thing the audit row learns from
+  // the anchor. The step-down notice names nothing and asks nothing, so it is false there
+  // by construction rather than by omission.
+  let anchored = false;
+  if (decision.kind === 'step_down') {
+    message = CHECK_IN_STEP_DOWN;
+  } else {
+    const found = await readAnchor(database, deps, family, decision.first, now);
+    const ask = composeCheckInAsk({
+      first: decision.first,
+      childNames: await deps.loadNamableChildren(database, family.familyId, now),
+      todayActivity: found.anchor,
+      // Which of the five ways of asking this household reads tonight. The rotation
+      // steps once per family-local day, so no family reads the same sentence two
+      // evenings running (variant.ts).
+      familyId: family.familyId,
+      occasion: nightlyOccasion(now, family.timeZone),
+    });
+    message = ask.body;
+    anchored = ask.anchored;
+    // A title that was offered and not used was refused by the BUDGET, and that is a
+    // different fact from having nothing to name.
+    result.anchor[found.anchor !== null && !ask.anchored ? 'over_segment' : found.outcome] += 1;
+  }
 
   const to = await deps.resolveSendablePhone(database, family.parentUserId);
   if (!to) {
@@ -316,7 +447,10 @@ async function runForFamily(
     actionTaken,
     targetTable: 'channel_messages',
     targetId: channelMessageId,
-    after: { cadence: steppingDown ? 'weekly' : 'daily' },
+    // `anchored` and NEVER the activity: audit_log is immutable and PIPEDA-exportable and
+    // carries none of the teen redaction a memory read has, so the trail gets the count and
+    // the calendar content stays on the row that already holds it (rule #1).
+    after: { cadence: steppingDown ? 'weekly' : 'daily', anchored },
   });
   // The composed sentence, never the wire body: the CASL line belongs on the wire and
   // nowhere else, and this thread is what the parent reads back and what the coach
@@ -347,6 +481,36 @@ async function runForFamily(
     now,
   });
   result.asked += 1;
+}
+
+/**
+ * Tonight's anchor, and the one reason there is not one.
+ *
+ * The flag and the first-ask carve-out are decided HERE rather than inside the reader, so
+ * a household that is not asking a pooled question never costs a calendar read at all.
+ */
+async function readAnchor(
+  database: Database,
+  deps: EveningCheckInDeps,
+  family: CheckInFamily,
+  first: boolean,
+  now: Date,
+): Promise<{ anchor: string | null; outcome: AnchorOutcome }> {
+  // The first question a household is ever asked prints the keywords and is one pinned
+  // sentence. It is not anchored, and saying so is not the same as finding nothing.
+  if (first) return { anchor: null, outcome: 'first_ask' };
+  if (!checkInAnchorEnabled()) return { anchor: null, outcome: 'flag_off' };
+  try {
+    const found = await deps.readTodayActivity(database, family.familyId, family.timeZone, now);
+    return found.anchor === null
+      ? { anchor: null, outcome: found.reason }
+      : { anchor: found.anchor, outcome: 'anchored' };
+  } catch (err) {
+    // Ids and enums only, never a title and never the answer (rule #1) — the shape the
+    // family sweep's own catch already uses.
+    console.error({ err, familyId: family.familyId }, 'evening check-in: activity read failed');
+    return { anchor: null, outcome: 'read_failed' };
+  }
 }
 
 function templateKeyFor(decision: CheckInDecision): string {
@@ -418,10 +582,94 @@ async function readNamableChildren(
     .map((row) => row.name);
 }
 
+/**
+ * The six subtractions that decide whether one event may be named, in the order their
+ * refusals are reported.
+ *
+ * SUBTRACTIONS, NOT CHECKS. Each one removes a class of row from consideration rather
+ * than adding a rule about what to say instead, and two of them are the privacy boundary
+ * of this whole feature:
+ *
+ *   PRIVATE — a teen's or a sensitive row yields NO anchor at all. The nightly message
+ *   then never discloses that a private item existed, which is stronger than genericising
+ *   it and is the same property `childPhrase` already relies on: the absence of an anchor
+ *   is indistinguishable from a quiet day.
+ *
+ *   PLACEMENT — Hale put that one there, and the composed follow-up lane already owns
+ *   "you went to the thing I found, how was it" (channel/followup/run.ts). Both sweeps
+ *   fire in the same hourly tick under separate gate budgets, so without this the same
+ *   event would be named twice in thirteen hours in two different registers — and the
+ *   parent's answer to the cheap one would silently convert the expensive one into an
+ *   `already_discussed` skip.
+ *
+ *   NO CHILD — a family-wide row is an occasion with nobody on it, and the question is
+ *   "how did swim go" about a child. It is also what keeps a co-parent's adult calendar
+ *   item out of an unprompted 20:00 text to the other parent.
+ */
+function anchorRefusal(
+  event: ScheduleEvent,
+): Extract<AnchorOutcome, 'private_event' | 'placement_lane' | 'no_child' | 'not_gsm7'> | null {
+  // The title check is belt AND braces: the projection already replaced a private row's
+  // title, so matching the placeholder catches a row whose flags were read differently.
+  if (event.teen || event.sensitive || event.title === PRIVATE_EVENT_WHAT) return 'private_event';
+  if (event.source === 'placement') return 'placement_lane';
+  if (event.childId === null) return 'no_child';
+  if (!isPrintableGsm7Basic(event.title)) return 'not_gsm7';
+  return null;
+}
+
+/**
+ * What this family did today that Hale saw — through the PROJECTING door.
+ *
+ * `channelScheduleReader` is the reader the texted schedule already comes through, so a
+ * teen's or a sensitive row arrives here as the placeholder with no location, decided by
+ * the live age gate and never by a stored flag. Reusing it is what answers "this is a new
+ * privacy-bearing read" by subtraction rather than with a second gate — and it is why
+ * sweep.ts never names family_events.
+ *
+ * THE WINDOW IS A DAY EITHER SIDE AND THE TEST IS THE DAY KEY. A 24-hour window in each
+ * direction covers every zone, and `dayKeyIn` — the house helper — decides which rows are
+ * actually today, so nothing about midnight or a DST night is re-derived here.
+ *
+ * AMONG WHAT SURVIVES THE SUBTRACTIONS, THE LATEST THAT HAS ALREADY STARTED. One event,
+ * one slot: Hale asks about what it saw, and 21:30's gymnastics has not happened yet at
+ * 20:00. When nothing survives, the reason reported is the one that stopped the LATEST
+ * candidate — the row the evening would otherwise have been about.
+ */
+async function readTodayActivity(
+  database: Database,
+  familyId: string,
+  timeZone: string,
+  now: Date,
+): Promise<TodayActivity> {
+  const events = await channelScheduleReader(database, now).eventsInWeek(
+    familyId,
+    new Date(now.getTime() - DAY_MS),
+    new Date(now.getTime() + DAY_MS),
+  );
+  const today = events
+    .filter(
+      (event) =>
+        dayKeyIn(event.startsAt, timeZone) === dayKeyIn(now, timeZone) &&
+        event.startsAt.getTime() <= now.getTime(),
+    )
+    .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+  const latest = today[today.length - 1];
+  if (!latest) return { anchor: null, reason: 'no_event_today' };
+  const nameable = today.filter((event) => anchorRefusal(event) === null);
+  const chosen = nameable[nameable.length - 1];
+  if (chosen) return { anchor: chosen.title };
+  return { anchor: null, reason: anchorRefusal(latest) as Exclude<
+    ReturnType<typeof anchorRefusal>,
+    null
+  > };
+}
+
 export function defaultEveningCheckInDeps(): EveningCheckInDeps {
   return {
     selectFamilies: selectCheckInFamilies,
     loadNamableChildren: readNamableChildren,
+    readTodayActivity,
     readState: readCheckInState,
     buildGate: buildOutboundGatePorts,
     readinessStanding: readinessQuestion,

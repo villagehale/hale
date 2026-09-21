@@ -13,6 +13,10 @@ import {
 } from './run';
 import type { ReminderStatus, SuppressReason } from './schedule';
 
+/** The parents' reminder lead is a three-member pool (reminder/core.ts) — the same
+ * distance in time, three ways, rotating on the event's own family-local day. */
+const HOUR_LEADS = /^(?:In an hour|An hour from now|Just about an hour away): /;
+
 /**
  * VIL-241 · M6 — the event reminders a caregiver was promised, and the three events they
  * must never receive.
@@ -163,7 +167,7 @@ describe('fire — what actually reaches a caregiver', () => {
       dedupeKey: 'reminder:-PT1H:fam-1:g1:e1',
     });
     expect(body(enqueued[0] as ChannelSendJob)).toBe(
-      'Hale: in an hour - Swim class at 10:00, Stouffville Public School',
+      'In an hour - Swim class at 10:00, Stouffville Public School',
     );
     // And the pin survives the contract the drain parses the job through — the one place
     // a dropped `channel` key would silently route a caregiver's text to email.
@@ -305,9 +309,13 @@ describe('fire — what actually reaches a caregiver', () => {
     await runReminderCron(db, deps, NOW);
     expect(enqueued[0]).toMatchObject({ templateKey: 'reminder', parentUserId: 'p1' });
     expect(enqueued[0]?.channel).toBeUndefined();
-    // The parents' own copy, byte for byte what it was before this leg existed — and
-    // visibly not the caregiver's, which leads with the sender and carries the address.
-    expect(body(enqueued[0] as ChannelSendJob)).toBe('In an hour: Swim class at 10:00');
+    // The parents' own copy, and visibly not the caregiver's — theirs carries the address
+    // and joins with a dash where this one uses a colon. The LEAD is pooled now (three
+    // ways of saying the same distance, rotating on the event's own day), so what is
+    // pinned is the lead's shape plus the facts after it, byte for byte.
+    const parentText = body(enqueued[0] as ChannelSendJob);
+    expect(parentText).toMatch(HOUR_LEADS);
+    expect(parentText.replace(HOUR_LEADS, '')).toBe('Swim class at 10:00');
   });
 });
 
@@ -432,7 +440,8 @@ describe('one recipient, two households', () => {
       const own = jobFor(enqueued, 'fam-1');
       expect(own.templateKey).toBe('reminder');
       expect(own.channel).toBeUndefined();
-      expect(body(own)).toBe('In an hour: an appointment at 10:00');
+      expect(body(own)).toMatch(HOUR_LEADS);
+      expect(body(own).replace(HOUR_LEADS, '')).toBe('an appointment at 10:00');
       expect(body(own)).not.toContain('Therapy intake');
 
       // The household she works for is a CAREGIVER's: their template, pinned to sms,

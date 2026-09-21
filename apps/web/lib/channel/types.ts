@@ -63,12 +63,47 @@ export interface LoopMessage {
   channel?: ChannelKind;
 }
 
+/**
+ * What the composed-voice slot did on ONE render (docs/voice.md, "The two SMS folds").
+ *
+ * A template that composes a sentence through a model and then measures it against the
+ * wire has genuinely different endings, and without names they are one silence: the
+ * composer degraded and wrote nothing, the composer wrote something the fold refused, and
+ * the sentence went out. The refusals are enumerated rather than lumped because each one
+ * is a different bug in a different place — a dropped character is the composer's
+ * charset, a question is its register, and an over-long line is a model measured against a
+ * budget nobody told it about.
+ *
+ * ONLY ENDINGS THE RENDERERS CAN REACH ARE NAMED. A 'refused:offset_missing' was here for
+ * the reminder's condition (c), and it could not happen: the fold appends the voice to a
+ * body that already opens with the deterministic lead, so the check compared the fold's
+ * own concatenation against its own prefix and the counter could only ever read zero. A
+ * variant nothing can produce is a gate nobody is watching, so the guarantee was left
+ * structural and the name removed (reminder/sms.ts).
+ *
+ * 'absent' means the slot EXISTS and the composer gave it nothing. A RenderedContent with
+ * no outcome at all is the other thing: a message with no voice slot to begin with.
+ */
+export type VoiceOutcome =
+  | 'used'
+  | 'absent'
+  /** gsmSafe would have eaten a character — the line arrives on the wire a word short. */
+  | 'refused:gsm_dropped'
+  /** The slot's question budget (D14): one for an ask, zero for a statement. */
+  | 'refused:question_count'
+  /** Composed, measured, did not fit the channel's segment budget. */
+  | 'refused:over_segment';
+
 /** Channel-specific rendered content. A2 fixes the shape; the real renderers live
  * with the templates. The SMS renderer must be segment-aware and never carry
- * health details or a child name above the family's privacy level (A5). */
+ * health details or a child name above the family's privacy level (A5).
+ *
+ * `voice` is set by the renderers that HAVE a composed voice slot and is absent on every
+ * other template — see {@link VoiceOutcome}. It is an enum about Hale's own pipeline and
+ * never content, which is why the dispatch can carry it onto an immutable audit row. */
 export type RenderedContent =
   | { kind: 'email'; subject: string; html: string; text: string; attachments?: ResendAttachment[] }
-  | { kind: 'sms'; text: string };
+  | { kind: 'sms'; text: string; voice?: VoiceOutcome };
 
 /** Produces channel-specific content for a message, honoring the resolved child-name
  * privacy level. Injected — the seam ships a Fake; templates provide the real one. */

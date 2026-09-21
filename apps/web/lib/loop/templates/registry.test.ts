@@ -36,7 +36,11 @@ describe('loopTemplateRenderer', () => {
     const sms = loopTemplateRenderer.render(weeklyPlan, 'sms', 'generic');
     expect(sms.kind).toBe('sms');
     if (sms.kind === 'sms') {
-      expect(sms.text.startsWith('Hale:')).toBe(true);
+      // The `Hale: ` broadcast header is gone (docs/voice.md rule 2), so the routing
+      // proof is the weekly renderer's own subject line instead of a prefix every
+      // template used to share.
+      expect(sms.text.startsWith('Your week')).toBe(true);
+      expect(sms.text.startsWith('Hale:')).toBe(false);
     }
   });
 

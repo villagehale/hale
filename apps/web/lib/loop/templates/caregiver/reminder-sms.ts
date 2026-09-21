@@ -31,7 +31,8 @@ function eventLine(event: CaregiverReminderEvent, timeZone: string): string {
 export function renderCaregiverReminderSms(payload: CaregiverReminderPayload): RenderedContent {
   const lead = whenLead(payload.offset);
   const lines = payload.events.map((event) => eventLine(event, payload.timeZone));
-  const send = (body: string) => gsmSafe(`Hale: ${lead.toLowerCase()} - ${body}`);
+  // NO `Hale: ` PREFIX (docs/voice.md rule 2) — see plan-sms.ts.
+  const send = (body: string) => gsmSafe(`${lead} - ${body}`);
 
   const full = send(lines.join(LINE_SEP));
   if (smsSegments(full) <= SEGMENT_CAP) return { kind: 'sms', text: full };

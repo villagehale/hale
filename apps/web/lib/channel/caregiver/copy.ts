@@ -43,7 +43,12 @@ export function inviteBody(inviterName: string | null, role: CaregiverRole): str
   // The inviter is named FIRST so "their family" has someone to point at. The other
   // order put the pronoun a whole sentence ahead of its referent, and in the anonymous
   // branch ahead of nothing at all — on the first message a stranger ever gets.
-  return `Hi - ${who} as ${ROLE_LABEL[role]}. I'm Hale, the assistant that keeps their family's week straight. If you say yes I'll text you ${GETS_YOU}. ${NEVER} Reply YES to accept. Reply STOP anytime.`;
+  //
+  // IT SAYS WHAT HALE DOES, NOT WHAT HALE IS (docs/voice.md rule 3). "I'm Hale, the
+  // assistant that keeps their family's week straight" spent this stranger's first
+  // sentence on a category, and the next sentence already tells them exactly what they
+  // will get — so the category was the part to cut.
+  return `Hi - ${who} as ${ROLE_LABEL[role]}. I'm Hale - I keep their family's week straight. If you say yes I'll text you ${GETS_YOU}. ${NEVER} Reply YES to accept. Reply STOP anytime.`;
 }
 
 /** Said to the parent once the invite is on its way. */
