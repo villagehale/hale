@@ -376,6 +376,46 @@ async function placeOfferedEvent(
 }
 
 /**
+ * THE PROVIDER CALLED THE CLASS OFF, so the question Hale asked about it is no longer
+ * answerable — stop the offer standing.
+ *
+ * WHY THIS EXISTS. The offer stands for a day, and a cancellation that lands in hour three
+ * leaves the last live path from a called-off class to the family's calendar wide open: a
+ * parent reading their texts at bedtime says YES to the morning's "Want it on your
+ * calendar?", and `placeOfferedEvent` writes the `family_events` row, the converger
+ * schedules two reminders for it and the weekly plan prints it — a class Hale's own text
+ * said was off.
+ *
+ * BY EXPIRY, NOT BY RESOLUTION, and that is the honest shape rather than a convenient one.
+ * `expires_at` is documented as "when the offer stops being answerable", applied at the one
+ * reader, which is exactly what happened here. A resolution would be a lie in the other
+ * direction: the vocabulary is `added | declined`, the parent did neither, and the table's
+ * own CHECK makes a resolution without the outbound message that carried it unwritable —
+ * because a resolution is something Hale TOLD the parent, and nothing is told here.
+ *
+ * Guarded on still-open and still-standing so a redrive withdraws once and an offer the
+ * parent already answered is left exactly as they left it.
+ */
+export async function withdrawEmailAlertOffer(
+  database: Database,
+  input: { integrationId: string; messageId: string; now: Date },
+): Promise<'withdrawn' | 'nothing_standing'> {
+  const withdrawn = await database
+    .update(schema.emailAlertOffers)
+    .set({ expiresAt: input.now })
+    .where(
+      and(
+        eq(schema.emailAlertOffers.integrationId, input.integrationId),
+        eq(schema.emailAlertOffers.messageId, input.messageId),
+        isNull(schema.emailAlertOffers.resolvedAt),
+        gt(schema.emailAlertOffers.expiresAt, input.now),
+      ),
+    )
+    .returning({ id: schema.emailAlertOffers.id });
+  return withdrawn.length > 0 ? 'withdrawn' : 'nothing_standing';
+}
+
+/**
  * Close the offer, against the message that told the parent.
  *
  * Guarded on `resolved_at IS NULL` so a redrive closes it once; the CHECK on the table

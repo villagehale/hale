@@ -24,6 +24,10 @@ import {
   stampBookingEvent,
 } from './booking';
 import { type EmailAlertPorts, alertParentForEmail, alertParentForGmailSweep } from './email-alert';
+import {
+  handleEmailAlertOfferReply,
+  loadOpenEmailAlertOffers,
+} from './email-alert-offer';
 
 /**
  * THE BOOKING — the decision, the write, and the two things that must not happen.
@@ -527,8 +531,11 @@ describe('a provider cancellation closes what it cancelled', () => {
     expect(closed[0]).toMatchObject({
       targetTable: 'activity_bookings',
       targetId: rows[0]?.id,
-      after: {},
     });
+    // EXACTLY one flag, and `toEqual` rather than `toMatchObject` on purpose: the whole
+    // rule for this row is that it carries nothing of the email, and a subset match would
+    // pass with the provider's domain sitting beside it.
+    expect(closed[0]?.after).toEqual({ offerWithdrawn: true });
   });
 
   it('takes the closed booking out of the follow-up reader', async () => {
@@ -543,6 +550,79 @@ describe('a provider cancellation closes what it cancelled', () => {
 
     await alert(cancellation('Swim Level 2'), 'm2');
     await expect(readDueBookings(db.database, family.familyId, window)).resolves.toEqual([]);
+  });
+
+  it('takes the standing calendar offer down with it', async () => {
+    // THE LATE YES. The offer stands for 24 hours; the cancellation arrives in hour three.
+    // Without this, a parent who reads their texts at bedtime says YES to the morning's
+    // "Want it on your calendar?" and Hale places - and then reminds twice about, and puts
+    // in the week plan - a class its OWN text said was called off. The offer is the last
+    // live path from a cancelled booking to the family's calendar.
+    //
+    // WITHDRAWN BY ITS EXPIRY, which is the column's own contract ("when the offer stops
+    // being answerable", applied at the one reader) rather than a resolution: nothing was
+    // added and nothing was declined, the parent never answered at all, and the CHECK on
+    // that table makes half a resolution unwritable for exactly that reason.
+    await booked();
+    await expect(offerRows()).resolves.toHaveLength(1);
+
+    await alert(cancellation('Swim Level 2'), 'm2');
+
+    const later = new Date(NOW.getTime() + 6 * 60 * 60 * 1000);
+    await expect(
+      loadOpenEmailAlertOffers(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        now: later,
+      }),
+    ).resolves.toEqual([]);
+
+    // ...and the bare YES therefore has nothing to place.
+    await expect(
+      handleEmailAlertOfferReply(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        offerId: null,
+        polarity: 'yes',
+        language: 'en',
+        now: later,
+      }),
+    ).resolves.toEqual({ status: 'no_open_offer' });
+    await expect(
+      db.database
+        .select()
+        .from(schema.familyEvents)
+        .where(eq(schema.familyEvents.familyId, family.familyId)),
+    ).resolves.toEqual([]);
+
+    // The trail says the offer went with it: one flag, on the row that already records
+    // the closing.
+    const closed = (await auditRows()).filter(
+      (row) => row.actionTaken === 'activity_booking_cancelled',
+    );
+    expect(closed).toHaveLength(1);
+    expect(closed[0]?.after).toEqual({ offerWithdrawn: true });
+  });
+
+  it("leaves the OTHER class's offer standing", async () => {
+    // THE POSITIVE CONTROL, and it is about the KEY. A household holds two classes from
+    // one provider; one is called off. Without this, the assertion above passes on a
+    // closer that withdraws every open offer this parent has — which would silently eat
+    // the calendar question for a class that is still going ahead.
+    await booked();
+    const second = harness({ classification: classified({ title: 'Skating Level 1' }) });
+    await expect(alert(second, 'm2')).resolves.toEqual({ alert: 'sent', booking: 'recorded' });
+    await expect(offerRows()).resolves.toHaveLength(2);
+
+    await alert(cancellation('Swim Level 2'), 'm3');
+
+    const later = new Date(NOW.getTime() + 6 * 60 * 60 * 1000);
+    const open = await loadOpenEmailAlertOffers(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      now: later,
+    });
+    expect(open.map((offer) => offer.title)).toEqual(['Skating Level 1']);
   });
 
   it('leaves a different class from the same provider alone', async () => {

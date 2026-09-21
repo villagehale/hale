@@ -27,7 +27,11 @@ import {
   closeCancelledBookings,
   recordActivityBooking,
 } from './booking';
-import { type EmailAlertOfferDraft, recordEmailAlertOffer } from './email-alert-offer';
+import {
+  type EmailAlertOfferDraft,
+  recordEmailAlertOffer,
+  withdrawEmailAlertOffer,
+} from './email-alert-offer';
 
 /**
  * A parenting email in a connected Gmail becomes ONE text to the parent.
@@ -479,16 +483,23 @@ export async function alertParentForEmail(
 /**
  * A provider's cancellation, applied to what this family still holds from that provider.
  *
- * ONE AUDIT ROW PER BOOKING CLOSED, and its `after` is EMPTY — the same rule the write's
- * own row keeps, taken to its end. The verb, the table and the target id say everything
- * true here; the title is the email, and an audit row a support agent reads is a table that
- * is never redacted (rule #1). `targetId` already points at the row that holds the name.
+ * ONE AUDIT ROW PER BOOKING CLOSED, carrying ONE FLAG. The verb, the table and the target
+ * id say everything else true here; the title is the email, and an audit row a support
+ * agent reads is a table that is never redacted (rule #1), so `targetId` points at the row
+ * that holds the name and nothing is copied. `offerWithdrawn` is there because a second
+ * thing happened — a standing question was taken down — and an effect nobody can read in
+ * the trail is an effect nobody can audit (rule #11).
  *
  * The sender goes over WHOLE and is folded to a host inside `closeCancelledBookings`, by
  * the same private function that wrote the row's host — so a cancellation is matched on
  * exactly the domain the booking was written with. The title goes through `sanitizedTitle`
  * for the same reason: it is the fold the stored title already took, and comparing a raw
  * vendor string against a folded one is a match that silently never fires.
+ *
+ * AND IT TAKES THE CALENDAR OFFER DOWN WITH IT. The receipt wrote two rows — a booking and
+ * a standing "Want it on your calendar?" — and closing only the first leaves a YES that
+ * still places the cancelled class, reminders and all. One email, one identity
+ * (connection, message), both rows.
  */
 async function closeBookingsFor(
   database: Database,
@@ -500,14 +511,19 @@ async function closeBookingsFor(
     title: sanitizedTitle(input.title),
     now: input.now,
   });
-  for (const bookingId of closed) {
+  for (const booking of closed) {
+    const offer = await withdrawEmailAlertOffer(database, {
+      integrationId: booking.integrationId,
+      messageId: booking.messageId,
+      now: input.now,
+    });
     await database.insert(schema.auditLog).values({
       familyId: input.familyId,
       actor: 'system',
       actionTaken: 'activity_booking_cancelled',
       targetTable: 'activity_bookings',
-      targetId: bookingId,
-      after: {},
+      targetId: booking.id,
+      after: { offerWithdrawn: offer === 'withdrawn' },
     });
   }
 }

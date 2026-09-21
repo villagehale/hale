@@ -237,6 +237,14 @@ export function bookingCancellationKey(from: string, title: string): string | nu
   return folded === '' ? null : `${senderHost(from)} ${folded}`;
 }
 
+/** A booking the provider called off, and the email it was born from — the pair that also
+ * addresses the standing calendar offer that email wrote. */
+export interface ClosedBooking {
+  id: string;
+  integrationId: string;
+  messageId: string;
+}
+
 /**
  * The provider cancelled it, so the family no longer holds it — stamp `cancelled_at` on
  * the live FUTURE bookings this cancellation names.
@@ -255,20 +263,28 @@ export function bookingCancellationKey(from: string, title: string): string | nu
  * `bookingDraft` wrote the row's host with, rather than a host handed in by a caller that
  * could fold it a second way.
  *
- * Returns THE IDS IT CLOSED, rather than a count, so the caller can write the trail row
- * each one owes (rule #6). An empty array is the ordinary answer: most cancellations are
- * about classes the family never registered for through Hale.
+ * Returns THE ROWS IT CLOSED, rather than a count, so the caller can write the trail row
+ * each one owes (rule #6) and take down the calendar offer born from the same email. The
+ * (connection, message) pair travels with the id because it is the identity of BOTH rows
+ * that email wrote, and carrying it here is what spares the caller a second query.
+ * An empty array is the ordinary answer: most cancellations are about classes the family
+ * never registered for through Hale.
  */
 export async function closeCancelledBookings(
   database: Database,
   input: { familyId: string; from: string; title: string; now: Date },
-): Promise<string[]> {
+): Promise<ClosedBooking[]> {
   const wanted = normalisedBookingTitle(input.title);
   // A cancellation that names no class closes nothing. Without this, every booking whose
   // own title folded to the same emptiness would be closed by one nameless email.
   if (wanted === '') return [];
   const live = await database
-    .select({ id: schema.activityBookings.id, title: schema.activityBookings.title })
+    .select({
+      id: schema.activityBookings.id,
+      title: schema.activityBookings.title,
+      integrationId: schema.activityBookings.integrationId,
+      messageId: schema.activityBookings.messageId,
+    })
     .from(schema.activityBookings)
     .where(
       and(
@@ -284,12 +300,17 @@ export async function closeCancelledBookings(
   // `lower(regexp_replace(...))` beside it that can drift from it.
   const closing = live
     .filter((row) => normalisedBookingTitle(row.title) === wanted)
-    .map((row) => row.id);
+    .map((row) => ({ id: row.id, integrationId: row.integrationId, messageId: row.messageId }));
   if (closing.length === 0) return [];
   await database
     .update(schema.activityBookings)
     .set({ cancelledAt: input.now })
-    .where(inArray(schema.activityBookings.id, closing));
+    .where(
+      inArray(
+        schema.activityBookings.id,
+        closing.map((row) => row.id),
+      ),
+    );
   return closing;
 }
 
