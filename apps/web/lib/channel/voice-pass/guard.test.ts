@@ -246,6 +246,34 @@ describe('asideViolations - the door', () => {
     }
   });
 
+  it('refuses the literal SMS acts — send, write, message, nudge, wave', () => {
+    // THE VERBS A PARENT ACTUALLY PERFORMS ON A PHONE, which the first adversarial pass
+    // reached for the colourful ones and walked straight past. Nine of ten doors written
+    // against the widened table still opened, and all nine name an act at Hale in the
+    // plainest words there are: send, write back, drop a line, nudge, wave, thumbs up,
+    // message. `REPLY_ACTS`' own criterion already covers them — an act a parent performs
+    // AT Hale — so their absence was an oversight in the list rather than a judgement.
+    //
+    // THE NOUN SENSES GO WITH THEM, on purpose. This table cannot tell a verb from a noun,
+    // so "a wave of cancellations" and "that type of class" are refused too. A refusal
+    // costs a parent nothing here (the reviewed sentence ships either way) and a door
+    // costs a `family_events` row nobody reviewed.
+    for (const clause of [
+      'Send anything and it moves.',
+      'Write back and it moves.',
+      'Drop a line and it shifts.',
+      'One nudge and it moves.',
+      'A thumbs up moves it.',
+      'Hale can move it on request.',
+      'Any reaction moves it.',
+      'Give a wave and it shifts.',
+      'Ready to move it whenever.',
+      'Message Hale to shift it.',
+    ]) {
+      expect(refusals(clause, 'before', context())).toContain('solicits_reply');
+    }
+  });
+
   it('leaves the two residual doors to the judge, and says so', () => {
     // NAMED RATHER THAN CAUGHT. These read as offers but contain no act of speaking, no
     // second person and no affirmative window, so no mechanical rule reaches them without

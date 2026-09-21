@@ -177,10 +177,26 @@ const LINK_SHAPE = /https?:\/\/|www\./i;
  * holler and it moves.", "Nod and it goes on the week.", "Ping Hale and it shifts." — the
  * last caught only by `invented_capital`, which a lowercase spelling walks straight past.
  * Holler, shout, buzz, ping and nod are acts a parent performs AT Hale, so they are the
- * same door and belong on the same list. What is still not here is a phrase list for the
- * two residuals — "Easy to slot in if needed." and "Fine to leave it, or not." — which
- * name no act at all; those are the judge's, and `guard.test.ts` says so rather than
- * letting the next reader think the table is exhaustive.
+ * same door and belong on the same list.
+ *
+ * AND THEN SO WAS THE LITERAL HALF. A second adversarial pass wrote ten more and NINE
+ * opened, every one of them in the plainest words a phone has: "Send anything and it
+ * moves.", "Write back and it moves.", "Drop a line and it shifts.", "One nudge and it
+ * moves.", "A thumbs up moves it.", "Message Hale to shift it." The first pass reached for
+ * colour and skipped the obvious, which is what an adversarial pass does when the author
+ * is picking the attacks. Send, write, message, type, dm, nudge and wave meet the stated
+ * criterion — an act a parent performs AT Hale — as squarely as `say` does.
+ *
+ * THE NOUN SENSES COME WITH THEM AND THAT IS THE TRADE. This is a word table, not a
+ * parser, so "a wave of cancellations" and "that type of class" are refused too. Per §4 a
+ * refusal costs a parent nothing — the reviewed deterministic sentence ships either way —
+ * while a door costs a `family_events` row nobody reviewed, so the list over-refuses on
+ * purpose rather than reaching for part-of-speech tagging it cannot have.
+ *
+ * What is still not here is a phrase list for the two residuals — "Easy to slot in if
+ * needed." and "Fine to leave it, or not." — which name no act at all; those are the
+ * judge's, and `guard.test.ts` says so rather than letting the next reader think the table
+ * is exhaustive.
  */
 const REPLY_ACTS: ReadonlySet<string> = new Set([
   'say',
@@ -221,6 +237,31 @@ const REPLY_ACTS: ReadonlySet<string> = new Set([
   'nod',
   'nods',
   'nodded',
+  'send',
+  'sends',
+  'sent',
+  'sending',
+  'write',
+  'writes',
+  'wrote',
+  'written',
+  'writing',
+  'message',
+  'messages',
+  'messaged',
+  'type',
+  'types',
+  'typed',
+  'dm',
+  'dms',
+  'nudge',
+  'nudges',
+  'nudged',
+  'wave',
+  'waves',
+  'waved',
+  'reaction',
+  'reactions',
 ]);
 
 /** The multiword doors a single verb does not catch. Written apostrophe-free, because
@@ -235,6 +276,10 @@ const REPLY_FRAMES: readonly string[] = [
   'just ask',
   'say the word',
   'happy to',
+  'drop a line',
+  'thumbs up',
+  'on request',
+  'whenever',
 ];
 
 /**
