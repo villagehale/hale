@@ -151,6 +151,53 @@ describe('the phone number is never literal text — messages included (hard rul
   });
 });
 
+describe('no bundle promises quiet, in any locale', () => {
+  const files = (['en', 'fr', 'zh'] as const).map((locale) => ({
+    locale,
+    raw: readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
+  }));
+
+  /**
+   * A REGRESSION PIN, not a general rule about the word.
+   *
+   * These four promises — the hero sub's "Three texts, then quiet", the cadence
+   * FAQ's "It is quiet in between", the /about ladder's "Quiet in between" and
+   * /for-centres' "Then it goes quiet:" — each said Hale goes silent between the
+   * things it names, and each named only the registration ladder. The evening
+   * check-in is merged and tested and asks EVERY night at 20:00 local, stepping
+   * down to weekly only after three unanswered evenings; one F14 flip and all
+   * four are false for every family that answers.
+   *
+   * A clause that promises quiet AND names the evening ask in the same breath is
+   * honest and is deliberately not covered here — the fix for those is copy that
+   * tells the whole cadence, which is a different change from this subtraction.
+   */
+  const REMOVED: Record<string, string[]> = {
+    en: ['then quiet', 'quiet in between', 'then it goes quiet'],
+    fr: ['puis le silence', 'le silence entre les deux', 'ensuite, c’est tranquille'],
+    zh: ['之后便安静', '安安静静', '之后就安静下来'],
+  };
+
+  it('never says any of the four quiet promises again', () => {
+    for (const { locale, raw } of files) {
+      for (const phrase of REMOVED[locale] ?? []) {
+        expect(raw.toLowerCase(), `${locale}.json must not say "${phrase}"`).not.toContain(
+          phrase.toLowerCase(),
+        );
+      }
+    }
+  });
+
+  it('positive control: every bundle still says what Hale DOES send', () => {
+    // The subtraction must leave the cadence described, not the page silent about
+    // it — otherwise these absences would also pass on an empty bundle.
+    const say = { en: 'a heads-up the week a registration opens', fr: 'une inscription ouvre', zh: '报名开放' };
+    for (const { locale, raw } of files) {
+      expect(raw.toLowerCase()).toContain(say[locale].toLowerCase());
+    }
+  });
+});
+
 describe('the FAQ translation source mirrors the canonical English list', () => {
   it('en.json Faq.items matches lib/faq so translations descend from the shipped copy', () => {
     const en = JSON.parse(

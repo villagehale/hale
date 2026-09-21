@@ -1,6 +1,7 @@
 import type { WeekPlanItem } from '@hale/db';
-import type { RenderedContent } from '~/lib/channel/types';
+import type { RenderedContent, VoiceOutcome } from '~/lib/channel/types';
 import { smsSegments } from '~/lib/channel/sms-segments';
+import { assertPoolSize, pickVariant, weeklyOccasion } from '~/lib/channel/variant';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import {
   childrenInPlan,
@@ -39,18 +40,83 @@ const SEGMENT_CAP = 3;
 const FULL_WEEK_PREFIX = 'Full week: ';
 
 /**
- * FOUNDER REVIEW (tone audit, 2026-08-13): these two are FIXED BODIES on a weekly
- * surface, so under the 2026-08-12 "no preset message bodies" doctrine they need a class
- * or a composer. Proposed class: STATE RECEIPT — each is a one-line report of the week's
- * shape (nothing scheduled / everything placed) with no claim beyond it, the same class
- * as the approval ask below, which the doctrine's count-carrying exception already
- * covers. Left as-is tonight rather than composed: the SMS renderer takes no voice
- * parameter at all (payload.ts documents voice as email-only), so converting them is a
- * pipeline change, not a copy change.
+ * THE TWO FIXED BODIES, AND WHAT REPLACED THEM.
+ *
+ * The note that used to sit here said converting these was "a pipeline change, not a copy
+ * change", because "the SMS renderer takes no voice parameter at all (payload.ts
+ * documents voice as email-only)". BOTH HALVES WERE WRONG. `renderWeeklyPlanSms` takes the
+ * whole `WeeklyPlanPayload`, and `payload.voice` is on that shared payload with the
+ * instruction "The renderer uses voice fields where present and its deterministic copy
+ * where not". `WeekPlanVoice` carries `weekFraming` and `signOff`, which are exactly the
+ * two sentences below. Reading them here costs nothing — the composition already happened
+ * at the Saturday converge tick.
+ *
+ * So each slot is a FOLD: the composed sentence first, measured; a three-member pool
+ * behind it. The pool is not a fallback in the apologetic sense — it is the reviewed copy,
+ * and it rotates on the week's Monday so a family that reads this every Sunday for a year
+ * does not read the same sentence fifty-two times.
+ *
+ * `Reply IDEAS` IS GONE. Grepped across lib/channel: there is NO handler for IDEAS
+ * anywhere. It was vocabulary Hale taught and could not honour, which rule 10 forbids
+ * outright, and a parent who sent it reached the coach as an unreadable single word.
+ *
+ * THE QUIET POOL ASKS SOMETHING A BARE YES CANNOT ANSWER (rule 11). "Want ideas for
+ * Saturday?" invites a YES that this lane does not own: the approvals resolver claims a
+ * bare YES family-wide, and on a week with nothing drafted the parent gets
+ * `nothingPendingReply` for an offer Hale itself made. An open question reaches the coach,
+ * which can answer it.
  */
-const QUIET_ASK =
-  `A quiet week ${EM_DASH} nothing scheduled yet. Want ideas for Saturday? Reply IDEAS.`;
-const PLACED_ASK = 'All on your calendar.';
+const QUIET_ASK_POOL_NAME = 'weekly:quiet';
+const QUIET_ASK_POOL: readonly string[] = [
+  `A quiet week ${EM_DASH} nothing scheduled yet. What would make Saturday good?`,
+  'Nothing on the calendar this week. What should I be looking for?',
+  'Your week is clear so far. What kind of thing would suit Saturday?',
+];
+assertPoolSize(QUIET_ASK_POOL, QUIET_ASK_POOL_NAME);
+
+/** The week that asks nothing — so ZERO questions, not one. */
+const PLACED_ASK_POOL_NAME = 'weekly:placed';
+const PLACED_ASK_POOL: readonly string[] = [
+  'All on your calendar.',
+  'Nothing needs you this week.',
+  "That's the whole week, already placed.",
+];
+assertPoolSize(PLACED_ASK_POOL, PLACED_ASK_POOL_NAME);
+
+/**
+ * The fold itself, exported so the outcome is assertable.
+ *
+ * A composed sentence is used only when it clears the SAME mechanical bar the pooled copy
+ * is held to: GSM-7 once folded, and the slot's own question count. A model sentence with
+ * two questions in it on a surface where a bare YES is claimed by the approvals resolver
+ * is the failure the question rule exists for, and the fold is where it is caught. The
+ * SEGMENT budget is measured on the whole message by the caller, not here, because a
+ * sentence's cost depends on the week it rides with — so `refused:over_segment` is the one
+ * outcome this function never returns and the renderer always can.
+ *
+ * EACH REFUSAL BY ITS OWN NAME (VoiceOutcome, channel/types.ts) rather than one bucket:
+ * "the model composed nothing", "the model wrote a character the wire would eat" and "the
+ * model asked something this slot does not own" are three different bugs in three
+ * different places, and a caller that had to substring-match the body for a sentence it
+ * did not choose would be guessing at its own renderer.
+ */
+export function foldWeeklyVoice(
+  composed: string | null | undefined,
+  questions: 0 | 1,
+): { text: string | null; outcome: VoiceOutcome } {
+  const trimmed = composed?.trim() ?? '';
+  if (trimmed === '') return { text: null, outcome: 'absent' };
+  const safe = gsmSafe(trimmed);
+  // BYTE IDENTITY, not "does it look all right": gsmSafe maps a genuinely unmappable
+  // character to NOTHING (core.ts), so an emoji leaves the sentence a word short and no
+  // counter moves. Comparing the folded string to the composed one is the only check that
+  // can see a deletion.
+  if (safe !== trimmed) return { text: null, outcome: 'refused:gsm_dropped' };
+  if ((safe.match(/\?/g) ?? []).length !== questions) {
+    return { text: null, outcome: 'refused:question_count' };
+  }
+  return { text: safe, outcome: 'used' };
+}
 
 const PENDING_TAIL = 'or tell me what to change.';
 
@@ -83,10 +149,10 @@ function pendingAsk(drafts: number): string {
 /** The closing line for a week that HAS items — and absent when the week asks
  * something Hale cannot turn into a one-word approval (a decision, an undated
  * appointment): an ask with no answerable row is the misdirection this whole line
- * exists to avoid, so the message simply ends with the week. (An empty week is
- * QUIET_ASK and nothing else, decided by the renderer before it gets here.) */
-function approvalAsk(pending: number, drafts: number): string | null {
-  if (pending === 0) return PLACED_ASK;
+ * exists to avoid, so the message simply ends with the week. (An empty week is the quiet
+ * slot and nothing else, decided by the renderer before it gets here.) */
+function approvalAsk(pending: number, drafts: number, placed: string): string | null {
+  if (pending === 0) return placed;
   if (drafts === 0) return null;
   return pendingAsk(drafts);
 }
@@ -107,25 +173,87 @@ export function renderWeeklyPlanSms(
   payload: WeeklyPlanPayload,
   level: ChildNameLevel,
   now: Date,
+  familyId: string,
 ): RenderedContent {
   const inPlan = childrenInPlan(payload.items, payload.children);
   const subject = weekSubject(headerNames(inPlan, level, now));
-  const send = (body: string) => gsmSafe(`Hale: ${subject} week${HEADER_SEP}${body}`);
+  // NO `Hale: ` PREFIX (docs/voice.md rule 2). It is a broadcast header on a thread the
+  // parent already knows is Hale's; it survives only where the recipient has no way to
+  // know who is texting (party/guest-copy.ts).
+  const send = (body: string) => gsmSafe(`${subject} week${HEADER_SEP}${body}`);
+  const occasion = weeklyOccasion(payload.weekStart);
+  const variant = (pool: readonly string[], name: string) =>
+    pickVariant(pool, name, familyId, occasion);
 
-  if (payload.items.length === 0) return { kind: 'sms', text: send(QUIET_ASK) };
+  if (payload.items.length === 0) {
+    const quiet = foldWeeklyVoice(payload.voice?.weekFraming, 1);
+    const voiced = quiet.text === null ? null : send(quiet.text);
+    if (voiced !== null && smsSegments(voiced) <= SEGMENT_CAP) {
+      return { kind: 'sms', text: voiced, voice: quiet.outcome };
+    }
+    return {
+      kind: 'sms',
+      text: send(variant(QUIET_ASK_POOL, QUIET_ASK_POOL_NAME)),
+      // A sentence the fold passed and the WEEK then refused is an over-segment refusal
+      // and not the fold's own — the quiet slot rides alone, so this is a composer that
+      // wrote past three segments of nothing but itself. Reported as itself: "the model
+      // asked twice" and "the model wrote a page" are looked at in different places.
+      voice: voiced === null ? quiet.outcome : 'refused:over_segment',
+    };
+  }
 
-  const ask = approvalAsk(pendingCount(payload.items), draftedCount(payload.items));
-  const tail = ask === null ? '' : `${ITEM_SEP}${ask}`;
+  const pending = pendingCount(payload.items);
+  const drafts = draftedCount(payload.items);
+  // Both forms of the whole message for one closing line. A week too long to read inline
+  // takes the overflow form it already has, rather than a fourth and fifth segment — and
+  // the ask survives either way, because the linked form carries the same tail.
+  const list =
+    payload.items.length > SMS_ITEM_CAP
+      ? null
+      : itemsChronological(payload.items)
+          .map((i) => smsItem(i, payload.children))
+          .join(ITEM_SEP);
+  const forms = (ask: string | null) => {
+    const tail = ask === null ? '' : `${ITEM_SEP}${ask}`;
+    return {
+      linked: send(`${FULL_WEEK_PREFIX}${payload.deepLink}${tail}`),
+      inline: list === null ? null : send(`${list}${tail}`),
+    };
+  };
 
-  const linked = send(`${FULL_WEEK_PREFIX}${payload.deepLink}${tail}`);
-  if (payload.items.length > SMS_ITEM_CAP) return { kind: 'sms', text: linked };
+  // THE SHAPE OF THE MESSAGE IS DECIDED FROM THE REVIEWED CLOSER, ALWAYS — which is why
+  // the pool member is composed even on a week that ends up reading the model's sentence.
+  //
+  // The sign-off used to be spliced into the tail BEFORE this choice was made, and the
+  // choice absorbed its cost silently: a composed sentence long enough to push the week
+  // past three segments made the renderer fall to the linked form, which replaces the
+  // parent's ENTIRE item list with the one app link this product keeps as a narrow
+  // exception (docs/voice.md) — and the leg still reported 'used'. A composed sentence may
+  // change the WORDS of the closing line and nothing else about the message.
+  const deterministic = forms(
+    approvalAsk(pending, drafts, variant(PLACED_ASK_POOL, PLACED_ASK_POOL_NAME)),
+  );
+  const inlineFits =
+    deterministic.inline !== null && smsSegments(deterministic.inline) <= SEGMENT_CAP;
+  const chosen = (of: { linked: string; inline: string | null }) =>
+    inlineFits && of.inline !== null ? of.inline : of.linked;
 
-  const list = itemsChronological(payload.items)
-    .map((i) => smsItem(i, payload.children))
-    .join(ITEM_SEP);
-  const inline = send(`${list}${tail}`);
+  // THE SIGN-OFF SLOT ONLY EXISTS ON A WEEK WITH NOTHING PENDING. Every other week closes
+  // on the approval ask, which is a count of rows the mint is holding and never a composed
+  // sentence — so there is no outcome to report, and reporting 'absent' there would invent
+  // a composer failure on a slot nobody asked for (RenderedContent.voice).
+  if (pending !== 0) return { kind: 'sms', text: chosen(deterministic) };
 
-  // A week too long to read inline takes the overflow form it already has, rather than
-  // a fourth and fifth segment. What survives either way is the ask.
-  return { kind: 'sms', text: smsSegments(inline) <= SEGMENT_CAP ? inline : linked };
+  const placed = foldWeeklyVoice(payload.voice?.signOff, 0);
+  if (placed.text === null) {
+    return { kind: 'sms', text: chosen(deterministic), voice: placed.outcome };
+  }
+  // Measured in the shape the week chose, so the budget is spent on the sentence and never
+  // on the list. Over it, the pool member is what ships and the refusal says which
+  // happened: a sentence's cost depends on the week it rides with, so this is the one
+  // outcome the fold itself can never return.
+  const voiced = chosen(forms(placed.text));
+  return smsSegments(voiced) <= SEGMENT_CAP
+    ? { kind: 'sms', text: voiced, voice: 'used' }
+    : { kind: 'sms', text: chosen(deterministic), voice: 'refused:over_segment' };
 }

@@ -1,8 +1,8 @@
 import { smsSegments } from '~/lib/channel/sms-segments';
-import type { RenderedContent } from '~/lib/channel/types';
+import type { RenderedContent, VoiceOutcome } from '~/lib/channel/types';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { gsmSafe } from '../weekly-plan/core';
-import { eventLine, whenLead } from './core';
+import { eventLine, whenLeadFor } from './core';
 import type { ReminderPayload } from './payload';
 
 /**
@@ -63,16 +63,80 @@ function trimmedFirstLine(lead: string, lines: readonly string[], deepLink: stri
   return render(ELLIPSIS);
 }
 
+/**
+ * The reminder's own voice fold, exported so the outcome is assertable.
+ *
+ * `payload.voice.line` is composed at the evening converge tick from the SAME redacted
+ * view this renderer draws on — teen-gated, sensitive-genericized, name-leveled — so it
+ * needs no second privacy gate here. payload.ts called it "email-only" and the SMS
+ * renderer simply ignored it; reading it is a read of a field that is already there.
+ *
+ * THE FOLD IS ONE SEGMENT, not the two-segment ceiling. A reminder is a GLANCE: the
+ * module header promises it targets one segment and only the overflow paths spend a
+ * second. A human sentence is worth having when there is room for it in the glance, and
+ * is not worth doubling the message for — so the line rides only when the whole thing
+ * still fits one, and the deterministic budget is otherwise untouched.
+ *
+ * FOUR CONDITIONS, and each one is a way this slot silently went wrong without it
+ * (docs/voice.md, "The two SMS folds"):
+ *
+ *  (a) BYTE IDENTITY after gsmSafe. The folder maps a genuinely unmappable character to
+ *      NOTHING (weekly-plan/core.ts), so a composed line with an emoji in it arrives on
+ *      the wire a word short and every counter still reads "sent". Comparing the folded
+ *      string to the composed one is the only check that can see a deletion.
+ *  (b) ZERO QUESTIONS. Not "at most one": a reminder states a fact about the next hour and
+ *      owns no answer, so a question appended to it invites a bare YES that the approvals
+ *      resolver claims family-wide (docs/voice.md rule 11). reminder-voice.md says nothing
+ *      about the wire, so this is the only place it is true.
+ *  (c) THE DETERMINISTIC LEAD STILL LEADS — STRUCTURALLY, WHICH IS WHY THERE IS NO THIRD
+ *      CHECK HERE. `whenLeadFor` IS the fact this message carries — "Tomorrow", "In an
+ *      hour" — and voice.line is not guaranteed to carry it, so the voice is APPENDED to
+ *      the rendered body, which already opens with the lead. "The offset went missing" is
+ *      therefore not a state this code has: a check for it would compare this function's
+ *      own concatenation against its own prefix, and could only ever fail for a caller
+ *      that passed a lead the body never had. The property is asserted where it can
+ *      genuinely break — on the rendered wire, in index.test.ts.
+ *  (d) THE GLANCE. One segment, measured on the whole thing.
+ *
+ * Every refusal is NAMED (VoiceOutcome, channel/types.ts) and carried out of the renderer.
+ */
+export function foldReminderVoice(
+  body: string,
+  composed: string | null | undefined,
+): { text: string; outcome: VoiceOutcome } {
+  const trimmed = composed?.trim() ?? '';
+  if (trimmed === '') return { text: body, outcome: 'absent' };
+  if (gsmSafe(trimmed) !== trimmed) return { text: body, outcome: 'refused:gsm_dropped' };
+  if (trimmed.includes('?')) return { text: body, outcome: 'refused:question_count' };
+  const voiced = gsmSafe(`${body} ${trimmed}`);
+  return smsSegments(voiced) <= 1
+    ? { text: voiced, outcome: 'used' }
+    : { text: body, outcome: 'refused:over_segment' };
+}
+
 export function renderReminderSms(
   payload: ReminderPayload,
   level: ChildNameLevel,
   now: Date,
+  familyId: string,
 ): RenderedContent {
-  const lead = whenLead(payload.offset);
+  const lead = whenLeadFor(payload.offset, familyId, payload.events[0]?.startsAt, payload.timeZone);
   const lines = payload.events.map((event) =>
     eventLine(event, payload.children, level, now, payload.timeZone),
   );
   const inline = gsmSafe(`${lead}: ${lines.join(LINE_SEP)}`);
-  const text = smsSegments(inline) <= 1 ? inline : cappedText(lead, lines, payload.deepLink);
-  return { kind: 'sms', text };
+  if (smsSegments(inline) > 1) {
+    // Already over the glance on the facts alone — the voice has no room by definition,
+    // and the overflow paths own the two-segment ceiling. STILL NAMED: a composed line
+    // that never got measured is a line that did not ship, and folding that into the same
+    // silence as "nothing was composed" is what the outcome exists to stop. The refusal is
+    // the segment budget whatever the line says, because the glance was spent before it.
+    return {
+      kind: 'sms',
+      text: cappedText(lead, lines, payload.deepLink),
+      voice: (payload.voice?.line ?? '').trim() === '' ? 'absent' : 'refused:over_segment',
+    };
+  }
+  const folded = foldReminderVoice(inline, payload.voice?.line);
+  return { kind: 'sms', text: folded.text, voice: folded.outcome };
 }

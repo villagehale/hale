@@ -62,6 +62,13 @@ const FRENCH_ALONE = new Set([
   'pourquoi',
   'combien',
   'arret',
+  // The two words Hale's own French copy teaches a parent to text back
+  // (email/forward-request.ts). Neither has an English use — the English word is
+  // "transfer" — and both had to be here for the same reason `arret` is: a parent doing
+  // exactly what the French reply told them to do was being answered in English, which
+  // for the turn-off confirm meant "Reply YES" in front of a French sentence.
+  'desactiver',
+  'transfert',
 ]);
 
 /**

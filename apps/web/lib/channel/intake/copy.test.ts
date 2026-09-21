@@ -424,13 +424,42 @@ describe('the French script', () => {
 
   it('answers HELP in French with the same capability line and the French keywords', () => {
     expect(HELP_REPLY_BY_LANGUAGE.fr).toBe(
-      "Je suis Hale - je garde le fil de la semaine de votre famille et je vous texte quand quelque chose demande votre attention. Dites-moi le nom et l'age de vos enfants et je m'occupe du reste. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
+      "Je suis Hale. Écrivez-moi l'age de vos enfants et votre code postal pour commencer, ou par exemple 'bouge la natation de jeudi à 16h30' n'importe quand. Si cela touche la semaine de la famille, c'est pour moi. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
     );
     // Both, because both are now real. #491 named STOP alone and said why: `matchKeyword`
     // read the English list only, so naming AIDE would have promised a word that did
     // nothing. This is the follow-up that note asked for.
     expect(HELP_REPLY_BY_LANGUAGE.fr).toContain('ARRET');
     expect(HELP_REPLY_BY_LANGUAGE.fr).toContain('AIDE');
+  });
+
+  /**
+   * The rule HELP is being fixed to obey (docs/voice.md rules 1 and 3, and the failure
+   * coach-channel-sms.md quotes by name): "the same question answered with a feature
+   * inventory — nothing in it is a thing a parent can type". SHOW, DON'T LIST.
+   *
+   * Asserted as a property rather than a second byte pin of the same string: a quoted
+   * example is the mechanical shape of showing, and the ban is on the words that make a
+   * line an inventory of what Hale IS.
+   */
+  it('shows a parent something they could type rather than listing what Hale is', () => {
+    // A quoted span whose quotes are OUTSIDE a word — the possessives and contractions
+    // this copy is full of use the same mark, and only the example is space-delimited.
+    const QUOTED_EXAMPLE = /(?:^|\s)'[^']{8,}'(?:[\s.,!?]|$)/;
+    for (const [language, line] of Object.entries(HELP_REPLY_BY_LANGUAGE)) {
+      expect(line, language).toMatch(QUOTED_EXAMPLE);
+      expect(line, language).not.toMatch(/assistant|AI-powered|the app|your account/i);
+    }
+    // The mutation control: the inventory the old line was, which carries no example and
+    // must not pass the shape above.
+    expect(
+      "I'm Hale - I keep track of your family's week and text you when something needs doing.",
+    ).not.toMatch(QUOTED_EXAMPLE);
+    expect(HELP_REPLY).toContain("'move Thursday swim to 4:30'");
+    // Both halves of the frozen tail survive the rewrite (CASL, and the CTA policy's
+    // identification clause).
+    expect(HELP_REPLY).toContain("I'm Hale");
+    expect(HELP_REPLY).toContain('Reply STOP to unsubscribe.');
   });
 
   it('answers an identity challenge in French without gendering Hale and without a close', () => {
@@ -500,7 +529,7 @@ describe('the French script', () => {
 
   it('welcomes a re-subscribing parent back in French', () => {
     expect(START_ACK_BY_LANGUAGE.fr).toBe(
-      'Vous voilà de retour - je vous texte quand quelque chose demande votre attention.',
+      'Vous voilà de retour - je reprends le fil de votre semaine.',
     );
   });
 
