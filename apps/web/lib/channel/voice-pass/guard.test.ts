@@ -260,6 +260,29 @@ describe('asideViolations - the door', () => {
     expect(refusals('Third one in the last day.', 'before', context())).toEqual([]);
   });
 
+  it('lets a contraction open the clause, and still catches a name in the same position', () => {
+    // A live record produced "That's the third in a day." and the guard refused it as an
+    // invented capital: the first-token exemption is voided by a trailing `'s`, and the
+    // rule's own comment claimed that shape is "never sentence-case grammar". It is - on
+    // an opener like That, It or There the `'s` is `is`, not a possessive. The carve-out
+    // is for a NAME wearing one, and that half has to keep working.
+    for (const clause of [
+      "That's the third in a day.",
+      "It's a short turnaround.",
+      "Here's a tight turnaround.",
+    ]) {
+      expect(refusals(clause, 'before', context())).toEqual([]);
+    }
+    expect(refusals("Mia's got this one already.", 'before', context())).toEqual([
+      'invented_capital',
+    ]);
+    expect(refusals("Today's the third.", 'before', context())).toEqual(['invented_capital']);
+    // And the door rules still run first on an opener: "no" is a whole-string negative.
+    expect(refusals("There's no warning on that one.", 'before', context())).toEqual([
+      'echoes_a_reply_word',
+    ]);
+  });
+
   it('lets a plain third-person observation through (the second positive control)', () => {
     expect(refusals('Short notice, that one.', 'before', context())).toEqual([]);
   });

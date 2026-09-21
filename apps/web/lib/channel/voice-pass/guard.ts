@@ -318,11 +318,33 @@ function echoesAReplyWord(clause: string): boolean {
  * `Émile`, which `/^[A-Z]/` waves straight through.
  *
  * THE FIRST TOKEN IS EXEMPT, because sentence case capitalises it and no mechanical rule
- * can tell "Third" from "Mia". The one exception is a POSSESSIVE — "Mia's", "Today's" —
- * which is never sentence-case grammar and is always a name or a noun the clause was not
- * handed. That is the honest limit: a bare invented name in position one ("Saturday looks
- * busy.") is caught by the judge and not by this rule.
+ * can tell "Third" from "Mia". The one exception is a POSSESSIVE — "Mia's", "Today's" — a
+ * name or a noun the clause was not handed, wearing sentence case.
+ *
+ * EXCEPT AFTER AN OPENER, where the apostrophe-s is `is` rather than a possessive. A live
+ * record wrote "That's the third in a day." and this rule refused it, which is a true
+ * in-register clause thrown away for a grammar mistake. {@link CONTRACTED_OPENERS} is a
+ * closed class of function words — a parent's name is never in it and never will be — so
+ * the carve-out keeps catching "Mia's" and stops catching "That's".
+ *
+ * That is the honest limit: a bare invented name in position one ("Busy Saturday over
+ * there.") is caught by the judge and not by this rule.
  */
+/** Openers whose trailing `'s` is the verb `is`, never a possessive. A closed class of
+ * function words, which is why naming them is safe where naming nouns would not be. */
+const CONTRACTED_OPENERS: ReadonlySet<string> = new Set([
+  'that',
+  'this',
+  'it',
+  'there',
+  'here',
+  'he',
+  'she',
+  'who',
+  'what',
+  'one',
+]);
+
 function inventedCapitals(clause: string, coreWithoutCta: string): boolean {
   const allowed = new Set<string>();
   for (const word of coreWithoutCta.split(/[^\p{L}\p{N}]+/u)) {
@@ -330,7 +352,8 @@ function inventedCapitals(clause: string, coreWithoutCta: string): boolean {
   }
   const tokens = clause.trim().split(/\s+/);
   for (const [index, raw] of tokens.entries()) {
-    const possessive = /['’]s(?:\b|$)/.test(raw);
+    const head = (raw.split(/['’]/)[0] ?? '').toLowerCase();
+    const possessive = /['’]s(?:\b|$)/.test(raw) && !CONTRACTED_OPENERS.has(head);
     if (index === 0 && !possessive) continue;
     for (const piece of raw.split(/[^\p{L}\p{N}'’]+/u)) {
       const word = piece.split(/['’]/)[0] ?? '';
