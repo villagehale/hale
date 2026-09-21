@@ -15,6 +15,10 @@
     "file": "activity-verdict.md",
     "sha256": "49c3038cbec9faa0dad50bf3dffe6190588b994eae0e1a4a62500422d44acd4b"
   },
+  "alert-aside.md": {
+    "file": "alert-aside.md",
+    "sha256": "dc239366fb19252b2bb53b04bd62440423841ed61afccd0340552fcd834d6389"
+  },
   "ask-hale.md": {
     "file": "ask-hale.md",
     "sha256": "480cc92c95fb3fc59480ae21d05692caa83e65067262dead008711cdd0026143"

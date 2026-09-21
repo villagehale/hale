@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The clause \"Third one in the last day.\" is factually correct: priorAlertsToHousehold24h is 2, making this the third alert in the rolling 24-hour window. It uses the proper register—ordinal as a word, \"one\" for the alert itself, \"in the last day\" for the rolling window. It is a plain third-person observation that the message does not already say, requires no reply, makes no offer, contains no \"you\" or \"your,\" invokes no invented specifics, adds no padding or hype. It is appropriately placed after the message. The clause is exactly what the watchFor describes as expected: the ordinal is the only new information available, and the pile-up is the news."
+  }
+}

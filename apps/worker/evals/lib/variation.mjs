@@ -65,8 +65,15 @@ export const DEFAULT_MAX_CONTAINMENT = 0.9;
  * voice skill exists to teach, and a parrot gate that fires on them forbids the skill
  * from working. Seven is where the followup corpus separates cleanly: every phrase it
  * teaches is five or six words, and every full sample sentence is seven or more.
+ *
+ * WHICH IS A STATEMENT ABOUT ONE CORPUS, NOT A UNIVERSAL, so both readers below take it
+ * as a parameter defaulting to this. A suite whose whole output is a 3-10 word clause
+ * (the alert aside) has every example and every output sentence under this line, so the
+ * parrot half of the gate is dead for it — a skill that shows one good clause would have
+ * it copied straight through, green. Such a suite passes its own floor and says why.
+ * Every other caller passes nothing and is unchanged; variation.test.mjs pins that.
  */
-const MIN_SAMPLE_WORDS = 7;
+export const DEFAULT_MIN_SAMPLE_WORDS = 7;
 
 /** Case, punctuation and spacing removed. Apostrophes are DELETED rather than spaced so
  * "don't" and "dont" are one string — a composer's punctuation habits are not variety. */
@@ -149,7 +156,7 @@ function splitSentences(text) {
  * descriptions are instructions to the model rather than sample copy, and matching
  * against them would flag a field for resembling its own specification.
  */
-export async function skillSampleSentences(skillPath) {
+export async function skillSampleSentences(skillPath, { minSampleWords = DEFAULT_MIN_SAMPLE_WORDS } = {}) {
   const source = (await readFile(skillPath, 'utf8')).replace(/```[\s\S]*?```/g, '\n');
   const quoted = [];
   for (const line of source.split('\n')) {
@@ -168,7 +175,7 @@ export async function skillSampleSentences(skillPath) {
   for (const chunk of quoted) {
     for (const sentence of splitSentences(chunk)) {
       const normalized = normalizeForCompare(sentence);
-      if (countWords(normalized) >= MIN_SAMPLE_WORDS) samples.add(normalized);
+      if (countWords(normalized) >= minSampleWords) samples.add(normalized);
     }
   }
   return [...samples];
@@ -187,6 +194,10 @@ export async function skillSampleSentences(skillPath) {
  * @param minDistinctClosers the closer floor, or null to skip it. Set BOTH or the
  *                           template moves to the unmeasured end.
  * @param edgeWords          how many words count as the opening / the ending.
+ * @param minSampleWords     the shortest output sentence the parrot check will scan.
+ *                           Defaults to DEFAULT_MIN_SAMPLE_WORDS; pass the same value
+ *                           here that was passed to `skillSampleSentences`, or the two
+ *                           halves of one check disagree about what a sentence is.
  */
 export function variationGate({
   items,
@@ -196,6 +207,7 @@ export function variationGate({
   minDistinctOpeners = null,
   minDistinctClosers = null,
   edgeWords = 3,
+  minSampleWords = DEFAULT_MIN_SAMPLE_WORDS,
 }) {
   const present = items.filter((item) => normalizeForCompare(item.text) !== '');
   const failuresById = {};
@@ -224,7 +236,7 @@ export function variationGate({
   for (const item of present) {
     for (const sentence of splitSentences(item.text)) {
       const normalized = normalizeForCompare(sentence);
-      if (countWords(normalized) < MIN_SAMPLE_WORDS) continue;
+      if (countWords(normalized) < minSampleWords) continue;
       for (const sample of samples) {
         const score = containment(normalized, sample);
         if (worstSample === null || score > worstSample.score) {

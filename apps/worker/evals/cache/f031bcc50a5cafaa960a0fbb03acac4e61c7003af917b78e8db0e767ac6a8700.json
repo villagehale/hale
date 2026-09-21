@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The clause \"This is the third one in the last day.\" is accurate and appropriate. It correctly identifies this as the third alert to the household in the trailing 24-hour window (priorAlertsToHousehold24h=2 means this is the third), uses the ordinal as a word (\"third\"), states the rolling time window plainly (\"in the last day\"), and observes the pile-up as a plain third-person remark without addressing the parent directly or offering action. It is placed after the message as allowed for non-ask messages, and adds genuine context about the frequency that the message itself does not convey. The watchFor confirms this is the appropriate fixture for this count and that a clause is expected here."
+  }
+}

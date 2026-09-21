@@ -35,9 +35,16 @@ const CORE_WITH_CTA = `${SHORT_CORE} ${OFFER_CTA}`;
 const CORE_ENDING_IN_A_QUESTION =
   'Riverside Pool says you are in for a spot - first one Sunday, Sep 27 at 9:00 a.m. Want it on your calendar?';
 
-/** The longest core the clamps permit: a 40-character sender, a 60-character title, a
- * location, both instants and the CTA. It fits two segments with the full opt-out and has
- * almost no headroom left, which is the case the segment rule exists for. */
+/**
+ * A core LONGER than either lane renders today — measured against the real renderers,
+ * the longest the corpus produces is 195 characters, which leaves room for a full
+ * 60-character clause inside two segments.
+ *
+ * So the segment rule is a RAIL rather than the common refusal the brief expected it to
+ * be, and it is written against a synthetic core because there is no real one that trips
+ * it. It still has to exist and still has to be measured on the WIRE: the clamps that buy
+ * that headroom are the lanes', they have moved before, and the day one of them widens is
+ * the day this rule is the only thing between an aside and a third billed segment. */
 const LONG_CORE =
   'Northern Lights Montessori Academy North moved Tuesday afternoon junior tumbling and movement class at the Bayview Gymnasium annex on Sheppard to Tuesday, Sep 23 at 4:30 p.m. - it was Tuesday, Sep 16 at 4:30 p.m. Reply YES and it goes on your week.';
 

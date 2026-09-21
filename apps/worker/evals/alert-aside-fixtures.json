@@ -1,0 +1,655 @@
+{
+  "fixtures": [
+    {
+      "id": "email-cancellation-first",
+      "lane": "email_alert",
+      "render": {
+        "from": "Riverside Pool <noreply@riversidepool.ca>",
+        "extractionKind": "cancellation",
+        "event": {
+          "title": "Saturday swim class",
+          "childRef": null,
+          "originalTime": "2026-09-26T13:00:00.000Z",
+          "newTime": null,
+          "location": null
+        },
+        "teenContent": false,
+        "matchedEventRef": null,
+        "booked": true,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Riverside Pool cancelled Saturday swim class - it was Saturday, Sep 26 at 9:00 a.m.",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": null,
+      "matchedAKnownOccasion": false,
+      "expect": "either",
+      "watchFor": "A cancellation with no offer and no count. A clause is allowed but must add something the sentence does not already say, in the third person, with no offer to clear anything."
+    },
+    {
+      "id": "email-cancellation-third",
+      "lane": "email_alert",
+      "render": {
+        "from": "Maple Grove Daycare <office@maplegrove.ca>",
+        "extractionKind": "cancellation",
+        "event": {
+          "title": "Thursday music circle",
+          "childRef": null,
+          "originalTime": "2026-09-24T18:00:00.000Z",
+          "newTime": null,
+          "location": null
+        },
+        "teenContent": false,
+        "matchedEventRef": null,
+        "booked": true,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Maple Grove Daycare cancelled Thursday music circle - it was Thursday, Sep 24 at 2:00 p.m.",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": 2,
+      "matchedAKnownOccasion": false,
+      "expect": "clause",
+      "countsTowardVariance": false,
+      "watchFor": "Two prior alerts of this kind to this household in the trailing 24h, so this is the third. \"Third one in the last day.\" is true. \"Third from them\", \"third today\" and \"your third\" are all false. A clause IS expected here: the pile-up is the news. EXCLUDED FROM THE VARIANCE CORPUS: three other fixtures carry the same count, and the true ordinal is ONE sentence - counting it four times measures the fact rather than the composer. email-cancellation-two-senders is the one that counts."
+    },
+    {
+      "id": "email-cancellation-two-senders",
+      "lane": "email_alert",
+      "render": {
+        "from": "Bayview Skating Club <admin@bayviewskating.ca>",
+        "extractionKind": "cancellation",
+        "event": {
+          "title": "Friday power skating",
+          "childRef": null,
+          "originalTime": "2026-09-25T22:00:00.000Z",
+          "newTime": null,
+          "location": null
+        },
+        "teenContent": false,
+        "matchedEventRef": null,
+        "booked": true,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Bayview Skating Club cancelled Friday power skating - it was Friday, Sep 25 at 6:00 p.m.",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": 2,
+      "matchedAKnownOccasion": false,
+      "expect": "clause",
+      "watchFor": "THE TWO PRIOR ALERTS CAME FROM TWO DIFFERENT SENDERS - a school and a daycare, not this skating club. Any clause attributing the count to this sender (\"their third\", \"third from them\") is FALSE and is a zero. No regex can see this one. A clause IS expected here: the pile-up is the news, and it has to read as the third of THESE TEXTS rather than the third cancellation from this club."
+    },
+    {
+      "id": "email-cancellation-restraint",
+      "lane": "email_alert",
+      "render": {
+        "from": "North York Library <events@nylibrary.ca>",
+        "extractionKind": "cancellation",
+        "event": {
+          "title": "Toddler storytime",
+          "childRef": null,
+          "originalTime": "2026-09-23T14:30:00.000Z",
+          "newTime": null,
+          "location": null
+        },
+        "teenContent": false,
+        "matchedEventRef": null,
+        "booked": true,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "North York Library cancelled Toddler storytime - it was Wednesday, Sep 23 at 10:30 a.m.",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": null,
+      "matchedAKnownOccasion": false,
+      "expect": "quiet",
+      "watchFor": "RESTRAINT. A bare cancellation with nothing whatsoever to add and no count. The tempting wrong answer is an offer - \"say the word and I will clear it\" - which is a door. The right answer is an empty clause."
+    },
+    {
+      "id": "email-reschedule-offer",
+      "lane": "email_alert",
+      "render": {
+        "from": "Little Leaps Gymnastics <hello@littleleaps.ca>",
+        "extractionKind": "reschedule",
+        "event": {
+          "title": "Junior gymnastics",
+          "childRef": null,
+          "originalTime": "2026-09-23T20:30:00.000Z",
+          "newTime": "2026-09-25T20:30:00.000Z",
+          "location": "Studio B"
+        },
+        "teenContent": false,
+        "matchedEventRef": null,
+        "booked": true,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Little Leaps Gymnastics moved Junior gymnastics to Friday, Sep 25 at 4:30 p.m. (was Sep 23). Reply YES and it goes on your week.",
+      "ctaSuffix": "Reply YES and it goes on your week.",
+      "priorAlertsToHousehold24h": null,
+      "matchedAKnownOccasion": false,
+      "expect": "either",
+      "watchFor": "The message ENDS WITH AN ASK, so only place \"before\" is legal. A clause after the ask is refused outright."
+    },
+    {
+      "id": "email-reschedule-restraint",
+      "lane": "email_alert",
+      "render": {
+        "from": "Hillcrest Public School <office@hillcrest.ca>",
+        "extractionKind": "reschedule",
+        "event": {
+          "title": "Curriculum night",
+          "childRef": null,
+          "originalTime": "2026-09-24T23:00:00.000Z",
+          "newTime": null,
+          "location": null
+        },
+        "teenContent": false,
+        "matchedEventRef": null,
+        "booked": true,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Hillcrest Public School moved Curriculum night - it was Thursday, Sep 24 at 7:00 p.m.",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": null,
+      "matchedAKnownOccasion": false,
+      "expect": "quiet",
+      "watchFor": "RESTRAINT, and the shape that most invites an offer: a move with no ask attached and nothing on the family calendar to match it. \"Want me to add it?\" is a door and a zero. An empty clause is right."
+    },
+    {
+      "id": "email-reschedule-matched",
+      "lane": "email_alert",
+      "render": {
+        "from": "Bayview Skating Club <admin@bayviewskating.ca>",
+        "extractionKind": "reschedule",
+        "event": {
+          "title": "Saturday learn-to-skate",
+          "childRef": null,
+          "originalTime": "2026-09-26T14:00:00.000Z",
+          "newTime": "2026-09-27T14:00:00.000Z",
+          "location": null
+        },
+        "teenContent": false,
+        "matchedEventRef": {
+          "table": "family_events",
+          "id": "evt-known"
+        },
+        "booked": true,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Bayview Skating Club moved Saturday learn-to-skate to Sunday, Sep 27 at 10:00 a.m. (was Sep 26).",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": 1,
+      "matchedAKnownOccasion": true,
+      "expect": "either",
+      "watchFor": "matchedAKnownOccasion is TRUE, and on a MOVE the thing that matched is the OLD copy - the parent still has to shift it. Any clause saying it is handled, covered, already sorted or taken care of is FALSE and is a zero."
+    },
+    {
+      "id": "email-new-event-offer",
+      "lane": "email_alert",
+      "render": {
+        "from": "Toronto Youth Soccer <register@tysoccer.ca>",
+        "extractionKind": "new_event",
+        "event": {
+          "title": "Fall soccer registration night",
+          "childRef": null,
+          "originalTime": null,
+          "newTime": "2026-09-29T23:00:00.000Z",
+          "location": "Gym A"
+        },
+        "teenContent": false,
+        "matchedEventRef": null,
+        "booked": true,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Toronto Youth Soccer has Fall soccer registration night at Gym A on Tuesday, Sep 29 at 7:00 p.m. Reply YES and it goes on your week.",
+      "ctaSuffix": "Reply YES and it goes on your week.",
+      "priorAlertsToHousehold24h": null,
+      "matchedAKnownOccasion": false,
+      "expect": "either",
+      "watchFor": "Ends with an ask, so \"before\" only."
+    },
+    {
+      "id": "email-new-event-long",
+      "lane": "email_alert",
+      "render": {
+        "from": "Northern Lights Montessori Academy <office@nlmontessori.ca>",
+        "extractionKind": "new_event",
+        "event": {
+          "title": "Tuesday afternoon junior tumbling and movement class series",
+          "childRef": null,
+          "originalTime": null,
+          "newTime": "2026-09-23T20:30:00.000Z",
+          "location": "Bayview Gymnasium Annex"
+        },
+        "teenContent": false,
+        "matchedEventRef": null,
+        "booked": true,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Northern Lights Montessori Academy has Tuesday afternoon junior tumbling and movement class series at Bayview Gymnasium Annex on Wednesday, Sep 23 at 4:30 p.m. Reply YES and it goes on your week.",
+      "ctaSuffix": "Reply YES and it goes on your week.",
+      "priorAlertsToHousehold24h": null,
+      "matchedAKnownOccasion": false,
+      "expect": "quiet",
+      "watchFor": "RESTRAINT. The longest message either lane produces - a 40-character sender, a 60-character title and a trailing ask. The skill says it plainly: if the message already runs long, there is no room for you. A clause here is the one a parent is most certain to read past."
+    },
+    {
+      "id": "email-reminder-only",
+      "lane": "email_alert",
+      "render": {
+        "from": "Hillcrest Public School <office@hillcrest.ca>",
+        "extractionKind": "reminder_only",
+        "event": {
+          "title": "Photo day form",
+          "childRef": null,
+          "originalTime": "2026-09-25T13:00:00.000Z",
+          "newTime": null,
+          "location": null
+        },
+        "teenContent": false,
+        "matchedEventRef": null,
+        "booked": true,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Hillcrest Public School has Photo day form on Friday, Sep 25 at 9:00 a.m. Reply YES and it goes on your week.",
+      "ctaSuffix": "Reply YES and it goes on your week.",
+      "priorAlertsToHousehold24h": 1,
+      "matchedAKnownOccasion": false,
+      "expect": "either",
+      "watchFor": "One prior alert, so this is the second. Ends with an ask."
+    },
+    {
+      "id": "email-unclear-first",
+      "lane": "email_alert",
+      "render": {
+        "from": "YRDSB <noreply@yrdsb.ca>",
+        "extractionKind": "unclear",
+        "event": {
+          "title": "",
+          "childRef": null,
+          "originalTime": null,
+          "newTime": null,
+          "location": null
+        },
+        "teenContent": false,
+        "matchedEventRef": null,
+        "booked": true,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "YRDSB sent something about a possible schedule change.",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": null,
+      "matchedAKnownOccasion": false,
+      "expect": "quiet",
+      "watchFor": "RESTRAINT. Hale itself is not sure what this email said, and the sentence says so. There is nothing true to add on top of an admitted maybe."
+    },
+    {
+      "id": "email-booking-confirmation",
+      "lane": "email_alert",
+      "render": {
+        "from": "Riverside Pool <noreply@riversidepool.ca>",
+        "extractionKind": "booking_confirmation",
+        "event": {
+          "title": "Level 2 swim",
+          "childRef": null,
+          "originalTime": null,
+          "newTime": "2026-09-26T13:00:00.000Z",
+          "location": null
+        },
+        "teenContent": false,
+        "matchedEventRef": null,
+        "booked": true,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Riverside Pool says you're in for Level 2 swim - first one Saturday, Sep 26 at 9:00 a.m. Want it on your calendar?",
+      "ctaSuffix": "Want it on your calendar?",
+      "priorAlertsToHousehold24h": null,
+      "matchedAKnownOccasion": false,
+      "expect": "either",
+      "watchFor": "The message ends in a QUESTION MARK. \"after\" is refused, and a clause that adds a second thing to answer is wrong even before it."
+    },
+    {
+      "id": "email-new-event-second",
+      "lane": "email_alert",
+      "render": {
+        "from": "Hillcrest Public School <office@hillcrest.ca>",
+        "extractionKind": "new_event",
+        "event": {
+          "title": "Parent-teacher interview night",
+          "childRef": null,
+          "originalTime": null,
+          "newTime": "2026-10-01T22:00:00.000Z",
+          "location": null
+        },
+        "teenContent": false,
+        "matchedEventRef": null,
+        "booked": true,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Hillcrest Public School has Parent-teacher interview night on Thursday, Oct 1 at 6:00 p.m. Reply YES and it goes on your week.",
+      "ctaSuffix": "Reply YES and it goes on your week.",
+      "priorAlertsToHousehold24h": 1,
+      "matchedAKnownOccasion": false,
+      "expect": "either",
+      "watchFor": "One prior, so this is the second of these in the last day."
+    },
+    {
+      "id": "email-cancellation-short-core",
+      "lane": "email_alert",
+      "render": {
+        "from": "YMCA <no-reply@ymca.ca>",
+        "extractionKind": "cancellation",
+        "event": {
+          "title": "Swim",
+          "childRef": null,
+          "originalTime": "2026-09-22T22:00:00.000Z",
+          "newTime": null,
+          "location": null
+        },
+        "teenContent": false,
+        "matchedEventRef": null,
+        "booked": true,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "YMCA cancelled Swim - it was Tuesday, Sep 22 at 6:00 p.m.",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": 1,
+      "matchedAKnownOccasion": false,
+      "expect": "either",
+      "watchFor": "The shortest core the lane produces - all the headroom in the world, which is where an unnecessary clause is most tempting."
+    },
+    {
+      "id": "calendar-new-event",
+      "lane": "calendar_alert",
+      "render": {
+        "change": {
+          "eventId": "cal-new",
+          "updated": "2026-09-21T14:00:00.000Z",
+          "status": "confirmed",
+          "title": "Piano lesson",
+          "start": {
+            "dateTime": "2026-09-24T17:00:00-04:00"
+          },
+          "end": {
+            "dateTime": "2026-09-24T17:45:00-04:00"
+          }
+        },
+        "previous": null,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Piano lesson is on your calendar for Thursday, Sep 24, 5:00-5:45 p.m.",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": null,
+      "matchedAKnownOccasion": false,
+      "expect": "either",
+      "watchFor": "The calendar is the parent own. Nothing here needs explaining back to them."
+    },
+    {
+      "id": "calendar-cancelled-first",
+      "lane": "calendar_alert",
+      "render": {
+        "change": {
+          "eventId": "cal-cancel",
+          "updated": "2026-09-21T14:05:00.000Z",
+          "status": "cancelled",
+          "title": "Soccer practice",
+          "start": {
+            "dateTime": "2026-09-23T18:00:00-04:00"
+          },
+          "end": {
+            "dateTime": "2026-09-23T19:00:00-04:00"
+          }
+        },
+        "previous": null,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Soccer practice on Wednesday, Sep 23 was cancelled.",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": null,
+      "matchedAKnownOccasion": false,
+      "expect": "quiet",
+      "watchFor": "RESTRAINT. A first calendar alert of the day about one cancelled session. There is no count, no ask and nothing to add."
+    },
+    {
+      "id": "calendar-cancelled-third",
+      "lane": "calendar_alert",
+      "render": {
+        "change": {
+          "eventId": "cal-cancel-3",
+          "updated": "2026-09-21T14:10:00.000Z",
+          "status": "cancelled",
+          "title": "Swim lesson",
+          "start": {
+            "dateTime": "2026-09-25T09:00:00-04:00"
+          },
+          "end": {
+            "dateTime": "2026-09-25T09:45:00-04:00"
+          }
+        },
+        "previous": null,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Swim lesson on Friday, Sep 25 was cancelled.",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": 2,
+      "matchedAKnownOccasion": false,
+      "expect": "clause",
+      "countsTowardVariance": false,
+      "watchFor": "Third calendar alert to this household in the last day. The ordinal is a word. A clause IS expected here: the pile-up is the news. EXCLUDED FROM THE VARIANCE CORPUS: three other fixtures carry the same count, and the true ordinal is ONE sentence - counting it four times measures the fact rather than the composer. email-cancellation-two-senders is the one that counts."
+    },
+    {
+      "id": "calendar-moved",
+      "lane": "calendar_alert",
+      "render": {
+        "change": {
+          "eventId": "cal-moved",
+          "updated": "2026-09-21T14:15:00.000Z",
+          "status": "confirmed",
+          "title": "Dentist",
+          "start": {
+            "dateTime": "2026-09-29T14:30:00-04:00"
+          },
+          "end": {
+            "dateTime": "2026-09-29T15:15:00-04:00"
+          }
+        },
+        "previous": {
+          "startIso": "2026-09-28T14:30:00-04:00",
+          "allDay": false
+        },
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Dentist moved to Tuesday, Sep 29, 2:30-3:15 p.m. (was Monday, Sep 28).",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": null,
+      "matchedAKnownOccasion": false,
+      "expect": "either",
+      "watchFor": "A move by one day. The sentence already carries both instants."
+    },
+    {
+      "id": "calendar-moved-second",
+      "lane": "calendar_alert",
+      "render": {
+        "change": {
+          "eventId": "cal-moved-2",
+          "updated": "2026-09-21T14:20:00.000Z",
+          "status": "confirmed",
+          "title": "Tumbling",
+          "start": {
+            "dateTime": "2026-09-24T16:15:00-04:00"
+          },
+          "end": {
+            "dateTime": "2026-09-24T17:00:00-04:00"
+          }
+        },
+        "previous": {
+          "startIso": "2026-09-24T18:30:00-04:00",
+          "allDay": false
+        },
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Tumbling moved to 4:15-5:00 p.m. on Thursday, Sep 24 (was 6:30).",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": 1,
+      "matchedAKnownOccasion": false,
+      "expect": "clause",
+      "watchFor": "Same day, earlier by two hours, and one prior alert. A clause about the tightness of the turnaround is the kind of thing a friend says. A clause IS expected here: a same-day turnaround is exactly the shape the skill names."
+    },
+    {
+      "id": "calendar-all-day",
+      "lane": "calendar_alert",
+      "render": {
+        "change": {
+          "eventId": "cal-allday",
+          "updated": "2026-09-21T14:25:00.000Z",
+          "status": "confirmed",
+          "title": "PA day",
+          "start": {
+            "date": "2026-09-25"
+          },
+          "end": {
+            "date": "2026-09-26"
+          }
+        },
+        "previous": null,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "PA day is on your calendar for Friday, Sep 25.",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": null,
+      "matchedAKnownOccasion": false,
+      "expect": "either",
+      "watchFor": "An all-day entry. No clock, and no clock in the clause either."
+    },
+    {
+      "id": "calendar-with-location",
+      "lane": "calendar_alert",
+      "render": {
+        "change": {
+          "eventId": "cal-place",
+          "updated": "2026-09-21T14:30:00.000Z",
+          "status": "confirmed",
+          "title": "Speech therapy",
+          "start": {
+            "dateTime": "2026-09-30T10:00:00-04:00"
+          },
+          "end": {
+            "dateTime": "2026-09-30T10:45:00-04:00"
+          },
+          "location": "Bayview Village Clinic"
+        },
+        "previous": null,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Speech therapy is on your calendar for Wednesday, Sep 30, 10:00-10:45 a.m. at Bayview Village Clinic.",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": 1,
+      "matchedAKnownOccasion": false,
+      "expect": "either",
+      "watchFor": "The place is already in the sentence. Repeating it is padding."
+    },
+    {
+      "id": "calendar-long",
+      "lane": "calendar_alert",
+      "render": {
+        "change": {
+          "eventId": "cal-long",
+          "updated": "2026-09-21T14:35:00.000Z",
+          "status": "confirmed",
+          "title": "Wednesday evening intermediate conversational French for families",
+          "start": {
+            "dateTime": "2026-09-30T18:30:00-04:00"
+          },
+          "end": {
+            "dateTime": "2026-09-30T20:00:00-04:00"
+          },
+          "location": "Northern District Community Centre, room 214"
+        },
+        "previous": null,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Wednesday evening intermediate conversational French for... is on your calendar for Wednesday, Sep 30, 6:30-8:00 p.m.",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": null,
+      "matchedAKnownOccasion": false,
+      "expect": "quiet",
+      "watchFor": "RESTRAINT. The longest calendar sentence in the corpus, and a title so long the renderer had to trim it. Nothing belongs on top of that."
+    },
+    {
+      "id": "calendar-tentative",
+      "lane": "calendar_alert",
+      "render": {
+        "change": {
+          "eventId": "cal-tentative",
+          "updated": "2026-09-21T14:40:00.000Z",
+          "status": "tentative",
+          "title": "Class photos",
+          "start": {
+            "dateTime": "2026-10-02T09:15:00-04:00"
+          },
+          "end": {
+            "dateTime": "2026-10-02T09:45:00-04:00"
+          }
+        },
+        "previous": null,
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Class photos is on your calendar for Friday, Oct 2, 9:15-9:45 a.m.",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": 2,
+      "matchedAKnownOccasion": false,
+      "expect": "clause",
+      "countsTowardVariance": false,
+      "watchFor": "Third of the day. The ordinal is the only new thing available. A clause IS expected here: the pile-up is the news. EXCLUDED FROM THE VARIANCE CORPUS: three other fixtures carry the same count, and the true ordinal is ONE sentence - counting it four times measures the fact rather than the composer. email-cancellation-two-senders is the one that counts."
+    },
+    {
+      "id": "calendar-moved-later-same-day",
+      "lane": "calendar_alert",
+      "render": {
+        "change": {
+          "eventId": "cal-later",
+          "updated": "2026-09-21T14:45:00.000Z",
+          "status": "confirmed",
+          "title": "Music class",
+          "start": {
+            "dateTime": "2026-09-26T15:00:00-04:00"
+          },
+          "end": {
+            "dateTime": "2026-09-26T15:45:00-04:00"
+          }
+        },
+        "previous": {
+          "startIso": "2026-09-26T10:00:00-04:00",
+          "allDay": false
+        },
+        "timeZone": "America/Toronto",
+        "now": "2026-09-21T15:00:00.000Z"
+      },
+      "core": "Music class moved to 3:00-3:45 p.m. on Saturday, Sep 26 (was 10:00 a.m.).",
+      "ctaSuffix": null,
+      "priorAlertsToHousehold24h": null,
+      "matchedAKnownOccasion": false,
+      "expect": "clause",
+      "watchFor": "Five hours later on the same Saturday. Nothing is owed and nothing is asked. A clause IS expected here: a five-hour shift inside one Saturday is a logistics fact."
+    }
+  ]
+}

@@ -145,6 +145,13 @@ jobs:
       - name: Registration re-verify eval (cached-only)
         run: pnpm --filter @hale/worker eval:registration-verify
 
+      # The one gate that can see this feature's real failure. An aside is invisible to a
+      # per-sample judge - every clause reads fine on its own - so the thing that catches
+      # it is the CORPUS: distinct openers AND closers over the clauses that would ship,
+      # plus a hard zero on any clause that invites a reply.
+      - name: Alert aside eval (cached-only)
+        run: pnpm --filter @hale/worker eval:alert-aside
+
       # The only model call in the review pool. Nothing downstream re-checks a verdict -
       # it IS the row another family is eventually shown - so this is the gate, and it is
       # wired here BEFORE the pass that calls it exists.

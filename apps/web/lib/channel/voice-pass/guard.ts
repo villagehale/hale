@@ -130,6 +130,32 @@ export function assembleWithAside(core: string, aside: Aside | null): string {
   return aside.place === 'before' ? `${aside.clause} ${core}` : `${core} ${aside.clause}`;
 }
 
+/**
+ * The user turn, and it lives HERE rather than in the composer for the reason the guard
+ * does: the eval imports this file real, so the request shape it grades against and the
+ * one production sends are the same string builder rather than two that can drift. A
+ * change to it re-keys the eval cache, which is the whole point.
+ *
+ * `priorAlertsToHousehold24h` is OMITTED when absent rather than sent as null — an absent
+ * field is nothing to fill in, and a `null` beside a count is an invitation to say "the
+ * first one", which is a claim about a household's day that this stage cannot make.
+ *
+ * `endsWithAnAsk` is derived here exactly as `after_an_ask` derives it, so the model is
+ * told the thing the guard will hold it to rather than a lane's opinion of it.
+ */
+export function asideUserMessage(ctx: AsideContext): string {
+  const base: Record<string, unknown> = {
+    lane: ctx.lane,
+    message: ctx.core,
+    endsWithAnAsk: ctx.ctaSuffix !== null || ctx.core.trimEnd().endsWith('?'),
+    matchedAKnownOccasion: ctx.matchedAKnownOccasion,
+  };
+  if (ctx.priorAlertsToHousehold24h !== null) {
+    base.priorAlertsToHousehold24h = ctx.priorAlertsToHousehold24h;
+  }
+  return JSON.stringify(base);
+}
+
 /** No tool at this stage could have handed the model a URL, so one here is invented. */
 const LINK_SHAPE = /https?:\/\/|www\./i;
 
