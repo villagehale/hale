@@ -56,10 +56,10 @@
     "copied": "Copied ✓"
   },
   "Landing": {
-    "heroH1a": "I find it.",
-    "heroH1b": "You don’t",
-    "heroH1Accent": "miss it.",
-    "heroSub": "Swim, camps, drop-ins, the EarlyON down the road — and the sign-up morning that fills by 7:02. Send me your kids’ ages and a postal code; I’ll take it from there.",
+    "heroH1a": "Find what’s on.",
+    "heroH1b": "Hear how",
+    "heroH1Accent": "it went.",
+    "heroSub": "What’s worth doing with the kids.",
     "heroLoopCap": "One family’s thread with Hale, start to finish",
     "heroLoop": [
       {
@@ -190,7 +190,7 @@
   },
   "About": {
     "metaTitle": "About · Hale",
-    "metaDescription": "Hale is a number your family texts — for the dates, the forms, and the small things that slip. Built by Anzhe Dong at Village Hale Technologies Inc. in Georgetown, Ontario.",
+    "metaDescription": "Hale is a planner for your kids’ year. Find what’s on. Hear how it went. Built by Anzhe Dong at Village Hale Technologies Inc. in Georgetown, Ontario.",
     "eyebrow": "About Hale",
     "headline": [
       {
@@ -607,9 +607,9 @@
   },
   "Text": {
     "metaTitle": "Text Hale",
-    "metaDescription": "Start a conversation with Hale — a number you text for what’s on near your kids. It finds activities that fit your child and watches registration day where you live.",
-    "headline": "A number you text for what’s on near your kids.",
-    "lede": "Hale finds activities that fit your little one, keeps sign-up mornings from sneaking up, and checks in on how it goes.",
+    "metaDescription": "Find what’s on. Hear how it went. What’s worth doing with the kids.",
+    "headline": "Find what’s on. Hear how it went.",
+    "lede": "What’s worth doing with the kids.",
     "sentLabel": "What you’ll send:",
     "sentGloss": "Hi Hale 👋 ready to get started",
     "previewLabel": "The text you’ll get back:",

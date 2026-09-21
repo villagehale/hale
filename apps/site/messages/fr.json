@@ -56,10 +56,10 @@
     "copied": "Copié ✓"
   },
   "Landing": {
-    "heroH1a": "Je le trouve.",
-    "heroH1b": "Vous ne le",
-    "heroH1Accent": "manquez pas.",
-    "heroSub": "Natation, camps, haltes-jeux, le centre ON y va du quartier — et le matin d’inscription qui se remplit à 7 h 02. Envoyez-moi l’âge de vos enfants et un code postal; je m’occupe du reste.",
+    "heroH1a": "Trouvez ce qu’il y a.",
+    "heroH1b": "Écoutez comment",
+    "heroH1Accent": "ça va.",
+    "heroSub": "Ce qui vaut la peine avec les enfants.",
     "heroLoopCap": "Le fil d’une famille avec Hale, du début à la fin",
     "heroLoop": [
       {
@@ -205,7 +205,7 @@
   },
   "About": {
     "metaTitle": "À propos · Hale",
-    "metaDescription": "Hale est un numéro que votre famille texte — pour les dates, les formulaires et les petites choses qui passent entre les mailles. Conçu par Anzhe Dong chez Village Hale Technologies Inc. à Georgetown, en Ontario.",
+    "metaDescription": "Hale est un planificateur pour l’année de vos enfants. Trouvez ce qu’il y a. Écoutez comment ça va. Conçu par Anzhe Dong chez Village Hale Technologies Inc. à Georgetown, en Ontario.",
     "eyebrow": "À propos de Hale",
     "headline": [
       {
@@ -627,9 +627,9 @@
   },
   "Text": {
     "metaTitle": "Texter Hale",
-    "metaDescription": "Commencez une conversation avec Hale — un numéro à texter pour ce qui se passe près de vos enfants. Il trouve des activités pour votre enfant et surveille les journées d’inscription de votre région.",
-    "headline": "Un numéro à texter pour ce qui se passe près de vos enfants.",
-    "lede": "Hale trouve des activités qui conviennent à votre tout-petit, surveille les matins d’inscription et prend de vos nouvelles.",
+    "metaDescription": "Trouvez ce qu’il y a. Écoutez comment ça va. Ce qui vaut la peine avec les enfants.",
+    "headline": "Trouvez ce qu’il y a. Écoutez comment ça va.",
+    "lede": "Ce qui vaut la peine avec les enfants.",
     "sentLabel": "Ce que vous enverrez :",
     "sentGloss": "En anglais : « Bonjour Hale 👋 prêt à commencer »",
     "previewLabel": "Le texto que vous recevrez en retour :",

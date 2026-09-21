@@ -110,13 +110,11 @@ function qrPath(html: string): string {
 describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
   it('leads with what Hale IS — the five-second line, both arms', () => {
     for (const html of [liveHtml, unsetHtml]) {
-      expect(html).toContain('A number you text for what’s on near your kids.');
+      expect(html).toContain('Find what’s on. Hear how it went.');
       // ONE sentence. "No app, no account" moved out of the lede: the trust
       // strip already says it, and above the fold every restated line is a line
       // between a stranger and the button.
-      expect(html).toContain(
-        'Hale finds activities that fit your little one, keeps sign-up mornings from sneaking up, and checks in on how it goes.',
-      );
+      expect(html).toContain('What’s worth doing with the kids.');
       expect(html).not.toContain('No app, no account — just this text thread.');
     }
     // Positive control: the fact itself is still on the page, once.
@@ -549,9 +547,7 @@ describe('TextEntry (the other two locales)', () => {
 describe('TextEntry — the chooser arm keeps the five-second frame (WhatsApp live)', () => {
   it('adds the what-is line and the preview bubble above the channel buttons', () => {
     const html = render({ whatsappNumber: LIVE_NUMBER });
-    expect(html).toContain(
-      'Hale finds activities that fit your little one, keeps sign-up mornings from sneaking up, and checks in on how it goes.',
-    );
+    expect(html).toContain('What’s worth doing with the kids.');
     expect(html).toContain('The text you’ll get back:');
     // The bubble sits above the first channel door.
     expect(html.indexOf('I find activities that fit your little one')).toBeLessThan(

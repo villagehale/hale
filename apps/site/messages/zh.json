@@ -56,10 +56,10 @@
     "copied": "已复制 ✓"
   },
   "Landing": {
-    "heroH1a": "我替你找到。",
-    "heroH1b": "你不会",
-    "heroH1Accent": "错过。",
-    "heroSub": "游泳、营队、随到随玩、街那头的 EarlyON 亲子中心——还有 7:02 就被抢光的那个报名早晨。把孩子的年龄和一个邮编发给我，剩下的交给我。",
+    "heroH1a": "看看有什么。",
+    "heroH1b": "听听",
+    "heroH1Accent": "怎么样。",
+    "heroSub": "值得和孩子一起做的事。",
     "heroLoopCap": "一个家庭和 Hale 的完整对话，从头到尾",
     "heroLoop": [
       {
@@ -199,7 +199,7 @@
   },
   "About": {
     "metaTitle": "关于 · Hale",
-    "metaDescription": "Hale 是一个你全家可以随时发短信的号码——替你管好那些日期、表格和容易被漏掉的小事。由 Anzhe Dong 在安大略省乔治敦的 Village Hale Technologies Inc. 打造。",
+    "metaDescription": "Hale 是孩子这一年的规划。看看有什么。听听怎么样。由 Anzhe Dong 在安大略省乔治敦的 Village Hale Technologies Inc. 打造。",
     "eyebrow": "关于 Hale",
     "headline": [
       {
@@ -609,9 +609,9 @@
   },
   "Text": {
     "metaTitle": "给 Hale 发短信",
-    "metaDescription": "开始和 Hale 对话——一个发短信就能问到孩子附近有什么的号码。它帮你找到适合孩子的活动，替你盯着你所在地区的报名日。",
-    "headline": "发短信，就能问到孩子附近有什么。",
-    "lede": "Hale 帮你找到适合小朋友的活动，替你盯着报名日，还会回头问问进展如何。",
+    "metaDescription": "看看有什么。听听怎么样。值得和孩子一起做的事。",
+    "headline": "看看有什么。听听怎么样。",
+    "lede": "值得和孩子一起做的事。",
     "sentLabel": "你会发出的内容：",
     "sentGloss": "英文：“你好 Hale 👋 我准备好开始了”",
     "previewLabel": "你会收到的第一条回复（英文原文）：",
