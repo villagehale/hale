@@ -1,8 +1,12 @@
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   type OutboundGatePorts,
   PROACTIVE_CAP,
   PROACTIVE_CATEGORY,
+  holdStatus,
   PROACTIVE_QUIET_HOURS,
   assertProactiveSendAllowed,
 } from './outbound-gate.js';
@@ -552,3 +556,123 @@ describe('the watched-spot proactive classes', () => {
     ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
   });
 });
+
+describe('the travel brief class', () => {
+  /** 02:00 Toronto — inside the 21:00-08:00 proactive quiet window. */
+  const TWO_AM = new Date('2026-07-15T06:00:00.000Z');
+
+  it('never claims urgency — a trip next week is worth the same at 08:00', async () => {
+    // Kills URGENCY_ALLOWED.travel_brief = true. There is no version of "here is what is
+    // on in New York in seven days" that is worth waking a house for, and the exemption is
+    // read per CLASS so a sweep cannot reach it by setting a flag.
+    await expect(
+      assertProactiveSendAllowed(
+        {
+          familyId: FAMILY,
+          parentUserId: PARENT,
+          kind: 'travel_brief',
+          now: TWO_AM,
+          urgent: true,
+        },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+
+  it('holds the second trip inside one week, on a counter of its own', async () => {
+    // Kills PROACTIVE_CAP.travel_brief = null, which the two nulls above make an easy
+    // copy. The per-trip bound is the claim keyed on the trip id, so this counter only
+    // binds when something upstream went wrong — or in the one honest case the design
+    // names out loud, a household with two trips in one seven-day window.
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'travel_brief', now: MIDDAY },
+        ports({ recentSends: 1 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'travel_brief', now: MIDDAY },
+        ports({ recentSends: 0 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
+    expect(PROACTIVE_CAP.travel_brief).toEqual({ max: 1, windowHours: 24 * 7 });
+  });
+
+  it('counts apart from the inbox it was detected in', () => {
+    // Kills PROACTIVE_CATEGORY.travel_brief = 'email_alert', which would make three school
+    // emails silence a family's one travel text — and then read the inbox cap as spent by
+    // a message the alert path never sent.
+    expect(PROACTIVE_CATEGORY.travel_brief).toBe('travel_brief');
+  });
+});
+
+describe('holdStatus — one copy, beside the union it is keyed on', () => {
+  /**
+   * It was a module-private `Record` in `integrations/email-alert.ts` and AGAIN in
+   * `integrations/calendar-alert.ts`; the travel sweep needed a third, so it was hoisted
+   * here instead. A `Record` over `ProactiveHoldReason`, so a fifth hold reason cannot be
+   * added without choosing what its receipt says.
+   */
+  it('maps every hold reason to the suppression the ledger records', () => {
+    expect(holdStatus('quiet_hours')).toBe('suppressed_quiet_hours');
+    expect(holdStatus('frequency_cap')).toBe('suppressed_cap');
+    expect(holdStatus('not_enrolled')).toBe('suppressed_consent');
+    expect(holdStatus('no_watch_consent')).toBe('suppressed_consent');
+  });
+
+  /**
+   * WHY THIS SCANS THE TREE RATHER THAN A LIST OF FILES. The first version of this test
+   * named the three files the hoist had touched, and a fourth private copy — landed in
+   * `channel/coparent/departure-notice.ts` before this branch was cut — sat outside it and
+   * made the claim above false while the test stayed green. A list of the places a shape
+   * has already leaked to cannot catch the next one; the scan can, and a file added
+   * tomorrow is in it for free.
+   */
+  it('is the ONLY copy left — no file under apps/web re-declares it', () => {
+    // A private copy re-appearing is the drift this hoist exists to prevent, and it is not
+    // catchable by types: a second literal compiles perfectly.
+    const web = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '');
+    const declaring: string[] = [];
+    for (const file of sourceFiles(join(web, 'lib')).concat(sourceFiles(join(web, 'app')))) {
+      if (file === join(web, 'lib/channel/outbound-gate.ts')) continue;
+      if (readFileSync(file, 'utf8').includes('HOLD_STATUS')) {
+        declaring.push(file.slice(web.length + 1));
+      }
+    }
+    expect(declaring, 'these files must import holdStatus instead of re-declaring it').toEqual([]);
+  });
+
+  it('is imported by every file that records a hold — the control for the scan above', () => {
+    // Absence proves nothing on its own: the scan would also pass if no file used the
+    // mapping at all. These three take it from the one copy.
+    const web = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '');
+    for (const file of [
+      'lib/integrations/email-alert.ts',
+      'lib/integrations/calendar-alert.ts',
+      'lib/channel/coparent/departure-notice.ts',
+      'lib/travel/sweep.ts',
+    ]) {
+      const source = readFileSync(join(web, file), 'utf8');
+      expect(source, `${file} must import holdStatus`).toContain('holdStatus');
+    }
+  });
+});
+
+const SKIP_DIRS = new Set(['node_modules', 'dist', '.next', '.turbo']);
+
+/** Every non-test source file under `dir`, the `one-door.test.ts` walk. */
+function sourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    if (SKIP_DIRS.has(name)) continue;
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) {
+      out.push(...sourceFiles(full));
+      continue;
+    }
+    if (!/\.(ts|tsx)$/.test(name) || name.includes('.test.') || name.endsWith('.d.ts')) continue;
+    out.push(full);
+  }
+  return out;
+}

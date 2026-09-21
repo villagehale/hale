@@ -83,6 +83,15 @@ function fakeDb(args: {
     tags: string[];
     createdAt: Date;
   }[];
+  trips?: {
+    destinationCity: string;
+    destinationRegion: string | null;
+    startsOn: string;
+    endsOn: string;
+    childEvidence: string;
+    closedAt: Date | null;
+    closedReason: string | null;
+  }[];
 }) {
   const whereFamilyIds: unknown[] = [];
 
@@ -144,6 +153,11 @@ function fakeDb(args: {
     return { orderBy: vi.fn().mockResolvedValue(args.activityReviews ?? []) };
   });
 
+  const tripsWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue(args.trips ?? []) };
+  });
+
   // Route each select to the right terminal by call order: family, children,
   // members, the village-saves join, this parent's assistant grants, the registration
   // preparation join, the watched spots, the activity bookings, the evening check-in
@@ -161,7 +175,8 @@ function fakeDb(args: {
     if (which === 7) return { from: () => ({ where: bookingsWhere }) };
     if (which === 8) return { from: () => ({ where: checkInPrefsWhere }) };
     if (which === 9) return { from: () => ({ where: checkInNotesWhere }) };
-    return { from: () => ({ where: activityReviewsWhere }) };
+    if (which === 10) return { from: () => ({ where: activityReviewsWhere }) };
+    return { from: () => ({ where: tripsWhere }) };
   });
 
   const values = vi.fn().mockResolvedValue(undefined);
@@ -501,12 +516,13 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Eleven scoped selects (family, children, members, village saves, this parent's
+    // Twelve scoped selects (family, children, members, village saves, this parent's
     // assistant grants, the registration preparations, the watched spots, the activity
-    // bookings, the evening check-in prefs and notes, and the activity verdicts) each
-    // recorded a where-condition; none was left unscoped. (The condition objects are
-    // opaque Drizzle SQL, so we assert on arity — every select passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(11);
+    // bookings, the evening check-in prefs and notes, the activity verdicts, and this
+    // parent's trips) each recorded a where-condition; none was left unscoped. (The
+    // condition objects are opaque Drizzle SQL, so we assert on arity — every select
+    // passed through a where.)
+    expect(spies.whereFamilyIds).toHaveLength(12);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 
@@ -595,6 +611,65 @@ describe('assembleFamilyExport', () => {
     ]);
     // There is no field for the parent's own sentence, and there must never be one.
     expect(JSON.stringify(doc.activityReviews)).not.toContain('note');
+  });
+
+  /**
+   * The trip block is REQUESTER-SCOPED, which this fake cannot prove (it routes by call
+   * order and never evaluates a predicate) — export.pglite.test.ts holds that against real
+   * Postgres. What it CAN prove is the shape: the four facts that are carried, and the
+   * ones the table has no column for.
+   */
+  it('carries a trip as a city and two dates, and nothing the booking said', async () => {
+    const { db } = fakeDb({
+      family: FAMILY,
+      children: [],
+      members: [],
+      trips: [
+        {
+          destinationCity: 'New York',
+          destinationRegion: 'NY',
+          startsOn: '2026-09-12',
+          endsOn: '2026-09-15',
+          childEvidence: 'named_traveller',
+          closedAt: new Date('2026-09-05T13:00:00.000Z'),
+          closedReason: 'sent',
+        },
+      ],
+    });
+
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+    });
+
+    expect(doc.trips).toEqual([
+      {
+        destinationCity: 'New York',
+        destinationRegion: 'NY',
+        startsOn: '2026-09-12',
+        endsOn: '2026-09-15',
+        childEvidence: 'named_traveller',
+        closedAt: '2026-09-05T13:00:00.000Z',
+        closedReason: 'sent',
+      },
+    ]);
+    // There is no field for the airline, the confirmation number or the price, and there
+    // must never be one: the table has no column for any of them.
+    const serialised = JSON.stringify(doc.trips);
+    for (const forbidden of ['confirmation', 'price', 'airline', 'hotel', 'messageId']) {
+      expect(serialised).not.toContain(forbidden);
+    }
+  });
+
+  it('lists the trip block present-and-empty for a family that has never travelled', async () => {
+    const { db } = fakeDb({ family: FAMILY, children: [], members: [] });
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+    });
+    // Present-and-empty, not omitted: a parent must be able to tell "Hale holds none of
+    // this" from "Hale did not look".
+    expect(doc.trips).toEqual([]);
   });
 
   it('says a household has never been asked rather than implying a default', async () => {

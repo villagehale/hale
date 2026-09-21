@@ -451,12 +451,31 @@ describe('privacy — the scaffold the template supplies, in PIPEDA vocabulary',
 
   it('opens no purpose block for a purpose nothing serves', () => {
     // A purpose statement for an unbuilt feature is the same defect as a landing
-    // claim for one. Travel and shared reviews arrive with their code.
-    for (const unbuilt of ['Travel', 'shared reviews', 'what other families thought']) {
+    // claim for one. Shared reviews arrive with their code.
+    //
+    // TRAVEL IS THE ONE DELIBERATE EXCEPTION, and it is not a softening of the rule —
+    // it is the rule's own source. PIPEDA Principle 2 asks the purpose to be identified
+    // BEFORE the collection, and reading a booking email is a new purpose; so the
+    // sentence ships ahead of the code that reads one, rather than beside it. The block
+    // below is what makes that shippable-ahead honest: it describes a collection that
+    // has not started and states what is never kept.
+    for (const unbuilt of ['shared reviews', 'what other families thought']) {
       expect(privacyHtml, `${unbuilt} must not have a purpose block`).not.toContain(unbuilt);
     }
     // Positive control: the page DOES carry per-source purpose blocks.
     expect(privacyHtml).toContain('Calendar (optional)');
+  });
+
+  it('identifies the travel-brief purpose, and what a booking email does NOT yield', () => {
+    // The purpose itself, in the "Why we use it" list PIPEDA Principle 2 asks for.
+    expect(privacyHtml).toContain('Travel briefs.');
+    // And the collection sentence beside the connected-services paragraph. It names the
+    // three things that are never stored, because a purpose statement that says only
+    // what IS kept reads as open-ended to the parent who has to consent to it.
+    expect(privacyHtml).toContain(
+      'the destination city and the dates only; we never store the message, the ' +
+        'confirmation number, or what the trip cost',
+    );
   });
 
   it('states plainly that no decision is made by machine alone (Law 25)', () => {

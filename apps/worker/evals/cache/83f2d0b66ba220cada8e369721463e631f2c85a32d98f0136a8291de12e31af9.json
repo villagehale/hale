@@ -1,0 +1,11 @@
+{
+  "value": {
+    "destination_city": "Montreal",
+    "destination_region": "Quebec",
+    "start_date": "2026-03-19",
+    "end_date": "2026-03-22",
+    "child_evidence": "named_traveller",
+    "confidence": 0.95
+  },
+  "stopReason": "tool_use"
+}

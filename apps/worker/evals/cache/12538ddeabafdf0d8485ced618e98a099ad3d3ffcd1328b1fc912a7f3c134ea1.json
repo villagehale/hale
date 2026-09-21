@@ -1,0 +1,11 @@
+{
+  "value": {
+    "destination_city": "Vancouver",
+    "destination_region": "British Columbia",
+    "start_date": "2026-07-15",
+    "end_date": null,
+    "child_evidence": "none",
+    "confidence": 0.9
+  },
+  "stopReason": "tool_use"
+}

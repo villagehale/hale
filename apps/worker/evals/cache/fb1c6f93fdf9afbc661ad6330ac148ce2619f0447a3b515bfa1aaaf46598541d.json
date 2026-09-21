@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Two picks, both real named venues in Ottawa with their own authoritative sources. The Canadian Museum of Nature is a genuine institution on its own site; the Canada Science and Technology Museum (Ingenium) likewise. Both are walk-up destinations a family can turn up to across the Labour Day weekend window (Aug 30–Sept 2). Neither pick is a session, a class, or a registration event — exactly what the watchFor warns against. The `when` fields reference the Canada Strong Pass discount period and the free 4–5 pm daily admission window, both plausible programme details from the venues themselves; neither invents a price. Prices are NULL, which is correct practice. The only mild shortcoming is that only two picks are returned (the rubric says \"at most three,\" so two is fine, but three real finds would be stronger). No invented venues, no aggregator sources, no wrong-city picks, no fall-session traps. A clean, accurate, visitable set of finds.",
+    "score": 5
+  }
+}

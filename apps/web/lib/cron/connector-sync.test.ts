@@ -2,12 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { CALENDAR_ALERT_OUTCOMES } from '~/lib/integrations/calendar-alert';
 import { BOOKING_OUTCOMES, EMAIL_ALERT_OUTCOMES } from '~/lib/integrations/email-alert';
 import { GOING_OUTCOMES } from '~/lib/integrations/going';
+import { TRAVEL_DETECT_OUTCOMES } from '~/lib/travel/detect';
 import { googleGetFetch, runConnectorSync } from './connector-sync';
 
 const NO_ALERTS = {
   emailAlerts: [] as const,
   calendarAlerts: [] as const,
   calendarDroppedNoId: 0,
+  travelDetections: [] as const,
 };
 
 const FAMILY_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -240,6 +242,46 @@ describe('runConnectorSync', () => {
     expect(Object.values(summary.calendarAlerts).reduce((a, b) => a + b, 0)).toBe(5);
     // Nothing was dropped here — the control for the tally below.
     expect(summary.calendarDroppedNoId).toBe(0);
+  });
+
+  it('tallies travel detections on their OWN counter, summed across connections', async () => {
+    // The surface the founder reads the precision trade off week to week: `trip_written`
+    // beside `no_child_evidence` is the miss rate, counted once per email. Its own tally
+    // and not a widening of the inbox one, because an envelope has two independent
+    // answers — whether a text went about it, and whether a trip was written down.
+    const summary = await runConnectorSync({
+      listConnections: async () => [conn('i1', FAMILY_A), conn('i2', FAMILY_B)],
+      decryptTokens: decryptOk,
+      loadChildNames: async () => [],
+      buildDeps: () => ({}) as never,
+      syncOne: async (connection) =>
+        connection.id === 'i1'
+          ? {
+              ...NO_ALERTS,
+              travelDetections: [
+                'trip_written',
+                'no_child_evidence',
+                'not_booking_shaped',
+              ] as const,
+              emailAlerts: [{ alert: 'sent', booking: null, going: null }] as const,
+            }
+          : { ...NO_ALERTS, travelDetections: ['no_child_evidence', 'dark'] as const },
+    });
+
+    expect(summary.travelDetections).toMatchObject({
+      trip_written: 1,
+      no_child_evidence: 2,
+      not_booking_shaped: 1,
+      dark: 1,
+    });
+    expect(Object.values(summary.travelDetections).reduce((a, b) => a + b, 0)).toBe(5);
+    // Every named outcome present as a zero rather than absent — a missing key reads as
+    // "never happens", which is a different claim from "did not today".
+    expect(Object.keys(summary.travelDetections).sort()).toEqual([
+      ...TRAVEL_DETECT_OUTCOMES,
+    ].sort());
+    // And it did NOT land on the inbox counter: one email alert, five detections.
+    expect(Object.values(summary.emailAlerts).reduce((a, b) => a + b, 0)).toBe(1);
   });
 
   it('carries the un-keyable calendar items into the summary, summed across connections', async () => {

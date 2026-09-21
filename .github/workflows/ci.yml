@@ -159,6 +159,13 @@ jobs:
       - name: Activity deep-pass eval (cached-only)
         run: pnpm --filter @hale/worker eval:activity-deep
 
+      # The ONLY model call in the travel-brief lane. The city it writes is stored,
+      # exported to the family and sent to a search engine, and `child_evidence` IS the
+      # rule "Hale never briefs a solo work trip" - so this is the gate, and it is wired
+      # here BEFORE the pass that calls it ships.
+      - name: Travel-booking extraction eval (cached-only)
+        run: pnpm --filter @hale/worker eval:travel-extract
+
       - name: Build
         run: pnpm build
         env:

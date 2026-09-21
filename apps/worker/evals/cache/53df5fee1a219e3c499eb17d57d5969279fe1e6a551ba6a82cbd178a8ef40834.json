@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Two picks, both specific named venues in Montreal, both sourced from the venue's own site or its official umbrella (Montreal Science Centre; Espace pour la vie, the city's natural-science campus operator). Both carry explicit holiday-window hours that place them open across the Dec 27-30 dates requested. Age fit is stated and appropriate for a toddler. Prices are NULL, correctly flagged as unpublished rather than invented. Neither pick is a programme, a session, a registration, or a class — both are walk-up, turn-up destinations. No invented figures, no out-of-city venues, no aggregator sources. The only mild note is that only two picks are returned (the rubric says \"at most three\"), but two honest, open, correctly-sourced finds is far better than padding with a third that is closed or fabricated — especially given the watchFor note about how much is shut in this window. No faults detectable.",
+    "score": 5
+  }
+}

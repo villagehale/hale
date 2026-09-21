@@ -1,0 +1,24 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Children's Museum of Manhattan (CMOM)",
+        "age_fit": "designed especially for children ages 0-6",
+        "source_name": "Children's Museum of Manhattan"
+      },
+      {
+        "name": "Tisch Children's Zoo at Central Park Zoo",
+        "age_fit": "a playful adventure for our youngest guests, with goats, sheep, unique ducks and a cow",
+        "when": "opens daily at 10am; grounds close 5pm Mon-Fri and 5:30pm weekends/holidays through October, per their site",
+        "source_name": "Central Park Zoo"
+      },
+      {
+        "name": "PlayQuarium at New York Aquarium",
+        "age_fit": "bilingual children's exhibit with a touch pool",
+        "when": "aquarium opens daily at 10am, per their site",
+        "source_name": "New York Aquarium"
+      }
+    ]
+  },
+  "latencyMs": 3106
+}

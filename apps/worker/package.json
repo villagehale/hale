@@ -50,6 +50,7 @@
     "eval:civic-hours": "node evals/run-civic-hours-eval.mjs --cached-only",
     "eval:activity-verdict": "node evals/run-activity-verdict-eval.mjs --cached-only",
     "eval:registration-verify": "node evals/run-registration-verify-eval.mjs --cached-only",
+    "eval:travel-extract": "node evals/run-travel-extract-eval.mjs --cached-only",
     "eval:vil143": "node evals/run-vil143-eval.mjs",
     "clean": "rm -rf dist .turbo *.tsbuildinfo",
     "prompts:push": "node scripts/sync-prompts.mjs push",

@@ -5,10 +5,10 @@ import { asciiCopy, asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
-import type {
-  ProactiveHoldReason,
-  ProactiveSendRequest,
-  ProactiveSendVerdict,
+import {
+  type ProactiveSendRequest,
+  type ProactiveSendVerdict,
+  holdStatus,
 } from '~/lib/channel/outbound-gate';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -185,16 +185,6 @@ export const CALENDAR_ALERT_PENDING_MAX_DAYS = 3;
 const SERIES_MIN_INSTANCES = 2;
 
 export const CALENDAR_ALERT_TEMPLATE_KEY = 'connector:calendar_alert';
-
-const HOLD_STATUS: Record<
-  ProactiveHoldReason,
-  'suppressed_quiet_hours' | 'suppressed_cap' | 'suppressed_consent'
-> = {
-  quiet_hours: 'suppressed_quiet_hours',
-  frequency_cap: 'suppressed_cap',
-  not_enrolled: 'suppressed_consent',
-  no_watch_consent: 'suppressed_consent',
-};
 
 /**
  * The endings that mean "not yet", as opposed to "no".
@@ -500,7 +490,7 @@ async function sendOffer(
         category: 'calendar_alert',
         templateKey: CALENDAR_ALERT_TEMPLATE_KEY,
         dedupeKey: null,
-        status: HOLD_STATUS[verdict.reason],
+        status: holdStatus(verdict.reason),
       });
     }
     console.warn(

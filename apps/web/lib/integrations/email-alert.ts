@@ -3,10 +3,10 @@ import { eq } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
-import type {
-  ProactiveHoldReason,
-  ProactiveSendRequest,
-  ProactiveSendVerdict,
+import {
+  type ProactiveSendRequest,
+  type ProactiveSendVerdict,
+  holdStatus,
 } from '~/lib/channel/outbound-gate';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
@@ -196,18 +196,6 @@ export const EMAIL_ALERT_MAX_PER_SWEEP = 10;
 
 export const EMAIL_ALERT_TEMPLATE_KEY = 'connector:email_alert';
 
-/** Which suppression the ledger records, per hold — dispatch.ts's four statuses, chosen
- * by the gate's four reasons. */
-const HOLD_STATUS: Record<
-  ProactiveHoldReason,
-  'suppressed_quiet_hours' | 'suppressed_cap' | 'suppressed_consent'
-> = {
-  quiet_hours: 'suppressed_quiet_hours',
-  frequency_cap: 'suppressed_cap',
-  not_enrolled: 'suppressed_consent',
-  no_watch_consent: 'suppressed_consent',
-};
-
 /** Keyed on the CONNECTION and the provider's message id, so re-connecting a mailbox
  * that re-seeds the same messages mints new keys while a re-run of the same sweep does
  * not. */
@@ -359,7 +347,7 @@ export async function alertParentForEmail(
       category: 'email_alert',
       templateKey: EMAIL_ALERT_TEMPLATE_KEY,
       dedupeKey: null,
-      status: HOLD_STATUS[verdict.reason],
+      status: holdStatus(verdict.reason),
     });
     console.warn({ familyId, reason: verdict.reason }, 'email alert: held by the outbound gate');
     return { alert: `gate_refused:${verdict.reason}`, booking: null, going: null };
