@@ -423,6 +423,15 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // choice rather than by omission — the bound is the departure event itself, one per
   // (family, departed parent), held by the dedupe key (PROACTIVE_CAP says so).
   'co_parent_departed',
+  // VIL-352 · a document a parent FORWARDED to their Hale address, and the answer to it
+  // (migration 0120). Its own category and not 'reply': the inbound row files a third
+  // party's message rather than the parent's own words, and a PIPEDA right-to-access read
+  // that called a school's newsletter a reply would describe the opposite of what
+  // happened. It is parent-started, so the loop-health digest's EXCLUSION list
+  // (PARENT_STARTED_CATEGORIES, health-digest.ts) is where it belongs if it is ever
+  // counted; the outbound gate's INCLUSION map leaves it unmetered, which is correct —
+  // every message on this door answers something the parent just sent.
+  'forwarded_mail',
 ]);
 
 /**

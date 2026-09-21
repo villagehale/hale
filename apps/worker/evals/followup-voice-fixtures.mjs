@@ -77,6 +77,32 @@ export const FOLLOWUP_VOICE_FIXTURES = [
   },
   {
     /**
+     * VIL-360 · the daycare check-in, WITH a name. The provider is pinned exactly as the
+     * activity title is: a message that does not carry it is not provably about the
+     * place the parent named, and a place Hale renames is a place they cannot answer
+     * about.
+     */
+    id: 'daycare-named',
+    request: { kind: 'daycare', provider: 'Little Sprouts' },
+    watchFor:
+      'One warm question about how Little Sprouts is going, with the pressure taken off. Must not assume it is going well, must not offer to find another one, and must say nothing about the child - no age, no pronoun, no name.',
+    forbiddenPatterns: [INVENTED_CHILD_FACT],
+  },
+  {
+    /**
+     * The same ask with NOTHING to pin. The parent typed all lowercase, or named nobody,
+     * so the grammar captured no provider — and the one thing the composer must not do
+     * is fill that in. There is no gate that can catch an invented business name, which
+     * is why the fixture is here and why the judge is told to look for one.
+     */
+    id: 'daycare-unnamed',
+    request: { kind: 'daycare', provider: null },
+    watchFor:
+      'No provider was captured. The ask has to work generically ("how is daycare going?") and must invent no name, no town, no kind of place, and nothing about the child.',
+    forbiddenPatterns: [INVENTED_CHILD_FACT, /\b(?:centre|center|academy|montessori|nursery|preschool)\b/i],
+  },
+  {
+    /**
      * The runtime recompose loop, as a PROMPT property rather than a code one. The
      * machinery is proved in apps/web/lib/channel/followup/voice.test.ts; what only a
      * real model can answer is whether being told "not_one_question" actually produces

@@ -1,10 +1,15 @@
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { cityRecLine } from '~/lib/channel/rec-morning';
 import { type DailyOutlook, fakeWeather } from '~/lib/weather/open-meteo';
 import { WATCH_OFFER } from './copy.js';
 import { makeFakeDb } from './fakes.js';
-import { checkpointSurvivedCompose, createRadarComposer } from './radar.js';
+import {
+  checkpointSurvivedCompose,
+  createRadarComposer,
+  weekendPickSurvivedCompose,
+} from './radar.js';
 
 /** The rec-morning lane's Toronto line: a different answer, from a different module,
  * that the radar must never recite back as though it had checked this family. Pinned to
@@ -83,6 +88,38 @@ function composer(db: ReturnType<typeof makeFakeDb>) {
 
 const MAYA = { name: 'Maya', ageMonths: 48, agePrecision: 'years' } as const;
 
+/**
+ * Two composed sentences for the SAME decision: one that names the seeded candidate and
+ * one that does not. The MECHANICS of the voice call are faked so that a stamping rule
+ * can be exercised over a text the composer did not write itself — what Hale actually
+ * says is the eval's job against real cached Claude (rule #8), which is why neither
+ * sentence is asserted for quality.
+ */
+const KEEPS_THE_PICK = 'Saturday: Library story time looks like the one for Maya.';
+const DROPS_THE_PICK = "Got it - I'm mapping what's near you now. More in a day or two.";
+
+function voiceReturning(message: string): AgentClient {
+  return {
+    messages: {
+      async create() {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ message }) }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        };
+      },
+    },
+  } as unknown as AgentClient;
+}
+
+function voicedComposer(db: ReturnType<typeof makeFakeDb>, message: string) {
+  return createRadarComposer({
+    database: db.db,
+    weather: fakeWeather([]),
+    client: voiceReturning(message),
+    now: () => NOW,
+  });
+}
+
 describe('createRadarComposer', () => {
   it('names a real candidate and a real registration window it read for this family', async () => {
     const db = makeFakeDb();
@@ -99,6 +136,62 @@ describe('createRadarComposer', () => {
     expect(payload.message).toContain('Aug 11');
     expect(payload.itemCount).toBe(2);
     expect(payload.followUpNeeded).toBe(false);
+    // VIL-360 · the D23 anchor the caller stamps on the ledger row - earned by the
+    // TEXT, exactly as the told-marker beside it is. "Those are all weekend finds"
+    // points at what this message SAID, so a compose that dropped the pick leaves
+    // nothing for the ask to point at.
+    expect(payload.weekendPickOffered).toBe(true);
+  });
+
+  it('offers no weekend-pick anchor when there was no pick to offer', async () => {
+    const db = makeFakeDb();
+
+    const payload = await composer(db).compose({
+      familyId: FAMILY_ID,
+      children: [MAYA],
+      areaCoarse: 'L7G',
+    });
+
+    expect(payload.weekendPickOffered).toBe(false);
+  });
+
+  /**
+   * THE STAMP IS READ OFF THE COMPOSED TEXT, and only a composed text can show it.
+   *
+   * `weekendPickSurvivedCompose` is unit-tested below, but a composer that went back to
+   * reading `decision.weekendPick !== null` would leave every one of those green: the
+   * deterministic render always names the pick it was handed, so the two rules agree on
+   * every other test in this file. These two disagree — same decision, same candidate,
+   * two sentences — which is the only shape that pins which one the composer used.
+   */
+  it('does not stamp the D23 anchor on a composed message that dropped the pick', async () => {
+    const db = makeFakeDb();
+    seedCandidate(db);
+
+    const payload = await voicedComposer(db, DROPS_THE_PICK).compose({
+      familyId: FAMILY_ID,
+      children: [MAYA],
+      areaCoarse: 'M5V',
+    });
+
+    // The composed sentence is what shipped - so this is the flag disagreeing with the
+    // decision, not a quiet fall back to the deterministic render (which names the pick).
+    expect(payload.message).toBe(DROPS_THE_PICK);
+    expect(payload.weekendPickOffered).toBe(false);
+  });
+
+  it('stamps it when the composed message carries the pick', async () => {
+    const db = makeFakeDb();
+    seedCandidate(db);
+
+    const payload = await voicedComposer(db, KEEPS_THE_PICK).compose({
+      familyId: FAMILY_ID,
+      children: [MAYA],
+      areaCoarse: 'M5V',
+    });
+
+    expect(payload.message).toBe(KEEPS_THE_PICK);
+    expect(payload.weekendPickOffered).toBe(true);
   });
 
   it('never writes the watch question — the state machine appends it', async () => {
@@ -418,5 +511,41 @@ describe('checkpointSurvivedCompose — the told-marker is earned by the text (r
     expect(
       checkpointSurvivedCompose('I will text you about your kids this month.', TASK),
     ).toBe(false);
+  });
+});
+
+/**
+ * VIL-360 · THE D23 ANCHOR IS EARNED BY THE TEXT.
+ *
+ * The weekday-care ask says "Those are all weekend finds" and points at this message.
+ * That is a DEICTIC claim about what the parent read, and the register rule's whole
+ * corollary is that an anchor Hale cannot check is the same defect as an inference Hale
+ * should not make. The composer samples at temperature 1 and the launch-day P0 above
+ * records that it CAN drop a decided block, so the decision alone is not the artefact -
+ * the sentence is. Wrong in the other direction costs nothing but an ask that never
+ * fires; wrong in this one is Hale telling a family what it just sent them.
+ */
+describe('weekendPickSurvivedCompose', () => {
+  const TITLE = 'Riverdale Farm morning drop-in';
+
+  it('passes when a distinctive word of the pick survives composition', () => {
+    expect(
+      weekendPickSurvivedCompose('Saturday at Riverdale Farm looks like the one.', TITLE),
+    ).toBe(true);
+  });
+
+  it('fails when the compose dropped the pick entirely', () => {
+    expect(
+      weekendPickSurvivedCompose(
+        'Got it - I am mapping what is near you now. More in a day or two.',
+        TITLE,
+      ),
+    ).toBe(false);
+  });
+
+  it('generic words alone cannot fake a find', () => {
+    expect(weekendPickSurvivedCompose('I will text you about your kids this week.', TITLE)).toBe(
+      false,
+    );
   });
 });

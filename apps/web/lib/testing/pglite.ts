@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { type Database, schema } from '@hale/db';
+import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 
 /**
@@ -143,10 +144,18 @@ export async function seedFamily(
   displayName = 'Test Family',
   id?: string,
 ): Promise<SeededFamily> {
-  const [family] = await database
-    .insert(schema.families)
-    .values({ ...(id ? { id } : {}), displayName, provinceOrState: 'ON' })
-    .returning({ id: schema.families.id });
+  // RAW SQL, deliberately. Drizzle's insert builder names EVERY column of the table and
+  // writes `default` for the ones it was not given — so the moment a migration adds a
+  // families column, this helper stops working against any test that boots the database
+  // at an EARLIER migration (facts.migration.test.ts boots at 0083). Naming only the two
+  // columns it actually sets makes the helper independent of the schema version, which is
+  // what a fixture for "the database as it was" has to be.
+  const inserted = (await database.execute(
+    id
+      ? sql`insert into families (id, display_name, province_or_state) values (${id}, ${displayName}, 'ON') returning id`
+      : sql`insert into families (display_name, province_or_state) values (${displayName}, 'ON') returning id`,
+  )) as unknown as { rows?: Array<{ id: string }> } | Array<{ id: string }>;
+  const family = (Array.isArray(inserted) ? inserted : (inserted.rows ?? []))[0];
   if (!family) throw new Error('seedFamily: families insert returned no row');
 
   const [user] = await database

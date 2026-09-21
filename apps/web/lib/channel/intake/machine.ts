@@ -86,7 +86,7 @@ import {
 } from './live-lookup';
 import { isOfficialPageAsk, officialPageFallbackReply } from './official-page';
 import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
-import type { RadarComposer } from './radar';
+import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, type RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
 import {
   type IntakeSession,
@@ -1085,7 +1085,17 @@ async function provision(
     children: gathered.collected.children,
     areaCoarse: gathered.location.areaCoarse,
   });
-  const sent = await sendAndRecord(database, ctx, `${radar.message}\n\n${WATCH_OFFER}`, deps, []);
+  const sent = await sendAndRecord(
+    database,
+    ctx,
+    `${radar.message}\n\n${WATCH_OFFER}`,
+    deps,
+    [],
+    // VIL-360 · the D23 anchor. Stamped ONLY when this text carried a weekend pick,
+    // because the weekday-care ask says "those are all weekend finds" about it, and a
+    // question whose premise Hale cannot check is the defect that rule exists to stop.
+    radar.weekendPickOffered ? INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY : undefined,
+  );
 
   // THE INTRODUCTION, once the radar has already earned it: an MMS carrying Hale's own
   // vCard, so the parent taps Add and every later text arrives under a name instead of a

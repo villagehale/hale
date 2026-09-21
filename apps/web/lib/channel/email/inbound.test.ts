@@ -5,7 +5,9 @@ import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
+import { emailInboundConfig } from './config';
 import { FakeContentReader, type InboundContentReader } from './content';
+import { fakeEmailReply } from './reply-send';
 import {
   type EmailInboundDeps,
   type EmailInboundOutcome,
@@ -104,6 +106,9 @@ interface Harness {
   infos: unknown[][];
   /** Every outcome the shell counted, in order (rule #11's rate). */
   counted: EmailInboundOutcome[];
+  /** Every message the reply transport was handed — the forwarding door's assertion
+   * surface for "was the parent actually asked". */
+  sent: Array<{ to: string; text: string; replyTo?: string }>;
 }
 
 function harness(
@@ -119,8 +124,25 @@ function harness(
   const queued: ChannelMessageReceivedJob[] = [];
   const infos: unknown[][] = [];
   const counted: EmailInboundOutcome[] = [];
+  // Built lazily, exactly as the route builds it: `configure()` has run by the time a
+  // test calls the thunk, and a test that never reaches a send never constructs one.
+  const sent: Array<{ to: string; text: string; replyTo?: string }> = [];
   const deps: EmailInboundDeps = {
     database: fake.db,
+    reply: () => {
+      const config = emailInboundConfig();
+      if (!config) throw new Error('inbound email test: no config');
+      const reply = fakeEmailReply(config);
+      return {
+        ...reply.deps,
+        transport: {
+          send: async (msg) => {
+            sent.push({ to: msg.to, text: msg.text, replyTo: msg.replyTo });
+            return { id: 'prov-fake', error: null };
+          },
+        },
+      };
+    },
     content: (): InboundContentReader => {
       state.built += 1;
       return contentReader;
@@ -148,6 +170,7 @@ function harness(
     queued,
     infos,
     counted,
+    sent,
     get built() {
       return state.built;
     },
