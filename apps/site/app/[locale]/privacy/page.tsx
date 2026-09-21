@@ -176,7 +176,9 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           email, calendar, or a daycare app), we store an encrypted authorization token and the
           minimum metadata needed to sync, plus the entries that tool records into your
           family&rsquo;s timeline. You control which integrations are connected and can disconnect
-          them.
+          them. When a flight, hotel or rental confirmation in a connected mailbox shows that your
+          children are travelling with you, what we keep is the destination city and the dates
+          only; we never store the message, the confirmation number, or what the trip cost.
         </p>
         <p>
           PIPEDA asks for the purpose to be identified before the collection, and that is
@@ -255,6 +257,13 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
               Terms of Service
             </a>
             , and protecting a child or another person from harm.
+          </li>
+          <li>
+            <strong>Travel briefs.</strong> Noticing, from a flight, hotel or rental confirmation in
+            a mailbox you connected, that your children are going somewhere with you &mdash; so that
+            about a week before you go, Hale can text you a couple of things that are on for them
+            where you are going. We read the confirmation for the destination and the dates and for
+            whether a child is on the booking, and nothing else.
           </li>
           <li>
             <strong>Measuring our advertisements.</strong> Understanding whether an ad led a visitor
