@@ -124,6 +124,43 @@ function connection(provider: ActiveConnectorConnection['provider'], meta: Recor
   return { id: 'i1', familyId: FAMILY, userId: USER, provider, providerMetadata: meta, tokens };
 }
 
+/** A mailbox whose one message carries internalDate and a child's name. */
+function mailbox(internalDate?: string): GoogleFetch {
+  return async (url) => {
+    if (url.includes('/messages/m2')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 'm2',
+          snippet: "Mila's swim class is cancelled",
+          internalDate,
+          payload: {
+            headers: [
+              { name: 'Subject', value: 'Swim cancelled' },
+              { name: 'From', value: 'Pool <info@pool.example>' },
+            ],
+          },
+        }),
+      };
+    }
+    if (url.includes('/profile')) {
+      return { ok: true, status: 200, json: async () => ({ historyId: '9002' }) };
+    }
+    if (url.includes('/history')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          history: [{ messagesAdded: [{ message: { id: 'm2' } }] }],
+          historyId: '9100',
+        }),
+      };
+    }
+    return { ok: true, status: 200, json: async () => ({ messages: [{ id: 'm2' }] }) };
+  };
+}
+
 describe('syncConnection — Calendar', () => {
   it('maps events.list results → redacted events.ingested and advances syncToken', async () => {
     const { fetchImpl } = routedFetch([
@@ -605,43 +642,6 @@ describe('syncConnection — Gmail', () => {
 });
 
 describe('syncConnection — the gmail alert hand-off', () => {
-  /** A mailbox whose one message carries internalDate and a child's name. */
-  function mailbox(internalDate?: string): GoogleFetch {
-    return async (url) => {
-      if (url.includes('/messages/m2')) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            id: 'm2',
-            snippet: "Mila's swim class is cancelled",
-            internalDate,
-            payload: {
-              headers: [
-                { name: 'Subject', value: 'Swim cancelled' },
-                { name: 'From', value: 'Pool <info@pool.example>' },
-              ],
-            },
-          }),
-        };
-      }
-      if (url.includes('/profile')) {
-        return { ok: true, status: 200, json: async () => ({ historyId: '9002' }) };
-      }
-      if (url.includes('/history')) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            history: [{ messagesAdded: [{ message: { id: 'm2' } }] }],
-            historyId: '9100',
-          }),
-        };
-      }
-      return { ok: true, status: 200, json: async () => ({ messages: [{ id: 'm2' }] }) };
-    };
-  }
-
   it('hands the UNREDACTED envelope over, with internalDate as an ISO instant', async () => {
     // The triage stage matches on the family's child NAMES, so the alert path reads the
     // envelope before redactEventPayload masks them. Kills the mutation that reuses the
@@ -764,39 +764,72 @@ describe('syncConnection — the gmail alert hand-off', () => {
     expect(thrown.emailAlerts).toEqual([{ alert: 'dark', booking: null, going: null, aside: null }]);
     expect(cap.enqueued).toHaveLength(1);
   });
+});
 
-  describe('the aside tally leaves the connection', () => {
-    it('carries both lanes asides out beside the two alert lists', async () => {
-      const { deps } = stubDeps({
-        googleFetch: mailbox('1789000000000'),
-        alertGmailEnvelopes: async (batch) =>
-          batch.envelopes.map(() => ({
-            alert: 'sent' as const,
-            booking: null,
-            going: null,
-            aside: { outcome: 'aside' as const, refusals: [] },
-          })),
-      });
-      const result = await syncConnection(connection('gmail', { historyId: '9002' }), deps);
-      expect(result.asides).toEqual([{ outcome: 'aside', refusals: [] }]);
+describe('syncConnection — the aside tally leaves the connection', () => {
+  it('carries the gmail lane asides out beside the two alert lists', async () => {
+    const { deps } = stubDeps({
+      googleFetch: mailbox('1789000000000'),
+      alertGmailEnvelopes: async (batch) =>
+        batch.envelopes.map(() => ({
+          alert: 'sent' as const,
+          booking: null,
+          going: null,
+          aside: { outcome: 'aside' as const, refusals: [] },
+        })),
     });
+    const result = await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+    expect(result.asides).toEqual([{ outcome: 'aside', refusals: [] }]);
+  });
 
-    it('drops the envelopes that never reached the pass rather than counting them', async () => {
-      // `aside: null` is "never got that far", the same fact `booking: null` carries. An
-      // eighth outcome name meaning the same thing would be a bucket that means two things.
-      const { deps } = stubDeps({
-        googleFetch: mailbox('1789000000000'),
-        alertGmailEnvelopes: async (batch) =>
-          batch.envelopes.map(() => ({
-            alert: 'no_send_target' as const,
-            booking: null,
-            going: null,
-            aside: null,
-          })),
-      });
-      const result = await syncConnection(connection('gmail', { historyId: '9002' }), deps);
-      expect(result.asides).toEqual([]);
+  it('drops the envelopes that never reached the pass rather than counting them', async () => {
+    // `aside: null` is "never got that far", the same fact `booking: null` carries. An
+    // eighth outcome name meaning the same thing would be a bucket that means two things.
+    const { deps } = stubDeps({
+      googleFetch: mailbox('1789000000000'),
+      alertGmailEnvelopes: async (batch) =>
+        batch.envelopes.map(() => ({
+          alert: 'no_send_target' as const,
+          booking: null,
+          going: null,
+          aside: null,
+        })),
     });
+    const result = await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+    expect(result.asides).toEqual([]);
+  });
+
+  it('carries the CALENDAR lane asides out too', async () => {
+    // THE HALF THE FIRST TEST DOES NOT REACH. Deleting `asides.push(...sweep.asides)`
+    // left every suite green: the gmail test above exercises one lane, and the cron
+    // histogram test stubs `syncOne` whole, so the calendar end of a rule #11 seam could
+    // be lost between calendar-alert.ts and the summary without a single failure. One
+    // fold per lane means one test per lane.
+    const { fetchImpl } = routedFetch([
+      {
+        match: 'calendar/v3',
+        body: {
+          items: [{ id: 'ev1', updated: '2026-09-17T14:55:00.000Z', summary: 'Swim' }],
+          nextSyncToken: 'SYNC-2',
+        },
+      },
+    ]);
+    const { deps } = stubDeps({
+      googleFetch: fetchImpl,
+      alertCalendarChanges: async () => ({
+        changes: ['sent'] as const,
+        reoffers: ['sent'] as const,
+        asides: [
+          { outcome: 'aside' as const, refusals: [] },
+          { outcome: 'refused' as const, refusals: ['too_many_segments' as const] },
+        ],
+      }),
+    });
+    const result = await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+    expect(result.asides).toEqual([
+      { outcome: 'aside', refusals: [] },
+      { outcome: 'refused', refusals: ['too_many_segments'] },
+    ]);
   });
 });
 

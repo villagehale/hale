@@ -487,7 +487,11 @@ export async function alertParentForEmail(
       .set({ status: 'failed', errorCode: code })
       .where(eq(schema.channelMessages.id, claimed.id));
     console.error({ familyId, code }, 'email alert: the provider refused the text');
-    return { alert: 'send_failed', booking: null, going: null, aside: null };
+    // THE TALLY SURVIVES THE REFUSAL. The pass ran above this line, so a Haiku call and an
+    // `agent_runs` row have already been paid for; `null` here would say "never reached"
+    // of work that was done, and the sweep's histogram would sum to fewer asides than the
+    // database was billed for.
+    return { alert: 'send_failed', booking: null, going: null, aside: asideTally(asideOutcome) };
   }
 
   await database

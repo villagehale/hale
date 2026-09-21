@@ -1680,4 +1680,17 @@ describe('the voice pass', () => {
     const unreachable = await sweepBoth(harness({ phone: null }));
     expect(unreachable.asides).toEqual([]);
   });
+
+  it('still reports the pass when the PROVIDER refuses the text it worded', async () => {
+    // The pass runs before the send, so a provider refusal arrives with a Haiku call and
+    // an `agent_runs` row already paid for. Reporting nothing there would say "never
+    // reached" of work that was done, and the histogram would sum to fewer asides than
+    // the database was billed for.
+    const speaker = speaking();
+    const h = harness({ aside: speaker.pass, sendThrows: new TwilioSendError('21610', 400) });
+    const result = await sweepBoth(h);
+    expect(result.changes).toEqual(['send_failed']);
+    expect(speaker.calls).toBe(1);
+    expect(result.asides).toEqual([{ outcome: 'aside', refusals: [] }]);
+  });
 });

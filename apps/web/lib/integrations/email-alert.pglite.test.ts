@@ -1822,4 +1822,18 @@ describe('the voice pass', () => {
     const unreachable = await alertPair(harness({ phone: null }), 'tally-3');
     expect(unreachable.aside).toBeNull();
   });
+
+  it('still reports the pass when the PROVIDER refuses the text it worded', async () => {
+    // The pass runs before the send, so a provider refusal arrives with a Haiku call and
+    // an `agent_runs` row already paid for. Reporting `null` there would say "never
+    // reached" of work that was done, and the histogram would sum to fewer asides than
+    // the database was billed for — which is the bucket-that-means-something-else rule
+    // #11 forbids, pointed at the one number this feature is judged on.
+    const speaker = speaking();
+    const h = harness({ aside: speaker.pass, sendThrows: new TwilioSendError('21610', 400) });
+    const result = await alertPair(h, 'tally-send-failed');
+    expect(result.alert).toBe('send_failed');
+    expect(speaker.calls).toBe(1);
+    expect(result.aside).toEqual({ outcome: 'aside', refusals: [] });
+  });
 });

@@ -602,7 +602,11 @@ async function sendOffer(
       .set({ status: 'failed', errorCode: code })
       .where(eq(schema.channelMessages.id, claimed.id));
     console.error({ familyId, code }, 'calendar alert: the provider refused the text');
-    return without('send_failed');
+    // THE TALLY SURVIVES THE REFUSAL. The pass ran above this line, so a Haiku call and an
+    // `agent_runs` row have already been paid for; dropping it here would say "never
+    // reached" of work that was done, and the sweep's histogram would sum to fewer asides
+    // than the database was billed for.
+    return { outcome: 'send_failed', aside: asideTally(asideOutcome) };
   }
 
   await database
