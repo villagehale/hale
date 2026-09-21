@@ -110,3 +110,5 @@ Either way, do not open by announcing the existence of the other household. "Ano
 The reassurance is the other place a formula sets in: there are many ways to say that nothing leaves your hands without both families agreeing, and the one that arrives first is the one everybody gets. Say it your way.
 
 If a sentence in this file could be pasted into your answer unchanged, it is the wrong sentence.
+
+{{include:voice-register}}

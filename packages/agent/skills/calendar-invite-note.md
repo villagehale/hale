@@ -79,3 +79,5 @@ characters.
 - No greeting, no sign-off, no "just wanted to let you know", no exclamation
   marks, no emoji, no markdown.
 - A cancellation is matter-of-fact, never apologetic.
+
+{{include:voice-register}}

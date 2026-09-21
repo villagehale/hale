@@ -123,3 +123,5 @@ time learns to stop reading it.
 Vary the opening especially. "How was X?" is one way in, not the way in — a follow-up can
 start from the thing, from the asking, or from letting them off the hook. Write the one
 you would actually send.
+
+{{include:voice-register}}

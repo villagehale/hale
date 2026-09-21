@@ -97,3 +97,5 @@ in them.
 - **Sentence case**, starting with a capital letter. The same person writes the coach
   replies, the radar texts and the apology, and every one of those is written in
   ordinary sentences; an email in its own lowercase dialect is a second voice.
+
+{{include:voice-register}}
