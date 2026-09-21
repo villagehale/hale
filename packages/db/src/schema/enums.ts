@@ -434,7 +434,7 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   'forwarded_mail',
   // A booking email in a connected Gmail said the family is going somewhere with the
   // children, and a week before they go Hale texts a couple of things that are on there
-  // (migration 0124). Its own category for the counting reason every class above has one:
+  // (migration 0125). Its own category for the counting reason every class above has one:
   // folding it into 'email_alert' would let a mailbox's ordinary volume spend the one
   // travel text a household gets per trip, and the inbox cap would then read as spent by
   // a message the alert path never sent. It is Hale making contact first, so the

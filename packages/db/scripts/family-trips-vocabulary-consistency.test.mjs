@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
- * v5 travel — holds migration 0124's CHECK constraints against the TypeScript source lists.
+ * v5 travel — holds migration 0125's CHECK constraints against the TypeScript source lists.
  *
  * `child_evidence` and `closed_reason` are plain `text` columns with two closed
  * vocabularies, and each one exists twice: once in TypeScript (what the detect pass and
@@ -22,7 +22,7 @@ import { describe, expect, it } from 'vitest';
  * The pattern (and this directory) follows watched-spots-vocabulary-consistency.test.mjs.
  */
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const MIGRATION = path.resolve(scriptDir, '..', 'drizzle', '0124_family_trips.sql');
+const MIGRATION = path.resolve(scriptDir, '..', 'drizzle', '0125_family_trips.sql');
 const SCHEMA = path.resolve(scriptDir, '..', 'src', 'schema', 'family-trips.ts');
 
 /** The quoted string literals inside a named CHECK's first `IN ( … )` list. */
