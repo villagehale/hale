@@ -202,34 +202,58 @@ export function renderWeeklyPlanSms(
     };
   }
 
-  const placed = foldWeeklyVoice(payload.voice?.signOff, 0);
   const pending = pendingCount(payload.items);
-  const ask = approvalAsk(
-    pending,
-    draftedCount(payload.items),
-    placed.text ?? variant(PLACED_ASK_POOL, PLACED_ASK_POOL_NAME),
+  const drafts = draftedCount(payload.items);
+  // Both forms of the whole message for one closing line. A week too long to read inline
+  // takes the overflow form it already has, rather than a fourth and fifth segment — and
+  // the ask survives either way, because the linked form carries the same tail.
+  const list =
+    payload.items.length > SMS_ITEM_CAP
+      ? null
+      : itemsChronological(payload.items)
+          .map((i) => smsItem(i, payload.children))
+          .join(ITEM_SEP);
+  const forms = (ask: string | null) => {
+    const tail = ask === null ? '' : `${ITEM_SEP}${ask}`;
+    return {
+      linked: send(`${FULL_WEEK_PREFIX}${payload.deepLink}${tail}`),
+      inline: list === null ? null : send(`${list}${tail}`),
+    };
+  };
+
+  // THE SHAPE OF THE MESSAGE IS DECIDED FROM THE REVIEWED CLOSER, ALWAYS — which is why
+  // the pool member is composed even on a week that ends up reading the model's sentence.
+  //
+  // The sign-off used to be spliced into the tail BEFORE this choice was made, and the
+  // choice absorbed its cost silently: a composed sentence long enough to push the week
+  // past three segments made the renderer fall to the linked form, which replaces the
+  // parent's ENTIRE item list with the one app link this product keeps as a narrow
+  // exception (docs/voice.md) — and the leg still reported 'used'. A composed sentence may
+  // change the WORDS of the closing line and nothing else about the message.
+  const deterministic = forms(
+    approvalAsk(pending, drafts, variant(PLACED_ASK_POOL, PLACED_ASK_POOL_NAME)),
   );
-  const tail = ask === null ? '' : `${ITEM_SEP}${ask}`;
+  const inlineFits =
+    deterministic.inline !== null && smsSegments(deterministic.inline) <= SEGMENT_CAP;
+  const chosen = (of: { linked: string; inline: string | null }) =>
+    inlineFits && of.inline !== null ? of.inline : of.linked;
+
   // THE SIGN-OFF SLOT ONLY EXISTS ON A WEEK WITH NOTHING PENDING. Every other week closes
   // on the approval ask, which is a count of rows the mint is holding and never a composed
   // sentence — so there is no outcome to report, and reporting 'absent' there would invent
   // a composer failure on a slot nobody asked for (RenderedContent.voice).
-  const signOff: VoiceOutcome | undefined = pending === 0 ? placed.outcome : undefined;
+  if (pending !== 0) return { kind: 'sms', text: chosen(deterministic) };
 
-  const linked = send(`${FULL_WEEK_PREFIX}${payload.deepLink}${tail}`);
-  if (payload.items.length > SMS_ITEM_CAP) return { kind: 'sms', text: linked, voice: signOff };
-
-  const list = itemsChronological(payload.items)
-    .map((i) => smsItem(i, payload.children))
-    .join(ITEM_SEP);
-  const inline = send(`${list}${tail}`);
-
-  // A week too long to read inline takes the overflow form it already has, rather than
-  // a fourth and fifth segment. What survives either way is the ask — and so does the
-  // sign-off, because the linked form carries the same tail.
-  return {
-    kind: 'sms',
-    text: smsSegments(inline) <= SEGMENT_CAP ? inline : linked,
-    voice: signOff,
-  };
+  const placed = foldWeeklyVoice(payload.voice?.signOff, 0);
+  if (placed.text === null) {
+    return { kind: 'sms', text: chosen(deterministic), voice: placed.outcome };
+  }
+  // Measured in the shape the week chose, so the budget is spent on the sentence and never
+  // on the list. Over it, the pool member is what ships and the refusal says which
+  // happened: a sentence's cost depends on the week it rides with, so this is the one
+  // outcome the fold itself can never return.
+  const voiced = chosen(forms(placed.text));
+  return smsSegments(voiced) <= SEGMENT_CAP
+    ? { kind: 'sms', text: voiced, voice: 'used' }
+    : { kind: 'sms', text: chosen(deterministic), voice: 'refused:over_segment' };
 }

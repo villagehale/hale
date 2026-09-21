@@ -485,6 +485,78 @@ describe('all-placed week (items > 0, pending == 0)', () => {
     // composer failure on a slot that was never asked for.
     expect(smsVoice(fullWeek, 'first_name')).toBeUndefined();
   });
+
+  /** A fully-placed week with a real week's worth of items on it: it reads inline, with
+   * every item, and it is close enough to the three-segment ceiling that a composed
+   * closing sentence is the thing that can push it over. */
+  const busyPlaced = payload({
+    children: [maya, liam],
+    items: [
+      item({ kind: 'village', title: 'Library storytime', childIds: ['c-maya'], startsAt: '2026-07-20T10:30' }),
+      item({ kind: 'village', title: 'Swim class', childIds: ['c-liam'], startsAt: '2026-07-20T16:30' }),
+      item({ kind: 'routine', title: 'Music class', childIds: ['c-maya'], startsAt: '2026-07-21T09:00' }),
+      item({ kind: 'village', title: 'Soccer practice', childIds: ['c-liam'], startsAt: '2026-07-22T17:00' }),
+      item({ kind: 'village', title: 'Park meetup', childIds: ['c-maya'], startsAt: '2026-07-23T14:00' }),
+      item({ kind: 'appointment', title: 'Dentist', childIds: ['c-liam'], startsAt: '2026-07-24T11:15' }),
+      item({ kind: 'village', title: 'Gymnastics', childIds: ['c-maya'], startsAt: '2026-07-25T15:45' }),
+      item({ kind: 'birthday', title: "Liam's birthday", childIds: ['c-liam'], startsAt: '2026-07-26' }),
+    ],
+  });
+
+  const withSignOff = (p: WeeklyPlanPayload, signOff: string) =>
+    payload({ ...p, voice: { greeting: 'Hi', weekFraming: 'A full one', itemLines: {}, signOff } });
+
+  it('refuses a sign-off that would cost the parent their week, and says which happened', () => {
+    // THE SIGN-OFF IS NOT ALLOWED TO CHANGE THE SHAPE OF THE MESSAGE. It used to be
+    // spliced into the tail BEFORE the inline-vs-linked choice was made, so a long
+    // composed sentence pushed the whole message past three segments and the renderer
+    // answered by replacing the parent's entire item list with the one app link this
+    // product keeps as a narrow exception — and still reported 'used'. A composed
+    // sentence may change the WORDS of the closing line and nothing else about the
+    // message: the shape is decided from the reviewed pool copy, always.
+    const plain = sms(busyPlaced, 'first_name');
+    expect(plain).toContain('Swim class');
+    expect(plain).not.toContain('Full week:');
+    expect(smsSegments(plain)).toBeLessThanOrEqual(3);
+
+    const long = `That is the whole week and every one of them is already on your calendar, ${'so there is nothing at all for you to do about any of it this time round, '.repeat(3)}enjoy it.`;
+    const signed = withSignOff(busyPlaced, long);
+    // The FOLD passes it — zero questions, nothing dropped — and the WEEK refuses it,
+    // which is the one outcome the fold itself can never return.
+    expect(foldWeeklyVoice(long, 0).outcome).toBe('used');
+    expect(smsVoice(signed, 'first_name')).toBe('refused:over_segment');
+    // Byte-identical to the week with no voice at all: the parent loses the sentence and
+    // keeps everything else, rather than losing their list to keep the sentence.
+    expect(sms(signed, 'first_name')).toBe(plain);
+  });
+
+  it('measures the sign-off on the week that was already too long to read inline', () => {
+    // The other unmeasured tail: past the item cap the message is the link form by count,
+    // and the sign-off rides on it. That is legitimate — the week displaced the list, not
+    // the voice — but it is still measured, because a composed page appended to a link is
+    // a four-segment text nobody chose.
+    const many = payload({
+      ...busyPlaced,
+      items: [
+        ...busyPlaced.items,
+        item({ kind: 'village', title: 'Skating', childIds: ['c-maya'], startsAt: '2026-07-26T08:00' }),
+      ],
+    });
+    const linked = sms(many, 'first_name');
+    expect(linked).toContain('Full week:');
+
+    const short = withSignOff(many, 'All of it is on your calendar already.');
+    expect(sms(short, 'first_name')).toContain('All of it is on your calendar already.');
+    expect(smsVoice(short, 'first_name')).toBe('used');
+
+    const page = withSignOff(
+      many,
+      `Every last one of them is on your calendar already, ${'and none of it needs a thing from you between now and Sunday evening, '.repeat(5)}so enjoy the week.`,
+    );
+    expect(smsVoice(page, 'first_name')).toBe('refused:over_segment');
+    expect(sms(page, 'first_name')).toBe(linked);
+    expect(smsSegments(sms(page, 'first_name'))).toBeLessThanOrEqual(3);
+  });
 });
 
 describe('VIL-229 voice — email uses voice fields, facts stay deterministic', () => {
