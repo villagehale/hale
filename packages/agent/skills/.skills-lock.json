@@ -155,6 +155,10 @@
     "file": "verify-registration-window.md",
     "sha256": "08b916a61b81d255b60910d50f2f3277fbdbc7d00a939f6356b7d864e673d1a7"
   },
+  "voice-register.md": {
+    "file": "voice-register.md",
+    "sha256": "30fa3a658249ac041d8899d54836e36a9a88177bf5219e564c973d807b77f4f3"
+  },
   "voice-turn.md": {
     "file": "voice-turn.md",
     "sha256": "2b5e322af338df8fe18cb69a7de33894368168780f8f468866bb53f3e592466a"

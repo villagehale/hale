@@ -758,16 +758,24 @@ export function intakeConnectorOffer(
 }
 
 /**
- * The CASL keyword replies, frozen verbatim. STOP gets one final confirmation and then
- * silence; HELP gets the honest capability line. The unparseable reply during intake no
- * longer shares it: that moment is conversational, not compliance, and has its own
- * words now ({@link UNREADABLE_INTAKE_REPLY} — doctrine G7/L2).
+ * The CASL keyword replies. STOP gets one final confirmation and then silence; HELP gets
+ * the honest capability answer. The unparseable reply during intake no longer shares it:
+ * that moment is conversational, not compliance, and has its own words now
+ * ({@link UNREADABLE_INTAKE_REPLY} — doctrine G7/L2).
+ *
+ * HELP SHOWS, IT DOES NOT LIST (docs/voice.md rules 1 and 3). The old line — "I keep track
+ * of your family's week and text you when something needs doing" — is quoted in
+ * coach-channel-sms.md as THE failure it teaches against: "the same question answered with
+ * a feature inventory — nothing in it is a thing a parent can type." So the inventory is
+ * replaced by two things a parent could actually send, one of them quoted the way they
+ * would type it, and the identity clause and the opt-out tail are untouched (both frozen:
+ * the CTA policy wants the identification, CASL wants the mechanism).
  */
 export const STOP_ACK =
   "You're unsubscribed - I won't text you again. Reply START if you ever want me back.";
 export const HELP_REPLY =
-  "I'm Hale - I keep track of your family's week and text you when something needs doing. Tell me your kids' names and ages and I'll take it from there. Reply STOP to unsubscribe.";
-export const START_ACK = "You're back - I'll text you when something needs doing.";
+  "I'm Hale. Text me your kids' ages and postal code to get started, or things like 'move Thursday swim to 4:30' any time - if it touches the family week, it's mine. Reply STOP to unsubscribe.";
+export const START_ACK = "You're back - I'll keep an eye on your week again.";
 
 /**
  * The French keyword replies — now the answer to a keyword rather than a line waiting
@@ -806,7 +814,7 @@ export const START_ACK = "You're back - I'll text you when something needs doing
  */
 export const HELP_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: HELP_REPLY,
-  fr: "Je suis Hale - je garde le fil de la semaine de votre famille et je vous texte quand quelque chose demande votre attention. Dites-moi le nom et l'age de vos enfants et je m'occupe du reste. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
+  fr: "Je suis Hale. Écrivez-moi l'age de vos enfants et votre code postal pour commencer, ou par exemple 'bouge la natation de jeudi à 16h30' n'importe quand. Si cela touche la semaine de la famille, c'est pour moi. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
 };
 
 /**
@@ -852,7 +860,7 @@ export const STOP_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
 
 export const START_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: START_ACK,
-  fr: 'Vous voilà de retour - je vous texte quand quelque chose demande votre attention.',
+  fr: 'Vous voilà de retour - je reprends le fil de votre semaine.',
 };
 
 /**

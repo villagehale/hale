@@ -76,6 +76,9 @@ const EXAMPLE_EVENT_ID = 'evt_0000000000example';
  * row — the draft's `teenContent`/`privacySensitive` flags are what every parent-facing
  * surface redacts on.
  */
+/** family_events.source, read off the table so this enum cannot drift from the column. */
+export type FamilyEventSource = (typeof schema.familyEvents)['$inferSelect']['source'];
+
 export interface ScheduleEvent {
   eventId: string;
   title: string;
@@ -83,6 +86,15 @@ export interface ScheduleEvent {
   endsAt: Date | null;
   location: string | null;
   childId: string | null;
+  /** WHO PUT IT THERE (family_events.source) — an enum value, never content, so it rides
+   * through the redaction unchanged and needs no second gate.
+   *
+   * It is here because provenance is the only thing that tells a Hale PLACEMENT apart
+   * from an occasion the family added themselves, and two outbound lanes divide on
+   * exactly that: the composed follow-up asks how a placement went (channel/followup),
+   * and the evening check-in's anchor asks about what the FAMILY put on the calendar. A
+   * placement named by both is one event, two registers, thirteen hours apart. */
+  source: FamilyEventSource;
   /** Age-derived at read time from the joined child's DOB — never a stored flag. */
   teen: boolean;
   sensitive: boolean;
@@ -625,6 +637,7 @@ const eventColumns = {
   location: schema.familyEvents.location,
   sensitive: schema.familyEvents.sensitive,
   childId: schema.familyEvents.childId,
+  source: schema.familyEvents.source,
   childDob: schema.children.dateOfBirth,
 };
 
@@ -637,6 +650,7 @@ export type ScheduleEventRow = {
   location: string | null;
   sensitive: boolean;
   childId: string | null;
+  source: FamilyEventSource;
   childDob: string | null;
 };
 
@@ -660,6 +674,7 @@ export function toScheduleEvent(row: ScheduleEventRow, now: Date): ScheduleEvent
     endsAt: row.endsAt,
     location: redacted ? null : row.location,
     childId: row.childId,
+    source: row.source,
     teen: row.childDob !== null && isTeenChild({ dateOfBirth: row.childDob }, now),
     sensitive: row.sensitive,
   };

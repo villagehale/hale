@@ -75,6 +75,20 @@ describe('the FAQ this build serves', () => {
     expect(answers).not.toContain('Monday morning');
   });
 
+  it('promises no quiet between the legs — the evening check-in asks every night', () => {
+    // The evening check-in is merged and tested and asks at 20:00 local EVERY
+    // night, stepping down to weekly only after three unanswered evenings. One
+    // flag flip from sending, "It is quiet in between" becomes false for every
+    // family that answers — so the answer names the legs and stops.
+    const answers = FAQ.map((item) => item.answer).join(' ');
+    expect(answers).not.toContain('quiet in between');
+    expect(answers).not.toContain('then quiet');
+    // Positive control: the cadence answer is still here and still names what
+    // Hale sends, so the absence above is a promise withheld, not a lost answer.
+    expect(answers).toContain('a heads-up the week a registration opens');
+    expect(answers).toContain('STOP works at any time');
+  });
+
   it('reaches consent and privacy inside the top four questions', () => {
     // Risk → time → money. They were Q6 and Q9 of 11, below the fold and behind
     // closed disclosures, on a product whose stated moat is privacy.

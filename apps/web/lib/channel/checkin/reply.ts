@@ -9,15 +9,16 @@ import {
   readCheckInState,
   recordCheckInAnswer,
 } from './cadence';
+import { nightlyOccasion } from '~/lib/channel/variant';
 import {
   CHECK_IN_ACK_TEMPLATE_KEY,
   CHECK_IN_ASK_TEMPLATE_KEY,
   CHECK_IN_DAILY_ACK,
-  CHECK_IN_NOTED_ACK,
   CHECK_IN_NOT_KEPT_ACK,
   CHECK_IN_OFF_ACK,
   CHECK_IN_STEP_DOWN_TEMPLATE_KEY,
   CHECK_IN_WEEKLY_ACK,
+  checkInNotedAck,
 } from './copy';
 import { isNotKept, storeCheckInNote } from './notes';
 import { asksHaleForSomething } from './request';
@@ -32,8 +33,13 @@ import { asksHaleForSomething } from './request';
  */
 
 /** The three words the ask itself teaches, plus the French a francophone parent would
- * reach for. Whole-string, never a substring: "no swimming tonight" is an answer. */
-const CADENCE_WORDS: Record<string, CheckInCadence> = {
+ * reach for. Whole-string, never a substring: "no swimming tonight" is an answer.
+ *
+ * EXPORTED so the pools are held to this map rather than to a list restated in a test
+ * (docs/voice.md rule 11): "no" being read as cadence OFF before anything else looks at
+ * the reply is what makes "no member may be answerable by a bare yes or no" mechanical,
+ * and a seventh keyword must not be able to widen that trap in silence. */
+export const CADENCE_WORDS: Record<string, CheckInCadence> = {
   less: 'weekly',
   weekly: 'weekly',
   no: 'off',
@@ -119,7 +125,10 @@ export async function handleEveningCheckInReply(
     await recordCheckInAnswer(tx, { familyId: input.familyId, cadence: null, now: input.now });
     await auditAnswer(tx, input, { stored: true });
   });
-  return { status: 'note_stored', reply: CHECK_IN_NOTED_ACK[language] };
+  return {
+    status: 'note_stored',
+    reply: checkInNotedAck(language, input.familyId, nightlyOccasion(input.now, input.timeZone)),
+  };
 }
 
 const CADENCE_ACK: Record<CheckInCadence, Record<ReplyLanguage, string>> = {

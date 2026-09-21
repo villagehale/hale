@@ -72,6 +72,36 @@ export function actionTypeLabel(actionType: string): string {
 }
 
 /**
+ * The same action type, said out loud (docs/voice.md rule 4).
+ *
+ * {@link ACTION_TYPE_LABELS} is authored Title Case because it is a column in a web UI
+ * table, and the router splices it into a TEXT — `Approved - ${actionTypeLabel(t).toLowerCase()}.`
+ * Lowercasing a UI label leaves a headless noun phrase, and "Approved - note in your
+ * digest." reads as a form field rather than as a person answering. Four of the sixteen
+ * read that way; the rest already lowercase into ordinary English.
+ *
+ * SO IT IS FIXED AT THE SPLICE, NOT IN THE RECORD. Editing the Record would change the
+ * web UI's table too, for a problem the web UI does not have — the label is a column
+ * heading there and it is correct.
+ *
+ * The four carry an article and the surface they act on, so the one phrase reads in both
+ * of the router's frames: "Approved - the note in your digest." and "Dropped it - the note
+ * in your digest won't happen."
+ */
+const SPOKEN_ACTION_LABELS: Partial<Record<ActionType, string>> = {
+  add_to_digest_only: 'the note in your digest',
+  add_to_routine: 'the pin on your routine',
+  calendar_move: 'the move on your calendar',
+  calendar_cancel: 'the cancellation on your calendar',
+};
+
+export function spokenActionLabel(actionType: string): string {
+  return (
+    SPOKEN_ACTION_LABELS[actionType as ActionType] ?? actionTypeLabel(actionType).toLowerCase()
+  );
+}
+
+/**
  * Reviewer verdict → human copy. Source of truth: the reviewer_verdict enum
  * (packages/db/src/schema/enums.ts). An unknown value degrades to neutral copy.
  */

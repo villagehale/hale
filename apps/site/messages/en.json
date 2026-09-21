@@ -60,7 +60,7 @@
     "heroH1a": "The family assistant",
     "heroH1b": "you",
     "heroH1Accent": "text.",
-    "heroSub": "Swim, camps and registration day, caught before the spots are gone. Three texts, then quiet.",
+    "heroSub": "Swim, camps and registration day, caught before the spots are gone.",
     "heroThread": [
       {
         "dir": "out",
@@ -267,8 +267,7 @@
         "line": "The thing worth knowing this week, and why it matters now.",
         "checks": [
           "A brief on Sunday",
-          "A heads-up the week a registration opens",
-          "Quiet in between"
+          "A heads-up the week a registration opens"
         ],
         "linkLabel": "Parenting guides"
       },
@@ -400,7 +399,7 @@
       }
     ],
     "getLede": "A parent sends the first message — Hale never texts a family first. This is one of them, and what came back.",
-    "getAfter": "Then it goes quiet: a short plan on Sunday, the link the night before a registration opens, and a nudge fifteen minutes out.",
+    "getAfter": "A short plan on Sunday, the link the night before a registration opens, and a nudge fifteen minutes out.",
     "waysEyebrow": "How to point a family at Hale",
     "waysHeadline": [
       {
@@ -545,7 +544,7 @@
       },
       {
         "question": "How often will Hale text me?",
-        "answer": "A brief on Sunday, and then only when something needs you: a heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. It is quiet in between, and STOP works at any time."
+        "answer": "A brief on Sunday, and then only when something needs you: a heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. STOP works at any time."
       },
       {
         "question": "Can Hale answer parenting questions, or only scheduling ones?",

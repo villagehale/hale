@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actionTypeLabel, verdictLabel, villageKindLabel } from './labels.js';
+import { actionTypeLabel, spokenActionLabel, verdictLabel, villageKindLabel } from './labels.js';
 
 /**
  * The label layer's contract (the HARD rule): a stored token is NEVER rendered
@@ -31,6 +31,64 @@ describe('villageKindLabel', () => {
     // A token we do not curate must NOT leak as "support group"; it hides.
     expect(villageKindLabel('support_group')).toBeNull();
     expect(villageKindLabel('sibling_calendar_overlap')).toBeNull();
+  });
+});
+
+/**
+ * The SPOKEN half (docs/voice.md rule 4). The Record above is a web UI table column and
+ * is authored Title Case for that; the router splices it into a text, where lowercasing a
+ * UI label leaves a headless noun phrase — "Approved - note in your digest." reads as a
+ * form field. These four are the ones that read that way.
+ */
+describe('spokenActionLabel', () => {
+  it('gives the four UI-flavoured labels a phrase that reads in both router frames', () => {
+    // Derived from the two call sites, not from the function's output: the same string
+    // has to survive "Approved - X." and "Dropped it - X won't happen."
+    for (const [type, spoken] of [
+      ['add_to_digest_only', 'the note in your digest'],
+      ['add_to_routine', 'the pin on your routine'],
+      ['calendar_move', 'the move on your calendar'],
+      ['calendar_cancel', 'the cancellation on your calendar'],
+    ] as const) {
+      expect(spokenActionLabel(type)).toBe(spoken);
+      expect(`Dropped it - ${spoken} won't happen.`).toMatch(/^Dropped it - the \w/);
+    }
+  });
+
+  it('falls through to the lowercased label for every type that already reads as English', () => {
+    expect(spokenActionLabel('create_calendar_event')).toBe('add to calendar');
+    expect(spokenActionLabel('send_email')).toBe('send email');
+    expect(spokenActionLabel('some_new_action')).toBe('an action');
+  });
+
+  it('never hands a text a Title Case fragment', () => {
+    // Every action type the product has, including the unknown fallback: none of them may
+    // arrive mid-sentence with a capital on the first word.
+    const types = [
+      'send_email',
+      'reply_to_email',
+      'create_calendar_event',
+      'update_calendar_event',
+      'place_supply_order',
+      'cancel_supply_order',
+      'fill_pdf_form',
+      'submit_government_form',
+      'book_clinic_portal',
+      'cancel_clinic_appointment',
+      'share_photos_with_family',
+      'add_to_digest_only',
+      'add_to_routine',
+      'calendar_add',
+      'calendar_move',
+      'calendar_cancel',
+      'some_new_action',
+    ];
+    for (const type of types) {
+      expect(spokenActionLabel(type), type).toMatch(/^[a-z]/);
+    }
+    // The positive control: the UI Record really is Title Case, so this test is measuring
+    // a difference rather than passing on a table that was never capitalised.
+    expect(actionTypeLabel('add_to_digest_only')).toMatch(/^[A-Z]/);
   });
 });
 

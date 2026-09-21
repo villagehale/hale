@@ -4,7 +4,17 @@ import type { LoopMessage, RenderedContent } from '~/lib/channel/types';
 import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { weeklyPlanRenderer } from './index';
+import { bareYesNoQuestions } from '~/lib/testing/pool-copy';
 import type { PlanChild, WeeklyPlanPayload } from './payload';
+import { foldWeeklyVoice } from './sms';
+
+/** The three ways a fully-placed week can close. Restated here rather than imported:
+ * these words are the spec, and a copy change should be a diff read in two places. */
+const PLACED_LINES = [
+  'All on your calendar.',
+  'Nothing needs you this week.',
+  "That's the whole week, already placed.",
+] as const;
 
 /**
  * VIL-218 · B2 — the per-channel renderers, exercised through the A2 seam
@@ -95,6 +105,14 @@ function sms(p: WeeklyPlanPayload, level: ChildNameLevel): string {
   return r.text;
 }
 
+/** The composed-voice outcome the renderer reports for this render — `undefined` where
+ * the message has no voice slot at all, which is a different fact from 'absent'. */
+function smsVoice(p: WeeklyPlanPayload, level: ChildNameLevel): unknown {
+  const r = render(p, 'sms', level);
+  if (r.kind !== 'sms') throw new Error('expected sms');
+  return r.voice;
+}
+
 function email(p: WeeklyPlanPayload, level: ChildNameLevel) {
   const r = render(p, 'email', level);
   if (r.kind !== 'email') throw new Error('expected email');
@@ -156,9 +174,12 @@ describe('SMS — segment budget + GSM-7 output', () => {
     expect(sms(fullWeek, 'first_name')).not.toContain('\u{1f389}');
   });
 
-  it('opens with the possessive header and the reply invitation', () => {
+  it('opens with the possessive header and the reply invitation, and no broadcast prefix', () => {
     const text = sms(fullWeek, 'first_name');
-    expect(text.startsWith("Hale: Maya & Liam's week")).toBe(true);
+    // `Hale: ` is gone (docs/voice.md rule 2): it is a broadcast header on a thread the
+    // parent already knows is Hale's. The possessive header is what opens the message now.
+    expect(text.startsWith("Maya & Liam's week")).toBe(true);
+    expect(text).not.toContain('Hale:');
     expect(text).toContain('reply YES');
   });
 
@@ -211,7 +232,11 @@ describe('SMS — segment budget + GSM-7 output', () => {
     const text = sms(undecidable, 'first_name');
     expect(text).not.toContain('reply YES');
     expect(text).not.toContain('drafted for your calendar');
-    expect(text).not.toContain('All on your calendar.');
+    // Re-pinned as the fact stated positively: the placed line is now a three-member pool,
+    // so "does not contain this one literal" would pass on two thirds of the weeks it is
+    // meant to catch. What is true is that a week with something pending and nothing
+    // approvable ENDS WITH THE WEEK — no closing line at all.
+    for (const placed of PLACED_LINES) expect(text, placed).not.toContain(placed);
   });
 });
 
@@ -302,12 +327,98 @@ describe('multi-child headers (email subject)', () => {
 describe('quiet week (0 items)', () => {
   const quiet = payload({ children: [], items: [] });
 
-  it('SMS offers the IDEAS reply and uses the "Your" subject', () => {
+  it('SMS asks exactly one question, names no event, and teaches no dead keyword', () => {
     const text = sms(quiet, 'generic');
-    expect(text).toContain('A quiet week');
-    expect(text).toContain('Reply IDEAS');
     expect(text).toContain('Your week');
     expect(smsSegments(text)).toBe(1);
+    // Re-pinned from `toContain('A quiet week')`: the quiet ask is a three-member pool, so
+    // the invariant is the SHAPE — one question, nothing on the calendar named, and a
+    // question a bare YES cannot answer, because the approvals resolver claims a family-
+    // wide YES and this week has nothing drafted for it to resolve.
+    expect((text.match(/\?/g) ?? []).length).toBe(1);
+    expect(bareYesNoQuestions(text)).toEqual([]);
+    expect(text).not.toMatch(/Mon|Tue|Wed|Thu|Fri|Sat:|Sun/);
+    // `Reply IDEAS` is GONE: there is no handler for IDEAS anywhere in lib/channel, so it
+    // was vocabulary Hale taught and could not honour (rule 10).
+    expect(text).not.toContain('IDEAS');
+  });
+
+  it('SMS rotates the quiet ask week to week, and never repeats two weeks running', () => {
+    const weeks = ['2026-07-13', '2026-07-20', '2026-07-27', '2026-08-03'].map(
+      (weekStart) => sms(payload({ children: [], items: [], weekStart }), 'generic'),
+    );
+    for (let i = 1; i < weeks.length; i++) {
+      expect(weeks[i], `week ${i}`).not.toBe(weeks[i - 1]);
+    }
+  });
+
+  it('SMS uses the composed week framing when it clears the same bar the pool does', () => {
+    const framed = payload({
+      children: [],
+      items: [],
+      weekStart: '2026-07-20',
+      voice: {
+        greeting: 'Hi',
+        weekFraming: 'Nothing booked yet - what would make this one feel easier?',
+        itemLines: {},
+        signOff: 'See you Sunday',
+      },
+    });
+    const text = sms(framed, 'generic');
+    expect(text).toContain('what would make this one feel easier?');
+    expect(smsSegments(text)).toBe(1);
+    // THE OUTCOME LEAVES THE RENDERER (rule #11): the caller is told which half of the
+    // slot the parent read, rather than having to substring-match a sentence it did not
+    // choose out of a body it did not compose.
+    expect(smsVoice(framed, 'generic')).toBe('used');
+    expect(
+      foldWeeklyVoice('Nothing booked yet - what would make this one feel easier?', 1).outcome,
+    ).toBe('used');
+    // And refuses one that breaks the slot's own question rule, rather than shipping a
+    // model sentence that asks twice on a surface where a bare YES is already claimed.
+    // EACH REFUSAL BY ITS OWN NAME: a question is the model's register, a dropped
+    // character is its charset, and they are fixed in different places.
+    expect(foldWeeklyVoice('Two questions? Really two?', 1).outcome).toBe(
+      'refused:question_count',
+    );
+    expect(foldWeeklyVoice('A statement with no question.', 1).outcome).toBe(
+      'refused:question_count',
+    );
+    expect(foldWeeklyVoice(null, 1).outcome).toBe('absent');
+    // A character GSM-7 cannot carry is refused too — gsmSafe would silently fold it, and
+    // a silent fold is a sentence nobody reviewed.
+    expect(foldWeeklyVoice('A quiet week — what would suit Saturday?', 1).outcome).toBe(
+      'refused:gsm_dropped',
+    );
+  });
+
+  it('reports the refusal the WEEK made, not the one the fold did', () => {
+    // A framing the fold passed and the whole message then refused is an over-segment
+    // refusal, and it is the one the fold itself can never return: a sentence's cost
+    // depends on the week it rides with, so only the renderer can measure it. Reported as
+    // itself, because "the model wrote a question" and "the model wrote a page" are
+    // different things to go and look at.
+    const long = `A quiet week and nothing on it yet, ${'which leaves the whole of it open for whatever you feel like doing, '.repeat(6)}so what would make Saturday good?`;
+    const p = payload({
+      children: [],
+      items: [],
+      weekStart: '2026-07-20',
+      voice: { greeting: 'Hi', weekFraming: long, itemLines: {}, signOff: 'See you Sunday' },
+    });
+    const text = sms(p, 'generic');
+    // The fold itself passes it — one question, nothing dropped — and the week refuses it.
+    expect(foldWeeklyVoice(long, 1).outcome).toBe('used');
+    expect(text).not.toContain(long);
+    expect(smsSegments(text)).toBeLessThanOrEqual(3);
+    expect(smsVoice(p, 'generic')).toBe('refused:over_segment');
+    // The pool is the floor under the fold, not its replacement.
+    expect((text.match(/\?/g) ?? []).length).toBe(1);
+  });
+
+  it('says the composer degraded when there is no voice at all', () => {
+    expect(smsVoice(payload({ children: [], items: [], weekStart: '2026-07-20' }), 'generic')).toBe(
+      'absent',
+    );
   });
 
   it('email subject is "Your week ahead" and carries the reply invitation', () => {
@@ -327,10 +438,124 @@ describe('all-placed week (items > 0, pending == 0)', () => {
     ],
   });
 
-  it('SMS closes with "All on your calendar." and asks for nothing', () => {
+  it('SMS closes with one of the placed lines and contains ZERO questions', () => {
     const text = sms(placed, 'first_name');
-    expect(text).toContain('All on your calendar.');
+    // Re-pinned from the single literal: the week that asks nothing is a three-member
+    // pool, and the invariant is that it asks NOTHING — zero "?", not one.
+    expect(text).not.toContain('?');
+    expect(PLACED_LINES.some((line) => text.includes(line)), text).toBe(true);
     expect(text).not.toContain('need your OK');
+  });
+
+  it('SMS rotates the placed line week to week', () => {
+    const weeks = ['2026-07-13', '2026-07-20', '2026-07-27'].map((weekStart) =>
+      sms(payload({ ...placed, weekStart }), 'first_name'),
+    );
+    for (let i = 1; i < weeks.length; i++) {
+      expect(weeks[i], `week ${i}`).not.toBe(weeks[i - 1]);
+    }
+  });
+
+  it('SMS uses the composed sign-off when there is one, and never one that asks', () => {
+    const signed = payload({
+      ...placed,
+      voice: {
+        greeting: 'Hi',
+        weekFraming: 'A full one',
+        itemLines: {},
+        signOff: "That's the lot - nothing needs you.",
+      },
+    });
+    const text = sms(signed, 'first_name');
+    expect(text).toContain("That's the lot - nothing needs you.");
+    expect(text).not.toContain('?');
+    expect(smsVoice(signed, 'first_name')).toBe('used');
+    expect(foldWeeklyVoice('Anything else you want moved?', 0).outcome).toBe(
+      'refused:question_count',
+    );
+    // The week that asks nothing and was composed nothing: the slot exists and the
+    // composer gave it nothing, which is 'absent' and not a refusal.
+    expect(smsVoice(placed, 'first_name')).toBe('absent');
+  });
+
+  it('reports NOTHING on a week that ends on the approval ask', () => {
+    // The sign-off slot only exists on a week with nothing pending. Any other week closes
+    // on a count of rows the mint is holding — a fact, never a composed sentence — so
+    // there is no outcome to report, and reporting 'absent' there would invent a
+    // composer failure on a slot that was never asked for.
+    expect(smsVoice(fullWeek, 'first_name')).toBeUndefined();
+  });
+
+  /** A fully-placed week with a real week's worth of items on it: it reads inline, with
+   * every item, and it is close enough to the three-segment ceiling that a composed
+   * closing sentence is the thing that can push it over. */
+  const busyPlaced = payload({
+    children: [maya, liam],
+    items: [
+      item({ kind: 'village', title: 'Library storytime', childIds: ['c-maya'], startsAt: '2026-07-20T10:30' }),
+      item({ kind: 'village', title: 'Swim class', childIds: ['c-liam'], startsAt: '2026-07-20T16:30' }),
+      item({ kind: 'routine', title: 'Music class', childIds: ['c-maya'], startsAt: '2026-07-21T09:00' }),
+      item({ kind: 'village', title: 'Soccer practice', childIds: ['c-liam'], startsAt: '2026-07-22T17:00' }),
+      item({ kind: 'village', title: 'Park meetup', childIds: ['c-maya'], startsAt: '2026-07-23T14:00' }),
+      item({ kind: 'appointment', title: 'Dentist', childIds: ['c-liam'], startsAt: '2026-07-24T11:15' }),
+      item({ kind: 'village', title: 'Gymnastics', childIds: ['c-maya'], startsAt: '2026-07-25T15:45' }),
+      item({ kind: 'birthday', title: "Liam's birthday", childIds: ['c-liam'], startsAt: '2026-07-26' }),
+    ],
+  });
+
+  const withSignOff = (p: WeeklyPlanPayload, signOff: string) =>
+    payload({ ...p, voice: { greeting: 'Hi', weekFraming: 'A full one', itemLines: {}, signOff } });
+
+  it('refuses a sign-off that would cost the parent their week, and says which happened', () => {
+    // THE SIGN-OFF IS NOT ALLOWED TO CHANGE THE SHAPE OF THE MESSAGE. It used to be
+    // spliced into the tail BEFORE the inline-vs-linked choice was made, so a long
+    // composed sentence pushed the whole message past three segments and the renderer
+    // answered by replacing the parent's entire item list with the one app link this
+    // product keeps as a narrow exception — and still reported 'used'. A composed
+    // sentence may change the WORDS of the closing line and nothing else about the
+    // message: the shape is decided from the reviewed pool copy, always.
+    const plain = sms(busyPlaced, 'first_name');
+    expect(plain).toContain('Swim class');
+    expect(plain).not.toContain('Full week:');
+    expect(smsSegments(plain)).toBeLessThanOrEqual(3);
+
+    const long = `That is the whole week and every one of them is already on your calendar, ${'so there is nothing at all for you to do about any of it this time round, '.repeat(3)}enjoy it.`;
+    const signed = withSignOff(busyPlaced, long);
+    // The FOLD passes it — zero questions, nothing dropped — and the WEEK refuses it,
+    // which is the one outcome the fold itself can never return.
+    expect(foldWeeklyVoice(long, 0).outcome).toBe('used');
+    expect(smsVoice(signed, 'first_name')).toBe('refused:over_segment');
+    // Byte-identical to the week with no voice at all: the parent loses the sentence and
+    // keeps everything else, rather than losing their list to keep the sentence.
+    expect(sms(signed, 'first_name')).toBe(plain);
+  });
+
+  it('measures the sign-off on the week that was already too long to read inline', () => {
+    // The other unmeasured tail: past the item cap the message is the link form by count,
+    // and the sign-off rides on it. That is legitimate — the week displaced the list, not
+    // the voice — but it is still measured, because a composed page appended to a link is
+    // a four-segment text nobody chose.
+    const many = payload({
+      ...busyPlaced,
+      items: [
+        ...busyPlaced.items,
+        item({ kind: 'village', title: 'Skating', childIds: ['c-maya'], startsAt: '2026-07-26T08:00' }),
+      ],
+    });
+    const linked = sms(many, 'first_name');
+    expect(linked).toContain('Full week:');
+
+    const short = withSignOff(many, 'All of it is on your calendar already.');
+    expect(sms(short, 'first_name')).toContain('All of it is on your calendar already.');
+    expect(smsVoice(short, 'first_name')).toBe('used');
+
+    const page = withSignOff(
+      many,
+      `Every last one of them is on your calendar already, ${'and none of it needs a thing from you between now and Sunday evening, '.repeat(5)}so enjoy the week.`,
+    );
+    expect(smsVoice(page, 'first_name')).toBe('refused:over_segment');
+    expect(sms(page, 'first_name')).toBe(linked);
+    expect(smsSegments(sms(page, 'first_name'))).toBeLessThanOrEqual(3);
   });
 });
 

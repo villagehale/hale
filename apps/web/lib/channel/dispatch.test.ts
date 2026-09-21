@@ -12,7 +12,7 @@ import {
   recordAbandonedDispatch,
 } from './dispatch';
 import { fakeChannel, fakeRenderer } from './fakes';
-import type { LoopMessage } from './types';
+import type { LoopMessage, RenderedContent, VoiceOutcome } from './types';
 
 /**
  * VIL-213 · A2 dispatch policy. Deterministic (no LLM) → plain Vitest with Fakes +
@@ -543,6 +543,85 @@ describe('recordAbandonedDispatch — the channel.send dead-letter outcome', () 
         event: 'loop_message_failed',
         properties: expect.objectContaining({ reason: 'failed' }),
       }),
+    ]);
+  });
+});
+
+/**
+ * THE VOICE OUTCOME, CARRIED OUT OF THE RENDER (docs/voice.md, "The two SMS folds").
+ *
+ * Two templates compose a sentence through a model and then measure it against the wire.
+ * Whether a parent READ that sentence is decided here and nowhere earlier — the composer
+ * ran hours before, at the converge tick, without knowing which channel the family is on
+ * — so a renderer that kept the answer to itself would make "the composer degraded", "the
+ * fold refused it" and "it went out" one silence (rule #11).
+ *
+ * The drain discards the DispatchResult, so the LEG is where a test can read the outcome
+ * and the immutable audit row is where production can. Both, or it is not counted.
+ */
+describe('the composed voice slot is reported off the render, never inferred from the body', () => {
+  const voicedRenderer = (voice: VoiceOutcome | undefined) => ({
+    render: (m: LoopMessage): RenderedContent => ({ kind: 'sms' as const, text: m.templateKey, voice }),
+  });
+
+  it('carries each outcome onto the leg AND onto the immutable audit row', async () => {
+    for (const outcome of [
+      'used',
+      'absent',
+      'refused:gsm_dropped',
+      'refused:question_count',
+      'refused:over_segment',
+    ] as const) {
+      const { ports, audits } = makePorts({
+        prefs: { loopChannel: 'sms' },
+        renderer: voicedRenderer(outcome),
+      });
+      const result = await dispatchLoopMessage(message(), ports);
+      expect(result.legs, outcome).toEqual([{ channel: 'sms', outcome: 'sent', voice: outcome }]);
+      // An enum about Hale's own pipeline, never content — which is what makes it safe on
+      // a PIPEDA-exportable row, and this is the only DURABLE count there is.
+      expect(audits[0]?.after, outcome).toEqual({
+        channel: 'sms',
+        category: 'reminder',
+        templateKey: 'weekly-plan-v1',
+        voice: outcome,
+      });
+    }
+  });
+
+  it('says nothing at all for a template that has no voice slot — not "absent"', async () => {
+    // A template with no composed sentence to begin with is a different fact from a
+    // composer that degraded, and 'absent' means the second one.
+    const { ports, audits } = makePorts({ prefs: { loopChannel: 'sms' } });
+    const result = await dispatchLoopMessage(message(), ports);
+    expect(result.legs[0]?.voice).toBeUndefined();
+    // Serialized into the jsonb row, an undefined key is no key at all — the row says
+    // nothing about a voice, which is the fact.
+    expect(audits[0]?.after.voice).toBeUndefined();
+    expect(JSON.parse(JSON.stringify(audits[0]?.after))).toEqual({
+      channel: 'sms',
+      category: 'reminder',
+      templateKey: 'weekly-plan-v1',
+    });
+  });
+
+  it('still names the outcome on a leg the PROVIDER refused', async () => {
+    // "The fold refused the sentence" and "the provider refused the message" are two
+    // different things to be looking at, and a failed leg that dropped the first would
+    // make a composer bug invisible behind a delivery one.
+    const { ports } = makePorts({
+      prefs: { loopChannel: 'sms' },
+      renderer: voicedRenderer('refused:question_count'),
+      channels: { sms: fakeChannel('sms', { status: 'skipped', reason: 'not_configured' }) },
+    });
+    const result = await dispatchLoopMessage(message(), ports);
+    expect(result.legs).toEqual([
+      {
+        channel: 'sms',
+        outcome: 'failed',
+        reason: 'not_configured',
+        voice: 'refused:question_count',
+      },
     ]);
   });
 });
