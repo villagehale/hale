@@ -179,6 +179,7 @@ describe('the evening asks', () => {
     const first = composeCheckInAsk({
       first: true,
       childNames: ['Mia'],
+      todayActivity: null,
       familyId: 'fam',
       occasion: 0,
     }).body;

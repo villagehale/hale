@@ -395,6 +395,10 @@ async function runForFamily(
   // Composed only AFTER the gate and the dedupe: a family already asked, or over budget,
   // must not cost a read of their children's names — nor, now, a read of their calendar.
   let message: string;
+  // Whether tonight's question named an activity — the one thing the audit row learns from
+  // the anchor. The step-down notice names nothing and asks nothing, so it is false there
+  // by construction rather than by omission.
+  let anchored = false;
   if (decision.kind === 'step_down') {
     message = CHECK_IN_STEP_DOWN;
   } else {
@@ -410,6 +414,7 @@ async function runForFamily(
       occasion: nightlyOccasion(now, family.timeZone),
     });
     message = ask.body;
+    anchored = ask.anchored;
     // A title that was offered and not used was refused by the BUDGET, and that is a
     // different fact from having nothing to name.
     result.anchor[found.anchor !== null && !ask.anchored ? 'over_segment' : found.outcome] += 1;
@@ -442,7 +447,10 @@ async function runForFamily(
     actionTaken,
     targetTable: 'channel_messages',
     targetId: channelMessageId,
-    after: { cadence: steppingDown ? 'weekly' : 'daily' },
+    // `anchored` and NEVER the activity: audit_log is immutable and PIPEDA-exportable and
+    // carries none of the teen redaction a memory read has, so the trail gets the count and
+    // the calendar content stays on the row that already holds it (rule #1).
+    after: { cadence: steppingDown ? 'weekly' : 'daily', anchored },
   });
   // The composed sentence, never the wire body: the CASL line belongs on the wire and
   // nowhere else, and this thread is what the parent reads back and what the coach

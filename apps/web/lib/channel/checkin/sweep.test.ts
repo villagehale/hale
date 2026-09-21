@@ -497,6 +497,26 @@ describe('the activity anchor', () => {
     expect(sent[0]?.body).toContain("Quick one before the day's gone");
   });
 
+  it('records on the audit row whether the evening named anything, and never what', async () => {
+    // The trail can count anchored evenings without the row ever carrying a title.
+    // audit_log is immutable and PIPEDA-exportable and has none of the teen redaction a
+    // memory read has, so the FLAG goes on it and the activity never does.
+    process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
+    process.env[F14_ENABLED_ENV] = 'true';
+    const asked = { cadence: 'daily' as const, lastAskedAt: new Date(EVENING.getTime() - 24 * 3_600_000) };
+
+    const named = harness({ state: asked, today: { anchor: 'swim' } });
+    await runEveningCheckInSweep(database, named.deps, EVENING);
+    expect(named.audits[0]?.after).toEqual({ cadence: 'daily', anchored: true });
+    expect(JSON.stringify(named.audits[0])).not.toContain('swim');
+
+    // The day form is not a degraded message — it is the one this lane shipped with — so
+    // the row says so rather than saying nothing.
+    const day = harness({ state: asked, today: { anchor: null, reason: 'no_event_today' } });
+    await runEveningCheckInSweep(database, day.deps, EVENING);
+    expect(day.audits[0]?.after).toEqual({ cadence: 'daily', anchored: false });
+  });
+
   it('counts nothing for the step-down notice, which asks nothing', async () => {
     process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
     process.env[F14_ENABLED_ENV] = 'true';
