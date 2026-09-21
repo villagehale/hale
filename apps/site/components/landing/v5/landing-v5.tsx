@@ -55,11 +55,12 @@ interface Card {
 }
 
 /**
- * The word space between the h1's two halves. It is Latin punctuation, not
- * markup: Chinese sets solid, and a literal JSX space printed a visible gap
- * mid-phrase ("你不会 错过。").
+ * The word space in front of a headline's accent span. It is Latin punctuation,
+ * not markup: Chinese sets solid, and most of these leads end in a full-width
+ * comma that already carries its own trailing space, so a literal JSX space
+ * printed a visible gap mid-phrase ("三个， 不是三十个。").
  */
-function h1Separator(locale: Locale): string {
+function accentSeparator(locale: Locale): string {
   return locale === 'zh' ? '' : ' ';
 }
 
@@ -118,7 +119,7 @@ export function LandingV5({ locale, smsNumber }: { locale: Locale; smsNumber: st
           {t('heroH1a')}
           <br />
           {t('heroH1b')}
-          {h1Separator(locale)}
+          {accentSeparator(locale)}
           <span className="v4-accent v5-hero-tail">{t('heroH1Accent')}</span>
         </h1>
         <p className="v4-hero-sub v5-hero-sub">{t('heroSub')}</p>
@@ -144,7 +145,9 @@ export function LandingV5({ locale, smsNumber }: { locale: Locale; smsNumber: st
       <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow">{t('findEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
-          {t('findH2a')} <span className="v4-accent">{t('findH2Accent')}</span>
+          {t('findH2a')}
+          {accentSeparator(locale)}
+          <span className="v4-accent">{t('findH2Accent')}</span>
         </h2>
         <p className="v4-lede">{t('findLede')}</p>
         <p className="sr-only">{t('findCap')}</p>
@@ -159,7 +162,9 @@ export function LandingV5({ locale, smsNumber }: { locale: Locale; smsNumber: st
       <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow">{t('watchEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
-          {t('watchH2a')} <span className="v4-accent">{t('watchH2Accent')}</span>
+          {t('watchH2a')}
+          {accentSeparator(locale)}
+          <span className="v4-accent">{t('watchH2Accent')}</span>
         </h2>
         <p className="v4-lede">{t('watchLede', { count: MUNICIPALITIES.length })}</p>
         {/* The four sourced facts, word for word from v4. They are the best
@@ -197,7 +202,9 @@ export function LandingV5({ locale, smsNumber }: { locale: Locale; smsNumber: st
       {/* ── §3 See how it goes — the beat nobody else has ─────────────────── */}
       <section className="shell py-12 sm:py-20 lg:py-28">
         <h2 className="v4-display v4-h2">
-          {t('seeH2a')} <span className="v4-accent">{t('seeH2Accent')}</span>
+          {t('seeH2a')}
+          {accentSeparator(locale)}
+          <span className="v4-accent">{t('seeH2Accent')}</span>
         </h2>
         {/* What a day note is FOR, and what it is not: family_check_in_notes is
             read by nothing but the rights export and the thirty-day purge, so the
@@ -209,7 +216,9 @@ export function LandingV5({ locale, smsNumber }: { locale: Locale; smsNumber: st
       {/* ── §4 How it works — prose, no numerals ──────────────────────────── */}
       <section className="shell py-12 sm:py-20 lg:py-28">
         <h2 className="v4-display v4-h2">
-          {t('howH2a')} <span className="v4-accent">{t('howH2Accent')}</span>
+          {t('howH2a')}
+          {accentSeparator(locale)}
+          <span className="v4-accent">{t('howH2Accent')}</span>
         </h2>
         <div className="v5-prose">
           {howLines.map((line) => (
@@ -265,7 +274,9 @@ export function LandingV5({ locale, smsNumber }: { locale: Locale; smsNumber: st
               <Wordmark className="h-[1.6rem] text-navy" />
             </span>
             <h2 className="v4-display mt-4 text-[clamp(1.9rem,4vw,2.8rem)] text-ink">
-              {t('closingH2a')} <span className="v4-accent">{t('closingH2Accent')}</span>
+              {t('closingH2a')}
+              {accentSeparator(locale)}
+              <span className="v4-accent">{t('closingH2Accent')}</span>
             </h2>
             <p className="v4-hero-sub">{t('closingSub')}</p>
             <div className="flex flex-wrap items-center justify-center gap-3">{cta('closing')}</div>

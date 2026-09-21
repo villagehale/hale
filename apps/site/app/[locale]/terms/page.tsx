@@ -201,8 +201,8 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
 
       <LegalSectionBlock id="approval-model" title="How Hale works: you decide">
         <p>
-          Hale drafts; you decide. The assistant prepares suggestions, but it does not act on its own
-          — a parent approves every action before anything happens in the outside world. New accounts
+          Hale drafts; you decide. Hale prepares suggestions, but it does not act on its own — a
+          parent approves every action before anything happens in the outside world. New accounts
           begin in an observe-only mode, and any move toward more automation requires your explicit,
           per-action-type approval. Where an action would cost money, hard spending caps apply, and
           an action that would exceed a cap is refused.

@@ -102,11 +102,23 @@ function landingString(locale: string, key: string): string {
   return value;
 }
 
-/** The word space between the h1's two halves — Latin punctuation, so zh, which
- * sets solid, takes none. Mirrors `h1Separator` in the landing component. */
-function h1Separator(locale: string): string {
+/** The word space before an accent span — Latin punctuation, so zh, which sets
+ * solid, takes none. Mirrors `accentSeparator` in the landing component. */
+function accentSeparator(locale: string): string {
   return locale === 'zh' ? '' : ' ';
 }
+
+/** Every headline the page splits into a lead and an accent span: the hero h1
+ * and the five section h2s. Each one is a lead string, a separator and a
+ * `.v4-accent` span, and each one had the separator written into the JSX. */
+const ACCENT_PAIRS: readonly string[] = [
+  'heroH1b',
+  'findH2a',
+  'watchH2a',
+  'seeH2a',
+  'howH2a',
+  'closingH2a',
+];
 
 function advanceEm(line: string): number {
   let em = 0;
@@ -241,7 +253,7 @@ describe('the loop renders in every locale', () => {
       // The markup forces one break: heroH1a, then heroH1b + the separator + the accent.
       const lines = [
         landingString(locale, 'heroH1a'),
-        `${landingString(locale, 'heroH1b')}${h1Separator(locale)}${landingString(locale, 'heroH1Accent')}`,
+        `${landingString(locale, 'heroH1b')}${accentSeparator(locale)}${landingString(locale, 'heroH1Accent')}`,
       ];
       for (const line of lines) {
         expect(advanceEm(line), `${locale}: "${line}"`).toBeLessThanOrEqual(H1_COLUMN_EM[locale]);
@@ -261,19 +273,29 @@ describe('the loop renders in every locale', () => {
     const h1 = HTML[locale].match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
     expect(h1, `${locale} · the h1 must render`).toContain('v4-hero-h1');
     expect(h1).toContain(
-      `${landingString(locale, 'heroH1b')}${h1Separator(locale)}<span class="v4-accent v5-hero-tail">${landingString(locale, 'heroH1Accent')}</span>`,
+      `${landingString(locale, 'heroH1b')}${accentSeparator(locale)}<span class="v4-accent v5-hero-tail">${landingString(locale, 'heroH1Accent')}</span>`,
     );
   });
 
-  it('sets no word space between the two halves of the zh h1', () => {
-    // The negative half of the pin above, spelled out: a re-hard-coded JSX space
-    // would still satisfy a `toContain` of the two halves in en and fr.
-    const h1 = HTML.zh.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
-    expect(h1).not.toContain(`${landingString('zh', 'heroH1b')} <span`);
-    // Positive control: en keeps the space it needs.
-    expect(HTML.en.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '').toContain(
-      `${landingString('en', 'heroH1b')} <span`,
-    );
+  it('spaces every accent span in en and fr, and none of them in zh', () => {
+    // Six headlines, one rule. The space belongs to the language, not to the
+    // markup: Latin needs it between two words, zh sets solid and its leads
+    // mostly END in a full-width comma that already carries its own trailing
+    // space, so the JSX space printed a visible gap ("三个， 不是三十个。").
+    //
+    // The en/fr half is the positive control for the zh half: a `not.toContain`
+    // alone would also pass on a page that stopped rendering the headline.
+    for (const lead of ACCENT_PAIRS) {
+      for (const locale of ['en', 'fr'] as const) {
+        expect(HTML[locale], `${locale} · ${lead}`).toContain(
+          `${landingString(locale, lead)} <span class="v4-accent`,
+        );
+      }
+      expect(HTML.zh, `zh · ${lead}`).not.toContain(`${landingString('zh', lead)} <span`);
+      expect(HTML.zh, `zh · ${lead}`).toContain(
+        `${landingString('zh', lead)}<span class="v4-accent`,
+      );
+    }
   });
 
   it('would have caught the zh accent that wrapped mid-compound', () => {
