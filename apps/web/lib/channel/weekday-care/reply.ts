@@ -90,9 +90,20 @@ const YET = /\byet\b/;
  */
 const NEGATION = 'no|not|never|dont|doesnt|didnt|isnt|arent|wasnt|werent|havent|hasnt';
 
-/** What a negation may cross to reach its care word: determiners and the prepositions
- * and light verbs that carry an arrangement. A pronoun is deliberately not here. */
-const REACHES = 'in|at|the|a|an|any|to|go|goes|going|do|doing|does|did|using|use';
+/**
+ * What a negation may cross to reach the word it negates: determiners, and the
+ * prepositions and light verbs that carry an arrangement. A pronoun is deliberately not
+ * here — "no she's at daycare" is an answer particle followed by an answer.
+ *
+ * THE LIGHT VERBS ARE NOT DECORATION. Without `have`, "we don't have daycare" — one of
+ * the commonest ways to say it — reached no care word and read as DAYCARE, the opposite
+ * of what the parent said, and the loudest possible version of it: the follow-up then
+ * asks a household with no daycare how their daycare is going. The list is the verbs
+ * that carry an arrangement and nothing else; a verb that carries an OPINION ("we don't
+ * want daycare") is deliberately absent, because a preference is not a state.
+ */
+const REACHES =
+  'in|at|the|a|an|any|to|go|goes|going|do|doing|does|did|using|use|have|has|had|got|stay|staying';
 
 const NEGATED_CARE = new RegExp(
   `\\b(?:${NEGATION})\\b(?:\\s+(?:${REACHES})\\b)*\\s+(?:${CARE_WORDS})\\b`,

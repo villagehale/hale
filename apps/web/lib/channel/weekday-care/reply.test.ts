@@ -81,7 +81,17 @@ describe('readWeekdayCare', () => {
   });
 
   it('still reads home when the negation does govern the care word', () => {
-    for (const body of ['home, not daycare', 'not daycare, home', "we don't do daycare"]) {
+    for (const body of [
+      'home, not daycare',
+      'not daycare, home',
+      "we don't do daycare",
+      // The light verbs a parent actually reaches for. "we don't have daycare" read as
+      // DAYCARE - the opposite fact, and the loud one: the follow-up then asks a
+      // household with no daycare how their daycare is going.
+      "we don't have daycare",
+      "we haven't got daycare",
+      'she has not had daycare',
+    ]) {
       expect(care(body), body).toBe('home');
     }
   });
@@ -105,6 +115,7 @@ describe('readWeekdayCare', () => {
       "she isn't home with me",
       "he's not with us during the week",
       'not with my mom',
+      "she's not staying home",
     ]) {
       expect(care(body), body).toBe('nothing_stated');
     }
