@@ -212,6 +212,12 @@ export function deidentifyActivityQuery(input: {
  * already passed `destinationShape` at write time, so what reaches this gate is a place
  * name rather than whatever a model wrote.
  */
+export type TravelQueryRefusal = ActivityDeidRefusal | 'destination_unusable';
+
+export type TravelQueryResult =
+  | { ok: true; query: ActivityQuery }
+  | { ok: false; refusal: TravelQueryRefusal };
+
 export function travelQueryFor(input: {
   subject: string;
   /** Composed WITHOUT a year and NOT in ISO form — see lib/travel/query.ts, where the
@@ -221,7 +227,7 @@ export function travelQueryFor(input: {
   destination: string;
   stage: FamilyStage | null;
   householdNames: readonly string[];
-}): ActivityDeidResult {
+}): TravelQueryResult {
   const subject = gateFreeText(input.subject, input.householdNames);
   if (!subject.ok) {
     if (subject.refusal === 'empty') return { ok: false, refusal: 'empty_subject' };
@@ -244,7 +250,13 @@ export function travelQueryFor(input: {
   const destination = gateFreeText(input.destination, input.householdNames);
   if (!destination.ok) {
     if (destination.refusal === 'names_a_person') return { ok: false, refusal: 'names_a_person' };
-    return { ok: false, refusal: 'subject_too_long' };
+    // EMPTY OR OVER-LONG, and counted as a DESTINATION rather than folded into the
+    // subject's refusal: the subject here is a constant `query.ts` composes, so a counter
+    // reading `subject_too_long` would point whoever read it at the one field that cannot
+    // be at fault. Unreachable through the sweep today — `destination_city` is NOT NULL and
+    // `destinationShape` caps each column at 60 characters — which is why it is a named
+    // outcome rather than a throw.
+    return { ok: false, refusal: 'destination_unusable' };
   }
 
   return {

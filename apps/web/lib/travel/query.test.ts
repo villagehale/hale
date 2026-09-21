@@ -134,4 +134,23 @@ describe('travelQueryFor refuses rather than sending half a query', () => {
     const result = gated({ window: 'September '.repeat(20) });
     expect(result).toEqual({ ok: false, refusal: 'window_too_long' });
   });
+
+  /**
+   * A DESTINATION THAT FAILS THE GATE IS COUNTED AS A DESTINATION. The subject of a travel
+   * query is a constant this module composes, so a counter reading `subject_too_long`
+   * would send whoever read it to the one field that cannot be at fault — and the sweep
+   * counts `queryRefused` BY REASON precisely because each reason is a different fix
+   * (rule #11). Both of these are unreachable through the sweep today (`destination_city`
+   * is NOT NULL and `destinationShape` caps each column at 60 characters), which is why
+   * the outcome is named rather than thrown.
+   */
+  it('refuses a destination that scrubs to nothing or runs long, as a DESTINATION', () => {
+    expect(gated({ destination: '   ' })).toEqual({ ok: false, refusal: 'destination_unusable' });
+    expect(gated({ destination: 'New York, '.repeat(20) })).toEqual({
+      ok: false,
+      refusal: 'destination_unusable',
+    });
+    // The positive control: a destination of the same shape that fits goes through.
+    expect(gated({ destination: 'New York, NY' }).ok).toBe(true);
+  });
 });

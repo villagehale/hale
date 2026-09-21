@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, isNull, lte, ne } from 'drizzle-orm';
 import { deriveStage } from '@hale/types';
-import type { ActivityDeidRefusal } from '~/lib/channel/activity/deidentify';
+import type { TravelQueryRefusal } from '~/lib/channel/activity/deidentify';
 import { travelQueryFor } from '~/lib/channel/activity/deidentify';
 import { type ActivityFinder, createActivityFinder } from '~/lib/channel/activity/lane';
 import { type ActivityFamilyReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
@@ -105,7 +105,7 @@ export interface TravelBriefResult {
   noChildrenOnFile: number;
   /** BY REASON, because each one is a different fix: a child called Paris and a trip to
    * Paris is `names_a_person`, and a composer that ran long is not. */
-  queryRefused: Record<ActivityDeidRefusal, number>;
+  queryRefused: Record<TravelQueryRefusal, number>;
   held: Record<ProactiveHoldReason, number>;
   /** The finder came back `{ found: false }` for a reason that is not `no_picks`. */
   searchFailed: number;
@@ -136,6 +136,7 @@ export function emptyTravelBriefResult(enabled: boolean): TravelBriefResult {
       subject_too_long: 0,
       window_too_long: 0,
       names_a_person: 0,
+      destination_unusable: 0,
     },
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
     searchFailed: 0,
