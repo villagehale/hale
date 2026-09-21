@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message is plain-spoken and specific, leading with the useful thing (free outdoor skating on Saturday for Maya). It correctly includes the mandated \"I found\" lead phrase showing Hale looked something up. It states only given facts: the activity title, day, child's name, and why-facts (free, outdoor). It correctly omits the null venue without padding or inventing a placeholder. It includes the instructed one-clause statement about registration (\"Nothing has a registration date coming up right now\") which is the proper way to handle dual null registration fields. No invented details, no hype, no corporate voice—exactly what a competent neighbour who already checked would say."
+  }
+}

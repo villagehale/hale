@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message meets the contract requirements. It opens with a mandatory lead phrase (\"I checked\") showing Hale looked something up. It states the given facts plainly and specifically: town (Markham), cycle name (Fall 2026), opening time (Aug 11, 6:30 a.m.), and child name (Maya). It includes the checkpoint task verbatim as instructed. No facts are invented - all details present come directly from the facts object. The tone is quiet and plain-spoken, leading with the useful thing (registration opens). Fields not present in facts (no age range, no venue, no firstFindBeat, no weekendPick) are simply absent, not padded. The message is short and specific, reading like a competent neighbour who looked something up."
+  }
+}

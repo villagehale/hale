@@ -1,7 +1,8 @@
 import { type Database, schema } from '@hale/db';
-import type { Municipality } from '@hale/db';
+import type { CandidateAccess, Municipality } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { and, eq, gte, isNull, or } from 'drizzle-orm';
+import { asciiCopy } from '~/lib/channel/intake/radar-decide';
 import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import type { LatLng } from '~/lib/village/geocode';
@@ -187,6 +188,20 @@ export interface ProjectedCivicCandidate {
    * area or the venue could not be placed. Carried so nothing downstream has to
    * re-derive what this layer already computed to rank the shortlist. */
   distanceKm: number | null;
+  /** What a parent DOES about this one, straight from `civic_sessions.registration_
+   * required`. The fact used to survive only inside {@link summaryFor}'s prose, and a
+   * reader that recovered it by matching that prefix would be keyed on a string the
+   * card is free to re-word. */
+  access: CandidateAccess;
+  /** The session's own time in the source's words — the same label {@link summaryFor}
+   * puts in the card, carried as a field so nothing has to parse the card back apart.
+   * ASCII-folded at the write, and the fold is a guard rather than a correction: the
+   * weekly band is a plain hyphen between two {@link formatMinuteOfDay} strings and an
+   * occurrence's Intl label is plain ASCII on the ICU this repo builds against (checked
+   * this run), but Intl's spacing around "a.m." is an ICU-version detail Hale does not
+   * pin, and one character outside the basic alphabet doubles what the whole SMS
+   * quoting this costs to send. */
+  whenLabel: string;
 }
 
 /** `570` → `"9:30 a.m."`, in the municipal spelling these sources publish. */
@@ -291,6 +306,8 @@ export function selectCivicSessions(
       ageRange: ageRangeLabel(session),
       confidence: session.confidence,
       distanceKm,
+      access: session.registrationRequired ? 'register_at_venue' : 'drop_in',
+      whenLabel: asciiCopy(when.label),
     });
   }
 
@@ -497,6 +514,8 @@ export async function projectCivicCandidates(
           priceLevel: 'free',
           ageRange: pick.ageRange,
           indoorOutdoor: 'indoor',
+          access: pick.access,
+          whenLabel: pick.whenLabel,
           runType: CIVIC_RUN_TYPE,
           searchSeason: null,
           discoveredAt: now,

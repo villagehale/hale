@@ -862,6 +862,13 @@
       "when": 1781469619000,
       "tag": "0125_family_trips",
       "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1781469620000,
+      "tag": "0126_village_candidate_access",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message follows the contract precisely. It opens with the mandatory \"I checked\" signal. It states the registration facts plainly and specifically: town, cycle name, opening time and date, child name, resident priority - without padding or invention. It then names the weekend pick with venue, activity, day, both kids' names, and relevant facts (indoor, paid) without listing every field or sounding like a database. The tone is plain-spoken and neighbour-like. No fields are invented: registrationAbsence is null so there's no claim about missed deadlines; firstFindBeat is null so there's no verbatim sentence to reproduce; there's no placeholder for missing data. The message is short, specific, and leads with the useful thing."
+  }
+}

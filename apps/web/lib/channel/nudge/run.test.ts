@@ -62,6 +62,9 @@ function candidate(overrides: Partial<RadarCandidate> = {}): RadarCandidate {
     childId: null,
     confidence: 0.8,
     source: null,
+    sourceUrl: null,
+    access: null,
+    whenLabel: null,
     ...overrides,
   };
 }
@@ -1003,6 +1006,9 @@ describe('runNudgeCron — the weekday drop-in', () => {
       childId: null,
       confidence: 0.9,
       source: 'civic_registry',
+      sourceUrl: null,
+      access: null,
+      whenLabel: null,
     },
   ];
 
@@ -1119,6 +1125,9 @@ describe('runNudgeCron — the weekday-care ask', () => {
       childId: null,
       confidence: 0.9,
       source: 'civic_registry',
+      sourceUrl: null,
+      access: null,
+      whenLabel: null,
     },
   ];
 

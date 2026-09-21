@@ -7,9 +7,11 @@ import type { HealthChild } from '~/lib/health/match';
 import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import {
+  OPEN_NOW_MAX_AGE_DAYS,
   latestPastCycle,
   matchRegistrationWindows,
   resolveMunicipalities,
+  stillOpenCycle,
 } from '~/lib/registration/match-registration-windows';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import type { ExtractedChild } from './extract';
@@ -19,7 +21,7 @@ import {
   type RadarDecision,
   decideRadar,
 } from './radar-decide';
-import { composeRadarMessage, promisesFirstFind } from './radar-voice';
+import { type RadarMessage, composeRadarMessage, promisesFirstFind } from './radar-voice';
 
 /** Words too generic to prove the checkpoint reached the parent. */
 const CHECKPOINT_STOPWORDS = new Set([
@@ -148,6 +150,15 @@ export interface RadarPayload {
    * make a message that named nothing into a find.
    */
   weekendPickOffered: boolean;
+  /**
+   * The three rule #11 outcomes of the one turn, carried so a test and any future
+   * caller can read what the log line below says. See {@link RadarMessage}: an
+   * `actionMove` WITH an `actionHeld` is the compute-and-hold state the dark flag
+   * exists to produce.
+   */
+  actionMove: RadarMessage['actionMove'];
+  actionHeld: RadarMessage['actionHeld'];
+  voiceFallback: RadarMessage['voiceFallback'];
 }
 
 export interface RadarComposer {
@@ -259,6 +270,14 @@ export async function readCandidates(database: Database, familyId: string): Prom
       // an unread column on this hot path is a field the next reader assumes is
       // checked.
       source: schema.villageCandidates.source,
+      // WHERE THE ROW'S OWN PAGE IS, and what a parent does when they get there. Both
+      // are rendered only off a `civic_registry` row (radar-decide accessFor): that
+      // source's url is the venue's own and its access mode is what the feed published,
+      // while an LLM row's url "is often guessed" (village/discover.ts). Selected
+      // beside `source` because the decision cannot apply that rule without all three.
+      sourceUrl: schema.villageCandidates.sourceUrl,
+      access: schema.villageCandidates.access,
+      whenLabel: schema.villageCandidates.whenLabel,
     })
     .from(schema.villageCandidates)
     .where(
@@ -329,6 +348,21 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       // already opened is between cycles, not off the radar, and that is a different
       // sentence. Null for a town that has published nothing.
       const pastCycle = area ? latestPastCycle({ windows: windowRows, postal: area, now }) : null;
+      // …and the same rows again, read as NEWS: the most recent cycle inside the age
+      // bound that a child of THIS family could still act on. No new query - one more
+      // pass over rows already in memory - and never a second rung: the decision uses
+      // whichever row this returns to build the ONE registration absence.
+      const openNow = area
+        ? stillOpenCycle({
+            windows: windowRows,
+            postal: area,
+            childrenAgesMonths: children
+              .map((child) => child.ageMonths)
+              .filter((age): age is number => age !== null),
+            now,
+            maxAgeDays: OPEN_NOW_MAX_AGE_DAYS,
+          })
+        : null;
 
       // THE FIRST FIND IS PRE-CONSENT — the watch offer rides on this very message
       // (machine.ts appends WATCH_OFFER to it), so health-checkpoint content may not:
@@ -346,6 +380,7 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
           candidates,
           windows,
           pastCycle,
+          stillOpenCycle: openNow,
           weather,
           teenChildIds: roster.teenChildIds,
           healthChildren: roster.healthChildren,
@@ -363,10 +398,29 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       // that registrations already gone were still to come — and, being a
       // short-circuit, it hid the between-cycles answer that names the same town
       // truthfully. Toronto composes from the decision like every other town.
-      const message = await composeRadarMessage(decision, {
+      const radar = await composeRadarMessage(decision, {
         familyId: input.familyId,
         database: deps.database,
         client: deps.client,
+        // The first reply has NO language of its own yet - machine.ts says so where it
+        // appends the bare WATCH_OFFER rather than WATCH_OFFER_BY_LANGUAGE - so 'en' is
+        // stated here rather than defaulted inside the composer, and the French twins
+        // sit written and tested until the turn has a language to choose with.
+        language: 'en',
+      });
+      const message = radar.body;
+
+      // Rule #11, and the dark flag's whole instrument. One line beside the
+      // checkpoint-drop warn below, which is the pattern this file already uses for
+      // exactly this class of fact. A family uuid and four enums: no PII, and a night of
+      // real intakes says which move each first reply WOULD have carried, how often the
+      // tail would not have fit, and how often the composed voice lost - before one
+      // parent sees a URL.
+      console.info('radar action line', {
+        familyId: input.familyId,
+        actionMove: radar.actionMove,
+        actionHeld: radar.actionHeld,
+        voiceFallback: radar.voiceFallback,
       });
 
       // Launch-day review P0 (2026-08-11): the decision yielding at DECIDE is not
@@ -415,6 +469,9 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
         // promise Hale never made. Cheaper than the checkpoint's containment guard
         // because the beat is a FIXED sentence — there is no paraphrase to survive.
         firstFindPromised: promisesFirstFind(message),
+        actionMove: radar.actionMove,
+        actionHeld: radar.actionHeld,
+        voiceFallback: radar.voiceFallback,
       };
     },
   };

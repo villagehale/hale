@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message opens with \"I checked Markham's Fall 2026 registration\" - a first-person verb of checking in the first sentence that attributes the finding directly to work Hale already did. The fact (registration opens Aug 11, 6:30 a.m.) lands in that same sentence, making this a complete attribution with no invented scope. The message uses only facts present in the payload: town (Markham), cycle (Fall 2026), time (Aug 11, 6:30 a.m.), and child names (Maya, Leo, Sam). No postal codes, invented searches, or product introductions appear."
+  }
+}

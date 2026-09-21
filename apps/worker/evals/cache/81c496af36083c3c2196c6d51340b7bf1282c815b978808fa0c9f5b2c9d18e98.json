@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message hits all three contract requirements precisely. ONE: \"I checked\" is the mandatory lead-sentence signal that Hale already looked something up, and it carries no invented scope. TWO: The facts carry both `registration` and `registrationAbsence` as null/present, so the instructed copy is to state plainly that nothing is posted yet—\"Winter 2027 dates aren't posted yet\" does exactly this, not speculating. THREE: `firstFindBeat` is reproduced verbatim in the second sentence. The tone is quiet and plain-spoken (a competent neighbour), specific (Fall 2026, Aug 11, Winter 2027), short, and useful—it leads with the registration status the parent needs to know, then delivers the encouraging find signal. No hype, no padding, no invented details. No attempt to fill the null `weekendPick` with a placeholder. All facts stated are present in the facts object."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message reads like a competent neighbour who already checked: plain-spoken, specific, and short. It leads with the useful thing (\"I looked up Saturday for Maya\") and states only facts provided (the activity name, venue, day, child's name, and the three why-facts: free, outdoor, dry forecast). No fields are invented. The facts carry no registration date or firstFindBeat, so neither should appear. The offerQuestion flag indicates readiness to follow up, but that's handled outside this first message. The voice is natural and direct, avoiding corporate tone or padding."
+  }
+}

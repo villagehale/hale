@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message is plain-spoken, specific, and leads with the useful thing. It names the facts given: Markham's Fall 2026 registration opening time, the Saturday drop-in at Riverdale Farm with its attributes (free, outdoor), and the checkpoint fact about the 18-month vaccine visit. It includes the mandatory \"I checked\" phrase in the lead sentence without padding. All stated facts are present in the facts object. The checkpoint is included because offerQuestion is true. The message is short, direct, and reads like a competent neighbour who looked something up. Nothing is invented or unnecessary."
+  }
+}

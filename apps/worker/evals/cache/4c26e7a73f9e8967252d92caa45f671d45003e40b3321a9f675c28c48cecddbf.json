@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message follows the contract precisely. It opens with the required lookup signal (\"I looked this up for you\"), delivers the specific checkpoint fact directly from the facts object (Ontario's routine vaccine schedule, 18 months, Maya's name), and handles the two null fields with the instructed plain language: one short clause on registration (\"Nothing on the registration front yet\") and one on the missing weekend pick (\"I'm still mapping what's near you for weekend picks\"). It contains no invented details, no hype, no corporate voice—just quiet, specific, competent delivery of what was found and what isn't ready yet."
+  }
+}

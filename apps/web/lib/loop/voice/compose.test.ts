@@ -92,31 +92,45 @@ describe('composeVoice', () => {
 
   it('degrades (null, flagged, recorded failed) when the answer carries no usable JSON', async () => {
     const capture = { agentRuns: [] as Record<string, unknown>[] };
-    const { voice, degraded } = await run('I cannot help with that.', [], capture);
+    const { voice, degraded, reason } = await run('I cannot help with that.', [], capture);
     expect(voice).toBeNull();
     expect(degraded).toBe(true);
+    expect(reason).toBe('parse');
     expect(capture.agentRuns[0]?.status).toBe('failed');
   });
 
   it('degrades when a voice string invents a fact (a time) not in the slots (rule #8)', async () => {
     const capture = { agentRuns: [] as Record<string, unknown>[] };
-    const { voice, degraded } = await run(JSON.stringify({ line: 'see you at 9:15 sharp' }), ['no times here'], capture);
+    const { voice, degraded, reason } = await run(JSON.stringify({ line: 'see you at 9:15 sharp' }), ['no times here'], capture);
     expect(voice).toBeNull();
     expect(degraded).toBe(true);
+    expect(reason).toBe('invented');
     expect(capture.agentRuns[0]?.status).toBe('failed');
   });
 
   it('keeps a voice whose facts are all grounded in the slots', async () => {
     const capture = { agentRuns: [] as Record<string, unknown>[] };
-    const { voice, degraded } = await run(JSON.stringify({ line: 'drop-off is at 9:15' }), ['school run 9:15'], capture);
+    const { voice, degraded, reason } = await run(JSON.stringify({ line: 'drop-off is at 9:15' }), ['school run 9:15'], capture);
     expect(degraded).toBe(false);
+    expect(reason).toBeNull();
     expect(voice).toEqual({ line: 'drop-off is at 9:15' });
   });
 
+  /**
+   * An OUTAGE is not a fabrication, and a caller counting one as the other reads its
+   * own dark-launch numbers backwards: "the model made something up" is a prompt
+   * problem and "the call did not come back" is an availability one, with opposite
+   * fixes. Rule #11's second half — never fold an outcome into a bucket that means
+   * something else — is why this is a named reason and not just `degraded: true`.
+   */
   it('degrades to null when the model call throws, never surfacing the error (rule #8)', async () => {
     const capture = { agentRuns: [] as Record<string, unknown>[] };
-    const { voice, degraded } = await run({ throws: true }, [], capture);
+    const { voice, degraded, reason } = await run({ throws: true }, [], capture);
     expect(voice).toBeNull();
     expect(degraded).toBe(true);
+    expect(reason).toBe('unavailable');
+    // The control: an outage is the ONE degradation that records no run at all, so a
+    // reason of 'unavailable' can never be a relabelled answer-side failure.
+    expect(capture.agentRuns).toHaveLength(0);
   });
 });

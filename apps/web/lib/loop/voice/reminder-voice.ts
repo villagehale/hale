@@ -105,7 +105,7 @@ export async function composeReminderVoice(
 ): Promise<ComposedVoice<ReminderVoice>> {
   // A batch always has ≥1 event in practice; guarded for the same reason week-voice
   // guards an empty item list — nothing to voice, not a failure.
-  if (events.length === 0) return { voice: null, degraded: false };
+  if (events.length === 0) return { voice: null, degraded: false, reason: null };
 
   let skill: Awaited<ReturnType<typeof loadReminderVoiceSkill>>;
   try {
@@ -115,7 +115,7 @@ export async function composeReminderVoice(
       { err, familyId, voice: 'reminder-voice' },
       'voice: reminder-voice skill load failed — deterministic line',
     );
-    return { voice: null, degraded: true };
+    return { voice: null, degraded: true, reason: 'skill_load' };
   }
 
   return composeVoice<ReminderVoice>({

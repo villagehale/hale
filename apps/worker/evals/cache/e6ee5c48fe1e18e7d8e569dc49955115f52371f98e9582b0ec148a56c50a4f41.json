@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message is plainly spoken and specific. It opens with the required \"I checked\" language. It states three distinct, factual items from the facts object: the registration cycle, date, and time; the specific weekend activity with venue and why (free, outdoor); and the vaccine checkpoint relevant to Maya. Each fact is stated without padding or invention. Fields the facts do not carry (no price, no age confirmation needed) are correctly absent. The message does not name a `firstFindBeat` because none was provided. It avoids corporate voice and sounds like a competent neighbour who looked something up. The order is logical and useful - registration deadline first, then the immediate activity option, then the health note. No exclamation marks, no hype, no database listing."
+  }
+}

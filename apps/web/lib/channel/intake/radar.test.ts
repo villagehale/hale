@@ -255,10 +255,53 @@ describe('createRadarComposer', () => {
       now: () => new Date('2026-09-17T15:00:00.000Z'),
     }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'L7G' });
 
+    // Sixteen days in, inside OPEN_NOW_MAX_AGE_DAYS: the town's page is still where
+    // this family should be sent, so the rung keeps its town, its cycle and its date
+    // and drops the half that says they missed it.
     expect(payload.message).toContain('Halton Hills');
     expect(payload.message).toContain('Fall 2026');
-    expect(payload.message).toContain('already opened');
-    expect(payload.message).toContain('Winter 2027');
+    expect(payload.message).toContain('registration opened Sep 1, 7:00 a.m.');
+    expect(payload.message).not.toContain('already');
+    expect(payload.message).not.toContain('not posted yet');
+    expect(payload.message).not.toContain('no registration date coming up');
+  });
+
+  /**
+   * THE LIVE CONTROL for the tense, at the composer rather than the renderer: the same
+   * town and the same row, read a day past the bound. Main's between-cycles sentence
+   * comes back whole — the town, the date and the cycle the sweep is watching for — so
+   * nothing Hale says correctly today has been bricked up behind the new tense.
+   */
+  it('goes back to the between-cycles sentence once the page is no longer the place to go', async () => {
+    const db = makeFakeDb();
+    db.db
+      .insert(schema.registrationWindows)
+      .values({
+        municipality: 'halton_hills',
+        programDomain: 'rec_program',
+        cycleLabel: 'Fall 2026',
+        previewAt: null,
+        residentOpenAt: null,
+        openAt: new Date('2026-09-01T11:00:00.000Z'),
+        residentPriorityDays: null,
+        waitlistResponseHours: null,
+        ageMinMonths: 36,
+        ageMaxMonths: 72,
+        sourceUrl: 'https://www.haltonhills.ca/example',
+        verifiedAt: new Date('2026-08-30T00:00:00.000Z'),
+        notes: null,
+      } as never);
+
+    const payload = await createRadarComposer({
+      database: db.db,
+      weather: fakeWeather([]),
+      client: null,
+      now: () => new Date('2026-09-23T15:00:00.000Z'),
+    }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'L7G' });
+
+    expect(payload.message).toContain(
+      'Halton Hills Fall 2026 registration already opened Sep 1, 7:00 a.m. - Winter 2027 dates are not posted yet.',
+    );
     expect(payload.message).not.toContain('no registration date coming up');
   });
 
@@ -293,8 +336,10 @@ describe('createRadarComposer', () => {
     // mornings that were in the past by Sept 16, read out as though they were coming.
     // Toronto now goes through the same between-cycles answer as every other town.
     expect(payload.message).toContain('Toronto');
-    expect(payload.message).toContain('already opened');
-    expect(payload.message).toContain('Winter 2027');
+    // Nine days in: the city's fall page is still the place to go, so the sentence
+    // names the town, the cycle and the morning it opened — and does not apologise.
+    expect(payload.message).toContain('registration opened Sep 8, 7:00 a.m.');
+    expect(payload.message).not.toContain('already');
     expect(payload.message).not.toContain('Sept 9');
     expect(payload.message).not.toBe(torontoRecMorningLine(new Date('2026-09-17T15:00:00.000Z')));
   });

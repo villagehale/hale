@@ -6,7 +6,14 @@ import { loadRadarVoiceSkill } from '~/lib/cron/skill';
 import { findBannedPhrases } from '~/lib/health/framing';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { townLabel } from '~/lib/channel/town-label';
+import {
+  type ActionLineHeld,
+  type ActionMove,
+  firstReplyActionLineEnabled,
+  renderActionLine,
+} from './action-line';
 import { WATCH_OFFER } from './copy';
 import type { RadarDecision, RegistrationAbsence } from './radar-decide';
 
@@ -144,6 +151,13 @@ export function radarVoiceContext(decision: RadarDecision): unknown {
           lastCycle: decision.registrationAbsence.cycleRef.cycleLabel,
           lastOpenedAtLocal: decision.registrationAbsence.lastOpenedAtLocal,
           nextCycle: decision.registrationAbsence.nextCycleLabel,
+          // The TENSE, and the model needs it or it argues with the line beneath it:
+          // the skill's instruction for a bare absence is the missed-it sentence, and
+          // a composed "already opened, the next dates are not posted yet" under a link
+          // to the page that is open is worse than either half alone. A boolean and
+          // nothing else — the date is already above it, and the URL is the one fact
+          // this stage may never be handed (R3, facts-lint.ts).
+          stillOpenPage: decision.registrationAbsence.stillOpen !== null,
         }
       : null,
     // The row id stays behind with the candidate uuid: `task` is the whole fact, and it
@@ -209,19 +223,47 @@ export function parseRadarVoiceAnswer(answer: string | null): RadarVoice | null 
   return parsed.data;
 }
 
-/** Whether a composed message may be sent as-is: grounded, question-free, clear of
- * M8's framing line, and inside the segment budget once the watch offer is appended. */
-export function usableRadarMessage(message: string, decision: RadarDecision): boolean {
-  if (findInventedFacts(message, radarFactSlots(decision)).length > 0) return false;
+/**
+ * WHY a composed message may not be sent as-is, or null when it may.
+ *
+ * One measurement, two names. The split is what the dark probe reads: "the model
+ * fabricated a venue" and "the link did not fit" are opposite problems with opposite
+ * fixes, and on main they shared one console.error and were indistinguishable
+ * afterwards (rule #11).
+ *
+ * `tail` is the action line the shell is about to append. It is measured HERE and
+ * nowhere else, because a budget check that measures a shorter string than the one
+ * that ships is a check that passes payloads the sender then discards.
+ */
+export function radarMessageFault(
+  message: string,
+  decision: RadarDecision,
+  tail: string,
+): 'grounding' | 'budget' | null {
+  if (findInventedFacts(message, radarFactSlots(decision)).length > 0) return 'grounding';
   // The checkpoint block is the one place a model writes health-ADMIN words, and M8's
   // whole argument for static templates was that a single invented clause there ("she's
   // a bit behind") is a diagnosis Hale has no standing to make. So the framing lint runs
   // over the composed message whenever a checkpoint is in play: a message that turns an
   // administrative window into a claim about the child, or into an instruction, is
   // discarded and the reviewed table's own wording goes out instead.
-  if (decision.checkpoint !== null && findBannedPhrases(message).length > 0) return false;
-  if (message.includes(WATCH_OFFER)) return false;
-  return smsSegments(`${message}\n\n${WATCH_OFFER}`) <= MAX_PAYLOAD_SEGMENTS;
+  if (decision.checkpoint !== null && findBannedPhrases(message).length > 0) return 'grounding';
+  // Not arithmetic, so not 'budget': the shell appends the one question, and a composer
+  // that writes it too has asked the parent twice.
+  if (message.includes(WATCH_OFFER)) return 'grounding';
+  if (smsSegments(`${message}${tail}\n\n${WATCH_OFFER}`) > MAX_PAYLOAD_SEGMENTS) return 'budget';
+  return null;
+}
+
+/** Whether a composed message may be sent as-is: grounded, question-free, clear of
+ * M8's framing line, and inside the segment budget once the action line and the watch
+ * offer are appended. */
+export function usableRadarMessage(
+  message: string,
+  decision: RadarDecision,
+  tail: string,
+): boolean {
+  return radarMessageFault(message, decision, tail) === null;
 }
 
 const STILL_LEARNING = "I'm still learning what's on around you - I'll have a pick for you soon.";
@@ -249,12 +291,35 @@ function betweenCyclesLine(absence: RegistrationAbsence): string {
   return `${townLabel(absence.cycleRef.municipality)} ${absence.cycleRef.cycleLabel} registration already opened ${absence.lastOpenedAtLocal} - ${next} are not posted yet.`;
 }
 
+/**
+ * The same two facts as {@link betweenCyclesLine}, minus the half that is now
+ * misleading. A cycle that opened five days ago is not a season that has gone, and "the
+ * next dates are not posted yet" invites a parent to wait for a cycle they should be
+ * registering for today.
+ *
+ * It claims a TOWN, a CYCLE and a DATE, and nothing else — never "there's still room"
+ * and never "before it fills" (R7). Hale has not read the page; the registration layer
+ * states that boundary for itself (registration/sequence/shortlist.ts).
+ *
+ * No trailing full stop: `lastOpenedAtLocal` already ends in "a.m."/"p.m." with its own
+ * period (formatWhenPhrase, lib/format/datetime.ts).
+ */
+function stillOpenLine(absence: RegistrationAbsence): string {
+  return `${townLabel(absence.cycleRef.municipality)} ${absence.cycleRef.cycleLabel} registration opened ${absence.lastOpenedAtLocal}`;
+}
+
 /** How many blocks the render may spend, and the same ceiling the skill is written to.
  * Not a segment budget — {@link MAX_PAYLOAD_SEGMENTS} is the arithmetic one — but the
  * copy contract: three sentences, read on a phone, one hand holding a toddler. When all
  * three rungs are filled the checkpoint is the one that yields, because a registration
- * date closes and a weekend passes while an administrative window stays open for months. */
-const MAX_BLOCKS = 2;
+ * date closes and a weekend passes while an administrative window stays open for months.
+ *
+ * R8a: a tail costs a block. A parent handed "Toronto Fall 2026 registration opened Sep
+ * 15" AND the page has one thing to do; the Saturday storytime underneath it is noise —
+ * the same one-message-one-thing discipline the decide stage already argues. */
+function maxBlocks(tail: string): number {
+  return tail.length > 0 ? 1 : 2;
+}
 
 function joinNames(names: readonly string[]): string {
   if (names.length === 0) return '';
@@ -281,7 +346,7 @@ function dayLabel(day: string): string {
  * Plain ASCII on purpose: one typographic dash would flip the whole SMS to UCS-2 and
  * halve the character budget (see sms-segments.ts).
  */
-export function renderRadarDeterministically(decision: RadarDecision): string {
+export function renderRadarDeterministically(decision: RadarDecision, tail: string): string {
   const blocks: string[] = [];
 
   const registration = decision.registrationLine;
@@ -308,6 +373,11 @@ export function renderRadarDeterministically(decision: RadarDecision): string {
   }
 
   const absence = decision.registrationAbsence;
+  // One sentence about this town, in whichever tense is true of it. Bound once because
+  // three places below choose between the same two lines, and a fourth caller picking
+  // the wrong one is how a tense comes apart.
+  const absenceLine =
+    absence === null ? null : absence.stillOpen ? stillOpenLine(absence) : betweenCyclesLine(absence);
   if (blocks.length === 0) {
     // Still nothing found, but the registration half is answerable: a town between
     // cycles is a different sentence from a town that has never been on the radar, and
@@ -315,17 +385,78 @@ export function renderRadarDeterministically(decision: RadarDecision): string {
     // The absence LEADS when it is the only real thing known about this family: it is
     // a fact about their town, and the same cascade that puts a registration date ahead
     // of a drop-in puts it ahead of the mapping line.
-    return absence
-      ? `${betweenCyclesLine(absence)} ${MAPPING_ONLY} ${FIRST_FIND_BEAT}`
-      : `${MAPPING_NOW} ${FIRST_FIND_BEAT}`;
+    if (absenceLine !== null) {
+      const lead = absenceLine;
+      // R8b. This return is not sliced by maxBlocks at all — there is no block to spend
+      // — so a tail costs the MAPPING_ONLY clause instead, and the worst seeded cycle
+      // label stops costing a fourth billed segment at 487 septets (nothing below this
+      // module refuses an over-long body; it ships). The honest half to drop is the one
+      // saying Hale has nothing to point them to: it has just pointed them at a page.
+      // FIRST_FIND_BEAT stays unconditionally — `emptyHanded` is what the commitments
+      // ledger keys on, and a beat dropped at render against a debt recorded at send is
+      // the 2026-08-11 told-marker defect in a new costume.
+      return tail.length > 0
+        ? `${lead} ${FIRST_FIND_BEAT}`
+        : `${lead} ${MAPPING_ONLY} ${FIRST_FIND_BEAT}`;
+    }
+    return `${MAPPING_NOW} ${FIRST_FIND_BEAT}`;
   }
   // One real fact, and room for the absence that matters: a family who got the pick is
   // owed the registration answer — with its reason when there is one — and everyone
   // else is owed the promise of a pick.
   if (blocks.length === 1) {
-    blocks.push(pick ? (absence ? betweenCyclesLine(absence) : NO_WINDOW) : STILL_LEARNING);
+    blocks.push(pick ? (absenceLine ?? NO_WINDOW) : STILL_LEARNING);
   }
-  return blocks.slice(0, MAX_BLOCKS).join('\n\n');
+  // R8a costs a block, and R10 decides WHICH block survives it. Slicing by position
+  // alone drops whatever the cascade happened to put second — and for a pick above a
+  // still-open town that is the town sentence itself, silently erased by a rung that
+  // did not render, which is the whole defect this rung's tense exists to avoid.
+  //
+  // A tail that arrives here alongside an absence is therefore ABOUT that absence, and
+  // that is a guarantee rather than an assumption: `renderActionLine` holds every pick
+  // move with `pick_displaced` the moment the decision carries an absence, precisely so
+  // this line can never leave a receipt pointing at a block the body does not carry.
+  if (tail.length > 0 && absenceLine !== null) return absenceLine;
+  return blocks.slice(0, maxBlocks(tail)).join('\n\n');
+}
+
+/**
+ * What one radar turn produced, so the dark probe can read a night of real intakes
+ * before one parent ever sees a URL (rule #11).
+ */
+export interface RadarMessage {
+  /** The whole payload minus the watch offer the state machine appends. */
+  body: string;
+  /** The move the action line COMPUTED, whether or not it rode. Null when nothing in
+   *  the decision implied one, or the line could not be built at all. */
+  actionMove: ActionMove | null;
+  /**
+   * Why the computed line did NOT ride, or null when it did.
+   *
+   * A non-null `actionHeld` WITH a non-null `actionMove` is the compute-and-hold state:
+   * the line was built and the budget or the flag stopped it, which is exactly what the
+   * dark night is for. The brief asked for "exactly one of the two non-null"; that
+   * cannot also satisfy "the would-be move is logged while the flag is off", and the
+   * founder decision asked for the second. So the pair is read together.
+   */
+  actionHeld: ActionLineHeld | null;
+  /**
+   * The composed voice lost and the deterministic render went out, with WHICH check
+   * lost it. Null when the composed message shipped.
+   *
+   * 'grounding' means the model's ANSWER was wrong — a fabricated fact or an answer
+   * that would not parse. An outage is 'voice_unavailable' and never 'grounding':
+   * "the model made something up" and "the call did not come back" are opposite
+   * problems with opposite fixes, and a probe that folds one into the other reads its
+   * own numbers backwards (rule #11).
+   */
+  voiceFallback:
+    | 'grounding'
+    | 'voice_unavailable'
+    | 'budget'
+    | 'skill_load'
+    | 'no_client'
+    | null;
 }
 
 /**
@@ -333,13 +464,53 @@ export function renderRadarDeterministically(decision: RadarDecision): string {
  * words ship. A null client (no API key, or the voice kill switch) skips the call
  * entirely — the deterministic render is a first-class outcome here, not an error path,
  * because a parent mid-intake must get their answer whether or not a model is reachable.
+ *
+ * THE ACTION LINE IS APPENDED HERE, so one function owns the whole payload shape and
+ * the state machine's send site has a zero-line diff. The model never sees it.
  */
 export async function composeRadarMessage(
   decision: RadarDecision,
-  deps: { familyId: string; database: Database; client: AgentClient | null },
-): Promise<string> {
-  const deterministic = renderRadarDeterministically(decision);
-  if (!deps.client) return deterministic;
+  deps: {
+    familyId: string;
+    database: Database;
+    client: AgentClient | null;
+    /** Required, never defaulted: the absence of a language is a value a caller states
+     *  (rule #11). The first reply has no language of its own yet, so radar.ts says
+     *  'en' out loud rather than letting a default say it silently. */
+    language: ReplyLanguage;
+  },
+): Promise<RadarMessage> {
+  const action = renderActionLine(decision, deps.language);
+  const actionMove = action.line === null ? null : action.move;
+  const candidate = action.line === null ? '' : `\n\n${action.line}`;
+
+  // ORDER MATTERS, and it is the dark flag's whole point. The budget is measured FIRST,
+  // against the grounded render that must always fit, so a night with the flag off says
+  // how often the tail WOULD have been dropped for length. Only then is the flag read.
+  let held: ActionLineHeld | null = action.line === null ? action.held : null;
+  let tail = candidate;
+  if (
+    tail.length > 0 &&
+    smsSegments(`${renderRadarDeterministically(decision, tail)}${tail}\n\n${WATCH_OFFER}`) >
+      MAX_PAYLOAD_SEGMENTS
+  ) {
+    held = 'over_budget';
+    tail = '';
+  }
+  if (tail.length > 0 && !firstReplyActionLineEnabled()) {
+    held = 'flag_off';
+    tail = '';
+  }
+
+  const deterministic = renderRadarDeterministically(decision, tail);
+  const fallback = (voiceFallback: NonNullable<RadarMessage['voiceFallback']>): RadarMessage => ({
+    body: `${deterministic}${tail}`,
+    actionMove,
+    actionHeld: held,
+    voiceFallback,
+  });
+
+  if (!deps.client) return fallback('no_client');
 
   // The skill is loaded OUTSIDE the fallback boundary in the loop's voice callers
   // because a missing file there is a deploy bug. Here it is inside it deliberately:
@@ -350,10 +521,10 @@ export async function composeRadarMessage(
     skill = await loadRadarVoiceSkill();
   } catch (err) {
     console.error({ err, familyId: deps.familyId }, 'radar: skill load failed - deterministic render');
-    return deterministic;
+    return fallback('skill_load');
   }
 
-  const { voice } = await composeVoice<RadarVoice>({
+  const { voice, reason } = await composeVoice<RadarVoice>({
     skill,
     context: radarVoiceContext(decision),
     factSlots: radarFactSlots(decision),
@@ -367,14 +538,18 @@ export async function composeRadarMessage(
     maxTokens: VOICE_MAX_TOKENS,
   });
 
-  if (!voice || !usableRadarMessage(voice.message, decision)) {
-    if (voice) {
-      console.error(
-        { familyId: deps.familyId },
-        'radar: composed message failed the grounding/budget check - deterministic render',
-      );
-    }
-    return deterministic;
+  // An outage is not a fabrication. `composeVoice` names which one it was, and the two
+  // are counted apart here rather than folded into the bucket whose name means the
+  // other thing (rule #11) — the dark night's 'grounding' rate is a prompt signal, and
+  // its 'voice_unavailable' rate is an availability one.
+  if (!voice) return fallback(reason === 'unavailable' ? 'voice_unavailable' : 'grounding');
+  const fault = radarMessageFault(voice.message, decision, tail);
+  if (fault !== null) {
+    console.error(
+      { familyId: deps.familyId, fault },
+      'radar: composed message failed the grounding/budget check - deterministic render',
+    );
+    return fallback(fault);
   }
-  return voice.message;
+  return { body: `${voice.message}${tail}`, actionMove, actionHeld: held, voiceFallback: null };
 }

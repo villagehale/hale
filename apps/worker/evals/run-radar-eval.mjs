@@ -115,6 +115,10 @@ function radarVoiceContext(decision) {
           lastCycle: decision.registrationAbsence.cycleRef.cycleLabel,
           lastOpenedAtLocal: decision.registrationAbsence.lastOpenedAtLocal,
           nextCycle: decision.registrationAbsence.nextCycleLabel,
+          // The TENSE: the same cycle read as news rather than history. A boolean and
+          // nothing else - the model already has the date, and the link the shell
+          // appends under the message is the one fact it may never write.
+          stillOpenPage: decision.registrationAbsence.stillOpen !== null,
         }
       : null,
     // The reviewed row's own words and the names it may carry — never the row id.
@@ -294,6 +298,49 @@ function carriesAFind(decision) {
   );
 }
 
+/**
+ * Mirrors renderActionLine + composeRadarMessage's append in
+ * apps/web/lib/channel/intake/action-line.ts: ONE deterministic line, composed by the
+ * shell UNDER the model's message, carrying at most one hand-verified URL.
+ *
+ * It is here because the budget the gate measures has to be the payload production
+ * SENDS. Measuring `${message}\n\n${WATCH_OFFER}` alone passed strings the sender then
+ * discards for being three-and-a-bit segments long, which is the defect this replica
+ * closes rather than the one it adds.
+ *
+ * Only the still-open arm is replicated, because that is the only arm any fixture's
+ * decision reaches: no fixture carries a `registerUrl` on the upcoming rung or a
+ * `verifiedUrl` on a pick. The other four moves' budget is pinned deterministically
+ * instead (radar-voice.test.ts iterates every seeded registration row), and what the
+ * composed voice does on those turns is the deferred question, not this gate's.
+ */
+function tailFor(decision) {
+  const stillOpen = decision.registrationAbsence?.stillOpen ?? null;
+  if (stillOpen === null) return '';
+  return `\n\nThe page is here: ${stillOpen.registerUrl}`;
+}
+
+/** The whole payload, exactly as the sender bills it. */
+function payloadOf(decision, message) {
+  return `${message}${tailFor(decision)}\n\n${WATCH_OFFER}`;
+}
+
+/**
+ * WHERE A RECALLED FACT LANDS, or -1.
+ *
+ * A token is a string, or an ARRAY of the ways English writes one fact. "a visit at 18
+ * months" and "an 18-month visit" are the same reviewed row said two ways, and a gate
+ * that pins the inflection rather than the fact fails a message that delivered it — on a
+ * draw, not on a change, which is the worst kind of red. Any one spelling counts; all of
+ * them missing is the failure. It is never a way to accept a DIFFERENT fact: every
+ * alternative has to be the same thing the fixture exists for.
+ */
+function indexOfFact(lower, token) {
+  const spellings = Array.isArray(token) ? token : [token];
+  const hits = spellings.map((t) => lower.indexOf(t.toLowerCase())).filter((at) => at !== -1);
+  return hits.length === 0 ? -1 : Math.min(...hits);
+}
+
 function checkMessage(fixture, message, judgeScore, attributionScore) {
   const failures = [];
   if (!message) return ['answer failed to parse into a strict { message } object'];
@@ -308,7 +355,7 @@ function checkMessage(fixture, message, judgeScore, attributionScore) {
     failures.push('writes a question of its own (the shell owns the only question)');
   }
 
-  const segments = smsSegments(`${message}\n\n${WATCH_OFFER}`);
+  const segments = smsSegments(payloadOf(fixture.decision, message));
   if (segments > MAX_PAYLOAD_SEGMENTS) {
     failures.push(`payload is ${segments} SMS segments > ${MAX_PAYLOAD_SEGMENTS}`);
   }
@@ -320,7 +367,7 @@ function checkMessage(fixture, message, judgeScore, attributionScore) {
 
   const lower = message.toLowerCase();
   for (const token of fixture.expect.mustRecall ?? []) {
-    if (!lower.includes(token.toLowerCase())) {
+    if (indexOfFact(lower, token) === -1) {
       failures.push(`never delivers the fact it exists for: ${JSON.stringify(token)}`);
     }
   }
@@ -328,7 +375,7 @@ function checkMessage(fixture, message, judgeScore, attributionScore) {
   // present and must not appear before the one that outranks it.
   let cursor = -1;
   for (const token of fixture.expect.orderedRecall ?? []) {
-    const at = lower.indexOf(token.toLowerCase());
+    const at = indexOfFact(lower, token);
     if (at === -1) {
       failures.push(`never delivers the fact it exists for: ${JSON.stringify(token)}`);
       break;
@@ -368,9 +415,36 @@ const JUDGE_SYSTEM = [
   'absent. A message that names no venue because there is none IS complete, and you never',
   'mark it down for that, ask it for a placeholder, or suggest wording that would invent',
   'one: a stand-in like "location TBA" is a detail Hale was not given.',
+  'A specific is INVENTED only when you cannot find it in the facts you were given. Read',
+  'the facts object before you call anything invented: a town, a cycle name, a date, a',
+  'time, an activity title, an age range or a name that appears there is GIVEN, however',
+  'specific it looks, and naming it is the message doing its job.',
+  '`registrationAbsence` is this town\'s LAST cycle - its name and the morning it opened.',
+  'It is not a claim that anything is shut and it is not a request for the next cycle.',
+  'When it carries `stillOpenPage: true` that cycle is the CURRENT one, still the one to',
+  'act on: a message that says it opened on `lastOpenedAtLocal` and stops is exactly',
+  'right, and you never mark it down for leaving out `nextCycle`, for not saying',
+  'registration has closed, or for not warning that the parent has missed it. When',
+  '`stillOpenPage` is false the season has gone and the next dates are not posted, and',
+  'saying both halves plainly is what a 5 looks like.',
+  'THE COMPOSER IS WRITING TO A CONTRACT (packages/agent/skills/radar-voice.md), and',
+  'three things that contract REQUIRES are neither padding nor inventions. ONE: a few',
+  'words inside the LEAD sentence saying Hale already went and looked - "I found", "I',
+  'checked", "I looked up", "I had a look" - are mandatory and are scored by a separate',
+  'reviewer. Never mark a message down for them and never read them as corporate voice.',
+  'They add no fact of their own, so they are invented only when they carry a scope the',
+  'facts do not: a count of places checked, an area swept, a postal code, a time the',
+  'check ran. TWO: when `registration` and `registrationAbsence` are BOTH null, one short',
+  'clause saying nothing has a registration date coming up is the instructed copy and not',
+  'a speculation - and so is one short clause saying Hale is still learning the area and',
+  'will have a pick soon when `weekendPick` is null. Neither is a claim about data the',
+  'writer lacks; both are what the absence is supposed to sound like. THREE:',
+  '`firstFindBeat`, where the facts carry it, is a sentence Hale HANDED the composer to',
+  'reproduce verbatim. It is not padding and not a promise the writer made up.',
   'A LOW score is hype or exclamation marks, brand/corporate voice ("We are excited to"),',
-  'listing facts like a database row, restating every field, sounding like an ad, or',
-  'any detail not present in the facts. Reply with ONLY the score tool.',
+  'listing facts like a database row, restating every field, sounding like an ad, burying',
+  'the useful fact under the frame, or any detail not present in the facts. Reply with',
+  'ONLY the score tool.',
 ].join(' ');
 
 /**
@@ -397,10 +471,13 @@ const ATTRIBUTION_JUDGE_SYSTEM = [
   'its own that the fact then follows.',
   'A 1 states the fact with nothing at all saying where it came from. True, and',
   'indistinguishable from a piece of trivia a stranger sent.',
-  'Score 1 ALSO for the opposite failure - a look with specifics in it. Hale was given no',
-  'postal code, no area name, no count of places checked, no time the check ran and no',
-  'schedule it runs on, so any of those is invented, and an invented scope is worse than',
-  'no attribution at all.',
+  'Score 1 ALSO for the opposite failure - a look with specifics in it THE FACTS DO NOT',
+  'CARRY. The test is the facts object in front of you, not your sense of what Hale could',
+  'plausibly know: a town, a cycle name, a date, a time, an activity title or a child\'s',
+  'name that appears in those facts is GIVEN, and naming it inside the look is the message',
+  'reporting back, never an invented scope. A postal code, an area swept, a count of',
+  'places checked, a time the check ran or a schedule it runs on appears in no payload, so',
+  'any of THOSE is invented, and an invented scope is worse than no attribution at all.',
   'Score 1 for a greeting, a brand line ("Welcome to Hale"), hype, or anything that reads',
   'as a product introducing itself. This is a person saying they already looked.',
   'Reply with ONLY the score tool.',
@@ -533,7 +610,7 @@ async function main() {
   const passes = results.filter((r) => r.failures.length === 0);
   const fabricating = results.filter((r) => r.message && fabrications(r.message, radarVoiceContext(r.fixture.decision)).length > 0);
   const overBudget = results.filter(
-    (r) => r.message && smsSegments(`${r.message}\n\n${WATCH_OFFER}`) > MAX_PAYLOAD_SEGMENTS,
+    (r) => r.message && smsSegments(payloadOf(r.fixture.decision, r.message)) > MAX_PAYLOAD_SEGMENTS,
   );
   const asking = results.filter((r) => r.message?.includes('?'));
   const scores = results.map((r) => r.score).filter((s) => typeof s === 'number');
@@ -548,7 +625,7 @@ async function main() {
   const accuracy = passes.length / results.length;
   const segmentsMean = results
     .filter((r) => r.message)
-    .map((r) => smsSegments(`${r.message}\n\n${WATCH_OFFER}`));
+    .map((r) => smsSegments(payloadOf(r.fixture.decision, r.message)));
 
   console.log('\n--- corpus metrics ---');
   console.log(`fixtures passing every check: ${(accuracy * 100).toFixed(1)}%  (100% required)`);

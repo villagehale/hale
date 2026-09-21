@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message meets all contract requirements. It opens with the mandatory phrase \"I checked\" establishing that Hale looked something up. It states the registration fact plainly and correctly: Fall 2026 opened Sep 15 (matching lastOpenedAtLocal). It leads with the useful thing (the drop-in activity for Maya), includes relevant specific facts from weekendPick (free, outdoor, forecast dry), and names the venue (Riverdale Farm) and day (Saturday). It avoids padding, invention, or corporate voice. Since stillOpenPage is true, the current cycle is what to act on, and the message correctly stops after stating it opened - not warning about closure or mentioning nextCycle. The tone is quiet, plain-spoken, and competent."
+  }
+}

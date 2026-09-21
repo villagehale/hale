@@ -97,7 +97,7 @@ export async function composeWeekVoice(
   client: AgentClient,
 ): Promise<ComposedVoice<WeekPlanVoice>> {
   // No items → nothing to voice; the deterministic quiet line renders. Not a failure.
-  if (items.length === 0) return { voice: null, degraded: false };
+  if (items.length === 0) return { voice: null, degraded: false, reason: null };
 
   let skill: Awaited<ReturnType<typeof loadWeekSummarySkill>>;
   try {
@@ -109,7 +109,7 @@ export async function composeWeekVoice(
       { err, familyId, voice: 'weekly-plan-voice' },
       'voice: week-summary skill load failed — deterministic plan',
     );
-    return { voice: null, degraded: true };
+    return { voice: null, degraded: true, reason: 'skill_load' };
   }
 
   return composeVoice<WeekPlanVoice>({

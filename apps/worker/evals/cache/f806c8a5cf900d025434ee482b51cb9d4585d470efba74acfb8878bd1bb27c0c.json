@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message embeds a first-person verb of checking (\"I checked\") in the opening sentence before the fact lands. \"I checked Markham's calendar\" establishes Hale as the one who performed the look, and the useful fact (Fall 2026 registration for Maya opens Aug 11, 6:30 a.m.) arrives in that same sentence. The attribution is clear and immediate, with no preamble, and the facts presented (town: Markham, cycle: Fall 2026, time: Aug 11, 6:30 a.m., child: Maya) all appear in the payload and match what was searched. This scores 5 under the criteria."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message follows the contract precisely. It opens with the required phrase (\"I checked\") signaling that Hale looked something up. It states the registration fact plainly - that Fall 2026 opened Sep 15 - and because stillOpenPage is true, correctly stops there without warning about closure or referencing Winter 2027. The weekendPick is led with another required phrase (\"I also found\") and delivers the useful fact first: a free outdoor drop-in for Maya at Riverdale Farm this Saturday, grounded in the given facts (free, outdoor, dry forecast). No facts are invented, no padding is present, no database-row listing, no hype. It is quiet, plain-spoken, specific, and short - exactly what a competent neighbour sounds like."
+  }
+}

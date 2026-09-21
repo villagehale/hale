@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message hits all the requirements. It opens with \"I checked,\" satisfying the mandatory phrasing that Hale looked something up. It leads with the useful fact (registration opening time). It states only the given facts: town, cycle, opening date/time, and child name. It handles the absent `weekendPick` with the instructed short clause (\"No weekend pick yet, but I'll have one for you soon\"), which is required copy when this field is null, not speculation. No invented details. Plain-spoken, specific, short. Exactly what a competent neighbour sounds like."
+  }
+}

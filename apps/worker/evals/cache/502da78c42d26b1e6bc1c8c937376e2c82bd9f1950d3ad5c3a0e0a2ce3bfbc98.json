@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message is plain-spoken and specific, leading with the useful fact (registration opening time). It states only given facts: the town, cycle name, opening date and time, child's name, and the vaccine checkpoint information verbatim from the facts. The lead sentence includes the required contract element (\"I checked\"), which does not invent scope. No fields are padded or invented. The message is short and sounds like a competent neighbour who looked something up. It does not mark down the absence of fields not in the facts (no venue, no age range, etc.). Both required null-state elements are handled correctly: `firstFindBeat` is null (not included), `weekendPick` is null (not included), and neither registration nor registrationAbsence requires the instructed copy since registration is present. The checkpoint information is reproduced as given."
+  }
+}

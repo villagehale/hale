@@ -80,7 +80,7 @@ export async function composeWelcomeVoice(
       { err, familyId, voice: 'welcome-voice' },
       'voice: welcome-voice skill load failed — deterministic welcome',
     );
-    return { voice: null, degraded: true };
+    return { voice: null, degraded: true, reason: 'skill_load' };
   }
 
   return composeVoice<WelcomeVoice>({

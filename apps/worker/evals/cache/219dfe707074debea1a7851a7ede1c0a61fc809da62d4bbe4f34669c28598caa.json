@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message meets all contract requirements. It opens with \"I checked\" (mandatory lead phrase showing Hale looked something up). It names the town, cycle, opening date and time from the facts. It appropriately flags the age uncertainty with \"if... still in the right age bands\" because ageApproximate is true. It plainly states the absence with \"Nothing else to point you to this weekend yet\" (the instructed copy for when weekendPick is null), rather than padding or speculating. The tone is quiet, plain-spoken, and neighbour-like. No details are invented—every fact comes from the object provided. The message is short and leads with the useful thing (registration opening). No hype, no corporate voice, no unnecessary restatement of fields."
+  }
+}

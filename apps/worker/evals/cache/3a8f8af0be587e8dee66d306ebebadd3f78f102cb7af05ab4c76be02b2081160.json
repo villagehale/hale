@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message meets all contract requirements for a 5-score response. It opens with the mandatory lead phrase \"I checked\" showing work was done. It states the specific, given facts cleanly: town (Markham), cycle (Fall 2026), opening time (Aug 11 at 6:30 a.m.), and child name (Maya). It handles the null weekendPick field with the instructed short clause explaining Hale is still learning the area and will have a pick soon - this is required copy when the field is absent, not speculation. The tone is quiet and plain-spoken, like a competent neighbour, with no hype, no invention, no padding, no listing like a database. It leads with the useful thing (registration opening time) and stops when it has said what matters."
+  }
+}
