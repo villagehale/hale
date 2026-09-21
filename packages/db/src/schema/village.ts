@@ -92,6 +92,17 @@ export const villageCandidates = pgTable(
     priceLevel: text('price_level'),
     ageRange: text('age_range'),
     indoorOutdoor: text('indoor_outdoor'),
+    /** What a parent actually DOES about this one, where the source said. 'drop_in' —
+     * turn up. 'register_at_venue' — the venue wants a sign-up first (Oakville
+     * storytimes are free but ticketed). NULL is UNKNOWN and is the permanent value for
+     * every model-discovered row: the model is never asked for it, because a guess here
+     * sends a family to a door that turns them away. Free text with a TS union
+     * ({@link CandidateAccess}), like every other attribute on this table. */
+    access: text('access'),
+    /** When it runs, in the source's own words, already ASCII-folded — the weekly band
+     * an EarlyON centre publishes or the clock time a library event carries. NULL where
+     * the source stated none, which is every model-discovered row. */
+    whenLabel: text('when_label'),
     /** Which run produced this row: 'standing' (the weekly feed) or 'search' (a
      * parent-triggered season search). Supersession is scoped by this column so a
      * search run never soft-retires the standing feed and vice-versa. Default
@@ -111,6 +122,14 @@ export const villageCandidates = pgTable(
     familyIdx: index('village_candidates_family_idx').on(table.familyId),
   }),
 );
+
+/**
+ * The vocabulary {@link villageCandidates.access} is written in. A TS union over a free
+ * text column, matching this table's house style for every other attribute: a new value
+ * lands without a migration, and the one writer that knows the fact (the civic
+ * projection) is the only thing that types it.
+ */
+export type CandidateAccess = 'drop_in' | 'register_at_venue';
 
 /**
  * One family endorsing one village candidate — the trusted-parent signal that

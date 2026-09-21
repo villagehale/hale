@@ -40,6 +40,8 @@ function candidate(overrides: Partial<VillageCandidate> = {}): VillageCandidate 
     priceLevel: null,
     ageRange: null,
     indoorOutdoor: null,
+    access: null,
+    whenLabel: null,
     shareToken: null,
     eventDate: null,
     seasons: null,

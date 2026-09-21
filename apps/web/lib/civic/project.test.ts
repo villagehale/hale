@@ -458,3 +458,80 @@ describe('the venue a civic pick came from', () => {
     expect(new Set(picks.map((pick) => pick.sourceUrl)).size).toBe(1);
   });
 });
+
+/**
+ * VIL-3xx · the two structured facts the projection used to throw away.
+ *
+ * `registration_required` never survived the projection at all, and the session's own
+ * time survived only folded into `summary`'s prose. Recovering either by matching that
+ * prose is the "resolver keyed on an unwritten field" shape — and the prose carries
+ * punctuation an SMS may not, so a reader that quoted it would bill the whole message
+ * as UCS-2. Both are columns now, derived from `civic_sessions`' own semantics
+ * (packages/db/src/schema/civic.ts) rather than from what the projection happens to
+ * print today.
+ */
+describe('access and whenLabel — what a parent DOES, and when', () => {
+  it('projects a session the source says needs no sign-up as a drop-in', () => {
+    const pick = selectCivicSessions(
+      [session({ registrationRequired: false })],
+      TODDLER,
+      null,
+      NOW,
+      TZ,
+    )[0]!;
+    expect(pick.access).toBe('drop_in');
+  });
+
+  it('projects a session the source says wants a sign-up first as register_at_venue', () => {
+    const pick = selectCivicSessions(
+      [session({ registrationRequired: true })],
+      TODDLER,
+      null,
+      NOW,
+      TZ,
+    )[0]!;
+    expect(pick.access).toBe('register_at_venue');
+  });
+
+  it('carries the weekly band as the label, already folded to printable GSM-7', () => {
+    const weekly = session({
+      recurrence: 'weekly',
+      startsAt: null,
+      dayOfWeek: 2,
+      startMinute: 9 * 60 + 30,
+      endMinute: 11 * 60,
+    });
+    const pick = selectCivicSessions([weekly], TODDLER, null, NOW, TZ)[0]!;
+    expect(pick.whenLabel).toBe('9:30 a.m.-11:00 a.m.');
+    expect(isPrintableGsm7Basic(pick.whenLabel as string)).toBe(true);
+  });
+
+  it("carries an occurrence's own clock time, not a weekly band", () => {
+    // The fixture's startsAt is 2026-08-05T14:30Z = 10:30 a.m. Toronto.
+    const pick = selectCivicSessions([session()], TODDLER, null, NOW, TZ)[0]!;
+    expect(pick.whenLabel).toBe('10:30 a.m.');
+    expect(pick.whenLabel).not.toContain('-');
+  });
+
+  /**
+   * THE POSITIVE CONTROL. `summary` is the web card's string and the two new columns
+   * were added beside it, not carved out of it: a change that re-worded the card while
+   * "adding a structured field" is the drift this pins.
+   */
+  it('leaves the card summary byte-identical while the structured fields appear', () => {
+    const weekly = session({
+      recurrence: 'weekly',
+      startsAt: null,
+      dayOfWeek: 2,
+      startMinute: 9 * 60 + 30,
+      endMinute: 11 * 60,
+      registrationRequired: true,
+    });
+    const pick = selectCivicSessions([weekly], TODDLER, null, NOW, TZ)[0]!;
+    expect(pick.summary).toBe(
+      'Registration required at Armour Heights, Toronto - 9:30 a.m.-11:00 a.m..',
+    );
+    expect(pick.access).toBe('register_at_venue');
+    expect(pick.whenLabel).toBe('9:30 a.m.-11:00 a.m.');
+  });
+});
