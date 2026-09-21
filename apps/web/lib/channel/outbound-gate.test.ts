@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -621,18 +621,58 @@ describe('holdStatus — one copy, beside the union it is keyed on', () => {
     expect(holdStatus('no_watch_consent')).toBe('suppressed_consent');
   });
 
-  it('is the ONLY copy left — the two alert files import it', () => {
+  /**
+   * WHY THIS SCANS THE TREE RATHER THAN A LIST OF FILES. The first version of this test
+   * named the three files the hoist had touched, and a fourth private copy — landed in
+   * `channel/coparent/departure-notice.ts` before this branch was cut — sat outside it and
+   * made the claim above false while the test stayed green. A list of the places a shape
+   * has already leaked to cannot catch the next one; the scan can, and a file added
+   * tomorrow is in it for free.
+   */
+  it('is the ONLY copy left — no file under apps/web re-declares it', () => {
     // A private copy re-appearing is the drift this hoist exists to prevent, and it is not
     // catchable by types: a second literal compiles perfectly.
-    const root = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '');
+    const web = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '');
+    const declaring: string[] = [];
+    for (const file of sourceFiles(join(web, 'lib')).concat(sourceFiles(join(web, 'app')))) {
+      if (file === join(web, 'lib/channel/outbound-gate.ts')) continue;
+      if (readFileSync(file, 'utf8').includes('HOLD_STATUS')) {
+        declaring.push(file.slice(web.length + 1));
+      }
+    }
+    expect(declaring, 'these files must import holdStatus instead of re-declaring it').toEqual([]);
+  });
+
+  it('is imported by every file that records a hold — the control for the scan above', () => {
+    // Absence proves nothing on its own: the scan would also pass if no file used the
+    // mapping at all. These three take it from the one copy.
+    const web = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '');
     for (const file of [
       'lib/integrations/email-alert.ts',
       'lib/integrations/calendar-alert.ts',
+      'lib/channel/coparent/departure-notice.ts',
       'lib/travel/sweep.ts',
     ]) {
-      const source = readFileSync(join(root, file), 'utf8');
-      expect(source, `${file} must not re-declare HOLD_STATUS`).not.toContain('HOLD_STATUS');
+      const source = readFileSync(join(web, file), 'utf8');
       expect(source, `${file} must import holdStatus`).toContain('holdStatus');
     }
   });
 });
+
+const SKIP_DIRS = new Set(['node_modules', 'dist', '.next', '.turbo']);
+
+/** Every non-test source file under `dir`, the `one-door.test.ts` walk. */
+function sourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    if (SKIP_DIRS.has(name)) continue;
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) {
+      out.push(...sourceFiles(full));
+      continue;
+    }
+    if (!/\.(ts|tsx)$/.test(name) || name.includes('.test.') || name.endsWith('.d.ts')) continue;
+    out.push(full);
+  }
+  return out;
+}

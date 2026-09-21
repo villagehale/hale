@@ -175,9 +175,6 @@ export const EMAIL_ALERT_MAX_PER_SWEEP = 10;
 
 export const EMAIL_ALERT_TEMPLATE_KEY = 'connector:email_alert';
 
-/** Which suppression the ledger records, per hold — dispatch.ts's four statuses, chosen
- * by the gate's four reasons. */
-
 /** Keyed on the CONNECTION and the provider's message id, so re-connecting a mailbox
  * that re-seeds the same messages mints new keys while a re-run of the same sweep does
  * not. */

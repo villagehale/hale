@@ -186,7 +186,6 @@ const SERIES_MIN_INSTANCES = 2;
 
 export const CALENDAR_ALERT_TEMPLATE_KEY = 'connector:calendar_alert';
 
-
 /**
  * The endings that mean "not yet", as opposed to "no".
  *
