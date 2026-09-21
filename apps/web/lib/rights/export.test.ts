@@ -72,6 +72,7 @@ function fakeDb(args: {
     firstSessionAt: Date;
     providerHost: string;
     eventId: string | null;
+    cancelledAt: Date | null;
   }[];
 }) {
   const whereFamilyIds: unknown[] = [];
@@ -416,12 +417,24 @@ describe('assembleFamilyExport', () => {
           firstSessionAt: new Date('2026-09-26T13:00:00Z'),
           providerHost: 'recreation.brookfield.example.ca',
           eventId: null,
+          cancelledAt: null,
         },
         {
           title: 'Fall soccer',
           firstSessionAt: new Date('2026-10-03T14:00:00Z'),
           providerHost: 'riversidesoccer.example.com',
           eventId: 'e7f0f0cc-0000-4000-8000-000000000001',
+          cancelledAt: null,
+        },
+        // THE PROVIDER CALLED IT OFF. Without `cancelledAt` a right-to-access copy reads
+        // as a place this family still holds, which is a fact about them that is no
+        // longer true - and the one Hale itself stopped acting on.
+        {
+          title: 'Winter skating',
+          firstSessionAt: new Date('2026-12-05T15:00:00Z'),
+          providerHost: 'recreation.brookfield.example.ca',
+          eventId: null,
+          cancelledAt: new Date('2026-11-20T18:30:00Z'),
         },
       ],
     });
@@ -437,12 +450,21 @@ describe('assembleFamilyExport', () => {
         firstSessionAt: '2026-09-26T13:00:00.000Z',
         providerHost: 'recreation.brookfield.example.ca',
         addedToCalendar: false,
+        cancelledAt: null,
       },
       {
         title: 'Fall soccer',
         firstSessionAt: '2026-10-03T14:00:00.000Z',
         providerHost: 'riversidesoccer.example.com',
         addedToCalendar: true,
+        cancelledAt: null,
+      },
+      {
+        title: 'Winter skating',
+        firstSessionAt: '2026-12-05T15:00:00.000Z',
+        providerHost: 'recreation.brookfield.example.ca',
+        addedToCalendar: false,
+        cancelledAt: '2026-11-20T18:30:00.000Z',
       },
     ]);
     // Present-and-empty for a family with none, so a parent can tell "Hale holds none of

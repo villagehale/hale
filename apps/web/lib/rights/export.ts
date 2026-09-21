@@ -312,6 +312,7 @@ export async function assembleFamilyExport(
       firstSessionAt: schema.activityBookings.firstSessionAt,
       providerHost: schema.activityBookings.providerHost,
       eventId: schema.activityBookings.eventId,
+      cancelledAt: schema.activityBookings.cancelledAt,
     })
     .from(schema.activityBookings)
     .where(eq(schema.activityBookings.familyId, familyId))
@@ -321,6 +322,10 @@ export async function assembleFamilyExport(
     firstSessionAt: row.firstSessionAt.toISOString(),
     providerHost: row.providerHost,
     addedToCalendar: row.eventId !== null,
+    // The provider called it off. Without this a right-to-access copy reads as a place the
+    // family still holds — a fact about them that stopped being true, and the one Hale
+    // itself stopped acting on when it closed the row.
+    cancelledAt: row.cancelledAt?.toISOString() ?? null,
   }));
 
   const [checkInPrefs] = await database
