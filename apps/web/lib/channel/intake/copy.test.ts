@@ -47,7 +47,7 @@ import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
  * without the venue tag the page appends.
  */
 describe('the /text prefill and the bare-hello classifier agree', () => {
-  it('greets the exact string the site prefills, tagged or not', async () => {
+  it('sends the site prefill to the answerer: a question, not a hello and not intake details', async () => {
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
     const src = readFileSync(
@@ -56,8 +56,10 @@ describe('the /text prefill and the bare-hello classifier agree', () => {
     );
     const prefill = /INTAKE_PREFILL = (["'])(.*?)\1;/.exec(src)?.[2];
     expect(prefill, 'INTAKE_PREFILL must be a single literal in apps/site/lib/text-entry.ts').toBeTruthy();
-    expect(isBareFirstHello(prefill as string)).toBe(true);
-    expect(isBareFirstHello(`${prefill} (via earlyon-richmondhill)`)).toBe(true);
+    expect(prefill).toBe("What is worth doing with the kids near us?");
+    expect(isBareFirstHello(prefill as string)).toBe(false);
+    expect(isBareFirstHello(`${prefill} (via earlyon-richmondhill)`)).toBe(false);
+    expect(looksLikeIntakeDetails(prefill as string)).toBe(false);
   });
 });
 

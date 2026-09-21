@@ -80,7 +80,7 @@ const termsHtml = await renderAsync(TermsPage({ params: Promise.resolve(EN) }));
 /** The eight pages that wear the pulled-up headline, and the sentence each must
  * still read as once the words are split apart. */
 const PULLED_UP: [name: string, html: string, headline: string][] = [
-  ['/about', pages['/about'], 'Why Hale is a number, not another app.'],
+  ['/about', pages['/about'], 'Why Hale is a planner, not another app.'],
   ['/pricing', pages['/pricing'], 'Free while Hale is new.'],
   ['/faq', pages['/faq'], 'Is Hale right for your family?'],
   ['/contact', pages['/contact'], 'Say hello.'],
@@ -298,10 +298,10 @@ describe('/pricing — the tier cards have anatomy', () => {
   it('keeps the verified free-first copy exactly as it was reviewed', () => {
     const text = rawText(html).replace(/\s+/g, ' ');
     expect(text).toContain(
-      'The whole core — every stage, every child — is free. Plus and Family add more of the work Hale does for you, on your approval, as each integration ships.',
+      'The whole core — every stage, every child — is free. Plus and Family add more of the year watched with you, as each part ships.',
     );
     expect(text).toContain(
-      'The whole core is free. Paid plans are for the doing, never the watching.',
+      'The whole core is free. Paid plans add more of the year, never a paywall on the watching.',
     );
     expect(text).toContain('Founding families join free.');
     expect(text).toContain(

@@ -5,10 +5,10 @@
     "skipToContent": "Skip to content"
   },
   "HomeMeta": {
-    "title": "Hale · a number you text for what’s on near your kids",
-    "description": "Text Hale your postal code and your kids’ ages. It finds what’s actually running near you — swim, camps, drop-ins, the EarlyON down the road — watches the sign-up mornings across {count} GTA municipalities, hands you the town’s own link the night before, and comes back to ask how it went. No app, no account. Your data stays in Canada.",
-    "ogDescription": "Text Hale your postal code and your kids’ ages. It finds what’s actually running near you and watches the sign-up mornings across {count} GTA municipalities, then comes back to ask how it went. No app, no account. Your data stays in Canada.",
-    "twitterDescription": "What’s on near your kids, found. The sign-up morning, caught. And someone who asks how it went. No app, no account. Your data stays in Canada."
+    "title": "Hale · a planner for your kids’ year",
+    "description": "Find what’s on. Hear how it went. Hale finds what’s actually running near your kids — swim, camps, drop-ins, the EarlyON down the road — watches the sign-up mornings across {count} GTA municipalities, hands you the town’s own link the night before, and comes back to ask how it went. No app, no account. Your data stays in Canada.",
+    "ogDescription": "Find what’s on. Hear how it went. Hale finds what’s actually running near you and watches the sign-up mornings across {count} GTA municipalities, then comes back to ask how it went. No app, no account. Your data stays in Canada.",
+    "twitterDescription": "Find what’s on. Hear how it went. What’s worth doing with the kids. No app, no account. Your data stays in Canada."
   },
   "Header": {
     "navPricing": "Pricing",
@@ -17,7 +17,7 @@
     "signIn": "Sign in"
   },
   "Footer": {
-    "blurb": "Hale is a number you text — always prepared, never acting without you.",
+    "blurb": "Hale is a planner for your kids’ year. Find what’s on. Hear how it went.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— Hawaiian for home.",
@@ -169,8 +169,8 @@
     "seeH2a": "Then I come back",
     "seeH2Accent": "and ask.",
     "seeBody": "Four hours after the window opens I ask whether you got in. A few days after the first class I ask how it went. And in the evening, one line — how was today. Reply LESS and that becomes weekly, NO and it stops. What you tell me stays between us: no other family sees it, and the words themselves are gone in thirty days.",
-    "howH2a": "It is a phone number,",
-    "howH2Accent": "and that is the whole of it.",
+    "howH2a": "A planner for the year,",
+    "howH2Accent": "in one text thread.",
     "howLines": [
       "You text it first — no menus, and I never text a number that hasn’t texted me.",
       "You text names, ages, and a postal code. That is the whole setup — one text. No app, no account.",
@@ -179,7 +179,7 @@
     ],
     "howConnectors": "If you connect Gmail, I read the subject, the sender and the first line of each new message — enough to notice a date your family has to be somewhere — and I only open a message when it looks like one. From your calendar I read what an event says about itself: its title, its notes, where it is and when. That is all I ask for, and it is all I use it for.",
     "privacyLink": "How I handle your data",
-    "consentLine": "I suggest, I prepare — and with your ok, I handle it. Receipts for everything, and nothing happens without your yes.",
+    "consentLine": "I suggest and I prepare. I ask how it went. Nothing is booked. Receipts for everything, and nothing happens without your yes.",
     "centresLine": "Run an EarlyON, a library branch or a centre? Here is what to tell a parent about Hale.",
     "centresLink": "For centres",
     "closingH2a": "Founding families join",
@@ -197,14 +197,14 @@
         "text": "Why Hale is"
       },
       {
-        "text": "a number,",
+        "text": "a planner,",
         "accent": true
       },
       {
         "text": "not another app."
       }
     ],
-    "lede": "Once, a family had a village — elders who knew which class was worth it, neighbors who carried the small things, a grandmother who said this is normal, you are doing fine. That knowing hasn’t disappeared. It just has nowhere to live now except one parent’s memory — and no app fixes a memory problem by asking for more of your attention. So Hale is a number you text.",
+    "lede": "Once, a family had a village — elders who knew which class was worth it, neighbors who carried the small things, a grandmother who said this is normal, you are doing fine. That knowing hasn’t disappeared. It just has nowhere to live now except one parent’s memory — and no app fixes a memory problem by asking for more of your attention. So Hale is a planner for your kids’ year.",
     "missionEyebrow": "Our mission",
     "mission": "Every parent should have someone who knows what’s on near them, remembers the date that fills in two minutes, and asks how it went. Across every stage of childhood, from the first months to almost grown.",
     "howEyebrow": "How Hale works",
@@ -217,7 +217,7 @@
         "accent": true
       }
     ],
-    "howLede": "Hale starts by telling you things and only ever does things with your say-so. The ladder is the whole product: it climbs one rung at a time, and only when you let it.",
+    "howLede": "Hale starts by finding what’s on and asking how it went. The ladder is the whole product: it climbs one rung at a time, and only when you let it.",
     "ladder": [
       {
         "tag": "Recommend",
@@ -241,12 +241,12 @@
         "linkLabel": "What it costs"
       },
       {
-        "tag": "Execute",
-        "title": "With your ok, Hale handles it",
-        "line": "Nothing reaches the outside world until you say so.",
+        "tag": "Ask",
+        "title": "Hale asks how it went",
+        "line": "After it happens, one line back — Hale does not book it for you.",
         "checks": [
-          "An emailed calendar invite for a date you say yes to",
-          "Every message names exactly what was done",
+          "A check-in a few days after the first class",
+          "One line in the evening about how the day went",
           "Consent you grant in a text and withdraw in a text"
         ],
         "linkLabel": "How your data is handled"
@@ -267,7 +267,7 @@
   },
   "Pricing": {
     "metaTitle": "Pricing · Hale",
-    "metaDescription": "Free while Hale is new — every stage, every child. Plus and Family add more automation and booking on your approval as integrations ship. Your data stays in Canada.",
+    "metaDescription": "Free while Hale is new — every stage, every child. Plus and Family add more of the year planned with you, as those parts ship. Your data stays in Canada.",
     "eyebrow": "Pricing",
     "headline": [
       {
@@ -278,21 +278,21 @@
         "accent": true
       }
     ],
-    "lede": "The whole core — every stage, every child — is free. Plus and Family add more of the work Hale does for you, on your approval, as each integration ships.",
+    "lede": "The whole core — every stage, every child — is free. Plus and Family add more of the year watched with you, as each part ships.",
     "cta": "Start free today — and let Hale grow into the rest when you’re ready."
   },
   "PricingSection": {
     "eyebrow": "Three sizes of help",
-    "headline": "The whole core is free. Paid plans are for the doing, never the watching.",
-    "lede": "Everything Hale does today — the finding, the watching, the plans, the answers — is free, for every stage and every child. Paid plans open only when Hale can do more of the work itself. Families who start now keep their founding rate for good. A co-parent is always free.",
+    "headline": "The whole core is free. Paid plans add more of the year, never a paywall on the watching.",
+    "lede": "Everything Hale does today — the finding, the watching, the plans, the answers — is free, for every stage and every child. Paid plans open when there is more of the year to plan with you. Families who start now keep their founding rate for good. A co-parent is always free.",
     "foundingTitle": "Founding families join free.",
     "foundingNote": "The first 100 families get a permanent founding badge — and first access when Plus and Family open.",
     "annualNote": "billed yearly — about three months free",
     "footnote": "Hale is free to start. Plus and Family open as their integrations ship.",
     "tierLines": {
       "free": "Text Hale, rec dates watched, answers, and the founding rate.",
-      "plus": "For when you want Hale to do more: once it has earned your trust, it acts on your approval — reminders, drafts, and your calendar, every child, as integrations roll out.",
-      "family": "For when you want Hale to handle it: full autonomy on your approval, commerce and booking as they roll out, concierge and priority support."
+      "plus": "For when you want more of the year in view: reminders and drafts, every child, as those parts roll out.",
+      "family": "For the household: the same watch for every child, plus concierge and priority support as they roll out."
     },
     "freeFeatures": ["Text Hale", "Rec dates watched", "Answers", "Founding rate"]
   },
@@ -327,7 +327,7 @@
   },
   "ForCentres": {
     "metaTitle": "For centres and community partners · Hale",
-    "metaDescription": "What Hale means for the families your centre serves, and three ways to point a family at it. A number parents text — no app, no account, and data that stays in Canada.",
+    "metaDescription": "What Hale means for the families your centre serves, and three ways to point a family at it. A planner for their kids’ year — no app, no account, and data that stays in Canada.",
     "eyebrow": "For centres and partners",
     "headline": [
       {
@@ -338,7 +338,7 @@
         "accent": true
       }
     ],
-    "lede": "Hale is a number a parent texts. It finds activities that fit their child, watches sign-up mornings in {count} GTA municipalities, and checks in on how it went.",
+    "lede": "Hale is a planner for a family’s kids’ year. It finds activities that fit their child, watches sign-up mornings in {count} GTA municipalities, and checks in on how it went.",
     "notLine": "There is no app to install and no account to make. Nothing about a family is sold or shared, Hale is built in Ontario under PIPEDA, and a family’s data stays in Canada.",
     "townsLabel": "Towns watched",
     "getEyebrow": "What a family gets",
@@ -473,15 +473,15 @@
     "items": [
       {
         "question": "What is Hale?",
-        "answer": "A phone number your family texts. It finds what is actually running near your kids — swim, camps, drop-ins, the EarlyON down the road — watches the sign-up mornings where you live, hands you the town’s own link the night before, and comes back to ask how it went. It answers the parenting questions too, and does the admin once you say yes. There is no app to install and no account to create."
+        "answer": "A planner for your kids’ year. It finds what is actually running near your kids — swim, camps, drop-ins, the EarlyON down the road — watches the sign-up mornings where you live, hands you the town’s own link the night before, and comes back to ask how it went. It answers the parenting questions too. There is no app to install and no account to create."
       },
       {
         "question": "How do I start?",
-        "answer": "You text the number and say hi. Hale asks for your kids’ names and ages and your postal code, and that is the whole setup — everything else it asks for later, only when it needs it. Hale never texts a number that hasn’t texted it first."
+        "answer": "You text the number and ask what’s worth doing with the kids near you. Hale asks for your kids’ names and ages and your postal code, and that is the whole setup — everything else it asks for later, only when it needs it. Hale never texts a number that hasn’t texted it first."
       },
       {
         "question": "Does Hale do anything without asking?",
-        "answer": "No. Hale drafts and you confirm — nothing reaches the outside world until you reply yes to that specific thing. Every message names exactly what was done, and Hale keeps the full record of who, what and when."
+        "answer": "No. Hale finds what’s on and asks how it went — it does not book a class or register you. Every message names what it found, and Hale keeps the full record of who asked, what was sent and when."
       },
       {
         "question": "Is my family’s data private?",
@@ -489,7 +489,7 @@
       },
       {
         "question": "Is this a bot? Who actually reads my texts?",
-        "answer": "Hale is an AI assistant, and it never pretends otherwise. It is built and run by Village Hale Technologies Inc., a small parent-founded company in Georgetown, Ontario — and a real person reads anything you send to aloha@villagehale.com. Hale never texts a number that hasn’t texted it first, never asks you to text back a password, a card number or a code, and STOP ends the conversation at any time."
+        "answer": "Hale is a planner for your kids’ year, and it never pretends to be a person. It is built and run by Village Hale Technologies Inc., a small parent-founded company in Georgetown, Ontario — and a real person reads anything you send to aloha@villagehale.com. Hale never texts a number that hasn’t texted it first, never asks you to text back a password, a card number or a code, and STOP ends the conversation at any time."
       },
       {
         "question": "What does Hale actually watch?",
@@ -509,7 +509,7 @@
       },
       {
         "question": "Do I need to use the website?",
-        "answer": "No. Everything happens in the text thread, and Hale will never send you to a website to finish a job you texted it to do. The full record of what Hale has done is yours whenever you want it — ask for it in the thread, or sign in with your phone number and read it there."
+        "answer": "No. The finding and the check-ins happen in the text thread. The full record of what Hale has sent is yours whenever you want it — ask for it in the thread, or sign in with your phone number and read it there."
       },
       {
         "question": "Will you tell me whether a class is any good?",
@@ -611,7 +611,7 @@
     "headline": "Find what’s on. Hear how it went.",
     "lede": "What’s worth doing with the kids.",
     "sentLabel": "What you’ll send:",
-    "sentGloss": "Hi Hale 👋 ready to get started",
+    "sentGloss": "What is worth doing with the kids near us?",
     "previewLabel": "The text you’ll get back:",
     "greeting": "Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
     "afterSend": "Your first watch comes back the same minute.",
@@ -659,7 +659,7 @@
     ]
   },
   "Jsonld": {
-    "orgDescription": "Hale is a number you text — it finds what’s on near your kids, watches city registration windows, comes back to ask how it went, and handles the admin with your say-so. Every family’s data stays in Canada.",
-    "appDescription": "A number your family texts: Hale watches registration dates across the GTA, comes back to ask how it went, and executes with your approval — receipts for everything, and your family’s data never leaves Canada."
+    "orgDescription": "Hale is a planner for your kids’ year — it finds what’s on near your kids, watches city registration windows, and comes back to ask how it went. Every family’s data stays in Canada.",
+    "appDescription": "A planner for your kids’ year: Hale watches registration dates across the GTA and comes back to ask how it went. Receipts for everything, and your family’s data never leaves Canada."
   }
 }

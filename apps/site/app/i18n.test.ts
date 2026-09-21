@@ -229,15 +229,14 @@ describe('the positioning noun is gone from every bundle', () => {
    * comes back and asks how it went — with no "assistant" in them. The site was
    * behind its own machine, not ahead of it.
    *
-   * The ban is on the POSITIONING PHRASE, never on the word: the anti-scam
-   * disclosure ("Hale is an AI assistant, and it never pretends otherwise") is a
-   * different sentence doing a different job, and it survives. A phrase-level ban
-   * is what lets one gate hold both facts at once.
+   * The ban is on the POSITIONING PHRASE. The anti-scam line now says Hale is a
+   * planner for the kids' year and never pretends to be a person — it does not
+   * sell an AI assistant. A phrase-level ban is what lets one gate hold both facts.
    */
   const BANNED: Record<string, string[]> = {
-    en: ['family assistant'],
-    fr: ['assistant familial'],
-    zh: ['家庭助手', '家庭助理'],
+    en: ['family assistant', 'ai assistant', 'a number you text'],
+    fr: ['assistant familial', 'assistant d’ia', 'un numéro que vous textez'],
+    zh: ['家庭助手', '家庭助理', 'AI 助手', '发短信就能用的号码'],
   };
 
   it('never sells a "family assistant" in any locale', () => {
@@ -250,9 +249,9 @@ describe('the positioning noun is gone from every bundle', () => {
     }
   });
 
-  it('positive control: the AI disclosure the ban must not reach is still there', () => {
+  it('positive control: the anti-scam line the ban must not erase is still there', () => {
     const en = files.find((f) => f.locale === 'en')?.raw ?? '';
-    expect(en).toContain('Hale is an AI assistant, and it never pretends otherwise.');
+    expect(en).toContain('Hale is a planner for your kids’ year, and it never pretends to be a person.');
   });
 });
 

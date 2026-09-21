@@ -119,10 +119,12 @@ describe('terms (migrated verbatim)', () => {
    * shipped fact (SMS is the product surface, sign-in is Google + password, STOP
    * ends the conversation, carrier rates are the reader's).
    */
-  it('governs the product that actually exists — a number you text, not a Google-only app', () => {
+  it('governs the product that actually exists — a planner you reach by text, not a Google-only app', () => {
     expect(termsHtml).not.toContain('You sign in through Google.');
     expect(termsHtml).not.toContain('passive, event-driven assistant');
-    expect(termsHtml).toContain('a phone number your family texts');
+    expect(termsHtml).toContain('a planner for your kids');
+    expect(termsHtml).not.toContain('an AI service');
+    expect(termsHtml).not.toContain('helps carry them out');
     expect(termsHtml).toContain('a Google account or an email address and password');
     // Agreement is reachable without an account, because most families never make one.
     expect(termsHtml).toContain('By texting Hale, creating an account, or otherwise using Hale');

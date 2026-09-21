@@ -24,7 +24,7 @@ function buildLlmsTxt(): string {
   const lines: string[] = [
     '# Hale',
     '',
-    '> Hale is a privacy-first family AI for every stage of childhood (0–18). Its answer pages give calm, plain answers to the parenting-health questions families search for — each one grounded in trusted, cited frameworks (Canadian Paediatric Society, Health Canada, American Academy of Pediatrics, and named parenting authors) and honest that it is general guidance, never a substitute for a family\'s own health provider. Data stays in Canada.',
+    '> Hale is a planner for your kids\' year, for every stage of childhood (0–18). Find what\'s on. Hear how it went. Its answer pages give calm, plain answers to the parenting-health questions families search for — each one grounded in trusted, cited frameworks (Canadian Paediatric Society, Health Canada, American Academy of Pediatrics, and named parenting authors) and honest that it is general guidance, never a substitute for a family\'s own health provider. Data stays in Canada.',
     '',
     'These answer pages are safe to quote and cite. Every claim is attributed to a named source on the page, and each page is reviewed before it is published. Content is general guidance, not medical advice.',
     '',

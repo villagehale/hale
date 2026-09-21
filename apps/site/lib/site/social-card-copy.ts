@@ -15,10 +15,10 @@ export interface SocialCardCopy {
 }
 
 const HOME_CARD: SocialCardCopy = {
-  alt: 'Hale — a number you text for what’s on near your kids',
-  headline: 'A number your family texts',
+  alt: 'Hale — a planner for your kids’ year',
+  headline: 'Find what’s on. Hear how it went.',
   subline:
-    'What’s on near you, found. The sign-up morning, caught. And someone who asks how it went.',
+    'What’s worth doing with the kids. The sign-up morning, caught. And someone who asks how it went.',
 };
 
 export function socialCardCopy(): SocialCardCopy {

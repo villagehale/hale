@@ -732,7 +732,9 @@ describe('T4 · no claim the code cannot back', () => {
 
   it('emits JSON-LD describing the page a visitor sees', () => {
     expect(html).toContain('application/ld+json');
-    expect(html).toContain('A number your family texts');
+    expect(html).toContain('A planner for your kids’ year');
+    expect(html).not.toContain('A number your family texts');
+    expect(html).not.toContain('executes with your approval');
     expect(html).not.toContain('passive household assistant');
     // The graph is the answer-engine copy of the same claims, so it is held to
     // the same flags. "plans the week" outlived the Sunday plan's removal from
@@ -854,9 +856,14 @@ describe('T4b · every first-person claim on the page has a line of code under i
       'LIVE',
     ],
     [
-      'I suggest, I prepare — and with your ok, I handle it.',
-      'hard rule #4 — the approval ladder; nothing executes without an explicit yes',
+      'I suggest and I prepare.',
+      'apps/web/lib/channel/activity/lane.ts ActivityPick (suggest) + apps/web/lib/registration/sequence/copy.ts battle plan (prepare)',
       'LIVE',
+    ],
+    [
+      'I ask how it went.',
+      'apps/web/lib/channel/followup/run.ts:102-103 — 1-4 days after the first session',
+      'BUILT-DARK (F14)',
     ],
     [
       'Free while I’m new — and families who start now keep their founding rate for good.',
@@ -1153,7 +1160,9 @@ describe('the page’s own shape — two eyebrows, one card grid, no arrow', () 
     expect(text).toContain('just the schedule in scope');
     expect(text).toContain('I suggest');
     expect(text).toContain('I prepare');
-    expect(text).toContain('with your ok, I handle it');
+    expect(text).toContain('I ask how it went');
+    expect(text).toContain('Nothing is booked');
+    expect(text).not.toContain('I handle it');
     expect(text.toLowerCase()).toContain('receipts');
     expect(text).toContain('nothing happens without your yes');
   });

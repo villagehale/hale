@@ -27,17 +27,17 @@ export const FAQ: readonly FaqItem[] = [
   {
     question: 'What is Hale?',
     answer:
-      'A phone number your family texts. It finds what is actually running near your kids — swim, camps, drop-ins, the EarlyON down the road — watches the sign-up mornings where you live, hands you the town’s own link the night before, and comes back to ask how it went. It answers the parenting questions too, and does the admin once you say yes. There is no app to install and no account to create.',
+      'A planner for your kids’ year. It finds what is actually running near your kids — swim, camps, drop-ins, the EarlyON down the road — watches the sign-up mornings where you live, hands you the town’s own link the night before, and comes back to ask how it went. It answers the parenting questions too. There is no app to install and no account to create.',
   },
   {
     question: 'How do I start?',
     answer:
-      'You text the number and say hi. Hale asks for your kids’ names and ages and your postal code, and that is the whole setup — everything else it asks for later, only when it needs it. Hale never texts a number that hasn’t texted it first.',
+      'You text the number and ask what’s worth doing with the kids near you. Hale asks for your kids’ names and ages and your postal code, and that is the whole setup — everything else it asks for later, only when it needs it. Hale never texts a number that hasn’t texted it first.',
   },
   {
     question: 'Does Hale do anything without asking?',
     answer:
-      'No. Hale drafts and you confirm — nothing reaches the outside world until you reply yes to that specific thing. Every message names exactly what was done, and Hale keeps the full record of who, what and when.',
+      'No. Hale finds what’s on and asks how it went — it does not book a class or register you. Every message names what it found, and Hale keeps the full record of who asked, what was sent and when.',
   },
   {
     question: 'Is my family’s data private?',
@@ -47,7 +47,7 @@ export const FAQ: readonly FaqItem[] = [
   {
     question: 'Is this a bot? Who actually reads my texts?',
     answer:
-      'Hale is an AI assistant, and it never pretends otherwise. It is built and run by Village Hale Technologies Inc., a small parent-founded company in Georgetown, Ontario — and a real person reads anything you send to aloha@villagehale.com. Hale never texts a number that hasn’t texted it first, never asks you to text back a password, a card number or a code, and STOP ends the conversation at any time.',
+      'Hale is a planner for your kids’ year, and it never pretends to be a person. It is built and run by Village Hale Technologies Inc., a small parent-founded company in Georgetown, Ontario — and a real person reads anything you send to aloha@villagehale.com. Hale never texts a number that hasn’t texted it first, never asks you to text back a password, a card number or a code, and STOP ends the conversation at any time.',
   },
   {
     question: 'What does Hale actually watch?',
@@ -71,7 +71,7 @@ export const FAQ: readonly FaqItem[] = [
   {
     question: 'Do I need to use the website?',
     answer:
-      'No. Everything happens in the text thread, and Hale will never send you to a website to finish a job you texted it to do. The full record of what Hale has done is yours whenever you want it — ask for it in the thread, or sign in with your phone number and read it there.',
+      'No. The finding and the check-ins happen in the text thread. The full record of what Hale has sent is yours whenever you want it — ask for it in the thread, or sign in with your phone number and read it there.',
   },
   {
     question: 'Will you tell me whether a class is any good?',

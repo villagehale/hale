@@ -293,9 +293,9 @@ describe('TextEntry — the exchange is the hero', () => {
       expect(html).toContain('text-thread-gloss');
     }
     expect(render({ source: null, locale: 'fr' })).toContain(
-      'En anglais : « Bonjour Hale 👋 prêt à commencer »',
+      'Qu’est-ce qui vaut la peine avec les enfants, près de chez nous ?',
     );
-    expect(render({ source: null, locale: 'zh' })).toContain('英文：“你好 Hale 👋 我准备好开始了”');
+    expect(render({ source: null, locale: 'zh' })).toContain('附近有什么值得和孩子一起做的？');
     // English needs no gloss of English — the key exists, and it is the prefill
     // itself, which is exactly the condition that suppresses the line.
     expect(liveHtml).not.toContain('text-thread-gloss');
@@ -315,7 +315,7 @@ describe('TextEntry — the channel matrix, rendered', () => {
   it('apple WhatsApp dark: one Text Hale sms: CTA carrying the pre-filled body and venue token', () => {
     // React escapes the `&` of the cross-platform `?&body=` form into `&amp;`.
     expect(liveHtml).toContain(
-      'href="sms:+16475551234?&amp;body=Hi%20Hale%20%F0%9F%91%8B%20ready%20to%20get%20started%20(via%20earlyon-richmondhill)"',
+      'href="sms:+16475551234?&amp;body=What%20is%20worth%20doing%20with%20the%20kids%20near%20us%3F%20(via%20earlyon-richmondhill)"',
     );
     expect(liveHtml).toContain('>Text Hale</a>');
     const primary = anchors(liveHtml).find((a) => a.includes('href="sms:')) ?? '';
@@ -392,7 +392,7 @@ describe('TextEntry — the channel matrix, rendered', () => {
 
   it('pre-fills the locked hello when no venue sent them', () => {
     expect(liveNoSourceHtml).toContain(
-      'href="sms:+16475551234?&amp;body=Hi%20Hale%20%F0%9F%91%8B%20ready%20to%20get%20started"',
+      'href="sms:+16475551234?&amp;body=What%20is%20worth%20doing%20with%20the%20kids%20near%20us%3F"',
     );
   });
 

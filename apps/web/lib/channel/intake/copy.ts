@@ -425,17 +425,18 @@ export function firstInboundWords(body: string): string {
   return trimmed.replace(SOURCE_TAG_SUFFIX, '').trim();
 }
 
-// The /text page prefills "Hi Hale <wave> ready to get started" (apps/site/lib/text-entry.ts,
-// pinned against this classifier by copy.test.ts): a wave emoji (U+1F44B) and a
-// getting-started tail are still a hello, in either apostrophe iOS may send (U+2019 or
-// ASCII). Written as escapes so this file stays inside the GSM-7 gate that guards the
-// outbound copy around it. Anything with other words is a message and goes to the answerer.
+// A wave emoji (U+1F44B) and a getting-started tail are still a hello, in either
+// apostrophe iOS may send (U+2019 or ASCII). Written as escapes so this file stays
+// inside the GSM-7 gate that guards the outbound copy around it. The /text page
+// prefill is an activity question (apps/site/lib/text-entry.ts INTAKE_PREFILL),
+// pinned by copy.test.ts, and does not match. Anything with other words is a
+// message and goes to the answerer.
 const BARE_HELLO =
   /^(hi|hey|hello|yo|howdy|bonjour|salut|allo)(?:[,!]?\s+hale)?(?:\s*\u{1F44B})?(?:[,!]?\s*(?:ready to get started|let[\u2019']?s get started|i[\u2019']?d like to get started|on commence))?[.!,\s]*$/iu;
 
 /**
  * True when the first inbound is just a hello — with or without Hale's own name,
- * since the /text page prefills "Hi Hale" — empty, or a venue / HALE tag: the
+ * empty, or a venue / HALE tag: the
  * locked greeting path. A rec/camp question, a safety text, or anything else
  * to answer is false so greet can hand the words to the existing answerer.
  */
@@ -445,7 +446,7 @@ export function isBareFirstHello(body: string): boolean {
 }
 
 /** "Maya is 4", "Theo is 18 months" — a parent who skipped hello and led with
- * details (the /text page prefill is now the bare "Hi Hale", handled above). */
+ * details. The /text page prefill is an activity question, not details. */
 const NAME_IS_AGE =
   /\b[A-Za-z][A-Za-z'-]{0,30}\s+is\s+\d+(?:\s*(?:months?|years?|ans|mois))?\b/i;
 
