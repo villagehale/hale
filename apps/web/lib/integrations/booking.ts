@@ -127,8 +127,7 @@ export function bookingDraft(input: {
       title: input.title,
       firstSessionAt,
       location: input.location,
-      eventId:
-        input.matchedEventRef?.table === 'family_events' ? input.matchedEventRef.id : null,
+      eventId: input.matchedEventRef?.table === 'family_events' ? input.matchedEventRef.id : null,
     },
   };
 }
@@ -216,6 +215,26 @@ export async function stampBookingEvent(
  */
 export function normalisedBookingTitle(raw: string): string {
   return raw.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/**
+ * The identity a cancellation and a receipt are the same class BY — the provider's domain
+ * and the folded title, the exact pair {@link closeCancelledBookings} matches a row on.
+ *
+ * It exists because one sweep reads a batch NEWEST FIRST, so a cancellation arrives at the
+ * closer BEFORE the receipt it cancels has been written down, and the closer has nothing to
+ * close. The sweep therefore has to carry the fact forward in memory, and the fact it
+ * carries must be the same fact the table is matched on — a second hand-rolled key here is
+ * how "recreation.brookfield.ca / swim level 2" stops meaning the same thing in the two
+ * places that decide with it.
+ *
+ * NULL when the cancellation names no class. A nameless email closes nothing (the same
+ * refusal the closer makes) and must suppress nothing either, or one unreadable subject
+ * line would silence every receipt from that provider for the rest of the sweep.
+ */
+export function bookingCancellationKey(from: string, title: string): string | null {
+  const folded = normalisedBookingTitle(title);
+  return folded === '' ? null : `${senderHost(from)} ${folded}`;
 }
 
 /**

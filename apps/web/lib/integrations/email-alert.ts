@@ -21,7 +21,12 @@ import type {
   SentinelClassification,
 } from '~/lib/sentinel';
 import { bookedDetectionEnabledFor } from './booked';
-import { bookingDraft, closeCancelledBookings, recordActivityBooking } from './booking';
+import {
+  bookingCancellationKey,
+  bookingDraft,
+  closeCancelledBookings,
+  recordActivityBooking,
+} from './booking';
 import { type EmailAlertOfferDraft, recordEmailAlertOffer } from './email-alert-offer';
 
 /**
@@ -79,6 +84,11 @@ export interface GmailAlertEnvelope {
 export const EMAIL_ALERT_OUTCOMES = [
   'sent',
   'not_parenting',
+  // This sweep had ALREADY read the provider calling this exact class off, and a batch is
+  // read newest first — so the receipt is the older email and there is nothing true left
+  // to say about it. Its own name rather than silence, because "Hale chose not to speak"
+  // is a fact about a mailbox and a counter is the only place it is recorded.
+  'cancelled_in_sweep',
   'already_sent',
   'dark',
   'no_parent_user',
@@ -200,6 +210,17 @@ export interface EmailAlertInput {
   integrationId: string;
   messageId: string;
   envelope: { subject: string; from: string; snippet: string; receivedAt: string };
+  /**
+   * WHAT THIS SWEEP HAS ALREADY BEEN TOLD IS OFF — {@link bookingCancellationKey} per
+   * cancellation read so far, written by this function and read by it.
+   *
+   * Required rather than optional, and a caller's own Set rather than one minted here: a
+   * batch is read newest first, so the cancellation reaches the closer BEFORE the receipt
+   * it cancels exists in the table, and the only thing that can carry that fact the few
+   * milliseconds forward is the loop that owns both envelopes. A default would make the
+   * hole re-openable by forgetting an argument.
+   */
+  cancelledThisSweep: Set<string>;
   timeZone: string;
   now: Date;
 }
@@ -258,6 +279,12 @@ export async function alertParentForEmail(
   // cancellation permanently unread and the follow-up asking, four days later, how a class
   // the provider called off went. Closing a booking is not speaking to anybody, so the
   // chokepoint has no say in it.
+  //
+  // ONE KEY, TWO USES: the closer matches the table on it, and the sweep remembers it.
+  const cancellationKey = bookingCancellationKey(
+    input.envelope.from,
+    sanitizedTitle(extraction.event.title),
+  );
   if (booked && extraction.kind === 'cancellation') {
     await closeBookingsFor(database, {
       familyId,
@@ -265,6 +292,28 @@ export async function alertParentForEmail(
       title: extraction.event.title,
       now,
     });
+    // ...AND THE REST OF THIS SWEEP HEARS ABOUT IT. The closer above can only stamp rows
+    // that already exist, and the receipt for this class may still be three envelopes
+    // away — older, therefore read later.
+    if (cancellationKey !== null) input.cancelledThisSweep.add(cancellationKey);
+  }
+
+  // A RECEIPT FOR A CLASS THIS SWEEP HAS ALREADY BEEN TOLD IS OFF. Nothing true is left to
+  // say: the batch is newest-first, so this email is older than the cancellation, and
+  // "you're in for Swim Level 2" would contradict a text this same run put on the same
+  // phone. No text, no CTA, no offer row, no booking — the suppression sits ABOVE the gate
+  // and above the claim so none of the three is minted for a message nobody is told about.
+  if (
+    booked &&
+    extraction.kind === 'booking_confirmation' &&
+    cancellationKey !== null &&
+    input.cancelledThisSweep.has(cancellationKey)
+  ) {
+    console.warn(
+      { familyId },
+      'email alert: a receipt for a class this sweep already read the cancellation of - staying quiet',
+    );
+    return { alert: 'cancelled_in_sweep', booking: null };
   }
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'email_alert', now });
@@ -594,7 +643,8 @@ export async function alertParentForGmailSweep(
   const outcomes: EmailAlertResult[] = [];
   const dated: Array<GmailAlertEnvelope & { receivedAt: string }> = [];
   for (const envelope of envelopes) {
-    if (envelope.receivedAt === undefined) outcomes.push({ alert: 'no_received_at', booking: null });
+    if (envelope.receivedAt === undefined)
+      outcomes.push({ alert: 'no_received_at', booking: null });
     else dated.push({ ...envelope, receivedAt: envelope.receivedAt });
   }
   dated.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
@@ -606,6 +656,10 @@ export async function alertParentForGmailSweep(
   if (considered.length === 0) return outcomes;
 
   const timeZone = await ports.timeZone(parentUserId);
+  // ONE SET FOR THE WHOLE BATCH. The sort above is what makes it sound: every envelope
+  // read after a cancellation is OLDER than that cancellation, so a receipt that lands in
+  // this set is a receipt the provider has since called off.
+  const cancelledThisSweep = new Set<string>();
   for (const envelope of considered) {
     outcomes.push(
       await alertParentForEmail(
@@ -621,6 +675,7 @@ export async function alertParentForGmailSweep(
             snippet: envelope.snippet,
             receivedAt: envelope.receivedAt,
           },
+          cancelledThisSweep,
           timeZone,
           now: input.now,
         },

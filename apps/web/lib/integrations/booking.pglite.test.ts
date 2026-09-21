@@ -23,7 +23,7 @@ import {
   recordActivityBooking,
   stampBookingEvent,
 } from './booking';
-import { type EmailAlertPorts, alertParentForEmail } from './email-alert';
+import { type EmailAlertPorts, alertParentForEmail, alertParentForGmailSweep } from './email-alert';
 
 /**
  * THE BOOKING — the decision, the write, and the two things that must not happen.
@@ -138,6 +138,9 @@ function harness(
     /** The outbound chokepoint says no — the branch that returns before every post-send
      * line, and the one a closer that runs only after a send would never reach. */
     gateHold?: ProactiveHoldReason;
+    /** A BATCH: one verdict per message id, for the sweep tests where the order two
+     * emails are read in is the whole question. */
+    byMessage?: Record<string, SentinelClassification>;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -146,8 +149,8 @@ function harness(
     transport,
     threaded,
     ports: {
-      classify: async () => {
-        const base = over.classification ?? classified();
+      classify: async (envelope) => {
+        const base = over.byMessage?.[envelope.messageId] ?? over.classification ?? classified();
         if (!over.correlate || base.extraction === null) return base;
         const candidates = await loadCorrelationCandidates(db.database, family.familyId);
         return {
@@ -194,6 +197,7 @@ function alert(h: Harness, messageId = 'm1', now = NOW) {
       integrationId: INTEGRATION,
       messageId,
       envelope: ENVELOPE,
+      cancelledThisSweep: new Set<string>(),
       timeZone: 'America/Toronto',
       now,
     },
@@ -575,6 +579,109 @@ describe('a provider cancellation closes what it cancelled', () => {
   });
 });
 
+/**
+ * ONE SWEEP, TWO EMAILS, AND THE ORDER IS BACKWARDS.
+ *
+ * A batch is read NEWEST FIRST, because when a mailbox has just taken sixty messages the
+ * ones worth a text are the ones that arrived last. That is right for what may be SPENT
+ * and exactly wrong for a cancellation: the provider's "CANCELLED" is newer than the
+ * receipt it cancels, so inside ONE sweep the closer runs first, finds nothing — the
+ * booking does not exist yet — and the receipt is then read, texted as "you're in",
+ * offered, and written down live. Hale tells a parent they are in a class it told them was
+ * off ninety seconds earlier, and asks how it went four days later.
+ *
+ * So the sweep REMEMBERS what it has already been told is off, and a receipt whose provider
+ * and class are in that set is not spoken about at all: no text, no CTA, no offer row, no
+ * booking. Not merely "no booking" — a "you're in" with no calendar question behind it
+ * would still be Hale contradicting itself on the same phone in the same minute.
+ *
+ * It is sound ONLY because of the sort: everything read after a cancellation is older than
+ * it. The mirror — a re-registration NEWER than the cancellation, read first and then
+ * closed by it — is named in the commit and is a missing question rather than a wrong one.
+ */
+describe('a cancellation the same sweep has already read', () => {
+  const RECEIPT = { ...ENVELOPE, messageId: 'm-receipt', receivedAt: '2026-09-17T14:00:00.000Z' };
+  const CANCELLED = {
+    ...ENVELOPE,
+    messageId: 'm-cancelled',
+    subject: 'CANCELLED - Swim Level 2',
+    snippet: 'Swim Level 2 on Sep 26 has been cancelled.',
+    receivedAt: '2026-09-17T14:30:00.000Z',
+  };
+
+  function batch(cancelledTitle: string): Harness {
+    return harness({
+      byMessage: {
+        'm-receipt': classified(),
+        'm-cancelled': classified({
+          kind: 'cancellation',
+          title: cancelledTitle,
+          newTime: null,
+          originalTime: FIRST_SESSION,
+        }),
+      },
+    });
+  }
+
+  function sweep(h: Harness) {
+    return alertParentForGmailSweep(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId: INTEGRATION,
+        seeding: false,
+        // Handed in the order they sit in the mailbox; the sweep is what reverses them.
+        envelopes: [RECEIPT, CANCELLED],
+        now: NOW,
+      },
+      h.ports,
+    );
+  }
+
+  it('says nothing at all about the receipt for the class it just called off', async () => {
+    const h = batch('Swim Level 2');
+
+    await expect(sweep(h)).resolves.toEqual([
+      // Newest first: the cancellation is read BEFORE the receipt it cancels.
+      { alert: 'sent', booking: 'not_a_booking' },
+      { alert: 'cancelled_in_sweep', booking: null },
+    ]);
+
+    expect(h.transport.sent).toHaveLength(1);
+    expect(h.transport.sent[0]?.body).not.toContain("you're in");
+    await expect(bookingRows()).resolves.toEqual([]);
+    await expect(offerRows()).resolves.toEqual([]);
+  });
+
+  it('still speaks about a receipt the cancellation does not name', async () => {
+    // THE POSITIVE CONTROL. Without it the assertion above passes on a sweep that stopped
+    // sending anything after a cancellation, which is a different and worse feature.
+    const h = batch('Skating Level 1');
+
+    await expect(sweep(h)).resolves.toEqual([
+      { alert: 'sent', booking: 'not_a_booking' },
+      { alert: 'sent', booking: 'recorded' },
+    ]);
+    expect(h.transport.sent).toHaveLength(2);
+    await expect(bookingRows()).resolves.toHaveLength(1);
+  });
+
+  it('suppresses nothing when booked detection is dark', async () => {
+    // The flag gates this too, and it must: dark, a `booking_confirmation` IS a
+    // `new_event` in every respect, and a new_event was never suppressed by a
+    // cancellation. Flag-off behaviour stays byte-identical to today's.
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'false');
+    const h = batch('Swim Level 2');
+
+    await expect(sweep(h)).resolves.toEqual([
+      { alert: 'sent', booking: 'booked_dark' },
+      { alert: 'sent', booking: 'booked_dark' },
+    ]);
+    expect(h.transport.sent).toHaveLength(2);
+  });
+});
+
 describe('the booking write', () => {
   it('writes one row after the send, with the audit row carrying ONLY { offered: true }', async () => {
     const h = harness();
@@ -739,6 +846,7 @@ describe('record_failed', () => {
           integrationId: INTEGRATION,
           messageId: 'm1',
           envelope: ENVELOPE,
+          cancelledThisSweep: new Set<string>(),
           timeZone: 'America/Toronto',
           now: NOW,
         },
@@ -791,6 +899,7 @@ describe('record_failed', () => {
           integrationId: INTEGRATION,
           messageId: 'm1',
           envelope: ENVELOPE,
+          cancelledThisSweep: new Set<string>(),
           timeZone: 'America/Toronto',
           now: NOW,
         },

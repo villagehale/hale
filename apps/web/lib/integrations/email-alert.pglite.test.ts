@@ -164,6 +164,7 @@ function alertPair(
       integrationId: INTEGRATION,
       messageId,
       envelope: ENVELOPE,
+      cancelledThisSweep: new Set<string>(),
       timeZone: 'America/Toronto',
       now: NOW,
       ...over,
