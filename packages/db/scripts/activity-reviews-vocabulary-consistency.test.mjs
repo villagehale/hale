@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Holds migration 0121's CHECK constraints against the TypeScript source lists.
+ * Holds migration 0122's CHECK constraints against the TypeScript source lists.
  *
  * `subject_source`, `verdict`, `child_age_band` and `tags` are plain `text` columns with
  * four closed vocabularies, and each exists twice: once in TypeScript (what the capture
@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
  * The pattern (and this directory) follows watched-spots-vocabulary-consistency.test.mjs.
  */
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const MIGRATION = path.resolve(scriptDir, '..', 'drizzle', '0121_activity_reviews.sql');
+const MIGRATION = path.resolve(scriptDir, '..', 'drizzle', '0122_activity_reviews.sql');
 const SCHEMA = path.resolve(scriptDir, '..', 'src', 'schema', 'activity-reviews.ts');
 
 /** The quoted string literals inside a named CHECK's LAST `IN ( … )` list — last, because

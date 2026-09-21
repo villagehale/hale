@@ -5,7 +5,7 @@ import { families } from './families.js';
 
 /**
  * The three closed vocabularies behind this table's `text` columns, held against
- * migration 0121's CHECK constraints by
+ * migration 0122's CHECK constraints by
  * packages/db/scripts/activity-reviews-vocabulary-consistency.test.mjs — the only gate
  * that reads the .sql against this file.
  */
@@ -64,7 +64,7 @@ export type ActivityReviewAgeBand = (typeof ACTIVITY_REVIEW_AGE_BANDS)[number];
 /**
  * ONE HOUSEHOLD'S POSITION ON ONE PUBLIC VENUE.
  *
- * The parent's own sentence is not here and is stored nowhere — see 0121's header for
+ * The parent's own sentence is not here and is stored nowhere — see 0122's header for
  * what is absent and why. The family_id cascade IS the erasure path.
  */
 export const activityReviews = pgTable(

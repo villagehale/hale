@@ -27,7 +27,7 @@ export type SubjectUnresolved =
    * three-day-old placement's candidate is routinely retired by the next run. */
   | 'candidate_gone'
   /** The candidate has neither a Google place id nor a civic venue id, so there is no
-   * string two families could ever both hold. Every second civic row before 0122. */
+   * string two families could ever both hold. Every second civic row before 0123. */
   | 'no_shared_identity';
 
 export type ReviewSubject =
