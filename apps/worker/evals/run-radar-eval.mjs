@@ -605,7 +605,6 @@ async function main() {
       .join(' ');
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${scoreLabel ? `  ${scoreLabel}` : ''}`);
     for (const failure of result.failures) console.log(`        - ${failure}`);
-    if (process.argv.includes('--dump')) console.log(`        MSG: ${JSON.stringify(result.message)}`);
   }
 
   const passes = results.filter((r) => r.failures.length === 0);
