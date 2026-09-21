@@ -149,6 +149,11 @@ describe('the evening asks', () => {
     expect(bareYesNoQuestions('Swim today - was it any good?')).toEqual([
       'Swim today - was it any good?',
     ]);
+    // Every separator a name slot can END with, not only the two the first members
+    // happened to use: a predicate that reads past `Mia,` and stops at `Mia /` is a gate
+    // that passes the next member somebody writes rather than the ones already written.
+    expect(bareYesNoQuestions('Mia / did swim go ok?')).toEqual(['Mia / did swim go ok?']);
+    expect(bareYesNoQuestions('Mia\ndid swim go ok?')).toEqual(['Mia\ndid swim go ok?']);
     // Positive controls on the same predicate, because a rule that rejected everything
     // would pass the half above: the register the pools are written in stays clean, name
     // slot and all.

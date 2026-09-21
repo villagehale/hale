@@ -71,8 +71,15 @@ export interface LoopMessage {
  * composer degraded and wrote nothing, the composer wrote something the fold refused, and
  * the sentence went out. The refusals are enumerated rather than lumped because each one
  * is a different bug in a different place — a dropped character is the composer's
- * charset, a question is its register, a missing offset is the renderer's wiring, and an
- * over-long line is a model measured against a budget nobody told it about.
+ * charset, a question is its register, and an over-long line is a model measured against a
+ * budget nobody told it about.
+ *
+ * ONLY ENDINGS THE RENDERERS CAN REACH ARE NAMED. A 'refused:offset_missing' was here for
+ * the reminder's condition (c), and it could not happen: the fold appends the voice to a
+ * body that already opens with the deterministic lead, so the check compared the fold's
+ * own concatenation against its own prefix and the counter could only ever read zero. A
+ * variant nothing can produce is a gate nobody is watching, so the guarantee was left
+ * structural and the name removed (reminder/sms.ts).
  *
  * 'absent' means the slot EXISTS and the composer gave it nothing. A RenderedContent with
  * no outcome at all is the other thing: a message with no voice slot to begin with.
@@ -84,8 +91,6 @@ export type VoiceOutcome =
   | 'refused:gsm_dropped'
   /** The slot's question budget (D14): one for an ask, zero for a statement. */
   | 'refused:question_count'
-  /** The deterministic lead IS the fact; the voice rides after it, never instead of it. */
-  | 'refused:offset_missing'
   /** Composed, measured, did not fit the channel's segment budget. */
   | 'refused:over_segment';
 

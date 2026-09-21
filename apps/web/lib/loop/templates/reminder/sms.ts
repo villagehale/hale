@@ -88,16 +88,19 @@ function trimmedFirstLine(lead: string, lines: readonly string[], deepLink: stri
  *      owns no answer, so a question appended to it invites a bare YES that the approvals
  *      resolver claims family-wide (docs/voice.md rule 11). reminder-voice.md says nothing
  *      about the wire, so this is the only place it is true.
- *  (c) THE DETERMINISTIC LEAD STILL LEADS. `whenLeadFor` IS the fact this message carries
- *      — "Tomorrow", "In an hour" — and voice.line is not guaranteed to carry it. The
- *      voice rides AFTER the lead, never instead of it, and the fold is the only place the
- *      two strings meet, so it is the only place that can be a check rather than a comment.
+ *  (c) THE DETERMINISTIC LEAD STILL LEADS — STRUCTURALLY, WHICH IS WHY THERE IS NO THIRD
+ *      CHECK HERE. `whenLeadFor` IS the fact this message carries — "Tomorrow", "In an
+ *      hour" — and voice.line is not guaranteed to carry it, so the voice is APPENDED to
+ *      the rendered body, which already opens with the lead. "The offset went missing" is
+ *      therefore not a state this code has: a check for it would compare this function's
+ *      own concatenation against its own prefix, and could only ever fail for a caller
+ *      that passed a lead the body never had. The property is asserted where it can
+ *      genuinely break — on the rendered wire, in index.test.ts.
  *  (d) THE GLANCE. One segment, measured on the whole thing.
  *
  * Every refusal is NAMED (VoiceOutcome, channel/types.ts) and carried out of the renderer.
  */
 export function foldReminderVoice(
-  lead: string,
   body: string,
   composed: string | null | undefined,
 ): { text: string; outcome: VoiceOutcome } {
@@ -106,7 +109,6 @@ export function foldReminderVoice(
   if (gsmSafe(trimmed) !== trimmed) return { text: body, outcome: 'refused:gsm_dropped' };
   if (trimmed.includes('?')) return { text: body, outcome: 'refused:question_count' };
   const voiced = gsmSafe(`${body} ${trimmed}`);
-  if (!voiced.startsWith(gsmSafe(lead))) return { text: body, outcome: 'refused:offset_missing' };
   return smsSegments(voiced) <= 1
     ? { text: voiced, outcome: 'used' }
     : { text: body, outcome: 'refused:over_segment' };
@@ -135,6 +137,6 @@ export function renderReminderSms(
       voice: (payload.voice?.line ?? '').trim() === '' ? 'absent' : 'refused:over_segment',
     };
   }
-  const folded = foldReminderVoice(lead, inline, payload.voice?.line);
+  const folded = foldReminderVoice(inline, payload.voice?.line);
   return { kind: 'sms', text: folded.text, voice: folded.outcome };
 }

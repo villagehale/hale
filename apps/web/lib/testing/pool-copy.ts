@@ -101,16 +101,19 @@ const AUXILIARY_OPENERS = [
  * Intra-word hyphens are left alone (the dash must be spaced), so "How was drop-off?" is
  * one segment. A body with no question at all yields nothing, which is correct — an ack
  * that asks nothing cannot be answered wrongly.
+ *
+ * THE SEPARATOR LIST IS THE CLASS, not the two shapes the first members happened to use.
+ * A name slot can end on a line break or a slash as readily as on a comma, and a rule that
+ * reads past `Mia,` and stops at `Mia /` is a gate that passes the next member somebody
+ * writes — which is the whole failure mode of a negative assertion.
  */
 export function bareYesNoQuestions(body: string): string[] {
   return (body.match(/[^.!?]*\?/g) ?? [])
     .map((question) => question.trim())
     .filter((question) =>
-      question
-        .split(/,\s*|\s+[-–—:;]\s+/)
-        .some((segment) => {
-          const first = segment.toLowerCase().match(/[\p{L}']+/u)?.[0] ?? '';
-          return (AUXILIARY_OPENERS as readonly string[]).includes(first);
-        }),
+      question.split(/,\s*|\s*\n\s*|\s+[-–—:;/]\s+/).some((segment) => {
+        const first = segment.toLowerCase().match(/[\p{L}']+/u)?.[0] ?? '';
+        return (AUXILIARY_OPENERS as readonly string[]).includes(first);
+      }),
     );
 }

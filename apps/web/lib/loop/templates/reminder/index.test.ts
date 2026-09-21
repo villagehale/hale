@@ -249,7 +249,6 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
    * of the renderer, because "the composer degraded" and "the composer wrote something we
    * would not send" are different bugs in different places (rule #11).
    */
-  const LEAD = 'Tomorrow';
   const BODY = 'Tomorrow: Maya - Swim class at 4:30';
 
   function smsVoice(p: ReminderPayload): { text: string; voice: unknown } {
@@ -269,7 +268,7 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
     // THE OUTCOME LEAVES THE RENDERER. A caller that had to substring-match the body for
     // a sentence it did not choose would be guessing at its own renderer.
     expect(voice).toBe('used');
-    expect(foldReminderVoice(LEAD, BODY, VOICE).outcome).toBe('used');
+    expect(foldReminderVoice(BODY, VOICE).outcome).toBe('used');
   });
 
   it('refuses a line the wire would eat, rather than sending it a word short', () => {
@@ -282,9 +281,9 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
     );
     expect(voice).toBe('refused:gsm_dropped');
     expect(text).not.toContain('see you there');
-    expect(foldReminderVoice(LEAD, BODY, eaten).outcome).toBe('refused:gsm_dropped');
+    expect(foldReminderVoice(BODY, eaten).outcome).toBe('refused:gsm_dropped');
     // Positive control on the same path: the same sentence without the character ships.
-    expect(foldReminderVoice(LEAD, BODY, 'Have a great one, see you there').outcome).toBe('used');
+    expect(foldReminderVoice(BODY, 'Have a great one, see you there').outcome).toBe('used');
   });
 
   it('refuses a line that ASKS — a reminder states a fact and owns no answer', () => {
@@ -297,20 +296,23 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
     );
     expect(voice).toBe('refused:question_count');
     expect(text).not.toContain('?');
-    expect(foldReminderVoice(LEAD, BODY, asks).outcome).toBe('refused:question_count');
+    expect(foldReminderVoice(BODY, asks).outcome).toBe('refused:question_count');
     // One is no better than two here, and that is the part a "at most one" rule misses.
-    expect(foldReminderVoice(LEAD, BODY, 'Towel packed?').outcome).toBe('refused:question_count');
+    expect(foldReminderVoice(BODY, 'Towel packed?').outcome).toBe('refused:question_count');
   });
 
-  it('refuses a body that has lost the offset, because the offset IS the message', () => {
+  it('keeps the offset in front of the voice, because the offset IS the message', () => {
     // whenLead is the FACT — "Tomorrow" / "In an hour" — and voice.line is composed by a
     // skill that says nothing about it (reminder-voice.md). The voice rides AFTER the
-    // lead, never instead of it, and the fold is the only place the two strings meet.
-    expect(foldReminderVoice('In an hour', BODY, 'Towel by the door.').outcome).toBe(
-      'refused:offset_missing',
-    );
-    // On the wire, asserted on the rendered body and not on the branch taken: a composed
-    // line that names no offset still arrives behind one.
+    // deterministic body, never instead of it.
+    //
+    // THE FOLD CANNOT LOSE THE LEAD, AND THAT IS WHY THERE IS NO CHECK FOR IT. It appends
+    // to the rendered body, which already opens with the lead, so "the offset went
+    // missing" is not a state this code has — the check that used to sit here compared the
+    // function's own concatenation against its own prefix and could only fail if a test
+    // called it with a lead the body never had. The property is real, so it is asserted
+    // HERE, on the wire, where a renderer that started sending the voice instead of the
+    // body would be caught.
     const { text, voice } = smsVoice(
       payload({
         offset: '-PT1H',
@@ -320,8 +322,10 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
       }),
     );
     expect(text).toMatch(HOUR_LEADS);
-    expect(text).toContain('Towel by the door.');
+    expect(text.indexOf('Towel by the door.')).toBeGreaterThan(text.search(HOUR_LEADS));
+    expect(text).toContain('Swim class at 4:30');
     expect(voice).toBe('used');
+    expect(foldReminderVoice(BODY, 'Towel by the door.').text).toBe(`${BODY} Towel by the door.`);
   });
 
   it('gives up the VOICE rather than the glance, and says which happened', () => {
@@ -334,11 +338,11 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
     expect(over.text).not.toContain(wordy);
     expect(smsSegments(over.text)).toBe(1);
     expect(over.voice).toBe('refused:over_segment');
-    expect(foldReminderVoice(LEAD, BODY, wordy).outcome).toBe('refused:over_segment');
+    expect(foldReminderVoice(BODY, wordy).outcome).toBe('refused:over_segment');
 
     const none = smsVoice(payload({ offset: '-P1D', events: [swimAt430] }));
     expect(none.voice).toBe('absent');
-    expect(foldReminderVoice(LEAD, BODY, null).outcome).toBe('absent');
+    expect(foldReminderVoice(BODY, null).outcome).toBe('absent');
   });
 
   it('names the outcome on the OVERFLOW path too, where the facts alone took the glance', () => {

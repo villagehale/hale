@@ -570,7 +570,6 @@ describe('the composed voice slot is reported off the render, never inferred fro
       'absent',
       'refused:gsm_dropped',
       'refused:question_count',
-      'refused:offset_missing',
       'refused:over_segment',
     ] as const) {
       const { ports, audits } = makePorts({
