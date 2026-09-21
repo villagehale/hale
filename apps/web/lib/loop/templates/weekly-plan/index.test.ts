@@ -105,6 +105,14 @@ function sms(p: WeeklyPlanPayload, level: ChildNameLevel): string {
   return r.text;
 }
 
+/** The composed-voice outcome the renderer reports for this render — `undefined` where
+ * the message has no voice slot at all, which is a different fact from 'absent'. */
+function smsVoice(p: WeeklyPlanPayload, level: ChildNameLevel): unknown {
+  const r = render(p, 'sms', level);
+  if (r.kind !== 'sms') throw new Error('expected sms');
+  return r.voice;
+}
+
 function email(p: WeeklyPlanPayload, level: ChildNameLevel) {
   const r = render(p, 'email', level);
   if (r.kind !== 'email') throw new Error('expected email');
@@ -359,18 +367,57 @@ describe('quiet week (0 items)', () => {
     const text = sms(framed, 'generic');
     expect(text).toContain('what would make this one feel easier?');
     expect(smsSegments(text)).toBe(1);
-    expect(foldWeeklyVoice('Nothing booked yet - what would make this one feel easier?', 1).outcome).toBe(
-      'voiced',
-    );
+    // THE OUTCOME LEAVES THE RENDERER (rule #11): the caller is told which half of the
+    // slot the parent read, rather than having to substring-match a sentence it did not
+    // choose out of a body it did not compose.
+    expect(smsVoice(framed, 'generic')).toBe('used');
+    expect(
+      foldWeeklyVoice('Nothing booked yet - what would make this one feel easier?', 1).outcome,
+    ).toBe('used');
     // And refuses one that breaks the slot's own question rule, rather than shipping a
     // model sentence that asks twice on a surface where a bare YES is already claimed.
-    expect(foldWeeklyVoice('Two questions? Really two?', 1).outcome).toBe('refused_by_fold');
-    expect(foldWeeklyVoice('A statement with no question.', 1).outcome).toBe('refused_by_fold');
-    expect(foldWeeklyVoice(null, 1).outcome).toBe('no_voice');
+    // EACH REFUSAL BY ITS OWN NAME: a question is the model's register, a dropped
+    // character is its charset, and they are fixed in different places.
+    expect(foldWeeklyVoice('Two questions? Really two?', 1).outcome).toBe(
+      'refused:question_count',
+    );
+    expect(foldWeeklyVoice('A statement with no question.', 1).outcome).toBe(
+      'refused:question_count',
+    );
+    expect(foldWeeklyVoice(null, 1).outcome).toBe('absent');
     // A character GSM-7 cannot carry is refused too — gsmSafe would silently fold it, and
     // a silent fold is a sentence nobody reviewed.
-    expect(foldWeeklyVoice('A quiet week \u2014 what would suit Saturday?', 1).outcome).toBe(
-      'refused_by_fold',
+    expect(foldWeeklyVoice('A quiet week — what would suit Saturday?', 1).outcome).toBe(
+      'refused:gsm_dropped',
+    );
+  });
+
+  it('reports the refusal the WEEK made, not the one the fold did', () => {
+    // A framing the fold passed and the whole message then refused is an over-segment
+    // refusal, and it is the one the fold itself can never return: a sentence's cost
+    // depends on the week it rides with, so only the renderer can measure it. Reported as
+    // itself, because "the model wrote a question" and "the model wrote a page" are
+    // different things to go and look at.
+    const long = `A quiet week and nothing on it yet, ${'which leaves the whole of it open for whatever you feel like doing, '.repeat(6)}so what would make Saturday good?`;
+    const p = payload({
+      children: [],
+      items: [],
+      weekStart: '2026-07-20',
+      voice: { greeting: 'Hi', weekFraming: long, itemLines: {}, signOff: 'See you Sunday' },
+    });
+    const text = sms(p, 'generic');
+    // The fold itself passes it — one question, nothing dropped — and the week refuses it.
+    expect(foldWeeklyVoice(long, 1).outcome).toBe('used');
+    expect(text).not.toContain(long);
+    expect(smsSegments(text)).toBeLessThanOrEqual(3);
+    expect(smsVoice(p, 'generic')).toBe('refused:over_segment');
+    // The pool is the floor under the fold, not its replacement.
+    expect((text.match(/\?/g) ?? []).length).toBe(1);
+  });
+
+  it('says the composer degraded when there is no voice at all', () => {
+    expect(smsVoice(payload({ children: [], items: [], weekStart: '2026-07-20' }), 'generic')).toBe(
+      'absent',
     );
   });
 
@@ -410,21 +457,33 @@ describe('all-placed week (items > 0, pending == 0)', () => {
   });
 
   it('SMS uses the composed sign-off when there is one, and never one that asks', () => {
-    const text = sms(
-      payload({
-        ...placed,
-        voice: {
-          greeting: 'Hi',
-          weekFraming: 'A full one',
-          itemLines: {},
-          signOff: "That's the lot - nothing needs you.",
-        },
-      }),
-      'first_name',
-    );
+    const signed = payload({
+      ...placed,
+      voice: {
+        greeting: 'Hi',
+        weekFraming: 'A full one',
+        itemLines: {},
+        signOff: "That's the lot - nothing needs you.",
+      },
+    });
+    const text = sms(signed, 'first_name');
     expect(text).toContain("That's the lot - nothing needs you.");
     expect(text).not.toContain('?');
-    expect(foldWeeklyVoice('Anything else you want moved?', 0).outcome).toBe('refused_by_fold');
+    expect(smsVoice(signed, 'first_name')).toBe('used');
+    expect(foldWeeklyVoice('Anything else you want moved?', 0).outcome).toBe(
+      'refused:question_count',
+    );
+    // The week that asks nothing and was composed nothing: the slot exists and the
+    // composer gave it nothing, which is 'absent' and not a refusal.
+    expect(smsVoice(placed, 'first_name')).toBe('absent');
+  });
+
+  it('reports NOTHING on a week that ends on the approval ask', () => {
+    // The sign-off slot only exists on a week with nothing pending. Any other week closes
+    // on a count of rows the mint is holding — a fact, never a composed sentence — so
+    // there is no outcome to report, and reporting 'absent' there would invent a
+    // composer failure on a slot that was never asked for.
+    expect(smsVoice(fullWeek, 'first_name')).toBeUndefined();
   });
 });
 

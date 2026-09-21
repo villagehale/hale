@@ -241,32 +241,126 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
    * and the renderer simply did not read it — the composition had already happened, at no
    * extra cost, and a human sentence was being thrown away on the surface a parent
    * actually reads. It now rides, behind a fold measured at ONE segment.
+   *
+   * THE FOUR CONDITIONS ARE THE TEST (docs/voice.md, "The two SMS folds"), and every
+   * fixture below is hand-written against one of them rather than copied from a model: a
+   * sentence the wire would silently eat, a sentence that asks, a body that has lost its
+   * offset, and a sentence too long for the glance. Each refusal carries its own NAME out
+   * of the renderer, because "the composer degraded" and "the composer wrote something we
+   * would not send" are different bugs in different places (rule #11).
    */
-  it('SMS carries the composed line when it fits inside the glance', () => {
+  const LEAD = 'Tomorrow';
+  const BODY = 'Tomorrow: Maya - Swim class at 4:30';
+
+  function smsVoice(p: ReminderPayload): { text: string; voice: unknown } {
+    const r = render(p, 'sms', 'first_name');
+    if (r.kind !== 'sms') throw new Error('expected sms');
+    return { text: r.text, voice: r.voice };
+  }
+
+  it('SMS carries the composed line when it fits inside the glance, and says so', () => {
     const p = payload({ offset: '-P1D', events: [swimAt430], voice: { line: VOICE } });
-    const text = sms(p, 'first_name');
+    const { text, voice } = smsVoice(p);
     expect(text).toContain(VOICE);
     expect(smsSegments(text)).toBe(1);
     // The facts stay slot-injected and keep their place ahead of it.
     expect(text).toMatch(TOMORROW_LEADS);
     expect(text).toContain('Swim class at 4:30');
-    expect(foldReminderVoice('Tomorrow: Maya - Swim class at 4:30', VOICE).outcome).toBe('voiced');
+    // THE OUTCOME LEAVES THE RENDERER. A caller that had to substring-match the body for
+    // a sentence it did not choose would be guessing at its own renderer.
+    expect(voice).toBe('used');
+    expect(foldReminderVoice(LEAD, BODY, VOICE).outcome).toBe('used');
+  });
+
+  it('refuses a line the wire would eat, rather than sending it a word short', () => {
+    // gsmSafe maps a genuinely unmappable character to NOTHING (weekly-plan/core.ts), so
+    // an emoji does not fail the render — it deletes, and the sentence arrives a word
+    // short with no counter moving. Byte identity is the only check that sees a deletion.
+    const eaten = 'Have a great one \u{1F389} see you there';
+    const { text, voice } = smsVoice(
+      payload({ offset: '-P1D', events: [swimAt430], voice: { line: eaten } }),
+    );
+    expect(voice).toBe('refused:gsm_dropped');
+    expect(text).not.toContain('see you there');
+    expect(foldReminderVoice(LEAD, BODY, eaten).outcome).toBe('refused:gsm_dropped');
+    // Positive control on the same path: the same sentence without the character ships.
+    expect(foldReminderVoice(LEAD, BODY, 'Have a great one, see you there').outcome).toBe('used');
+  });
+
+  it('refuses a line that ASKS — a reminder states a fact and owns no answer', () => {
+    // A question appended to a reminder invites a bare YES, and a bare YES is claimed
+    // family-wide by the approvals resolver (docs/voice.md rule 11). The slot's budget is
+    // therefore ZERO questions, not one: there is no ask here for an answer to belong to.
+    const asks = 'Ready? Towel packed?';
+    const { text, voice } = smsVoice(
+      payload({ offset: '-P1D', events: [swimAt430], voice: { line: asks } }),
+    );
+    expect(voice).toBe('refused:question_count');
+    expect(text).not.toContain('?');
+    expect(foldReminderVoice(LEAD, BODY, asks).outcome).toBe('refused:question_count');
+    // One is no better than two here, and that is the part a "at most one" rule misses.
+    expect(foldReminderVoice(LEAD, BODY, 'Towel packed?').outcome).toBe('refused:question_count');
+  });
+
+  it('refuses a body that has lost the offset, because the offset IS the message', () => {
+    // whenLead is the FACT — "Tomorrow" / "In an hour" — and voice.line is composed by a
+    // skill that says nothing about it (reminder-voice.md). The voice rides AFTER the
+    // lead, never instead of it, and the fold is the only place the two strings meet.
+    expect(foldReminderVoice('In an hour', BODY, 'Towel by the door.').outcome).toBe(
+      'refused:offset_missing',
+    );
+    // On the wire, asserted on the rendered body and not on the branch taken: a composed
+    // line that names no offset still arrives behind one.
+    const { text, voice } = smsVoice(
+      payload({
+        offset: '-PT1H',
+        events: [swimAt430],
+        deepLink: null,
+        voice: { line: 'Towel by the door.' },
+      }),
+    );
+    expect(text).toMatch(HOUR_LEADS);
+    expect(text).toContain('Towel by the door.');
+    expect(voice).toBe('used');
   });
 
   it('gives up the VOICE rather than the glance, and says which happened', () => {
     // THE FOLD IS ONE SEGMENT, not the two-segment ceiling: a reminder is a glance, and a
     // human sentence is not worth doubling the message for. "No voice was composed" and
     // "a voice was composed and refused" are different facts about the voice stage, so
-    // the fold returns which.
+    // the fold returns which, and the renderer carries it out.
     const wordy = `${VOICE} and there is a whole paragraph of it after that, easily enough to push this reminder past the one segment it promises to fit inside`;
-    const p = payload({ offset: '-P1D', events: [swimAt430], voice: { line: wordy } });
-    const text = sms(p, 'first_name');
-    expect(text).not.toContain(wordy);
-    expect(smsSegments(text)).toBe(1);
-    expect(foldReminderVoice('Tomorrow: Maya - Swim class at 4:30', wordy).outcome).toBe(
-      'refused_by_fold',
+    const over = smsVoice(payload({ offset: '-P1D', events: [swimAt430], voice: { line: wordy } }));
+    expect(over.text).not.toContain(wordy);
+    expect(smsSegments(over.text)).toBe(1);
+    expect(over.voice).toBe('refused:over_segment');
+    expect(foldReminderVoice(LEAD, BODY, wordy).outcome).toBe('refused:over_segment');
+
+    const none = smsVoice(payload({ offset: '-P1D', events: [swimAt430] }));
+    expect(none.voice).toBe('absent');
+    expect(foldReminderVoice(LEAD, BODY, null).outcome).toBe('absent');
+  });
+
+  it('names the outcome on the OVERFLOW path too, where the facts alone took the glance', () => {
+    // A week-night with six things on it is over one segment before the voice is even
+    // considered, and the overflow paths own the two-segment ceiling. That is still a
+    // composed sentence that did not ship, and folding it into the same silence as
+    // "nothing was composed" is exactly what the outcome exists to stop.
+    const many = ['09:00', '11:00', '13:00', '15:00', '17:00', '19:00'].map((hhmm, n) =>
+      ev({
+        eventRef: `e-${n}`,
+        childId: 'c-maya',
+        title: `Swim class number ${n} at the community centre`,
+        startsAt: `2026-07-25T${hhmm}:00Z`,
+      }),
     );
-    expect(foldReminderVoice('Tomorrow: Maya - Swim class at 4:30', null).outcome).toBe('no_voice');
+    const crowded = payload({ offset: '-P1D', events: many, voice: { line: VOICE } });
+    const over = smsVoice(crowded);
+    expect(smsSegments(over.text)).toBeGreaterThan(1);
+    expect(over.text).not.toContain(VOICE);
+    expect(over.voice).toBe('refused:over_segment');
+    // The same crowded night with nothing composed is 'absent', not a refusal.
+    expect(smsVoice(payload({ offset: '-P1D', events: many })).voice).toBe('absent');
   });
 
   it('reads a different lead on a different day, and never a different fact', () => {

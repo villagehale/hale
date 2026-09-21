@@ -1,5 +1,5 @@
 import type { WeekPlanItem } from '@hale/db';
-import type { RenderedContent } from '~/lib/channel/types';
+import type { RenderedContent, VoiceOutcome } from '~/lib/channel/types';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { assertPoolSize, pickVariant, weeklyOccasion } from '~/lib/channel/variant';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
@@ -84,16 +84,6 @@ const PLACED_ASK_POOL: readonly string[] = [
 assertPoolSize(PLACED_ASK_POOL, PLACED_ASK_POOL_NAME);
 
 /**
- * Which half of a slot the parent actually read.
- *
- * NAMED AND RETURNED rather than inferred from the text: "the model composed nothing" and
- * "the model composed something the budget refused" are different facts about the voice
- * stage, and a caller that had to substring-match the body for a sentence it did not
- * choose would be guessing at its own renderer.
- */
-export type WeeklyVoiceOutcome = 'voiced' | 'no_voice' | 'refused_by_fold';
-
-/**
  * The fold itself, exported so the outcome is assertable.
  *
  * A composed sentence is used only when it clears the SAME mechanical bar the pooled copy
@@ -101,19 +91,31 @@ export type WeeklyVoiceOutcome = 'voiced' | 'no_voice' | 'refused_by_fold';
  * two questions in it on a surface where a bare YES is claimed by the approvals resolver
  * is the failure the question rule exists for, and the fold is where it is caught. The
  * SEGMENT budget is measured on the whole message by the caller, not here, because a
- * sentence's cost depends on the week it rides with.
+ * sentence's cost depends on the week it rides with — so `refused:over_segment` is the one
+ * outcome this function never returns and the renderer always can.
+ *
+ * EACH REFUSAL BY ITS OWN NAME (VoiceOutcome, channel/types.ts) rather than one bucket:
+ * "the model composed nothing", "the model wrote a character the wire would eat" and "the
+ * model asked something this slot does not own" are three different bugs in three
+ * different places, and a caller that had to substring-match the body for a sentence it
+ * did not choose would be guessing at its own renderer.
  */
 export function foldWeeklyVoice(
   composed: string | null | undefined,
   questions: 0 | 1,
-): { text: string | null; outcome: WeeklyVoiceOutcome } {
+): { text: string | null; outcome: VoiceOutcome } {
   const trimmed = composed?.trim() ?? '';
-  if (trimmed === '') return { text: null, outcome: 'no_voice' };
+  if (trimmed === '') return { text: null, outcome: 'absent' };
   const safe = gsmSafe(trimmed);
-  if (safe !== trimmed || (safe.match(/\?/g) ?? []).length !== questions) {
-    return { text: null, outcome: 'refused_by_fold' };
+  // BYTE IDENTITY, not "does it look all right": gsmSafe maps a genuinely unmappable
+  // character to NOTHING (core.ts), so an emoji leaves the sentence a word short and no
+  // counter moves. Comparing the folded string to the composed one is the only check that
+  // can see a deletion.
+  if (safe !== trimmed) return { text: null, outcome: 'refused:gsm_dropped' };
+  if ((safe.match(/\?/g) ?? []).length !== questions) {
+    return { text: null, outcome: 'refused:question_count' };
   }
-  return { text: safe, outcome: 'voiced' };
+  return { text: safe, outcome: 'used' };
 }
 
 const PENDING_TAIL = 'or tell me what to change.';
@@ -187,21 +189,35 @@ export function renderWeeklyPlanSms(
     const quiet = foldWeeklyVoice(payload.voice?.weekFraming, 1);
     const voiced = quiet.text === null ? null : send(quiet.text);
     if (voiced !== null && smsSegments(voiced) <= SEGMENT_CAP) {
-      return { kind: 'sms', text: voiced };
+      return { kind: 'sms', text: voiced, voice: quiet.outcome };
     }
-    return { kind: 'sms', text: send(variant(QUIET_ASK_POOL, QUIET_ASK_POOL_NAME)) };
+    return {
+      kind: 'sms',
+      text: send(variant(QUIET_ASK_POOL, QUIET_ASK_POOL_NAME)),
+      // A sentence the fold passed and the WEEK then refused is an over-segment refusal
+      // and not the fold's own — the quiet slot rides alone, so this is a composer that
+      // wrote past three segments of nothing but itself. Reported as itself: "the model
+      // asked twice" and "the model wrote a page" are looked at in different places.
+      voice: voiced === null ? quiet.outcome : 'refused:over_segment',
+    };
   }
 
   const placed = foldWeeklyVoice(payload.voice?.signOff, 0);
+  const pending = pendingCount(payload.items);
   const ask = approvalAsk(
-    pendingCount(payload.items),
+    pending,
     draftedCount(payload.items),
     placed.text ?? variant(PLACED_ASK_POOL, PLACED_ASK_POOL_NAME),
   );
   const tail = ask === null ? '' : `${ITEM_SEP}${ask}`;
+  // THE SIGN-OFF SLOT ONLY EXISTS ON A WEEK WITH NOTHING PENDING. Every other week closes
+  // on the approval ask, which is a count of rows the mint is holding and never a composed
+  // sentence — so there is no outcome to report, and reporting 'absent' there would invent
+  // a composer failure on a slot nobody asked for (RenderedContent.voice).
+  const signOff: VoiceOutcome | undefined = pending === 0 ? placed.outcome : undefined;
 
   const linked = send(`${FULL_WEEK_PREFIX}${payload.deepLink}${tail}`);
-  if (payload.items.length > SMS_ITEM_CAP) return { kind: 'sms', text: linked };
+  if (payload.items.length > SMS_ITEM_CAP) return { kind: 'sms', text: linked, voice: signOff };
 
   const list = itemsChronological(payload.items)
     .map((i) => smsItem(i, payload.children))
@@ -209,6 +225,11 @@ export function renderWeeklyPlanSms(
   const inline = send(`${list}${tail}`);
 
   // A week too long to read inline takes the overflow form it already has, rather than
-  // a fourth and fifth segment. What survives either way is the ask.
-  return { kind: 'sms', text: smsSegments(inline) <= SEGMENT_CAP ? inline : linked };
+  // a fourth and fifth segment. What survives either way is the ask — and so does the
+  // sign-off, because the linked form carries the same tail.
+  return {
+    kind: 'sms',
+    text: smsSegments(inline) <= SEGMENT_CAP ? inline : linked,
+    voice: signOff,
+  };
 }

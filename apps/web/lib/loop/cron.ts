@@ -110,6 +110,14 @@ export type WeekPlanFamilyResult =
       status: 'composed';
       weekStart: string;
       itemCount: number;
+      /**
+       * A VOICE WAS COMPOSED — not that a parent read one, and the two are hours and a
+       * channel apart. This tick runs at the converge slot, before the family's channel is
+       * even consulted; whether the composed sentence cleared the SMS fold is decided at
+       * the RENDER and is reported there, as a `VoiceOutcome` on the dispatch leg and on
+       * the immutable audit row (channel/dispatch.ts; docs/voice.md, "The two SMS folds").
+       * Widening this flag to mean "read" would be a claim this function cannot back.
+       */
       voiced: boolean;
       /** How many placements were drafted for the parent's OK, or 'no_reviewer' when
        * there was no model to review them with. */

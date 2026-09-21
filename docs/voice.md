@@ -70,7 +70,7 @@ These are immovable, and the reason is written beside each one so a voice PR can
 
 **The registration ladder's legs** (`apps/web/lib/registration/sequence/copy.ts`). They stay deterministic and un-pooled — founder decision, confirmed. Those legs arrive at 6:15 a.m. under a quiet-hours exemption, and *"a generated sentence with a quiet-hours bypass is a sentence nobody approved waking a household for."* A leg fires once per window per season, so repetition is not the failure there. Only the FRAME around `ANSWER_MENU`'s quoted tokens is re-voiced; the tokens themselves (`"got in"`, `"waitlisted #12"`, `"missed it"`) are load-bearing — the reply parser reads them, and they are quoted verbatim so a parent who copies one back is guaranteed a match.
 
-**The three app-pointers — the stated exception.** `nothingPendingReply()` and `nothingToUndoReply()` (`apps/web/lib/channel/router/copy.ts`) and the `Full week:` deep link in the weekly-plan SMS (`apps/web/lib/loop/templates/weekly-plan/sms.ts`) each hand a parent a URL into the web app. Rule 9 forbids it, the coach eval hard-fails a model that does it, and `capabilityReply()` (the degraded coach runtime) carries a third instance of the same link. They are KEPT, deliberately, by founder decision: they are the answer to "where does my history live", they are deterministic echoes of `appBaseUrl()` rather than composed strings, and removing them is a product decision about where a parent's history lives rather than a copy change. They are named here so that "the exception" is a list of exactly three sites and not a shape a model may reach for.
+**The app-pointers — the stated exception, and it is a CLOSED LIST OF FOUR.** Three are the three `appLink()` calls in `apps/web/lib/channel/router/copy.ts` — `nothingPendingReply()`, `nothingToUndoReply()` and `capabilityReply()` (the degraded coach runtime C2 keeps for genuinely out-of-scope asks) — and the fourth is the `Full week:` deep link in the weekly-plan SMS (`apps/web/lib/loop/templates/weekly-plan/sms.ts`). Each hands a parent a URL into the web app; rule 9 forbids it and the coach eval hard-fails a model that does it. They are KEPT, deliberately, by founder decision: they are the answer to "where does my history live", they are deterministic echoes of `appBaseUrl()` rather than composed strings, and removing them is a product decision about where a parent's history lives rather than a copy change. The decision was recorded as *"the two app-pointers in router/copy.ts and the weekly SMS deep link"*; `capabilityReply()` is the third call the `appLink()` comment in that same file already names, so it is written out here rather than left to be discovered. The count is spelled out so that "the exception" is a list a reader can check against the code, and not a shape a model may reach for.
 
 ## Language
 
@@ -98,6 +98,21 @@ Every pool member, in every pool:
 - contains **exactly one** `?` (rule 5), except the fully-placed weekly pool, which contains **zero**: the week that asks nothing;
 - is not answerable by a bare yes or no (rule 11);
 - scores **below 0.65** on a Jaccard word-set overlap against every other member of its pool. A five-member pool whose members are the same sentence with a synonym swapped is not a pool. The detector and its 0.65 calibration are lifted from `apps/site/app/landing.test.ts`, where the threshold was measured rather than chosen.
+
+## The two SMS folds
+
+The weekly plan and the reminder both already compose a human sentence through a model — at the Saturday converge tick and the evening one — and both used to throw it away on the surface a parent actually reads. `payload.voice` is on the shared payload; the SMS renderers now read it, behind a fold.
+
+A composed sentence is used only when it clears the same mechanical bar the pooled copy is held to, and every condition is there because something went wrong silently without it:
+
+- **byte identity after `gsmSafe`.** The folder maps a genuinely unmappable character to NOTHING, so an emoji does not fail the render — it deletes, and the line arrives on the wire a word short with every counter still reading "sent". Comparing the folded string to the composed one is the only check that can see a deletion.
+- **the slot's question budget.** One for the quiet week; **zero** for the fully-placed week and **zero** for a reminder. A reminder states a fact about the next hour and owns no answer, so a question appended to it invites a bare YES that the approvals resolver claims family-wide (rule 11).
+- **the deterministic offset still leads the reminder.** `whenLead` IS the fact. The voice rides after it, never instead of it, and the fold is the only place the two strings meet.
+- **the whole message still fits its cap** — three segments for the week, ONE for the reminder, because a reminder is a glance and a human sentence is not worth doubling the message for.
+
+**Every ending has a name, and the name leaves the renderer.** `VoiceOutcome` (`apps/web/lib/channel/types.ts`) is `used`, `absent` — the slot exists and the composer gave it nothing — and four refusals: `gsm_dropped`, `question_count`, `offset_missing`, `over_segment`. It rides out on `RenderedContent.voice` to the dispatch, which puts it on the leg result and on the immutable audit row. That is not decoration. The composer runs hours earlier and does not know which channel the family is on, so the compose tick's own `voiced` can only ever mean *a voice existed*; whether a parent READ one is decided at the render, and without the outcome "the composer degraded", "the fold refused it" and "it went out" would be one silence (hard rule #11). A message with no voice slot at all reports nothing, which is a different fact from `absent`.
+
+The pool is the floor under every fold, never its replacement.
 
 ## The evening anchor
 
