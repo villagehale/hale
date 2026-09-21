@@ -116,6 +116,12 @@ describe('one parent, two doors, one conversation', () => {
       disambiguation: createDisambiguationStore(),
       reconcileView: loadReconcileView,
       recordStatedState: async () => ({ status: 'nothing_stated' }),
+      weekdayCareAnswerTarget: async () => ({ status: 'no_open_ask' as const }),
+      recordWeekdayCare: async (_db, input) => ({
+        status: 'recorded' as const,
+        care: input.care,
+        providerNamed: input.provider !== null,
+      }),
       recordRegistrationWatch: async () => ({ status: 'recorded' }),
       armWatchedSpot: async () => ({ status: 'armed', spotId: 'spot-1' }),
       dispatchDeepResearch: async () => ({ status: 'enqueued' }),

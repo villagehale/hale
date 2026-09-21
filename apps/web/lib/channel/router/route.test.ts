@@ -22,7 +22,12 @@ import type {
   DisambiguationStore,
   PendingDisambiguation,
 } from './disambiguation';
-import type { OpenQuestion, OpenQuestionReader } from './open-questions';
+import {
+  type OpenQuestion,
+  type OpenQuestionReader,
+  type OpenQuestionSources,
+  createOpenQuestionReader,
+} from './open-questions';
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import {
   DISCOVERABILITY_ALREADY_ON,
@@ -377,6 +382,8 @@ function harness(
     recordRegistrationWatch?: ChannelRouterDeps['recordRegistrationWatch'];
     armWatchedSpot?: ChannelRouterDeps['armWatchedSpot'];
     recordStatedState?: ChannelRouterDeps['recordStatedState'];
+    weekdayCareAnswerTarget?: ChannelRouterDeps['weekdayCareAnswerTarget'];
+    recordWeekdayCare?: ChannelRouterDeps['recordWeekdayCare'];
     dispatchDeepResearch?: ChannelRouterDeps['dispatchDeepResearch'];
   } = {},
 ): Harness {
@@ -416,6 +423,16 @@ function harness(
       // inbound half cannot accidentally be relying on a write.
       recordStatedState:
         options.recordStatedState ?? (async () => ({ status: 'nothing_stated' as const })),
+      // VIL-360. No ask standing by default, for the reason above it.
+      weekdayCareAnswerTarget:
+        options.weekdayCareAnswerTarget ?? (async () => ({ status: 'no_open_ask' as const })),
+      recordWeekdayCare:
+        options.recordWeekdayCare ??
+        (async (_db, input) => ({
+          status: 'recorded' as const,
+          care: input.care,
+          providerNamed: input.provider !== null,
+        })),
       recordRegistrationWatch:
         options.recordRegistrationWatch ?? (async () => ({ status: 'recorded' as const })),
       armWatchedSpot:
@@ -3428,5 +3445,302 @@ describe('the disambiguation a clarifier owns', () => {
     expect((await c.run()).handler).toBe('approval');
 
     expect(queue.approved).toEqual(['a-2']);
+  });
+});
+
+/**
+ * VIL-360 · GATE 2c-bis — the weekday-care answer, through the real router.
+ *
+ * Two claims, and the second one has already cost a live incident on another kind. The
+ * fact is written on the turn that hears it and the turn is NOT claimed, so the coach
+ * answers in its own voice already knowing the answer; and while Hale is holding this
+ * question, a bare "yes" is AMBIGUOUS and must not be spent on an unrelated drafted
+ * action.
+ */
+describe('the weekday-care answer', () => {
+  const CHILD = 'cccc1111-1111-4111-8111-111111111111';
+  const ASK_ID = 'dddd1111-1111-4111-8111-111111111111';
+
+  /**
+   * The REAL open-question reader over stub sources, rather than a hand-written array.
+   * The `questions.push` block in open-questions.ts is the one plumbing site with no
+   * compiler behind it — forget it and the question is simply never open — so the test
+   * that matters most has to go through the code that builds the list.
+   */
+  function questionsFrom(overrides: Partial<OpenQuestionSources>): OpenQuestionReader {
+    const sources: OpenQuestionSources = {
+      forwardAddressRevoke: async () => null,
+      pendingApprovals: async () => [],
+      introOptInOpen: async () => false,
+      introProposal: async () => null,
+      planOffer: async () => null,
+      checkupOffer: async () => null,
+      founderWelcomeOffer: async () => null,
+      activityPromise: async () => null,
+      registrationReadiness: async () => null,
+      coParentAssent: async () => null,
+      emailAlertOffers: async () => [],
+      eveningCheckIn: async () => null,
+      weekdayCare: async () => null,
+      daycareFollowup: async () => null,
+      ...overrides,
+    };
+    return createOpenQuestionReader(sources);
+  }
+
+  const askStanding = { weekdayCare: async () => ({ id: ASK_ID, askedAt: NOW }) };
+
+  function careHarness(
+    options: {
+      body?: string;
+      target?: ChannelRouterDeps['weekdayCareAnswerTarget'];
+      questions?: OpenQuestionReader;
+    } = {},
+  ) {
+    const written: Array<{ childId: string; care: string; provider: string | null }> = [];
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: options.body ?? "she's home with me" },
+      coach,
+      questions: options.questions ?? questionsFrom(askStanding),
+      weekdayCareAnswerTarget:
+        options.target ?? (async () => ({ status: 'open' as const, childId: CHILD })),
+      recordWeekdayCare: async (_db, input) => {
+        written.push({ childId: input.childId, care: input.care, provider: input.provider });
+        return {
+          status: 'recorded' as const,
+          care: input.care,
+          providerNamed: input.provider !== null,
+        };
+      },
+    });
+    return { h, written, coach };
+  }
+
+  it('writes the fact, does not claim the turn, and lets the coach answer', async () => {
+    const { h, written, coach } = careHarness();
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    // The child comes from the ASK, not from the words - "she's home with me" names
+    // nobody.
+    expect(written).toEqual([{ childId: CHILD, care: 'home', provider: null }]);
+    // No reply string is asserted, because there is no reply string: the coach composes
+    // it, with the fact already in its context.
+    expect(coach.calls).toBe(1);
+    expect(result.status).toBe('agent_replied');
+  });
+
+  it('records the provider when the parent named one', async () => {
+    const { h, written } = careHarness({ body: 'she goes to Little Sprouts' });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(written).toEqual([
+      { childId: CHILD, care: 'daycare', provider: 'Little Sprouts' },
+    ]);
+  });
+
+  it('logs an unreadable answer and writes nothing', async () => {
+    const { h, written, coach } = careHarness({ body: 'what do you mean?' });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(written).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('settles neither side');
+    // ...and never the words themselves: a message about a child's care arrangement is
+    // the last thing that belongs in a log line.
+    expect(JSON.stringify(h.logs)).not.toContain('what do you mean');
+    expect(coach.calls).toBe(1);
+  });
+
+  it('does not answer an SMS question through a different door, and says so', async () => {
+    const { h, written } = careHarness({
+      target: async () => ({ status: 'wrong_channel' as const }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(written).toEqual([]);
+    // NAMED, not swallowed (rule #11). An email landing inside an SMS question's window
+    // is a different thing to know from a question nobody asked, and a refusal nothing
+    // records is a refusal nobody can tell from a turn where the gate never ran.
+    expect(JSON.stringify(h.logs)).toContain('wrong_channel');
+    // ...and still never the words themselves.
+    expect(JSON.stringify(h.logs)).not.toContain("she's home with me");
+  });
+
+  it('costs nothing when Hale is holding no such question', async () => {
+    let reads = 0;
+    const { h, written } = careHarness({
+      questions: questionsFrom({}),
+      target: async () => {
+        reads += 1;
+        return { status: 'no_open_ask' as const };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(written).toEqual([]);
+    // The memoised list already said nothing is standing, so the ledger reader is never
+    // reached on the turn every parent actually has.
+    expect(reads).toBe(0);
+  });
+
+  /**
+   * THE THEFT TEST. A drafted action awaiting approval AND the weekday-care ask
+   * standing; the parent types "yes". `soleOpenKind` must refuse it, because a bare
+   * affirmative near an either/or question means nothing.
+   *
+   * MUTATION: delete the `weekday_care` block from `createOpenQuestionReader` and this
+   * goes red — `questions.every(q => q.kind === 'approval')` becomes true, the approval
+   * grammar claims the word, and a calendar write the parent never picked executes.
+   */
+  /** One drafted calendar add, in both shapes the chain needs it: the spine's pending
+   * list and the open-question source's. */
+  function oneDraft() {
+    const approved: string[] = [];
+    const pending = [{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }];
+    return {
+      approved,
+      pending,
+      spine: {
+        listPending: async () => pending,
+        latestUndoable: async () => null,
+        approve: async (_db: unknown, args: { actionId: string }) => {
+          approved.push(args.actionId);
+          return true;
+        },
+        decline: async () => true,
+        undo: async () => true,
+      },
+    };
+  }
+
+  it('never lets a bare yes be spent on a drafted action', async () => {
+    const queue = oneDraft();
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'yes' },
+      coach,
+      handlers: [approvalHandler(queue.spine as never)],
+      questions: questionsFrom({
+        ...askStanding,
+        pendingApprovals: async () => queue.pending as never,
+      }),
+      weekdayCareAnswerTarget: async () => ({ status: 'open' as const, childId: CHILD }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(queue.approved).toEqual([]);
+    expect(coach.calls).toBe(1);
+  });
+
+  /** The positive control beside it: with no weekday-care ask standing, the SAME bare
+   * "yes" and the SAME draft still approve — so the test above is proving a block
+   * rather than a chain that never worked. */
+  it('still approves a bare yes when that draft is the only thing standing', async () => {
+    const queue = oneDraft();
+    const h = harness({
+      context: { body: 'yes' },
+      handlers: [approvalHandler(queue.spine as never)],
+      questions: questionsFrom({ pendingApprovals: async () => queue.pending as never }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(queue.approved).toEqual(['a-1']);
+  });
+});
+
+/**
+ * VIL-360 · THE THEFT TEST, for the daycare check-in.
+ *
+ * `sendFollowup` writes a ledger row, threads the message, and registers nothing. So
+ * until the thirteenth kind existed, "how is Little Sprouts going?" plus one drafted
+ * action plus a bare "yes" executed that action: `questions.every(q => q.kind ===
+ * 'approval')` was true, `mayClaimBareWord` returned true, and a calendar write the
+ * parent never picked went through.
+ *
+ * This is the one test in this file whose absence has already cost a live incident on
+ * another kind.
+ */
+describe('a bare yes while the daycare check-in is standing', () => {
+  const ASK_ID = 'eeee1111-1111-4111-8111-111111111111';
+
+  function sources(overrides: Partial<OpenQuestionSources>): OpenQuestionReader {
+    return createOpenQuestionReader({
+      forwardAddressRevoke: async () => null,
+      pendingApprovals: async () => [],
+      introOptInOpen: async () => false,
+      introProposal: async () => null,
+      planOffer: async () => null,
+      checkupOffer: async () => null,
+      founderWelcomeOffer: async () => null,
+      activityPromise: async () => null,
+      registrationReadiness: async () => null,
+      coParentAssent: async () => null,
+      emailAlertOffers: async () => [],
+      eveningCheckIn: async () => null,
+      weekdayCare: async () => null,
+      daycareFollowup: async () => null,
+      ...overrides,
+    });
+  }
+
+  function draftQueue() {
+    const approved: string[] = [];
+    const pending = [{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }];
+    return {
+      approved,
+      pending,
+      spine: {
+        listPending: async () => pending,
+        latestUndoable: async () => null,
+        approve: async (_db: unknown, args: { actionId: string }) => {
+          approved.push(args.actionId);
+          return true;
+        },
+        decline: async () => true,
+        undo: async () => true,
+      },
+    };
+  }
+
+  it('does not approve the draft', async () => {
+    const queue = draftQueue();
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'yes' },
+      coach,
+      handlers: [approvalHandler(queue.spine as never)],
+      questions: sources({
+        pendingApprovals: async () => queue.pending as never,
+        daycareFollowup: async () => ({ id: ASK_ID, askedAt: NOW }),
+      }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(queue.approved).toEqual([]);
+    // ...and the turn is not lost: the coach answers, having been told what is standing.
+    expect(coach.calls).toBe(1);
+  });
+
+  it('still approves it when the check-in is the only thing NOT standing', async () => {
+    // The positive control, through the identical handler and spine. An absence test
+    // that cannot tell "blocked" from "nothing happened" is not a test.
+    const queue = draftQueue();
+    const h = harness({
+      context: { body: 'yes' },
+      handlers: [approvalHandler(queue.spine as never)],
+      questions: sources({ pendingApprovals: async () => queue.pending as never }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(queue.approved).toEqual(['a-1']);
   });
 });

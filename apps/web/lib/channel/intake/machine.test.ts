@@ -54,6 +54,7 @@ import type { IntentReading } from './intent';
 import { CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
 import { type IntakeDeps, handleInboundSms } from './machine';
 import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
+import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from './radar';
 import { FakeTransport } from './transport';
 import { claimIntakeTurn } from './turn-claim';
 import { CONTACT_CARD_URL, WELCOME_CARD_BODY, WELCOME_CARD_TEMPLATE_KEY } from './welcome-card';
@@ -96,6 +97,8 @@ function harness(options: {
    * the escape existed is asserting the script, and that is the script. */
   answerComposer?: IntakeDeps['answerComposer'];
   capture?: IntakeDeps['capture'];
+  /** VIL-360 — whether the first radar's DECISION carried a weekend pick. */
+  weekendPickOffered?: boolean;
 }): {
   fake: FakeDb;
   transport: FakeTransport;
@@ -129,7 +132,8 @@ function harness(options: {
       radar: {
         async compose(input) {
           steps.push(`radar:${input.areaCoarse}`);
-          return fakeRadar.compose(input);
+          const payload = await fakeRadar.compose(input);
+          return { ...payload, weekendPickOffered: options.weekendPickOffered ?? false };
         },
       },
       ackComposer: fakeAckComposer,
@@ -2436,5 +2440,48 @@ describe('intake · the provider answered the keyword first (VIL-348)', () => {
         transport: refusingTransport(new TwilioSendError('20500', 503)),
       }),
     ).rejects.toBeInstanceOf(TwilioSendError);
+  });
+});
+
+/**
+ * VIL-360 · the D23 anchor.
+ *
+ * The weekday-care ask says "those are all weekend finds" about a send of Hale's own,
+ * and the intake radar's first text is the only weekend find most families ever get.
+ * That row carried no `template_key` at all, so nothing downstream could tell a first
+ * text that offered a Saturday from one that offered nothing — and the ask would have
+ * fired for nobody.
+ */
+describe('the first radar\'s weekend-pick stamp', () => {
+  async function onboard(h: ReturnType<typeof harness>) {
+    await text(h.fake, h.transport, h.deps, 'hi');
+    await text(h.fake, h.transport, h.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+  }
+
+  it('stamps the row when the radar carried a weekend pick', async () => {
+    const h = harness({ weekendPickOffered: true });
+
+    await onboard(h);
+
+    expect(
+      inserts(h.fake, schema.channelMessages).filter(
+        (row) => row.templateKey === INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('stamps NOTHING when it did not - the anchor must be a find that happened', async () => {
+    const h = harness({ weekendPickOffered: false });
+
+    await onboard(h);
+
+    expect(
+      inserts(h.fake, schema.channelMessages).filter(
+        (row) => row.templateKey === INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY,
+      ),
+    ).toEqual([]);
+    // The positive control: the radar text DID go out, so this is not passing because
+    // nothing was sent at all.
+    expect(h.transport.bodies().some((body) => body.includes('RADAR'))).toBe(true);
   });
 });

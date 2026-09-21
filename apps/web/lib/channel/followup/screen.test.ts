@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { distinctiveWords, mentionsActivity, mentionsIntro } from './screen';
+import { distinctiveWords, mentionsActivity, mentionsDaycare, mentionsIntro } from './screen';
 
 /**
  * The screen errs toward ASKING, and these tests are mostly about that direction. A
@@ -67,5 +67,38 @@ describe('mentionsIntro', () => {
     'can you move thursday to friday',
   ])('does not fire on an ordinary message: %s', (body) => {
     expect(mentionsIntro([body])).toBe(false);
+  });
+});
+
+/**
+ * VIL-360 · the told-anywhere screen for the daycare ask. It errs toward asking in the
+ * same direction as its siblings, and its one extra move is that the PROVIDER is
+ * screened as a phrase of its own — the parent who says "Little Sprouts has been great"
+ * has answered the question without using any of the generic words.
+ */
+describe('mentionsDaycare', () => {
+  it.each([
+    ['the word itself', 'daycare is going well so far'],
+    ['the drop-off', 'drop off was rough this morning'],
+    ['settling in', "she's settling in better than we hoped"],
+  ])('sees the question already answered when %s', (_label, body) => {
+    expect(mentionsDaycare([body], null)).toBe(true);
+  });
+
+  /** The provider is the half a generic list cannot cover, and it only screens when
+   * Hale actually captured one — which is why the same sentence is silent without it. */
+  it('screens the provider as a phrase of its own', () => {
+    expect(mentionsDaycare(['little sprouts has been great'], 'Little Sprouts')).toBe(true);
+    expect(mentionsDaycare(['little sprouts has been great'], null)).toBe(false);
+  });
+
+  /** The direction that matters: a false hit drops the ask entirely and silently, so an
+   * ordinary message about something else must not read as an answer. */
+  it.each([
+    'can you move thursday to friday',
+    'the library thing was great',
+    'we care about getting outside more',
+  ])('does not fire on an ordinary message: %s', (body) => {
+    expect(mentionsDaycare([body], 'Little Sprouts')).toBe(false);
   });
 });

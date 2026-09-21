@@ -5,7 +5,8 @@
 //
 // The corpus spans what actually changes an honest message:
 //
-//   kind          registration / weather_swap  (a deadline vs an offer)
+//   kind          registration / weather_swap / weekday_dropin
+//                                                (a deadline, an offer, a standing slot)
 //   family size   1 / 2 / 3 kids               (ONE message, every kid named in line)
 //   absences      no venue / no kid names / approximate age
 //   weather       wet / cold / dry             (the swap must say WHICH fact it acts on;
@@ -51,6 +52,21 @@ function swap(over = {}) {
     kidNames: ['Maya'],
     weatherFact: 'the weekend forecast is wet',
     whyFacts: ['free', 'indoor'],
+    ...over,
+  };
+}
+
+function dropIn(over = {}) {
+  return {
+    kind: 'weekday_dropin',
+    candidateRef: {
+      id: 'civic-1',
+      title: 'EarlyON drop-in',
+      venueName: 'Armour Heights',
+    },
+    eventDate: '2026-08-04',
+    weekday: 'tuesday',
+    kidNames: ['Mia'],
     ...over,
   };
 }
@@ -134,6 +150,42 @@ export const NUDGE_FIXTURES = [
     nudge: swap({ kidNames: [] }),
     gateAllowed: true,
     expect: { mustRecall: ['story time'] },
+  },
+  {
+    id: 'weekday-dropin-named-venue',
+    // VIL-360 · the weekday find. The row carries no clock time at all, so the DAY is
+    // the only time-shaped fact and a stated hour is a straight invention.
+    nudge: dropIn(),
+    gateAllowed: true,
+    expect: {
+      mustRecall: ['EarlyON drop-in', 'Tuesday'],
+      forbidden: ['saturday', 'sunday', 'forecast', 'am', 'a.m.'],
+    },
+  },
+  {
+    id: 'weekday-dropin-no-venue-no-names',
+    // Neither a venue nor a named child. The message still has to read as a sentence
+    // rather than reach for "the kids" or a place Hale never found.
+    nudge: dropIn({
+      candidateRef: { id: 'civic-2', title: 'Baby storytime', venueName: null },
+      eventDate: '2026-08-05',
+      weekday: 'wednesday',
+      kidNames: [],
+    }),
+    gateAllowed: true,
+    expect: { mustRecall: ['Baby storytime', 'Wednesday'], forbidden: ['tuesday'] },
+  },
+  {
+    id: 'weekday-dropin-friday',
+    // A Friday session for two children, so the day and the names both have to land.
+    nudge: dropIn({
+      candidateRef: { id: 'civic-3', title: 'Family drop-in', venueName: 'Leaside Library' },
+      eventDate: '2026-08-07',
+      weekday: 'friday',
+      kidNames: ['Mia', 'Leo'],
+    }),
+    gateAllowed: true,
+    expect: { mustRecall: ['Family drop-in', 'Friday', 'Mia', 'Leo'], forbidden: ['weekend'] },
   },
   {
     id: 'nothing-worthy-never-composes',

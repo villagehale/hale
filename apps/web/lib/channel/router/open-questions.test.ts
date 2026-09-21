@@ -113,6 +113,8 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
       coParentAssent: async () => null,
       emailAlertOffers: async () => [],
       eveningCheckIn: async () => null,
+      weekdayCare: async () => null,
+      daycareFollowup: async () => null,
       forwardAddressRevoke: async () => null,
     });
 
@@ -190,6 +192,8 @@ describe('the registration-readiness question on the open list', () => {
       coParentAssent: async () => null,
       emailAlertOffers: async () => [],
       eveningCheckIn: async () => null,
+      weekdayCare: async () => null,
+      daycareFollowup: async () => null,
       forwardAddressRevoke: async () => null,
     });
 
@@ -225,6 +229,8 @@ describe('the registration-readiness question on the open list', () => {
       coParentAssent: async () => null,
       emailAlertOffers: async () => [],
       eveningCheckIn: async () => null,
+      weekdayCare: async () => null,
+      daycareFollowup: async () => null,
       forwardAddressRevoke: async () => null,
     });
 
@@ -284,6 +290,8 @@ describe('the forwarding-address revoke confirm on the open list', () => {
 
   it('is read off its own source, dated by the ask row and marked solicited', async () => {
     const reader = createOpenQuestionReader({
+      weekdayCare: async () => null,
+      daycareFollowup: async () => null,
       pendingApprovals: async () => [],
       introOptInOpen: async () => false,
       introProposal: async () => null,

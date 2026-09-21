@@ -65,6 +65,15 @@ function townLabel(municipality) {
 }
 
 function nudgeVoiceContext(nudge) {
+  if (nudge.kind === 'weekday_dropin') {
+    return {
+      kind: nudge.kind,
+      what: nudge.candidateRef.title,
+      where: nudge.candidateRef.venueName,
+      day: nudge.weekday,
+      kidNames: nudge.kidNames,
+    };
+  }
   if (nudge.kind === 'registration') {
     return {
       kind: nudge.kind,

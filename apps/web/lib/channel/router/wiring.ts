@@ -38,6 +38,10 @@ import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { productionChannelCoach } from '~/lib/channel/coach/runtime';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { recordStatedState } from '~/lib/channel/stated-state';
+import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
+import { childBelongsToFamily } from '~/lib/companion/log-write';
+import { daycareFollowupQuestion } from '~/lib/channel/followup/question';
+import { recordWeekdayCare } from '~/lib/care/weekday';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
 import { recordRegistrationWatch } from '~/lib/registration/watch';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
@@ -57,11 +61,13 @@ import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
-import { eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
+import { answeredOnTheSameChannel, eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
 import { forwardRevokeAsk } from '~/lib/channel/email/forward-request';
 import {
   approvalHandler,
   coParentAssentHandler,
+  weekdayCareHandler,
+  daycareFollowupHandler,
   connectorDisconnectHandler,
   connectorLinkHandler,
   emailAlertAddHandler,
@@ -352,6 +358,13 @@ export function defaultHandlers(): DeterministicHandler[] {
     // Owns the co-parent scope question and declines every reading of it — see the
     // handler's own note. Listed so the router never resolves a kind nobody owns.
     coParentAssentHandler(),
+    // Beside it, and for the same reason: it claims nothing, so its POSITION in this
+    // chain is free rather than load-bearing. Said out loud so a reader does not have to
+    // work out what it is shadowing (nothing).
+    weekdayCareHandler(),
+    // And its sibling, for the same reason and with the same freedom of position: it
+    // owns the daycare check-in's kind and claims nothing.
+    daycareFollowupHandler(),
     healthReplyHandler(defaultHealthReplyDeps()),
     emailAlertAddHandler(),
     planReplyHandler(defaultPlanReplyDeps()),
@@ -623,6 +636,26 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // handled (health/reply.ts), so a natural statement and the word "done" land on the
     // same row through the same audited transaction.
     recordStatedState: (db, input) => recordStatedState(db, input, defaultHealthReplyDeps()),
+    // VIL-360 · the ask's own last-word reader, plus the same-door rule the evening
+    // check-in keeps. Composed HERE rather than in the router because both halves are
+    // ledger reads and the router's question is the single one they answer together.
+    weekdayCareAnswerTarget: async (db, input) => {
+      const ask = await weekdayCareQuestion(db, input);
+      if (!ask) return { status: 'no_open_ask' as const };
+      const sameDoor = await answeredOnTheSameChannel(db, ask.id, input.inboundChannelMessageId);
+      if (!sameDoor) return { status: 'wrong_channel' as const };
+      // AND THE CHILD IS STILL HERE. The ask names one by id and nothing about the
+      // ledger row it rides on is bound to the roster, so a child removed from the
+      // account during the 48h window leaves the question standing and pointing at a
+      // row that no longer exists. Reading it HERE is what keeps the fact's foreign key
+      // from being the thing that says so: a constraint violation is thrown from inside
+      // the write, out through the gate, and retried into the same wall until the
+      // question closes.
+      return (await childBelongsToFamily(db, input.familyId, ask.childId))
+        ? { status: 'open' as const, childId: ask.childId }
+        : { status: 'child_gone' as const };
+    },
+    recordWeekdayCare,
     // VIL-293. The view is read beside the model call, and the mint is bound here for
     // the same reason the two writers above it are: the row is minted against the SENT
     // message, and the router is the only thing that knows which row that was.
@@ -729,6 +762,14 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
     // already implied by the message ledger, so a stored flag would be a second answer
     // every other sender in the product would have to remember to clear.
     eveningCheckIn: (database, input) => eveningCheckInQuestion(database, input),
+    // VIL-360 · the weekday-care ask, through the same kind of last-word reader. It has
+    // a 48h clock of its own rather than the evening's 08:00 lapse, because a household
+    // arrangement does not go stale by breakfast.
+    weekdayCare: (database, input) => weekdayCareQuestion(database, input),
+    // VIL-360 · the daycare check-in. The follow-up lane registers nothing when it
+    // sends, so this reader is the only thing that makes its ask a question the router
+    // can see - and a bare "yes" near it safe.
+    daycareFollowup: (database, input) => daycareFollowupQuestion(database, input),
     coParentAssent: async (database, { parentUserId, familyId, now }) => {
       const pending = await loadPendingAssent(database, parentUserId, now);
       if (!pending || pending.role !== 'co_parent' || pending.familyId !== familyId) return null;
