@@ -54,6 +54,13 @@ CREATE TABLE IF NOT EXISTS "activity_bookings" (
 	"title" text NOT NULL,
 	"first_session_at" timestamp with time zone NOT NULL,
 	"location" text,
+	-- THE PROVIDER CALLED IT OFF. Set when a later email from the same provider_host cancels
+	-- the same class, and read as `IS NULL` by the follow-up reader: without it Hale asks
+	-- "how did it go?" four days after a class the provider cancelled - having itself sent
+	-- the text that said so. An instant rather than a boolean because WHEN a booking stopped
+	-- being real is the fact a support agent needs, and because a nullable timestamp is its
+	-- own "still live" predicate with no second column to disagree with.
+	"cancelled_at" timestamp with time zone,
 	-- The family_events row this booking is ON. ONE meaning, two writers: the correlation
 	-- stamps it at detection when the class is already on the calendar, and the offer
 	-- stamps it when the parent says yes. The two can never race - a booking that

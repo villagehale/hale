@@ -65,9 +65,13 @@ const ENVELOPE = {
 };
 
 function classified(
-  over: Partial<ExtractedEvent> & { kind?: ExtractionKind; teenContent?: boolean } = {},
+  over: Partial<ExtractedEvent> & {
+    kind?: ExtractionKind;
+    teenContent?: boolean;
+    teenAttributed?: boolean;
+  } = {},
 ): SentinelClassification {
-  const { kind = 'cancellation', teenContent = false, ...event } = over;
+  const { kind = 'cancellation', teenContent = false, teenAttributed = false, ...event } = over;
   return {
     status: 'classified',
     familyId: family.familyId,
@@ -85,6 +89,7 @@ function classified(
       sourceConfidence: 0.9,
       quoteEvidence: 'the pool is closed this Saturday',
       teenContent,
+      teenAttributed,
       matchedEventRef: null,
     },
     usage: { triage: { promptTokens: 1, completionTokens: 1 }, extract: null },

@@ -76,6 +76,18 @@ export interface SentinelClassification {
     sourceConfidence: number;
     quoteEvidence: string | null;
     teenContent: boolean;
+    /**
+     * A 13+ child is the SUBJECT of this extraction — resolved from `event.childRef`
+     * against the family's own children and their ages, with no model flag in it.
+     *
+     * Separate from `teenContent`, which carries a deliberate carve-out: a confident
+     * logistics notice about a teen stays un-redacted, because a parent should be told
+     * their 15-year-old's practice was cancelled. That carve-out is about a SENTENCE.
+     * Anything that writes a teen's activity down and acts on it later reads THIS instead
+     * — a booking Hale would ask about in four days is not a sentence that has been said
+     * and is over.
+     */
+    teenAttributed: boolean;
     matchedEventRef: CorrelatedEventRef | null;
   } | null;
   usage: {

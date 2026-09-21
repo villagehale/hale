@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, gte, isNull, lte, ne, or } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or } from 'drizzle-orm';
 import type { CorrelatedEventRef, ExtractedEvent, ExtractionKind } from '~/lib/sentinel';
 
 /**
@@ -37,6 +37,7 @@ export type BookingDraftResult =
       reason:
         | 'not_a_booking'
         | 'teen_content'
+        | 'teen_attributed'
         | 'no_first_session'
         | 'below_confidence'
         | 'no_title';
@@ -64,13 +65,21 @@ export interface BookingDraft {
  * discipline as `emailAlertOfferDraft`: one pure function, two readers, so what the text
  * said and what the row holds can never disagree.
  *
- * FIVE FLOORS, and they are subtractions rather than checks:
+ * SIX FLOORS, and they are subtractions rather than checks:
  *   · Not a `booking_confirmation` → there is no receipt here.
  *   · `teenContent` → NO ROW AT ALL. The pipeline has already genericised the title, so
  *     there is no activity left to record; recording the generic one would let a
  *     follow-up ask about a 13+ child's activity in four days' time on the strength of a
  *     title Hale deliberately erased (rule #1). The absence of the row IS the absence of
  *     the follow-up — the same construction `emailAlertOfferDraft` uses.
+ *   · `teenAttributed` → NO ROW EITHER, and this is the floor that actually holds. The
+ *     flag above is the model's, and the pipeline only forces it from the child's age for
+ *     an `unclear` kind or a sub-0.7 confidence — which is the exact complement of what
+ *     reaches here, since a `booking_confirmation` is never `unclear` and the floor below
+ *     is 0.7. So on the model's silence a 14-year-old's confident receipt was written down
+ *     and asked about four days later. TWO reasons rather than one, because "the model
+ *     called it teen content" and "the date of birth did" are two different things to be
+ *     told about a household, and folding them would hide which gate is load-bearing.
  *   · Below {@link BOOKING_CONFIDENCE_FLOOR} → a wrong extraction here costs a strange
  *     question on a Tuesday, not a wrong sentence today.
  *   · NO NAME → no row. A vendor title that survives sanitising as nothing leaves the
@@ -85,6 +94,9 @@ export function bookingDraft(input: {
   event: ExtractedEvent;
   from: string;
   teenContent: boolean;
+  /** The pipeline's DETERMINISTIC read — `event.childRef` resolved against this family's
+   * children and their ages, with no model flag in it. */
+  teenAttributed: boolean;
   sourceConfidence: number;
   matchedEventRef: CorrelatedEventRef | null;
   /** THE VENDOR'S OWN NAME FOR THE CLASS, through the renderer's `sanitizedTitle` and
@@ -99,6 +111,7 @@ export function bookingDraft(input: {
 }): BookingDraftResult {
   if (input.kind !== 'booking_confirmation') return { ok: false, reason: 'not_a_booking' };
   if (input.teenContent) return { ok: false, reason: 'teen_content' };
+  if (input.teenAttributed) return { ok: false, reason: 'teen_attributed' };
   if (input.sourceConfidence < BOOKING_CONFIDENCE_FLOOR) {
     return { ok: false, reason: 'below_confidence' };
   }
@@ -190,6 +203,77 @@ export async function stampBookingEvent(
   return stamped.length > 0 ? 'stamped' : 'no_booking';
 }
 
+/**
+ * The ONE fold a cancellation is matched to a booking by: casefold, collapse whitespace,
+ * trim. Exported because a match is only as honest as both sides using the same function —
+ * a second copy of this three-step normalisation is how "Swim Level 2" stops closing
+ * "Swim  Level 2".
+ *
+ * DELIBERATELY NOTHING ELSE. No instant equality, because a cancellation rarely repeats the
+ * session time and the ones that do repeat it disagree about the timezone; no location,
+ * because the vendor writes the place differently in the two emails; no fuzzy match,
+ * because a near-miss here closes a class the family is still going to.
+ */
+export function normalisedBookingTitle(raw: string): string {
+  return raw.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/**
+ * The provider cancelled it, so the family no longer holds it — stamp `cancelled_at` on
+ * the live FUTURE bookings this cancellation names.
+ *
+ * WITHOUT THIS THE BRANCH SHIPPED A BOOKING NOTHING COULD CLOSE. `readDueBookings` asks
+ * "how did it go?" four days after the first session, and a class the provider called off
+ * two days earlier is exactly the case where that question is worst: the parent was told
+ * about the cancellation, in a text from Hale, and Hale then asks how it went.
+ *
+ * BOUNDED BY THE PROVIDER AND THE TITLE, and by nothing else. Same family, same
+ * `provider_host`, same normalised title, still live, still in the future. A cancellation
+ * from a different provider that happens to name the same generic class ("Swim Level 2" is
+ * not a rare string) closes nothing.
+ *
+ * It takes the RAW sender and folds it with `senderHost` — the same private function
+ * `bookingDraft` wrote the row's host with, rather than a host handed in by a caller that
+ * could fold it a second way.
+ *
+ * Returns THE IDS IT CLOSED, rather than a count, so the caller can write the trail row
+ * each one owes (rule #6). An empty array is the ordinary answer: most cancellations are
+ * about classes the family never registered for through Hale.
+ */
+export async function closeCancelledBookings(
+  database: Database,
+  input: { familyId: string; from: string; title: string; now: Date },
+): Promise<string[]> {
+  const wanted = normalisedBookingTitle(input.title);
+  // A cancellation that names no class closes nothing. Without this, every booking whose
+  // own title folded to the same emptiness would be closed by one nameless email.
+  if (wanted === '') return [];
+  const live = await database
+    .select({ id: schema.activityBookings.id, title: schema.activityBookings.title })
+    .from(schema.activityBookings)
+    .where(
+      and(
+        eq(schema.activityBookings.familyId, input.familyId),
+        eq(schema.activityBookings.providerHost, senderHost(input.from)),
+        isNull(schema.activityBookings.cancelledAt),
+        // The FUTURE only. A session that already happened is a class the family went to,
+        // and closing it would take its "how did it go?" down with it.
+        gt(schema.activityBookings.firstSessionAt, input.now),
+      ),
+    );
+  // Folded in TS rather than in SQL so there is ONE normaliser and not a hand-written
+  // `lower(regexp_replace(...))` beside it that can drift from it.
+  const closing = live
+    .filter((row) => normalisedBookingTitle(row.title) === wanted)
+    .map((row) => row.id);
+  if (closing.length === 0) return [];
+  await database
+    .update(schema.activityBookings)
+    .set({ cancelledAt: input.now })
+    .where(inArray(schema.activityBookings.id, closing));
+  return closing;
+}
+
 /** A booking whose first session has passed, ready for the follow-up ask. Shaped to the
  * sweep's `DueActivity` and built there rather than here, so this module owes the sweep
  * its rows and not its types. */
@@ -206,7 +290,8 @@ export interface DueBooking {
 /**
  * The bookings whose first session has passed inside the follow-up window.
  *
- * IT EXCLUDES A BOOKING WHOSE MATCHED EVENT IS A `placement`, and only that. Those are
+ * IT EXCLUDES A CANCELLED BOOKING, and a booking whose matched event is a `placement`.
+ * The first is the provider having called the class off; the second is because those are
  * `readDueActivities`' own rows and asking about both would be two texts for one
  * Saturday. It deliberately does NOT exclude on `event_id IS NOT NULL`: a booking whose
  * YES placed a `source='parent'` row is invisible to `readDueActivities` (which filters
@@ -235,6 +320,9 @@ export async function readDueBookings(
     .where(
       and(
         eq(schema.activityBookings.familyId, familyId),
+        // The provider called it off, so there is nothing to ask about — see
+        // `closeCancelledBookings`.
+        isNull(schema.activityBookings.cancelledAt),
         gte(schema.activityBookings.firstSessionAt, window.floor),
         lte(schema.activityBookings.firstSessionAt, window.latest),
         // A NULL join (no event stamped, or a stamp pointing at nothing) is ours; a

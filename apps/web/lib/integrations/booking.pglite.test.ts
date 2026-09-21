@@ -1,12 +1,20 @@
 import { randomUUID } from 'node:crypto';
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
 import { correlateExtraction } from '~/lib/sentinel/correlate';
-import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
+import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
+import type {
+  ExtractedEvent,
+  ExtractionKind,
+  FamilyChildRef,
+  SentinelClassification,
+} from '~/lib/sentinel';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   BOOKING_CONFIDENCE_FLOOR,
@@ -75,6 +83,7 @@ function classified(
   over: Partial<ExtractedEvent> & {
     kind?: ExtractionKind;
     teenContent?: boolean;
+    teenAttributed?: boolean;
     sourceConfidence?: number;
     matchedEventRef?: SentinelClassification['extraction'] extends null
       ? never
@@ -84,6 +93,7 @@ function classified(
   const {
     kind = 'booking_confirmation',
     teenContent = false,
+    teenAttributed = false,
     sourceConfidence = 0.92,
     matchedEventRef = null,
     ...event
@@ -105,6 +115,7 @@ function classified(
       sourceConfidence,
       quoteEvidence: "You're registered for Swim Level 2.",
       teenContent,
+      teenAttributed,
       matchedEventRef,
     },
     usage: { triage: { promptTokens: 1, completionTokens: 1 }, extract: null },
@@ -124,6 +135,9 @@ function harness(
     /** The REAL correlation, over the REAL candidate loader, when the test is about
      * whether a class the family already holds is offered again. */
     correlate?: boolean;
+    /** The outbound chokepoint says no — the branch that returns before every post-send
+     * line, and the one a closer that runs only after a send would never reach. */
+    gateHold?: ProactiveHoldReason;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -152,7 +166,8 @@ function harness(
           },
         };
       },
-      gate: async () => ({ allowed: true, optOut: 'full' }),
+      gate: async () =>
+        over.gateHold ? { allowed: false, reason: over.gateHold } : { allowed: true, optOut: 'full' },
       resolvePhone: async () => PHONE,
       transport: over.sendThrows
         ? {
@@ -170,7 +185,7 @@ function harness(
   };
 }
 
-function alert(h: Harness, messageId = 'm1') {
+function alert(h: Harness, messageId = 'm1', now = NOW) {
   return alertParentForEmail(
     db.database,
     {
@@ -180,7 +195,7 @@ function alert(h: Harness, messageId = 'm1') {
       messageId,
       envelope: ENVELOPE,
       timeZone: 'America/Toronto',
-      now: NOW,
+      now,
     },
     h.ports,
   );
@@ -219,6 +234,7 @@ const DRAFT_INPUT = {
   },
   from: ENVELOPE.from,
   teenContent: false,
+  teenAttributed: false,
   sourceConfidence: 0.92,
   matchedEventRef: null,
   title: 'Swim Level 2',
@@ -227,8 +243,8 @@ const DRAFT_INPUT = {
 };
 
 describe('bookingDraft', () => {
-  it('accepts a clean confirmation - the POSITIVE CONTROL for the five refusals below', () => {
-    // Without this, five absence assertions pass on a function that refuses everything.
+  it('accepts a clean confirmation - the POSITIVE CONTROL for the six refusals below', () => {
+    // Without this, six absence assertions pass on a function that refuses everything.
     expect(bookingDraft(DRAFT_INPUT)).toEqual({
       ok: true,
       draft: {
@@ -241,7 +257,7 @@ describe('bookingDraft', () => {
     });
   });
 
-  it('names each of the five refusals separately, never one bucket for all of them', () => {
+  it('names each of the six refusals separately, never one bucket for all of them', () => {
     // A discriminated union rather than `| null`, so the cron summary can say WHICH floor
     // a confirmation fell at (rule #11).
     expect(bookingDraft({ ...DRAFT_INPUT, kind: 'new_event' })).toEqual({
@@ -251,6 +267,12 @@ describe('bookingDraft', () => {
     expect(bookingDraft({ ...DRAFT_INPUT, teenContent: true })).toEqual({
       ok: false,
       reason: 'teen_content',
+    });
+    // The DETERMINISTIC half of the same floor, and its own name: the model said nothing
+    // and the child's date of birth said everything.
+    expect(bookingDraft({ ...DRAFT_INPUT, teenAttributed: true })).toEqual({
+      ok: false,
+      reason: 'teen_attributed',
     });
     expect(
       bookingDraft({ ...DRAFT_INPUT, event: { ...DRAFT_INPUT.event, newTime: null } }),
@@ -320,6 +342,236 @@ describe('bookingDraft', () => {
       matchedEventRef: { table: 'week_plans_item', id: randomUUID() },
     });
     expect(planned.ok && planned.draft.eventId).toBeNull();
+  });
+});
+
+/**
+ * THE TEEN FLOOR, driven through the REAL sentinel rather than a hand-written extraction.
+ *
+ * The defect this pins was not inside either gate — it was that the two were
+ * COMPLEMENTARY. `resolveTeenContent` forces the model's flag from the child's age only
+ * for an `unclear` kind or a sub-0.7 confidence; `bookingDraft` accepts only a
+ * `booking_confirmation` at 0.7 or above. Exactly the region a booking lives in is the
+ * region the age-based force never fires in, so a 14-year-old's confident receipt was
+ * written down and asked about four days later — against this table's own doc, which says
+ * a 13+ child's confirmation writes NO ROW AT ALL.
+ *
+ * A hand-written extraction with `teenContent: false` would hide that, because it is the
+ * PIPELINE'S OWN ANSWER that is wrong. So the classification here comes from
+ * `classifyChildEventEmail` with the real skills off disk and only the model's two answers
+ * scripted (rule #8).
+ */
+describe('the teen floor (rule #1)', () => {
+  const TEEN: FamilyChildRef = { id: 'child-teen', name: 'Maya', ageInMonths: 168 };
+  const PRESCHOOLER: FamilyChildRef = { id: 'child-leo', name: 'Leo', ageInMonths: 60 };
+  const USAGE = { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: null };
+
+  function scriptedClient(extraction: Record<string, unknown>): AgentClient {
+    const create = vi.fn(async (params: { tools?: Array<{ name: string }> }) =>
+      params.tools?.[0]?.name === 'triage'
+        ? {
+            content: [
+              {
+                type: 'tool_use',
+                id: 't1',
+                name: 'triage',
+                input: {
+                  child_related: true,
+                  confidence: 0.95,
+                  rationale: 'registration receipt',
+                },
+              },
+            ],
+            usage: USAGE,
+          }
+        : {
+            content: [{ type: 'tool_use', id: 'e1', name: 'extraction', input: extraction }],
+            usage: USAGE,
+          },
+    );
+    return { messages: { create } } as unknown as AgentClient;
+  }
+
+  function sentinel(
+    children: readonly FamilyChildRef[],
+    over: { childRef: string | null; teenFlag?: boolean },
+  ): Promise<SentinelClassification> {
+    return classifyChildEventEmail(
+      { familyId: family.familyId, messageId: 'm1', ...ENVELOPE },
+      {
+        client: scriptedClient({
+          kind: 'booking_confirmation',
+          event: {
+            title: 'Swim Level 2',
+            child_ref: over.childRef,
+            original_time: null,
+            new_time: FIRST_SESSION,
+            location: 'the Leisure Centre',
+          },
+          source_confidence: 0.92,
+          quote_evidence: "You're registered for Swim Level 2.",
+          teen_content: over.teenFlag ?? false,
+        }),
+        children,
+        fetchBody: async () => "You're registered for Swim Level 2.",
+        correlationCandidates: [],
+      },
+    );
+  }
+
+  it('writes no row for a confident receipt attributed to a 14-year-old, though the model raised no flag', async () => {
+    const classification = await sentinel([TEEN, PRESCHOOLER], { childRef: TEEN.id });
+    // ON THE RECORD, because it is the whole reason the second gate has to exist: the
+    // model-flag gate is SILENT here by design (the school/logistics carve-out), and a
+    // confident booking_confirmation can never be `unclear` or below 0.7 and still reach
+    // the booking floor. The date of birth is the only thing left that knows.
+    expect(classification.extraction?.teenContent).toBe(false);
+    expect(classification.extraction?.teenAttributed).toBe(true);
+
+    const h = harness({ classification });
+    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'teen_attributed' });
+    await expect(bookingRows()).resolves.toEqual([]);
+  });
+
+  it("still refuses on the model's own flag, with no child attributed at all", async () => {
+    // The existing gate, unweakened: `teen_content` keeps its exact name and its exact
+    // trigger, and the new one is an OR beside it rather than a replacement.
+    const classification = await sentinel([TEEN], { childRef: null, teenFlag: true });
+    expect(classification.extraction?.teenContent).toBe(true);
+    expect(classification.extraction?.teenAttributed).toBe(false);
+
+    const h = harness({ classification });
+    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'teen_content' });
+    await expect(bookingRows()).resolves.toEqual([]);
+  });
+
+  it('books the five-year-old - the POSITIVE CONTROL both refusals need', async () => {
+    const classification = await sentinel([TEEN, PRESCHOOLER], { childRef: PRESCHOOLER.id });
+    expect(classification.extraction?.teenAttributed).toBe(false);
+
+    const h = harness({ classification });
+    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'recorded' });
+    await expect(bookingRows()).resolves.toHaveLength(1);
+  });
+
+  it('books a receipt naming no child at all - the residual, asserted rather than assumed', async () => {
+    // Most municipal receipts name nobody. If the new gate had been written on "a teen is
+    // in this household" rather than "this receipt is about the teen", this is the case it
+    // would have silently taken down with it.
+    const classification = await sentinel([TEEN], { childRef: null });
+    expect(classification.extraction?.teenAttributed).toBe(false);
+
+    const h = harness({ classification });
+    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'recorded' });
+    await expect(bookingRows()).resolves.toHaveLength(1);
+  });
+});
+
+/**
+ * THE CANCELLATION CLOSER — the provider says the class is off, so Hale stops holding it.
+ *
+ * Without this the branch shipped a booking that nothing could ever close: four days after
+ * a class the provider cancelled, the follow-up asks "how did it go?" about something that
+ * never happened, and the parent was told about the cancellation in the same breath.
+ *
+ * IT RUNS BEFORE THE GATE, on purpose. A hold returns before every post-send line, and the
+ * Gmail cursor has already advanced past this message — so a closer that ran only after a
+ * send would leave the 23:40 cancellation permanently unread. The quiet-hours case below IS
+ * the test of that placement.
+ */
+describe('a provider cancellation closes what it cancelled', () => {
+  /** The receipt that put the booking in the table. */
+  async function booked(messageId = 'm1') {
+    await expect(alert(harness(), messageId)).resolves.toEqual({
+      alert: 'sent',
+      booking: 'recorded',
+    });
+  }
+
+  function cancellation(title: string, gateHold?: ProactiveHoldReason) {
+    return harness({
+      classification: classified({
+        kind: 'cancellation',
+        title,
+        newTime: null,
+        originalTime: FIRST_SESSION,
+      }),
+      gateHold,
+    });
+  }
+
+  it('stamps the booking at 23:40, when the text itself was held', async () => {
+    await booked();
+    // The vendor's second email spells the class differently. One normaliser — casefold,
+    // collapse whitespace, trim — and nothing else: no instant equality (a cancellation
+    // rarely repeats the time), no location, no fuzzy match.
+    const h = cancellation('  swim   LEVEL 2 ', 'quiet_hours');
+    await expect(alert(h, 'm2')).resolves.toEqual({
+      alert: 'gate_refused:quiet_hours',
+      booking: null,
+    });
+    expect(h.transport.sent).toEqual([]);
+
+    const rows = await bookingRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.cancelledAt).toEqual(NOW);
+
+    const closed = (await auditRows()).filter(
+      (row) => row.actionTaken === 'activity_booking_cancelled',
+    );
+    expect(closed).toHaveLength(1);
+    expect(closed[0]).toMatchObject({
+      targetTable: 'activity_bookings',
+      targetId: rows[0]?.id,
+      after: {},
+    });
+  });
+
+  it('takes the closed booking out of the follow-up reader', async () => {
+    await booked();
+    const window = {
+      floor: new Date('2026-09-21T13:00:00.000Z'),
+      latest: new Date('2026-09-27T13:00:00.000Z'),
+    };
+    // The positive control FIRST: without it, the assertion below passes on a reader that
+    // returns nothing for any reason at all.
+    await expect(readDueBookings(db.database, family.familyId, window)).resolves.toHaveLength(1);
+
+    await alert(cancellation('Swim Level 2'), 'm2');
+    await expect(readDueBookings(db.database, family.familyId, window)).resolves.toEqual([]);
+  });
+
+  it('leaves a different class from the same provider alone', async () => {
+    await booked();
+    await alert(cancellation('Skating Level 1'), 'm2');
+    await expect(bookingRows().then((r) => r[0]?.cancelledAt)).resolves.toBeNull();
+  });
+
+  it('leaves a session that already happened alone', async () => {
+    // Closing a past booking would erase a class the family actually went to, and take its
+    // "how did it go?" down with it. The closer is about the FUTURE the family still holds.
+    await booked();
+    await db.database
+      .update(schema.activityBookings)
+      .set({ firstSessionAt: new Date('2026-09-10T13:00:00.000Z') })
+      .where(eq(schema.activityBookings.familyId, family.familyId));
+
+    await alert(cancellation('Swim Level 2'), 'm2');
+    await expect(bookingRows().then((r) => r[0]?.cancelledAt)).resolves.toBeNull();
+  });
+
+  it('changes nothing on a second cancellation of the same class', async () => {
+    await booked();
+    await alert(cancellation('Swim Level 2'), 'm2');
+    const later = new Date('2026-09-17T16:00:00.000Z');
+    await alert(cancellation('Swim Level 2'), 'm3', later);
+
+    // The first stamp stands, and the trail records one closing rather than two: a second
+    // audit row would be a second claim about the same fact (rule #6).
+    await expect(bookingRows().then((r) => r[0]?.cancelledAt)).resolves.toEqual(NOW);
+    expect(
+      (await auditRows()).filter((row) => row.actionTaken === 'activity_booking_cancelled'),
+    ).toHaveLength(1);
   });
 });
 

@@ -81,6 +81,16 @@ export const activityBookings = pgTable(
     firstSessionAt: timestamp('first_session_at', { withTimezone: true }).notNull(),
     location: text('location'),
     /**
+     * THE PROVIDER CALLED IT OFF — set when a later email from the same `provider_host`
+     * cancels the same class, and the follow-up reader's `IS NULL`.
+     *
+     * Not a status column and not the one the table's own note rules out: "is the follow-up
+     * still due" is still a query. This records a FACT the provider stated, the way
+     * `event_id` records one the parent stated, and an instant rather than a boolean
+     * because when a booking stopped being real is what a support agent is asked.
+     */
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    /**
      * The `family_events` row this booking is ON. ONE meaning, two writers: the
      * correlation stamps it at detection when the class is already on the calendar, and
      * the offer stamps it when the parent says yes. They cannot race — a booking that

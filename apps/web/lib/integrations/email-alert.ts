@@ -21,7 +21,7 @@ import type {
   SentinelClassification,
 } from '~/lib/sentinel';
 import { bookedDetectionEnabledFor } from './booked';
-import { bookingDraft, recordActivityBooking } from './booking';
+import { bookingDraft, closeCancelledBookings, recordActivityBooking } from './booking';
 import { type EmailAlertOfferDraft, recordEmailAlertOffer } from './email-alert-offer';
 
 /**
@@ -121,7 +121,10 @@ export const BOOKING_OUTCOMES = [
   'already_recorded',
   'booked_dark',
   'not_a_booking',
+  // The model's own flag, and the child's date of birth. Two counters, because which of
+  // the two teen gates is actually holding the line is the thing worth being able to read.
   'teen_content',
+  'teen_attributed',
   'no_first_session',
   'below_confidence',
   // The vendor named no class Hale can repeat. The text still went, in Hale's own words.
@@ -243,6 +246,27 @@ export async function alertParentForEmail(
     return { alert: 'not_parenting', booking: null };
   }
 
+  // ONE read of the flag per envelope, threaded into every call below rather than read
+  // again: the closer, the sentence and the row it promises must be built from the same
+  // answer.
+  const booked = bookedDetectionEnabledFor(familyId);
+
+  // THE PROVIDER CANCELLED IT, so Hale stops holding it — and this runs ABOVE THE GATE,
+  // which is the whole point of where it sits. A hold returns before every post-send line,
+  // and the Gmail cursor advanced past this message the moment the sweep read it, so
+  // nothing will offer it again: a closer placed after the send would leave a 23:40
+  // cancellation permanently unread and the follow-up asking, four days later, how a class
+  // the provider called off went. Closing a booking is not speaking to anybody, so the
+  // chokepoint has no say in it.
+  if (booked && extraction.kind === 'cancellation') {
+    await closeBookingsFor(database, {
+      familyId,
+      from: input.envelope.from,
+      title: extraction.event.title,
+      now,
+    });
+  }
+
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'email_alert', now });
   if (!verdict.allowed) {
     // A RECEIPT, not a claim. Unlike a nudge, a held email alert is not deferred: the
@@ -267,9 +291,6 @@ export async function alertParentForEmail(
     return { alert: `gate_refused:${verdict.reason}`, booking: null };
   }
 
-  // ONE read of the flag per envelope, threaded into both calls below rather than read
-  // twice: the sentence and the row it promises must be built from the same answer.
-  const booked = bookedDetectionEnabledFor(familyId);
   const message = renderEmailAlert({
     from: input.envelope.from,
     kind: extraction.kind,
@@ -407,6 +428,42 @@ export async function alertParentForEmail(
 }
 
 /**
+ * A provider's cancellation, applied to what this family still holds from that provider.
+ *
+ * ONE AUDIT ROW PER BOOKING CLOSED, and its `after` is EMPTY — the same rule the write's
+ * own row keeps, taken to its end. The verb, the table and the target id say everything
+ * true here; the title is the email, and an audit row a support agent reads is a table that
+ * is never redacted (rule #1). `targetId` already points at the row that holds the name.
+ *
+ * The sender goes over WHOLE and is folded to a host inside `closeCancelledBookings`, by
+ * the same private function that wrote the row's host — so a cancellation is matched on
+ * exactly the domain the booking was written with. The title goes through `sanitizedTitle`
+ * for the same reason: it is the fold the stored title already took, and comparing a raw
+ * vendor string against a folded one is a match that silently never fires.
+ */
+async function closeBookingsFor(
+  database: Database,
+  input: { familyId: string; from: string; title: string; now: Date },
+): Promise<void> {
+  const closed = await closeCancelledBookings(database, {
+    familyId: input.familyId,
+    from: input.from,
+    title: sanitizedTitle(input.title),
+    now: input.now,
+  });
+  for (const bookingId of closed) {
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'activity_booking_cancelled',
+      targetTable: 'activity_bookings',
+      targetId: bookingId,
+      after: {},
+    });
+  }
+}
+
+/**
  * The booking decision, the write and its own audit row — everything after the send that
  * belongs to this feature, behind one boundary.
  *
@@ -440,6 +497,7 @@ async function recordBooking(
     event: extraction.event,
     from: input.from,
     teenContent: extraction.teenContent,
+    teenAttributed: extraction.teenAttributed,
     sourceConfidence: extraction.sourceConfidence,
     matchedEventRef: extraction.matchedEventRef,
     // The VENDOR's own name for the class, through the renderer's own fold — so the row

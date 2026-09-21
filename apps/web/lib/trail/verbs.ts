@@ -182,6 +182,7 @@ export const AUDIT_VERBS = [
   'email_alert_sent',
   'email_alert_event_added',
   'activity_booking_recorded',
+  'activity_booking_cancelled',
   'calendar_alert_sent',
   'proactive_watch_granted',
   'proactive_watch_declined',
@@ -590,6 +591,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   // noticed, and the noticing is what the trail records.
   activity_booking_recorded: {
     sentence: 'Hale noted a class you signed up for',
+    family: 'note',
+  },
+  // The provider called it off, so Hale stopped holding it - and stopped planning to ask
+  // how it went. 'note' for the same reason as the row above: Hale did not cancel
+  // anything, it read an email that said the class was cancelled.
+  activity_booking_cancelled: {
+    sentence: 'Hale closed a class the provider cancelled',
     family: 'note',
   },
   // Same shape, different connector. The sentence names the calendar for the same reason
