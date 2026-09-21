@@ -15,7 +15,14 @@
  *      sentence the skill quotes as the failure. The carve-out is mechanical and not a
  *      judgement call: "I'm an AI assistant, not a person" is the HONEST answer on a
  *      doubt turn and stays legal, so the word is only a tell when AI is not in front
- *      of it.
+ *      of it. The carve-out sits on BOTH patterns of the class, and that is one rule
+ *      stated once rather than a style choice: it was on the first-person pattern only,
+ *      so "I am the AI assistant behind this number, not a person" — the answer the
+ *      skill REQUIRES on a doubt turn ("you are an AI and you say so plainly") — was a
+ *      corpus-wide hard fail through the possessive pattern. Whatever the determiner,
+ *      AI in front of the word makes the sentence the honest answer. The price is that
+ *      "your AI assistant" is legal here too; it is a sentence that says it is an AI,
+ *      and the judge still grades the register.
  *  2 · THE ACCOUNT / SETTINGS POINTERS. App-pointing without the word "app". The
  *      2026-08-15 incident was a parent told twice that referral links live in their
  *      account settings, of a product with neither. `\bthe app\b` is deliberately NOT
@@ -42,7 +49,7 @@ export const VOICE_TELLS = [
     /\b(?:i'?m|i am)\b[^.?!]{0,40}(?<!\bAI )\bassistant\b/i,
     'introduces itself as an assistant (the register is a friend, not a service)',
   ],
-  [/\b(?:your|the)\s+(?:\w+\s+){0,2}assistant\b/i, 'positions Hale as an assistant'],
+  [/\b(?:your|the)\s+(?:\w+\s+){0,2}(?<!\bAI )assistant\b/i, 'positions Hale as an assistant'],
   [/\byour account\b/i, 'sends the parent to an account they never opened'],
   [/\b(?:in|your|check(?:ing)?) settings\b/i, 'points at a settings screen from inside the thread'],
   [

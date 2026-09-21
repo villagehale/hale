@@ -28,6 +28,17 @@ describe('the register tells', () => {
     );
   });
 
+  /**
+   * THE SAME CARVE-OUT, through the other pattern of the class. The possessive pattern
+   * carried none, so the doubt-turn answer the skill REQUIRES was a corpus-wide hard fail
+   * as soon as the parent's question drew a determiner instead of a bare "an".
+   */
+  it('clears the honest answer when AI sits behind a determiner', () => {
+    expect(
+      voiceTells('Fair to ask. I am the AI assistant behind this number, not a person.'),
+    ).toEqual([]);
+  });
+
   it('catches the account pointer', () => {
     expect(voiceTells('Your account has the full history.')).toContain(
       'sends the parent to an account they never opened',
