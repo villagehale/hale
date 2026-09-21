@@ -18,6 +18,26 @@ import {
 } from '~/lib/channel/connect/detect';
 import { offerConnectorLink } from '~/lib/channel/connect/offer';
 import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
+import { emailInboundConfig } from '~/lib/channel/email/config';
+import {
+  forwardAddress,
+  hasForwardToken,
+  mintForwardToken,
+  revokeForwardToken,
+} from '~/lib/channel/email/forward-address';
+import {
+  FORWARD_REVOKE_ASK_TEMPLATE_KEY,
+  FORWARD_REVOKE_DECLINED_TEMPLATE_KEY,
+  FORWARD_REVOKE_TEMPLATE_KEY,
+  forwardAddressReply,
+  forwardRevokeAsk,
+  forwardRevokeAskReply,
+  forwardRevokeDeclinedReply,
+  forwardRevokeReply,
+  matchForwardAddressRequest,
+  nothingSaidSince,
+  recordForwardRevokeAsked,
+} from '~/lib/channel/email/forward-request';
 import { replyLanguage } from '~/lib/channel/language';
 import { type EmailCaptureDeps, handleEmailCaptureReply } from '~/lib/channel/email-capture/reply';
 import { type FounderReplyDeps, handleFounderWelcomeReply } from '~/lib/channel/founder/reply';
@@ -355,6 +375,221 @@ export function connectorDisconnectHandler(
       };
     },
   };
+}
+
+/**
+ * "what's my forwarding address" — the door that opens the forwarding door, and the
+ * confirm turn in front of closing it again.
+ *
+ * WHY IT EXISTS AT ALL. `mintForwardToken` shipped with no production caller, so a family
+ * could only get a forwarding address by hand SQL: a rung of the product nobody could
+ * reach, and a live probe nobody could run. The thread is the natural way in — a parent
+ * asks for it the way they ask for a calendar link, and the answer is the REAL address
+ * minted this turn rather than a composed sentence about one. That is the same thing the
+ * connector link buys, closed the same way.
+ *
+ * THE TURN-OFF HALF ASKS; IT NO LONGER ACTS (round 6, D17). Five rounds of matcher work
+ * each closed one named false positive and each time the next reader found another in the
+ * same class — "should I turn off my forwarding address?", "I didn't turn off my
+ * forwarding address, did the emails stop?" — and every one of them, through this chain,
+ * nulled a live token and answered "Done". A regex over natural language cannot be closed
+ * against that. Revoking is hard-to-reverse (a fresh token is a DIFFERENT address the
+ * parent has to re-enter in their mail filter), and D17's rule for hard-to-reverse is an
+ * unambiguous go. So a turn-off reading opens a question and the revoke waits for its YES.
+ *
+ * WHICH MAKES THIS THE ONE HALF THAT READS A BARE WORD, and the guard on it is STRICTER
+ * than `soleOpenKind`. That helper lets the newest SOLICITED ask claim a bare affirmative
+ * over an older one — the right rule for an offer, and not for a revoke, which a parent
+ * cannot take back by declining the next text. So every open question has to be this one.
+ * The cost is one resolver round trip in the rare turn where something else is standing;
+ * the thing it buys is that a YES meant for a calendar draft can never delete a
+ * credential.
+ *
+ * THE MINT IS F14-GATED AND THE UNDO IS NOT, and that asymmetry is the point rather than
+ * an oversight. The forwarding door itself refuses a household the flag has not armed
+ * (`forward_family_dark`), so handing one an address would be handing out a credential
+ * that silently does nothing — a promise the next forward breaks. Turning one OFF is the
+ * opposite: a family may always close a door they were given, whatever the flag says
+ * today, which is exactly why the connector disconnect is ungated too. The QUESTION is
+ * ungated for the same reason.
+ *
+ * Rule #11, every way out named: `address_sent`; `revoke_ask_sent`; `revoked`;
+ * `revoke_declined`; `not_configured` (nothing of theirs to turn off — never a false
+ * success, and never a question about nothing either); and three DECLINES that say why in
+ * the log rather than in a promise — the dark household above, `leg_not_configured` where
+ * the inbound email leg has no domain to build an address out of, and a spoken turn, which
+ * has no message row to compare channels against.
+ */
+export function forwardAddressHandler(
+  log: Pick<Console, 'error'> = console,
+): DeterministicHandler {
+  return {
+    name: 'forward_address',
+    resolves: new Set<OpenQuestionKind>(['forward_address_revoke']),
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const language = replyLanguage(ctx.body);
+
+      const answer = await readRevokeAnswer(database, ctx, log);
+      if (answer === 'no') {
+        return {
+          claimed: true,
+          outcome: 'revoke_declined',
+          reply: forwardRevokeDeclinedReply(language),
+          // The name that tells the ledger this question was ANSWERED rather than merely
+          // spoken past. Drop it and a no leaves the confirm standing for the rest of its
+          // window (forward-request.ts `forwardRevokeAsk`).
+          templateKey: FORWARD_REVOKE_DECLINED_TEMPLATE_KEY,
+        };
+      }
+      if (answer === 'yes') {
+        const revoked = await revokeForwardToken(database, ctx.familyId);
+        const outcome = revoked ? 'revoked' : 'not_configured';
+        return {
+          claimed: true,
+          outcome,
+          reply: forwardRevokeReply(language, outcome),
+          templateKey: FORWARD_REVOKE_TEMPLATE_KEY,
+        };
+      }
+
+      const ask = matchForwardAddressRequest(ctx.body);
+      if (!ask) return { claimed: false };
+
+      if (ask === 'turn_off') {
+        // NOTHING TO TURN OFF IS ANSWERED, NOT ASKED ABOUT. A confirm minted here would
+        // make every bare affirmative in the household ambiguous for a quarter of an hour
+        // over a credential that does not exist.
+        if (!(await hasForwardToken(database, ctx.familyId))) {
+          return {
+            claimed: true,
+            outcome: 'not_configured',
+            reply: forwardRevokeReply(language, 'not_configured'),
+          };
+        }
+        return {
+          claimed: true,
+          outcome: 'revoke_ask_sent',
+          reply: forwardRevokeAskReply(language),
+          // The name the ledger question is derived from. Drop it and the question stops
+          // existing, so the parent's YES would go nowhere — which is why the template key
+          // has its own assertion in forward-revoke.pglite.test.ts.
+          templateKey: FORWARD_REVOKE_ASK_TEMPLATE_KEY,
+          // Rule #6 against the message that actually carried the question: an ask the
+          // transport refused leaves no record of a question nobody was asked.
+          afterSend: (channelMessageId) =>
+            recordForwardRevokeAsked(database, { familyId: ctx.familyId, channelMessageId }),
+        };
+      }
+
+      if (!f14EnabledFor(ctx.familyId)) {
+        // The id and the named outcome only, never the body (rule #1).
+        log.error(
+          { familyId: ctx.familyId, outcome: 'family_dark' },
+          'forward address: asked for by a household the forwarding door is dark for',
+        );
+        return { claimed: false };
+      }
+
+      const config = emailInboundConfig();
+      if (!config) {
+        log.error(
+          { familyId: ctx.familyId, outcome: 'leg_not_configured' },
+          'forward address: asked for while the inbound email leg is unprovisioned',
+        );
+        return { claimed: false };
+      }
+
+      const { token } = await mintForwardToken(database, ctx.familyId);
+      return {
+        claimed: true,
+        outcome: 'address_sent',
+        reply: forwardAddressReply(language, forwardAddress(token, config)),
+      };
+    },
+  };
+}
+
+/**
+ * IS THIS TURN AN ANSWER TO THE STANDING REVOKE CONFIRM — and may it be acted on?
+ *
+ * Two doors in, and they do NOT ask the same question of the ledger, which is round 7.
+ *
+ *   THE RESOLVER'S. `ctx.resolved` means the parent's own words were read against the
+ *   list and this kind was named, at the confidence the `consequential` grade demands
+ *   (resolve.ts `meetsGrade`) — or that the parent picked this option off a menu Hale
+ *   printed (disambiguation.ts). Either way the reading NAMES ITS QUESTION, and
+ *   `questionId` is the ask's own message row, so the ask is looked up BY THAT ID and has
+ *   to clear only its window and its receipts.
+ *
+ *   WHY THAT DOOR MAY ACT ON A QUESTION THE READER NO LONGER LISTS. It cannot act on one
+ *   the reader never listed: a menu's options are minted from the open list (route.ts),
+ *   and the resolver is only ever shown that list, so a `questionId` naming this kind
+ *   exists because the reader listed it at the moment the question was put to the parent.
+ *   What may have happened since is that Hale spoke — including, in the case that made
+ *   this a blocker, Hale's own sentence ASKING WHICH QUESTION THE PARENT MEANT. The id is
+ *   what ties the pick to the ask it was offered for, and the TTL and the receipts are
+ *   what stop it reaching an ask that has lapsed or already been answered.
+ *
+ *   A BARE WORD, which costs nothing to read (affirmative.ts) and keeps round 6's rule
+ *   exactly: EVERY open question must be this one — stricter than `soleOpenKind`, see the
+ *   handler's own note — and the ask must still be Hale's LAST WORD to this parent. A word
+ *   with no target in it can only mean the thing said last; if Hale has said anything
+ *   since, nobody can know what the word answers, and this lane will not guess with a
+ *   credential.
+ *
+ * And then the condition neither door supplies: THE SAME DOOR THE QUESTION WENT OUT OF. A
+ * parent reaches Hale by text, by WhatsApp and by email, and a "yes" arriving by a channel
+ * the confirm never went to is not an answer to it. A spoken turn has no message row at
+ * all, so it cannot be compared and is declined by name rather than waved through — a
+ * transcription is the last thing that should be allowed to delete a credential.
+ */
+async function readRevokeAnswer(
+  database: Database,
+  ctx: HandlerContext,
+  log: Pick<Console, 'error'>,
+): Promise<'yes' | 'no' | null> {
+  const resolved = ctx.resolved?.kind === 'forward_address_revoke' ? ctx.resolved : null;
+  const word = readAffirmative(ctx.body);
+  const polarity = resolved?.polarity ?? (word === 'unclear' ? null : word);
+  if (polarity === null) return null;
+
+  const ask = resolved
+    ? await forwardRevokeAsk(database, {
+        familyId: ctx.familyId,
+        parentUserId: ctx.parentUserId,
+        now: ctx.now,
+        askMessageId: resolved.questionId,
+      })
+    : await bareWordAsk(database, ctx);
+  if (!ask) return null;
+
+  const inboundId = ctx.inboundChannelMessageId;
+  if (inboundId === null) {
+    log.error(
+      { familyId: ctx.familyId, outcome: 'spoken_turn' },
+      'forward address: a revoke confirm was answered with no inbound message row - not claimed',
+    );
+    return null;
+  }
+  return (await answeredOnTheSameChannel(database, ask.id, inboundId)) ? polarity : null;
+}
+
+/** The ask a bare affirmative may answer: the one the reader is listing, with nothing else
+ * open beside it and nothing said after it. */
+async function bareWordAsk(
+  database: Database,
+  ctx: HandlerContext,
+): Promise<{ id: string; askedAt: Date } | null> {
+  const questions = await ctx.openQuestions();
+  const standing = questions.find((question) => question.kind === 'forward_address_revoke');
+  if (!standing?.askedAt) return null;
+  if (!questions.every((question) => question.kind === 'forward_address_revoke')) return null;
+  return (await nothingSaidSince(database, {
+    parentUserId: ctx.parentUserId,
+    askedAt: standing.askedAt,
+  }))
+    ? { id: standing.id, askedAt: standing.askedAt }
+    : null;
 }
 
 /**
