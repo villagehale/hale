@@ -111,6 +111,17 @@ const APPROVAL_QUESTION: OpenQuestion = {
   solicited: false,
 };
 
+/** "How did Mia get on at swim?" — Hale waiting to hear back, answerable in neither
+ * polarity and listed for exactly that reason (channel/followup/ask-open.ts). */
+const ACTIVITY_ASK_QUESTION: OpenQuestion = {
+  id: 'message-1',
+  kind: 'activity_followup_ask',
+  description: 'How an activity went',
+  subject: 'how that activity went',
+  answerable: { yes: false, no: false },
+  askedAt: new Date('2026-07-30T00:30:00.000Z'),
+  solicited: false,
+};
 const INTRO_QUESTION: OpenQuestion = {
   id: 'proposal-1',
   kind: 'intro_proposal',
@@ -665,6 +676,20 @@ describe('a bare affirmative with more than one kind of question open', () => {
 
     expect(verdict.claimed).toBe(true);
     expect(s.approved).toEqual(['a-1']);
+  });
+
+  it('does NOT approve a calendar change while Hale is waiting to hear how swim went', async () => {
+    // The theft this closed: the ask was not a listed question, so one drafted approval
+    // made every open question an approval and the parent's "yes" — said to "How did Mia
+    // get on at swim?" — executed the calendar write (rule #4).
+    const s = spine(pending);
+    const verdict = await approvalHandler(s).handle(
+      DB,
+      turn('yes', { open: [APPROVAL_QUESTION, ACTIVITY_ASK_QUESTION] }),
+    );
+
+    expect(verdict.claimed).toBe(false);
+    expect(s.approved).toEqual([]);
   });
 
   it('still answers an ORDINAL, which cannot be an answer to anything else', async () => {

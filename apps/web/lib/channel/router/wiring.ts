@@ -62,6 +62,7 @@ import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
 import { answeredOnTheSameChannel, eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
+import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import { forwardRevokeAsk } from '~/lib/channel/email/forward-request';
 import {
   approvalHandler,
@@ -762,6 +763,11 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
     // already implied by the message ledger, so a stored flag would be a second answer
     // every other sender in the product would have to remember to clear.
     eveningCheckIn: (database, input) => eveningCheckInQuestion(database, input),
+    // The activity follow-up ask, read through the followup lane's own last-word reader
+    // — the same discipline the readiness question and the evening check-in keep, and
+    // the line that stops a bare "yes" meant for "how did swim go?" approving a drafted
+    // calendar write.
+    activityFollowupAsk: (database, input) => activityFollowupAskOpen(database, input),
     // VIL-360 · the weekday-care ask, through the same kind of last-word reader. It has
     // a 48h clock of its own rather than the evening's 08:00 lapse, because a household
     // arrangement does not go stale by breakfast.
