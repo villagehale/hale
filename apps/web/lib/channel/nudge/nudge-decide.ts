@@ -191,15 +191,6 @@ export type Nudge =
  * the flag is off, where a zero counter would have meant the legs ran and found
  * nothing. Those are different facts and the probe reads both.
  */
-/**
- * WHAT THE WEEKDAY LEGS KNOW ABOUT THIS HOUSEHOLD, or the one word that says the
- * behaviour is not armed.
- *
- * `'disarmed'` is a named state rather than an absent dependency (rule #11): the two
- * weekday legs do not run and emit NO skip counters at all, so a SILENT counter means
- * the flag is off, where a zero counter would have meant the legs ran and found
- * nothing. Those are different facts and the probe reads both.
- */
 export type WeekdayCareInput = WeekdayCareContext | 'disarmed';
 
 export interface DecideNudgeInput {
@@ -527,27 +518,6 @@ function renderablePrintable(candidate: RadarCandidate): boolean {
   return candidate.venueName === null || isPrintableGsm7Basic(candidate.venueName);
 }
 
-/**
- * The soonest weekday civic session this family could still go to, or the reasons
- * there is not one.
- *
- * TWO GATES MAKE THE CLAIM SAFE, and each is one comparison.
- *
- * `source === CIVIC_SOURCE`, because this message asserts a DAY. A civic row is dated
- * by the sweep from a feed it verified and its strings are built deterministically; an
- * LLM-discovered row's date and url are frequently model output (village/discover.ts),
- * and a wrong Tuesday is a family standing outside a library.
- *
- * `eventDate >= today`, because `nextOccurrenceDay` dates a session to its next
- * occurrence AT THE MOMENT THE SWEEP RUNS, and that sweep runs weekly on Monday. A
- * Tuesday storytime projected on Monday still reads as that Tuesday on Saturday, so
- * without this clause a soonest-first pick texts LAST Tuesday's session. The weather
- * swap never hits this because its date is drawn from `upcomingWeekend` and is a
- * future date by construction; the weekday branch has no such anchor.
- *
- * THE COST, NAMED: the weekday offer therefore exists mostly on Monday, Tuesday and
- * Wednesday ticks. That is correct behaviour and it will be mistaken for a bug.
- */
 /**
  * THE OFFER ITSELF, with no care gate in front of it: is there a weekday session this
  * family could be sent today or later?

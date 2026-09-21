@@ -782,6 +782,23 @@ describe('the daycare follow-up', () => {
     expect(h.transport.bodies()[0]).toContain('Little Sprouts');
   });
 
+  /**
+   * THE FLAG IS STRICT, AND THIS IS THE VALUE THAT MAKES IT MATTER. `vercel env add`
+   * from a piped `echo` stores a TRAILING NEWLINE, so a var that prints as `true` is
+   * really `'true\n'` — and a truthiness check would read that as ON and start texting
+   * households a dark feature. The positive control is every other case in this block,
+   * which sets the same var to `'true'` and gets an ask.
+   */
+  it('stays dark for a flag value that only looks like true', async () => {
+    const h = armed({ daycareSubjects: { [FAM_A]: [subject()] } });
+    process.env[WEEKDAY_CARE_ENABLED_ENV] = 'true\n';
+
+    const result = await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(result.daycareAsked).toBe(0);
+    expect(h.transport.bodies()).toEqual([]);
+  });
+
   it('a home answer never produces a follow-up at all', async () => {
     // No daycare subject, because the reader only returns daycare answers - the
     // positive control is every case above, which uses the identical harness.

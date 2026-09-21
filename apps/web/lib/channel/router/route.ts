@@ -30,7 +30,7 @@ import {
 } from '~/lib/channel/reconcile/reconcile';
 import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots/store';
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
-import type { WeekdayCare } from '~/lib/care/weekday';
+import type { WeekdayCare, WeekdayCareWriteOutcome } from '~/lib/care/weekday';
 import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
 import type { ApologyFallback, TurnApology } from './apology';
 import {
@@ -407,7 +407,7 @@ export interface ChannelRouterDeps {
       provider: string | null;
       now: Date;
     },
-  ): Promise<unknown>;
+  ): Promise<WeekdayCareWriteOutcome>;
   /**
    * What this family's ledger says, read beside the model call — the reconciliation
    * primitive's view (VIL-293). Non-nullable (rule #11): a router that could not read
@@ -1060,7 +1060,12 @@ async function recordWeekdayCareAnswer(
     // {familyId, status} and NOTHING else — GATE 2c's own logger is the precedent, and
     // the body of a message about a child's care arrangement is the last thing that
     // belongs in a log line.
-    deps.log.error(
+    //
+    // WARN, NOT ERROR. A bare "yes" or "no" to an either/or is ordinary parent
+    // behaviour, not a fault: it is the signal the grammar has drifted, and it is worth
+    // a line only because nothing else makes it visible. Logging it at ERROR would make
+    // a routine turn indistinguishable from the ones that need somebody.
+    deps.log.warn(
       { familyId: turn.familyId, status: 'unreadable' },
       'channel router: the weekday-care ask is standing and the reply settles neither side',
     );

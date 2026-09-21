@@ -427,7 +427,12 @@ function harness(
       weekdayCareAnswerTarget:
         options.weekdayCareAnswerTarget ?? (async () => ({ status: 'no_open_ask' as const })),
       recordWeekdayCare:
-        options.recordWeekdayCare ?? (async () => ({ status: 'recorded' as const })),
+        options.recordWeekdayCare ??
+        (async (_db, input) => ({
+          status: 'recorded' as const,
+          care: input.care,
+          providerNamed: input.provider !== null,
+        })),
       recordRegistrationWatch:
         options.recordRegistrationWatch ?? (async () => ({ status: 'recorded' as const })),
       armWatchedSpot:
@@ -3501,7 +3506,11 @@ describe('the weekday-care answer', () => {
         options.target ?? (async () => ({ status: 'open' as const, childId: CHILD })),
       recordWeekdayCare: async (_db, input) => {
         written.push({ childId: input.childId, care: input.care, provider: input.provider });
-        return { status: 'recorded' as const };
+        return {
+          status: 'recorded' as const,
+          care: input.care,
+          providerNamed: input.provider !== null,
+        };
       },
     });
     return { h, written, coach };
