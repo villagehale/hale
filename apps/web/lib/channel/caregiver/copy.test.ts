@@ -82,11 +82,35 @@ describe('caregiver copy · promises match the matrix', () => {
     expect(CO_PARENT_REDIRECT).not.toMatch(/sign in|the app|https?:/i);
   });
 
-  it('introduces the inviter BEFORE saying "their family" — no dangling referent', () => {
-    // A stranger's first message: "the assistant that keeps their family's week
-    // straight" ahead of "A parent added you" leaves 'their' pointing at nobody.
+  it('names the inviter BEFORE the first third-person pronoun — no dangling referent', () => {
+    // A stranger's first message: a sentence about "their family's week" ahead of "A
+    // parent added you" leaves 'their' pointing at nobody.
+    //
+    // ASSERTED AS THE INVARIANT, NOT AS A PHRASE. The old form compared the index of
+    // 'added you' against the index of the literal 'their family', which makes a rewrite
+    // that drops those two words pass trivially on one side (-1 < anything is false, so
+    // it fails) — for the wrong reason, and it says nothing about the pronoun that
+    // actually dangles. The first THIRD-PERSON word in the body is what has to come
+    // second, whatever sentence carries it.
+    const THIRD_PERSON = /\b(?:their|theirs|they|them)\b/i;
     for (const body of [inviteBody('Ana', 'nanny'), inviteBody(null, 'nanny')]) {
-      expect(body.indexOf('added you')).toBeLessThan(body.indexOf('their family'));
+      const pronoun = body.search(THIRD_PERSON);
+      expect(pronoun, body).toBeGreaterThan(-1);
+      expect(body.indexOf('added you'), body).toBeLessThan(pronoun);
+    }
+    // The mutation this must catch: the same two sentences in the other order.
+    const dangling =
+      "Hi - I'm Hale, I keep their family's week straight. A parent added you as nanny.";
+    expect(dangling.indexOf('added you')).toBeGreaterThan(dangling.search(THIRD_PERSON));
+  });
+
+  it('says what Hale DOES and never what Hale is', () => {
+    // docs/voice.md rule 3: *assistant* as positioning is the word that moves. The
+    // carve-out (a parent asking who is behind the number) does not reach a caregiver
+    // invite, which nobody asked for.
+    for (const body of [inviteBody('Ana', 'grandparent'), inviteBody(null, 'babysitter')]) {
+      expect(body).not.toMatch(/assistant|AI-powered|the app|your account/i);
+      expect(body).toContain("I keep their family's week straight");
     }
   });
 });

@@ -1,11 +1,25 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { F14_ENABLED_ENV } from '~/lib/channel/f14';
+import {
+  FOLLOWUP_ASKS_ENABLED_ENV,
+  defaultFollowupSweepDeps,
+  runFollowupSweep,
+} from '~/lib/channel/followup/run';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { PRIVATE_EVENT_WHAT } from '~/lib/channel/coach/tools';
 import { CHECK_IN_ASK_TEMPLATE_KEY } from './copy';
-import { type EveningCheckInDeps, defaultEveningCheckInDeps, runEveningCheckInSweep } from './sweep';
+import { eveningCheckInQuestion } from './reply';
+import {
+  CHECK_IN_ANCHOR_ENABLED_ENV,
+  type EveningCheckInDeps,
+  defaultEveningCheckInDeps,
+  runEveningCheckInSweep,
+} from './sweep';
 
 /**
  * The evening sweep through its OWN production wiring, against real Postgres.
@@ -33,6 +47,10 @@ beforeAll(async () => {
 afterAll(async () => {
   delete process.env[F14_ENABLED_ENV];
   await db.close();
+});
+
+afterEach(() => {
+  delete process.env[CHECK_IN_ANCHOR_ENABLED_ENV];
 });
 
 afterEach(async () => {
@@ -87,10 +105,36 @@ async function seedFamily(input: {
       .values({ familyId, userId: co?.id as string, role: 'co_parent' });
   }
 
+  const childIds: Record<string, string> = {};
   for (const child of input.children ?? []) {
-    await db.database.insert(schema.children).values({ familyId, ...child });
+    const [row] = await db.database
+      .insert(schema.children)
+      .values({ familyId, ...child })
+      .returning({ id: schema.children.id });
+    childIds[child.name] = row?.id as string;
   }
-  return { familyId, primaryUserId };
+  return { familyId, primaryUserId, childIds };
+}
+
+/** One row on the family's calendar, as a parent or a placement would leave it. */
+async function seedEvent(input: {
+  familyId: string;
+  title: string;
+  startsAt: Date;
+  childId?: string | null;
+  source?: 'parent' | 'channel' | 'email' | 'party' | 'placement';
+  sensitive?: boolean;
+  deletedAt?: Date;
+}): Promise<void> {
+  await db.database.insert(schema.familyEvents).values({
+    familyId: input.familyId,
+    title: input.title,
+    startsAt: input.startsAt,
+    childId: input.childId ?? null,
+    source: input.source ?? 'parent',
+    sensitive: input.sensitive ?? false,
+    deletedAt: input.deletedAt ?? null,
+  });
 }
 
 /**
@@ -158,6 +202,8 @@ describe('who the sweep actually selects, and what it may call their children', 
     expect(ask?.parentUserId).toBe(toronto.primaryUserId);
     expect(ask?.category).toBe('evening_check_in');
     expect(ask?.templateKey).toBe(CHECK_IN_ASK_TEMPLATE_KEY);
+
+    await alignLedgerToSendClock();
     expect(ask?.dedupeKey).toBe(`evening_check_in:${toronto.familyId}:2026-07-05`);
 
     // Three hours later it is the Vancouver household's evening, and only theirs.
@@ -253,5 +299,396 @@ describe('who the sweep actually selects, and what it may call their children', 
     expect(deduped.duplicate).toBe(1);
 
     expect(sent).toHaveLength(1);
+  });
+});
+
+/**
+ * THE ANCHOR, THROUGH ITS OWN PRODUCTION WIRING.
+ *
+ * `defaultEveningCheckInDeps().readTodayActivity` is the thing under test, not a fake of
+ * it: the six subtractions live inside that closure, and a hand-built reader would be
+ * testing this file's opinion of what a teen's row looks like rather than what the
+ * projecting door actually hands over (memory: injected fakes hide callee bugs; pin
+ * production wiring, not just units).
+ *
+ * The clock is TORONTO_EVENING — 20:17 on 2026-07-05 in Toronto — so "earlier today" is
+ * anything before 00:17Z on the 6th, and 21:30 local has not happened yet.
+ */
+describe('what the evening question may name', () => {
+  /** 16:00 on 2026-07-05 in Toronto. */
+  const AFTERNOON = new Date('2026-07-05T20:00:00.000Z');
+  /** 17:00 the same day. */
+  const LATE_AFTERNOON = new Date('2026-07-05T21:00:00.000Z');
+  /** 21:30 the same day — after the 20:17 ask. */
+  const TONIGHT = new Date('2026-07-06T01:30:00.000Z');
+  /** 16:00 the day BEFORE. */
+  const YESTERDAY = new Date('2026-07-04T20:00:00.000Z');
+
+  async function anchorCounts() {
+    const sent: Array<{ to: string; body: string }> = [];
+    const result = await runEveningCheckInSweep(db.database, prodDeps(sent), TORONTO_EVENING);
+    expect(result.asked).toBe(1);
+    return { anchor: result.anchor, body: sent[0]?.body ?? '' };
+  }
+
+  /** A household that has been asked before, so tonight is a pooled question. */
+  async function seedAskedBefore(children: Array<{ name: string; dateOfBirth: string }>) {
+    const seeded = await seedFamily({ primaryTz: 'America/Toronto', children });
+    await db.database.insert(schema.familyCheckInPrefs).values({
+      familyId: seeded.familyId,
+      lastAskedAt: new Date(TORONTO_EVENING.getTime() - 24 * 3_600_000),
+    });
+    process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
+    return seeded;
+  }
+
+  it("names an under-13's own activity from earlier today, and files it as the standing question", async () => {
+    const seeded = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
+    await seedEvent({
+      familyId: seeded.familyId,
+      title: 'swim',
+      startsAt: AFTERNOON,
+      childId: seeded.childIds.Mia as string,
+    });
+
+    const { anchor, body } = await anchorCounts();
+    expect(anchor.anchored).toBe(1);
+    expect(body).toContain('swim');
+
+    // THE TEMPLATE KEY DOES NOT CHANGE. A new key for the anchored form would make every
+    // anchored evening's answer unattributable, and the ladder would count a silence for
+    // a question the parent answered.
+    const [ask] = await db.database
+      .select()
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.familyId, seeded.familyId));
+    expect(ask?.templateKey).toBe(CHECK_IN_ASK_TEMPLATE_KEY);
+
+    // The immutable row counts the anchored evening and carries no calendar content:
+    // audit_log is PIPEDA-exportable and has none of the teen redaction a memory read has.
+    const [row] = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, seeded.familyId));
+    expect(row?.actionTaken).toBe('evening_check_in_sent');
+    expect(row?.after).toEqual({ cadence: 'daily', anchored: true });
+    expect(JSON.stringify(row)).not.toContain('swim');
+
+    await alignLedgerToSendClock();
+    expect(
+      await eveningCheckInQuestion(db.database, {
+        familyId: seeded.familyId,
+        parentUserId: seeded.primaryUserId,
+        now: new Date(TORONTO_EVENING.getTime() + 20 * 60_000),
+      }),
+    ).not.toBeNull();
+  });
+
+  it("will not name a 13-year-old's row, and does not say one exists — with the sibling case as the control", async () => {
+    // A 14-year-old at the clock above. The absence assertion below fails OPEN on its own
+    // (a lane that anchored nothing at all would pass it), so the second household is the
+    // positive control: the SAME code path, one year of age apart, does name it.
+    const teenOnly = await seedAskedBefore([{ name: 'Noah', dateOfBirth: '2012-02-01' }]);
+    await seedEvent({
+      familyId: teenOnly.familyId,
+      title: 'orthodontist',
+      startsAt: AFTERNOON,
+      childId: teenOnly.childIds.Noah as string,
+    });
+
+    const teen = await anchorCounts();
+    expect(teen.anchor.private_event).toBe(1);
+    expect(teen.anchor.anchored).toBe(0);
+    expect(teen.body).not.toContain('orthodontist');
+    expect(teen.body).not.toContain(PRIVATE_EVENT_WHAT);
+    expect(teen.body).toContain('the kids');
+
+    await db.exec('truncate table families, users cascade');
+    const sibling = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
+    await seedEvent({
+      familyId: sibling.familyId,
+      title: 'orthodontist',
+      startsAt: AFTERNOON,
+      childId: sibling.childIds.Mia as string,
+    });
+    const control = await anchorCounts();
+    expect(control.anchor.anchored).toBe(1);
+    expect(control.body).toContain('orthodontist');
+  });
+
+  it('will not name a sensitive row even for an under-13', async () => {
+    const seeded = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
+    await seedEvent({
+      familyId: seeded.familyId,
+      title: 'allergy clinic',
+      startsAt: AFTERNOON,
+      childId: seeded.childIds.Mia as string,
+      sensitive: true,
+    });
+    const { anchor, body } = await anchorCounts();
+    expect(anchor.private_event).toBe(1);
+    expect(body).not.toContain('allergy');
+    expect(body).not.toContain(PRIVATE_EVENT_WHAT);
+  });
+
+  it('leaves what Hale itself placed to the follow-up lane', async () => {
+    // Both sweeps fire in the same hourly tick under separate gate budgets, so without
+    // this the same event is named twice in thirteen hours in two different registers.
+    const seeded = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
+    await seedEvent({
+      familyId: seeded.familyId,
+      title: 'gymnastics',
+      startsAt: AFTERNOON,
+      childId: seeded.childIds.Mia as string,
+      source: 'placement',
+    });
+    const { anchor, body } = await anchorCounts();
+    expect(anchor.placement_lane).toBe(1);
+    expect(body).not.toContain('gymnastics');
+    const [row] = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, seeded.familyId));
+    expect(row?.after).toEqual({ cadence: 'daily', anchored: false });
+
+    // POSITIVE CONTROL, a household over: the absence above fails open on its own, and
+    // the only difference here is the provenance column. Same child, same title, same
+    // hour — a row the FAMILY left is named.
+    await db.exec('truncate table families, users cascade');
+    const own = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
+    await seedEvent({
+      familyId: own.familyId,
+      title: 'gymnastics',
+      startsAt: AFTERNOON,
+      childId: own.childIds.Mia as string,
+      source: 'parent',
+    });
+    const control = await anchorCounts();
+    expect(control.anchor.anchored).toBe(1);
+    expect(control.body).toContain('gymnastics');
+  });
+
+  it('will not name a family-wide row with no child on it', async () => {
+    const seeded = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
+    await seedEvent({ familyId: seeded.familyId, title: 'Therapy', startsAt: AFTERNOON });
+    const { anchor, body } = await anchorCounts();
+    expect(anchor.no_child).toBe(1);
+    expect(body).not.toContain('Therapy');
+
+    // POSITIVE CONTROL: the same row with a child on it IS named, so the silence above is
+    // the childId subtraction and not the anchor lane failing to run.
+    await db.exec('truncate table families, users cascade');
+    const hers = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
+    await seedEvent({
+      familyId: hers.familyId,
+      title: 'Therapy',
+      startsAt: AFTERNOON,
+      childId: hers.childIds.Mia as string,
+    });
+    const control = await anchorCounts();
+    expect(control.anchor.anchored).toBe(1);
+    expect(control.body).toContain('Therapy');
+  });
+
+  it('ignores a cancelled row, a row from yesterday, and a row that has not happened yet', async () => {
+    const seeded = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
+    const childId = seeded.childIds.Mia as string;
+    await seedEvent({
+      familyId: seeded.familyId,
+      title: 'cancelled swim',
+      startsAt: AFTERNOON,
+      childId,
+      deletedAt: new Date('2026-07-05T12:00:00.000Z'),
+    });
+    await seedEvent({
+      familyId: seeded.familyId,
+      title: 'yesterday soccer',
+      startsAt: YESTERDAY,
+      childId,
+    });
+    await seedEvent({
+      familyId: seeded.familyId,
+      title: 'bedtime story hour',
+      startsAt: TONIGHT,
+      childId,
+    });
+    const { anchor, body } = await anchorCounts();
+    expect(anchor.no_event_today).toBe(1);
+    for (const title of ['cancelled swim', 'yesterday soccer', 'bedtime story hour']) {
+      expect(body, title).not.toContain(title);
+    }
+  });
+
+  it('takes the LATEST of two that already happened today', async () => {
+    const seeded = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
+    const childId = seeded.childIds.Mia as string;
+    await seedEvent({ familyId: seeded.familyId, title: 'swim', startsAt: AFTERNOON, childId });
+    await seedEvent({
+      familyId: seeded.familyId,
+      title: 'gymnastics',
+      startsAt: LATE_AFTERNOON,
+      childId,
+    });
+    const { anchor, body } = await anchorCounts();
+    expect(anchor.anchored).toBe(1);
+    expect(body).toContain('gymnastics');
+    expect(body).not.toContain('swim');
+  });
+
+  it('refuses a title it cannot spell, and one that will not fit', async () => {
+    const seeded = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
+    await seedEvent({
+      familyId: seeded.familyId,
+      title: 'natation à la piscine — mercredi',
+      startsAt: AFTERNOON,
+      childId: seeded.childIds.Mia as string,
+    });
+    const unspellable = await anchorCounts();
+    expect(unspellable.anchor.not_gsm7).toBe(1);
+    expect(unspellable.body).toContain('Mia');
+
+    await db.exec('truncate table families, users cascade');
+    const long = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
+    await seedEvent({
+      familyId: long.familyId,
+      title: `${'Stouffville Leisure Centre parent and tot swim '.repeat(4)}session`,
+      startsAt: AFTERNOON,
+      childId: long.childIds.Mia as string,
+    });
+    const oversized = await anchorCounts();
+    expect(oversized.anchor.over_segment).toBe(1);
+    expect(oversized.body).toContain('Mia');
+  });
+
+  it("is off unless the flag is exactly 'true' — a trailing newline is not", async () => {
+    const seeded = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
+    await seedEvent({
+      familyId: seeded.familyId,
+      title: 'swim',
+      startsAt: AFTERNOON,
+      childId: seeded.childIds.Mia as string,
+    });
+    process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true\n';
+    const off = await anchorCounts();
+    expect(off.anchor.flag_off).toBe(1);
+    expect(off.body).not.toContain('swim');
+    expect(off.body).toContain('Mia');
+  });
+
+  it('never names the table it reads through', async () => {
+    // The tripwire in teen-access-outbound.test.ts bans `familyEvents` from any unlisted
+    // file in lib/channel, and this sweep is deliberately not a listed door: its reader is
+    // a closure over channelScheduleReader, which projects a private row before this file
+    // ever sees it. Asserted on the source so a future edit that opens a fourth door has
+    // to delete this test on purpose.
+    const source = readFileSync(fileURLToPath(new URL('./sweep.ts', import.meta.url)), 'utf8');
+    expect(/\bfamilyEvents\b/.test(source)).toBe(false);
+    expect(source).toContain('channelScheduleReader');
+  });
+});
+
+/**
+ * THE TWO LANES, IN THE ORDER THE CRON RUNS THEM (app/api/cron/nudge/route.ts: the
+ * follow-up sweep, then the evening check-in).
+ *
+ * They sit in SEPARATE gate categories, so nothing in the rails stops one family getting
+ * both in the same tick — which is correct only while they are asking about different
+ * events. The whole provenance subtraction exists for this, and neither lane knows the
+ * other exists, so this is the only place a regression would show: an anchor that stopped
+ * refusing placements would name yesterday's gymnastics at 20:17 and the composed
+ * follow-up would ask about the same gymnastics an hour later, in a second register.
+ */
+describe('the evening anchor and the composed follow-up, in one tick', () => {
+  /** 16:00 today in Toronto — the family's own row. */
+  const TODAY_AFTERNOON = new Date('2026-07-05T20:00:00.000Z');
+  /** 09:00 YESTERDAY in Toronto — the placement, inside the follow-up's 1-4 day window. */
+  const YESTERDAY_MORNING = new Date('2026-07-04T13:00:00.000Z');
+
+  it("asks about the family's own day, and about what Hale placed, as two different asks", async () => {
+    const seeded = await seedFamily({
+      primaryTz: 'America/Toronto',
+      children: [{ name: 'Mia', dateOfBirth: '2022-03-10' }],
+    });
+    await db.database.insert(schema.familyCheckInPrefs).values({
+      familyId: seeded.familyId,
+      lastAskedAt: new Date(TORONTO_EVENING.getTime() - 24 * 3_600_000),
+    });
+    process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
+    process.env[FOLLOWUP_ASKS_ENABLED_ENV] = 'true';
+    const childId = seeded.childIds.Mia as string;
+    await seedEvent({
+      familyId: seeded.familyId,
+      title: 'gymnastics',
+      startsAt: YESTERDAY_MORNING,
+      childId,
+      source: 'placement',
+    });
+    await seedEvent({
+      familyId: seeded.familyId,
+      title: 'swim',
+      startsAt: TODAY_AFTERNOON,
+      childId,
+      source: 'parent',
+    });
+
+    // The follow-up first, exactly as the tick does it. Its voice is the one injected
+    // port here: what the model's words are worth is measured in the eval suite (rule
+    // #8), and what this test owns is WHICH EVENT each lane picked.
+    const followupSent: Array<{ to: string; body: string }> = [];
+    const followup = await runFollowupSweep(
+      db.database,
+      {
+        ...defaultFollowupSweepDeps(),
+        buildGate: (database) => ({
+          ...buildOutboundGatePorts(database),
+          channelEnrolled: async () => true,
+          watchConsentGranted: async () => true,
+          proactiveSentSince: async () => false,
+        }),
+        resolveSendablePhone: async () => '+14165550100',
+        transport: {
+          send: async (input) => {
+            followupSent.push(input);
+            return { providerMessageId: `followup-${followupSent.length}` };
+          },
+        },
+        voice: {
+          compose: async (request) => ({
+            status: 'composed',
+            body:
+              request.kind === 'activity'
+                ? `How did ${request.activity} go in the end? No pressure to reply.`
+                : 'Did you end up connecting?',
+          }),
+        },
+      },
+      TORONTO_EVENING,
+    );
+
+    // BOTH ON THEIR REAL FREQUENCY CAPS, which is the half of this that only a database
+    // can answer: the two lanes count under different `channel_messages` categories, so
+    // the follow-up that just went out must not spend the evening question's budget. A
+    // stubbed counter here would pass whatever the categories said.
+    const checkInSent: Array<{ to: string; body: string }> = [];
+    const checkIn = await runEveningCheckInSweep(
+      db.database,
+      prodDeps(checkInSent, { realCap: true }),
+      TORONTO_EVENING,
+    );
+
+    expect({ followup: followup.activityAsked, checkIn: checkIn.asked }).toEqual({
+      followup: 1,
+      checkIn: 1,
+    });
+    // TWO MESSAGES ABOUT TWO EVENTS, which is the correct outcome, and never two about one.
+    expect(followupSent[0]?.body).toContain('gymnastics');
+    expect(followupSent[0]?.body).not.toContain('swim');
+    expect(checkInSent[0]?.body).toContain('swim');
+    expect(checkInSent[0]?.body).not.toContain('gymnastics');
+    expect(checkIn.anchor.anchored).toBe(1);
+  });
+
+  afterEach(() => {
+    delete process.env[FOLLOWUP_ASKS_ENABLED_ENV];
   });
 });

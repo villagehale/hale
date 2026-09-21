@@ -625,10 +625,10 @@ export function renderCheckInReply(input: CheckInReplyInput): string {
   const { shortlist, reply } = input;
   const town = townLabel(shortlist.windowRef.municipality);
   if (reply.outcome === 'registered') {
-    return `That's a spot. Noted: ${town} ${shortlist.windowRef.cycleLabel} registered.`;
+    return `That's a spot - you're in for ${town} ${shortlist.windowRef.cycleLabel}.`;
   }
   if (reply.outcome === 'missed') {
-    return `Sorry - that one filled. Noted, and I'll flag the next ${town} window early.`;
+    return `Sorry - that one filled. I'll flag the next ${town} window early.`;
   }
   if (reply.outcome === null) {
     return `Sorry, I didn't catch that. ${ANSWER_MENU}`;
@@ -804,7 +804,7 @@ export interface ReadinessAckInput {
  */
 export function renderReadinessAck(input: ReadinessAckInput): string {
   if (input.ready) {
-    return `Noted - you told me the setup on ${input.portal.portalLabel} is done.`;
+    return `You told me the setup on ${input.portal.portalLabel} is done.`;
   }
   return `No problem. The four: ${input.portal.accountLabel}, ${whoPhrase(input.fitNotes)} added with their birthday(s), address complete, a card saved. I will ask again the evening before.`;
 }

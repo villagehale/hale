@@ -54,6 +54,7 @@ function scheduleEvent(overrides: Partial<ScheduleEventRow> = {}): ScheduleEvent
       location: 'West pool',
       sensitive: false,
       childId: null,
+      source: 'parent',
       childDob: null,
       ...overrides,
     },
