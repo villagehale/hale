@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three picks are real, named, specific venues in New York City that a family with a preschooler can simply turn up to during September 12–15. CMOM is purpose-built for ages 0–6 and is a drop-in museum. The Tisch Children's Zoo is a genuine, named section of the Central Park Zoo with accurate hours sourced from the zoo's own site. PlayQuarium is a real named exhibit at the New York Aquarium with a touch pool, sourced from the aquarium's own site. None of the three is a term programme, a registration event, or a multi-week session. No prices are invented — both price fields that are null are correctly left null. Hours given for the zoo and aquarium are plausible and attributed to the venues' own sites. Sources are the institutions themselves, not aggregators or listicles. The count is exactly three. No faults detected.",
+    "score": 5
+  }
+}

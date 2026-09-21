@@ -1,0 +1,19 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Mini Mondo, Montreal Science Centre",
+        "age_fit": "0 to 7 years old",
+        "when": "Dec 26-30, 10am-6pm (holiday hours)",
+        "source_name": "Montreal Science Centre"
+      },
+      {
+        "name": "Biodôme de Montréal",
+        "age_fit": "all ages",
+        "when": "Tuesday to Sunday and holiday Mondays, 9am-5pm (rest-of-year schedule)",
+        "source_name": "Espace pour la vie"
+      }
+    ]
+  },
+  "latencyMs": 2599
+}

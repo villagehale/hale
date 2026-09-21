@@ -16,13 +16,26 @@
 /**
  * THE SUBJECT. A VISIT, not a term.
  *
- * 105 characters, under `MAX_QUERY_FIELD_CHARS = 120`. No digits and no age word, so it
+ * 113 characters, under `MAX_QUERY_FIELD_CHARS = 120`. No digits and no age word, so it
  * survives `scrubResidualPii` unchanged — the age band travels on `stage` and nowhere
  * else, because "things to do with a 3 year old" scrubs to "things to do with a
  * [redacted]".
+ *
+ * EVERY WORD OF IT IS MEASURED, and two of them were wrong the first time. The three
+ * travel fixtures in `apps/worker/evals/activity-finder-fixtures.mjs` are the only
+ * evidence this string works, because `activity-finder.md` is deliberately not edited;
+ * they were minted live against the real skill, and the first draft —
+ * "...on a short visit: museums, zoos, aquariums, playgrounds, indoor drop-ins" — came
+ * back from the Ottawa Labour-Day fixture with an EarlyON drop-in playgroup among its
+ * three picks. That is a real, well-sourced find and it is useless to the family: EarlyON
+ * is a resident service whose value is a recurring weekly slot, and "indoor drop-ins" is
+ * the phrase that invited it. So the frame is now said three times over — VISITING, FOR A
+ * FEW DAYS, TURN UP TO — and the category list names only places that are open to whoever
+ * walks in. Change a word here and those three fixtures re-key and must be re-minted live:
+ * that is the point of them.
  */
 export const TRAVEL_SUBJECT =
-  'things to do with young children on a short visit: museums, zoos, aquariums, playgrounds, indoor drop-ins';
+  'things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds';
 
 /**
  * THE WINDOW — "September 12 to 15", and the shape is load-bearing.

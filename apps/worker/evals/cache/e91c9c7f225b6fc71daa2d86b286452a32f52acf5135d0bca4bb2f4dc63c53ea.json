@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Two picks, both specific named venues in Montreal, both with opening hours cited for the exact window (Dec 26-30), both sourced from the venue's own organisation (Montreal Science Centre; Espace pour la vie, which is the umbrella body for the Biodôme). Prices are NULL, which is correct per rubric - not a fault. Neither pick is a programme, session, or registration event; both are walk-in attractions a family can simply turn up to. Age fit is appropriate for a toddler. The watchFor concern (things actually open between Dec 27-30) is addressed directly: Mini Mondo explicitly lists Dec 26-30 holiday hours, and the Biodôme schedule covers that window. No invented figures, no aggregator sources, no different-city venues, no generic descriptions. The only minor shortcoming is that only two picks are returned rather than the maximum of three, leaving a small gap a third valid find could have filled - but two excellent, accurate, specific, visitable picks are far better than padding with a weak third. A strong find overall.",
+    "score": 5
+  }
+}

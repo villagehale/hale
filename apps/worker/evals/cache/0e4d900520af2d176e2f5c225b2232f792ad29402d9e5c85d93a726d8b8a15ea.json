@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Two picks, both real named venues in Ottawa with their own authoritative sources (Canadian Museum of Nature, Ingenium/Canada Science and Technology Museum). Both are turn-up-able: they are physical museums open to walk-in visitors including preschoolers. The `when` fields reference the Canada Strong Pass discount window (June 19–Sept 7), which squarely covers the Aug 30–Sept 2 visit, and neither invents a price — both prices are NULL, correctly deferring to the venue. Neither pick is a session, a programme, a registration date, or a fall-enrolment item. The watchFor trap (Labour Day weekend fall-session copy) is cleanly avoided. The only minor note is that only two picks are returned rather than three, but two strong, accurate, visit-ready finds is far better than padding with a weak third. No invented figures, no aggregator sources, no wrong-city picks, no generic venues.",
+    "score": 5
+  }
+}
