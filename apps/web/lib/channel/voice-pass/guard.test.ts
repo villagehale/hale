@@ -230,6 +230,32 @@ describe('asideViolations - the door', () => {
     expect(refusals('Oui, encore une.', 'before', context())).toEqual(['echoes_a_reply_word']);
   });
 
+  it('refuses the acts a parent answers with instead of writing', () => {
+    // An adversarial pass over the shipped table found four doors it let through, and
+    // three of them differ from the exemplar only in which verb of speaking they use.
+    // "Holler", "shout", "buzz", "ping" and "nod" are acts, not household nouns, so they
+    // belong in the decline table on the same terms as `say` and `tell`.
+    for (const clause of [
+      'Just holler and it moves.',
+      'Nod and it goes on the week.',
+      'A shout is enough there.',
+      'One buzz and it shifts.',
+      'Somebody pinged about that one.',
+    ]) {
+      expect(refusals(clause, 'before', context())).toContain('solicits_reply');
+    }
+  });
+
+  it('leaves the two residual doors to the judge, and says so', () => {
+    // NAMED RATHER THAN CAUGHT. These read as offers but contain no act of speaking, no
+    // second person and no affirmative window, so no mechanical rule reaches them without
+    // reaching ordinary observations too. The eval's judge rubric carries them; the guard
+    // must not grow a phrase list trying to.
+    for (const clause of ['Easy to slot in if needed.', 'Fine to leave it, or not.']) {
+      expect(refusals(clause, 'before', context())).toEqual([]);
+    }
+  });
+
   it('lets an ordinal observation through (the positive control)', () => {
     expect(refusals('Third one in the last day.', 'before', context())).toEqual([]);
   });

@@ -171,6 +171,16 @@ const LINK_SHAPE = /https?:\/\/|www\./i;
  * credential-matcher rule: anchor on the act, never on a bare noun a parent might use
  * about anything. `word` is in because "say the word" is the canonical door and the frame
  * list cannot carry every spelling of it.
+ *
+ * THE CASUAL HALF WAS MISSING. An adversarial pass wrote ten doors against the shipped
+ * table and four survived it, three of them the exemplar with a friendlier verb: "Just
+ * holler and it moves.", "Nod and it goes on the week.", "Ping Hale and it shifts." — the
+ * last caught only by `invented_capital`, which a lowercase spelling walks straight past.
+ * Holler, shout, buzz, ping and nod are acts a parent performs AT Hale, so they are the
+ * same door and belong on the same list. What is still not here is a phrase list for the
+ * two residuals — "Easy to slot in if needed." and "Fine to leave it, or not." — which
+ * name no act at all; those are the judge's, and `guard.test.ts` says so rather than
+ * letting the next reader think the table is exhaustive.
  */
 const REPLY_ACTS: ReadonlySet<string> = new Set([
   'say',
@@ -195,6 +205,22 @@ const REPLY_ACTS: ReadonlySet<string> = new Set([
   'ask',
   'asks',
   'word',
+  'holler',
+  'hollers',
+  'hollered',
+  'holla',
+  'shout',
+  'shouts',
+  'shouted',
+  'buzz',
+  'buzzes',
+  'buzzed',
+  'ping',
+  'pings',
+  'pinged',
+  'nod',
+  'nods',
+  'nodded',
 ]);
 
 /** The multiword doors a single verb does not catch. Written apostrophe-free, because
