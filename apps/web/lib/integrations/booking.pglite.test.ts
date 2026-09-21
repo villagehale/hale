@@ -1024,13 +1024,21 @@ describe('the offer that must not be made twice', () => {
     // make still gets made. This is the direction the `loadCorrelationCandidates`
     // mutation breaks - widen that loader to include watched spots and a family's own
     // watch suppresses the offer it was watching FOR.
+    //
+    // THE WATCH EXPIRES THE DAY AFTER THE FIRST SESSION, and that instant is the whole
+    // reason this mutation has teeth. `watched_spots` carries no session time, so a
+    // widened loader can only anchor a watch at its `expires_at` - and an expiry six weeks
+    // out is rejected by correlate.ts's 30-hour window before the title is ever compared,
+    // which leaves the mutation GREEN for a reason that has nothing to do with the loader.
+    // Inside the window, the widening does what the landmine says it does and this test
+    // goes red.
     await db.database.insert(schema.watchedSpots).values({
       familyId: family.familyId,
       parentUserId: family.parentUserId,
       label: 'Swim Level 2',
       sourceUrl: 'https://recreation.brookfield.example.ca/course/swim-level-2',
       createdFrom: 'test',
-      expiresAt: new Date('2026-12-01T00:00:00.000Z'),
+      expiresAt: new Date('2026-09-27T13:00:00.000Z'),
     });
 
     const h = harness({ correlate: true });
