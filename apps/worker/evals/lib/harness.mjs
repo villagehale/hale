@@ -256,6 +256,19 @@ export async function cachedTextCall(opts) {
     .filter((b) => b.type === 'text')
     .map((b) => b.text)
     .join('\n');
+  // A BLANK IS NOT A REPLY, and the cache is forever. The tool path above refuses a
+  // truncated forced-tool call and the judge refuses a score-less draw; this path refused
+  // nothing, and the committed cache carries ten `"text": ""` entries — fixtures graded
+  // forever on a message the model never wrote, replayed by --cached-only at no cost and
+  // with no warning. The line is production's own: runAgent reports `truncated` exactly
+  // when the stop reason is max_tokens AND no text arrived (packages/agent/src/agent.ts),
+  // because a stream that already spoke cannot be re-asked — so a cut-off sentence, which
+  // the length gates and the judge can both read, is still recorded here.
+  if (text.trim() === '') {
+    throw new Error(
+      `${tag}: the model returned no text (stop_reason ${response.stop_reason}) - nothing cached`,
+    );
+  }
   noteUsage(cost, model, response.usage);
   const inputTokens =
     response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
