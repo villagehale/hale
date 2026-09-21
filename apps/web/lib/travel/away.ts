@@ -96,6 +96,7 @@ const HOME_DISTRICTS = [
   'Bramalea',
   'Bolton',
   'Georgetown',
+  'Acton',
 ] as const;
 
 /**

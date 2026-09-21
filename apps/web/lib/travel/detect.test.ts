@@ -167,20 +167,39 @@ describe('isAwayDestination', () => {
    * 12th to the 15th."
    */
   it('reads the district names a hotel writes as home too', () => {
-    for (const district of [
+    // ALL TWENTY-FOUR, from the brief's own list rather than a sample of it: the list is
+    // hand-maintained, and a sample of ten is how `Acton` went missing — a Halton Hills
+    // family whose booking says Acton would have read as away.
+    const districts = [
       'Scarborough',
       'North York',
       'Etobicoke',
+      'York',
+      'East York',
+      'Willowdale',
+      'Agincourt',
       'Thornhill',
       'Woodbridge',
+      'Maple',
+      'Kleinburg',
+      'Concord',
       'Unionville',
+      'Milliken',
+      'Oak Ridges',
       'Port Credit',
       'Streetsville',
+      'Erin Mills',
+      'Cooksville',
+      'Malton',
       'Bramalea',
+      'Bolton',
       'Georgetown',
-    ]) {
+      'Acton',
+    ];
+    for (const district of districts) {
       expect(isAwayDestination(district), district).toBe(false);
     }
+    expect(districts).toHaveLength(24);
   });
 
   it('reads a real destination as away — the positive control the two lists above need', () => {
