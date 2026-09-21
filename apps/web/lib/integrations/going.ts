@@ -255,9 +255,13 @@ export function goingCount(input: { others: number; alreadyHeld: boolean }): Goi
  * Spelled as a word from two to nine, numerals from ten: "with 2 other Hale families"
  * reads as data and the sentence around it does not, and at the sizes this floor permits
  * the word costs two characters.
+ *
+ * `null` — the envelope never reached the going decision at all — is '' like every
+ * refusal: there is nothing to say either way, and a caller that has no count must not
+ * have to invent one to ask for no clause.
  */
-export function goingClause(count: GoingCount): string {
-  if (!count.shown) return '';
+export function goingClause(count: GoingCount | null): string {
+  if (count === null || !count.shown) return '';
   return `, with ${spelled(count.others)} other Hale families`;
 }
 

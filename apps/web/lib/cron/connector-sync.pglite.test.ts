@@ -131,7 +131,7 @@ describe('connectorSyncDeps — the email alert wiring', () => {
       seeding: true,
       envelopes: [envelope('m1')],
     });
-    expect(outcomes).toEqual([{ alert: 'seeding_run', booking: null }]);
+    expect(outcomes).toEqual([{ alert: 'seeding_run', booking: null, going: null }]);
   });
 
   it('keys the dedupe read on THIS connection and THIS message id', async () => {
@@ -157,7 +157,7 @@ describe('connectorSyncDeps — the email alert wiring', () => {
       seeding: false,
       envelopes: [envelope('m1')],
     });
-    expect(outcomes).toEqual([{ alert: 'already_sent', booking: null }]);
+    expect(outcomes).toEqual([{ alert: 'already_sent', booking: null, going: null }]);
   });
 });
 
