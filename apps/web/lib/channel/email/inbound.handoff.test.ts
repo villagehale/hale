@@ -85,6 +85,9 @@ describe('the inbound-email hand-off (real Postgres)', () => {
   function deps(enqueue: EmailInboundDeps['enqueue']): EmailInboundDeps {
     return {
       database: db.database,
+      reply: () => {
+        throw new Error('inbound handoff test: the reply door does not send');
+      },
       content: () =>
         FakeContentReader.ok({
           text: 'Can you find a swim class?',

@@ -89,6 +89,10 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
       'claim-phone-send',
       'sms-inbound',
       'email-inbound',
+      // The forwarding door: a genuine per-family spend cap (a triage plus an extraction
+      // per allowed forward), not a bot guard, so it carries the hour budget its inbound
+      // twin does.
+      'email-forward',
       'sms-agent-turn',
       'mcp-register',
       'mcp-authorize',

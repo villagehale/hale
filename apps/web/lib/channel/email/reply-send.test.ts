@@ -89,6 +89,24 @@ describe('sendEmailReply', () => {
     expect(h.sent[0]?.from).toBe('aloha@villagehale.com');
   });
 
+  it('a caller may name its own reply address, and omitting it keeps the thread address', async () => {
+    // VIL-352 · `replyTo` REPLACED a hard-coded value, so the default has to be pinned
+    // beside the override: the forwarding door answers at hale+<token>.<ref>@, and every
+    // other caller must be byte-for-byte unchanged by that.
+    const overridden = deps();
+    await sendEmailReply(overridden.deps, {
+      to: 'sam@example.com',
+      body: 'Hi.',
+      inReplyTo: null,
+      replyTo: 'hale+abc.def@mail.villagehale.com',
+    });
+    expect(overridden.sent[0]?.replyTo).toBe('hale+abc.def@mail.villagehale.com');
+
+    const plain = deps();
+    await sendEmailReply(plain.deps, { to: 'sam@example.com', body: 'Hi.', inReplyTo: null });
+    expect(plain.sent[0]?.replyTo).toBe(inboundReplyToAddress(CONFIG));
+  });
+
   it('sends the coach words with the CASL footer under them and nothing else', async () => {
     const h = deps();
 

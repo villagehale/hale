@@ -87,13 +87,23 @@ export interface EmailReplyDeps {
  */
 export async function sendEmailReply(
   deps: EmailReplyDeps,
-  input: { to: string; body: string; inReplyTo: string | null },
+  input: {
+    to: string;
+    body: string;
+    inReplyTo: string | null;
+    /** Where the answer to THIS message must go, when that is not the thread's own
+     * address. The forwarding door needs it: its ask is answered at
+     * `hale+<token>.<ref>@`, and the sub-tag is what says which sender the answer is
+     * about. Omitted everywhere else, so every existing caller keeps the derived
+     * thread address — pinned by a test, because this replaced a hard-coded value. */
+    replyTo?: string;
+  },
 ): Promise<{ providerMessageId: string }> {
   const reference = input.inReplyTo ? messageIdHeader(input.inReplyTo) : null;
   const { id, error } = await deps.transport.send({
     from: deps.from,
     to: input.to,
-    replyTo: inboundReplyToAddress(deps.config),
+    replyTo: input.replyTo ?? inboundReplyToAddress(deps.config),
     subject: EMAIL_REPLY_SUBJECT,
     text: `${input.body}\n\n--\n${replyFooter()}\n`,
     headers: reference ? { 'In-Reply-To': reference, References: reference } : undefined,
@@ -105,6 +115,29 @@ export async function sendEmailReply(
     throw new Error('email reply: nothing was sent — the Resend transport has no credentials');
   }
   return { providerMessageId: id };
+}
+
+/** A scripted sender for tests: records the message instead of reaching a provider. The
+ * `FakeContentReader` shape, beside the thing it fakes for the same reason — one place
+ * owns what a message looks like on the wire. */
+export function fakeEmailReply(
+  config: EmailInboundConfig,
+  answer: Awaited<ReturnType<ResendTransport['send']>> = { id: 'prov-fake', error: null },
+): { sent: Array<Parameters<ResendTransport['send']>[0]>; deps: EmailReplyDeps } {
+  const sent: Array<Parameters<ResendTransport['send']>[0]> = [];
+  return {
+    sent,
+    deps: {
+      transport: {
+        send: async (msg) => {
+          sent.push(msg);
+          return answer;
+        },
+      },
+      config,
+      from: 'aloha@villagehale.com',
+    },
+  };
 }
 
 /**

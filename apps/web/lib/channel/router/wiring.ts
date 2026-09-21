@@ -59,6 +59,7 @@ import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
 import { eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
 import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
+import { forwardRevokeAsk } from '~/lib/channel/email/forward-request';
 import {
   approvalHandler,
   coParentAssentHandler,
@@ -67,6 +68,7 @@ import {
   emailAlertAddHandler,
   emailCaptureHandler,
   eveningCheckInHandler,
+  forwardAddressHandler,
   founderWelcomeHandler,
   healthReplyHandler,
   nameCaptureHandler,
@@ -343,6 +345,10 @@ export function defaultHandlers(): DeterministicHandler[] {
     // two matchers are disjoint by construction (connect/detect.ts), so neither can
     // shadow the other wherever they sit. It is here so the pair reads as a pair.
     connectorDisconnectHandler(),
+    // Beside the connector pair, and free for their reason: all three matchers require a
+    // noun no other handler's vocabulary contains, and detect.test.ts / the forwarding
+    // matcher's own table assert the three are disjoint over the whole phrase list.
+    forwardAddressHandler(),
     founderWelcomeHandler(defaultFounderReplyDeps()),
     // Owns the co-parent scope question and declines every reading of it — see the
     // handler's own note. Listed so the router never resolves a kind nobody owns.
@@ -748,6 +754,14 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
         askedAt: offer.askedAt,
       }));
     },
+    // The forwarding-address revoke confirm (VIL-352 round 6), read through the lane's own
+    // ledger reader — the evening check-in's discipline for the same reason, with the
+    // fifteen-minute window applied inside it so a lapsed confirm is never listed. It
+    // stands until one of its own receipts answers it, NOT until Hale next speaks: the
+    // clarifying menu Hale sends about this very question is a thing Hale said, and it
+    // used to close the question it was asking about (round 7). The last-word rule lives
+    // on the bare-word door in handlers.ts, which is the only reader it protects.
+    forwardAddressRevoke: (database, input) => forwardRevokeAsk(database, input),
   });
 }
 

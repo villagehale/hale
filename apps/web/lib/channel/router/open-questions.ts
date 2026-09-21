@@ -125,7 +125,21 @@ export type OpenQuestionKind =
    * derived from the MESSAGE LEDGER rather than a row of its own: it stands while its
    * ask is Hale's last word to that parent, and lapses at 08:00.
    */
-  | 'activity_followup_ask';
+  | 'activity_followup_ask'
+  /**
+   * "Turn off your forwarding address? ... Reply YES to turn it off, or ignore this." —
+   * the confirm in front of a revoke (VIL-352 round 6, email/forward-request.ts).
+   *
+   * THE ONLY YES ON THIS LIST THAT DESTROYS SOMETHING. Every other one writes, sends or
+   * discloses; this one nulls a credential, and the parent cannot get it back — a fresh
+   * token is a DIFFERENT address they have to go and re-enter in their mail filter. That
+   * is D17's definition of hard-to-reverse, and it is why the turn-off half stopped
+   * acting on its own reading and started asking. Five rounds of regex could not tell
+   * "should I turn off my forwarding address?" from an instruction; a question can.
+   *
+   * Ledger-derived like the two above it, and per-PARENT.
+   */
+  | 'forward_address_revoke';
 
 /**
  * How much certainty an answer to this class needs before it is acted on.
@@ -181,6 +195,10 @@ const GRADE: Record<OpenQuestionKind, QuestionGrade> = {
   // Record forces a choice, and `ordinary` is the honest one: the ask executes nothing
   // and discloses nothing, so a wrong reading could at most cost one reply.
   activity_followup_ask: 'ordinary',
+  // DESTROYS a credential the parent cannot get back — every filter they have set up
+  // stops working and the replacement is a different address. Nothing else on this list
+  // is less undoable, so nothing else has a stronger claim on this grade.
+  forward_address_revoke: 'consequential',
 };
 
 export function questionGrade(kind: OpenQuestionKind): QuestionGrade {
@@ -242,6 +260,12 @@ const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   // question as a household with nothing open, so a bare affirmative falls through to
   // the coach instead of approving whatever happens to be drafted.
   activity_followup_ask: { yes: false, no: false },
+  // BOTH polarities, and the NO has a real writer rather than a lapse: it sends the
+  // sentence that says the address is still on, and THAT outbound is what closes the
+  // question (the openness is derived from who spoke last). A no-answerable confirm would
+  // leave a declined revoke standing for the rest of its window, waiting for the parent's
+  // next unrelated affirmative.
+  forward_address_revoke: { yes: true, no: true },
 };
 
 export interface Answerable {
@@ -342,6 +366,13 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   // product on the evenings it goes out — so a bare YES meant for a drafted approval
   // would be claimed by an activity nobody can answer yes to.
   activity_followup_ask: false,
+  // TRUE — the confirm prints 'Reply YES to turn it off, or ignore this.' verbatim
+  // (email/forward-request.ts). What it buys is PROTECTION rather than reach: while this
+  // ask is the newest solicited one, every OTHER lane's `soleOpenKind` goes false, so no
+  // neighbour claims a bare affirmative out from under a pending revoke. It buys this
+  // lane nothing, because its own handler requires every open question to be this one —
+  // a revoke must not win a race it only won by being the most recent thing Hale said.
+  forward_address_revoke: true,
 };
 
 /**
@@ -396,6 +427,10 @@ const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval' | 'email_alert_add'>,
   // Hale prints back, and the title is family calendar content the ask itself already
   // carried to the one phone it was sent to (rule #1).
   activity_followup_ask: 'how that activity went',
+  // The credential is never in the phrase — this can be printed back in a "Which one -
+  // ...?" sentence, and an address in one would be a secret re-sent to a thread that may
+  // not be the one it was minted for (rule #1).
+  forward_address_revoke: 'turning off your forwarding address',
 };
 
 /**
@@ -577,6 +612,25 @@ export interface OpenQuestionSources {
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
   ): Promise<{ id: string; askedAt: Date } | null>;
+  /**
+   * The forwarding-address revoke confirm this parent has not answered, or null
+   * (VIL-352 round 6, email/forward-request.ts).
+   *
+   * Ledger-derived like the two readers above, and per-PARENT for their reason: the
+   * confirm went to one phone. Its fifteen-minute window is applied INSIDE the reader, so
+   * a lapsed confirm is never listed, never named in a clarifying sentence and never
+   * resolved — the discipline every offer on this list keeps.
+   *
+   * UNLIKE the two above it, what ends it is one of its own two receipts rather than
+   * Hale's next sentence (round 7). The list is what a clarifying menu is built from, so
+   * a question that closed when Hale asked WHICH QUESTION THE PARENT MEANT was offered on
+   * a menu and then could not be picked. The last-word rule still guards the bare word,
+   * inside the handler that reads one (handlers.ts).
+   */
+  forwardAddressRevoke(
+    database: Database,
+    input: { familyId: string; parentUserId: string; now: Date },
+  ): Promise<{ id: string; askedAt: Date } | null>;
 }
 
 /**
@@ -608,6 +662,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
         emailOffers,
         evening,
         activityAsk,
+        revokeConfirm,
       ] = await Promise.all([
           sources.pendingApprovals(database, input.familyId),
           sources.introOptInOpen(database, {
@@ -624,6 +679,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           sources.emailAlertOffers(database, input),
           sources.eveningCheckIn(database, input),
           sources.activityFollowupAsk(database, input),
+          sources.forwardAddressRevoke(database, input),
         ]);
 
       const questions: OpenQuestion[] = namedApprovals(approvals).slice(
@@ -768,6 +824,20 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           answerable: KIND_ANSWERABLE.activity_followup_ask,
           askedAt: activityAsk.askedAt,
           solicited: SOLICITED.activity_followup_ask,
+        });
+      }
+      if (revokeConfirm) {
+        questions.push({
+          id: revokeConfirm.id,
+          kind: 'forward_address_revoke',
+          // NOT the address and NOT the token: this line goes to a model, and the whole
+          // reason the address is a credential is that it is a secret (rule #1,
+          // forward-address.ts). Hale's own question, minus the thing it is about.
+          description: 'Whether to turn off your forwarding address',
+          subject: SUBJECT.forward_address_revoke,
+          answerable: KIND_ANSWERABLE.forward_address_revoke,
+          askedAt: revokeConfirm.askedAt,
+          solicited: SOLICITED.forward_address_revoke,
         });
       }
       if (promise) {
