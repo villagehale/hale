@@ -165,12 +165,13 @@ describe('the pulled-up headline', () => {
     expect(blocks.some((block) => block.includes('.hale-hero-word'))).toBe(true);
   });
 
-  it('leaves the homepage on its own v4 hero display, not the subpage reveal', () => {
-    // Home is the v4 liquid-glass shore: its hero display is set large
-    // (.v4-display / .v4-hero-h1), not the subpage pulled-up reveal. The two
-    // never share the pull-word device — only the amber accent.
+  it('leaves the homepage on its own hero display, not the subpage reveal', () => {
+    // Home sets its hero display large (.v4-display / .v4-hero-h1), not the
+    // subpage pulled-up reveal. The two never share the pull-word device — only
+    // the amber accent. The rung outlived the shore it was drawn over: v5 keeps
+    // the same two classes on a hero with no photograph under it.
     const landing = readFileSync(
-      fileURLToPath(new URL('../components/landing/v4/landing-v4.tsx', import.meta.url)),
+      fileURLToPath(new URL('../components/landing/v5/landing-v5.tsx', import.meta.url)),
       'utf8',
     );
     expect(landing).not.toContain('pull-word');

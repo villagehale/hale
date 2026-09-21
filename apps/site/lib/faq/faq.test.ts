@@ -25,9 +25,7 @@ describe('product FAQ', () => {
 
 describe('the FAQ this build serves', () => {
   it('describes a number you text rather than an app you sign up for', () => {
-    const answers = FAQ
-      .map((item) => item.answer)
-      .join(' ');
+    const answers = FAQ.map((item) => item.answer).join(' ');
     expect(answers).toContain('text');
     expect(answers).toContain('no account to create');
     // The homepage offers no signup and nothing to browse, so the FAQ must not
@@ -39,9 +37,7 @@ describe('the FAQ this build serves', () => {
   });
 
   it('keeps every claim inside what ships — no named method, no outcome promise', () => {
-    const all = FAQ
-      .map((item) => `${item.question} ${item.answer}`)
-      .join(' ');
+    const all = FAQ.map((item) => `${item.question} ${item.answer}`).join(' ');
     for (const overclaim of ['Ferber', 'guaranteed', 'will fix', 'March break', 'PA day']) {
       expect(all).not.toContain(overclaim);
     }
@@ -51,9 +47,7 @@ describe('the FAQ this build serves', () => {
   it('offers the record by a door a texting family has (claim-by-phone must ship first)', () => {
     // Same merge-order dependency as the landing's receipts line: web sign-in is
     // Google + magic link today, and a texted family has no email address.
-    const answers = FAQ
-      .map((item) => item.answer)
-      .join(' ');
+    const answers = FAQ.map((item) => item.answer).join(' ');
     expect(answers).toContain('sign in with your phone number');
   });
 
@@ -67,12 +61,71 @@ describe('the FAQ this build serves', () => {
     expect([...answers.matchAll(/never texts a number that hasn’t texted it first/g)]).toHaveLength(
       2,
     );
-    // Positive control: the proactive brief the old claim contradicted is still
-    // described, so this passes because the claim was scoped, not because the
-    // page went quiet about what Hale sends.
-    expect(answers).toContain('A brief on Sunday');
-    expect(answers).not.toContain('A brief on Monday');
-    expect(answers).not.toContain('Monday morning');
+    // Positive control: the proactive message the old claim contradicted is
+    // still described, so this passes because the claim was scoped, not because
+    // the page went quiet about what Hale sends.
+    expect(answers.toLowerCase()).toContain('a heads-up the week a registration opens');
+  });
+
+  it('claims no Sunday brief — that one needs a SECOND flag, not F14', () => {
+    // The registration ladder, the watched spots and the evening check-in are all
+    // one F14_ENABLED flip from sending, and the founder has ruled that
+    // merged-and-tested is claimable. The Sunday text is not in that set: the
+    // send is additionally gated by LOOP_SEND_ENABLED, which defaults OFF
+    // ("compose-not-send until the founder flips it"), so flipping F14 alone
+    // would not make it true. The site was claiming it anyway.
+    const all = FAQ.map((item) => `${item.question} ${item.answer}`).join(' ');
+    expect(all).not.toContain('Sunday');
+    expect(all).not.toContain('A brief on Monday');
+    expect(all).not.toContain('Monday morning');
+  });
+
+  it('answers the three roadmap questions with "Not yet." and claims nothing else', () => {
+    // This is where the roadmap honestly lives: a landing page that advertises
+    // what it has not built teaches a reader to discount everything else on it.
+    const find = (q: string) => FAQ.find((item) => item.question === q)?.answer ?? '';
+    const reviews = find('Will you tell me whether a class is any good?');
+    const travel = find('Can you help when we travel?');
+    const whoElse = find('Can you tell me who else is going?');
+    for (const answer of [reviews, travel, whoElse])
+      expect(answer.startsWith('Not yet.')).toBe(true);
+    // Who else is going STOPS too, and harder than travel: a roster is another
+    // family's data, so the answer may name the rule Hale keeps and must claim
+    // no count, no other family and no date it will arrive.
+    expect(whoElse).toBe(
+      'Not yet. Today I only tell you about your own family, never anyone else’s.',
+    );
+    // The travel answer STOPS. `find_activities` takes { subject, window?, childId? }
+    // and nothing else, and its own description forbids a location in `subject`
+    // — the town is the family's on-file GTA one, attached from their record. A
+    // parent who asks what is on in another city gets a search run against their
+    // own town, so "ask me about another city" would be a claim with no code
+    // under it.
+    expect(travel).toBe(
+      'Not yet. Today I watch registration and what’s on where you live, in the GTA.',
+    );
+    // Reviews may say what is real today (the asking) and what is wanted next,
+    // and must promise no corpus: there is no table, no verdict vocabulary, no
+    // k-threshold, and a web find has no stable id to hang a review on.
+    expect(reviews).toContain('asks how it went');
+    expect(reviews).toContain('never anyone’s words');
+    // And it claims no EFFECT for the asking. `family_check_in_notes` carries
+    // "NOTHING READS THIS TODAY" in its own schema comment, the only reader
+    // outside the writer is the rights export, and the activity follow-up reply
+    // is deliberately unhandled — so "your next suggestions get better" is the
+    // same unbuilt-claim shape the landing bans in §3, moved to the page a
+    // doubting parent reads second. The answer may say what Hale DOES (ask) and
+    // what it WANTS to build; it may not say what the asking achieves.
+    for (const effect of [
+      'get better',
+      'gets better',
+      'better for your family',
+      'learns',
+      'remembers',
+      'improve',
+    ]) {
+      expect(reviews.toLowerCase(), `${effect} must not appear`).not.toContain(effect);
+    }
   });
 
   it('promises no quiet between the legs — the evening check-in asks every night', () => {
@@ -85,8 +138,18 @@ describe('the FAQ this build serves', () => {
     expect(answers).not.toContain('then quiet');
     // Positive control: the cadence answer is still here and still names what
     // Hale sends, so the absence above is a promise withheld, not a lost answer.
-    expect(answers).toContain('a heads-up the week a registration opens');
+    expect(answers.toLowerCase()).toContain('a heads-up the week a registration opens');
     expect(answers).toContain('STOP works at any time');
+  });
+
+  it('says the co-parent line in the landing’s words, not its own', () => {
+    // The landing's how-it-works prose says "the same dates and nudges on their
+    // own number" (pinned in app/landing-v5.test.ts); the FAQ said "the same week
+    // and reminders", and the week is the stale noun — the Sunday plan is off the
+    // page. Two surfaces naming the same promise two ways is how a reader learns
+    // there are two promises.
+    const free = FAQ.find((item) => item.question === 'Is Hale free?')?.answer ?? '';
+    expect(free).toContain('the same dates and nudges on their own number');
   });
 
   it('reaches consent and privacy inside the top four questions', () => {
@@ -109,9 +172,7 @@ describe('the FAQ this build serves', () => {
   });
 
   it('carries the Canadian residency and teen-redaction posture (hard rule #1)', () => {
-    const answers = FAQ
-      .map((item) => item.answer)
-      .join(' ');
+    const answers = FAQ.map((item) => item.answer).join(' ');
     expect(answers).toContain('PIPEDA');
     expect(answers).toContain('Law 25');
     expect(answers).toContain('redacted from parents by default');

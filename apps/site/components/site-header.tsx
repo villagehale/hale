@@ -11,9 +11,9 @@ import { CONTACT_EMAIL, readSmsNumber } from '~/lib/text-entry';
  * The marketing header — the v4 liquid-glass nav pill, on every subpage.
  *
  * One design, whole site: this is the same floating glass pill the landing wears
- * inline over its shore hero (components/landing/v4/landing-v4.tsx), so a reader
- * crossing from / to /pricing never changes products. The landing keeps its nav
- * inline because it sits over the hero art; every other page renders this, sticky.
+ * the landing wears over its own hero (components/landing/v5/landing-v5.tsx), so
+ * a reader crossing from / to /pricing never changes products. Every page,
+ * landing included, renders THIS component, sticky.
  *
  * The theme control does NOT live here — v4 moved it to the footer switch, which
  * every page ends in. The bar carries the three pages that introduce the product,
