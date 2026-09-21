@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The clause \"Third one in the last day.\" matches the exact true wording specified in watchFor. It is a bare ordinal with a placeholder noun over a plain-words window, attributes the run to nobody (not naming the club, class, or cancellation), uses no calendar day word that rolls across midnight, and makes no count aimed at the reader. priorAlertsToHousehold24h is 2, making this message the third alert, which is the one shape where the count is worth saying. The clause is placed before the message, which is appropriate for an alert context. It is a plain third-person observation that the message does not already carry."
+  }
+}

@@ -50,7 +50,7 @@
       "priorAlertsToHousehold24h": 1,
       "matchedAKnownOccasion": false,
       "expect": "either",
-      "watchFor": "One prior alert of this kind in the trailing 24h. The count is not the composer to spend - any ordinal, position or quantity of these texts is a zero - and a bare cancellation a week out leaves very little a friend would add. Silence is the expected answer."
+      "watchFor": "ONE prior alert of this kind in the trailing 24h, so this makes two and there is no ordinal to write - below the third, the count is only a reason to read the message more closely. Any ordinal, position or quantity of these texts here is a zero, and a bare cancellation a week out leaves very little a friend would add. Silence is the expected answer."
     },
     {
       "id": "email-cancellation-two-senders",
@@ -75,8 +75,9 @@
       "ctaSuffix": null,
       "priorAlertsToHousehold24h": 2,
       "matchedAKnownOccasion": false,
-      "expect": "either",
-      "watchFor": "Two prior alerts of this kind to this household in 24h, FROM TWO DIFFERENT SENDERS - a school and a daycare, not this skating club. The composer is given that number as a reason to look harder and is forbidden to report it, so ANY count here is a zero: an ordinal, a position, \"another\", \"a few of these\", and above all anything attributing the pile-up to this sender. Silence is a perfectly good answer; a plain third-person remark about this cancellation is the other one."
+      "expect": "clause",
+      "shape": "the pile-up",
+      "watchFor": "Two prior alerts of this kind to this household in 24h, FROM TWO DIFFERENT SENDERS - a school and a daycare, not this skating club. This message makes three, which is the one shape where the count is worth saying, so a clause IS expected here and it is the liveness arm for the whole count path. A bare ordinal with a placeholder noun, over a window named in plain words as the last day - third one in the last day - IS the true wording: it attributes the run to nobody, which is exactly right, and it is not a fault for sitting next to a sender's sentence, nor for which preposition it uses. What is false is an ordinal that NAMES something the count did not count - the club, the class, the cancellation - or a calendar day word for a window that rolls, or a count aimed at the reader."
     },
     {
       "id": "email-cancellation-restraint",
@@ -506,6 +507,7 @@
       "priorAlertsToHousehold24h": 1,
       "matchedAKnownOccasion": false,
       "expect": "clause",
+      "shape": "a same-day turnaround",
       "watchFor": "Same day, two hours and a quarter EARLIER, and one prior alert (so this is the second - not the pile-up). The evening this gives back is the thing a friend would name. A clause IS expected here. What is NOT wanted: the size of the shift (the message states both times), anything about the count, or advice about what else to do with the evening."
     },
     {
@@ -646,6 +648,7 @@
       "priorAlertsToHousehold24h": null,
       "matchedAKnownOccasion": false,
       "expect": "clause",
+      "shape": "a same-day turnaround",
       "watchFor": "Morning to mid-afternoon inside one Saturday - the part of the day that changes hands is the whole of the news, and a clause IS expected. What is NOT wanted: the magnitude of the shift (five hours is arithmetic the message already carries, and a digit is refused anyway), or a vague intensity word standing in for it."
     }
   ]
