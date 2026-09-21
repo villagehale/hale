@@ -2520,6 +2520,12 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   @media (min-width: 640px) {
     .v5-hero { gap: 1.5rem; padding-bottom: 4.5rem; }
   }
+  /* The h1's last clause, which is also its accent segment. At 390px the line
+   * broke inside it — "You don’t miss / it." — and an orphan of the word the
+   * sentence turns on is the one break the hero cannot take. Unbreakable moves
+   * the break one word earlier and costs nothing; the alternative was a smaller
+   * face, and the size scale is measured. */
+  .v5-hero-tail { white-space: nowrap; }
   /* The sub answers the pronoun the H1 opens on, in the next line, so it is
    * held to the same reading measure and no wider. */
   .v5-hero-sub { max-width: 46ch; }

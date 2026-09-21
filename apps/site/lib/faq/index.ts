@@ -66,7 +66,7 @@ export const FAQ: readonly FaqItem[] = [
   {
     question: 'Is Hale free?',
     answer:
-      'Hale is free while it is new, and families who start now keep their founding rate. A co-parent is always free — the same week and reminders on their own number, never a second household to pay for.',
+      'Hale is free while it is new, and families who start now keep their founding rate. A co-parent is always free — the same dates and nudges on their own number, never a second household to pay for.',
   },
   {
     question: 'Do I need to use the website?',
@@ -81,6 +81,10 @@ export const FAQ: readonly FaqItem[] = [
   {
     question: 'Can you help when we travel?',
     answer: 'Not yet. Today I watch registration and what’s on where you live, in the GTA.',
+  },
+  {
+    question: 'Can you tell me who else is going?',
+    answer: 'Not yet. Today I only tell you about your own family, never anyone else’s.',
   },
   {
     question: 'Is Hale available outside Canada?',

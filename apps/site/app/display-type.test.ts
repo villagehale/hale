@@ -733,13 +733,16 @@ describe('the accent is neither slant nor colour', () => {
       }
     });
     expect(amberDisplay).toEqual([]);
-    // Positive control: amber is still painted, on what it is reserved to. The
-    // 01/02/03 numerals were the large-decorative example until v5 retired the
-    // numbered card grid (the sequence is the hero's spine now, and numbering it
-    // twice printed the same conversation twice); the solid CTA is the one that
-    // remains, and it is the reason the reservation exists.
+    // Positive control: amber is still painted, on the one rule that still paints
+    // it. The 01/02/03 numerals were the large-decorative example until v5
+    // retired the numbered card grid (the sequence is the hero's spine now, and
+    // numbering it twice printed the same conversation twice); the subpage
+    // eyebrow is what remains, and it is the reason the reservation exists. A
+    // bare `CSS.toContain('var(--color-amber)')` passes on the token being used
+    // for anything at all — moving the eyebrow's amber from `color` to
+    // `background` left it green — so the control names the rule and the property.
     expect(only('.v4-btn-solid', 'background')).toBe('var(--color-navy)');
-    expect(CSS).toContain('var(--color-amber)');
+    expect(only('.eyebrow', 'color')).toBe('var(--color-amber)');
   });
 
   it('never paints the small letterspaced caps in amber, which they fail AA in', () => {

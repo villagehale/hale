@@ -525,7 +525,7 @@
       },
       {
         "question": "Est-ce que Hale est gratuit?",
-        "answer": "Hale est gratuit tant qu’il est nouveau, et les familles qui commencent maintenant gardent leur tarif fondateur. Un coparent est toujours gratuit — la même semaine et les mêmes rappels sur son propre numéro, jamais un deuxième foyer à payer."
+        "answer": "Hale est gratuit tant qu’il est nouveau, et les familles qui commencent maintenant gardent leur tarif fondateur. Un coparent est toujours gratuit — les mêmes dates et les mêmes rappels sur son propre numéro, jamais un deuxième foyer à payer."
       },
       {
         "question": "Est-ce que je dois utiliser le site Web?",
@@ -538,6 +538,10 @@
       {
         "question": "Pouvez-vous nous aider en voyage?",
         "answer": "Pas encore. Aujourd’hui, je surveille les inscriptions et ce qui se passe là où vous habitez, dans la région du Grand Toronto."
+      },
+      {
+        "question": "Pouvez-vous me dire qui d’autre y sera?",
+        "answer": "Pas encore. Aujourd’hui, je ne vous parle que de votre propre famille, jamais de celle de quelqu’un d’autre."
       },
       {
         "question": "Est-ce que Hale est offert à l’extérieur du Canada?",

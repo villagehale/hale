@@ -54,6 +54,15 @@ interface Card {
   body: string;
 }
 
+/**
+ * The word space between the h1's two halves. It is Latin punctuation, not
+ * markup: Chinese sets solid, and a literal JSX space printed a visible gap
+ * mid-phrase ("你不会 错过。").
+ */
+function h1Separator(locale: Locale): string {
+  return locale === 'zh' ? '' : ' ';
+}
+
 export function LandingV5({ locale, smsNumber }: { locale: Locale; smsNumber: string }) {
   const t = getTranslator(locale, 'Landing');
   const common = getTranslator(locale, 'Common');
@@ -108,7 +117,9 @@ export function LandingV5({ locale, smsNumber }: { locale: Locale; smsNumber: st
         <h1 className="v4-display v4-hero-h1">
           {t('heroH1a')}
           <br />
-          {t('heroH1b')} <span className="v4-accent">{t('heroH1Accent')}</span>
+          {t('heroH1b')}
+          {h1Separator(locale)}
+          <span className="v4-accent v5-hero-tail">{t('heroH1Accent')}</span>
         </h1>
         <p className="v4-hero-sub v5-hero-sub">{t('heroSub')}</p>
 

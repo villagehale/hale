@@ -195,7 +195,7 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
             scrape or automate access to Hale outside the connections we offer, or resell, rent, or
             otherwise commercially exploit it;
           </li>
-          <li>misuse the AI assistant to generate harmful, deceptive, or abusive content.</li>
+          <li>misuse Hale to generate harmful, deceptive, or abusive content.</li>
         </ul>
       </LegalSectionBlock>
 

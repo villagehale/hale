@@ -921,8 +921,10 @@ describe('the page’s own shape — two eyebrows, one card grid, no arrow', () 
     // The sub answers the pronoun the h1 opens on, in the next line.
     expect(text).toContain('the sign-up morning that fills by 7:02');
     // The accent span is STRUCTURE (WordsPullUp and the h1 both segment on it),
-    // not a coloured word — .v4-accent is `color: inherit`.
-    expect(h1).toContain('class="v4-accent"');
+    // not a coloured word — .v4-accent is `color: inherit`. It also carries the
+    // nowrap class, because it is the h1's last clause and at 390px the line
+    // broke inside it ("You don’t miss / it.").
+    expect(h1).toContain('class="v4-accent v5-hero-tail"');
   });
 
   it('labels two sections and no more — the eyebrow stops being page furniture', () => {

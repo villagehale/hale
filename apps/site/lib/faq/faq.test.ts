@@ -80,13 +80,21 @@ describe('the FAQ this build serves', () => {
     expect(all).not.toContain('Monday morning');
   });
 
-  it('answers the two roadmap questions with "Not yet." and claims nothing else', () => {
+  it('answers the three roadmap questions with "Not yet." and claims nothing else', () => {
     // This is where the roadmap honestly lives: a landing page that advertises
     // what it has not built teaches a reader to discount everything else on it.
     const find = (q: string) => FAQ.find((item) => item.question === q)?.answer ?? '';
     const reviews = find('Will you tell me whether a class is any good?');
     const travel = find('Can you help when we travel?');
-    for (const answer of [reviews, travel]) expect(answer.startsWith('Not yet.')).toBe(true);
+    const whoElse = find('Can you tell me who else is going?');
+    for (const answer of [reviews, travel, whoElse])
+      expect(answer.startsWith('Not yet.')).toBe(true);
+    // Who else is going STOPS too, and harder than travel: a roster is another
+    // family's data, so the answer may name the rule Hale keeps and must claim
+    // no count, no other family and no date it will arrive.
+    expect(whoElse).toBe(
+      'Not yet. Today I only tell you about your own family, never anyone else’s.',
+    );
     // The travel answer STOPS. `find_activities` takes { subject, window?, childId? }
     // and nothing else, and its own description forbids a location in `subject`
     // — the town is the family's on-file GTA one, attached from their record. A
@@ -132,6 +140,16 @@ describe('the FAQ this build serves', () => {
     // Hale sends, so the absence above is a promise withheld, not a lost answer.
     expect(answers.toLowerCase()).toContain('a heads-up the week a registration opens');
     expect(answers).toContain('STOP works at any time');
+  });
+
+  it('says the co-parent line in the landing’s words, not its own', () => {
+    // The landing's how-it-works prose says "the same dates and nudges on their
+    // own number" (pinned in app/landing-v5.test.ts); the FAQ said "the same week
+    // and reminders", and the week is the stale noun — the Sunday plan is off the
+    // page. Two surfaces naming the same promise two ways is how a reader learns
+    // there are two promises.
+    const free = FAQ.find((item) => item.question === 'Is Hale free?')?.answer ?? '';
+    expect(free).toContain('the same dates and nudges on their own number');
   });
 
   it('reaches consent and privacy inside the top four questions', () => {

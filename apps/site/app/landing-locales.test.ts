@@ -102,6 +102,12 @@ function landingString(locale: string, key: string): string {
   return value;
 }
 
+/** The word space between the h1's two halves — Latin punctuation, so zh, which
+ * sets solid, takes none. Mirrors `h1Separator` in the landing component. */
+function h1Separator(locale: string): string {
+  return locale === 'zh' ? '' : ' ';
+}
+
 function advanceEm(line: string): number {
   let em = 0;
   for (const ch of line) {
@@ -232,16 +238,43 @@ describe('the loop renders in every locale', () => {
   it.each(routing.locales)(
     '%s fits each hero H1 line inside the 15ch column at the desktop ceiling',
     (locale) => {
-      // The markup forces one break: heroH1a, then heroH1b + a word space + the accent.
+      // The markup forces one break: heroH1a, then heroH1b + the separator + the accent.
       const lines = [
         landingString(locale, 'heroH1a'),
-        `${landingString(locale, 'heroH1b')} ${landingString(locale, 'heroH1Accent')}`,
+        `${landingString(locale, 'heroH1b')}${h1Separator(locale)}${landingString(locale, 'heroH1Accent')}`,
       ];
       for (const line of lines) {
         expect(advanceEm(line), `${locale}: "${line}"`).toBeLessThanOrEqual(H1_COLUMN_EM[locale]);
       }
     },
   );
+
+  it.each(routing.locales)('%s keeps the h1’s last clause in one piece', (locale) => {
+    // At 390px the English h1 wrapped to "I find it. / You don’t miss / it." —
+    // an orphan of the word the sentence turns on. The accent span is that last
+    // clause, so making it unbreakable moves the break one word earlier
+    // ("You don’t / miss it.") without touching the size scale.
+    //
+    // And the separator in front of it is a LATIN word space. zh sets solid, and
+    // the literal JSX space printed a visible gap mid-phrase ("你不会 错过。"), so
+    // the space is a per-locale value rather than markup.
+    const h1 = HTML[locale].match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
+    expect(h1, `${locale} · the h1 must render`).toContain('v4-hero-h1');
+    expect(h1).toContain(
+      `${landingString(locale, 'heroH1b')}${h1Separator(locale)}<span class="v4-accent v5-hero-tail">${landingString(locale, 'heroH1Accent')}</span>`,
+    );
+  });
+
+  it('sets no word space between the two halves of the zh h1', () => {
+    // The negative half of the pin above, spelled out: a re-hard-coded JSX space
+    // would still satisfy a `toContain` of the two halves in en and fr.
+    const h1 = HTML.zh.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
+    expect(h1).not.toContain(`${landingString('zh', 'heroH1b')} <span`);
+    // Positive control: en keeps the space it needs.
+    expect(HTML.en.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '').toContain(
+      `${landingString('en', 'heroH1b')} <span`,
+    );
+  });
 
   it('would have caught the zh accent that wrapped mid-compound', () => {
     // The line that shipped as "之后便 安静下 / 来。" at 1440×900 and put the hero CTA under the fold.

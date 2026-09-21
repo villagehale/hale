@@ -88,7 +88,11 @@ describe('theme mechanism — one switch, no page left behind', () => {
     postcss.parse(globalsCss()).walkAtRules('media', (rule) => {
       if (!rule.params.includes('prefers-color-scheme') || !rule.params.includes('dark')) return;
       rule.walkDecls((decl) => {
-        if (decl.prop.startsWith('--color') || decl.prop.startsWith('--v3-')) {
+        if (
+          decl.prop.startsWith('--color') ||
+          decl.prop.startsWith('--v3-') ||
+          decl.prop.startsWith('--v5-')
+        ) {
           offenders.push(`${decl.parent?.toString().split('{')[0]?.trim()} → ${decl.prop}`);
         }
       });
