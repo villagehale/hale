@@ -8,6 +8,9 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { type AsideOutcomeName, createVoicePass } from '~/lib/channel/voice-pass/compose';
+import type { AsideRefusal } from '~/lib/channel/voice-pass/guard';
+import { voiceClient } from '~/lib/loop/voice/compose';
 import { refreshAccessToken } from '~/lib/integrations/google-oauth';
 import {
   type CalendarAlertCounts,
@@ -24,11 +27,8 @@ import {
   emptyEmailAlertCounts,
 } from '~/lib/integrations/email-alert';
 import { type GoingCounts, emptyGoingCounts } from '~/lib/integrations/going';
-import { type AsideOutcomeName, createVoicePass } from '~/lib/channel/voice-pass/compose';
-import type { AsideRefusal } from '~/lib/channel/voice-pass/guard';
-import { voiceClient } from '~/lib/loop/voice/compose';
-import { loadCronSkill } from './skill';
 import { decryptTokens } from '~/lib/integrations/token-vault';
+import { loadCronSkill } from './skill';
 import {
   type ActiveConnectorConnection,
   type SweepableConnectorConnection,
@@ -228,48 +228,49 @@ export async function runConnectorSync(
   };
 }
 
-/** Every aside outcome at zero. Listed rather than derived from a union, because a
- * `Record` over the union is what forces this list to be updated when a new outcome is
- * named — the same reason PROACTIVE_CAP is a Record. */
-const ASIDE_OUTCOMES: readonly AsideOutcomeName[] = [
-  'aside',
-  'lane_dark',
-  'teen_redacted',
-  'client_unavailable',
-  'skill_unavailable',
-  'model_failed',
-  'empty',
-  'refused',
-];
-
-const ASIDE_REFUSALS: readonly AsideRefusal[] = [
-  'over_char_cap',
-  'not_gsm7_printable',
-  'carries_digit',
-  'carries_link',
-  'asks_a_question',
-  'solicits_reply',
-  'addresses_the_parent',
-  'echoes_a_reply_word',
-  'invented_capital',
-  'after_an_ask',
-  'echoes_the_core',
-  'too_many_segments',
-  'no_terminator',
-];
-
+/**
+ * Every aside outcome at zero, and every refusal at zero.
+ *
+ * OBJECT LITERALS, not a list run through `Object.fromEntries`. The comment here used to
+ * claim that "a `Record` over the union is what forces this list to be updated", and it was
+ * wrong: `Object.fromEntries` returns `{ [k: string]: T }`, so the `as Record<...>` that
+ * made it type-check was also what silenced the check. Widening `AsideRefusal` by one
+ * member left `tsc` at exit 0 and would have folded the new refusal in as `NaN`, because
+ * `undefined += 1` is what `asideRefusals[refusal] += 1` does to a key nobody listed.
+ *
+ * A literal annotated with the `Record` has no such hole: a new member of either union is a
+ * missing property here, which is a compile error at the one place that has to choose what
+ * the cron summary calls it. Same enforcement `PROACTIVE_CAP` gets, this time real.
+ */
 export function emptyAsideCounts(): Record<AsideOutcomeName, number> {
-  return Object.fromEntries(ASIDE_OUTCOMES.map((name) => [name, 0])) as Record<
-    AsideOutcomeName,
-    number
-  >;
+  return {
+    aside: 0,
+    lane_dark: 0,
+    teen_redacted: 0,
+    client_unavailable: 0,
+    skill_unavailable: 0,
+    model_failed: 0,
+    empty: 0,
+    refused: 0,
+  };
 }
 
 export function emptyAsideRefusalCounts(): Record<AsideRefusal, number> {
-  return Object.fromEntries(ASIDE_REFUSALS.map((name) => [name, 0])) as Record<
-    AsideRefusal,
-    number
-  >;
+  return {
+    over_char_cap: 0,
+    not_gsm7_printable: 0,
+    carries_digit: 0,
+    carries_link: 0,
+    asks_a_question: 0,
+    solicits_reply: 0,
+    addresses_the_parent: 0,
+    echoes_a_reply_word: 0,
+    invented_capital: 0,
+    after_an_ask: 0,
+    echoes_the_core: 0,
+    too_many_segments: 0,
+    no_terminator: 0,
+  };
 }
 
 /** Wire the real DB + queue into the sync deps. */

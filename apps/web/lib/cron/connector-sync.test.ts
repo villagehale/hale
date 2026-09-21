@@ -1,9 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { CALENDAR_ALERT_OUTCOMES } from '~/lib/integrations/calendar-alert';
 import { BOOKING_OUTCOMES, EMAIL_ALERT_OUTCOMES } from '~/lib/integrations/email-alert';
 import { GOING_OUTCOMES } from '~/lib/integrations/going';
 import { TRAVEL_DETECT_OUTCOMES } from '~/lib/travel/detect';
 import { googleGetFetch, runConnectorSync } from './connector-sync';
+import { loadCronSkill } from './skill';
 
 const NO_ALERTS = {
   emailAlerts: [] as const,
@@ -399,5 +402,50 @@ describe('the voice pass tally', () => {
     // appears once it is non-zero is a key nobody can graph.
     expect(Object.keys(summary.asides)).toHaveLength(8);
     expect(Object.keys(summary.asideRefusals)).toHaveLength(13);
+  });
+});
+
+/**
+ * THE PRODUCTION WIRING OF THE PASS — the half `connector-sync.pglite.test.ts` cannot
+ * reach.
+ *
+ * Every case in this file hands `runConnectorSync` a `syncOne` stub, and every case in the
+ * pglite file returns before the hook (no_parent_user, seeding, already_sent, gate_refused
+ * — the outcomes a test can reach with DB reads alone). So the object the lanes actually
+ * get, `proactiveSendPorts().aside`, is asserted by nothing: it is built once, in this
+ * module, out of `createVoicePass({ client: voiceClient, loadSkill: () => loadCronSkill(
+ * 'alert-aside') })`.
+ *
+ * The failure that wiring has, and it is silent: a skill NAME that does not resolve. There
+ * is no compile error for a string, `loadSkill` rejects at call time, the composer turns
+ * that into `skill_unavailable`, and every alert ships its deterministic core forever while
+ * a counter nobody is watching ticks. The skills lock cannot see it — it hashes the FILE,
+ * not the name the code asks for.
+ */
+describe('the voice pass wiring', () => {
+  it('resolves the skill name the ports ask for, with the register partial substituted', async () => {
+    // The REAL loader, the REAL name, off disk. A rename of alert-aside.md without a change
+    // here turns every aside into `skill_unavailable` and nothing else goes red.
+    const skill = await loadCronSkill('alert-aside');
+    expect(skill.meta.name).toBe('alert-aside');
+    expect(skill.meta.task).toBe('acknowledge');
+    expect(skill.instructions).toContain('THE COUNT, AND THE ONLY TRUE WAY TO SAY IT');
+    // The include is substituted rather than shipped as a marker — the partial's text is
+    // part of the hashed instructions, so a marker left in the body is a different prompt,
+    // and re-recording the eval after the fact is a full live pass.
+    expect(skill.instructions).not.toContain('{{include:');
+    expect(skill.instructions).toContain('GSM-7');
+  });
+
+  it('builds that port in ONE place, from the real composer', () => {
+    // A source scan for the same reason `holdStatus` has one: a second `aside:` literal is
+    // a second place a lane could end up pointed at a stub, and no type would notice.
+    const source = readFileSync(
+      fileURLToPath(new URL('./connector-sync.ts', import.meta.url)),
+      'utf8',
+    );
+    const built = source.match(/\n\s{4}aside: [A-Za-z]+\(/g) ?? [];
+    expect(built).toEqual(['\n    aside: createVoicePass(']);
+    expect(source).toContain("loadSkill: () => loadCronSkill('alert-aside')");
   });
 });
