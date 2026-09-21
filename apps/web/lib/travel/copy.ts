@@ -1,3 +1,4 @@
+import { namesAPerson } from '~/lib/channel/activity/deidentify';
 import type { ActivityPick } from '~/lib/channel/activity/lane';
 import { SLOTS_IN_TEXT } from '~/lib/channel/activity/share-page';
 import { childPhrase } from '~/lib/channel/checkin/copy';
@@ -124,13 +125,12 @@ export function travelBriefViolations(body: string, context: TravelBriefContext)
   const violations: string[] = [];
 
   if (context.rendered.length === 0) violations.push('no_picks');
-  for (const name of context.teenNames) {
-    const trimmed = name.trim();
-    if (trimmed !== '' && body.includes(trimmed)) {
-      violations.push('names_a_teen');
-      break;
-    }
-  }
+  // ON A WORD BOUNDARY, and `namesAPerson` rather than a substring test of its own: that
+  // is the boundary the outbound redactor uses, so the set of names this refuses is
+  // exactly the set that one replaces. A substring match refuses the WHOLE body, so its
+  // false positives are briefs a household never gets -- a teen called Al makes
+  // "Algonquin Outfitters" unsendable.
+  if (namesAPerson(body, context.teenNames)) violations.push('names_a_teen');
 
   // Subtract the pieces the body is ALLOWED to carry, then judge what is left. Order
   // matters only in that each subtraction removes the FIRST occurrence.

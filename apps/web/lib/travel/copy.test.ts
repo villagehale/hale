@@ -136,6 +136,30 @@ describe('travelBriefViolations', () => {
     expect(travelBriefViolations(body, context)).toContain('names_a_teen');
   });
 
+  /**
+   * ON A WORD BOUNDARY, the outbound redactor's own — `nameAnywhere`, through
+   * `namesAPerson`, so the set of names this refuses is exactly the set that one replaces.
+   *
+   * A substring match refuses the WHOLE text, so the cost of a false positive is a
+   * household with a short teen name never getting a brief at all: a teen called Al makes
+   * "Algonquin Outfitters" unsendable, and a teen called Ed does the same to "Edmonton".
+   */
+  it('reads a short teen name inside a longer word as the word, not the teen', () => {
+    const outfitters = pick({
+      name: 'Algonquin Outfitters',
+      sourceName: 'Algonquin Outfitters',
+    });
+    const short = { dayPhrase: 'the 12th to the 15th', rendered: [outfitters], teenNames: ['Al'] };
+    const body = brief({ picks: [outfitters], teenNames: ['Al'] });
+    expect(travelBriefViolations(body, short)).toEqual([]);
+
+    // The positive control the negative above needs: the same teen, standing as a word.
+    expect(travelBriefViolations(`${body} Al is coming too.`, short)).toContain('names_a_teen');
+    // And a possessive is still the name — the boundary is a letter or a digit, not a
+    // character class that lets an apostrophe smuggle one through.
+    expect(travelBriefViolations(`${body} That's Al's week.`, short)).toContain('names_a_teen');
+  });
+
   it('refuses a digit that traces to nothing', () => {
     const body = brief().replace("That's off", "Roughly 40 minutes away. That's off");
     expect(travelBriefViolations(body, context)).toContain('unbacked_digit');
