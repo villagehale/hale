@@ -89,6 +89,40 @@ describe('renderSequenceLeg', () => {
     }
   });
 
+  it('opens no sentence on a system word the register bans', () => {
+    // docs/voice.md rule 3: *noted* as a bare opener is a system word, and the ladder had
+    // three of them while the guide that bans them was shipping in the same branch. The
+    // rule is what is asserted, not the three sentences that broke it, so the next one is
+    // caught at the line it is written on. `Waitlisted #12, noted.` is untouched by it —
+    // the ban is on the OPENER, and a word can be ordinary English anywhere else.
+    const bodies = [
+      ...legs.map((leg) => renderSequenceLeg(leg, LEG_INPUT)),
+      renderCheckInReply({
+        shortlist: shortlist(),
+        timeZone: TZ,
+        now: NOW,
+        reply: { outcome: 'registered' },
+      }),
+      renderCheckInReply({
+        shortlist: shortlist(),
+        timeZone: TZ,
+        now: NOW,
+        reply: { outcome: 'missed' },
+      }),
+      renderReadinessAck({ portal: OAKVILLE, ready: true, fitNotes: THREE_KIDS }),
+      renderReadinessAck({ portal: OAKVILLE, ready: false, fitNotes: THREE_KIDS }),
+    ];
+    const bannedOpener = /(?:^|[.!?]\s+)(?:noted|filed|processed)\b/i;
+    for (const body of bodies) {
+      expect(bannedOpener.test(body), body).toBe(false);
+    }
+    // Positive control, or an absence test proves only that the regex never fires.
+    expect(bannedOpener.test('That is a spot. Noted: Richmond Hill Fall 2026 registered.')).toBe(
+      true,
+    );
+    expect(bannedOpener.test('Waitlisted #12, noted. Richmond Hill gives 36h.')).toBe(false);
+  });
+
   it('names the town, the cycle and the family-local open time in the heads-up', () => {
     const body = renderSequenceLeg('heads_up', LEG_INPUT);
     expect(body).toContain('Richmond Hill');
@@ -1263,7 +1297,10 @@ describe('VIL-338 · the course bind ack', () => {
 describe('VIL-338 · the readiness answer ack', () => {
   it('attributes a YES and does not re-ask on a NO', () => {
     const yes = renderReadinessAck({ portal: OAKVILLE, ready: true, fitNotes: THREE_KIDS });
-    expect(yes).toBe("Noted - you told me the setup on Oakville's portal is done.");
+    // Re-pinned: *noted* as a bare opener is on rule 3's banned list (docs/voice.md), and
+    // the attribution is what the sentence is for — it is the PARENT who says the setup is
+    // done, and Hale has no way to check, so the ack stays in the second person.
+    expect(yes).toBe("You told me the setup on Oakville's portal is done.");
     const no = renderReadinessAck({ portal: OAKVILLE, ready: false, fitNotes: THREE_KIDS });
     expect(no).toContain('a ServiceOakville account');
     expect(no).toContain('I will ask again the evening before');
