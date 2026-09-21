@@ -1,6 +1,7 @@
 import type { GuardDeps } from '@hale/agent';
 import { invokeTool } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
+import type { OfferedCandidate } from '~/lib/coach/tools';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import {
   type ChannelCoachToolArgs,
@@ -118,6 +119,7 @@ interface Harness {
 function harness(
   events: ScheduleEvent[] = [scheduleEvent()],
   teenChildIds: ReadonlySet<string> = new Set(),
+  offered: readonly OfferedCandidate[] = [],
 ): Harness {
   const port = fakePort();
   const audit: unknown[] = [];
@@ -128,6 +130,7 @@ function harness(
     reader: fakeReader(events),
     draftPort: port,
     villageTool: null,
+    offeredThisTurn: () => offered,
     activity: null,
     spots: null,
     onDraft: (actionId) => minted.push(actionId),
@@ -277,6 +280,68 @@ describe('propose_calendar_add', () => {
     expect(draft?.payload.title).toBe('Library storytime');
     expect(draft?.payload.startsAt).toBe('2026-08-05T14:00:00.000Z');
     expect(draft?.payload.reversalHandle).toBeUndefined();
+  });
+
+  /**
+   * PROVENANCE ON THE TEXTED ADD.
+   *
+   * Three of the four things that place a `family_events` row already record what
+   * placed it; the texted add dropped it on the floor while the row was still in hand,
+   * so every placement made over SMS — the surface the product is built on — was
+   * unattributable. The match is EXACT on the normalised title, because a fuzzy one
+   * would decide which venue a future verdict lands on.
+   */
+  const OFFERED: OfferedCandidate[] = [
+    {
+      title: 'Saturday storytime',
+      venue: 'Riverdale branch',
+      candidateId: 'cand-1',
+      placeId: 'places/abc',
+      civicVenueId: null,
+    },
+  ];
+
+  it('records the candidate it placed when the title is one Hale just offered', async () => {
+    const h = harness([scheduleEvent()], new Set(), OFFERED);
+
+    await h.call('propose_calendar_add', {
+      // The same string, with the whitespace and case a model routinely picks up.
+      title: '  saturday Storytime ',
+      date: '2026-08-05',
+      time: '10:00',
+      weekday: 'wed',
+    });
+
+    expect(h.port.drafts[0]?.payload.sourceRef).toEqual({
+      table: 'village_candidates',
+      id: 'cand-1',
+    });
+  });
+
+  it('records nothing when Hale never offered the thing the parent asked for', async () => {
+    const h = harness();
+
+    await h.call('propose_calendar_add', {
+      title: 'Dentist',
+      date: '2026-08-05',
+      time: '10:00',
+      weekday: 'wed',
+    });
+
+    expect(h.port.drafts[0]?.payload.sourceRef).toBeUndefined();
+  });
+
+  it('records nothing when the model reworded an offered title — a guess is not an identity', async () => {
+    const h = harness([scheduleEvent()], new Set(), OFFERED);
+
+    await h.call('propose_calendar_add', {
+      title: 'Storytime on Saturday',
+      date: '2026-08-05',
+      time: '10:00',
+      weekday: 'wed',
+    });
+
+    expect(h.port.drafts[0]?.payload.sourceRef).toBeUndefined();
   });
 
   it("is refused by the child-content guard for a teen's child id (rule #1)", async () => {

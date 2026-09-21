@@ -57,3 +57,4 @@ export * from './email-alert-offers.js';
 export * from './activity-bookings.js';
 export * from './check-in.js';
 export * from './email-forwards.js';
+export * from './activity-reviews.js';

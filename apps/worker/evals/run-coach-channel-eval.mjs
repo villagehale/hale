@@ -472,7 +472,7 @@ const FIXTURE_WEB_PICK = {
  */
 const spotPage = (name) => readFileSync(join(SPOTS_FIXTURES, `${name}.html`), 'utf8');
 
-function toSmsReply(raw, children, planOffer, referral) {
+function toSmsReply(raw, children, planOffer, referral, nearby) {
   const flattened = plainText(raw);
   if (flattened === '') return null;
   const redacted = redactTeenNames(flattened, children, NOW);
@@ -483,9 +483,61 @@ function toSmsReply(raw, children, planOffer, referral) {
     children,
     NOW,
   );
-  if (!suffix) return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
+  if (!suffix) {
+    // Measured WITH the body, mirroring reply.ts: the count is protected from the trim,
+    // not from the budget, and room is reserved only when the answer as composed names
+    // its subject.
+    const reserved = nearbyClause(redacted, nearby) ?? '';
+    const fittedAlone = fitToBudget(redacted, MAX_REPLY_SEGMENTS, reserved);
+    const clause = fittedAlone === null ? null : nearbyClause(fittedAlone, nearby);
+    return clause === null ? fittedAlone : `${fittedAlone} ${clause}`;
+  }
   const fitted = fitToBudget(dropDuplicateOffer(redacted, suffix), MAX_REPLY_SEGMENTS, suffix);
   return `${fitted} ${suffix}`;
+}
+
+/**
+ * Mirrors `nearbyClause` in reply.ts. Hale composes it and the model never sees it, so
+ * the eval's job is not to grade the sentence — it is to prove the GATE, that the count
+ * lands only on a reply that names its subject and names no other offered activity.
+ *
+ * BOTH BRANCHES ARE EXERCISED by the `nearby-count-*` pair: one fixture at k>=3 whose
+ * reply must carry the clause verbatim, and one at k=2 that passes no `nearby` at all
+ * and must carry no count. The same seam is covered end to end, model-free, by
+ * lib/__journey__/review-reaches-the-next-parent.test.ts; what only a real reply can
+ * show is whether the model's own answer ever names the offer in full, which is the
+ * condition this gate makes load-bearing.
+ */
+function nearbyClause(fittedBody, nearby) {
+  if (!nearby) return null;
+  const haystack = [fittedBody.toLowerCase()];
+  if (!namesInFull(haystack[0], nearby.title)) return null;
+  if ((nearby.otherTitles ?? []).some((title) => mentionsActivity(haystack, title))) return null;
+  return nearby.clause;
+}
+
+/** Mirrors `distinctiveWords` / `mentionsActivity` in followup/screen.ts, and reply.ts's
+ * own stricter reading of them: EVERY distinctive word to attach the count, ANY ONE of
+ * them to be confused with another offer. */
+const NEARBY_GENERIC_WORDS = new Set(['with', 'from', 'this', 'that', 'your', 'our']);
+function distinctiveWords(title) {
+  return [
+    ...new Set(
+      String(title)
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((word) => word.length >= 4 && !NEARBY_GENERIC_WORDS.has(word)),
+    ),
+  ];
+}
+function namesInFull(body, title) {
+  const words = distinctiveWords(title);
+  return words.length > 0 && words.every((word) => body.includes(word));
+}
+function mentionsActivity(bodies, title) {
+  const words = distinctiveWords(title);
+  if (words.length === 0) return false;
+  return bodies.some((body) => words.some((word) => body.includes(word)));
 }
 
 // ── replicated: apps/web/lib/channel/coach/tools.ts buildChannelCoachTools ──
@@ -1790,6 +1842,7 @@ async function main() {
         children,
         calls.find((call) => call.tool === 'offer_full_plan')?.offer,
         forward ? `${forward} ${FIXTURE_REFERRAL_LINK}` : undefined,
+        fixture.nearby,
       );
       // What the model was actually shown: every tool input it sent, plus the fixture
       // week it could have read. Audited inputs are the faithful record of the former.
@@ -1862,6 +1915,23 @@ async function main() {
                 webFind: calls.some((call) => call.tool === 'find_activities')
                   ? `${FIXTURE_WEB_PICK.name} (${FIXTURE_WEB_PICK.ageFit}), ${FIXTURE_WEB_PICK.when}, per ${FIXTURE_WEB_PICK.sourceName} - source: web, NOT verified by Hale`
                   : null,
+                // THE NEARBY COUNT, on the same terms as the referral link and the web
+                // pick: Hale composes it from what other households already answered and
+                // the runtime appends it AFTER the trim, so the model neither wrote it
+                // nor saw it. Without this line the judge cannot source the number and
+                // reads it as invented social proof — on this pair's first live run it
+                // scored the reply a 1 and called the count a fabrication, while the
+                // same body without the clause drew a 5. The value carries its own
+                // provenance for the reason `webFind`'s does: the rubric is a cache key,
+                // so a sentence of context costs nothing here and re-mints 42 fixtures
+                // there.
+                //
+                // `undefined`, not `null`, on every turn without one — JSON.stringify
+                // drops undefined, so every judge verdict already committed stays valid.
+                nearbyCountAppended:
+                  fixture.nearby && reply !== null && reply.endsWith(fixture.nearby.clause)
+                    ? `${fixture.nearby.clause} - composed by Hale from what other households answered and appended by the runtime; the model neither wrote this sentence nor saw it`
+                    : undefined,
                 // What THIS text's Village read returned, split the way the
                 // tool splits it — a judge shown only titles cannot tell an offer Hale
                 // could stand behind from one it could not.

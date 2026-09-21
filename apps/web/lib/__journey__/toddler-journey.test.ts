@@ -181,6 +181,7 @@ const TEEN_WINDOW = registrationWindowRow({
 const CIVIC_SESSIONS: CivicSessionForFamily[] = [
   {
     id: 'civic-1',
+    venueId: 'civic-venue-markham-village',
     title: 'Family Storytime',
     summary: null,
     recurrence: 'weekly',
@@ -206,6 +207,7 @@ const CIVIC_SESSIONS: CivicSessionForFamily[] = [
     // A teen coding club at the same branch. It must never reach this household —
     // the band excludes both children, and that is the projection's own filter.
     id: 'civic-2',
+    venueId: 'civic-venue-markham-village',
     title: 'Teen Coding Club',
     summary: null,
     recurrence: 'weekly',

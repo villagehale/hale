@@ -76,6 +76,13 @@ export const villageCandidates = pgTable(
     rating: numeric('rating', { precision: 2, scale: 1 }),
     ratingCount: integer('rating_count'),
     placeId: text('place_id'),
+    /** The `civic_venues` row a civic-registry candidate was projected from — the one
+     * identity for this kind of row that is venue-grain and shared across families
+     * (global, UNIQUE (system, external_id)). Null on every non-civic row and on every
+     * civic row projected before migration 0123, which reads downstream as "no shared
+     * identity" rather than as a guess. No FK: the registry has its own supersession
+     * lifecycle, and a stale id and a null are the same answer here. */
+    civicVenueId: uuid('civic_venue_id'),
     /** Honest, model-emitted attribute hints — a coarse price band
      * ('free'|'low'|'moderate'|'high'), a human age hint ("3–5 years"), and an
      * indoor/outdoor tag ('indoor'|'outdoor'|'both'). All nullable + free text (not

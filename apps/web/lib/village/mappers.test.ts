@@ -32,6 +32,7 @@ function candidate(overrides: Partial<VillageCandidate> = {}): VillageCandidate 
     rating: null,
     ratingCount: null,
     placeId: null,
+    civicVenueId: null,
     priceLevel: null,
     ageRange: null,
     indoorOutdoor: null,

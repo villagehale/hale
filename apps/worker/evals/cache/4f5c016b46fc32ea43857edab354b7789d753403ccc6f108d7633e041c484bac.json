@@ -1,0 +1,10 @@
+{
+  "value": {
+    "verdict": "not_worth_it",
+    "tags": [
+      "too_crowded",
+      "disorganised"
+    ]
+  },
+  "stopReason": "tool_use"
+}

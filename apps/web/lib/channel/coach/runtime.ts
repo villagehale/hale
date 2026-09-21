@@ -34,7 +34,14 @@ import { MINT_FETCH_TIMEOUT_MS } from '~/lib/channel/spots/tool';
 import { type AgentContext, type LoadAgentContextInput, loadAgentContext } from '~/lib/coach/context';
 import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation';
 import { buildGuardDeps } from '~/lib/coach/guards';
-import { searchVillageTool } from '~/lib/coach/tools';
+import { type OfferedCandidate, searchVillageTool } from '~/lib/coach/tools';
+import {
+  activityReviewsSurfaceEnabled,
+  familyAreaKey,
+  nearbyClauseTarget,
+  offeredSubject,
+  readSubjectVerdicts,
+} from '~/lib/reviews/aggregate';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { createFetchBody } from '~/lib/registration/verify-sweep';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
@@ -45,7 +52,12 @@ import {
   productionRegistrationContextPorts,
 } from './registration-context';
 import { type ReplyChild, toSmsReply } from './reply';
-import { buildChannelCoachTools, channelScheduleReader } from './tools';
+import {
+  type TurnOfferLedger,
+  buildChannelCoachTools,
+  channelScheduleReader,
+  createTurnOfferLedger,
+} from './tools';
 
 /**
  * VIL-221 · C2 — the coach, over SMS.
@@ -156,7 +168,23 @@ export interface ChannelCoachPorts {
     onShare: (share: ReferralShare) => void,
     onPromise: (promise: ActivityPromise) => void,
     onWatch: (watch: SpotWatchIntent) => void,
+    /** The turn's offer ledger, owned by the runtime so the provenance match and the
+     * nearby count read the same list. */
+    offered: TurnOfferLedger,
   ): RegisteredTool[];
+  /**
+   * WHAT OTHER FAMILIES NEARBY SAID about one of the activities this turn offered, or
+   * null — which is the answer for every turn until three REAL households have answered
+   * about one subject, and while `ACTIVITY_REVIEWS_SURFACE` is off.
+   *
+   * A PORT rather than a read inside the loop: the decision is one indexed scan and a
+   * pure gate, and putting it behind the same seam as everything else here keeps the
+   * runtime testable without a database.
+   */
+  nearbySaid(
+    familyId: string,
+    offers: readonly OfferedCandidate[],
+  ): Promise<{ clause: string; title: string; otherTitles: string[] } | null>;
   guardDeps: GuardDeps;
   /**
    * The Anthropic client the loop drives, resolved LAZILY — a function, not a value.
@@ -198,6 +226,10 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // family, so a turn that registered two changed its mind mid-compose and the one
       // the parent can read is the one in the sentence it ended up writing.
       let activityPromise: ActivityPromise | null = null;
+      // What `search_village` put in front of the parent this turn — the rows, not the
+      // sentences. It feeds two things that must never disagree: the `sourceRef` a
+      // texted add records, and the nearby count appended below.
+      const offeredThisTurn = createTurnOfferLedger();
       // The course page this turn started watching, if it started one. LAST CALL WINS
       // like the two above: one arming sentence can be written per message, so a second
       // call is a model that changed its mind mid-compose, and the page the parent can
@@ -287,6 +319,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             (watch) => {
               spotWatch = watch;
             },
+            offeredThisTurn,
           );
           // A tool that throws, a provider that times out, a step that runs long: the
           // loop can break anywhere, and by then the drafts it made are already rows.
@@ -342,6 +375,14 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           }
 
           const share = referral as ReferralShare | null;
+          const offer = planOffer as PlanOffer | null;
+          // PRECEDENCE: a promise or a link wins, and the count is not even looked up.
+          // A count is the least important thing in any message that also carries one of
+          // those — and a turn that offered nothing has nothing to count about.
+          const nearby =
+            offer === null && share === null
+              ? await ports.nearbySaid(turn.familyId, offeredThisTurn.read())
+              : null;
           // What the trim threw away, reported HERE rather than from inside the string
           // function: an answer past the two-segment ceiling is work this turn already
           // paid a model (and sometimes a 50s web search) for, and nothing downstream can
@@ -350,8 +391,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           const reply = toSmsReply(result.answer, {
             children,
             now,
-            planOffer: (planOffer as PlanOffer | null)?.sentence,
+            planOffer: offer?.sentence,
             referral: share ? referralBlock(share) : undefined,
+            nearby: nearby ?? undefined,
             onTrimmed: (overBy) => {
               trimmedOverBy = overBy;
             },
@@ -385,7 +427,16 @@ function anthropicClient(): AgentClient {
  * queue indistinguishable from one asked for by tap (rule #3/#4/#6).
  */
 export function productionChannelCoach(database: Database): ChannelCoachRuntime {
-  return channelCoachRuntime({
+  return channelCoachRuntime(productionChannelCoachPorts(database));
+}
+
+/**
+ * The ports themselves, exported so a test can drive the REAL ones. Two lines below —
+ * the village tool's ledger callback and the add verb's read of it — are a pair that
+ * compiles perfectly when either half is missing, and a fake port cannot fail on that.
+ */
+export function productionChannelCoachPorts(database: Database): ChannelCoachPorts {
+  return {
     client: anthropicClient,
     loadSkill: () => loadCronSkill('coach-channel-sms'),
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
@@ -398,12 +449,16 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
         DEFAULT_TIMEZONE,
         now,
       ),
-    buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch) =>
-      buildChannelCoachTools({
+    buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch, offered) => {
+      return buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database, turn.now),
         draftPort: productionChannelDraftPort(database, anthropicClient(), turn.now),
-        villageTool: searchVillageTool(database),
+        // The turn's offer ledger, written by the search verb and read by the add verb:
+        // a placement should carry what placed it, and the process already holds the row.
+        // Never shown to the model, which is the whole point.
+        villageTool: searchVillageTool(database, offered.record),
+        offeredThisTurn: offered.read,
         // The second activity source. Same key, same fail-closed resolver shape as the
         // loop's — a turn that could reach Anthropic for the loop and not for the search
         // is not a state worth being able to represent.
@@ -431,7 +486,9 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
         onPromise,
         onWatch,
         now: turn.now,
-      }),
+      });
+    },
+    nearbySaid: (familyId, offers) => nearbySaidFor(database, familyId, offers),
     guardDeps: buildGuardDeps(database),
     runAgent,
     recordRun: async (run) => {
@@ -449,7 +506,7 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
       });
     },
     now: () => new Date(),
-  });
+  };
 }
 
 async function loadReplyChildren(database: Database, familyId: string): Promise<ReplyChild[]> {
@@ -461,4 +518,29 @@ async function loadReplyChildren(database: Database, familyId: string): Promise<
     })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
+}
+
+/**
+ * The production `nearbySaid`: the surface flag, the family's area, one indexed scan,
+ * and the pure gate.
+ *
+ * IT FAILS CLOSED AT EVERY STEP and silence is always an acceptable answer — the flag is
+ * off for months by design, a household with no FSA-shaped area has no "near you", and an
+ * offer with no shared identity has nothing to pool on.
+ */
+export async function nearbySaidFor(
+  database: Database,
+  familyId: string,
+  offers: readonly OfferedCandidate[],
+): Promise<{ clause: string; title: string; otherTitles: string[] } | null> {
+  if (!activityReviewsSurfaceEnabled()) return null;
+  if (offers.length === 0) return null;
+  const subjects = offers
+    .map(offeredSubject)
+    .filter((subject): subject is NonNullable<typeof subject> => subject !== null);
+  if (subjects.length === 0) return null;
+  const areaKey = await familyAreaKey(database, familyId);
+  if (areaKey === null) return null;
+  const verdicts = await readSubjectVerdicts(database, subjects, areaKey);
+  return nearbyClauseTarget(offers, verdicts);
 }

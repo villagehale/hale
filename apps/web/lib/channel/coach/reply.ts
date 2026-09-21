@@ -1,4 +1,5 @@
 import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
+import { distinctiveWords, mentionsActivity } from '~/lib/channel/followup/screen';
 import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
 
@@ -69,6 +70,22 @@ export interface SmsReplyArgs {
    * thing the message exists to deliver.
    */
   referral?: string;
+  /**
+   * WHAT OTHER FAMILIES NEARBY SAID about ONE of the activities this turn offered, and
+   * the offered titles it must not be confused with.
+   *
+   * HALE-COMPOSED AND NEVER SEEN BY THE MODEL, unlike the two above. That is the whole
+   * design: this surface has no fact lint (`findInventedFacts` guards six composers and
+   * none of them is the SMS coach), and the skill forbids a count as its own sentence —
+   * so a "3" handed to the model can come out as "a few", or attached to the wrong pick
+   * when two are listed. It rides the protected-suffix seam instead, appended after the
+   * fit, so there is nothing for a model to reword and nothing for a trim to take.
+   *
+   * The naming check is HERE rather than at the caller because only the FITTED body is
+   * what the parent reads: a clause about a candidate the trim removed would be a count
+   * about something the message no longer mentions.
+   */
+  nearby?: { clause: string; title: string; otherTitles: readonly string[] };
   /**
    * Called with how many SMS units went over the side when an answer had to be trimmed.
    *
@@ -285,7 +302,17 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     args.children,
     args.now,
   );
-  if (suffix === '') return fitToBudget(redacted, MAX_REPLY_SEGMENTS, '', args.onTrimmed);
+  if (suffix === '') {
+    // MEASURED WITH THE BODY, like the two above it: a clause appended to an answer
+    // already at the ceiling is how a two-segment reply quietly becomes three, and the
+    // count is the one part of this message nobody is paying attention to. Room is
+    // reserved only when the answer as composed names the target, and the clause is
+    // dropped anyway if the trim took the name away with it.
+    const reserved = nearbyClause(redacted, args.nearby) ?? '';
+    const fittedAlone = fitToBudget(redacted, MAX_REPLY_SEGMENTS, reserved, args.onTrimmed);
+    const nearby = nearbyClause(fittedAlone, args.nearby);
+    return nearby === null ? fittedAlone : `${fittedAlone} ${nearby}`;
+  }
 
   // The tools told the model to hand these in rather than write them into the answer;
   // this is the backstop for when it does both, because the visible cost is the same
@@ -294,8 +321,45 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   // Nothing but the suffix left: the model answered with it and nothing else, so it IS
   // the reply. Joining an empty answer to it would send a leading space.
   if (answer === '') return suffix;
+  // PRECEDENCE, and it is deliberate rather than an omission: when this turn also made
+  // a promise or handed over a link, the nearby count is dropped. A count is the least
+  // important thing in any message that also carries one of those.
   const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, suffix, args.onTrimmed);
   return `${fitted} ${suffix}`;
+}
+
+/**
+ * The nearby count, appended only when it is UNAMBIGUOUS — the gate is deterministic and
+ * every failure is silence.
+ *
+ * The fitted body must name the subject of the count and must name no other activity the
+ * turn offered — and the two tests are DELIBERATELY ASYMMETRIC, because both fail closed
+ * in opposite directions. Naming the target takes EVERY distinctive word of its title;
+ * naming another offer takes any one of them (`mentionsActivity`, the follow-up screen's
+ * own matcher). Under the any-word rule in both places, "Saturday works, add it" counts
+ * as naming "Saturday storytime", and a count about one activity lands on a sentence
+ * about another.
+ *
+ * PRECEDENCE: a turn that also registered a plan offer or a referral drops this
+ * altogether (see the caller). A count is the least important thing in any message that
+ * also carries a promise or a link.
+ */
+function nearbyClause(
+  fittedBody: string,
+  nearby: SmsReplyArgs['nearby'],
+): string | null {
+  if (!nearby) return null;
+  const haystack = [fittedBody.toLowerCase()];
+  if (!namesInFull(haystack[0] as string, nearby.title)) return null;
+  if (nearby.otherTitles.some((title) => mentionsActivity(haystack, title))) return null;
+  return nearby.clause;
+}
+
+/** Every distinctive word of the title, and there has to be at least one — a title with
+ * none ("Drop-in class") is a title this cannot tell apart from an ordinary sentence. */
+function namesInFull(body: string, title: string): boolean {
+  const words = distinctiveWords(title);
+  return words.length > 0 && words.every((word) => body.includes(word));
 }
 
 /**

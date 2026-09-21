@@ -76,6 +76,9 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
     loadChildren: async () => [TEEN],
     loadRegistrationWindows: async () => [],
     buildTools: () => [] as RegisteredTool[],
+    // Nothing nearby by default: the surface flag is off for months, so silence is the
+    // ordinary answer and the cases that exercise it override this.
+    nearbySaid: async () => null,
     guardDeps: { async writeAudit() {} },
     // Never reached: `runAgent` is injected below, and it is the only consumer.
     client: () => ({ messages: {} }) as never,
@@ -433,5 +436,66 @@ describe('the watch a turn started', () => {
     const result = await channelCoachRuntime(p).respond(turn('what is on thursday'), []);
 
     expect(result.spotWatch).toBeNull();
+  });
+});
+
+/**
+ * WHEN THE NEARBY COUNT IS EVEN LOOKED UP.
+ *
+ * A count is the least important thing in any message that also carries a promise or a
+ * link, so a turn that registered either one does not ask — not "asks and discards",
+ * which would pay an indexed scan to throw the answer away.
+ */
+describe('the nearby count', () => {
+  it('asks, and appends what comes back, on an ordinary turn', async () => {
+    const p = ports({
+      runAgent: answering('Riverdale storytime runs Saturdays at 10.'),
+      nearbySaid: async () => ({
+        clause: '3 families near you say Riverdale storytime is worth it.',
+        title: 'Riverdale storytime',
+        otherTitles: [],
+      }),
+    });
+
+    const { reply } = await channelCoachRuntime(p).respond(turn(), []);
+
+    expect(reply).toContain('3 families near you say Riverdale storytime is worth it.');
+  });
+
+  it('does not even ask when the turn offered a plan', async () => {
+    const asked: string[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        const offer = args.tools.find((tool) => tool.name === 'offer_full_plan');
+        if (!offer) throw new Error('the runtime built no offer verb');
+        await offer.handler({ summary: 'sleep' } as never, {} as never);
+        return answering('Riverdale storytime runs Saturdays at 10.')(args);
+      },
+      buildTools: (_turn, _onDraft, onOffer) => [
+        {
+          name: 'offer_full_plan',
+          description: 'offer',
+          inputSchema: {},
+          handler: async () => {
+            onOffer({ summary: 'sleep', sentence: "Want the full plan? Reply YES and I'll send it." } as never);
+            return { offered: true };
+          },
+        } as never,
+      ],
+      nearbySaid: async (familyId) => {
+        asked.push(familyId);
+        return {
+          clause: '3 families near you say Riverdale storytime is worth it.',
+          title: 'Riverdale storytime',
+          otherTitles: [],
+        };
+      },
+    });
+
+    const { reply } = await channelCoachRuntime(p).respond(turn(), []);
+
+    expect(asked).toEqual([]);
+    expect(reply).not.toContain('families near you');
+    expect(reply).toContain("Want the full plan?");
   });
 });

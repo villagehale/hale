@@ -125,6 +125,29 @@ export interface FamilyExportDocument {
     lastAnsweredAt: string | null;
     notes: { notedOn: string; note: string; expiresAt: string }[];
   };
+  /**
+   * What this household said about the activities Hale placed for it — a verdict and up
+   * to three tags per public venue.
+   *
+   * FAMILY-SCOPED, NOT REQUESTER-SCOPED, unlike the day notes above, and the reason is in
+   * the data rather than in a policy: a verdict is a household's position on a PUBLIC
+   * venue, with no free text, no child name, and no sensitive or teen placement behind it
+   * (the capture pass refuses all three before a model ever reads the reply). There is
+   * nothing in the row a co-parent may not see.
+   *
+   * THE PARENT'S SENTENCE IS NOT HERE, because it is stored nowhere. It survives only on
+   * the inbound message row it arrived on. "Private" is true; "recoverable" is true only
+   * through that row.
+   */
+  activityReviews: {
+    subjectSource: 'place' | 'civic_venue';
+    subjectRef: string;
+    areaKey: string;
+    childAgeBand: string | null;
+    verdict: string;
+    tags: string[];
+    createdAt: string;
+  }[];
   /** The full, teen-redacted audit trail — the right-to-access record. */
   trail: TrailView[];
 }
@@ -366,6 +389,29 @@ export async function assembleFamilyExport(
     })),
   };
 
+  const reviewRows = await database
+    .select({
+      subjectSource: schema.activityReviews.subjectSource,
+      subjectRef: schema.activityReviews.subjectRef,
+      areaKey: schema.activityReviews.areaKey,
+      childAgeBand: schema.activityReviews.childAgeBand,
+      verdict: schema.activityReviews.verdict,
+      tags: schema.activityReviews.tags,
+      createdAt: schema.activityReviews.createdAt,
+    })
+    .from(schema.activityReviews)
+    .where(eq(schema.activityReviews.familyId, familyId))
+    .orderBy(schema.activityReviews.createdAt);
+  const activityReviews = reviewRows.map((row) => ({
+    subjectSource: row.subjectSource,
+    subjectRef: row.subjectRef,
+    areaKey: row.areaKey,
+    childAgeBand: row.childAgeBand,
+    verdict: row.verdict,
+    tags: row.tags,
+    createdAt: row.createdAt.toISOString(),
+  }));
+
   await database.insert(schema.auditLog).values({
     familyId,
     actor: deps.actorUserId,
@@ -391,6 +437,7 @@ export async function assembleFamilyExport(
     watchedSpots,
     activityBookings,
     eveningCheckIn,
+    activityReviews,
     trail,
   };
 }

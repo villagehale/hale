@@ -345,6 +345,8 @@ export const AUDIT_VERBS = [
   'evening_check_in_stopped',
   'evening_check_in_answered',
   'evening_check_in_cadence_changed',
+  // ── the review pool: the ONE verb the capture pass writes, on every model read ──
+  'activity_verdict_read',
   'activity_followup_sent',
   'activity_followup_shared',
   'village_intro_card_sent',
@@ -1083,6 +1085,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   // rather than "a plan was sent" over three texts that may not all have landed. The
   // sentence has to say MESSAGE for the same reason: a plan is 2-3 texts (compose.ts),
   // and "Hale sent you a coaching plan" three times over reads as three plans.
+  // Written whenever the parent's reply reached a model, INCLUDING the reads that
+  // stored nothing — a read is processing whether or not it produced a row (rule #6).
+  // No `TARGET_NOUNS` entry: `channel_messages` is not in that table and the check-in
+  // verb already degrades to 'record', so adding one would change how every existing
+  // check-in row renders, which is not this feature's business.
+  activity_verdict_read: { sentence: 'read what you said about how it went', family: 'note' },
   coach_plan_message_sent: { sentence: 'Hale texted you part of a coaching plan', family: 'note' },
   coach_plan_check_in_sent: {
     sentence: 'Hale checked in on your plan',

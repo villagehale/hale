@@ -7,6 +7,13 @@ import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { dayKeyOf, formatCalendarDayLabel } from '~/lib/format/datetime';
 import { CONFIDENCE_FLOOR, writeFact } from '~/lib/memory/facts';
+import {
+  activityReviewsSurfaceEnabled,
+  familyAreaKey,
+  offeredSubject,
+  readSubjectVerdicts,
+  subjectKey,
+} from '~/lib/reviews/aggregate';
 import { toVillageCandidateView } from '~/lib/village/mappers';
 import { type StandingOption, selectStandingOption } from '~/lib/village/standing-option';
 import { visibleCandidates } from '~/lib/village/visibility';
@@ -120,13 +127,84 @@ async function standingOptionForFamily(
 }
 
 /** One activity Hale may actually put in front of a parent. Every field is non-null
- * by construction — an offer a parent cannot turn up to is not an offer. */
+ * by construction — an offer a parent cannot turn up to is not an offer.
+ *
+ * NO ID, AND THAT IS LOAD-BEARING. Provenance travels beside the offer, never through
+ * it: an id the model can see is an id the model can invent, reword or attach to the
+ * wrong pick, and `inputExamples` on this surface are cached outside the protections
+ * message content gets (rule #1). See {@link OfferedCandidate}. */
 interface OfferableActivity {
   title: string;
   kind: string;
   summary: string;
   venue: string;
   when: string;
+}
+
+/**
+ * The same offer as the PROCESS sees it — the row behind each candidate the tool just
+ * emitted, so whatever places one can record what placed it.
+ *
+ * `title` is the exact string the model was handed, which is what makes an EXACT match
+ * possible downstream instead of a fuzzy one. A guess is not an identity.
+ */
+export interface OfferedCandidate {
+  title: string;
+  /** The verified venue the offer named — the grain a pooled verdict is actually about,
+   * since the subject behind it is a place or a civic venue and never a programme. A
+   * count that named the title would say three families rated the Saturday storytime
+   * when what they rated was the branch it runs in. */
+  venue: string;
+  candidateId: string;
+  placeId: string | null;
+  civicVenueId: string | null;
+}
+
+/** One row as both halves see it: what the model is shown, and what the process keeps
+ * about it. Paired rather than two arrays so a drop can never take one and leave the
+ * other — that divergence is a count attached to the wrong activity. */
+interface OfferableEntry {
+  candidate: OfferableActivity;
+  offer: OfferedCandidate | null;
+}
+
+/**
+ * THE OTHER HALF OF "NEGATIVES ARE NEVER SPOKEN, ONLY RANKED" (founder decision 3).
+ *
+ * A subject three or more households near this family have answered about, mostly
+ * unfavourably, is DROPPED from what the model is shown whenever there is anything else
+ * to show — so the parent is never offered it rather than warned about it. Nothing is
+ * said about it anywhere, here or downstream: `renderVerdictClause` returns null for the
+ * same pool, and this function returns a list, never a sentence.
+ *
+ * WHEN EVERY OFFER IS IN THAT STATE THEY ALL STAND, in the order they came. Sorting them
+ * last is what dropping them already is when there is an alternative, and a parent asking
+ * what is on this week is owed the honest list rather than silence.
+ *
+ * It FAILS OPEN INTO THE ORDINARY ORDER at every step — dark flag, no shared identity, no
+ * FSA-shaped area — because the pooled opinion is an improvement on the ranking, never a
+ * precondition for answering.
+ */
+async function withoutPooledNegatives(
+  database: Database,
+  familyId: string,
+  offerable: readonly OfferableEntry[],
+): Promise<readonly OfferableEntry[]> {
+  if (!activityReviewsSurfaceEnabled()) return offerable;
+  const subjectOf = (entry: OfferableEntry) => (entry.offer ? offeredSubject(entry.offer) : null);
+  const subjects = offerable
+    .map(subjectOf)
+    .filter((subject): subject is NonNullable<typeof subject> => subject !== null);
+  if (subjects.length === 0) return offerable;
+  const areaKey = await familyAreaKey(database, familyId);
+  if (areaKey === null) return offerable;
+
+  const verdicts = await readSubjectVerdicts(database, subjects, areaKey);
+  const kept = offerable.filter((entry) => {
+    const subject = subjectOf(entry);
+    return subject === null || verdicts.get(subjectKey(subject))?.majorityNegative !== true;
+  });
+  return kept.length === 0 ? offerable : kept;
 }
 
 /**
@@ -153,7 +231,16 @@ interface OfferableActivity {
  * never be offered, and counting it would have Hale promise to come back about a find it
  * must never mention (rule #1).
  */
-export function searchVillageTool(database: Database): RegisteredTool {
+export function searchVillageTool(
+  database: Database,
+  /**
+   * Told about every candidate this call OFFERED — the `onDraft`/`onOffer` shape, and
+   * for the same reason: the tool's return value belongs to the model and this does
+   * not. Absent on the surfaces that place nothing (the app's Ask, a parity test), so
+   * there is no path that collects a provenance nobody will use.
+   */
+  onOffered?: (offers: readonly OfferedCandidate[]) => void,
+): RegisteredTool {
   return defineTool({
     name: 'search_village',
     description:
@@ -191,7 +278,8 @@ export function searchVillageTool(database: Database): RegisteredTool {
             c.summary.toLowerCase().includes(needle),
         );
 
-      const candidates: OfferableActivity[] = [];
+      const rowsById = new Map(currentRunRows.map((row) => [row.id, row]));
+      const offerable: OfferableEntry[] = [];
       let inVerification = 0;
       for (const view of views) {
         if (view.teenAttributed) continue;
@@ -200,14 +288,34 @@ export function searchVillageTool(database: Database): RegisteredTool {
           inVerification += 1;
           continue;
         }
-        candidates.push({
-          title: view.title,
-          kind: view.kind,
-          summary: view.summary,
-          venue,
-          when: formatCalendarDayLabel(view.eventDate, now),
+        const row = rowsById.get(view.id);
+        offerable.push({
+          candidate: {
+            title: view.title,
+            kind: view.kind,
+            summary: view.summary,
+            venue,
+            when: formatCalendarDayLabel(view.eventDate, now),
+          },
+          offer: row
+            ? {
+                title: view.title,
+                venue,
+                candidateId: row.id,
+                placeId: row.placeId,
+                civicVenueId: row.civicVenueId,
+              }
+            : null,
         });
       }
+
+      const offerableNow = await withoutPooledNegatives(database, ctx.familyId, offerable);
+      const candidates = offerableNow.map((entry) => entry.candidate);
+      const offered = offerableNow.flatMap((entry) => (entry.offer ? [entry.offer] : []));
+      // EXACTLY the rows that went out as `candidates` — never the in-verification
+      // count and never a teen-attributed row, which has no venue and no date and must
+      // not be nameable at all (rule #1).
+      onOffered?.(offered);
 
       // Nothing this family could turn up to. `inVerification` is deliberately NOT part
       // of the condition: a parent asking about tomorrow is empty-handed the moment

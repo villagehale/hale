@@ -7,6 +7,10 @@ import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { type SendRefusalReason, refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
+import {
+  ACTIVITY_FOLLOWUP_ASK_TEMPLATE_KEY,
+  activityFollowupAskDedupeKey,
+} from '~/lib/channel/followup/ask-open';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import {
   type OutboundGatePorts,
@@ -663,12 +667,14 @@ async function runActivityFollowups(
               await deps.loadInboundSince(database, family.familyId, event.startsAt),
               event.title,
             ),
-          templateKey: 'followup:activity',
+          templateKey: ACTIVITY_FOLLOWUP_ASK_TEMPLATE_KEY,
           // BYTE-IDENTICAL for a placement, where `ref.id` IS the event id: nothing
           // already claimed is re-asked across this refactor. A booking's key is its own
           // uuid, and uuids do not collide across tables, so the key space needs no
-          // prefix.
-          dedupeKey: `followup:activity:${event.ref.id}`,
+          // prefix — and the review capture that reads this key back resolves a booking
+          // id against `family_events`, finds nothing, and counts `no_placing_action`
+          // before any model sees a word.
+          dedupeKey: activityFollowupAskDedupeKey(event.ref.id),
           now,
         });
         if (!tally(result, outcome)) continue;

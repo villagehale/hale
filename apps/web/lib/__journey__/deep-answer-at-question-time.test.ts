@@ -511,6 +511,7 @@ describe('the deep answer arrives at question time', () => {
         sourceNote: null,
       }),
       loadChildren: async () => [{ name: 'Noah', gender: 'male', dateOfBirth: CHILD_DOB }],
+      nearbySaid: async () => null,
       buildTools: (turn, onDraft, onOffer, onShare, onPromise) =>
         buildChannelCoachTools({
           familyId: turn.familyId,

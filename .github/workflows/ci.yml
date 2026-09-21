@@ -145,6 +145,12 @@ jobs:
       - name: Registration re-verify eval (cached-only)
         run: pnpm --filter @hale/worker eval:registration-verify
 
+      # The only model call in the review pool. Nothing downstream re-checks a verdict -
+      # it IS the row another family is eventually shown - so this is the gate, and it is
+      # wired here BEFORE the pass that calls it exists.
+      - name: Activity verdict eval (cached-only)
+        run: pnpm --filter @hale/worker eval:activity-verdict
+
       # The activity lane's two legs. Neither was wired here when they shipped, so the
       # scripts existed and nothing ran them - which is a gate in name only.
       - name: Activity finder eval (cached-only)

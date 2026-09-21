@@ -1,0 +1,6 @@
+{
+  "value": {
+    "verdict": "did_not_attend"
+  },
+  "stopReason": "tool_use"
+}
