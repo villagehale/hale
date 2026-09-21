@@ -113,6 +113,40 @@ export type OpenQuestionKind =
    */
   | 'evening_check_in'
   /**
+   * "How did Mia get on at swim?" — the activity follow-up ASK (channel/followup/
+   * run.ts), which is not the `activity_followup` promise two members above however
+   * alike the names read: that one is Hale owing a family an answer, this one is Hale
+   * waiting for theirs.
+   *
+   * IT IS THE ONE THAT WAS STEALING. The ask has gone out since VIL-231 and was never
+   * listed, so `soleOpenKind` was vacuously satisfied by a single drafted approval and a
+   * parent's "yes" — meant for the swim question — executed an unrelated calendar write
+   * (rule #4). Like the readiness checklist and the evening check-in its openness is
+   * derived from the MESSAGE LEDGER rather than a row of its own: it stands while its
+   * ask is Hale's last word to that parent, and lapses at 08:00.
+   */
+  | 'activity_followup_ask'
+  /**
+   * "Is Mia home with you during the week, or at daycare?" — the weekday-care ask
+   * (VIL-360, channel/weekday-care). Listed for the reason `evening_check_in` is: its
+   * answer is not a polarity at all, so nothing here can resolve it, and a bare "yes"
+   * near it is AMBIGUOUS and must not be spent on an unrelated drafted action. Its
+   * openness is derived from the MESSAGE LEDGER — it stands while its ask is Hale's
+   * last word to that parent and lapses 48h later.
+   */
+  | 'weekday_care'
+  /**
+   * "How is Little Sprouts going?" — the daycare check-in (VIL-360,
+   * channel/followup/question.ts). Listed for the reason `weekday_care` and
+   * `evening_check_in` are: its answer is a sentence, not a polarity.
+   *
+   * IT IS ALSO THE ONE THAT WAS MISSING. `sendFollowup` writes a ledger row and threads
+   * the message and registers NOTHING, so before this member a bare "yes" arriving
+   * after "how is daycare going?" with one drafted action pending would have executed
+   * that action.
+   */
+  | 'daycare_followup'
+  /**
    * "Turn off your forwarding address? ... Reply YES to turn it off, or ignore this." —
    * the confirm in front of a revoke (VIL-352 round 6, email/forward-request.ts).
    *
@@ -177,6 +211,17 @@ const GRADE: Record<OpenQuestionKind, QuestionGrade> = {
   // Record forces a choice anyway, and `ordinary` is the honest one: a wrong reading
   // could at most cost one acknowledgment nobody wanted.
   evening_check_in: 'ordinary',
+  // Never reached — nothing resolves the activity ask either (see KIND_ANSWERABLE). The
+  // Record forces a choice, and `ordinary` is the honest one: the ask executes nothing
+  // and discloses nothing, so a wrong reading could at most cost one reply.
+  activity_followup_ask: 'ordinary',
+  // Never reached either (see KIND_ANSWERABLE): the answer is an either/or, not a
+  // polarity. `ordinary` is the honest choice — the write it stands in front of is a
+  // memory fact about this household's own week, disclosed to nobody.
+  weekday_care: 'ordinary',
+  // Never reached either: nothing resolves it. `ordinary` is the honest choice - the
+  // answer is a sentence the coach reads, and nothing is written from a polarity.
+  daycare_followup: 'ordinary',
   // DESTROYS a credential the parent cannot get back — every filter they have set up
   // stops working and the replacement is a different address. Nothing else on this list
   // is less undoable, so nothing else has a stronger claim on this grade.
@@ -235,6 +280,25 @@ const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   // is what `soleOpenKind` reads: a question Hale is holding makes a bare affirmative
   // ambiguous whether or not it is the thing being answered.
   evening_check_in: { yes: false, no: false },
+  // NEITHER POLARITY, the `activity_followup` reading for the third time and the
+  // strictest of the three: the answer to "how did it go" is a sentence about a morning,
+  // and there is no writer behind a yes or a no. What LISTING it buys is the only thing
+  // it needs to buy — `soleOpenKind` stops treating a household with an unanswered swim
+  // question as a household with nothing open, so a bare affirmative falls through to
+  // the coach instead of approving whatever happens to be drafted.
+  activity_followup_ask: { yes: false, no: false },
+  // NEITHER POLARITY, and here it is the whole point rather than a consequence. The ask
+  // is an EITHER/OR - "home with you during the week, or at daycare?" - so a bare "yes"
+  // means nothing, and a resolver that bound one to this kind would be guessing at a
+  // fact that changes what Hale offers a household for months. The words that DO settle
+  // it are read by a deterministic grammar at a non-claiming gate, which needs no model.
+  // It is LISTED so a bare affirmative near it is ambiguous for everything else.
+  weekday_care: { yes: false, no: false },
+  // NEITHER POLARITY, the `activity_followup` reading exactly: a check-in is Hale
+  // asking how something went, which has no yes that makes it more true and no no with
+  // a writer behind it. Listed so a bare affirmative near it is ambiguous - which is
+  // the whole reason this member exists.
+  daycare_followup: { yes: false, no: false },
   // BOTH polarities, and the NO has a real writer rather than a lapse: it sends the
   // sentence that says the address is still on, and THAT outbound is what closes the
   // question (the openness is derived from who spoke last). A no-answerable confirm would
@@ -339,6 +403,17 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   // draft would be claimed by a diary entry. None of the words this lane reads is an
   // affirmative anyway.
   evening_check_in: false,
+  // FALSE, for the evening check-in's reason exactly: the composed ask prints no keyword
+  // (`not_one_question` is a refusal and the voice writes a question, not a menu), and
+  // marking it solicited would hand `newestSolicitedKind` the newest question in the
+  // product on the evenings it goes out — so a bare YES meant for a drafted approval
+  // would be claimed by an activity nobody can answer yes to.
+  activity_followup_ask: false,
+  // The ask prints no keyword at all - it ends in a question mark, not an instruction.
+  weekday_care: false,
+  // The ask prints no keyword; the composer is forbidden a second sentence, let alone
+  // an instruction.
+  daycare_followup: false,
   // TRUE — the confirm prints 'Reply YES to turn it off, or ignore this.' verbatim
   // (email/forward-request.ts). What it buys is PROTECTION rather than reach: while this
   // ask is the newest solicited one, every OTHER lane's `soleOpenKind` goes false, so no
@@ -396,6 +471,16 @@ const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval' | 'email_alert_add'>,
   // No child name, deliberately: this phrase can end up in a list Hale prints back, and
   // the ask itself is the only place the names belong (rule #1).
   evening_check_in: 'how today went',
+  // No child name and no activity title, deliberately: this phrase can end up in a list
+  // Hale prints back, and the title is family calendar content the ask itself already
+  // carried to the one phone it was sent to (rule #1).
+  activity_followup_ask: 'how that activity went',
+  // No child name, deliberately: this phrase can end up in a list Hale prints back, and
+  // the ask itself is the only place the name belongs (rule #1).
+  weekday_care: 'how your weeks are covered',
+  // No provider name and no child name: this phrase can end up in a list Hale prints
+  // back, and the ask itself is the only place either belongs (rule #1).
+  daycare_followup: 'how daycare is going',
   // The credential is never in the phrase — this can be printed back in a "Which one -
   // ...?" sentence, and an address in one would be a secret re-sent to a thread that may
   // not be the one it was minted for (rule #1).
@@ -570,6 +655,39 @@ export interface OpenQuestionSources {
     input: { familyId: string; parentUserId: string; now: Date },
   ): Promise<{ id: string; askedAt: Date } | null>;
   /**
+   * The activity follow-up ask, while it is Hale's last word to this parent and the
+   * morning has not come — or null (channel/followup/ask-open.ts).
+   *
+   * Per-PARENT like the evening check-in and for the same reason, with one extra: the
+   * ask goes to the household's PRIMARY parent only, so a co-parent's text is never an
+   * answer to it.
+   */
+  activityFollowupAsk(
+    database: Database,
+    input: { familyId: string; parentUserId: string; now: Date },
+  ): Promise<{ id: string; askedAt: Date } | null>;
+  /**
+   * The weekday-care ask, while it is Hale's last word to this parent and inside its
+   * 48h window — or null (VIL-360, channel/weekday-care/question.ts).
+   *
+   * Per-PARENT like the evening check-in and for the same reason: the question went to
+   * one phone. Ledger-derived like it too, so there is no row to keep in step.
+   */
+  weekdayCare(
+    database: Database,
+    input: { familyId: string; parentUserId: string; now: Date },
+  ): Promise<{ id: string; askedAt: Date } | null>;
+  /**
+   * The daycare follow-up, while its ask is Hale's last word to this parent and inside
+   * its window — or null (VIL-360, channel/followup/question.ts).
+   *
+   * Per-PARENT, because the follow-up lane sends to one seat.
+   */
+  daycareFollowup(
+    database: Database,
+    input: { familyId: string; parentUserId: string; now: Date },
+  ): Promise<{ id: string; askedAt: Date } | null>;
+  /**
    * The forwarding-address revoke confirm this parent has not answered, or null
    * (VIL-352 round 6, email/forward-request.ts).
    *
@@ -618,6 +736,9 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
         assent,
         emailOffers,
         evening,
+        activityAsk,
+        weekdayCare,
+        daycareFollowup,
         revokeConfirm,
       ] = await Promise.all([
           sources.pendingApprovals(database, input.familyId),
@@ -634,6 +755,9 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           sources.coParentAssent(database, input),
           sources.emailAlertOffers(database, input),
           sources.eveningCheckIn(database, input),
+          sources.activityFollowupAsk(database, input),
+          sources.weekdayCare(database, input),
+          sources.daycareFollowup(database, input),
           sources.forwardAddressRevoke(database, input),
         ]);
 
@@ -765,6 +889,46 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           answerable: KIND_ANSWERABLE.evening_check_in,
           askedAt: evening.askedAt,
           solicited: SOLICITED.evening_check_in,
+        });
+      }
+      if (activityAsk) {
+        // Hale's own words about its own ask, with no child name and no activity title
+        // in them — the title is in the text the parent is holding, and this line goes
+        // to a model (rule #1).
+        questions.push({
+          id: activityAsk.id,
+          kind: 'activity_followup_ask',
+          description: 'How an activity went',
+          subject: SUBJECT.activity_followup_ask,
+          answerable: KIND_ANSWERABLE.activity_followup_ask,
+          askedAt: activityAsk.askedAt,
+          solicited: SOLICITED.activity_followup_ask,
+        });
+      }
+      if (weekdayCare) {
+        // Hale's own words about its own ask, with no child name in them — the name is
+        // in the text the parent is holding, and this line goes to a model (rule #1).
+        questions.push({
+          id: weekdayCare.id,
+          kind: 'weekday_care',
+          description: 'How this household covers its weekdays',
+          subject: SUBJECT.weekday_care,
+          answerable: KIND_ANSWERABLE.weekday_care,
+          askedAt: weekdayCare.askedAt,
+          solicited: SOLICITED.weekday_care,
+        });
+      }
+      if (daycareFollowup) {
+        // Hale's own words about its own ask, with neither the provider nor the child
+        // in them — both are in the text the parent is holding (rule #1).
+        questions.push({
+          id: daycareFollowup.id,
+          kind: 'daycare_followup',
+          description: 'How the daycare they told me about is going',
+          subject: SUBJECT.daycare_followup,
+          answerable: KIND_ANSWERABLE.daycare_followup,
+          askedAt: daycareFollowup.askedAt,
+          solicited: SOLICITED.daycare_followup,
         });
       }
       if (revokeConfirm) {

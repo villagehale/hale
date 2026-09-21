@@ -35,13 +35,17 @@ import { weekWindow } from '~/lib/plan/spine';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
-import { type Nudge, decideNudge } from './nudge-decide';
+import { type Nudge, type NudgeDecision, type NudgeSkipCounts, decideNudge } from './nudge-decide';
+import type { WeekdayCareContext } from '~/lib/care/weekday';
+import { loadWeekdayCareContext, weekdayCareEnabled } from '~/lib/care/weekday';
 import {
   type FamilyTextRecipient,
   loadFamilyTextRecipients,
 } from '~/lib/channel/family-recipients';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import { composeNudgeMessage } from './nudge-voice';
+import { proactiveNudgeTemplateKey } from './shell';
+import { weekdayCareDedupeKey } from '~/lib/channel/weekday-care/key';
 
 /**
  * VIL-239 · M4 — the 48-hour proactive nudge, swept hourly.
@@ -169,6 +173,17 @@ export interface NudgeRunDeps {
    * the event reminders beside it reached both parents (audit 2026-09-17).
    */
   loadRecipients(database: Database, familyId: string): Promise<FamilyTextRecipient[]>;
+  /**
+   * What this household has told Hale about its weekdays (VIL-360, lib/care/weekday).
+   *
+   * REQUIRED, for the reason the four around it are (rule #11): a sweep that could be
+   * assembled without it would decide the weekday legs against an assumed empty
+   * context and report `care_unstated` for a family that HAD answered — a skip counter
+   * lying about the one thing the ask exists to learn. The feature being off is
+   * expressed by the flag and carried into the decide as `'disarmed'`, never by
+   * withholding this.
+   */
+  loadWeekdayCareContext(database: Database, familyId: string): Promise<WeekdayCareContext>;
   /** A factory, not an instance: the gate's ports close over the db handle the sweep
    * is given, so a caller cannot accidentally gate one database against another. */
   buildGate(database: Database): OutboundGatePorts;
@@ -233,6 +248,17 @@ export interface NudgeRunResult {
   deduped: number;
   failed: number;
   held: Record<ProactiveHoldReason, number>;
+  /**
+   * WHY the quiet families were quiet, summed across the run — the detail behind
+   * {@link NudgeRunResult.quiet}, which is a count of families and says nothing about
+   * what stopped each one (rule #11).
+   *
+   * Only the weekday legs report reasons; the three older legs return null and are
+   * not retrofitted here. A reason ABSENT from this map is not the same as a reason at
+   * zero: absent means the leg never ran (the feature is disarmed), zero would mean it
+   * ran and did not hit that case.
+   */
+  skips: NudgeSkipCounts;
   /** Present when the provider pre-flight cancelled the window (VIL-255). */
   aborted?: AbortedWindow;
 }
@@ -246,6 +272,7 @@ function emptyResult(enabled: boolean): NudgeRunResult {
     deduped: 0,
     failed: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    skips: {},
   };
 }
 
@@ -270,6 +297,12 @@ function cohortOf(family: NudgeFamily, now: Date): NudgeCohort {
  * A recipient appended with a colon would make the marker unparseable and the family
  * would be told the same checkpoint forever; `#` is outside the ref grammar, and
  * `loadToldCheckpointRefs` strips it before parsing.
+ *
+ * AN EXHAUSTIVE SWITCH, NOT A CHAIN OF `if`s AND A BARE RETURN. The tail used to be
+ * the weather swap's key and it dereferenced nothing off `nudge`, so a new kind
+ * COMPILED and silently took the weather swap's weekly key — the find would have been
+ * deduped against a swap and vanished with no error anywhere. `assertNever` makes that
+ * unexpressible: a fifth kind is a type error here before it is a missing text.
  */
 export function dedupeKeyFor(
   nudge: Nudge,
@@ -278,17 +311,38 @@ export function dedupeKeyFor(
   now: Date,
   timeZone: string,
 ): string {
-  if (nudge.kind === 'registration') {
-    return `nudge:${familyId}:registration:${nudge.windowRef.id}:${parentUserId}`;
+  switch (nudge.kind) {
+    case 'registration':
+      return `nudge:${familyId}:registration:${nudge.windowRef.id}:${parentUserId}`;
+    case 'health_checkpoint':
+      // A health nudge's send-idempotency key IS its told-marker (lib/health/told.ts),
+      // so this row tells every other surface what this family has heard. The ref the
+      // MATCHER minted is carried through untouched: per child for a one-time visit,
+      // per household per school year for the annual records check.
+      return `${checkpointToldKey(familyId, nudge.ref)}${TOLD_RECIPIENT_SEPARATOR}${parentUserId}`;
+    case 'weather_swap':
+      return `nudge:${familyId}:weather_swap:${weekWindow(now, timeZone).startKey}:${parentUserId}`;
+    case 'weekday_dropin':
+      // Per WEEK like the swap, not per candidate: the sessions recur, and a key per
+      // row would text a family a different library every day of the week.
+      return `nudge:${familyId}:weekday_dropin:${weekWindow(now, timeZone).startKey}:${parentUserId}`;
+    case 'weekday_care':
+      // Per CHILD and forever, with no week in it: this question is asked once per
+      // household ever, and the child id is what the answer is filed against. MINTED BY
+      // THE PARSER'S OWN MODULE, because the answer path reads the child back out of
+      // this string — a sender and a reader holding two copies of one shape is how a
+      // question quietly stops being answerable.
+      return weekdayCareDedupeKey(familyId, nudge.childId, parentUserId);
+    default:
+      return assertNever(nudge);
   }
-  if (nudge.kind === 'health_checkpoint') {
-    // A health nudge's send-idempotency key IS its told-marker (lib/health/told.ts), so
-    // this row tells every other surface what this family has heard. The ref the MATCHER
-    // minted is carried through untouched: per child for a one-time visit, per household
-    // per school year for the annual records check.
-    return `${checkpointToldKey(familyId, nudge.ref)}${TOLD_RECIPIENT_SEPARATOR}${parentUserId}`;
-  }
-  return `nudge:${familyId}:weather_swap:${weekWindow(now, timeZone).startKey}:${parentUserId}`;
+}
+
+/** The compiler's own proof that a union was handled. Throws only if a caller reached
+ * it through an `as` or an untyped boundary — it exists for the build error, not the
+ * runtime one. */
+function assertNever(value: never): never {
+  throw new Error(`nudge: unhandled kind ${JSON.stringify(value)}`);
 }
 
 /**
@@ -341,28 +395,41 @@ async function decideForFamily(
   family: NudgeFamily,
   deps: NudgeRunDeps,
   now: Date,
-): Promise<Nudge | null> {
+): Promise<NudgeDecision> {
   const childRows = await deps.loadChildren(database, family.familyId);
   const { children, teenChildIds, healthChildren } = splitByStage(childRows, now);
   // A family with no children on file has nothing any nudge class could rest on.
-  if (healthChildren.length === 0) return null;
+  if (healthChildren.length === 0) return { nudge: null, skips: {} };
 
   const area = family.areaCoarse;
   // A household with no under-13s can only ever receive a health checkpoint, so the
   // village read, the registration read and the outbound weather call are all spend on
   // a decision that is already made.
   const weekendPossible = children.length > 0;
-  const [candidates, windowRows, weather, suppressedCheckpointRefs, claimedWindowIds] =
-    await Promise.all([
-      weekendPossible ? deps.loadCandidates(database, family.familyId) : Promise.resolve([]),
-      area && weekendPossible ? deps.loadWindows(database, area) : Promise.resolve([]),
-      // Weather is an input, never a blocker: the port swallows its own failures.
-      area && weekendPossible
-        ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
-        : Promise.resolve([]),
-      deps.loadSuppressedCheckpoints(database, family.familyId),
-      deps.loadClaimedWindowIds(database, family.familyId),
-    ]);
+  // THE FLAG SHORT-CIRCUITS BEFORE THE READ, so a disarmed feature costs nothing and
+  // reports nothing (see WeekdayCareInput: silent counters mean the flag, zeroed ones
+  // would mean the legs ran).
+  const weekdayArmed = weekdayCareEnabled();
+  const [
+    candidates,
+    windowRows,
+    weather,
+    suppressedCheckpointRefs,
+    claimedWindowIds,
+    weekdayCare,
+  ] = await Promise.all([
+    weekendPossible ? deps.loadCandidates(database, family.familyId) : Promise.resolve([]),
+    area && weekendPossible ? deps.loadWindows(database, area) : Promise.resolve([]),
+    // Weather is an input, never a blocker: the port swallows its own failures.
+    area && weekendPossible
+      ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
+      : Promise.resolve([]),
+    deps.loadSuppressedCheckpoints(database, family.familyId),
+    deps.loadClaimedWindowIds(database, family.familyId),
+    weekdayArmed
+      ? deps.loadWeekdayCareContext(database, family.familyId)
+      : Promise.resolve('disarmed' as const),
+  ]);
 
   const windows = area
     ? matchRegistrationWindows({
@@ -385,6 +452,7 @@ async function decideForFamily(
     areaCoarse: area,
     suppressedCheckpointRefs,
     claimedWindowIds,
+    weekdayCare,
     now,
     timeZone: family.timeZone,
   });
@@ -404,10 +472,13 @@ type FamilyTally = {
   sent: number;
   deduped: number;
   held: ProactiveHoldReason[];
+  /** The decide's own reasons for this family. A property of the DECISION, so it is
+   * the household's like `quiet` is, not the recipient's. */
+  skips: NudgeSkipCounts;
 };
 
 function emptyTally(overrides: Partial<FamilyTally> = {}): FamilyTally {
-  return { quiet: false, sent: 0, deduped: 0, held: [], ...overrides };
+  return { quiet: false, sent: 0, deduped: 0, held: [], skips: {}, ...overrides };
 }
 
 async function runForFamily(
@@ -450,20 +521,24 @@ async function runForFamily(
   if (allowed.length === 0) return emptyTally({ held });
 
   const cohort = cohortOf(family, now);
-  const nudge = await decideForFamily(database, family, deps, now);
-  if (!nudge) {
+  const decision = await decideForFamily(database, family, deps, now);
+  if (decision.nudge === null) {
     // Silence is the outcome, and it is recorded: an absent row is indistinguishable
     // from a family the sweep never looked at, and the difference is the whole metric.
+    // The headline literal STAYS — it is still true — and the per-leg reasons ride
+    // beside it, which is what makes a PIPEDA-exportable row answer "why was this
+    // family quiet" rather than only "this family was quiet".
     await deps.audit(database, {
       familyId: family.familyId,
       actor: 'system',
       actionTaken: 'proactive_nudge_skipped',
       targetTable: 'families',
       targetId: family.familyId,
-      after: { reason: 'nothing_worth_saying', cohort },
+      after: { reason: 'nothing_worth_saying', cohort, skips: decision.skips },
     });
-    return emptyTally({ quiet: true });
+    return emptyTally({ quiet: true, skips: decision.skips });
   }
+  const nudge = decision.nudge;
 
   // Per recipient, and checked BEFORE the model call: a re-fired cron must cost nothing.
   const pending: Array<{ recipient: FamilyTextRecipient; optOut: OptOutForm; dedupeKey: string }> =
@@ -514,7 +589,7 @@ async function runForFamily(
       parentUserId: recipient.parentUserId,
       channel: 'sms',
       category: 'nudge',
-      templateKey: `proactive_nudge:${nudge.kind}`,
+      templateKey: proactiveNudgeTemplateKey(nudge.kind),
       dedupeKey,
       status: acceptedStatus('sms'),
       providerMessageId,
@@ -557,7 +632,7 @@ async function runForFamily(
   if (firstMessageId !== null) {
     await recordFamilyLedgers(database, { family, nudge, messageId: firstMessageId, now }, deps);
   }
-  return { quiet: false, sent, deduped, held };
+  return { quiet: false, sent, deduped, held, skips: decision.skips };
 }
 
 /**
@@ -635,6 +710,10 @@ export async function runNudgeCron(
       result.sent += outcome.sent;
       result.deduped += outcome.deduped;
       for (const reason of outcome.held) result.held[reason] += 1;
+      for (const [reason, count] of Object.entries(outcome.skips)) {
+        const key = reason as keyof NudgeSkipCounts;
+        result.skips[key] = (result.skips[key] ?? 0) + count;
+      }
     } catch (err) {
       // One family's bad data must not silence every family after it.
       result.failed += 1;
@@ -712,6 +791,7 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
       loadSuppressedCheckpointRefs(database, familyId),
     loadClaimedWindowIds: (database, familyId) => loadClaimedWindowIds(database, familyId),
     loadRecipients: (database, familyId) => loadFamilyTextRecipients(database, familyId),
+    loadWeekdayCareContext,
     weather: createOpenMeteoWeather(),
     buildGate: buildOutboundGatePorts,
     dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),

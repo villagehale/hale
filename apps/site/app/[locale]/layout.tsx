@@ -10,6 +10,7 @@ import { getTranslator } from '~/i18n/server';
 import { GoogleAdsTag } from '~/lib/analytics/google-ads-tag';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { SITE_URL } from '~/lib/app-url';
+import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
 import { NO_FLASH_SCRIPT, THEME_COLOR } from '~/lib/site/theme';
 import '../globals.css';
 
@@ -104,17 +105,21 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   const t = getTranslator(locale, 'HomeMeta');
+  // The town count is a derived number, never a hand-written one: a 22nd
+  // municipality must not leave the search snippet claiming 21 (municipalities.ts
+  // derives it from the list for the same reason the page does).
+  const counted = { count: MUNICIPALITY_COUNT };
   return {
     metadataBase: new URL(SITE_URL),
     title: t('title'),
-    description: t('description'),
+    description: t('description', counted),
     alternates: buildAlternates(locale, '/'),
     openGraph: {
       type: 'website',
       siteName: 'Hale',
       url: localeHref(locale, '/'),
       title: t('title'),
-      description: t('ogDescription'),
+      description: t('ogDescription', counted),
       locale: ogLocale(locale),
     },
     twitter: {

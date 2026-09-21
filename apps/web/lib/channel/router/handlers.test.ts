@@ -111,6 +111,17 @@ const APPROVAL_QUESTION: OpenQuestion = {
   solicited: false,
 };
 
+/** "How did Mia get on at swim?" — Hale waiting to hear back, answerable in neither
+ * polarity and listed for exactly that reason (channel/followup/ask-open.ts). */
+const ACTIVITY_ASK_QUESTION: OpenQuestion = {
+  id: 'message-1',
+  kind: 'activity_followup_ask',
+  description: 'How an activity went',
+  subject: 'how that activity went',
+  answerable: { yes: false, no: false },
+  askedAt: new Date('2026-07-30T00:30:00.000Z'),
+  solicited: false,
+};
 const INTRO_QUESTION: OpenQuestion = {
   id: 'proposal-1',
   kind: 'intro_proposal',
@@ -542,7 +553,7 @@ describe('recMorningHandler', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, health, email_alert_add, coach_plan, registration, rec_morning, name_capture, evening_check_in, inbound_canary', async () => {
+  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, weekday_care, daycare_followup, health, email_alert_add, coach_plan, registration, rec_morning, name_capture, evening_check_in, inbound_canary', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -571,6 +582,16 @@ describe('the shipped order', () => {
       // heard a yes here is a cold text to a stranger. Its position is free — it claims
       // nothing — but it is listed so the resolver never finds a kind without an owner.
       'co_parent_assent',
+      // Beside it, and for the same reason: it owns the weekday-care question
+      // (VIL-360) and declines every reading of it, because the answer is an either/or
+      // in ordinary English that a deterministic grammar reads one gate later. Its
+      // position is free - it claims nothing - and it is listed so the resolver never
+      // finds a kind without an owner.
+      'weekday_care',
+      // Its sibling, and the same note applies: it owns the daycare check-in's kind
+      // (VIL-360), claims nothing, and is listed only so the resolver never finds a
+      // kind without an owner.
+      'daycare_followup',
       'health',
       // Between health and the plan, by this chain's own rule: among handlers that read
       // the same bare word, the one whose wrong answer costs most goes first. A wrong
@@ -655,6 +676,20 @@ describe('a bare affirmative with more than one kind of question open', () => {
 
     expect(verdict.claimed).toBe(true);
     expect(s.approved).toEqual(['a-1']);
+  });
+
+  it('does NOT approve a calendar change while Hale is waiting to hear how swim went', async () => {
+    // The theft this closed: the ask was not a listed question, so one drafted approval
+    // made every open question an approval and the parent's "yes" — said to "How did Mia
+    // get on at swim?" — executed the calendar write (rule #4).
+    const s = spine(pending);
+    const verdict = await approvalHandler(s).handle(
+      DB,
+      turn('yes', { open: [APPROVAL_QUESTION, ACTIVITY_ASK_QUESTION] }),
+    );
+
+    expect(verdict.claimed).toBe(false);
+    expect(s.approved).toEqual([]);
   });
 
   it('still answers an ORDINAL, which cannot be an answer to anything else', async () => {

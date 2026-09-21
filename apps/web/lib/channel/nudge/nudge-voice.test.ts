@@ -58,9 +58,25 @@ const BARE_SWAP: Nudge = {
   whyFacts: [],
 };
 
+const DROP_IN: Nudge = {
+  kind: 'weekday_dropin',
+  candidateRef: { id: 'cand-uuid-3', title: 'EarlyON drop-in', venueName: 'Armour Heights' },
+  eventDate: '2026-08-04',
+  weekday: 'tuesday',
+  kidNames: ['Mia'],
+};
+
+const BARE_DROP_IN: Nudge = {
+  kind: 'weekday_dropin',
+  candidateRef: { id: 'cand-uuid-4', title: 'Baby storytime', venueName: null },
+  eventDate: '2026-08-05',
+  weekday: 'wednesday',
+  kidNames: [],
+};
+
 /** The kinds a model may compose. M8's health checkpoints are deliberately absent —
  * they are static copy and never touch the voice path (see health/copy.ts). */
-const ALL: VoicedNudge[] = [REGISTRATION, SWAP, BARE_SWAP];
+const ALL: VoicedNudge[] = [REGISTRATION, SWAP, BARE_SWAP, DROP_IN, BARE_DROP_IN];
 
 describe('nudgeVoiceContext', () => {
   it('hands the model the facts and no internal identifiers', () => {
@@ -79,6 +95,18 @@ describe('nudgeVoiceContext', () => {
   it('tells the model which kind of nudge it is writing', () => {
     expect((nudgeVoiceContext(REGISTRATION) as { kind: string }).kind).toBe('registration');
     expect((nudgeVoiceContext(SWAP) as { kind: string }).kind).toBe('weather_swap');
+    expect((nudgeVoiceContext(DROP_IN) as { kind: string }).kind).toBe('weekday_dropin');
+  });
+
+  /** The weekday find's context carries a DAY and no date and no time: the row it came
+   * from has neither in a form this message may state, and a model handed the ISO key
+   * would put it in the text. */
+  it('hands the weekday find its day and withholds the raw date', () => {
+    const context = JSON.stringify(nudgeVoiceContext(DROP_IN));
+    expect(context).toContain('tuesday');
+    expect(context).toContain('EarlyON drop-in');
+    expect(context).not.toContain('2026-08-04');
+    expect(context).not.toContain('cand-uuid-3');
   });
 });
 
@@ -90,6 +118,13 @@ describe('nudgeFactSlots', () => {
     expect(nudgeFactSlots(SWAP)).toEqual(
       expect.arrayContaining(['Library story time', 'Riverdale Library', 'the weekend forecast is wet']),
     );
+  });
+
+  it('grounds the weekday find on its day, its title and its venue', () => {
+    expect(nudgeFactSlots(DROP_IN)).toEqual(
+      expect.arrayContaining(['EarlyON drop-in', 'tuesday', 'Armour Heights', 'Mia']),
+    );
+    expect(nudgeFactSlots(DROP_IN)).not.toContain('2026-08-04');
   });
 
   it('carries no internal identifier a model could echo', () => {
@@ -179,6 +214,25 @@ describe('renderNudgeDeterministically', () => {
   it('says nothing about a venue or kids it was not given', () => {
     const message = renderNudgeDeterministically(BARE_SWAP);
     expect(message).toContain('Splash pad');
+    expect(message).not.toContain(' at ');
+    expect(message).not.toContain(' for ');
+  });
+
+  /**
+   * VIL-360 · the weekday find. The day is the only time-shaped fact there is — the
+   * candidate reader does not select a clock time — so the render says the weekday and
+   * stops rather than reaching for one.
+   */
+  it('names the weekday, the session and the venue, and no clock time', () => {
+    const message = renderNudgeDeterministically(DROP_IN);
+    expect(message).toBe('Tuesday weekday drop-in: EarlyON drop-in at Armour Heights for Mia.');
+    expect(message).not.toMatch(/\d/);
+  });
+
+  it('says nothing about a venue or kids the weekday find was not given', () => {
+    const message = renderNudgeDeterministically(BARE_DROP_IN);
+    expect(message).toContain('Baby storytime');
+    expect(message).toContain('Wednesday');
     expect(message).not.toContain(' at ');
     expect(message).not.toContain(' for ');
   });

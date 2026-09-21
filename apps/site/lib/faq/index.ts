@@ -27,7 +27,7 @@ export const FAQ: readonly FaqItem[] = [
   {
     question: 'What is Hale?',
     answer:
-      'A phone number your family texts. Hale watches the registration dates and programs where you live, plans the week, answers the parenting questions, and does the admin once you say yes — all in one text thread. There is no app to install and no account to create.',
+      'A phone number your family texts. It finds what is actually running near your kids — swim, camps, drop-ins, the EarlyON down the road — watches the sign-up mornings where you live, hands you the town’s own link the night before, and comes back to ask how it went. It answers the parenting questions too, and does the admin once you say yes. There is no app to install and no account to create.',
   },
   {
     question: 'How do I start?',
@@ -51,27 +51,40 @@ export const FAQ: readonly FaqItem[] = [
   },
   {
     question: 'What does Hale actually watch?',
-    answer: `Municipal registration across ${MUNICIPALITY_COUNT} GTA municipalities — recreation programs, swim lessons, camps and after-school care — including the resident head start, the towns that register swimming on their own date, and the winter-break camps that open back in August. It also watches the waitlist clock, which is a day in some towns and two in others.`,
+    answer: `Municipal registration across ${MUNICIPALITY_COUNT} GTA municipalities — recreation programs, swim lessons, camps and after-school care — including the resident head start, the towns that register swimming on their own date, and the winter-break camps that open back in August. It also watches the waitlist clock, which is a day in some towns and two in others. And when the class you wanted is already full, Hale keeps watching it and texts you the minute a place opens.`,
   },
   {
     question: 'How often will Hale text me?',
     answer:
-      'A brief on Sunday, and then only when something needs you: a heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. STOP works at any time.',
+      'A heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. In the evening Hale asks one line about how the day went — reply LESS and that becomes weekly, NO and it stops. STOP works at any time.',
   },
   {
     question: 'Can Hale answer parenting questions, or only scheduling ones?',
     answer:
-      'Both. Ask about sleep, starting solids, potty training, picky eating, tantrums, screen time or routines and you get an answer pitched at your child’s age, plus the offer of the whole plan — two or three texts you can start tonight. Three days later Hale asks how it went. It never diagnoses and never names a dose.',
+      'Both. Ask about sleep, starting solids, potty training, picky eating, tantrums, screen time or routines and you get an answer pitched at your child’s age, plus the offer of the whole plan — two or three texts you can start tonight. A few days later Hale asks how it went. It never diagnoses and never names a dose.',
   },
   {
     question: 'Is Hale free?',
     answer:
-      'Hale is free while it is new, and families who start now keep their founding rate. A co-parent is always free — the same week and reminders on their own number, never a second household to pay for.',
+      'Hale is free while it is new, and families who start now keep their founding rate. A co-parent is always free — the same dates and nudges on their own number, never a second household to pay for.',
   },
   {
     question: 'Do I need to use the website?',
     answer:
       'No. Everything happens in the text thread, and Hale will never send you to a website to finish a job you texted it to do. The full record of what Hale has done is yours whenever you want it — ask for it in the thread, or sign in with your phone number and read it there.',
+  },
+  {
+    question: 'Will you tell me whether a class is any good?',
+    answer:
+      'Not yet. Today Hale asks how it went. Telling the next parent what other families thought is what Hale wants to build next, and when it does it will be a count and a verdict — never anyone’s words.',
+  },
+  {
+    question: 'Can you help when we travel?',
+    answer: 'Not yet. Today I watch registration and what’s on where you live, in the GTA.',
+  },
+  {
+    question: 'Can you tell me who else is going?',
+    answer: 'Not yet. Today I only tell you about your own family, never anyone else’s.',
   },
   {
     question: 'Is Hale available outside Canada?',

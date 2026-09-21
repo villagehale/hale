@@ -20,7 +20,14 @@ import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import type { ReminderChild } from '~/lib/loop/templates/reminder/payload';
 import { discoverableUserIds } from '~/lib/village/intros/consent';
 import { readDueBookings } from '~/lib/integrations/booking';
-import { inboundSince, mentionsActivity, mentionsIntro } from './screen';
+import {
+  type DaycareSubject,
+  type WeekdayCareFact,
+  loadDaycareSubjects,
+  loadWeekdayCare,
+  weekdayCareEnabled,
+} from '~/lib/care/weekday';
+import { inboundSince, mentionsActivity, mentionsDaycare, mentionsIntro } from './screen';
 import {
   type ComposeDeferral,
   type FollowupVoice,
@@ -104,6 +111,26 @@ export const ACTIVITY_FOLLOWUP_MIN_AGE_DAYS = 1;
 export const ACTIVITY_FOLLOWUP_MAX_AGE_DAYS = 4;
 
 /**
+ * VIL-360 · three days after a parent said their child is at daycare, and ten at the
+ * outside. Three because the first week is the one worth asking about and a day or two
+ * in is too soon to have an answer; ten because past that "how is it going?" is an
+ * audit of something the family has settled into.
+ *
+ * WIDER THAN THE OTHER TWO on purpose: this window has no event in it. An intro and an
+ * activity both happened at an instant, and the ask is about that instant; a child
+ * starting daycare is a fortnight, and there is no day inside it that is the right day.
+ */
+export const DAYCARE_FOLLOWUP_MIN_AGE_DAYS = 3;
+export const DAYCARE_FOLLOWUP_MAX_AGE_DAYS = 10;
+
+/** One per child, forever — the row that both stops the next tick and answers "have we
+ * asked?" for a PIPEDA request. */
+export const DAYCARE_FOLLOWUP_TEMPLATE_KEY = 'followup:daycare';
+export function daycareFollowupDedupeKey(childId: string): string {
+  return `${DAYCARE_FOLLOWUP_TEMPLATE_KEY}:${childId}`;
+}
+
+/**
  * How far PAST its ceiling a row is still selected, so that aging out is something the
  * sweep observes rather than something that happens to it.
  *
@@ -155,6 +182,10 @@ export function introFollowupWindow(now: Date): FollowupWindow {
 
 export function activityFollowupWindow(now: Date): FollowupWindow {
   return windowOf(now, ACTIVITY_FOLLOWUP_MIN_AGE_DAYS, ACTIVITY_FOLLOWUP_MAX_AGE_DAYS);
+}
+
+export function daycareFollowupWindow(now: Date): FollowupWindow {
+  return windowOf(now, DAYCARE_FOLLOWUP_MIN_AGE_DAYS, DAYCARE_FOLLOWUP_MAX_AGE_DAYS);
 }
 
 export interface FollowupFamily {
@@ -217,7 +248,15 @@ export type FollowupSkipReason =
   | 'out_of_scope'
   /** Never asked before the moment passed. The one outcome here that is a small failure
    * rather than a correct refusal, which is exactly why it is counted. */
-  | 'window_passed';
+  | 'window_passed'
+  /**
+   * VIL-360 · the answer was SUPERSEDED between the window opening and the tick — the
+   * parent said daycare on Monday and "she's home again" on Thursday, or named a
+   * different place. A CORRECT refusal, and its own reason rather than a silent skip:
+   * "how is daycare going?" to a household that has just told Hale it is not — or that
+   * names the place their child LEFT — is the worst message this lane could send.
+   */
+  | 'care_changed';
 
 export interface FollowupAudit {
   familyId: string;
@@ -239,6 +278,22 @@ export interface FollowupSweepDeps {
    * booking's is the mailbox the receipt arrived in, so the reader needs both to answer
    * (rule #5). */
   loadDueActivities(database: Database, family: FollowupFamily, now: Date): Promise<DueActivity[]>;
+  /**
+   * VIL-360 · the daycare answers this family gave inside the window, SUPERSEDED ONES
+   * INCLUDED, and the live picture to compare them against.
+   *
+   * Two readers rather than one, because they answer two different questions: "is there
+   * something to ask about" and "is it still the live row". Folding them would make
+   * `care_changed` unobservable, which is the one refusal this stage exists to be able
+   * to name (rule #11). The comparison is on the fact's ID, not its care value, which
+   * is why the live reader hands back `factId`.
+   */
+  loadDaycareSubjects(
+    database: Database,
+    familyId: string,
+    window: { floor: Date; latest: Date },
+  ): Promise<DaycareSubject[]>;
+  loadWeekdayCare(database: Database, familyId: string): Promise<WeekdayCareFact[]>;
   loadChildren(database: Database, familyId: string): Promise<ReminderChild[]>;
   /** The family's own inbound messages since an instant, lowercased — what the
    * told-anywhere screen reads. */
@@ -284,6 +339,7 @@ export interface FollowupSweepResult {
   enabled: boolean;
   introAsked: number;
   activityAsked: number;
+  daycareAsked: number;
   /**
    * Asks the voice could not compose this tick. Its own field rather than a `skipped`
    * entry because it is the only outcome here that is neither a refusal nor a send: the
@@ -310,6 +366,7 @@ function emptyResult(enabled: boolean): FollowupSweepResult {
     enabled,
     introAsked: 0,
     activityAsked: 0,
+    daycareAsked: 0,
     composeDeferred: 0,
     refusedAtSend: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
@@ -320,6 +377,7 @@ function emptyResult(enabled: boolean): FollowupSweepResult {
       private_item: 0,
       out_of_scope: 0,
       window_passed: 0,
+      care_changed: 0,
     },
     failed: 0,
   };
@@ -635,6 +693,112 @@ async function runActivityFollowups(
   }
 }
 
+/**
+ * Stage 3 — "how is it going?", days after a parent said their child had started
+ * daycare (VIL-360).
+ *
+ * ONCE PER CHILD, EVER. The dedupe key carries no date and no window, so the row that
+ * records the send is also the permanent answer to "have we asked?" — a recurring
+ * version of this would be a survey rather than a check-in (founder decision #4).
+ *
+ * IT RUNS LAST, so the day's single slot goes to the intro and the activity first. Both
+ * of those are about something that happened on a day and stop being worth asking
+ * about; this one is about a fortnight and tolerates a tick's wait.
+ *
+ * ITS OWN FLAG on top of the sweep's, because this is the weekday-care feature's leg
+ * rather than the follow-up lane's: turning WEEKDAY_CARE_ENABLED off stops it being due
+ * and leaves nothing behind.
+ *
+ * THE ASK GOES TO ONE SEAT, and that asymmetry is named rather than accidental: the
+ * nudge that asked the question reached both parents, and this reaches the primary one.
+ * It is correct here for once — the parent who answered is the one holding the context —
+ * but it is a residual, because `FollowupFamily` cannot express "the parent who
+ * answered".
+ */
+async function runDaycareFollowups(
+  database: Database,
+  deps: FollowupSweepDeps,
+  families: readonly FollowupFamily[],
+  result: FollowupSweepResult,
+  now: Date,
+): Promise<void> {
+  if (!weekdayCareEnabled()) return;
+  const window = daycareFollowupWindow(now);
+
+  for (const family of families) {
+    try {
+      const subjects = await deps.loadDaycareSubjects(database, family.familyId, window);
+      if (subjects.length === 0) continue;
+      const live = new Map(
+        (await deps.loadWeekdayCare(database, family.familyId)).map((fact) => [
+          fact.childId,
+          fact.factId,
+        ]),
+      );
+
+      for (const subject of subjects) {
+        if (subject.validFrom < window.earliest) {
+          result.skipped.window_passed += 1;
+          continue;
+        }
+        // THE SUBJECT IS SUPERSEDED WHEN THE LIVE ROW IS A DIFFERENT ROW, not when its
+        // word changed. `loadDaycareSubjects` deliberately returns superseded answers
+        // so this refusal can be counted, and a family that MOVES daycare has said
+        // `daycare` twice - so a comparison on the care value saw no change and asked
+        // "How is Little Sprouts going?" about the place the parent had just said their
+        // child left, spending the once-per-child key on it forever. Identity settles
+        // it, and it subsumes the home case: a `home` row is a different row too.
+        //
+        // The newer answer is not asked about HERE - its own window has not opened yet.
+        // It opens three days after the parent gave it, with the key still unspent.
+        if (live.get(subject.childId) !== subject.factId) {
+          result.skipped.care_changed += 1;
+          continue;
+        }
+
+        const outcome = await sendFollowup(database, deps, {
+          familyId: family.familyId,
+          parentUserId: family.parentUserId,
+          ask: { kind: 'daycare', provider: subject.provider },
+          // Anchored just PAST the moment they told Hale, and the millisecond is
+          // load-bearing rather than defensive: the message that created this subject
+          // is the one that said "she's at Little Sprouts", and `inboundSince` is
+          // inclusive - so an anchor at `validFrom` screens the ask against the
+          // sentence that earned it, and the follow-up never goes to anybody.
+          alreadyDiscussed: async () =>
+            mentionsDaycare(
+              await deps.loadInboundSince(
+                database,
+                family.familyId,
+                new Date(subject.validFrom.getTime() + 1),
+              ),
+              subject.provider,
+            ),
+          templateKey: DAYCARE_FOLLOWUP_TEMPLATE_KEY,
+          dedupeKey: daycareFollowupDedupeKey(subject.childId),
+          now,
+        });
+        if (!tally(result, outcome)) continue;
+
+        result.daycareAsked += 1;
+        await deps.audit(database, {
+          familyId: family.familyId,
+          actor: 'system',
+          actionTaken: 'followup_daycare_asked',
+          targetTable: 'family_memory_facts',
+          targetId: subject.factId,
+          // Never the provider and never the child: the row this points at holds both,
+          // and a trail that copies content is a second place to leak it from (rule #1).
+          after: { askedAt: now.toISOString() },
+        });
+      }
+    } catch (err) {
+      result.failed += 1;
+      console.error({ err, familyId: family.familyId }, 'followup asks: daycare ask failed');
+    }
+  }
+}
+
 export async function runFollowupSweep(
   database: Database,
   deps: FollowupSweepDeps = defaultFollowupSweepDeps(),
@@ -653,6 +817,7 @@ export async function runFollowupSweep(
   const byId = new Map(families.map((family) => [family.familyId, family]));
   await runIntroFollowups(database, deps, byId, result, now);
   await runActivityFollowups(database, deps, families, result, now);
+  await runDaycareFollowups(database, deps, families, result, now);
   return result;
 }
 
@@ -856,6 +1021,8 @@ export function defaultFollowupSweepDeps(): FollowupSweepDeps {
     discoverableUserIds,
     loadDueActivities: (database, family, now) =>
       readDueActivities(database, family.familyId, family.parentUserId, now),
+    loadDaycareSubjects,
+    loadWeekdayCare,
     loadChildren: readFollowupChildren,
     loadInboundSince: inboundSince,
     buildGate: buildOutboundGatePorts,

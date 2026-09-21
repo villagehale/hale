@@ -7,7 +7,8 @@ import { loadNudgeVoiceSkill } from '~/lib/cron/skill';
 import { renderHealthNudge } from '~/lib/health/copy';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
-import type { HealthCheckpointNudge, Nudge } from './nudge-decide';
+import { weekdayCareAsk } from './weekday-care-copy';
+import type { HealthCheckpointNudge, Nudge, WeekdayCareAsk } from './nudge-decide';
 import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from './shell';
 
 /**
@@ -41,8 +42,14 @@ export interface NudgeVoice {
  * are excluded by construction rather than by a runtime check: their copy is static so
  * a human can review once and know what every family receives, and excluding them from
  * this type means a future voice path cannot quietly start composing them.
+ *
+ * VIL-360's weekday-care ASK is excluded for the sharper version of that reason. It
+ * opens a standing question whose answer is read by a deterministic grammar and written
+ * as a durable fact, so the exact words have to be the ones that grammar was written
+ * against — and this skill's own contract forbids it anyway ("Never write a question").
+ * The weekday FIND is voiced like any other offer; it asks nothing.
  */
-export type VoicedNudge = Exclude<Nudge, HealthCheckpointNudge>;
+export type VoicedNudge = Exclude<Nudge, HealthCheckpointNudge | WeekdayCareAsk>;
 
 /** Voice fields ONLY, strict: an unknown/extra top-level key fails the parse and the
  * caller falls back to the deterministic render. */
@@ -66,6 +73,18 @@ export function nudgeVoiceContext(nudge: VoicedNudge): unknown {
       ageApproximate: nudge.ageApproximate,
     };
   }
+  if (nudge.kind === 'weekday_dropin') {
+    // NO TIME OF DAY. The candidate row the decide read carries no clock time (the
+    // reader does not select `summary`), so `day` is the only time-shaped fact there
+    // is, and the skill's rule is to reuse the one it was given or say nothing.
+    return {
+      kind: nudge.kind,
+      what: nudge.candidateRef.title,
+      where: nudge.candidateRef.venueName,
+      day: nudge.weekday,
+      kidNames: nudge.kidNames,
+    };
+  }
   return {
     kind: nudge.kind,
     what: nudge.candidateRef.title,
@@ -87,6 +106,11 @@ export function nudgeFactSlots(nudge: VoicedNudge): string[] {
       ...nudge.kidNames,
     ];
     if (nudge.residentNote) slots.push(nudge.residentNote);
+    return slots;
+  }
+  if (nudge.kind === 'weekday_dropin') {
+    const slots = [nudge.candidateRef.title, nudge.weekday, ...nudge.kidNames];
+    if (nudge.candidateRef.venueName) slots.push(nudge.candidateRef.venueName);
     return slots;
   }
   const slots = [
@@ -164,6 +188,11 @@ export function renderNudgeDeterministically(nudge: Nudge): string {
   // message, not a fallback for one.
   if (nudge.kind === 'health_checkpoint') return renderHealthNudge(nudge);
 
+  // VIL-360's ask, for the same reason: the sentence IS the message. It is measured to
+  // the character, it carries the one question mark the grammar answers, and no model
+  // sees it (nudge/weekday-care-copy.ts).
+  if (nudge.kind === 'weekday_care') return weekdayCareAsk(nudge.childPhrase);
+
   if (nudge.kind === 'registration') {
     const who = nudge.kidNames.length > 0 ? ` for ${joinNames(nudge.kidNames)}` : '';
     const resident = nudge.residentNote ? ` - ${nudge.residentNote}` : '';
@@ -172,6 +201,12 @@ export function renderNudgeDeterministically(nudge: Nudge): string {
     // asserting something Hale does not know.
     const hedge = nudge.ageApproximate ? ' Worth a look if they are still in that band.' : '';
     return `${townLabel(nudge.windowRef.municipality)} ${nudge.windowRef.cycleLabel} registration opens ${nudge.opensAtLocal}${who}${resident}.${hedge}`;
+  }
+
+  if (nudge.kind === 'weekday_dropin') {
+    const venue = nudge.candidateRef.venueName ? ` at ${nudge.candidateRef.venueName}` : '';
+    const kids = nudge.kidNames.length > 0 ? ` for ${joinNames(nudge.kidNames)}` : '';
+    return `${dayLabel(nudge.weekday)} weekday drop-in: ${nudge.candidateRef.title}${venue}${kids}.`;
   }
 
   const where = nudge.candidateRef.venueName ? ` at ${nudge.candidateRef.venueName}` : '';
@@ -193,7 +228,9 @@ export async function composeNudgeMessage(
   // A health checkpoint never reaches the model (VIL-243 · M8): deterministic copy is
   // REVIEWABLE copy, and this is the one message class where a warmer sentence is not
   // worth the chance of a sentence nobody approved.
-  if (nudge.kind === 'health_checkpoint' || !deps.client) return deterministic;
+  if (nudge.kind === 'health_checkpoint' || nudge.kind === 'weekday_care' || !deps.client) {
+    return deterministic;
+  }
 
   // Inside the fallback boundary, like M3's: a proactive send that is otherwise ready
   // should still go out in Hale's plainest words rather than not go out at all.

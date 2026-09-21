@@ -100,10 +100,16 @@ const ASK_TOOL_SCHEMA = {
 /** Mirrors `followupVoiceUserMessage` in voice.ts — the kind, the title if there is one,
  * and any refused attempts. Nothing about the family can ride in on this shape. */
 function followupVoiceUserMessage(request, rejected = []) {
-  const base =
-    request.kind === 'activity'
-      ? { kind: 'activity', activity: request.activity }
-      : { kind: 'intro' };
+  let base;
+  if (request.kind === 'activity') base = { kind: 'activity', activity: request.activity };
+  else if (request.kind === 'daycare') {
+    // The key is OMITTED when no provider was captured, rather than sent as null: an
+    // absent field is nothing to fill in, and `provider: null` is an invitation to.
+    base =
+      request.provider === null
+        ? { kind: 'daycare' }
+        : { kind: 'daycare', provider: request.provider };
+  } else base = { kind: 'intro' };
   return JSON.stringify(rejected.length === 0 ? base : { ...base, rejected });
 }
 
@@ -127,9 +133,15 @@ function refusals(body, request) {
   if ((body.match(/\?/g) ?? []).length !== 1) found.push('not_one_question');
 
   let withoutSubject = body;
-  if (request.kind === 'activity') {
-    if (!body.toLowerCase().includes(request.activity.toLowerCase())) found.push('subject_missing');
-    withoutSubject = body.replace(new RegExp(escapeRegExp(request.activity), 'gi'), ' ');
+  const subject =
+    request.kind === 'activity'
+      ? request.activity
+      : request.kind === 'daycare'
+        ? request.provider
+        : null;
+  if (subject !== null && subject !== undefined) {
+    if (!body.toLowerCase().includes(subject.toLowerCase())) found.push('subject_missing');
+    withoutSubject = body.replace(new RegExp(escapeRegExp(subject), 'gi'), ' ');
   }
   if (/\d/.test(withoutSubject)) found.push('invented_number');
   return found;
@@ -170,10 +182,11 @@ function flatten(text) {
 
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE text message Hale sends a parent to check back on',
-  'something it set up days ago - an introduction to another family, or an activity it put',
-  'on their calendar. Hale composed this BLIND: for an activity it was shown the title and',
-  'nothing else, and for an introduction it was shown nothing at all. No family, no',
-  'children, no dates, no tools.',
+  'something it set up or was told days ago - an introduction to another family, an activity',
+  'it put on their calendar, or a daycare the parent said their child had started. Hale',
+  'composed this BLIND: for an activity it was shown the title and nothing else, for a',
+  'daycare the provider name the parent typed (or nothing at all), and for an introduction',
+  'nothing at all. No family, no children, no dates, no tools.',
   'You are given the request it was answering, the message, and watchFor - fixture-specific',
   'notes on what right and wrong look like here. Score 1-5.',
   'A 5 is a friend who happened to remember, texting: ONE warm question about how the named',

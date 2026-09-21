@@ -205,6 +205,7 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     loadWindows: (database, area) => readWindows(database, area),
     loadSuppressedCheckpoints: async () => new Set<string>(),
     loadClaimedWindowIds: async () => new Set<string>(),
+    loadWeekdayCareContext: async () => ({ stated: [], askedBefore: false, weekendFindSent: false }),
     weather: fakeWeather(WET),
     buildGate: openGate,
     // SEAM: the ledger's dedupe predicate (channel/ledger.ts dedupeActive).

@@ -70,6 +70,14 @@ export interface RadarCandidate {
   seasons: string[] | null;
   childId: string | null;
   confidence: number;
+  /**
+   * The discovery layer that wrote the row (`village_candidates.source`), or null
+   * on a row that predates the column being set. `decideRadar` ignores it; the
+   * weekday drop-in reads it, because a TIME claim about a weekday session may
+   * only rest on the civic sweep's verified feed (civic/project.ts CIVIC_SOURCE)
+   * and never on an LLM-discovered row.
+   */
+  source: string | null;
 }
 
 export interface WeekendPick {
@@ -196,7 +204,12 @@ function addDays(key: string, days: number): string {
   return new Date(Date.parse(`${key}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
-function weekdayOf(key: string): number {
+/** The day of the week a `YYYY-MM-DD` key falls on, 0 = Sunday. Read as UTC on
+ * purpose, like the arithmetic above: the key already carries the family's own
+ * calendar day, and re-deriving it through a zone is how a Wednesday becomes a
+ * Tuesday. Exported so the weekday drop-in asks this question the same way the
+ * weekend does rather than writing a second answer to it. */
+export function weekdayOf(key: string): number {
   return new Date(`${key}T00:00:00Z`).getUTCDay();
 }
 

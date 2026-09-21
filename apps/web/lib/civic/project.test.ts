@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseAgeRange } from '~/lib/channel/intake/radar-decide';
+import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import {
   type CivicSessionForFamily,
   MAX_CIVIC_CANDIDATES_PER_FAMILY,
@@ -321,8 +322,34 @@ describe('kind, copy and coverage', () => {
       endMinute: 12 * 60,
     });
     expect(selectCivicSessions([weekly], TODDLER, null, NOW, TZ)[0]!.summary).toContain(
-      '10:00 a.m.–noon',
+      '10:00 a.m.-noon',
     );
+  });
+
+  /**
+   * VIL-360 · R5 — every string this layer PERSISTS is read back out over SMS, and one
+   * character outside the GSM-7 basic alphabet flips the whole message to UCS-2 and
+   * halves its character budget. The weekly time range joined on an en dash and the
+   * summary joined on an em dash were both doing exactly that, invisibly, because
+   * nothing downstream renders a candidate's summary yet.
+   *
+   * Asserted against the ENCODER the sender bills on rather than against the two
+   * characters, so the next typographic one fails here too.
+   */
+  it('persists only GSM-7 printable copy, whatever the source day and time', () => {
+    const weekly = session({
+      recurrence: 'weekly',
+      startsAt: null,
+      dayOfWeek: 2,
+      startMinute: 9 * 60 + 30,
+      endMinute: 11 * 60,
+    });
+    const pick = selectCivicSessions([weekly], TODDLER, null, NOW, TZ)[0]!;
+    // The positive control: the range IS in the copy, so this is not passing by saying
+    // nothing at all.
+    expect(pick.summary).toContain('9:30 a.m.-11:00 a.m.');
+    expect(isPrintableGsm7Basic(pick.summary)).toBe(true);
+    expect(isPrintableGsm7Basic(pick.title)).toBe(true);
   });
 });
 

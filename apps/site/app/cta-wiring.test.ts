@@ -338,7 +338,7 @@ describe('the money pages report engagement, not just clicks', () => {
     );
     expect(registration).toContain('<LandingScrollAnalytics page={guide.placement} />');
     const landing = code(
-      readFileSync(join(SITE_ROOT, 'components/landing/v4/landing-v4.tsx'), 'utf8'),
+      readFileSync(join(SITE_ROOT, 'components/landing/v5/landing-v5.tsx'), 'utf8'),
     );
     expect(landing).toContain('<LandingScrollAnalytics />');
   });

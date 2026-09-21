@@ -52,7 +52,9 @@ function anchors(html: string): string[] {
  * sr-only caption comes off FIRST: it is said to the reader the layout does not
  * reach, and what is left is the message a sighted reader sees. */
 function bubbleText(html: string, dir: 'out' | 'in'): string | null {
-  const match = new RegExp(`<p class="v4-bubble v4-bubble-${dir}"[^>]*>([\\s\\S]*?)</p>`).exec(html);
+  const match = new RegExp(`<p class="v4-bubble v4-bubble-${dir}"[^>]*>([\\s\\S]*?)</p>`).exec(
+    html,
+  );
   if (match?.[1] === undefined) return null;
   return match[1]
     .replace(/<span class="sr-only">[\s\S]*?<\/span>/, '')
@@ -108,7 +110,7 @@ function qrPath(html: string): string {
 describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
   it('leads with what Hale IS — the five-second line, both arms', () => {
     for (const html of [liveHtml, unsetHtml]) {
-      expect(html).toContain('The family assistant you text.');
+      expect(html).toContain('A number you text for what’s on near your kids.');
       // ONE sentence. "No app, no account" moved out of the lede: the trust
       // strip already says it, and above the fold every restated line is a line
       // between a stranger and the button.
@@ -391,7 +393,9 @@ describe('TextEntry — the channel matrix, rendered', () => {
   });
 
   it('pre-fills the locked hello when no venue sent them', () => {
-    expect(liveNoSourceHtml).toContain('href="sms:+16475551234?&amp;body=Hi%20Hale%20%F0%9F%91%8B%20ready%20to%20get%20started"');
+    expect(liveNoSourceHtml).toContain(
+      'href="sms:+16475551234?&amp;body=Hi%20Hale%20%F0%9F%91%8B%20ready%20to%20get%20started"',
+    );
   });
 
   it('keeps the dark page dark: no channel buttons on the email-fallback state even if the WhatsApp env leaks in', () => {
