@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { clarifyWhichQuestion, whichOneReply } from './copy';
+import {
+  UNDONE_RECEIPT,
+  approvedReceipt,
+  clarifyWhichQuestion,
+  declinedReceipt,
+  healthDoneReply,
+  whichOneReply,
+} from './copy';
 
 /**
  * THE DISAMBIGUATION, WITH BOTH WAYS TO ANSWER IT (VIL-304).
@@ -117,5 +124,62 @@ describe('clarifyWhichQuestion', () => {
     // Honest about what it left out, and pointing nowhere.
     expect(reply).toContain('and 2 others');
     expect(reply).toContain('the plan I offered');
+  });
+});
+
+/**
+ * THE STATE RECEIPTS, IN REGISTER (docs/voice.md).
+ *
+ * A fixed body is legitimate here — what it carries is a fact about rows the router just
+ * read — so what changed is the words, not the class. Three of them opened with the
+ * system's own word for the event rather than the parent's: "Filed", "Undone", and a UI
+ * table label spliced in mid-sentence.
+ */
+describe('the state receipts', () => {
+  const RECEIPTS = () => [
+    healthDoneReply(),
+    UNDONE_RECEIPT,
+    approvedReceipt('add_to_digest_only'),
+    declinedReceipt('calendar_cancel'),
+    approvedReceipt('create_calendar_event'),
+  ];
+
+  it('opens with none of the system words rule 3 bans', () => {
+    // Rule 3's list, restricted to the openers this class actually reached for. `Drafted -`
+    // is deliberately absent: router/copy.ts names it as the register the file should be
+    // in, because a draft is a thing the parent is about to answer rather than a state
+    // Hale is describing.
+    for (const receipt of RECEIPTS()) {
+      expect(receipt, receipt).not.toMatch(/^(?:Filed|Undone|Processed|Logged|Noted)\b/);
+      expect(receipt, receipt).not.toMatch(/\b(?:your request|I've logged|the app)\b/i);
+    }
+  });
+
+  it('splices the SPOKEN action label, never the UI table label', () => {
+    expect(approvedReceipt('add_to_digest_only')).toBe(
+      "Approved - the note in your digest. I'll let you know once it's done.",
+    );
+    expect(declinedReceipt('calendar_cancel')).toBe(
+      "Dropped it - the cancellation on your calendar won't happen.",
+    );
+    // The mutation this catches: dropping back to actionTypeLabel().toLowerCase(), which
+    // renders the headless "note in your digest".
+    for (const receipt of [approvedReceipt('add_to_routine'), declinedReceipt('add_to_routine')]) {
+      expect(receipt, receipt).toContain('the pin on your routine');
+    }
+  });
+
+  it('says what happened in the tense it happened in (rule 10)', () => {
+    // The undo really has executed by the time this is sent, so it is past tense and
+    // carries no promise of a later text; the approval has not, so it does.
+    expect(UNDONE_RECEIPT).toBe("That's back off your calendar.");
+    expect(UNDONE_RECEIPT).not.toMatch(/I'll|will/);
+    expect(approvedReceipt('create_calendar_event')).toContain("I'll let you know");
+  });
+
+  it('asks nothing, because none of these is a question', () => {
+    for (const receipt of RECEIPTS()) {
+      expect(receipt, receipt).not.toContain('?');
+    }
   });
 });

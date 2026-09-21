@@ -1,5 +1,5 @@
 import { appBaseUrl } from '~/lib/cron/email-compliance';
-import { actionTypeLabel } from '~/lib/format/labels';
+import { spokenActionLabel } from '~/lib/format/labels';
 import type { SpineRefusal } from './approval';
 import { MAX_LISTED_APPROVALS } from './fast-path';
 
@@ -130,7 +130,7 @@ export const FLOOD_REPLY = "Give me a moment - I'm still catching up on your las
  * of quiet fabrication rule #5's failure-honesty exists to forbid.
  */
 export function healthDoneReply(): string {
-  return "Filed - I won't raise that one again.";
+  return "That's sorted - I won't raise it again.";
 }
 
 /** Rule #4: a booking is DRAFTED and held, and the verbs stay honest end-to-end.
@@ -142,15 +142,24 @@ export function checkupDraftedReply(): string {
   return 'Drafted - reply YES and it goes on your week. Nothing\'s booked until you call the clinic.';
 }
 
+/**
+ * The two approval receipts, and the one reason they take {@link spokenActionLabel}
+ * rather than the UI label: `ACTION_TYPE_LABELS` is authored Title Case for a table in
+ * the web app, and lowercasing it into a text left "Approved - note in your digest." —
+ * a form field read aloud (docs/voice.md rule 4). The label is fixed at the splice, so
+ * the Record the web UI shares is untouched.
+ */
 export function approvedReceipt(actionType: string): string {
-  return `Approved - ${actionTypeLabel(actionType).toLowerCase()}. I'll let you know once it's done.`;
+  return `Approved - ${spokenActionLabel(actionType)}. I'll let you know once it's done.`;
 }
 
 export function declinedReceipt(actionType: string): string {
-  return `Dropped it - ${actionTypeLabel(actionType).toLowerCase()} won't happen.`;
+  return `Dropped it - ${spokenActionLabel(actionType)} won't happen.`;
 }
 
-export const UNDONE_RECEIPT = "Undone - I've taken that back off your calendar.";
+/** Past tense, because this one really has happened (rule 10), and the fact first
+ * (rule 1) — "Undone -" was the system's word for it, not the parent's. */
+export const UNDONE_RECEIPT = "That's back off your calendar.";
 
 /**
  * The ack for a captured address (VIL-249).
