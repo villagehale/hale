@@ -99,7 +99,7 @@
             "text": "Vaughan 游泳课报得怎么样？回复「got in」「waitlisted #12」或「missed it」。"
           },
           { "dir": "out", "text": "got in" },
-          { "dir": "in", "text": "位置到手。已记下：Vaughan 游泳课，报名完成。" }
+          { "dir": "in", "text": "位置到手——Vaughan 游泳课，你们报上了。" }
         ]
       },
       {
@@ -107,7 +107,7 @@
         "rows": [
           { "dir": "in", "text": "今天和 Mia 过得怎么样？一句话就够。" },
           { "dir": "out", "text": "送过去的时候哭了，后来又不肯走。" },
-          { "dir": "in", "text": "记下了——谢谢。回复 NO 就不再发这些。" }
+          { "dir": "in", "text": "谢谢——这很有用。回复 NO 就不再发这些。" }
         ]
       }
     ],

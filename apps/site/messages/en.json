@@ -99,7 +99,7 @@
             "text": "How did Vaughan swim lessons go? Reply “got in”, “waitlisted #12” or “missed it”."
           },
           { "dir": "out", "text": "got in" },
-          { "dir": "in", "text": "That’s a spot. Noted: Vaughan swim lessons registered." }
+          { "dir": "in", "text": "That’s a spot — you’re in for Vaughan swim lessons." }
         ]
       },
       {
@@ -107,7 +107,7 @@
         "rows": [
           { "dir": "in", "text": "How did today go with Mia? One line is plenty." },
           { "dir": "out", "text": "Cried at drop-off, then didn’t want to leave." },
-          { "dir": "in", "text": "Noted — thanks. Reply NO to drop these." }
+          { "dir": "in", "text": "Thanks — that helps. Reply NO to drop these." }
         ]
       }
     ],

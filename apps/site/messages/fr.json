@@ -104,7 +104,7 @@
           { "dir": "out", "text": "got in" },
           {
             "dir": "in",
-            "text": "C’est une place. Noté : cours de natation de Vaughan, inscription faite."
+            "text": "C’est une place — vous êtes inscrits aux cours de natation de Vaughan."
           }
         ]
       },
@@ -113,7 +113,7 @@
         "rows": [
           { "dir": "in", "text": "Comment s’est passée la journée avec Mia? Une ligne suffit." },
           { "dir": "out", "text": "Des larmes à l’arrivée, et puis elle ne voulait plus partir." },
-          { "dir": "in", "text": "Noté — merci. Répondez NO pour ne plus en recevoir." }
+          { "dir": "in", "text": "Merci — c’est utile. Répondez NO pour ne plus en recevoir." }
         ]
       }
     ],

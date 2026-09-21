@@ -259,16 +259,36 @@ const CHECK_IN_LEG = fill(
 const REGISTERED_REPLY = fill(
   `${extract(
     SEQUENCE_COPY,
-    /return `(That's a spot\. Noted: )\$\{town\} \$\{shortlist\.windowRef\.cycleLabel\} registered\.`;/,
+    /return `(That's a spot - you're in for )\$\{town\} \$\{shortlist\.windowRef\.cycleLabel\}\.`;/,
     'renderCheckInReply',
-  )}${WINDOW_PHRASE} registered.`,
+  )}${WINDOW_PHRASE}.`,
 );
-const LATER_CHECK_IN_ASK = fill(
-  extract(
-    CHECKIN_COPY,
-    /function laterCheckInAsk\(phrase: string\): string \{\s*return `([^`]+)`;/,
-    'laterCheckInAsk',
-  ),
+
+/* ── the two POOLED sentences ─────────────────────────────────────────────────
+ * The voice work (#673) turned two of the five quoted sentences into rotations:
+ * `LATER_ASK_POOL` (five ways to ask how the day went) and
+ * `CHECK_IN_NOTED_ACK_POOL.en` (five ways to say it was kept). A page can only
+ * print one sentence, so the pin becomes MEMBERSHIP — the bubble is one the
+ * rotation actually produces — which is the same promise the single-sentence
+ * pins make and is what T2 asserts. Reading the whole pool rather than its first
+ * member is the point: a rotation the page quotes the head of would go green on
+ * a page that pinned a sentence the parent mostly does not receive. */
+
+/** Every frame in a pool of one-argument renderers, filled from the row. */
+function poolFrames(src: string, re: RegExp, what: string): readonly string[] {
+  const frames = [...extract(src, re, what).matchAll(/`([^`]+)`/g)].map((match) => {
+    const frame = match[1];
+    if (frame === undefined) throw new Error(`apps/web moved ${what} — re-pin the loop with it`);
+    return fill(frame);
+  });
+  if (frames.length === 0) throw new Error(`apps/web emptied ${what}`);
+  return frames;
+}
+
+const EVENING_ASK_POOL = poolFrames(
+  CHECKIN_COPY,
+  /const LATER_ASK_POOL[^\n]*= \[\n([\s\S]*?)\n\];/,
+  'LATER_ASK_POOL',
 );
 /** `WATCH_OFFER` is `${WATCH_OFFER_ASK}${frame}` with `${PRIVACY_URL}` inside the
  * frame — the one message in intake that carries a link, and the reason it is the
@@ -292,16 +312,39 @@ const WATCH_OFFER = (() => {
     ask + frame.replace('${PRIVACY_URL}', privacyUrl.replace(/^https:\/\/www\./, '')),
   );
 })();
-/** The ack, first and last clauses — see the elision note in T2. */
-const NOTED_ACK = (() => {
-  const wire = extract(
+/** The English ack pool, whole — one quoted string per line, the way apps/web
+ * writes it. Single- and double-quoted both, because the apostrophes decide. */
+const NOTED_ACK_POOL = (() => {
+  const block = extract(
     CHECKIN_COPY,
-    /export const CHECK_IN_NOTED_ACK[\s\S]*?en: "([^"]+)",/,
-    'CHECK_IN_NOTED_ACK.en',
-  ).split('. ');
-  if (wire.length !== 3) throw new Error(`CHECK_IN_NOTED_ACK is no longer three clauses: ${wire}`);
-  return asPageTypography(`${wire[0]}. ${wire[2]}`);
+    /export const CHECK_IN_NOTED_ACK_POOL[\s\S]*?\n {2}en: \[\n([\s\S]*?)\n {2}\],/,
+    'CHECK_IN_NOTED_ACK_POOL.en',
+  );
+  const members = block
+    .split('\n')
+    .map((line) => line.trim().replace(/,$/, ''))
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const quote = line[0];
+      if ((quote !== '"' && quote !== "'") || line.at(-1) !== quote) {
+        throw new Error('apps/web moved CHECK_IN_NOTED_ACK_POOL.en — re-pin the loop with it');
+      }
+      return line.slice(1, -1);
+    });
+  if (members.length === 0) throw new Error('apps/web emptied CHECK_IN_NOTED_ACK_POOL.en');
+  return members;
 })();
+
+/** The way out, which every member of the ack pool ends on — the invariant the
+ * elision below is allowed to lean on. Asserted in T2, not here. */
+const NOTED_ACK_TAIL = 'Reply NO to drop these.';
+
+/** The ack, first and last clauses — see the elision note in T2. Four of the five
+ * members put the elided claim in a middle clause and can be quoted this way; the
+ * fifth folds it into its opening clause and so is not a candidate at all. */
+const NOTED_ACK_ELIDED = NOTED_ACK_POOL.map((member) => member.split('. '))
+  .filter((clauses) => clauses.length === 3)
+  .map((clauses) => asPageTypography(`${clauses[0]}. ${clauses[2]}`));
 
 describe('T1 · the loop is one conversation, in firing order', () => {
   const text = prose(render());
@@ -372,9 +415,9 @@ describe('T2 · every bubble quotes a string apps/web actually renders', () => {
    * seeded window the ladder would fire from.
    *
    * ONE ELISION, marked here because an unmarked one is how a quotation rule
-   * launders a product defect onto a marketing page: the evening ack ships as
-   * "Noted - thanks. I'll keep it in mind for the weekend picks. Reply NO to
-   * drop these." The middle clause is an overclaim in the product —
+   * launders a product defect onto a marketing page: every member of the evening
+   * ack pool names what the note is FOR ("I'll keep it in mind for the weekend
+   * picks"), and that clause is an overclaim in the product —
    * `family_check_in_notes` is read by nothing but the rights export and the
    * thirty-day purge (VIL-354) — so the page quotes the first and last clauses
    * and the ack's own wording is filed against the voice brief.
@@ -385,12 +428,40 @@ describe('T2 · every bubble quotes a string apps/web actually renders', () => {
     ['the go leg, as it opens', GO_LEG],
     ['the check-in leg and its ANSWER_MENU', CHECK_IN_LEG],
     ['renderCheckInReply, registered', REGISTERED_REPLY],
-    ['laterCheckInAsk, the evening ask', LATER_CHECK_IN_ASK],
-    ['CHECK_IN_NOTED_ACK, first and last clauses', NOTED_ACK],
   ];
 
   it.each(QUOTED)('renders the shipped sentence — %s', (_what, sentence) => {
     expect(text).toContain(sentence);
+  });
+
+  /**
+   * The two POOLED bubbles (#673). A page prints one sentence; the renderer now
+   * rotates five. So the invariant is membership — the bubble is one the rotation
+   * actually produces — asserted as EXACTLY ONE member present, which fails both
+   * ways a quotation rule can rot: on a page that quotes nothing the pool holds
+   * (a sentence typed out of a brief, or a member apps/web has since rewritten),
+   * and on a page that has drifted into printing two of them.
+   */
+  it.each([
+    ['the evening ask — LATER_ASK_POOL', EVENING_ASK_POOL],
+    ['the evening ack, elided — CHECK_IN_NOTED_ACK_POOL.en', NOTED_ACK_ELIDED],
+  ])('quotes exactly one member of the rotation — %s', (what, pool) => {
+    expect(pool.length, `${what} must have members to choose from`).toBeGreaterThan(1);
+    expect(pool.filter((member) => text.includes(member)), what).toHaveLength(1);
+  });
+
+  it('leans only on what holds across the whole ack pool — the way out', () => {
+    // The elision keeps a member's FIRST and LAST clauses. The last clause is the
+    // same sentence in all five, and that is the part a parent needs; if a future
+    // member ended on something else, quoting "first and last" would silently stop
+    // quoting the opt-out. The count is the positive control: five members, five
+    // ways out, not an empty pool vacuously satisfying a for-all.
+    expect(NOTED_ACK_POOL.length).toBeGreaterThan(1);
+    for (const member of NOTED_ACK_POOL) {
+      expect(member, member).toContain(NOTED_ACK_TAIL);
+      expect(member.endsWith(NOTED_ACK_TAIL), member).toBe(true);
+    }
+    expect(prose(render())).toContain(NOTED_ACK_TAIL);
   });
 
   it('opens the ladder at the hour the dataset row really opens', () => {
