@@ -302,10 +302,42 @@ describe('the aside never opens a door', () => {
       expect(JSON.stringify(row.after)).not.toContain('Say the word');
     }
 
-    // THE FAR SIDE, and it is the only assertion here that reads the parent's next turn.
-    // Three cancellations mint no offer, so the household has nothing open — and the text
-    // that went out asked for nothing, so there is no YES to give. A clause that HAD
-    // shipped would have asked for one anyway, which is the whole of #649.
+    // THE FAR SIDE, and what it does and does not prove.
+    //
+    // #649 is not that a YES resolves nothing. It is that a YES resolves the WRONG thing:
+    // the resolver binds a bare affirmative to whatever question is newest or sole, and
+    // three cancellations mint no offer of their own, so a YES prompted by a clause on one
+    // of them lands on a question about something else entirely. So the household is given
+    // one - a standing offer from earlier in the week, seeded here rather than assumed -
+    // and the YES is then shown to place THAT occasion, with no reviewer and no relation to
+    // any of the three texts that just went out.
+    //
+    // This block is a standing control, NOT the mutation's witness: nothing downstream of
+    // the guard differs between a door that shipped and a door that was refused, because
+    // the only thing the guard changes is the body. Delete the door rules and the two
+    // assertions that go red are the wire body above and the agent_runs status below.
+    const [carrier] = await database
+      .select({ id: schema.channelMessages.id })
+      .from(schema.channelMessages)
+      .limit(1);
+    if (!carrier) throw new Error('the sweep wrote no ledger row');
+    const [standing] = await database
+      .insert(schema.emailAlertOffers)
+      .values({
+        familyId,
+        parentUserId,
+        integrationId,
+        messageId: 'm-earlier-in-the-week',
+        kind: 'new_event',
+        title: 'Picture day form',
+        startsAt: new Date(NOW.getTime() + 5 * 24 * 60 * 60 * 1000),
+        location: null,
+        channelMessageId: carrier.id,
+        expiresAt: new Date(NOW.getTime() + 2 * 24 * 60 * 60 * 1000),
+      })
+      .returning({ id: schema.emailAlertOffers.id });
+    if (!standing) throw new Error('no standing offer');
+
     const reply = await handleEmailAlertOfferReply(database, {
       familyId,
       parentUserId,
@@ -314,12 +346,16 @@ describe('the aside never opens a door', () => {
       language: 'en',
       now: new Date(NOW.getTime() + 60_000),
     });
-    expect(reply.status).toBe('no_open_offer');
+    // The YES lands on the unrelated question, which is exactly the harm a soliciting
+    // clause would have invited - and the reason none of the three texts may ask for one.
+    expect(reply.status).toBe('added');
+    expect(reply.status === 'added' && reply.offerId).toBe(standing.id);
     const events = await database
       .select()
       .from(schema.familyEvents)
       .where(eq(schema.familyEvents.familyId, familyId));
-    expect(events).toHaveLength(0);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.title).toBe('Picture day form');
   });
 
   it('bills exactly one agent_runs row per text that reached the model, and none for the held one', async () => {
