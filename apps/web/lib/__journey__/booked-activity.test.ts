@@ -14,6 +14,7 @@ import {
   defaultFollowupSweepDeps,
   runFollowupSweep,
 } from '~/lib/channel/followup/run';
+import { createFollowupVoice } from '~/lib/channel/followup/voice';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -57,9 +58,16 @@ import { type TestDb, createTestDb } from '~/lib/testing/pglite';
  *   1. Revert the `triage-child-event.md` confirmation carve-out  -> red at the text.
  *   2. Revert PR4's union reader                                  -> red at the ask.
  *   3. Revert PR4's `DueActivity.parentUserId`                    -> red at WHICH PHONE.
+ *   4. Compose the ask from any other title                      -> red at the lookup.
  */
 
 const RECORDINGS = join(import.meta.dirname, '__recordings__', 'booked-activity.json');
+/** The follow-up ask's own turn, in its own file for two reasons. It is not transcoded:
+ * no followup-voice fixture carries this class's title, so there is no eval-cache entry
+ * to re-key and this one turn is recorded live (`HALE_RECORD=1`). And `booked-activity.json`
+ * is WRITTEN WHOLESALE by `mint-booked-activity.mjs` out of the sentinel eval cache, so a
+ * live turn parked in it would be deleted the next time either sentinel skill is edited. */
+const VOICE_RECORDINGS = join(import.meta.dirname, '__recordings__', 'booked-followup-voice.json');
 
 /** The eval corpus's own municipal receipt, and the family context the recording is keyed
  * on. Fixed ids and fixed ages rather than DB-derived ones: `ageInMonths` off a stored
@@ -252,9 +260,16 @@ function sweepDeps(transport: FakeTransport): FollowupSweepDeps {
   return {
     ...defaultFollowupSweepDeps(),
     transport,
-    // The follow-up's WORDS are the followup-voice eval's subject, not this journey's:
-    // what is under test here is that an ask happens at all and reaches the right phone.
-    voice: { compose: async () => ({ status: 'composed', body: 'How did Preschool Swim Level 2 go?' }) },
+    // THE REAL COMPOSER, over a REAL recorded turn (rule #8). It was a stub returning a
+    // canned sentence, and a stub cannot fail on the one thing this step is here to
+    // prove: that the title the sweep hands the composer is the BOOKING's own class. A
+    // scripted body says "Preschool Swim Level 2" no matter what the projection carried;
+    // a recorded one is keyed on the request, so a sweep that composed from the wrong
+    // title - or from no title - misses the lookup and this file goes red. The composer
+    // turns a thrown miss into its own `model_failed` deferral, so the red arrives as
+    // `activityAsked: 0`: re-record with `HALE_RECORD=1` and a live key, then commit the
+    // JSON.
+    voice: createFollowupVoice(recordedModel(VOICE_RECORDINGS, pipelineClient).client),
   };
 }
 
@@ -376,6 +391,9 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
     // happened - hears nothing.
     expect(askTransport.sent[0]?.to).toBe(CO_PARENT_PHONE);
     expect(askTransport.sent.map((sent) => sent.to)).not.toContain(PRIMARY_PHONE);
+    // ...and Claude's own words name the class the receipt booked - the composer was
+    // handed the booking's title and nothing else about this household.
+    expect(askTransport.sent[0]?.body).toContain('Preschool Swim Level 2');
 
     const audit = await db.database
       .select()
