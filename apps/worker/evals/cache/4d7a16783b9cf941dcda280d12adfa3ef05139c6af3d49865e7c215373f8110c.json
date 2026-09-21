@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 4,
-    "reason": "The message is plain-spoken and specific, naming the actual checkpoint task from the facts without padding. \"I checked\" satisfies the contract requirement for a lead clause. The second sentence correctly handles the null registration fields with instructed copy about no registration dates coming up. However, the message omits the required clause that should appear when weekendPick is null—Hale should plainly state that they are still learning the area and will have a pick soon. This is a contract-required element when that field is absent, not optional."
-  }
-}

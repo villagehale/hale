@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message leads with \"I checked\" (mandatory contract language), states the checkpoint task plainly and specifically, and when facts are absent (no registration date, no weekend pick, no `firstFindBeat`), it says so directly without padding or invention. It does not claim to have swept an area or checked a count of places, so the lead language stays in scope. Both required clauses for null registration and null weekendPick are present and plainly stated. The message is quiet, specific, and short, naming only what the facts carry."
+  }
+}

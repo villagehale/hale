@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message presents both finds as the product of looks Hale already took. The first sentence contains \"I checked\" (attribution verb) and immediately delivers the fact about Toronto's registration calendar in that same sentence. The second sentence contains \"I found\" (attribution verb) and immediately delivers the fact about the Riverdale Farm drop-in in that same sentence. Both attribution verbs appear in the lead sentences alongside their respective facts, with no preamble, no invented specifics (postal codes, time ranges, area counts), and no product introduction. The facts given (town, cycle name, date/time, activity title, child's name) all appear in the payload. This is precisely the structure of reporting back on work already done."
+  }
+}

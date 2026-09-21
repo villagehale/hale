@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message meets all contract requirements: (1) it opens with a mandatory lead phrase \"I checked\" showing Hale looked things up; (2) it states only given facts—town, cycle name, opening date/time, kid names from registration, resident priority, and the weekend pick's activity, venue, day, kids, and attributes; (3) it avoids invention (no placeholder venue for registration, no invented details about price specifics beyond \"paid\"); (4) it's plainly written without hype or corporate voice, short and direct, leading with the useful actionable fact (the registration date/time). The omission of `firstFindBeat` and presence of null values are handled correctly—nothing is padded or invented to fill them. The message sounds like a competent neighbour who looked something up and is reporting back plainly."
+  }
+}

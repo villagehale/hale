@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The message opens with \"I checked Markham's Fall 2026 registration for Maya\" - a first-person verb of checking in the lead sentence that establishes Hale as the one who did the looking. The fact (opens Aug 11, 6:30 a.m.) lands in that same sentence, making this a full attribution with work already reported. The second sentence also uses \"found\" with the specific fact following. Both the town (Markham), cycle (Fall 2026), and child name (Maya) in the attribution match what appears in the facts payload, with no invented scope."
-  }
-}

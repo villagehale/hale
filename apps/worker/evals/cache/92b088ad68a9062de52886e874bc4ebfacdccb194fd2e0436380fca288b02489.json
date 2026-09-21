@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message follows the contract precisely. It uses the instructed plain-language clause for null `registration` and `registrationAbsence` (\"nothing to point you to yet and no registration dates on hand\"), deploys the instructed signal that `weekendPick` is null (\"I'm still mapping what's near you\"), and reproduces `firstFindBeat` verbatim without padding. The voice is quiet, specific, short, and neighbour-like—not corporate or hyped. It names no invented details, states absences plainly rather than padding them, and leads with what's useful. The lead sentence \"I'm still mapping\" signals work already underway without claiming a scope the facts don't carry."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message opens with \"I found\" in the first sentence, a clear first-person verb of finding that attributes the discovery to Hale. The useful fact (free outdoor High Park playground meetup on Saturday for Ada and Noor) lands in that same sentence. The attribution is not invented - it uses only facts present in the payload (activity title, location name, day, kid names, and the \"free\" and \"outdoor\" properties). No invented scope (postal codes, areas swept, check times, schedules) appears."
+  }
+}

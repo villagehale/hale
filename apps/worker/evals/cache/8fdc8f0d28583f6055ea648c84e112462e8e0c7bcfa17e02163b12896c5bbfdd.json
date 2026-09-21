@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The message follows the contract precisely. It includes the required \"I'm still mapping\" clause that handles the null weekendPick without inventing a pick or making claims about missing data. It states plainly that there are no registration dates (\"no registration dates on my end either\"), which is the instructed copy for when both registration fields are null. It reproduces the firstFindBeat verbatim (\"Your first weekend find lands in a day or two\") without padding. The voice is plain-spoken and neighbour-like - direct, specific to what Hale actually knows, and leads with the useful constraint (still learning the area). No invented details, no hype, no corporate voice. The message respects all three required contract elements and invents nothing."
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The message is competent, plain-spoken, and specific. It leads with the useful thing (found + activity + timing + child's name). It states only the given facts: the activity title, day, child's name, and both relevant reasons (free, outdoor). It correctly handles the null venue by omitting it without padding or invention. It handles the null registration dates with the instructed clause saying nothing has a registration date coming up. No invented details, no corporate voice, no hype."
-  }
-}

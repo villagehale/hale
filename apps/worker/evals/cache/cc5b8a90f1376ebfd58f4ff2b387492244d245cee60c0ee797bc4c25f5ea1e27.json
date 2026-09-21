@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message meets all contract requirements. It opens with the mandatory lookup phrase \"I checked\" and leads with the useful facts: Fall 2026 registration opened Sep 1, and Winter 2027 dates aren't posted. It handles the registrationAbsence plainly when stillOpenPage is false, stating both halves without speculation. The firstFindBeat is reproduced verbatim as instructed. No invented details—venue, price, age range are absent from facts and absent from message. Voice is quiet, plain-spoken, specific, short, and competent. Registration null is handled by saying dates aren't posted yet, which is the instructed copy for that absence. Weekends null is not restated as a complaint or filler. No hype, no padding, no database listing."
+  }
+}

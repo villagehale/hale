@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The message meets all contract requirements with plain-spoken competence. It opens with \"I checked\" (mandatory lead phrase showing prior research). It plainly states both halves of the registration absence: Fall 2026 opened Aug 11 (from lastOpenedAtLocal) and Winter 2027 dates aren't posted (the plain reading when stillOpenPage is false and nextCycle exists but has no date). It reproduces the firstFindBeat verbatim as instructed. It names only facts given - no invented details, no padding, no corporate voice. The structure is quiet and specific: useful thing first, then the constraint. Short sentences. No hype, no exclamation marks, no unnecessary elaboration."
-  }
-}

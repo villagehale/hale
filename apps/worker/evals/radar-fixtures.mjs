@@ -355,6 +355,12 @@ export const RADAR_FIXTURES = [
         'still room',
         'still open',
         'filling',
+        // The tell the first live mint actually produced: "and the page is still up".
+        // Hale has not read the page and carries no url in its facts, so the page's
+        // STATE is as much a claim about availability as the room left on it is.
+        'page',
+        'still up',
+        'still live',
       ],
     },
   },
@@ -383,6 +389,9 @@ export const RADAR_FIXTURES = [
         'sign up',
         'spots',
         'still open',
+        'page',
+        'still up',
+        'still live',
       ],
     },
   },

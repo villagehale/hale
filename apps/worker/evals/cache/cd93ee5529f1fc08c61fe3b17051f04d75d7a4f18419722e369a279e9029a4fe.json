@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message does exactly what the contract requires. It opens with the mandatory signal that Hale looked (\"I found\"), leads with the useful fact (the specific activity, venue, day, and kid names), names both the activity and the reason facts (free, outdoor). It handles the absence plainly: with both registration and registrationAbsence null, it includes the instructed short clause saying nothing has a registration date coming up—not speculating, just stating what the absence sounds like. No padding, no invention, no hype. It's quiet, specific, and short."
+  }
+}

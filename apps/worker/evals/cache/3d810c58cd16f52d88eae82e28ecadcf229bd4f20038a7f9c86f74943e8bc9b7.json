@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The message is plain-spoken and specific, leading with the useful fact (the skating activity). It names the activity, day, and child correctly from facts. It correctly states that free and outdoor are given attributes. It appropriately handles the null venue by simply omitting it rather than inventing a placeholder. It correctly uses the instructed copy about registration absence (\"Nothing has a registration date coming up right now\"). The voice is quiet and competent - a neighbour who looked something up. It contains the mandatory \"I found\" in the lead. No facts are invented, no hype or padding present."
-  }
-}

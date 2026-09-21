@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message leads with \"I checked Halton Hills\" - a first-person verb of checking in the first sentence that attributes the facts directly to work Hale already performed. The facts (town, cycle name, date, time) all appear in the facts object and are reported back in that opening sentence as findings from the check. The attribution is immediate and the useful information lands in the same sentence as the verb of looking."
+  }
+}

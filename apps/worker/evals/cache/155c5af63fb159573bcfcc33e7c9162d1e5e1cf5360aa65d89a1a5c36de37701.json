@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message delivers exactly what's required: (1) mandatory lead phrase \"I checked\" showing Hale looked something up; (2) the specific fact from registrationAbsence - town, cycle name, and open time - plainly stated; (3) the firstFindBeat reproduced verbatim as instructed. It is short, quiet, plain-spoken, and specific. It contains only facts from the object provided. No padding, no invention, no corporate voice. The message is complete: it does not invent a next cycle date, does not claim registration has closed (stillOpenPage is true, so it's current), and does not padding around null fields. This is a competent neighbour who already looked something up."
+  }
+}

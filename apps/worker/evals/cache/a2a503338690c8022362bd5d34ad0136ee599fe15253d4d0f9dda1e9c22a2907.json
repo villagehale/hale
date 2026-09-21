@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The message meets all contract requirements. It opens with \"I checked\" (mandatory lead phrase). It states only the given facts: Markham's Fall 2026 registration opening on Aug 11 at 6:30 a.m. for Maya, and the checkpoint about Ontario's 18-month vaccine visit. It omits `firstFindBeat` and `weekendPick` cleanly since both are null - no padding, no invention. It delivers the useful fact (when registration opens) plainly and specifically. The tone is quiet, plain-spoken, neighbour-like. No hype, no listing fields like a database, no details outside the facts provided."
-  }
-}

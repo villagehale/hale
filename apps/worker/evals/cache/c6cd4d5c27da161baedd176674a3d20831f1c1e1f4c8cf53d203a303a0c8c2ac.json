@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "This message follows the contract precisely. It includes the required \"I'm still mapping\" clause (contract requirement TWO for null weekendPick), plainly states the dual absence (both registration and registrationAbsence null), reproduces the firstFindBeat verbatim as instructed (requirement THREE), and avoids any invented details or padding. The voice is plain-spoken and neighbor-like, leading with the useful constraint and closing with the concrete next step. No exclamation marks, no corporate tone, no restated fields, no invented facts."
-  }
-}

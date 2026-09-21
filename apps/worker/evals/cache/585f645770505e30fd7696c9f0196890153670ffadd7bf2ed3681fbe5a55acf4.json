@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The message meets all requirements for a 5. It opens with \"I looked up\" (mandatory contract language, not marked down). It states only the given facts: the town (Markham), cycle (Fall 2026), opening date and time (Aug 11, 6:30 a.m.), and kid names (Maya, Leo, Sam). It handles the ageApproximate flag properly by adding the qualifying phrase \"if they're still in the right age bands\" - appropriately cautious without inventing specifics. It addresses the null weekendPick with the instructed copy (\"No weekend pick yet, but I'll have something soon\") as required when that field is absent. No invented details, no hype, no padding. Plain-spoken, specific, short, and leading with the useful thing."
-  }
-}

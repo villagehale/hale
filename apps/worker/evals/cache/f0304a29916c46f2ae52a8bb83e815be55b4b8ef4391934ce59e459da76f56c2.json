@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The first sentence contains \"I checked Toronto's registration calendar\" - a first-person verb of checking that appears in the lead sentence, and the fact (Fall 2026 opened Aug 11, Winter 2027 dates not posted) lands in that same sentence. This clearly attributes the finding to Hale's own action without inventing scope details not present in the facts payload (the town, cycle names, and date are all given in registrationAbsence). The message presents itself as reporting back on work already done."
+  }
+}

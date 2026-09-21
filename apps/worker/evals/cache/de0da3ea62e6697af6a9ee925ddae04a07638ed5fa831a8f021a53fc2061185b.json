@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message leads with the useful fact (\"I found\") using required contract language. It names the activity (High Park playground meetup), the day (Saturday), the kids' names (Ada and Noor), and the reason facts (free, outdoor) - all present in the facts. It does not invent a venue time or other details absent from the facts. The second sentence plainly states the absence of registration information using the instructed copy for when `registration` and `registrationAbsence` are both null. The voice is plain-spoken and neighbour-like, not corporate or padded. The message is specific and short, stating only what was given."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message follows the contract precisely. It handles the absence of `registration`, `registrationAbsence`, and `weekendPick` with the instructed plain language: \"still mapping,\" \"nothing to point you to yet,\" and \"no registration dates on hand.\" It reproduces `firstFindBeat` verbatim as required. The tone is quiet and plain-spoken—a competent neighbour already looking into things. No invented details, no hype, no padding. The useful fact (a pick is coming soon) leads without unnecessary framing. All three required contract elements are met."
+  }
+}

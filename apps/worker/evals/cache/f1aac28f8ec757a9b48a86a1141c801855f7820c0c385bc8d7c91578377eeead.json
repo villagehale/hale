@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message leads with \"I checked Markham's calendar\" - a first-person verb of checking in the first sentence that clearly attributes the finding to work Hale already performed. The useful fact (Fall 2026 registration for Maya opens Aug 11 at 6:30 a.m.) lands immediately in that same sentence, presented as the result of the check. The given facts (town: Markham, cycle: Fall 2026, openAtLocal: Aug 11 6:30 a.m., kidName: Maya) all appear in the payload without invention of scope details like postal codes or sweep areas. This is reporting back on a look already taken."
+  }
+}

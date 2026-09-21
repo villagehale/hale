@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is competent and plain-spoken. It correctly includes the mandatory lead phrase \"I checked\" indicating Hale looked something up. It accurately states the facts from `registrationAbsence` - the last cycle (Fall 2026), when it opened (Sep 15), and plainly notes that next dates aren't posted yet, which is exactly right when `stillOpenPage` is false and `nextCycle` is null. It then leads with the useful weekend pick: the free outdoor drop-in at Riverdale Farm for Maya with the relevant why-fact about the dry forecast. No fields are invented. The voice is quiet and specific. The structure puts the useful thing first after the registration context.",
+    "score": 5
+  }
+}

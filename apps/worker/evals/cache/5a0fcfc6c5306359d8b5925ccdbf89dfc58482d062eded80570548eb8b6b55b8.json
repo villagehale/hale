@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message is competent and plain-spoken. It leads with the useful thing: a specific activity for the named kids on a stated day, grounded in the facts given (High Park playground meetup, Saturday, Ada and Noor, free and outdoor). It correctly names no venue beyond \"High Park playground\" which is the fact provided. The closing clause about registration dates is exactly the instructed copy for when both `registration` and `registrationAbsence` are null - a short, plain statement that nothing has a registration date coming up, not a speculation. The message includes the required lead phrase (\"I found\") without overreaching it. No invented details, no hype, no padding."
+  }
+}

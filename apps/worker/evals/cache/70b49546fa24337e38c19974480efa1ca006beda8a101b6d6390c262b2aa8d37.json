@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 4,
-    "reason": "The message follows the contract requirements well: it leads with \"I checked\" (mandatory framing), states the checkpoint fact plainly and specifically (Ontario's routine vaccine schedule, 18 months, Maya by name), names no invented venues or details, and uses the instructed closing clause for null weekendPick (\"I'll have a pick for you soon\"). The voice is plain-spoken and competent. One point lost: the message could be tighter. \"Nothing on my radar yet for weekend picks or registration dates\" combines two separate null states in a way that slightly muddies what Hale is actually saying here—one clause stating Hale is still learning the area and will have a pick soon when weekendPick is null would be cleaner and more direct."
-  }
-}

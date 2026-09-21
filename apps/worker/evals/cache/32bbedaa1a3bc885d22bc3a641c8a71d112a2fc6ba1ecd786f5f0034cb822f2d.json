@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message opens with \"I looked up\" in the first sentence, establishing that Hale performed the search. The attribution verb appears before the fact lands (Markham's Fall 2026 registration for Maya opening Aug 11, 6:30 a.m.), which is within the same sentence. The second fact is introduced with \"Also found,\" another first-person discovery verb that maintains clear attribution. Both facts are given without invented specifics - the town, cycle name, child name, date, and time all appear in the facts object. No postal codes, area sweeps, schedules, or counts are invented. The message presents itself as work already done, not as a product introduction or greeting."
+  }
+}

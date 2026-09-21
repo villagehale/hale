@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message directly states the useful fact first (the activity, when, for whom, why), uses plain language, and includes the required clause about registration absence. However, the weekendPick lacks a venue/location (where is null), and the message does not acknowledge this absence as plainly as a 5 would. A competent neighbour would note \"no location listed yet\" or similar when the venue is missing. The \"I found\" opening satisfies the contract requirement. The registration clause is instructed copy and correct. The message avoids hype and invention but fails to plainly state the missing venue detail.",
+    "score": 4
+  }
+}

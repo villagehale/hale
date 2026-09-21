@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The message leads with the useful fact (\"I found a free outdoor option for Maya this Saturday\"), includes the mandatory contract language (\"I found\"), states the activity name and venue as given in facts, includes the three why-facts provided (free, outdoor, dry forecast), is short and plain-spoken, and contains no invented details. It avoids padding despite null fields and reads like a competent neighbour who looked something up."
-  }
-}

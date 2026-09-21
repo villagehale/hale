@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message opens with \"I looked this up for you\" - a first-person verb of checking/finding in the lead sentence that attributes the fact to work Hale already did. This attribution is followed immediately in that same sentence by the useful fact about Ontario's vaccine schedule and Maya fitting that window. No invented scope appears - the task references only the facts provided (Ontario's routine vaccine schedule, 18 months, Maya's name). This meets the standard for a 5: the attribution and fact are fused in the opening sentence, making clear who did the looking.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message reads like a competent neighbour who looked something up. It opens with \"I checked,\" establishing that Hale already did the legwork. It leads with the useful fact: the registration opening time and date for the specific cycle. It names the town, cycle, time, and kids' names from the facts. The phrase \"if Maya, Leo, and Sam are still in the right age bands\" plainly acknowledges the approximate age range without inventing specifics. The second sentence is the instructed copy for when weekendPick is null—a short, plain clause about nothing else being available this weekend. Nothing is padded, no details are invented, and the voice is quiet and specific. The offerQuestion field is present but the message structure naturally accommodates it without becoming salesy."
+  }
+}

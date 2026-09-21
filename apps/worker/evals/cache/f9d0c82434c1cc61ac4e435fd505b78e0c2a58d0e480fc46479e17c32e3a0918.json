@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The first sentence opens with \"I checked Markham's Fall 2026 registration\" - a first-person verb of checking in the lead sentence. The useful fact about registration timing (Aug 11, 6:30 a.m.) lands in that same sentence. This attributes the finding to Hale as the one who looked it up, and does so with specific details that appear in the facts payload (town: Markham, cycle: Fall 2026, time: Aug 11, 6:30 a.m., child name: Maya, resident note). No invented scope appears - all scoping details are given in the facts.",
+    "score": 5
+  }
+}

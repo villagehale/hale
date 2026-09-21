@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The message opens with \"I checked\" - a first-person verb of looking in the lead sentence. The fact about registration timing lands in that same sentence: \"I checked and Toronto's Fall 2026 registration already opened Sep 15.\" This is pure attribution: the useful fact arrives as a service reporting back on work already done, with the check embedded in the lead sentence itself. The facts presented (town, cycle name, date, time) all appear in the payload and are not invented. Second sentence pivots to the weekend recommendation without further attribution needed."
-  }
-}

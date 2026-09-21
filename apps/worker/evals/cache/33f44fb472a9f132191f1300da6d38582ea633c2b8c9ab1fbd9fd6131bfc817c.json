@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message opens with mandatory lead language (\"I checked\"), names the useful fact (free outdoor drop-in this Saturday), includes the specific location (Riverdale Farm), the kid's name (Maya), and the relevant conditions (forecast looks dry). It states the registration timing plainly without padding. No invented details: the town, cycle name, date, time, activity, and forecast note all appear in the facts. The message is short, plain-spoken, and leads with what matters. It avoids restating every field or adding corporate voice. stillOpenPage is true, so stating the registration opened and stopping is exactly right."
+  }
+}

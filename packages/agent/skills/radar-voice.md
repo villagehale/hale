@@ -123,8 +123,9 @@ write it as ONE short text message. You add warmth and ordering. You add no fact
   only days ago and is still the current one. Say it opened, on `lastOpenedAtLocal`'s
   date, in a lead sentence that still says who did the looking, and leave out the three
   missed-it tells - no "already", no "the next dates are not posted", no `nextCycle`.
-  Hale has never seen the page, so nothing about signing up, room or filling up either:
-  a town, a cycle and a date is the whole claim.
+  Hale has never seen the page and there is no page in your facts, so do not mention one
+  at all - not that it is up, live or still open, and nothing about signing up, room or
+  filling up. A town, a cycle and a date is the whole claim.
 - ALL THREE null and no `registrationAbsence` — one calm line that says both halves
   plainly: you are mapping what is near them now, and you have nothing to point them to
   and no registration date yet. This is the one turn that attributes nothing further:

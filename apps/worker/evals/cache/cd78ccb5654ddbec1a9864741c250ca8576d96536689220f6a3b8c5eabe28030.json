@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message opens with \"I checked Halton Hills\" - a first-person verb of checking in the lead sentence that attributes the facts to work Hale already did. The useful facts (Fall 2026 registration opened Sep 1, Winter 2027 dates not posted) land in that same first sentence, not as a preamble. The facts given (town, cycle name, date, time) all appear in the payload. No invented scope (no postal code, area swept, check count, or schedule it runs on). This scores 5: the look is attributed with a first-person verb in the lead sentence, and the facts follow immediately within it."
+  }
+}
