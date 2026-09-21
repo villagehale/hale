@@ -54,6 +54,10 @@ export const WEEKDAY_CARE_ASK_TEMPLATE_KEY = proactiveNudgeTemplateKey('weekday_
 const WEATHER_SWAP_TEMPLATE_KEY = proactiveNudgeTemplateKey('weather_swap');
 
 export interface WeekdayCareFact {
+  /** The row's own id. A reader asking "is this still the answer?" can only settle it
+   * by IDENTITY: a family that changes daycare says `daycare` twice, so the word is
+   * unchanged while the answer underneath it is a different row. */
+  factId: string;
   childId: string;
   care: WeekdayCare;
   /** The provider, only when the parent named one in so many words. Null is the
@@ -111,6 +115,7 @@ export async function loadWeekdayCare(
 ): Promise<WeekdayCareFact[]> {
   const rows = await database
     .select({
+      factId: schema.familyMemoryFacts.id,
       childId: schema.familyMemoryFacts.childId,
       factValue: schema.familyMemoryFacts.factValue,
       validFrom: schema.familyMemoryFacts.validFrom,
@@ -129,7 +134,7 @@ export async function loadWeekdayCare(
     if (row.childId === null) return [];
     const parsed = parseFactValue(row.factValue);
     if (parsed === null) return [];
-    return [{ childId: row.childId, ...parsed, validFrom: row.validFrom }];
+    return [{ factId: row.factId, childId: row.childId, ...parsed, validFrom: row.validFrom }];
   });
 }
 

@@ -1007,7 +1007,15 @@ describe('runNudgeCron — the weekday drop-in', () => {
   ];
 
   const AT_HOME: WeekdayCareContext = {
-    stated: [{ childId: 'child-1', care: 'home', provider: null, validFrom: FRIDAY_10AM }],
+    stated: [
+      {
+        factId: 'fact-1',
+        childId: 'child-1',
+        care: 'home',
+        provider: null,
+        validFrom: FRIDAY_10AM,
+      },
+    ],
     askedBefore: true,
     weekendFindSent: true,
   };

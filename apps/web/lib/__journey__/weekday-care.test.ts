@@ -278,7 +278,13 @@ describe('the weekday-care arc', () => {
     expect(await answer("she's home with me during the week", answeredAt)).toBe('recorded');
 
     expect(await loadWeekdayCare(db.database, familyId)).toEqual([
-      { childId: toddlerId, care: 'home', provider: null, validFrom: answeredAt },
+      {
+        factId: expect.any(String),
+        childId: toddlerId,
+        care: 'home',
+        provider: null,
+        validFrom: answeredAt,
+      },
     ]);
     // The coach's next turn already knows, with no new code and no reply template.
     const context = await loadAgentContext(
@@ -348,7 +354,13 @@ describe('the weekday-care arc', () => {
     const answeredAt = new Date(FRIDAY.getTime() + 20 * 60_000);
     expect(await answer("she's at Little Sprouts now", answeredAt)).toBe('recorded');
     expect(await loadWeekdayCare(db.database, familyId)).toEqual([
-      { childId: toddlerId, care: 'daycare', provider: 'Little Sprouts', validFrom: answeredAt },
+      {
+        factId: expect.any(String),
+        childId: toddlerId,
+        care: 'daycare',
+        provider: 'Little Sprouts',
+        validFrom: answeredAt,
+      },
     ]);
 
     // The find is OFF for this household now — the same context read, a different answer.

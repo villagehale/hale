@@ -165,6 +165,7 @@ function harness(
     loadWeekdayCare: async (_db, familyId) =>
       overrides.weekdayCare?.[familyId] ??
       (overrides.daycareSubjects?.[familyId] ?? []).map((subject) => ({
+        factId: subject.factId,
         childId: subject.childId,
         care: 'daycare' as const,
         provider: subject.provider,
@@ -713,7 +714,9 @@ describe('the daycare follow-up', () => {
     const h = armed({
       daycareSubjects: { [FAM_A]: [subject()] },
       weekdayCare: {
-        [FAM_A]: [{ childId: CHILD, care: 'home', provider: null, validFrom: NOW }],
+        [FAM_A]: [
+          { factId: 'fact-2', childId: CHILD, care: 'home', provider: null, validFrom: NOW },
+        ],
       },
     });
 
@@ -722,6 +725,61 @@ describe('the daycare follow-up', () => {
     expect(result.daycareAsked).toBe(0);
     expect(result.skipped.care_changed).toBe(1);
     expect(h.transport.bodies()).toEqual([]);
+  });
+
+  /**
+   * THE SAME REFUSAL, ON THE ANSWER THAT MOVES MOST OFTEN. A family that changes
+   * daycare has said `daycare` twice, so a check that compared the care VALUE saw no
+   * change and asked - "How is Little Sprouts going?" about the place the parent had
+   * just said their child LEFT, spending the once-per-child key on it forever. The
+   * subject is superseded when the live row is a DIFFERENT ROW, not when its word
+   * changed.
+   */
+  it('refuses when a newer answer superseded the one whose window opened', async () => {
+    const h = armed({
+      daycareSubjects: { [FAM_A]: [subject()] },
+      weekdayCare: {
+        [FAM_A]: [
+          {
+            factId: 'fact-2',
+            childId: CHILD,
+            care: 'daycare',
+            provider: 'Bright Horizons',
+            validFrom: NOW,
+          },
+        ],
+      },
+    });
+
+    const result = await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(result.daycareAsked).toBe(0);
+    expect(result.skipped.care_changed).toBe(1);
+    expect(h.transport.bodies()).toEqual([]);
+  });
+
+  /** The positive control beside it: the live row IS the subject, so the ask goes. An
+   * identity check that refused everything would pass the test above on its own. */
+  it('asks when the live row is the very row whose window opened', async () => {
+    const h = armed({
+      daycareSubjects: { [FAM_A]: [subject()] },
+      weekdayCare: {
+        [FAM_A]: [
+          {
+            factId: 'fact-1',
+            childId: CHILD,
+            care: 'daycare',
+            provider: 'Little Sprouts',
+            validFrom: SAID_AT,
+          },
+        ],
+      },
+    });
+
+    const result = await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(result.daycareAsked).toBe(1);
+    expect(h.transport.bodies()[0]).toContain('Little Sprouts');
   });
 
   it('a home answer never produces a follow-up at all', async () => {

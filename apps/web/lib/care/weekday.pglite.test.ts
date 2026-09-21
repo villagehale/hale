@@ -89,8 +89,43 @@ describe('loadWeekdayCare', () => {
     });
 
     expect(await loadWeekdayCare(db.database, familyId)).toEqual([
-      { childId, care: 'daycare', provider: 'Little Sprouts', validFrom: NOW },
+      {
+        factId: expect.any(String),
+        childId,
+        care: 'daycare',
+        provider: 'Little Sprouts',
+        validFrom: NOW,
+      },
     ]);
+  });
+
+  /**
+   * THE ROW'S OWN ID, because the follow-up asks "is the answer I am about to ask about
+   * still the live one?" and the only honest answer to that is an identity. A family
+   * that moves daycare says `daycare` twice, so comparing the WORD says nothing
+   * happened while the parent has just changed the subject of the question.
+   */
+  it('carries the id of the row it returned, and a supersede changes it', async () => {
+    const { familyId, childId } = await seedFamily();
+    const write = (provider: string, validFrom: Date) =>
+      writeFact(db.database, {
+        familyId,
+        childId,
+        factType: 'logistic',
+        factKey: WEEKDAY_CARE_FACT_KEY,
+        factValue: { care: 'daycare', provider },
+        confidence: 1,
+        inferredBy: WEEKDAY_CARE_FACT_WRITER,
+        validFrom,
+      });
+    await write('Little Sprouts', NOW);
+    const first = (await loadWeekdayCare(db.database, familyId))[0];
+    await write('Bright Horizons', new Date(NOW.getTime() + 2 * 86_400_000));
+    const second = (await loadWeekdayCare(db.database, familyId))[0];
+
+    expect(first?.provider).toBe('Little Sprouts');
+    expect(second?.provider).toBe('Bright Horizons');
+    expect(second?.factId).not.toBe(first?.factId);
   });
 
   /**
@@ -221,7 +256,13 @@ describe('recordWeekdayCare', () => {
 
     expect(outcome).toEqual({ status: 'recorded', care: 'daycare', providerNamed: true });
     expect(await loadWeekdayCare(db.database, familyId)).toEqual([
-      { childId, care: 'daycare', provider: 'Little Sprouts', validFrom: NOW },
+      {
+        factId: expect.any(String),
+        childId,
+        care: 'daycare',
+        provider: 'Little Sprouts',
+        validFrom: NOW,
+      },
     ]);
     const trail = await audits(familyId);
     expect(trail).toHaveLength(1);

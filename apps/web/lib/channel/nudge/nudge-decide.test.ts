@@ -487,7 +487,9 @@ describe('decideNudge — health checkpoints', () => {
 describe('decideNudge — priority 4: a weekday civic drop-in', () => {
   /** A Toronto-local Friday, so "today" is 2026-07-31 in the family's own zone. */
   const homeCare = {
-    stated: [{ childId: 'child-1', care: 'home' as const, provider: null, validFrom: FRIDAY }],
+    stated: [
+      { factId: 'fact-1', childId: 'child-1', care: 'home' as const, provider: null, validFrom: FRIDAY },
+    ],
     // The ASK's own preconditions are its describe block's subject, not this one's:
     // a household that has already answered can never be asked again.
     askedBefore: true,
@@ -641,7 +643,13 @@ describe('decideNudge — priority 4: a weekday civic drop-in', () => {
         weekdayCare: {
           ...homeCare,
           stated: [
-            { childId: 'child-1', care: 'daycare', provider: 'Little Sprouts', validFrom: FRIDAY },
+            {
+              factId: 'fact-1',
+              childId: 'child-1',
+              care: 'daycare',
+              provider: 'Little Sprouts',
+              validFrom: FRIDAY,
+            },
           ],
         },
         candidates: [civic()],
@@ -661,7 +669,9 @@ describe('decideNudge — priority 4: a weekday civic drop-in', () => {
         teenChildIds: ['teen-1'],
         weekdayCare: {
           ...homeCare,
-          stated: [{ childId: 'teen-1', care: 'home', provider: null, validFrom: FRIDAY }],
+          stated: [
+            { factId: 'fact-teen', childId: 'teen-1', care: 'home', provider: null, validFrom: FRIDAY },
+          ],
         },
         candidates: [civic()],
       });
@@ -756,7 +766,7 @@ describe('decideNudge — priority 5: the weekday-care ask', () => {
       weekdayCare: {
         ...READY.weekdayCare,
         stated: [
-          { childId: 'child-1', care: 'daycare', provider: null, validFrom: FRIDAY },
+          { factId: 'fact-1', childId: 'child-1', care: 'daycare', provider: null, validFrom: FRIDAY },
         ],
       },
     });
@@ -865,7 +875,9 @@ describe('decideNudge — priority 5: the weekday-care ask', () => {
         ...READY,
         weekdayCare: {
           ...READY.weekdayCare,
-          stated: [{ childId: 'other', care: 'home', provider: null, validFrom: FRIDAY }],
+          stated: [
+            { factId: 'fact-other', childId: 'other', care: 'home', provider: null, validFrom: FRIDAY },
+          ],
         },
       })?.kind,
     ).toBe('weekday_dropin');

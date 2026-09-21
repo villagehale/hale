@@ -232,10 +232,11 @@ export type FollowupSkipReason =
    * rather than a correct refusal, which is exactly why it is counted. */
   | 'window_passed'
   /**
-   * VIL-360 · the answer moved on between the window opening and the tick — the parent
-   * said daycare on Monday and "she's home again" on Thursday. A CORRECT refusal, and
-   * its own reason rather than a silent skip: "how is daycare going?" to a household
-   * that has just told Hale it is not is the worst message this lane could send.
+   * VIL-360 · the answer was SUPERSEDED between the window opening and the tick — the
+   * parent said daycare on Monday and "she's home again" on Thursday, or named a
+   * different place. A CORRECT refusal, and its own reason rather than a silent skip:
+   * "how is daycare going?" to a household that has just told Hale it is not — or that
+   * names the place their child LEFT — is the worst message this lane could send.
    */
   | 'care_changed';
 
@@ -261,9 +262,10 @@ export interface FollowupSweepDeps {
    * INCLUDED, and the live picture to compare them against.
    *
    * Two readers rather than one, because they answer two different questions: "is there
-   * something to ask about" and "is it still true". Folding them would make
+   * something to ask about" and "is it still the live row". Folding them would make
    * `care_changed` unobservable, which is the one refusal this stage exists to be able
-   * to name (rule #11).
+   * to name (rule #11). The comparison is on the fact's ID, not its care value, which
+   * is why the live reader hands back `factId`.
    */
   loadDaycareSubjects(
     database: Database,
@@ -698,7 +700,7 @@ async function runDaycareFollowups(
       const live = new Map(
         (await deps.loadWeekdayCare(database, family.familyId)).map((fact) => [
           fact.childId,
-          fact.care,
+          fact.factId,
         ]),
       );
 
@@ -707,7 +709,17 @@ async function runDaycareFollowups(
           result.skipped.window_passed += 1;
           continue;
         }
-        if (live.get(subject.childId) !== 'daycare') {
+        // THE SUBJECT IS SUPERSEDED WHEN THE LIVE ROW IS A DIFFERENT ROW, not when its
+        // word changed. `loadDaycareSubjects` deliberately returns superseded answers
+        // so this refusal can be counted, and a family that MOVES daycare has said
+        // `daycare` twice - so a comparison on the care value saw no change and asked
+        // "How is Little Sprouts going?" about the place the parent had just said their
+        // child left, spending the once-per-child key on it forever. Identity settles
+        // it, and it subsumes the home case: a `home` row is a different row too.
+        //
+        // The newer answer is not asked about HERE - its own window has not opened yet.
+        // It opens three days after the parent gave it, with the key still unspent.
+        if (live.get(subject.childId) !== subject.factId) {
           result.skipped.care_changed += 1;
           continue;
         }
