@@ -238,8 +238,7 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           <li>
             <strong>Running Hale for your family.</strong> Understanding what is happening in your
             family&rsquo;s day, answering your questions, drafting suggestions, finding genuinely
-            useful local things to do, preparing an action and — once you approve it — carrying it
-            out, and keeping an accurate record of what Hale did.
+            useful local things to do, and keeping an accurate record of what Hale did.
           </li>
           <li>
             <strong>Keeping your family&rsquo;s data safe.</strong> Recognising you, protecting
@@ -282,7 +281,7 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           the start, and separately again for each purpose that deserves its own answer: connecting
           an integration, sending your context to our AI provider, processing data across borders,
           letting Hale watch and text you unprompted, sharing a slice of your week with a caregiver
-          you name, letting another assistant read from Hale, being introduced to another household,
+          you name, letting a tool you connect read from Hale, being introduced to another household,
           and unlocking any automated action. We record each consent — what was asked, the words you
           answered in, the version of this policy, and the time — so the choice is verifiable
           afterwards, and you can withdraw it at any time (see{' '}
@@ -340,7 +339,7 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
         <p>
           First, access is only ever in-app. Even with an open grant, nothing widens what appears
           in an email, a text message, a calendar feed, a data export, or anything Hale shares with
-          a connected assistant — those always stay redacted.
+          a connected tool — those always stay redacted.
         </p>
         <p>
           Second, and more importantly: Hale currently has no way to contact a teen at all. We hold
@@ -400,7 +399,7 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             is recorded as its own consent, and you can end it.
           </li>
           <li>
-            <strong>An assistant you connect.</strong> If you authorize another AI assistant or tool
+            <strong>A tool you connect.</strong> If you authorize an AI assistant or another tool
             to read from Hale, it receives only the scopes you selected — and what it reads is
             re-rendered at the moment of the read to the strictest standard we apply anywhere: a
             teen&rsquo;s content removed on their age as of that moment, health and sensitive items
@@ -485,7 +484,7 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             .
           </li>
           <li>
-            <strong>Langfuse</strong> — AI observability, so we can monitor and debug the assistant.
+            <strong>Langfuse</strong> — AI observability, so we can monitor and debug Hale.
             A teen&rsquo;s raw content and contact details (emails, phone numbers, postal codes, and
             precise addresses) are masked before any data is sent to this service.
           </li>
@@ -642,7 +641,7 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           </li>
           <li>
             <strong>Disconnect a tool.</strong> Any integration you connected can be disconnected,
-            and any assistant you authorized to read from Hale can have that authorization revoked.
+            and any tool you authorized to read from Hale can have that authorization revoked.
           </li>
           <li>
             <strong>Skip the address.</strong> Coarse location is opt-in — local discovery is the

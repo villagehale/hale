@@ -344,7 +344,7 @@
   },
   "About": {
     "metaTitle": "About · Hale",
-    "metaDescription": "Hale is a planner for your kids’ year. Find what’s on. Hear how it went. Built by Anzhe Dong at Village Hale Technologies Inc. in Georgetown, Ontario.",
+    "metaDescription": "Hale is a planner for your kids’ year. Find what’s on. Hear how it went. Built by Barton Dong at Village Hale Technologies Inc. in Georgetown, Ontario.",
     "eyebrow": "About Hale",
     "headline": [
       {
@@ -416,7 +416,7 @@
         "accent": true
       }
     ],
-    "founderStory": "Hale is built by Anzhe Dong — a father, husband, and founder who spent years shipping production agentic systems. He started it raising a kid far from the village his own parents had: no elders down the street, no one who just knew which class was worth it. The trust was still out there, in what other parents told each other; it just couldn’t reach him. So he built the thing he kept wishing someone would text him.",
+    "founderStory": "Hale is built by Barton Dong — a father, husband, and founder. He started it raising a kid far from the village his own parents had: no elders down the street, no one who just knew which class was worth it. The trust was still out there, in what other parents told each other; it just couldn’t reach him. So he built the thing he kept wishing someone would text him.",
     "cta": "It starts with names, ages, and a postal code. No app, no account."
   },
   "Pricing": {

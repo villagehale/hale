@@ -342,7 +342,9 @@ describe('privacy — the scaffold the template supplies, in PIPEDA vocabulary',
     // used to be silent about.
     expect(privacyHtml).toContain('caregiver');
     expect(privacyHtml).toContain('both households have said yes');
-    expect(privacyHtml).toContain('assistant you connect');
+    expect(privacyHtml).toContain('A tool you connect');
+    expect(privacyHtml).not.toContain('carrying it out');
+    expect(privacyHtml.toLowerCase()).not.toContain('another assistant');
   });
 
   it('separates the rights the law gives you from the switches in the product', () => {

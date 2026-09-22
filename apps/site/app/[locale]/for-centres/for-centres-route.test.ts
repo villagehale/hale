@@ -158,7 +158,9 @@ describe('the exchange on this page is the landing’s, not a second one', () =>
     const hero = bubbles(landing.slice(heroStart, landing.indexOf('</div>', heroStart)));
 
     expect(hero.length).toBeGreaterThan(0);
-    expect(bubbles(await render('en')), 'this page is showing a second exchange').toEqual(hero);
+    const centres = await render('en');
+    expect(centres).not.toContain('v5-beat');
+    expect(bubbles(centres), 'this page is showing a second exchange').toEqual(hero);
   });
 
   it('names every speaker, and lets the parent speak first', async () => {
