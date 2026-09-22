@@ -227,6 +227,13 @@ describe('ci.yml wiring', () => {
   it('runs each cached-only worker eval only from the filtered job', () => {
     const evals = jobBlock('worker-evals');
     expect(evals).toContain("needs.changes.outputs.worker_evals == 'true'");
+    const buildAt = evals.indexOf('Build workspace packages');
+    const firstEval = evals.indexOf('eval:classifier');
+    expect(buildAt).toBeGreaterThan(-1);
+    expect(firstEval).toBeGreaterThan(buildAt);
+    expect(evals).toContain(
+      'pnpm --filter @hale/db --filter @hale/types --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build',
+    );
     const commands = [
       'eval:classifier',
       'eval:drafter',

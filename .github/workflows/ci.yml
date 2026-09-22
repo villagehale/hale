@@ -132,6 +132,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The single verify job used to build these as turbo deps of typecheck/test
+      # before the eval steps. This job does not run those tasks, and @hale/db,
+      # @hale/types, @hale/agent, and @hale/tools-contracts export dist/. Without
+      # this, eval:memory-writeback dies on apps/web/lib/testing/pglite.ts importing
+      # @hale/db/dist/index.js. Same package set as eval-sweep.yml.
+      - name: Build workspace packages
+        run: pnpm --filter @hale/db --filter @hale/types --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build
+
       - name: Classifier eval (cached-only)
         run: pnpm --filter @hale/worker eval:classifier
 
