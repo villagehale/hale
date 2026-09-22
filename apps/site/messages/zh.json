@@ -152,10 +152,9 @@
     ],
     "howRail": "Hale 是怎么运作的，三个步骤",
     "consentLine": "我来建议，我来准备。我来问进展如何。不会代订。件件有据可查，没有你的同意，什么都不会发生。",
-    "watchEyebrow": "我盯着什么",
-    "watchH2Count": "{count} 个城镇，",
-    "watchH2Accent": "逐一点名。",
-    "watchLede": "{count} 个城镇的日历我都盯着，就不用你来守了。",
+    "watchEyebrow": "真正要紧的那一段",
+    "watchH2Accent": "我早就醒着。",
+    "watchLede": "{count} 个城镇，每一份日历，都不用你来守。",
     "contrast": [
       {
         "title": "没有我的时候",

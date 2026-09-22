@@ -262,11 +262,11 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
         </div>
       </section>
 
-      {/* ── What I watch — the radar, by name ─────────────────────────────── */}
+      {/* ── What I watch — the radar ─────────────────────────────────────── */}
       <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow">{t('watchEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
-          {t('watchH2Count', { count: MUNICIPALITIES.length })}
+          {t('watchH2a')}
           {accentSeparator(locale)}
           <span className="v4-accent">{t('watchH2Accent')}</span>
         </h2>

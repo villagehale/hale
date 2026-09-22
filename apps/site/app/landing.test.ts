@@ -472,7 +472,7 @@ describe('landing — sections, in the Surfaces Plan order', () => {
       'Find what’s on. Hear how it went.',
       'Texting Hale looks like this',
       'How Hale works',
-      'What I watch',
+      'The part that matters',
       'Your helpers',
       'When you ask me something',
       'the Canadian way',
@@ -482,6 +482,9 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     ].map((marker) => text.indexOf(marker));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // Layout restore only. These lines are the current marketing copy.
+    expect(text).toContain('A planner for the year, in one text thread.');
+    expect(text).toContain('just the number.');
     // The hero TOOK that line from how-it-works, which then took a new one; a
     // page that says it in both places has an H2 arguing with its own H1. The
     // count is now ZERO: the promise came off the page entirely rather than

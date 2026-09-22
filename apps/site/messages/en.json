@@ -152,10 +152,9 @@
     ],
     "howRail": "How Hale works, in three steps",
     "consentLine": "I suggest and I prepare. I ask how it went. Nothing is booked. Receipts for everything, and nothing happens without your yes.",
-    "watchEyebrow": "What I watch",
-    "watchH2Count": "{count} municipalities,",
-    "watchH2Accent": "by name.",
-    "watchLede": "I watch all {count} calendars so nobody has to.",
+    "watchEyebrow": "The part that matters",
+    "watchH2Accent": "I’m already awake.",
+    "watchLede": "{count} municipalities, every calendar, so nobody has to.",
     "contrast": [
       {
         "title": "Without me",
