@@ -2036,7 +2036,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * amber, which clears AA on the night shore. */
   .v4-hero-top .v4-pronounce { color: light-dark(rgb(23 41 74 / 0.86), #f2c489); }
   .v4-hero-h1 {
-    font-size: clamp(2.5rem, 7vw, 4.5rem);
+    font-size: clamp(2.9rem, 8.5vw, 6.5rem);
     color: var(--color-ink);
     max-width: 15ch;
     font-weight: 550;
@@ -2313,7 +2313,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     /* The founder's poster values. Stated in px rather than rem because they are
      * a drawing decision at one specific pair of sizes, not a step on the type
      * scale — and because the ceiling is what the display cut was chosen for. */
-    font-size: clamp(48px, 7vw, 72px);
+    font-size: clamp(54px, 8vw, 84px);
     font-weight: 450;
     font-optical-sizing: auto;
     font-synthesis-weight: none;
