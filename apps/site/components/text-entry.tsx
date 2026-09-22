@@ -311,16 +311,10 @@ export function TextEntry({
 
           {qrLeads(platform) ? null : desktopCard}
 
-          {/* The trust strip — the four flat facts plus the one link that backs
-              them up. Live arms only: "reply STOP" needs a number to stop.
-              `nowrap` because ZH has no spaces: 隐私政策 otherwise breaks across
-              two lines mid-label, and half a link is not a legal link. */}
-          <p className="meta mt-8">
-            {t('trustLine')} ·{' '}
-            <a href={localeHref(locale, '/privacy')} className="link whitespace-nowrap">
-              {t('privacyLink')}
-            </a>
-          </p>
+          {/* The trust strip — the four flat facts. Live arms only: "reply
+              STOP" needs a number to stop. The privacy policy is linked once,
+              on the Canada line below, not again at the end of this strip. */}
+          <p className="meta mt-8">{t('trustLine')}</p>
         </div>
       ) : (
         <div className="mt-10 rise rise-2">
@@ -335,6 +329,8 @@ export function TextEntry({
         </div>
       )}
 
+      {/* The one privacy link in this column. `nowrap` because ZH has no
+          spaces: 隐私政策 otherwise breaks across two lines mid-label. */}
       <p className="meta mt-14 rise rise-3">
         {t('footerPre')}{' '}
         <a href={localeHref(locale, '/privacy')} className="link whitespace-nowrap">
