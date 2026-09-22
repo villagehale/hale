@@ -173,15 +173,17 @@ export async function seedFamily(
   return { familyId: family.id, parentUserId: user.id };
 }
 
-/** A child row, dated by age so `deriveStage` lands where the test wants it. */
+/** A child row, dated by age so `deriveStage` lands where the test wants it.
+ * Pass `now` when a later read must see the same age (eval cache keys). */
 export async function seedChild(
   database: Database,
   familyId: string,
   name: string,
   ageMonths: number,
   id?: string,
+  now: Date = new Date(),
 ): Promise<string> {
-  const dob = new Date();
+  const dob = new Date(now);
   dob.setMonth(dob.getMonth() - ageMonths);
   const [child] = await database
     .insert(schema.children)

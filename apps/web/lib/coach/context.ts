@@ -268,8 +268,11 @@ export interface AgentContext {
   sourceNote: SourceNoteContext | null;
 }
 
-function toChildContext(row: { id: string; name: string; dateOfBirth: string }): ChildContext {
-  const stage = deriveStage(row.dateOfBirth);
+function toChildContext(
+  row: { id: string; name: string; dateOfBirth: string },
+  now: Date,
+): ChildContext {
+  const stage = deriveStage(row.dateOfBirth, now);
   if (stage === 'teenager') {
     return { id: row.id, stage, name: null, ageMonths: null, teenRedacted: true };
   }
@@ -277,7 +280,7 @@ function toChildContext(row: { id: string; name: string; dateOfBirth: string }):
     id: row.id,
     stage,
     name: row.name,
-    ageMonths: ageInMonths(row.dateOfBirth),
+    ageMonths: ageInMonths(row.dateOfBirth, now),
     teenRedacted: false,
   };
 }
@@ -381,7 +384,7 @@ export async function loadAgentContext(
     throw new Error(`loadAgentContext: no family row for ${input.familyId}`);
   }
 
-  const children = childRows.map(toChildContext);
+  const children = childRows.map((row) => toChildContext(row, now));
   const presentStages = new Set(children.map((c) => c.stage));
   const stages = FAMILY_STAGES.filter((s) => presentStages.has(s));
 
