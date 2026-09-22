@@ -345,21 +345,18 @@
   },
   "About": {
     "metaTitle": "About · Hale",
-    "metaDescription": "Hale is a planner for your kids’ year. Find what’s on. Hear how it went. Built by Barton Dong at Village Hale Technologies Inc. in Georgetown, Ontario.",
+    "metaDescription": "Hale is a planner for your kids’ year. Find what’s on. Hear how it went. Barton Dong, CEO, and Eugene Song, CTO, at Village Hale Technologies Inc. in Georgetown, Ontario.",
     "eyebrow": "About Hale",
     "headline": [
       {
-        "text": "Why Hale is"
+        "text": "A planner for your"
       },
       {
-        "text": "a planner,",
+        "text": "kids’ year.",
         "accent": true
-      },
-      {
-        "text": "not another app."
       }
     ],
-    "lede": "Once, a family had a village — elders who knew which class was worth it, neighbors who carried the small things, a grandmother who said this is normal, you are doing fine. That knowing hasn’t disappeared. It just has nowhere to live now except one parent’s memory — and no app fixes a memory problem by asking for more of your attention. So Hale is a planner for your kids’ year.",
+    "lede": "What’s on near the kids gets missed; mornings fill in minutes; nobody asks how it went. Hale finds it, watches the date, asks after — by text.",
     "missionEyebrow": "Our mission",
     "mission": "Every parent should have someone who knows what’s on near them, remembers the date that fills in two minutes, and asks how it went. Across every stage of childhood, from the first months to almost grown.",
     "howEyebrow": "How Hale works",
@@ -407,17 +404,18 @@
         "linkLabel": "How your data is handled"
       }
     ],
-    "founderEyebrow": "The founder",
-    "founderHeadline": [
+    "founderEyebrow": "The founders",
+    "founderLink": "LinkedIn",
+    "founders": [
       {
-        "text": "Built by a parent, far from"
+        "name": "Barton Dong",
+        "role": "CEO"
       },
       {
-        "text": "his village.",
-        "accent": true
+        "name": "Eugene Song",
+        "role": "CTO"
       }
     ],
-    "founderStory": "Hale is built by Barton Dong — a father, husband, and founder. He started it raising a kid far from the village his own parents had: no elders down the street, no one who just knew which class was worth it. The trust was still out there, in what other parents told each other; it just couldn’t reach him. So he built the thing he kept wishing someone would text him.",
     "cta": "It starts with names, ages, and a postal code. No app, no account."
   },
   "Pricing": {

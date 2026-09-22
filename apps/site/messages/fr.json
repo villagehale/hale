@@ -345,21 +345,18 @@
   },
   "About": {
     "metaTitle": "À propos · Hale",
-    "metaDescription": "Hale est un planificateur pour l’année de vos enfants. Trouvez ce qu’il y a. Écoutez comment ça va. Conçu par Barton Dong chez Village Hale Technologies Inc. à Georgetown, en Ontario.",
+    "metaDescription": "Hale est un planificateur pour l’année de vos enfants. Trouvez ce qu’il y a. Écoutez comment ça va. Barton Dong, PDG, et Eugene Song, directeur technique, chez Village Hale Technologies Inc. à Georgetown, en Ontario.",
     "eyebrow": "À propos de Hale",
     "headline": [
       {
-        "text": "Pourquoi Hale est"
+        "text": "Un planificateur pour"
       },
       {
-        "text": "un planificateur,",
+        "text": "l’année de vos enfants.",
         "accent": true
-      },
-      {
-        "text": "pas une autre appli."
       }
     ],
-    "lede": "Autrefois, une famille avait un village — des aînés qui savaient quel cours en valait la peine, des voisins qui portaient les petites choses, une grand-mère qui disait c’est normal, tu fais bien ça. Ce savoir n’a pas disparu. Il n’a simplement plus nulle part où vivre, sauf dans la mémoire d’un parent — et aucune appli ne règle un problème de mémoire en réclamant encore plus de votre attention. Alors Hale est un planificateur pour l’année de vos enfants.",
+    "lede": "Ce qui se passe près des enfants passe à côté; les matins se remplissent en quelques minutes; personne ne demande comment ça s’est passé. Hale le trouve, surveille la date, demande ensuite — par texto.",
     "missionEyebrow": "Notre mission",
     "mission": "Chaque parent devrait avoir quelqu’un qui sait ce qui se passe près de chez lui, qui se souvient de la date qui se remplit en deux minutes, et qui demande comment ça s’est passé. À chaque étape de l’enfance, des premiers mois jusqu’à presque adulte.",
     "howEyebrow": "Comment Hale fonctionne",
@@ -407,17 +404,18 @@
         "linkLabel": "Comment vos données sont traitées"
       }
     ],
-    "founderEyebrow": "Le fondateur",
-    "founderHeadline": [
+    "founderEyebrow": "Les fondateurs",
+    "founderLink": "LinkedIn",
+    "founders": [
       {
-        "text": "Conçu par un parent, loin de"
+        "name": "Barton Dong",
+        "role": "PDG"
       },
       {
-        "text": "son village.",
-        "accent": true
+        "name": "Eugene Song",
+        "role": "directeur technique"
       }
     ],
-    "founderStory": "Hale est conçu par Barton Dong — un père, un mari et un fondateur. Il l’a lancé alors qu’il élevait un enfant loin du village qu’avaient eu ses propres parents : pas d’aînés au bout de la rue, personne qui savait tout simplement quel cours en valait la peine. La confiance existait toujours, dans ce que les parents se disaient entre eux; elle n’arrivait tout simplement pas jusqu’à lui. Alors il a bâti ce qu’il n’arrêtait pas de souhaiter que quelqu’un lui texte.",
     "cta": "Ça commence par les noms, les âges et un code postal. Pas d’appli, pas de compte."
   },
   "Pricing": {

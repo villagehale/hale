@@ -1,6 +1,8 @@
 import { ArrowUpRight, Check } from 'lucide-react';
 import type { Metadata } from 'next';
-import { CharReveal } from '~/components/char-reveal';
+import Image from 'next/image';
+import bartonPhoto from '~/assets/founder-barton-dong.jpg';
+import eugenePhoto from '~/assets/founder-eugene-song.jpg';
 import { CopyNumberButton } from '~/components/copy-number';
 import { CtaBand } from '~/components/cta-band';
 import { Village } from '~/components/illos';
@@ -29,16 +31,22 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-const SOCIALS = [
-  { label: 'LinkedIn', href: 'https://www.linkedin.com/in/anzhe-dong/' },
-  { label: 'X', href: 'https://x.com/therealbossdong' },
-  { label: 'GitHub', href: 'https://github.com/donganzh' },
+/**
+ * Two founders, one line each. Photos are local copies of the current LinkedIn
+ * profile pictures (96px, the 2× asset for a 48px circle) — never a LinkedIn CDN
+ * hotlink. The hrefs are the public profiles; the visible names are Barton and
+ * Eugene. Order is structural and matches `About.founders`.
+ */
+const FOUNDERS = [
+  { photo: bartonPhoto, href: 'https://linkedin.com/in/anzhe-dong' },
+  { photo: eugenePhoto, href: 'https://www.linkedin.com/in/yuhang-eugene-song-53b692172' },
 ] as const;
 
 /**
- * The ladder — recommend, prepare, execute-with-consent — which is the product
- * doctrine (F14 · D-register) and the same three rungs the homepage states in
- * Hale's own voice. The rung copy is localized; the destinations are structural.
+ * The ladder — recommend, prepare, ask — which is the product doctrine
+ * (F14 · D-register) and the same three rungs the homepage states in Hale's own
+ * voice. The Ask rung does not book. The rung copy is localized; the
+ * destinations are structural.
  */
 const LADDER_HREFS = ['/answers', '/pricing', '/privacy'] as const;
 
@@ -50,10 +58,16 @@ interface Rung {
   linkLabel: string;
 }
 
+interface FounderLine {
+  name: string;
+  role: string;
+}
+
 export default async function AboutPage({ params }: PageProps) {
   const { locale } = await params;
   const t = getTranslator(locale, 'About');
   const ladder = t.raw('ladder') as Rung[];
+  const founders = t.raw('founders') as FounderLine[];
   // The one front door the site chrome offers. This page used to close on the
   // app's /onboarding wizard, which F14 deleted — the only action on /about was
   // a 308 back to the homepage.
@@ -105,7 +119,11 @@ export default async function AboutPage({ params }: PageProps) {
       <section className="shell pb-16 lg:pb-24">
         <div className="max-w-2xl">
           <span className="eyebrow">{t('howEyebrow')}</span>
-          <WordsPullUp as="h2" className="mt-3" segments={t.raw('howHeadline') as HeadlineSegment[]} />
+          <WordsPullUp
+            as="h2"
+            className="mt-3"
+            segments={t.raw('howHeadline') as HeadlineSegment[]}
+          />
           <p className="meta mt-5 text-lg" style={{ lineHeight: 1.6 }}>
             {t('howLede')}
           </p>
@@ -131,7 +149,10 @@ export default async function AboutPage({ params }: PageProps) {
                 ))}
               </ul>
               {/* `mt-auto` drops the three links onto one line across the grid. */}
-              <a href={localeHref(locale, LADDER_HREFS[i] ?? '/')} className="quiet-link mt-auto pt-7">
+              <a
+                href={localeHref(locale, LADDER_HREFS[i] ?? '/')}
+                className="quiet-link mt-auto pt-7"
+              >
                 {rung.linkLabel}
                 <ArrowUpRight size={14} strokeWidth={2.25} aria-hidden="true" />
               </a>
@@ -143,26 +164,40 @@ export default async function AboutPage({ params }: PageProps) {
       <section className="shell pb-16 lg:pb-24">
         <div className="max-w-2xl">
           <span className="eyebrow">{t('founderEyebrow')}</span>
-          <WordsPullUp
-            as="h2"
-            className="mt-3"
-            segments={t.raw('founderHeadline') as HeadlineSegment[]}
-          />
-          <CharReveal className="reading-measure mt-5 text-lg" text={t('founderStory')} />
-          <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-3">
-            {SOCIALS.map((social) => (
-              <li key={social.href}>
-                <a
-                  href={social.href}
-                  target="_blank"
-                  rel="me noreferrer"
-                  className="link inline-flex items-center gap-1.5"
-                >
-                  {social.label}
-                  <ArrowUpRight size={14} strokeWidth={2.25} aria-hidden="true" />
-                </a>
-              </li>
-            ))}
+          <ul className="mt-6 flex flex-col gap-4">
+            {founders.map((founder, i) => {
+              const link = FOUNDERS[i];
+              if (!link) return null;
+              return (
+                <li key={founder.name} className="flex items-center gap-3">
+                  <Image
+                    src={link.photo}
+                    alt=""
+                    aria-hidden="true"
+                    width={48}
+                    height={48}
+                    className="founder-portrait"
+                  />
+                  <p style={{ lineHeight: 1.35 }}>
+                    <span>{founder.name}</span>
+                    <span style={{ color: 'var(--color-slate-green)' }}>, {founder.role}</span>
+                    <span aria-hidden="true" style={{ color: 'var(--color-slate-green)' }}>
+                      {' '}
+                      ·{' '}
+                    </span>
+                    <a
+                      href={link.href}
+                      target="_blank"
+                      rel="me noreferrer"
+                      className="link inline-flex items-center gap-1.5"
+                    >
+                      {t('founderLink')}
+                      <ArrowUpRight size={14} strokeWidth={2.25} aria-hidden="true" />
+                    </a>
+                  </p>
+                </li>
+              );
+            })}
           </ul>
         </div>
       </section>
