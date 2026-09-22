@@ -23,9 +23,20 @@ import { APP_URL } from '~/lib/app-url';
  * The theme switch and the language selector both live in the brand block —
  * every page ends here, so this is where a reader changes how the site looks and
  * what language it speaks. Every internal link carries the active locale prefix.
+ *
+ * `omitPrivacyLink` is the /text exception only. That page already links the
+ * policy once, on the Canada line in the column. The bar's "Privacy policy"
+ * would be a second link to the same page, which Design rejected. Every other
+ * page keeps the legal pair.
  */
 
-export function SiteFooter({ locale = routing.defaultLocale }: { locale?: Locale }) {
+export function SiteFooter({
+  locale = routing.defaultLocale,
+  omitPrivacyLink = false,
+}: {
+  locale?: Locale;
+  omitPrivacyLink?: boolean;
+}) {
   const t = getTranslator(locale, 'Footer');
   const theme = getTranslator(locale, 'ThemeSwitch');
   const lang = getTranslator(locale, 'LanguageSwitcher');
@@ -51,7 +62,9 @@ export function SiteFooter({ locale = routing.defaultLocale }: { locale?: Locale
   ];
 
   const legal = [
-    { label: t('linkPrivacy'), href: localeHref(locale, '/privacy') },
+    ...(omitPrivacyLink
+      ? []
+      : [{ label: t('linkPrivacy'), href: localeHref(locale, '/privacy') }]),
     { label: t('linkTerms'), href: localeHref(locale, '/terms') },
     // The app is the receipts surface, not the daily one — sign-in lives in the
     // quietest spot the site has, beside the legal pair, for the parent who
