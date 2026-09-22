@@ -1,8 +1,8 @@
 import type { Municipality } from '@hale/db';
 import type { FamilyStage } from '@hale/types';
 import { nameAnywhere } from '~/lib/channel/coach/reply';
-import { townLabel } from '~/lib/channel/town-label';
 import { scrubResidualPii } from '~/lib/channel/off-domain/medical';
+import { townLabel } from '~/lib/channel/town-label';
 
 /**
  * PHASE 0 OF THE ACTIVITY LANE — de-identify BEFORE the search, deterministically.
@@ -99,6 +99,11 @@ export interface ActivityQuery {
   town: string | null;
   /** The coarse band, or null when no child was named and the family has none on file. */
   stage: FamilyStage | null;
+  /**
+   * Every band in the household when siblings do not share one. Absent on a
+   * single-band query, so the payload this lane already sends does not grow a key.
+   */
+  stages?: readonly FamilyStage[];
 }
 
 export type ActivityDeidResult =

@@ -1,50 +1,48 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
-import { scopedReply } from '~/lib/channel/caregiver/copy';
-import { EMERGENCY_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
-import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
-import { FakeReplyTransport, type ReplyRoute } from './reply-route';
-import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/lane';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
-import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
-import type { SpotWatchIntent } from '~/lib/channel/spots/store';
+import { scopedReply } from '~/lib/channel/caregiver/copy';
+import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
+import { EMERGENCY_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
+import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/lane';
+import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import type { SpotWatchIntent } from '~/lib/channel/spots/store';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
-import type { ApologyOutcome, TurnApology } from './apology';
-import { type ChannelTurn, type ChannelTurnResult, ChannelTurnFailed } from './coach-runtime';
-import type { SmokeAlarmClaim } from './smoke-alarm';
-import type {
-  DisambiguationOption,
-  DisambiguationStore,
-  PendingDisambiguation,
-} from './disambiguation';
-import {
-  type OpenQuestion,
-  type OpenQuestionReader,
-  type OpenQuestionSources,
-  createOpenQuestionReader,
-} from './open-questions';
-import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import {
   DISCOVERABILITY_ALREADY_ON,
   DISCOVERABILITY_OFF,
   DISCOVERABILITY_ON,
 } from '~/lib/village/intros/copy';
-import { villageIntroHandler } from './handlers';
-import { type ReplyReading, type ReplyResolver, toReading } from './resolve';
-import type { InboundTurnLedger, TurnStage } from './turn-ledger';
+import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
+import type { ApologyOutcome, TurnApology } from './apology';
+import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
 import { FLOOD_REPLY, capabilityReply, failureReply, partialFailureReply } from './copy';
+import type {
+  DisambiguationOption,
+  DisambiguationStore,
+  PendingDisambiguation,
+} from './disambiguation';
+import { AGENT_TURNS_PER_HOUR } from './flood';
+import { villageIntroHandler } from './handlers';
 import {
   approvalHandler,
   founderWelcomeHandler,
   healthReplyHandler,
   sequenceReplyHandler,
 } from './handlers';
-import { AGENT_TURNS_PER_HOUR } from './flood';
+import {
+  type OpenQuestion,
+  type OpenQuestionReader,
+  type OpenQuestionSources,
+  createOpenQuestionReader,
+} from './open-questions';
+import { FakeReplyTransport, type ReplyRoute } from './reply-route';
+import { type ReplyReading, type ReplyResolver, toReading } from './resolve';
 import {
   type ChannelCoachRuntime,
   type ChannelRouterDeps,
@@ -54,6 +52,8 @@ import {
   TurnDeferred,
   routeChannelMessage,
 } from './route';
+import type { SmokeAlarmClaim } from './smoke-alarm';
+import type { InboundTurnLedger, TurnStage } from './turn-ledger';
 
 /**
  * The router, driven end to end minus the provider and the model.
@@ -98,7 +98,10 @@ function nthJob(n: number): ChannelMessageReceivedJob {
 }
 
 /** A handler that claims every message, so "did the router stop here?" is observable. */
-function claimingHandler(name: string, reply: string | null = `${name} reply`): DeterministicHandler & {
+function claimingHandler(
+  name: string,
+  reply: string | null = `${name} reply`,
+): DeterministicHandler & {
   calls: number;
 } {
   const handler = {
@@ -384,6 +387,7 @@ function harness(
     recordStatedState?: ChannelRouterDeps['recordStatedState'];
     weekdayCareAnswerTarget?: ChannelRouterDeps['weekdayCareAnswerTarget'];
     recordWeekdayCare?: ChannelRouterDeps['recordWeekdayCare'];
+    searchWeekdays?: ChannelRouterDeps['searchWeekdays'];
     dispatchDeepResearch?: ChannelRouterDeps['dispatchDeepResearch'];
   } = {},
 ): Harness {
@@ -433,6 +437,9 @@ function harness(
           care: input.care,
           providerNamed: input.provider !== null,
         })),
+      searchWeekdays:
+        options.searchWeekdays ??
+        (async () => ({ status: 'abstain' as const, reason: 'not_configured' })),
       recordRegistrationWatch:
         options.recordRegistrationWatch ?? (async () => ({ status: 'recorded' as const })),
       armWatchedSpot:
@@ -440,7 +447,8 @@ function harness(
       dispatchDeepResearch:
         options.dispatchDeepResearch ?? (async () => ({ status: 'enqueued' as const })),
       questions: options.questions ?? fakeQuestions([]),
-      replyResolver: options.replyResolver ?? fakeResolver({ status: 'unresolved', reason: 'no_target' }),
+      replyResolver:
+        options.replyResolver ?? fakeResolver({ status: 'unresolved', reason: 'no_target' }),
       disambiguation: fakeDisambiguation(),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
@@ -483,7 +491,10 @@ describe('answering on the channel the parent used', () => {
     const coach = fakeCoach('Saturday is dry — the splash pad is open.');
     const h = harness({ context: { reply: EMAIL_ROUTE }, coach });
 
-    const result = await routeChannelMessage(h.deps, job({ provider_message_id: '<msg-1@example.com>' }));
+    const result = await routeChannelMessage(
+      h.deps,
+      job({ provider_message_id: '<msg-1@example.com>' }),
+    );
 
     expect(result.status).toBe('agent_replied');
     // The whole point: the coach composed it, and it left by EMAIL, carrying the
@@ -1091,7 +1102,8 @@ describe('an offered full plan', () => {
     return {
       async respond() {
         return {
-          reply: "Most 2-year-olds wake once or twice. Want the full plan? Reply YES and I'll send it.",
+          reply:
+            "Most 2-year-olds wake once or twice. Want the full plan? Reply YES and I'll send it.",
           activityPromise: null,
           spotWatch: null,
           planOffer: {
@@ -1404,7 +1416,7 @@ describe('deferring a turn the provider cannot answer', () => {
    * turn back. Nine copies of the same question is a transcript that lies to the coach
    * that reads it on the attempt that finally works.
    */
-  it('does not thread the parent\'s message again on a re-drive', async () => {
+  it("does not thread the parent's message again on a re-drive", async () => {
     const turns = fakeTurnLedger();
     const h = harness({ coach: outageCoach(), turns });
 
@@ -1550,7 +1562,12 @@ describe('a re-driven turn never answers twice', () => {
     let reject!: (err: unknown) => void;
     const h = harness({
       turns,
-      coach: { respond: () => new Promise<ChannelTurnResult>((_, r) => { reject = r; }) },
+      coach: {
+        respond: () =>
+          new Promise<ChannelTurnResult>((_, r) => {
+            reject = r;
+          }),
+      },
     });
 
     const run = routeChannelMessage(h.deps, job());
@@ -1652,7 +1669,7 @@ describe('the outage smoke alarm', () => {
 
   /** A different text during the same outage is a different emergency. The claim is
    * per inbound message, not per family. */
-  it('still rings for the parent\'s next text', async () => {
+  it("still rings for the parent's next text", async () => {
     const claim = fakeSmokeAlarmClaim();
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach(), smokeAlarm: claim });
 
@@ -1810,7 +1827,11 @@ describe('logs carry no bodies', () => {
     const secret = 'Mia has a therapy appointment on Thursday';
     const h = harness({
       context: { body: secret },
-      coach: { respond: async () => { throw new Error('boom'); } },
+      coach: {
+        respond: async () => {
+          throw new Error('boom');
+        },
+      },
     });
 
     await routeChannelMessage(h.deps, job());
@@ -1821,12 +1842,16 @@ describe('logs carry no bodies', () => {
   /** The apology composer is BLIND (apology.ts): it never receives the parent's words,
    * so no bug in it can put them back on the wire. Asserted through the router because
    * this is the seam where the words are in scope and could be passed by mistake. */
-  it('never hands the parent\'s words to the apology composer', async () => {
+  it("never hands the parent's words to the apology composer", async () => {
     const secret = 'Mia has a therapy appointment on Thursday';
     const seen: unknown[] = [];
     const h = harness({
       context: { body: secret },
-      coach: { respond: async () => { throw new Error('boom'); } },
+      coach: {
+        respond: async () => {
+          throw new Error('boom');
+        },
+      },
       apology: {
         compose: async (...args: unknown[]) => {
           seen.push(args);
@@ -2608,7 +2633,11 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
 
   /** A coach whose answers are scripted per attempt — the re-ask is the point. */
   function scriptedCoach(
-    turns: readonly { reply: string; activityPromise?: ActivityPromise; spotWatch?: SpotWatchIntent }[],
+    turns: readonly {
+      reply: string;
+      activityPromise?: ActivityPromise;
+      spotWatch?: SpotWatchIntent;
+    }[],
   ): ChannelCoachRuntime & { rejected: string[][] } {
     let attempt = 0;
     const coach = {
@@ -2672,7 +2701,10 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
     const intent = COURSE_INTENT;
     const h = harness({
       coach: scriptedCoach([
-        { reply: "I'm watching that class and I'll text you when a spot opens.", spotWatch: intent },
+        {
+          reply: "I'm watching that class and I'll text you when a spot opens.",
+          spotWatch: intent,
+        },
       ]),
       armWatchedSpot: async (_db, input) => {
         armed.push(input);
@@ -2900,7 +2932,9 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
     await routeChannelMessage(h.deps, job());
 
     expect(coach.rejected).toEqual([[]]);
-    expect(h.transport.sent.map((m) => m.body)).toEqual(['Swim runs Tuesdays at 4 at the Gellert.']);
+    expect(h.transport.sent.map((m) => m.body)).toEqual([
+      'Swim runs Tuesdays at 4 at the Gellert.',
+    ]);
   });
 });
 
@@ -3039,9 +3073,7 @@ describe('a promise worth opening pages for is dispatched at question time', () 
     });
     // ONE job, keyed to the promise that was just written — never to the message, never
     // to the family: the commitment is what the job is about and what it re-reads.
-    expect(dispatched).toEqual([
-      { commitment_id: PROMISE_COMMITMENT_ID, family_id: FAMILY },
-    ]);
+    expect(dispatched).toEqual([{ commitment_id: PROMISE_COMMITMENT_ID, family_id: FAMILY }]);
   });
 
   it('does NOT enqueue for a subject with no place and no timetable in it', async () => {
@@ -3194,9 +3226,10 @@ describe('the disambiguation a clarifier owns', () => {
   }
 
   /** Successive texts from one parent, each its own inbound message. */
-  function conversation(
-    options: Parameters<typeof harness>[0] & { bodies: string[] },
-  ): { h: Harness; run: () => Promise<RouterResult> } {
+  function conversation(options: Parameters<typeof harness>[0] & { bodies: string[] }): {
+    h: Harness;
+    run: () => Promise<RouterResult>;
+  } {
     const { bodies, ...rest } = options;
     const h = harness(rest);
     let turn = 0;
@@ -3220,9 +3253,7 @@ describe('the disambiguation a clarifier owns', () => {
   it('mirrors the kind the real founder handler declares', () => {
     // The stand-ins above answer for `founder_welcome`. If production ever stopped
     // declaring that kind, every test in this block would go on passing against nothing.
-    expect(founderWelcomeHandler({} as never).resolves).toEqual(
-      new Set(['founder_welcome_offer']),
-    );
+    expect(founderWelcomeHandler({} as never).resolves).toEqual(new Set(['founder_welcome_offer']));
   });
 
   it('resolves the option the parent quoted back, instead of handing it to the coach', async () => {
@@ -3496,6 +3527,7 @@ describe('the weekday-care answer', () => {
       body?: string;
       target?: ChannelRouterDeps['weekdayCareAnswerTarget'];
       questions?: OpenQuestionReader;
+      searchWeekdays?: ChannelRouterDeps['searchWeekdays'];
     } = {},
   ) {
     const written: Array<{ childId: string; care: string; provider: string | null }> = [];
@@ -3506,6 +3538,7 @@ describe('the weekday-care answer', () => {
       questions: options.questions ?? questionsFrom(askStanding),
       weekdayCareAnswerTarget:
         options.target ?? (async () => ({ status: 'open' as const, childId: CHILD })),
+      searchWeekdays: options.searchWeekdays,
       recordWeekdayCare: async (_db, input) => {
         written.push({ childId: input.childId, care: input.care, provider: input.provider });
         return {
@@ -3537,9 +3570,7 @@ describe('the weekday-care answer', () => {
 
     await routeChannelMessage(h.deps, job());
 
-    expect(written).toEqual([
-      { childId: CHILD, care: 'daycare', provider: 'Little Sprouts' },
-    ]);
+    expect(written).toEqual([{ childId: CHILD, care: 'daycare', provider: 'Little Sprouts' }]);
   });
 
   it('logs an unreadable answer and writes nothing', async () => {
@@ -3653,6 +3684,70 @@ describe('the weekday-care answer', () => {
     await routeChannelMessage(h.deps, job());
 
     expect(queue.approved).toEqual(['a-1']);
+  });
+
+  it('a yes to the finder ask searches and does not write a care fact', async () => {
+    const searches: Array<{ familyId: string; prompt: string }> = [];
+    const { h, written, coach } = careHarness({
+      body: 'yes',
+      target: async () => ({
+        status: 'open' as const,
+        scope: 'search' as const,
+        prompt: 'after_school' as const,
+        eventKey: null,
+      }),
+      searchWeekdays: async (input) => {
+        searches.push({ familyId: input.familyId, prompt: input.prompt });
+        return {
+          status: 'deliver' as const,
+          body: 'Armour Heights after school. Toronto Parks lists it for ages 6-12.',
+        };
+      },
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(written).toEqual([]);
+    expect(searches).toEqual([{ familyId: FAMILY, prompt: 'after_school' }]);
+    expect(coach.calls).toBe(0);
+    expect(result).toMatchObject({ status: 'handled', handler: 'weekday_search' });
+    expect(h.transport.sent.map((sent) => sent.body).join('\n')).toContain('Toronto Parks');
+  });
+
+  it('a yes with no grounded pick abstains and does not invent a venue', async () => {
+    const { h, written, coach } = careHarness({
+      body: 'yes',
+      target: async () => ({
+        status: 'open' as const,
+        scope: 'search' as const,
+        prompt: 'weekend_fallback' as const,
+        eventKey: null,
+      }),
+      searchWeekdays: async () => ({ status: 'abstain' as const, reason: 'no_picks' }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(written).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('no_picks');
+    expect(JSON.stringify(h.transport.sent)).not.toContain('EarlyON');
+    expect(coach.calls).toBe(1);
+  });
+
+  it('does not store daycare from a sentence that answers a search ask', async () => {
+    const { h, written } = careHarness({
+      body: "she's at daycare",
+      target: async () => ({
+        status: 'open' as const,
+        scope: 'search' as const,
+        prompt: 'after_school' as const,
+        eventKey: null,
+      }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(written).toEqual([]);
   });
 });
 

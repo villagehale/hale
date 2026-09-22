@@ -1,11 +1,11 @@
 import { schema } from '@hale/db';
 import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FakeTransport } from '~/lib/channel/intake/transport';
-import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
-import { threadProactiveMessage } from '~/lib/channel/thread';
-import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
+import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
+import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
+import { FakeTransport } from '~/lib/channel/intake/transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
 import { NUDGE_OPT_OUT } from './nudge-voice.js';
@@ -231,7 +231,10 @@ function harness(
     resolveSendablePhone: async (_db, parentUserId) =>
       options.phones?.[parentUserId] ?? '+14165550100',
     recordSend: async (_db, write) => {
-      writes.push({ table: schema.channelMessages, payload: write as unknown as Record<string, unknown> });
+      writes.push({
+        table: schema.channelMessages,
+        payload: write as unknown as Record<string, unknown>,
+      });
       dedupeKeys.add(write.dedupeKey);
       return `msg-${writes.length}`;
     },
@@ -895,10 +898,7 @@ describe('the nudge reaches both parents, on their own numbers', () => {
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
     expect(result.sent).toBe(2);
-    expect(h.transport.sent.map((sent) => sent.to)).toEqual([
-      '+14165550100',
-      '+16475550199',
-    ]);
+    expect(h.transport.sent.map((sent) => sent.to)).toEqual(['+14165550100', '+16475550199']);
     expect([...h.dedupeKeys]).toEqual([
       'nudge:fam-1:registration:w-1:user-1',
       'nudge:fam-1:registration:w-1:user-2',
@@ -1166,20 +1166,19 @@ describe('runNudgeCron — the weekday-care ask', () => {
     });
   }
 
-  it('sends the one sentence, keyed per child and forever', async () => {
+  it('sends the fallback once, and names nobody', async () => {
     const h = ask([TODDLER]);
 
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
     expect(result.sent).toBe(1);
     expect(h.transport.sent[0]?.body).toContain(
-      'Those are all weekend finds. Is Mia home with you during the week, or at daycare?',
+      'Those are weekend options. Want me to find something for weekdays too?',
     );
+    expect(h.transport.sent[0]?.body).not.toContain('Mia');
     const write = h.writes.find((w) => w.table === schema.channelMessages);
     expect(write?.payload.templateKey).toBe('proactive_nudge:weekday_care');
-    // The CHILD is in the key, and no week is: the answer is filed against this id, and
-    // the question is asked once per household ever.
-    expect(write?.payload.dedupeKey).toBe('nudge:fam-1:weekday_care:child-mia:user-1');
+    expect(write?.payload.dedupeKey).toBe('nudge:fam-1:weekday_care:household:user-1');
   });
 
   it('never twice — a re-fired cron does not ask again', async () => {
@@ -1196,23 +1195,51 @@ describe('runNudgeCron — the weekday-care ask', () => {
    * when it is handed both; this proves the 13+ child never reaches it at all, because
    * `splitByStage` strips the name at the source.
    */
-  it('names the toddler and never the teenager', async () => {
+  it('names neither the toddler nor the teenager when both are in the house', async () => {
     const h = ask([TEEN, TODDLER]);
 
     await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
     const body = h.transport.sent[0]?.body ?? '';
-    expect(body).toContain('Mia');
+    expect(body).toContain(
+      'Those are weekend options. Want me to find something for weekdays too?',
+    );
+    expect(body).not.toContain('Mia');
     expect(body).not.toContain('Ava');
   });
 
-  it('a teen-only household is never asked', async () => {
+  it('asks a teen-only household the household sentence and never their name', async () => {
     const h = ask([TEEN]);
 
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
-    expect(result.sent).toBe(0);
-    expect(result.skips.no_eligible_child).toBe(1);
+    expect(result.sent).toBe(1);
+    const body = h.transport.sent[0]?.body ?? '';
+    expect(body).toContain('Want me to find one good after-school option nearby too?');
+    expect(body).not.toContain('Ava');
+    const write = h.writes.find((w) => w.table === schema.channelMessages);
+    expect(write?.payload.templateKey).toBe('proactive_nudge:weekday_after_school');
+    expect(write?.payload.dedupeKey).toBe('nudge:fam-1:weekday_after_school:household:user-1');
+  });
+
+  it('asks one school-age child with the locked sentence', async () => {
+    const h = ask([
+      {
+        id: 'child-maya',
+        name: 'Maya',
+        dateOfBirth: '2018-01-31',
+        dobPrecision: 'exact',
+      },
+    ]);
+
+    await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(h.transport.sent[0]?.body).toContain(
+      'Want me to find one good after-school option for Maya too?',
+    );
+    const write = h.writes.find((w) => w.table === schema.channelMessages);
+    expect(write?.payload.templateKey).toBe('proactive_nudge:weekday_after_school');
+    expect(write?.payload.dedupeKey).toBe('nudge:fam-1:weekday_after_school:child-maya:user-1');
   });
 
   it('is deterministic: no model is asked to write a question', async () => {
@@ -1220,8 +1247,6 @@ describe('runNudgeCron — the weekday-care ask', () => {
 
     await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
-    // Byte-for-byte the reviewed sentence, plus whatever shell the gate appended - not
-    // a paraphrase of it.
-    expect(h.transport.sent[0]?.body.startsWith('Those are all weekend finds.')).toBe(true);
+    expect(h.transport.sent[0]?.body.startsWith('Those are weekend options.')).toBe(true);
   });
 });

@@ -2,11 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { encryptString } from '~/lib/crypto/string-cipher';
+import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { createDisambiguationStore } from '~/lib/channel/router/disambiguation';
 import { FakeReplyTransport } from '~/lib/channel/router/reply-route';
-import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { ReplyResolver } from '~/lib/channel/router/resolve';
 import type { ChannelRouterDeps } from '~/lib/channel/router/route';
 import { routeChannelMessage } from '~/lib/channel/router/route';
@@ -17,6 +15,8 @@ import {
   defaultOpenQuestionReader,
   loadInboundContext,
 } from '~/lib/channel/router/wiring';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { familyForForwardToken, mintForwardToken } from './forward-address';
@@ -149,6 +149,7 @@ function deps(
       care: input.care,
       providerNamed: input.provider !== null,
     }),
+    searchWeekdays: async () => ({ status: 'abstain' as const, reason: 'not_configured' }),
     offDomain: { consider: async () => ({ status: 'in_domain', fallback: null }) },
     coach: {
       async respond() {

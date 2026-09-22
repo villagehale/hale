@@ -25,9 +25,33 @@ import { type RadarMessage, composeRadarMessage, promisesFirstFind } from './rad
 
 /** Words too generic to prove the checkpoint reached the parent. */
 const CHECKPOINT_STOPWORDS = new Set([
-  'your', 'with', 'them', 'they', 'this', 'that', 'have', 'about', 'their',
-  'book', 'call', 'time', 'when', 'week', 'month', 'months', 'year', 'years',
-  'child', 'kids', 'ontario', 'free', 'ask', 'now', 'the', 'and', 'for',
+  'your',
+  'with',
+  'them',
+  'they',
+  'this',
+  'that',
+  'have',
+  'about',
+  'their',
+  'book',
+  'call',
+  'time',
+  'when',
+  'week',
+  'month',
+  'months',
+  'year',
+  'years',
+  'child',
+  'kids',
+  'ontario',
+  'free',
+  'ask',
+  'now',
+  'the',
+  'and',
+  'for',
 ]);
 
 /**
@@ -45,7 +69,7 @@ export function checkpointSurvivedCompose(message: string, task: string): boolea
  * VIL-360 · whether the composed message actually carries the decided weekend pick —
  * the same rule, because it answers the same question about a different block.
  *
- * The weekday-care ask says "Those are all weekend finds" and points AT THIS MESSAGE.
+ * The weekday fallback says "Those are weekend options" and points AT THIS MESSAGE.
  * D23's corollary is that the anchor must be a specific artefact Hale can check, and
  * the artefact is the sentence the parent read, not the decision behind it: the
  * composer samples at temperature 1 and the P0 below records that it can drop a
@@ -62,7 +86,14 @@ export function weekendPickSurvivedCompose(message: string, title: string): bool
 function phraseSurvivedCompose(message: string, task: string): boolean {
   const text = message.toLowerCase();
   const agePhrases = task.toLowerCase().match(/\d+[\s-]?(?:month|year|week)/g) ?? [];
-  if (agePhrases.some((phrase) => text.includes(phrase.replace(/[\s-]/g, ' ')) || text.includes(phrase.replace(/[\s-]/g, '-')) || text.includes(phrase))) {
+  if (
+    agePhrases.some(
+      (phrase) =>
+        text.includes(phrase.replace(/[\s-]/g, ' ')) ||
+        text.includes(phrase.replace(/[\s-]/g, '-')) ||
+        text.includes(phrase),
+    )
+  ) {
     return true;
   }
   const words = task
@@ -106,8 +137,8 @@ export interface RadarInput {
  * text WHEN it carried a weekend pick.
  *
  * The radar's messages are otherwise anonymous — the transcript is the record — but
- * this one row is the D23 anchor for the weekday-care ask: "those are all weekend
- * finds" is only sayable to a family Hale actually sent one to, and the weather swap
+ * this one row is the D23 anchor for the weekday fallback: "those are weekend
+ * options" is only sayable to a family Hale actually sent one to, and the weather swap
  * (the other anchor) is rare by construction. Without the stamp the ask fires for
  * nobody.
  *
@@ -249,7 +280,10 @@ async function readHealthRoster(
  * imported because that module pulls the authenticated session resolver in with it, and
  * the radar runs on an inbound SMS with no session at all.
  */
-export async function readCandidates(database: Database, familyId: string): Promise<RadarCandidate[]> {
+export async function readCandidates(
+  database: Database,
+  familyId: string,
+): Promise<RadarCandidate[]> {
   const rows = await database
     .select({
       id: schema.villageCandidates.id,
@@ -320,19 +354,23 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       const children = toRadarChildren(input.children);
       const area = input.areaCoarse;
 
-      const [roster, candidates, windowRows, weather, suppressedCheckpointRefs] = await Promise.all([
-        readHealthRoster(deps.database, input.familyId, now),
-        readCandidates(deps.database, input.familyId),
-        area ? readWindows(deps.database, area) : Promise.resolve([]),
-        // Weather is an input, never a blocker: the port swallows its own failures, and
-        // an area we cannot place has no forecast to ask for.
-        area ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => []) : Promise.resolve([]),
-        // Empty for every family this composer actually serves — they were provisioned
-        // seconds ago. Read anyway rather than assumed: the assumption is the kind that
-        // survives the code that made it true, and a checkpoint raised twice is exactly
-        // the nagging M8 exists to remove.
-        loadSuppressedCheckpointRefs(deps.database, input.familyId),
-      ]);
+      const [roster, candidates, windowRows, weather, suppressedCheckpointRefs] = await Promise.all(
+        [
+          readHealthRoster(deps.database, input.familyId, now),
+          readCandidates(deps.database, input.familyId),
+          area ? readWindows(deps.database, area) : Promise.resolve([]),
+          // Weather is an input, never a blocker: the port swallows its own failures, and
+          // an area we cannot place has no forecast to ask for.
+          area
+            ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
+            : Promise.resolve([]),
+          // Empty for every family this composer actually serves — they were provisioned
+          // seconds ago. Read anyway rather than assumed: the assumption is the kind that
+          // survives the code that made it true, and a checkpoint raised twice is exactly
+          // the nagging M8 exists to remove.
+          loadSuppressedCheckpointRefs(deps.database, input.familyId),
+        ],
+      );
 
       const windows = area
         ? matchRegistrationWindows({

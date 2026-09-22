@@ -1,13 +1,13 @@
 import { schema } from '@hale/db';
 import { asc, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadReconcileView } from '~/lib/channel/reconcile/view';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { createDisambiguationStore } from './disambiguation';
 import { FakeReplyTransport } from './reply-route';
 import type { ChannelCoachRuntime, ChannelRouterDeps } from './route';
@@ -122,6 +122,7 @@ describe('one parent, two doors, one conversation', () => {
         care: input.care,
         providerNamed: input.provider !== null,
       }),
+      searchWeekdays: async () => ({ status: 'abstain' as const, reason: 'not_configured' }),
       recordRegistrationWatch: async () => ({ status: 'recorded' }),
       armWatchedSpot: async () => ({ status: 'armed', spotId: 'spot-1' }),
       dispatchDeepResearch: async () => ({ status: 'enqueued' }),
@@ -200,7 +201,13 @@ describe('one parent, two doors, one conversation', () => {
   });
 
   it('goes silent on an email from a parent who has stopped email, and says so', async () => {
-    for (const emailType of ['daily_digest', 'weekly_plan', 'reminder', 'approval', 'alert'] as const) {
+    for (const emailType of [
+      'daily_digest',
+      'weekly_plan',
+      'reminder',
+      'approval',
+      'alert',
+    ] as const) {
       await db.database.insert(schema.emailOptOuts).values({ userId: parentUserId, emailType });
     }
 

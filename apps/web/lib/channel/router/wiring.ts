@@ -1,76 +1,80 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, asc, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import type { ChannelMessageReceivedPayload } from '@hale/tools-contracts';
-import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
-import {
-  emailAlertOfferSubject,
-  emailAlertOfferSummary,
-  loadOpenEmailAlertOffers,
-} from '~/lib/integrations/email-alert-offer';
-import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { resolveSendableEmail } from '~/lib/channel/email/sendable';
-import { productionEmailReply } from '~/lib/channel/email/reply-send';
-import {
-  createOwnerReplyDecider,
-  createReplyTransport as createPhoneReplyTransport,
-} from '~/lib/channel/reply-transport';
-import { createTwilioTransport, createTwilioWhatsAppTransport } from '~/lib/channel/twilio/transport';
-import { UNDO_WINDOW_HOURS, reverseExecutedCalendarAction } from '~/lib/actions/reverse-calendar';
+import { and, asc, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import { approveDraftedAction } from '~/lib/actions/approve';
 import { declineDraftedAction } from '~/lib/actions/decline';
-import type { FamilyRole } from '~/lib/channel/role-scope';
-import { loadOpenCheckupOffer } from '~/lib/health/offer';
-import { defaultHealthReplyDeps } from '~/lib/health/reply';
-import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
-import { loadOpenCommitment } from '~/lib/commitments/ledger';
-import { discoverabilityAsked } from '~/lib/village/intros/consent';
-import { introAskDedupeKey } from '~/lib/village/intros/run';
-import {
-  defaultPrepareReplyDeps,
-  readinessQuestion,
-} from '~/lib/registration/sequence/prepare-reply';
-import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
-import { getQueue } from '~/lib/queue';
-import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
-import { productionChannelCoach } from '~/lib/channel/coach/runtime';
-import { loadReconcileView } from '~/lib/channel/reconcile/view';
-import { recordStatedState } from '~/lib/channel/stated-state';
-import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
-import { childBelongsToFamily } from '~/lib/companion/log-write';
-import { daycareFollowupQuestion } from '~/lib/channel/followup/question';
+import { UNDO_WINDOW_HOURS, reverseExecutedCalendarAction } from '~/lib/actions/reverse-calendar';
 import { recordWeekdayCare } from '~/lib/care/weekday';
-import { armWatchedSpot } from '~/lib/channel/spots/store';
-import { recordRegistrationWatch } from '~/lib/registration/watch';
-import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
-import {
-  type DeepResearchQueue,
-  dispatchDeepResearch,
-} from '~/lib/channel/activity/deep-queue';
 import {
   defaultActivityPromisePorts,
   loadOpenActivityPromise,
   recordActivityPromise,
 } from '~/lib/channel/activity/commitment';
-import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
-import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
-import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
-import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
-import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
+import { type DeepResearchQueue, dispatchDeepResearch } from '~/lib/channel/activity/deep-queue';
+import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
-import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
+import { INVITE_SILENCE_MS, loadPendingAssent } from '~/lib/channel/caregiver/invites';
 import { answeredOnTheSameChannel, eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
-import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
+import { productionChannelCoach } from '~/lib/channel/coach/runtime';
+import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
 import { forwardRevokeAsk } from '~/lib/channel/email/forward-request';
+import { productionEmailReply } from '~/lib/channel/email/reply-send';
+import { resolveSendableEmail } from '~/lib/channel/email/sendable';
+import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
+import { daycareFollowupQuestion } from '~/lib/channel/followup/question';
+import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
+import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
+import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
+import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
+import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
+import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
+import { loadReconcileView } from '~/lib/channel/reconcile/view';
+import {
+  createOwnerReplyDecider,
+  createReplyTransport as createPhoneReplyTransport,
+} from '~/lib/channel/reply-transport';
+import type { FamilyRole } from '~/lib/channel/role-scope';
+import { armWatchedSpot } from '~/lib/channel/spots/store';
+import { recordStatedState } from '~/lib/channel/stated-state';
+import {
+  createTwilioTransport,
+  createTwilioWhatsAppTransport,
+} from '~/lib/channel/twilio/transport';
+import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
+import { searchWeekdaysForFamily } from '~/lib/channel/weekday-care/search';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { loadOpenCommitment } from '~/lib/commitments/ledger';
+import { childBelongsToFamily } from '~/lib/companion/log-write';
+import { loadOpenCheckupOffer } from '~/lib/health/offer';
+import { defaultHealthReplyDeps } from '~/lib/health/reply';
+import {
+  emailAlertOfferSubject,
+  emailAlertOfferSummary,
+  loadOpenEmailAlertOffers,
+} from '~/lib/integrations/email-alert-offer';
+import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
+import { getQueue } from '~/lib/queue';
+import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
+import {
+  defaultPrepareReplyDeps,
+  readinessQuestion,
+} from '~/lib/registration/sequence/prepare-reply';
+import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
+import { recordRegistrationWatch } from '~/lib/registration/watch';
+import { discoverabilityAsked } from '~/lib/village/intros/consent';
+import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
+import { introAskDedupeKey } from '~/lib/village/intros/run';
+import { createTurnApology } from './apology';
+import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
+import { createDisambiguationStore } from './disambiguation';
 import {
   approvalHandler,
   coParentAssentHandler,
-  weekdayCareHandler,
-  daycareFollowupHandler,
   connectorDisconnectHandler,
   connectorLinkHandler,
+  daycareFollowupHandler,
   emailAlertAddHandler,
   emailCaptureHandler,
   eveningCheckInHandler,
@@ -82,24 +86,19 @@ import {
   recMorningHandler,
   sequenceReplyHandler,
   villageIntroHandler,
+  weekdayCareHandler,
 } from './handlers';
+import { type OpenQuestionReader, createOpenQuestionReader } from './open-questions';
+import type { ReplyRoute } from './reply-route';
+import { createReplyTransport } from './reply-transport';
+import { createReplyResolver } from './resolve';
 import {
   type ChannelRouterDeps,
   type DeterministicHandler,
   type InboundContext,
   routeChannelMessage,
 } from './route';
-import type { ReplyRoute } from './reply-route';
-import { createReplyTransport } from './reply-transport';
-import { createDisambiguationStore } from './disambiguation';
-import {
-  INVITE_SILENCE_MS,
-  loadPendingAssent,
-} from '~/lib/channel/caregiver/invites';
-import { createOpenQuestionReader, type OpenQuestionReader } from './open-questions';
-import { createReplyResolver } from './resolve';
 import type { SmokeAlarmClaim } from './smoke-alarm';
-import { createTurnApology } from './apology';
 import type { InboundTurnLedger } from './turn-ledger';
 
 /**
@@ -198,10 +197,7 @@ async function memberRole(
     .select({ role: schema.familyMembers.role })
     .from(schema.familyMembers)
     .where(
-      and(
-        eq(schema.familyMembers.familyId, familyId),
-        eq(schema.familyMembers.userId, userId),
-      ),
+      and(eq(schema.familyMembers.familyId, familyId), eq(schema.familyMembers.userId, userId)),
     )
     .limit(1);
   return row ? (row.role as FamilyRole) : null;
@@ -294,9 +290,7 @@ export function defaultApprovalSpine(): ApprovalSpine {
         .limit(1);
       // Already executed, so the reviewer gate is behind it — `reviewerApproved` is what
       // an UNDO would be blocked by, and nothing blocks one on this state.
-      return row
-        ? { actionId: row.id, actionType: row.actionType, reviewerApproved: true }
-        : null;
+      return row ? { actionId: row.id, actionType: row.actionType, reviewerApproved: true } : null;
     },
 
     approve: async (database, args) => {
@@ -501,19 +495,21 @@ const TURN_LEDGER_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
  * scoping every lookup to the family the job claims is the router's rule-#1 habit.
  */
 export function auditTurnLedger(database: Database): InboundTurnLedger {
-  const write = (actionTaken: string) => async (input: {
-    familyId: string;
-    parentUserId: string;
-    channelMessageId: string;
-  }) => {
-    await database.insert(schema.auditLog).values({
-      familyId: input.familyId,
-      actor: input.parentUserId,
-      actionTaken,
-      targetTable: TURN_LEDGER_TARGET,
-      targetId: input.channelMessageId,
-    });
-  };
+  const write =
+    (actionTaken: string) =>
+    async (input: {
+      familyId: string;
+      parentUserId: string;
+      channelMessageId: string;
+    }) => {
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.parentUserId,
+        actionTaken,
+        targetTable: TURN_LEDGER_TARGET,
+        targetId: input.channelMessageId,
+      });
+    };
 
   return {
     // THE INSERT IS THE CLAIM (relay-claim.ts's rule, applied here by audit P1-4). The
@@ -652,11 +648,21 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
       // from being the thing that says so: a constraint violation is thrown from inside
       // the write, out through the gate, and retried into the same wall until the
       // question closes.
+      if (ask.scope === 'search') {
+        return {
+          status: 'open' as const,
+          scope: 'search' as const,
+          prompt: ask.prompt,
+          eventKey: ask.eventKey,
+        };
+      }
       return (await childBelongsToFamily(db, input.familyId, ask.childId))
         ? { status: 'open' as const, childId: ask.childId }
         : { status: 'child_gone' as const };
     },
     recordWeekdayCare,
+    searchWeekdays: (input) =>
+      searchWeekdaysForFamily(database, createActivityFinder(activityClient), input),
     // VIL-293. The view is read beside the model call, and the mint is bound here for
     // the same reason the two writers above it are: the row is minted against the SENT
     // message, and the router is the only thing that knows which row that was.

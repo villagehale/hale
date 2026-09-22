@@ -3,6 +3,7 @@ import { and, asc, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from '~/lib/channel/intake/radar';
 import { CONSUMED_SEND_STATUSES, SENT_STATUSES } from '~/lib/channel/ledger';
 import { proactiveNudgeTemplateKey } from '~/lib/channel/nudge/shell';
+import { eventKeyFromWeekdayBreakDedupe } from '~/lib/channel/weekday-care/key';
 import { writeFact } from '~/lib/memory/facts';
 
 /**
@@ -46,9 +47,44 @@ export type WeekdayCare = 'home' | 'daycare' | 'starting_soon';
 
 const WEEKDAY_CARE_VALUES: readonly WeekdayCare[] = ['home', 'daycare', 'starting_soon'];
 
-/** The ledger row that proves this household has been asked. Its own constant because
- * the send stamps it and three readers query for it. */
+/** The ledger row that proves this household has been asked the fallback (or a legacy
+ * care ask). Its own constant because the send stamps it and three readers query for it. */
 export const WEEKDAY_CARE_ASK_TEMPLATE_KEY = proactiveNudgeTemplateKey('weekday_care');
+
+/** Ask-once for the after-school prompt. Distinct from the fallback so an old care
+ * ask does not permanently block a later school-age ask. */
+export const WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY = proactiveNudgeTemplateKey('weekday_after_school');
+
+/** Ask-once per verified break event. The event key lives in the dedupe key. */
+export const WEEKDAY_BREAK_TEMPLATE_KEY = proactiveNudgeTemplateKey('weekday_break');
+
+/**
+ * A school break or PA day Hale may name. Production has no school-calendar source,
+ * so {@link loadVerifiedSchoolBreak} returns none of these. Tests inject one.
+ */
+export interface VerifiedSchoolBreak {
+  /** Colon-free, and it ends with the verified ISO date (`pa-day-2026-10-09`). */
+  eventKey: string;
+  /** The event's own name: `PA day`, `March break`. Never invented here. */
+  label: string;
+  /** Family-local day key the source verified. */
+  date: string;
+  source: 'school_calendar' | 'connected_calendar' | 'connected_email' | 'known_booking';
+}
+
+/** Why production cannot name a PA day or a local break. */
+export const NO_VERIFIED_SCHOOL_CALENDAR = 'no_verified_school_calendar' as const;
+
+/**
+ * There is no school-calendar, connected-calendar, or booking source for a PA day
+ * or a break in this codebase. Absence is the result, named, not a guessed date.
+ */
+export function loadVerifiedSchoolBreak(): {
+  break: null;
+  reason: typeof NO_VERIFIED_SCHOOL_CALENDAR;
+} {
+  return { break: null, reason: NO_VERIFIED_SCHOOL_CALENDAR };
+}
 
 /** The weather swap's row — one of the two D23 anchors. */
 const WEATHER_SWAP_TEMPLATE_KEY = proactiveNudgeTemplateKey('weather_swap');
@@ -146,8 +182,17 @@ export interface WeekdayCareContext {
   /** Every live, writer-pinned weekday-care fact. Empty means "nobody has told us",
    * never "they said no". */
   stated: readonly WeekdayCareFact[];
-  /** Has this ask ever gone out to this family? */
+  /** Has the fallback (or a legacy care ask) ever gone out to this family? */
   askedBefore: boolean;
+  /** Has the after-school ask ever gone out? Absent on older fixtures means no. */
+  askedAfterSchool?: boolean;
+  /** Verified-break event keys already attempted. Absent means none. */
+  askedBreakKeys?: readonly string[];
+  /**
+   * A verified upcoming break, or null/absent when none is on file. Production
+   * leaves this null: {@link loadVerifiedSchoolBreak} has no source to read.
+   */
+  verifiedBreak?: VerifiedSchoolBreak | null;
   /** Has Hale ever sent this family a weekend find? */
   weekendFindSent: boolean;
 }
@@ -186,25 +231,56 @@ async function anySendWith(
  * forever and never as `already_asked`. One ask per household ever means one ATTEMPT.
  *
  * `weekendFindSent` does NOT, because it is a claim about what the parent has read.
- * "Those are all weekend finds" is false if the only weekend find Hale ever composed
+ * "Those are weekend options" is false if the only weekend find Hale ever composed
  * never reached the phone, and D23 does not let Hale anchor a question on a send that
- * did not happen.
+ * did not happen. A verified break is a different anchor and does not use this flag.
  */
 export async function loadWeekdayCareContext(
   database: Database,
   familyId: string,
 ): Promise<WeekdayCareContext> {
-  const [stated, askedBefore, weekendFindSent] = await Promise.all([
-    loadWeekdayCare(database, familyId),
-    anySendWith(database, familyId, [WEEKDAY_CARE_ASK_TEMPLATE_KEY], CONSUMED_SEND_STATUSES),
-    anySendWith(
-      database,
-      familyId,
-      [WEATHER_SWAP_TEMPLATE_KEY, INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY],
-      SENT_STATUSES,
-    ),
-  ]);
-  return { stated, askedBefore, weekendFindSent };
+  const schoolCalendar = loadVerifiedSchoolBreak();
+  const [stated, askedBefore, askedAfterSchool, askedBreakKeys, weekendFindSent] =
+    await Promise.all([
+      loadWeekdayCare(database, familyId),
+      anySendWith(database, familyId, [WEEKDAY_CARE_ASK_TEMPLATE_KEY], CONSUMED_SEND_STATUSES),
+      anySendWith(database, familyId, [WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY], CONSUMED_SEND_STATUSES),
+      breakKeysAsked(database, familyId),
+      anySendWith(
+        database,
+        familyId,
+        [WEATHER_SWAP_TEMPLATE_KEY, INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY],
+        SENT_STATUSES,
+      ),
+    ]);
+  return {
+    stated,
+    askedBefore,
+    askedAfterSchool,
+    askedBreakKeys,
+    verifiedBreak: schoolCalendar.break,
+    weekendFindSent,
+  };
+}
+
+async function breakKeysAsked(database: Database, familyId: string): Promise<string[]> {
+  const rows = await database
+    .select({ dedupeKey: schema.channelMessages.dedupeKey })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.familyId, familyId),
+        eq(schema.channelMessages.direction, 'out'),
+        eq(schema.channelMessages.templateKey, WEEKDAY_BREAK_TEMPLATE_KEY),
+        inArray(schema.channelMessages.status, [...CONSUMED_SEND_STATUSES]),
+      ),
+    );
+  const keys: string[] = [];
+  for (const row of rows) {
+    const eventKey = eventKeyFromWeekdayBreakDedupe(row.dedupeKey);
+    if (eventKey !== null) keys.push(eventKey);
+  }
+  return keys;
 }
 
 /** What the write did. One shape, and the audit row's `after` is built from it. */

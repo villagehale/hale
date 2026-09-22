@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { childIdFromWeekdayCareKey, weekdayCareDedupeKey } from './key';
+import {
+  childIdFromWeekdayCareKey,
+  parseWeekdayAskKey,
+  weekdayCareDedupeKey,
+  weekdayFinderDedupeKey,
+} from './key';
 
 /**
  * The ask names one child and the answer rarely does ("she's home with me"), so this
@@ -29,5 +34,20 @@ describe('the weekday-care dedupe key', () => {
     ]) {
       expect(childIdFromWeekdayCareKey(other), String(other)).toBeNull();
     }
+  });
+
+  it('treats a household ask as search intent, not a child', () => {
+    const key = weekdayFinderDedupeKey('fam-1', { prompt: 'weekend_fallback' }, 'user-1');
+    expect(key).toBe('nudge:fam-1:weekday_care:household:user-1');
+    expect(childIdFromWeekdayCareKey(key)).toBeNull();
+    expect(parseWeekdayAskKey(key)).toEqual({
+      scope: 'search',
+      prompt: 'weekend_fallback',
+      eventKey: null,
+    });
+  });
+
+  it('keeps a legacy child key answerable as a care fact', () => {
+    expect(parseWeekdayAskKey(KEY)).toEqual({ scope: 'legacy_care', childId: 'child-mia' });
   });
 });

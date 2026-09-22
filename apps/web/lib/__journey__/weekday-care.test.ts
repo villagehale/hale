@@ -7,31 +7,30 @@ import {
   loadWeekdayCareContext,
   recordWeekdayCare,
 } from '~/lib/care/weekday';
-import { CIVIC_SOURCE } from '~/lib/civic/project';
-import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from '~/lib/channel/intake/radar';
-import { readCandidates } from '~/lib/channel/intake/radar';
-import { FakeTransport } from '~/lib/channel/intake/transport';
 import {
-  type FollowupSweepDeps,
   FOLLOWUP_ASKS_ENABLED_ENV,
+  type FollowupSweepDeps,
   defaultFollowupSweepDeps,
   runFollowupSweep,
 } from '~/lib/channel/followup/run';
-import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from '~/lib/channel/intake/radar';
+import { readCandidates } from '~/lib/channel/intake/radar';
+import { FakeTransport } from '~/lib/channel/intake/transport';
 import { type NudgeRunDeps, defaultNudgeRunDeps, runNudgeCron } from '~/lib/channel/nudge/run';
+import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { channelRouterDeps } from '~/lib/channel/router/wiring';
 import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
+import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { loadAgentContext } from '~/lib/coach/context';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 
 /**
  * THE WEEKDAY-CARE ARC, end to end, over real Postgres and the real readers.
  *
- * Hale sends a weekend find. Days later it says "those are all weekend finds" and asks
- * the one question. The parent answers in their own words; the fact lands; the week
- * after, the EarlyON drop-in that was in this family's feed all along finally goes out.
- * Then the other branch: a parent who answers "at Little Sprouts" is asked once, days
- * later, how it is going.
+ * Hale sends a weekend find. Days later, because this household is a toddler and a
+ * teenager, it asks the weekend fallback and names nobody. A yes on that ask is
+ * search intent and writes no care fact. An explicit daycare or home fact, written
+ * by the care writer, still unlocks the civic drop-in and the daycare follow-up.
  *
  * WHAT ONLY THIS FILE PINS. Every piece has its own unit test against a fake, and every
  * one of those is a stipulation: the ask's precondition stipulates a weekend find was
@@ -149,7 +148,13 @@ function nudgeDeps(transport: FakeTransport): NudgeRunDeps {
   return {
     ...defaultNudgeRunDeps(),
     selectFamilies: async () => [
-      { familyId, parentUserId, areaCoarse: AREA, timeZone: TZ, provisionedAt: new Date('2026-07-01T00:00:00.000Z') },
+      {
+        familyId,
+        parentUserId,
+        areaCoarse: AREA,
+        timeZone: TZ,
+        provisionedAt: new Date('2026-07-01T00:00:00.000Z'),
+      },
     ],
     loadRecipients: async () => [{ parentUserId, timeZone: TZ, role: 'primary_parent' as const }],
     resolveSendablePhone: async () => PHONE,
@@ -231,7 +236,7 @@ async function answer(body: string, at: Date): Promise<'recorded' | 'not_recorde
     inboundChannelMessageId,
     now: at,
   });
-  if (target.status !== 'open') return 'not_recorded';
+  if (target.status !== 'open' || 'scope' in target) return 'not_recorded';
   const reading = readWeekdayCare(body);
   if (reading.status !== 'read') return 'not_recorded';
   await recordWeekdayCare(db.database, {
@@ -267,15 +272,29 @@ describe('the weekday-care arc', () => {
 
     expect(asked.sent).toBe(1);
     const askBody = askTransport.sent[0]?.body ?? '';
-    expect(askBody).toContain('Those are all weekend finds. Is Mia home with you during the week');
-    // The fifteen-year-old is never named, on this send or any other (rule #1).
+    expect(askBody).toContain(
+      'Those are weekend options. Want me to find something for weekdays too?',
+    );
+    expect(askBody).not.toContain('Mia');
     expect(askBody).not.toContain('Ava');
+    expect(askBody.toLowerCase()).not.toContain('pa day');
+    expect(askBody.toLowerCase()).not.toContain('weekends are covered');
     const [askRow] = await outbound('proactive_nudge:weekday_care');
-    expect(askRow?.dedupeKey).toBe(`nudge:${familyId}:weekday_care:${toddlerId}:${parentUserId}`);
+    expect(askRow?.dedupeKey).toBe(`nudge:${familyId}:weekday_care:household:${parentUserId}`);
 
-    // ── the answer, in the parent's own words ─────────────────────────────────
+    // A yes to the finder ask is not a care fact.
     const answeredAt = new Date(FRIDAY.getTime() + 20 * 60_000);
-    expect(await answer("she's home with me during the week", answeredAt)).toBe('recorded');
+    expect(await answer('yes', answeredAt)).toBe('not_recorded');
+    expect(await loadWeekdayCare(db.database, familyId)).toEqual([]);
+    // The civic drop-in still follows an explicit home fact.
+    await recordWeekdayCare(db.database, {
+      familyId,
+      parentUserId,
+      childId: toddlerId,
+      care: 'home',
+      provider: null,
+      now: answeredAt,
+    });
 
     expect(await loadWeekdayCare(db.database, familyId)).toEqual([
       {
@@ -319,7 +338,7 @@ describe('the weekday-care arc', () => {
     expect(findBody).toContain('EarlyON drop-in');
     expect(findBody).toContain('Armour Heights');
     expect(findBody).not.toContain('Ava');
-    expect((await outbound('proactive_nudge:weekday_dropin'))).toHaveLength(1);
+    expect(await outbound('proactive_nudge:weekday_dropin')).toHaveLength(1);
   });
 
   it('never asks the same household twice', async () => {
@@ -356,7 +375,14 @@ describe('the weekday-care arc', () => {
     await runNudgeCron(db.database, nudgeDeps(new FakeTransport()), FRIDAY);
 
     const answeredAt = new Date(FRIDAY.getTime() + 20 * 60_000);
-    expect(await answer("she's at Little Sprouts now", answeredAt)).toBe('recorded');
+    await recordWeekdayCare(db.database, {
+      familyId,
+      parentUserId,
+      childId: toddlerId,
+      care: 'daycare',
+      provider: 'Little Sprouts',
+      now: answeredAt,
+    });
     expect(await loadWeekdayCare(db.database, familyId)).toEqual([
       {
         factId: expect.any(String),
@@ -398,7 +424,14 @@ describe('the weekday-care arc', () => {
     await runNudgeCron(db.database, nudgeDeps(new FakeTransport()), FRIDAY);
 
     const saidDaycare = new Date(FRIDAY.getTime() + 20 * 60_000);
-    expect(await answer("she's at Little Sprouts now", saidDaycare)).toBe('recorded');
+    await recordWeekdayCare(db.database, {
+      familyId,
+      parentUserId,
+      childId: toddlerId,
+      care: 'daycare',
+      provider: 'Little Sprouts',
+      now: saidDaycare,
+    });
     // Two days later they say the opposite. `writeFact` supersedes, and the follow-up
     // window is still open on the first answer.
     await recordWeekdayCare(db.database, {
@@ -438,7 +471,14 @@ describe('the weekday-care arc', () => {
     await runNudgeCron(db.database, nudgeDeps(new FakeTransport()), FRIDAY);
 
     const saidFirst = new Date(FRIDAY.getTime() + 20 * 60_000);
-    expect(await answer("she's at Little Sprouts now", saidFirst)).toBe('recorded');
+    await recordWeekdayCare(db.database, {
+      familyId,
+      parentUserId,
+      childId: toddlerId,
+      care: 'daycare',
+      provider: 'Little Sprouts',
+      now: saidFirst,
+    });
     const movedAt = new Date(saidFirst.getTime() + 2 * 24 * 3_600_000);
     await recordWeekdayCare(db.database, {
       familyId,

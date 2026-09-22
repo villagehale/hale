@@ -1,3 +1,5 @@
+import { stageFromAgeInMonths } from '@hale/types';
+import type { VerifiedSchoolBreak, WeekdayCareContext } from '~/lib/care/weekday';
 import {
   type AgeBand,
   type RadarCandidate,
@@ -9,18 +11,19 @@ import {
   upcomingWeekend,
   weekdayOf,
 } from '~/lib/channel/intake/radar-decide';
-import type { WeekdayCareContext } from '~/lib/care/weekday';
-import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
-import { CIVIC_SOURCE } from '~/lib/civic/project';
 import {
-  GENERIC_WEEKDAY_CHILD_PHRASE,
-  weekdayChildPhrase,
+  type WeekdayFinderAsk,
+  printableWeekdayName,
+  renderWeekdayFinderAsk,
+  weekdayVerifiedBreakAsk,
 } from '~/lib/channel/nudge/weekday-care-copy';
+import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
+import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
+import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { dayKeyOf, formatWhenPhrase } from '~/lib/format/datetime';
 import { priceBandLabel } from '~/lib/format/labels';
 import type { HealthRegion } from '~/lib/health/checkpoints';
 import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
-import { stageFromAgeInMonths } from '@hale/types';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import { type Season, seasonOf } from '~/lib/village/visibility';
 import { type DailyOutlook, isOutdoorFriendly, outdoorBlocker } from '~/lib/weather/open-meteo';
@@ -156,23 +159,16 @@ export interface WeekdayDropInNudge {
 }
 
 /**
- * VIL-360 · THE ASK — "Those are all weekend finds. Is Mia home with you during the
- * week, or at daycare?"
+ * The weekday finder ask. Age and stage choose the sentence. They do not decide
+ * whether the family is asked.
  *
- * D23: Hale asks about what it SAW, never about what it did not see. The premise of
- * this question is a SEND of Hale's own — the weekend find that went to this family —
- * and never the shape of a connected calendar. An empty calendar and a quiet inbox are
- * not evidence about a household (a parent keeps a paper calendar), and a question
- * built on one is both wrong and a purpose-limitation breach: the connector was
- * authorised to spot a date, not to profile a family by what is missing from it.
+ * A verified break is its own anchor (the date on the event). Every other prompt
+ * still rests on a weekend-options send Hale actually delivered. Neither path
+ * claims weekends are covered, and neither path invents a PA day.
  */
 export interface WeekdayCareAsk {
   kind: 'weekday_care';
-  /** WHICH child is being asked about. The answer is filed against this id, parsed back
-   * out of the ask's own dedupe key, so the grammar never has to guess a subject. */
-  childId: string;
-  /** The name the sentence prints, or the generic phrase. Already GSM-7 checked. */
-  childPhrase: string;
+  ask: WeekdayFinderAsk;
 }
 
 export type Nudge =
@@ -468,9 +464,13 @@ export type WeekdayCareAskSkip =
   | 'already_asked'
   | 'no_weekend_find_sent'
   | 'already_stated'
-  | 'no_eligible_child'
-  | 'no_weekday_offer'
-  /** Fell back to the generic child phrase. COUNTED, and the ask still goes. */
+  /** A verified break was supplied but its label cannot be sent as GSM-7. */
+  | 'break_label_unusable'
+  /** The verified date is already past. Counted, and another prompt may still go. */
+  | 'break_not_upcoming'
+  /** No child on the roster this ask could be about. */
+  | 'no_children'
+  /** A school-age name could not be printed. COUNTED, and the household sentence goes. */
   | 'name_not_printable';
 
 export type NudgeSkipReason = WeekdayDropInSkip | WeekdayCareAskSkip;
@@ -618,65 +618,126 @@ export function decideWeekdayDropIn(input: DecideNudgeInput): LegOutcome<Weekday
 
 // ── priority 5: the weekday-care ask ─────────────────────────────────────────
 
+const BREAK_EVENT_KEY = /^[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}$/;
+
+function breakAskFits(label: string): boolean {
+  if (!isPrintableGsm7Basic(label)) return false;
+  if (label.length === 0 || label.length > 40 || label.includes('?') || label.includes('\n')) {
+    return false;
+  }
+  const sentence = weekdayVerifiedBreakAsk(label);
+  return smsSegments(`${sentence}\n\n${OPT_OUT_LINE}`) === 1;
+}
+
 /**
- * The ask, or the reason there is not one — FIVE conjunctive preconditions, and the
- * two that carry the design are the first and the last.
+ * Which sentence this roster should hear, before the ledger checks.
  *
- * R1.2 is D23: the question rests on a find Hale actually sent, so "those are all
- * weekend finds" is checkable against one ledger row rather than against the whole
- * product.
+ * One school-age child under 13, and nobody else: the named after-school ask.
+ * Everyone 13+: the household after-school ask, which prints no name.
+ * Anything else (toddler, preschool, mixed, several school-age children): the
+ * weekend fallback, which also prints no name. Preschool is not treated as
+ * in-school — there is no enrollment source to know that a four-year-old is.
+ */
+function classifyWeekdayRoster(
+  children: readonly HealthChild[],
+):
+  | { kind: 'after_school_named'; child: HealthChild }
+  | { kind: 'after_school_household' }
+  | { kind: 'weekend_fallback' } {
+  const school = children.filter((child) => {
+    if (child.isTeen || child.ageMonths === null) return false;
+    return stageFromAgeInMonths(child.ageMonths) === 'child';
+  });
+  const teens = children.filter((child) => child.isTeen);
+  const others = children.length - school.length - teens.length;
+  if (school.length === 1 && teens.length === 0 && others === 0) {
+    const child = school[0];
+    if (child) return { kind: 'after_school_named', child };
+  }
+  if (children.length > 0 && teens.length === children.length) {
+    return { kind: 'after_school_household' };
+  }
+  return { kind: 'weekend_fallback' };
+}
+
+function upcomingBreak(
+  verified: VerifiedSchoolBreak | null | undefined,
+  today: string,
+): { ask: WeekdayFinderAsk } | { skip: 'break_label_unusable' | 'break_not_upcoming' } | null {
+  if (verified == null) return null;
+  if (verified.date < today) return { skip: 'break_not_upcoming' };
+  if (!BREAK_EVENT_KEY.test(verified.eventKey) || !breakAskFits(verified.label)) {
+    return { skip: 'break_label_unusable' };
+  }
+  if (!verified.eventKey.endsWith(verified.date)) return { skip: 'break_label_unusable' };
+  return {
+    ask: { prompt: 'verified_break', eventKey: verified.eventKey, label: verified.label },
+  };
+}
+
+/**
+ * The finder ask, or the reason there is not one.
  *
- * R1.5 is the promise behind it: Hale does not ask a question whose good answer it
- * cannot pay off. The predicate is `decideWeekdayDropIn` ITSELF, called rather than
- * restated, so the thing the ask promises and the thing the find delivers can never
- * be two different rules.
- *
- * ONE ASK PER FAMILY, about the youngest child for whom weekday care is genuinely an
- * open question — newborn or toddler by the code's own bands, never a four- or
- * five-year-old (a JK child's parent reading "is she in daycare?" is reading Hale not
- * know the most basic thing about their week), and never a teenager.
+ * A verified break outranks the other prompts: it is the current moment, and it
+ * fires only from a break the caller verified. Age and postal code never produce
+ * one. The other prompts still require a weekend-options send. A care fact
+ * suppresses the fallback (the household already answered that question) and
+ * does not suppress an after-school ask, and it never unlocks a civic drop-in
+ * by itself — that gate stays on `decideWeekdayDropIn`.
  */
 export function decideWeekdayCareAsk(input: DecideNudgeInput): LegOutcome<WeekdayCareAsk> {
   if (input.weekdayCare === 'disarmed') return { nudge: null, skips: [] };
   const context = input.weekdayCare;
-
-  if (context.askedBefore) return { nudge: null, skips: ['already_asked'] };
-  if (!context.weekendFindSent) return { nudge: null, skips: ['no_weekend_find_sent'] };
-  // UNFILTERED BY AGE, deliberately, where the find strips a teen's fact out first.
-  // The two directions are not the same question: a 13+ child's fact may never UNLOCK
-  // an outbound (rule #1, which is why the find filters), but anybody's answer is proof
-  // this household has already been through this and must not be asked again. A fact
-  // may suppress; it may not unlock.
-  if (context.stated.length > 0) return { nudge: null, skips: ['already_stated'] };
-
-  // `isTeen` is read off the roster the sweep built from live dates of birth, and the
-  // stage band is strictly narrower than it. Two independent gates, and the teen one
-  // is the one that holds if this band is ever widened.
-  const eligible = input.healthChildren
-    .filter((child) => !child.isTeen)
-    .filter((child) => {
-      const stage = stageFromAgeInMonths(child.ageMonths);
-      return stage === 'newborn' || stage === 'toddler';
-    })
-    .sort((a, b) => a.ageMonths - b.ageMonths);
-  const child = eligible[0];
-  if (!child) return { nudge: null, skips: ['no_eligible_child'] };
-
-  // THE FIND'S OWN PREDICATE, called rather than restated — minus the care gate, which
-  // is the one thing the two legs cannot share: the find runs for a household that HAS
-  // answered and this runs for one that has not. Its reasons are not folded in here.
-  // This call is a question ("could we pay a yes off?"), and counting its refusals as
-  // the ask's would double every weekday counter on a tick where both legs ran.
-  if (availableWeekdayDropIn(input).nudge === null) {
-    return { nudge: null, skips: ['no_weekday_offer'] };
+  const skips: NudgeSkipReason[] = [];
+  const today = dayKeyOf(input.now, input.timeZone);
+  const breakOutcome = upcomingBreak(context.verifiedBreak, today);
+  if (breakOutcome && 'ask' in breakOutcome && breakOutcome.ask.prompt === 'verified_break') {
+    const asked = context.askedBreakKeys ?? [];
+    if (!asked.includes(breakOutcome.ask.eventKey)) {
+      return { nudge: { kind: 'weekday_care', ask: breakOutcome.ask }, skips };
+    }
+  } else if (breakOutcome && 'skip' in breakOutcome) {
+    skips.push(breakOutcome.skip);
   }
 
-  const childPhrase = weekdayChildPhrase(child.name);
-  const skips: NudgeSkipReason[] =
-    childPhrase === GENERIC_WEEKDAY_CHILD_PHRASE && child.name !== null
-      ? ['name_not_printable']
-      : [];
-  return { nudge: { kind: 'weekday_care', childId: child.id, childPhrase }, skips };
+  if (input.healthChildren.length === 0) {
+    return { nudge: null, skips: [...skips, 'no_children'] };
+  }
+
+  const roster = classifyWeekdayRoster(input.healthChildren);
+  if (roster.kind === 'weekend_fallback') {
+    if (context.askedBefore) return { nudge: null, skips: [...skips, 'already_asked'] };
+    if (!context.weekendFindSent) return { nudge: null, skips: [...skips, 'no_weekend_find_sent'] };
+    if (context.stated.length > 0) return { nudge: null, skips: [...skips, 'already_stated'] };
+    return { nudge: { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } }, skips };
+  }
+
+  if (context.askedAfterSchool) return { nudge: null, skips: [...skips, 'already_asked'] };
+  if (!context.weekendFindSent) return { nudge: null, skips: [...skips, 'no_weekend_find_sent'] };
+
+  if (roster.kind === 'after_school_household') {
+    return { nudge: { kind: 'weekday_care', ask: { prompt: 'after_school_household' } }, skips };
+  }
+
+  const name = printableWeekdayName(roster.child.name);
+  if (name === null) {
+    return {
+      nudge: { kind: 'weekday_care', ask: { prompt: 'after_school_household' } },
+      skips: [...skips, 'name_not_printable'],
+    };
+  }
+  const ask: WeekdayFinderAsk = {
+    prompt: 'after_school_named',
+    childId: roster.child.id,
+    name,
+  };
+  if (smsSegments(`${renderWeekdayFinderAsk(ask)}\n\n${OPT_OUT_LINE}`) > 1) {
+    return {
+      nudge: { kind: 'weekday_care', ask: { prompt: 'after_school_household' } },
+      skips: [...skips, 'name_not_printable'],
+    };
+  }
+  return { nudge: { kind: 'weekday_care', ask }, skips };
 }
 
 /**

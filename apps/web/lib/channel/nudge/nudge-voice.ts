@@ -7,9 +7,9 @@ import { loadNudgeVoiceSkill } from '~/lib/cron/skill';
 import { renderHealthNudge } from '~/lib/health/copy';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
-import { weekdayCareAsk } from './weekday-care-copy';
 import type { HealthCheckpointNudge, Nudge, WeekdayCareAsk } from './nudge-decide';
 import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from './shell';
+import { renderWeekdayFinderAsk } from './weekday-care-copy';
 
 /**
  * VIL-239 · M4 — COMPOSE: the decision object, said out loud in Hale's voice.
@@ -191,7 +191,7 @@ export function renderNudgeDeterministically(nudge: Nudge): string {
   // VIL-360's ask, for the same reason: the sentence IS the message. It is measured to
   // the character, it carries the one question mark the grammar answers, and no model
   // sees it (nudge/weekday-care-copy.ts).
-  if (nudge.kind === 'weekday_care') return weekdayCareAsk(nudge.childPhrase);
+  if (nudge.kind === 'weekday_care') return renderWeekdayFinderAsk(nudge.ask);
 
   if (nudge.kind === 'registration') {
     const who = nudge.kidNames.length > 0 ? ` for ${joinNames(nudge.kidNames)}` : '';
@@ -238,7 +238,10 @@ export async function composeNudgeMessage(
   try {
     skill = await loadNudgeVoiceSkill();
   } catch (err) {
-    console.error({ err, familyId: deps.familyId }, 'nudge: skill load failed - deterministic render');
+    console.error(
+      { err, familyId: deps.familyId },
+      'nudge: skill load failed - deterministic render',
+    );
     return deterministic;
   }
 

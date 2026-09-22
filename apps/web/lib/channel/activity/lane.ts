@@ -297,6 +297,7 @@ export function groundUserMessage(query: ActivityQuery): string {
     subject: query.subject,
     ...(query.town ? { town: query.town } : {}),
     ...(query.stage ? { stage: query.stage } : {}),
+    ...(query.stages && query.stages.length > 0 ? { stages: query.stages } : {}),
     ...(query.window ? { window: query.window } : {}),
   });
 }
