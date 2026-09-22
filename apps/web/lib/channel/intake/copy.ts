@@ -768,7 +768,7 @@ export const CO_PARENT_ASK =
 
 export const CO_PARENT_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: CO_PARENT_ASK,
-  fr: "Si un autre parent doit voir cette annee aussi, ecrivez add my partner et je vous envoie un lien a transferer.",
+  fr: 'Si un autre parent doit voir cette annee aussi, ecrivez add my partner et je vous envoie un lien a transferer.',
 };
 
 /**

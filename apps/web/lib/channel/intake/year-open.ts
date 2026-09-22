@@ -3,9 +3,9 @@ import {
   type ActivityQuery,
   deidentifyActivityQuery,
 } from '~/lib/channel/activity/deidentify';
-import { type ActivityFinder, type ActivityPick } from '~/lib/channel/activity/lane';
+import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
-import { asciiCopy, type WeekendPick } from './radar-decide';
+import { type WeekendPick, asciiCopy } from './radar-decide';
 import { FIRST_FIND_BEAT } from './radar-voice';
 
 /**

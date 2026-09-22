@@ -19,9 +19,9 @@ import {
   AMBIGUOUS_CLARIFY_BY_LANGUAGE,
   ASSENT_ACK,
   ASSENT_ACK_BY_LANGUAGE,
+  COLD_START_ASK,
   CO_PARENT_ASK,
   CO_PARENT_ASK_BY_LANGUAGE,
-  COLD_START_ASK,
   DECLINE_ACK,
   DECLINE_ACK_BY_LANGUAGE,
   HELP_REPLY,
@@ -276,22 +276,23 @@ describe('intake · happy path', () => {
   });
 
   /**
-   * The consent turn ends on a real question - the composed identity ask - and then
-   * CLOSES the session, so the answer to it always lands after intake is over.
-   * That is deliberate, not a gap: the reply belongs to the coach, and the machine's job
-   * is to decline it cleanly so A3 can record it and queue it (twilio/inbound.ts
+   * The consent turn ends on a real question - the co-parent ask - and then CLOSES
+   * the session, so the answer to it always lands after intake is over. That is
+   * deliberate, not a gap: the reply belongs to the coach, and the machine's job is
+   * to decline it cleanly so A3 can record it and queue it (twilio/inbound.ts
    * handOffToConversation). The bug this guards against is the machine answering it
    * itself with a canned intake line, which would teach a parent that the question was
-   * rhetorical.
+   * rhetorical. The consent tail does not ask for a name.
    */
   it('hands the answer to its own closing question to the coach, rather than replying', async () => {
     const { fake, transport, deps } = harness({ intents: [assent('yes please')] });
     await text(fake, transport, deps, 'hi');
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
     await text(fake, transport, deps, 'yes please');
-    // The ack, plus the composed identity ask appended to it — the turn's one question.
-    // The connector offer follows it as its own message (connector-offer.ts).
-    expect(transport.bodies().at(-2)).toBe(`${ASSENT_ACK} ASK`);
+    // Ack, then the inbox ask, then the co-parent ask — the turn's last question.
+    expect(transport.bodies().at(-3)).toBe(ASSENT_ACK);
+    expect(transport.bodies().at(-2)).toContain('/connect?t=');
+    expect(transport.bodies().at(-1)).toBe(CO_PARENT_ASK);
     const sentDuringIntake = transport.bodies().length;
 
     // The parent answers the question the consent turn just asked. The session is

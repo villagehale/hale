@@ -401,7 +401,7 @@ describe('the French script', () => {
       "If another parent should see this year too, text me add my partner and I'll send a link you can forward.",
     );
     expect(CO_PARENT_ASK_BY_LANGUAGE.fr).toBe(
-      "Si un autre parent doit voir cette annee aussi, ecrivez add my partner et je vous envoie un lien a transferer.",
+      'Si un autre parent doit voir cette annee aussi, ecrivez add my partner et je vous envoie un lien a transferer.',
     );
     expect(CO_PARENT_ASK).toContain('add my partner');
     expect(CO_PARENT_ASK.toLowerCase()).not.toContain('activity finder');
