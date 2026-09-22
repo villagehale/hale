@@ -81,7 +81,9 @@ export default async function TextEntryPage({
         platform={platformFromUa(ua)}
         locale={locale}
       />
-      <SiteFooter locale={locale} />
+      {/* The column already links the policy on the Canada line. Omitting the
+          footer's copy leaves the rendered page with exactly one privacy link. */}
+      <SiteFooter locale={locale} omitPrivacyLink />
     </main>
   );
 }

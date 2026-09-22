@@ -153,10 +153,19 @@ describe('one header, one footer, every page', () => {
   it('renders the shared footer on every page — the landing included', async () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', NUMBER);
     const shared = chrome(renderToStaticMarkup(createElement(SiteFooter)), 'footer');
+    // /text keeps the same foot, minus the Privacy policy anchor: the column
+    // already links the policy once, on the Canada line.
+    const textFoot = chrome(
+      renderToStaticMarkup(createElement(SiteFooter, { omitPrivacyLink: true })),
+      'footer',
+    );
+    expect(textFoot).not.toContain('href="/privacy"');
+    expect(shared.replace('href="/privacy"', '')).not.toBe(shared);
     for (const route of Object.keys(PAGES)) {
       const page = PAGES[route];
       if (!page) throw new Error(route);
-      expect(chrome(await renderPage(page), 'footer'), `${route} forked the footer`).toBe(shared);
+      const expected = route === '/text' ? textFoot : shared;
+      expect(chrome(await renderPage(page), 'footer'), `${route} forked the footer`).toBe(expected);
     }
   });
 

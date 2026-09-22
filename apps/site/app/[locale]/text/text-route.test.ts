@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { SiteFooter } from '~/components/site-footer.js';
 import { SiteHeader } from '~/components/site-header.js';
+import { localeHref } from '~/i18n/navigation.js';
 import type { Locale } from '~/i18n/routing.js';
 import sitemap from '../../sitemap.js';
 import TextPage, { generateMetadata } from './page.js';
@@ -61,8 +62,19 @@ describe('/text (unlisted entry surface)', () => {
         chrome(renderToStaticMarkup(createElement(SiteHeader, { locale })), 'header'),
       );
       expect(footer, `${locale} forked the footer`).toBe(
-        chrome(renderToStaticMarkup(createElement(SiteFooter, { locale })), 'footer'),
+        chrome(
+          renderToStaticMarkup(createElement(SiteFooter, { locale, omitPrivacyLink: true })),
+          'footer',
+        ),
       );
+      // One privacy-policy link on the rendered page, and it is the column's
+      // Canada line — not a second copy in the footer.
+      const privacyHref = localeHref(locale, '/privacy');
+      const privacyAt = html.indexOf(`href="${privacyHref}"`);
+      expect(privacyAt, `${locale} missing the column privacy link`).toBeGreaterThan(-1);
+      expect(html.indexOf(`href="${privacyHref}"`, privacyAt + 1)).toBe(-1);
+      expect(privacyAt).toBeLessThan(html.indexOf('<footer'));
+      expect(footer).not.toContain(`href="${privacyHref}"`);
       // The shared bar is the glass pill, and the lockup is the turtle tile
       // beside the drawn wordmark — the same assets the landing header uses.
       expect(header).toContain('class="v4-nav v4-glass"');
