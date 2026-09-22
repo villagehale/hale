@@ -444,6 +444,12 @@ describe('the activity question is answered', () => {
         stages: ['toddler' as const],
         memoryFacts: [],
         recentEpisodes: [],
+        memoryBrief: {
+          status: 'empty' as const,
+          text: '',
+          asOf: null,
+          digestFreshness: 'unavailable' as const,
+        },
         transcript: [],
         transcriptSummary: null,
         question: input.question,

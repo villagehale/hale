@@ -104,6 +104,24 @@ export function digestContentHash(summary: DigestSummary): string {
   return createHash('sha256').update(stableStringify(summary)).digest('hex');
 }
 
+/** jsonb is `Record<string, unknown>`; a named interface has no string index. */
+function summaryRecord(summary: DigestSummary): Record<string, unknown> {
+  return {
+    inbound: summary.inbound,
+    outbound: summary.outbound,
+    byCategory: summary.byCategory,
+    byTopic: summary.byTopic,
+    openWorkstreams: summary.openWorkstreams.map((row) => ({
+      kind: row.kind,
+      topic: row.topic,
+      dueAt: row.dueAt,
+    })),
+    completedWorkstreams: summary.completedWorkstreams,
+    factsTouchedByType: summary.factsTouchedByType,
+    line: summary.line,
+  };
+}
+
 function isUniqueViolation(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false;
   const direct = (err as { code?: string }).code;
@@ -342,7 +360,7 @@ async function upsertDigest(
             grain: input.grain,
             periodStart: input.window.periodStart,
             timezone: input.timeZone,
-            summary: input.summary,
+            summary: summaryRecord(input.summary),
             contentHash: hash,
             sourceCount: input.sourceCount,
             generatedAt: input.now,
@@ -353,7 +371,7 @@ async function upsertDigest(
             .update(schema.familyMemoryDigests)
             .set({
               timezone: input.timeZone,
-              summary: input.summary,
+              summary: summaryRecord(input.summary),
               contentHash: hash,
               sourceCount: input.sourceCount,
               generatedAt: input.now,

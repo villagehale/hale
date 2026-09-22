@@ -214,6 +214,12 @@ function hostOf(url: string | null): string | null {
   }
 }
 
+/** The column is plain text. Only the two grains this export publishes are kept. */
+function digestGrain(value: string): 'day' | 'week' | null {
+  if (value === 'day' || value === 'week') return value;
+  return null;
+}
+
 export interface AssembleFamilyExportDeps {
   /** The parent making the request (users.id) — the audit actor (rule #6). */
   actorUserId: string;
@@ -512,7 +518,8 @@ export async function assembleFamilyExport(
     .where(eq(schema.familyMemoryDigests.familyId, familyId))
     .orderBy(schema.familyMemoryDigests.periodStart);
   const memoryDigests = digestRows.flatMap((row) => {
-    if (row.grain !== 'day' && row.grain !== 'week') return [];
+    const grain = digestGrain(row.grain);
+    if (grain === null) return [];
     const summary = row.summary as {
       inbound?: unknown;
       outbound?: unknown;
@@ -521,7 +528,7 @@ export async function assembleFamilyExport(
     const open = Array.isArray(summary.openWorkstreams) ? summary.openWorkstreams.length : 0;
     return [
       {
-        grain: row.grain,
+        grain,
         periodStart: row.periodStart,
         timezone: row.timezone,
         generatedAt: row.generatedAt.toISOString(),

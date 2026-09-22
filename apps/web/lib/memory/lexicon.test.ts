@@ -55,10 +55,12 @@ describe('memory periods', () => {
 
 describe('digest flag', () => {
   it('stays observe-only unless the flag is exactly true and an allowlist is set', () => {
-    expect(resolveDigestMode({}).apply).toBe(false);
-    expect(resolveDigestMode({ MEMORY_DIGEST_APPLY: 'true\n' }).apply).toBe(false);
-    expect(resolveDigestMode({ MEMORY_DIGEST_APPLY: 'true' }).apply).toBe(false);
+    const base = { NODE_ENV: 'test' } as const;
+    expect(resolveDigestMode({ ...base }).apply).toBe(false);
+    expect(resolveDigestMode({ ...base, MEMORY_DIGEST_APPLY: 'true\n' }).apply).toBe(false);
+    expect(resolveDigestMode({ ...base, MEMORY_DIGEST_APPLY: 'true' }).apply).toBe(false);
     const armed = resolveDigestMode({
+      ...base,
       MEMORY_DIGEST_APPLY: 'true',
       MEMORY_DIGEST_FAMILY_ALLOWLIST: ' fam-1 , fam-2 ',
     });
