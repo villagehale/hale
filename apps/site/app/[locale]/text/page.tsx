@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
+import { SiteFooter } from '~/components/site-footer';
+import { SiteHeader } from '~/components/site-header';
 import { TextEntry } from '~/components/text-entry';
 import { buildAlternates } from '~/i18n/metadata';
 import type { Locale } from '~/i18n/routing';
@@ -9,10 +11,15 @@ import { parseSourceCode, readSmsNumber, readWhatsAppNumber } from '~/lib/text-e
 
 /**
  * villagehale.com/text — the QR cards' landing surface (VIL-240 · M5), and the
- * destination of the site's "Text Hale" / "Message Hale" CTAs. Production is
- * PR 566 one-tap until the WhatsApp sender is approved; the chooser only
- * renders when NEXT_PUBLIC_HALE_WHATSAPP_NUMBER validates. Still noindex and
- * absent from the sitemap: it is a handoff, not a page to rank.
+ * destination of the site's "Text Hale" CTAs. Production is PR 566 one-tap
+ * until the WhatsApp sender is approved; the chooser only renders when
+ * NEXT_PUBLIC_HALE_WHATSAPP_NUMBER validates. Still noindex and absent from
+ * the sitemap: it is a handoff, not a page to rank.
+ *
+ * The shell is the same one About and Pricing wear: sticky SiteHeader (turtle
+ * tile + Hale wordmark) and SiteFooter. The column under it stays the
+ * conversion door — headline, the exchange, one Text CTA — not a second
+ * marketing scroll.
  */
 
 /**
@@ -65,12 +72,18 @@ export default async function TextEntryPage({
   }
 
   return (
-    <TextEntry
-      source={parseSourceCode(s)}
-      smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
-      whatsappNumber={readWhatsAppNumber(process.env.NEXT_PUBLIC_HALE_WHATSAPP_NUMBER)}
-      platform={platformFromUa(ua)}
-      locale={locale}
-    />
+    <main id="main" tabIndex={-1} className="relative">
+      <SiteHeader locale={locale} />
+      <TextEntry
+        source={parseSourceCode(s)}
+        smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+        whatsappNumber={readWhatsAppNumber(process.env.NEXT_PUBLIC_HALE_WHATSAPP_NUMBER)}
+        platform={platformFromUa(ua)}
+        locale={locale}
+      />
+      {/* The column already links the policy on the Canada line. Omitting the
+          footer's copy leaves the rendered page with exactly one privacy link. */}
+      <SiteFooter locale={locale} omitPrivacyLink />
+    </main>
   );
 }

@@ -10,7 +10,7 @@ import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
-import { MUNICIPALITIES } from '~/lib/site/municipalities';
+import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
 import { siteJsonLd } from '~/lib/site/structured-data';
 import { CONTACT_EMAIL, buildSmsHref } from '~/lib/text-entry';
 import { ScrollRail } from './scroll-rail';
@@ -28,8 +28,9 @@ import { ScrollRail } from './scroll-rail';
  * footer switch. No third-party video (the reference's CloudFront clips are not
  * ours to ship); the shore still and the glass do the work.
  *
- * All copy is keyed by locale (`Landing` namespace); the municipalities are
- * proper nouns and stay as data.
+ * All copy is keyed by locale (`Landing` namespace). The home radar states
+ * how many GTA municipalities Hale covers; it does not list them, and a city
+ * name is not a link to /text.
  */
 
 interface Card {
@@ -270,13 +271,9 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           {accentSeparator(locale)}
           <span className="v4-accent">{t('watchH2Accent')}</span>
         </h2>
-        <p className="v4-lede">{t('watchLede', { count: MUNICIPALITIES.length })}</p>
-        {/* The four sourced facts used to run together in that lede as one
-         * 55-word sentence. They are the same four, word for word — only now
-         * they sit on the side of a contrast, which is the shape an argument
-         * about a 7:02 sell-out wants. The with-me cell deliberately does NOT
-         * restate the ladder: the thread above shows it and step three sums it
-         * up, and a third telling is what makes a landing page long. */}
+        <p className="v4-lede">{t('watchLede', { count: MUNICIPALITY_COUNT })}</p>
+        {/* Calm watch truth, in the kids-year frame: the parent keeps the year,
+         * or Hale keeps the watch. No sell-out clock, no YES-once execute. */}
         <div className="v4-contrast v4-panel v4-glass mt-5 sm:mt-8">
           {contrast.map((cell) => (
             <div key={cell.title}>
@@ -285,13 +282,10 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             </div>
           ))}
         </div>
-        <ul className="v4-pills mt-5 sm:mt-8">
-          {MUNICIPALITIES.map((city) => (
-            <li key={city} className="v4-pill v4-glass">
-              {city}
-            </li>
-          ))}
-        </ul>
+        {/* One counted line. City names are not doors — nothing here links to /text. */}
+        <p className="v4-coverage mt-5 sm:mt-8">
+          {t('coverageLine', { count: MUNICIPALITY_COUNT })}
+        </p>
         <ScrollRail className="v4-cardgrid-4 mt-7 sm:mt-12" label={t('watchRail')}>
           {watched.map((item) => (
             <article key={item.title} className="v4-card v4-glass">
@@ -321,21 +315,18 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       </section>
 
       {/*
-        ── Coaching — the questions that aren't scheduling ───────────────────
-        Demoted, not dropped. It kept every word it had, and lost the weight:
-        it sat above the helpers with a .v4-h2 and a card rail, which read as a
-        second product competing with the wedge the page is actually sold on.
-        Now it is one band below the registration story — eyebrow, a heading a
-        rung under the section H2s, the lede, and the three beats as rows rather
-        than cards. No rail, so nothing here scrolls sideways on a phone either.
+        ── Coaching — under the planner spine, not a second product ─────────
+        The words stay. The heading does not: it is not an H2, not the display
+        face, and not the amber accent the planner headline wears. A subhead
+        under "A planner for the year".
       */}
-      <section className="shell py-12 sm:py-20 lg:py-28">
+      <section className="shell py-8 sm:py-12">
         <p className="v4-eyebrow">{t('coachingEyebrow')}</p>
-        <h2 className="v4-display mt-3 text-[clamp(1.45rem,2.6vw,1.9rem)] text-ink">
+        <h3 className="v4-subhead mt-3">
           {t('coachingH2a')}
           {accentSeparator(locale)}
-          <span className="v4-accent">{t('coachingH2Accent')}</span>
-        </h2>
+          {t('coachingH2Accent')}
+        </h3>
         <p className="v4-lede">{t('coachingLede')}</p>
         <div className="v4-panel v4-glass mt-5 sm:mt-8">
           <ol className="grid gap-5 sm:grid-cols-3 sm:gap-8">

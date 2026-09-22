@@ -15,6 +15,7 @@ import ContactPage from '../app/[locale]/contact/page.js';
 import FaqPage from '../app/[locale]/faq/page.js';
 import LandingPage from '../app/[locale]/page.js';
 import PricingPage from '../app/[locale]/pricing/page.js';
+import TextPage from '../app/[locale]/text/page.js';
 import TorontoFallPage from '../app/[locale]/toronto-fall-recreation-registration/page.js';
 import TorontoSwimPage from '../app/[locale]/toronto-swim-registration/page.js';
 import YmcaSwimPage from '../app/[locale]/ymca-gta-swim-registration/page.js';
@@ -68,6 +69,13 @@ const PAGES: Record<string, () => unknown> = {
   '/toronto-swim-registration': () => TorontoSwimPage({ params: Promise.resolve(EN) }),
   '/brampton-swim-registration': () => BramptonSwimPage({ params: Promise.resolve(EN) }),
   '/ymca-gta-swim-registration': () => YmcaSwimPage({ params: Promise.resolve(EN) }),
+  // The chooser wears the same bar and foot as every other page. Its own
+  // column stays the conversion door; chrome is not a second shell.
+  '/text': () =>
+    TextPage({
+      params: Promise.resolve(EN),
+      searchParams: Promise.resolve({}),
+    }),
 };
 
 const ROUTES = Object.keys(PAGES);
@@ -145,10 +153,19 @@ describe('one header, one footer, every page', () => {
   it('renders the shared footer on every page — the landing included', async () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', NUMBER);
     const shared = chrome(renderToStaticMarkup(createElement(SiteFooter)), 'footer');
+    // /text keeps the same foot, minus the Privacy policy anchor: the column
+    // already links the policy once, on the Canada line.
+    const textFoot = chrome(
+      renderToStaticMarkup(createElement(SiteFooter, { omitPrivacyLink: true })),
+      'footer',
+    );
+    expect(textFoot).not.toContain('href="/privacy"');
+    expect(shared.replace('href="/privacy"', '')).not.toBe(shared);
     for (const route of Object.keys(PAGES)) {
       const page = PAGES[route];
       if (!page) throw new Error(route);
-      expect(chrome(await renderPage(page), 'footer'), `${route} forked the footer`).toBe(shared);
+      const expected = route === '/text' ? textFoot : shared;
+      expect(chrome(await renderPage(page), 'footer'), `${route} forked the footer`).toBe(expected);
     }
   });
 

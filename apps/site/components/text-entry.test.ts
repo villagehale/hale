@@ -169,12 +169,19 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
     expect(unsetHtml).not.toContain('The text you’ll get back:');
   });
 
-  it('carries the trust strip beside the door — free, no app, no account, STOP, privacy', () => {
+  it('carries the trust strip beside the door — free, no app, no account, STOP', () => {
     expect(liveHtml).toContain('Free · No app · No account · Reply STOP anytime');
-    const trust = /Free · No app[\s\S]{0,200}?<a[^>]*href="\/privacy"[^>]*>/.exec(liveHtml);
-    expect(trust, 'the trust strip must end in the privacy link').not.toBeNull();
-    // The dark page has no number to STOP.
+    const trust = /<p class="meta mt-8">([\s\S]*?)<\/p>/.exec(liveHtml)?.[1] ?? '';
+    expect(trust).toContain('Reply STOP anytime');
+    expect(trust, 'the strip does not carry a second privacy link').not.toContain('<a');
+    // One privacy link in the column, on the Canada line.
+    expect([...liveHtml.matchAll(/href="\/privacy"/g)]).toHaveLength(1);
+    const canada = liveHtml.indexOf('Your data stays in Canada');
+    expect(canada).toBeGreaterThan(-1);
+    expect(liveHtml.indexOf('href="/privacy"')).toBeGreaterThan(canada);
+    // The dark page has no number to STOP, and still the one legal link.
     expect(unsetHtml).not.toContain('Reply STOP anytime');
+    expect([...unsetHtml.matchAll(/href="\/privacy"/g)]).toHaveLength(1);
   });
 
   it('is one Text Hale button — no picker, no channel names', () => {

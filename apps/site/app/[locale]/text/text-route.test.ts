@@ -3,8 +3,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { SiteFooter } from '~/components/site-footer.js';
 import { SiteHeader } from '~/components/site-header.js';
+import { localeHref } from '~/i18n/navigation.js';
+import type { Locale } from '~/i18n/routing.js';
 import sitemap from '../../sitemap.js';
-import { generateMetadata } from './page.js';
+import TextPage, { generateMetadata } from './page.js';
 
 const meta = () => generateMetadata({ params: Promise.resolve({ locale: 'en' as const }) });
 
@@ -44,4 +46,65 @@ describe('/text (unlisted entry surface)', () => {
     expect(darkHeader).not.toContain('/text');
     expect(renderToStaticMarkup(createElement(SiteFooter))).not.toContain('/text');
   });
+
+  it('wears the shared header and footer in en, fr, and zh — turtle lockup included', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
+    for (const locale of ['en', 'fr', 'zh'] as const satisfies readonly Locale[]) {
+      const html = renderToStaticMarkup(
+        await TextPage({
+          params: Promise.resolve({ locale }),
+          searchParams: Promise.resolve({}),
+        }),
+      );
+      const header = chrome(html, 'header');
+      const footer = chrome(html, 'footer');
+      expect(header, `${locale} forked the header`).toBe(
+        chrome(renderToStaticMarkup(createElement(SiteHeader, { locale })), 'header'),
+      );
+      expect(footer, `${locale} forked the footer`).toBe(
+        chrome(
+          renderToStaticMarkup(createElement(SiteFooter, { locale, omitPrivacyLink: true })),
+          'footer',
+        ),
+      );
+      // One privacy-policy link on the rendered page, and it is the column's
+      // Canada line — not a second copy in the footer.
+      const privacyHref = localeHref(locale, '/privacy');
+      const privacyAt = html.indexOf(`href="${privacyHref}"`);
+      expect(privacyAt, `${locale} missing the column privacy link`).toBeGreaterThan(-1);
+      expect(html.indexOf(`href="${privacyHref}"`, privacyAt + 1)).toBe(-1);
+      expect(privacyAt).toBeLessThan(html.indexOf('<footer'));
+      expect(footer).not.toContain(`href="${privacyHref}"`);
+      // The shared bar is the glass pill, and the lockup is the turtle tile
+      // beside the drawn wordmark — the same assets the landing header uses.
+      expect(header).toContain('class="v4-nav v4-glass"');
+      expect(header).toContain('hale-logo');
+      expect(header).toContain('viewBox="0 0 905.840370 590.701960"');
+      // The column under the bar is still the conversion door. Copy is the
+      // warm hello (#687); this pin only checks that chrome did not replace it.
+      // The sent bubble is the English prefill in every locale.
+      expect(html).toContain('Hey Hale, what&#x27;s going on?');
+    }
+    const en = renderToStaticMarkup(
+      await TextPage({
+        params: Promise.resolve({ locale: 'en' }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    const fr = renderToStaticMarkup(
+      await TextPage({
+        params: Promise.resolve({ locale: 'fr' }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(en).toContain('Hi, I&#x27;m Hale.');
+    expect(fr).toContain('Bonjour, je suis Hale.');
+    vi.unstubAllEnvs();
+  });
 });
+
+function chrome(html: string, tag: 'header' | 'footer'): string {
+  const found = new RegExp(`<${tag}[\\s\\S]*</${tag}>`).exec(html)?.[0];
+  if (!found) throw new Error(`no <${tag}> rendered`);
+  return found;
+}

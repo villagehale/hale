@@ -336,42 +336,20 @@ describe('landing — sections, in the Surfaces Plan order', () => {
   const html = render();
   const text = visibleText(html);
 
-  it('names every seeded municipality it watches', () => {
-    // A hand-kept copy of the `Municipality` union in packages/db (apps/site
-    // cannot import @hale/db), held against lib/site/municipalities so a town
-    // added to one and not the other is a red test rather than a silent gap.
-    const cities = [
-      'Toronto',
-      'Mississauga',
-      'Brampton',
-      'Markham',
-      'Vaughan',
-      'Richmond Hill',
-      'Oakville',
-      'Burlington',
-      'Halton Hills',
-      'Caledon',
-      'Ajax',
-      'Pickering',
-      'Whitby',
-      'Oshawa',
-      'Aurora',
-      'Stouffville',
-      'Newmarket',
-      'King',
-      'East Gwillimbury',
-      'Georgina',
-      'Uxbridge',
-    ];
-    expect(cities).toHaveLength(MUNICIPALITY_COUNT);
-    for (const city of cities) {
-      expect(text).toContain(city);
-    }
+  it('states the real covered count once, and does not wall the city names', () => {
+    // The count is MUNICIPALITY_COUNT — the hand-verified GTA set — not a
+    // prose guess. City names are not a home door to /text; /for-centres still
+    // lists them.
     expect(text).toContain(`${MUNICIPALITY_COUNT} municipalities`);
-  });
-
-  it('renders the cities as glass pills, one per municipality', () => {
-    expect([...html.matchAll(/class="v4-pill v4-glass"/g)]).toHaveLength(MUNICIPALITY_COUNT);
+    expect(text).toContain(`Across ${MUNICIPALITY_COUNT} municipalities in the GTA.`);
+    expect(text).not.toContain('cities in the GTA');
+    expect(html).not.toContain('class="v4-pill');
+    const coverage = html.match(/<p class="v4-coverage[^"]*">([\s\S]*?)<\/p>/)?.[1] ?? '';
+    expect(coverage).toBe(`Across ${MUNICIPALITY_COUNT} municipalities in the GTA.`);
+    expect(coverage).not.toContain('<a');
+    // A name that existed only as a pill. The thread still names Halton Hills.
+    expect(text).not.toContain('East Gwillimbury');
+    expect(text).not.toContain('Uxbridge');
   });
 
   it('watches only what registration-windows-data.ts actually holds', () => {
@@ -386,17 +364,14 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     expect(text).not.toContain('school paperwork');
   });
 
-  it('proves the pain with the sourced facts instead of asserting usefulness', () => {
-    // The four "wait, really?" facts, each sourced in the positioning doc §9:
-    // the 7:02 fill (self-explained in the hero sub: opens at 7:00, gone by 7:02),
-    // the ~12× private-vs-city swing, the resident head start, and the waitlist
-    // clock. Anything not on that list is an invented number.
-    expect(text).toContain('open at 7:00 a.m.');
-    expect(text).toContain('gone by 7:02');
-    expect(text).toContain('$54');
-    expect(text).toContain('twelve times');
-    expect(text).toContain('head start of four days to two weeks');
-    // The unsourced claim the doc explicitly parks until a per-town check exists.
+  it('keeps the sell-out pitch off the home page', () => {
+    // The contrast used to argue a 7:02 fill, a $54 city session, and a
+    // twelve-times private swing. The kids-year page states the watch, not the scramble.
+    expect(text).not.toContain('gone by 7:02');
+    expect(text).not.toContain('7:02');
+    expect(text).not.toContain('$54');
+    expect(text).not.toContain('twelve times');
+    expect(text).not.toContain('head start of four days to two weeks');
     expect(text).not.toContain('20%');
     expect(text).not.toContain('non-resident');
   });
@@ -506,17 +481,22 @@ describe('landing — parenting coaching: the answer, the plan, the check-in', (
     expect(text).not.toContain('Three days later');
   });
 
-  it('rides below the helpers as a compact band — no rail, no hero-scale heading', () => {
-    // Boardy: sleep/solids/potty pulls attention off the wedge. It keeps every
-    // word it had; what it loses is the weight — the card rail and the .v4-h2
-    // display rung that made it read as a second product.
+  it('rides below the helpers as a compact band — no rail, no display H2', () => {
+    // Sleep/solids/potty keeps every word. It is not a second product headline:
+    // not an H2, not the display face, not the amber accent on the planner spine.
     const html = render();
     const band =
       html.match(/<p class="v4-eyebrow">When you ask me something[\s\S]*?<\/section>/)?.[0] ?? '';
     expect(band, 'the coaching band must render').toContain('Where I stop');
+    expect(visibleText(band)).toContain('Sleep, solids, potty — answered, then planned.');
+    expect(band).toContain('class="v4-subhead');
+    expect(band).not.toContain('<h2');
     expect(band).not.toContain('v4-cardgrid');
     expect(band).not.toContain('v4-h2');
-    // Positive control: a hero-scale H2 is still what the section ABOVE it wears.
+    expect(band).not.toContain('v4-display');
+    expect(band).not.toContain('v4-accent');
+    // Positive control: the planner spine above it is still the display H2.
+    expect(html).toContain('A planner for the year,');
     expect(html).toContain('class="v4-display v4-h2 mt-4"');
   });
 
@@ -742,9 +722,11 @@ describe('landing — the thread is one continuous registration loop', () => {
     ]) {
       expect(text, `${overclaim} must not appear`).not.toContain(overclaim);
     }
-    // Positive control: the page DOES describe the registration morning, so the
-    // absences above are claims withheld rather than a missing section.
-    expect(text).toContain('I run the morning with you');
+    // Positive control: the thread still shows the registration morning and the
+    // town’s own link, so the absences above are claims withheld rather than a
+    // missing section. The without/with cells no longer say Hale runs that morning.
+    expect(text).toContain('Your link:');
+    expect(text).not.toContain('I run the morning with you');
   });
 });
 
@@ -761,24 +743,28 @@ describe('landing — without me / with me, in the section that already holds th
     expect(text).toContain('With me');
   });
 
-  it('keeps all four sourced facts on the without-me side, and adds no fifth', () => {
-    expect(text).toContain('open at 7:00 a.m.');
-    expect(text).toContain('gone by 7:02');
-    expect(text).toContain('$54');
-    expect(text).toContain('twelve times');
-    expect(text).toContain('head start of four days to two weeks');
+  it('states the calm watch on the without-me side, with no sell-out clock', () => {
     const withoutMe = text.split('Without me')[1]?.split('With me')[0] ?? '';
-    expect(withoutMe, 'the without-me cell must render').toContain('gone by 7:02');
+    expect(withoutMe).toContain(
+      'You keep the year yourself. Every sign-up morning, every waitlist clock, and what’s actually on near your kids.',
+    );
+    expect(withoutMe).not.toContain('7:02');
+    expect(withoutMe).not.toContain('$54');
+    expect(withoutMe).not.toContain('alarm');
     for (const invented of ['%', 'out of 10', 'on average']) {
       expect(withoutMe, `${invented} must not appear`).not.toContain(invented);
     }
   });
 
-  it('does not restate the ladder a third time on the with-me side', () => {
-    // The thread SHOWS the ladder and step three SUMMARISES it. A third telling
-    // here is the bloat the sparse landing exists to prevent.
-    const withMe = text.split('With me')[1]?.slice(0, 240) ?? '';
-    expect(withMe, 'the with-me cell must render').toContain('reply YES once');
+  it('states the watch on the with-me side, and does not ask for one YES', () => {
+    // The thread shows the ladder. This cell is the planner's watch: find what's
+    // on, have the link ready, ask how it went. It does not run the morning.
+    const withMe = text.split('With me')[1]?.slice(0, 320) ?? '';
+    expect(withMe).toContain(
+      'I keep that watch. I find what’s on, the town’s link is ready the night before it opens, and I ask how it went.',
+    );
+    expect(withMe.toLowerCase()).not.toContain('reply yes');
+    expect(withMe).not.toContain('I run the morning');
     expect(withMe).not.toContain('evening before');
     expect(withMe).not.toContain('week out');
   });
