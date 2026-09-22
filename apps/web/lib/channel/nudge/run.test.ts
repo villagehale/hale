@@ -1354,7 +1354,7 @@ describe('the call-name line after a find', () => {
       FRIDAY_10AM,
     );
     expect(result.sent).toBe(1);
-    expect(care.transport.bodies().some((body) => body.includes('during the week'))).toBe(true);
+    expect(care.transport.bodies().some((body) => body.includes('weekdays too'))).toBe(true);
     expect(care.transport.bodies().some((body) => body === PARENT_CALL_NAME_ASK)).toBe(false);
     expect(load).not.toHaveBeenCalled();
   });
