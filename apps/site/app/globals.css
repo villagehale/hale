@@ -2435,6 +2435,9 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
      * unbreakable token pushes the bubble past the thread and the page scrolls
      * sideways on a phone. */
     overflow-wrap: anywhere;
+    /* Year-open demos are a lead plus numbered lines. A newline in the message
+     * is a line in the bubble; single-line bubbles are unchanged. */
+    white-space: pre-line;
   }
   /* The gap between two legs of the registration sequence — a thread's own date
    * separator, not a message, so it takes neither bubble's side. */

@@ -68,11 +68,7 @@
       },
       {
         "dir": "in",
-        "text": "C’est noté. Les inscriptions d’automne de Stouffville sont déjà ouvertes et les dates d’hiver ne sont pas encore affichées. Répondez OUI et je les surveille : votre lien la veille au soir, puis quinze minutes avant l’ouverture."
-      },
-      {
-        "dir": "out",
-        "text": "OUI"
+        "text": "Voici ce qu’il y a pour vos enfants cette année :\n1. Natation parent-enfant (2 à 4 ans) — les samedis à 9 h 15, d’après le guide des loisirs de Stouffville.\n2. Jeu libre préscolaire (18 mois à 4 ans) — sans inscription, d’après la page de la bibliothèque.\n3. Petits bougeurs (2 à 5 ans) — le centre communautaire l’annonce, mais les horaires d’hiver ne sont pas encore affichés."
       }
     ],
     "heroFounding": "Les familles fondatrices commencent gratuitement — et gardent leur tarif fondateur pour toujours.",
@@ -240,11 +236,7 @@
           },
           {
             "dir": "in",
-            "text": "Trois près de chez vous. Natation parent-enfant, 2 à 4 ans, les samedis à 9 h 15, d’après le guide des loisirs de la ville. Jeu libre préscolaire, 18 mois à 4 ans, sans inscription, d’après la page de la bibliothèque. Petits bougeurs, 2 à 5 ans — le centre communautaire l’annonce, mais les horaires d’hiver ne sont pas encore affichés. Voulez-vous que je garde un oeil sur tout cela pour vous? (comment je traite les infos de votre famille : villagehale.com/privacy)"
-          },
-          {
-            "dir": "out",
-            "text": "OUI"
+            "text": "Voici ce qu’il y a pour vos enfants cette année :\n1. Natation parent-enfant (2 à 4 ans) — les samedis à 9 h 15, d’après le guide des loisirs de la ville.\n2. Jeu libre préscolaire (18 mois à 4 ans) — sans inscription, d’après la page de la bibliothèque.\n3. Petits bougeurs (2 à 5 ans) — le centre communautaire l’annonce, mais les horaires d’hiver ne sont pas encore affichés."
           }
         ]
       },
@@ -446,6 +438,23 @@
       "free": "Textez Hale, dates d’inscription surveillées, réponses, et le tarif fondateur.",
       "plus": "Pour quand vous voulez davantage de l’année en vue : rappels et brouillons, pour chaque enfant, à mesure que ces parties se déploient.",
       "family": "Pour le foyer : la même surveillance pour chaque enfant, plus la conciergerie et le soutien prioritaire à mesure de leur déploiement."
+    },
+    "tierNames": {
+      "free": "Gratuit",
+      "plus": "Plus",
+      "family": "Famille"
+    },
+    "paidFeatures": {
+      "plus": [
+        "Tout ce qu’il y a dans Gratuit",
+        "Rappels et brouillons, à mesure qu’ils arrivent",
+        "Davantage de l’année suivie avec vous"
+      ],
+      "family": [
+        "Tout ce qu’il y a dans Plus",
+        "La vue du foyer sur l’année, à mesure qu’elle arrive",
+        "Conciergerie et soutien prioritaire"
+      ]
     },
     "freeFeatures": [
       "Textez Hale",
@@ -818,6 +827,6 @@
   },
   "Jsonld": {
     "orgDescription": "Hale est un planificateur pour l’année de vos enfants — il trouve ce qui se passe près de vos enfants, surveille les fenêtres d’inscription des villes et revient prendre des nouvelles. Les données de chaque famille restent au Canada.",
-    "appDescription": "Un planificateur pour l’année de vos enfants : Hale surveille les dates d’inscription dans toute la région du Grand Toronto et revient prendre des nouvelles. Des preuves pour tout, et les données de votre famille ne quittent jamais le Canada."
+    "appDescription": "Trouvez ce qu’il y a. Écoutez comment ça va. Un planificateur pour l’année de vos enfants : Hale trouve ce qui se passe près de vos enfants, surveille les dates d’inscription dans toute la région du Grand Toronto et revient prendre des nouvelles. Des preuves pour tout, et les données de votre famille ne quittent jamais le Canada."
   }
 }

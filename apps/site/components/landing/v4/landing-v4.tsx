@@ -135,10 +135,10 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           {/* The ten-second proof. Not the transcript below in miniature: that
               one runs the four scheduled legs of a registration already set up,
               and this is the moment BEFORE it — a parent's first text, and the
-              answer that names the date, the residents-first rule and what Hale
-              will do next. Same bubbles, same tokens; the wrapper is what scopes
-              the sizing, and what keeps the transcript's own scans (which key on
-              a leading `v4-thread`) about the transcript. */}
+              live find that comes back. No watch ask. Same bubbles, same tokens;
+              the wrapper is what scopes the sizing, and what keeps the
+              transcript's own scans (which key on a leading `v4-thread`) about
+              the transcript. */}
           <div className="v4-hero-thread v4-thread v4-glass">
             {/* The transcript below opens on a visible `v4-thread-cap` saying
                 whose thread this is. The hero says the same thing to the same

@@ -186,15 +186,15 @@ describe('the registration loop renders in every locale', () => {
   });
 
   it.each(routing.locales)(
-    '%s opens on the hero exchange — three bubbles, before the transcript',
+    '%s opens on the hero exchange — the ask and the find, before the transcript',
     (locale) => {
-      // Boardy: a believable request and Hale's answer, above the fold, in every
-      // language. It is the same bubble styling, in a hero-scoped wrapper, so the
-      // transcript scans above stay about the transcript.
+      // A believable request and Hale's find, above the fold, in every language.
+      // It is the same bubble styling, in a hero-scoped wrapper, so the transcript
+      // scans above stay about the transcript. No third bubble: the watch YES is gone.
       const hero =
         HTML[locale].match(/<section class="v4-hero v4-hero-top"[\s\S]*?<\/section>/)?.[0] ?? '';
       expect(hero, 'the hero must render').toContain('v4-hero-thread');
-      expect([...hero.matchAll(/class="v4-bubble v4-bubble-out"/g)]).toHaveLength(2);
+      expect([...hero.matchAll(/class="v4-bubble v4-bubble-out"/g)]).toHaveLength(1);
       expect([...hero.matchAll(/class="v4-bubble v4-bubble-in"/g)]).toHaveLength(1);
       expect(hero).not.toContain('v4-thread-time');
       // The hero exchange must land before the transcript's own label.
@@ -258,17 +258,53 @@ describe('the registration loop renders in every locale', () => {
     }
   });
 
+  it.each(routing.locales)('%s hero demos are the live find, with no watch YES', (locale) => {
+    const landing = landingBundle(locale) as {
+      heroThread: Array<{ dir: string; text: string }>;
+      heroLoop: Array<{ rows: Array<{ dir: string; text: string }> }>;
+    };
+    expect(landing.heroThread.map((row) => row.dir)).toEqual(['out', 'in']);
+    expect(landing.heroLoop[0]?.rows.map((row) => row.dir)).toEqual(['out', 'in']);
+    const lead = {
+      en: 'Here’s what’s on for your kids this year:',
+      fr: 'Voici ce qu’il y a pour vos enfants cette année :',
+      zh: '孩子这一年，现在有这些：',
+    }[locale];
+    expect(landing.heroThread[1]?.text.startsWith(lead)).toBe(true);
+    expect(landing.heroLoop[0]?.rows[1]?.text.startsWith(lead)).toBe(true);
+    const demo = `${landing.heroThread.map((row) => row.text).join('\n')}\n${landing.heroLoop
+      .flatMap((beat) => beat.rows.map((row) => row.text))
+      .join('\n')}`;
+    for (const banned of [
+      'YES',
+      'OUI',
+      'keep an eye',
+      'garde un oeil',
+      '回复 YES',
+      '要不要我',
+      'Say YES',
+      'Répondez OUI',
+    ]) {
+      expect(demo, banned).not.toContain(banned);
+    }
+    expect(demo).toContain('1.');
+    expect(demo).toContain('3.');
+  });
+
   it.each(routing.locales)('%s says who is speaking, not only which side', (locale) => {
     // Direction is drawn with align-self and a fill; in dark the out-bubble's
     // navy sits on a near-identical glass ground, so a reader who cannot see the
-    // alignment gets a bare "YES". Every bubble in both conversations carries an
-    // sr-only speaker, and the hero exchange opens on a caption saying what the
-    // three bubbles are — the transcript's visible `v4-thread-cap`, said only to
-    // the reader the layout does not reach, because the hero has no fold height
-    // to spend on a line its sighted reader can already see.
+    // alignment does not know whose turn it was. Every bubble in both
+    // conversations carries an sr-only speaker, and the hero exchange opens on a
+    // caption — the transcript's visible `v4-thread-cap`, said only to the reader
+    // the layout does not reach, because the hero has no fold height to spend on
+    // a line its sighted reader can already see.
     const html = HTML[locale];
-    const bubbles = [...html.matchAll(/<p class="v4-bubble[^"]*">(.*?)<\/p>/g)].map((m) => m[1]);
-    expect(bubbles.length, 'the bubbles must render').toBe(10);
+    const bubbles = [...html.matchAll(/<p class="v4-bubble[^"]*">([\s\S]*?)<\/p>/g)].map(
+      (m) => m[1] ?? '',
+    );
+    // Hero is two bubbles (ask, find). The transcript is still seven.
+    expect(bubbles.length, 'the bubbles must render').toBe(9);
     for (const bubble of bubbles) expect(bubble).toMatch(/^<span class="sr-only">[^<]+ <\/span>/);
     expect(heroExchange(html)).toMatch(
       /^<div class="v4-hero-thread[^>]*><p class="sr-only">[^<]+</,
