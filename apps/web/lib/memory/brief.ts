@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { readFamilyTimezone } from '../dashboard/trail-query';
 import { CONFIDENCE_FLOOR } from './facts';
 import { isReceiptKey, valueText } from './lexicon';
 import { digestWindows } from './period';

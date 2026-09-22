@@ -146,7 +146,8 @@ const FRAMEWORK_TOOL_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'frame
 /** The REAL context builder, for its REAL compaction. Imported rather than replicated —
  * the continuity fixtures below grade the keep-rules themselves, so a hand-rolled copy
  * of `compactTranscript` here would grade a copy of the thing under test. It resolves
- * under the tsx loader because context.ts reaches for no `~/` alias. */
+ * under the tsx loader because context.ts and everything it imports reach for
+ * no `~/` alias — a tilde import here is unresolvable and fails the eval at load. */
 const CONTEXT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'context.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel-sms.md');
 /**

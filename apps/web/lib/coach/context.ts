@@ -8,7 +8,7 @@ import {
   deriveStage,
 } from '@hale/types';
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
-import { type MemoryBrief, assembleMemoryBrief } from '~/lib/memory/brief';
+import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
 import type { TranscriptMessage } from './conversation';
 
 /**

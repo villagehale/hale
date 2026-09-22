@@ -2,12 +2,12 @@ import { AGENT_TOOL_ACTION_PREFIX } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, notLike, sql } from 'drizzle-orm';
-import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import { DEFAULT_TIMEZONE } from '../format/datetime';
 import {
   NO_TEEN_UNLOCKS,
   type TeenAccessUnlocks,
   redactsTeenContent,
-} from '~/lib/teen-access';
+} from '../teen-access';
 import { type ActorResolver, type TrailView, effectiveTeenContent, toTrailView } from './mappers';
 
 /**

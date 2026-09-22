@@ -1,4 +1,4 @@
-import type { EntryTone } from '~/components/hale/tone';
+import type { EntryTone } from '../../components/hale/tone';
 
 /**
  * The verb registry. HARD rule (mirrors the label layer): a stored audit verb —
