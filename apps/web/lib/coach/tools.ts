@@ -1,12 +1,19 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
-import { z } from 'zod';
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { ageInMonths, companionForChild, deriveStage } from '@hale/types';
-import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { and, desc, eq, isNull } from 'drizzle-orm';
+import { z } from 'zod';
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
+import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { dayKeyOf, formatCalendarDayLabel } from '~/lib/format/datetime';
 import { CONFIDENCE_FLOOR, writeFact } from '~/lib/memory/facts';
+import { forgetFamilyFact } from '~/lib/memory/forget';
+import {
+  getFamilyMemoryFact,
+  listMemoryBuckets,
+  loadFactHistory,
+  searchFamilyMemory,
+} from '~/lib/memory/search';
 import {
   activityReviewsSurfaceEnabled,
   familyAreaKey,
@@ -64,10 +71,7 @@ export const EXAMPLE_CHILD_ID = '00000000-0000-4000-8000-000000000000';
  * reads (`search_memory`, `search_village`) so a teen's row can't slip past the
  * guard those tools never trigger.
  */
-async function teenChildIdsForFamily(
-  database: Database,
-  familyId: string,
-): Promise<Set<string>> {
+async function teenChildIdsForFamily(database: Database, familyId: string): Promise<Set<string>> {
   const children = await database
     .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
     .from(schema.children)
@@ -265,7 +269,10 @@ export function searchVillageTool(
             isNull(schema.villageCandidates.supersededAt),
           ),
         )
-        .orderBy(desc(schema.villageCandidates.confidence), desc(schema.villageCandidates.discoveredAt))
+        .orderBy(
+          desc(schema.villageCandidates.confidence),
+          desc(schema.villageCandidates.discoveredAt),
+        )
         .limit(MEMORY_RESULT_LIMIT);
 
       const needle = input.query?.toLowerCase();
@@ -354,7 +361,9 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
           parentingStyleOverrides: schema.children.parentingStyleOverrides,
         })
         .from(schema.children)
-        .where(and(eq(schema.children.id, input.childId), eq(schema.children.familyId, ctx.familyId)))
+        .where(
+          and(eq(schema.children.id, input.childId), eq(schema.children.familyId, ctx.familyId)),
+        )
         .limit(1);
 
       const child = rows[0];
@@ -378,13 +387,15 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
   const searchMemory = defineTool({
     name: 'search_memory',
     description:
-      "Recall what Hale knows about THIS family: currently-valid memory facts (optionally filtered by type) and recent episodes whose summary matches a free-text query.",
+      'Lexical recall for THIS family. Matches fact keys, a closed alias list (daycare matches childcare; a typo matches nothing), and fact values. Live facts only unless includeHistory is true. Teen-attributed rows are omitted.',
     inputSchema: z.object({
       query: z.string().min(1),
       factType: memoryFactType.optional(),
+      includeHistory: z.boolean().optional(),
     }),
     inputExamples: [
       { query: 'bedtime' },
+      { query: 'daycare' },
       { query: 'allergy', factType: 'medical' },
     ],
     monetary: false,
@@ -392,24 +403,14 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
     handler: async (input, ctx) => {
       const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
 
-      const factConditions = [
-        eq(schema.familyMemoryFacts.familyId, ctx.familyId),
-        isNull(schema.familyMemoryFacts.validUntil),
-      ];
-      if (input.factType) {
-        factConditions.push(eq(schema.familyMemoryFacts.factType, input.factType));
-      }
-      const factRows = await database
-        .select({
-          childId: schema.familyMemoryFacts.childId,
-          factType: schema.familyMemoryFacts.factType,
-          factKey: schema.familyMemoryFacts.factKey,
-          factValue: schema.familyMemoryFacts.factValue,
-          confidence: schema.familyMemoryFacts.confidence,
-        })
-        .from(schema.familyMemoryFacts)
-        .where(and(...factConditions))
-        .limit(MEMORY_RESULT_LIMIT);
+      const facts = await searchFamilyMemory(database, {
+        familyId: ctx.familyId,
+        query: input.query,
+        factType: input.factType,
+        includeHistory: input.includeHistory === true,
+        teenChildIds,
+        limit: MEMORY_RESULT_LIMIT,
+      });
 
       const needle = input.query.toLowerCase();
       const episodeRows = await database
@@ -425,9 +426,7 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
         .limit(MEMORY_RESULT_LIMIT);
 
       return {
-        facts: factRows
-          .filter((f) => !isTeenAttributed(f.childId, teenChildIds))
-          .map(({ childId: _childId, ...fact }) => fact),
+        facts: facts.map(({ score: _score, matchedBy: _matchedBy, ...fact }) => fact),
         episodes: episodeRows
           .filter((e) => !isTeenAttributed(e.childId, teenChildIds))
           .filter((e) => e.summary.toLowerCase().includes(needle))
@@ -443,7 +442,7 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
   const saveMemory = defineTool({
     name: 'save_memory',
     description:
-      "Persist a durable fact the parent STATED about THIS family (a settled routine, a stated preference, a logistic), so Hale recalls it next turn. Upserts on (factType, factKey). Never store inferences — only what the parent actually said. `confidence` is how sure you are the parent actually SAID this: 1 when they stated it in these words, lower when you are reading an implication. Below 0.7 is refused — do not file a hunch.",
+      'Persist a durable fact the parent STATED about THIS family (a settled routine, a stated preference, a logistic), so Hale recalls it next turn. Upserts on (factType, factKey). Never store inferences — only what the parent actually said. `confidence` is how sure you are the parent actually SAID this: 1 when they stated it in these words, lower when you are reading an implication. Below 0.7 is refused — do not file a hunch.',
     inputSchema: z.object({
       factType: memoryFactType,
       factKey: z.string().min(1),
@@ -453,8 +452,18 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
     // `confidence` is required by the schema, so the API validates it in every
     // example: 1 is the parent's own words, 0.8 a clear implication.
     inputExamples: [
-      { factType: 'routine', factKey: 'bedtime', factValue: '7:30pm, bath then two books', confidence: 1 },
-      { factType: 'logistic', factKey: 'daycare_pickup_owner', factValue: 'the other parent', confidence: 0.8 },
+      {
+        factType: 'routine',
+        factKey: 'bedtime',
+        factValue: '7:30pm, bath then two books',
+        confidence: 1,
+      },
+      {
+        factType: 'logistic',
+        factKey: 'daycare_pickup_owner',
+        factValue: 'the other parent',
+        confidence: 0.8,
+      },
     ],
     monetary: false,
     touchesChildContent: false,
@@ -481,6 +490,83 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
     },
   });
 
+  const listMemory = defineTool({
+    name: 'list_memory',
+    description:
+      "Counts of THIS family's live memory by fact type, open and completed workstreams, and stored digests. No fact values. Pass includeHistory to also count closed facts.",
+    inputSchema: z.object({ includeHistory: z.boolean().optional() }),
+    inputExamples: [{}, { includeHistory: true }],
+    monetary: false,
+    touchesChildContent: false,
+    handler: async (input, ctx) => {
+      const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
+      return listMemoryBuckets(database, {
+        familyId: ctx.familyId,
+        teenChildIds,
+        includeHistory: input.includeHistory === true,
+      });
+    },
+  });
+
+  const getMemory = defineTool({
+    name: 'get_memory',
+    description:
+      "Read one memory fact of THIS family by id. Closed and forgotten facts require includeHistory. A teenager's fact is refused.",
+    inputSchema: z.object({
+      factId: z.string().uuid(),
+      includeHistory: z.boolean().optional(),
+    }),
+    inputExamples: [{ factId: '11111111-1111-4111-8111-111111111111' }],
+    monetary: false,
+    touchesChildContent: false,
+    handler: async (input, ctx) => {
+      const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
+      return getFamilyMemoryFact(database, {
+        familyId: ctx.familyId,
+        factId: input.factId,
+        includeHistory: input.includeHistory === true,
+        teenChildIds,
+      });
+    },
+  });
+
+  const memoryHistory = defineTool({
+    name: 'memory_history',
+    description:
+      "The supersede chain for one fact of THIS family: earlier values and the row that replaced them. This is the explicit history read. A teenager's chain is refused.",
+    inputSchema: z.object({ factId: z.string().uuid() }),
+    inputExamples: [{ factId: '11111111-1111-4111-8111-111111111111' }],
+    monetary: false,
+    touchesChildContent: false,
+    handler: async (input, ctx) => {
+      const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
+      return loadFactHistory(database, {
+        familyId: ctx.familyId,
+        factId: input.factId,
+        teenChildIds,
+      });
+    },
+  });
+
+  const forgetMemory = defineTool({
+    name: 'forget_memory',
+    description:
+      'Retire one live fact the parent asked Hale to forget. It leaves search and the memory brief; history can still show it. Health-checkpoint and registration-outcome receipts are refused.',
+    inputSchema: z.object({ factId: z.string().uuid() }),
+    inputExamples: [{ factId: '11111111-1111-4111-8111-111111111111' }],
+    monetary: false,
+    touchesChildContent: false,
+    handler: async (input, ctx) => {
+      const outcome = await forgetFamilyFact(database, {
+        familyId: ctx.familyId,
+        factId: input.factId,
+        actor: ctx.actor,
+        now,
+      });
+      return outcome;
+    },
+  });
+
   // Shared with the SMS channel coach since 2026-08-12 (framework-tool.ts): the
   // skill audit caught the two registries drifting — the channel skill instructed
   // a tool only this runtime carried.
@@ -489,7 +575,11 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
   return [
     getChildProfile,
     searchMemory,
+    listMemory,
+    getMemory,
+    memoryHistory,
     saveMemory,
+    forgetMemory,
     getFrameworkGuidance,
     searchVillageTool(database),
     ...buildConnectorTools(database),

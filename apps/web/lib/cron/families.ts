@@ -19,6 +19,8 @@ export const MAX_FAMILIES_PER_RUN = {
    * pass over the public calendars regardless of headcount); this caps only the
    * per-family database work. */
   civicSweep: 200,
+  /** Memory digests are deterministic, but a bad rule still has to be bounded. */
+  memoryDigest: 50,
 } as const;
 
 /** Discovery only runs for families whose candidate pool is stale or empty. */
@@ -30,10 +32,7 @@ const DISCOVERY_STALE_DAYS = 7;
  * re-run sees the same families) and is index-friendly. Returns just the ids the
  * caller iterates.
  */
-export async function selectFamiliesForRun(
-  database: Database,
-  limit: number,
-): Promise<string[]> {
+export async function selectFamiliesForRun(database: Database, limit: number): Promise<string[]> {
   const rows = await database
     .select({ id: schema.families.id })
     .from(schema.families)

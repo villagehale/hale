@@ -93,6 +93,13 @@ function fakeDb(args: {
     closedAt: Date | null;
     closedReason: string | null;
   }[];
+  digests?: {
+    grain: string;
+    periodStart: string;
+    timezone: string;
+    generatedAt: Date;
+    summary: Record<string, unknown>;
+  }[];
 }) {
   const whereFamilyIds: unknown[] = [];
 
@@ -159,6 +166,11 @@ function fakeDb(args: {
     return { orderBy: vi.fn().mockResolvedValue(args.trips ?? []) };
   });
 
+  const digestsWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue(args.digests ?? []) };
+  });
+
   // Route each select to the right terminal by call order: family, children,
   // members, the village-saves join, this parent's assistant grants, the registration
   // preparation join, the watched spots, the activity bookings, the evening check-in
@@ -177,7 +189,9 @@ function fakeDb(args: {
     if (which === 8) return { from: () => ({ where: checkInPrefsWhere }) };
     if (which === 9) return { from: () => ({ where: checkInNotesWhere }) };
     if (which === 10) return { from: () => ({ where: activityReviewsWhere }) };
-    return { from: () => ({ where: tripsWhere }) };
+    if (which === 11) return { from: () => ({ where: tripsWhere }) };
+    if (which === 12) return { from: () => ({ where: digestsWhere }) };
+    throw new Error(`assembleFamilyExport fake: unexpected select #${which}`);
   });
 
   const values = vi.fn().mockResolvedValue(undefined);
@@ -552,13 +566,13 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Twelve scoped selects (family, children, members, village saves, this parent's
+    // Thirteen scoped selects (family, children, members, village saves, this parent's
     // assistant grants, the registration preparations, the watched spots, the activity
-    // bookings, the evening check-in prefs and notes, the activity verdicts, and this
-    // parent's trips) each recorded a where-condition; none was left unscoped. (The
-    // condition objects are opaque Drizzle SQL, so we assert on arity — every select
-    // passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(12);
+    // bookings, the evening check-in prefs and notes, the activity verdicts, this
+    // parent's trips, and the memory digests) each recorded a where-condition; none
+    // was left unscoped. (The condition objects are opaque Drizzle SQL, so we assert
+    // on arity — every select passed through a where.)
+    expect(spies.whereFamilyIds).toHaveLength(13);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 
@@ -722,5 +736,45 @@ describe('assembleFamilyExport', () => {
       lastAnsweredAt: null,
       notes: [],
     });
+  });
+
+  it('exports memory digest counts and not the rollup line', async () => {
+    const { db } = fakeDb({
+      family: FAMILY,
+      children: [],
+      members: [],
+      digests: [
+        {
+          grain: 'day',
+          periodStart: '2026-09-21',
+          timezone: 'America/Toronto',
+          generatedAt: new Date('2026-09-22T06:48:00.000Z'),
+          summary: {
+            inbound: 2,
+            outbound: 1,
+            openWorkstreams: [{ kind: 'first_find' }],
+            line: 'day 2026-09-21: inbound 2, outbound 1, open 1.',
+          },
+        },
+      ],
+    });
+
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+    });
+
+    expect(doc.memoryDigests).toEqual([
+      {
+        grain: 'day',
+        periodStart: '2026-09-21',
+        timezone: 'America/Toronto',
+        generatedAt: '2026-09-22T06:48:00.000Z',
+        inbound: 2,
+        outbound: 1,
+        openWorkstreamCount: 1,
+      },
+    ]);
+    expect(JSON.stringify(doc.memoryDigests)).not.toContain('inbound 2');
   });
 });

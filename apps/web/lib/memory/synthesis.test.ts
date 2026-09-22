@@ -105,10 +105,7 @@ async function factById(id: string) {
 }
 
 async function auditRows(familyId: string) {
-  return db.database
-    .select()
-    .from(schema.auditLog)
-    .where(eq(schema.auditLog.familyId, familyId));
+  return db.database.select().from(schema.auditLog).where(eq(schema.auditLog.familyId, familyId));
 }
 
 describe('the writer allowlist', () => {

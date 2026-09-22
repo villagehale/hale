@@ -185,6 +185,20 @@ export interface FamilyExportDocument {
     closedAt: string | null;
     closedReason: string | null;
   }[];
+  /**
+   * Instinct-style daily and weekly memory rollups. Counts and closed labels
+   * only — the prose line and any message text are not in this copy, because
+   * the rollup is a derived index of rows already represented elsewhere.
+   */
+  memoryDigests: {
+    grain: 'day' | 'week';
+    periodStart: string;
+    timezone: string;
+    generatedAt: string;
+    inbound: number;
+    outbound: number;
+    openWorkstreamCount: number;
+  }[];
   /** The full, teen-redacted audit trail — the right-to-access record. */
   trail: TrailView[];
 }
@@ -486,6 +500,38 @@ export async function assembleFamilyExport(
     closedReason: row.closedReason,
   }));
 
+  const digestRows = await database
+    .select({
+      grain: schema.familyMemoryDigests.grain,
+      periodStart: schema.familyMemoryDigests.periodStart,
+      timezone: schema.familyMemoryDigests.timezone,
+      generatedAt: schema.familyMemoryDigests.generatedAt,
+      summary: schema.familyMemoryDigests.summary,
+    })
+    .from(schema.familyMemoryDigests)
+    .where(eq(schema.familyMemoryDigests.familyId, familyId))
+    .orderBy(schema.familyMemoryDigests.periodStart);
+  const memoryDigests = digestRows.flatMap((row) => {
+    if (row.grain !== 'day' && row.grain !== 'week') return [];
+    const summary = row.summary as {
+      inbound?: unknown;
+      outbound?: unknown;
+      openWorkstreams?: unknown;
+    };
+    const open = Array.isArray(summary.openWorkstreams) ? summary.openWorkstreams.length : 0;
+    return [
+      {
+        grain: row.grain,
+        periodStart: row.periodStart,
+        timezone: row.timezone,
+        generatedAt: row.generatedAt.toISOString(),
+        inbound: typeof summary.inbound === 'number' ? summary.inbound : 0,
+        outbound: typeof summary.outbound === 'number' ? summary.outbound : 0,
+        openWorkstreamCount: open,
+      },
+    ];
+  });
+
   await database.insert(schema.auditLog).values({
     familyId,
     actor: deps.actorUserId,
@@ -514,6 +560,7 @@ export async function assembleFamilyExport(
     eveningCheckIn,
     activityReviews,
     trips,
+    memoryDigests,
     trail,
   };
 }
