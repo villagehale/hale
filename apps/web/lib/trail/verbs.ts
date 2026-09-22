@@ -1,4 +1,4 @@
-import type { EntryTone } from '~/components/hale/tone';
+import type { EntryTone } from '../../components/hale/tone';
 
 /**
  * The verb registry. HARD rule (mirrors the label layer): a stored audit verb —
@@ -373,6 +373,10 @@ export const AUDIT_VERBS = [
   // ── nightly memory synthesis (VIL-354) ──────────────────────────────────
   'memory_fact_retired',
   'memory_facts_merged',
+  'memory_fact_forgotten',
+  'memory_digest_planned',
+  'memory_ephemeral_retired',
+  'memory_aliases_indexed',
 ] as const;
 
 export type AuditVerb = (typeof AUDIT_VERBS)[number];
@@ -1018,6 +1022,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   memory_facts_merged: { sentence: 'tidied up something it knew twice', family: 'note' },
+  memory_fact_forgotten: { sentence: 'forgot something you asked it to', family: 'done' },
+  memory_digest_planned: { sentence: 'prepared a memory summary', family: 'note' },
+  memory_ephemeral_retired: { sentence: 'let go of a temporary detail', family: 'note' },
+  memory_aliases_indexed: { sentence: 'indexed how it looks memories up', family: 'note' },
   health_checkpoint_marked_done: {
     sentence: 'you confirmed a health checkpoint is done',
     family: 'done',

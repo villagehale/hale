@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CeoKTgDKqdWVBQmKDt9Yo",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "Eu0CCpABCBEYAipAt+UvefFsR7XZAEiH+baGZjL3/0MJO/TY9nvTkGFCzTn6Tfl4mCUHTtekLNZGLD7Onq/Go99X7IkF+WDNC4uvmTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAe/M+NQGEgx+7kLQ9Pv5PQ/rCL4aDJK/S7WqSSkLrmWJlCIwEAKig16x580AJktL7KE4wWsr2O+JG1WJtPybfpx4WLqALP6iqY90bNcCSBqrNLn3KokBTnWkAe2EHdOLscgLG3x+/vKa+JH29Q43qcCviw49c82D7PcyHy61noXD7gwKppdAghOBH9lyEDeRvVBT//UDaflGWwTALu1Xi5Hm9W28SqYSVENNxt4Ic4d2fNWVWabBtIlwDubcuzsOm0OuQ5LS+mvNoVp9vLhq6GY/NZ8J7yVhnPQFJt6ywUQYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01JMtmrVv5n68GEgXeZARhsu",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "newborn",
+          "ageMonths": 5
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 427,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18182,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 129,
+      "output_tokens_details": {
+        "thinking_tokens": 48
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

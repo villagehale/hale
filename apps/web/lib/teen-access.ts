@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { POLICY_VERSION } from '~/lib/consent';
+import { POLICY_VERSION } from './consent';
 
 /**
  * VIL-147 · Teen raw-content access — the rule #1 NAMED EXCEPTION, whole.

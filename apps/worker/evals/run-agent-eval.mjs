@@ -380,11 +380,134 @@ async function buildAskHaleTools(agent, fixture) {
     inputSchema: zPassthrough(),
     handler: async () => ({ facts: s.memoryFacts ?? [], episodes: s.episodes ?? [] }),
   });
+  const teenChildIds = new Set(
+    (s.children ?? []).filter((child) => child.stage === 'teenager').map((child) => child.id),
+  );
+  const facts = () => s.memoryFacts ?? [];
+  const isTeenFact = (fact) => fact?.childId != null && teenChildIds.has(fact.childId);
+  const listMemory = agent.defineTool({
+    name: 'list_memory',
+    description:
+      "Counts of THIS family's live memory by fact type, open and completed workstreams, and stored digests. No fact values. Pass includeHistory to also count closed facts.",
+    inputSchema: zPassthrough(),
+    handler: async (input) => {
+      const factsByType = {};
+      let closedFacts = 0;
+      for (const fact of facts()) {
+        if (isTeenFact(fact)) continue;
+        if (fact.validUntil != null) {
+          closedFacts += 1;
+          continue;
+        }
+        const type = fact.factType ?? 'unknown';
+        factsByType[type] = (factsByType[type] ?? 0) + 1;
+      }
+      const listed = {
+        factsByType,
+        openWorkstreams: s.openWorkstreams ?? 0,
+        completedWorkstreams: s.completedWorkstreams ?? 0,
+        digests: s.digests ?? { day: 0, week: 0 },
+      };
+      if (input.includeHistory === true) listed.closedFacts = closedFacts;
+      return listed;
+    },
+  });
+  const getMemory = agent.defineTool({
+    name: 'get_memory',
+    description:
+      "Read one memory fact of THIS family by id. Closed and forgotten facts require includeHistory. A teenager's fact is refused.",
+    inputSchema: zPassthrough(),
+    handler: async (input) => {
+      const fact = facts().find((row) => row.id === input.factId);
+      if (!fact) return { found: false, reason: 'not_found' };
+      if (isTeenFact(fact)) return { found: false, reason: 'teen_redacted' };
+      if (input.includeHistory !== true && fact.validUntil != null) {
+        return { found: false, reason: 'not_live' };
+      }
+      return {
+        found: true,
+        id: fact.id,
+        factType: fact.factType,
+        factKey: fact.factKey,
+        factValue: fact.factValue,
+        confidence: fact.confidence,
+        validFrom: fact.validFrom,
+        validUntil: fact.validUntil ?? null,
+        supersededBy: fact.supersededBy ?? null,
+        inferredBy: fact.inferredBy ?? null,
+      };
+    },
+  });
+  const memoryHistory = agent.defineTool({
+    name: 'memory_history',
+    description:
+      "The supersede chain for one fact of THIS family: earlier values and the row that replaced them. This is the explicit history read. A teenager's chain is refused.",
+    inputSchema: zPassthrough(),
+    handler: async (input) => {
+      const fact = facts().find((row) => row.id === input.factId);
+      if (!fact) return { found: false, reason: 'not_found' };
+      if (isTeenFact(fact)) return { found: false, reason: 'teen_redacted' };
+      const nodes = s.memoryHistory?.[input.factId] ?? [
+        {
+          id: fact.id,
+          factKey: fact.factKey,
+          factValue: fact.factValue,
+          validFrom: fact.validFrom,
+          validUntil: fact.validUntil ?? null,
+          supersededBy: fact.supersededBy ?? null,
+          inferredBy: fact.inferredBy ?? null,
+        },
+      ];
+      return { found: true, nodes, truncated: false };
+    },
+  });
   const saveMemory = agent.defineTool({
     name: 'save_memory',
     description: 'Persist a durable fact the parent STATED about THIS family.',
     inputSchema: zPassthrough(),
     handler: async () => ({ saved: true, factId: 'fixture-fact' }),
+  });
+  const forgetMemory = agent.defineTool({
+    name: 'forget_memory',
+    description:
+      'Retire one live fact the parent asked Hale to forget. It leaves search and the memory brief; history can still show it. Health-checkpoint and registration-outcome receipts are refused.',
+    inputSchema: zPassthrough(),
+    handler: async (input) => {
+      const outcome = {
+        forgotten: 0,
+        refusedControlPlane: 0,
+        refusedWriter: 0,
+        alreadyClosed: 0,
+        notFound: 0,
+      };
+      const fact = facts().find((row) => row.id === input.factId);
+      if (!fact) {
+        outcome.notFound = 1;
+        return outcome;
+      }
+      if (fact.validUntil != null) {
+        outcome.alreadyClosed = 1;
+        return outcome;
+      }
+      const key = typeof fact.factKey === 'string' ? fact.factKey : '';
+      if (
+        key.startsWith('health_checkpoint:') ||
+        key.startsWith('registration_outcome:') ||
+        fact.inferredBy === 'health-nudge-reply' ||
+        fact.inferredBy === 'registration-sequence-reply'
+      ) {
+        outcome.refusedControlPlane = 1;
+        return outcome;
+      }
+      const beliefWriters = new Set(['ask-hale', 'memory_inferencer', 'chat_distiller']);
+      if (typeof fact.inferredBy !== 'string' || !beliefWriters.has(fact.inferredBy)) {
+        outcome.refusedWriter = 1;
+        return outcome;
+      }
+      fact.validUntil = 'forgotten';
+      outcome.forgotten = 1;
+      return outcome;
+    },
   });
   const getFrameworkGuidance = agent.defineTool({
     name: 'get_framework_guidance',
@@ -429,7 +552,11 @@ async function buildAskHaleTools(agent, fixture) {
   return [
     getChildProfile,
     searchMemory,
+    listMemory,
+    getMemory,
+    memoryHistory,
     saveMemory,
+    forgetMemory,
     getFrameworkGuidance,
     searchVillage,
     driveSearch,

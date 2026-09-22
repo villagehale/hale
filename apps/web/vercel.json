@@ -14,6 +14,7 @@
     { "path": "/api/cron/delete-sweep", "schedule": "32 * * * *" },
     { "path": "/api/cron/attachment-sweep", "schedule": "37 * * * *" },
     { "path": "/api/cron/inference", "schedule": "42 6 * * *" },
+    { "path": "/api/cron/memory-digest", "schedule": "48 6 * * *" },
     { "path": "/api/cron/discovery", "schedule": "47 13 * * 1" },
     { "path": "/api/cron/loop-health-digest", "schedule": "52 14 * * 1" },
     { "path": "/api/cron/civic-sweep", "schedule": "57 15 * * 1" },

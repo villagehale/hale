@@ -238,8 +238,19 @@ async function runTurn({ fixture, mode, cachedOnly, cost, modules, factLimit }) 
       fixture.familyName,
       fixture.familyId,
     );
+    // The same clock dates the child and assembles context. A wall clock in
+    // memoryBrief.asOf (or a DOB taken from "now" while context uses another
+    // instant) makes the content-addressed cache miss on every run.
+    const now = new Date(fixture.turnAt);
     for (const child of fixture.children ?? []) {
-      await pglite.seedChild(test.database, familyId, child.name, child.ageMonths, child.id);
+      await pglite.seedChild(
+        test.database,
+        familyId,
+        child.name,
+        child.ageMonths,
+        child.id,
+        now,
+      );
     }
 
     // Crowd the memory so retrieval is a ranking problem, not a lookup: more
@@ -277,6 +288,7 @@ async function runTurn({ fixture, mode, cachedOnly, cost, modules, factLimit }) 
         sourceNote: null,
       },
       test.database,
+      now,
     );
 
     const client = mode === 'broken' ? forgetfulClient() : cachingClient({ cachedOnly, cost });
@@ -313,6 +325,7 @@ async function runTurn({ fixture, mode, cachedOnly, cost, modules, factLimit }) 
                 sourceNote: null,
               },
               test.database,
+              now,
             )
           ).memoryFacts;
 

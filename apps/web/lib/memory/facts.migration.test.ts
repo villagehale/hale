@@ -1,7 +1,7 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createTestDb, seedChild, seedFamily, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 
 /**
  * MEM-3 — "one live fact per key", enforced by Postgres rather than by five
@@ -123,8 +123,22 @@ describe('migration 0084 — one live fact per key', () => {
     const noah = await seedChild(db.database, familyId, 'Noah', 84);
     await db.database.insert(schema.familyMemoryFacts).values([
       // Same key, different children — two different truths, both still true.
-      { familyId, childId: ella, factType: 'routine', factKey: 'bedtime', factValue: { at: '19:00' }, confidence: 1 },
-      { familyId, childId: noah, factType: 'routine', factKey: 'bedtime', factValue: { at: '20:00' }, confidence: 1 },
+      {
+        familyId,
+        childId: ella,
+        factType: 'routine',
+        factKey: 'bedtime',
+        factValue: { at: '19:00' },
+        confidence: 1,
+      },
+      {
+        familyId,
+        childId: noah,
+        factType: 'routine',
+        factKey: 'bedtime',
+        factValue: { at: '20:00' },
+        confidence: 1,
+      },
       // Same key, already superseded — history, not a duplicate.
       {
         familyId,
@@ -135,7 +149,14 @@ describe('migration 0084 — one live fact per key', () => {
         confidence: 1,
         validUntil: new Date('2026-01-01T00:00:00Z'),
       },
-      { familyId, childId: null, factType: 'routine', factKey: 'dinner', factValue: { at: '18:00' }, confidence: 1 },
+      {
+        familyId,
+        childId: null,
+        factType: 'routine',
+        factKey: 'dinner',
+        factValue: { at: '18:00' },
+        confidence: 1,
+      },
     ]);
 
     await db.applyMigration(MIGRATION);

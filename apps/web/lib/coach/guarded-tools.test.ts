@@ -258,8 +258,8 @@ describe('Ask Hale guard rails + family scoping', () => {
     // The handler's single teen-id lookup returns BOTH children.
     state.childrenResults = [[teen, toddler]];
     state.facts = [
-      { childId: 'teen-1', factType: 'medical', factKey: 'teen-private', factValue: 'x', confidence: 1 },
-      { childId: 'kid-1', factType: 'routine', factKey: 'nap', factValue: '1pm', confidence: 1 },
+      { childId: 'teen-1', factType: 'medical', factKey: 'bedtime-private', factValue: 'secret', confidence: 1 },
+      { childId: 'kid-1', factType: 'routine', factKey: 'bedtime', factValue: '1pm', confidence: 1 },
       { childId: null, factType: 'logistic', factKey: 'address', factValue: 'home', confidence: 1 },
     ];
     state.episodes = [
@@ -275,8 +275,8 @@ describe('Ask Hale guard rails + family scoping', () => {
       buildGuardDeps(db),
     )) as { facts: Array<{ factKey: string }>; episodes: Array<{ summary: string }> };
 
-    expect(result.facts.map((f) => f.factKey)).toEqual(['nap', 'address']);
-    expect(result.facts.map((f) => f.factKey)).not.toContain('teen-private');
+    expect(result.facts.map((f) => f.factKey)).toEqual(['bedtime']);
+    expect(result.facts.map((f) => f.factKey)).not.toContain('bedtime-private');
     expect(result.episodes.map((e) => e.summary)).toEqual(['bedtime story for toddler']);
   });
 

@@ -5,7 +5,7 @@ import { buildAskHaleTools } from '~/lib/coach/tools';
 import { buildDistillTools, buildInferenceTools } from '~/lib/cron/inference-tools';
 import { recordCheckpointDone } from '~/lib/health/reply';
 import { recordRegistrationOutcome } from '~/lib/registration/sequence/reply';
-import { createTestDb, seedChild, seedFamily, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { closeFacts, writeFact } from './facts';
 
 /**
@@ -78,7 +78,12 @@ describe('coach save_memory (ask-hale)', () => {
     const save = toolNamed(buildAskHaleTools(db.database, TURN_AT), 'save_memory');
 
     await save.handler(
-      { factType: 'preference', factKey: 'park', factValue: { name: 'Trinity Bellwoods' }, confidence: 0.75 },
+      {
+        factType: 'preference',
+        factKey: 'park',
+        factValue: { name: 'Trinity Bellwoods' },
+        confidence: 0.75,
+      },
       ctx(familyId),
     );
 
@@ -128,7 +133,13 @@ describe('memory inferencer save_memory', () => {
     const observedAt = '2026-03-06T14:00:00.000Z';
 
     await save.handler(
-      { factType: 'logistic', factKey: 'daycare_start', factValue: { at: 'Sept' }, confidence: 0.9, observedAt },
+      {
+        factType: 'logistic',
+        factKey: 'daycare_start',
+        factValue: { at: 'Sept' },
+        confidence: 0.9,
+        observedAt,
+      },
       ctx(familyId),
     );
 
@@ -190,7 +201,12 @@ describe('chat distiller save_child_fact', () => {
     const { familyId } = await seedFamily(db.database);
     const ella = await seedChild(db.database, familyId, 'Ella', 30);
     const save = toolNamed(buildDistillTools(db.database, RUN_AT), 'save_child_fact');
-    const args = { category: 'routines' as const, factKey: 'bedtime', childId: ella, confidence: 0.9 };
+    const args = {
+      category: 'routines' as const,
+      factKey: 'bedtime',
+      childId: ella,
+      confidence: 0.9,
+    };
 
     await save.handler({ ...args, summary: 'down at 7' }, ctx(familyId));
     const second = (await save.handler({ ...args, summary: 'down at 7:30' }, ctx(familyId))) as {
@@ -350,8 +366,9 @@ describe('closeFacts — retiring a fact by id', () => {
     const { familyId } = await seedFamily(db.database);
     const spared = await seedLive(familyId, 'dinner_at_six');
 
-    expect(await closeFacts(db.database, { factIds: [], closedAt: CLOSED_AT, supersededBy: null }))
-      .toEqual({ closedFactIds: [], alreadyClosedFactIds: [] });
+    expect(
+      await closeFacts(db.database, { factIds: [], closedAt: CLOSED_AT, supersededBy: null }),
+    ).toEqual({ closedFactIds: [], alreadyClosedFactIds: [] });
     expect((await factById(spared)).validUntil).toBeNull();
   });
 });

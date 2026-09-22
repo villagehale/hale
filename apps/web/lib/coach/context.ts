@@ -1,13 +1,14 @@
-import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
 import {
-  ageInMonths,
   type CompanionView,
-  companionForChild,
-  deriveStage,
   FAMILY_STAGES,
   type FamilyStage,
+  ageInMonths,
+  companionForChild,
+  deriveStage,
 } from '@hale/types';
+import { and, desc, eq, isNull, or } from 'drizzle-orm';
+import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
 import type { TranscriptMessage } from './conversation';
 
 /**
@@ -115,7 +116,12 @@ function redactEpisodesForTeens(
 ): MemoryEpisodeContext[] {
   return episodes.map((e) =>
     e.childId !== null && stageByChild.get(e.childId) === 'teenager'
-      ? { childId: null, occurredAt: e.occurredAt, episodeType: e.episodeType, summary: TEEN_EPISODE_PLACEHOLDER }
+      ? {
+          childId: null,
+          occurredAt: e.occurredAt,
+          episodeType: e.episodeType,
+          summary: TEEN_EPISODE_PLACEHOLDER,
+        }
       : e,
   );
 }
@@ -245,6 +251,11 @@ export interface AgentContext {
   stages: FamilyStage[];
   memoryFacts: MemoryFactContext[];
   recentEpisodes: MemoryEpisodeContext[];
+  /**
+   * Compact one-pager for this turn. `unavailable` means the assembler failed
+   * and `text` is empty — the turn continues without invented memory.
+   */
+  memoryBrief: MemoryBrief;
   /** The most recent turns of THIS conversation, verbatim and bounded. */
   transcript: TranscriptMessage[];
   /** A digest of the turns compaction dropped, or null when the whole thread fits. */
@@ -257,8 +268,11 @@ export interface AgentContext {
   sourceNote: SourceNoteContext | null;
 }
 
-function toChildContext(row: { id: string; name: string; dateOfBirth: string }): ChildContext {
-  const stage = deriveStage(row.dateOfBirth);
+function toChildContext(
+  row: { id: string; name: string; dateOfBirth: string },
+  now: Date,
+): ChildContext {
+  const stage = deriveStage(row.dateOfBirth, now);
   if (stage === 'teenager') {
     return { id: row.id, stage, name: null, ageMonths: null, teenRedacted: true };
   }
@@ -266,7 +280,7 @@ function toChildContext(row: { id: string; name: string; dateOfBirth: string }):
     id: row.id,
     stage,
     name: row.name,
-    ageMonths: ageInMonths(row.dateOfBirth),
+    ageMonths: ageInMonths(row.dateOfBirth, now),
     teenRedacted: false,
   };
 }
@@ -370,7 +384,7 @@ export async function loadAgentContext(
     throw new Error(`loadAgentContext: no family row for ${input.familyId}`);
   }
 
-  const children = childRows.map(toChildContext);
+  const children = childRows.map((row) => toChildContext(row, now));
   const presentStages = new Set(children.map((c) => c.stage));
   const stages = FAMILY_STAGES.filter((s) => presentStages.has(s));
 
@@ -416,6 +430,8 @@ export async function loadAgentContext(
     childRows.map((c) => [c.id, deriveStage(c.dateOfBirth, now)]),
   );
 
+  const memoryBrief = await assembleMemoryBrief(database, input.familyId, now);
+
   return {
     parentName: parentRows[0]?.name ?? null,
     location: { city: family.city, province: family.province, country: family.country },
@@ -433,6 +449,7 @@ export async function loadAgentContext(
       })),
       stageByChild,
     ),
+    memoryBrief,
     recentEpisodes: redactEpisodesForTeens(
       episodeRows.map((r) => ({
         childId: r.childId,

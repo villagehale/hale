@@ -53,7 +53,7 @@ export function memorySynthesisApplies(): boolean {
  * re-nags. An allowlist also means the next mechanical writer is excluded by DEFAULT,
  * where a blocklist would leave it one merge away from that same re-nag.
  */
-const SYNTHESIS_WRITERS = ['ask-hale', 'memory_inferencer', 'chat_distiller'] as const;
+export const SYNTHESIS_WRITERS = ['ask-hale', 'memory_inferencer', 'chat_distiller'] as const;
 
 /**
  * Rule A's writer, and it is ONE of the three — narrower than the set Rule B elects
@@ -124,8 +124,7 @@ export interface SynthesisCronResult {
   applied: boolean;
   families: number;
   results: Array<
-    | { familyId: string; result: FamilySynthesisResult }
-    | { familyId: string; error: string }
+    { familyId: string; result: FamilySynthesisResult } | { familyId: string; error: string }
   >;
 }
 
@@ -411,7 +410,10 @@ export async function runMemorySynthesis(
   const results: SynthesisCronResult['results'] = [];
   for (const familyId of familyIds) {
     try {
-      results.push({ familyId, result: await runFamilySynthesis(database, familyId, now, applied) });
+      results.push({
+        familyId,
+        result: await runFamilySynthesis(database, familyId, now, applied),
+      });
     } catch (err) {
       results.push({ familyId, error: err instanceof Error ? err.message : String(err) });
     }

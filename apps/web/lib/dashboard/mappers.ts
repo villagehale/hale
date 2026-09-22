@@ -1,8 +1,8 @@
 import type { ContentProvenance, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import type { EntryTone } from '~/components/hale/tone';
-import { dayKeyOf, formatDayHeading, formatTime } from '~/lib/format/datetime';
-import { targetLink, targetNoun, trailVerb, verbTone } from '~/lib/trail/verbs';
+import type { EntryTone } from '../../components/hale/tone';
+import { dayKeyOf, formatDayHeading, formatTime } from '../format/datetime';
+import { targetLink, targetNoun, trailVerb, verbTone } from '../trail/verbs';
 
 export type AuditLogEntry = typeof schema.auditLog.$inferSelect;
 
