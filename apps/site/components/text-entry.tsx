@@ -4,7 +4,6 @@ import { LandingCta } from '~/components/landing-cta';
 import { LogoMark } from '~/components/logo-mark';
 import { QrCode } from '~/components/qr-code';
 import { TextEntryAnalytics } from '~/components/text-entry-analytics';
-import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
@@ -13,9 +12,12 @@ import { CONTACT_CARD_PATH } from '~/lib/contact-card';
 import { CONTACT_EMAIL, INTAKE_PREFILL, buildSmsHref, buildWaHref } from '~/lib/text-entry';
 
 /**
- * The /text entry surface (VIL-240 · M5) — what a QR card, a poster, a
+ * The /text conversion column (VIL-240 · M5) — what a QR card, a poster, a
  * forwarded referral, or the site's own CTAs open. Persona-led and thin: one
- * thing to do, no account, no form, no site chrome.
+ * thing to do, no account, no form. The page (app/[locale]/text/page.tsx)
+ * wraps this in the shared SiteHeader and SiteFooter; the turtle lockup lives
+ * there, the same assets the landing wears. This column does not draw a
+ * second wordmark.
  *
  * THE PICKER GATE: the channel chooser exists only while WhatsApp is actually
  * live (`whatsappNumber` validates). Until the Twilio WhatsApp sender is
@@ -227,22 +229,19 @@ export function TextEntry({
   ) : null;
 
   return (
-    <main
-      id="main"
-      tabIndex={-1}
-      className="shell flex min-h-dvh max-w-[44rem] flex-col justify-center py-16 sm:py-20"
-    >
+    <section className="shell max-w-[44rem] pt-10 pb-16 sm:pt-16 sm:pb-24">
       <TextEntryAnalytics
         deviceHint={platform}
         channelsLive={live ? (whatsappNumber ? 'sms+whatsapp' : 'sms') : 'none'}
       />
 
       <div className="rise rise-1">
-        <Wordmark className="text-spruce" />
         {picker && <HandoffVisual primary={primary} />}
         {/* Highest-intent surface: display face, not the base sans. 566 headline
-            until WhatsApp is live — the chooser copy is a picker, not a CTA. */}
-        <h1 className="v4-display mt-6 text-[clamp(2rem,6.5vw,3.25rem)]">
+            until WhatsApp is live — the chooser copy is a picker, not a CTA.
+            The margin only appears under the handoff tile; otherwise the
+            section padding is the gap under the shared header. */}
+        <h1 className={`v4-display text-[clamp(2rem,6.5vw,3.25rem)]${picker ? ' mt-6' : ''}`}>
           {t(picker ? 'chooserHeadline' : 'headline')}
         </h1>
         <p className="mt-6 text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
@@ -343,6 +342,6 @@ export function TextEntry({
         </a>
         .{live && <> {t('termsLine')}</>}
       </p>
-    </main>
+    </section>
   );
 }

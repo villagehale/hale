@@ -684,7 +684,9 @@ describe('the wordmark is drawn art, not set type', () => {
       'landing/v4/landing-v4',
     ].map((name) => readFileSync(fileURLToPath(new URL(`../components/${name}.tsx`, import.meta.url)), 'utf8'));
     const drawn = components.flatMap((source) => [...source.matchAll(/<Wordmark\b/g)]);
-    expect(drawn).toHaveLength(5);
+    // /text no longer draws its own mark. The shared header (site-header) is
+    // the lockup on that page, same turtle tile and wordmark as the landing.
+    expect(drawn).toHaveLength(4);
     for (const source of components) {
       expect([...source.matchAll(/<span[^>]*>\s*Hale\s*<\/span>/g)], 'a typed mark survives').toEqual([]);
     }
