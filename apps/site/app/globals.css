@@ -2234,6 +2234,17 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     font-size: clamp(2rem, 5vw, 3.4rem);
     color: var(--color-ink);
   }
+  /* Sleep / solids / potty. Under the planner H2: body face, no amber, no
+   * display size. The words are unchanged. */
+  .v4-subhead {
+    max-width: 36ch;
+    font-family: var(--font-body);
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    line-height: 1.35;
+    color: var(--color-spruce);
+  }
   .v4-lede {
     margin-top: 1.4rem;
     max-width: 46ch;
@@ -2327,7 +2338,15 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     line-height: 0.95;
   }
 
-  /* The named towns the radar watches — glass pills, non-interactive. */
+  /* One counted coverage line on the home radar. Not a link. */
+  .v4-coverage {
+    max-width: 46ch;
+    font-size: 1.02rem;
+    line-height: 1.5;
+    color: var(--color-slate-green);
+  }
+
+  /* Named towns — glass pills. Home no longer uses them; /for-centres still does. */
   .v4-pills { display: flex; flex-wrap: wrap; gap: 0.55rem; }
   .v4-pill {
     padding: 0.42rem 0.9rem;

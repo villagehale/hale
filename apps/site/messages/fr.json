@@ -158,13 +158,14 @@
     "contrast": [
       {
         "title": "Sans moi",
-        "body": "Vous réglez une alarme à 6 h 55 et vous ouvrez les onglets. Les places ouvrent à 7 h, et les bonnes sont parties à 7 h 02. Ratez la session municipale à 54 $ et le privé coûte environ douze fois plus — et certaines villes donnent aux résidents une longueur d’avance de quatre jours à deux semaines."
+        "body": "Vous tenez l’année vous-même. Chaque matin d’inscription, chaque chrono des listes d’attente, et ce qui se donne vraiment près de vos enfants."
       },
       {
         "title": "Avec moi",
-        "body": "Vous répondez OUI une fois. Je fais la matinée avec vous, et votre lien est dans votre main avant l’ouverture."
+        "body": "Je tiens cette veille. Je trouve ce qu’il y a, le lien de votre ville est prêt la veille au soir, et je demande comment ça s’est passé."
       }
     ],
+    "coverageLine": "Dans {count} municipalités du Grand Toronto.",
     "watched": [
       {
         "title": "Cours de natation",
