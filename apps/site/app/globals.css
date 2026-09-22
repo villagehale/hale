@@ -2240,6 +2240,17 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     font-size: clamp(2rem, 5vw, 3.4rem);
     color: var(--color-ink);
   }
+  /* Sleep / solids / potty. Under the planner H2: body face, no amber, no
+   * display size. The words are unchanged. */
+  .v4-subhead {
+    max-width: 36ch;
+    font-family: var(--font-body);
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    line-height: 1.35;
+    color: var(--color-spruce);
+  }
   .v4-lede {
     margin-top: 1.4rem;
     max-width: 46ch;

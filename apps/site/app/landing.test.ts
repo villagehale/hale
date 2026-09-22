@@ -480,17 +480,22 @@ describe('landing — parenting coaching: the answer, the plan, the check-in', (
     expect(text).not.toContain('Three days later');
   });
 
-  it('rides below the helpers as a compact band — no rail, no hero-scale heading', () => {
-    // Boardy: sleep/solids/potty pulls attention off the wedge. It keeps every
-    // word it had; what it loses is the weight — the card rail and the .v4-h2
-    // display rung that made it read as a second product.
+  it('rides below the helpers as a compact band — no rail, no display H2', () => {
+    // Sleep/solids/potty keeps every word. It is not a second product headline:
+    // not an H2, not the display face, not the amber accent on the planner spine.
     const html = render();
     const band =
       html.match(/<p class="v4-eyebrow">When you ask me something[\s\S]*?<\/section>/)?.[0] ?? '';
     expect(band, 'the coaching band must render').toContain('Where I stop');
+    expect(visibleText(band)).toContain('Sleep, solids, potty — answered, then planned.');
+    expect(band).toContain('class="v4-subhead');
+    expect(band).not.toContain('<h2');
     expect(band).not.toContain('v4-cardgrid');
     expect(band).not.toContain('v4-h2');
-    // Positive control: a hero-scale H2 is still what the section ABOVE it wears.
+    expect(band).not.toContain('v4-display');
+    expect(band).not.toContain('v4-accent');
+    // Positive control: the planner spine above it is still the display H2.
+    expect(html).toContain('A planner for the year,');
     expect(html).toContain('class="v4-display v4-h2 mt-4"');
   });
 

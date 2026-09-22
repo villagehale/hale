@@ -315,21 +315,18 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       </section>
 
       {/*
-        ── Coaching — the questions that aren't scheduling ───────────────────
-        Demoted, not dropped. It kept every word it had, and lost the weight:
-        it sat above the helpers with a .v4-h2 and a card rail, which read as a
-        second product competing with the wedge the page is actually sold on.
-        Now it is one band below the registration story — eyebrow, a heading a
-        rung under the section H2s, the lede, and the three beats as rows rather
-        than cards. No rail, so nothing here scrolls sideways on a phone either.
+        ── Coaching — under the planner spine, not a second product ─────────
+        The words stay. The heading does not: it is not an H2, not the display
+        face, and not the amber accent the planner headline wears. A subhead
+        under "A planner for the year".
       */}
-      <section className="shell py-12 sm:py-20 lg:py-28">
+      <section className="shell py-8 sm:py-12">
         <p className="v4-eyebrow">{t('coachingEyebrow')}</p>
-        <h2 className="v4-display mt-3 text-[clamp(1.45rem,2.6vw,1.9rem)] text-ink">
+        <h3 className="v4-subhead mt-3">
           {t('coachingH2a')}
           {accentSeparator(locale)}
-          <span className="v4-accent">{t('coachingH2Accent')}</span>
-        </h2>
+          {t('coachingH2Accent')}
+        </h3>
         <p className="v4-lede">{t('coachingLede')}</p>
         <div className="v4-panel v4-glass mt-5 sm:mt-8">
           <ol className="grid gap-5 sm:grid-cols-3 sm:gap-8">
