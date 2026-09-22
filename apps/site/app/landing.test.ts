@@ -341,10 +341,11 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     // prose guess. City names are not a home door to /text; /for-centres still
     // lists them.
     expect(text).toContain(`${MUNICIPALITY_COUNT} municipalities`);
-    expect(text).toContain(`Across ${MUNICIPALITY_COUNT} cities in the GTA.`);
+    expect(text).toContain(`Across ${MUNICIPALITY_COUNT} municipalities in the GTA.`);
+    expect(text).not.toContain('cities in the GTA');
     expect(html).not.toContain('class="v4-pill');
     const coverage = html.match(/<p class="v4-coverage[^"]*">([\s\S]*?)<\/p>/)?.[1] ?? '';
-    expect(coverage).toBe(`Across ${MUNICIPALITY_COUNT} cities in the GTA.`);
+    expect(coverage).toBe(`Across ${MUNICIPALITY_COUNT} municipalities in the GTA.`);
     expect(coverage).not.toContain('<a');
     // A name that existed only as a pill. The thread still names Halton Hills.
     expect(text).not.toContain('East Gwillimbury');

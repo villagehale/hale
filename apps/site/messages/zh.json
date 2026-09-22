@@ -154,7 +154,7 @@
     "consentLine": "我来建议，我来准备。我来问进展如何。不会代订。件件有据可查，没有你的同意，什么都不会发生。",
     "watchEyebrow": "真正要紧的那一段",
     "watchH2Accent": "我早就醒着。",
-    "watchLede": "{count} 个城镇，每一份日历，都不用你来守。",
+    "watchLede": "{count} 个市镇，每一份日历，都不用你来守。",
     "contrast": [
       {
         "title": "没有我的时候",
@@ -165,7 +165,7 @@
         "body": "这场守望我来做。我去找有什么，开放前一晚市政链接就备好，事后再问进展如何。"
       }
     ],
-    "coverageLine": "覆盖大多伦多地区 {count} 座城市。",
+    "coverageLine": "覆盖大多伦多地区 {count} 个市镇。",
     "watched": [
       {
         "title": "游泳课",

@@ -165,7 +165,7 @@
         "body": "Je tiens cette veille. Je trouve ce qu’il y a, le lien de votre ville est prêt la veille au soir, et je demande comment ça s’est passé."
       }
     ],
-    "coverageLine": "Dans {count} villes du Grand Toronto.",
+    "coverageLine": "Dans {count} municipalités du Grand Toronto.",
     "watched": [
       {
         "title": "Cours de natation",

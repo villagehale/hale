@@ -146,7 +146,16 @@ describe('the registration loop renders in every locale', () => {
         '{count}',
         String(MUNICIPALITY_COUNT),
       );
+      const lede = landingString(locale, 'watchLede').replace(
+        '{count}',
+        String(MUNICIPALITY_COUNT),
+      );
+      const noun = { en: 'municipalities', fr: 'municipalités', zh: '市镇' }[locale];
       expect(text).toContain(coverage);
+      expect(text).toContain(lede);
+      expect(coverage).toContain(noun);
+      expect(lede).toContain(noun);
+      expect(coverage).not.toMatch(/cities|villes|城市/);
       expect(html).not.toContain('{count}');
       // The sell-out pitch and the one-YES execute line stay off every locale.
       for (const banned of [
