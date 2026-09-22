@@ -175,6 +175,9 @@ export const AUDIT_VERBS = [
   'email_unsubscribe_received',
   'parent_email_captured',
   'parent_name_captured',
+  'google_given_name_held',
+  'google_given_name_released',
+  'parent_name_asked',
   'channel_sms.calendar_drafted',
   // ── proactive nudges + the watch offer ──────────────────────────────────
   'proactive_nudge_sent',
@@ -583,6 +586,17 @@ const VERBS: Record<AuditVerb, Verb> = {
   // is: it is a write to their account rather than a message, so the trail should show
   // it beside the other things that changed.
   parent_name_captured: { sentence: 'you told Hale what to call you', family: 'done' },
+  // The Google given name is NOT in the sentence. The trail must not speak a name
+  // the parent has not confirmed.
+  google_given_name_held: {
+    sentence: 'Hale noted a name from Google, still waiting on your yes',
+    family: 'note',
+  },
+  google_given_name_released: {
+    sentence: 'you set aside the name from Google',
+    family: 'done',
+  },
+  parent_name_asked: { sentence: 'Hale asked what to call you', family: 'note' },
   email_unsubscribe_received: { sentence: 'you unsubscribed from an email', family: 'done' },
   'channel_sms.calendar_drafted': {
     sentence: 'your text became a calendar change, waiting on your yes',
@@ -853,7 +867,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   // "your co-parent texted Hale" was wrong for the first (it was the parent) and
   // presumptuous for the second (they have not consented to anything yet, and may say
   // no). The row says which conversation it belongs to; channel_messages says who.
-  co_parent_sms_inbound: { sentence: 'a message came in about your co-parent invite', family: 'note' },
+  co_parent_sms_inbound: {
+    sentence: 'a message came in about your co-parent invite',
+    family: 'note',
+  },
   co_parent_sms_outbound: { sentence: 'Hale replied about your co-parent invite', family: 'note' },
   // Departure, read by BOTH parents from the one trail, so neither sentence may take a
   // side or name the person who left: the co-parent sees their own leaving, the parent
@@ -1019,7 +1036,8 @@ const VERBS: Record<AuditVerb, Verb> = {
   // issued it and to nobody else - no broker holds it (the connector audit row carries
   // the same fact as data, integrations/token-vault.ts tokenCustody).
   integration_connected: {
-    sentence: 'you connected an account - Hale keeps its keys encrypted and never hands them to another service',
+    sentence:
+      'you connected an account - Hale keeps its keys encrypted and never hands them to another service',
     family: 'done',
   },
   integration_revoked: {

@@ -10,6 +10,12 @@ import {
   loadFamilyTextRecipients,
 } from '~/lib/channel/family-recipients';
 import {
+  type ParentCallNameState,
+  decideParentCallName,
+  deliverParentCallNameLine,
+  loadParentCallName,
+} from '~/lib/channel/identity/parent-call-name';
+import {
   readWindows as readRegistrationWindows,
   readCandidates as readVillageCandidates,
 } from '~/lib/channel/intake/radar';
@@ -233,6 +239,18 @@ export interface NudgeRunDeps {
    * family and parent ids (lib/channel/thread.ts).
    */
   threadMessage: typeof threadProactiveMessage;
+  /**
+   * Whether this parent still needs a call-name, and whether Hale already asked.
+   *
+   * REQUIRED (rule #11). A sweep that could be assembled without it would either
+   * ask inside the find itself — spending the nudge cap and burying the line — or
+   * never ask a family whose first radar was empty. The absence of a name is a
+   * state this returns, not a missing dependency.
+   */
+  loadParentCallName(
+    database: Database,
+    input: { familyId: string; parentUserId: string },
+  ): Promise<ParentCallNameState>;
   client: AgentClient | null;
 }
 
@@ -340,6 +358,11 @@ export function dedupeKeyFor(
  * runtime one. */
 function assertNever(value: never): never {
   throw new Error(`nudge: unhandled kind ${JSON.stringify(value)}`);
+}
+
+/** A find the parent can act on. Not a care question, not a health checkpoint. */
+function isFindNudge(kind: Nudge['kind']): boolean {
+  return kind === 'registration' || kind === 'weather_swap' || kind === 'weekday_dropin';
 }
 
 /**
@@ -619,6 +642,38 @@ async function runForFamily(
     });
     if (firstMessageId === null) firstMessageId = messageId;
     sent += 1;
+
+    // A FIND is the value moment the name question waits for, when the opening
+    // radar had nothing to show. Weekday-care and health checkpoints are questions
+    // of their own and do not earn this ask. A failure here does not unsend the find.
+    if (isFindNudge(nudge.kind)) {
+      try {
+        const callName = await deps.loadParentCallName(database, {
+          familyId: family.familyId,
+          parentUserId: recipient.parentUserId,
+        });
+        const nameLine = decideParentCallName({ ...callName, isWin: true });
+        if (nameLine.kind !== 'none') {
+          await deliverParentCallNameLine(
+            database,
+            {
+              familyId: family.familyId,
+              parentUserId: recipient.parentUserId,
+              to,
+              now,
+              body: nameLine.body,
+              templateKey: nameLine.templateKey,
+            },
+            { transport: deps.transport, threadMessage: deps.threadMessage },
+          );
+        }
+      } catch (err) {
+        console.error(
+          { err, familyId: family.familyId },
+          'nudge: parent name ask failed (find already sent)',
+        );
+      }
+    }
   }
 
   // ONCE PER HOUSEHOLD, not once per number: both ledgers below record a fact about the
@@ -801,5 +856,6 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     recordCheckupOffer: (database, input) =>
       recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
     threadMessage: threadProactiveMessage,
+    loadParentCallName,
   };
 }

@@ -25,6 +25,7 @@ interface MemberRow {
   name: string | null;
   email: string;
   role: 'primary_parent' | 'co_parent' | 'extended' | 'service';
+  googleGivenName?: string | null;
 }
 
 /**
@@ -236,6 +237,8 @@ describe('assembleFamilyExport', () => {
     expect(doc.children).toHaveLength(1);
     expect(doc.children[0]?.name).toBe('Mika');
     expect(doc.members.primary?.email).toBe('ana@example.com');
+    expect(doc.members.primary?.name).toBe('Ana');
+    expect(doc.unconfirmedCallNames).toEqual([]);
     expect(doc.savedActivities).toEqual([]);
     expect(doc.assistantConnections).toEqual([]);
     // Present and EMPTY, never absent: a right-to-access copy that simply omits a
@@ -243,6 +246,39 @@ describe('assembleFamilyExport', () => {
     // not look".
     expect(doc.registrationPreparation).toEqual([]);
     expect(doc.watchedSpots).toEqual([]);
+  });
+
+  it('exports an unconfirmed Google given name apart from the confirmed call name', async () => {
+    const { db } = fakeDb({
+      family: FAMILY,
+      children: [],
+      members: [
+        {
+          name: null,
+          email: 'ana@example.com',
+          role: 'primary_parent',
+          googleGivenName: 'Bea',
+        },
+        {
+          name: 'Sam',
+          email: 'sam@example.com',
+          role: 'co_parent',
+          googleGivenName: 'Samuel',
+        },
+      ],
+    });
+
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+    });
+
+    expect(doc.members.primary?.name).toBeNull();
+    expect(doc.members.coParent?.name).toBe('Sam');
+    expect(doc.unconfirmedCallNames).toEqual([
+      { role: 'primary_parent', givenName: 'Bea' },
+      { role: 'co_parent', givenName: 'Samuel' },
+    ]);
   });
 
   it('exports what Hale holds about a registration morning — and never the course link', async () => {
@@ -531,7 +567,7 @@ describe('assembleFamilyExport', () => {
    * them, which is exactly why an access copy that omitted them would be wrong: a parent
    * would have no way to see what Hale kept, or to ask for it to go.
    */
-  it('includes the evening check-in cadence and this parent\'s own day notes', async () => {
+  it("includes the evening check-in cadence and this parent's own day notes", async () => {
     const { db } = fakeDb({
       family: FAMILY,
       children: [],

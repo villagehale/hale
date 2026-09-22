@@ -18,8 +18,7 @@ import {
 } from '~/lib/channel/caregiver/route';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
-import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
-import { parentNeedsName } from '~/lib/channel/identity/name-reply';
+import { maybeSendParentCallName } from '~/lib/channel/identity/parent-call-name';
 import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
@@ -61,7 +60,6 @@ import {
   HELP_REPLY_BY_LANGUAGE,
   INTAKE_COPARENT_ASK_TEMPLATE_KEY,
   type IntakeGap,
-  PARENT_CALL_NAME_ASK,
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
   START_ACK_BY_LANGUAGE,
   STOP_ACK_BY_LANGUAGE,
@@ -1135,7 +1133,7 @@ async function provision(
     familyId,
     parentUserId: userId,
     language,
-    send: (body) => sendAndRecord(database, ctx, body, deps, [], PARENT_NAME_ASK_TEMPLATE_KEY),
+    send: (body, templateKey) => sendAndRecord(database, ctx, body, deps, [], templateKey),
   });
   await sendYearConnectorCards(
     database,
@@ -1404,15 +1402,8 @@ async function handleWatchReply(
         familyId: session.familyId as string,
         parentUserId: session.userId as string,
         language,
-        send: (body) =>
-          sendAndRecord(
-            database,
-            ctx,
-            body,
-            deps,
-            recorded.transcript,
-            PARENT_NAME_ASK_TEMPLATE_KEY,
-          ),
+        send: (body, templateKey) =>
+          sendAndRecord(database, ctx, body, deps, recorded.transcript, templateKey),
       })
     : false;
   const connectorOffer: ConnectorOfferLabel | 'not_offered' = earned
@@ -1469,12 +1460,13 @@ function assentAck(language: ReplyLanguage): { body: string; asked: boolean } {
 }
 
 /**
- * "What should I call you?", its own text, after the turtle card.
+ * The locked call-name line, its own text, after the turtle card.
  *
- * The line is fixed (PR #689). The composer is not called. A French reply skips
- * the English line and says so. A parent who already has a name is not asked.
- * A lookup that throws is logged and does not hold the inbox or co-parent asks
- * (rule #11).
+ * "What should I call you?" when there is no safe Google given name, and
+ * "Can I call you {first}?" when there is. The composer is not called. A French
+ * reply skips the English line. A parent who already has a name, or who was
+ * already asked, is not asked again. A lookup that throws is logged and does
+ * not hold the inbox or co-parent asks (rule #11).
  */
 async function askParentCallName(
   database: Database,
@@ -1482,20 +1474,24 @@ async function askParentCallName(
     familyId: string;
     parentUserId: string;
     language: ReplyLanguage;
-    send: (body: string) => Promise<unknown>;
+    send: (body: string, templateKey: string) => Promise<unknown>;
   },
 ): Promise<boolean> {
-  if (args.language === 'fr') {
-    console.info(
-      { familyId: args.familyId },
-      'intake: skipped the English name ask on a French reply',
-    );
-    return false;
-  }
   try {
-    if (!(await parentNeedsName(database, args.parentUserId))) return false;
-    await args.send(PARENT_CALL_NAME_ASK);
-    return true;
+    return await maybeSendParentCallName(
+      database,
+      {
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        // Year-open (and a later earned watch reply) already chose this moment.
+        // An empty first radar still asks here. A later find asks only if this did not.
+        isWin: true,
+        language: args.language,
+      },
+      async (body, templateKey) => {
+        await args.send(body, templateKey);
+      },
+    );
   } catch (err) {
     console.error(
       { familyId: args.familyId, err: err instanceof Error ? err.constructor.name : 'unknown' },

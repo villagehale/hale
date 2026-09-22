@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, smallint, timestamp, index } from 'drizzle-orm/pg-core';
+import { index, pgTable, smallint, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 export const users = pgTable(
   'users',
@@ -11,6 +11,13 @@ export const users = pgTable(
      * as an error (rule #8 boundary, not a masked null). */
     email: text('email').unique(),
     name: text('name'),
+    /**
+     * An UNCONFIRMED given name read from Google userinfo. Parent-facing copy
+     * (SMS, greetings, the coach, intros) reads `name` only. This column is the
+     * candidate behind "Can I call you {first}?" and is cleared when the parent
+     * says yes (copied into `name`) or no. Never a phone number, never invented.
+     */
+    googleGivenName: text('google_given_name'),
     locale: text('locale').notNull().default('en-CA'),
     timezone: text('timezone').notNull().default('America/Toronto'),
     units: text('units').notNull().default('metric'),

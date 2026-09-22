@@ -1,4 +1,5 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import type { Database } from '@hale/db';
+import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import {
   connectedNoticeLabel,
@@ -6,15 +7,18 @@ import {
   sendConnectorConnectedText,
 } from '~/lib/channel/connect/connected-notice';
 import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
+import { holdGoogleGivenName } from '~/lib/channel/identity/parent-call-name';
+import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { db } from '~/lib/db';
 import { resolveUserIdForUser } from '~/lib/family';
 import { type ConnectState, verifyConnectState } from '~/lib/integrations/connect-state';
-import { appBaseUrl } from '~/lib/cron/email-compliance';
 import {
   CONNECTOR_SCOPES,
+  GOOGLE_PROFILE_SCOPE,
   connectorRedirectUri,
   exchangeCodeForTokens,
 } from '~/lib/integrations/google-oauth';
+import { readGoogleGivenName } from '~/lib/integrations/google-profile';
 import { saveConnection } from '~/lib/integrations/store';
 
 // Node runtime: node:crypto (state verify), fetch (token exchange), Drizzle.
@@ -117,10 +121,15 @@ export async function GET(req: NextRequest) {
     // one would silently hold power we never asked the parent to consent to).
     const scopes = (tokens.scope ?? '').split(' ').filter(Boolean);
     const expected = CONNECTOR_SCOPES[bound.provider];
-    const readonlyUniverse = new Set(Object.values(CONNECTOR_SCOPES).flat());
+    // Profile is optional. Calendar-only (or mail-only, files-only) still connects.
+    // Anything outside the connector scopes plus that one profile scope is broader
+    // than what we asked, and is stored nowhere.
+    const allowed = new Set<string>([
+      ...Object.values(CONNECTOR_SCOPES).flat(),
+      GOOGLE_PROFILE_SCOPE,
+    ]);
     const grantedOk =
-      expected.every((sc) => scopes.includes(sc)) &&
-      scopes.every((sc) => readonlyUniverse.has(sc));
+      expected.every((sc) => scopes.includes(sc)) && scopes.every((sc) => allowed.has(sc));
     if (!grantedOk) {
       return back('denied', surface, bound.provider);
     }
@@ -131,6 +140,12 @@ export async function GET(req: NextRequest) {
       scopes,
       tokens,
     }));
+    await rememberGoogleGivenName(database, {
+      familyId: bound.familyId,
+      userId: bound.userId,
+      scopes,
+      accessToken: tokens.accessToken,
+    });
   } catch {
     return back('error', surface, bound.provider);
   }
@@ -159,4 +174,41 @@ export async function GET(req: NextRequest) {
   }
 
   return back(bound.provider);
+}
+
+/**
+ * Hold a Google given name when the parent actually granted profile, and name
+ * every way that does not happen. Never throws: the connection is already stored,
+ * and a profile miss must not turn a successful connect into `connect=error`.
+ */
+async function rememberGoogleGivenName(
+  database: Database,
+  input: { familyId: string; userId: string; scopes: string[]; accessToken: string },
+): Promise<void> {
+  if (!input.scopes.includes(GOOGLE_PROFILE_SCOPE)) {
+    console.info({ familyId: input.familyId }, 'google profile: not granted');
+    return;
+  }
+  if (!input.accessToken) {
+    console.info({ familyId: input.familyId }, 'google profile: no access token');
+    return;
+  }
+  try {
+    const given = await readGoogleGivenName(input.accessToken);
+    if (!given) {
+      console.info({ familyId: input.familyId }, 'google profile: no usable given name');
+      return;
+    }
+    const held = await holdGoogleGivenName(database, {
+      familyId: input.familyId,
+      userId: input.userId,
+      givenName: given,
+    });
+    console.info({ familyId: input.familyId, held }, 'google profile: given name hold');
+  } catch (err) {
+    console.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'google profile: hold failed',
+    );
+  }
 }

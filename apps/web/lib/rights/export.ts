@@ -35,6 +35,13 @@ export interface FamilyExportDocument {
   };
   children: FamilyBasicsView['children'];
   members: FamilyMembersView;
+  /**
+   * Google given names Hale is holding and has not confirmed. Separate from
+   * {@link FamilyExportDocument.members}, whose `name` is the confirmed call name
+   * only — an unconfirmed candidate must not read as what Hale calls this parent.
+   * Primary and co-parent only.
+   */
+  unconfirmedCallNames: { role: 'primary_parent' | 'co_parent'; givenName: string }[];
   /** The family's private village saves ("I'm interested" bookmarks) — user-
    * generated rows, so the right-to-access copy must include them. Title only:
    * the candidate title is the family-facing fact; ids stay internal. */
@@ -248,6 +255,7 @@ export async function assembleFamilyExport(
       name: schema.users.name,
       email: schema.users.email,
       role: schema.familyMembers.role,
+      googleGivenName: schema.users.googleGivenName,
     })
     .from(schema.familyMembers)
     .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
@@ -255,6 +263,12 @@ export async function assembleFamilyExport(
 
   const basics = toFamilyBasics(familyRow, childRows, now);
   const members = toFamilyMembersView(memberRows);
+  const unconfirmedCallNames = memberRows.flatMap((row) => {
+    if (row.role !== 'primary_parent' && row.role !== 'co_parent') return [];
+    const givenName = row.googleGivenName?.trim();
+    if (!givenName) return [];
+    return [{ role: row.role, givenName }];
+  });
   const trail = await loadTrail(database, familyId);
 
   const saveRows = await database
@@ -491,6 +505,7 @@ export async function assembleFamilyExport(
     },
     children: basics.children,
     members,
+    unconfirmedCallNames,
     savedActivities,
     assistantConnections,
     registrationPreparation,

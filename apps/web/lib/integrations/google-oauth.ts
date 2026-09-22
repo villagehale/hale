@@ -18,6 +18,14 @@ export const CONNECTOR_SCOPES: Record<ConnectorProvider, readonly string[]> = {
   gdrive: ['https://www.googleapis.com/auth/drive.readonly'],
 };
 
+/**
+ * Optional, and deliberately NOT a member of {@link CONNECTOR_SCOPES}. Those stay
+ * `*.readonly` and are what a connection is required to include. Profile is asked
+ * beside them so Hale can confirm a given name; a parent who declines it still
+ * connects, and the name question falls open.
+ */
+export const GOOGLE_PROFILE_SCOPE = 'https://www.googleapis.com/auth/userinfo.profile';
+
 /** The connector provider enum values — the single list the sync poller iterates. */
 export const CONNECTOR_PROVIDERS = Object.keys(CONNECTOR_SCOPES) as ConnectorProvider[];
 
@@ -101,7 +109,7 @@ export function buildGoogleAuthUrl(opts: {
     client_id: clientId(),
     redirect_uri: opts.redirectUri,
     response_type: 'code',
-    scope: CONNECTOR_SCOPES[opts.provider].join(' '),
+    scope: [...CONNECTOR_SCOPES[opts.provider], GOOGLE_PROFILE_SCOPE].join(' '),
     access_type: 'offline', // issue a refresh token for background sync
     prompt: 'consent', // force re-consent so the refresh token is (re)issued
     // Deliberately NOT include_granted_scopes: each connector's grant must be scoped

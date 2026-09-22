@@ -14,8 +14,15 @@
  * absence is the state, so there is nothing to keep in sync with it.
  */
 
-/** Intake's ask, appended to the consent acknowledgment. Name only. */
+/** The open preference ask: "What should I call you?" Name only. */
 export const PARENT_NAME_ASK_TEMPLATE_KEY = 'parent_name_ask';
+
+/**
+ * The confirm ask: "Can I call you {first}?" Sent instead of the open ask when a
+ * Google given name is already on file. A yes copies it into `users.name`; a no
+ * is answered by {@link PARENT_NAME_ASK_TEMPLATE_KEY}.
+ */
+export const PARENT_NAME_CONFIRM_TEMPLATE_KEY = 'parent_name_confirm';
 
 /** The intros sweep's gap-fill. Name, email, or both — one ask either way, because a
  * parent holding two questions from Hale about themselves cannot tell them apart. */
