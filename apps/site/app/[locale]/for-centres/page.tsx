@@ -86,10 +86,8 @@ export default async function ForCentresPage({ params }: PageProps) {
   const ways = t.raw('ways') as Record<WayId, Way>;
   const facts = t.raw('facts') as Fact[];
   const faq = t.raw('faq') as FaqItem[];
-  // The landing's OWN first beat, not a second demo written beside it: this page
-  // borrows the exchange the homepage opens on, so the two cannot drift.
-  const [firstBeat] = landing.raw('heroLoop') as { rows: ThreadRow[] }[];
-  const thread = firstBeat?.rows ?? [];
+  // The landing's own hero exchange, not a second demo written beside it.
+  const thread = landing.raw('heroThread') as ThreadRow[];
   const speaker = (dir: ThreadRow['dir']) =>
     dir === 'in' ? landing('bubbleHale') : landing('bubbleYou');
 
@@ -152,7 +150,7 @@ export default async function ForCentresPage({ params }: PageProps) {
           {/* The thread is the one loud thing on the page, so it gets the wider
               half of the band and everything around it stays quiet. */}
           <div className="v4-thread glass-panel lg:col-span-7">
-            <p className="v4-thread-cap">{landing('heroLoopCap')}</p>
+            <p className="v4-thread-cap">{landing('heroThreadCap')}</p>
             {thread.map((row, i) => (
               <p key={`${i}-${row.dir}`} className={`v4-bubble v4-bubble-${row.dir}`}>
                 <span className="sr-only">{speaker(row.dir)} </span>

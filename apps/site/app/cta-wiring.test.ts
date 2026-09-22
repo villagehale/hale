@@ -227,13 +227,7 @@ describe('the desktop path is wired the same way', () => {
     // text_entry) — a chip reappearing there would be a Stanley-grammar break,
     // not a coverage win.
     expect(copyChips.length).toBeGreaterThanOrEqual(10);
-    for (const placement of [
-      'text_entry',
-      'faq',
-      'about',
-      'pricing_band',
-      'toronto_swim_dates',
-    ]) {
+    for (const placement of ['text_entry', 'faq', 'about', 'pricing_band', 'toronto_swim_dates']) {
       expect(chipPlacements, `the walk must reach the ${placement} chip`).toContain(placement);
     }
     expect(chipPlacements).not.toContain('hero');
@@ -247,9 +241,7 @@ describe('every composer anchor names its channel', () => {
   // cta_whatsapp_click carries channel=whatsapp. The attribute is the wiring
   // made visible, same as data-cta itself.
   it('stamps data-cta-channel="sms" on every sms: anchor', () => {
-    const unstamped = smsAnchors.filter(
-      (anchor) => !anchor.tag.includes('data-cta-channel="sms"'),
-    );
+    const unstamped = smsAnchors.filter((anchor) => !anchor.tag.includes('data-cta-channel="sms"'));
     expect(unstamped.map((anchor) => `${anchor.route} — ${anchor.tag}`)).toEqual([]);
     // Positive control shared with the suite: smsAnchors is non-empty above.
   });
@@ -338,7 +330,7 @@ describe('the money pages report engagement, not just clicks', () => {
     );
     expect(registration).toContain('<LandingScrollAnalytics page={guide.placement} />');
     const landing = code(
-      readFileSync(join(SITE_ROOT, 'components/landing/v5/landing-v5.tsx'), 'utf8'),
+      readFileSync(join(SITE_ROOT, 'components/landing/v4/landing-v4.tsx'), 'utf8'),
     );
     expect(landing).toContain('<LandingScrollAnalytics />');
   });

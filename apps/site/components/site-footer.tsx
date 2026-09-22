@@ -1,5 +1,5 @@
+import { FooterThemeSwitch } from '~/components/landing/v4/theme-switch';
 import { LanguageSelect } from '~/components/language-select';
-import { FooterThemeSwitch } from '~/components/landing/v5/theme-switch';
 import { LogoMark } from '~/components/logo-mark';
 import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';
@@ -64,7 +64,11 @@ export function SiteFooter({ locale = routing.defaultLocale }: { locale?: Locale
       <div className="shell py-12 lg:py-16">
         <div className="flex flex-col justify-between gap-12 lg:flex-row lg:gap-16">
           <div className="lg:max-w-[22rem]">
-            <a href={localeHref(locale, '/')} className="flex items-center gap-2.5" aria-label="Hale, home">
+            <a
+              href={localeHref(locale, '/')}
+              className="flex items-center gap-2.5"
+              aria-label="Hale, home"
+            >
               <LogoMark size={28} />
               <Wordmark className="text-spruce" />
             </a>

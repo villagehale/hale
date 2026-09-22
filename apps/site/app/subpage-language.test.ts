@@ -166,12 +166,11 @@ describe('the pulled-up headline', () => {
   });
 
   it('leaves the homepage on its own hero display, not the subpage reveal', () => {
-    // Home sets its hero display large (.v4-display / .v4-hero-h1), not the
-    // subpage pulled-up reveal. The two never share the pull-word device — only
-    // the amber accent. The rung outlived the shore it was drawn over: v5 keeps
-    // the same two classes on a hero with no photograph under it.
+    // Home is the liquid-glass shore: its hero display is set large
+    // (.v4-display / .v4-hero-h1), not the subpage pulled-up reveal. The two
+    // never share the pull-word device — only the amber accent.
     const landing = readFileSync(
-      fileURLToPath(new URL('../components/landing/v5/landing-v5.tsx', import.meta.url)),
+      fileURLToPath(new URL('../components/landing/v4/landing-v4.tsx', import.meta.url)),
       'utf8',
     );
     expect(landing).not.toContain('pull-word');
@@ -202,12 +201,26 @@ describe('/about — the paragraph that reads itself', () => {
     // Split into characters, and every one of them still in the markup: the
     // paragraph is a reveal over real content, never content the reveal creates.
     expect(rawText(html)).toContain(
-      'Hale is built by Anzhe Dong — a father, husband, and founder who spent years shipping production agentic systems.',
+      'Hale is built by Barton Dong — a father, husband, and founder.',
     );
+    expect(rawText(html)).not.toContain('agentic');
+    expect(rawText(html)).not.toContain('Anzhe');
     expect(rawText(html)).toContain(
       'So he built the thing he kept wishing someone would text him.',
     );
     expect(html).toContain('char-reveal-char');
+  });
+
+  it('names Barton Dong in every locale, and drops the agentic line', () => {
+    for (const locale of ['en', 'fr', 'zh'] as const) {
+      const about = JSON.parse(
+        readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
+      ).About as { metaDescription: string; founderStory: string };
+      const copy = `${about.metaDescription}\n${about.founderStory}`;
+      expect(about.metaDescription).toContain('Barton Dong');
+      expect(about.founderStory).toContain('Barton Dong');
+      expect(copy).not.toMatch(/Anzhe|agentic|agentique|智能体/);
+    }
   });
 
   it('indexes every character against the paragraph’s length', () => {
