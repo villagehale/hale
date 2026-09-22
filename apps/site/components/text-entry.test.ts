@@ -242,13 +242,18 @@ describe('TextEntry — the exchange is the hero', () => {
   });
 
   it('receives Hale’s pinned greeting, byte-for-byte, in the received bubble', () => {
-    const greeting = messages('en').Text.greeting as string;
-    expect(bubbleText(liveHtml, 'in')).toBe(greeting);
-    expect(greeting).toBe(
-      'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.',
-    );
-    expect(greeting).not.toContain('parenting chaos');
-    expect(greeting).not.toContain('little one');
+    const locked =
+      'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.';
+    expect(bubbleText(liveHtml, 'in')).toBe(locked);
+    expect(messages('en').Text.greeting).toBe(locked);
+    // The warm door is the message the parent sends. Only the preview tracks Hale #1.
+    expect(bubbleText(liveHtml, 'out')).toBe(INTAKE_PREFILL);
+    expect(messages('en').Text.sentGloss).toBe(INTAKE_PREFILL);
+    expect(INTAKE_PREFILL).toBe("Hey Hale, what's going on?");
+    expect(bubbleText(liveHtml, 'in')).not.toBe(bubbleText(liveHtml, 'out'));
+    expect(bubbleText(liveHtml, 'in')).not.toContain('Reply with your kids');
+    expect(bubbleText(liveHtml, 'in')).not.toContain('parenting chaos');
+    expect(bubbleText(liveHtml, 'in')).not.toContain('little one');
   });
 
   it('leaves the CTA as the only navy fill: the sent bubble is a message, not a button', () => {
@@ -588,15 +593,19 @@ describe('TextEntry (the other two locales)', () => {
   });
 
   it('previews Hale’s real first reply per locale — FR gets the French twin, ZH shows the English under a translated label', () => {
+    const locked =
+      'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.';
     const fr = render({ source: null, locale: 'fr' });
-    // The FR greeting is copy.ts verbatim, GSM-7 fold included (l&#x27;age).
-    expect(fr).toContain('Bonjour, je suis Hale.');
-    expect(fr).toContain('l&#x27;age de vos enfants');
+    expect(bubbleText(fr, 'in')).toBe(messages('fr').Text.greeting);
+    expect(bubbleText(fr, 'in')).toContain('Bonjour, je suis Hale.');
+    expect(bubbleText(fr, 'in')).toContain("l'age de vos enfants");
+    expect(bubbleText(fr, 'out')).toBe(INTAKE_PREFILL);
     // ZH: copy.ts has no Chinese greeting, and the page never invents Hale
-    // speech — the bubble stays English, the frame label says so in Chinese.
+    // speech — the bubble stays the locked English Hale #1, the frame label says so in Chinese.
     const zh = render({ source: null, locale: 'zh' });
     expect(zh).toContain('（英文原文）');
-    expect(zh).toContain('I help plan your kids');
+    expect(bubbleText(zh, 'in')).toBe(locked);
+    expect(bubbleText(zh, 'out')).toBe(INTAKE_PREFILL);
   });
 });
 

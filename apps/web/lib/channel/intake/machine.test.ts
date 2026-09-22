@@ -228,6 +228,10 @@ describe('intake · happy path', () => {
 
     expect(await text(fake, transport, deps, 'hi')).toEqual({ status: 'greeted' });
     expect(transport.bodies()[0]).toBe(HALE_GREETING_EN);
+    expect(transport.bodies()[0]).toBe(
+      'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.',
+    );
+    expect(transport.bodies()[0]).not.toContain(COLD_START_ASK);
     expect(transport.bodies()[0]).not.toContain('an AI that quietly runs the family week');
     expect(transport.bodies()[0]).not.toMatch(/I'm an AI/i);
     // v2: the disclosure is IN the greeting, so the first reply is ONE paragraph and
@@ -2078,7 +2082,10 @@ describe('intake · VIL-332 first-hello cannot die after createSession', () => {
 
     expect(result).toEqual({ status: 'greeted' });
     expect(transport.bodies()).toEqual([HALE_GREETING_EN]);
-    expect(transport.bodies()[0]).toContain('Names, ages, and postal code');
+    expect(transport.bodies()[0]).toBe(
+      'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.',
+    );
+    expect(transport.bodies()[0]).not.toContain(COLD_START_ASK);
   });
 
   it('still treats a carrier retry as a no-op once outbound exists', async () => {

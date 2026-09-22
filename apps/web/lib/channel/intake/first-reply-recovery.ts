@@ -20,8 +20,9 @@ import { FOUNDER_PAIR_SESSION_IDS } from './sitting-reminder';
  * with last_provider_id and then left no outbound.
  *
  * Not VIL-324's 8am Still here. That reminder is next-morning only and too
- * late for a parent who just texted. Copy is greeting() / COLD_START_ASK —
- * the Designer lock, venue variant when the session already has a venue.
+ * late for a parent who just texted. Copy is greeting(). The no-venue
+ * English line is the locked Hale #1, not COLD_START_ASK appended. Venue
+ * variant when the session already has a venue.
  * Never SITTING_SESSION_REMINDER.
  *
  * Pre-family outbound lives on the session transcript, not channel_messages

@@ -87,6 +87,9 @@ describe('the preview bubble is Hale’s CURRENT greeting, byte-for-byte', () =>
   const source = greetingFromSource();
 
   it('EN: en.json Text.greeting matches copy.ts to the byte', () => {
+    expect(source.en).toBe(
+      'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.',
+    );
     expect(messages('en').Text.greeting).toBe(source.en);
   });
 
