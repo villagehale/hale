@@ -68,11 +68,7 @@
       },
       {
         "dir": "in",
-        "text": "Got it. Stouffville’s fall registration already opened, and the winter dates aren’t posted yet. Say YES and I’ll watch for them, then send your link the night before and again fifteen minutes out."
-      },
-      {
-        "dir": "out",
-        "text": "YES"
+        "text": "Here’s what’s on for your kids this year:\n1. Parent & tot swim (ages 2 - 4) - Saturdays 9:15 a.m., off Stouffville’s rec guide.\n2. Preschool playtime (ages 18 months - 4 years) - drop-in, off the library’s page.\n3. Little movers (ages 2 - 5) - the community centre lists it, but the winter times aren’t posted yet."
       }
     ],
     "heroFounding": "Founding families join free — and keep the founding rate for good.",
@@ -240,11 +236,7 @@
           },
           {
             "dir": "in",
-            "text": "Three near you. Parent & tot swim, ages 2 - 4, Saturdays 9:15 a.m., off the town’s rec guide. Preschool playtime, ages 18 months - 4 years, drop-in, off the library’s page. Little movers, ages 2 - 5 — the community centre lists it, but the winter times aren’t posted yet. Want me to keep an eye on all of this for you? (how I handle your family’s info: villagehale.com/privacy)"
-          },
-          {
-            "dir": "out",
-            "text": "YES"
+            "text": "Here’s what’s on for your kids this year:\n1. Parent & tot swim (ages 2 - 4) - Saturdays 9:15 a.m., off the town’s rec guide.\n2. Preschool playtime (ages 18 months - 4 years) - drop-in, off the library’s page.\n3. Little movers (ages 2 - 5) - the community centre lists it, but the winter times aren’t posted yet."
           }
         ]
       },
@@ -446,6 +438,23 @@
       "free": "Text Hale, rec dates watched, answers, and the founding rate.",
       "plus": "For when you want more of the year in view: reminders and drafts, every child, as those parts roll out.",
       "family": "For the household: the same watch for every child, plus concierge and priority support as they roll out."
+    },
+    "tierNames": {
+      "free": "Free",
+      "plus": "Plus",
+      "family": "Family"
+    },
+    "paidFeatures": {
+      "plus": [
+        "Everything in Free",
+        "Reminders and drafts, as they roll out",
+        "More of the year watched with you"
+      ],
+      "family": [
+        "Everything in Plus",
+        "A household view of the year, as it rolls out",
+        "Concierge + priority support"
+      ]
     },
     "freeFeatures": ["Text Hale", "Rec dates watched", "Answers", "Founding rate"]
   },
@@ -813,6 +822,6 @@
   },
   "Jsonld": {
     "orgDescription": "Hale is a planner for your kids’ year — it finds what’s on near your kids, watches city registration windows, and comes back to ask how it went. Every family’s data stays in Canada.",
-    "appDescription": "A planner for your kids’ year: Hale watches registration dates across the GTA and comes back to ask how it went. Receipts for everything, and your family’s data never leaves Canada."
+    "appDescription": "Find what’s on. Hear how it went. A planner for your kids’ year: Hale finds what’s on near your kids, watches registration dates across the GTA, and comes back to ask how it went. Receipts for everything, and your family’s data never leaves Canada."
   }
 }

@@ -1,8 +1,11 @@
+import { PLAN_DISPLAY, PLAN_TIERS_ORDERED } from '@hale/types';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PLAN_DISPLAY, PLAN_TIERS_ORDERED } from '@hale/types';
 import { chromeCta } from '~/lib/site/chrome-cta.js';
+import en from '../messages/en.json';
+import fr from '../messages/fr.json';
+import zh from '../messages/zh.json';
 import { PricingSection } from './pricing-section.js';
 
 /**
@@ -20,10 +23,67 @@ afterEach(() => {
 });
 
 describe('PricingSection (landing pricing)', () => {
+  it('keeps the English names and feature lines equal to PLAN_DISPLAY', () => {
+    // The English card reads the message bundle, not PLAN_DISPLAY directly, so
+    // this is the pin that stops the site drifting from the app.
+    expect(en.PricingSection.tierNames).toEqual({
+      free: PLAN_DISPLAY.free.name,
+      plus: PLAN_DISPLAY.plus.name,
+      family: PLAN_DISPLAY.family.name,
+    });
+    expect(en.PricingSection.paidFeatures.plus).toEqual([...PLAN_DISPLAY.plus.features]);
+    expect(en.PricingSection.paidFeatures.family).toEqual([...PLAN_DISPLAY.family.features]);
+    expect(en.PricingSection.freeFeatures).toEqual([...PLAN_DISPLAY.free.features]);
+  });
+
   it('renders all three tiers with their display names', () => {
     expect(html).toContain(PLAN_DISPLAY.free.name);
     expect(html).toContain(PLAN_DISPLAY.plus.name);
     expect(html).toContain(PLAN_DISPLAY.family.name);
+  });
+
+  it('renders French tier names and paid features, not the English list', () => {
+    const french = renderToStaticMarkup(createElement(PricingSection, { locale: 'fr' }));
+    expect(french).toContain('Gratuit');
+    expect(french).toContain('Famille');
+    expect(french).toContain('Tout ce qu’il y a dans Gratuit');
+    expect(french).toContain('Tout ce qu’il y a dans Plus');
+    expect(french).toContain('Rappels et brouillons, à mesure qu’ils arrivent');
+    expect(french).toContain('La vue du foyer sur l’année, à mesure qu’elle arrive');
+    expect(french).toContain('Conciergerie et soutien prioritaire');
+    // Free-tier bullets stay the French marketing list.
+    expect(french).toContain('Textez Hale');
+    expect(french).toContain('Dates d’inscription surveillées');
+    expect(french).not.toContain('Everything in Free');
+    expect(french).not.toContain('Everything in Plus');
+    expect(french).not.toContain('Rec dates watched');
+    expect(french).not.toContain('Founding rate');
+    expect(french).not.toContain('>Free<');
+    expect(french).not.toContain('>Family<');
+    expect(fr.PricingSection.tierNames).toEqual({
+      free: 'Gratuit',
+      plus: 'Plus',
+      family: 'Famille',
+    });
+  });
+
+  it('renders Chinese tier names and paid features, not the English feature list', () => {
+    // Plus and Family stay the names the rest of the zh pricing page already uses.
+    // Free does not: the page says 免费, and the card was still saying Free.
+    const chinese = renderToStaticMarkup(createElement(PricingSection, { locale: 'zh' }));
+    expect(chinese).toContain('>免费<');
+    expect(chinese).toContain('免费档的全部');
+    expect(chinese).toContain('提醒和草稿，随这些部分陆续上线');
+    expect(chinese).toContain('Plus 的全部');
+    expect(chinese).toContain('专属礼宾和优先支持');
+    expect(chinese).toContain('给 Hale 发短信');
+    expect(chinese).not.toContain('Everything in Free');
+    expect(chinese).not.toContain('Rec dates watched');
+    expect(chinese).not.toContain('Founding rate');
+    expect(chinese).not.toContain('>Free<');
+    expect(zh.PricingSection.tierNames.free).toBe('免费');
+    expect(zh.PricingSection.tierNames.plus).toBe('Plus');
+    expect(zh.PricingSection.tierNames.family).toBe('Family');
   });
 
   it('shows both monthly and annual prices for the paid tiers', () => {

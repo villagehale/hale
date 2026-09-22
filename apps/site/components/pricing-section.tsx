@@ -1,13 +1,15 @@
-import { PLAN_DISPLAY, PLAN_TIERS_ORDERED, type PlanTier, formatPlanPrice } from '@hale/types';
+import { PLAN_TIERS_ORDERED, type PlanTier, formatPlanPrice } from '@hale/types';
 import { Check } from 'lucide-react';
 import { LandingCta } from '~/components/landing-cta';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { chromeCta } from '~/lib/site/chrome-cta';
 
-// Marketing presentation per tier — the panel tint. The NAMES, PRICES, and
-// FEATURES come from the shared source of truth (@hale/types · PLAN_DISPLAY) so
-// they never drift from the app; the "do more" framing lines are localized copy.
+// Marketing presentation per tier — the panel tint. Prices for the paid tiers
+// stay the CAD strings from formatPlanPrice. Names and feature lines are
+// localized in PricingSection messages: English is pinned equal to PLAN_DISPLAY
+// in pricing-section.test.ts, and fr/zh must not render the English list.
+// Free-tier features stay marketing-only (`freeFeatures`), not the portal catalog.
 const TIER_PANEL = {
   free: 'glass-panel',
   plus: 'glass-panel numbered-card-marked',
@@ -21,9 +23,10 @@ const TIER_PANEL = {
  * is the one front door the site chrome offers — texting Hale — because there is no
  * other way in: these buttons pointed at the app's /onboarding wizard, which F14
  * deleted, so a pricing page's only action 308'd back to the homepage.
- * Names/prices render from @hale/types so they never drift. Free-tier
- * features are marketing-only: SMS, rec dates, answers, founding rate —
- * not the Village/Companion bullets the portal catalog still carries.
+ * Names and feature lines come from the locale bundle. The free price word is
+ * the tier name (`Gratuit`, `免费`), not the English `Free` that formatPlanPrice
+ * returns. Free-tier features are marketing-only: SMS, rec dates, answers,
+ * founding rate — not the Village/Companion bullets the portal catalog still carries.
  */
 export function PricingSection({ locale = routing.defaultLocale }: { locale?: Locale }) {
   const t = getTranslator(locale, 'PricingSection');
@@ -32,7 +35,16 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
     plus: t('tierLines.plus'),
     family: t('tierLines.family'),
   };
+  const tierNames: Record<PlanTier, string> = {
+    free: t('tierNames.free'),
+    plus: t('tierNames.plus'),
+    family: t('tierNames.family'),
+  };
   const freeFeatures = t.raw('freeFeatures') as string[];
+  const paidFeatures: Record<Exclude<PlanTier, 'free'>, string[]> = {
+    plus: t.raw('paidFeatures.plus') as string[],
+    family: t.raw('paidFeatures.family') as string[],
+  };
   const cta = chromeCta(locale);
   return (
     <section id="pricing" className="shell pb-20 lg:pb-28">
@@ -62,22 +74,21 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
        * the number is the ladder position, not decoration. */}
       <ol className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
         {PLAN_TIERS_ORDERED.map((tier, i) => {
-          const plan = PLAN_DISPLAY[tier];
           const isFree = tier === 'free';
-          const features = isFree ? freeFeatures : plan.features;
+          const features = isFree ? freeFeatures : paidFeatures[tier];
           return (
             <li key={tier} className={`${TIER_PANEL[tier]} numbered-card`}>
               <div className="numbered-card-head">
-                <span className="eyebrow">{plan.name}</span>
+                <span className="eyebrow">{tierNames[tier]}</span>
                 <span className="numbered-card-num">0{i + 1}</span>
               </div>
               {/* The price is what a pricing card is titled by — the tier's name is
-               * the label above it. */}
+               * the label above it. The free tier's price word is that same name. */}
               <h3
                 className="mt-5"
                 style={{ fontSize: 'clamp(1.5rem, 2.6vw, 1.9rem)', lineHeight: 1.1 }}
               >
-                {formatPlanPrice(tier, 'monthly')}
+                {isFree ? tierNames.free : formatPlanPrice(tier, 'monthly')}
               </h3>
               {isFree ? null : (
                 <p className="meta mt-2">

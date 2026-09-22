@@ -313,6 +313,70 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
     expect(bundles.en.About.cta).not.toMatch(/no form/i);
   });
 
+  it('keeps HomeMeta, page meta, and Jsonld on the kids-year lines', () => {
+    const h1 = {
+      en: 'Find what’s on. Hear how it went.',
+      fr: 'Trouvez ce qu’il y a. Écoutez comment ça va.',
+      zh: '看看有什么。听听怎么样。',
+    } as const;
+    const sub = {
+      en: 'What’s worth doing with the kids.',
+      fr: 'Ce qui vaut la peine avec les enfants.',
+      zh: '值得和孩子一起做的事。',
+    } as const;
+    const banned = [
+      'village your family lost',
+      'passive multi-agent',
+      'multi-agent',
+      'family ai',
+      'activity finder',
+      'chief of staff',
+      'assistant',
+    ];
+
+    function metaStrings(value: unknown, path: string[]): string[] {
+      if (typeof value === 'string') {
+        const key = path[path.length - 1] ?? '';
+        const root = path[0] ?? '';
+        if (
+          root === 'HomeMeta' ||
+          root === 'Jsonld' ||
+          key === 'metaTitle' ||
+          key === 'metaDescription'
+        ) {
+          return [value];
+        }
+        return [];
+      }
+      if (Array.isArray(value)) {
+        return value.flatMap((item, index) => metaStrings(item, [...path, String(index)]));
+      }
+      if (value && typeof value === 'object') {
+        return Object.entries(value).flatMap(([key, inner]) => metaStrings(inner, [...path, key]));
+      }
+      return [];
+    }
+
+    for (const locale of ['en', 'fr', 'zh'] as const) {
+      const bundle = bundles[locale] as {
+        HomeMeta: { description: string; twitterDescription: string };
+        Text: { metaDescription: string };
+        Jsonld: { appDescription: string };
+      };
+      const blob = metaStrings(bundles[locale], []).join('\n').toLowerCase();
+      for (const phrase of banned) {
+        expect(blob, `${locale} meta must not say "${phrase}"`).not.toContain(phrase);
+      }
+      expect(bundle.HomeMeta.description.startsWith(h1[locale])).toBe(true);
+      expect(bundle.HomeMeta.twitterDescription).toContain(sub[locale]);
+      // zh sets the two locked sentences solid; en and fr take a word space.
+      const textMeta =
+        locale === 'zh' ? `${h1[locale]}${sub[locale]}` : `${h1[locale]} ${sub[locale]}`;
+      expect(bundle.Text.metaDescription).toBe(textMeta);
+      expect(bundle.Jsonld.appDescription.startsWith(h1[locale])).toBe(true);
+    }
+  });
+
   it('renders the locked About.cta on /about', async () => {
     const html = renderToStaticMarkup(
       await AboutPage({ params: Promise.resolve({ locale: 'en' as const }) }),
