@@ -66,7 +66,19 @@ export type WelcomeCardOutcome =
 
 export async function sendWelcomeContactCard(
   database: Database,
-  args: { familyId: string; parentUserId: string; phoneE164: string; now: Date },
+  args: {
+    familyId: string;
+    parentUserId: string;
+    phoneE164: string;
+    now: Date;
+    /**
+     * The parent just texted, and this card is the introduction on that reply.
+     * Quiet hours do not hold it: a night intake that waits until morning is how a
+     * family meets a bare number and never gets the name. The 08:00 re-drive does
+     * not pass this, so a card held earlier still waits for morning.
+     */
+    ridesReply?: boolean;
+  },
   ports: WelcomeCardPorts,
 ): Promise<WelcomeCardOutcome> {
   const { familyId, parentUserId, now } = args;
@@ -74,8 +86,9 @@ export async function sendWelcomeContactCard(
   // QUIET HOURS, before the claim: the same window the outbound chokepoint enforces
   // (outbound-gate.ts), applied here by hand because this send runs seconds after
   // provisioning — before watch consent can exist — so the full gate cannot serve it.
-  // The radar reply this rides beside is exempt by design; the extra is not.
-  if (inProactiveQuietHours(now, await parentTimeZone(database, parentUserId))) {
+  // The radar reply this rides beside is exempt by design; the extra is not, unless
+  // the caller says this card IS that reply's introduction.
+  if (!args.ridesReply && inProactiveQuietHours(now, await parentTimeZone(database, parentUserId))) {
     await database.insert(schema.channelMessages).values({
       familyId,
       parentUserId,

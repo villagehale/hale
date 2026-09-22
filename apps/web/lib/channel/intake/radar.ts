@@ -2,26 +2,17 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { type ActivityFinder, createActivityFinder } from '~/lib/channel/activity/lane';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import type { HealthChild } from '~/lib/health/match';
-import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
 import { voiceClient } from '~/lib/loop/voice/compose';
-import {
-  OPEN_NOW_MAX_AGE_DAYS,
-  latestPastCycle,
-  matchRegistrationWindows,
-  resolveMunicipalities,
-  stillOpenCycle,
-} from '~/lib/registration/match-registration-windows';
+import { activityClient } from '~/lib/pipeline/client';
+import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import type { ExtractedChild } from './extract';
-import {
-  type RadarCandidate,
-  type RadarChild,
-  type RadarDecision,
-  decideRadar,
-} from './radar-decide';
-import { type RadarMessage, composeRadarMessage, promisesFirstFind } from './radar-voice';
+import { type RadarCandidate, type RadarChild, decideYearFinds } from './radar-decide';
+import { type RadarMessage, promisesFirstFind } from './radar-voice';
+import { collectYearOpenLines, renderYearOpen, yearOpenEmptyMessage } from './year-open';
 
 /** Words too generic to prove the checkpoint reached the parent. */
 const CHECKPOINT_STOPWORDS = new Set([
@@ -109,13 +100,13 @@ function phraseSurvivedCompose(message: string, task: string): boolean {
  *
  * The seam M2 left behind, now filled. Three stages, and the split is the whole design:
  *
- *   GATHER (here)      — read what Hale knows: this family's discovered candidates, the
- *                        municipal registration windows their FSA resolves to, and the
- *                        coarse-area weather.
- *   DECIDE (pure)      — radar-decide.ts: deterministic filters, then a ranking, into a
- *                        structured decision object. No model, so it is unit-testable.
- *   COMPOSE (one call) — radar-voice.ts: the model writes the words around those facts,
- *                        and a message carrying anything else is discarded.
+ *   GATHER (here)      — this family's discovered candidates, the coarse-area weather,
+ *                        and which children are 13+ (so a teen's own session never
+ *                        rides an SMS to a parent).
+ *   DECIDE (pure)      — decideYearFinds: up to three age-fit weekend sessions.
+ *   SAY                — year-open.ts: those sessions, filled toward three by a live
+ *                        search when fewer than two are already in hand. A registration
+ *                        date is not this message. The voice model is not called.
  *
  * What it is allowed to say is bounded by what the DECIDE object contains. When that
  * object is empty — discovery has not run yet, the area has no covered municipality —
@@ -182,6 +173,11 @@ export interface RadarPayload {
    */
   weekendPickOffered: boolean;
   /**
+   * True when this text names at least one age-fit thing. A registration date is
+   * not a win. The turtle card, the inbox ask, and the co-parent ask wait on this.
+   */
+  findWon: boolean;
+  /**
    * The three rule #11 outcomes of the one turn, carried so a test and any future
    * caller can read what the log line below says. See {@link RadarMessage}: an
    * `actionMove` WITH an `actionHeld` is the compute-and-hold state the dark flag
@@ -205,6 +201,12 @@ export interface RadarDeps {
   /** The voice client, or null when voice is unavailable — then the deterministic
    * render goes out and the intake is never blocked on a model being reachable. */
   client: AgentClient | null;
+  /**
+   * Live age-fit search used when fewer than two civic finds are already in hand.
+   * Null is a named skip (`not_configured`), never a silent empty list that then
+   * gets filled with a registration date.
+   */
+  yearFinder?: ActivityFinder | null;
   now?: () => Date;
   timeZone?: string;
 }
@@ -354,173 +356,86 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       const children = toRadarChildren(input.children);
       const area = input.areaCoarse;
 
-      const [roster, candidates, windowRows, weather, suppressedCheckpointRefs] = await Promise.all(
-        [
-          readHealthRoster(deps.database, input.familyId, now),
-          readCandidates(deps.database, input.familyId),
-          area ? readWindows(deps.database, area) : Promise.resolve([]),
-          // Weather is an input, never a blocker: the port swallows its own failures, and
-          // an area we cannot place has no forecast to ask for.
-          area
-            ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
-            : Promise.resolve([]),
-          // Empty for every family this composer actually serves — they were provisioned
-          // seconds ago. Read anyway rather than assumed: the assumption is the kind that
-          // survives the code that made it true, and a checkpoint raised twice is exactly
-          // the nagging M8 exists to remove.
-          loadSuppressedCheckpointRefs(deps.database, input.familyId),
-        ],
-      );
+      // Registration windows stay readable (`readWindows`) for later nudges. They are
+      // not loaded for this message: a district date is not a substitute for an age-fit
+      // find, and a row that is in memory is a row that can leak into the text.
+      const [roster, candidates, weather] = await Promise.all([
+        readHealthRoster(deps.database, input.familyId, now),
+        readCandidates(deps.database, input.familyId),
+        // Weather is an input, never a blocker: the port swallows its own failures, and
+        // an area we cannot place has no forecast to ask for.
+        area
+          ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
+          : Promise.resolve([]),
+      ]);
 
-      const windows = area
-        ? matchRegistrationWindows({
-            windows: windowRows,
-            postal: area,
-            childrenAgesMonths: children
-              .map((child) => child.ageMonths)
-              .filter((age): age is number => age !== null),
-            now,
-          })
-        : [];
-      // Read from the SAME rows the matcher just discarded: a town whose cycle has
-      // already opened is between cycles, not off the radar, and that is a different
-      // sentence. Null for a town that has published nothing.
-      const pastCycle = area ? latestPastCycle({ windows: windowRows, postal: area, now }) : null;
-      // …and the same rows again, read as NEWS: the most recent cycle inside the age
-      // bound that a child of THIS family could still act on. No new query - one more
-      // pass over rows already in memory - and never a second rung: the decision uses
-      // whichever row this returns to build the ONE registration absence.
-      const openNow = area
-        ? stillOpenCycle({
-            windows: windowRows,
-            postal: area,
-            childrenAgesMonths: children
-              .map((child) => child.ageMonths)
-              .filter((age): age is number => age !== null),
-            now,
-            maxAgeDays: OPEN_NOW_MAX_AGE_DAYS,
-          })
-        : null;
-
-      // THE FIRST FIND IS PRE-CONSENT — the watch offer rides on this very message
-      // (machine.ts appends WATCH_OFFER to it), so health-checkpoint content may not:
-      // a vaccine flag before the parent has consented to being watched is exactly what
-      // the 2026-08-28 ads-week audit observed live, twice. The rung is dropped HERE,
-      // at the one composer that serves the intake first find, AFTER the decide so the
-      // cascade's other rungs are untouched. Nothing is marked told, so the post-consent
-      // surfaces (the 48h nudge, lib/channel/nudge/run.ts — gated on watch consent)
-      // raise the same checkpoint once consent exists. The told-marker plumbing below is
-      // typed against the unfiltered decision on purpose: it is the machinery any future
-      // POST-consent radar surface re-enables, and on this path it can only ever be null.
-      const decision: RadarDecision = {
-        ...decideRadar({
-          children,
-          candidates,
-          windows,
-          pastCycle,
-          stillOpenCycle: openNow,
-          weather,
-          teenChildIds: roster.teenChildIds,
-          healthChildren: roster.healthChildren,
-          areaCoarse: area,
-          suppressedCheckpointRefs,
-          now,
-          timeZone,
-        }),
-        checkpoint: null,
-      };
-
-      // Toronto used to short-circuit here on a Designer-locked city pin (VIL-334)
-      // whenever the pick and the window both came back null. The pin named two fixed
-      // September mornings, so the day they passed it began telling a Toronto family
-      // that registrations already gone were still to come — and, being a
-      // short-circuit, it hid the between-cycles answer that names the same town
-      // truthfully. Toronto composes from the decision like every other town.
-      const radar = await composeRadarMessage(decision, {
-        familyId: input.familyId,
-        database: deps.database,
-        client: deps.client,
-        // The first reply has NO language of its own yet - machine.ts says so where it
-        // appends the bare WATCH_OFFER rather than WATCH_OFFER_BY_LANGUAGE - so 'en' is
-        // stated here rather than defaulted inside the composer, and the French twins
-        // sit written and tested until the turn has a language to choose with.
-        language: 'en',
+      // Pre-consent. The watch offer rides on this text, so a health checkpoint may
+      // not: nothing here is marked told, and the post-consent nudge raises it later.
+      const civic = decideYearFinds({
+        children,
+        candidates,
+        windows: [],
+        pastCycle: null,
+        stillOpenCycle: null,
+        weather,
+        teenChildIds: roster.teenChildIds,
+        healthChildren: roster.healthChildren,
+        areaCoarse: area,
+        suppressedCheckpointRefs: new Set(),
+        now,
+        timeZone,
       });
-      const message = radar.body;
-
-      // Rule #11, and the dark flag's whole instrument. One line beside the
-      // checkpoint-drop warn below, which is the pattern this file already uses for
-      // exactly this class of fact. A family uuid and four enums: no PII, and a night of
-      // real intakes says which move each first reply WOULD have carried, how often the
-      // tail would not have fit, and how often the composed voice lost - before one
-      // parent sees a URL.
-      console.info('radar action line', {
+      const opened = await collectYearOpenLines({
+        civic,
+        children,
+        areaCoarse: area,
+        finder: deps.yearFinder ?? null,
         familyId: input.familyId,
-        actionMove: radar.actionMove,
-        actionHeld: radar.actionHeld,
-        voiceFallback: radar.voiceFallback,
       });
+      const message =
+        opened.lines.length > 0 ? renderYearOpen(opened.lines) : yearOpenEmptyMessage();
+      const findWon = opened.lines.length > 0;
 
-      // Launch-day review P0 (2026-08-11): the decision yielding at DECIDE is not
-      // enough — the composer samples at temperature 1 and CAN drop the checkpoint
-      // from the rendered text. A told-marker written for words the parent never
-      // read suppresses that checkpoint permanently and silently. So the marker is
-      // earned by the MESSAGE: only a ref whose task words survived composition
-      // counts as told (rule #11: the dropped case is logged, never silent).
-      const checkpointTold =
-        decision.checkpoint && checkpointSurvivedCompose(message, decision.checkpoint.task)
-          ? decision.checkpoint.ref
-          : null;
-      if (decision.checkpoint && !checkpointTold) {
-        console.warn(
-          'radar compose dropped the decided checkpoint from the text; NOT marking told - it may be raised again',
-          { ref: decision.checkpoint.ref },
-        );
-      }
-
-      // Earned by the TEXT for the told-marker's reason, one paragraph up, and for one
-      // of its own: this flag is what lets the weekday-care ask say "those are all
-      // weekend finds" about THIS send (D23). A stamp on a message that named no find
-      // is an anchor pointing at nothing.
-      const weekendPickOffered =
-        decision.weekendPick !== null &&
-        weekendPickSurvivedCompose(message, decision.weekendPick.candidateRef.title);
-      if (decision.weekendPick && !weekendPickOffered) {
-        console.warn(
-          'radar compose dropped the decided weekend pick from the text; NOT stamping the D23 anchor',
-          { candidateId: decision.weekendPick.candidateRef.id },
-        );
-      }
+      // No child name, no postal code. The finder outcome is the fact an operator
+      // needs when the first text is empty (rule #11).
+      console.info('intake year open', {
+        familyId: input.familyId,
+        findWon,
+        finder: opened.finder,
+        lines: opened.lines.length,
+      });
 
       return {
         message,
-        itemCount:
-          (decision.weekendPick ? 1 : 0) +
-          (decision.registrationLine ? 1 : 0) +
-          (decision.checkpoint ? 1 : 0),
-        followUpNeeded: decision.followUpNeeded,
-        checkpointTold,
-        weekendPickOffered,
-        // Earned by the SENT TEXT, exactly as the told-marker above now is: the composer
-        // is handed the beat as one fact among several and may leave it out, and a debt
-        // recorded for words nobody read puts this family in the overdue column for a
-        // promise Hale never made. Cheaper than the checkpoint's containment guard
-        // because the beat is a FIXED sentence — there is no paraphrase to survive.
+        itemCount: opened.lines.length,
+        followUpNeeded: !findWon,
+        // This path never decides a checkpoint, so it never marks one told.
+        checkpointTold: null,
+        // Year contents can mix a weekend session with a live search that is not a
+        // weekend find. Stamping the D23 anchor would let weekday-care say "those are
+        // all weekend finds" about a list that is the year's contents.
+        weekendPickOffered: false,
         firstFindPromised: promisesFirstFind(message),
-        actionMove: radar.actionMove,
-        actionHeld: radar.actionHeld,
-        voiceFallback: radar.voiceFallback,
+        findWon,
+        actionMove: null,
+        actionHeld: 'no_move',
+        // This reply does not call the voice model. 'no_client' is the existing name
+        // for that: the words are the year-open list, not a sampled sentence.
+        voiceFallback: 'no_client',
       };
     },
   };
 }
 
 /** The production wiring: the live database, Open-Meteo over coarse coordinates, and
- * the shared voice client (null when voice is unavailable — see composeRadarMessage). */
+ * the activity lane's web search when fewer than two civic finds are already in hand.
+ * The voice client stays on the deps for callers that still pass one; this reply does
+ * not call it. */
 export function defaultRadarComposer(database: Database): RadarComposer {
   return createRadarComposer({
     database,
     weather: createOpenMeteoWeather(),
     client: voiceClient(),
+    yearFinder: createActivityFinder(activityClient),
   });
 }

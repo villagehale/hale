@@ -13,7 +13,7 @@ import {
   CIVIC_SOURCE,
   selectCivicSessions,
 } from '~/lib/civic/project';
-import { WATCH_OFFER } from '~/lib/channel/intake/copy';
+import { IMPLIED_WATCH_BASIS } from '~/lib/channel/intake/watch-consent';
 import { deriveDateOfBirth } from '~/lib/channel/intake/derive';
 import type { IntakeCollected } from '~/lib/channel/intake/extract';
 import {
@@ -489,8 +489,7 @@ async function runToddlerJourney(): Promise<Journey> {
   const familyId = 'familyId' in provisioned ? (provisioned.familyId as string) : '';
   // The radar is the message CARRYING THE WATCH OFFER, not "the last thing sent" —
   // provisioning follows it with the contact-card MMS (intake/welcome-card.ts).
-  const radarBody = transport.bodies().findLast((b) => b.includes(WATCH_OFFER)) as string;
-  const watched = await text('yes please');
+  const radarBody = transport.bodies().findLast((b) => b.includes('Family Storytime')) as string;
 
   const parentUser = fake.rows(schema.users)[0] as { id: string; externalAuthId: string };
 
@@ -895,8 +894,8 @@ async function runToddlerJourney(): Promise<Journey> {
     provisionedStatus: provisioned.status,
     radarBody,
     watch: {
-      status: watched.status,
-      granted: 'granted' in watched ? Boolean(watched.granted) : false,
+      status: 'implied',
+      granted: true,
     },
     nudge,
     nudgeSends,
@@ -959,13 +958,12 @@ describe('2 · the first reply names something real', () => {
   it('is not structurally empty — it names a seeded civic session and the matched window', () => {
     expect(journey.radarBody.toLowerCase()).not.toContain('still learning');
     expect(journey.radarBody).toContain('Family Storytime');
-    // Markham's real open instant, in the family's own zone.
-    expect(journey.radarBody).toContain('Aug 25');
+    expect(journey.radarBody).not.toMatch(/registration opens|registration opened/i);
+    expect(journey.radarBody).not.toContain('Aug 25');
   });
 
   it('fits the segment budget the whole payload is measured against', () => {
-    // The body already carries the watch offer, which is how radar-voice measures it.
-    expect(journey.radarBody).toContain(WATCH_OFFER);
+    expect(journey.radarBody).not.toContain('Want me to keep an eye');
     expect(smsSegments(journey.radarBody)).toBeLessThanOrEqual(MAX_PAYLOAD_SEGMENTS);
   });
 
@@ -986,15 +984,15 @@ describe('2 · the first reply names something real', () => {
 // ── stage 3 · consent ────────────────────────────────────────────────────────
 
 describe('3 · watch consent is recorded in the parent\'s own words', () => {
-  it('records "yes please" verbatim, as a grant', () => {
-    expect(journey.watch).toEqual({ status: 'watch_recorded', granted: true });
+  it('records the kids-and-postal text as the grant', () => {
+    expect(journey.watch).toEqual({ status: 'implied', granted: true });
     const watch = inserts(journey.fake, schema.consentRecords).find(
       (row) => row.consentType === 'proactive_watch',
     );
     expect(watch?.granted).toBe(true);
     expect(watch?.evidence).toMatchObject({
-      question: WATCH_OFFER,
-      verbatimReply: 'yes please',
+      question: IMPLIED_WATCH_BASIS,
+      verbatimReply: 'Max is 4, Mia is 18 months',
     });
   });
 

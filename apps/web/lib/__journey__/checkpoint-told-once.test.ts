@@ -11,7 +11,7 @@ import {
   fakeNoOpenQuestions,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
-import { WATCH_OFFER } from '~/lib/channel/intake/copy';
+import { FIRST_FIND_BEAT } from '~/lib/channel/intake/radar-voice';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createRadarComposer, readCandidates, readWindows } from '~/lib/channel/intake/radar';
 import { FakeTransport } from '~/lib/channel/intake/transport';
@@ -135,8 +135,7 @@ async function runIntakeRadar(): Promise<Intake> {
   const familyId = 'familyId' in provisioned ? (provisioned.familyId as string) : '';
   // The radar is the message CARRYING THE WATCH OFFER, not "the last thing sent" —
   // provisioning follows it with the contact-card MMS (intake/welcome-card.ts).
-  const radarBody = transport.bodies().findLast((b) => b.includes(WATCH_OFFER)) as string;
-  await text('yes please');
+  const radarBody = transport.bodies().findLast((b) => b.includes(FIRST_FIND_BEAT)) as string;
 
   const childId = fake.rows(schema.children)[0]?.id as string;
   return { fake, transport, familyId, childId, radarBody };

@@ -2,7 +2,7 @@ import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { COLD_START_ASK, SITTING_SESSION_REMINDER, greeting } from './copy';
+import { HALE_GREETING_EN, SITTING_SESSION_REMINDER, greeting } from './copy';
 import { type FakeDb, makeFakeDb } from './fakes';
 import {
   type FirstReplyRecoveryDeps,
@@ -131,7 +131,10 @@ describe('runFirstReplyRecoveryCron', () => {
     const first = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
     expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0 });
     expect(transport.bodies()).toEqual([greeting(null, 'en')]);
-    expect(transport.bodies()[0]).toContain(COLD_START_ASK);
+    expect(transport.bodies()[0]).toBe(HALE_GREETING_EN);
+    expect(transport.bodies()[0]).toBe(
+      'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.',
+    );
     expect(transport.bodies()).not.toContain(SITTING_SESSION_REMINDER);
     expect(transport.sent[0]?.to).toBe(PHONE);
   });

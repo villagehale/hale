@@ -11,7 +11,6 @@ import {
   fakeRadar,
   fakeSilentAnswerComposer,
 } from '~/lib/channel/intake/fakes';
-import { WATCH_OFFER } from '~/lib/channel/intake/copy';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import {
   FOUNDER_NOTE_DECLINED_ACK,
@@ -468,7 +467,8 @@ describe("the founder's welcome note", () => {
       role: 'assistant',
       content: founderNote('Georgetown'),
     });
-    expect(familyTurns.at(0)?.content).toContain(WATCH_OFFER);
+    expect(familyTurns.at(0)?.content).toBe('RADAR');
+    expect(familyTurns.at(0)?.content).not.toContain('Want me to keep an eye');
     // And the founder's thread has his ping and his ack, and no trace of the note's
     // recipient (rule #1).
     const founderTurns = await threadTurns(founderFamilyId, founderUserId);

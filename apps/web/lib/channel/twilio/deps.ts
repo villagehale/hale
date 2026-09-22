@@ -3,7 +3,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type QueueCreateOptions, createQueueWithPolicy } from '@hale/tools-contracts';
 import { captureInboundRouted } from '~/lib/analytics/server-capture';
-import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import {
   CHANNEL_MESSAGE_RECEIVED_DLQ,
   CHANNEL_MESSAGE_RECEIVED_POLICY,
@@ -22,6 +22,7 @@ import {
   departureNoticeReaders,
 } from '~/lib/channel/coparent/departure-notice';
 import { threadProactiveMessage } from '~/lib/channel/thread';
+import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
@@ -80,7 +81,12 @@ export function buildIntakeDeps(inboundTransport: MessageTransport = 'sms'): Int
     openQuestions: (db2, input) => defaultOpenQuestionReader().open(db2, input),
     extractor: createIntakeExtractor(client),
     intentReader: createReplyIntentReader(client),
-    radar: createRadarComposer({ database, weather: createOpenMeteoWeather(), client }),
+    radar: createRadarComposer({
+      database,
+      weather: createOpenMeteoWeather(),
+      client,
+      yearFinder: createActivityFinder(activityClient),
+    }),
     ackComposer: createIntakeAckComposer(client),
     answerComposer: createIntakeAnswerComposer(client),
     identityAsk: createIdentityAskVoice(() => client),

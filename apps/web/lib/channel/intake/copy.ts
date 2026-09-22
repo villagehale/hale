@@ -1,3 +1,4 @@
+import { CONNECTOR_TRUST_LINE } from '~/lib/channel/connect/text-connect';
 import { isJoinCode } from '~/lib/channel/join/code';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { isReferralCode } from '~/lib/channel/referral/code';
@@ -447,8 +448,7 @@ export function isBareFirstHello(body: string): boolean {
 
 /** "Maya is 4", "Theo is 18 months" — a parent who skipped hello and led with
  * details. The /text page prefill is a warm hello, not details. */
-const NAME_IS_AGE =
-  /\b[A-Za-z][A-Za-z'-]{0,30}\s+is\s+\d+(?:\s*(?:months?|years?|ans|mois))?\b/i;
+const NAME_IS_AGE = /\b[A-Za-z][A-Za-z'-]{0,30}\s+is\s+\d+(?:\s*(?:months?|years?|ans|mois))?\b/i;
 
 /**
  * True when the first inbound looks like names / ages / postal — details, not a
@@ -490,27 +490,24 @@ export function posterLocation(code: string | null): string | null {
  * one word-pair: "rec mornings" was house coinage two strangers misread inside 48h;
  * "sign-up mornings" says the same thing in parent language.
  *
- * FOUNDER 2026-09-17 widened the hook from the wedge to the product. "I watch sign-up
- * mornings so they don't sneak up" named ONE job, so a stranger with no registration
- * coming read a reminder service and had no reason to answer. The sentence now names
- * the three in the order they happen — find the activity that fits, hold the sign-up
- * morning, come back and ask how it went. The 2026-09-22 door lock ends the
- * sentence there: the "parenting chaos" tail is gone, and "your little one"
- * is "your kids".
+ * SLOANE 2026-09-22. The no-venue English line is {@link HALE_GREETING_EN},
+ * byte-stable. Hale helps plan the kids' year: what's on, sign-up mornings,
+ * and how it went. Venue and postal-first keep that job in GSM-7. The French
+ * no-venue line is the planner twin of the same job.
  *
  * Two things it deliberately does NOT say. No superlative: Hale cannot verify "best",
  * so it claims fit, which it can. And no nightly check-in, which is not built —
  * "check in on how it goes" is true of the follow-ups that already send, and a first
  * text that promises a feature is a first text that lies.
  *
- * The ask is untouched. Never "an AI that quietly runs the family week". The privacy
- * link is deliberately NOT here — it rides on {@link WATCH_OFFER}, the one turn where
- * a parent is actually asked to agree to something.
+ * The no-venue English ask lives inside {@link HALE_GREETING_EN}. {@link COLD_START_ASK}
+ * is still the voice-door ask. Never "an AI that quietly runs the family week". The
+ * privacy link is not on this greeting. The separate watch pitch that used to carry
+ * it is not sent: the live find is the watch.
  *
- * COST: the longer hook puts every variant at TWO segments where the old one-job line
- * fit in one. That was the founder's budget for a first message, and it is pinned per
- * variant — longest registered venue name included — in sms-copy-encoding.test.ts. If
- * a later edit needs septets back, they come out of this sentence, never the ask.
+ * COST: the locked no-venue English line is UCS-2, because the em dashes and curly
+ * apostrophes are the lock, and it is three segments. Venue, postal-first, and
+ * French stay GSM-7 at two. Pinned in sms-copy-encoding.test.ts.
  *
  * THE VENUE VARIANT HAS NO FRENCH TWIN, and that is a decision rather than a gap. The
  * body that triggers it is the PREFILLED one a QR code wrote — "HALE LIBRARY", or
@@ -521,14 +518,21 @@ export function posterLocation(code: string | null): string | null {
  * venue. A francophone who types their own first message gets the no-venue greeting,
  * which is the one that asks for a postal code anyway.
  */
+/**
+ * No-venue English Hale #1. Sloane locked this byte for byte, including the
+ * em dashes and the curly apostrophes. Do not fold it to GSM-7.
+ */
+export const HALE_GREETING_EN =
+  'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.';
+
 export function greeting(venue: string | null, language: ReplyLanguage): string {
   if (venue) {
-    return `Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
+    return `Hi, I'm Hale. I help plan your kids' year - what's on near them, sign-up mornings, and how it went. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
   }
   if (language === 'fr') {
-    return `Bonjour, je suis Hale. Je trouve des activités qui conviennent à vos enfants, je surveille les matins d'inscription pour qu'ils ne vous échappent pas, et je prends de vos nouvelles. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
+    return `Bonjour, je suis Hale. J'aide a planifier l'annee de vos enfants - ce qui se passe près d'eux, les matins d'inscription, et comment ca s'est passé. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
   }
-  return `Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. ${COLD_START_ASK}`;
+  return HALE_GREETING_EN;
 }
 
 /**
@@ -542,7 +546,7 @@ export function greeting(venue: string | null, language: ReplyLanguage): string 
  * `replyLanguage` reads it as English whatever they speak.
  */
 export function greetingWithArea(areaCoarse: string): string {
-  return `Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
+  return `Hi, I'm Hale. I help plan your kids' year - what's on near them, sign-up mornings, and how it went. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
 }
 
 /**
@@ -662,22 +666,9 @@ export const WATCH_OFFER_BY_LANGUAGE: Record<ReplyLanguage, string> = {
  * visible. Fixed, because both of those are promises and a promise a model paraphrased
  * is a promise nobody made.
  *
- * IT NO LONGER ENDS IN A QUESTION, and that is this turn's one question budget being
- * spent somewhere better. It used to close on "what part of the week wears you out the
- * most?" — an opener whose answer went to the coach. The turn now closes on the identity
- * ask instead (machine.ts appends it), because Hale had no other moment to ask a texting
- * family what to call them: intake writes `users.name = null` and, until this changed,
- * nothing in the SMS product ever filled it in. A nameless parent is one the introduction
- * email cannot greet, which is exactly where the intros handoff was stalling.
- *
- * The two cannot stack. One message asks one question, and an ack carrying both is a
- * parent choosing which to answer — so the opener is the one that gave way: a parent who
- * texts their name back has still started the conversation that outlives intake, and it
- * arrives after the session closes and is handed to the coach exactly as before (the
- * `no_open_conversation` seam in machine.ts / twilio/inbound.ts).
- *
- * The appended ask is COMPOSED and may defer, so this sentence has to be whole on its
- * own — which it is. A deferred ask costs the name, never the acknowledgment.
+ * IT DOES NOT ASK ANYTHING. One text, one ask. The name, the inbox, and the co-parent
+ * each go out as their own later message after a real find (machine.ts). This sentence
+ * stays whole so a yes is a receipt, not a second question stapled to the first.
  */
 export const ASSENT_ACK =
   "Done - you're covered. I only text when something actually matters, and STOP always works.";
@@ -759,6 +750,75 @@ export function intakeConnectorOffer(
 ): string {
   return CONNECTOR_OFFER_BY_LANGUAGE[language](calendarUrl, gmailUrl);
 }
+
+/**
+ * The calendar card, its own text, after the call-name.
+ *
+ * One ask: the link. The bubble is short. The link unfurls as its own card
+ * (title + the trust line). The kids-year payoff is the text after it connects,
+ * not a second ask here. GSM-7.
+ */
+export const INTAKE_CALENDAR_CARD_TEMPLATE_KEY = 'intake:calendar_card';
+
+const CALENDAR_TRUST_FR = 'Je ne vois jamais votre mot de passe. Déconnectez mon agenda à tout moment.';
+
+const CALENDAR_CARD_BY_LANGUAGE: Record<ReplyLanguage, (url: string) => string> = {
+  en: (url) => `Connect your calendar: ${url} Good for 15 minutes. ${CONNECTOR_TRUST_LINE.gcal}`,
+  fr: (url) => `Connectez votre agenda : ${url} Bon pour 15 minutes. ${CALENDAR_TRUST_FR}`,
+};
+
+export function intakeCalendarCard(language: ReplyLanguage, url: string): string {
+  return CALENDAR_CARD_BY_LANGUAGE[language](url);
+}
+
+/**
+ * The Gmail card, its own text, after the calendar card.
+ *
+ * One ask: the link. Ignoring it is the skip. Same trust line as the calendar
+ * card, with this connector's disconnect words. GSM-7.
+ */
+export const INTAKE_GMAIL_CARD_TEMPLATE_KEY = 'intake:gmail_card';
+
+const GMAIL_TRUST_FR = 'Je ne vois jamais votre mot de passe. Déconnectez mon Gmail à tout moment.';
+
+const GMAIL_CARD_BY_LANGUAGE: Record<ReplyLanguage, (url: string) => string> = {
+  en: (url) =>
+    `Connect Gmail: ${url} Good for 15 minutes - ignore this to skip. ${CONNECTOR_TRUST_LINE.gmail}`,
+  fr: (url) =>
+    `Connectez Gmail : ${url} Bon pour 15 minutes - ignorez pour passer. ${GMAIL_TRUST_FR}`,
+};
+
+export function intakeGmailCard(language: ReplyLanguage, url: string): string {
+  return GMAIL_CARD_BY_LANGUAGE[language](url);
+}
+
+/**
+ * The parent's call-name, its own text, after the turtle card and before the inbox.
+ *
+ * Locked with PR #689: `What should I call you?` The Google confirm
+ * (`Can I call you {first}?`) belongs to that PR once a given name is already on
+ * file. This moment is before the inbox ask, so there is no Google name to confirm.
+ * A French watch reply does not get this English line.
+ */
+export const PARENT_CALL_NAME_ASK = 'What should I call you?';
+
+/**
+ * Last ask of intake, its own text, after the Gmail card. This is the
+ * group-text invite in the onboarding chat: the other parent on this thread.
+ * Sloane locked the English line byte for byte. The French twin asks for a
+ * number the same way, in GSM-7. A carrier group MMS is not this send. "add my
+ * partner" still mints a forwardable link when a parent types that phrase
+ * later; this text does not teach it.
+ */
+export const INTAKE_COPARENT_ASK_TEMPLATE_KEY = 'intake:coparent_ask';
+
+export const CO_PARENT_ASK =
+  'Want their other parent on this thread too? Text me a number and I’ll invite them.';
+
+export const CO_PARENT_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: CO_PARENT_ASK,
+  fr: "Vous voulez l'autre parent sur ce fil aussi? Envoyez-moi un numero et je les invite.",
+};
 
 /**
  * The CASL keyword replies. STOP gets one final confirmation and then silence; HELP gets

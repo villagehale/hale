@@ -1,13 +1,19 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { offerConnectorLinks } from '~/lib/channel/connect/offer';
+import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
-import { intakeConnectorOffer } from './copy';
+import {
+  INTAKE_CALENDAR_CARD_TEMPLATE_KEY,
+  INTAKE_GMAIL_CARD_TEMPLATE_KEY,
+  intakeCalendarCard,
+  intakeConnectorOffer,
+  intakeGmailCard,
+} from './copy';
 import type { ChannelTransport } from './transport';
 
 /**
@@ -19,11 +25,11 @@ import type { ChannelTransport } from './transport';
  * arrive in a mailbox and a calendar Hale cannot see. Asked a week later it is a cold
  * proactive message about permissions; asked here it is the next sentence.
  *
- * IT IS ITS OWN MESSAGE, the welcome card's shape and for the welcome card's reason:
- * one message asks one question, and the acknowledgment's question is already spent on
- * the name ask. It is also the EXTRA beside the reply rather than the reply itself,
- * which is why it consults quiet hours by hand — the parent's own answer is exempt at
- * 22:30, an unprompted permissions link is not.
+ * IT IS ITS OWN MESSAGE. One text asks one thing: the name ask is the message before
+ * this one, and the co-parent ask is the message after. On the consent turn the parent
+ * just replied, so that turn passes `ridesReply` and quiet hours do not hold the link.
+ * Any other caller still consults quiet hours — a cold permissions link at 22:30 is
+ * Hale making noise.
  *
  * ONE LINK PER CONNECTOR, AND BOTH GO STRAIGHT TO GOOGLE: the redeem page signs the
  * parent in and forwards them into that provider's consent, so the portal is not in the
@@ -45,6 +51,14 @@ export const INTAKE_CONNECTOR_OFFER_TEMPLATE_KEY = 'intake:connector_offer';
  * made, and the parent who wanted one can say "connect my calendar" at any time. */
 export function connectorOfferDedupeKey(familyId: string): string {
   return `${INTAKE_CONNECTOR_OFFER_TEMPLATE_KEY}:${familyId}`;
+}
+
+export function calendarCardDedupeKey(familyId: string): string {
+  return `${INTAKE_CALENDAR_CARD_TEMPLATE_KEY}:${familyId}`;
+}
+
+export function gmailCardDedupeKey(familyId: string): string {
+  return `${INTAKE_GMAIL_CARD_TEMPLATE_KEY}:${familyId}`;
 }
 
 export interface ConnectorOfferPorts {
@@ -85,6 +99,12 @@ export async function sendConnectorOffer(
     phoneE164: string;
     language: ReplyLanguage;
     now: Date;
+    /**
+     * The parent just said yes in this chat. The inbox ask is the next text in that
+     * conversation, not a later nudge and not a page on /text. Quiet hours do not
+     * hold it. Omit this and the night window still suppresses, with no re-drive.
+     */
+    ridesReply?: boolean;
   },
   ports: ConnectorOfferPorts,
 ): Promise<ConnectorOfferOutcome> {
@@ -117,12 +137,16 @@ async function offerConnector(
     phoneE164: string;
     language: ReplyLanguage;
     now: Date;
+    ridesReply?: boolean;
   },
   ports: ConnectorOfferPorts,
 ): Promise<ConnectorOfferOutcome> {
   const { familyId, parentUserId, now } = args;
 
-  if (inProactiveQuietHours(now, await parentTimeZone(database, parentUserId))) {
+  if (
+    !args.ridesReply &&
+    inProactiveQuietHours(now, await parentTimeZone(database, parentUserId))
+  ) {
     await database.insert(schema.channelMessages).values({
       familyId,
       parentUserId,
@@ -214,6 +238,147 @@ async function failClaim(database: Database, id: string, errorCode: string): Pro
 
 /** The parent's wall clock, off their own users row — post-filtered by id as every
  * reader here is. */
+/**
+ * Calendar card, then Gmail card. Two texts, one ask each. The links are how the
+ * year stays current. A failure of one is named and does not cancel the other.
+ */
+export async function sendYearConnectorCards(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    phoneE164: string;
+    language: ReplyLanguage;
+    now: Date;
+    ridesReply?: boolean;
+  },
+  ports: ConnectorOfferPorts,
+): Promise<{ calendar: ConnectorOfferLabel; gmail: ConnectorOfferLabel }> {
+  if (
+    !args.ridesReply &&
+    inProactiveQuietHours(args.now, await parentTimeZone(database, args.parentUserId))
+  ) {
+    for (const templateKey of [INTAKE_CALENDAR_CARD_TEMPLATE_KEY, INTAKE_GMAIL_CARD_TEMPLATE_KEY]) {
+      await database.insert(schema.channelMessages).values({
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'intake',
+        templateKey,
+        dedupeKey: null,
+        status: 'suppressed_quiet_hours',
+      });
+    }
+    console.warn(
+      { familyId: args.familyId },
+      'intake connector cards: held for quiet hours - this family is not asked tonight',
+    );
+    return { calendar: 'suppressed_quiet_hours', gmail: 'suppressed_quiet_hours' };
+  }
+
+  const calendar = connectorOfferLabel(
+    await sendOneConnectorCard(database, args, ports, {
+      provider: 'gcal',
+      templateKey: INTAKE_CALENDAR_CARD_TEMPLATE_KEY,
+      dedupeKey: calendarCardDedupeKey(args.familyId),
+      render: (url) => intakeCalendarCard(args.language, url),
+    }),
+  );
+  const gmail = connectorOfferLabel(
+    await sendOneConnectorCard(database, args, ports, {
+      provider: 'gmail',
+      templateKey: INTAKE_GMAIL_CARD_TEMPLATE_KEY,
+      dedupeKey: gmailCardDedupeKey(args.familyId),
+      render: (url) => intakeGmailCard(args.language, url),
+    }),
+  );
+  return { calendar, gmail };
+}
+
+async function sendOneConnectorCard(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    phoneE164: string;
+    now: Date;
+  },
+  ports: ConnectorOfferPorts,
+  card: {
+    provider: 'gcal' | 'gmail';
+    templateKey: string;
+    dedupeKey: string;
+    render: (url: string) => string;
+  },
+): Promise<ConnectorOfferOutcome> {
+  const { familyId, parentUserId, now } = args;
+  try {
+    const [claimed] = await database
+      .insert(schema.channelMessages)
+      .values({
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'intake',
+        templateKey: card.templateKey,
+        dedupeKey: card.dedupeKey,
+        status: acceptedStatus('sms'),
+        sentAt: now,
+      })
+      .onConflictDoNothing()
+      .returning({ id: schema.channelMessages.id });
+    if (!claimed) return { status: 'not_sent', reason: 'already_sent' };
+
+    const minted = await offerConnectorLink(database, {
+      familyId,
+      parentUserId,
+      provider: card.provider,
+      now,
+    });
+    if (minted.status !== 'minted') {
+      await failClaim(database, claimed.id, minted.status);
+      console.warn(
+        { familyId, provider: card.provider, reason: minted.status },
+        'intake connector card: no link to send',
+      );
+      return { status: 'not_sent', reason: minted.status };
+    }
+
+    const body = card.render(minted.url);
+    let providerMessageId: string;
+    try {
+      ({ providerMessageId } = await ports.transport.send({ to: args.phoneE164, body }));
+    } catch (err) {
+      const code = err instanceof TwilioSendError ? err.code : 'unknown';
+      await failClaim(database, claimed.id, code);
+      console.error(
+        { familyId, provider: card.provider, code },
+        'intake connector card: the provider refused the card',
+      );
+      return { status: 'not_sent', reason: 'send_failed', code };
+    }
+
+    await database
+      .update(schema.channelMessages)
+      .set({ providerMessageId })
+      .where(eq(schema.channelMessages.id, claimed.id));
+    await ports.threadMessage(database, { familyId, parentUserId, body });
+    return { status: 'sent', channelMessageId: claimed.id };
+  } catch (err) {
+    console.error(
+      {
+        familyId,
+        provider: card.provider,
+        err: err instanceof Error ? err.constructor.name : 'unknown',
+      },
+      'intake connector card: the card path threw',
+    );
+    return { status: 'not_sent', reason: 'send_failed', code: 'unexpected' };
+  }
+}
+
 async function parentTimeZone(database: Database, parentUserId: string): Promise<string> {
   const rows = await database
     .select({ id: schema.users.id, timezone: schema.users.timezone })

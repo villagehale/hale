@@ -749,12 +749,18 @@ describe('a number with an invite in flight finishes its OWN intake', () => {
     expect(auditActions(fake)).not.toContain('caregiver_invite_refused');
     expect(auditActions(fake)).not.toContain('caregiver_invite_accepted');
 
-    // The watch offer is answered and the intake conversation closes — the exact moment
-    // a stale invite used to take the number over.
-    const watch = await text(fake, transport, deps, GRAN_PHONE, 'yes');
-    expect(watch).toMatchObject({ status: 'watch_recorded', granted: true });
+    // Year-open closes on kids+postal. Watching is implied by the live find — there
+    // is no YES gate. The exact moment a stale invite used to take the number over is
+    // now an ordinary turn that finds no open conversation.
+    expect(
+      inserts(fake, schema.consentRecords).filter((c) => c.consentType === 'proactive_watch'),
+    ).toEqual([expect.objectContaining({ granted: true })]);
 
     const before = transport.sent.length;
+    const afterProvision = await text(fake, transport, deps, GRAN_PHONE, 'yes');
+    expect(afterProvision).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
+    expect(transport.sent.slice(before)).toHaveLength(0);
+
     const next = await text(fake, transport, deps, GRAN_PHONE, "what's on this week?");
     expect(next).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
     expect(transport.sent.slice(before)).toHaveLength(0);

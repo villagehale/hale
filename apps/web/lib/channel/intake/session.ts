@@ -47,6 +47,12 @@ export interface TranscriptEntry {
 interface IntakeData {
   collected: IntakeCollected;
   transcript: TranscriptEntry[];
+  /**
+   * The first reply named at least one age-fit thing. Missing on a session written
+   * before this field existed, which decodes as false: the card, the inbox ask, and
+   * the co-parent ask wait on a real win.
+   */
+  findWon?: boolean;
 }
 
 export interface IntakeSession {
@@ -62,6 +68,9 @@ export interface IntakeSession {
   familyId: string | null;
   userId: string | null;
   lastProviderId: string | null;
+  /** True once the first reply named an age-fit thing. False until then, including a
+   * blob that predates the field. */
+  findWon: boolean;
 }
 
 export const EMPTY_COLLECTED: IntakeCollected = { children: [], postalCode: null };
@@ -78,6 +87,7 @@ function decodeData(blob: string): IntakeData {
   return {
     collected: parsed.collected ?? EMPTY_COLLECTED,
     transcript: parsed.transcript ?? [],
+    findWon: parsed.findWon === true,
   };
 }
 
@@ -113,6 +123,7 @@ export async function loadOpenSession(
     familyId: row.familyId,
     userId: row.userId,
     lastProviderId: row.lastProviderId,
+    findWon: data.findWon === true,
   };
 }
 
@@ -162,6 +173,7 @@ export async function claimIntakeSession(
     familyId: null,
     userId: null,
     lastProviderId: null,
+    findWon: false,
   };
 }
 
@@ -192,6 +204,9 @@ export interface SessionPatch {
   closedAt?: Date;
   /** Stamped when a first-hello is persisted — live greet or VIL-332 recovery. */
   firstReplyRecoveredAt?: Date;
+  /** Set when the first reply is composed. Omitted patches keep the value already
+   * on the session, so a later save cannot forget a win. */
+  findWon?: boolean;
 }
 
 /** Persist a state transition. `collected`/`transcript` are re-encrypted together. */
@@ -203,11 +218,12 @@ export async function saveSession(
 ): Promise<void> {
   const collected = patch.collected ?? session.collected;
   const transcript = patch.transcript ?? session.transcript;
+  const findWon = patch.findWon ?? session.findWon;
   await database
     .update(schema.smsIntakeSessions)
     .set({
       ...(patch.state ? { state: patch.state } : {}),
-      dataEncrypted: encodeData({ collected, transcript }),
+      dataEncrypted: encodeData({ collected, transcript, findWon }),
       ...(patch.followUpCount === undefined ? {} : { followUpCount: patch.followUpCount }),
       ...(patch.clarifyCount === undefined ? {} : { clarifyCount: patch.clarifyCount }),
       ...(patch.familyId ? { familyId: patch.familyId } : {}),

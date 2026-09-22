@@ -73,8 +73,8 @@ export function matchConnectorRequest(body: string): ConnectorProvider | null {
  * visible rather than accidental. A false CONNECT claim mints a link nobody asked for;
  * a false DISCONNECT claim deletes a token, stops the sweep and writes an immutable
  * audit row. So this half keeps the connect half's whole vocabulary of nouns (a parent
- * ending something says "my calendar", and Hale's own connected receipt tells them to
- * say exactly that — connect/text-connect.ts) and pays for it everywhere else:
+ * ending something says "my calendar", and the connect card tells them to say
+ * exactly that — connect/text-connect.ts) and pays for it everywhere else:
  *
  *  - `remove` is NOT a disconnect verb. It is a content verb — remove the hold, the
  *    invite, the event — and it was the single biggest source of false positives.
@@ -84,8 +84,8 @@ export function matchConnectorRequest(body: string): ConnectorProvider | null {
  *    calendar access for the nanny", "my email from my phone" (CONTENT_TAIL).
  *  - a negation kills the claim outright ("dont disconnect my calendar").
  *  - a leading auxiliary kills it too ("could you unlink the calendar invite", "can
- *    you disconnect it"): those are questions the coach answers, and the receipt tells
- *    the parent the plain words that do work.
+ *    you disconnect it"): those are questions the coach answers, and the connect
+ *    card tells the parent the plain words that do work.
  *
  * Disjoint from the connect half BY CONSTRUCTION: every verb below is inside the
  * connect matcher's NEGATION class, so no body can claim both. detect.test.ts asserts

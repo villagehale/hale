@@ -11,12 +11,16 @@ import {
   ASSENT_ACK_BY_LANGUAGE,
   COLD_START_ASK,
   COLD_START_ASK_BY_LANGUAGE,
+  CO_PARENT_ASK,
+  CO_PARENT_ASK_BY_LANGUAGE,
   DECLINE_ACK,
   DECLINE_ACK_BY_LANGUAGE,
+  HALE_GREETING_EN,
   HELP_REPLY,
   HELP_REPLY_BY_LANGUAGE,
   IDENTITY_ACCOUNTABILITY_LINE,
   IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE,
+  PARENT_CALL_NAME_ASK,
   REGION_UNAVAILABLE_REPLY,
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
   SITTING_SESSION_REMINDER,
@@ -32,6 +36,8 @@ import {
   followUp,
   greeting,
   greetingWithArea,
+  intakeCalendarCard,
+  intakeGmailCard,
   isBareFirstHello,
   looksLikeIntakeDetails,
   posterLocation,
@@ -80,8 +86,9 @@ describe('SITTING_SESSION_REMINDER', () => {
 
 describe('greeting', () => {
   it('is the verbatim no-context spec line when there is no venue', () => {
-    expect(greeting(null, 'en')).toBe(
-      "Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
+    expect(greeting(null, 'en')).toBe(HALE_GREETING_EN);
+    expect(HALE_GREETING_EN).toBe(
+      'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.',
     );
     expect(greeting(null, 'en')).not.toContain('parenting chaos');
     expect(greeting(null, 'en')).not.toContain('little one');
@@ -91,7 +98,7 @@ describe('greeting', () => {
     // The QR venue already tells us the area, so asking for the postal code would be
     // asking for data we don't need — the whole point of the venue variant.
     expect(greeting('library', 'en')).toBe(
-      "Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. You found me at the library, so I already know the area. Kids' names and ages, and I'll look up what's coming.",
+      "Hi, I'm Hale. I help plan your kids' year - what's on near them, sign-up mornings, and how it went. You found me at the library, so I already know the area. Kids' names and ages, and I'll look up what's coming.",
     );
     expect(greeting('library', 'en')).not.toContain('postal');
   });
@@ -105,7 +112,7 @@ describe('greeting', () => {
 
   it('is the verbatim area line when the first text was only a postal code', () => {
     expect(greetingWithArea('M5V')).toBe(
-      "Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. Got M5V, so I already know the area. Kids' names and ages, and I'll look up what's coming.",
+      "Hi, I'm Hale. I help plan your kids' year - what's on near them, sign-up mornings, and how it went. Got M5V, so I already know the area. Kids' names and ages, and I'll look up what's coming.",
     );
     expect(greetingWithArea('M5V')).not.toContain('parenting chaos');
     expect(greetingWithArea('M5V')).not.toContain('little one');
@@ -299,12 +306,12 @@ describe('the consent moment', () => {
   });
 
   /**
-   * The turn\'s one question is the composed identity ask the machine appends, so this
-   * half must carry none of its own. Two questions in one text is a parent choosing which
-   * to answer, and the one that would lose is the one Hale cannot proceed without.
+   * The receipt asks nothing. The call-name is its own later text. Two questions in
+   * one SMS is a parent choosing which to answer.
    */
-  it("ends without a question, leaving the turn's single ask to the composed one", () => {
+  it('ends without a question, so the call-name can be its own text', () => {
     expect(ASSENT_ACK).not.toContain('?');
+    expect(ASSENT_ACK).not.toContain(PARENT_CALL_NAME_ASK);
   });
 
   it('takes a no without friction and leaves the door open', () => {
@@ -385,12 +392,60 @@ describe('the French script', () => {
 
   it('names the same three jobs in French too, and closes on the same ask', () => {
     expect(greeting(null, 'fr')).toBe(
-      "Bonjour, je suis Hale. Je trouve des activités qui conviennent à vos enfants, je surveille les matins d'inscription pour qu'ils ne vous échappent pas, et je prends de vos nouvelles. Le nom et l'age de vos enfants, et votre code postal - et je verrai ce qui arrive.",
+      "Bonjour, je suis Hale. J'aide a planifier l'annee de vos enfants - ce qui se passe près d'eux, les matins d'inscription, et comment ca s'est passé. Le nom et l'age de vos enfants, et votre code postal - et je verrai ce qui arrive.",
     );
     expect(greeting(null, 'fr')).not.toContain('chaos');
     expect(greeting(null, 'fr')).not.toContain('tout-petit');
     expect(greeting(null, 'fr')).not.toContain('une IA');
     expect(greeting(null, 'fr')).toContain(COLD_START_ASK_BY_LANGUAGE.fr);
+    expect(greeting(null, 'fr').toLowerCase()).not.toContain('activity finder');
+  });
+
+  it('asks what to call the parent in its own line, the words PR #689 locked', () => {
+    expect(PARENT_CALL_NAME_ASK).toBe('What should I call you?');
+    expect(PARENT_CALL_NAME_ASK).not.toContain('activity finder');
+    expect(PARENT_CALL_NAME_ASK).not.toContain('excited');
+  });
+
+  it('says the calendar is how the year stays together, and names the trust', () => {
+    const url = 'https://app.villagehale.com/connect?t=token&to=gcal';
+    expect(intakeCalendarCard('en', url)).toBe(
+      `Connect your calendar: ${url} Good for 15 minutes. I never see your password. Disconnect my calendar anytime.`,
+    );
+    expect(intakeCalendarCard('fr', url)).toBe(
+      `Connectez votre agenda : ${url} Bon pour 15 minutes. Je ne vois jamais votre mot de passe. Déconnectez mon agenda à tout moment.`,
+    );
+    for (const body of [intakeCalendarCard('en', url), intakeCalendarCard('fr', url)]) {
+      expect(body.toLowerCase()).not.toContain('ollie');
+      expect(body.toLowerCase()).not.toContain('activity finder');
+      expect(body).not.toContain('Gmail');
+    }
+  });
+
+  it('says Gmail is how notices get into the year, and that ignoring it skips', () => {
+    const url = 'https://app.villagehale.com/connect?t=token&to=gmail';
+    expect(intakeGmailCard('en', url)).toBe(
+      `Connect Gmail: ${url} Good for 15 minutes - ignore this to skip. I never see your password. Disconnect my gmail anytime.`,
+    );
+    expect(intakeGmailCard('fr', url)).toBe(
+      `Connectez Gmail : ${url} Bon pour 15 minutes - ignorez pour passer. Je ne vois jamais votre mot de passe. Déconnectez mon Gmail à tout moment.`,
+    );
+    for (const body of [intakeGmailCard('en', url), intakeGmailCard('fr', url)]) {
+      expect(body.toLowerCase()).not.toContain('ollie');
+      expect(body.toLowerCase()).not.toContain('activity finder');
+      expect(body).toContain(url);
+    }
+  });
+
+  it('asks for a co-parent last, by the phrase the join route already reads', () => {
+    expect(CO_PARENT_ASK).toBe(
+      'Want their other parent on this thread too? Text me a number and I’ll invite them.',
+    );
+    expect(CO_PARENT_ASK_BY_LANGUAGE.fr).toBe(
+      "Vous voulez l'autre parent sur ce fil aussi? Envoyez-moi un numero et je les invite.",
+    );
+    expect(CO_PARENT_ASK).not.toContain('add my partner');
+    expect(CO_PARENT_ASK.toLowerCase()).not.toContain('activity finder');
   });
 
   /**

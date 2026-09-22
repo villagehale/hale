@@ -84,40 +84,8 @@ function composer(db: ReturnType<typeof makeFakeDb>) {
 
 const MAYA = { name: 'Maya', ageMonths: 48, agePrecision: 'years' } as const;
 
-/**
- * Two composed sentences for the SAME decision: one that names the seeded candidate and
- * one that does not. The MECHANICS of the voice call are faked so that a stamping rule
- * can be exercised over a text the composer did not write itself — what Hale actually
- * says is the eval's job against real cached Claude (rule #8), which is why neither
- * sentence is asserted for quality.
- */
-const KEEPS_THE_PICK = 'Saturday: Library story time looks like the one for Maya.';
-const DROPS_THE_PICK = "Got it - I'm mapping what's near you now. More in a day or two.";
-
-function voiceReturning(message: string): AgentClient {
-  return {
-    messages: {
-      async create() {
-        return {
-          content: [{ type: 'text', text: JSON.stringify({ message }) }],
-          usage: { input_tokens: 10, output_tokens: 5 },
-        };
-      },
-    },
-  } as unknown as AgentClient;
-}
-
-function voicedComposer(db: ReturnType<typeof makeFakeDb>, message: string) {
-  return createRadarComposer({
-    database: db.db,
-    weather: fakeWeather([]),
-    client: voiceReturning(message),
-    now: () => NOW,
-  });
-}
-
 describe('createRadarComposer', () => {
-  it('names a real candidate and a real registration window it read for this family', async () => {
+  it('names a real age-fit session and not the registration date beside it', async () => {
     const db = makeFakeDb();
     seedCandidate(db);
     seedWindow(db);
@@ -129,14 +97,13 @@ describe('createRadarComposer', () => {
     });
 
     expect(payload.message).toContain('Library story time');
-    expect(payload.message).toContain('Aug 11');
-    expect(payload.itemCount).toBe(2);
+    expect(payload.message).not.toContain('Aug 11');
+    expect(payload.message).not.toMatch(/registration opens|registration opened/i);
+    expect(payload.itemCount).toBe(1);
+    expect(payload.findWon).toBe(true);
     expect(payload.followUpNeeded).toBe(false);
-    // VIL-360 · the D23 anchor the caller stamps on the ledger row - earned by the
-    // TEXT, exactly as the told-marker beside it is. "Those are weekend options"
-    // points at what this message SAID, so a compose that dropped the pick leaves
-    // nothing for the ask to point at.
-    expect(payload.weekendPickOffered).toBe(true);
+    // Year contents are not the D23 weekend-only anchor.
+    expect(payload.weekendPickOffered).toBe(false);
   });
 
   it('offers no weekend-pick anchor when there was no pick to offer', async () => {
@@ -151,43 +118,23 @@ describe('createRadarComposer', () => {
     expect(payload.weekendPickOffered).toBe(false);
   });
 
-  /**
-   * THE STAMP IS READ OFF THE COMPOSED TEXT, and only a composed text can show it.
-   *
-   * `weekendPickSurvivedCompose` is unit-tested below, but a composer that went back to
-   * reading `decision.weekendPick !== null` would leave every one of those green: the
-   * deterministic render always names the pick it was handed, so the two rules agree on
-   * every other test in this file. These two disagree — same decision, same candidate,
-   * two sentences — which is the only shape that pins which one the composer used.
-   */
-  it('does not stamp the D23 anchor on a composed message that dropped the pick', async () => {
+  it('does not call the voice model', async () => {
     const db = makeFakeDb();
     seedCandidate(db);
+    seedWindow(db);
+    const create = vi.fn();
 
-    const payload = await voicedComposer(db, DROPS_THE_PICK).compose({
-      familyId: FAMILY_ID,
-      children: [MAYA],
-      areaCoarse: 'M5V',
-    });
+    const payload = await createRadarComposer({
+      database: db.db,
+      weather: fakeWeather([]),
+      client: { messages: { create } } as unknown as AgentClient,
+      now: () => NOW,
+    }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'M5V' });
 
-    // The composed sentence is what shipped - so this is the flag disagreeing with the
-    // decision, not a quiet fall back to the deterministic render (which names the pick).
-    expect(payload.message).toBe(DROPS_THE_PICK);
-    expect(payload.weekendPickOffered).toBe(false);
-  });
-
-  it('stamps it when the composed message carries the pick', async () => {
-    const db = makeFakeDb();
-    seedCandidate(db);
-
-    const payload = await voicedComposer(db, KEEPS_THE_PICK).compose({
-      familyId: FAMILY_ID,
-      children: [MAYA],
-      areaCoarse: 'M5V',
-    });
-
-    expect(payload.message).toBe(KEEPS_THE_PICK);
-    expect(payload.weekendPickOffered).toBe(true);
+    expect(create).not.toHaveBeenCalled();
+    expect(payload.message).toContain('Library story time');
+    expect(payload.voiceFallback).toBe('no_client');
+    expect(payload.actionMove).toBeNull();
   });
 
   it('never writes the watch question — the state machine appends it', async () => {
@@ -212,16 +159,18 @@ describe('createRadarComposer', () => {
       areaCoarse: 'L7G',
     });
 
-    // Halton Hills: no civic adapter, no windows, no Toronto pin. Leftover mapping
-    // plus the first-find beat — it does not shrug, and it does not steal the 555 pin.
+    expect(payload.message).toContain("I'm looking up what's on for your kids this year.");
     expect(payload.message).toContain('Your first weekend find lands in a day or two.');
+    expect(payload.message).not.toMatch(/registration opens|registration opened/i);
     expect(payload.message).not.toBe(torontoRecMorningLine(NOW));
     expect(payload.message).not.toContain('toronto.ca/OnlineReg');
+    expect(payload.findWon).toBe(false);
     expect(payload.itemCount).toBe(0);
     expect(payload.followUpNeeded).toBe(true);
+    expect(payload.firstFindPromised).toBe(true);
   });
 
-  it('names the town whose cycle has already gone, instead of an empty radar line', async () => {
+  it('does not answer a Halton Hills family with the registration date', async () => {
     const db = makeFakeDb();
     // Halton Hills opened Fall 2026 on Sep 1. It is now Sep 17 and winter is not posted:
     // the production shape of 2026-09-16, where this family was told nothing was on the
@@ -249,15 +198,11 @@ describe('createRadarComposer', () => {
       now: () => new Date('2026-09-17T15:00:00.000Z'),
     }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'L7G' });
 
-    // Sixteen days in, inside OPEN_NOW_MAX_AGE_DAYS: the town's page is still where
-    // this family should be sent, so the rung keeps its town, its cycle and its date
-    // and drops the half that says they missed it.
-    expect(payload.message).toContain('Halton Hills');
-    expect(payload.message).toContain('Fall 2026');
-    expect(payload.message).toContain('registration opened Sep 1, 7:00 a.m.');
-    expect(payload.message).not.toContain('already');
-    expect(payload.message).not.toContain('not posted yet');
-    expect(payload.message).not.toContain('no registration date coming up');
+    expect(payload.message).toContain("I'm looking up what's on for your kids this year.");
+    expect(payload.message).not.toContain('Halton Hills');
+    expect(payload.message).not.toContain('Fall 2026');
+    expect(payload.message).not.toMatch(/registration opens|registration opened/i);
+    expect(payload.findWon).toBe(false);
   });
 
   /**
@@ -266,7 +211,7 @@ describe('createRadarComposer', () => {
    * comes back whole — the town, the date and the cycle the sweep is watching for — so
    * nothing Hale says correctly today has been bricked up behind the new tense.
    */
-  it('goes back to the between-cycles sentence once the page is no longer the place to go', async () => {
+  it('stays off the between-cycles sentence once the page is no longer the place to go', async () => {
     const db = makeFakeDb();
     db.db.insert(schema.registrationWindows).values({
       municipality: 'halton_hills',
@@ -291,13 +236,13 @@ describe('createRadarComposer', () => {
       now: () => new Date('2026-09-23T15:00:00.000Z'),
     }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'L7G' });
 
-    expect(payload.message).toContain(
-      'Halton Hills Fall 2026 registration already opened Sep 1, 7:00 a.m. - Winter 2027 dates are not posted yet.',
-    );
-    expect(payload.message).not.toContain('no registration date coming up');
+    expect(payload.message).not.toContain('registration already opened');
+    expect(payload.message).not.toContain('Winter 2027');
+    expect(payload.message).toContain('Your first weekend find lands in a day or two.');
+    expect(payload.findWon).toBe(false);
   });
 
-  it('names Toronto and its gone cycle, where the pin used to read out past dates', async () => {
+  it('does not recite a past Toronto registration morning', async () => {
     const db = makeFakeDb();
     db.db.insert(schema.registrationWindows).values({
       municipality: 'toronto',
@@ -322,16 +267,11 @@ describe('createRadarComposer', () => {
       now: () => new Date('2026-09-17T15:00:00.000Z'),
     }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'M1B' });
 
-    // The pin (VIL-334) short-circuited this family with "Sept 9 ... Sept 15 or 16" —
-    // mornings that were in the past by Sept 16, read out as though they were coming.
-    // Toronto now goes through the same between-cycles answer as every other town.
-    expect(payload.message).toContain('Toronto');
-    // Nine days in: the city's fall page is still the place to go, so the sentence
-    // names the town, the cycle and the morning it opened — and does not apologise.
-    expect(payload.message).toContain('registration opened Sep 8, 7:00 a.m.');
-    expect(payload.message).not.toContain('already');
+    expect(payload.message).not.toContain('registration opened Sep 8, 7:00 a.m.');
     expect(payload.message).not.toContain('Sept 9');
+    expect(payload.message).toContain('Your first weekend find lands in a day or two.');
     expect(payload.message).not.toBe(torontoRecMorningLine(new Date('2026-09-17T15:00:00.000Z')));
+    expect(payload.findWon).toBe(false);
   });
 
   it('is honest with a Toronto family whose lookup is empty, rather than reciting the pin', async () => {
@@ -433,7 +373,8 @@ describe('createRadarComposer', () => {
       areaCoarse: 'M5V',
     });
 
-    expect(payload.itemCount).toBe(2);
+    expect(payload.itemCount).toBe(1);
+    expect(payload.findWon).toBe(true);
     // Nothing was told, so nothing may be marked told: a checkpoint suppressed off the
     // back of a message that never carried it is a reminder this family never gets.
     expect(payload.checkpointTold).toBeNull();
@@ -511,6 +452,49 @@ describe('createRadarComposer', () => {
     }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'M5V' });
 
     expect(payload.message).toContain('Library story time');
+  });
+
+  it('fills an empty Halton Hills reply from a live search, for a 17-month-old', async () => {
+    const db = makeFakeDb();
+    const payload = await createRadarComposer({
+      database: db.db,
+      weather: fakeWeather([]),
+      client: null,
+      now: () => new Date('2026-09-17T15:00:00.000Z'),
+      yearFinder: {
+        async find(query) {
+          expect(query.subject).toBe('programs for a toddler');
+          expect(query.town).toBe('Halton Hills');
+          expect(query.window).toBe('this year');
+          expect(JSON.stringify(query)).not.toContain('Seb');
+          expect(JSON.stringify(query)).not.toContain('L7G');
+          return {
+            found: true,
+            picks: [
+              {
+                name: 'Parent and tot gym',
+                ageFit: '12-24 months',
+                when: 'Tuesdays',
+                price: 'free',
+                sourceName: 'Halton Hills library',
+                source: 'web',
+              },
+            ],
+          };
+        },
+      },
+    }).compose({
+      familyId: FAMILY_ID,
+      children: [{ name: 'Seb', ageMonths: 17, agePrecision: 'months' }],
+      areaCoarse: 'L7G',
+    });
+
+    expect(payload.findWon).toBe(true);
+    expect(payload.message).toContain('Parent and tot gym');
+    expect(payload.message).toContain("Here's what's on for your kids this year:");
+    expect(payload.message).not.toMatch(/registration opens|registration opened/i);
+    expect(payload.message).not.toContain('Seb');
+    expect(payload.message.toLowerCase()).not.toContain('activity finder');
   });
 });
 

@@ -37,12 +37,58 @@ const PROVIDER_NOUN: Record<TextConnectProvider, string> = {
   gmail: 'Gmail',
 };
 
-/** What Hale will do with the connection, said once so the page and the text cannot
- * disagree about what a parent just agreed to. */
-const WATCH_PROMISE: Record<TextConnectProvider, string> = {
-  gcal: "I'll text you when something new lands on it",
-  gmail: "I'll text you when a daycare or school email needs you",
+/**
+ * What the connection is for, said once so the page and the text cannot disagree.
+ *
+ * A kids-year payoff, not a life-assistant watch. Calendar keeps what is on for
+ * the kids and when it moves. Gmail lets daycare and school notices into that
+ * year. Neither promises to text about whatever else lands.
+ */
+const YEAR_PAYOFF: Record<TextConnectProvider, string> = {
+  gcal: "what's on for the kids, and when it moves, stays in the year",
+  gmail: 'daycare and school notices get into the year',
 };
+
+function payoffSentence(clause: string): string {
+  return `${clause.charAt(0).toUpperCase()}${clause.slice(1)}`;
+}
+
+/**
+ * The one trust line on a connect card. Same shape for both connectors: Hale
+ * never sees the password, and the disconnect words are ones the text parser
+ * actually honours. The noun matches the card so "disconnect anytime" is a
+ * command, not a slogan.
+ */
+export const CONNECTOR_TRUST_LINE: Record<TextConnectProvider, string> = {
+  gcal: 'I never see your password. Disconnect my calendar anytime.',
+  gmail: 'I never see your password. Disconnect my gmail anytime.',
+};
+
+/** What the link unfurls as. Title is the ask. Description is the trust line. */
+export const CONNECTOR_CARD_TITLE: Record<TextConnectProvider, string> = {
+  gcal: 'Connect your calendar',
+  gmail: 'Connect Gmail',
+};
+
+export interface ConnectorLinkCard {
+  title: string;
+  description: string;
+}
+
+/** Preview and page copy for one texted connect link. A link with no connector
+ * has no card to promise. The token never enters this copy. */
+export function connectorLinkCard(provider: TextConnectProvider | null): ConnectorLinkCard {
+  if (!provider) {
+    return {
+      title: 'Connect - Hale',
+      description: 'I never see your password. Disconnect anytime.',
+    };
+  }
+  return {
+    title: CONNECTOR_CARD_TITLE[provider],
+    description: CONNECTOR_TRUST_LINE[provider],
+  };
+}
 
 /** The redeem button. It says what the next tap does, because the next thing the parent
  * sees is Google's consent screen and nothing else on this page explains it. */
@@ -51,15 +97,13 @@ export function textConnectButtonLabel(provider: TextConnectProvider): string {
 }
 
 /**
- * The one text Hale sends once the tokens are stored — the receipt for something the
- * parent did ten seconds ago, in the thread they did it from.
- *
- * Each names the way out in the same breath as the way in: a connection a parent cannot
- * remember how to undo is one they will resent (rule #1, natural-language consent).
+ * The one text Hale sends once the tokens are stored — confirm what landed, then
+ * one kids-year payoff. The trust line (password, disconnect) lives on the card
+ * that asked for the tap, not again here.
  */
 export const CONNECTOR_CONNECTED_TEXT: Record<TextConnectProvider, string> = {
-  gcal: `Your ${PROVIDER_NOUN.gcal} is connected. ${WATCH_PROMISE.gcal} - and you can say disconnect my calendar anytime.`,
-  gmail: `${PROVIDER_NOUN.gmail} is connected. ${WATCH_PROMISE.gmail}. Nothing else.`,
+  gcal: `Your ${PROVIDER_NOUN.gcal} is connected. ${payoffSentence(YEAR_PAYOFF.gcal)}.`,
+  gmail: `${PROVIDER_NOUN.gmail} is connected. ${payoffSentence(YEAR_PAYOFF.gmail)}.`,
 };
 
 /** What the done page says, per outcome. The heading is the state in two words; the body
@@ -85,7 +129,7 @@ export function connectedNotice(
   if (status === 'ok' && connected) {
     return {
       heading: 'Connected',
-      body: `${PROVIDER_NOUN[connected]} is connected. You can close this - ${WATCH_PROMISE[connected]}.`,
+      body: `${PROVIDER_NOUN[connected]} is connected. You can close this - ${YEAR_PAYOFF[connected]}.`,
     };
   }
   if (status === 'denied') {

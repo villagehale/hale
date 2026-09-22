@@ -4,12 +4,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import {
-  INTAKE_CONNECTOR_OFFER_TEMPLATE_KEY,
   type ConnectorOfferPorts,
+  INTAKE_CONNECTOR_OFFER_TEMPLATE_KEY,
+  calendarCardDedupeKey,
   connectorOfferDedupeKey,
+  gmailCardDedupeKey,
   sendConnectorOffer,
+  sendYearConnectorCards,
 } from './connector-offer';
-import { intakeConnectorOffer } from './copy';
+import {
+  INTAKE_CALENDAR_CARD_TEMPLATE_KEY,
+  INTAKE_GMAIL_CARD_TEMPLATE_KEY,
+  intakeConnectorOffer,
+} from './copy';
 import { type FakeDb, makeFakeDb } from './fakes';
 import { type ChannelTransport, FakeTransport } from './transport';
 
@@ -277,5 +284,98 @@ describe('the intake connector offer', () => {
       'connect?t=',
     );
     expect(inspect(logged, { depth: null })).not.toContain('connect?t=');
+  });
+});
+
+describe('the year-open connector cards', () => {
+  function cards(
+    fake: FakeDb,
+    offerPorts: ConnectorOfferPorts,
+    now: Date = NOW,
+    ridesReply?: boolean,
+  ) {
+    return sendYearConnectorCards(
+      fake.db,
+      {
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        phoneE164: PHONE,
+        language: 'en',
+        now,
+        ...(ridesReply ? { ridesReply } : {}),
+      },
+      offerPorts,
+    );
+  }
+
+  it('sends the calendar card, then the Gmail card, one link each', async () => {
+    const fake = seeded();
+    const transport = new FakeTransport();
+    const { ports: offerPorts, threaded } = ports(transport);
+
+    const outcome = await cards(fake, offerPorts, NOW, true);
+
+    expect(outcome).toEqual({ calendar: 'sent', gmail: 'sent' });
+    expect(transport.bodies()).toHaveLength(2);
+    const calendar = transport.bodies()[0] as string;
+    const gmail = transport.bodies()[1] as string;
+    expect(calendar).toContain('Connect your calendar:');
+    expect(calendar).toContain('I never see your password');
+    expect(calendar).not.toContain('Gmail');
+    expect(gmail).toContain('Gmail:');
+    expect(gmail).toContain('ignore this to skip');
+    expect((calendar.match(/https:\/\/\S+/g) ?? []).length).toBe(1);
+    expect((gmail.match(/https:\/\/\S+/g) ?? []).length).toBe(1);
+    expect(threaded.map((turn) => turn.body)).toEqual([calendar, gmail]);
+    expect(ledgerRows(fake)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: 'insert',
+          templateKey: INTAKE_CALENDAR_CARD_TEMPLATE_KEY,
+          dedupeKey: calendarCardDedupeKey(FAMILY),
+        }),
+        expect.objectContaining({
+          op: 'insert',
+          templateKey: INTAKE_GMAIL_CARD_TEMPLATE_KEY,
+          dedupeKey: gmailCardDedupeKey(FAMILY),
+        }),
+      ]),
+    );
+  });
+
+  it('holds both cards in quiet hours unless this turn is the reply', async () => {
+    const held = seeded();
+    const heldTransport = new FakeTransport();
+    const quiet = await cards(held, ports(heldTransport).ports, NOW_QUIET);
+    expect(quiet).toEqual({
+      calendar: 'suppressed_quiet_hours',
+      gmail: 'suppressed_quiet_hours',
+    });
+    expect(heldTransport.sent).toEqual([]);
+
+    const riding = seeded();
+    const ridingTransport = new FakeTransport();
+    const sent = await cards(riding, ports(ridingTransport).ports, NOW_QUIET, true);
+    expect(sent).toEqual({ calendar: 'sent', gmail: 'sent' });
+    expect(ridingTransport.sent).toHaveLength(2);
+  });
+
+  it('still sends the Gmail card when the calendar card is refused', async () => {
+    const fake = seeded();
+    const real = new FakeTransport();
+    let calls = 0;
+    const transport: ChannelTransport = {
+      async send(input) {
+        calls += 1;
+        if (calls === 1) throw new TwilioSendError('21610', 400);
+        return real.send(input);
+      },
+    };
+
+    const outcome = await cards(fake, ports(transport).ports, NOW, true);
+
+    expect(outcome).toEqual({ calendar: 'send_failed', gmail: 'sent' });
+    expect(real.bodies()).toHaveLength(1);
+    expect(real.bodies()[0]).toContain('Gmail:');
   });
 });
