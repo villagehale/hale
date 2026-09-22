@@ -10,6 +10,10 @@ import TextPage, { generateMetadata } from './page.js';
 
 const meta = () => generateMetadata({ params: Promise.resolve({ locale: 'en' as const }) });
 
+/** Locked Hale #1, the same bytes as the SMS hello and Text.greeting (en and zh). */
+const LOCKED_PREVIEW_EN =
+  'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.';
+
 /**
  * /text is the chooser (F14): the QR cards' destination AND the header pill's —
  * but still a handoff, not a page to rank. No sitemap row, noindex, and no
@@ -80,9 +84,9 @@ describe('/text (unlisted entry surface)', () => {
       expect(header).toContain('class="v4-nav v4-glass"');
       expect(header).toContain('hale-logo');
       expect(header).toContain('viewBox="0 0 905.840370 590.701960"');
-      // The column under the bar is still the conversion door. Copy is the
-      // warm hello (#687); this pin only checks that chrome did not replace it.
-      // The sent bubble is the English prefill in every locale.
+      // The column under the bar is still the conversion door. The sent
+      // bubble is the warm prefill in every locale; the Hale reply is pinned
+      // below to the locked preview bytes.
       expect(html).toContain('Hey Hale, what&#x27;s going on?');
     }
     const en = renderToStaticMarkup(
@@ -97,8 +101,19 @@ describe('/text (unlisted entry surface)', () => {
         searchParams: Promise.resolve({}),
       }),
     );
-    expect(en).toContain('Hi, I&#x27;m Hale.');
-    expect(fr).toContain('Bonjour, je suis Hale.');
+    const zh = renderToStaticMarkup(
+      await TextPage({
+        params: Promise.resolve({ locale: 'zh' }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    // Locked Hale #1. Em dashes and curly apostrophes are not HTML-escaped.
+    expect(en).toContain(LOCKED_PREVIEW_EN);
+    expect(zh).toContain(LOCKED_PREVIEW_EN);
+    // French twin. ASCII apostrophes are the only characters React escapes.
+    expect(fr).toContain(
+      'Bonjour, je suis Hale. J&#x27;aide a planifier l&#x27;annee de vos enfants - ce qui se passe près d&#x27;eux, les matins d&#x27;inscription, et comment ca s&#x27;est passé. Le nom et l&#x27;age de vos enfants, et votre code postal - et je verrai ce qui arrive.',
+    );
     vi.unstubAllEnvs();
   });
 });
