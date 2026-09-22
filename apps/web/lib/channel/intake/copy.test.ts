@@ -17,6 +17,7 @@ import {
   DECLINE_ACK_BY_LANGUAGE,
   HELP_REPLY,
   HELP_REPLY_BY_LANGUAGE,
+  PARENT_CALL_NAME_ASK,
   IDENTITY_ACCOUNTABILITY_LINE,
   IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE,
   REGION_UNAVAILABLE_REPLY,
@@ -301,12 +302,12 @@ describe('the consent moment', () => {
   });
 
   /**
-   * The turn\'s one question is the composed identity ask the machine appends, so this
-   * half must carry none of its own. Two questions in one text is a parent choosing which
-   * to answer, and the one that would lose is the one Hale cannot proceed without.
+   * The receipt asks nothing. The call-name is its own later text. Two questions in
+   * one SMS is a parent choosing which to answer.
    */
-  it("ends without a question, leaving the turn's single ask to the composed one", () => {
+  it('ends without a question, so the call-name can be its own text', () => {
     expect(ASSENT_ACK).not.toContain('?');
+    expect(ASSENT_ACK).not.toContain(PARENT_CALL_NAME_ASK);
   });
 
   it('takes a no without friction and leaves the door open', () => {
@@ -394,6 +395,12 @@ describe('the French script', () => {
     expect(greeting(null, 'fr')).not.toContain('une IA');
     expect(greeting(null, 'fr')).toContain(COLD_START_ASK_BY_LANGUAGE.fr);
     expect(greeting(null, 'fr').toLowerCase()).not.toContain('activity finder');
+  });
+
+  it('asks what to call the parent in its own line, the words PR #689 locked', () => {
+    expect(PARENT_CALL_NAME_ASK).toBe('What should I call you?');
+    expect(PARENT_CALL_NAME_ASK).not.toContain('activity finder');
+    expect(PARENT_CALL_NAME_ASK).not.toContain('excited');
   });
 
   it('asks for a co-parent last, by the phrase the join route already reads', () => {

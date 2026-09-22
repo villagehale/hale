@@ -18,6 +18,8 @@ import {
 } from '~/lib/channel/caregiver/route';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
+import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
+import { parentNeedsName } from '~/lib/channel/identity/name-reply';
 import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
@@ -56,6 +58,7 @@ import {
   CO_PARENT_ASK_BY_LANGUAGE,
   DECLINE_ACK_BY_LANGUAGE,
   HELP_REPLY_BY_LANGUAGE,
+  PARENT_CALL_NAME_ASK,
   INTAKE_COPARENT_ASK_TEMPLATE_KEY,
   type IntakeGap,
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
@@ -204,15 +207,17 @@ export type IntakeOutcome =
   /** Something Hale will not invent is still missing after the one follow-up. */
   | { status: 'details_blocked'; missing: IntakeGap[] }
   | { status: 'provisioned'; familyId: string }
-  /** `nameAsked` is false on this turn. The consent tail does not ask what to call
-   * the parent; that ask waits for a real radar win (PR #689).
+  /** `nameAsked` is whether "What should I call you?" went out as its own text,
+   * after the turtle card and before the inbox. Never a tail on the assent line.
+   * A French reply skips the English line (PR #689). A parent who already has a
+   * name is not asked.
    *
    * `connectorOffer` says what became of the inbox ask: `not_offered` is a decline
    * or a first reply that named nothing, and every other value is
    * {@link sendConnectorOffer}'s own named outcome (rule #11).
    *
-   * `coParentAsk` is last. `sent` means the parent was told to text "add my partner".
-   * `not_offered` is the same gate as the inbox ask. */
+   * `coParentAsk` is last, its own text. `sent` means the parent was told to text
+   * "add my partner". `not_offered` is the same gate as the inbox ask. */
   | {
       status: 'watch_recorded';
       intent: ReplyIntent;
@@ -1101,22 +1106,8 @@ async function provision(
     radar.weekendPickOffered ? INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY : undefined,
   );
 
-  // THE INTRODUCTION, once the radar has already earned it: an MMS carrying Hale's own
-  // vCard, so the parent taps Add and every later text arrives under a name instead of a
-  // 289 number. Its own message rather than media on the radar above — a MediaUrl the
-  // provider cannot fetch fails the WHOLE message, and the radar is the one text a
-  // stranger is guaranteed to read (welcome-card.ts).
-  //
-  // The card introduces Hale after a real find. An empty first reply has not earned
-  // it. `ridesReply` so quiet hours do not swallow the introduction the parent just
-  // asked for; the morning re-drive still holds a card that was suppressed earlier.
-  if (radar.findWon) {
-    await sendWelcomeContactCard(
-      database,
-      { familyId, parentUserId: userId, phoneE164, now, ridesReply: true },
-      { transport: deps.transport, threadMessage: deps.threadMessage },
-    );
-  }
+  // The turtle card waits for the yes. This text is the find plus the one watch
+  // question. The card, the name, the inbox, and the co-parent are later texts.
 
   // The radar can be the first surface ever to tell this family about a health
   // checkpoint (VIL-238's third rung), and the 48h nudge is two days behind it. Marked
@@ -1338,12 +1329,42 @@ async function handleWatchReply(
     : { body: DECLINE_ACK_BY_LANGUAGE[language], asked: false };
   await sendAndRecord(database, ctx, ack.body, deps, recorded.transcript);
 
-  // Inbox and co-parent wait on a yes AND a real find. A decline is not asked to
-  // open a mailbox. An empty first reply has not earned either ask. The connector
-  // still respects quiet hours (no re-drive). The co-parent line does not: the
-  // parent just replied, this session closes, and a night yes would otherwise lose
-  // the ask forever.
+  // After a yes and a real find, the rest of onboarding is this chat, one text
+  // each: turtle card, then the call-name, then Gmail and calendar, then the
+  // co-parent. A decline is not asked to save a card or open a mailbox. An empty
+  // first reply has not earned any of them. None of these wait for a later nudge
+  // or for /text. Quiet hours do not hold them: the parent just replied, and a
+  // night yes that waits until morning is how the card and the inbox ask disappear.
   const earned = granted && session.findWon;
+  if (earned) {
+    await sendWelcomeContactCard(
+      database,
+      {
+        familyId: session.familyId as string,
+        parentUserId: session.userId as string,
+        phoneE164: args.phoneE164,
+        now,
+        ridesReply: true,
+      },
+      { transport: deps.transport, threadMessage: deps.threadMessage },
+    );
+  }
+  const nameAsked = earned
+    ? await askParentCallName(database, {
+        familyId: session.familyId as string,
+        parentUserId: session.userId as string,
+        language,
+        send: (body) =>
+          sendAndRecord(
+            database,
+            ctx,
+            body,
+            deps,
+            recorded.transcript,
+            PARENT_NAME_ASK_TEMPLATE_KEY,
+          ),
+      })
+    : false;
   const connectorOffer: ConnectorOfferLabel | 'not_offered' = earned
     ? connectorOfferLabel(
         await sendConnectorOffer(
@@ -1354,6 +1375,7 @@ async function handleWatchReply(
             phoneE164: args.phoneE164,
             language,
             now,
+            ridesReply: true,
           },
           { transport: deps.transport, threadMessage: deps.threadMessage },
         ),
@@ -1382,19 +1404,55 @@ async function handleWatchReply(
     status: 'watch_recorded',
     intent: reading.intent,
     granted,
-    nameAsked: ack.asked,
+    nameAsked,
     connectorOffer,
     coParentAsk,
   };
 }
 
 /**
- * The consent acknowledgment, whole. No name ask on this tail: what to call the
- * parent waits for a real radar win (PR #689), and "excited to help" / "no action
- * needed" do not belong on a yes.
+ * The consent acknowledgment, whole. The call-name is the next text, not a tail
+ * on this one. "Excited to help" and "no action needed" do not belong on a yes.
  */
 function assentAck(language: ReplyLanguage): { body: string; asked: boolean } {
   return { body: ASSENT_ACK_BY_LANGUAGE[language], asked: false };
+}
+
+/**
+ * "What should I call you?", its own text, only after a real find.
+ *
+ * The line is fixed (PR #689). The composer is not called. A French reply skips
+ * the English line and says so. A parent who already has a name is not asked.
+ * A lookup that throws is logged and does not hold the inbox or co-parent asks
+ * (rule #11).
+ */
+async function askParentCallName(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    language: ReplyLanguage;
+    send: (body: string) => Promise<unknown>;
+  },
+): Promise<boolean> {
+  if (args.language === 'fr') {
+    console.info(
+      { familyId: args.familyId },
+      'intake: skipped the English name ask on a French reply',
+    );
+    return false;
+  }
+  try {
+    if (!(await parentNeedsName(database, args.parentUserId))) return false;
+    await args.send(PARENT_CALL_NAME_ASK);
+    return true;
+  } catch (err) {
+    console.error(
+      { familyId: args.familyId, err: err instanceof Error ? err.constructor.name : 'unknown' },
+      'intake: parent name ask failed (inbox and co-parent still go out)',
+    );
+    return false;
+  }
 }
 
 async function handleKeyword(

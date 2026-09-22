@@ -19,11 +19,11 @@ import type { ChannelTransport } from './transport';
  * arrive in a mailbox and a calendar Hale cannot see. Asked a week later it is a cold
  * proactive message about permissions; asked here it is the next sentence.
  *
- * IT IS ITS OWN MESSAGE, the welcome card's shape and for the welcome card's reason:
- * one message asks one question, and the acknowledgment's question is already spent on
- * the name ask. It is also the EXTRA beside the reply rather than the reply itself,
- * which is why it consults quiet hours by hand — the parent's own answer is exempt at
- * 22:30, an unprompted permissions link is not.
+ * IT IS ITS OWN MESSAGE. One text asks one thing: the name ask is the message before
+ * this one, and the co-parent ask is the message after. On the consent turn the parent
+ * just replied, so that turn passes `ridesReply` and quiet hours do not hold the link.
+ * Any other caller still consults quiet hours — a cold permissions link at 22:30 is
+ * Hale making noise.
  *
  * ONE LINK PER CONNECTOR, AND BOTH GO STRAIGHT TO GOOGLE: the redeem page signs the
  * parent in and forwards them into that provider's consent, so the portal is not in the
@@ -85,6 +85,12 @@ export async function sendConnectorOffer(
     phoneE164: string;
     language: ReplyLanguage;
     now: Date;
+    /**
+     * The parent just said yes in this chat. The inbox ask is the next text in that
+     * conversation, not a later nudge and not a page on /text. Quiet hours do not
+     * hold it. Omit this and the night window still suppresses, with no re-drive.
+     */
+    ridesReply?: boolean;
   },
   ports: ConnectorOfferPorts,
 ): Promise<ConnectorOfferOutcome> {
@@ -117,12 +123,16 @@ async function offerConnector(
     phoneE164: string;
     language: ReplyLanguage;
     now: Date;
+    ridesReply?: boolean;
   },
   ports: ConnectorOfferPorts,
 ): Promise<ConnectorOfferOutcome> {
   const { familyId, parentUserId, now } = args;
 
-  if (inProactiveQuietHours(now, await parentTimeZone(database, parentUserId))) {
+  if (
+    !args.ridesReply &&
+    inProactiveQuietHours(now, await parentTimeZone(database, parentUserId))
+  ) {
     await database.insert(schema.channelMessages).values({
       familyId,
       parentUserId,

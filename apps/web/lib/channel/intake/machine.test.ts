@@ -26,6 +26,7 @@ import {
   DECLINE_ACK_BY_LANGUAGE,
   HELP_REPLY,
   HELP_REPLY_BY_LANGUAGE,
+  PARENT_CALL_NAME_ASK,
   REGION_UNAVAILABLE_REPLY,
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
   START_ACK_BY_LANGUAGE,
@@ -255,24 +256,28 @@ describe('intake · happy path', () => {
     expect(channel?.phoneE164Hash).toMatch(/^[0-9a-f]{64}$/);
     expect(channel?.phoneE164Encrypted).not.toContain('416');
 
-    // ── the watch offer went out, with the contact card as its postscript ──
-    expect(transport.bodies().at(-2)).toContain(WATCH_OFFER);
-    expect(transport.bodies().at(-1)).toBe(WELCOME_CARD_BODY);
+    // The first reply is the find plus the one watch question. The card waits for yes.
+    expect(transport.bodies().at(-1)).toContain(WATCH_OFFER);
+    expect(transport.bodies().some((body) => body === WELCOME_CARD_BODY)).toBe(false);
 
     const answered = await text(fake, transport, deps, 'yes please');
     expect(answered).toEqual({
       status: 'watch_recorded',
       intent: 'assent',
       granted: true,
-      nameAsked: false,
+      nameAsked: true,
       connectorOffer: 'sent',
       coParentAsk: 'sent',
     });
-    // Ack, then the inbox ask, then the co-parent ask. The consent tail does not
-    // ask for a name.
-    expect(transport.bodies().at(-3)).toBe(ASSENT_ACK);
+    // One text each: receipt, turtle card, call-name, inbox, co-parent.
+    expect(transport.bodies().at(-5)).toBe(ASSENT_ACK);
+    expect(transport.bodies().at(-4)).toBe(WELCOME_CARD_BODY);
+    expect(transport.bodies().at(-3)).toBe(PARENT_CALL_NAME_ASK);
     expect(transport.bodies().at(-2)).toContain('/connect?t=');
     expect(transport.bodies().at(-1)).toBe(CO_PARENT_ASK);
+    expect(ASSENT_ACK).not.toContain(PARENT_CALL_NAME_ASK);
+    expect(transport.bodies().at(-2)).not.toContain('add my partner');
+    expect(transport.bodies().at(-1)).not.toContain('/connect?t=');
   });
 
   /**
@@ -289,8 +294,10 @@ describe('intake · happy path', () => {
     await text(fake, transport, deps, 'hi');
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
     await text(fake, transport, deps, 'yes please');
-    // Ack, then the inbox ask, then the co-parent ask — the turn's last question.
-    expect(transport.bodies().at(-3)).toBe(ASSENT_ACK);
+    // Receipt, card, call-name, inbox, then the co-parent ask — the turn's last question.
+    expect(transport.bodies().at(-5)).toBe(ASSENT_ACK);
+    expect(transport.bodies().at(-4)).toBe(WELCOME_CARD_BODY);
+    expect(transport.bodies().at(-3)).toBe(PARENT_CALL_NAME_ASK);
     expect(transport.bodies().at(-2)).toContain('/connect?t=');
     expect(transport.bodies().at(-1)).toBe(CO_PARENT_ASK);
     const sentDuringIntake = transport.bodies().length;
@@ -331,33 +338,36 @@ describe('intake · happy path', () => {
    * authed web settings form — so a text-born family stayed nameless forever, which is
    * what the introduction email could not greet.
    */
-  describe('the consent acknowledgment does not ask for a name', () => {
+  describe('the call-name is its own text, never a tail on the assent', () => {
     async function consent(h: ReturnType<typeof harness>) {
       await text(h.fake, h.transport, h.deps, 'hi');
       await text(h.fake, h.transport, h.deps, 'Maya is 4, Leo is 1. M5V 2T6');
       return text(h.fake, h.transport, h.deps, 'yes please');
     }
 
-    it('sends the acknowledgment whole, with no name question on the tail', async () => {
+    it('sends the acknowledgment whole, and the locked name line as the next ask', async () => {
       const h = harness({ intents: [assent('yes please')] });
 
       await consent(h);
 
       expect(h.identityAsk.calls).toEqual([]);
       expect(h.transport.bodies().filter((b) => b.startsWith('Done -'))).toEqual([ASSENT_ACK]);
-      expect(h.transport.bodies().some((b) => b.includes('ASK'))).toBe(false);
+      expect(h.transport.bodies().filter((b) => b === PARENT_CALL_NAME_ASK)).toEqual([
+        PARENT_CALL_NAME_ASK,
+      ]);
+      expect(ASSENT_ACK.includes(PARENT_CALL_NAME_ASK)).toBe(false);
     });
 
-    it('stamps no parent_name_ask row on the consent turn', async () => {
+    it('stamps parent_name_ask on that own message, not on the acknowledgment', async () => {
       const h = harness({ intents: [assent('yes please')] });
 
       await consent(h);
 
-      expect(
-        inserts(h.fake, schema.channelMessages).filter(
-          (row) => row.templateKey === 'parent_name_ask',
-        ),
-      ).toEqual([]);
+      const stamped = inserts(h.fake, schema.channelMessages).filter(
+        (row) => row.templateKey === 'parent_name_ask',
+      );
+      expect(stamped).toHaveLength(1);
+      expect(stamped[0]?.body ?? null).toBeNull();
     });
 
     it('does not consult the name composer even when one is ready', async () => {
@@ -372,15 +382,13 @@ describe('intake · happy path', () => {
         status: 'watch_recorded',
         intent: 'assent',
         granted: true,
-        nameAsked: false,
+        nameAsked: true,
         connectorOffer: 'sent',
         coParentAsk: 'sent',
       });
       expect(h.identityAsk.calls).toEqual([]);
       expect(h.transport.bodies().filter((b) => b.startsWith('Done -'))).toEqual([ASSENT_ACK]);
-      expect(
-        inserts(h.fake, schema.channelMessages).filter((r) => r.templateKey === 'parent_name_ask'),
-      ).toEqual([]);
+      expect(h.transport.bodies().filter((b) => b === PARENT_CALL_NAME_ASK)).toHaveLength(1);
     });
 
     it('never asks a parent who declined the watch - there is no turn to ask on', async () => {
@@ -472,15 +480,14 @@ describe("intake · the handoff into the parent's own thread", () => {
     await text(fake, transport, deps, 'Maya is 4 and Leo is 1, M5V');
     await text(fake, transport, deps, 'yes please');
 
-    // The radar + watch offer, the contact card's own line, the consent ack carrying the
-    // name ask — the exact question the parent's first coach turn answers — and the
-    // connector offer behind it, which a parent may well ask about next.
+    // Find, then after yes: receipt, card, call-name, inbox, co-parent. Each is its own text.
     expect(threaded.map((t) => t.body)).toEqual([
-      transport.bodies().at(-5),
+      transport.bodies().at(-6),
+      ASSENT_ACK,
       WELCOME_CARD_BODY,
-      transport.bodies().at(-3),
+      PARENT_CALL_NAME_ASK,
       transport.bodies().at(-2),
-      transport.bodies().at(-1),
+      CO_PARENT_ASK,
     ]);
     expect(threaded.some((t) => t.body === ASSENT_ACK)).toBe(true);
     expect(threaded.at(-1)?.body).toBe(CO_PARENT_ASK);
@@ -508,21 +515,21 @@ describe('intake · the contact card', () => {
    * so the parent taps Add once and every later text arrives under a name and a face
    * instead of a 289 number nobody recognises.
    *
-   * ITS OWN MESSAGE, immediately after the radar — never media hung on the radar itself.
-   * Verified live against the prod messaging service: a MediaUrl Twilio cannot fetch
-   * fails the WHOLE message (error_code 11200), body included, so attaching the card
-   * would put the one message a stranger is guaranteed to read — and the consent ask
-   * carrying the privacy link — behind the availability of a static file.
+   * ITS OWN MESSAGE, after the parent says yes — never media hung on the find, and
+   * never stacked into the name or inbox ask. Verified live against the prod
+   * messaging service: a MediaUrl Twilio cannot fetch fails the WHOLE message
+   * (error_code 11200), body included, so attaching the card to the find would put
+   * the one text a stranger is guaranteed to read behind a static file.
    */
-  it('follows the first radar with one MMS carrying its own vCard', async () => {
-    const { fake, transport, deps } = harness({});
+  it('follows the yes with one MMS carrying its own vCard', async () => {
+    const { fake, transport, deps } = harness({ intents: [assent('yes please')] });
 
     await text(fake, transport, deps, 'hi');
     await text(fake, transport, deps, 'Maya is 4 and Leo is 1, M5V');
+    await text(fake, transport, deps, 'yes please');
 
-    const [greeting, radar, card] = transport.sent;
-    expect(greeting?.mediaUrls).toBeUndefined();
-    expect(radar?.body).toContain(WATCH_OFFER);
+    const radar = transport.sent.find((message) => message.body.includes(WATCH_OFFER));
+    const card = transport.sent.find((message) => message.body === WELCOME_CARD_BODY);
     expect(radar?.mediaUrls).toBeUndefined();
     expect(card).toEqual({
       to: PHONE,
@@ -567,10 +574,14 @@ describe('intake · the contact card', () => {
       ...deps,
       transport: mediaRefusing,
     });
+    await text(fake, transport, deps, 'yes please', { ...deps, transport: mediaRefusing });
 
-    // The intake completed and the radar landed as plain text.
+    // The intake completed and the radar landed as plain text. The refused MMS
+    // costs the card only; the name, inbox, and co-parent still go out.
     expect(provisioned.status).toBe('provisioned');
-    expect(transport.bodies().at(-1)).toContain(WATCH_OFFER);
+    expect(transport.bodies().some((body) => body.includes(WATCH_OFFER))).toBe(true);
+    expect(transport.bodies()).toContain(PARENT_CALL_NAME_ASK);
+    expect(transport.bodies().at(-1)).toBe(CO_PARENT_ASK);
     expect(transport.media()).toEqual([]);
     // Counted, not dropped: the row that claimed the send says the provider refused it.
     expect(
@@ -830,7 +841,7 @@ describe('intake · seeding the first radar', () => {
     });
 
     expect(result.status).toBe('provisioned');
-    expect(transport.bodies().at(-2)).toContain(WATCH_OFFER);
+    expect(transport.bodies().at(-1)).toContain(WATCH_OFFER);
   });
 
   it('does not seed anything for a conversation that never provisioned', async () => {
@@ -1840,17 +1851,20 @@ describe('intake · answers in the language the parent wrote in', () => {
       coParentAsk: 'sent',
     });
     expect(fr.transport.bodies()).toContain(ASSENT_ACK_BY_LANGUAGE.fr);
+    expect(fr.transport.bodies()).toContain(WELCOME_CARD_BODY);
+    expect(fr.transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
     expect(fr.transport.bodies().at(-1)).toBe(CO_PARENT_ASK_BY_LANGUAGE.fr);
-    expect(fr.transport.bodies().join('\n')).not.toContain('ASK');
+    expect(fr.transport.bodies().at(-2)).toContain('/connect?t=');
 
     const en = harness({ intents: [assent('yes')] });
     await text(en.fake, en.transport, en.deps, 'hi');
     await text(en.fake, en.transport, en.deps, 'Maya is 4, Leo is 1. M5V 2T6');
     const enRecorded = await text(en.fake, en.transport, en.deps, 'yes');
 
-    expect(enRecorded).toMatchObject({ nameAsked: false, coParentAsk: 'sent' });
+    expect(enRecorded).toMatchObject({ nameAsked: true, coParentAsk: 'sent' });
     expect(en.transport.bodies()).toContain(ASSENT_ACK);
-    expect(en.transport.bodies().join('\n')).not.toContain(`${ASSENT_ACK} ASK`);
+    expect(en.transport.bodies()).toContain(PARENT_CALL_NAME_ASK);
+    expect(en.transport.bodies().join('\n')).not.toContain(`${ASSENT_ACK} ${PARENT_CALL_NAME_ASK}`);
   });
 
   /**
@@ -2202,12 +2216,13 @@ describe('intake · the connector offer on the consent turn', () => {
       status: 'watch_recorded',
       intent: 'assent',
       granted: true,
-      nameAsked: false,
+      nameAsked: true,
       connectorOffer: 'sent',
       coParentAsk: 'sent',
     });
-    // Ack, then the inbox ask, then the co-parent ask.
-    expect(h.transport.bodies().at(-3)).toBe(ASSENT_ACK);
+    // Receipt, card, call-name, then the inbox ask as its own text.
+    expect(h.transport.bodies().at(-5)).toBe(ASSENT_ACK);
+    expect(h.transport.bodies().at(-3)).toBe(PARENT_CALL_NAME_ASK);
     const offerBody = h.transport.bodies().at(-2) as string;
     expect(offerBody).toContain('/connect?t=');
     expect(offerBody).toContain('ignore this to skip');
@@ -2238,11 +2253,12 @@ describe('intake · the connector offer on the consent turn', () => {
     const recorded = await consent(h);
 
     expect(recorded).toMatchObject({
-      nameAsked: false,
+      nameAsked: true,
       connectorOffer: 'sent',
       coParentAsk: 'sent',
     });
-    expect(h.transport.bodies().at(-3)).toBe(ASSENT_ACK);
+    expect(h.transport.bodies().at(-5)).toBe(ASSENT_ACK);
+    expect(h.transport.bodies().at(-3)).toBe(PARENT_CALL_NAME_ASK);
     expect(h.transport.bodies().at(-2)).toContain('/connect?t=');
     expect(h.transport.bodies().at(-1)).toBe(CO_PARENT_ASK);
   });
@@ -2274,14 +2290,12 @@ describe('intake · the connector offer on the consent turn', () => {
   });
 
   /**
-   * A yes at 22:30 still gets its acknowledgment — it answers a text the parent just
-   * sent — but the offer beside it is an unprompted extra, and an extra at 22:30 is
-   * Hale making noise. Held and named, and the session closes anyway: the turn is not
-   * the offer's to hold open.
+   * A yes at 22:30 is still this chat. The card, the name, the inbox, and the
+   * co-parent go out now. Holding the inbox link until morning is how a parent
+   * who just said yes never sees it: there is no re-drive. The session still closes.
    */
-  it('holds the offer through quiet hours and closes the session all the same', async () => {
+  it('sends the inbox ask on a night yes and closes the session all the same', async () => {
     const h = harness({ intents: [assent('yes please')] });
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     // 22:30 in America/Toronto, the timezone every intake-born parent row defaults to.
     const late = new Date('2026-09-18T02:30:00.000Z');
 
@@ -2289,18 +2303,18 @@ describe('intake · the connector offer on the consent turn', () => {
 
     expect(recorded).toMatchObject({
       granted: true,
-      nameAsked: false,
-      connectorOffer: 'suppressed_quiet_hours',
+      nameAsked: true,
+      connectorOffer: 'sent',
       coParentAsk: 'sent',
     });
     expect(h.transport.bodies().at(-1)).toBe(CO_PARENT_ASK);
-    expect(h.transport.bodies().at(-2)).toBe(ASSENT_ACK);
-    expect(h.transport.bodies().some((b) => b.includes('/connect?t='))).toBe(false);
+    expect(h.transport.bodies().at(-4)).toBe(WELCOME_CARD_BODY);
+    expect(h.transport.bodies().some((b) => b.includes('/connect?t='))).toBe(true);
     expect(
       inserts(h.fake, schema.channelMessages).find(
         (row) => row.templateKey === INTAKE_CONNECTOR_OFFER_TEMPLATE_KEY,
       ),
-    ).toMatchObject({ status: 'suppressed_quiet_hours', dedupeKey: null });
+    ).toMatchObject({ status: 'queued' });
 
     // The session closed on the ack, so the next text is the coach's turn — the held
     // offer does not reopen intake and does not go out on a replayed yes.
@@ -2335,7 +2349,8 @@ describe('intake · the connector offer on the consent turn', () => {
       coParentAsk: 'sent',
     });
     expect(h.transport.bodies().at(-1)).toBe(CO_PARENT_ASK);
-    expect(h.transport.bodies().at(-2)).toBe(ASSENT_ACK);
+    expect(h.transport.bodies().at(-2)).toBe(PARENT_CALL_NAME_ASK);
+    expect(h.transport.bodies()).toContain(ASSENT_ACK);
     expect(h.fake.rows(schema.smsIntakeSessions)[0]).toMatchObject({ state: 'complete' });
     // The claimed row carries the refusal, so a family with no offer is a query rather
     // than a guess - and the dedupe key stays spent, as a failed send must.
@@ -2351,8 +2366,14 @@ describe('intake · the connector offer on the consent turn', () => {
 
     const recorded = await consent(h, 'oui');
 
-    expect(recorded).toMatchObject({ connectorOffer: 'sent', coParentAsk: 'sent' });
+    expect(recorded).toMatchObject({
+      connectorOffer: 'sent',
+      coParentAsk: 'sent',
+      nameAsked: false,
+    });
     expect(h.transport.bodies().at(-1)).toBe(CO_PARENT_ASK_BY_LANGUAGE.fr);
+    expect(h.transport.bodies()).toContain(WELCOME_CARD_BODY);
+    expect(h.transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
     const offerBody = h.transport.bodies().at(-2) as string;
     const [calendarUrl, gmailUrl] = offerBody.match(/https:\/\/\S+/g) as RegExpMatchArray;
     expect(offerBody).toBe(intakeConnectorOffer('fr', calendarUrl as string, gmailUrl as string));
