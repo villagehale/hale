@@ -94,9 +94,10 @@ function only(selector: string, prop: string): string {
 }
 
 describe('display type is set in a face that ships the weight (SITE-02)', () => {
-  it('sets .v4-display in the variable serif, never the 400-only display face', () => {
-    expect(only('.v4-display', 'font-family')).toContain('var(--font-serif)');
-    expect(only('.v4-display', 'font-family')).not.toContain('--font-serif-display');
+  it('sets .v4-display in the system display stack, never a loaded serif', () => {
+    expect(only('.v4-display', 'font-family')).toBe('var(--font-display)');
+    expect(only('.v4-display', 'font-family')).not.toContain('--font-serif');
+    expect(only('.v4-display', 'font-family')).not.toContain('Figtree');
   });
 
   it('steps .v4-display weight DOWN as the viewport (and so the size) grows', () => {
@@ -116,17 +117,16 @@ describe('display type is set in a face that ships the weight (SITE-02)', () => 
   });
 
   it('gives the legal titles the same section-scale weight, not the 400 hairline', () => {
-    expect(only('.legal-title', 'font-family')).toContain('var(--font-serif)');
+    expect(only('.legal-title', 'font-family')).toBe('var(--font-display)');
     expect(Number(only('.legal-title', 'font-weight'))).toBeGreaterThanOrEqual(580);
   });
 
-  it('keeps Instrument Serif for the hero at ≥1024px only', () => {
-    // The FALLBACK path's pin, unchanged: what a locale the display face cannot
-    // set falls back to (today: zh).
+  it('keeps the hero on the system display stack, including at ≥1024px', () => {
     const heroFaces = declarations('.v4-hero-h1', 'font-family');
     expect(heroFaces).toHaveLength(1);
     expect(heroFaces[0]?.minWidth).toBe(1024);
-    expect(heroFaces[0]?.value).toContain('var(--font-serif-display)');
+    expect(heroFaces[0]?.value).toBe('var(--font-display)');
+    expect(heroFaces[0]?.value).not.toContain('--font-serif-display');
     const heroWeights = declarations('.v4-hero-h1', 'font-weight')
       .map((d) => ({ minWidth: d.minWidth, weight: Number(d.value) }))
       .sort((a, b) => a.minWidth - b.minWidth);
@@ -303,21 +303,18 @@ function baseSize(rule: RegExp): string {
   return match?.[1] ?? '';
 }
 
-describe('the display face is Fraunces (Latin locales only, opsz + wght)', () => {
-  it('self-hosts the variable master and binds it to --font-fraunces', () => {
-    expect(LAYOUT).toContain('fraunces-latin-opsz-wght-normal.woff2');
-    expect(LAYOUT).toContain("variable: '--font-fraunces'");
-    // Registered is not enough — the variable must reach the document.
-    expect(LAYOUT).toContain('fraunces.variable');
-  });
-
-  it('registers the whole weight range, because the whole range is what shipped', () => {
-    // The opposite pin to #512's. Bellefair had to be registered as exactly one
-    // weight because exactly one master existed; understating Fraunces' range
-    // would make next/font declare a narrower @font-face than the file supports
-    // and hand the missing weights back to the synthesizer.
-    expect(LAYOUT).toMatch(/fraunces-latin-opsz-wght-normal\.woff2['"],\s*weight:\s*'100 900'/);
-    expect(LAYOUT).not.toMatch(/fraunces-(thin|light|medium|semibold|bold|black|\w*italic)/i);
+describe('headings use the system display stack, not a loaded display webfont', () => {
+  it('does not register Fraunces — the file stays, the page does not preload it', () => {
+    expect(LAYOUT).not.toContain('fraunces-latin-opsz-wght-normal.woff2');
+    expect(LAYOUT).not.toContain("variable: '--font-fraunces'");
+    expect(LAYOUT).not.toContain('fraunces.variable');
+    expect(LAYOUT).not.toMatch(/from 'next\/font\/google'/);
+    expect(LAYOUT).not.toMatch(/https?:\/\/fonts\./);
+    expect(CSS).not.toMatch(/https?:\/\/fonts\.|url\([^)]*tripfix|font-family:[^;]*(Helvetica Now|ABC Marist)/i);
+    const shipped = readdirSync(fileURLToPath(new URL('./fonts', import.meta.url)));
+    expect(shipped).toContain('fraunces-latin-opsz-wght-normal.woff2');
+    expect(shipped).toContain('fraunces-OFL.txt');
+    expect(shipped).toContain('source-serif-4-latin-wght-normal.woff2');
   });
 
   it('retires Bellefair completely — face, registration and binary', () => {
@@ -349,29 +346,36 @@ describe('the display face is Fraunces (Latin locales only, opsz + wght)', () =>
     ]);
   });
 
-  it('sets every display surface in Fraunces for en and fr', () => {
+  it('sets every display surface on --font-display for en and fr', () => {
     for (const selector of FRAUNCES_ALL_SELECTORS) {
-      expect(only(selector, 'font-family'), selector).toContain('var(--font-fraunces)');
+      const stack = only(selector, 'font-family');
+      expect(stack, selector).toBe('var(--font-display)');
+      expect(stack, selector).not.toContain('--font-fraunces');
+      expect(stack, selector).not.toContain('Figtree');
+      expect(stack, selector).not.toContain('--font-sans');
     }
   });
 
-  it('never lets a locale reach Fraunces except through the allowlist', () => {
+  it('never paints a heading in Fraunces or Figtree', () => {
     const bound: string[] = [];
     root.walkDecls('font-family', (decl) => {
-      if (!decl.value.includes('--font-fraunces')) return;
+      if (!/fraunces|figtree/i.test(decl.value)) return;
       const selector = (decl.parent as postcss.Rule | undefined)?.selector ?? '';
       bound.push(...selectorList(selector));
     });
-    expect(bound.sort()).toEqual([...FRAUNCES_ALL_SELECTORS].sort());
-    // Positive control: the scan does find font-family declarations that are NOT
-    // Fraunces, so a matching result above means "correctly scoped", not "the
-    // walker found nothing".
+    expect(bound).toEqual([]);
+    // Positive control: the scan does find font-family declarations, so an empty
+    // result above means "none of them name those faces".
     expect(declarations('.v4-display', 'font-family')).toHaveLength(1);
   });
 
-  it('leaves zh on the Source Serif stack — every rule, not just the hero', () => {
+  it('leaves zh on the same display token — no locale switches the family', () => {
     const localeQualified = [...CSS.matchAll(/html\[lang='(\w+)'\]/g)].map((m) => m[1]);
     expect([...new Set(localeQualified)].sort()).toEqual(['en', 'fr']);
+    expect(only('.v4-display', 'font-family')).toBe('var(--font-display)');
+    expect(CSS).toMatch(
+      /--font-display:\s*"Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;/,
+    );
   });
 
   it('asks opsz to follow the rendered size, on every surface that names the face', () => {
@@ -407,6 +411,9 @@ describe('the display face is Fraunces (Latin locales only, opsz + wght)', () =>
       expect(only(selector, 'letter-spacing')).toBe('-0.035em');
       expect(only(selector, 'line-height')).toBe('0.95');
     }
+    // zh / non-Latin path, restored with the original poster clamp.
+    expect(only('.v4-hero-h1', 'font-size')).toBe('clamp(2.9rem, 8.5vw, 6.5rem)');
+    expect(only('.v4-hero-sub', 'font-size')).toBe('clamp(1rem, 1.6vw, 1.15rem)');
   });
 
   it('carries the face change in WEIGHT — the allowlist sets no size but the hero’s', () => {
@@ -559,29 +566,42 @@ describe('the display face is Fraunces (Latin locales only, opsz + wght)', () =>
 });
 
 /**
- * Figtree — the body and UI face, replacing Instrument Sans at its registration
- * seam (--font-sans, and so --font-body and --font-display through it).
+ * Ship-now pairing. Headings are the system grotesque on --font-display. Body is
+ * Source Serif 4 on --font-body (the self-hosted --font-serif). Figtree stays the
+ * UI face on --font-sans — nav, buttons, bubbles — and is not H1 or body.
  *
- * It is a lighter drawing than the face it replaces at the same nominal weight —
- * 0.1116em against 0.1267em at 600 — which is why every floor in the block above
- * had to be recomputed rather than carried over. It is also the reason the hero
- * DECK left the display system: at 16px a serif deck under a serif headline was
- * two settings of one face, and the founder wants the description to read as a
- * different voice from the headline. It is body copy now, in the body face, and
- * the deck's own stem floor is retired with it.
+ * The hero deck inherits --font-body and declares no family of its own, so the
+ * description reads as a different voice from the headline.
  */
-describe('the body and UI face is Figtree', () => {
-  it('self-hosts the variable master and binds it to --font-sans', () => {
+describe('headings, body, and UI use three different faces', () => {
+  it('self-hosts Figtree for UI and Source Serif 4 for body', () => {
     expect(LAYOUT).toContain('figtree-latin-wght-normal.woff2');
     expect(LAYOUT).toContain("variable: '--font-sans'");
     expect(LAYOUT).toContain('figtree.variable');
     expect(LAYOUT).toMatch(/figtree-latin-wght-normal\.woff2['"],\s*weight:\s*'300 900'/);
+    expect(LAYOUT).toContain('source-serif-4-latin-wght-normal.woff2');
+    expect(LAYOUT).toContain("variable: '--font-serif'");
+    expect(LAYOUT).toContain('sourceSerif.variable');
+  });
+
+  it('locks the display and body tokens, and keeps Figtree off both', () => {
+    expect(CSS).toMatch(
+      /--font-display:\s*"Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;/,
+    );
+    expect(CSS).toMatch(/--font-body:\s*var\(--font-serif\);/);
+    expect(CSS).toMatch(/--font-serif:\s*"Source Serif 4"/);
+    expect(CSS).toMatch(/--font-sans:\s*"Figtree"/);
+    expect(CSS).not.toMatch(/--font-display:\s*var\(--font-sans\)/);
+    expect(CSS).not.toMatch(/--font-body:\s*var\(--font-sans\)/);
+    expect(only('h1', 'font-family')).toBe('var(--font-display)');
+    expect(only('.v4-navlink', 'font-family')).toBe('var(--font-sans)');
+    expect(only('.v4-btn', 'font-family')).toBe('var(--font-sans)');
+    expect(only('.v4-bubble', 'font-family')).toBe('var(--font-sans)');
   });
 
   it('retires Instrument Sans from the site entirely', () => {
     expect(LAYOUT).not.toMatch(/instrument-sans/i);
     expect(CSS).not.toMatch(/"Instrument Sans"/);
-    // Positive control: the sans slot is still bound, to the face that replaced it.
     expect(CSS).toMatch(/--font-sans:\s*"Figtree"/);
   });
 

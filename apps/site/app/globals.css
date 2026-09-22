@@ -2,9 +2,8 @@
 
 /*
  * Hale — marketing site design system. One warm-white world, shared by the
- * homepage and every long-form subpage: Figtree (body + UI) with Fraunces for
- * display, Source Serif 4 as the fallback display stack for locales Fraunces
- * cannot set, and JetBrains Mono for data, a warm page
+ * homepage and every long-form subpage: a system grotesque for headings, Source
+ * Serif 4 for body, Figtree for UI chrome, and JetBrains Mono for data, a warm page
  * (#fdfcfa) carrying navy ink (#17294a) and a single amber accent family
  * (#b26b1f / #fef0c7), gently rounded clean cards, Lucide icons, and a
  * hand-built flat color-block SVG illustration kit.
@@ -112,20 +111,16 @@
   --color-cobalt: #3b5bdb;      /* blue accent text */
   --color-cobalt-bg: #edf0fa;
 
-  /* ── Type — Figtree (body/UI) + Fraunces (display), with Source Serif 4 as
-   * the fallback display stack and JetBrains Mono for data. Vars injected by
-   * next/font in layout.tsx. */
+  /* ── Type — ship-now stack. Headings are a system grotesque (Helvetica Neue
+   * and its substitutes). Body is Source Serif 4, already self-hosted: next/font
+   * overwrites --font-serif on <html> with the hashed family, and --font-body
+   * follows it. Figtree stays on --font-sans for UI chrome only — not H1, not
+   * body. Helvetica Now and ABC Marist are not loaded; nothing here is hotlinked. */
   --font-sans: "Figtree", -apple-system, "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
-  /* The display face (OFL, self-hosted, Latin-only, variable in opsz + wght).
-   * next/font overwrites this on <html> with the hashed family name; the literal
-   * here is what a page falls back to if that stylesheet never arrives. Bound by
-   * locale allowlist, never globally — see "the display face" block in the v4
-   * layer for why by-name and not `:not([lang='zh'])`. */
-  --font-fraunces: "Fraunces", Georgia, "Times New Roman", serif;
-  --font-display: var(--font-sans);
-  --font-body: var(--font-sans);
+  --font-display: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --font-body: var(--font-serif);
 
   --tracking-display: -0.02em;
   --tracking-eyebrow: 0.12em;
@@ -284,7 +279,7 @@
   background: var(--color-navy);
   color: var(--color-cream);
   border-radius: var(--r-full);
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-weight: 600;
   text-decoration: none;
   outline: 2px solid var(--color-cream);
@@ -333,7 +328,8 @@ body {
   html { scroll-behavior: auto; }
 }
 
-/* Headlines: Inter, tight tracking, semibold display weight. Sentence-case,
+/* Headlines: the system grotesque on --font-display, tight tracking, semibold.
+ * Sentence-case,
  * never all-caps. These live in @layer base so Tailwind v4 utilities (text-*,
  * font-*, text-[…], leading-*) win by normal layer order — as an UNLAYERED
  * element rule this outranked every utility, so a `text-[14px]` footer header
@@ -396,7 +392,7 @@ strong { font-weight: 700; }
  * and by the single serif-italic accent word; body text stays navy for AA. Never
  * sits on a navy ground (audited), so the fill reads on every surface it lands on. */
 .eyebrow {
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-size: 0.8rem;
   letter-spacing: var(--tracking-eyebrow);
   font-weight: 600;
@@ -405,7 +401,7 @@ strong { font-weight: 700; }
 }
 
 .meta {
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--color-faded-sage);
@@ -458,7 +454,7 @@ strong { font-weight: 700; }
   gap: 0.45rem;
   padding: 0.35rem 0.85rem;
   border-radius: var(--r-full);
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-size: 0.78rem;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -488,7 +484,7 @@ strong { font-weight: 700; }
   color: var(--color-cream);
   border: 0;
   border-radius: var(--r-full);
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-size: 1rem;
   font-weight: 700;
   text-decoration: none;
@@ -516,7 +512,7 @@ strong { font-weight: 700; }
   color: var(--color-spruce);
   border: 1.5px solid var(--color-rule-strong);
   border-radius: var(--r-full);
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-size: 1rem;
   font-weight: 700;
   text-decoration: none;
@@ -579,7 +575,7 @@ strong { font-weight: 700; }
   border: 1.5px solid var(--color-rule-strong);
   border-radius: var(--r-full);
   padding: 0.9rem 1.25rem;
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-size: 16px;
   font-weight: 500;
   color: var(--color-spruce);
@@ -798,7 +794,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   color: var(--color-navy);
   border: 0;
   border-radius: var(--r-full);
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-size: 1rem;
   font-weight: 700;
   text-decoration: none;
@@ -827,7 +823,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   border: 0;
   border-radius: var(--r-full);
   box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--color-cream) 45%, transparent);
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
@@ -866,7 +862,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 .legal-measure { max-width: 38rem; }
 
 .legal-title {
-  font-family: var(--font-serif), Georgia, serif;
+  font-family: var(--font-display);
   font-weight: 600;
   font-synthesis-weight: none;
   letter-spacing: -0.01em;
@@ -960,7 +956,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   /* SITE-04: spruce ink on the amber tint (11.5:1) — amber-on-amber (#B26B1F on
    * #FEF0C7) was 3.69:1, below AA for this 0.8rem/600 label. */
   color: var(--color-spruce);
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -1078,7 +1074,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   border: 1px solid var(--v3-chip-border);
   background: var(--v3-chip-bg);
   color: var(--color-spruce);
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-size: 0.95rem;
   font-weight: 500;
   line-height: 1.25;
@@ -1260,7 +1256,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   color: #101c33;
   border: 0;
   border-radius: var(--r-full);
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-size: 1rem;
   font-weight: 700;
   text-decoration: none;
@@ -1409,7 +1405,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   border-radius: var(--r-full);
   background: transparent;
   color: var(--color-slate-green);
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
@@ -1671,7 +1667,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   padding: 0.25rem 0.7rem;
   background: var(--color-sky-tint);
   color: var(--color-slate-green);
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-size: 0.78rem;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -1760,17 +1756,11 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 }
 
 @layer components {
-  /* The display face. Instrument Serif ships ONE master (400) — so at the 30–54px
-   * every section heading actually renders at, its hairlines under-assert and
-   * there is no heavier cut to reach for (`font-weight: 600` on it would be a
-   * browser-smeared synthetic bold). Display type is therefore Source Serif 4,
-   * variable 400–700 and already self-hosted, with the weight rising as the size
-   * falls: perceived weight drops with size, so <2.5rem takes 620, 2.5–4rem
-   * 580–600, ≥4rem 400–500. Instrument Serif is kept for exactly one thing, the
-   * landing hero at ≥1024px (see .v4-hero-h1), the one place on the site a
-   * high-contrast 400 serif renders near 100px. */
+  /* Section headings use --font-display (system Helvetica Neue stack). The
+   * weight still rises as the size falls: <2.5rem takes 620, 2.5–4rem 580–600.
+   * Card numerals keep Instrument Serif; they are not headings. */
   .v4-display {
-    font-family: var(--font-serif), Georgia, serif;
+    font-family: var(--font-display);
     font-weight: 620;
     font-synthesis-weight: none;
     letter-spacing: -0.01em;
@@ -1968,6 +1958,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     .v4-navlinks { display: flex; align-items: center; gap: 1.75rem; }
   }
   .v4-navlink {
+    font-family: var(--font-sans);
     font-size: 0.9rem;
     font-weight: 500;
     color: var(--color-navy);
@@ -1979,6 +1970,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   /* Glass button (secondary) and the solid navy primary. */
   .v4-btn,
   .v4-btn-solid {
+    font-family: var(--font-sans);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -2024,6 +2016,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * amber it passes in (#e2a75a, 8.4:1 on the navy ground). Amber stays where it
    * is large or decorative — .v4-accent and the 01/02/03 numerals. */
   .v4-eyebrow {
+    font-family: var(--font-sans);
     font-size: 0.72rem;
     font-weight: 600;
     letter-spacing: 0.24em;
@@ -2064,7 +2057,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * high-contrast 400 serif reads as display type rather than as thin. */
   @media (min-width: 1024px) {
     .v4-hero-h1 {
-      font-family: var(--font-serif-display), Georgia, serif;
+      font-family: var(--font-display);
       font-weight: 400;
       letter-spacing: -0.015em;
       line-height: 0.96;
@@ -2128,6 +2121,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     max-width: 40rem;
   }
   .v4-chip {
+    font-family: var(--font-sans);
     display: inline-block;
     text-align: center;
     padding: 0.5rem 0.95rem;
@@ -2168,7 +2162,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * navy rather than the amber. */
   .v4-when {
     margin-left: auto;
-    font-family: var(--font-body);
+    font-family: var(--font-sans);
     font-size: 0.72rem;
     font-weight: 600;
     letter-spacing: 0.14em;
@@ -2248,18 +2242,12 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     color: var(--color-slate-green);
   }
 
-  /* ── The display face: Fraunces ──────────────────────────────────────────
-   * Everything above this comment is the FALLBACK. This block re-sets every
-   * display surface — the hero H1, .v4-display (every section H2 and every
-   * subpage headline via WordsPullUp) and both legal titles — in the display
-   * face, for the Latin locales BY NAME.
-   *
-   * IT IS BY NAME BECAUSE THE FACE IS LATIN-ONLY. Chinese set in it renders
-   * every glyph from whatever CJK serif the reader's OS supplies, at tracking
-   * and leading tuned for a high-contrast Latin serif. So a locale added to
-   * i18n/routing.ts inherits the Source Serif rules above — the safe default —
-   * until someone adds it here on purpose. `html:not([lang='zh'])` would fail
-   * the other way round, which is exactly the failure this shape prevents.
+  /* ── Latin display scale ─────────────────────────────────────────────────
+   * The painted family is --font-display for every locale, zh included. This
+   * block does not switch the face. It keeps the weight, tracking, leading and
+   * hero size measured for the Latin rungs. A locale added to i18n/routing.ts
+   * inherits --font-display from the base rules — system-ui covers scripts the
+   * grotesque does not — rather than a Latin-only webfont.
    *
    * ── THE WEIGHT AXIS IS BACK, SO THE SIZE STEPS COME OUT ─────────────────
    * #512's face shipped ONE master. With no heavier cut to reach for, the only
@@ -2305,7 +2293,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   html[lang='fr'] .v4-display,
   html[lang='en'] .legal-title,
   html[lang='fr'] .legal-title {
-    font-family: var(--font-fraunces), Georgia, serif;
+    font-family: var(--font-display);
     font-weight: 450;
     font-optical-sizing: auto;
     font-synthesis-weight: none;
@@ -2321,7 +2309,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   }
   html[lang='en'] .v4-hero-h1,
   html[lang='fr'] .v4-hero-h1 {
-    font-family: var(--font-fraunces), Georgia, serif;
+    font-family: var(--font-display);
     /* The founder's poster values. Stated in px rather than rem because they are
      * a drawing decision at one specific pair of sizes, not a step on the type
      * scale — and because the ceiling is what the display cut was chosen for. */
@@ -2415,6 +2403,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     color: var(--color-slate-green);
   }
   .v4-bubble {
+    font-family: var(--font-sans);
     max-width: 84%;
     padding: 0.7rem 1rem;
     border-radius: 1.25rem;
