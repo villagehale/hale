@@ -12,7 +12,7 @@
  *            /^[a-z0-9]+(?:-[a-z0-9]+)*$/
  *            e.g. earlyon-richmondhill · swim-loyalfitness · daycare-brightpath-milton
  *   In SMS   appended to the pre-filled body as a trailing "(via <code>)" token:
- *              What is worth doing with the kids near us? (via earlyon-richmondhill)
+ *              Hey Hale, what's going on? (via earlyon-richmondhill)
  *   Parsed   by the M2 intake with
  *              /\(via\s+([a-z0-9]+(?:-[a-z0-9]+)*)\)\s*$/
  *            — strip the match to recover the parent's real message.
@@ -30,14 +30,14 @@ const SOURCE_CODE_MAX_LENGTH = 48;
 export const CONTACT_EMAIL = 'aloha@villagehale.com';
 
 /**
- * Locked 2026-09-21 door — the first SMS a parent sees on /text, sent as-is.
- * An activity question, not a hello and not a sample family. Intake treats a
- * question as something to answer (apps/web/lib/channel/intake/machine.ts);
- * when the composer has nothing, the fallback is still `greeting()`. The
- * parent taps send; Hale never texts first. No apostrophe: React escapes one
- * to &#x27; in the sms: href, and the body must match the composer byte for byte.
+ * Locked 2026-09-22 door — the warm hello a parent sends from /text.
+ * Intake treats this exact line, venue tag stripped, as a bare hello and
+ * answers with `greeting()`. The apostrophe stays: `buildSmsHrefForBody`
+ * percent-encodes the body before React escapes attributes (`%27`, not a raw
+ * quote rewritten as `&#x27;`), and the page bubble's `&#x27;` decodes to the
+ * same bytes. The parent taps send; Hale never texts first.
  */
-export const INTAKE_PREFILL = "What is worth doing with the kids near us?";
+export const INTAKE_PREFILL = "Hey Hale, what's going on?";
 
 /** A `?s=` value, or null when absent, repeated, or not a venue code. */
 export function parseSourceCode(raw: string | string[] | undefined): string | null {
@@ -52,6 +52,18 @@ export function buildSmsBody(source: string | null): string {
 }
 
 /**
+ * Percent-encode a composer body.
+ *
+ * `encodeURIComponent` leaves `'` unescaped (RFC 3986 sub-delimiter). React then
+ * rewrites that raw apostrophe inside an href to `&#x27;`, so the HTML attribute
+ * and the string the QR encodes would not be the same bytes. `%27` round-trips
+ * through both to the apostrophe Design locked.
+ */
+export function encodeComposerBody(body: string): string {
+  return encodeURIComponent(body).replaceAll("'", '%27');
+}
+
+/**
  * The composer deep link for a message we hand the parent verbatim. `?&body=`
  * rather than `?body=` is the cross-platform form: iOS wants the body as a
  * second parameter, Android reads either.
@@ -61,7 +73,7 @@ export function buildSmsBody(source: string | null): string {
  * Hale never texts first.
  */
 export function buildSmsHrefForBody(number: string, body: string): string {
-  return `sms:${number}?&body=${encodeURIComponent(body)}`;
+  return `sms:${number}?&body=${encodeComposerBody(body)}`;
 }
 
 /** The composer deep link for the QR/entry greeting, venue token included. */
@@ -104,5 +116,5 @@ export function readWhatsAppNumber(raw: string | undefined): string {
  * over). wa.me addresses the number as bare digits, no `+`.
  */
 export function buildWaHref(number: string, source: string | null): string {
-  return `https://wa.me/${number.replace(/^\+/, '')}?text=${encodeURIComponent(buildSmsBody(source))}`;
+  return `https://wa.me/${number.replace(/^\+/, '')}?text=${encodeComposerBody(buildSmsBody(source))}`;
 }

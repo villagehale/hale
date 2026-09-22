@@ -13,6 +13,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { matchHealthCheckpoints } from '~/lib/health/match';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { INTAKE_CONNECTOR_OFFER_TEMPLATE_KEY, connectorOfferDedupeKey } from './connector-offer';
 import {
   AMBIGUOUS_CLARIFY,
   AMBIGUOUS_CLARIFY_BY_LANGUAGE,
@@ -36,7 +37,6 @@ import {
   greeting,
   intakeConnectorOffer,
 } from './copy';
-import { INTAKE_CONNECTOR_OFFER_TEMPLATE_KEY, connectorOfferDedupeKey } from './connector-offer';
 import type { IntakeCollected } from './extract';
 import {
   FakeAnswerComposer,
@@ -192,7 +192,7 @@ describe('intake · happy path', () => {
 
     expect(await text(fake, transport, deps, 'hi')).toEqual({ status: 'greeted' });
     expect(transport.bodies()[0]).toBe(
-      "Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
+      "Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
     );
     expect(transport.bodies()[0]).not.toContain('an AI that quietly runs the family week');
     expect(transport.bodies()[0]).not.toMatch(/I'm an AI/i);
@@ -1121,6 +1121,56 @@ describe('intake · a first-text question is answered', () => {
     expect(calls.map((c) => c.event)).toEqual(['intake_started']);
   });
 
+  it('sends greeting() for the locked /text warm prefill and does not call the answerer', async () => {
+    const prefill = "Hey Hale, what's going on?";
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const plain = harness({ answerComposer: composer });
+    expect(await text(plain.fake, plain.transport, plain.deps, prefill)).toEqual({
+      status: 'greeted',
+    });
+    expect(plain.transport.bodies()).toEqual([greeting(null, 'en')]);
+    expect(composer.calls).toHaveLength(0);
+
+    const tagged = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const via = harness({ answerComposer: tagged });
+    expect(
+      await text(via.fake, via.transport, via.deps, `${prefill} (via earlyon-richmondhill)`),
+    ).toEqual({ status: 'greeted' });
+    expect(via.transport.bodies()).toEqual([greeting('family centre', 'en')]);
+    expect(tagged.calls).toHaveLength(0);
+  });
+
+  it('still answers a typed activity question, including the retired door prefill', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const { fake, transport, deps } = harness({ answerComposer: composer });
+    const answered = await text(
+      fake,
+      transport,
+      deps,
+      'What is worth doing with the kids near us?',
+    );
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(transport.bodies()).toEqual([`${ANSWER} ${RETURN}`]);
+    expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(composer.calls).toEqual([
+      {
+        parentWords: 'What is worth doing with the kids near us?',
+        pendingAsk: COLD_START_ASK,
+        children: [],
+        postalCode: null,
+      },
+    ]);
+  });
+
   it("still sends greeting() for a first inbound 'hi'", async () => {
     const composer = new FakeAnswerComposer({
       status: 'answered',
@@ -1558,7 +1608,7 @@ describe('intake · CASL keywords', () => {
     expect(ack?.providerMessageId).toMatch(/^fake-out-/);
   });
 
-  it("HELP from an unknown number stays unledgered — channel_messages has no family row to hold it", async () => {
+  it('HELP from an unknown number stays unledgered — channel_messages has no family row to hold it', async () => {
     const { fake, transport, deps } = harness({});
 
     const result = await text(fake, transport, deps, 'HELP');
@@ -1852,7 +1902,10 @@ describe('intake · the French CASL keywords', () => {
   it('answers AIDE with the French capability line and HELP with the English one', async () => {
     const fr = harness({});
     await text(fr.fake, fr.transport, fr.deps, 'hi');
-    expect(await text(fr.fake, fr.transport, fr.deps, 'AIDE')).toEqual({ status: 'helped', ack: 'sent' });
+    expect(await text(fr.fake, fr.transport, fr.deps, 'AIDE')).toEqual({
+      status: 'helped',
+      ack: 'sent',
+    });
     expect(fr.transport.bodies().at(-1)).toBe(HELP_REPLY_BY_LANGUAGE.fr);
 
     const en = harness({});
@@ -2452,7 +2505,7 @@ describe('intake · the provider answered the keyword first (VIL-348)', () => {
  * text that offered a Saturday from one that offered nothing — and the ask would have
  * fired for nobody.
  */
-describe('the first radar\'s weekend-pick stamp', () => {
+describe("the first radar's weekend-pick stamp", () => {
   async function onboard(h: ReturnType<typeof harness>) {
     await text(h.fake, h.transport, h.deps, 'hi');
     await text(h.fake, h.transport, h.deps, 'Maya is 4, Leo is 1. M5V 2T6');

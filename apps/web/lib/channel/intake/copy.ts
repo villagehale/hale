@@ -425,14 +425,14 @@ export function firstInboundWords(body: string): string {
   return trimmed.replace(SOURCE_TAG_SUFFIX, '').trim();
 }
 
-// A wave emoji (U+1F44B) and a getting-started tail are still a hello, in either
-// apostrophe iOS may send (U+2019 or ASCII). Written as escapes so this file stays
-// inside the GSM-7 gate that guards the outbound copy around it. The /text page
-// prefill is an activity question (apps/site/lib/text-entry.ts INTAKE_PREFILL),
-// pinned by copy.test.ts, and does not match. Anything with other words is a
+// A wave emoji (U+1F44B), a getting-started tail, and the locked /text prefill
+// ("Hey Hale, what's going on?") are still a hello, in either apostrophe iOS may
+// send (U+2019 or ASCII). Written as escapes so this file stays inside the GSM-7
+// gate that guards the outbound copy around it. The venue "(via …)" tag is
+// stripped by firstInboundWords before this runs. Anything with other words is a
 // message and goes to the answerer.
 const BARE_HELLO =
-  /^(hi|hey|hello|yo|howdy|bonjour|salut|allo)(?:[,!]?\s+hale)?(?:\s*\u{1F44B})?(?:[,!]?\s*(?:ready to get started|let[\u2019']?s get started|i[\u2019']?d like to get started|on commence))?[.!,\s]*$/iu;
+  /^(hi|hey|hello|yo|howdy|bonjour|salut|allo)(?:[,!]?\s+hale)?(?:\s*\u{1F44B})?(?:[,!]?\s*(?:ready to get started|let[\u2019']?s get started|i[\u2019']?d like to get started|on commence|what[\u2019']s going on))?[.!?,\s]*$/iu;
 
 /**
  * True when the first inbound is just a hello — with or without Hale's own name,
@@ -446,7 +446,7 @@ export function isBareFirstHello(body: string): boolean {
 }
 
 /** "Maya is 4", "Theo is 18 months" — a parent who skipped hello and led with
- * details. The /text page prefill is an activity question, not details. */
+ * details. The /text page prefill is a warm hello, not details. */
 const NAME_IS_AGE =
   /\b[A-Za-z][A-Za-z'-]{0,30}\s+is\s+\d+(?:\s*(?:months?|years?|ans|mois))?\b/i;
 
@@ -494,7 +494,9 @@ export function posterLocation(code: string | null): string | null {
  * mornings so they don't sneak up" named ONE job, so a stranger with no registration
  * coming read a reminder service and had no reason to answer. The sentence now names
  * the three in the order they happen — find the activity that fits, hold the sign-up
- * morning, come back and ask how it went — and calls the rest what it is.
+ * morning, come back and ask how it went. The 2026-09-22 door lock ends the
+ * sentence there: the "parenting chaos" tail is gone, and "your little one"
+ * is "your kids".
  *
  * Two things it deliberately does NOT say. No superlative: Hale cannot verify "best",
  * so it claims fit, which it can. And no nightly check-in, which is not built —
@@ -521,12 +523,12 @@ export function posterLocation(code: string | null): string | null {
  */
 export function greeting(venue: string | null, language: ReplyLanguage): string {
   if (venue) {
-    return `Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
+    return `Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
   }
   if (language === 'fr') {
-    return `Bonjour, je suis Hale. Je trouve des activités qui conviennent à votre tout-petit, je surveille les matins d'inscription pour qu'ils ne vous échappent pas, et je prends de vos nouvelles - tout le chaos du quotidien. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
+    return `Bonjour, je suis Hale. Je trouve des activités qui conviennent à vos enfants, je surveille les matins d'inscription pour qu'ils ne vous échappent pas, et je prends de vos nouvelles. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
   }
-  return `Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. ${COLD_START_ASK}`;
+  return `Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. ${COLD_START_ASK}`;
 }
 
 /**
@@ -540,7 +542,7 @@ export function greeting(venue: string | null, language: ReplyLanguage): string 
  * `replyLanguage` reads it as English whatever they speak.
  */
 export function greetingWithArea(areaCoarse: string): string {
-  return `Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
+  return `Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
 }
 
 /**

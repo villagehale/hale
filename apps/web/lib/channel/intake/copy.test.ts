@@ -31,6 +31,7 @@ import {
   detailsBlocked,
   followUp,
   greeting,
+  greetingWithArea,
   isBareFirstHello,
   looksLikeIntakeDetails,
   posterLocation,
@@ -39,15 +40,14 @@ import {
 } from './copy';
 import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
 
-
 /**
  * The /text page's prefilled first message lives in apps/site; the greeting path lives
- * here. They have drifted before (a warmer prefill would have skipped the greeting), so
- * the site's constant is read from disk and pushed through the classifier, with and
- * without the venue tag the page appends.
+ * here. A prefill the classifier does not treat as a hello skips greeting() and calls
+ * the answerer, so the site's constant is read from disk and pushed through the
+ * classifier, with and without the venue tag the page appends.
  */
 describe('the /text prefill and the bare-hello classifier agree', () => {
-  it('sends the site prefill to the answerer: a question, not a hello and not intake details', async () => {
+  it('treats the locked warm prefill as a hello, and the retired activity question as a question', async () => {
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
     const src = readFileSync(
@@ -55,11 +55,18 @@ describe('the /text prefill and the bare-hello classifier agree', () => {
       'utf8',
     );
     const prefill = /INTAKE_PREFILL = (["'])(.*?)\1;/.exec(src)?.[2];
-    expect(prefill, 'INTAKE_PREFILL must be a single literal in apps/site/lib/text-entry.ts').toBeTruthy();
-    expect(prefill).toBe("What is worth doing with the kids near us?");
-    expect(isBareFirstHello(prefill as string)).toBe(false);
-    expect(isBareFirstHello(`${prefill} (via earlyon-richmondhill)`)).toBe(false);
+    expect(
+      prefill,
+      'INTAKE_PREFILL must be a single literal in apps/site/lib/text-entry.ts',
+    ).toBeTruthy();
+    expect(prefill).toBe("Hey Hale, what's going on?");
+    expect(isBareFirstHello(prefill as string)).toBe(true);
+    expect(isBareFirstHello(`${prefill} (via earlyon-richmondhill)`)).toBe(true);
     expect(looksLikeIntakeDetails(prefill as string)).toBe(false);
+    const retired = 'What is worth doing with the kids near us?';
+    expect(src).not.toContain(retired);
+    expect(isBareFirstHello(retired)).toBe(false);
+    expect(looksLikeIntakeDetails(retired)).toBe(false);
   });
 });
 
@@ -74,15 +81,17 @@ describe('SITTING_SESSION_REMINDER', () => {
 describe('greeting', () => {
   it('is the verbatim no-context spec line when there is no venue', () => {
     expect(greeting(null, 'en')).toBe(
-      "Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
+      "Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
     );
+    expect(greeting(null, 'en')).not.toContain('parenting chaos');
+    expect(greeting(null, 'en')).not.toContain('little one');
   });
 
   it('is the verbatim venue line, naming the venue, and does NOT ask for a postal code', () => {
     // The QR venue already tells us the area, so asking for the postal code would be
     // asking for data we don't need — the whole point of the venue variant.
     expect(greeting('library', 'en')).toBe(
-      "Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. You found me at the library, so I already know the area. Kids' names and ages, and I'll look up what's coming.",
+      "Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. You found me at the library, so I already know the area. Kids' names and ages, and I'll look up what's coming.",
     );
     expect(greeting('library', 'en')).not.toContain('postal');
   });
@@ -92,6 +101,14 @@ describe('greeting', () => {
     expect(greeting('library', 'en')).not.toMatch(/I'm an AI/i);
     expect(greeting(null, 'en')).not.toContain('an AI that quietly runs the family week');
     expect(greeting('library', 'en')).not.toContain('an AI that quietly runs the family week');
+  });
+
+  it('is the verbatim area line when the first text was only a postal code', () => {
+    expect(greetingWithArea('M5V')).toBe(
+      "Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. Got M5V, so I already know the area. Kids' names and ages, and I'll look up what's coming.",
+    );
+    expect(greetingWithArea('M5V')).not.toContain('parenting chaos');
+    expect(greetingWithArea('M5V')).not.toContain('little one');
   });
 });
 
@@ -126,7 +143,7 @@ describe('sourceCodeFromBody / venueForCode', () => {
 
   it('treats a greeting addressed to Hale by name as still bare (the /text page prefill)', () => {
     expect(isBareFirstHello('Hi Hale')).toBe(true);
-    expect(isBareFirstHello("Hi Hale 👋 ready to get started")).toBe(true);
+    expect(isBareFirstHello('Hi Hale 👋 ready to get started')).toBe(true);
     expect(isBareFirstHello("Hi Hale 👋 let's get started")).toBe(true);
     expect(isBareFirstHello('Hi Hale 👋 let’s get started (via earlyon-richmondhill)')).toBe(true);
     expect(isBareFirstHello('Salut Hale 👋 on commence')).toBe(true);
@@ -137,6 +154,13 @@ describe('sourceCodeFromBody / venueForCode', () => {
     expect(isBareFirstHello('Hi Hale (via markham)')).toBe(true);
     expect(isBareFirstHello('hi')).toBe(true);
     expect(isBareFirstHello('Hi Hale can you help with sleep')).toBe(false);
+    const warm = "Hey Hale, what's going on?";
+    const warmCurly = 'Hey Hale, what\u2019s going on?';
+    expect(isBareFirstHello(warm)).toBe(true);
+    expect(isBareFirstHello(`${warm} (via earlyon-richmondhill)`)).toBe(true);
+    expect(isBareFirstHello(warmCurly)).toBe(true);
+    expect(isBareFirstHello(`${warmCurly} (via markham)`)).toBe(true);
+    expect(isBareFirstHello("Hey Hale, what's going on with swim registration?")).toBe(false);
   });
 
   it('does not treat a first-text question as a bare hello', () => {
@@ -361,8 +385,10 @@ describe('the French script', () => {
 
   it('names the same three jobs in French too, and closes on the same ask', () => {
     expect(greeting(null, 'fr')).toBe(
-      "Bonjour, je suis Hale. Je trouve des activités qui conviennent à votre tout-petit, je surveille les matins d'inscription pour qu'ils ne vous échappent pas, et je prends de vos nouvelles - tout le chaos du quotidien. Le nom et l'age de vos enfants, et votre code postal - et je verrai ce qui arrive.",
+      "Bonjour, je suis Hale. Je trouve des activités qui conviennent à vos enfants, je surveille les matins d'inscription pour qu'ils ne vous échappent pas, et je prends de vos nouvelles. Le nom et l'age de vos enfants, et votre code postal - et je verrai ce qui arrive.",
     );
+    expect(greeting(null, 'fr')).not.toContain('chaos');
+    expect(greeting(null, 'fr')).not.toContain('tout-petit');
     expect(greeting(null, 'fr')).not.toContain('une IA');
     expect(greeting(null, 'fr')).toContain(COLD_START_ASK_BY_LANGUAGE.fr);
   });

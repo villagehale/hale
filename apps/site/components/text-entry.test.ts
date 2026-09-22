@@ -46,20 +46,47 @@ function anchors(html: string): string[] {
   return [...html.matchAll(/<a\s[^>]*>/g)].map((m) => m[0]);
 }
 
-/** A bubble's rendered text, tags stripped — read through the shared landing
- * primitives (`v4-bubble` / `v4-bubble-out|in`) so a page that grew its own
- * second bubble style would return null here rather than pass. The bubble's own
- * sr-only caption comes off FIRST: it is said to the reader the layout does not
- * reach, and what is left is the message a sighted reader sees. */
+/** react-dom/server escapes text the way a browser decodes it. The proof below
+ * compares those decoded bytes to the locked prefill, not the entity spelling. */
+function decodeHtml(text: string): string {
+  return text
+    .replaceAll('&amp;', '&')
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#x27;', "'")
+    .replaceAll('&#39;', "'");
+}
+
+/** A bubble's rendered text, tags stripped and entities decoded — read through
+ * the shared landing primitives (`v4-bubble` / `v4-bubble-out|in`) so a page
+ * that grew its own second bubble style would return null here rather than
+ * pass. The bubble's own sr-only caption comes off FIRST: it is said to the
+ * reader the layout does not reach, and what is left is the message a sighted
+ * reader sees. */
 function bubbleText(html: string, dir: 'out' | 'in'): string | null {
   const match = new RegExp(`<p class="v4-bubble v4-bubble-${dir}"[^>]*>([\\s\\S]*?)</p>`).exec(
     html,
   );
   if (match?.[1] === undefined) return null;
-  return match[1]
-    .replace(/<span class="sr-only">[\s\S]*?<\/span>/, '')
-    .replace(/<[^>]+>/g, '')
-    .trim();
+  return decodeHtml(
+    match[1]
+      .replace(/<span class="sr-only">[\s\S]*?<\/span>/, '')
+      .replace(/<[^>]+>/g, '')
+      .trim(),
+  );
+}
+
+/** The composer body after HTML-attribute decoding and percent-decoding. */
+function composerBody(html: string, kind: 'sms' | 'wa'): string {
+  const pattern = kind === 'sms' ? /href="(sms:[^"]+)"/ : /href="(https:\/\/wa\.me\/[^"]+)"/;
+  const raw = pattern.exec(html)?.[1];
+  if (raw === undefined) throw new Error(`missing ${kind} href`);
+  const href = decodeHtml(raw);
+  const query = href.slice(href.indexOf('?') + 1).replace(/^&/, '');
+  const value = new URLSearchParams(query).get(kind === 'sms' ? 'body' : 'text');
+  if (value === null) throw new Error(`missing ${kind} body in ${href}`);
+  return value;
 }
 
 /** The caption a bubble carries for screen readers, or null when it carries none. */
@@ -76,11 +103,8 @@ function messages(locale: 'en' | 'fr' | 'zh'): { Text: Record<string, string> } 
   );
 }
 
-/** en.json Text.greeting, escaped the way react-dom/server writes it — the same
- * bytes app/text-page-copy.test.ts pins against apps/web's intake copy. */
-const PINNED_GREETING = (messages('en').Text.greeting as string)
-  .replaceAll('&', '&amp;')
-  .replaceAll("'", '&#x27;');
+/** en.json Text.greeting — the same bytes app/text-page-copy.test.ts pins against
+ * apps/web's intake copy. bubbleText decodes React's entities first. */
 
 /** globals.css as postcss sees it — the fill rules below are a HIERARCHY claim
  * (one navy fill on the page, and it is the button), which no rendered markup
@@ -140,7 +164,7 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
 
   it('shows what comes BACK — an honestly-labeled bubble, absent while no channel is live', () => {
     expect(liveHtml).toContain('The text you’ll get back:');
-    expect(liveHtml).toContain('Hi, I&#x27;m Hale. I find activities that fit your little one');
+    expect(liveHtml).toContain('Hi, I&#x27;m Hale. I find activities that fit your kids');
     expect(unsetHtml).not.toContain('Reply with your kids');
     expect(unsetHtml).not.toContain('The text you’ll get back:');
   });
@@ -218,8 +242,13 @@ describe('TextEntry — the exchange is the hero', () => {
   });
 
   it('receives Hale’s pinned greeting, byte-for-byte, in the received bubble', () => {
-    expect(bubbleText(liveHtml, 'in')).toBe(PINNED_GREETING);
-    expect(PINNED_GREETING).toContain('sign-up mornings'); // the pin is not empty
+    const greeting = messages('en').Text.greeting as string;
+    expect(bubbleText(liveHtml, 'in')).toBe(greeting);
+    expect(greeting).toBe(
+      "Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
+    );
+    expect(greeting).not.toContain('parenting chaos');
+    expect(greeting).not.toContain('little one');
   });
 
   it('leaves the CTA as the only navy fill: the sent bubble is a message, not a button', () => {
@@ -293,9 +322,9 @@ describe('TextEntry — the exchange is the hero', () => {
       expect(html).toContain('text-thread-gloss');
     }
     expect(render({ source: null, locale: 'fr' })).toContain(
-      'Qu’est-ce qui vaut la peine avec les enfants, près de chez nous ?',
+      'Salut Hale, qu’est-ce qui se passe ?',
     );
-    expect(render({ source: null, locale: 'zh' })).toContain('附近有什么值得和孩子一起做的？');
+    expect(render({ source: null, locale: 'zh' })).toContain('嘿 Hale，最近怎么样？');
     // English needs no gloss of English — the key exists, and it is the prefill
     // itself, which is exactly the condition that suppresses the line.
     expect(liveHtml).not.toContain('text-thread-gloss');
@@ -315,7 +344,7 @@ describe('TextEntry — the channel matrix, rendered', () => {
   it('apple WhatsApp dark: one Text Hale sms: CTA carrying the pre-filled body and venue token', () => {
     // React escapes the `&` of the cross-platform `?&body=` form into `&amp;`.
     expect(liveHtml).toContain(
-      'href="sms:+16475551234?&amp;body=What%20is%20worth%20doing%20with%20the%20kids%20near%20us%3F%20(via%20earlyon-richmondhill)"',
+      'href="sms:+16475551234?&amp;body=Hey%20Hale%2C%20what%27s%20going%20on%3F%20(via%20earlyon-richmondhill)"',
     );
     expect(liveHtml).toContain('>Text Hale</a>');
     const primary = anchors(liveHtml).find((a) => a.includes('href="sms:')) ?? '';
@@ -392,8 +421,35 @@ describe('TextEntry — the channel matrix, rendered', () => {
 
   it('pre-fills the locked hello when no venue sent them', () => {
     expect(liveNoSourceHtml).toContain(
-      'href="sms:+16475551234?&amp;body=What%20is%20worth%20doing%20with%20the%20kids%20near%20us%3F"',
+      'href="sms:+16475551234?&amp;body=Hey%20Hale%2C%20what%27s%20going%20on%3F"',
     );
+  });
+
+  it('decodes the displayed prefill and the sms:/wa.me bodies to the same locked bytes', () => {
+    const locked = "Hey Hale, what's going on?";
+    expect(INTAKE_PREFILL).toBe(locked);
+    // The text node is entity-escaped; a browser shows the apostrophe.
+    expect(liveNoSourceHtml).toContain('Hey Hale, what&#x27;s going on?');
+    expect(bubbleText(liveNoSourceHtml, 'out')).toBe(locked);
+    expect(bubbleText(liveHtml, 'out')).toBe(locked);
+    // The href carries %27, never a raw apostrophe for React to rewrite as &#x27;.
+    const smsAnchor = anchors(liveNoSourceHtml).find((a) => a.includes('href="sms:')) ?? '';
+    expect(smsAnchor).toContain('%27');
+    expect(smsAnchor).not.toContain('&#x27;');
+    expect(smsAnchor).not.toContain("what's");
+    expect(composerBody(liveNoSourceHtml, 'sms')).toBe(locked);
+    expect(composerBody(liveHtml, 'sms')).toBe(`${locked} (via earlyon-richmondhill)`);
+    const wa = render({ source: null, whatsappNumber: LIVE_NUMBER });
+    const waAnchor = anchors(wa).find((a) => a.includes('wa.me')) ?? '';
+    expect(waAnchor).toContain('%27');
+    expect(waAnchor).not.toContain('&#x27;');
+    expect(composerBody(wa, 'wa')).toBe(locked);
+    const waVenue = render({ whatsappNumber: LIVE_NUMBER });
+    expect(composerBody(waVenue, 'wa')).toBe(`${locked} (via earlyon-richmondhill)`);
+    expect(liveHtml).not.toContain('What is worth doing with the kids near us?');
+    expect(liveHtml).not.toContain('What%20is%20worth%20doing');
+    expect(liveHtml).toContain('Find what’s on. Hear how it went.');
+    expect(liveHtml).toContain('What’s worth doing with the kids.');
   });
 
   it('keeps the dark page dark: no channel buttons on the email-fallback state even if the WhatsApp env leaks in', () => {
@@ -540,7 +596,7 @@ describe('TextEntry (the other two locales)', () => {
     // speech — the bubble stays English, the frame label says so in Chinese.
     const zh = render({ source: null, locale: 'zh' });
     expect(zh).toContain('（英文原文）');
-    expect(zh).toContain('Hi, I&#x27;m Hale. I find activities that fit your little one');
+    expect(zh).toContain('Hi, I&#x27;m Hale. I find activities that fit your kids');
   });
 });
 
@@ -550,7 +606,7 @@ describe('TextEntry — the chooser arm keeps the five-second frame (WhatsApp li
     expect(html).toContain('What’s worth doing with the kids.');
     expect(html).toContain('The text you’ll get back:');
     // The bubble sits above the first channel door.
-    expect(html.indexOf('I find activities that fit your little one')).toBeLessThan(
+    expect(html.indexOf('I find activities that fit your kids')).toBeLessThan(
       html.indexOf('href="sms:'),
     );
     // Structure kept: still the chooser headline, no numbered steps row.

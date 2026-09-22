@@ -19,8 +19,8 @@ import { CONTACT_EMAIL, INTAKE_PREFILL, buildSmsHref, buildWaHref } from '~/lib/
  *
  * THE PICKER GATE: the channel chooser exists only while WhatsApp is actually
  * live (`whatsappNumber` validates). Until the Twilio WhatsApp sender is
- * approved, production is PR 566 — one "Text Hale" button, activity-question prefill
- * prefill. An empty iMessage/WhatsApp chooser is a dead door.
+ * approved, production is PR 566 — one "Text Hale" button, warm-hello prefill.
+ * An empty iMessage/WhatsApp chooser is a dead door.
  *
  * THE FIVE-SECOND FRAME (founder brief 2026-09-01, redesigned 2026-09-16): a
  * stranger off a poster QR reads what Hale IS (headline + lede) and then sees

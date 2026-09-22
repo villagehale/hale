@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  INTAKE_PREFILL,
   buildSmsBody,
   buildSmsHref,
   buildWaHref,
@@ -64,16 +65,26 @@ describe('parseSourceCode (venue attribution from ?s=)', () => {
   });
 });
 
+const LOCKED_PREFILL = "Hey Hale, what's going on?";
+
+/** The query body a composer href will hand the phone, percent-decoding included. */
+function hrefQueryBody(href: string, key: 'body' | 'text'): string {
+  const query = href.slice(href.indexOf('?') + 1).replace(/^&/, '');
+  const value = new URLSearchParams(query).get(key);
+  if (value === null) throw new Error(`missing ${key} in ${href}`);
+  return value;
+}
+
 describe('buildSmsBody (what the parent sends)', () => {
-  it('is the locked hello when no venue sent them — a real first message, no dummy family', () => {
-    // Founder lock 2026-09-01 /text expectations — the parent says hi; Hale asks
-    // for names, ages, and postal itself. Nothing to edit before sending.
-    expect(buildSmsBody(null)).toBe("What is worth doing with the kids near us?");
+  it('is the locked warm hello when no venue sent them — a real first message, no dummy family', () => {
+    expect(INTAKE_PREFILL).toBe(LOCKED_PREFILL);
+    expect(buildSmsBody(null)).toBe(LOCKED_PREFILL);
+    expect(INTAKE_PREFILL).not.toBe('What is worth doing with the kids near us?');
   });
 
   it('appends the venue as a trailing "(via …)" token', () => {
     expect(buildSmsBody('earlyon-richmondhill')).toBe(
-      "What is worth doing with the kids near us? (via earlyon-richmondhill)",
+      `${LOCKED_PREFILL} (via earlyon-richmondhill)`,
     );
   });
 });
@@ -81,13 +92,23 @@ describe('buildSmsBody (what the parent sends)', () => {
 describe('buildSmsHref (the deep link)', () => {
   it('is an sms: URI whose body is percent-encoded, carrying the source token', () => {
     expect(buildSmsHref('+16475551234', 'earlyon-richmondhill')).toBe(
-      "sms:+16475551234?&body=What%20is%20worth%20doing%20with%20the%20kids%20near%20us%3F%20(via%20earlyon-richmondhill)",
+      'sms:+16475551234?&body=Hey%20Hale%2C%20what%27s%20going%20on%3F%20(via%20earlyon-richmondhill)',
     );
   });
 
   it('pre-fills the locked hello with no source', () => {
     expect(buildSmsHref('+16475551234', null)).toBe(
-      "sms:+16475551234?&body=What%20is%20worth%20doing%20with%20the%20kids%20near%20us%3F",
+      'sms:+16475551234?&body=Hey%20Hale%2C%20what%27s%20going%20on%3F',
+    );
+  });
+
+  it('percent-encodes the apostrophe so the decoded sms: body is the locked prefill', () => {
+    const href = buildSmsHref('+16475551234', null);
+    expect(href).toContain('%27');
+    expect(href).not.toContain("'");
+    expect(hrefQueryBody(href, 'body')).toBe(LOCKED_PREFILL);
+    expect(hrefQueryBody(buildSmsHref('+16475551234', 'earlyon-richmondhill'), 'body')).toBe(
+      `${LOCKED_PREFILL} (via earlyon-richmondhill)`,
     );
   });
 });
@@ -126,14 +147,21 @@ describe('readWhatsAppNumber (NEXT_PUBLIC_HALE_WHATSAPP_NUMBER)', () => {
 describe('buildWaHref (the wa.me deep link)', () => {
   it('carries the SAME pre-filled body as the sms: link, digits without the plus', () => {
     expect(buildWaHref('+16475551234', 'earlyon-richmondhill')).toBe(
-      "https://wa.me/16475551234?text=What%20is%20worth%20doing%20with%20the%20kids%20near%20us%3F%20(via%20earlyon-richmondhill)",
+      'https://wa.me/16475551234?text=Hey%20Hale%2C%20what%27s%20going%20on%3F%20(via%20earlyon-richmondhill)',
     );
   });
 
   it('pre-fills the locked hello with no source', () => {
     expect(buildWaHref('+16475551234', null)).toBe(
-      "https://wa.me/16475551234?text=What%20is%20worth%20doing%20with%20the%20kids%20near%20us%3F",
+      'https://wa.me/16475551234?text=Hey%20Hale%2C%20what%27s%20going%20on%3F',
     );
+  });
+
+  it('percent-encodes the apostrophe so the decoded wa.me body is the locked prefill', () => {
+    const href = buildWaHref('+16475551234', null);
+    expect(href).toContain('%27');
+    expect(href).not.toContain("'");
+    expect(hrefQueryBody(href, 'text')).toBe(LOCKED_PREFILL);
   });
 });
 
