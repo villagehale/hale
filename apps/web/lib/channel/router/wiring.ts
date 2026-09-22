@@ -82,6 +82,7 @@ import {
   founderWelcomeHandler,
   healthReplyHandler,
   nameCaptureHandler,
+  parentCallNameHandler,
   planReplyHandler,
   recMorningHandler,
   sequenceReplyHandler,
@@ -365,6 +366,7 @@ export function defaultHandlers(): DeterministicHandler[] {
     planReplyHandler(defaultPlanReplyDeps()),
     sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
     recMorningHandler(),
+    parentCallNameHandler(),
     nameCaptureHandler(defaultNameCaptureDeps()),
     // BEHIND EVERY SHAPE MATCHER, because it is the only handler that claims a whole
     // sentence — see its own note. It still runs ahead of the canary, so every decline

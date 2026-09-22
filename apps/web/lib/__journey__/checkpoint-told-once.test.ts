@@ -244,6 +244,12 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     // The REAL threader over the same store: a nudge the parent can answer has to be a
     // row in `messages`, because that is the only place their reply's antecedent lives.
     threadMessage: threadProactiveMessage,
+    // Not the question this file is about. A named parent is not asked again.
+    loadParentCallName: async () => ({
+      needsName: false,
+      alreadyAsked: false,
+      googleGivenName: null,
+    }),
   };
 }
 

@@ -10,7 +10,6 @@ import {
   handleEveningCheckInReply,
   readCadenceWord,
 } from '~/lib/channel/checkin/reply';
-import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { connectorOfferReply, connectorRevokeReply } from '~/lib/channel/connect/copy';
 import {
   matchConnectorDisconnectRequest,
@@ -18,6 +17,7 @@ import {
 } from '~/lib/channel/connect/detect';
 import { offerConnectorLink } from '~/lib/channel/connect/offer';
 import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
+import { type EmailCaptureDeps, handleEmailCaptureReply } from '~/lib/channel/email-capture/reply';
 import { emailInboundConfig } from '~/lib/channel/email/config';
 import {
   forwardAddress,
@@ -38,24 +38,25 @@ import {
   nothingSaidSince,
   recordForwardRevokeAsked,
 } from '~/lib/channel/email/forward-request';
-import { replyLanguage } from '~/lib/channel/language';
-import { type EmailCaptureDeps, handleEmailCaptureReply } from '~/lib/channel/email-capture/reply';
+import { f14EnabledFor } from '~/lib/channel/f14';
 import { type FounderReplyDeps, handleFounderWelcomeReply } from '~/lib/channel/founder/reply';
 import { type NameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/identity/name-reply';
+import { handleParentCallNameReply } from '~/lib/channel/identity/parent-call-name';
+import { replyLanguage } from '~/lib/channel/language';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
+import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
 import {
   handleEmailAlertOfferReply,
   resolveEmailAlertOffer,
 } from '~/lib/integrations/email-alert-offer';
-import { f14EnabledFor } from '~/lib/channel/f14';
+import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
 import {
   type PrepareReplyDeps,
   handleCourseBind,
   handleReadinessAnswer,
 } from '~/lib/registration/sequence/prepare-reply';
-import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
 import { type SequenceReplyDeps, handleSequenceReply } from '~/lib/registration/sequence/reply';
 import {
   type ResolvedIntroAnswer,
@@ -286,9 +287,7 @@ export function emailCaptureHandler(deps: EmailCaptureDeps): DeterministicHandle
  * the mint — declines to claim and says why in the log; `mint_failed` claims with the
  * honest failure line rather than deferring the turn into hours of queue backoff.
  */
-export function connectorLinkHandler(
-  log: Pick<Console, 'error'> = console,
-): DeterministicHandler {
+export function connectorLinkHandler(log: Pick<Console, 'error'> = console): DeterministicHandler {
   return {
     name: 'connector_link',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
@@ -420,9 +419,7 @@ export function connectorDisconnectHandler(
  * the inbound email leg has no domain to build an address out of, and a spoken turn, which
  * has no message row to compare channels against.
  */
-export function forwardAddressHandler(
-  log: Pick<Console, 'error'> = console,
-): DeterministicHandler {
+export function forwardAddressHandler(log: Pick<Console, 'error'> = console): DeterministicHandler {
   return {
     name: 'forward_address',
     resolves: new Set<OpenQuestionKind>(['forward_address_revoke']),
@@ -609,6 +606,36 @@ async function bareWordAsk(
  * write itself carries the third as `name IS NULL` in its own WHERE, so the answer to a
  * race is settled by Postgres rather than by the order two texts arrived in.
  */
+/**
+ * "Can I call you {first}?" — yes keeps the held Google name, no asks what to call
+ * them, and a name-shaped reply stores that preference instead.
+ *
+ * IMMEDIATELY BEFORE the name capture. A bare yes is not a name, so the capture
+ * would decline it; this handler has to see it first when a confirm is the latest
+ * ask. It declines when the latest ask is the open "What should I call you?",
+ * which is the capture's question. A yes that belongs to an approval, a plan, or
+ * a health nudge is claimed by those handlers, which sit ahead of this one.
+ */
+export function parentCallNameHandler(): DeterministicHandler {
+  return {
+    name: 'parent_call_name',
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const outcome = await handleParentCallNameReply(database, {
+        familyId: ctx.familyId,
+        parentUserId: ctx.parentUserId,
+        body: ctx.body,
+      });
+      if (outcome.status === 'declined') return { claimed: false };
+      return {
+        claimed: true,
+        outcome: 'parent_call_name',
+        reply: outcome.reply,
+        templateKey: outcome.templateKey,
+      };
+    },
+  };
+}
+
 export function nameCaptureHandler(deps: NameCaptureDeps): DeterministicHandler {
   return {
     name: 'name_capture',

@@ -1,27 +1,28 @@
 import { schema } from '@hale/db';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import {
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeSilentAnswerComposer,
   fakeNoOpenQuestions,
+  fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
+import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { createRadarComposer, readCandidates, readWindows } from '~/lib/channel/intake/radar';
-import {
-  FIRST_FIND_BEAT,
-  FIRST_FIND_DUE_HOURS,
-} from '~/lib/channel/intake/radar-voice';
+import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from '~/lib/channel/intake/radar-voice';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { threadProactiveMessage } from '~/lib/channel/thread';
 import { type NudgeRunDeps, type NudgeRunResult, runNudgeCron } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import {
+  aggregateCommitmentDebt,
+  fulfillCommitment,
+  loadOpenCommitments,
+} from '~/lib/commitments/ledger';
 import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
-import { aggregateCommitmentDebt, fulfillCommitment, loadOpenCommitments } from '~/lib/commitments/ledger';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
@@ -203,7 +204,11 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     loadWindows: (database, area) => readWindows(database, area),
     loadSuppressedCheckpoints: async () => new Set<string>(),
     loadClaimedWindowIds: async () => new Set<string>(),
-    loadWeekdayCareContext: async () => ({ stated: [], askedBefore: false, weekendFindSent: false }),
+    loadWeekdayCareContext: async () => ({
+      stated: [],
+      askedBefore: false,
+      weekendFindSent: false,
+    }),
     weather: fakeWeather(WET),
     buildGate: openGate,
     // SEAM: the ledger's dedupe predicate (channel/ledger.ts dedupeActive).
@@ -232,6 +237,10 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     // The REAL threader over the same store: a nudge the parent can answer has to be a
     // row in `messages`, because that is the only place their reply's antecedent lives.
     threadMessage: threadProactiveMessage,
+    loadParentCallName: async (database, input) => {
+      const { loadParentCallName } = await import('~/lib/channel/identity/parent-call-name');
+      return loadParentCallName(database, input);
+    },
   };
 }
 
@@ -331,8 +340,11 @@ describe('an unkept promise is a queryable state', () => {
 describe('the sweep pays it off', () => {
   it('finally has something real to send', () => {
     expect(journey.sweep).toMatchObject({ enabled: true, evaluated: 1, sent: 1 });
+    // Year-open already asked the name, even when the first radar had nothing to show.
+    // This sweep is the find that keeps the promise, and it does not ask again.
     expect(journey.sweepBodies).toHaveLength(1);
     expect(journey.sweepBodies[0]).toContain('Library story time');
+    expect(journey.sweepBodies[0]).not.toContain('What should I call you?');
   });
 
   it('closes the promise against the message that kept it', () => {

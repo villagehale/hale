@@ -643,6 +643,12 @@ async function runToddlerJourney(): Promise<Journey> {
     // The REAL threader over the same store: a nudge the parent can answer has to be a
     // row in `messages`, because that is the only place their reply's antecedent lives.
     threadMessage: threadProactiveMessage,
+    // This journey already has a name on the parent. The sweep must not ask.
+    loadParentCallName: async () => ({
+      needsName: false,
+      alreadyAsked: false,
+      googleGivenName: null,
+    }),
   };
 
   vi.stubEnv('F14_ENABLED', 'true');

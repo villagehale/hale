@@ -10,15 +10,18 @@ const resolveUserIdMock = vi.fn();
 const exchangeMock = vi.fn();
 const saveConnectionMock = vi.fn();
 const noticeMock = vi.fn();
+const readProfileMock = vi.fn();
+const holdNameMock = vi.fn();
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
-vi.mock('~/lib/family', () => ({ resolveUserIdForUser: (...a: unknown[]) => resolveUserIdMock(...a) }));
+vi.mock('~/lib/family', () => ({
+  resolveUserIdForUser: (...a: unknown[]) => resolveUserIdMock(...a),
+}));
 vi.mock('~/lib/channel/connect/connected-notice', async () => {
-  const actual =
-    await vi.importActual<typeof import('~/lib/channel/connect/connected-notice')>(
-      '~/lib/channel/connect/connected-notice',
-    );
+  const actual = await vi.importActual<typeof import('~/lib/channel/connect/connected-notice')>(
+    '~/lib/channel/connect/connected-notice',
+  );
   return {
     ...actual,
     defaultConnectedNoticePorts: () => ({ transport: { send: vi.fn() }, threadMessage: vi.fn() }),
@@ -31,6 +34,12 @@ vi.mock('~/lib/integrations/google-oauth', async () => {
 });
 vi.mock('~/lib/integrations/store', () => ({
   saveConnection: (...a: unknown[]) => saveConnectionMock(...a),
+}));
+vi.mock('~/lib/integrations/google-profile', () => ({
+  readGoogleGivenName: (...a: unknown[]) => readProfileMock(...a),
+}));
+vi.mock('~/lib/channel/identity/parent-call-name', () => ({
+  holdGoogleGivenName: (...a: unknown[]) => holdNameMock(...a),
 }));
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
@@ -57,12 +66,24 @@ function location(res: Response): string {
 describe('GET /api/integrations/callback — consent-fixation binding (rule #1)', () => {
   beforeEach(() => {
     vi.resetModules();
-    for (const m of [authMock, resolveUserIdMock, exchangeMock, saveConnectionMock]) {
+    for (const m of [
+      authMock,
+      resolveUserIdMock,
+      exchangeMock,
+      saveConnectionMock,
+      readProfileMock,
+      holdNameMock,
+    ]) {
       m.mockReset();
     }
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
-    exchangeMock.mockResolvedValue({ accessToken: 'ya29.x', scope: 'https://www.googleapis.com/auth/calendar.readonly' });
+    readProfileMock.mockResolvedValue(null);
+    holdNameMock.mockResolvedValue('held');
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope: 'https://www.googleapis.com/auth/calendar.readonly',
+    });
     saveConnectionMock.mockResolvedValue({ connectId: CONNECT_ID });
   });
   afterEach(() => vi.unstubAllEnvs());
@@ -73,7 +94,12 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
   }
   async function mobileState() {
     const { signConnectState } = await import('./connect-state');
-    return signConnectState({ familyId: FAMILY, userId: MINTER, provider: 'gcal', surface: 'mobile' });
+    return signConnectState({
+      familyId: FAMILY,
+      userId: MINTER,
+      provider: 'gcal',
+      surface: 'mobile',
+    });
   }
 
   it('WEB: rejects when the completing session is a DIFFERENT user than the minter — no token exchange, no store', async () => {
@@ -107,7 +133,11 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
     const res = await callCallback(await webState(MINTER));
 
     expect(saveConnectionMock).toHaveBeenCalledTimes(1);
-    expect(saveConnectionMock.mock.calls[0]?.[1]).toMatchObject({ familyId: FAMILY, userId: MINTER, provider: 'gcal' });
+    expect(saveConnectionMock.mock.calls[0]?.[1]).toMatchObject({
+      familyId: FAMILY,
+      userId: MINTER,
+      provider: 'gcal',
+    });
     expect(location(res)).toContain('connect=gcal');
   });
 
@@ -259,11 +289,20 @@ describe('GET /api/integrations/callback — the text surface', () => {
 describe('GET /api/integrations/callback — granted-scope validation', () => {
   beforeEach(() => {
     vi.resetModules();
-    for (const m of [authMock, resolveUserIdMock, exchangeMock, saveConnectionMock]) {
+    for (const m of [
+      authMock,
+      resolveUserIdMock,
+      exchangeMock,
+      saveConnectionMock,
+      readProfileMock,
+      holdNameMock,
+    ]) {
       m.mockReset();
     }
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
+    readProfileMock.mockResolvedValue(null);
+    holdNameMock.mockResolvedValue('held');
     saveConnectionMock.mockResolvedValue({ connectId: CONNECT_ID });
     authMock.mockResolvedValue({ user: { id: 'ext-minter' } });
     resolveUserIdMock.mockResolvedValue(MINTER);
@@ -291,5 +330,33 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     const res = await callCallback(await minterState());
     expect(location(res)).toContain('connect=denied');
     expect(saveConnectionMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts calendar plus the optional profile scope, and holds the given name', async () => {
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile',
+    });
+    readProfileMock.mockResolvedValue('Bea');
+    const res = await callCallback(await minterState());
+    expect(location(res)).toContain('connect=gcal');
+    expect(saveConnectionMock).toHaveBeenCalledTimes(1);
+    expect(holdNameMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ userId: MINTER, familyId: FAMILY, givenName: 'Bea' }),
+    );
+  });
+
+  it('still connects when profile was not granted, and does not read userinfo', async () => {
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope: 'https://www.googleapis.com/auth/calendar.readonly',
+    });
+    const res = await callCallback(await minterState());
+    expect(location(res)).toContain('connect=gcal');
+    expect(saveConnectionMock).toHaveBeenCalledTimes(1);
+    expect(readProfileMock).not.toHaveBeenCalled();
+    expect(holdNameMock).not.toHaveBeenCalled();
   });
 });

@@ -3,6 +3,11 @@ import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
+import {
+  PARENT_CALL_NAME_ASK,
+  type ParentCallNameState,
+  parentCallNameConfirm,
+} from '~/lib/channel/identity/parent-call-name';
 import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -159,6 +164,8 @@ function harness(
      * before gating the second would pass them.
      */
     familyCapCountsLedger?: boolean;
+    /** Default: this parent is already named, so a find does not grow a second text. */
+    parentCallName?: ParentCallNameState;
   } = {},
 ): Harness {
   const writes: Harness['writes'] = [];
@@ -263,6 +270,12 @@ function harness(
       threaded.push(input);
       return 'conv-1';
     },
+    loadParentCallName: async () =>
+      options.parentCallName ?? {
+        needsName: false,
+        alreadyAsked: false,
+        googleGivenName: null,
+      },
   };
 
   return { deps, transport, writes, dedupeKeys, closed, offers, threaded };
@@ -1248,5 +1261,101 @@ describe('runNudgeCron — the weekday-care ask', () => {
     await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
     expect(h.transport.sent[0]?.body.startsWith('Those are weekend options.')).toBe(true);
+  });
+});
+
+describe('the call-name line after a find', () => {
+  function recordingDb(): { db: never; rows: Record<string, unknown>[] } {
+    const rows: Record<string, unknown>[] = [];
+    return {
+      rows,
+      db: {
+        insert: () => ({
+          values: (payload: Record<string, unknown>) => {
+            const row = { id: `row-${rows.length + 1}`, ...payload };
+            rows.push(row);
+            return { returning: () => Promise.resolve([row]) };
+          },
+        }),
+      } as never,
+    };
+  }
+
+  it('asks once after a registration find, confirms a Google name, and does not ask again', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const open = harness({
+      windows: [win()],
+      parentCallName: { needsName: true, alreadyAsked: false, googleGivenName: null },
+    });
+    const store = recordingDb();
+    await runNudgeCron(store.db, open.deps, FRIDAY_10AM);
+    expect(open.transport.bodies().at(-1)).toBe(PARENT_CALL_NAME_ASK);
+    expect(open.transport.bodies()[0]).not.toBe(PARENT_CALL_NAME_ASK);
+    expect(store.rows.some((row) => row.actionTaken === 'parent_name_asked')).toBe(true);
+    expect(
+      store.rows.some((row) => row.category === 'nudge' && row.templateKey === 'parent_name_ask'),
+    ).toBe(false);
+
+    const confirm = harness({
+      windows: [win()],
+      parentCallName: { needsName: true, alreadyAsked: false, googleGivenName: 'Bea' },
+    });
+    await runNudgeCron(recordingDb().db, confirm.deps, FRIDAY_10AM);
+    expect(confirm.transport.bodies().at(-1)).toBe(parentCallNameConfirm('Bea'));
+
+    const again = harness({
+      windows: [win()],
+      parentCallName: { needsName: true, alreadyAsked: true, googleGivenName: 'Bea' },
+    });
+    await runNudgeCron(db(), again.deps, FRIDAY_10AM);
+    expect(again.transport.bodies().some((body) => body === PARENT_CALL_NAME_ASK)).toBe(false);
+    expect(again.transport.bodies().some((body) => body.startsWith('Can I call you'))).toBe(false);
+  });
+
+  it('does not ask a quiet family, and does not ask on the weekday-care question', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const quiet = harness({
+      parentCallName: { needsName: true, alreadyAsked: false, googleGivenName: null },
+    });
+    await runNudgeCron(db(), quiet.deps, FRIDAY_10AM);
+    expect(quiet.transport.sent).toHaveLength(0);
+
+    vi.stubEnv('WEEKDAY_CARE_ENABLED', 'true');
+    const care = harness({
+      families: [family({ areaCoarse: null })],
+      children: [
+        { id: 'child-mia', name: 'Mia', dateOfBirth: '2024-06-01', dobPrecision: 'exact' },
+      ],
+      candidates: [
+        {
+          id: 'civic-1',
+          title: 'EarlyON drop-in',
+          venueName: 'Armour Heights',
+          ageRange: null,
+          priceLevel: 'free',
+          indoorOutdoor: 'indoor',
+          eventDate: '2026-08-04',
+          seasons: null,
+          childId: null,
+          confidence: 0.9,
+          source: 'civic_registry',
+          sourceUrl: null,
+          access: null,
+          whenLabel: null,
+        },
+      ],
+      weekdayCare: { stated: [], askedBefore: false, weekendFindSent: true },
+      parentCallName: { needsName: true, alreadyAsked: false, googleGivenName: null },
+    });
+    const load = vi.fn(care.deps.loadParentCallName);
+    const result = await runNudgeCron(
+      db(),
+      { ...care.deps, loadParentCallName: load },
+      FRIDAY_10AM,
+    );
+    expect(result.sent).toBe(1);
+    expect(care.transport.bodies().some((body) => body.includes('during the week'))).toBe(true);
+    expect(care.transport.bodies().some((body) => body === PARENT_CALL_NAME_ASK)).toBe(false);
+    expect(load).not.toHaveBeenCalled();
   });
 });

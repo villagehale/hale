@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  buildGoogleAuthUrl,
   CONNECTOR_SCOPES,
   type ConnectorProvider,
+  buildGoogleAuthUrl,
   connectorClientSource,
   connectorRedirectUri,
   exchangeCodeForTokens,
@@ -22,7 +22,9 @@ describe('buildGoogleAuthUrl', () => {
   });
 
   it('requests offline access + forced consent so a refresh token is issued', () => {
-    const url = new URL(buildGoogleAuthUrl({ provider: 'gcal', state: 's1', redirectUri: REDIRECT }));
+    const url = new URL(
+      buildGoogleAuthUrl({ provider: 'gcal', state: 's1', redirectUri: REDIRECT }),
+    );
     expect(url.origin + url.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth');
     const p = url.searchParams;
     expect(p.get('access_type')).toBe('offline');
@@ -42,9 +44,15 @@ describe('buildGoogleAuthUrl', () => {
       new URL(buildGoogleAuthUrl({ provider, state: 'x', redirectUri: REDIRECT })).searchParams.get(
         'scope',
       );
-    expect(scopeOf('gcal')).toBe('https://www.googleapis.com/auth/calendar.readonly');
-    expect(scopeOf('gmail')).toBe('https://www.googleapis.com/auth/gmail.readonly');
-    expect(scopeOf('gdrive')).toBe('https://www.googleapis.com/auth/drive.readonly');
+    expect(scopeOf('gcal')).toBe(
+      'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile',
+    );
+    expect(scopeOf('gmail')).toBe(
+      'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.profile',
+    );
+    expect(scopeOf('gdrive')).toBe(
+      'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.profile',
+    );
     // Every connector scope is read-only — connectors never mutate the user's Google data.
     for (const scopes of Object.values(CONNECTOR_SCOPES)) {
       for (const s of scopes) expect(s).toMatch(/\.readonly$/);
@@ -53,9 +61,9 @@ describe('buildGoogleAuthUrl', () => {
 
   it('throws when the Google client is not configured', () => {
     process.env.GOOGLE_OAUTH_CLIENT_ID = '';
-    expect(() => buildGoogleAuthUrl({ provider: 'gcal', state: 's', redirectUri: REDIRECT })).toThrow(
-      /GOOGLE_OAUTH_CLIENT_ID/,
-    );
+    expect(() =>
+      buildGoogleAuthUrl({ provider: 'gcal', state: 's', redirectUri: REDIRECT }),
+    ).toThrow(/GOOGLE_OAUTH_CLIENT_ID/);
   });
 });
 
@@ -103,7 +111,11 @@ describe('exchangeCodeForTokens', () => {
   });
 
   it('throws on a non-ok token response (never returns partial tokens)', async () => {
-    const fakeFetch = async () => ({ ok: false, status: 400, json: async () => ({ error: 'invalid_grant' }) });
+    const fakeFetch = async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: 'invalid_grant' }),
+    });
     await expect(
       exchangeCodeForTokens({ code: 'bad', redirectUri: REDIRECT }, fakeFetch),
     ).rejects.toThrow(/400/);
@@ -128,7 +140,11 @@ describe('refreshAccessToken', () => {
       return {
         ok: true,
         status: 200,
-        json: async () => ({ access_token: 'ya29.refreshed', expires_in: 3600, token_type: 'Bearer' }),
+        json: async () => ({
+          access_token: 'ya29.refreshed',
+          expires_in: 3600,
+          token_type: 'Bearer',
+        }),
       };
     };
     const before = Date.now();
@@ -140,7 +156,11 @@ describe('refreshAccessToken', () => {
   });
 
   it('throws on a non-ok refresh response (never returns partial tokens)', async () => {
-    const fakeFetch = async () => ({ ok: false, status: 400, json: async () => ({ error: 'invalid_grant' }) });
+    const fakeFetch = async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: 'invalid_grant' }),
+    });
     await expect(refreshAccessToken('1//revoked', fakeFetch)).rejects.toThrow(/400/);
   });
 });
@@ -169,9 +189,9 @@ describe('connectorClientSource', () => {
   it('names the sign-in project when the connector pair is unset - and still mints a consent', () => {
     expect(connectorClientSource()).toBe('signin_project');
     expect(
-      new URL(buildGoogleAuthUrl({ provider: 'gcal', state: 's', redirectUri: REDIRECT })).searchParams.get(
-        'client_id',
-      ),
+      new URL(
+        buildGoogleAuthUrl({ provider: 'gcal', state: 's', redirectUri: REDIRECT }),
+      ).searchParams.get('client_id'),
     ).toBe('signin-id.apps.googleusercontent.com');
   });
 
@@ -181,9 +201,9 @@ describe('connectorClientSource', () => {
 
     expect(connectorClientSource()).toBe('connector_project');
     expect(
-      new URL(buildGoogleAuthUrl({ provider: 'gcal', state: 's', redirectUri: REDIRECT })).searchParams.get(
-        'client_id',
-      ),
+      new URL(
+        buildGoogleAuthUrl({ provider: 'gcal', state: 's', redirectUri: REDIRECT }),
+      ).searchParams.get('client_id'),
     ).toBe('connector-id.apps.googleusercontent.com');
   });
 
@@ -192,17 +212,20 @@ describe('connectorClientSource', () => {
   it.each([
     ['id only', 'connector-id.apps.googleusercontent.com', ''],
     ['secret only', '', 'connector-secret'],
-  ])('treats a half-set connector pair (%s) as the sign-in project, never a mix', (_n, id, secret) => {
-    process.env.GOOGLE_CONNECTOR_CLIENT_ID = id;
-    process.env.GOOGLE_CONNECTOR_CLIENT_SECRET = secret;
+  ])(
+    'treats a half-set connector pair (%s) as the sign-in project, never a mix',
+    (_n, id, secret) => {
+      process.env.GOOGLE_CONNECTOR_CLIENT_ID = id;
+      process.env.GOOGLE_CONNECTOR_CLIENT_SECRET = secret;
 
-    expect(connectorClientSource()).toBe('signin_project');
-    expect(
-      new URL(buildGoogleAuthUrl({ provider: 'gcal', state: 's', redirectUri: REDIRECT })).searchParams.get(
-        'client_id',
-      ),
-    ).toBe('signin-id.apps.googleusercontent.com');
-  });
+      expect(connectorClientSource()).toBe('signin_project');
+      expect(
+        new URL(
+          buildGoogleAuthUrl({ provider: 'gcal', state: 's', redirectUri: REDIRECT }),
+        ).searchParams.get('client_id'),
+      ).toBe('signin-id.apps.googleusercontent.com');
+    },
+  );
 
   it('exchanges the code with the SAME project that granted the consent', async () => {
     process.env.GOOGLE_CONNECTOR_CLIENT_ID = 'connector-id.apps.googleusercontent.com';

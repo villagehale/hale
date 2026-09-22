@@ -9,6 +9,7 @@ const GOOGLE_SCOPE_COPY: Record<string, { label: string; readOnly: boolean }> = 
   'https://www.googleapis.com/auth/calendar.readonly': { label: 'Calendar', readOnly: true },
   'https://www.googleapis.com/auth/gmail.readonly': { label: 'Mail', readOnly: true },
   'https://www.googleapis.com/auth/drive.readonly': { label: 'Files', readOnly: true },
+  'https://www.googleapis.com/auth/userinfo.profile': { label: 'Profile name', readOnly: true },
 };
 
 export function describeScope(scope: string): { label: string; readOnly: boolean } {

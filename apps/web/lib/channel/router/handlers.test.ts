@@ -5,18 +5,18 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { type CanaryHousehold, canaryChannel } from '~/lib/channel/canary/config';
 import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
 import { cityRecLine } from '~/lib/channel/rec-morning';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
 import type { SpotPortal } from '~/lib/channel/spots/url';
+import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
+import type { OpenCheckupOffer } from '~/lib/health/offer';
+import type { HealthReplyDeps } from '~/lib/health/reply';
+import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
 import type {
   BindReadClaimResult,
   PrepareReplyDeps,
   PreparingSequence,
 } from '~/lib/registration/sequence/prepare-reply';
-import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
-import type { OpenCheckupOffer } from '~/lib/health/offer';
-import type { HealthReplyDeps } from '~/lib/health/reply';
-import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
 import type { AwaitingSequence, SequenceReplyDeps } from '~/lib/registration/sequence/reply';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import type { ApprovalSpine, PendingAction } from './approval';
 import {
@@ -465,9 +465,9 @@ describe('handler order — registration last', () => {
     expect((await healthReplyHandler(health).handle(DB, turn('waitlisted #3'))).claimed).toBe(
       false,
     );
-    expect((await sequenceReplyHandler(sequence, NO_PREPARE).handle(DB, turn('waitlisted #3'))).claimed).toBe(
-      true,
-    );
+    expect(
+      (await sequenceReplyHandler(sequence, NO_PREPARE).handle(DB, turn('waitlisted #3'))).claimed,
+    ).toBe(true);
     expect(sequence.recorded).toEqual([{ outcome: 'waitlisted', position: 3 }]);
   });
 });
@@ -553,7 +553,7 @@ describe('recMorningHandler', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, weekday_care, daycare_followup, health, email_alert_add, coach_plan, registration, rec_morning, name_capture, evening_check_in, inbound_canary', async () => {
+  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, weekday_care, daycare_followup, health, email_alert_add, coach_plan, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -601,6 +601,10 @@ describe('the shipped order', () => {
       'coach_plan',
       'registration',
       'rec_morning',
+      // Immediately before the bare-word capture, so "yes" to "Can I call you Bea?"
+      // is the confirm and not a name, while "Bea" answering the open ask still
+      // falls through to the capture.
+      'parent_call_name',
       'name_capture',
       // Behind even the bare-word capture, because it is the one handler that claims a
       // whole SENTENCE rather than a shape (VIL-353). Ahead of it, a parent's "done" or
@@ -628,6 +632,7 @@ describe('the shipped order', () => {
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('registration'));
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('rec_morning'));
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('health'));
+    expect(names.indexOf('parent_call_name')).toBe(names.indexOf('name_capture') - 1);
   });
 
   /**
@@ -889,10 +894,10 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     const prepare = prepareDeps({
       sequence: { ...PREPARING, opensForFamilyAt: new Date('2026-08-20T10:30:00.000Z') },
     });
-    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
-      DB,
-      { ...preOpenTurn(LEGO_URL), now: new Date('2026-08-11T06:45:00-04:00') },
-    );
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(DB, {
+      ...preOpenTurn(LEGO_URL),
+      now: new Date('2026-08-11T06:45:00-04:00'),
+    });
 
     expect(verdict.claimed).toBe(false);
     expect(prepare.bound).toEqual([]);
@@ -1167,10 +1172,7 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
       DB,
       turn('yes', { open: [READINESS_QUESTION] }),
     );
-    const report = await sequenceReplyHandler(sequence, prepare).handle(
-      DB,
-      turn('waitlisted #3'),
-    );
+    const report = await sequenceReplyHandler(sequence, prepare).handle(DB, turn('waitlisted #3'));
 
     expect(bare.claimed).toBe(false);
     expect(report.claimed).toBe(true);
@@ -1184,9 +1186,9 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     const sequence = sequenceDeps();
 
     for (const body of ['waitlisted #3', "we're in", 'missed it']) {
-      expect(
-        (await sequenceReplyHandler(sequence, prepare).handle(DB, turn(body))).claimed,
-      ).toBe(true);
+      expect((await sequenceReplyHandler(sequence, prepare).handle(DB, turn(body))).claimed).toBe(
+        true,
+      );
     }
     expect(sequence.recorded.map((row) => row.outcome)).toEqual([
       'waitlisted',
