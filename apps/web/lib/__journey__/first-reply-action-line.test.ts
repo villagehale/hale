@@ -26,23 +26,13 @@ import { fakeWeather } from '~/lib/weather/open-meteo';
 /**
  * A TORONTO PARENT TEXTS WHILE THE CITY'S FALL REGISTRATION IS OPEN.
  *
- * On main this family is told their season has gone: the matcher drops the window whose
- * open instant has passed, `latestPastCycle` picks the same row back up, and the reply
- * reads "registration already opened Sep 15 - the next dates are not posted yet." The
- * city's page is live, it is in the row as a NOT NULL hand-verified `source_url`, and
- * nothing ever printed it.
+ * The first reply names the Saturday drop-in this family can actually go to. The
+ * registration morning is in the database and is not the text. The action-line flag
+ * does not put that date back.
  *
- * WHAT ONLY THIS FILE PINS, over real Postgres and the deployed code: the civic
- * projection writing `access` and `when_label`, `readCandidates` selecting them,
- * `stillOpenCycle` scanning the same rows the matcher just discarded, the tense on the
- * one absence rung, the block budget spending its mapping clause, and the action line
- * carrying the city's own URL — each produced by the step before it rather than
- * stipulated. Every unit test below this is a stipulation of exactly one of those.
- *
- * THE VOICE CLIENT IS NULL, and that satisfies rule #8 rather than dodging it: no model
- * is in the path at all, which is the documented first-class outcome
- * (`voiceFallback: 'no_client'`), and what the composed voice says about this shape is
- * the eval's subject, not this file's.
+ * WHAT THIS FILE PINS, over real Postgres: the civic projection writing `access` and
+ * `when_label`, and the first reply carrying the Saturday session rather than the
+ * open-now registration sentence.
  */
 
 const TZ = 'America/Toronto';
@@ -201,7 +191,7 @@ describe('the first reply says what to do about the find', () => {
     return { familyId: outcome.familyId, radarBody };
   }
 
-  it('sends the open-now sentence and the city page, in one sendable text', async () => {
+  it('sends the Saturday drop-in, not the registration morning', async () => {
     vi.stubEnv(FIRST_REPLY_ACTION_LINE_ENV, 'true');
     const { familyId, radarBody } = await arrive();
 
@@ -229,18 +219,15 @@ describe('the first reply says what to do about the find', () => {
       source: 'civic_registry',
     });
 
-    // The tense: their town, their cycle, and the morning it opened.
-    expect(radarBody).toContain('Toronto Fall 2026 registration opened Sep 15, 7:00 a.m.');
-    // The page, byte-identical to the hand-verified row.
-    expect(radarBody).toContain(`The page is here: ${CITY_PAGE}`);
+    expect(radarBody).toContain('Saturday family drop-in');
+    expect(radarBody).toContain("Here's what's on for your kids this year:");
+    expect(radarBody).not.toContain('Toronto Fall 2026 registration opened Sep 15, 7:00 a.m.');
+    expect(radarBody).not.toContain(CITY_PAGE);
     expect(radarBody).toContain(PRIVACY_URL);
     expect(smsSegments(radarBody)).toBeLessThanOrEqual(MAX_PAYLOAD_SEGMENTS);
-
-    // The two sentences that ARE the defect. Their absence is what this whole build is.
     expect(radarBody).not.toContain('not posted yet');
     expect(radarBody).not.toContain('no registration date coming up');
     expect(radarBody).not.toContain('already opened');
-    // R7 — Hale has not read that page and says nothing about what is left on it.
     for (const claim of ['still room', 'spots', 'fills up', 'sign up']) {
       expect(radarBody.toLowerCase()).not.toContain(claim);
     }
@@ -251,15 +238,13 @@ describe('the first reply says what to do about the find', () => {
    * date survive that, because everything except the link ships unflagged and nothing
    * Hale states correctly today may be lost to a rung that did not render.
    */
-  it('still names the town and the date with the flag unset, and sends no link', async () => {
+  it('still names the Saturday drop-in with the action-line flag unset', async () => {
     const { radarBody } = await arrive();
 
-    expect(radarBody).toContain('Toronto Fall 2026 registration opened Sep 15, 7:00 a.m.');
+    expect(radarBody).toContain('Saturday family drop-in');
+    expect(radarBody).not.toContain('Toronto Fall 2026 registration opened Sep 15, 7:00 a.m.');
     expect(radarBody).not.toContain(CITY_PAGE);
-    // The privacy URL is the consent moment's and is not the action line's to hold.
     expect(radarBody).toContain(PRIVACY_URL);
     expect(smsSegments(radarBody)).toBeLessThanOrEqual(MAX_PAYLOAD_SEGMENTS);
-    expect(radarBody).not.toContain('not posted yet');
-    expect(radarBody).not.toContain('no registration date coming up');
   });
 });

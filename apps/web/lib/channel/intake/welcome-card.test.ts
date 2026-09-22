@@ -192,6 +192,31 @@ describe('quiet hours — the card is a proactive extra, not the reply (ads-week
     vi.restoreAllMocks();
   });
 
+  it('sends the 22:36-local card when it rides the reply the parent just sent', async () => {
+    const fake = makeFakeDb();
+    await seedParent(fake);
+    const transport = new FakeTransport();
+    const { ports: cardPorts } = ports(transport);
+
+    const outcome = await sendWelcomeContactCard(
+      fake.db,
+      {
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        phoneE164: PHONE,
+        now: LOCAL_2236,
+        ridesReply: true,
+      },
+      cardPorts,
+    );
+
+    expect(outcome.status).toBe('sent');
+    expect(transport.sent).toHaveLength(1);
+    expect(ledgerRows(fake)).toEqual([
+      expect.objectContaining({ status: 'queued', dedupeKey: welcomeCardDedupeKey(FAMILY) }),
+    ]);
+  });
+
   it('sends the 09:00-local card (positive control)', async () => {
     const fake = makeFakeDb();
     await seedParent(fake);

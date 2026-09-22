@@ -18,8 +18,6 @@ import {
 } from '~/lib/channel/caregiver/route';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
-import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
-import { parentNeedsName } from '~/lib/channel/identity/name-reply';
 import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
@@ -62,6 +60,8 @@ import {
   START_ACK_BY_LANGUAGE,
   STOP_ACK_BY_LANGUAGE,
   UNREADABLE_INTAKE_REPLY_BY_LANGUAGE,
+  CO_PARENT_ASK_BY_LANGUAGE,
+  INTAKE_COPARENT_ASK_TEMPLATE_KEY,
   WATCH_OFFER,
   WATCH_OFFER_ASK,
   detailsBlocked,
@@ -163,10 +163,10 @@ export interface IntakeDeps {
    * closed — an off-script question silently becoming a re-ask — and its own "there was
    * nothing to answer" is a named outcome, so absence has no meaning left to carry. */
   answerComposer: IntakeAnswerComposer;
-  /** Writes the question on the end of the consent acknowledgment — what to call this
-   * parent. Required, never nullable (rule #11): withholding it would be a silently
-   * nameless family, which is the exact hole this closed. Its own DEFERRAL is the named
-   * absence, and it is allowed — see {@link assentAck}. */
+  /** What to call this parent, after a real radar win (PR #689). Intake's consent
+   * tail does not call it: a name ask on the assent acknowledgment is the bot voice
+   * this turn exists to stop. The dep stays required so a missing composer is a
+   * wiring error, not a silent skip of the later ask. */
   identityAsk: IdentityAskVoice;
   limiter: RateLimiter;
   /** Places this family near the free civic sessions already on file, INLINE — pure DB
@@ -204,19 +204,22 @@ export type IntakeOutcome =
   /** Something Hale will not invent is still missing after the one follow-up. */
   | { status: 'details_blocked'; missing: IntakeGap[] }
   | { status: 'provisioned'; familyId: string }
-  /** `nameAsked` names what the acknowledgment actually carried: false is either a
-   * parent Hale already knows the name of or a composer that deferred, and both are
-   * states an operator reading this outcome needs to be able to tell from a send.
+  /** `nameAsked` is false on this turn. The consent tail does not ask what to call
+   * the parent; that ask waits for a real radar win (PR #689).
    *
-   * `connectorOffer` says what became of the day-one tap-to-connect ask: `not_offered`
-   * is the parent who declined the watch and was therefore never asked, and every other
-   * value is {@link sendConnectorOffer}'s own named outcome (rule #11). */
+   * `connectorOffer` says what became of the inbox ask: `not_offered` is a decline
+   * or a first reply that named nothing, and every other value is
+   * {@link sendConnectorOffer}'s own named outcome (rule #11).
+   *
+   * `coParentAsk` is last. `sent` means the parent was told to text "add my partner".
+   * `not_offered` is the same gate as the inbox ask. */
   | {
       status: 'watch_recorded';
       intent: ReplyIntent;
       granted: boolean;
       nameAsked: boolean;
       connectorOffer: ConnectorOfferLabel | 'not_offered';
+      coParentAsk: 'sent' | 'not_offered';
     }
   | { status: 'clarified' }
   /**
@@ -1104,14 +1107,16 @@ async function provision(
   // provider cannot fetch fails the WHOLE message, and the radar is the one text a
   // stranger is guaranteed to read (welcome-card.ts).
   //
-  // Not branched on, for the reason the writes below are not: the parent already has
-  // their radar, and a contact card is not worth losing them over. Every way it can
-  // decline is a named outcome with the cost in the log (rule #11).
-  await sendWelcomeContactCard(
-    database,
-    { familyId, parentUserId: userId, phoneE164, now },
-    { transport: deps.transport, threadMessage: deps.threadMessage },
-  );
+  // The card introduces Hale after a real find. An empty first reply has not earned
+  // it. `ridesReply` so quiet hours do not swallow the introduction the parent just
+  // asked for; the morning re-drive still holds a card that was suppressed earlier.
+  if (radar.findWon) {
+    await sendWelcomeContactCard(
+      database,
+      { familyId, parentUserId: userId, phoneE164, now, ridesReply: true },
+      { transport: deps.transport, threadMessage: deps.threadMessage },
+    );
+  }
 
   // The radar can be the first surface ever to tell this family about a health
   // checkpoint (VIL-238's third rung), and the 48h nudge is two days behind it. Marked
@@ -1173,6 +1178,7 @@ async function provision(
       familyId,
       userId,
       lastProviderId: inbound.providerId,
+      findWon: radar.findWon,
     },
     now,
   );
@@ -1328,25 +1334,17 @@ async function handleWatchReply(
   );
 
   const ack = granted
-    ? await assentAck(database, session, deps, language)
+    ? assentAck(language)
     : { body: DECLINE_ACK_BY_LANGUAGE[language], asked: false };
-  await sendAndRecord(
-    database,
-    ctx,
-    ack.body,
-    deps,
-    recorded.transcript,
-    ack.asked ? PARENT_NAME_ASK_TEMPLATE_KEY : undefined,
-  );
+  await sendAndRecord(database, ctx, ack.body, deps, recorded.transcript);
 
-  // THE DAY-ONE CONNECTOR ASK, on the yes only and after the acknowledgment has left.
-  // A parent who declined the watch is not asked to open their mailbox: they just said
-  // no to being watched, and a link to connect Gmail would be the same question louder.
-  // Not branched on, for the reason the contact card is not: the parent already has
-  // their acknowledgment, the consent is already written, and this session closes
-  // whatever happens — every way the offer declines is a named outcome with the cost in
-  // the log (connector-offer.ts).
-  const connectorOffer: ConnectorOfferLabel | 'not_offered' = granted
+  // Inbox and co-parent wait on a yes AND a real find. A decline is not asked to
+  // open a mailbox. An empty first reply has not earned either ask. The connector
+  // still respects quiet hours (no re-drive). The co-parent line does not: the
+  // parent just replied, this session closes, and a night yes would otherwise lose
+  // the ask forever.
+  const earned = granted && session.findWon;
+  const connectorOffer: ConnectorOfferLabel | 'not_offered' = earned
     ? connectorOfferLabel(
         await sendConnectorOffer(
           database,
@@ -1361,6 +1359,18 @@ async function handleWatchReply(
         ),
       )
     : 'not_offered';
+  let coParentAsk: 'sent' | 'not_offered' = 'not_offered';
+  if (earned) {
+    await sendAndRecord(
+      database,
+      ctx,
+      CO_PARENT_ASK_BY_LANGUAGE[language],
+      deps,
+      recorded.transcript,
+      INTAKE_COPARENT_ASK_TEMPLATE_KEY,
+    );
+    coParentAsk = 'sent';
+  }
 
   await saveSession(
     database,
@@ -1374,51 +1384,17 @@ async function handleWatchReply(
     granted,
     nameAsked: ack.asked,
     connectorOffer,
+    coParentAsk,
   };
 }
 
 /**
- * The consent acknowledgment, with the name ask on the end of it when Hale has no name
- * for this parent.
- *
- * ONE MESSAGE, ONE QUESTION. The ask is APPENDED rather than sent as a second text: a
- * parent who has just agreed to something and gets two texts back has been answered by a
- * system, and the composer's budget (MAX_TAIL_ASK_CHARS) is set so the joined body is
- * still a single segment.
- *
- * THE ASK IS ALLOWED TO FAIL. A deferred compose returns the acknowledgment alone, which
- * is a whole and correct message — the parent is covered, they were told so, and Hale
- * simply does not learn their name on this turn. The intros gap-fill asks again later if
- * it ever actually needs one, so a model outage here costs nothing that is not recovered
- * (rule #11: the absence is named in the outcome and logged by the composer).
+ * The consent acknowledgment, whole. No name ask on this tail: what to call the
+ * parent waits for a real radar win (PR #689), and "excited to help" / "no action
+ * needed" do not belong on a yes.
  */
-async function assentAck(
-  database: Database,
-  session: IntakeSession,
-  deps: IntakeDeps,
-  language: ReplyLanguage,
-): Promise<{ body: string; asked: boolean }> {
-  const ack = ASSENT_ACK_BY_LANGUAGE[language];
-  // Asked only when there is genuinely nothing on file. Intake always creates a nameless
-  // user, but the same phone can resolve to an existing account, and asking a parent
-  // their name when Hale already knows it is the tell of a system that does not read.
-  if (!(await parentNeedsName(database, session.userId as string))) {
-    return { body: ack, asked: false };
-  }
-  // A FRENCH ACKNOWLEDGMENT GETS NO TAIL. `identityAsk` composes in English — it is given
-  // the reason and the gap and nothing else, so it has no way to know what the parent
-  // wrote — and a French sentence with an English question stapled to it is a worse
-  // message than a French sentence. This takes the branch the composer's own deferral
-  // already has: the ack is whole on its own, `asked: false` says the name was not
-  // collected, and the intros gap-fill asks again later if it ever actually needs one.
-  if (language === 'fr') {
-    console.info('intake: skipped the English name ask on a French acknowledgment');
-    return { body: ack, asked: false };
-  }
-
-  const ask = await deps.identityAsk.compose({ reason: 'getting_started', missing: ['name'] });
-  if (ask.status !== 'composed') return { body: ack, asked: false };
-  return { body: `${ack} ${ask.body}`, asked: true };
+function assentAck(language: ReplyLanguage): { body: string; asked: boolean } {
+  return { body: ASSENT_ACK_BY_LANGUAGE[language], asked: false };
 }
 
 async function handleKeyword(

@@ -490,13 +490,9 @@ export function posterLocation(code: string | null): string | null {
  * one word-pair: "rec mornings" was house coinage two strangers misread inside 48h;
  * "sign-up mornings" says the same thing in parent language.
  *
- * FOUNDER 2026-09-17 widened the hook from the wedge to the product. "I watch sign-up
- * mornings so they don't sneak up" named ONE job, so a stranger with no registration
- * coming read a reminder service and had no reason to answer. The sentence now names
- * the three in the order they happen — find the activity that fits, hold the sign-up
- * morning, come back and ask how it went. The 2026-09-22 door lock ends the
- * sentence there: the "parenting chaos" tail is gone, and "your little one"
- * is "your kids".
+ * FOUNDER 2026-09-22. Hale is the planner for the kids' year. The hook names that
+ * job: what's on, the sign-up mornings, and how it went. The ask underneath is
+ * unchanged. These sentences are drafts for Design to lock.
  *
  * Two things it deliberately does NOT say. No superlative: Hale cannot verify "best",
  * so it claims fit, which it can. And no nightly check-in, which is not built —
@@ -523,12 +519,12 @@ export function posterLocation(code: string | null): string | null {
  */
 export function greeting(venue: string | null, language: ReplyLanguage): string {
   if (venue) {
-    return `Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
+    return `Hi, I'm Hale. I plan your kids' year - what's on near them, the sign-up mornings, and how it went. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
   }
   if (language === 'fr') {
-    return `Bonjour, je suis Hale. Je trouve des activités qui conviennent à vos enfants, je surveille les matins d'inscription pour qu'ils ne vous échappent pas, et je prends de vos nouvelles. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
+    return `Bonjour, je suis Hale. Je planifie l'annee de vos enfants - ce qui se passe près d'eux, les matins d'inscription, et comment ca s'est passé. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
   }
-  return `Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. ${COLD_START_ASK}`;
+  return `Hi, I'm Hale. I plan your kids' year - what's on near them, the sign-up mornings, and how it went. ${COLD_START_ASK}`;
 }
 
 /**
@@ -542,7 +538,7 @@ export function greeting(venue: string | null, language: ReplyLanguage): string 
  * `replyLanguage` reads it as English whatever they speak.
  */
 export function greetingWithArea(areaCoarse: string): string {
-  return `Hi, I'm Hale. I find activities that fit your kids, keep sign-up mornings from sneaking up, and check in on how it goes. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
+  return `Hi, I'm Hale. I plan your kids' year - what's on near them, the sign-up mornings, and how it went. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
 }
 
 /**
@@ -759,6 +755,21 @@ export function intakeConnectorOffer(
 ): string {
   return CONNECTOR_OFFER_BY_LANGUAGE[language](calendarUrl, gmailUrl);
 }
+
+/**
+ * Last ask of intake, after a real find and after the inbox ask. The parent texts
+ * the existing "add my partner" phrase; the join route mints the link. Draft for
+ * Design to lock. GSM-7: no circumflex, no cedilla.
+ */
+export const INTAKE_COPARENT_ASK_TEMPLATE_KEY = 'intake:coparent_ask';
+
+export const CO_PARENT_ASK =
+  "If another parent should see this year too, text me add my partner and I'll send a link you can forward.";
+
+export const CO_PARENT_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: CO_PARENT_ASK,
+  fr: "Si un autre parent doit voir cette annee aussi, ecrivez add my partner et je vous envoie un lien a transferer.",
+};
 
 /**
  * The CASL keyword replies. STOP gets one final confirmation and then silence; HELP gets

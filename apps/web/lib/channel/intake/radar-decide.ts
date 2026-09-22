@@ -604,7 +604,7 @@ function decideRegistrationAbsence(
   };
 }
 
-function decideWeekendPick(input: DecideRadarInput): WeekendPick | null {
+function eligibleWeekend(input: DecideRadarInput): Placed[] {
   const weekend = upcomingWeekend(input.now, input.timeZone);
   const season = seasonOf(input.now, input.timeZone);
   const teen = new Set(input.teenChildIds);
@@ -638,9 +638,27 @@ function decideWeekendPick(input: DecideRadarInput): WeekendPick | null {
   }
 
   const split = splittingDays(placed, input.children.length);
-  const eligible = placed.filter(
+  return placed.filter(
     (entry) => !split.has(entry.date) || entry.coverage.length === input.children.length,
   );
+}
+
+function toWeekendPick(placed: Placed, children: readonly RadarChild[]): WeekendPick {
+  return {
+    candidateRef: {
+      id: placed.candidate.id,
+      title: placed.candidate.title,
+      venueName: placed.candidate.venueName,
+    },
+    day: placed.day,
+    kidNames: namesOf(children, placed.coverage),
+    whyFacts: whyFactsFor(placed),
+    ...accessFor(placed.candidate),
+  };
+}
+
+function decideWeekendPick(input: DecideRadarInput): WeekendPick | null {
+  const eligible = eligibleWeekend(input);
   if (eligible.length === 0) return null;
 
   // Free-first is a HARD ordering rule: work up the price ranks and take the first rank
@@ -659,17 +677,33 @@ function decideWeekendPick(input: DecideRadarInput): WeekendPick | null {
     if (paid && paid.score >= chosen.score + CLEARLY_BETTER_MARGIN) chosen = paid;
   }
 
-  return {
-    candidateRef: {
-      id: chosen.candidate.id,
-      title: chosen.candidate.title,
-      venueName: chosen.candidate.venueName,
-    },
-    day: chosen.day,
-    kidNames: namesOf(input.children, chosen.coverage),
-    whyFacts: whyFactsFor(chosen),
-    ...accessFor(chosen.candidate),
-  };
+  return toWeekendPick(chosen, input.children);
+}
+
+/** How many age-fit things the first reply may name. Three is the whole list a parent
+ * can hold; a fourth is a directory. */
+export const YEAR_FIND_CAP = 3;
+
+/**
+ * Up to three age-fit things for the coming weekend, free first, one line per
+ * candidate. The single {@link decideWeekendPick} stays the one-pick ranking the
+ * rest of the radar uses; the first reply wants the short list, not only the winner.
+ */
+export function decideYearFinds(input: DecideRadarInput): WeekendPick[] {
+  const ranked = [...eligibleWeekend(input)].sort((a, b) => {
+    if (a.priceRank !== b.priceRank) return a.priceRank - b.priceRank;
+    if (b.score !== a.score) return b.score - a.score;
+    return a.candidate.title.localeCompare(b.candidate.title);
+  });
+  const seen = new Set<string>();
+  const picks: WeekendPick[] = [];
+  for (const placed of ranked) {
+    if (seen.has(placed.candidate.id)) continue;
+    seen.add(placed.candidate.id);
+    picks.push(toWeekendPick(placed, input.children));
+    if (picks.length === YEAR_FIND_CAP) break;
+  }
+  return picks;
 }
 
 /**

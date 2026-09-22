@@ -959,8 +959,8 @@ describe('2 · the first reply names something real', () => {
   it('is not structurally empty — it names a seeded civic session and the matched window', () => {
     expect(journey.radarBody.toLowerCase()).not.toContain('still learning');
     expect(journey.radarBody).toContain('Family Storytime');
-    // Markham's real open instant, in the family's own zone.
-    expect(journey.radarBody).toContain('Aug 25');
+    expect(journey.radarBody).not.toMatch(/registration opens|registration opened/i);
+    expect(journey.radarBody).not.toContain('Aug 25');
   });
 
   it('fits the segment budget the whole payload is measured against', () => {
