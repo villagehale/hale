@@ -371,10 +371,9 @@ describe('privacy — the scaffold the template supplies, in PIPEDA vocabulary',
     // So the list is not typed here either. The payload keys come out of
     // `syncGoogleCalendar` / `syncGmail` themselves, and a field added there
     // fails this test until someone decides what to call it for a reader.
-    // (The same read appears in `landing-v5.test.ts`, where the landing makes
-    // the shorter version of the same promise; it is six lines, and a shared
-    // module under lib/ would be a runtime `readFileSync` into apps/web that a
-    // component could one day import.)
+    // The landing makes the shorter version of the same promise in its own
+    // copy. A shared module under lib/ would be a runtime `readFileSync` into
+    // apps/web that a component could one day import.
     const sync = readFileSync(
       fileURLToPath(new URL('../../web/lib/integrations/sync.ts', import.meta.url)),
       'utf8',

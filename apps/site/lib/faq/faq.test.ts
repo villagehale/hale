@@ -143,9 +143,8 @@ describe('the FAQ this build serves', () => {
   });
 
   it('says the co-parent line in the landing’s words, not its own', () => {
-    // The landing's how-it-works prose says "the same dates and nudges on their
-    // own number" (pinned in app/landing-v5.test.ts); the FAQ said "the same week
-    // and reminders", and the week is the stale noun — the Sunday plan is off the
+    // The FAQ names the co-parent promise as the same dates and nudges on their
+    // own number. "The same week" was the stale noun — the Sunday plan is off the
     // page. Two surfaces naming the same promise two ways is how a reader learns
     // there are two promises.
     const free = FAQ.find((item) => item.question === 'Is Hale free?')?.answer ?? '';

@@ -101,12 +101,10 @@ describe('one header, one footer, every page', () => {
   it('keeps the landing hero under that bar rather than below it', async () => {
     // The over-hero look survives the unification in CSS, not in a second header:
     // the hero is pulled up by the bar's own height and padded back by the same
-    // amount, so the page ground still starts at the top of the viewport and the
-    // glass pill floats over it. v5 took the photograph out of the hero; what it
-    // runs under the bar now is its own canvas, which is why the pull-up class
-    // outlived the shore.
+    // amount, so the shore still starts at the top of the viewport and the glass
+    // pill floats over it.
     const landing = await renderPage(PAGES['/'] as () => unknown);
-    expect(landing).toContain('v5-hero v4-hero-top');
+    expect(landing).toContain('v4-hero v4-hero-top');
     const css = readFileSync(fileURLToPath(new URL('../app/globals.css', import.meta.url)), 'utf8');
     expect(css).toContain('margin-top: calc(-1 * var(--nav-h));');
     expect(css).toContain('padding-top: var(--nav-h);');

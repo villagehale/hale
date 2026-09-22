@@ -11,9 +11,9 @@ import { CONTACT_EMAIL, readSmsNumber } from '~/lib/text-entry';
  * The marketing header — the v4 liquid-glass nav pill, on every subpage.
  *
  * One design, whole site: this is the same floating glass pill the landing wears
- * the landing wears over its own hero (components/landing/v5/landing-v5.tsx), so
- * a reader crossing from / to /pricing never changes products. Every page,
- * landing included, renders THIS component, sticky.
+ * over its shore hero (components/landing/v4/landing-v4.tsx), so a reader
+ * crossing from / to /pricing never changes products. Every page, landing
+ * included, renders THIS component, sticky.
  *
  * The theme control does NOT live here — v4 moved it to the footer switch, which
  * every page ends in. The bar carries the three pages that introduce the product,
@@ -50,7 +50,11 @@ export function SiteHeader({ locale = routing.defaultLocale }: { locale?: Locale
   return (
     <header className="sticky top-0 z-50 px-4 sm:px-6">
       <nav className="v4-nav v4-glass" aria-label="Primary">
-        <a href={localeHref(locale, '/')} className="flex items-center gap-2.5" aria-label="Hale, home">
+        <a
+          href={localeHref(locale, '/')}
+          className="flex items-center gap-2.5"
+          aria-label="Hale, home"
+        >
           <LogoMark size={28} />
           <Wordmark className="text-navy" />
         </a>

@@ -6,16 +6,14 @@ import { routing } from '~/i18n/routing.js';
 import LandingPage from './[locale]/page.js';
 
 /**
- * The loop is the landing's product shot, and it is the one section whose copy
- * is a per-locale ARRAY OF ARRAYS — five beats, each with its own rows. A
- * translator who drops a row silently shortens the story rather than throwing,
- * and `t.raw` returns whatever the bundle holds, so nothing else in the suite
- * would notice. (`LoopThread` throws on an EMPTY beat, which is the other half
- * of the same guard; a beat that merely loses one of three rows still renders.)
+ * The registration loop is the landing's product shot, and it is the one section
+ * whose copy is a per-locale ARRAY — a translator who drops a row silently
+ * shortens the story rather than throwing. next-intl's `t.raw` returns whatever
+ * the bundle holds, so nothing else in the suite would notice.
  *
  * This renders all three locales and asserts the loop's SHAPE, which is the part
- * that must not drift: five beats, the same eleven rows in the same order, and
- * two contrast cells.
+ * that must not drift: four timestamps, the same seven bubbles in the same
+ * order, three timed steps and two contrast cells.
  */
 
 vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
@@ -29,9 +27,16 @@ const HTML = Object.fromEntries(
   ),
 ) as Record<(typeof routing.locales)[number], string>;
 
-/** The one conversation on the page. */
-function loop(html: string): string {
-  return html.match(/<div class="v5-loop"[\s\S]*?<\/ol>/)?.[0] ?? '';
+/** The transcript section only — the hero carries its own three bubbles now, so
+ * a page-wide scan would count two conversations as one. `v4-thread-cap` is the
+ * caption only the transcript wears. */
+function transcript(html: string): string {
+  return html.match(/<p class="v4-thread-cap"[\s\S]*?<\/section>/)?.[0] ?? '';
+}
+
+/** The hero's own three-bubble exchange, the other conversation on the page. */
+function heroExchange(html: string): string {
+  return html.match(/<div class="v4-hero-thread[\s\S]*?<\/div>/)?.[0] ?? '';
 }
 
 function landingBundle(locale: string): Record<string, unknown> {
@@ -56,45 +61,12 @@ const H1_COLUMN_EM: Record<(typeof routing.locales)[number], number> = {
   zh: 6.9,
 };
 
-/* ── The ladder's two values, read out of apps/web ────────────────────────────
- * The loop's two municipal legs print a town, a clock and a link that all come
- * off ONE seeded registration window. `landing-v5.test.ts` derives the whole
- * sentence from that row for en; what this file adds is that fr and zh print the
- * SAME three facts, because a translator retyping a time is how the page ends up
- * promising a morning the town does not open on. (It shipped once: the loop said
- * "opens 7:00 a.m." against a row whose clock is noon.)
- *
- * The town is not translated and neither is the URL — `townLabel` is one
- * function with no locale argument, so a localized town name is a town the
- * product never says. */
-function webSource(path: string): string {
-  return readFileSync(fileURLToPath(new URL(`../../web/${path}`, import.meta.url)), 'utf8');
-}
-
-const LADDER = (() => {
-  const data = webSource('lib/registration/registration-windows-data.ts');
-  const row = /municipality: 'vaughan',\s*programDomain: 'swim',([\s\S]*?)\n\s*\},/.exec(data)?.[1];
-  const urlConst = row === undefined ? undefined : /sourceUrl: (\w+),/.exec(row)?.[1];
-  const url =
-    urlConst === undefined
-      ? undefined
-      : new RegExp(`const ${urlConst} =\\s*'([^']+)';`).exec(data)?.[1];
-  const opensAt = row === undefined ? undefined : /residentOpenAt: '([^']+)'/.exec(row)?.[1];
-  if (url === undefined || opensAt === undefined) {
-    throw new Error('apps/web moved the seeded vaughan/swim window — re-pin the loop with it');
-  }
-  return {
-    town: 'Vaughan',
-    link: url.replace(/^https:\/\/www\./, ''),
-    hour: Number(
-      new Intl.DateTimeFormat('en-CA', {
-        hour: 'numeric',
-        hour12: false,
-        timeZone: 'America/Toronto',
-      }).format(new Date(opensAt)),
-    ),
-  };
-})();
+/** The town Hale's hero reply names back, per locale — zh transliterates it. */
+const HERO_TOWN: Record<(typeof routing.locales)[number], string> = {
+  en: 'Stouffville',
+  fr: 'Stouffville',
+  zh: '斯托夫维尔',
+};
 
 function landingString(locale: string, key: string): string {
   const value = landingBundle(locale)[key];
@@ -102,60 +74,43 @@ function landingString(locale: string, key: string): string {
   return value;
 }
 
-/** The word space before an accent span — Latin punctuation, so zh, which sets
- * solid, takes none. Mirrors `accentSeparator` in the landing component. */
+/** Mirrors `accentSeparator` in the landing: Latin takes a word space, zh sets solid. */
 function accentSeparator(locale: string): string {
   return locale === 'zh' ? '' : ' ';
 }
 
-/** Every headline the page splits into a lead and an accent span: the hero h1
- * and the five section h2s. Each one is a lead string, a separator and a
- * `.v4-accent` span, and each one had the separator written into the JSX. */
-const ACCENT_PAIRS: readonly string[] = [
-  'heroH1b',
-  'findH2a',
-  'watchH2a',
-  'seeH2a',
-  'howH2a',
-  'closingH2a',
-];
-
 function advanceEm(line: string): number {
   let em = 0;
   for (const ch of line) {
-    if (/[　-〿一-鿿＀-￯]/u.test(ch)) em += 1;
+    if (/[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]/u.test(ch)) em += 1;
     else if (ch === ' ') em += 0.25;
     else em += 0.42;
   }
   return em;
 }
 
-describe('the loop renders in every locale', () => {
-  it.each(routing.locales)('%s runs five beats and eleven rows, in order', (locale) => {
-    const html = loop(HTML[locale]);
-    expect(html, 'the loop must render').toContain('v4-bubble');
-    expect([...html.matchAll(/class="v5-beat"/g)]).toHaveLength(5);
-    expect([...html.matchAll(/class="v5-stamp"/g)]).toHaveLength(5);
-    // The parent's three turns are the yes that starts the watching, the outcome
-    // she reports, and the line about her day. Each must land AFTER the message
-    // that asks for it, in every language.
-    const rows = [...html.matchAll(/class="v5-(stamp)"|class="v4-bubble v4-bubble-(in|out)"/g)].map(
-      (m) => m[1] ?? m[2],
+describe('the registration loop renders in every locale', () => {
+  it.each(routing.locales)('%s runs four legs and seven bubbles, in order', (locale) => {
+    const html = transcript(HTML[locale]);
+    expect(html, 'the transcript must render').toContain('v4-bubble');
+    expect([...html.matchAll(/class="v4-thread-time"/g)]).toHaveLength(4);
+    expect([...html.matchAll(/class="v4-bubble v4-bubble-in"/g)]).toHaveLength(5);
+    expect([...html.matchAll(/class="v4-bubble v4-bubble-out"/g)]).toHaveLength(2);
+    // The out-bubbles are the parent's two turns: the yes that unlocks the
+    // quiet-hours-exempt legs, then the outcome. Both must land AFTER the leg
+    // that asks for them, in every language.
+    const rows = [...html.matchAll(/class="v4-(thread-time|bubble v4-bubble-(?:in|out))"/g)].map(
+      (m) => (m[1] === 'thread-time' ? 'time' : m[0].endsWith('out"') ? 'out' : 'in'),
     );
     expect(rows).toEqual([
-      'stamp',
-      'out',
+      'time',
       'in',
       'out',
-      'stamp',
+      'time',
       'in',
-      'stamp',
+      'time',
       'in',
-      'stamp',
-      'in',
-      'out',
-      'in',
-      'stamp',
+      'time',
       'in',
       'out',
       'in',
@@ -164,70 +119,51 @@ describe('the loop renders in every locale', () => {
 
   it.each(routing.locales)('%s carries the municipal link Hale really sends', (locale) => {
     // Not translated: it is a URL. A locale that "translates" it points a parent
-    // at a page that does not exist. Twice — the night before and the morning of,
-    // which are the two legs whose URL is a dataset-verified string rather than
-    // something a model composed.
-    expect([
-      ...loop(HTML[locale]).matchAll(new RegExp(LADDER.link.replaceAll('.', '\\.'), 'g')),
-    ]).toHaveLength(2);
+    // at a page that does not exist.
+    expect(HTML[locale]).toContain('haltonhills.ca/Play/Recreation/Programs');
   });
 
-  it.each(routing.locales)('%s answers about the town the parent named', (locale) => {
-    // Every other assertion over the loop is structural, so a translator could
-    // leave one language answering about a town the en copy has moved off, and
-    // the suite would stay green.
-    expect(loop(HTML[locale]), locale).toContain(LADDER.town);
-  });
-
-  it.each(routing.locales)('%s opens the ladder at the dataset row’s own hour', (locale) => {
-    // "7 h 00" in fr and "上午 7:00" in zh are the same clock written three ways,
-    // so the pin is the HOUR and a zero minute, in whatever separator the locale
-    // sets. A translator who rounds it to 8 fails here.
-    expect(loop(HTML[locale]), locale).toMatch(
-      new RegExp(String.raw`\b${LADDER.hour}\s*[:h]\s*00\b`),
-    );
-  });
-
-  it.each(routing.locales)(
-    '%s keeps the three reply tokens in the bytes the parser reads',
-    (locale) => {
-      // ANSWER_MENU exists "so a parent who copies one back is guaranteed a match",
-      // and the match is against English word lists (`sequence/reply.ts`
-      // REGISTERED_WORDS / MISSED_WORDS). A translated « inscrit » is a reply Hale
-      // cannot read, printed as an instruction — so the tokens stay English in
-      // every locale, and so does the turn where the parent copies one back.
-      //
-      // COUNTED, not merely present: "got in" is printed twice — once in the menu
-      // and once as the parent's copied reply — and a containment check alone
-      // stays green when a locale translates the MENU and leaves the reply, which
-      // is the half that breaks the parser's promise.
-      const block = loop(HTML[locale]);
-      for (const [token, times] of [
-        ['got in', 2],
-        ['waitlisted #12', 1],
-        ['missed it', 1],
-      ] as const) {
-        expect(block.split(token).length - 1, `${locale} · ${token}`).toBe(times);
-      }
-    },
-  );
-
-  it.each(routing.locales)('%s renders three finds and both contrast cells', (locale) => {
-    expect([...HTML[locale].matchAll(/class="v5-find"/g)]).toHaveLength(3);
+  it.each(routing.locales)('%s marks all three steps and both contrast cells', (locale) => {
+    expect([...HTML[locale].matchAll(/class="v4-when"/g)]).toHaveLength(3);
     expect([...HTML[locale].matchAll(/class="v4-contrast[^"]*"/g)]).toHaveLength(1);
-    // The one find whose source had not published a time keeps saying so, in
-    // every language — dropping it is how a translation quietly invents a
-    // schedule.
-    expect([...HTML[locale].matchAll(/class="v5-find-gap"/g)]).toHaveLength(1);
-  });
-
-  it.each(routing.locales)('%s labels exactly two sections', (locale) => {
-    expect([...HTML[locale].matchAll(/class="v4-eyebrow"/g)]).toHaveLength(2);
   });
 
   it.each(routing.locales)('%s has no homepage question chips', (locale) => {
-    expect(HTML[locale]).not.toContain('class="v4-chip');
-    expect(HTML[locale]).not.toContain('class="v4-chips"');
+    const html = HTML[locale];
+    expect(html).not.toContain('class="v4-chip');
+    expect(html).not.toContain('class="v4-chips"');
+    expect(html).not.toContain('hero_chip');
+  });
+
+  it.each(routing.locales)(
+    '%s opens on the hero exchange — three bubbles, before the transcript',
+    (locale) => {
+      // Boardy: a believable request and Hale's answer, above the fold, in every
+      // language. It is the same bubble styling, in a hero-scoped wrapper, so the
+      // transcript scans above stay about the transcript.
+      const hero =
+        HTML[locale].match(/<section class="v4-hero v4-hero-top"[\s\S]*?<\/section>/)?.[0] ?? '';
+      expect(hero, 'the hero must render').toContain('v4-hero-thread');
+      expect([...hero.matchAll(/class="v4-bubble v4-bubble-out"/g)]).toHaveLength(2);
+      expect([...hero.matchAll(/class="v4-bubble v4-bubble-in"/g)]).toHaveLength(1);
+      expect(hero).not.toContain('v4-thread-time');
+      // The hero exchange must land before the transcript's own label.
+      expect(HTML[locale].indexOf('v4-hero-thread')).toBeLessThan(
+        HTML[locale].indexOf('v4-thread-cap'),
+      );
+    },
+  );
+
+  it.each(routing.locales)('%s answers about the town the hero asked about', (locale) => {
+    // Every other assertion over the hero is structural, so a translator could
+    // leave one language answering about a town — and a cycle — the en copy has
+    // moved off, and the suite would stay green. Reverting fr's reply to the
+    // closed Halton Hills sentence is exactly that, and this is what sees it.
+    const reply =
+      /<p class="v4-bubble v4-bubble-in">([\s\S]*?)<\/p>/.exec(heroExchange(HTML[locale]))?.[1] ??
+      '';
+    expect(reply, 'the hero reply must render').not.toBe('');
+    expect(reply, locale).toContain(HERO_TOWN[locale]);
   });
 
   it('carries every Landing key in all three bundles — no locale silently renders a key name', () => {
@@ -237,20 +173,10 @@ describe('the loop renders in every locale', () => {
     for (const locale of routing.locales) expect(keys(locale), locale).toEqual(en);
   });
 
-  it('carries every beat and every row in all three bundles', () => {
-    // The key-set check above cannot see inside an array: a fr bundle with four
-    // beats has the same keys as an en bundle with five.
-    const beats = (locale: string) =>
-      landingBundle(locale).heroLoop as { elapsed: string; rows: unknown[] }[];
-    const shape = (locale: string) => beats(locale).map((beat) => beat.rows.length);
-    expect(shape('en')).toEqual([3, 1, 1, 3, 3]);
-    for (const locale of routing.locales) expect(shape(locale), locale).toEqual(shape('en'));
-  });
-
   it.each(routing.locales)(
     '%s fits each hero H1 line inside the 15ch column at the desktop ceiling',
     (locale) => {
-      // The markup forces one break: heroH1a, then heroH1b + the separator + the accent.
+      // The markup forces one break: heroH1a, then heroH1b + the locale's separator + the accent.
       const lines = [
         landingString(locale, 'heroH1a'),
         `${landingString(locale, 'heroH1b')}${accentSeparator(locale)}${landingString(locale, 'heroH1Accent')}`,
@@ -261,68 +187,41 @@ describe('the loop renders in every locale', () => {
     },
   );
 
-  it.each(routing.locales)('%s keeps the h1’s last clause in one piece', (locale) => {
-    // At 390px the English h1 wrapped to "I find it. / You don’t miss / it." —
-    // an orphan of the word the sentence turns on. The accent span is that last
-    // clause, so making it unbreakable moves the break one word earlier
-    // ("You don’t / miss it.") without touching the size scale.
-    //
-    // And the separator in front of it is a LATIN word space. zh sets solid, and
-    // the literal JSX space printed a visible gap mid-phrase ("你不会 错过。"), so
-    // the space is a per-locale value rather than markup.
-    const h1 = HTML[locale].match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
-    expect(h1, `${locale} · the h1 must render`).toContain('v4-hero-h1');
-    expect(h1).toContain(
-      `${landingString(locale, 'heroH1b')}${accentSeparator(locale)}<span class="v4-accent v5-hero-tail">${landingString(locale, 'heroH1Accent')}</span>`,
-    );
-  });
-
-  it('spaces every accent span in en and fr, and none of them in zh', () => {
-    // Six headlines, one rule. The space belongs to the language, not to the
-    // markup: Latin needs it between two words, zh sets solid and its leads
-    // mostly END in a full-width comma that already carries its own trailing
-    // space, so the JSX space printed a visible gap ("三个， 不是三十个。").
-    //
-    // The en/fr half is the positive control for the zh half: a `not.toContain`
-    // alone would also pass on a page that stopped rendering the headline.
-    for (const lead of ACCENT_PAIRS) {
-      for (const locale of ['en', 'fr'] as const) {
-        expect(HTML[locale], `${locale} · ${lead}`).toContain(
-          `${landingString(locale, lead)} <span class="v4-accent`,
-        );
-      }
-      expect(HTML.zh, `zh · ${lead}`).not.toContain(`${landingString('zh', lead)} <span`);
-      expect(HTML.zh, `zh · ${lead}`).toContain(
-        `${landingString('zh', lead)}<span class="v4-accent`,
-      );
-    }
-  });
-
   it('would have caught the zh accent that wrapped mid-compound', () => {
     // The line that shipped as "之后便 安静下 / 来。" at 1440×900 and put the hero CTA under the fold.
     expect(advanceEm('之后便 安静下来。')).toBeGreaterThan(H1_COLUMN_EM.zh);
   });
 
-  it.each(routing.locales)('%s keeps the loop evergreen — no calendar date', (locale) => {
-    // A translator writing a beat has the same temptation to print the cycle the
-    // row is drawn from. 20xx would be a cycle label; the clock times (9:15,
-    // 7:00) are three digits or fewer either side of the colon and cannot match.
-    const block = loop(HTML[locale]);
-    expect(block, `${locale} · the loop must render`).toContain('v4-bubble');
-    expect(block, locale).not.toMatch(/\b20\d\d\b/);
+  it.each(routing.locales)('%s keeps BOTH demos evergreen — no calendar date', (locale) => {
+    // Run over the hero exchange as well as the transcript. A translator writing
+    // the hero reply has the same temptation to print the cycle the row is drawn
+    // from, and the hero is the one a first-time reader sees — scoping this to
+    // the transcript left the above-the-fold copy the only ungated conversation
+    // on the page. 20xx would be a cycle label; the clock times (10:04, 7:00) are
+    // three digits or fewer either side of the colon and cannot match.
+    for (const [name, block] of [
+      ['the transcript', transcript(HTML[locale])],
+      ['the hero exchange', heroExchange(HTML[locale])],
+    ] as const) {
+      expect(block, `${name} must render`).toContain('v4-bubble');
+      expect(block, `${locale} · ${name}`).not.toMatch(/\b20\d\d\b/);
+    }
   });
 
   it.each(routing.locales)('%s says who is speaking, not only which side', (locale) => {
-    // Direction is drawn with align-self and a fill, so a reader who cannot see
-    // the alignment gets a bare "YES" with no idea whose turn it was. Every
-    // bubble carries an sr-only speaker, and the loop opens on a caption saying
-    // what the whole thread is — said only to the reader the layout does not
-    // reach, because the hero has no fold height to spend on a line its sighted
-    // reader can already see.
+    // Direction is drawn with align-self and a fill; in dark the out-bubble's
+    // navy sits on a near-identical glass ground, so a reader who cannot see the
+    // alignment gets a bare "YES". Every bubble in both conversations carries an
+    // sr-only speaker, and the hero exchange opens on a caption saying what the
+    // three bubbles are — the transcript's visible `v4-thread-cap`, said only to
+    // the reader the layout does not reach, because the hero has no fold height
+    // to spend on a line its sighted reader can already see.
     const html = HTML[locale];
     const bubbles = [...html.matchAll(/<p class="v4-bubble[^"]*">(.*?)<\/p>/g)].map((m) => m[1]);
-    expect(bubbles.length, 'the bubbles must render').toBe(11);
+    expect(bubbles.length, 'the bubbles must render').toBe(10);
     for (const bubble of bubbles) expect(bubble).toMatch(/^<span class="sr-only">[^<]+ <\/span>/);
-    expect(loop(html)).toMatch(/^<div class="v5-loop"><p class="v5-loop-cap">[^<]+</);
+    expect(heroExchange(html)).toMatch(
+      /^<div class="v4-hero-thread[^>]*><p class="sr-only">[^<]+</,
+    );
   });
 });
