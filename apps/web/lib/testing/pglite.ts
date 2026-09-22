@@ -146,10 +146,11 @@ export async function seedFamily(
 ): Promise<SeededFamily> {
   // RAW SQL, deliberately. Drizzle's insert builder names EVERY column of the table and
   // writes `default` for the ones it was not given — so the moment a migration adds a
-  // families column, this helper stops working against any test that boots the database
-  // at an EARLIER migration (facts.migration.test.ts boots at 0083). Naming only the two
-  // columns it actually sets makes the helper independent of the schema version, which is
-  // what a fixture for "the database as it was" has to be.
+  // column, this helper stops working against any test that boots the database at an
+  // EARLIER migration (facts.migration.test.ts boots at 0083). `users.google_given_name`
+  // (0128) is that column: naming it in an INSERT against 0083 is "column does not
+  // exist", and the uniqueness repair never gets to run. Naming only the columns this
+  // helper actually sets keeps the fixture independent of the schema version.
   const inserted = (await database.execute(
     id
       ? sql`insert into families (id, display_name, province_or_state) values (${id}, ${displayName}, 'ON') returning id`
@@ -158,10 +159,11 @@ export async function seedFamily(
   const family = (Array.isArray(inserted) ? inserted : (inserted.rows ?? []))[0];
   if (!family) throw new Error('seedFamily: families insert returned no row');
 
-  const [user] = await database
-    .insert(schema.users)
-    .values({ email: `${family.id}@example.test`, name: 'Test Parent' })
-    .returning({ id: schema.users.id });
+  const email = `${family.id}@example.test`;
+  const insertedUser = (await database.execute(
+    sql`insert into users (email, name) values (${email}, 'Test Parent') returning id`,
+  )) as unknown as { rows?: Array<{ id: string }> } | Array<{ id: string }>;
+  const user = (Array.isArray(insertedUser) ? insertedUser : (insertedUser.rows ?? []))[0];
   if (!user) throw new Error('seedFamily: users insert returned no row');
 
   await database
