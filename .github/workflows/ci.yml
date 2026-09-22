@@ -1,5 +1,27 @@
 name: CI
 
+# Worker evals stay in this workflow, behind a path filter, rather than on a
+# workflow-level `paths:` list. A paths filter that skips the workflow would
+# also skip lint/typecheck/test/build and would leave the required check
+# pending. The check name below is unchanged on purpose.
+#
+# Required check: "Lint, typecheck, test, build"
+#   Reports on every PR (push, pull_request, workflow_dispatch). Passes when
+#   workspace lint, typecheck, test, and build passed, and worker evals either
+#   passed or were skipped because the diff was site-only. Branch protection
+#   should require this name. It already fails closed when evals were supposed
+#   to run and did not pass.
+#
+# Not a required check: "Worker evals (cached-only)"
+#   Skipped when the diff is site-only. Requiring this job name leaves those
+#   PRs stuck, because a skipped required check does not count as success.
+#
+# Site-only (evals skipped): every file is under apps/site/, or the only other
+# file is pnpm-lock.yaml and that hunk is confined to the apps/site importer
+# plus package entries no other importer selects. @hale/types is shared, so
+# packages/types still runs evals. apps/web, apps/worker, packages/agent,
+# packages/db, and packages/tools-contracts run evals. Any other path does too.
+
 on:
   push:
     branches: [main, production]
@@ -14,8 +36,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Path filter
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      worker_evals: ${{ steps.decide.outputs.worker_evals }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Decide whether worker evals apply
+        id: decide
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
+        run: node scripts/ci/worker-eval-paths.mjs
+
   verify:
-    name: Lint, typecheck, test, build
+    name: Workspace lint, typecheck, test, build
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -54,6 +99,38 @@ jobs:
 
       - name: Skill lockfile check
         run: pnpm --filter @hale/agent skills:check
+
+      - name: Build
+        run: pnpm build
+        env:
+          NODE_ENV: production
+          DATABASE_URL: postgresql://stub:stub@localhost:5432/stub
+          DATABASE_DIRECT_URL: postgresql://stub:stub@localhost:5432/stub
+
+  worker-evals:
+    name: Worker evals (cached-only)
+    needs: changes
+    if: ${{ needs.changes.result == 'success' && needs.changes.outputs.worker_evals == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Classifier eval (cached-only)
         run: pnpm --filter @hale/worker eval:classifier
@@ -166,9 +243,29 @@ jobs:
       - name: Travel-booking extraction eval (cached-only)
         run: pnpm --filter @hale/worker eval:travel-extract
 
-      - name: Build
-        run: pnpm build
+  # Aggregator that preserves the historical check name. Always reports, including
+  # when worker evals were skipped, so branch protection is not left waiting on a
+  # skipped job. Fails when workspace checks fail or when evals were required and
+  # did not pass.
+  required:
+    name: Lint, typecheck, test, build
+    needs: [changes, verify, worker-evals]
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Require workspace checks and worker evals
         env:
-          NODE_ENV: production
-          DATABASE_URL: postgresql://stub:stub@localhost:5432/stub
-          DATABASE_DIRECT_URL: postgresql://stub:stub@localhost:5432/stub
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          EVALS_RESULT: ${{ needs.worker-evals.result }}
+          WORKER_EVALS: ${{ needs.changes.outputs.worker_evals }}
+        run: node scripts/ci/required-check.mjs

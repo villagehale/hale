@@ -84,6 +84,16 @@ export function classify(failedStepName, rawLog) {
   };
 }
 
+// Job name of the CI required check (.github/workflows/ci.yml). It aggregates
+// workspace lint/typecheck/test/build and the conditional worker-eval job, so
+// it fails whenever one of those fails. Heal must classify the underlying job.
+export const REQUIRED_CI_JOB = 'Lint, typecheck, test, build';
+
+export function pickFailedJob(jobs) {
+  const failed = (jobs ?? []).filter((job) => job?.conclusion === 'failure');
+  return failed.find((job) => job.name !== REQUIRED_CI_JOB) ?? failed[0] ?? null;
+}
+
 // Derive the exact local re-record command for an eval cache miss from the
 // worker package.json script entry: same runner, minus --cached-only, with
 // --env-file so the live Anthropic key is loaded.
