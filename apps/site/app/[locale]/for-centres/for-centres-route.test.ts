@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SiteFooter } from '~/components/site-footer.js';
 import { type Locale, routing } from '~/i18n/routing.js';
 import { SITE_URL } from '~/lib/app-url.js';
-import { MUNICIPALITIES, MUNICIPALITY_COUNT } from '~/lib/site/municipalities.js';
+import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities.js';
 import sitemap from '../../sitemap.js';
 import ContactPage from '../contact/page.js';
 import LandingPage from '../page.js';
@@ -172,13 +172,12 @@ describe('the exchange on this page is the landing’s, not a second one', () =>
     expect(html.indexOf('v4-bubble-out')).toBeLessThan(html.indexOf('v4-bubble-in'));
   });
 
-  it('states the town count from the data, and names every town', async () => {
+  it('states the town count from the data, and does not list the towns', async () => {
     const text = rawText(await render('en'));
     expect(text).toContain(`${MUNICIPALITY_COUNT} GTA municipalities`);
     const html = await render('en');
-    for (const town of MUNICIPALITIES) {
-      expect(html, `${town} is missing from the pills`).toContain(`>${town}</li>`);
-    }
+    expect(html).not.toContain('v4-pill');
+    expect(html).not.toContain('Towns watched');
   });
 });
 

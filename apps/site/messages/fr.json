@@ -158,11 +158,11 @@
     "contrast": [
       {
         "title": "Sans moi",
-        "body": "Vous réglez une alarme à 6 h 55 et vous ouvrez les onglets. Les places ouvrent à 7 h, et les bonnes sont parties à 7 h 02. Ratez la session municipale à 54 $ et le privé coûte environ douze fois plus — et certaines villes donnent aux résidents une longueur d’avance de quatre jours à deux semaines."
+        "body": "Vous cherchez la page de votre ville et vous espérez attraper le matin."
       },
       {
         "title": "Avec moi",
-        "body": "Vous répondez OUI une fois. Je fais la matinée avec vous, et votre lien est dans votre main avant l’ouverture."
+        "body": "Vous dites oui pour que je veille. J’envoie le lien de votre ville la veille au soir, puis de nouveau à l’ouverture."
       }
     ],
     "watched": [
@@ -499,7 +499,6 @@
     ],
     "lede": "Hale est un planificateur pour l’année des enfants d’une famille. Il trouve des activités qui conviennent à l’enfant, surveille les matins d’inscription dans {count} municipalités du Grand Toronto, et prend des nouvelles ensuite.",
     "notLine": "Il n’y a pas d’appli à installer ni de compte à créer. Rien de ce qui touche une famille n’est vendu ni partagé, Hale est conçu en Ontario selon la LPRPDE, et les données d’une famille restent au Canada.",
-    "townsLabel": "Villes surveillées",
     "getEyebrow": "Ce qu’une famille reçoit",
     "getHeadline": [
       {

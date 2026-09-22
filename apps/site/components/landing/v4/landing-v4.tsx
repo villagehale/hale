@@ -10,7 +10,7 @@ import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
-import { MUNICIPALITIES } from '~/lib/site/municipalities';
+import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
 import { siteJsonLd } from '~/lib/site/structured-data';
 import { CONTACT_EMAIL, buildSmsHref } from '~/lib/text-entry';
 import { ScrollRail } from './scroll-rail';
@@ -28,8 +28,8 @@ import { ScrollRail } from './scroll-rail';
  * footer switch. No third-party video (the reference's CloudFront clips are not
  * ours to ship); the shore still and the glass do the work.
  *
- * All copy is keyed by locale (`Landing` namespace); the municipalities are
- * proper nouns and stay as data.
+ * All copy is keyed by locale (`Landing` namespace). The coverage count is
+ * read from the municipality list; the names themselves are not rendered.
  */
 
 interface Card {
@@ -270,13 +270,11 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           {accentSeparator(locale)}
           <span className="v4-accent">{t('watchH2Accent')}</span>
         </h2>
-        <p className="v4-lede">{t('watchLede', { count: MUNICIPALITIES.length })}</p>
-        {/* The four sourced facts used to run together in that lede as one
-         * 55-word sentence. They are the same four, word for word — only now
-         * they sit on the side of a contrast, which is the shape an argument
-         * about a 7:02 sell-out wants. The with-me cell deliberately does NOT
-         * restate the ladder: the thread above shows it and step three sums it
-         * up, and a third telling is what makes a landing page long. */}
+        <p className="v4-lede">{t('watchLede', { count: MUNICIPALITY_COUNT })}</p>
+        {/* Without / with, in a calm planner voice. Without: you go find the
+         * town's own page and hope you catch the morning. With: you say yes to
+         * the watch, and the town's link arrives the night before and again as
+         * it opens. No sell-out clock. */}
         <div className="v4-contrast v4-panel v4-glass mt-5 sm:mt-8">
           {contrast.map((cell) => (
             <div key={cell.title}>
@@ -285,13 +283,6 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             </div>
           ))}
         </div>
-        <ul className="v4-pills mt-5 sm:mt-8">
-          {MUNICIPALITIES.map((city) => (
-            <li key={city} className="v4-pill v4-glass">
-              {city}
-            </li>
-          ))}
-        </ul>
         <ScrollRail className="v4-cardgrid-4 mt-7 sm:mt-12" label={t('watchRail')}>
           {watched.map((item) => (
             <article key={item.title} className="v4-card v4-glass">
@@ -322,19 +313,17 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
 
       {/*
         ── Coaching — the questions that aren't scheduling ───────────────────
-        Demoted, not dropped. It kept every word it had, and lost the weight:
-        it sat above the helpers with a .v4-h2 and a card rail, which read as a
-        second product competing with the wedge the page is actually sold on.
-        Now it is one band below the registration story — eyebrow, a heading a
-        rung under the section H2s, the lede, and the three beats as rows rather
-        than cards. No rail, so nothing here scrolls sideways on a phone either.
+        Secondary to the planner spine (find / watch / how it went). The words
+        stay. What leaves is the billboard: no display face, no accent split,
+        a shorter band, so sleep/solids/potty does not compete with the
+        section H2s.
       */}
-      <section className="shell py-12 sm:py-20 lg:py-28">
+      <section className="shell py-8 sm:py-12 lg:py-16">
         <p className="v4-eyebrow">{t('coachingEyebrow')}</p>
-        <h2 className="v4-display mt-3 text-[clamp(1.45rem,2.6vw,1.9rem)] text-ink">
+        <h2 className="mt-3 max-w-[40ch] text-[clamp(1.2rem,2vw,1.45rem)] font-semibold leading-snug text-spruce">
           {t('coachingH2a')}
           {accentSeparator(locale)}
-          <span className="v4-accent">{t('coachingH2Accent')}</span>
+          {t('coachingH2Accent')}
         </h2>
         <p className="v4-lede">{t('coachingLede')}</p>
         <div className="v4-panel v4-glass mt-5 sm:mt-8">

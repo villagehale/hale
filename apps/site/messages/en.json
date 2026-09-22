@@ -158,11 +158,11 @@
     "contrast": [
       {
         "title": "Without me",
-        "body": "You set an alarm for 6:55 and open the tabs. Spots open at 7:00 a.m., and the good ones are gone by 7:02. Lose the $54 city session and private runs about twelve times that — and some towns give residents a head start of four days to two weeks."
+        "body": "You chase the town’s own page and hope you catch the morning."
       },
       {
         "title": "With me",
-        "body": "You reply YES once. I run the morning with you, and your link is in your hand before it opens."
+        "body": "You say yes to the watch. I send the town’s link the night before and again as it opens."
       }
     ],
     "watched": [
@@ -494,7 +494,6 @@
     ],
     "lede": "Hale is a planner for a family’s kids’ year. It finds activities that fit their child, watches sign-up mornings in {count} GTA municipalities, and checks in on how it went.",
     "notLine": "There is no app to install and no account to make. Nothing about a family is sold or shared, Hale is built in Ontario under PIPEDA, and a family’s data stays in Canada.",
-    "townsLabel": "Towns watched",
     "getEyebrow": "What a family gets",
     "getHeadline": [
       {

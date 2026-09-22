@@ -13,7 +13,7 @@ import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { SITE_URL } from '~/lib/app-url';
 import type { FaqItem } from '~/lib/faq';
-import { MUNICIPALITIES, MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
+import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
 import { CONTACT_EMAIL, buildSmsHref, readSmsNumber } from '~/lib/text-entry';
 
 /**
@@ -30,8 +30,9 @@ import { CONTACT_EMAIL, buildSmsHref, readSmsNumber } from '~/lib/text-entry';
  *  - The demo exchange. The bubbles are `Landing.heroThread` verbatim, read out
  *    of the same message key the homepage renders, so the one example of a first
  *    text cannot say two different things on two pages.
- *  - The towns. `MUNICIPALITIES` is the list and the count, per the module's own
- *    rule that anything stating the number reads it from there.
+ *  - The coverage count. `MUNICIPALITY_COUNT` is the number, per the module's
+ *    own rule that anything stating the count reads it from there. The page
+ *    names the count in the lede and does not list the towns.
  *
  * Nothing about connectors, invitations or anything else behind F14's flag is
  * mentioned: this page is handed to staff who will repeat it out loud, so it
@@ -112,18 +113,6 @@ export default async function ForCentresPage({ params }: PageProps) {
             {t('notLine')}
           </p>
         </div>
-
-        {/* The first question a centre asks is whether its own town is on the
-            list, so the list is the first thing under the lede rather than a
-            sentence claiming a number. */}
-        <p className="eyebrow mt-10">{t('townsLabel')}</p>
-        <ul className="v4-pills mt-4">
-          {MUNICIPALITIES.map((city) => (
-            <li key={city} className="v4-pill v4-glass">
-              {city}
-            </li>
-          ))}
-        </ul>
       </section>
 
       {/* ── The signature element: what your families will see ─────────────

@@ -128,6 +128,38 @@ describe('the registration loop renders in every locale', () => {
     expect([...HTML[locale].matchAll(/class="v4-contrast[^"]*"/g)]).toHaveLength(1);
   });
 
+  /**
+   * The without/with pair, locked together. A locale that keeps the sell-out
+   * clock or the "YES once" ask while English moves on is the failure this
+   * catches — the cells are an array, so a dropped sentence does not throw.
+   */
+  const CALM_CONTRAST: Record<(typeof routing.locales)[number], readonly [string, string]> = {
+    en: [
+      'You chase the town’s own page and hope you catch the morning.',
+      'You say yes to the watch. I send the town’s link the night before and again as it opens.',
+    ],
+    fr: [
+      'Vous cherchez la page de votre ville et vous espérez attraper le matin.',
+      'Vous dites oui pour que je veille. J’envoie le lien de votre ville la veille au soir, puis de nouveau à l’ouverture.',
+    ],
+    zh: [
+      '你自己去找城镇自己的页面，指望赶上那个早上。',
+      '你答应让我盯着。我前一晚把城镇的链接发给你，开放时再发一次。',
+    ],
+  };
+
+  it.each(routing.locales)('%s contrast is the calm watch, with no sell-out clock', (locale) => {
+    const cells = landingBundle(locale).contrast as { body: string }[];
+    expect(cells.map((cell) => cell.body)).toEqual([...CALM_CONTRAST[locale]]);
+    const joined = cells.map((cell) => cell.body).join('\n');
+    for (const phrase of ['7:02', '7 h 02', 'YES once', 'OUI une fois', '回复一次 YES', '6:55']) {
+      expect(joined, phrase).not.toContain(phrase);
+    }
+    expect(HTML[locale]).toContain(CALM_CONTRAST[locale][0]);
+    expect(HTML[locale]).toContain(CALM_CONTRAST[locale][1]);
+    expect(HTML[locale]).not.toContain('v4-pill');
+  });
+
   it.each(routing.locales)('%s has no homepage question chips', (locale) => {
     const html = HTML[locale];
     expect(html).not.toContain('class="v4-chip');

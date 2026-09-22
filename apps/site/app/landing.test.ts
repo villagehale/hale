@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { impactNumbers } from '~/lib/landing/impact.js';
-import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities.js';
+import { MUNICIPALITIES, MUNICIPALITY_COUNT } from '~/lib/site/municipalities.js';
 import LandingPage from './[locale]/page.js';
 
 /**
@@ -336,10 +336,11 @@ describe('landing — sections, in the Surfaces Plan order', () => {
   const html = render();
   const text = visibleText(html);
 
-  it('names every seeded municipality it watches', () => {
+  it('states the coverage count and does not render a city chip wall', () => {
     // A hand-kept copy of the `Municipality` union in packages/db (apps/site
     // cannot import @hale/db), held against lib/site/municipalities so a town
     // added to one and not the other is a red test rather than a silent gap.
+    // The page states the count only — the names are not a non-clickable wall.
     const cities = [
       'Toronto',
       'Mississauga',
@@ -363,15 +364,10 @@ describe('landing — sections, in the Surfaces Plan order', () => {
       'Georgina',
       'Uxbridge',
     ];
-    expect(cities).toHaveLength(MUNICIPALITY_COUNT);
-    for (const city of cities) {
-      expect(text).toContain(city);
-    }
+    expect([...MUNICIPALITIES]).toEqual(cities);
     expect(text).toContain(`${MUNICIPALITY_COUNT} municipalities`);
-  });
-
-  it('renders the cities as glass pills, one per municipality', () => {
-    expect([...html.matchAll(/class="v4-pill v4-glass"/g)]).toHaveLength(MUNICIPALITY_COUNT);
+    expect(html).not.toContain('v4-pill');
+    expect(html).not.toContain('class="v4-pills');
   });
 
   it('watches only what registration-windows-data.ts actually holds', () => {
@@ -386,17 +382,19 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     expect(text).not.toContain('school paperwork');
   });
 
-  it('proves the pain with the sourced facts instead of asserting usefulness', () => {
-    // The four "wait, really?" facts, each sourced in the positioning doc §9:
-    // the 7:02 fill (self-explained in the hero sub: opens at 7:00, gone by 7:02),
-    // the ~12× private-vs-city swing, the resident head start, and the waitlist
-    // clock. Anything not on that list is an invented number.
-    expect(text).toContain('open at 7:00 a.m.');
-    expect(text).toContain('gone by 7:02');
-    expect(text).toContain('$54');
-    expect(text).toContain('twelve times');
-    expect(text).toContain('head start of four days to two weeks');
-    // The unsourced claim the doc explicitly parks until a per-town check exists.
+  it('keeps the watch contrast calm — no sell-out clock, no price swing', () => {
+    // The contrast used to prove the morning with a 7:02 fill, a $54 city
+    // session and a twelve-times private swing. Those leave the homepage. The
+    // thread still names 7:00 a.m. as the open, which is the product demo.
+    expect(text).toContain('You chase the town’s own page and hope you catch the morning.');
+    expect(text).toContain(
+      'You say yes to the watch. I send the town’s link the night before and again as it opens.',
+    );
+    expect(text).toContain('7:00 a.m.');
+    expect(text).not.toContain('gone by 7:02');
+    expect(text).not.toContain('$54');
+    expect(text).not.toContain('twelve times');
+    expect(text).not.toContain('head start of four days to two weeks');
     expect(text).not.toContain('20%');
     expect(text).not.toContain('non-resident');
   });
@@ -506,17 +504,21 @@ describe('landing — parenting coaching: the answer, the plan, the check-in', (
     expect(text).not.toContain('Three days later');
   });
 
-  it('rides below the helpers as a compact band — no rail, no hero-scale heading', () => {
-    // Boardy: sleep/solids/potty pulls attention off the wedge. It keeps every
-    // word it had; what it loses is the weight — the card rail and the .v4-h2
-    // display rung that made it read as a second product.
+  it('rides below the helpers as a quiet band — no rail, no display billboard', () => {
+    // Sleep/solids/potty stays on the page and stays off the planner spine.
+    // The display face and the accent split are what made it a second billboard.
     const html = render();
     const band =
       html.match(/<p class="v4-eyebrow">When you ask me something[\s\S]*?<\/section>/)?.[0] ?? '';
     expect(band, 'the coaching band must render').toContain('Where I stop');
+    expect(band.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')).toContain(
+      'Sleep, solids, potty — answered, then planned.',
+    );
     expect(band).not.toContain('v4-cardgrid');
     expect(band).not.toContain('v4-h2');
-    // Positive control: a hero-scale H2 is still what the section ABOVE it wears.
+    expect(band).not.toContain('v4-display');
+    expect(band).not.toContain('v4-accent');
+    // Positive control: a display H2 is still what the planner sections wear.
     expect(html).toContain('class="v4-display v4-h2 mt-4"');
   });
 
@@ -743,8 +745,10 @@ describe('landing — the thread is one continuous registration loop', () => {
       expect(text, `${overclaim} must not appear`).not.toContain(overclaim);
     }
     // Positive control: the page DOES describe the registration morning, so the
-    // absences above are claims withheld rather than a missing section.
-    expect(text).toContain('I run the morning with you');
+    // absences above are claims withheld rather than a missing section. The
+    // with-me cell is that description: Hale sends the town's link, the parent
+    // taps it.
+    expect(text).toContain('I send the town’s link the night before and again as it opens.');
   });
 });
 
@@ -761,25 +765,24 @@ describe('landing — without me / with me, in the section that already holds th
     expect(text).toContain('With me');
   });
 
-  it('keeps all four sourced facts on the without-me side, and adds no fifth', () => {
-    expect(text).toContain('open at 7:00 a.m.');
-    expect(text).toContain('gone by 7:02');
-    expect(text).toContain('$54');
-    expect(text).toContain('twelve times');
-    expect(text).toContain('head start of four days to two weeks');
+  it('puts the chase on the without-me side, with no sell-out clock', () => {
     const withoutMe = text.split('Without me')[1]?.split('With me')[0] ?? '';
-    expect(withoutMe, 'the without-me cell must render').toContain('gone by 7:02');
+    expect(withoutMe, 'the without-me cell must render').toContain(
+      'You chase the town’s own page and hope you catch the morning.',
+    );
+    expect(withoutMe).not.toContain('7:02');
+    expect(withoutMe).not.toContain('$54');
+    expect(withoutMe).not.toContain('6:55');
     for (const invented of ['%', 'out of 10', 'on average']) {
       expect(withoutMe, `${invented} must not appear`).not.toContain(invented);
     }
   });
 
-  it('does not restate the ladder a third time on the with-me side', () => {
-    // The thread SHOWS the ladder and step three SUMMARISES it. A third telling
-    // here is the bloat the sparse landing exists to prevent.
-    const withMe = text.split('With me')[1]?.slice(0, 240) ?? '';
-    expect(withMe, 'the with-me cell must render').toContain('reply YES once');
-    expect(withMe).not.toContain('evening before');
+  it('says yes to the watch on the with-me side, and does not ask for YES once', () => {
+    const withMe = text.split('With me')[1]?.slice(0, 320) ?? '';
+    expect(withMe, 'the with-me cell must render').toContain('You say yes to the watch.');
+    expect(withMe).toContain('the night before and again as it opens');
+    expect(withMe).not.toContain('YES once');
     expect(withMe).not.toContain('week out');
   });
 });

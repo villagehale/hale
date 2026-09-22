@@ -2339,16 +2339,6 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     line-height: 0.95;
   }
 
-  /* The named towns the radar watches — glass pills, non-interactive. */
-  .v4-pills { display: flex; flex-wrap: wrap; gap: 0.55rem; }
-  .v4-pill {
-    padding: 0.42rem 0.9rem;
-    border-radius: var(--r-full);
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--color-navy);
-  }
-
   /* Plain glass cards (radar 4-up, coaching/caregivers 2-up). Reuses .v4-card
    * for type; these variants drop the numbered top margin since the heading is
    * the first child. */
@@ -2610,8 +2600,6 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     .v4-contrast p { margin-top: 0.4rem; font-size: 0.95rem; line-height: 1.55; }
     .v4-contrast > * + * { padding-top: 0.9rem; }
     .v4-lede { margin-top: 0.9rem; }
-    .v4-pills { gap: 0.4rem; }
-    .v4-pill { padding: 0.34rem 0.72rem; font-size: 0.8rem; }
   }
 
   @media (prefers-reduced-motion: reduce) {
