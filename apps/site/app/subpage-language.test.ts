@@ -80,7 +80,7 @@ const termsHtml = await renderAsync(TermsPage({ params: Promise.resolve(EN) }));
 /** The eight pages that wear the pulled-up headline, and the sentence each must
  * still read as once the words are split apart. */
 const PULLED_UP: [name: string, html: string, headline: string][] = [
-  ['/about', pages['/about'], 'Why Hale is a planner, not another app.'],
+  ['/about', pages['/about'], 'A planner for your kids’ year.'],
   ['/pricing', pages['/pricing'], 'Free while Hale is new.'],
   ['/faq', pages['/faq'], 'Is Hale right for your family?'],
   ['/contact', pages['/contact'], 'Say hello.'],
@@ -149,7 +149,7 @@ describe('the pulled-up headline', () => {
   it('staggers by word index, from zero, across the whole headline', () => {
     const h1 = heading(pages['/about']);
     const indices = [...h1.matchAll(/--w:\s*(\d+)/g)].map((m) => Number(m[1]));
-    expect(indices).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(indices).toEqual([0, 1, 2, 3, 4, 5]);
     // The beat runs across the style change rather than restarting at the accent.
     expect(h1.indexOf('--w:3')).toBeLessThan(h1.indexOf('--w:4'));
   });
@@ -194,41 +194,111 @@ describe('the accent is one device, whole site', () => {
   });
 });
 
-describe('/about — the paragraph that reads itself', () => {
+describe('/about — the locked page', () => {
   const html = pages['/about'];
 
-  it('serves the founder’s story as settled, readable text', () => {
-    // Split into characters, and every one of them still in the markup: the
-    // paragraph is a reveal over real content, never content the reveal creates.
-    expect(rawText(html)).toContain(
-      'Hale is built by Barton Dong — a father, husband, and founder.',
+  it('says why now, in two sentences, and drops the old framing', () => {
+    const text = rawText(html);
+    expect(text).toContain(
+      'What’s on near the kids gets missed; mornings fill in minutes; nobody asks how it went. Hale finds it, watches the date, asks after — by text.',
     );
-    expect(rawText(html)).not.toContain('agentic');
-    expect(rawText(html)).not.toContain('Anzhe');
-    expect(rawText(html)).toContain(
-      'So he built the thing he kept wishing someone would text him.',
-    );
-    expect(html).toContain('char-reveal-char');
+    expect(text).not.toMatch(/not another app|another app|agentic|assistant|Anzhe/i);
+    expect(text).not.toMatch(/equity|ownership|cap table|cap-table/i);
   });
 
-  it('names Barton Dong in every locale, and drops the agentic line', () => {
+  it('keeps Recommend → Prepare → Ask, and the Ask rung does not book', () => {
+    expect(html).toContain('Recommend');
+    expect(html).toContain('Prepare');
+    expect(html).toContain('Ask');
+    expect(rawText(html)).toContain('Hale does not book it for you.');
+  });
+
+  it('lines up two founders, Barton and Eugene, with local portraits and LinkedIn text links', () => {
+    const text = rawText(html);
+    expect(text).toContain('Barton Dong');
+    expect(text).toContain('Eugene Song');
+    expect(text.indexOf('Barton Dong')).toBeLessThan(text.indexOf('Eugene Song'));
+    expect(text).toContain(', CEO');
+    expect(text).toContain(', CTO');
+    expect(text).not.toContain('Anzhe');
+    // The profile slug stays in the href. The visible name does not.
+    expect(html).toContain('href="https://linkedin.com/in/anzhe-dong"');
+    expect(html).toContain('href="https://www.linkedin.com/in/yuhang-eugene-song-53b692172"');
+    expect(html).not.toContain('media.licdn.com');
+    expect(html).not.toContain('linkedin.com/dms');
+    expect(html).not.toContain('x.com/therealbossdong');
+    expect(html).not.toContain('github.com/donganzh');
+
+    const portraits = [...html.matchAll(/<img[^>]*class="founder-portrait"[^>]*>/g)].map(
+      (m) => m[0],
+    );
+    expect(portraits).toHaveLength(2);
+    for (const img of portraits) {
+      expect(img).toContain('alt=""');
+      expect(img).toContain('width="48"');
+      expect(img).toContain('height="48"');
+      expect(img).toMatch(/founder-(barton-dong|eugene-song)/);
+    }
+    expect(portraits[0]).toContain('founder-barton-dong');
+    expect(portraits[1]).toContain('founder-eugene-song');
+    // Two LinkedIn text links, one per line — the word is the link, not an icon.
+    expect(html.match(/>LinkedIn</g)).toHaveLength(2);
+  });
+
+  it('hosts both portraits at 96px, the same square, and does not zoom them', () => {
+    function jpegSize(buf: Buffer): { width: number; height: number } {
+      // SOF0 / SOF2: marker, length, precision, height, width.
+      let offset = 2;
+      while (offset < buf.length) {
+        if (buf[offset] !== 0xff) break;
+        const marker = buf[offset + 1] ?? 0;
+        const length = buf.readUInt16BE(offset + 2);
+        if (marker === 0xc0 || marker === 0xc2) {
+          return { height: buf.readUInt16BE(offset + 5), width: buf.readUInt16BE(offset + 7) };
+        }
+        offset += 2 + length;
+      }
+      throw new Error('no JPEG frame');
+    }
+    const assets = ['founder-barton-dong.jpg', 'founder-eugene-song.jpg'] as const;
+    const sizes = assets.map((name) =>
+      jpegSize(readFileSync(fileURLToPath(new URL(`../assets/${name}`, import.meta.url)))),
+    );
+    expect(sizes).toEqual([
+      { width: 96, height: 96 },
+      { width: 96, height: 96 },
+    ]);
+    expect(CSS).toContain('.founder-portrait {');
+    expect(CSS).toMatch(/\.founder-portrait \{[^}]*width: 48px;/);
+    expect(CSS).toMatch(/\.founder-portrait \{[^}]*height: 48px;/);
+    expect(CSS).toMatch(/\.founder-portrait \{[^}]*border-radius: 50%;/);
+    expect(CSS).toMatch(/\.founder-portrait \{[^}]*object-fit: cover;/);
+    expect(CSS).toMatch(/\.founder-portrait \{[^}]*object-position: center;/);
+    expect(CSS).not.toMatch(/\.founder-portrait:hover/);
+  });
+
+  it('names Barton and Eugene in every locale, and never Anzhe or an ownership claim', () => {
     for (const locale of ['en', 'fr', 'zh'] as const) {
       const about = JSON.parse(
         readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
-      ).About as { metaDescription: string; founderStory: string };
-      const copy = `${about.metaDescription}\n${about.founderStory}`;
+      ).About as {
+        metaDescription: string;
+        lede: string;
+        headline: { text: string }[];
+        founders: { name: string; role: string }[];
+      };
+      const copy = JSON.stringify(about);
+      const names = about.founders.map((founder) => founder.name);
+      expect(names).toEqual(['Barton Dong', 'Eugene Song']);
       expect(about.metaDescription).toContain('Barton Dong');
-      expect(about.founderStory).toContain('Barton Dong');
-      expect(copy).not.toMatch(/Anzhe|agentic|agentique|智能体/);
+      expect(about.metaDescription).toContain('Eugene Song');
+      expect(copy).not.toMatch(
+        /Anzhe|agentic|agentique|智能体|equity|ownership|cap table|cap-table/,
+      );
+      expect(about.headline.map((segment) => segment.text).join(' ')).not.toMatch(
+        /not another app|pas une autre appli|又一个应用/,
+      );
     }
-  });
-
-  it('indexes every character against the paragraph’s length', () => {
-    const chars = [...html.matchAll(/--c:\s*(\d+);--n:\s*(\d+)/g)];
-    expect(chars.length).toBeGreaterThan(200);
-    const lengths = new Set(chars.map((m) => m[2]));
-    expect(lengths.size, 'one paragraph, so one --n').toBe(1);
-    expect(chars[0]?.[1]).toBe('0');
   });
 
   /**

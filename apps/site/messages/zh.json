@@ -344,21 +344,15 @@
   },
   "About": {
     "metaTitle": "关于 · Hale",
-    "metaDescription": "Hale 是孩子这一年的规划。看看有什么。听听怎么样。由 Barton Dong 在安大略省乔治敦的 Village Hale Technologies Inc. 打造。",
+    "metaDescription": "Hale 是孩子这一年的规划。看看有什么。听听怎么样。Barton Dong（首席执行官）与 Eugene Song（首席技术官），安大略省乔治敦的 Village Hale Technologies Inc.。",
     "eyebrow": "关于 Hale",
     "headline": [
       {
-        "text": "为什么 Hale 是"
-      },
-      {
-        "text": "孩子这一年的规划，",
+        "text": "孩子这一年的规划。",
         "accent": true
-      },
-      {
-        "text": "而不是又一个应用。"
       }
     ],
-    "lede": "从前，一个家庭有一整个村子——知道哪门课值得上的长辈，替你搭把手的邻居，还有一位会说「这很正常，你做得很好」的祖母。那份「知道」并没有消失。它只是如今无处安放，除了某一位家长的记忆里——而没有哪个应用能靠索取你更多的注意力来解决记忆的问题。所以 Hale 是孩子这一年的规划。",
+    "lede": "孩子附近有什么，很容易被错过；早晨几分钟就满了；也没人问后来怎么样。Hale 把它找出来，盯着那个日期，事后问一句——靠短信。",
     "missionEyebrow": "我们的使命",
     "mission": "每一位家长都应该有这样一个人：知道你家附近有什么，记得那个两分钟就会被抢光的日期，还会回头问问进展如何。贯穿童年的每一个阶段，从最初的几个月，到孩子几近长大。",
     "howEyebrow": "Hale 是怎么运作的",
@@ -399,17 +393,18 @@
         "linkLabel": "你的数据如何被处理"
       }
     ],
-    "founderEyebrow": "创始人",
-    "founderHeadline": [
+    "founderEyebrow": "两位创始人",
+    "founderLink": "LinkedIn",
+    "founders": [
       {
-        "text": "由一位父亲打造，他远离"
+        "name": "Barton Dong",
+        "role": "首席执行官"
       },
       {
-        "text": "自己的村子。",
-        "accent": true
+        "name": "Eugene Song",
+        "role": "首席技术官"
       }
     ],
-    "founderStory": "Hale 由 Barton Dong 打造——一位父亲、丈夫和创始人。他开始做这件事，是在远离自己父母曾拥有的那个村子的地方养孩子：街角没有长辈，没有人天生就知道哪门课值得上。那份信任其实还在，藏在其他家长彼此口耳相传的话里；只是它够不到他。于是他做了那个他一直盼着有人发给他的东西。",
     "cta": "一切从名字、年龄和一个邮编开始。不用装应用，不用注册账号。"
   },
   "Pricing": {
