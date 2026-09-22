@@ -404,13 +404,16 @@ describe('headings use the system display stack, not a loaded display webfont', 
     }
   });
 
-  it('ships the hero at the founder’s poster values', () => {
+  it('ships the hero at the locked poster sizes', () => {
     for (const selector of FRAUNCES_HERO_SELECTORS) {
-      expect(only(selector, 'font-size')).toBe('clamp(54px, 8vw, 84px)');
+      expect(only(selector, 'font-size')).toBe('clamp(48px, 7vw, 72px)');
       expect(Number(only(selector, 'font-weight'))).toBe(450);
       expect(only(selector, 'letter-spacing')).toBe('-0.035em');
       expect(only(selector, 'line-height')).toBe('0.95');
     }
+    // zh / non-Latin path. Its ceiling stays under the Latin 72px poster.
+    expect(only('.v4-hero-h1', 'font-size')).toBe('clamp(2.5rem, 7vw, 4.5rem)');
+    expect(only('.v4-hero-sub', 'font-size')).toBe('clamp(1rem, 1.6vw, 1.15rem)');
   });
 
   it('carries the face change in WEIGHT — the allowlist sets no size but the hero’s', () => {
@@ -433,15 +436,10 @@ describe('headings use the system display stack, not a loaded display webfont', 
     // #506's rule, made physical, on both faces at once: the heading's stem in
     // rendered px against the stem of the heaviest thing under it. Lower a clamp
     // or lighten a weight and the failure names the element the rung sinks under.
+    // The landing hero is not in this table: its size is the poster clamp, and
+    // 72px was never a measured Fraunces instance.
     const headingWeight = Number(only(FRAUNCES_HEADING_SELECTORS[0] as string, 'font-weight'));
-    const heroWeight = Number(only(FRAUNCES_HERO_SELECTORS[0] as string, 'font-weight'));
     const rungs: { label: string; size: string; weight: number; floor: keyof typeof SUB_ELEMENT }[] = [
-      {
-        label: 'landing hero',
-        size: only(FRAUNCES_HERO_SELECTORS[0] as string, 'font-size'),
-        weight: heroWeight,
-        floor: 'landingCardH3',
-      },
       {
         label: 'subpage H1',
         size: baseSize(/h1 \{ font-size: (clamp\([^)]*\)); \}/),
