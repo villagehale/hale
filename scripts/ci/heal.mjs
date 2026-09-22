@@ -19,7 +19,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { classify, resolveEvalCommand } from './classify.mjs';
+import { classify, pickFailedJob, resolveEvalCommand } from './classify.mjs';
 
 const MARKER = '[ci-heal]';
 const LOCKFILE_PATH = 'packages/agent/skills/.skills-lock.json';
@@ -137,7 +137,10 @@ function run() {
   // Failed step name comes from the jobs JSON — the --log-failed dump labels
   // steps "UNKNOWN STEP" and must not be parsed for names.
   const { jobs } = JSON.parse(sh('gh', ['run', 'view', runId, '-R', repo, '--json', 'jobs']));
-  const failedJob = jobs.find((j) => j.conclusion === 'failure');
+  // The required check is an aggregator that fails whenever a real job fails.
+  // Classify the underlying job so an eval cache miss is not reported as the
+  // aggregator's own step.
+  const failedJob = pickFailedJob(jobs);
   const failedStep = failedJob?.steps?.find((s) => s.conclusion === 'failure')?.name ?? null;
 
   let log = '';

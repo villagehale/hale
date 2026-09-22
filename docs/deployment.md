@@ -47,7 +47,9 @@ All three services are in Canadian regions for PIPEDA / Quebec Law 25 data resid
 ## CI/CD
 
 GitHub Actions (`.github/workflows/ci.yml`):
-- Runs lint + typecheck + build on every PR.
+- Every PR reports **Lint, typecheck, test, build**. That check passes when workspace lint, typecheck, test, and build pass, and when the cached-only worker evals pass or were skipped.
+- A diff limited to `apps/site/**` (including a `pnpm-lock.yaml` change that only touches the site importer and site-only package entries) skips the worker eval job. `apps/web`, `apps/worker`, `packages/agent`, and the shared packages (`packages/types`, `packages/db`, `packages/tools-contracts`) keep those evals.
+- Branch protection should require **Lint, typecheck, test, build**. That job already fails when evals were required and did not pass. **Worker evals (cached-only)** is skipped on site-only PRs; requiring that name on its own leaves those PRs waiting on a skipped check.
 - On merge to `production`:
   - Vercel auto-deploys web app.
   - Fly.io deploy triggered (requires manual `fly deploy` or GitHub Action — TODO).
