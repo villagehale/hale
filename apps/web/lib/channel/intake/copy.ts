@@ -1,3 +1,4 @@
+import { CONNECTOR_TRUST_LINE } from '~/lib/channel/connect/text-connect';
 import { isJoinCode } from '~/lib/channel/join/code';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { isReferralCode } from '~/lib/channel/referral/code';
@@ -753,17 +754,17 @@ export function intakeConnectorOffer(
 /**
  * The calendar card, its own text, after the call-name.
  *
- * One ask: the link. The calendar is how the year stays in one place, not the
- * product. Trust is in the same text: Hale only reads the calendar the parent
- * connects. Draft for Design to lock. GSM-7.
+ * One ask: the link. The bubble is short. The link unfurls as its own card
+ * (title + the trust line). The kids-year payoff is the text after it connects,
+ * not a second ask here. GSM-7.
  */
 export const INTAKE_CALENDAR_CARD_TEMPLATE_KEY = 'intake:calendar_card';
 
+const CALENDAR_TRUST_FR = 'Je ne vois jamais votre mot de passe. Déconnectez mon agenda à tout moment.';
+
 const CALENDAR_CARD_BY_LANGUAGE: Record<ReplyLanguage, (url: string) => string> = {
-  en: (url) =>
-    `Your calendar is how I keep the year together - what's on, and when it moves. I only read the calendar you connect. Calendar: ${url} Good for 15 minutes.`,
-  fr: (url) =>
-    `Votre agenda, c'est comment je garde l'annee au meme endroit - ce qui se passe, et quand ca bouge. Je ne lis que l'agenda que vous connectez. Agenda : ${url} Bon pour 15 minutes.`,
+  en: (url) => `Connect your calendar: ${url} Good for 15 minutes. ${CONNECTOR_TRUST_LINE.gcal}`,
+  fr: (url) => `Connectez votre agenda : ${url} Bon pour 15 minutes. ${CALENDAR_TRUST_FR}`,
 };
 
 export function intakeCalendarCard(language: ReplyLanguage, url: string): string {
@@ -773,16 +774,18 @@ export function intakeCalendarCard(language: ReplyLanguage, url: string): string
 /**
  * The Gmail card, its own text, after the calendar card.
  *
- * One ask: the link. Gmail is how notices get into the year, not the product.
- * Ignoring it is the skip. Draft for Design to lock. GSM-7.
+ * One ask: the link. Ignoring it is the skip. Same trust line as the calendar
+ * card, with this connector's disconnect words. GSM-7.
  */
 export const INTAKE_GMAIL_CARD_TEMPLATE_KEY = 'intake:gmail_card';
 
+const GMAIL_TRUST_FR = 'Je ne vois jamais votre mot de passe. Déconnectez mon Gmail à tout moment.';
+
 const GMAIL_CARD_BY_LANGUAGE: Record<ReplyLanguage, (url: string) => string> = {
   en: (url) =>
-    `Gmail is how daycare and school notices get into the year. Gmail: ${url} Good for 15 minutes - ignore this to skip.`,
+    `Connect Gmail: ${url} Good for 15 minutes - ignore this to skip. ${CONNECTOR_TRUST_LINE.gmail}`,
   fr: (url) =>
-    `Gmail, c'est comment les avis de la garderie et de l'ecole entrent dans l'annee. Gmail : ${url} Bon pour 15 minutes - ignorez pour passer.`,
+    `Connectez Gmail : ${url} Bon pour 15 minutes - ignorez pour passer. ${GMAIL_TRUST_FR}`,
 };
 
 export function intakeGmailCard(language: ReplyLanguage, url: string): string {
@@ -800,10 +803,12 @@ export function intakeGmailCard(language: ReplyLanguage, url: string): string {
 export const PARENT_CALL_NAME_ASK = 'What should I call you?';
 
 /**
- * Last ask of intake, its own text, after the Gmail card. Sloane locked the
- * English line byte for byte. The French twin asks for a number the same way,
- * in GSM-7. "add my partner" still mints a forwardable link when a parent
- * types that phrase later; this text does not teach it.
+ * Last ask of intake, its own text, after the Gmail card. This is the
+ * group-text invite in the onboarding chat: the other parent on this thread.
+ * Sloane locked the English line byte for byte. The French twin asks for a
+ * number the same way, in GSM-7. A carrier group MMS is not this send. "add my
+ * partner" still mints a forwardable link when a parent types that phrase
+ * later; this text does not teach it.
  */
 export const INTAKE_COPARENT_ASK_TEMPLATE_KEY = 'intake:coparent_ask';
 

@@ -319,8 +319,9 @@ describe('the year-open connector cards', () => {
     expect(transport.bodies()).toHaveLength(2);
     const calendar = transport.bodies()[0] as string;
     const gmail = transport.bodies()[1] as string;
-    expect(calendar).toContain('Calendar:');
-    expect(calendar).not.toContain('Gmail:');
+    expect(calendar).toContain('Connect your calendar:');
+    expect(calendar).toContain('I never see your password');
+    expect(calendar).not.toContain('Gmail');
     expect(gmail).toContain('Gmail:');
     expect(gmail).toContain('ignore this to skip');
     expect((calendar.match(/https:\/\/\S+/g) ?? []).length).toBe(1);

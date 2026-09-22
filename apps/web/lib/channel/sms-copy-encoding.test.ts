@@ -8,7 +8,7 @@ import {
   matchConnectorDisconnectRequest,
   matchConnectorRequest,
 } from '~/lib/channel/connect/detect';
-import { CONNECTOR_CONNECTED_TEXT } from '~/lib/channel/connect/text-connect';
+import { CONNECTOR_CONNECTED_TEXT, CONNECTOR_TRUST_LINE } from '~/lib/channel/connect/text-connect';
 import {
   forwardAddressReply,
   forwardRevokeAskReply,
@@ -531,9 +531,8 @@ describe('the intake connector offer stays GSM-7 and inside two segments', () =>
  *
  * ONE SEGMENT EACH, and that is the whole budget question: it carries no link (the work
  * is already done), so anything over one segment is ceremony on a message whose only job
- * is to say a thing landed. Each also names the way out in the same breath as the way in,
- * which is the assertion below — a connection a parent cannot remember how to undo is one
- * Hale should not have asked for.
+ * is to confirm what landed and name one kids-year payoff. The way out is the trust
+ * line on the card that asked for the tap.
  */
 describe('the connector receipt stays one GSM-7 segment and says how to undo it', () => {
   it.each(Object.entries(CONNECTOR_CONNECTED_TEXT))('%s', (_provider, body) => {
@@ -546,10 +545,15 @@ describe('the connector receipt stays one GSM-7 segment and says how to undo it'
     expect(body).not.toMatch(/\bthe app\b/i);
   });
 
-  it('tells the parent what each connector will and will not be used for', () => {
-    expect(CONNECTOR_CONNECTED_TEXT.gcal).toContain('disconnect my calendar');
-    // Gmail is the alarming one: the promise has to be bounded out loud.
-    expect(CONNECTOR_CONNECTED_TEXT.gmail).toContain('Nothing else.');
+  it('confirms what landed and names one kids-year payoff', () => {
+    expect(CONNECTOR_CONNECTED_TEXT.gcal).toBe(
+      "Your Google Calendar is connected. What's on for the kids, and when it moves, stays in the year.",
+    );
+    expect(CONNECTOR_CONNECTED_TEXT.gmail).toBe(
+      'Gmail is connected. Daycare and school notices get into the year.',
+    );
+    expect(CONNECTOR_CONNECTED_TEXT.gcal).not.toContain('something new lands');
+    expect(CONNECTOR_CONNECTED_TEXT.gmail).not.toContain('needs you');
   });
 });
 
@@ -615,10 +619,13 @@ describe('the disconnect receipts stay one GSM-7 segment and say what Google sti
     expect(en).toContain('nothing was changed');
   });
 
-  /** The words Hale's own connected receipt teaches have to be words that work. */
-  it('honours the instruction the connected receipt gives', () => {
-    expect(CONNECTOR_CONNECTED_TEXT.gcal).toContain('disconnect my calendar');
-    expect(matchConnectorDisconnectRequest('disconnect my calendar')).toBe('gcal');
+  /** The words the connect card teaches have to be words that work. "never" in the
+   * password sentence blocks a reply of the whole line; the disconnect sentence alone
+   * is the command. */
+  it('honours the instruction the connect card gives', () => {
+    expect(CONNECTOR_TRUST_LINE.gcal).toContain('Disconnect my calendar anytime');
+    expect(matchConnectorDisconnectRequest('Disconnect my calendar anytime.')).toBe('gcal');
+    expect(matchConnectorDisconnectRequest('Disconnect my gmail anytime.')).toBe('gmail');
   });
 });
 

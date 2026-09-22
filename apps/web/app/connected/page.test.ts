@@ -19,14 +19,14 @@ describe('/connected — the done page', () => {
 
     expect(html).toContain('Google Calendar is connected.');
     expect(html).toContain('You can close this');
-    expect(html).toContain('something new lands on it');
+    expect(html).toContain('stays in the year');
   });
 
   it('says what Gmail will be used for, and only that', async () => {
     const html = await render({ provider: 'gmail', status: 'ok' });
 
     expect(html).toContain('Gmail is connected.');
-    expect(html).toContain('a daycare or school email needs you');
+    expect(html).toContain('daycare and school notices get into the year');
   });
 
   it('reassures a parent who said no at Google, and hands them the way back', async () => {
@@ -70,7 +70,9 @@ describe('connectedNotice — the words the page and the text share', () => {
 
     // One promise, written once: a page that drifted from the text would tell a parent
     // two different things about the same connection inside ten seconds.
-    expect(CONNECTOR_CONNECTED_TEXT.gcal).toContain('something new lands on it');
-    expect(page.body).toContain('something new lands on it');
+    expect(CONNECTOR_CONNECTED_TEXT.gcal).toContain(
+      "What's on for the kids, and when it moves, stays in the year",
+    );
+    expect(page.body).toContain("what's on for the kids, and when it moves, stays in the year");
   });
 });

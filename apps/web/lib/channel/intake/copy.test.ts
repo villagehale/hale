@@ -410,10 +410,10 @@ describe('the French script', () => {
   it('says the calendar is how the year stays together, and names the trust', () => {
     const url = 'https://app.villagehale.com/connect?t=token&to=gcal';
     expect(intakeCalendarCard('en', url)).toBe(
-      `Your calendar is how I keep the year together - what's on, and when it moves. I only read the calendar you connect. Calendar: ${url} Good for 15 minutes.`,
+      `Connect your calendar: ${url} Good for 15 minutes. I never see your password. Disconnect my calendar anytime.`,
     );
     expect(intakeCalendarCard('fr', url)).toBe(
-      `Votre agenda, c'est comment je garde l'annee au meme endroit - ce qui se passe, et quand ca bouge. Je ne lis que l'agenda que vous connectez. Agenda : ${url} Bon pour 15 minutes.`,
+      `Connectez votre agenda : ${url} Bon pour 15 minutes. Je ne vois jamais votre mot de passe. Déconnectez mon agenda à tout moment.`,
     );
     for (const body of [intakeCalendarCard('en', url), intakeCalendarCard('fr', url)]) {
       expect(body.toLowerCase()).not.toContain('ollie');
@@ -425,10 +425,10 @@ describe('the French script', () => {
   it('says Gmail is how notices get into the year, and that ignoring it skips', () => {
     const url = 'https://app.villagehale.com/connect?t=token&to=gmail';
     expect(intakeGmailCard('en', url)).toBe(
-      `Gmail is how daycare and school notices get into the year. Gmail: ${url} Good for 15 minutes - ignore this to skip.`,
+      `Connect Gmail: ${url} Good for 15 minutes - ignore this to skip. I never see your password. Disconnect my gmail anytime.`,
     );
     expect(intakeGmailCard('fr', url)).toBe(
-      `Gmail, c'est comment les avis de la garderie et de l'ecole entrent dans l'annee. Gmail : ${url} Bon pour 15 minutes - ignorez pour passer.`,
+      `Connectez Gmail : ${url} Bon pour 15 minutes - ignorez pour passer. Je ne vois jamais votre mot de passe. Déconnectez mon Gmail à tout moment.`,
     );
     for (const body of [intakeGmailCard('en', url), intakeGmailCard('fr', url)]) {
       expect(body.toLowerCase()).not.toContain('ollie');

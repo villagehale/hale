@@ -2,17 +2,38 @@ import type { Metadata } from 'next';
 import { AuthShell } from '~/components/hale/auth-shell';
 import { ChannelLinkRedeem } from '~/components/hale/channel-link-redeem';
 import { authConfigured } from '~/lib/auth-config';
-import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
+import { asTextConnectProvider, connectorLinkCard } from '~/lib/channel/connect/text-connect';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Connect · Hale',
-  robots: { index: false, follow: false },
-};
-
 interface PageProps {
   searchParams: Promise<{ t?: string; to?: string }>;
+}
+
+/**
+ * The link unfurls as its own card. Title is the ask, description is the one
+ * trust line. The token stays out of every tag a preview crawler stores.
+ */
+export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
+  const { to } = await searchParams;
+  const card = connectorLinkCard(asTextConnectProvider(to));
+  return {
+    title: card.title,
+    description: card.description,
+    robots: { index: false, follow: false },
+    openGraph: {
+      title: card.title,
+      description: card.description,
+      siteName: 'Hale',
+      locale: 'en_CA',
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary',
+      title: card.title,
+      description: card.description,
+    },
+  };
 }
 
 /**
@@ -40,9 +61,13 @@ export default async function ConnectPage({ searchParams }: PageProps) {
     );
   }
 
+  const provider = asTextConnectProvider(to);
+  const card = connectorLinkCard(provider);
+
   return (
-    <AuthShell heading="Connect your apps">
-      <ChannelLinkRedeem token={t} provider={asTextConnectProvider(to)} />
+    <AuthShell heading={card.title}>
+      <p className="meta">{card.description}</p>
+      <ChannelLinkRedeem token={t} provider={provider} />
     </AuthShell>
   );
 }

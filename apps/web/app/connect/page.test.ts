@@ -29,14 +29,40 @@ describe('/connect — the texted redeem page', () => {
   it('names the connector on the button when the link asks for Calendar', async () => {
     const html = await render({ t: 'tok', to: 'gcal' });
 
+    expect(html).toContain('Connect your calendar');
+    expect(html).toContain('I never see your password. Disconnect my calendar anytime.');
     expect(html).toContain('Connect Google Calendar');
     expect(html).not.toContain('Continue');
+    expect(html).not.toContain('tok');
   });
 
   it('names Gmail when the link asks for Gmail', async () => {
     const html = await render({ t: 'tok', to: 'gmail' });
 
     expect(html).toContain('Connect Gmail');
+    expect(html).toContain('Disconnect my gmail anytime.');
+    expect(html).not.toContain('tok');
+  });
+
+  it('unfurls a different card for each connector, and never puts the token in it', async () => {
+    const { generateMetadata } = await import('./page');
+    const calendar = await generateMetadata({
+      searchParams: Promise.resolve({ t: 'secret-token', to: 'gcal' }),
+    });
+    const gmail = await generateMetadata({
+      searchParams: Promise.resolve({ t: 'secret-token', to: 'gmail' }),
+    });
+
+    expect(calendar.title).toBe('Connect your calendar');
+    expect(calendar.description).toBe(
+      'I never see your password. Disconnect my calendar anytime.',
+    );
+    expect(gmail.title).toBe('Connect Gmail');
+    expect(gmail.description).toBe('I never see your password. Disconnect my gmail anytime.');
+    expect(calendar.openGraph?.title).toBe(calendar.title);
+    expect(gmail.openGraph?.description).toBe(gmail.description);
+    expect(JSON.stringify(calendar)).not.toContain('secret-token');
+    expect(JSON.stringify(gmail)).not.toContain('secret-token');
   });
 
   it('falls back to the plain sign-in tap for a `to` it does not recognise', async () => {

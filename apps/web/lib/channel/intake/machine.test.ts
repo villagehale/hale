@@ -195,9 +195,10 @@ function expectEnglishYearOpen(bodies: string[]) {
   expect(bodies[1]).toBe('RADAR');
   expect(bodies[2]).toBe(WELCOME_CARD_BODY);
   expect(bodies[3]).toBe(PARENT_CALL_NAME_ASK);
-  expect(bodies[4]).toContain('Calendar:');
+  expect(bodies[4]).toContain('Connect your calendar:');
   expect(bodies[4]).toContain('/connect?t=');
-  expect(bodies[4]).not.toContain('Gmail:');
+  expect(bodies[4]).toContain('I never see your password');
+  expect(bodies[4]).not.toContain('Gmail');
   expect(bodies[5]).toContain('Gmail:');
   expect(bodies[5]).toContain('/connect?t=');
   expect(bodies[5]).toContain('ignore this to skip');
@@ -567,7 +568,7 @@ describe('intake · the contact card', () => {
     expect(transport.bodies().some((body) => body.includes(WATCH_OFFER))).toBe(false);
     expect(transport.bodies()).toContain('RADAR');
     expect(transport.bodies()).toContain(PARENT_CALL_NAME_ASK);
-    expect(transport.bodies().some((body) => body.includes('Calendar:'))).toBe(true);
+    expect(transport.bodies().some((body) => body.includes('Connect your calendar:'))).toBe(true);
     expect(transport.bodies().some((body) => body.includes('Gmail:'))).toBe(true);
     expect(transport.bodies().at(-1)).toBe(CO_PARENT_ASK);
     expect(transport.media()).toEqual([]);
@@ -2213,7 +2214,7 @@ describe('intake · the calendar card and the Gmail card', () => {
     expect(recorded.status).toBe('provisioned');
     expect(h.identityAsk.calls).toEqual([]);
     expect(h.transport.bodies().at(-4)).toBe(PARENT_CALL_NAME_ASK);
-    expect(h.transport.bodies().at(-3)).toContain('Calendar:');
+    expect(h.transport.bodies().at(-3)).toContain('Connect your calendar:');
     expect(h.transport.bodies().at(-2)).toContain('Gmail:');
     expect(h.transport.bodies().at(-1)).toBe(CO_PARENT_ASK);
   });
