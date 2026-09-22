@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { routing } from '~/i18n/routing.js';
+import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities.js';
 import LandingPage from './[locale]/page.js';
 
 /**
@@ -127,6 +128,46 @@ describe('the registration loop renders in every locale', () => {
     expect([...HTML[locale].matchAll(/class="v4-when"/g)]).toHaveLength(3);
     expect([...HTML[locale].matchAll(/class="v4-contrast[^"]*"/g)]).toHaveLength(1);
   });
+
+  it.each(routing.locales)(
+    '%s states the watch in both contrast cells and one coverage line',
+    (locale) => {
+      const html = HTML[locale];
+      const text = html
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const cells = landingBundle(locale).contrast as Array<{ title: string; body: string }>;
+      expect(cells).toHaveLength(2);
+      for (const cell of cells) {
+        expect(text).toContain(cell.body);
+      }
+      const coverage = landingString(locale, 'coverageLine').replace(
+        '{count}',
+        String(MUNICIPALITY_COUNT),
+      );
+      expect(text).toContain(coverage);
+      expect(html).not.toContain('{count}');
+      // The sell-out pitch and the one-YES execute line stay off every locale.
+      for (const banned of [
+        '7:02',
+        '7 h 02',
+        'reply YES once',
+        'OUI une fois',
+        '回复一次 YES',
+        '$54',
+        '54 $',
+      ]) {
+        expect(text, banned).not.toContain(banned);
+      }
+      expect([...html.matchAll(/class="v4-coverage/g)]).toHaveLength(1);
+      expect(html).not.toContain('class="v4-pill');
+      const line = html.match(/<p class="v4-coverage[^"]*">([\s\S]*?)<\/p>/)?.[1] ?? '';
+      expect(line).toBe(coverage);
+      expect(line).not.toContain('<a');
+      expect(line).not.toContain('/text');
+    },
+  );
 
   it.each(routing.locales)('%s has no homepage question chips', (locale) => {
     const html = HTML[locale];
