@@ -164,7 +164,7 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
 
   it('shows what comes BACK — an honestly-labeled bubble, absent while no channel is live', () => {
     expect(liveHtml).toContain('The text you’ll get back:');
-    expect(liveHtml).toContain('Hi, I&#x27;m Hale. I plan your kids&#x27; year');
+    expect(liveHtml).toContain('I help plan your kids');
     expect(unsetHtml).not.toContain('Reply with your kids');
     expect(unsetHtml).not.toContain('The text you’ll get back:');
   });
@@ -245,7 +245,7 @@ describe('TextEntry — the exchange is the hero', () => {
     const greeting = messages('en').Text.greeting as string;
     expect(bubbleText(liveHtml, 'in')).toBe(greeting);
     expect(greeting).toBe(
-      "Hi, I'm Hale. I plan your kids' year - what's on near them, the sign-up mornings, and how it went. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
+      'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.',
     );
     expect(greeting).not.toContain('parenting chaos');
     expect(greeting).not.toContain('little one');
@@ -596,7 +596,7 @@ describe('TextEntry (the other two locales)', () => {
     // speech — the bubble stays English, the frame label says so in Chinese.
     const zh = render({ source: null, locale: 'zh' });
     expect(zh).toContain('（英文原文）');
-    expect(zh).toContain('Hi, I&#x27;m Hale. I plan your kids&#x27; year');
+    expect(zh).toContain('I help plan your kids');
   });
 });
 
@@ -606,9 +606,7 @@ describe('TextEntry — the chooser arm keeps the five-second frame (WhatsApp li
     expect(html).toContain('What’s worth doing with the kids.');
     expect(html).toContain('The text you’ll get back:');
     // The bubble sits above the first channel door.
-    expect(html.indexOf('I plan your kids')).toBeLessThan(
-      html.indexOf('href="sms:'),
-    );
+    expect(html.indexOf('I help plan your kids')).toBeLessThan(html.indexOf('href="sms:'));
     // Structure kept: still the chooser headline, no numbered steps row.
     expect(html).toContain('Welcome. Pick where we talk.');
     expect(html).not.toContain('<ol');

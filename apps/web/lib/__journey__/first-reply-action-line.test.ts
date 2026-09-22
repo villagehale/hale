@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FIRST_REPLY_ACTION_LINE_ENV } from '~/lib/channel/intake/action-line';
-import { PRIVACY_URL } from '~/lib/legal-links';
+import { YEAR_OPEN_LEAD } from '~/lib/channel/intake/year-open';
 import {
   FakeExtractor,
   FakeIdentityAsk,
@@ -184,9 +184,7 @@ describe('the first reply says what to do about the find', () => {
     if (outcome.status !== 'provisioned') {
       throw new Error(`fixture drift: intake ended at ${outcome.status}`);
     }
-    // The radar is the message that carries the watch offer; the greeting and the
-    // contact card are the others.
-    const radarBody = transport.sent.map((s) => s.body).find((b) => b.includes(PRIVACY_URL));
+    const radarBody = transport.sent.map((s) => s.body).find((b) => b.includes(YEAR_OPEN_LEAD));
     if (radarBody === undefined) throw new Error('fixture drift: no radar message was sent');
     return { familyId: outcome.familyId, radarBody };
   }
@@ -220,10 +218,10 @@ describe('the first reply says what to do about the find', () => {
     });
 
     expect(radarBody).toContain('Saturday family drop-in');
-    expect(radarBody).toContain("Here's what's on for your kids this year:");
+    expect(radarBody).toContain(YEAR_OPEN_LEAD);
     expect(radarBody).not.toContain('Toronto Fall 2026 registration opened Sep 15, 7:00 a.m.');
     expect(radarBody).not.toContain(CITY_PAGE);
-    expect(radarBody).toContain(PRIVACY_URL);
+    expect(radarBody).not.toContain('Want me to keep an eye');
     expect(smsSegments(radarBody)).toBeLessThanOrEqual(MAX_PAYLOAD_SEGMENTS);
     expect(radarBody).not.toContain('not posted yet');
     expect(radarBody).not.toContain('no registration date coming up');
@@ -244,7 +242,7 @@ describe('the first reply says what to do about the find', () => {
     expect(radarBody).toContain('Saturday family drop-in');
     expect(radarBody).not.toContain('Toronto Fall 2026 registration opened Sep 15, 7:00 a.m.');
     expect(radarBody).not.toContain(CITY_PAGE);
-    expect(radarBody).toContain(PRIVACY_URL);
+    expect(radarBody).not.toContain('Want me to keep an eye');
     expect(smsSegments(radarBody)).toBeLessThanOrEqual(MAX_PAYLOAD_SEGMENTS);
   });
 });

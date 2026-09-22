@@ -50,6 +50,7 @@ import {
   type ConnectorOfferLabel,
   connectorOfferLabel,
   sendConnectorOffer,
+  sendYearConnectorCards,
 } from './connector-offer';
 import {
   AMBIGUOUS_CLARIFY_BY_LANGUAGE,
@@ -58,9 +59,9 @@ import {
   CO_PARENT_ASK_BY_LANGUAGE,
   DECLINE_ACK_BY_LANGUAGE,
   HELP_REPLY_BY_LANGUAGE,
-  PARENT_CALL_NAME_ASK,
   INTAKE_COPARENT_ASK_TEMPLATE_KEY,
   type IntakeGap,
+  PARENT_CALL_NAME_ASK,
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
   START_ACK_BY_LANGUAGE,
   STOP_ACK_BY_LANGUAGE,
@@ -103,7 +104,7 @@ import {
 } from './session';
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
-import { recordWatchConsent } from './watch-consent';
+import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
 import { sendWelcomeContactCard } from './welcome-card';
 
 /**
@@ -216,8 +217,8 @@ export type IntakeOutcome =
    * or a first reply that named nothing, and every other value is
    * {@link sendConnectorOffer}'s own named outcome (rule #11).
    *
-   * `coParentAsk` is last, its own text. `sent` means the parent was told to text
-   * "add my partner". `not_offered` is the same gate as the inbox ask. */
+   * `coParentAsk` is last, its own text. `sent` means the locked co-parent line
+   * went out. `not_offered` is the same gate as the inbox ask. */
   | {
       status: 'watch_recorded';
       intent: ReplyIntent;
@@ -1097,7 +1098,7 @@ async function provision(
   const sent = await sendAndRecord(
     database,
     ctx,
-    `${radar.message}\n\n${WATCH_OFFER}`,
+    radar.message,
     deps,
     [],
     // VIL-360 · the D23 anchor. Stamped ONLY when this text carried a weekend pick,
@@ -1106,8 +1107,56 @@ async function provision(
     radar.weekendPickOffered ? INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY : undefined,
   );
 
-  // The turtle card waits for the yes. This text is the find plus the one watch
-  // question. The card, the name, the inbox, and the co-parent are later texts.
+  // The find is the watch. There is no separate yes. The parent's own kids-and-postal
+  // text is the verbatim. Consent is written before the stage flip (watch-consent.ts),
+  // and only then do the one-ask texts go out: turtle card, call-name, calendar
+  // card, Gmail card, co-parent.
+  await recordWatchConsent(
+    database,
+    {
+      familyId,
+      userId,
+      granted: true,
+      verbatimReply: inbound.body,
+      interpretation: 'implied by the live find',
+      channelMessageId: null,
+      question: IMPLIED_WATCH_BASIS,
+    },
+    now,
+  );
+
+  const language = replyLanguage(inbound.body);
+  await sendWelcomeContactCard(
+    database,
+    { familyId, parentUserId: userId, phoneE164, now, ridesReply: true },
+    { transport: deps.transport, threadMessage: deps.threadMessage },
+  );
+  await askParentCallName(database, {
+    familyId,
+    parentUserId: userId,
+    language,
+    send: (body) => sendAndRecord(database, ctx, body, deps, [], PARENT_NAME_ASK_TEMPLATE_KEY),
+  });
+  await sendYearConnectorCards(
+    database,
+    {
+      familyId,
+      parentUserId: userId,
+      phoneE164,
+      language,
+      now,
+      ridesReply: true,
+    },
+    { transport: deps.transport, threadMessage: deps.threadMessage },
+  );
+  await sendAndRecord(
+    database,
+    ctx,
+    CO_PARENT_ASK_BY_LANGUAGE[language],
+    deps,
+    [],
+    INTAKE_COPARENT_ASK_TEMPLATE_KEY,
+  );
 
   // The radar can be the first surface ever to tell this family about a health
   // checkpoint (VIL-238's third rung), and the 48h nudge is two days behind it. Marked
@@ -1165,7 +1214,8 @@ async function provision(
     {
       collected: gathered.collected,
       transcript: gathered.transcript,
-      state: 'awaiting_watch_reply',
+      state: 'complete',
+      closedAt: now,
       familyId,
       userId,
       lastProviderId: inbound.providerId,
@@ -1419,7 +1469,7 @@ function assentAck(language: ReplyLanguage): { body: string; asked: boolean } {
 }
 
 /**
- * "What should I call you?", its own text, only after a real find.
+ * "What should I call you?", its own text, after the turtle card.
  *
  * The line is fixed (PR #689). The composer is not called. A French reply skips
  * the English line and says so. A parent who already has a name is not asked.

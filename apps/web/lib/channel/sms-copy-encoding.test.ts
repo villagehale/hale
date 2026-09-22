@@ -3,14 +3,29 @@ import { fileURLToPath } from 'node:url';
 import type { ActionType } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
+import { connectorOfferReply, connectorRevokeReply } from '~/lib/channel/connect/copy';
+import {
+  matchConnectorDisconnectRequest,
+  matchConnectorRequest,
+} from '~/lib/channel/connect/detect';
+import { CONNECTOR_CONNECTED_TEXT } from '~/lib/channel/connect/text-connect';
+import {
+  forwardAddressReply,
+  forwardRevokeAskReply,
+  forwardRevokeDeclinedReply,
+  forwardRevokeReply,
+  matchForwardAddressRequest,
+} from '~/lib/channel/email/forward-request';
 import {
   AMBIGUOUS_CLARIFY,
   AMBIGUOUS_CLARIFY_BY_LANGUAGE,
   ASSENT_ACK,
   ASSENT_ACK_BY_LANGUAGE,
   COLD_START_ASK_BY_LANGUAGE,
+  CO_PARENT_ASK,
   DECLINE_ACK,
   DECLINE_ACK_BY_LANGUAGE,
+  HALE_GREETING_EN,
   HELP_REPLY,
   HELP_REPLY_BY_LANGUAGE,
   IDENTITY_ACCOUNTABILITY_LINE,
@@ -31,22 +46,11 @@ import {
   followUp,
   greeting,
   greetingWithArea,
+  intakeCalendarCard,
   intakeConnectorOffer,
+  intakeGmailCard,
 } from '~/lib/channel/intake/copy';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
-import { connectorOfferReply, connectorRevokeReply } from '~/lib/channel/connect/copy';
-import {
-  matchConnectorDisconnectRequest,
-  matchConnectorRequest,
-} from '~/lib/channel/connect/detect';
-import { CONNECTOR_CONNECTED_TEXT } from '~/lib/channel/connect/text-connect';
-import {
-  forwardAddressReply,
-  forwardRevokeAskReply,
-  forwardRevokeDeclinedReply,
-  forwardRevokeReply,
-  matchForwardAddressRequest,
-} from '~/lib/channel/email/forward-request';
 import { replyLanguage } from '~/lib/channel/language';
 import {
   ANSWER_UNAVAILABLE_REPLY,
@@ -185,16 +189,29 @@ interface Offence {
   text: string;
 }
 
+/** Sloane locked these two intake lines with em dashes and curly apostrophes.
+ * Any other non-GSM character in the file is still an offence. */
+const SLOANE_LOCKED_UCS2_LINE = /I help plan your kids|Text me a number/;
+const SLOANE_LOCKED_CODEPOINTS = new Set(['U+2014', 'U+2019']);
+
 function nonGsm7(relativePath: string): Offence[] {
   const source = withoutComments(readFileSync(`${WEB_ROOT}/${relativePath}`, 'utf8'));
   const offences: Offence[] = [];
   source.split('\n').forEach((text, index) => {
     for (const char of text) {
       if (char === TEMPLATE_DELIMITER || smsEncoding(char) === 'gsm7') continue;
+      const codePoint = `U+${(char.codePointAt(0) as number).toString(16).toUpperCase().padStart(4, '0')}`;
+      if (
+        relativePath === 'lib/channel/intake/copy.ts' &&
+        SLOANE_LOCKED_UCS2_LINE.test(text) &&
+        SLOANE_LOCKED_CODEPOINTS.has(codePoint)
+      ) {
+        continue;
+      }
       offences.push({
         line: index + 1,
         char,
-        codePoint: `U+${(char.codePointAt(0) as number).toString(16).toUpperCase().padStart(4, '0')}`,
+        codePoint,
         text: text.trim(),
       });
     }
@@ -221,7 +238,6 @@ describe('outbound SMS copy stays in the GSM-7 alphabet', () => {
  */
 describe('the intake script stays GSM-7 once rendered', () => {
   const RENDERED: Record<string, string> = {
-    'greeting (no venue)': greeting(null, 'en'),
     'greeting (venue)': greeting('family centre', 'en'),
     WATCH_OFFER,
     ASSENT_ACK,
@@ -268,6 +284,9 @@ describe('the intake script stays GSM-7 once rendered', () => {
     // Positive control: a registry that stopped being read would make the sweep below
     // pass on an empty-ish string.
     expect(longestVenue.length).toBeGreaterThan(20);
+    expect(greeting(null, 'en')).toBe(HALE_GREETING_EN);
+    expect(smsEncoding(CO_PARENT_ASK)).toBe('ucs2');
+    expect(smsSegments(CO_PARENT_ASK)).toBe(2);
 
     const variants = {
       'no venue': greeting(null, 'en'),
@@ -284,7 +303,7 @@ describe('the intake script stays GSM-7 once rendered', () => {
         ]),
       ),
     ).toEqual({
-      'no venue': { encoding: 'gsm7', segments: 2 },
+      'no venue': { encoding: 'ucs2', segments: 3 },
       'no venue (fr)': { encoding: 'gsm7', segments: 2 },
       'venue (shortest)': { encoding: 'gsm7', segments: 2 },
       'venue (longest registered)': { encoding: 'gsm7', segments: 2 },
@@ -304,9 +323,7 @@ describe('the intake script stays GSM-7 once rendered', () => {
  */
 describe('the email-alert offer receipts stay GSM-7 and inside one segment', () => {
   const RENDERED = (['en', 'fr'] as const).flatMap((language) =>
-    emailAlertOfferReplies(language).map(
-      (body, index) => [`${language}[${index}]`, body] as const,
-    ),
+    emailAlertOfferReplies(language).map((body, index) => [`${language}[${index}]`, body] as const),
   );
 
   it.each(RENDERED)('%s', (_name, body) => {
@@ -382,9 +399,7 @@ describe('the connector offer stays GSM-7 and inside one segment, twins in locks
   const LANGUAGES = ['en', 'fr'] as const;
 
   it.each(
-    LANGUAGES.flatMap((language) =>
-      PROVIDERS.map((provider) => [language, provider] as const),
-    ),
+    LANGUAGES.flatMap((language) => PROVIDERS.map((provider) => [language, provider] as const)),
   )('%s / %s', (language, provider) => {
     const body = connectorOfferReply(language, provider, URL);
     expect({
@@ -419,6 +434,31 @@ describe('the connector offer stays GSM-7 and inside one segment, twins in locks
  * realistic links inside them, and the FR twin is held to the same alphabet as the rest
  * of the French script.
  */
+describe('the year-open connector cards stay GSM-7 and inside two segments', () => {
+  const CALENDAR_URL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ&to=gcal';
+  const GMAIL_URL = 'https://app.villagehale.com/connect?t=RkFDRUZFRURGQUNFRkVFRA&to=gmail';
+
+  it.each(['en', 'fr'] as const)('calendar %s', (language) => {
+    const body = intakeCalendarCard(language, CALENDAR_URL);
+    expect({
+      encoding: smsEncoding(body),
+      overBudget: smsSegments(body) > 2,
+      carriesWholeLink: body.includes(CALENDAR_URL),
+      oneLink: (body.match(/https:\/\/\S+/g) ?? []).length === 1,
+    }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeLink: true, oneLink: true });
+  });
+
+  it.each(['en', 'fr'] as const)('gmail %s', (language) => {
+    const body = intakeGmailCard(language, GMAIL_URL);
+    expect({
+      encoding: smsEncoding(body),
+      overBudget: smsSegments(body) > 2,
+      carriesWholeLink: body.includes(GMAIL_URL),
+      oneLink: (body.match(/https:\/\/\S+/g) ?? []).length === 1,
+    }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeLink: true, oneLink: true });
+  });
+});
+
 describe('the intake connector offer stays GSM-7 and inside two segments', () => {
   /** The real shapes, measured rather than approximated: appBaseUrl() in production is
    * `https://app.villagehale.com`, and a channel sign-in token is 16 random bytes in

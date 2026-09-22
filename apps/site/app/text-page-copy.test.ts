@@ -64,24 +64,23 @@ function messages(locale: Locale): { Text: Record<string, string> } {
 function greetingFromSource(): { en: string; fr: string } {
   const src = readFileSync(COPY_TS, 'utf8');
 
-  const enAsk = /export const COLD_START_ASK =\s*"([^"]+)";/.exec(src)?.[1];
+  const en = /export const HALE_GREETING_EN =\s*'([^']+)';/.exec(src)?.[1];
   const frAsk = /export const COLD_START_ASK_BY_LANGUAGE[\s\S]{0,400}?fr: "([^"]+)",/.exec(
     src,
   )?.[1];
-  const enHead = /return `(Hi, I'm Hale\.[^`]*?)\$\{COLD_START_ASK\}`;/.exec(src)?.[1];
   const frHead = /`(Bonjour, je suis Hale\.[^`]*?)\$\{COLD_START_ASK_BY_LANGUAGE\.fr\}`;/.exec(
     src,
   )?.[1];
 
   // Positive controls: extraction that silently matched nothing would turn
   // every byte-pin below into a vacuous undefined === undefined.
-  if (!enAsk || !frAsk || !enHead || !frHead) {
+  if (!en || !frAsk || !frHead) {
     throw new Error('copy.ts greeting extraction failed — update the pins with the source');
   }
-  expect(enAsk.length).toBeGreaterThan(40);
-  expect(enHead).toContain('sign-up mornings');
+  expect(en.length).toBeGreaterThan(40);
+  expect(en).toContain('sign-up mornings');
 
-  return { en: `${enHead}${enAsk}`, fr: `${frHead}${frAsk}` };
+  return { en, fr: `${frHead}${frAsk}` };
 }
 
 describe('the preview bubble is Hale’s CURRENT greeting, byte-for-byte', () => {
@@ -140,10 +139,7 @@ describe('the dummy family is gone from apps/site', () => {
   // Assembled so this file cannot match its own patterns.
   const first = ['Ma', 'ya'].join('');
   const second = ['Th', 'eo'].join('');
-  const patterns = [
-    new RegExp(`${first}(?:\\s|%20)+is`),
-    new RegExp(`${second}(?:\\s|%20)+is`),
-  ];
+  const patterns = [new RegExp(`${first}(?:\\s|%20)+is`), new RegExp(`${second}(?:\\s|%20)+is`)];
 
   function walk(dir: string): string[] {
     const out: string[] = [];

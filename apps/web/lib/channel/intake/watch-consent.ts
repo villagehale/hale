@@ -19,6 +19,13 @@ import { WATCH_OFFER } from './copy';
 
 export const WATCH_CONSENT_SCOPE = 'proactive_watch';
 
+/**
+ * Stored on the consent row when the live find is the watch. Not an SMS. The
+ * parent was not asked a separate yes; their kids-and-postal text is the verbatim.
+ */
+export const IMPLIED_WATCH_BASIS =
+  'The parent sent their kids and a postal code. The live find is the watch.';
+
 export interface WatchConsentInput {
   familyId: string;
   userId: string;
@@ -30,6 +37,12 @@ export interface WatchConsentInput {
   /** The channel_messages row the reply arrived on, so the record points at the
    * message itself rather than at a copy of its text. */
   channelMessageId: string | null;
+  /**
+   * What the row says was asked. Defaults to the legacy watch-offer text for a
+   * session that is still answering that question. The live path passes
+   * {@link IMPLIED_WATCH_BASIS} because that question is not sent.
+   */
+  question?: string;
 }
 
 export async function recordWatchConsent(
@@ -46,7 +59,7 @@ export async function recordWatchConsent(
       consentScope: WATCH_CONSENT_SCOPE,
       policyVersion: POLICY_VERSION,
       evidence: {
-        question: WATCH_OFFER,
+        question: input.question ?? WATCH_OFFER,
         verbatimReply: input.verbatimReply,
         interpretation: input.interpretation,
         channelMessageId: input.channelMessageId,

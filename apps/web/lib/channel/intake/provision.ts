@@ -1,14 +1,14 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { POLICY_VERSION } from '~/lib/consent';
-import { maskPhoneE164 } from '~/lib/channels/phone';
 import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
-import { encryptString } from '~/lib/crypto/string-cipher';
 import { resolveReferrerFamilyId } from '~/lib/channel/referral/attribution';
+import { maskPhoneE164 } from '~/lib/channels/phone';
+import { POLICY_VERSION } from '~/lib/consent';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { INTAKE_COUNTRY, type PostalContext, deriveDateOfBirth, intakeFamilyName } from './derive';
 import type { AgePrecision } from './extract';
-import type { TranscriptEntry } from './session';
 import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
+import type { TranscriptEntry } from './session';
 
 /**
  * VIL-237 · M2 — provisioning a family from a text conversation. Mirrors
@@ -128,8 +128,9 @@ export async function provisionFromIntake(
       .insert(schema.families)
       .values({
         displayName: intakeFamilyName(input.children),
-        // Provisioned into 'sms_intake', NOT 'sms_active': the watch-offer has not
-        // been answered yet, and the stage is what records that.
+        // Provisioned into 'sms_intake'. The same request flips to 'sms_active'
+        // once the live find is out and the implied watch is recorded. The stage
+        // is what the sweeps select on, and it must not flip before that row.
         onboardingStage: 'sms_intake',
         country: INTAKE_COUNTRY,
         postalCode: location.postalCode,
