@@ -37,44 +37,40 @@ const NOW = new Date('2026-07-31T15:00:00.000Z'); // a Friday
 const FAMILY_ID = 'fam-1';
 
 function seedCandidate(db: ReturnType<typeof makeFakeDb>, overrides: Record<string, unknown> = {}) {
-  db.db
-    .insert(schema.villageCandidates)
-    .values({
-      familyId: FAMILY_ID,
-      title: 'Library story time',
-      kind: 'activity',
-      summary: 'A weekly drop-in for little ones.',
-      source: 'llm_only',
-      confidence: 0.8,
-      priceLevel: 'free',
-      indoorOutdoor: 'indoor',
-      ageRange: '3-5 years',
-      childId: null,
-      eventDate: null,
-      seasons: null,
-      venueName: null,
-      ...overrides,
-    } as never);
+  db.db.insert(schema.villageCandidates).values({
+    familyId: FAMILY_ID,
+    title: 'Library story time',
+    kind: 'activity',
+    summary: 'A weekly drop-in for little ones.',
+    source: 'llm_only',
+    confidence: 0.8,
+    priceLevel: 'free',
+    indoorOutdoor: 'indoor',
+    ageRange: '3-5 years',
+    childId: null,
+    eventDate: null,
+    seasons: null,
+    venueName: null,
+    ...overrides,
+  } as never);
 }
 
 function seedWindow(db: ReturnType<typeof makeFakeDb>) {
-  db.db
-    .insert(schema.registrationWindows)
-    .values({
-      municipality: 'toronto',
-      programDomain: 'rec_program',
-      cycleLabel: 'Fall 2026',
-      previewAt: null,
-      residentOpenAt: null,
-      openAt: new Date('2026-08-11T10:30:00.000Z'),
-      residentPriorityDays: null,
-      waitlistResponseHours: null,
-      ageMinMonths: 36,
-      ageMaxMonths: 72,
-      sourceUrl: 'https://www.toronto.ca/example',
-      verifiedAt: new Date('2026-07-30T00:00:00.000Z'),
-      notes: null,
-    } as never);
+  db.db.insert(schema.registrationWindows).values({
+    municipality: 'toronto',
+    programDomain: 'rec_program',
+    cycleLabel: 'Fall 2026',
+    previewAt: null,
+    residentOpenAt: null,
+    openAt: new Date('2026-08-11T10:30:00.000Z'),
+    residentPriorityDays: null,
+    waitlistResponseHours: null,
+    ageMinMonths: 36,
+    ageMaxMonths: 72,
+    sourceUrl: 'https://www.toronto.ca/example',
+    verifiedAt: new Date('2026-07-30T00:00:00.000Z'),
+    notes: null,
+  } as never);
 }
 
 function composer(db: ReturnType<typeof makeFakeDb>) {
@@ -137,7 +133,7 @@ describe('createRadarComposer', () => {
     expect(payload.itemCount).toBe(2);
     expect(payload.followUpNeeded).toBe(false);
     // VIL-360 · the D23 anchor the caller stamps on the ledger row - earned by the
-    // TEXT, exactly as the told-marker beside it is. "Those are all weekend finds"
+    // TEXT, exactly as the told-marker beside it is. "Those are weekend options"
     // points at what this message SAID, so a compose that dropped the pick leaves
     // nothing for the ask to point at.
     expect(payload.weekendPickOffered).toBe(true);
@@ -230,23 +226,21 @@ describe('createRadarComposer', () => {
     // Halton Hills opened Fall 2026 on Sep 1. It is now Sep 17 and winter is not posted:
     // the production shape of 2026-09-16, where this family was told nothing was on the
     // radar and their own town was never named.
-    db.db
-      .insert(schema.registrationWindows)
-      .values({
-        municipality: 'halton_hills',
-        programDomain: 'rec_program',
-        cycleLabel: 'Fall 2026',
-        previewAt: null,
-        residentOpenAt: null,
-        openAt: new Date('2026-09-01T11:00:00.000Z'),
-        residentPriorityDays: null,
-        waitlistResponseHours: null,
-        ageMinMonths: 36,
-        ageMaxMonths: 72,
-        sourceUrl: 'https://www.haltonhills.ca/example',
-        verifiedAt: new Date('2026-08-30T00:00:00.000Z'),
-        notes: null,
-      } as never);
+    db.db.insert(schema.registrationWindows).values({
+      municipality: 'halton_hills',
+      programDomain: 'rec_program',
+      cycleLabel: 'Fall 2026',
+      previewAt: null,
+      residentOpenAt: null,
+      openAt: new Date('2026-09-01T11:00:00.000Z'),
+      residentPriorityDays: null,
+      waitlistResponseHours: null,
+      ageMinMonths: 36,
+      ageMaxMonths: 72,
+      sourceUrl: 'https://www.haltonhills.ca/example',
+      verifiedAt: new Date('2026-08-30T00:00:00.000Z'),
+      notes: null,
+    } as never);
 
     const payload = await createRadarComposer({
       database: db.db,
@@ -274,23 +268,21 @@ describe('createRadarComposer', () => {
    */
   it('goes back to the between-cycles sentence once the page is no longer the place to go', async () => {
     const db = makeFakeDb();
-    db.db
-      .insert(schema.registrationWindows)
-      .values({
-        municipality: 'halton_hills',
-        programDomain: 'rec_program',
-        cycleLabel: 'Fall 2026',
-        previewAt: null,
-        residentOpenAt: null,
-        openAt: new Date('2026-09-01T11:00:00.000Z'),
-        residentPriorityDays: null,
-        waitlistResponseHours: null,
-        ageMinMonths: 36,
-        ageMaxMonths: 72,
-        sourceUrl: 'https://www.haltonhills.ca/example',
-        verifiedAt: new Date('2026-08-30T00:00:00.000Z'),
-        notes: null,
-      } as never);
+    db.db.insert(schema.registrationWindows).values({
+      municipality: 'halton_hills',
+      programDomain: 'rec_program',
+      cycleLabel: 'Fall 2026',
+      previewAt: null,
+      residentOpenAt: null,
+      openAt: new Date('2026-09-01T11:00:00.000Z'),
+      residentPriorityDays: null,
+      waitlistResponseHours: null,
+      ageMinMonths: 36,
+      ageMaxMonths: 72,
+      sourceUrl: 'https://www.haltonhills.ca/example',
+      verifiedAt: new Date('2026-08-30T00:00:00.000Z'),
+      notes: null,
+    } as never);
 
     const payload = await createRadarComposer({
       database: db.db,
@@ -307,23 +299,21 @@ describe('createRadarComposer', () => {
 
   it('names Toronto and its gone cycle, where the pin used to read out past dates', async () => {
     const db = makeFakeDb();
-    db.db
-      .insert(schema.registrationWindows)
-      .values({
-        municipality: 'toronto',
-        programDomain: 'rec_program',
-        cycleLabel: 'Fall 2026',
-        previewAt: null,
-        residentOpenAt: null,
-        openAt: new Date('2026-09-08T11:00:00.000Z'),
-        residentPriorityDays: null,
-        waitlistResponseHours: null,
-        ageMinMonths: 36,
-        ageMaxMonths: 72,
-        sourceUrl: 'https://www.toronto.ca/example',
-        verifiedAt: new Date('2026-08-30T00:00:00.000Z'),
-        notes: null,
-      } as never);
+    db.db.insert(schema.registrationWindows).values({
+      municipality: 'toronto',
+      programDomain: 'rec_program',
+      cycleLabel: 'Fall 2026',
+      previewAt: null,
+      residentOpenAt: null,
+      openAt: new Date('2026-09-08T11:00:00.000Z'),
+      residentPriorityDays: null,
+      waitlistResponseHours: null,
+      ageMinMonths: 36,
+      ageMaxMonths: 72,
+      sourceUrl: 'https://www.toronto.ca/example',
+      verifiedAt: new Date('2026-08-30T00:00:00.000Z'),
+      notes: null,
+    } as never);
 
     const payload = await createRadarComposer({
       database: db.db,
@@ -452,7 +442,9 @@ describe('createRadarComposer', () => {
   it('sends only the COARSE area to the weather port — never a postal code (rule #1)', async () => {
     const db = makeFakeDb();
     seedCandidate(db);
-    const getDailyOutlook = vi.fn(async (_area: string, _days: number): Promise<DailyOutlook[]> => []);
+    const getDailyOutlook = vi.fn(
+      async (_area: string, _days: number): Promise<DailyOutlook[]> => [],
+    );
 
     await createRadarComposer({
       database: db.db,
@@ -553,16 +545,16 @@ describe('checkpointSurvivedCompose — the told-marker is earned by the text (r
   });
 
   it('generic words alone cannot fake a tell', () => {
-    expect(
-      checkpointSurvivedCompose('I will text you about your kids this month.', TASK),
-    ).toBe(false);
+    expect(checkpointSurvivedCompose('I will text you about your kids this month.', TASK)).toBe(
+      false,
+    );
   });
 });
 
 /**
  * VIL-360 · THE D23 ANCHOR IS EARNED BY THE TEXT.
  *
- * The weekday-care ask says "Those are all weekend finds" and points at this message.
+ * The weekday fallback says "Those are weekend options" and points at this message.
  * That is a DEICTIC claim about what the parent read, and the register rule's whole
  * corollary is that an anchor Hale cannot check is the same defect as an inference Hale
  * should not make. The composer samples at temperature 1 and the launch-day P0 above

@@ -1,18 +1,17 @@
 import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import type { WeekdayCareFact } from '~/lib/care/weekday';
-import type {
-  RadarCandidate,
-  RadarChild,
-} from '~/lib/channel/intake/radar-decide';
+import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-decide';
 import type { HealthChild } from '~/lib/health/match';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
 import {
   REGISTRATION_HORIZON_DAYS,
   decideNudge,
+  decideWeekdayCareAsk,
   decideWeekdayDropIn,
 } from './nudge-decide.js';
+import { renderWeekdayFinderAsk } from './weekday-care-copy';
 
 /**
  * VIL-239 · M4 — DECIDE: the ONE thing worth texting a family unprompted, or nothing.
@@ -169,7 +168,9 @@ describe('decideNudge — priority 1: a registration window', () => {
 
   it('ignores a window past the horizon — a date three weeks out is not news yet', () => {
     const far = new Date(FRIDAY.getTime() + (REGISTRATION_HORIZON_DAYS + 1) * 86_400_000);
-    expect(decide({ windows: [match({ window: win({ openAt: far }), opensForFamilyAt: far })] })).toBeNull();
+    expect(
+      decide({ windows: [match({ window: win({ openAt: far }), opensForFamilyAt: far })] }),
+    ).toBeNull();
   });
 
   it('takes the soonest window when several are inside the horizon', () => {
@@ -188,7 +189,14 @@ describe('decideNudge — priority 1: a registration window', () => {
   });
 
   it('carries the resident head start only when the family actually has one', () => {
-    const resident = decide({ windows: [match({ isResidentWindow: true, window: win({ residentOpenAt: new Date('2026-08-03T10:30:00.000Z') }) })] });
+    const resident = decide({
+      windows: [
+        match({
+          isResidentWindow: true,
+          window: win({ residentOpenAt: new Date('2026-08-03T10:30:00.000Z') }),
+        }),
+      ],
+    });
     if (resident?.kind !== 'registration') throw new Error('expected a registration nudge');
     expect(resident.residentNote).toBe('residents can register first');
     const general = decide({ windows: [match()] });
@@ -204,7 +212,11 @@ describe('decideNudge — priority 1: a registration window', () => {
 
   it('names every kid the window admits, in one message', () => {
     const nudge = decide({
-      children: [child(), child({ name: 'Leo', ageMonths: 60 }), child({ name: 'Ada', ageMonths: 9 })],
+      children: [
+        child(),
+        child({ name: 'Leo', ageMonths: 60 }),
+        child({ name: 'Ada', ageMonths: 9 }),
+      ],
       windows: [match({ matchedChildAgesMonths: [48, 60] })],
     });
     if (nudge?.kind !== 'registration') throw new Error('expected a registration nudge');
@@ -284,7 +296,9 @@ describe('decideNudge — priority 2: a weather-fit weekend swap', () => {
 
   it('offers a FREE outdoor pick when a weekend day is genuinely good', () => {
     const nudge = decide({
-      candidates: [candidate({ indoorOutdoor: 'outdoor', priceLevel: 'free', title: 'Splash pad' })],
+      candidates: [
+        candidate({ indoorOutdoor: 'outdoor', priceLevel: 'free', title: 'Splash pad' }),
+      ],
       weather: [outlook(SATURDAY), outlook(SUNDAY)],
     });
     if (nudge?.kind !== 'weather_swap') throw new Error('expected a weather swap');
@@ -473,7 +487,11 @@ describe('decideNudge — health checkpoints', () => {
 
     expect(seen).toEqual(['immunization_4_to_6_years', 'dental_school_screening']);
     expect(
-      decide({ healthChildren: [healthChild()], areaCoarse: 'L4C', suppressedCheckpointRefs: done }),
+      decide({
+        healthChildren: [healthChild()],
+        areaCoarse: 'L4C',
+        suppressedCheckpointRefs: done,
+      }),
     ).toBeNull();
   });
 });
@@ -491,7 +509,13 @@ describe('decideNudge — priority 4: a weekday civic drop-in', () => {
   /** A Toronto-local Friday, so "today" is 2026-07-31 in the family's own zone. */
   const homeCare = {
     stated: [
-      { factId: 'fact-1', childId: 'child-1', care: 'home' as const, provider: null, validFrom: FRIDAY },
+      {
+        factId: 'fact-1',
+        childId: 'child-1',
+        care: 'home' as const,
+        provider: null,
+        validFrom: FRIDAY,
+      },
     ],
     // The ASK's own preconditions are its describe block's subject, not this one's:
     // a household that has already answered can never be asked again.
@@ -635,7 +659,10 @@ describe('decideNudge — priority 4: a weekday civic drop-in', () => {
   describe('R9 — the three care states are three different answers', () => {
     it('a starting_soon fact still produces the find', () => {
       const nudge = decide({
-        weekdayCare: { ...homeCare, stated: [{ ...(homeCare.stated[0] as WeekdayCareFact), care: 'starting_soon' }] },
+        weekdayCare: {
+          ...homeCare,
+          stated: [{ ...(homeCare.stated[0] as WeekdayCareFact), care: 'starting_soon' }],
+        },
         candidates: [civic()],
       });
       expect(nudge?.kind).toBe('weekday_dropin');
@@ -673,7 +700,13 @@ describe('decideNudge — priority 4: a weekday civic drop-in', () => {
         weekdayCare: {
           ...homeCare,
           stated: [
-            { factId: 'fact-teen', childId: 'teen-1', care: 'home', provider: null, validFrom: FRIDAY },
+            {
+              factId: 'fact-teen',
+              childId: 'teen-1',
+              care: 'home',
+              provider: null,
+              validFrom: FRIDAY,
+            },
           ],
         },
         candidates: [civic()],
@@ -702,15 +735,10 @@ describe('decideNudge — priority 4: a weekday civic drop-in', () => {
 });
 
 /**
- * VIL-360 · priority 5 — THE ASK.
- *
- * Five conjunctive preconditions, each with a positive control beside it, because an
- * absence test that never looked passes just as happily as one that did. The one that
- * carries the design is R1.2: the question rests on a find Hale actually SENT, which is
- * what makes "those are all weekend finds" checkable against one ledger row instead of
- * against everything Hale has ever said (D23).
+ * The weekday finder. Age chooses the sentence. A weekend send is still the anchor
+ * for every prompt except a verified break. No civic row is required to ask.
  */
-describe('decideNudge — priority 5: the weekday-care ask', () => {
+describe('decideNudge — priority 5: the weekday finder ask', () => {
   const TODDLER: HealthChild = {
     id: 'child-1',
     name: 'Mia',
@@ -735,11 +763,15 @@ describe('decideNudge — priority 5: the weekday-care ask', () => {
     candidates: [civic()],
   };
 
-  it('asks, once, naming the child', () => {
+  it('asks a toddler the fallback, and names nobody', () => {
     const nudge = decide(READY);
     if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-    expect(nudge.childId).toBe('child-1');
-    expect(nudge.childPhrase).toBe('Mia');
+    expect(nudge.ask).toEqual({ prompt: 'weekend_fallback' });
+    expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
+      'Those are weekend options. Want me to find something for weekdays too?',
+    );
+    expect(renderWeekdayFinderAsk(nudge.ask)).not.toContain('Mia');
+    expect(renderWeekdayFinderAsk(nudge.ask).toLowerCase()).not.toContain('daycare');
   });
 
   it('R1.1 — never twice: a family already asked is skipped by name', () => {
@@ -769,7 +801,13 @@ describe('decideNudge — priority 5: the weekday-care ask', () => {
       weekdayCare: {
         ...READY.weekdayCare,
         stated: [
-          { factId: 'fact-1', childId: 'child-1', care: 'daycare', provider: null, validFrom: FRIDAY },
+          {
+            factId: 'fact-1',
+            childId: 'child-1',
+            care: 'daycare',
+            provider: null,
+            validFrom: FRIDAY,
+          },
         ],
       },
     });
@@ -777,17 +815,23 @@ describe('decideNudge — priority 5: the weekday-care ask', () => {
     expect(decision.skips.already_stated).toBe(1);
   });
 
-  describe('R1.4 — who may be asked about', () => {
-    it('never a four-year-old: a JK child is not a daycare question', () => {
-      const decision = decideAll({
+  describe('who the sentence is for', () => {
+    const FEI: HealthChild = { ...TODDLER, id: 'fei', name: 'Maya', ageMonths: 102 };
+
+    it('a four-year-old gets the fallback, not a daycare question and not after-school', () => {
+      const nudge = decide({
         ...READY,
         healthChildren: [{ ...TODDLER, id: 'child-jk', name: 'Ada', ageMonths: 52 }],
       });
-      expect(decision.nudge).toBeNull();
-      expect(decision.skips.no_eligible_child).toBe(1);
+      if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
+      expect(nudge.ask.prompt).toBe('weekend_fallback');
+      const body = renderWeekdayFinderAsk(nudge.ask);
+      expect(body).not.toContain('Ada');
+      expect(body.toLowerCase()).not.toContain('daycare');
+      expect(body.toLowerCase()).not.toContain('after-school');
     });
 
-    it('the YOUNGEST qualifying child, across three bands', () => {
+    it('mixed ages get the fallback and name nobody', () => {
       const nudge = decide({
         ...READY,
         healthChildren: [
@@ -797,53 +841,158 @@ describe('decideNudge — priority 5: the weekday-care ask', () => {
         ],
       });
       if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-      expect(nudge.childId).toBe('baby');
+      expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
+        'Those are weekend options. Want me to find something for weekdays too?',
+      );
+      expect(renderWeekdayFinderAsk(nudge.ask)).not.toContain('Sam');
+      expect(renderWeekdayFinderAsk(nudge.ask)).not.toContain('Leo');
+      expect(renderWeekdayFinderAsk(nudge.ask)).not.toContain('Mia');
     });
 
-    /**
-     * THE TEEN PAIR. Two independent gates hold this, and the point of the pair is to
-     * show that the ask's own politeness is not what is doing the work.
-     */
-    it('names the toddler and never the teenager', () => {
+    it('one school-age child gets the locked after-school sentence', () => {
+      const nudge = decide({ ...READY, healthChildren: [FEI], candidates: [] });
+      if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
+      expect(nudge.ask).toEqual({ prompt: 'after_school_named', childId: 'fei', name: 'Maya' });
+      expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
+        'Want me to find one good after-school option for Maya too?',
+      );
+    });
+
+    it('a school-age child with a daycare fact is still asked about after school', () => {
+      const nudge = decide({
+        ...READY,
+        healthChildren: [FEI],
+        candidates: [],
+        weekdayCare: {
+          ...READY.weekdayCare,
+          stated: [
+            {
+              factId: 'fact-1',
+              childId: 'fei',
+              care: 'daycare',
+              provider: null,
+              validFrom: FRIDAY,
+            },
+          ],
+        },
+      });
+      if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
+      expect(nudge.ask.prompt).toBe('after_school_named');
+    });
+
+    it('names nobody when the only child is 13+', () => {
+      const nudge = decide({
+        ...READY,
+        healthChildren: [{ ...TODDLER, id: 'teen-1', name: null, ageMonths: 170, isTeen: true }],
+        teenChildIds: ['teen-1'],
+        candidates: [],
+      });
+      if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
+      expect(nudge.ask).toEqual({ prompt: 'after_school_household' });
+      expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
+        'Want me to find one good after-school option nearby too?',
+      );
+    });
+
+    it('a toddler beside a teenager gets the fallback and neither name', () => {
       const nudge = decide({
         ...READY,
         healthChildren: [
-          // As `splitByStage` builds it: a 13+ child reaches the decide with a NULL
-          // name and `isTeen` true.
           { ...TODDLER, id: 'teen-1', name: null, ageMonths: 170, isTeen: true },
           TODDLER,
         ],
         teenChildIds: ['teen-1'],
       });
       if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-      expect(nudge.childId).toBe('child-1');
-      expect(nudge.childPhrase).toBe('Mia');
+      const body = renderWeekdayFinderAsk(nudge.ask);
+      expect(nudge.ask.prompt).toBe('weekend_fallback');
+      expect(body).not.toContain('Mia');
+      expect(body).not.toContain('Ava');
     });
 
-    it('a teen-only household is never asked, whatever the band gate says', () => {
+    it('an unspellable school-age name uses the household sentence', () => {
       const decision = decideAll({
         ...READY,
-        healthChildren: [
-          { ...TODDLER, id: 'teen-1', name: null, ageMonths: 170, isTeen: true },
-        ],
-        teenChildIds: ['teen-1'],
+        healthChildren: [{ ...FEI, name: 'Zoë' }],
+        candidates: [],
       });
-      expect(decision.nudge).toBeNull();
-      expect(decision.skips.no_eligible_child).toBe(1);
+      if (decision.nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
+      expect(decision.nudge.ask.prompt).toBe('after_school_household');
+      expect(decision.skips.name_not_printable).toBe(1);
+      expect(renderWeekdayFinderAsk(decision.nudge.ask)).not.toContain('Zoë');
     });
   });
 
-  it('R1.5 — never a question whose good answer Hale cannot pay off', () => {
+  it('does not require a cached civic offer before asking', () => {
     const decision = decideAll({ ...READY, candidates: [] });
-    expect(decision.nudge).toBeNull();
-    expect(decision.skips.no_weekday_offer).toBe(1);
-    // ... and it is the FIND's predicate, not a looser one: an LLM-guessed weekday row
-    // is not an offer.
+    expect(decision.nudge?.kind).toBe('weekday_care');
     const llmOnly = decideAll({
       ...READY,
       candidates: [civic({ source: 'llm' })],
     });
-    expect(llmOnly.skips.no_weekday_offer).toBe(1);
+    expect(llmOnly.nudge?.kind).toBe('weekday_care');
+  });
+
+  it('never claims a PA day or a local break from age or postal code alone', () => {
+    const outcome = decideWeekdayCareAsk(
+      inputFor({
+        ...READY,
+        areaCoarse: 'M5V',
+        healthChildren: [{ ...TODDLER, id: 'fei', name: 'Maya', ageMonths: 102 }],
+        candidates: [],
+      }),
+    );
+    if (outcome.nudge === null) throw new Error('expected the ask');
+    const body = renderWeekdayFinderAsk(outcome.nudge.ask);
+    expect(body).toBe('Want me to find one good after-school option for Maya too?');
+    expect(body.toLowerCase()).not.toContain('pa day');
+    expect(body.toLowerCase()).not.toContain('coming up');
+    expect(body.toLowerCase()).not.toContain('weekends are covered');
+    expect(body.toLowerCase()).not.toContain("how's school");
+  });
+
+  it('a verified PA day is the only ask, and it does not need a weekend send', () => {
+    const nudge = decide({
+      ...READY,
+      candidates: [],
+      weekdayCare: {
+        stated: [],
+        askedBefore: false,
+        weekendFindSent: false,
+        verifiedBreak: {
+          eventKey: 'pa-day-2026-10-09',
+          label: 'PA day',
+          date: '2026-10-09',
+          source: 'school_calendar',
+        },
+      },
+      healthChildren: [{ ...TODDLER, id: 'fei', name: 'Maya', ageMonths: 102 }],
+    });
+    if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
+    expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
+      "There's a PA day coming up. Want me to find something nearby?",
+    );
+    expect(renderWeekdayFinderAsk(nudge.ask)).not.toContain('after-school');
+  });
+
+  it('a verified named break uses that name and not a fabricated PA day', () => {
+    const nudge = decide({
+      ...READY,
+      candidates: [],
+      weekdayCare: {
+        ...READY.weekdayCare,
+        verifiedBreak: {
+          eventKey: 'march-break-2027-03-15',
+          label: 'March break',
+          date: '2027-03-15',
+          source: 'connected_calendar',
+        },
+      },
+    });
+    if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
+    expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
+      "There's a March break coming up. Want me to find something nearby?",
+    );
   });
 
   /**
@@ -861,17 +1010,6 @@ describe('decideNudge — priority 5: the weekday-care ask', () => {
     expect(decision.nudge).toBeNull();
   });
 
-  it('falls back to the generic phrase for an unspellable name, and COUNTS it', () => {
-    const decision = decideAll({
-      ...READY,
-      healthChildren: [{ ...TODDLER, name: 'Zoë' }],
-    });
-    if (decision.nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-    expect(decision.nudge.childPhrase).toBe('your little one');
-    // Counted, and still sent: the ask is worth more than the name.
-    expect(decision.skips.name_not_printable).toBe(1);
-  });
-
   it('R2 — the ask ranks last: the find spends the week first', () => {
     expect(
       decide({
@@ -879,7 +1017,13 @@ describe('decideNudge — priority 5: the weekday-care ask', () => {
         weekdayCare: {
           ...READY.weekdayCare,
           stated: [
-            { factId: 'fact-other', childId: 'other', care: 'home', provider: null, validFrom: FRIDAY },
+            {
+              factId: 'fact-other',
+              childId: 'other',
+              care: 'home',
+              provider: null,
+              validFrom: FRIDAY,
+            },
           ],
         },
       })?.kind,

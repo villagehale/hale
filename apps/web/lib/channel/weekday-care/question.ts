@@ -1,8 +1,13 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gt, inArray } from 'drizzle-orm';
-import { WEEKDAY_CARE_ASK_TEMPLATE_KEY } from '~/lib/care/weekday';
+import {
+  WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
+  WEEKDAY_BREAK_TEMPLATE_KEY,
+  WEEKDAY_CARE_ASK_TEMPLATE_KEY,
+} from '~/lib/care/weekday';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
-import { childIdFromWeekdayCareKey } from './key';
+import type { WeekdaySearchPrompt } from '~/lib/channel/nudge/weekday-care-copy';
+import { parseWeekdayAskKey } from './key';
 
 /**
  * IS THE WEEKDAY-CARE QUESTION STILL OPEN? — derived, with no row and no column of its
@@ -28,13 +33,22 @@ import { childIdFromWeekdayCareKey } from './key';
 
 export const WEEKDAY_CARE_QUESTION_TTL_MS = 48 * 3_600_000;
 
-export interface WeekdayCareQuestion {
-  /** The ask's own `channel_messages` row — the id the open-question list carries. */
-  id: string;
-  askedAt: Date;
-  /** WHO it asked about, parsed back out of the ask's own dedupe key. */
-  childId: string;
-}
+export type WeekdayCareQuestion =
+  | {
+      /** The ask's own `channel_messages` row — the id the open-question list carries. */
+      id: string;
+      askedAt: Date;
+      scope: 'legacy_care';
+      /** WHO it asked about, parsed back out of the ask's own dedupe key. */
+      childId: string;
+    }
+  | {
+      id: string;
+      askedAt: Date;
+      scope: 'search';
+      prompt: WeekdaySearchPrompt;
+      eventKey: string | null;
+    };
 
 /** Per PARENT, not per family: the question went to one phone, and a co-parent who
  * never saw it is not the person it was put to. */
@@ -54,7 +68,11 @@ export async function weekdayCareQuestion(
         eq(schema.channelMessages.familyId, input.familyId),
         eq(schema.channelMessages.parentUserId, input.parentUserId),
         eq(schema.channelMessages.direction, 'out'),
-        eq(schema.channelMessages.templateKey, WEEKDAY_CARE_ASK_TEMPLATE_KEY),
+        inArray(schema.channelMessages.templateKey, [
+          WEEKDAY_CARE_ASK_TEMPLATE_KEY,
+          WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
+          WEEKDAY_BREAK_TEMPLATE_KEY,
+        ]),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),
     )
@@ -78,10 +96,16 @@ export async function weekdayCareQuestion(
     .limit(1);
   if (newer) return null;
 
-  // No child, no question. The answer is filed against the child the ask NAMED, so a
-  // row whose key cannot be parsed is one nothing may be written from.
-  const childId = childIdFromWeekdayCareKey(ask.dedupeKey);
-  if (childId === null) return null;
-
-  return { id: ask.id, askedAt: ask.createdAt, childId };
+  const parsed = parseWeekdayAskKey(ask.dedupeKey);
+  if (parsed === null) return null;
+  if (parsed.scope === 'search') {
+    return {
+      id: ask.id,
+      askedAt: ask.createdAt,
+      scope: 'search',
+      prompt: parsed.prompt,
+      eventKey: parsed.eventKey,
+    };
+  }
+  return { id: ask.id, askedAt: ask.createdAt, scope: 'legacy_care', childId: parsed.childId };
 }

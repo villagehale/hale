@@ -224,6 +224,28 @@ describe('weekdayCareAnswerTarget, as the router builds it', () => {
     expect(target).toEqual({ status: 'open', childId: seeded.childId });
   });
 
+  it('opens a household finder ask as search, with no child to file a care fact against', async () => {
+    const seeded = await seedFamily('sms:weekday-search');
+    await seedAsk(seeded, {
+      dedupeKey: weekdayCareDedupeKey(seeded.familyId, 'household', seeded.parentUserId),
+    });
+    const inboundChannelMessageId = await inbound(seeded, 'sms');
+
+    const target = await channelRouterDeps(db.database).weekdayCareAnswerTarget(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      inboundChannelMessageId,
+      now: SAME_DAY,
+    });
+
+    expect(target).toEqual({
+      status: 'open',
+      scope: 'search',
+      prompt: 'weekend_fallback',
+      eventKey: null,
+    });
+  });
+
   it('refuses an email answer to a question Hale put on a phone', async () => {
     const seeded = await seedFamily();
     await seedAsk(seeded);

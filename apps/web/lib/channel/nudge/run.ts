@@ -2,24 +2,32 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, type RegistrationWindow, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, lte } from 'drizzle-orm';
-import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-decide';
-import {
-  readCandidates as readVillageCandidates,
-  readWindows as readRegistrationWindows,
-} from '~/lib/channel/intake/radar';
-import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
-import { threadProactiveMessage } from '~/lib/channel/thread';
-import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import type { WeekdayCareContext } from '~/lib/care/weekday';
+import { loadWeekdayCareContext, weekdayCareEnabled } from '~/lib/care/weekday';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
-import { fulfillCommitment } from '~/lib/commitments/ledger';
+import {
+  type FamilyTextRecipient,
+  loadFamilyTextRecipients,
+} from '~/lib/channel/family-recipients';
+import {
+  readWindows as readRegistrationWindows,
+  readCandidates as readVillageCandidates,
+} from '~/lib/channel/intake/radar';
+import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-decide';
+import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
   type ProactiveHoldReason,
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { weekdayFinderDedupeKey, weekdayFinderTemplateKey } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { fulfillCommitment } from '~/lib/commitments/ledger';
 import type { HealthChild } from '~/lib/health/match';
 import {
   type CheckupOfferRecordOutcome,
@@ -29,23 +37,15 @@ import {
 import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
 import { TOLD_RECIPIENT_SEPARATOR, checkpointToldKey } from '~/lib/health/told';
 import { localParts } from '~/lib/loop/prefs';
-import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import { voiceClient } from '~/lib/loop/voice/compose';
+import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import { weekWindow } from '~/lib/plan/spine';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import { type Nudge, type NudgeDecision, type NudgeSkipCounts, decideNudge } from './nudge-decide';
-import type { WeekdayCareContext } from '~/lib/care/weekday';
-import { loadWeekdayCareContext, weekdayCareEnabled } from '~/lib/care/weekday';
-import {
-  type FamilyTextRecipient,
-  loadFamilyTextRecipients,
-} from '~/lib/channel/family-recipients';
-import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import { composeNudgeMessage } from './nudge-voice';
 import { proactiveNudgeTemplateKey } from './shell';
-import { weekdayCareDedupeKey } from '~/lib/channel/weekday-care/key';
 
 /**
  * VIL-239 · M4 — the 48-hour proactive nudge, swept hourly.
@@ -327,12 +327,9 @@ export function dedupeKeyFor(
       // row would text a family a different library every day of the week.
       return `nudge:${familyId}:weekday_dropin:${weekWindow(now, timeZone).startKey}:${parentUserId}`;
     case 'weekday_care':
-      // Per CHILD and forever, with no week in it: this question is asked once per
-      // household ever, and the child id is what the answer is filed against. MINTED BY
-      // THE PARSER'S OWN MODULE, because the answer path reads the child back out of
-      // this string — a sender and a reader holding two copies of one shape is how a
-      // question quietly stops being answerable.
-      return weekdayCareDedupeKey(familyId, nudge.childId, parentUserId);
+      // Per prompt kind, with no week in it. The parser's own module mints the key
+      // because the answer path reads the scope back out of this string.
+      return weekdayFinderDedupeKey(familyId, nudge.ask, parentUserId);
     default:
       return assertNever(nudge);
   }
@@ -402,34 +399,28 @@ async function decideForFamily(
   if (healthChildren.length === 0) return { nudge: null, skips: {} };
 
   const area = family.areaCoarse;
-  // A household with no under-13s can only ever receive a health checkpoint, so the
-  // village read, the registration read and the outbound weather call are all spend on
-  // a decision that is already made.
+  // Weekend suggestions need an under-13. The weekday finder does not: a teen-only
+  // household still gets the household after-school ask when a weekend send exists.
+  // Skipping the village, registration, and weather reads here only skips those legs.
   const weekendPossible = children.length > 0;
   // THE FLAG SHORT-CIRCUITS BEFORE THE READ, so a disarmed feature costs nothing and
   // reports nothing (see WeekdayCareInput: silent counters mean the flag, zeroed ones
   // would mean the legs ran).
   const weekdayArmed = weekdayCareEnabled();
-  const [
-    candidates,
-    windowRows,
-    weather,
-    suppressedCheckpointRefs,
-    claimedWindowIds,
-    weekdayCare,
-  ] = await Promise.all([
-    weekendPossible ? deps.loadCandidates(database, family.familyId) : Promise.resolve([]),
-    area && weekendPossible ? deps.loadWindows(database, area) : Promise.resolve([]),
-    // Weather is an input, never a blocker: the port swallows its own failures.
-    area && weekendPossible
-      ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
-      : Promise.resolve([]),
-    deps.loadSuppressedCheckpoints(database, family.familyId),
-    deps.loadClaimedWindowIds(database, family.familyId),
-    weekdayArmed
-      ? deps.loadWeekdayCareContext(database, family.familyId)
-      : Promise.resolve('disarmed' as const),
-  ]);
+  const [candidates, windowRows, weather, suppressedCheckpointRefs, claimedWindowIds, weekdayCare] =
+    await Promise.all([
+      weekendPossible ? deps.loadCandidates(database, family.familyId) : Promise.resolve([]),
+      area && weekendPossible ? deps.loadWindows(database, area) : Promise.resolve([]),
+      // Weather is an input, never a blocker: the port swallows its own failures.
+      area && weekendPossible
+        ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
+        : Promise.resolve([]),
+      deps.loadSuppressedCheckpoints(database, family.familyId),
+      deps.loadClaimedWindowIds(database, family.familyId),
+      weekdayArmed
+        ? deps.loadWeekdayCareContext(database, family.familyId)
+        : Promise.resolve('disarmed' as const),
+    ]);
 
   const windows = area
     ? matchRegistrationWindows({
@@ -589,7 +580,10 @@ async function runForFamily(
       parentUserId: recipient.parentUserId,
       channel: 'sms',
       category: 'nudge',
-      templateKey: proactiveNudgeTemplateKey(nudge.kind),
+      templateKey:
+        nudge.kind === 'weekday_care'
+          ? weekdayFinderTemplateKey(nudge.ask)
+          : proactiveNudgeTemplateKey(nudge.kind),
       dedupeKey,
       status: acceptedStatus('sms'),
       providerMessageId,
@@ -751,19 +745,13 @@ async function selectNudgeFamilies(database: Database, now: Date): Promise<Nudge
     .where(
       and(
         eq(schema.families.onboardingStage, 'sms_active'),
-        lte(
-          schema.families.createdAt,
-          new Date(now.getTime() - MIN_FAMILY_AGE_HOURS * 3_600_000),
-        ),
+        lte(schema.families.createdAt, new Date(now.getTime() - MIN_FAMILY_AGE_HOURS * 3_600_000)),
       ),
     );
   return rows;
 }
 
-async function readNudgeChildren(
-  database: Database,
-  familyId: string,
-): Promise<NudgeChildRow[]> {
+async function readNudgeChildren(database: Database, familyId: string): Promise<NudgeChildRow[]> {
   const rows = await database
     .select({
       id: schema.children.id,

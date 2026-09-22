@@ -1,15 +1,7 @@
 import { type Database, type UnmetIntentLane, schema } from '@hale/db';
 import type { DeepResearchPayload } from '@hale/tools-contracts';
 import { captureAgentError } from '~/lib/analytics/server-capture';
-import { scopedReply } from '~/lib/channel/caregiver/copy';
-import { acceptedStatus } from '~/lib/channel/ledger';
-import type { OffDomainLane, ReplySource } from '~/lib/channel/off-domain/lane';
-import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
-import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
-import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
-import { channelSmsNoteKey } from '~/lib/coach/note-key';
-import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import type { WeekdayCare, WeekdayCareWriteOutcome } from '~/lib/care/weekday';
 import type {
   ActivityPromise,
   ActivityPromiseRecordOutcome,
@@ -18,6 +10,11 @@ import {
   type DeepDispatchOutcome,
   dispatchDepthForPromise,
 } from '~/lib/channel/activity/deep-queue';
+import { readAffirmative } from '~/lib/channel/affirmative';
+import { scopedReply } from '~/lib/channel/caregiver/copy';
+import { acceptedStatus } from '~/lib/channel/ledger';
+import type { OffDomainLane, ReplySource } from '~/lib/channel/off-domain/lane';
+import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
 import {
@@ -28,10 +25,14 @@ import {
   reconcileViolations,
   withoutRefusedClaims,
 } from '~/lib/channel/reconcile/reconcile';
+import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots/store';
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
-import type { WeekdayCare, WeekdayCareWriteOutcome } from '~/lib/care/weekday';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
+import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
+import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ApologyFallback, TurnApology } from './apology';
 import {
   type ChannelCoachRuntime,
@@ -39,7 +40,6 @@ import {
   type ChannelTurnResult,
   draftsFromFailure,
 } from './coach-runtime';
-import { readAffirmative } from '~/lib/channel/affirmative';
 import { FLOOD_REPLY, clarifyWhichQuestion, partialFailureReply } from './copy';
 import {
   type DisambiguationOption,
@@ -47,11 +47,11 @@ import {
   matchDisambiguation,
   readsAsOrdinal,
 } from './disambiguation';
-import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
-import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
 import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
+import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
 import { type ReplyConfidence, type ReplyResolver, warrantsClarifying } from './resolve';
+import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
 import type { InboundTurnLedger, TurnFailureReason } from './turn-ledger';
 
 /**
@@ -270,10 +270,7 @@ export interface DeterministicHandler {
 
 export interface ChannelRouterDeps {
   database: Database;
-  loadContext(
-    database: Database,
-    job: ChannelMessageReceivedJob,
-  ): Promise<InboundContext | null>;
+  loadContext(database: Database, job: ChannelMessageReceivedJob): Promise<InboundContext | null>;
   /** The one way out. Channel-agnostic by construction (reply-route.ts): the router
    * hands it a resolved route and a body, and never learns which provider took it. */
   transport: ReplyTransport;
@@ -399,10 +396,28 @@ export interface ChannelRouterDeps {
     },
   ): Promise<
     | { status: 'open'; childId: string }
+    | {
+        status: 'open';
+        scope: 'search';
+        prompt: 'after_school' | 'weekend_fallback' | 'break';
+        eventKey: string | null;
+      }
     | { status: 'no_open_ask' }
     | { status: 'wrong_channel' }
     | { status: 'child_gone' }
   >;
+  /**
+   * A yes to a weekday-finder ask. Runs the existing activity search for this
+   * family and returns either a grounded sentence or a named abstain. It does
+   * not write a care fact.
+   */
+  searchWeekdays(input: {
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+    prompt: 'after_school' | 'weekend_fallback' | 'break';
+    eventKey: string | null;
+  }): Promise<{ status: 'deliver'; body: string } | { status: 'abstain'; reason: string }>;
   /** Write down how this household covers its weekdays (lib/care/weekday.ts). */
   recordWeekdayCare(
     database: Database,
@@ -421,10 +436,7 @@ export interface ChannelRouterDeps {
    * the ledger would send every claim the model invented, which is the exact defect
    * this dep exists to close, and it would do it invisibly.
    */
-  reconcileView(
-    database: Database,
-    input: { familyId: string; now: Date },
-  ): Promise<ReconcileView>;
+  reconcileView(database: Database, input: { familyId: string; now: Date }): Promise<ReconcileView>;
   /**
    * Write down the registration watch the coach just promised, against the message that
    * carried it. Non-nullable for the same reason `recordActivityPromise` is: the whole
@@ -793,6 +805,10 @@ export async function routeChannelMessage(
   // where Hale is genuinely holding this question pays for the reader, and the reader is
   // what supplies the CHILD: the parent's words say "she's home with me" and name
   // nobody, so the subject comes from the ask's own dedupe key.
+  let weekdaySearch: {
+    prompt: 'after_school' | 'weekend_fallback' | 'break';
+    eventKey: string | null;
+  } | null = null;
   if ((await turn.openQuestions()).some((question) => question.kind === 'weekday_care')) {
     // EVERY OUTCOME IS OBSERVED, in one place, and none of them is the words themselves
     // — GATE 2c's own logger is the precedent (`{familyId, state, reason}`, never the
@@ -800,7 +816,14 @@ export async function routeChannelMessage(
     // belongs in a log line. `recorded` is the one that needs no line: it leaves an
     // immutable audit row carrying the state it wrote.
     const outcome = await recordWeekdayCareAnswer(deps, turn);
-    if (outcome.status === 'unreadable') {
+    if (outcome.status === 'search') {
+      weekdaySearch = { prompt: outcome.prompt, eventKey: outcome.eventKey };
+    } else if (outcome.status === 'declined') {
+      deps.log.info(
+        { familyId: turn.familyId, status: outcome.status },
+        'channel router: weekday search declined',
+      );
+    } else if (outcome.status === 'unreadable') {
       // WARN, NOT ERROR. A bare "yes" or "no" to an either/or is ordinary parent
       // behaviour, not a fault: it is the signal the grammar has drifted, and it is
       // worth a line only because nothing else makes it visible. Logging it at ERROR
@@ -837,6 +860,32 @@ export async function routeChannelMessage(
       await answer(FLOOD_REPLY);
       return done(deps, job, { status: 'flood_held', handler: null, conversationId, lane: null });
     }
+  }
+
+  // A yes to the finder ask, after the flood check so the limiter is counted once.
+  // A grounded pick claims the turn. No pick, or a pick that cannot be sent, is a
+  // named abstain and the coach may still answer — Hale does not invent a venue.
+  if (weekdaySearch) {
+    const delivery = await deps.searchWeekdays({
+      familyId: turn.familyId,
+      parentUserId: turn.parentUserId,
+      now: turn.now,
+      prompt: weekdaySearch.prompt,
+      eventKey: weekdaySearch.eventKey,
+    });
+    if (delivery.status === 'deliver') {
+      await answer(delivery.body, null, null, 'weekday_search');
+      return done(deps, job, {
+        status: 'handled',
+        handler: 'weekday_search',
+        conversationId,
+        lane: null,
+      });
+    }
+    deps.log.warn(
+      { familyId: turn.familyId, reason: delivery.reason },
+      'channel router: weekday search abstained',
+    );
   }
 
   // GATE 4 — the family's week, or the world. The screen reads the LEDGER body (the same
@@ -1062,6 +1111,12 @@ interface UnplacedAnswer {
 type WeekdayCareReplyOutcome =
   | { status: 'recorded' }
   | { status: 'unreadable' }
+  | {
+      status: 'search';
+      prompt: 'after_school' | 'weekend_fallback' | 'break';
+      eventKey: string | null;
+    }
+  | { status: 'declined' }
   | { status: 'not_recorded'; reason: 'no_open_ask' | 'wrong_channel' | 'child_gone' };
 
 /**
@@ -1091,6 +1146,16 @@ async function recordWeekdayCareAnswer(
     now: turn.now,
   });
   if (target.status !== 'open') return { status: 'not_recorded', reason: target.status };
+
+  if ('scope' in target) {
+    const word = readAffirmative(turn.body);
+    if (word === 'yes') {
+      return { status: 'search', prompt: target.prompt, eventKey: target.eventKey };
+    }
+    if (word === 'no') return { status: 'declined' };
+    // Not a care fact. "she's at daycare" on this ask settles nothing about care.
+    return { status: 'unreadable' };
+  }
 
   const reading = readWeekdayCare(turn.body);
   if (reading.status === 'nothing_stated') return { status: 'unreadable' };
@@ -1303,7 +1368,10 @@ async function runAgentTurn(
         recorded,
       });
       deps.log.info(
-        { dispatch: dispatched.status, ...('reason' in dispatched ? { reason: dispatched.reason } : {}) },
+        {
+          dispatch: dispatched.status,
+          ...('reason' in dispatched ? { reason: dispatched.reason } : {}),
+        },
         'channel router: activity promise recorded',
       );
     }

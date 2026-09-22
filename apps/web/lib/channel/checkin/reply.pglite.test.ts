@@ -1,6 +1,12 @@
 import { schema } from '@hale/db';
 import { and, eq, gt } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { loadReconcileView } from '~/lib/channel/reconcile/view';
+import { createDisambiguationStore } from '~/lib/channel/router/disambiguation';
+import type { OpenQuestion } from '~/lib/channel/router/open-questions';
+import { FakeReplyTransport } from '~/lib/channel/router/reply-route';
+import type { ChannelRouterDeps, HandlerContext } from '~/lib/channel/router/route';
+import { routeChannelMessage } from '~/lib/channel/router/route';
 import {
   auditSmokeAlarmClaim,
   auditTurnLedger,
@@ -8,26 +14,20 @@ import {
   defaultOpenQuestionReader,
   loadInboundContext,
 } from '~/lib/channel/router/wiring';
-import { loadReconcileView } from '~/lib/channel/reconcile/view';
-import { createDisambiguationStore } from '~/lib/channel/router/disambiguation';
-import { FakeReplyTransport } from '~/lib/channel/router/reply-route';
-import { encryptString } from '~/lib/crypto/string-cipher';
-import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import type { ChannelRouterDeps, HandlerContext } from '~/lib/channel/router/route';
-import { routeChannelMessage } from '~/lib/channel/router/route';
-import type { OpenQuestion } from '~/lib/channel/router/open-questions';
-import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { nightlyOccasion } from '~/lib/channel/variant';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
+import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
   CHECK_IN_ACK_TEMPLATE_KEY,
   CHECK_IN_ASK_TEMPLATE_KEY,
   CHECK_IN_DAILY_ACK,
-  checkInNotedAck,
   CHECK_IN_NOT_KEPT_ACK,
   CHECK_IN_OFF_ACK,
   CHECK_IN_STEP_DOWN_TEMPLATE_KEY,
   CHECK_IN_WEEKLY_ACK,
+  checkInNotedAck,
 } from './copy';
 import { NOTE_RETENTION_DAYS, purgeExpiredCheckInNotes } from './notes';
 import { CHECK_IN_REOFFER_DAYS, eveningCheckInQuestion, handleEveningCheckInReply } from './reply';
@@ -155,10 +155,7 @@ async function readNotes(familyId: string) {
 }
 
 async function readAudit(familyId: string) {
-  return db.database
-    .select()
-    .from(schema.auditLog)
-    .where(eq(schema.auditLog.familyId, familyId));
+  return db.database.select().from(schema.auditLog).where(eq(schema.auditLog.familyId, familyId));
 }
 
 describe('the standing question, read the way the router reads it', () => {
@@ -261,9 +258,10 @@ describe('the three words that move the cadence', () => {
       expect(prefs?.lastAnsweredAt, body).toEqual(ANSWERED_AT);
       expect(await readNotes(seeded.familyId), body).toEqual([]);
       const audit = await readAudit(seeded.familyId);
-      expect(audit.map((row) => row.actionTaken), body).toEqual([
-        'evening_check_in_cadence_changed',
-      ]);
+      expect(
+        audit.map((row) => row.actionTaken),
+        body,
+      ).toEqual(['evening_check_in_cadence_changed']);
       await db.exec('truncate table families, users cascade');
     }
   });
@@ -531,7 +529,7 @@ describe('LESS, NO and DAILY after the question has closed', () => {
     } as unknown as HandlerContext;
   }
 
-  it('drops the evening check-ins for good when NO arrives after Hale\'s own thank-you', async () => {
+  it("drops the evening check-ins for good when NO arrives after Hale's own thank-you", async () => {
     const seeded = await seedFamily();
     await seedAsk(seeded);
     // The ack Hale sent back closes the standing question — this is the state the router
@@ -858,6 +856,7 @@ describe("the floor after Hale's own thank-you, through the real router", () => 
       reconcileView: loadReconcileView,
       recordStatedState: async () => ({ status: 'nothing_stated' }),
       weekdayCareAnswerTarget: async () => ({ status: 'no_open_ask' as const }),
+      searchWeekdays: async () => ({ status: 'abstain' as const, reason: 'not_configured' }),
       recordWeekdayCare: async (_db, input) => ({
         status: 'recorded' as const,
         care: input.care,
