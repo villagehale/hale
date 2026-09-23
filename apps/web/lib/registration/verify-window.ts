@@ -78,6 +78,9 @@ export interface StoredWindow {
   municipality: Municipality;
   programDomain: ProgramDomain;
   cycleLabel: string;
+  /** Null is the city-wide row. The sweep passes it through so an inferred field
+   * is looked up on the district row it was inferred for. */
+  district: string | null;
   previewAt: Date | null;
   residentOpenAt: Date | null;
   openAt: Date;

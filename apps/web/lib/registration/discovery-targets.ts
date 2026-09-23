@@ -19,7 +19,13 @@ export interface DiscoveryTarget {
   programDomain: ProgramDomain;
   /** The cycle we are waiting on, in the words a parent would use. */
   cycleLabel: string;
-  sourceUrl: string;
+  /**
+   * Every page that might publish the date. One URL was how Fall 2026 was missed:
+   * the how-to-register page stayed "dates will be announced later" while the
+   * date was on the register page and in a news release. The sweep reads each
+   * URL and a find on any of them is a publication.
+   */
+  sourceUrls: readonly string[];
   /** Why this is a gap — quoted in the digest so the line explains itself. */
   gap: string;
 }
@@ -29,6 +35,10 @@ export interface DiscoveryTarget {
  * it explains the mechanics and links the dates rather than printing them. */
 const TORONTO_REGISTER =
   'https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/register-for-recreation-activities/';
+/** The City's news index. Fall 2026 was a release on this index while the
+ * how-to-register page still said the dates would be announced later. */
+const TORONTO_NEWS = 'https://www.toronto.ca/news/';
+const TORONTO_WATCH = [TORONTO_REGISTER, TORONTO_NEWS] as const;
 const HALTON_HILLS_REGISTER =
   'https://www.haltonhills.ca/en/explore-and-play/program-registration.aspx';
 const WHITCHURCH_STOUFFVILLE_PLAY_BOOK = 'https://www.townofws.ca/play/recreation/programs/play-book/';
@@ -53,49 +63,49 @@ export const DISCOVERY_TARGETS: readonly DiscoveryTarget[] = [
     municipality: 'toronto',
     programDomain: 'rec_program',
     cycleLabel: 'Winter 2027',
-    sourceUrl: TORONTO_REGISTER,
+    sourceUrls: TORONTO_WATCH,
     gap: 'Toronto prints no Winter 2027 date, only a look-ahead: registration "is anticipated to occur between December 1 to 9" with programs browsable from November 17.',
   },
   {
     municipality: 'toronto',
     programDomain: 'swim',
     cycleLabel: 'Winter 2027',
-    sourceUrl: TORONTO_REGISTER,
+    sourceUrls: TORONTO_WATCH,
     gap: 'Toronto registers swim inside the seasonal cycle; the same unpublished Winter 2027 date covers it.',
   },
   {
     municipality: 'halton_hills',
     programDomain: 'rec_program',
     cycleLabel: 'Winter 2027',
-    sourceUrl: HALTON_HILLS_REGISTER,
+    sourceUrls: [HALTON_HILLS_REGISTER],
     gap: 'Halton Hills opened Fall 2026 on Sep 1 and has posted nothing since; the winter cycle is what a family there is now waiting on.',
   },
   {
     municipality: 'whitchurch_stouffville',
     programDomain: 'rec_program',
     cycleLabel: 'Winter 2027',
-    sourceUrl: WHITCHURCH_STOUFFVILLE_PLAY_BOOK,
+    sourceUrls: [WHITCHURCH_STOUFFVILLE_PLAY_BOOK],
     gap: 'Whitchurch-Stouffville publishes its dates only inside the seasonal Play Book, and the page still offers the Fall 2026 one. The Town runs a single window for the whole book, so swim and the winter-break camps arrive on this date too.',
   },
   {
     municipality: 'newmarket',
     programDomain: 'rec_program',
     cycleLabel: 'Winter 2027',
-    sourceUrl: NEWMARKET_PROGRAMS,
+    sourceUrls: [NEWMARKET_PROGRAMS],
     gap: 'Newmarket prints its dates only inside the seasonal magazine PDF, never on this landing page, and the magazine on offer is still the Fall 2026 one. One window covers the whole magazine, swim included.',
   },
   {
     municipality: 'east_gwillimbury',
     programDomain: 'rec_program',
     cycleLabel: 'Winter 2027',
-    sourceUrl: EAST_GWILLIMBURY_GUIDE,
+    sourceUrls: [EAST_GWILLIMBURY_GUIDE],
     gap: 'East Gwillimbury\'s guide is titled "Fall 2026 and Winter 2027" but the page publishes only the fall registration dates. One window covers the whole guide, swim included.',
   },
   {
     municipality: 'georgina',
     programDomain: 'rec_program',
     cycleLabel: 'Winter 2027',
-    sourceUrl: GEORGINA_PROGRAMS,
+    sourceUrls: [GEORGINA_PROGRAMS],
     gap: 'Georgina posts one cycle at a time on this page and has posted nothing since the fall block. Watch THIS page: the Town\'s recreation-general-information page was still carrying the spring block in September.',
   },
 ];

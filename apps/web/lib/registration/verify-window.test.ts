@@ -32,6 +32,7 @@ function markhamStored(overrides: Partial<StoredWindow> = {}): StoredWindow {
     municipality: 'markham',
     programDomain: 'rec_program',
     cycleLabel: '2026 Fall Programs, Swim Lessons and Winter Break Camps',
+    district: null,
     previewAt: new Date('2026-08-03T00:00:00-04:00'),
     residentOpenAt: null,
     openAt: new Date('2026-08-11T06:30:00-04:00'),

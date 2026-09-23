@@ -2,6 +2,8 @@ import { asciiCopy, asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import { townLabel } from '~/lib/channel/town-label';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { nextWatchedCycle } from '~/lib/registration/discovery-targets';
+import { districtForFsa, municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
+import { preferDistrictRows } from '~/lib/registration/match-registration-windows';
 import {
   REGISTRATION_WINDOWS,
   type RegistrationWindowSeed,
@@ -128,7 +130,9 @@ function groupIntoEvents(rows: readonly RecRow[]): CycleEvent[] {
     const key = `${row.cycleLabel}|${row.residentOpenAt ?? ''}|${row.openAt}`;
     const event = events.get(key);
     if (event) {
-      event.domains.push(row.programDomain);
+      // Two districts can share a morning. That is one program said twice,
+      // not "swim and swim".
+      if (!event.domains.includes(row.programDomain)) event.domains.push(row.programDomain);
       continue;
     }
     events.set(key, {
@@ -161,10 +165,21 @@ function openedAtOf(event: CycleEvent): Date {
   return event.residentOpenAt ?? event.openAt;
 }
 
-/** The label says which cycle this is on its own, unless the town hangs two cycles off
- * the same one — Vaughan runs a "Fall Session 2026" for rec and another for swim. */
-function labelNeedsNouns(event: CycleEvent, townEvents: readonly CycleEvent[]): boolean {
-  return townEvents.filter((other) => other.cycleLabel === event.cycleLabel).length > 1;
+/**
+ * The label says which cycle this is on its own, unless the town hangs two cycles off
+ * the same one — Vaughan runs a "Fall Session 2026" for rec and another for swim.
+ *
+ * Two district mornings of the SAME domains share a label too (Toronto Fall 2026).
+ * They are one cycle said twice, not two programs, so the nouns stay off: adding
+ * "rec and swim" there would change the sentence a parent already gets.
+ */
+function labelNeedsNouns(cycleLabel: string, townEvents: readonly CycleEvent[]): boolean {
+  const keys = new Set(
+    townEvents
+      .filter((event) => event.cycleLabel === cycleLabel)
+      .map((event) => event.domains.join('|')),
+  );
+  return keys.size > 1;
 }
 
 function upcomingLine(
@@ -181,7 +196,9 @@ function upcomingLine(
       : residentGone
         ? `residents opened ${pastPhrase(resident)}, non-residents ${upcomingPhrase(event.openAt)}`
         : `residents ${upcomingPhrase(resident)}, non-residents ${upcomingPhrase(event.openAt)}`;
-  const nouns = labelNeedsNouns(event, townEvents) ? `${joinNouns(event.domains)} ` : '';
+  const nouns = labelNeedsNouns(event.cycleLabel, townEvents)
+    ? `${joinNouns(event.domains)} `
+    : '';
   const line = endSentence(
     `${townLabel(city)} ${asciiCopy(event.cycleLabel)} ${nouns}registration: ${halves}`,
   );
@@ -227,6 +244,27 @@ function betweenCyclesLine(
 }
 
 /**
+ * A postal code that resolves to a district of THIS city narrows the rows to that
+ * morning. A postal code for a different town is ignored — the parent named this
+ * city, and dropping its mornings because their FSA is somewhere else would
+ * silence the answer. No postal code keeps every morning, and the soonest one
+ * is what the line names.
+ */
+function rowsForAsk(
+  city: RecHelloCity,
+  rows: readonly RecRow[],
+  postal: string | null,
+): readonly RecRow[] {
+  if (postal === null || postal.trim() === '') return rows;
+  const fsa = postal.replace(/\s+/g, '').toUpperCase().slice(0, 3);
+  if (!/^[A-Z]\d[A-Z]$/.test(fsa)) return rows;
+  if (!municipalitiesForFsa(fsa).some((town) => town === city)) return rows;
+  const district = districtForFsa(fsa);
+  if (district === null) return rows.filter((row) => (row.district ?? null) === null);
+  return preferDistrictRows(rows, district);
+}
+
+/**
  * This town's rec-morning answer as of `now`, or null when the dataset holds no
  * window for it (Milton, today) and there is nothing true to say.
  *
@@ -235,14 +273,18 @@ function betweenCyclesLine(
  * different mornings. A domain the town has no row in answers about the whole town
  * rather than falling silent — the dataset has nothing for that program, not nothing
  * for that town, and those are different claims.
+ *
+ * `postal`, when it resolves to a district of this city, names that district's
+ * morning. Absent, the soonest morning is the one the line names.
  */
 export function cityRecLine(
   city: RecHelloCity,
   now: Date,
   domain: RecDomain | null = null,
   windows: readonly RegistrationWindowSeed[] = REGISTRATION_WINDOWS,
+  postal: string | null = null,
 ): string | null {
-  const townRows = recRows(city, windows);
+  const townRows = rowsForAsk(city, recRows(city, windows), postal);
   if (townRows.length === 0) return null;
 
   const asked = townRows.filter((row) => domain === null || row.programDomain === domain);

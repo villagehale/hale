@@ -52,4 +52,21 @@ describe('DISCOVERY_TARGETS against the dataset', () => {
 
     expect(closed).toEqual([]);
   });
+
+  it('watches Toronto on the register page and the news index, not the how-to page', () => {
+    const howTo =
+      'https://www.toronto.ca/explore-enjoy/parks-recreation/how-to-use-our-services/how-to-register-for-recreation-programs/';
+    const toronto = DISCOVERY_TARGETS.filter((target) => target.municipality === 'toronto');
+    expect(toronto.map((target) => target.cycleLabel)).toEqual(['Winter 2027', 'Winter 2027']);
+    for (const target of toronto) {
+      expect(target.sourceUrls).toEqual([
+        'https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/register-for-recreation-activities/',
+        'https://www.toronto.ca/news/',
+      ]);
+      expect(target.sourceUrls).not.toContain(howTo);
+    }
+    expect(
+      DISCOVERY_TARGETS.find((target) => target.municipality === 'halton_hills')?.cycleLabel,
+    ).toBe('Winter 2027');
+  });
 });

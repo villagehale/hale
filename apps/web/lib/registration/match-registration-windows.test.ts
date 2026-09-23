@@ -34,6 +34,7 @@ function win(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
     municipality: 'markham' as Municipality,
     programDomain: 'rec_program' as ProgramDomain,
     cycleLabel: 'Fall 2026',
+    district: null,
     previewAt: null,
     residentOpenAt: null,
     openAt: new Date('2026-09-01T10:30:00.000Z'),

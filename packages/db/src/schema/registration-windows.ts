@@ -62,9 +62,13 @@ export type ProgramDomain = 'rec_program' | 'camp' | 'swim' | 'after_school_care
  * (6:30 a.m. America/Toronto), so the seed encodes the local time with its explicit
  * UTC offset and the DST-correct instant is what lands here.
  *
- * (municipality, program_domain, cycle_label) is UNIQUE — the natural key, so the
- * seed sync is idempotent: a re-run updates a corrected date in place rather than
- * duplicating the cycle.
+ * (municipality, program_domain, cycle_label, district) is UNIQUE, NULLS NOT
+ * DISTINCT — the natural key, so the seed sync is idempotent: a re-run updates a
+ * corrected date in place rather than duplicating the cycle. `district` NULL is
+ * the city-wide row. Toronto's seasonal cycle is the reason it is in the key:
+ * one municipality opens on two mornings, and a second row for the same cycle
+ * has to be allowed (VIL-360). The NULLS NOT DISTINCT clause lives in the
+ * migration; Drizzle's uniqueIndex cannot express it (see memory.ts).
  */
 export const registrationWindows = pgTable(
   'registration_windows',
@@ -75,6 +79,14 @@ export const registrationWindows = pgTable(
     /** The municipality's own name for the cycle (e.g. "Fall 2026", "Summer 2027
      * Camps") — free text because every town labels its seasons differently. */
     cycleLabel: text('cycle_label').notNull(),
+    /**
+     * Which part of the municipality this morning is for. NULL is city-wide —
+     * every row that is not Toronto's split seasonal cycle. Toronto districts
+     * are the community-council areas the City registers by (`etobicoke_york`,
+     * `north_york`, `scarborough`, `toronto_east_york`); an FSA resolves to one
+     * in fsa-municipalities.ts and the matcher prefers that row.
+     */
+    district: text('district'),
     /** When programs become browsable, where the municipality publishes it. */
     previewAt: timestamp('preview_at', { withTimezone: true }),
     /** The resident-priority open instant; NULL where residency buys nothing. */
@@ -101,10 +113,12 @@ export const registrationWindows = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    // The natural key — the seed's idempotency anchor.
-    municipalityDomainCycleIdx: uniqueIndex(
-      'registration_windows_municipality_domain_cycle_idx',
-    ).on(table.municipality, table.programDomain, table.cycleLabel),
+    // The natural key — the seed's idempotency anchor. NULL district (city-wide)
+    // collides with itself only because the migration's index is NULLS NOT
+    // DISTINCT; this builder cannot say that, so the SQL is the source of truth.
+    municipalityDomainCycleDistrictIdx: uniqueIndex(
+      'registration_windows_municipality_domain_cycle_district_idx',
+    ).on(table.municipality, table.programDomain, table.cycleLabel, table.district),
     // The radar's scan: the upcoming windows for a family's municipality, in date order.
     municipalityOpenIdx: index('registration_windows_municipality_open_idx').on(
       table.municipality,

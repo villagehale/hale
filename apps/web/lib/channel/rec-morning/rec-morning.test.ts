@@ -390,11 +390,21 @@ describe('rec-morning SMS · a city line is derived, never locked', () => {
     expect(YMCA_FIRST.toLowerCase()).not.toContain('today');
   });
 
-  it('VIL-334: M1B (Scarborough) is a Toronto FSA and gets the Toronto line', () => {
+  it('VIL-334: M1B (Scarborough) is a Toronto FSA and gets the Scarborough morning', () => {
+    // VIL-360. Scarborough registered Wednesday Sep 16; downtown (M5V) and
+    // Etobicoke (M8V) stayed on Tuesday Sep 15. A postal in the ask is enough.
+    const scarborough =
+      'Toronto Fall 2026 registration: residents opened Sep 16, non-residents Saturday Sep 26 at 7 a.m. I can watch leftovers and the waitlist. Sign in at toronto.ca/OnlineReg.';
     expect(resolveHelloCity('M1B')).toBe('toronto');
     expect(resolveHelloCity('Theo is 3, Cruz is 18-months, M1B')).toBe('toronto');
-    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M1B' })).toBe(TORONTO_LINE);
-    expect(reply('M1B rec dates?')).toBe(TORONTO_LINE);
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M1B' })).toBe(scarborough);
+    expect(reply('M1B rec dates?')).toBe(scarborough);
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M5V' })).toBe(TORONTO_LINE);
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M8V' })).toBe(TORONTO_LINE);
+    const dayBefore = new Date('2026-09-14T14:00:00.000Z');
+    const northYork = cityRecLine('toronto', dayBefore, 'rec_program', undefined, 'M2N');
+    expect(northYork).toContain('Wednesday Sep 16');
+    expect(northYork).not.toContain('Sep 15');
     expect(reply('Halton Hills rec registration?')).toBe(CITY_LINES.halton_hills);
     expect(reply('when does Brampton rec open?')).toBe(CITY_LINES.brampton);
   });

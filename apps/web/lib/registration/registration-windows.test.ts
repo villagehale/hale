@@ -104,6 +104,7 @@ describe('syncRegistrationWindows', () => {
       schema.registrationWindows.municipality,
       schema.registrationWindows.programDomain,
       schema.registrationWindows.cycleLabel,
+      schema.registrationWindows.district,
     ]);
     // Dates move: a re-sync must be able to correct every field it seeded, and must
     // bump updated_at so the correction is visible.
@@ -153,7 +154,7 @@ describe('the shipped verified list', () => {
 
   it('has no duplicate natural keys (the seed would fight itself in one statement)', () => {
     const keys = REGISTRATION_WINDOWS.map(
-      (s) => `${s.municipality}::${s.programDomain}::${s.cycleLabel}`,
+      (s) => `${s.municipality}::${s.programDomain}::${s.cycleLabel}::${s.district ?? ''}`,
     );
     expect(new Set(keys).size).toBe(keys.length);
   });
