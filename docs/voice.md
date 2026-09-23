@@ -53,7 +53,7 @@ These are immovable, and the reason is written beside each one so a voice PR can
 | string | why | where |
 |---|---|---|
 | `Reply STOP to opt out.` / `STOP to opt out.` | CASL s.6(2)(c) and s.11; the word STOP verbatim and uppercase is the keyword the machine honours | `apps/web/lib/channel/opt-out.ts` |
-| `IDENTITY_ACCOUNTABILITY_LINE` (EN + FR) | anti-scam disclosure; *"never a sentence a model writes"* | `apps/web/lib/channel/intake/copy.ts` |
+| `IDENTITY_ACCOUNTABILITY_LINE` (EN + FR) | anti-scam disclosure, byte-locked 2026-09-23 (VIL-333); the whole reply on an identity challenge, never a sentence a model writes | `apps/web/lib/channel/intake/copy.ts` |
 | the voice front door's *"I'm an AI assistant, not a person"* | the caller cannot see a screen | `apps/web/lib/channel/twilio/copy.ts` |
 | `HELP_REPLY`'s identity clause and its opt-out tail (ARRET/AIDE on the French twin) | CTA short-code policy, adopted voluntarily | `apps/web/lib/channel/intake/copy.ts` |
 | `PRIVACY_URL` | spliced into the consent ask; a typographic character here rides every consent question | `apps/web/lib/legal-links.ts` |

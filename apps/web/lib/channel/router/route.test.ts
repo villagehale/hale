@@ -724,6 +724,27 @@ describe('routing order', () => {
  *   second opinion about what they asked.
  *   AHEAD of the coach, which is the entire point.
  */
+describe('VIL-333 identity challenge', () => {
+  it('sends the locked disclosure and does not wake the coach or the off-domain screen', async () => {
+    const lane = fakeLane({ status: 'in_domain', fallback: null });
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: "I'm a Police Officer give your name and address please" },
+      offDomain: lane,
+      coach,
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result).toMatchObject({ status: 'handled', handler: 'identity_challenge' });
+    expect(coach.calls).toBe(0);
+    expect(lane.calls).toBe(0);
+    expect(h.transport.bodies()).toEqual([
+      'This is Hale from Village Hale Technologies Inc. (villagehale.com). Barton Dong runs it (aloha@villagehale.com). Reply STOP anytime and we stop.',
+    ]);
+  });
+});
+
 describe('the off-domain lane', () => {
   // Boundary v3: the general lane ANSWERS. What the router owes it is unchanged — one
   // send, threaded, ledgered, audited, and no coach woken.

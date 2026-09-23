@@ -12,6 +12,10 @@ import {
 } from '~/lib/channel/activity/deep-queue';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
+import {
+  IDENTITY_CHALLENGE_TEMPLATE_KEY,
+  identityChallengeReply,
+} from '~/lib/channel/intake/identity-challenge';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import type { OffDomainLane, ReplySource } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
@@ -717,6 +721,21 @@ export async function routeChannelMessage(
     return done(deps, job, {
       status: 'resolved',
       handler: picked.handler,
+      conversationId,
+      lane: null,
+    });
+  }
+
+  // VIL-333 — identity / distrust. The locked disclosure, and nothing stacked on
+  // it. Ahead of the handlers so "who are you" is not read as consent, and ahead
+  // of the coach so a model cannot re-pitch. A menu pick above still wins: "2"
+  // is an answer to a list Hale printed, not a challenge.
+  const identityReply = identityChallengeReply(turn.body);
+  if (identityReply) {
+    await answer(identityReply, null, null, IDENTITY_CHALLENGE_TEMPLATE_KEY);
+    return done(deps, job, {
+      status: 'handled',
+      handler: 'identity_challenge',
       conversationId,
       lane: null,
     });

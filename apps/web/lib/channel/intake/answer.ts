@@ -14,6 +14,7 @@ import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
+import { identityChallengeReply } from './identity-challenge';
 import {
   cheerUpIntakeReply,
   groundCurrentSource,
@@ -366,6 +367,12 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       // be the reason this turn is degraded at all.
       if (namesAnEmergency(input.parentWords)) return { status: 'safety' };
       if (namesAMentalCrisis(input.parentWords)) return { status: 'mental_crisis' };
+
+      // VIL-333. Identity / distrust is a locked disclosure, not a composed answer
+      // plus the pending ask. The machine short-circuits on the same read; this
+      // is the same door for any caller of the composer.
+      const disclosure = identityChallengeReply(input.parentWords);
+      if (disclosure) return { status: 'answered', body: disclosure };
 
       // VIL-323: adult-learn is a Designer-locked kids-only door, not a model "I
       // don't do that" and not a city clock. Checked before rec-morning so

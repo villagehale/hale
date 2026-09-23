@@ -10,7 +10,7 @@ import {
   readPair,
   refusals,
 } from './answer';
-import { COLD_START_ASK, WATCH_OFFER_ASK } from './copy';
+import { COLD_START_ASK, IDENTITY_ACCOUNTABILITY_LINE, WATCH_OFFER_ASK } from './copy';
 import { AFTER_PROVISION_RETURN_ASK, CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
 import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
 
@@ -168,6 +168,24 @@ describe('intake answer · the emergency tripwire', () => {
     expect(EMERGENCY_REPLY).not.toContain('?');
     expect(SAFETY_REPLY).toContain('811');
     expect(SAFETY_REPLY).not.toBe(EMERGENCY_REPLY);
+  });
+
+  it('answers an identity challenge with the locked line and never calls the model', async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not have been called');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+
+    expect(
+      await composer.compose({
+        ...INPUT,
+        parentWords: "I'm a Police Officer give your name and address please",
+      }),
+    ).toEqual({ status: 'answered', body: IDENTITY_ACCOUNTABILITY_LINE });
   });
 
   it('answers a Toronto swim clock question with reviewed copy, no model', async () => {
