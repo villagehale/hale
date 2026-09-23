@@ -11,6 +11,8 @@ import {
   upcomingWeekend,
   weekdayOf,
 } from '~/lib/channel/intake/radar-decide';
+import { renderEmptySaturdayAsk } from '~/lib/channel/nudge/empty-saturday-copy';
+import type { SaturdayPlans } from '~/lib/channel/nudge/saturday-plans';
 import {
   type WeekdayFinderAsk,
   printableWeekdayName,
@@ -25,6 +27,11 @@ import { priceBandLabel } from '~/lib/format/labels';
 import type { HealthRegion } from '~/lib/health/checkpoints';
 import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
+import {
+  type HouseholdFindBias,
+  biasFindOrder,
+  candidateReviewSubject,
+} from '~/lib/reviews/household-bias';
 import { type Season, seasonOf } from '~/lib/village/visibility';
 import { type DailyOutlook, isOutdoorFriendly, outdoorBlocker } from '~/lib/weather/open-meteo';
 
@@ -171,10 +178,25 @@ export interface WeekdayCareAsk {
   ask: WeekdayFinderAsk;
 }
 
+/**
+ * VIL-365 · one grounded nearby option, asked rather than listed.
+ *
+ * The SMS is the locked sentence. `candidateId` is the civic session that made
+ * the ask honest ("actually running") and is never rendered or audited. A yes
+ * does not deliver that candidate; the coach's next search does.
+ */
+export interface EmptySaturdayNudge {
+  kind: 'empty_saturday';
+  kidName: string;
+  saturday: string;
+  candidateId: string;
+}
+
 export type Nudge =
   | RegistrationNudge
   | HealthCheckpointNudge
   | WeatherSwapNudge
+  | EmptySaturdayNudge
   | WeekdayDropInNudge
   | WeekdayCareAsk;
 
@@ -218,6 +240,13 @@ export interface DecideNudgeInput {
   claimedWindowIds: ReadonlySet<string>;
   /** VIL-360 — the weekday legs' inputs, or `'disarmed'`. See {@link WeekdayCareInput}. */
   weekdayCare: WeekdayCareInput;
+  /**
+   * VIL-365 — occupancy of the coming Saturday, or `'unread'` when the caller has
+   * not loaded it. Unread means the leg does not run and emits no skip.
+   */
+  saturdayPlans: SaturdayPlans;
+  /** VIL-366 — this household's own verdicts. Empty is a no-op order. */
+  householdBias: HouseholdFindBias;
   now: Date;
   timeZone: string;
 }
@@ -334,14 +363,17 @@ function fittedFor(
     fitted.push({ candidate, band, coverage });
   }
 
-  return (
+  const ordered = biasFindOrder(
     fitted.sort(
       (a, b) =>
         b.coverage.length - a.coverage.length ||
         b.candidate.confidence - a.candidate.confidence ||
         a.candidate.title.localeCompare(b.candidate.title),
-    )[0] ?? null
+    ),
+    (row) => candidateReviewSubject(row.candidate),
+    input.householdBias,
   );
+  return ordered[0] ?? null;
 }
 
 function whyFactsFor(fitted: Fitted): string[] {
@@ -473,7 +505,14 @@ export type WeekdayCareAskSkip =
   /** A school-age name could not be printed. COUNTED, and the household sentence goes. */
   | 'name_not_printable';
 
-export type NudgeSkipReason = WeekdayDropInSkip | WeekdayCareAskSkip;
+/** decideEmptySaturday's reasons. Unread and teen-only emit none. */
+export type EmptySaturdaySkip =
+  | 'no_coming_saturday'
+  | 'saturday_occupied'
+  | 'no_running_saturday'
+  | 'saturday_name_unusable';
+
+export type NudgeSkipReason = WeekdayDropInSkip | WeekdayCareAskSkip | EmptySaturdaySkip;
 
 export type NudgeSkipCounts = Partial<Record<NudgeSkipReason, number>>;
 
@@ -740,15 +779,112 @@ export function decideWeekdayCareAsk(input: DecideNudgeInput): LegOutcome<Weekda
   return { nudge: { kind: 'weekday_care', ask }, skips };
 }
 
+function freeIndexes(
+  children: readonly RadarChild[],
+  coverage: readonly number[],
+  busy: ReadonlySet<string>,
+): number[] {
+  return coverage.filter((index) => {
+    const id = children[index]?.id;
+    return id === undefined || !busy.has(id);
+  });
+}
+
+/**
+ * VIL-365 · one ask, when the coming Saturday is open AND a civic session is
+ * actually dated that day.
+ *
+ * The message does not list the option and does not invent weather. It sits
+ * under the weather swap so a real forecast still wins, and above the weekday
+ * drop-in so an empty Saturday is said before a midweek session. Unread plans
+ * and a teen-only household are silence with no skip. One kid is named — the
+ * slot is singular.
+ */
+function decideEmptySaturday(input: DecideNudgeInput): LegOutcome<EmptySaturdayNudge> {
+  if (input.saturdayPlans === 'unread' || input.children.length === 0) {
+    return { nudge: null, skips: [] };
+  }
+  const saturday = upcomingWeekend(input.now, input.timeZone).find(
+    (slot) => slot.day === 'saturday',
+  );
+  if (!saturday) return { nudge: null, skips: ['no_coming_saturday'] };
+  if (input.saturdayPlans.householdBusy) return { nudge: null, skips: ['saturday_occupied'] };
+
+  const season = seasonOf(input.now, input.timeZone);
+  const teen = new Set(input.teenChildIds);
+  const running = input.candidates.filter(
+    (candidate) =>
+      candidate.source === CIVIC_SOURCE &&
+      candidate.eventDate === saturday.date &&
+      (candidate.childId === null || !teen.has(candidate.childId)) &&
+      inSeason(candidate, season),
+  );
+  if (running.length === 0) return { nudge: null, skips: ['no_running_saturday'] };
+
+  const fitted: Fitted[] = [];
+  let sawBusyOnly = false;
+  for (const candidate of running) {
+    const coverage = coverageOf(input.children, parseAgeRange(candidate.ageRange));
+    if (coverage.length === 0) continue;
+    const free = freeIndexes(input.children, coverage, input.saturdayPlans.busyChildIds);
+    if (free.length === 0) {
+      sawBusyOnly = true;
+      continue;
+    }
+    fitted.push({ candidate, band: parseAgeRange(candidate.ageRange), coverage: free });
+  }
+  if (fitted.length === 0) {
+    return { nudge: null, skips: [sawBusyOnly ? 'saturday_occupied' : 'no_running_saturday'] };
+  }
+
+  const ordered = biasFindOrder(
+    [...fitted].sort(
+      (a, b) =>
+        b.coverage.length - a.coverage.length ||
+        b.candidate.confidence - a.candidate.confidence ||
+        a.candidate.title.localeCompare(b.candidate.title),
+    ),
+    (row) => candidateReviewSubject(row.candidate),
+    input.householdBias,
+  );
+  const pick = ordered[0];
+  if (!pick) return { nudge: null, skips: ['no_running_saturday'] };
+
+  let kidName: string | null = null;
+  for (const index of pick.coverage) {
+    const name = printableWeekdayName(input.children[index]?.name ?? null);
+    if (name !== null) {
+      kidName = name;
+      break;
+    }
+  }
+  if (kidName === null) return { nudge: null, skips: ['saturday_name_unusable'] };
+  const body = renderEmptySaturdayAsk(kidName);
+  if (smsSegments(`${body}\n\n${OPT_OUT_LINE}`) !== 1) {
+    return { nudge: null, skips: ['saturday_name_unusable'] };
+  }
+  return {
+    nudge: {
+      kind: 'empty_saturday',
+      kidName,
+      saturday: saturday.date,
+      candidateId: pick.candidate.id,
+    },
+    skips: [],
+  };
+}
+
 /**
  * THE LADDER, and the two new rungs sit at the bottom of it on purpose.
  *
  * A weather swap only fires when a forecast makes one weekend option clearly better —
- * a genuinely expiring fact. A weekly EarlyON drop-in recurs, so losing a week costs
- * almost nothing, and the weekday find ranks below it. The ASK ranks last of all
- * because it is a cost rather than a payoff: it may only occupy a week Hale would
- * otherwise have been silent in, which this file's own header calls the most common
- * correct outcome.
+ * a genuinely expiring fact. An empty Saturday is the gap that swap does not cover:
+ * no invented weather, one civic session that is actually dated that day, asked
+ * rather than listed. A weekly EarlyON drop-in recurs, so losing a week costs
+ * almost nothing, and the weekday find ranks below it. The weekday ASK ranks last
+ * of all because it is a cost rather than a payoff: it may only occupy a week Hale
+ * would otherwise have been silent in, which this file's own header calls the most
+ * common correct outcome.
  */
 export function decideNudge(input: DecideNudgeInput): NudgeDecision {
   const skips: NudgeSkipCounts = {};
@@ -761,6 +897,10 @@ export function decideNudge(input: DecideNudgeInput): NudgeDecision {
 
   const swap = decideWeatherSwap(input);
   if (swap) return { nudge: swap, skips };
+
+  const saturday = decideEmptySaturday(input);
+  bump(skips, saturday.skips);
+  if (saturday.nudge) return { nudge: saturday.nudge, skips };
 
   const dropIn = decideWeekdayDropIn(input);
   bump(skips, dropIn.skips);

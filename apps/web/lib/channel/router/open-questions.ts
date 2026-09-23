@@ -136,6 +136,14 @@ export type OpenQuestionKind =
    */
   | 'weekday_care'
   /**
+   * "This Saturday looks open for Maya. Want one nearby find that's actually running?"
+   * — the empty-Saturday ask (VIL-365). Listed for the reason `weekday_care` is: the
+   * sentence is a yes/no, and a bare YES must not approve an unrelated draft. Neither
+   * polarity has a writer. A yes falls through to the coach; the held candidate is
+   * not delivered from here.
+   */
+  | 'empty_saturday'
+  /**
    * "How is Little Sprouts going?" — the daycare check-in (VIL-360,
    * channel/followup/question.ts). Listed for the reason `weekday_care` and
    * `evening_check_in` are: its answer is a sentence, not a polarity.
@@ -219,6 +227,9 @@ const GRADE: Record<OpenQuestionKind, QuestionGrade> = {
   // polarity. `ordinary` is the honest choice — the write it stands in front of is a
   // memory fact about this household's own week, disclosed to nobody.
   weekday_care: 'ordinary',
+  // Never reached: neither polarity delivers the held Saturday find. `ordinary` is
+  // the honest choice — a wrong reading could at most cost one reply.
+  empty_saturday: 'ordinary',
   // Never reached either: nothing resolves it. `ordinary` is the honest choice - the
   // answer is a sentence the coach reads, and nothing is written from a polarity.
   daycare_followup: 'ordinary',
@@ -294,6 +305,10 @@ const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   // it are read by a deterministic grammar at a non-claiming gate, which needs no model.
   // It is LISTED so a bare affirmative near it is ambiguous for everything else.
   weekday_care: { yes: false, no: false },
+  // NEITHER POLARITY. The locked sentence is a yes/no, and that is why it is listed:
+  // a bare YES near it must stay ambiguous. There is no writer behind either word.
+  // The candidate that grounded the ask is not delivered from a yes.
+  empty_saturday: { yes: false, no: false },
   // NEITHER POLARITY, the `activity_followup` reading exactly: a check-in is Hale
   // asking how something went, which has no yes that makes it more true and no no with
   // a writer behind it. Listed so a bare affirmative near it is ambiguous - which is
@@ -411,6 +426,9 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   activity_followup_ask: false,
   // The ask prints no keyword at all - it ends in a question mark, not an instruction.
   weekday_care: false,
+  // The ask prints no keyword. Marking it solicited would hand a bare YES to a
+  // question that delivers nothing.
+  empty_saturday: false,
   // The ask prints no keyword; the composer is forbidden a second sentence, let alone
   // an instruction.
   daycare_followup: false,
@@ -434,9 +452,7 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
  * priority order resolved in favour of the expensive outcome. Recency that cannot be
  * established is not recency.
  */
-export function newestSolicitedKind(
-  questions: readonly OpenQuestion[],
-): OpenQuestionKind | null {
+export function newestSolicitedKind(questions: readonly OpenQuestion[]): OpenQuestionKind | null {
   if (questions.length === 0) return null;
   if (questions.some((question) => question.askedAt === null)) return null;
   const byRecency = [...questions].sort(
@@ -478,6 +494,8 @@ const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval' | 'email_alert_add'>,
   // No child name, deliberately: this phrase can end up in a list Hale prints back, and
   // the ask itself is the only place the name belongs (rule #1).
   weekday_care: 'how your weeks are covered',
+  // No child name: this phrase can end up in a list Hale prints back (rule #1).
+  empty_saturday: 'a nearby Saturday find',
   // No provider name and no child name: this phrase can end up in a list Hale prints
   // back, and the ask itself is the only place either belongs (rule #1).
   daycare_followup: 'how daycare is going',
@@ -554,11 +572,7 @@ export interface OpenQuestionSources {
     input: { familyId: string; parentUserId: string },
   ): Promise<boolean>;
   /** The proposal this family may answer right now, or null. */
-  introProposal(
-    database: Database,
-    familyId: string,
-    now: Date,
-  ): Promise<{ id: string } | null>;
+  introProposal(database: Database, familyId: string, now: Date): Promise<{ id: string } | null>;
   /** The live, unexpired plan offer, or null. `askedAt` is the commitment row's own
    * mint time — when the offer sentence went out. */
   planOffer(
@@ -678,6 +692,14 @@ export interface OpenQuestionSources {
     input: { familyId: string; parentUserId: string; now: Date },
   ): Promise<{ id: string; askedAt: Date } | null>;
   /**
+   * The empty-Saturday ask, while it is Hale's last word to this parent and inside
+   * its 48h window — or null (VIL-365, channel/nudge/empty-saturday-question.ts).
+   */
+  emptySaturday(
+    database: Database,
+    input: { familyId: string; parentUserId: string; now: Date },
+  ): Promise<{ id: string; askedAt: Date } | null>;
+  /**
    * The daycare follow-up, while its ask is Hale's last word to this parent and inside
    * its window — or null (VIL-360, channel/followup/question.ts).
    *
@@ -738,33 +760,32 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
         evening,
         activityAsk,
         weekdayCare,
+        emptySaturday,
         daycareFollowup,
         revokeConfirm,
       ] = await Promise.all([
-          sources.pendingApprovals(database, input.familyId),
-          sources.introOptInOpen(database, {
-            familyId: input.familyId,
-            parentUserId: input.parentUserId,
-          }),
-          sources.introProposal(database, input.familyId, input.now),
-          sources.planOffer(database, input.familyId, input.now),
-          sources.checkupOffer(database, input.familyId, input.now),
-          sources.activityPromise(database, input.familyId),
-          sources.founderWelcomeOffer(database, input.familyId, input.now),
-          sources.registrationReadiness(database, input.familyId, input.parentUserId, input.now),
-          sources.coParentAssent(database, input),
-          sources.emailAlertOffers(database, input),
-          sources.eveningCheckIn(database, input),
-          sources.activityFollowupAsk(database, input),
-          sources.weekdayCare(database, input),
-          sources.daycareFollowup(database, input),
-          sources.forwardAddressRevoke(database, input),
-        ]);
+        sources.pendingApprovals(database, input.familyId),
+        sources.introOptInOpen(database, {
+          familyId: input.familyId,
+          parentUserId: input.parentUserId,
+        }),
+        sources.introProposal(database, input.familyId, input.now),
+        sources.planOffer(database, input.familyId, input.now),
+        sources.checkupOffer(database, input.familyId, input.now),
+        sources.activityPromise(database, input.familyId),
+        sources.founderWelcomeOffer(database, input.familyId, input.now),
+        sources.registrationReadiness(database, input.familyId, input.parentUserId, input.now),
+        sources.coParentAssent(database, input),
+        sources.emailAlertOffers(database, input),
+        sources.eveningCheckIn(database, input),
+        sources.activityFollowupAsk(database, input),
+        sources.weekdayCare(database, input),
+        sources.emptySaturday(database, input),
+        sources.daycareFollowup(database, input),
+        sources.forwardAddressRevoke(database, input),
+      ]);
 
-      const questions: OpenQuestion[] = namedApprovals(approvals).slice(
-        0,
-        MAX_LISTED_APPROVALS,
-      );
+      const questions: OpenQuestion[] = namedApprovals(approvals).slice(0, MAX_LISTED_APPROVALS);
 
       if (optIn) {
         questions.push({
@@ -916,6 +937,17 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           answerable: KIND_ANSWERABLE.weekday_care,
           askedAt: weekdayCare.askedAt,
           solicited: SOLICITED.weekday_care,
+        });
+      }
+      if (emptySaturday) {
+        questions.push({
+          id: emptySaturday.id,
+          kind: 'empty_saturday',
+          description: 'Whether to hear one nearby Saturday find',
+          subject: SUBJECT.empty_saturday,
+          answerable: KIND_ANSWERABLE.empty_saturday,
+          askedAt: emptySaturday.askedAt,
+          solicited: SOLICITED.empty_saturday,
         });
       }
       if (daycareFollowup) {

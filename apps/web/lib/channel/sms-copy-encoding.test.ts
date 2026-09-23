@@ -114,6 +114,8 @@ const SMS_COPY_SOURCES = [
   // new pool member with a curly apostrophe in it a failing test rather than a doubled
   // carrier bill on every evening, forever.
   'lib/channel/checkin/copy.ts',
+  // VIL-366. The locked how-it-went sentence. EN only until Design pastes the FR twin.
+  'lib/channel/how-it-went-copy.ts',
   'lib/channel/intake/copy.ts',
   // The one deterministic line the first reply appends under the radar message. Its FR
   // twin is written and unwired, which is exactly the shape this scan exists for: a `ç`
@@ -137,6 +139,8 @@ const SMS_COPY_SOURCES = [
   // path, so a curly apostrophe here would not merely cost a segment - it would double
   // the bill on the one message this feature ever sends a household.
   'lib/channel/nudge/weekday-care-copy.ts',
+  // VIL-365. The locked empty-Saturday ask. The apostrophe is GSM-7 on purpose.
+  'lib/channel/nudge/empty-saturday-copy.ts',
   'lib/health/copy.ts',
   'lib/registration/sequence/copy.ts',
   'lib/party/copy.ts',

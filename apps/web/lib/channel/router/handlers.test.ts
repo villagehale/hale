@@ -553,7 +553,7 @@ describe('recMorningHandler', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, weekday_care, daycare_followup, health, email_alert_add, coach_plan, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', async () => {
+  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -588,6 +588,10 @@ describe('the shipped order', () => {
       // position is free - it claims nothing - and it is listed so the resolver never
       // finds a kind without an owner.
       'weekday_care',
+      // Beside it. Owns the empty-Saturday ask (VIL-365) and claims nothing, so a
+      // bare YES is not a booking. Listed so the resolver never finds a kind
+      // without an owner.
+      'empty_saturday',
       // Its sibling, and the same note applies: it owns the daycare check-in's kind
       // (VIL-360), claims nothing, and is listed only so the resolver never finds a
       // kind without an owner.

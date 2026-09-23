@@ -1,9 +1,11 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
+import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
 import {
   MAX_COMPOSE_ATTEMPTS,
   createFollowupVoice,
   followupVoiceUserMessage,
+  lockedActivityFollowup,
   refusals,
 } from './voice';
 
@@ -91,13 +93,17 @@ describe('refusals', () => {
 
   /** A number inside the title is Hale's own fact, handed to the model, not invented. */
   it('allows a number that is part of the activity name', () => {
-    expect(refusals('How was Gym 2 Grow? No pressure.', { kind: 'activity', activity: 'Gym 2 Grow' })).toEqual([]);
+    expect(
+      refusals('How was Gym 2 Grow? No pressure.', { kind: 'activity', activity: 'Gym 2 Grow' }),
+    ).toEqual([]);
   });
 
   /** The intro ask has no subject to name, so it has no subject gate — but every digit
    * in it is invented, because it was handed no facts at all. */
   it('holds the intro ask to no-subject, no-numbers', () => {
-    expect(refusals('Did you end up connecting with the other family? No pressure.', INTRO)).toEqual([]);
+    expect(
+      refusals('Did you end up connecting with the other family? No pressure.', INTRO),
+    ).toEqual([]);
     expect(refusals('Did the 2 of you connect?', INTRO)).toEqual(['invented_number']);
   });
 
@@ -137,61 +143,84 @@ describe('followupVoiceUserMessage', () => {
     expect(followupVoiceUserMessage({ kind: 'daycare', provider: 'Little Sprouts' })).toBe(
       '{"kind":"daycare","provider":"Little Sprouts"}',
     );
-    expect(followupVoiceUserMessage({ kind: 'daycare', provider: null })).toBe('{"kind":"daycare"}');
+    expect(followupVoiceUserMessage({ kind: 'daycare', provider: null })).toBe(
+      '{"kind":"daycare"}',
+    );
   });
 
   it('carries the refused attempts and their named problems on a recompose', () => {
     expect(
-      followupVoiceUserMessage(INTRO, [{ ask: 'Did you connect? Was it good?', problems: ['not_one_question'] }]),
-    ).toBe('{"kind":"intro","rejected":[{"ask":"Did you connect? Was it good?","problems":["not_one_question"]}]}');
+      followupVoiceUserMessage(INTRO, [
+        { ask: 'Did you connect? Was it good?', problems: ['not_one_question'] },
+      ]),
+    ).toBe(
+      '{"kind":"intro","rejected":[{"ask":"Did you connect? Was it good?","problems":["not_one_question"]}]}',
+    );
   });
 });
 
 describe('createFollowupVoice', () => {
-  it('composes the ask the model wrote', async () => {
-    const voice = createFollowupVoice(clientSaying([GOOD_ACTIVITY]));
+  it('locks an activity ask and does not call the model', async () => {
+    const seen: Captured[] = [];
+    const voice = createFollowupVoice(clientSaying([GOOD_ACTIVITY], seen));
 
-    expect(await voice.compose(ACTIVITY)).toEqual({ status: 'composed', body: GOOD_ACTIVITY });
+    expect(await voice.compose(ACTIVITY)).toEqual({
+      status: 'composed',
+      body: howItWentAsk('Swim class'),
+    });
+    expect(seen).toEqual([]);
   });
 
-  it('sends the model the activity title and nothing about the family', async () => {
-    const seen: Captured[] = [];
-    await createFollowupVoice(clientSaying([GOOD_ACTIVITY], seen)).compose(ACTIVITY);
+  it('still locks the activity ask when the client cannot be built', async () => {
+    const voice = createFollowupVoice(throwingClient);
+    expect(await voice.compose(ACTIVITY)).toEqual({
+      status: 'composed',
+      body: 'How did Swim class go? One line is plenty.',
+    });
+  });
 
-    expect(seen[0]?.messages?.[0]?.content).toBe('{"kind":"activity","activity":"Swim class"}');
+  it('defers an activity title that will not fit, without calling the model', async () => {
+    const seen: Captured[] = [];
+    const restore = quiet();
+    const outcome = await createFollowupVoice(clientSaying([GOOD_ACTIVITY], seen)).compose({
+      kind: 'activity',
+      activity: 'x'.repeat(200),
+    });
+    restore.mockRestore();
+    expect(outcome).toEqual({ status: 'deferred', reason: 'gate_exhausted' });
+    expect(seen).toEqual([]);
+    expect(lockedActivityFollowup('x'.repeat(200)).status).toBe('deferred');
   });
 
   /**
    * The recompose loop, and the half that matters: the second request must CARRY the
    * refusal. A retry that just asks again is a retry that gets the same answer.
+   * Activity asks no longer reach this loop; intro still does.
    */
   it('recomposes with the refusal fed back, and sends the fixed ask', async () => {
     const seen: Captured[] = [];
-    const voice = createFollowupVoice(
-      clientSaying(['How was Swim class? Going again?', GOOD_ACTIVITY], seen),
-    );
+    const fixed = 'Did you end up connecting with the other family?';
+    const voice = createFollowupVoice(clientSaying(['Did you connect? Was it good?', fixed], seen));
     const restore = quiet();
 
-    const outcome = await voice.compose(ACTIVITY);
+    const outcome = await voice.compose(INTRO);
     restore.mockRestore();
 
-    expect(outcome).toEqual({ status: 'composed', body: GOOD_ACTIVITY });
+    expect(outcome).toEqual({ status: 'composed', body: fixed });
     expect(seen).toHaveLength(2);
-    expect(seen[1]?.messages?.[0]?.content).toBe(
-      '{"kind":"activity","activity":"Swim class","rejected":[{"ask":"How was Swim class? Going again?","problems":["not_one_question"]}]}',
-    );
+    expect(seen[1]?.messages?.[0]?.content).toContain('"rejected"');
   });
 
   /**
    * Exhaustion DEFERS. There is no fixed line to fall back on by design, so the sweep
    * leaves its claim unspent and asks again on the next tick — a late real ask beats an
-   * on-time canned one.
+   * on-time canned one. Activity asks are the Design-locked exception.
    */
   it('defers after every attempt is refused, without composing a body', async () => {
     const voice = createFollowupVoice(clientSaying(['How was Swim class? Going again?']));
     const restore = quiet();
 
-    const outcome = await voice.compose(ACTIVITY);
+    const outcome = await voice.compose(INTRO);
     restore.mockRestore();
 
     expect(outcome).toEqual({ status: 'deferred', reason: 'gate_exhausted' });

@@ -2,9 +2,13 @@ import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import type { WeekdayCareFact } from '~/lib/care/weekday';
 import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-decide';
+import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import type { HealthChild } from '~/lib/health/match';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
+import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
+import { renderEmptySaturdayAsk } from './empty-saturday-copy';
 import {
   REGISTRATION_HORIZON_DAYS,
   decideNudge,
@@ -130,6 +134,10 @@ function inputFor(
     // VIL-360 · the weekday legs are off unless a case arms them, so every case
     // below decides between exactly the three classes it was written for.
     weekdayCare: 'disarmed' as const,
+    // Unread: the empty-Saturday leg does not run, so the cases below keep
+    // deciding between the classes they were written for.
+    saturdayPlans: 'unread' as const,
+    householdBias: emptyHouseholdFindBias(),
     now: FRIDAY,
     timeZone: TZ,
     ...overrides,
@@ -1038,5 +1046,178 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
     });
     expect(decision.nudge).toBeNull();
     expect(decision.skips).toEqual({ care_unstated: 1, already_asked: 1 });
+  });
+});
+
+const OPEN_SATURDAY = { householdBusy: false, busyChildIds: new Set<string>() };
+
+describe('decideNudge — an empty Saturday', () => {
+  function civicSaturday(overrides: Partial<RadarCandidate> = {}): RadarCandidate {
+    return candidate({
+      id: 'sat-1',
+      title: 'EarlyON Saturday',
+      venueName: 'Armour Heights',
+      source: 'civic_registry',
+      eventDate: SATURDAY,
+      confidence: 0.5,
+      ...overrides,
+    });
+  }
+
+  it('asks the locked sentence when Saturday is open and one civic session is dated that day', () => {
+    const decision = decideAll({
+      saturdayPlans: OPEN_SATURDAY,
+      children: [child({ id: 'maya' })],
+      candidates: [civicSaturday()],
+    });
+    expect(decision.nudge).toMatchObject({
+      kind: 'empty_saturday',
+      kidName: 'Maya',
+      saturday: SATURDAY,
+      candidateId: 'sat-1',
+    });
+    if (decision.nudge?.kind !== 'empty_saturday') throw new Error('expected empty saturday');
+    const body = renderEmptySaturdayAsk(decision.nudge.kidName);
+    expect(body).toBe(
+      "This Saturday looks open for Maya. Want one nearby find that's actually running?",
+    );
+    expect(body.toLowerCase()).not.toContain('weather');
+    expect(body.toLowerCase()).not.toContain('forecast');
+    expect((body.match(/\?/g) ?? []).length).toBe(1);
+    expect(smsSegments(`${body}\n\n${OPT_OUT_LINE}`)).toBe(1);
+    expect(body).not.toContain('EarlyON');
+  });
+
+  it('lets a weather swap win, and does not invent weather of its own', () => {
+    const nudge = decide({
+      saturdayPlans: OPEN_SATURDAY,
+      weather: [outlook(SATURDAY, WET), outlook(SUNDAY, WET)],
+      candidates: [civicSaturday({ indoorOutdoor: 'indoor' })],
+    });
+    expect(nudge?.kind).toBe('weather_swap');
+  });
+
+  it('has no coming Saturday on Sunday', () => {
+    const decision = decideAll({
+      now: new Date('2026-08-02T15:00:00.000Z'),
+      saturdayPlans: OPEN_SATURDAY,
+      candidates: [civicSaturday()],
+    });
+    expect(decision.nudge).toBeNull();
+    expect(decision.skips.no_coming_saturday).toBe(1);
+  });
+
+  it('stays quiet when the household or that child is already busy', () => {
+    expect(
+      decideAll({
+        saturdayPlans: { householdBusy: true, busyChildIds: new Set<string>() },
+        candidates: [civicSaturday()],
+      }).skips.saturday_occupied,
+    ).toBe(1);
+    expect(
+      decideAll({
+        children: [child({ id: 'maya' })],
+        saturdayPlans: { householdBusy: false, busyChildIds: new Set(['maya']) },
+        candidates: [civicSaturday()],
+      }).skips.saturday_occupied,
+    ).toBe(1);
+  });
+
+  it('does not treat an undated or non-civic row as actually running', () => {
+    const decision = decideAll({
+      saturdayPlans: OPEN_SATURDAY,
+      candidates: [
+        civicSaturday({ source: 'llm', eventDate: SATURDAY }),
+        civicSaturday({ eventDate: null }),
+      ],
+    });
+    expect(decision.nudge).toBeNull();
+    expect(decision.skips.no_running_saturday).toBe(1);
+  });
+
+  it('does not run, and adds no skip, when plans were not loaded', () => {
+    const decision = decideAll({
+      saturdayPlans: 'unread',
+      candidates: [civicSaturday()],
+    });
+    expect(decision.nudge).toBeNull();
+    expect(decision.skips).toEqual({});
+  });
+
+  it('stays silent for a teen-only household', () => {
+    const decision = decideAll({
+      children: [],
+      teenChildIds: ['teen-1'],
+      saturdayPlans: OPEN_SATURDAY,
+      candidates: [civicSaturday({ childId: 'teen-1' })],
+    });
+    expect(decision.nudge).toBeNull();
+    expect(decision.skips.no_running_saturday).toBeUndefined();
+    expect(decision.skips.saturday_occupied).toBeUndefined();
+  });
+
+  it('drops a not_worth_it session when another civic Saturday option exists, and floats worth_it', () => {
+    const dropped = decide({
+      saturdayPlans: OPEN_SATURDAY,
+      householdBias: {
+        prefer: new Set<string>(),
+        avoid: new Set(['civic_venue:branch-a']),
+      },
+      candidates: [
+        civicSaturday({
+          id: 'disliked',
+          title: 'Disliked storytime',
+          confidence: 0.9,
+          civicVenueId: 'branch-a',
+        }),
+        civicSaturday({
+          id: 'other',
+          title: 'Other storytime',
+          confidence: 0.2,
+          civicVenueId: 'branch-b',
+        }),
+      ],
+    });
+    expect(dropped).toMatchObject({ kind: 'empty_saturday', candidateId: 'other' });
+
+    const floated = decide({
+      saturdayPlans: OPEN_SATURDAY,
+      householdBias: {
+        prefer: new Set(['place:places/pool']),
+        avoid: new Set<string>(),
+      },
+      candidates: [
+        civicSaturday({ id: 'plain', title: 'Plain storytime', confidence: 0.9 }),
+        civicSaturday({
+          id: 'loved',
+          title: 'Loved storytime',
+          confidence: 0.1,
+          placeId: 'places/pool',
+        }),
+      ],
+    });
+    expect(floated).toMatchObject({ kind: 'empty_saturday', candidateId: 'loved' });
+  });
+
+  it('refuses a name that is not GSM-7', () => {
+    const decision = decideAll({
+      saturdayPlans: OPEN_SATURDAY,
+      children: [child({ name: 'Zoë' })],
+      candidates: [civicSaturday()],
+    });
+    expect(decision.nudge).toBeNull();
+    expect(decision.skips.saturday_name_unusable).toBe(1);
+  });
+
+  it('names one free sibling and does not treat a teen event as the younger child being busy', () => {
+    const nudge = decide({
+      children: [
+        child({ id: 'maya', name: 'Maya' }),
+        child({ id: 'leo', name: 'Leo', ageMonths: 24 }),
+      ],
+      saturdayPlans: { householdBusy: false, busyChildIds: new Set(['teen-1']) },
+      candidates: [civicSaturday()],
+    });
+    expect(nudge).toMatchObject({ kind: 'empty_saturday', kidName: 'Maya' });
   });
 });

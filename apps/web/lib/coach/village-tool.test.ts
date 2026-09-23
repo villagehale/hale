@@ -23,6 +23,7 @@ function fakeDb(
   candidates: Array<Record<string, unknown>>,
   children: Array<Record<string, unknown>> = [],
   families: Array<Record<string, unknown>> = [],
+  reviews: Array<Record<string, unknown>> = [],
 ) {
   const build = (rows: unknown[]) => {
     const whereResult = Object.assign(Promise.resolve(rows), {
@@ -38,6 +39,7 @@ function fakeDb(
         if (table === schema.children) return build(children);
         if (table === schema.villageCandidates) return build(candidates);
         if (table === schema.families) return build(families);
+        if (table === schema.activityReviews) return build(reviews);
         return build([]);
       },
     }),
@@ -82,9 +84,10 @@ async function search(
   candidates: Array<Record<string, unknown>>,
   children: Array<Record<string, unknown>> = [],
   families: Array<Record<string, unknown>> = [],
+  reviews: Array<Record<string, unknown>> = [],
 ): Promise<VillageToolResult> {
   return (await invokeTool(
-    toolByName(fakeDb(candidates, children, families), 'search_village'),
+    toolByName(fakeDb(candidates, children, families, reviews), 'search_village'),
     {},
     { familyId: FAMILY_ID, actor: 'user-1' },
     guardDeps,
@@ -102,7 +105,11 @@ describe('search_village — recalls only the current, in-season, unexpired run'
 
     const candidates = [
       candidate({ id: 'live', title: 'EarlyON drop-in' }),
-      candidate({ id: 'superseded', title: 'Replaced pick', supersededAt: new Date('2026-07-03T12:00:00Z') }),
+      candidate({
+        id: 'superseded',
+        title: 'Replaced pick',
+        supersededAt: new Date('2026-07-03T12:00:00Z'),
+      }),
       candidate({ id: 'past', title: 'Past workshop', eventDate: '2026-07-03' }),
       candidate({
         id: 'winter',
@@ -349,5 +356,41 @@ describe('the offer ledger beside the offer', () => {
 
     expect(result.inVerification).toBe(1);
     expect(offered).toEqual([]);
+  });
+});
+
+describe('search_village — this household’s own verdict reorders the next find', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('floats worth_it and drops not_worth_it when another option remains', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const result = await search(
+      [
+        candidate({
+          id: 'avoid',
+          title: 'Avoid me',
+          placeId: 'places/no',
+          venueName: 'North pool',
+          confidence: 0.9,
+        }),
+        candidate({
+          id: 'prefer',
+          title: 'Prefer me',
+          placeId: 'places/yes',
+          venueName: 'South pool',
+          confidence: 0.2,
+        }),
+      ],
+      [],
+      [],
+      [
+        { subjectSource: 'place', subjectRef: 'places/no', verdict: 'not_worth_it' },
+        { subjectSource: 'place', subjectRef: 'places/yes', verdict: 'worth_it' },
+      ],
+    );
+    expect(result.candidates.map((row) => row.title)).toEqual(['Prefer me']);
   });
 });

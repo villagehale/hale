@@ -3514,6 +3514,7 @@ describe('the weekday-care answer', () => {
       eveningCheckIn: async () => null,
       activityFollowupAsk: async () => null,
       weekdayCare: async () => null,
+      emptySaturday: async () => null,
       daycareFollowup: async () => null,
       ...overrides,
     };
@@ -3782,6 +3783,7 @@ describe('a bare yes while the daycare check-in is standing', () => {
       eveningCheckIn: async () => null,
       activityFollowupAsk: async () => null,
       weekdayCare: async () => null,
+      emptySaturday: async () => null,
       daycareFollowup: async () => null,
       ...overrides,
     });

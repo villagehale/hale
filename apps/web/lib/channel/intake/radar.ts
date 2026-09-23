@@ -314,6 +314,10 @@ export async function readCandidates(
       sourceUrl: schema.villageCandidates.sourceUrl,
       access: schema.villageCandidates.access,
       whenLabel: schema.villageCandidates.whenLabel,
+      // VIL-366 · the subject a household verdict is about. Title matching is
+      // forbidden; without these columns the next find cannot see a review.
+      placeId: schema.villageCandidates.placeId,
+      civicVenueId: schema.villageCandidates.civicVenueId,
     })
     .from(schema.villageCandidates)
     .where(

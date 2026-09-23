@@ -48,9 +48,11 @@ import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider
 import { weekWindow } from '~/lib/plan/spine';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
+import { type HouseholdFindBias, readHouseholdFindBias } from '~/lib/reviews/household-bias';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import { type Nudge, type NudgeDecision, type NudgeSkipCounts, decideNudge } from './nudge-decide';
 import { composeNudgeMessage } from './nudge-voice';
+import { type SaturdayPlans, loadSaturdayPlans } from './saturday-plans';
 import { proactiveNudgeTemplateKey } from './shell';
 
 /**
@@ -190,6 +192,22 @@ export interface NudgeRunDeps {
    * withholding this.
    */
   loadWeekdayCareContext(database: Database, familyId: string): Promise<WeekdayCareContext>;
+  /**
+   * Occupancy of the coming Saturday (VIL-365). REQUIRED (rule #11): withholding it
+   * would look like an open Saturday. `'unread'` is only for a caller that is
+   * explicitly not deciding this leg.
+   */
+  loadSaturdayPlans(
+    database: Database,
+    familyId: string,
+    now: Date,
+    timeZone: string,
+  ): Promise<SaturdayPlans>;
+  /**
+   * This household's own activity verdicts (VIL-366). REQUIRED: an absent read
+   * would rank the next find as if the parent had never answered.
+   */
+  loadHouseholdBias(database: Database, familyId: string): Promise<HouseholdFindBias>;
   /** A factory, not an instance: the gate's ports close over the db handle the sweep
    * is given, so a caller cannot accidentally gate one database against another. */
   buildGate(database: Database): OutboundGatePorts;
@@ -348,6 +366,10 @@ export function dedupeKeyFor(
       // Per prompt kind, with no week in it. The parser's own module mints the key
       // because the answer path reads the scope back out of this string.
       return weekdayFinderDedupeKey(familyId, nudge.ask, parentUserId);
+    case 'empty_saturday':
+      // Once per Saturday per parent. The candidate is not in the key: the ask is
+      // about the day, and a second civic row the same morning must not re-text.
+      return `nudge:${familyId}:empty_saturday:${nudge.saturday}:${parentUserId}`;
     default:
       return assertNever(nudge);
   }
@@ -360,7 +382,8 @@ function assertNever(value: never): never {
   throw new Error(`nudge: unhandled kind ${JSON.stringify(value)}`);
 }
 
-/** A find the parent can act on. Not a care question, not a health checkpoint. */
+/** A find the parent can act on. Not a care question, not a health checkpoint,
+ * and not the empty-Saturday ask — that one must not grow the call-name second text. */
 function isFindNudge(kind: Nudge['kind']): boolean {
   return kind === 'registration' || kind === 'weather_swap' || kind === 'weekday_dropin';
 }
@@ -402,6 +425,7 @@ function splitByStage(rows: readonly NudgeChildRow[], now: Date) {
       continue;
     }
     children.push({
+      id: row.id,
       name: row.name,
       ageMonths: ageInMonths(row.dateOfBirth, now),
       dobPrecision: row.dobPrecision,
@@ -430,20 +454,30 @@ async function decideForFamily(
   // reports nothing (see WeekdayCareInput: silent counters mean the flag, zeroed ones
   // would mean the legs ran).
   const weekdayArmed = weekdayCareEnabled();
-  const [candidates, windowRows, weather, suppressedCheckpointRefs, claimedWindowIds, weekdayCare] =
-    await Promise.all([
-      weekendPossible ? deps.loadCandidates(database, family.familyId) : Promise.resolve([]),
-      area && weekendPossible ? deps.loadWindows(database, area) : Promise.resolve([]),
-      // Weather is an input, never a blocker: the port swallows its own failures.
-      area && weekendPossible
-        ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
-        : Promise.resolve([]),
-      deps.loadSuppressedCheckpoints(database, family.familyId),
-      deps.loadClaimedWindowIds(database, family.familyId),
-      weekdayArmed
-        ? deps.loadWeekdayCareContext(database, family.familyId)
-        : Promise.resolve('disarmed' as const),
-    ]);
+  const [
+    candidates,
+    windowRows,
+    weather,
+    suppressedCheckpointRefs,
+    claimedWindowIds,
+    weekdayCare,
+    saturdayPlans,
+    householdBias,
+  ] = await Promise.all([
+    weekendPossible ? deps.loadCandidates(database, family.familyId) : Promise.resolve([]),
+    area && weekendPossible ? deps.loadWindows(database, area) : Promise.resolve([]),
+    // Weather is an input, never a blocker: the port swallows its own failures.
+    area && weekendPossible
+      ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
+      : Promise.resolve([]),
+    deps.loadSuppressedCheckpoints(database, family.familyId),
+    deps.loadClaimedWindowIds(database, family.familyId),
+    weekdayArmed
+      ? deps.loadWeekdayCareContext(database, family.familyId)
+      : Promise.resolve('disarmed' as const),
+    deps.loadSaturdayPlans(database, family.familyId, now, family.timeZone),
+    deps.loadHouseholdBias(database, family.familyId),
+  ]);
 
   const windows = area
     ? matchRegistrationWindows({
@@ -467,6 +501,8 @@ async function decideForFamily(
     suppressedCheckpointRefs,
     claimedWindowIds,
     weekdayCare,
+    saturdayPlans,
+    householdBias,
     now,
     timeZone: family.timeZone,
   });
@@ -835,6 +871,8 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     loadClaimedWindowIds: (database, familyId) => loadClaimedWindowIds(database, familyId),
     loadRecipients: (database, familyId) => loadFamilyTextRecipients(database, familyId),
     loadWeekdayCareContext,
+    loadSaturdayPlans,
+    loadHouseholdBias: readHouseholdFindBias,
     weather: createOpenMeteoWeather(),
     buildGate: buildOutboundGatePorts,
     dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),
