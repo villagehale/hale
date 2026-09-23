@@ -435,9 +435,9 @@
     "annualNote": "facturé à l’année — environ trois mois gratuits",
     "footnote": "Hale est gratuit pour commencer. Plus et Famille s’ouvrent à mesure que leurs intégrations arrivent.",
     "tierLines": {
-      "free": "Textez Hale, dates d’inscription surveillées, réponses, et le tarif fondateur.",
-      "plus": "Pour quand vous voulez davantage de l’année en vue : rappels et brouillons, pour chaque enfant, à mesure que ces parties se déploient.",
-      "family": "Pour le foyer : la même surveillance pour chaque enfant, plus la conciergerie et le soutien prioritaire à mesure de leur déploiement."
+      "free": "Trouvez ce qu’il y a et ouvrez l’année. Les matins que vous surveillez déjà restent gratuits.",
+      "plus": "Des rappels quand un week-end est vide ou qu’une liste d’attente s’ouvre — plus la mémoire de l’année, à mesure qu’elle arrive.",
+      "family": "Un plan pour le foyer. Le coparent reste dedans."
     },
     "tierNames": {
       "free": "Gratuit",
