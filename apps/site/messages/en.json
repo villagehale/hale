@@ -435,9 +435,9 @@
     "annualNote": "billed yearly — about three months free",
     "footnote": "Hale is free to start. Plus and Family open as their integrations ship.",
     "tierLines": {
-      "free": "Text Hale, rec dates watched, answers, and the founding rate.",
-      "plus": "For when you want more of the year in view: reminders and drafts, every child, as those parts roll out.",
-      "family": "For the household: the same watch for every child, plus concierge and priority support as they roll out."
+      "free": "Find what’s on and open the year. Watching mornings you’ve already set stays free.",
+      "plus": "Nudges when a weekend’s empty or a waitlist opens — plus year memory as it ships.",
+      "family": "One plan for the household. Co-parent stays in."
     },
     "tierNames": {
       "free": "Free",

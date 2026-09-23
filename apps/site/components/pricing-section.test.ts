@@ -51,6 +51,12 @@ describe('PricingSection (landing pricing)', () => {
     expect(french).toContain('Rappels et brouillons, à mesure qu’ils arrivent');
     expect(french).toContain('La vue du foyer sur l’année, à mesure qu’elle arrive');
     expect(french).toContain('Conciergerie et soutien prioritaire');
+    // TODO(VIL-367): FR card one-liners stay the previous translations until Design
+    // locks the twins. Do not replace these with a translation of the English bytes.
+    expect(french).toContain(
+      'Textez Hale, dates d’inscription surveillées, réponses, et le tarif fondateur.',
+    );
+    expect(french).not.toContain('Find what’s on and open the year.');
     // Free-tier bullets stay the French marketing list.
     expect(french).toContain('Textez Hale');
     expect(french).toContain('Dates d’inscription surveillées');
@@ -109,8 +115,24 @@ describe('PricingSection (landing pricing)', () => {
     expect(argument).not.toContain('village');
   });
 
-  it('sells the free tier as SMS, not Village or Companion', () => {
-    expect(html).toContain('Text Hale, rec dates watched, answers, and the founding rate.');
+  it('states the locked year-attention one-liners, not Village or Companion', () => {
+    // VIL-367, Sloane + Miles 2026-09-23. Exact bytes — the cards must not paraphrase.
+    const locked = {
+      free: 'Find what’s on and open the year. Watching mornings you’ve already set stays free.',
+      plus: 'Nudges when a weekend’s empty or a waitlist opens — plus year memory as it ships.',
+      family: 'One plan for the household. Co-parent stays in.',
+    } as const;
+    expect(en.PricingSection.tierLines).toEqual(locked);
+    for (const line of Object.values(locked)) {
+      expect(html).toContain(line);
+    }
+    // Paid is year-attention packaging. It does not meter finds, sell a watch YES,
+    // pull travel forward, or open a live checkout.
+    const joined = Object.values(locked).join('\n');
+    expect(joined).not.toMatch(/\d+\s+finds?\b/i);
+    expect(joined.toLowerCase()).not.toContain('reply yes');
+    expect(joined.toLowerCase()).not.toContain('travel');
+    expect(html).not.toContain('Subscribe');
     expect(html).not.toContain('see what families near you recommend');
     expect(html).not.toContain('Your village feed');
     expect(html).not.toContain('Companion:');
