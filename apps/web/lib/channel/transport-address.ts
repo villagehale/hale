@@ -13,8 +13,11 @@
  */
 
 /** The pipe a message rides. The ledger's channel_message_channel enum carries the
- * same two values (plus email/push/voice, which are not phone transports). */
-export type MessageTransport = 'sms' | 'whatsapp';
+ * same values (plus email/push/voice, which are not phone transports). `imessage` is
+ * the Linq blue-bubble pipe (VIL-335): the address is still a bare E.164, resolved
+ * by the same blind index, and the chat id travels beside the message rather than
+ * inside the address. */
+export type MessageTransport = 'sms' | 'whatsapp' | 'imessage';
 
 /** Twilio's WhatsApp address form, on both `From` and `To`. */
 export const WHATSAPP_ADDRESS_PREFIX = 'whatsapp:';

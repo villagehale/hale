@@ -135,6 +135,7 @@ export async function loadInboundContext(
       familyId: schema.channelMessages.familyId,
       channel: schema.channelMessages.channel,
       providerMessageId: schema.channelMessages.providerMessageId,
+      providerChatId: schema.channelMessages.providerChatId,
     })
     .from(schema.channelMessages)
     .where(eq(schema.channelMessages.id, job.channel_message_id))
@@ -149,7 +150,13 @@ export async function loadInboundContext(
   const [role, primaryParentName, reply] = await Promise.all([
     memberRole(database, job.family_id, job.parent_user_id),
     primaryParentDisplayName(database, job.family_id),
-    resolveReplyRoute(database, job.parent_user_id, message.channel, message.providerMessageId),
+    resolveReplyRoute(
+      database,
+      job.parent_user_id,
+      message.channel,
+      message.providerMessageId,
+      message.providerChatId,
+    ),
   ]);
 
   return { body: message.body, role, primaryParentName, reply };
@@ -170,6 +177,7 @@ async function resolveReplyRoute(
   parentUserId: string,
   channel: typeof schema.channelMessages.$inferSelect.channel,
   providerMessageId: string | null,
+  providerChatId: string | null,
 ): Promise<ReplyRoute | null> {
   switch (channel) {
     // Both phone pipes resolve through the SAME live consent check: whatsapp:+1416…
@@ -181,6 +189,15 @@ async function resolveReplyRoute(
     case 'whatsapp': {
       const phoneE164 = await resolveSendablePhone(database, parentUserId);
       return phoneE164 ? { channel, to: phoneE164 } : null;
+    }
+    // iMessage is the same person (the handle is the enrolled E.164) and a different
+    // pipe. No chat id means there is nowhere to send the blue bubble, so the route
+    // is null and the router says unreachable rather than answering on SMS.
+    case 'imessage': {
+      const phoneE164 = await resolveSendablePhone(database, parentUserId);
+      return phoneE164 && providerChatId
+        ? { channel: 'imessage', to: phoneE164, chatId: providerChatId }
+        : null;
     }
     case 'email': {
       const address = await resolveSendableEmail(database, parentUserId);

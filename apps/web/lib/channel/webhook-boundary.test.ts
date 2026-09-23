@@ -26,6 +26,7 @@ const WEBHOOK_DOORS: ReadonlyArray<{ file: string; route: string }> = [
   { file: 'app/api/channels/twilio/voice/route.ts', route: 'twilio_voice' },
   { file: 'app/api/channels/twilio/status/route.ts', route: 'twilio_status' },
   { file: 'app/api/channels/email/inbound/route.ts', route: 'email_inbound' },
+  { file: 'app/api/channels/linq/inbound/route.ts', route: 'linq_inbound' },
 ];
 
 describe('inbound webhook doors sit inside the failure boundary', () => {

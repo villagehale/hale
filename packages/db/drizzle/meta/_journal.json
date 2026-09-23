@@ -890,6 +890,13 @@
       "when": 1781469623000,
       "tag": "0129_registration_district_discovery",
       "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1781469624000,
+      "tag": "0130_imessage_linq_channel",
+      "breakpoints": true
     }
   ]
 }

@@ -133,7 +133,7 @@ describe('what the sweep may select', () => {
     family: { familyId: string; parentUserId: string },
     providerMessageId: string,
     over: {
-      channel?: 'sms' | 'whatsapp' | 'email';
+      channel?: 'sms' | 'whatsapp' | 'imessage' | 'email';
       category?: 'reply' | 'intake' | 'caregiver';
     } = {},
   ) {
@@ -157,13 +157,14 @@ describe('what the sweep may select', () => {
     return row.id;
   }
 
-  it('selects the reply rows on all three doors, and nothing another consumer owns', async () => {
+  it('selects the reply rows on every C1 door, and nothing another consumer owns', async () => {
     const family = await seedFamily(db.database);
 
     const texted = await seedInbound(family, 'SM_owed');
     // A WhatsApp reply is owed the SAME hand-off: the webhook records it with its real
     // pipe (WhatsApp v1), and a sweep pinned to 'sms' would strand it forever.
     const whatsapped = await seedInbound(family, 'WA_owed', { channel: 'whatsapp' });
+    const imessaged = await seedInbound(family, 'IM_owed', { channel: 'imessage' });
     const emailed = await seedInbound(family, 'EM_owed', { channel: 'email' });
     await seedInbound(family, 'SM_intake', { category: 'intake' });
     await seedInbound(family, 'SM_caregiver', { category: 'caregiver' });
@@ -171,7 +172,7 @@ describe('what the sweep may select', () => {
     const rows = await selectUnhandedInbound(db.database, NOW);
 
     expect(new Set(rows.map((r) => r.id))).toEqual(
-      new Set([texted, whatsapped, emailed]),
+      new Set([texted, whatsapped, imessaged, emailed]),
     );
   });
 

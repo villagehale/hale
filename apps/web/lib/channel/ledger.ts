@@ -30,8 +30,12 @@ import type { ChannelKind, LoopCategory } from './types';
  * WhatsApp rides the SAME receipt loop: its sends name the same StatusCallback and
  * Twilio's `read` maps to delivered (twilio/status.ts), so its rows are born 'queued'
  * like every SMS row.
+ *
+ * iMessage (Linq, VIL-335) is terminal on accept. The partner API's 2xx is the
+ * acceptance we have; delivery webhooks are not wired on this leg, and a row that
+ * could never leave 'queued' would be a permanent lie.
  */
-export function acceptedStatus(channel: ChannelKind): AcceptedStatus {
+export function acceptedStatus(channel: ChannelKind | 'imessage'): AcceptedStatus {
   return channel === 'sms' || channel === 'whatsapp' ? 'queued' : 'sent';
 }
 

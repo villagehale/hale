@@ -1,17 +1,17 @@
 import { type Database, schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
-import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
-import { normalizePhoneE164 } from '~/lib/channels/phone';
-import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import { isCanaryInbound } from '~/lib/channel/canary/config';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { type IntakeKeyword, matchKeyword } from '~/lib/channel/intake/keywords';
 import { type IntakeDeps, type KeywordAck, handleInboundSms } from '~/lib/channel/intake/machine';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { type MessageTransport, parseTransportAddress } from '~/lib/channel/transport-address';
 import { isParentRole } from '~/lib/channel/role-scope';
+import { type MessageTransport, parseTransportAddress } from '~/lib/channel/transport-address';
+import { normalizePhoneE164 } from '~/lib/channels/phone';
+import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import { twilioConfig } from './config';
 import { mediaUnsupportedReply } from './copy';
 import { isValidTwilioSignature, parseTwilioParams, twilioWebhookUrl } from './signature';
@@ -61,9 +61,10 @@ export interface TwilioInboundDeps {
    * Twilio transport; a forged request must never cause either, so nothing is built
    * until the signature has passed. Told which pipe the message arrived on so the
    * reply transport can ride it back (WhatsApp within its session, SMS otherwise —
-   * reply-transport.ts).
+   * reply-transport.ts). An iMessage turn also passes the Linq chat id, because the
+   * within-request reply (STOP, the media line) has to return to that chat.
    */
-  intake: (inboundTransport: MessageTransport) => IntakeDeps;
+  intake: (inboundTransport: MessageTransport, linq?: { chatId: string }) => IntakeDeps;
   enqueue: (job: ChannelMessageReceivedJob) => Promise<void>;
   /** Required, not optional: the one thing that must never happen quietly here is a
    * text Hale accepted and never queued (rule #11). `info` carries the one routed-
@@ -115,6 +116,10 @@ export type TwilioInboundOutcome =
   | 'keyword_ack_refused'
   /** No live channel to route to (never enrolled, or unsubscribed). */
   | 'ignored'
+  /** Linq only: a delivered, read, or failed receipt was applied to the ledger
+   * (or logged when no row carries that provider id). Counted on its own so a
+   * receipt is not an ignored text. SMS never produces this. */
+  | 'receipt'
   /** A verified channel, but not a parent's — never handed to a household agent. */
   | 'not_a_parent';
 
@@ -173,7 +178,10 @@ export async function routeTwilioInbound(
   inbound: InboundMessage,
   media: number,
 ): Promise<TwilioInboundOutcome> {
-  const intake = deps.intake(inbound.transport ?? 'sms');
+  const intake = deps.intake(
+    inbound.transport ?? 'sms',
+    inbound.chatId ? { chatId: inbound.chatId } : undefined,
+  );
 
   // Media is answered here, but never before the CASL keywords: see the module note.
   if (media > 0 && !matchKeyword(inbound.body)) {
@@ -264,6 +272,9 @@ async function replyMediaUnsupported(
   // household member, their ledger must show it (rule #6). A stranger's MMS stays
   // unrecorded by structural necessity, not omission — channel_messages.family_id is
   // NOT NULL, so there is no row it could occupy before a family exists.
+  // iMessage records the pipe it actually used. WhatsApp's media line still rides
+  // SMS (the reply transport's media rule) and keeps the historical 'sms' row.
+  const ledgerChannel = inbound.transport === 'imessage' ? 'imessage' : 'sms';
   const owner = await resolveVerifiedChannelByPhone(database, phoneE164);
   if (owner) {
     const now = intake.now ?? inbound.receivedAt;
@@ -272,11 +283,11 @@ async function replyMediaUnsupported(
       .values({
         familyId: owner.familyId,
         parentUserId: owner.userId,
-        channel: 'sms',
+        channel: ledgerChannel,
         direction: 'out',
         category: 'reply',
         providerMessageId,
-        status: acceptedStatus('sms'),
+        status: acceptedStatus(ledgerChannel),
         body: null,
         // A fixed line that answered instead of the coach — the same vocabulary the
         // router's deflection replies persist (migration 0103).
@@ -369,6 +380,7 @@ async function handOffToConversation(
       direction: 'in',
       category: 'reply',
       providerMessageId: inbound.providerId,
+      providerChatId: inbound.chatId ?? null,
       status: 'delivered',
       // Inbound bodies ARE stored: this is the parent's own instruction, and C3 treats
       // it as the legal instrument of an approval (the locked A2 contract).

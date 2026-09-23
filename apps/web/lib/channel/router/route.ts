@@ -17,6 +17,7 @@ import {
   identityChallengeReply,
 } from '~/lib/channel/intake/identity-challenge';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { LINQ_TYPING_REFRESH_MS, signalImessageTyping } from '~/lib/channel/linq/presence';
 import type { OffDomainLane, ReplySource } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -129,6 +130,9 @@ const PARENT_ROLES: ReadonlySet<string> = new Set(['primary_parent', 'co_parent'
 const REPLY_SENT_ACTION: Record<ReplySent['channel'], string> = {
   sms: 'sms_reply_sent',
   whatsapp: 'sms_reply_sent',
+  // Same phone verb as WhatsApp: both pipes answer the same verified number, and
+  // the ledger row beside the audit row records which pipe carried it.
+  imessage: 'sms_reply_sent',
   email: 'email_reply_sent',
 };
 
@@ -666,14 +670,35 @@ export async function routeChannelMessage(
     return openQuestions;
   };
 
+  // The typing refresh lives for the think section only. A deterministic handler
+  // sends before it starts, so those replies do not pay for a stop call.
+  // Cleared before a send so a tick cannot put the bubble back up between
+  // "stop" and the message, and cleared in the finally so a turn that sends
+  // nothing does not leave it up.
+  let typingLive = false;
+  let typingTimer: ReturnType<typeof setInterval> | null = null;
+  const stopTyping = async () => {
+    if (typingTimer) {
+      clearInterval(typingTimer);
+      typingTimer = null;
+    }
+    if (!typingLive) return;
+    typingLive = false;
+    await signalImessageTyping(route, 'stop', deps.log);
+  };
+
   const turn: HandlerContext = {
     familyId: job.family_id,
     parentUserId: job.parent_user_id,
     conversationId,
     body: context.body,
     // A handler that answers for itself sends on the SAME route this turn resolved, and
-    // has no way to reach any other one.
-    send: (body: string) => deps.transport.send({ route, body }),
+    // has no way to reach any other one. stopTyping is a no-op until the think
+    // section has started the bubble.
+    send: async (body: string) => {
+      await stopTyping();
+      return deps.transport.send({ route, body });
+    },
     now,
     resolved: null,
     openQuestions: readOpenQuestions,
@@ -702,6 +727,7 @@ export async function routeChannelMessage(
       medicalSource,
       replySource,
       templateKey,
+      beforeSend: stopTyping,
     });
 
   // GATE 2a — DID HALE JUST ASK THIS PARENT TO PICK? (VIL-304, disambiguation.ts.)
@@ -881,64 +907,81 @@ export async function routeChannelMessage(
     }
   }
 
-  // A yes to the finder ask, after the flood check so the limiter is counted once.
-  // A grounded pick claims the turn. No pick, or a pick that cannot be sent, is a
-  // named abstain and the coach may still answer — Hale does not invent a venue.
-  if (weekdaySearch) {
-    const delivery = await deps.searchWeekdays({
-      familyId: turn.familyId,
-      parentUserId: turn.parentUserId,
-      now: turn.now,
-      prompt: weekdaySearch.prompt,
-      eventKey: weekdaySearch.eventKey,
+  // Typing starts here, not at the top of the turn: the deterministic handlers
+  // above answer in a breath, and a bubble on those would be a stall. Search,
+  // the off-domain screen, and the coach are the waits a person would show.
+  if (route.channel === 'imessage') {
+    typingLive = true;
+    await signalImessageTyping(route, 'start', deps.log);
+    typingTimer = setInterval(() => {
+      if (!typingLive) return;
+      void signalImessageTyping(route, 'start', deps.log);
+    }, LINQ_TYPING_REFRESH_MS);
+  }
+  try {
+    // A yes to the finder ask, after the flood check so the limiter is counted once.
+    // A grounded pick claims the turn. No pick, or a pick that cannot be sent, is a
+    // named abstain and the coach may still answer — Hale does not invent a venue.
+    if (weekdaySearch) {
+      const delivery = await deps.searchWeekdays({
+        familyId: turn.familyId,
+        parentUserId: turn.parentUserId,
+        now: turn.now,
+        prompt: weekdaySearch.prompt,
+        eventKey: weekdaySearch.eventKey,
+      });
+      if (delivery.status === 'deliver') {
+        await answer(delivery.body, null, null, 'weekday_search');
+        return done(deps, job, {
+          status: 'handled',
+          handler: 'weekday_search',
+          conversationId,
+          lane: null,
+        });
+      }
+      deps.log.warn(
+        { familyId: turn.familyId, reason: delivery.reason },
+        'channel router: weekday search abstained',
+      );
+    }
+
+    // GATE 4 — the family's week, or the world. The screen reads the LEDGER body (the same
+    // words the handlers just declined), stamps its verdict on that same row, and either
+    // answers it briefly or hands over one of the two fixed doors — so an off-domain turn
+    // costs two Haiku calls and no coach turn at all. An in-domain verdict, including
+    // every fail-open one, falls through untouched.
+    const verdict = await deps.offDomain.consider({
+      familyId: job.family_id,
+      channelMessageId: job.channel_message_id,
+      text: context.body,
     });
-    if (delivery.status === 'deliver') {
-      await answer(delivery.body, null, null, 'weekday_search');
+    if (verdict.status === 'deflected') {
+      await answer(verdict.reply, verdict.medicalSource, verdict.replySource);
       return done(deps, job, {
-        status: 'handled',
-        handler: 'weekday_search',
+        status: 'deflected',
+        handler: null,
         conversationId,
-        lane: null,
+        lane: verdict.lane,
       });
     }
-    deps.log.warn(
-      { familyId: turn.familyId, reason: delivery.reason },
-      'channel router: weekday search abstained',
-    );
-  }
 
-  // GATE 4 — the family's week, or the world. The screen reads the LEDGER body (the same
-  // words the handlers just declined), stamps its verdict on that same row, and either
-  // answers it briefly or hands over one of the two fixed doors — so an off-domain turn
-  // costs two Haiku calls and no coach turn at all. An in-domain verdict, including
-  // every fail-open one, falls through untouched.
-  const verdict = await deps.offDomain.consider({
-    familyId: job.family_id,
-    channelMessageId: job.channel_message_id,
-    text: context.body,
-  });
-  if (verdict.status === 'deflected') {
-    await answer(verdict.reply, verdict.medicalSource, verdict.replySource);
-    return done(deps, job, {
-      status: 'deflected',
-      handler: null,
+    // await, not a bare return: a returned promise would run this finally before
+    // the coach finished, and the bubble would drop at the start of the think.
+    return await runAgentTurn(deps, {
+      job,
+      turn,
+      answer,
+      hasAnswered: () => answered,
       conversationId,
-      lane: verdict.lane,
+      // Every coach turn is told what Hale is waiting on; an UNPLACED answer additionally
+      // gets the canned choice sentence as its fallback, because that turn is the one where
+      // silence-plus-an-apology would read as Hale ignoring a decision the parent made.
+      questions: natural.questions,
+      unplacedAnswer: natural.status === 'unplaced' ? natural.answer : null,
     });
+  } finally {
+    await stopTyping();
   }
-
-  return runAgentTurn(deps, {
-    job,
-    turn,
-    answer,
-    hasAnswered: () => answered,
-    conversationId,
-    // Every coach turn is told what Hale is waiting on; an UNPLACED answer additionally
-    // gets the canned choice sentence as its fallback, because that turn is the one where
-    // silence-plus-an-apology would read as Hale ignoring a decision the parent made.
-    questions: natural.questions,
-    unplacedAnswer: natural.status === 'unplaced' ? natural.answer : null,
-  });
 }
 
 /**
@@ -1842,8 +1885,12 @@ async function sendReply(
     /** The lane's own name for this receipt, or null for a reply nothing reads back
      * (see {@link HandlerVerdict.templateKey}). */
     templateKey?: string | null;
+    /** Runs before the transport call. The iMessage think-section uses it to
+     * stop the typing bubble before the reply goes out. */
+    beforeSend?: () => Promise<void> | void;
   },
 ): Promise<string> {
+  if (args.beforeSend) await args.beforeSend();
   const sent = await deps.transport.send({ route: args.route, body: args.body });
   if (args.claim) await args.claim();
 

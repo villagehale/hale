@@ -30,6 +30,14 @@ export type ReplyRoute =
    */
   | { channel: 'whatsapp'; to: string }
   /**
+   * A message that arrived as an iMessage through Linq (VIL-335). `to` is the SAME
+   * verified E.164 an SMS route carries — the sender handle and the enrolled number
+   * are one person — and `chatId` is the Linq chat the reply must return to. The
+   * transport sends into that chat; it does not open a second one, and it does not
+   * fall through to SMS.
+   */
+  | { channel: 'imessage'; to: string; chatId: string }
+  /**
    * `inReplyTo` is the inbound email's own Message-ID, carried so the answer lands
    * INSIDE the parent's thread. Nullable because a ledger row is not required to hold a
    * provider id — an answer with no reference is still an answer, it simply starts a new
