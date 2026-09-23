@@ -130,7 +130,9 @@ function groupIntoEvents(rows: readonly RecRow[]): CycleEvent[] {
     const key = `${row.cycleLabel}|${row.residentOpenAt ?? ''}|${row.openAt}`;
     const event = events.get(key);
     if (event) {
-      event.domains.push(row.programDomain);
+      // Two districts can share a morning. That is one program said twice,
+      // not "swim and swim".
+      if (!event.domains.includes(row.programDomain)) event.domains.push(row.programDomain);
       continue;
     }
     events.set(key, {
@@ -171,11 +173,13 @@ function openedAtOf(event: CycleEvent): Date {
  * They are one cycle said twice, not two programs, so the nouns stay off: adding
  * "rec and swim" there would change the sentence a parent already gets.
  */
-function labelNeedsNouns(event: CycleEvent, townEvents: readonly CycleEvent[]): boolean {
-  const nouns = joinNouns(event.domains);
-  return townEvents.some(
-    (other) => other !== event && other.cycleLabel === event.cycleLabel && joinNouns(other.domains) !== nouns,
+function labelNeedsNouns(cycleLabel: string, townEvents: readonly CycleEvent[]): boolean {
+  const keys = new Set(
+    townEvents
+      .filter((event) => event.cycleLabel === cycleLabel)
+      .map((event) => event.domains.join('|')),
   );
+  return keys.size > 1;
 }
 
 function upcomingLine(
@@ -192,7 +196,9 @@ function upcomingLine(
       : residentGone
         ? `residents opened ${pastPhrase(resident)}, non-residents ${upcomingPhrase(event.openAt)}`
         : `residents ${upcomingPhrase(resident)}, non-residents ${upcomingPhrase(event.openAt)}`;
-  const nouns = labelNeedsNouns(event, townEvents) ? `${joinNouns(event.domains)} ` : '';
+  const nouns = labelNeedsNouns(event.cycleLabel, townEvents)
+    ? `${joinNouns(event.domains)} `
+    : '';
   const line = endSentence(
     `${townLabel(city)} ${asciiCopy(event.cycleLabel)} ${nouns}registration: ${halves}`,
   );
@@ -238,16 +244,6 @@ function betweenCyclesLine(
 }
 
 /**
- * This town's rec-morning answer as of `now`, or null when the dataset holds no
- * window for it (Milton, today) and there is nothing true to say.
- *
- * `domain` is the program the parent named, where they named one: Brampton runs
- * aquatics sixteen days behind general rec, so a rec ask and a swim ask are two
- * different mornings. A domain the town has no row in answers about the whole town
- * rather than falling silent — the dataset has nothing for that program, not nothing
- * for that town, and those are different claims.
- */
-/**
  * A postal code that resolves to a district of THIS city narrows the rows to that
  * morning. A postal code for a different town is ignored — the parent named this
  * city, and dropping its mornings because their FSA is somewhere else would
@@ -258,7 +254,7 @@ function rowsForAsk(
   city: RecHelloCity,
   rows: readonly RecRow[],
   postal: string | null,
-): RecRow[] {
+): readonly RecRow[] {
   if (postal === null || postal.trim() === '') return rows;
   const fsa = postal.replace(/\s+/g, '').toUpperCase().slice(0, 3);
   if (!/^[A-Z]\d[A-Z]$/.test(fsa)) return rows;
@@ -268,6 +264,19 @@ function rowsForAsk(
   return preferDistrictRows(rows, district);
 }
 
+/**
+ * This town's rec-morning answer as of `now`, or null when the dataset holds no
+ * window for it (Milton, today) and there is nothing true to say.
+ *
+ * `domain` is the program the parent named, where they named one: Brampton runs
+ * aquatics sixteen days behind general rec, so a rec ask and a swim ask are two
+ * different mornings. A domain the town has no row in answers about the whole town
+ * rather than falling silent — the dataset has nothing for that program, not nothing
+ * for that town, and those are different claims.
+ *
+ * `postal`, when it resolves to a district of this city, names that district's
+ * morning. Absent, the soonest morning is the one the line names.
+ */
 export function cityRecLine(
   city: RecHelloCity,
   now: Date,
