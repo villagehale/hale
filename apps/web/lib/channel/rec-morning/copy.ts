@@ -7,7 +7,7 @@ import {
   YMCA_PORTAL,
 } from './facts';
 import type { RecMorningTopic, RecMorningWhere } from './match';
-import { matchRecMorning } from './match';
+import { matchRecMorning, postalMentioned } from './match';
 
 /**
  * VIL-308 first-hello voice — design-locked, GSM-7, verbatim. A model does not write
@@ -45,9 +45,12 @@ const JACK_OF_SPORTS = `Jack of Sports is a swim backup if the city or YMCA lane
  * The topic a parent asked about, answered as of `now`. A city topic reads the
  * dataset; everything else is a reviewed constant that no calendar can age.
  */
-export const REC_MORNING_COPY: Record<RecMorningTopic, (now: Date) => string | null> = {
-  toronto_swim: (now) => cityRecLine('toronto', now, 'swim'),
-  toronto_rec: (now) => cityRecLine('toronto', now, 'rec_program'),
+type RecMorningLine = (now: Date, where?: RecMorningWhere | null) => string | null;
+
+export const REC_MORNING_COPY: Record<RecMorningTopic, RecMorningLine> = {
+  toronto_swim: (now, where) => cityRecLine('toronto', now, 'swim', undefined, where?.postal ?? null),
+  toronto_rec: (now, where) =>
+    cityRecLine('toronto', now, 'rec_program', undefined, where?.postal ?? null),
   toronto_waitlist: () => TORONTO_FOLLOW,
   toronto_wishlist: () => TORONTO_FOLLOW,
   toronto_efun: () => EFUN_GONE,
@@ -78,8 +81,12 @@ export const REC_MORNING_COPY: Record<RecMorningTopic, (now: Date) => string | n
   jack_of_sports: () => JACK_OF_SPORTS,
 };
 
-export function recMorningBody(topic: RecMorningTopic, now: Date = new Date()): string | null {
-  return REC_MORNING_COPY[topic](now);
+export function recMorningBody(
+  topic: RecMorningTopic,
+  now: Date = new Date(),
+  where?: RecMorningWhere | null,
+): string | null {
+  return REC_MORNING_COPY[topic](now, where);
 }
 
 /**
@@ -94,7 +101,11 @@ export function recMorningReply(
 ): string | null {
   const topic = matchRecMorning(body, where);
   if (topic === null) return null;
-  return recMorningBody(topic, now);
+  // A postal in the ask is the family's district even when nothing is on file yet.
+  // cityRecLine already ignores one that belongs to a different town.
+  const postal = where?.postal ?? postalMentioned(body);
+  const asked = postal === (where?.postal ?? null) ? (where ?? null) : { ...where, postal };
+  return recMorningBody(topic, now, asked);
 }
 
 export function recMorningReturnLine(pendingAsk: string): string {

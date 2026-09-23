@@ -9,8 +9,9 @@ import {
 /**
  * The registration radar's seed sync (VIL-236 · M1). Turns the hand-verified date
  * list into `registration_windows` rows, keyed on the natural
- * (municipality, program_domain, cycle_label) so a re-run corrects a moved date in
- * place instead of duplicating the cycle.
+ * (municipality, program_domain, cycle_label, district) so a re-run corrects a
+ * moved date in place instead of duplicating the cycle. A null district is the
+ * city-wide row.
  *
  * The row build is a pure function so the whole thing is testable without a database:
  * `toRegistrationWindowRow` is where a malformed seed entry dies (loudly — rule #8),
@@ -61,6 +62,7 @@ export function toRegistrationWindowRow(seed: RegistrationWindowSeed): NewRegist
     municipality: seed.municipality,
     programDomain: seed.programDomain,
     cycleLabel: seed.cycleLabel,
+    district: seed.district ?? null,
     previewAt,
     residentOpenAt,
     openAt,
@@ -83,13 +85,17 @@ export function toRegistrationWindowRow(seed: RegistrationWindowSeed): NewRegist
  * there by hand, and this file has no standing to call any of its fields unverified.
  */
 export function inferredFieldsFor(
-  row: Pick<RegistrationWindowSeed, 'municipality' | 'programDomain' | 'cycleLabel'>,
+  row: Pick<RegistrationWindowSeed, 'municipality' | 'programDomain' | 'cycleLabel'> & {
+    district?: string | null;
+  },
 ): readonly RegistrationWindowDateField[] {
+  const district = row.district ?? null;
   const seed = REGISTRATION_WINDOWS.find(
     (entry) =>
       entry.municipality === row.municipality &&
       entry.programDomain === row.programDomain &&
-      entry.cycleLabel === row.cycleLabel,
+      entry.cycleLabel === row.cycleLabel &&
+      (entry.district ?? null) === district,
   );
   return seed?.inferredFields ?? [];
 }
@@ -112,6 +118,7 @@ export async function syncRegistrationWindows(
         schema.registrationWindows.municipality,
         schema.registrationWindows.programDomain,
         schema.registrationWindows.cycleLabel,
+        schema.registrationWindows.district,
       ],
       set: {
         previewAt: sqlExcluded('preview_at'),

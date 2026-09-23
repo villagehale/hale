@@ -1,6 +1,11 @@
 import type { Municipality } from '@hale/db';
 import { describe, expect, it } from 'vitest';
-import { FSA_MUNICIPALITIES, fsasForMunicipality, municipalitiesForFsa } from './fsa-municipalities';
+import {
+  FSA_MUNICIPALITIES,
+  districtForFsa,
+  fsasForMunicipality,
+  municipalitiesForFsa,
+} from './fsa-municipalities';
 import { REGISTRATION_WINDOWS } from './registration-windows-data';
 
 /**
@@ -73,6 +78,38 @@ describe('municipalitiesForFsa', () => {
   it('keeps L7A in Brampton - its neighbour Mayfield West is the Caledon side', () => {
     expect(municipalitiesForFsa('L7A')).toEqual(['brampton']);
     expect(municipalitiesForFsa('L7C')).toEqual(['caledon']);
+  });
+});
+
+describe('districtForFsa', () => {
+  it('resolves the Fall 2026 mornings by neighbourhood, not by the second letter', () => {
+    expect(districtForFsa('M2N')).toBe('north_york');
+    expect(districtForFsa('M1B')).toBe('scarborough');
+    expect(districtForFsa('M8V')).toBe('etobicoke_york');
+    expect(districtForFsa('M5V')).toBe('toronto_east_york');
+    // Exceptions to the second-letter guess: North York islands in M4/M5/M6/M9,
+    // and York sitting with Etobicoke.
+    expect(districtForFsa('M4A')).toBe('north_york');
+    expect(districtForFsa('M5M')).toBe('north_york');
+    expect(districtForFsa('M6A')).toBe('north_york');
+    expect(districtForFsa('M6B')).toBe('north_york');
+    expect(districtForFsa('M6L')).toBe('north_york');
+    expect(districtForFsa('M9L')).toBe('north_york');
+    expect(districtForFsa('M9M')).toBe('north_york');
+    expect(districtForFsa('M6C')).toBe('etobicoke_york');
+    expect(districtForFsa('M9N')).toBe('etobicoke_york');
+    expect(districtForFsa('M4B')).toBe('toronto_east_york');
+    // Not a Toronto neighbourhood, a facility, or an unassigned code.
+    expect(districtForFsa('L3R')).toBeNull();
+    expect(districtForFsa('M7R')).toBeNull();
+    expect(districtForFsa('M1A')).toBeNull();
+  });
+
+  it('only names a district for an FSA the municipality rule already calls Toronto', () => {
+    for (const fsa of ['M2N', 'M1B', 'M8V', 'M5V', 'M4A', 'M6A', 'M9L', 'M9N', 'M4B', 'M6S']) {
+      expect(municipalitiesForFsa(fsa), fsa).toEqual(['toronto']);
+      expect(districtForFsa(fsa), fsa).not.toBeNull();
+    }
   });
 });
 

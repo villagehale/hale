@@ -120,6 +120,11 @@ function namedHelloCity(text: string): RecHelloCity | null {
   return null;
 }
 
+/** An FSA written in the ask itself, lowercased as the rest of this matcher folds text. */
+export function postalMentioned(body: string): string | null {
+  return fold(body).match(POSTAL_IN_TEXT)?.[1] ?? null;
+}
+
 function helloCityFromPostal(postal: string): RecHelloCity | null {
   const fsa = postal.replace(/\s+/g, '').toUpperCase().slice(0, 3);
   if (!/^[A-Z]\d[A-Z]$/.test(fsa)) return null;

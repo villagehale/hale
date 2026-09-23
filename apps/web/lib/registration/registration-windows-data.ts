@@ -1,4 +1,5 @@
 import type { Municipality, ProgramDomain } from '@hale/db';
+import type { TorontoDistrict } from './fsa-municipalities';
 
 /**
  * VIL-236 · M1 — the hand-VERIFIED GTA registration-window dataset. Every row was read
@@ -52,6 +53,11 @@ export interface RegistrationWindowSeed {
   municipality: Municipality;
   programDomain: ProgramDomain;
   cycleLabel: string;
+  /**
+   * Which part of the municipality this morning is for. Absent (city-wide) is
+   * every row except Toronto's seasonal cycle, which opens on two mornings.
+   */
+  district?: TorontoDistrict | null;
   /** ISO instant with an explicit offset, or null when no preview is published. */
   previewAt: string | null;
   residentOpenAt: string | null;
@@ -189,30 +195,74 @@ const TORONTO_AFTER_SCHOOL = {
 const TORONTO_NON_RESIDENT_RULE =
   'Toronto prints only the resident date; non-residents "can register for a recreation activity 10 days after registration starts for that activity" (plus a $54.90 per-activity surcharge), so the general open is rule-derived, not printed. Waitlist: "You\'ll have up to 36 hours to accept or decline the spot."';
 
+const TORONTO_FALL_2026_QUOTE =
+  'Release of August 24, 2026: "Wednesday, September 9 at 7 a.m. – Early local registration opens to eligible residents for all free centres"; "Tuesday, September 15 at 7 a.m. – Etobicoke and Toronto East York registration"; "Wednesday, September 16 at 7 a.m. – North York and Scarborough registration"; "Week of Saturday, September 26 – Most fall programming begins". Listings were browsable from the release date (the preview). Early local registration (free centres only, September 9) is a proximity rule, not a residency one, so it is not residentOpenAt.';
+
 /**
- * Toronto's Fall 2026 seasonal cycle — the one the discovery leg was waiting on. The city
- * registers by district on two mornings; the row carries the FIRST general morning
- * (Etobicoke and Toronto East York) and names the second in `notes`, because a
- * municipality row has one date and Toronto is one municipality here. Early local
- * registration (free centres only, September 9) is a proximity rule, not a residency one,
- * so it is not `residentOpenAt`; the resident/non-resident split follows the city-wide
- * ten-day rule exactly as the after-school rows do. Swim registers inside this cycle.
+ * Toronto's Fall 2026 seasonal cycle, one row per community-council area. The
+ * release opens Etobicoke and Toronto East York on Tuesday Sept 15 and North York
+ * and Scarborough on Wednesday Sept 16. A single city-wide morning told a North
+ * York family the Etobicoke time (VIL-360). The non-resident date is ten days
+ * after THAT area's resident morning, the same city-wide rule the after-school
+ * rows use. Swim registers inside these mornings, not on its own.
  */
-const TORONTO_FALL_2026 = {
-  municipality: 'toronto',
-  cycleLabel: 'Fall 2026',
-  previewAt: '2026-08-24T00:00:00-04:00',
-  residentOpenAt: '2026-09-15T07:00:00-04:00',
-  openAt: '2026-09-25T07:00:00-04:00',
-  residentPriorityDays: 10,
-  waitlistResponseHours: 36,
-  ageMinMonths: null,
-  ageMaxMonths: null,
-  sourceUrl: TORONTO_FALL_2026_RELEASE,
-  verifiedAt: '2026-09-17T00:00:00-04:00',
-  notes: `Release of August 24, 2026: "Wednesday, September 9 at 7 a.m. – Early local registration opens to eligible residents for all free centres"; "Tuesday, September 15 at 7 a.m. – Etobicoke and Toronto East York registration"; "Wednesday, September 16 at 7 a.m. – North York and Scarborough registration"; "Week of Saturday, September 26 – Most fall programming begins". Listings were browsable from the release date (the preview). North York and Scarborough families opened one day after the date recorded here. ${TORONTO_NON_RESIDENT_RULE}`,
-  publishedWeekdays: { residentOpenAt: 'Tuesday' },
-} as const satisfies Omit<RegistrationWindowSeed, 'programDomain'>;
+const TORONTO_FALL_MORNINGS: readonly {
+  district: TorontoDistrict;
+  residentOpenAt: string;
+  openAt: string;
+  weekday: 'Tuesday' | 'Wednesday';
+  morning: string;
+}[] = [
+  {
+    district: 'etobicoke_york',
+    residentOpenAt: '2026-09-15T07:00:00-04:00',
+    openAt: '2026-09-25T07:00:00-04:00',
+    weekday: 'Tuesday',
+    morning: 'Etobicoke',
+  },
+  {
+    district: 'toronto_east_york',
+    residentOpenAt: '2026-09-15T07:00:00-04:00',
+    openAt: '2026-09-25T07:00:00-04:00',
+    weekday: 'Tuesday',
+    morning: 'Toronto and East York',
+  },
+  {
+    district: 'north_york',
+    residentOpenAt: '2026-09-16T07:00:00-04:00',
+    openAt: '2026-09-26T07:00:00-04:00',
+    weekday: 'Wednesday',
+    morning: 'North York',
+  },
+  {
+    district: 'scarborough',
+    residentOpenAt: '2026-09-16T07:00:00-04:00',
+    openAt: '2026-09-26T07:00:00-04:00',
+    weekday: 'Wednesday',
+    morning: 'Scarborough',
+  },
+];
+
+function torontoFallSeed(
+  morning: (typeof TORONTO_FALL_MORNINGS)[number],
+): Omit<RegistrationWindowSeed, 'programDomain'> {
+  return {
+    municipality: 'toronto',
+    district: morning.district,
+    cycleLabel: 'Fall 2026',
+    previewAt: '2026-08-24T00:00:00-04:00',
+    residentOpenAt: morning.residentOpenAt,
+    openAt: morning.openAt,
+    residentPriorityDays: 10,
+    waitlistResponseHours: 36,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: TORONTO_FALL_2026_RELEASE,
+    verifiedAt: '2026-09-17T00:00:00-04:00',
+    notes: `${TORONTO_FALL_2026_QUOTE} This row is the ${morning.morning} morning. ${TORONTO_NON_RESIDENT_RULE}`,
+    publishedWeekdays: { residentOpenAt: morning.weekday },
+  };
+}
 
 /**
  * Markham runs ONE combined cycle covering fall programs, swim lessons and winter-break
@@ -418,10 +468,15 @@ const BURLINGTON_TABLE_NOTE =
 
 export const REGISTRATION_WINDOWS: readonly RegistrationWindowSeed[] = [
   // ── Toronto ──────────────────────────────────────────────────────────────────
-  // The Fall 2026 seasonal dates were published on August 24, 2026 (TORONTO_FALL_2026);
-  // Toronto registers swim inside that cycle, never separately, so swim shares the row.
-  { ...TORONTO_FALL_2026, programDomain: 'rec_program' },
-  { ...TORONTO_FALL_2026, programDomain: 'swim' },
+  // Fall 2026 was published August 24, 2026. Four district mornings per domain;
+  // swim registers inside the same mornings, never on its own date.
+  ...TORONTO_FALL_MORNINGS.flatMap((morning) => {
+    const seed = torontoFallSeed(morning);
+    return [
+      { ...seed, programDomain: 'rec_program' as const },
+      { ...seed, programDomain: 'swim' as const },
+    ];
+  }),
   {
     ...TORONTO_AFTER_SCHOOL,
     cycleLabel: 'After-School Recreation Care (ARC) 2026/2027 school year',

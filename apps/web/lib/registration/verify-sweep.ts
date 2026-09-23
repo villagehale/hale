@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import type { AgentClient } from '@hale/agent';
 import { type Database, type Municipality, type ProgramDomain, schema } from '@hale/db';
-import { and, asc, eq, gte, lt } from 'drizzle-orm';
+import { and, asc, eq, gte, lt, lte } from 'drizzle-orm';
 import type { Resend } from 'resend';
 import { founderAddress } from '~/lib/auth/founder-signal';
 import { createResendTransport } from '~/lib/channel/resend-transport';
@@ -212,7 +213,93 @@ export interface DiscoveryResult {
   /** True only for a corroborated, confident find — the bar a suggestion must clear. */
   published: boolean;
   reading: ExtractedWindow | null;
+  /** The URL the published reading came from. Null when no page cleared the bar. */
+  sourceUrl: string | null;
   detail?: string;
+  /**
+   * A prior `published` reading of this same target is at least
+   * {@link DISCOVERY_ESCALATE_AFTER_MS} old, and the target is still on the
+   * list — the gap did not close.
+   */
+  escalated: boolean;
+}
+
+/** How long a published discovery may sit unseeded before the digest escalates. */
+export const DISCOVERY_ESCALATE_AFTER_MS = 7 * 24 * 3_600_000;
+
+/** sha256 of the page text a discovery reading was taken from. */
+export function discoveryPageHash(pageText: string): string {
+  return createHash('sha256').update(pageText).digest('hex');
+}
+
+/** One persisted discovery reading. `readAt` is the sweep's clock. */
+export interface DiscoveryReadingInsert {
+  municipality: Municipality;
+  programDomain: ProgramDomain;
+  cycleLabel: string;
+  sourceUrl: string;
+  published: boolean;
+  reading: ExtractedWindow | null;
+  pageHash: string | null;
+  readAt: Date;
+}
+
+/** A published reading old enough to escalate, reduced to the identity the
+ * digest matches on. */
+export interface PriorPublishedDiscovery {
+  municipality: string;
+  programDomain: string;
+  cycleLabel: string;
+  readAt: Date;
+}
+
+/**
+ * Append this run's discovery readings. Empty is a no-op, not a silent skip of
+ * a configured writer — there was nothing to record.
+ */
+export async function recordDiscoveryReadings(
+  database: Database,
+  readings: readonly DiscoveryReadingInsert[],
+): Promise<void> {
+  if (readings.length === 0) return;
+  await database.insert(schema.registrationDiscoveryReadings).values(
+    readings.map((reading) => ({
+      municipality: reading.municipality,
+      programDomain: reading.programDomain,
+      cycleLabel: reading.cycleLabel,
+      sourceUrl: reading.sourceUrl,
+      published: reading.published,
+      reading: reading.reading as Record<string, unknown> | null,
+      pageHash: reading.pageHash,
+      readAt: reading.readAt,
+    })),
+  );
+}
+
+/**
+ * Published readings at least 7 days old. The escalation is a comparison
+ * against these, not a flag on the row: a target that is still on the list
+ * this Monday is still open.
+ */
+export async function loadPriorPublishedDiscoveries(
+  database: Database,
+  now: Date,
+): Promise<PriorPublishedDiscovery[]> {
+  const cutoff = new Date(now.getTime() - DISCOVERY_ESCALATE_AFTER_MS);
+  return database
+    .select({
+      municipality: schema.registrationDiscoveryReadings.municipality,
+      programDomain: schema.registrationDiscoveryReadings.programDomain,
+      cycleLabel: schema.registrationDiscoveryReadings.cycleLabel,
+      readAt: schema.registrationDiscoveryReadings.readAt,
+    })
+    .from(schema.registrationDiscoveryReadings)
+    .where(
+      and(
+        eq(schema.registrationDiscoveryReadings.published, true),
+        lte(schema.registrationDiscoveryReadings.readAt, cutoff),
+      ),
+    );
 }
 
 export interface RegistrationVerifySummary {
@@ -247,6 +334,7 @@ export async function loadUpcomingWindows(
       municipality: schema.registrationWindows.municipality,
       programDomain: schema.registrationWindows.programDomain,
       cycleLabel: schema.registrationWindows.cycleLabel,
+      district: schema.registrationWindows.district,
       previewAt: schema.registrationWindows.previewAt,
       residentOpenAt: schema.registrationWindows.residentOpenAt,
       openAt: schema.registrationWindows.openAt,
@@ -433,27 +521,17 @@ export function formatRegistrationVerifyDigest(
   }
 
   const found = summary.discoveries.filter((d) => d.published);
+  appendDiscoveries(
+    lines,
+    'ESCALATION — published 7 days ago and still not in the dataset',
+    found.filter((d) => d.escalated),
+  );
+  appendDiscoveries(
+    lines,
+    'new window published — add?',
+    found.filter((d) => !d.escalated),
+  );
   if (found.length > 0) {
-    lines.push('', 'new window published — add?');
-    for (const discovery of found) {
-      lines.push(`  ${discovery.target.municipality} · ${discovery.target.programDomain} · ${discovery.target.cycleLabel}`);
-      const reading = discovery.reading;
-      if (reading) {
-        for (const [label, value] of [
-          ['preview', reading.preview],
-          ['resident open', reading.residentOpen],
-          ['general open', reading.generalOpen],
-        ] as const) {
-          if (value) {
-            lines.push(`    ${label}: ${value.date}${value.time ? ` ${value.time}` : ' (no time published)'}`);
-          }
-        }
-        if (reading.evidence) {
-          lines.push(`    the page's words: "${reading.evidence}"`);
-        }
-      }
-      lines.push(`    ${discovery.target.sourceUrl}`);
-    }
     lines.push(
       '',
       '  Nothing was added. The dataset stays hand-verified — read the page, then',
@@ -462,6 +540,32 @@ export function formatRegistrationVerifyDigest(
   }
 
   return lines.join('\n');
+}
+
+function appendDiscoveries(lines: string[], heading: string, discoveries: readonly DiscoveryResult[]): void {
+  if (discoveries.length === 0) return;
+  lines.push('', heading);
+  for (const discovery of discoveries) {
+    lines.push(
+      `  ${discovery.target.municipality} · ${discovery.target.programDomain} · ${discovery.target.cycleLabel}`,
+    );
+    const reading = discovery.reading;
+    if (reading) {
+      for (const [label, value] of [
+        ['preview', reading.preview],
+        ['resident open', reading.residentOpen],
+        ['general open', reading.generalOpen],
+      ] as const) {
+        if (value) {
+          lines.push(`    ${label}: ${value.date}${value.time ? ` ${value.time}` : ' (no time published)'}`);
+        }
+      }
+      if (reading.evidence) {
+        lines.push(`    the page's words: "${reading.evidence}"`);
+      }
+    }
+    if (discovery.sourceUrl) lines.push(`    ${discovery.sourceUrl}`);
+  }
 }
 
 const DEFAULT_FROM = 'Hale <aloha@villagehale.com>';
@@ -502,6 +606,13 @@ export interface RegistrationVerifyDeps {
    * nowhere is exactly the state this ledger exists to end, so its absence is a failed
    * write that says so, never a missing dependency. */
   recordRun: RecordVerifyRun;
+  /** Writes each discovery reading. Non-nullable (rule #11): a sweep that found
+   * a date and kept it only in an email is the gap this table exists to close. */
+  recordDiscoveries: (database: Database, readings: readonly DiscoveryReadingInsert[]) => Promise<void>;
+  /** Published readings old enough to escalate. A failure here is logged by the
+   * caller and treated as no history — an escalation that did not happen,
+   * named, rather than a sweep that aborts. */
+  loadDiscoveryHistory: (database: Database, now: Date) => Promise<PriorPublishedDiscovery[]>;
   sender: ProviderAlertSender;
   preflight: typeof providerPreflight;
   discoveryTargets: readonly DiscoveryTarget[];
@@ -521,6 +632,8 @@ export function defaultRegistrationVerifyDeps(
     markVerified: markWindowVerified,
     claimWeek: claimVerifySweepWeek,
     recordRun: recordVerifyRun,
+    recordDiscoveries: recordDiscoveryReadings,
+    loadDiscoveryHistory: loadPriorPublishedDiscoveries,
     sender: createRegistrationDigestSender(),
     preflight: providerPreflight,
     discoveryTargets: DISCOVERY_TARGETS,
@@ -595,26 +708,104 @@ async function verifyRow(
   };
 }
 
+interface DiscoveryPass {
+  result: DiscoveryResult;
+  readings: DiscoveryReadingInsert[];
+}
+
+/**
+ * Read every URL on the target. A find on any of them publishes the target;
+ * each URL still gets its own reading, including the page that said nothing,
+ * so a later look can tell which page had the date.
+ */
 async function discoverTarget(
   target: DiscoveryTarget,
   getPage: (url: string) => Promise<string>,
   deps: RegistrationVerifyDeps,
-): Promise<DiscoveryResult> {
-  let pageText: string;
-  try {
-    pageText = await getPage(target.sourceUrl);
-  } catch (err) {
-    console.error({ err, url: target.sourceUrl }, 'registration verify: discovery fetch failed');
-    return { target, published: false, reading: null, detail: errorText(err) };
+  now: Date,
+): Promise<DiscoveryPass> {
+  const readings: DiscoveryReadingInsert[] = [];
+  let publishedReading: ExtractedWindow | null = null;
+  let publishedUrl: string | null = null;
+  let detail: string | undefined;
+
+  for (const url of target.sourceUrls) {
+    let pageText: string;
+    try {
+      pageText = await getPage(url);
+    } catch (err) {
+      console.error({ err, url }, 'registration verify: discovery fetch failed');
+      detail = errorText(err);
+      readings.push({
+        municipality: target.municipality,
+        programDomain: target.programDomain,
+        cycleLabel: target.cycleLabel,
+        sourceUrl: url,
+        published: false,
+        reading: null,
+        pageHash: null,
+        readAt: now,
+      });
+      continue;
+    }
+
+    const pageHash = discoveryPageHash(pageText);
+    try {
+      const reading = await deps.extract(target, pageText);
+      const published = isTrustworthyFind(pageText, reading);
+      readings.push({
+        municipality: target.municipality,
+        programDomain: target.programDomain,
+        cycleLabel: target.cycleLabel,
+        sourceUrl: url,
+        published,
+        reading,
+        pageHash,
+        readAt: now,
+      });
+      if (published && publishedReading === null) {
+        publishedReading = reading;
+        publishedUrl = url;
+      }
+    } catch (err) {
+      console.error({ err, url }, 'registration verify: discovery extract failed');
+      detail = errorText(err);
+      readings.push({
+        municipality: target.municipality,
+        programDomain: target.programDomain,
+        cycleLabel: target.cycleLabel,
+        sourceUrl: url,
+        published: false,
+        reading: null,
+        pageHash,
+        readAt: now,
+      });
+    }
   }
 
-  try {
-    const reading = await deps.extract(target, pageText);
-    return { target, published: isTrustworthyFind(pageText, reading), reading };
-  } catch (err) {
-    console.error({ err, url: target.sourceUrl }, 'registration verify: discovery extract failed');
-    return { target, published: false, reading: null, detail: errorText(err) };
-  }
+  return {
+    result: {
+      target,
+      published: publishedReading !== null,
+      reading: publishedReading,
+      sourceUrl: publishedUrl,
+      detail,
+      escalated: false,
+    },
+    readings,
+  };
+}
+
+function targetWasPublishedEarlier(
+  target: DiscoveryTarget,
+  history: readonly PriorPublishedDiscovery[],
+): boolean {
+  return history.some(
+    (row) =>
+      row.municipality === target.municipality &&
+      row.programDomain === target.programDomain &&
+      row.cycleLabel === target.cycleLabel,
+  );
 }
 
 /**
@@ -676,9 +867,28 @@ export async function runRegistrationVerifySweep(
     }
   }
 
+  let history: PriorPublishedDiscovery[] = [];
+  try {
+    history = await deps.loadDiscoveryHistory(database, now);
+  } catch (err) {
+    // Named, not swallowed: this run can still record what it saw, and it will
+    // not escalate on history it failed to read.
+    console.error({ err }, 'registration verify: discovery history unavailable');
+  }
+
   const discoveries: DiscoveryResult[] = [];
+  const readings: DiscoveryReadingInsert[] = [];
   for (const target of deps.discoveryTargets) {
-    discoveries.push(await discoverTarget(target, getPage, deps));
+    const pass = await discoverTarget(target, getPage, deps, now);
+    pass.result.escalated = pass.result.published && targetWasPublishedEarlier(target, history);
+    discoveries.push(pass.result);
+    readings.push(...pass.readings);
+  }
+
+  try {
+    await deps.recordDiscoveries(database, readings);
+  } catch (err) {
+    console.error({ err }, 'registration verify: discovery readings not recorded');
   }
 
   const summary: RegistrationVerifySummary = {
@@ -711,7 +921,9 @@ export async function runRegistrationVerifySweep(
     const subject =
       summary.discrepancies > 0
         ? `Hale · registration re-verify: ${summary.discrepancies} discrepancies`
-        : 'Hale · registration re-verify: needs a look';
+        : discoveries.some((d) => d.escalated)
+          ? 'Hale · registration re-verify: discovery still open after 7 days'
+          : 'Hale · registration re-verify: needs a look';
     try {
       const delivered = await deps.sender.send(
         subject,

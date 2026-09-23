@@ -34,12 +34,18 @@ import { toRegistrationWindowRow } from './registration-windows.js';
  * corroborated on a different cycle by markham-course.html (2026-02-24 / 2026-02-25).
  */
 
-function seed(municipality: string, programDomain: string, cycleLabel: string) {
+function seed(
+  municipality: string,
+  programDomain: string,
+  cycleLabel: string,
+  district?: string | null,
+) {
   const found = REGISTRATION_WINDOWS.find(
     (s) =>
       s.municipality === municipality &&
       s.programDomain === programDomain &&
-      s.cycleLabel === cycleLabel,
+      s.cycleLabel === cycleLabel &&
+      (district === undefined || (s.district ?? null) === district),
   );
   if (!found) throw new Error(`no seed row for ${municipality}/${programDomain}/${cycleLabel}`);
   return found;
@@ -102,7 +108,10 @@ describe('golden — Toronto After-School Recreation Care 2026/2027', () => {
     const seasonal = REGISTRATION_WINDOWS.filter(
       (s) => s.municipality === 'toronto' && s.programDomain !== 'after_school_care',
     ).map((s) => `${s.programDomain}/${s.cycleLabel}`);
-    expect(seasonal.sort()).toEqual(['rec_program/Fall 2026', 'swim/Fall 2026']);
+    // Four community-council mornings, rec and swim on each. The cycle labels stay
+    // Fall 2026 — a Winter 2027 row here would be an unpublished date.
+    expect([...new Set(seasonal)].sort()).toEqual(['rec_program/Fall 2026', 'swim/Fall 2026']);
+    expect(seasonal).toHaveLength(8);
   });
 });
 
@@ -228,6 +237,21 @@ describe('golden — Toronto Fall 2026 seasonal registration', () => {
     const swim = toRegistrationWindowRow(seed('toronto', 'swim', 'Fall 2026'));
     expect(swim.residentOpenAt).toEqual(row.residentOpenAt);
     expect(swim.openAt).toEqual(row.openAt);
+  });
+
+  it('opens North York and Scarborough the next morning, East York with Etobicoke', () => {
+    const at = (district: string) =>
+      toRegistrationWindowRow(seed('toronto', 'rec_program', 'Fall 2026', district));
+    expect(at('etobicoke_york').residentOpenAt).toEqual(new Date('2026-09-15T11:00:00.000Z'));
+    expect(at('etobicoke_york').openAt).toEqual(new Date('2026-09-25T11:00:00.000Z'));
+    expect(at('toronto_east_york').residentOpenAt).toEqual(at('etobicoke_york').residentOpenAt);
+    expect(at('north_york').residentOpenAt).toEqual(new Date('2026-09-16T11:00:00.000Z'));
+    expect(at('north_york').openAt).toEqual(new Date('2026-09-26T11:00:00.000Z'));
+    expect(at('scarborough').residentOpenAt).toEqual(at('north_york').residentOpenAt);
+    expect(at('scarborough').openAt).toEqual(at('north_york').openAt);
+    const swim = toRegistrationWindowRow(seed('toronto', 'swim', 'Fall 2026', 'north_york'));
+    expect(swim.residentOpenAt).toEqual(at('north_york').residentOpenAt);
+    expect(swim.district).toBe('north_york');
   });
 });
 

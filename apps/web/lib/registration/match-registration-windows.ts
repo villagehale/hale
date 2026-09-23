@@ -1,5 +1,5 @@
 import type { Municipality, RegistrationWindow } from '@hale/db';
-import { municipalitiesForFsa } from './fsa-municipalities.js';
+import { districtForFsa, municipalitiesForFsa, type TorontoDistrict } from './fsa-municipalities.js';
 
 /**
  * The registration radar's matcher (VIL-236 · M1): given where a family lives and how
@@ -59,6 +59,53 @@ export function resolveMunicipalities(postal: string): Municipality[] {
   const fsa = postal.replace(/\s+/g, '').toUpperCase().slice(0, 3);
   if (!/^[A-Z]\d[A-Z]$/.test(fsa)) return [];
   return [...municipalitiesForFsa(fsa)];
+}
+
+/** The Toronto registration district this postal code belongs to, or null when
+ * the FSA is not one of the neighbourhood codes in fsa-municipalities.ts. */
+export function resolveDistrict(postal: string): TorontoDistrict | null {
+  const fsa = postal.replace(/\s+/g, '').toUpperCase().slice(0, 3);
+  if (!/^[A-Z]\d[A-Z]$/.test(fsa)) return null;
+  return districtForFsa(fsa);
+}
+
+/**
+ * Keep the district morning when one exists for this family, and the city-wide
+ * row otherwise (VIL-360).
+ *
+ * A cycle that has a row for `district` drops its other districts AND its
+ * city-wide row — two mornings for one cycle is how a North York family was
+ * handed the Etobicoke time. A cycle with no row for `district` keeps the
+ * city-wide row, so a town that does not split is unchanged.
+ */
+export function preferDistrictRows<
+  T extends {
+    district?: string | null;
+    municipality: string;
+    programDomain: string;
+    cycleLabel: string;
+  },
+>(rows: readonly T[], district: string): T[] {
+  const scoped = new Set(
+    rows
+      .filter((row) => row.district === district)
+      .map((row) => `${row.municipality}|${row.programDomain}|${row.cycleLabel}`),
+  );
+  return rows.filter((row) => {
+    if (row.district === district) return true;
+    if (row.district != null) return false;
+    return !scoped.has(`${row.municipality}|${row.programDomain}|${row.cycleLabel}`);
+  });
+}
+
+/** District-scoped rows are not for a family whose FSA did not resolve to one. */
+function windowsForPostal(
+  windows: readonly RegistrationWindow[],
+  postal: string,
+): RegistrationWindow[] {
+  const district = resolveDistrict(postal);
+  if (district === null) return windows.filter((window) => window.district == null);
+  return preferDistrictRows(windows, district);
 }
 
 /**
@@ -121,8 +168,9 @@ export function latestPastCycle(input: {
   const covered = new Set<Municipality>(resolveMunicipalities(input.postal));
   if (covered.size === 0) return null;
 
+  const applicable = windowsForPostal(input.windows, input.postal);
   const past: Omit<PastRegistrationCycle, 'knownCycleLabels'>[] = [];
-  for (const window of input.windows) {
+  for (const window of applicable) {
     if (!covered.has(window.municipality)) continue;
     const { opensForFamilyAt } = resolveFamilyOpen(window, input.postal);
     if (opensForFamilyAt.getTime() > input.now.getTime()) continue;
@@ -204,7 +252,8 @@ export function stillOpenCycle(input: {
 }): PastRegistrationCycle | null {
   if (input.childrenAgesMonths.length === 0) return null;
   const earliest = input.now.getTime() - input.maxAgeDays * 24 * 60 * 60 * 1000;
-  const inBound = input.windows.filter((window) => {
+  const applicable = windowsForPostal(input.windows, input.postal);
+  const inBound = applicable.filter((window) => {
     if (
       !input.childrenAgesMonths.some((age) =>
         inBand(age, window.ageMinMonths, window.ageMaxMonths, AGE_TOLERANCE_MONTHS),
@@ -243,12 +292,13 @@ export function matchRegistrationWindows(input: {
   childrenAgesMonths: readonly number[];
   now: Date;
 }): RegistrationMatch[] {
-  const { windows, postal, childrenAgesMonths, now } = input;
+  const { postal, childrenAgesMonths, now } = input;
   if (childrenAgesMonths.length === 0) return [];
 
   const municipalities = resolveMunicipalities(postal);
   if (municipalities.length === 0) return [];
   const covered = new Set<Municipality>(municipalities);
+  const windows = windowsForPostal(input.windows, postal);
 
   const matches: RegistrationMatch[] = [];
   for (const window of windows) {

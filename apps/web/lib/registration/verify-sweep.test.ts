@@ -40,6 +40,7 @@ function storedWindow(overrides: Partial<StoredWindow> = {}): StoredWindow {
     municipality: 'markham',
     programDomain: 'rec_program',
     cycleLabel: '2026 Fall Programs, Swim Lessons and Winter Break Camps',
+    district: null,
     previewAt: new Date('2026-08-03T00:00:00-04:00'),
     residentOpenAt: null,
     openAt: new Date('2026-08-11T06:30:00-04:00'),
@@ -81,9 +82,12 @@ function harness(overrides: Partial<RegistrationVerifyDeps> = {}): Harness {
   const send = vi.fn(async () => true);
   const extract = vi.fn(async () => reading());
   const recordRun = vi.fn(async () => {});
+  const recordDiscoveries = vi.fn(async () => {});
   const deps: RegistrationVerifyDeps = {
     client: {} as never,
     recordRun,
+    recordDiscoveries,
+    loadDiscoveryHistory: async () => [],
     fetchPage,
     extract,
     loadWindows: async () => [storedWindow()],
@@ -472,7 +476,8 @@ describe('runRegistrationVerifySweep — the discovery leg', () => {
     expect(DISCOVERY_TARGETS.map((t) => t.municipality)).toContain('toronto');
     expect(DISCOVERY_TARGETS.map((t) => t.municipality)).toContain('halton_hills');
     for (const target of DISCOVERY_TARGETS) {
-      expect(target.sourceUrl).toMatch(/^https:\/\//);
+      expect(target.sourceUrls.length).toBeGreaterThan(0);
+      for (const url of target.sourceUrls) expect(url).toMatch(/^https:\/\//);
     }
   });
 

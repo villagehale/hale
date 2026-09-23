@@ -203,6 +203,180 @@ export const FSA_MUNICIPALITIES: Readonly<Record<string, readonly Municipality[]
 const NON_TORONTO_M_FSAS = new Set(['M0R', 'M7R']);
 
 /**
+ * The four areas Toronto Parks and Recreation registers by. The Fall 2026 release
+ * opened Etobicoke with Toronto and East York on one morning and North York with
+ * Scarborough on the next; the rows are per area so a later cycle can split the
+ * pair without another migration.
+ *
+ * Names are the community-council areas, not the release's paired mornings.
+ * `etobicoke_york` is the former cities of Etobicoke and York.
+ */
+export type TorontoDistrict =
+  | 'etobicoke_york'
+  | 'north_york'
+  | 'scarborough'
+  | 'toronto_east_york';
+
+/**
+ * FSA → district, transcribed from the neighbourhood names on
+ * https://en.wikipedia.org/wiki/List_of_postal_codes_of_Canada:_M (read 2026-09-23).
+ *
+ * The second letter is NOT a district. M4 is East York and old Toronto except
+ * M4A (Victoria Village, North York). M6 is west Toronto and York except M6A,
+ * M6B and M6L (North York). M9 is Etobicoke and York except M9L and M9M (North
+ * York). An unassigned code (M1A, and the rest of the gaps in that table) is
+ * absent here and resolves to no district — the matcher then keeps the
+ * city-wide row rather than guessing a morning.
+ */
+const TORONTO_DISTRICT_FSAS: Readonly<Record<TorontoDistrict, readonly string[]>> = {
+  scarborough: [
+    'M1B',
+    'M1C',
+    'M1E',
+    'M1G',
+    'M1H',
+    'M1J',
+    'M1K',
+    'M1L',
+    'M1M',
+    'M1N',
+    'M1P',
+    'M1R',
+    'M1S',
+    'M1T',
+    'M1V',
+    'M1W',
+    'M1X',
+  ],
+  north_york: [
+    'M2H',
+    'M2J',
+    'M2K',
+    'M2L',
+    'M2M',
+    'M2N',
+    'M2P',
+    'M2R',
+    'M3A',
+    'M3B',
+    'M3C',
+    'M3H',
+    'M3J',
+    'M3K',
+    'M3L',
+    'M3M',
+    'M3N',
+    // Victoria Village. M4 otherwise is East York and old Toronto.
+    'M4A',
+    // Bedford Park / Lawrence Manor East.
+    'M5M',
+    // Lawrence Manor, Glencairn, Maple Leaf. M6 otherwise is west Toronto and York.
+    'M6A',
+    'M6B',
+    'M6L',
+    // Humber Summit and Emery. M9 otherwise is Etobicoke and York.
+    'M9L',
+    'M9M',
+  ],
+  etobicoke_york: [
+    'M8V',
+    'M8W',
+    'M8X',
+    'M8Y',
+    'M8Z',
+    'M9A',
+    'M9B',
+    'M9C',
+    'M9P',
+    'M9R',
+    'M9V',
+    'M9W',
+    // Former City of York, which sits in Etobicoke York community council.
+    'M6C',
+    'M6E',
+    'M6M',
+    'M6N',
+    'M9N',
+  ],
+  toronto_east_york: [
+    // East York
+    'M4B',
+    'M4C',
+    'M4G',
+    'M4H',
+    'M4J',
+    // East Toronto, including the Eastern Avenue business-reply enclave.
+    'M4E',
+    'M4K',
+    'M4L',
+    'M4M',
+    'M7Y',
+    // Central Toronto — old Toronto, not North York. Lawrence Park (M4N) is here.
+    'M4N',
+    'M4P',
+    'M4R',
+    'M4S',
+    'M4T',
+    'M4V',
+    'M5N',
+    'M5P',
+    'M5R',
+    // Downtown, Queen's Park, and the Stn A post-office enclave.
+    'M4W',
+    'M4X',
+    'M4Y',
+    'M5A',
+    'M5B',
+    'M5C',
+    'M5E',
+    'M5G',
+    'M5H',
+    'M5J',
+    'M5K',
+    'M5L',
+    'M5S',
+    'M5T',
+    'M5V',
+    'M5W',
+    'M5X',
+    'M6G',
+    'M7A',
+    // West Toronto
+    'M6H',
+    'M6J',
+    'M6K',
+    'M6P',
+    'M6R',
+    'M6S',
+  ],
+};
+
+const FSA_TORONTO_DISTRICT: ReadonlyMap<string, TorontoDistrict> = (() => {
+  const map = new Map<string, TorontoDistrict>();
+  for (const [district, fsas] of Object.entries(TORONTO_DISTRICT_FSAS) as [
+    TorontoDistrict,
+    readonly string[],
+  ][]) {
+    for (const fsa of fsas) {
+      if (map.has(fsa)) {
+        throw new Error(`FSA ${fsa} is listed under two Toronto districts`);
+      }
+      map.set(fsa, district);
+    }
+  }
+  return map;
+})();
+
+/**
+ * The Toronto registration district a validated FSA belongs to, or null when it
+ * is not a Toronto neighbourhood code. A null here is "no district morning" —
+ * the matcher keeps the city-wide row — never a guess at the nearer one.
+ */
+export function districtForFsa(fsa: string): TorontoDistrict | null {
+  return FSA_TORONTO_DISTRICT.get(fsa) ?? null;
+}
+
+/**
  * Every municipality a validated FSA could belong to — empty when it is outside the
  * covered set. More than one entry means the FSA straddles a boundary, which the
  * matcher treats as "residency unconfirmed".

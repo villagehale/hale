@@ -2,6 +2,8 @@ import { asciiCopy, asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import { townLabel } from '~/lib/channel/town-label';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { nextWatchedCycle } from '~/lib/registration/discovery-targets';
+import { districtForFsa, municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
+import { preferDistrictRows } from '~/lib/registration/match-registration-windows';
 import {
   REGISTRATION_WINDOWS,
   type RegistrationWindowSeed,
@@ -161,10 +163,19 @@ function openedAtOf(event: CycleEvent): Date {
   return event.residentOpenAt ?? event.openAt;
 }
 
-/** The label says which cycle this is on its own, unless the town hangs two cycles off
- * the same one — Vaughan runs a "Fall Session 2026" for rec and another for swim. */
+/**
+ * The label says which cycle this is on its own, unless the town hangs two cycles off
+ * the same one — Vaughan runs a "Fall Session 2026" for rec and another for swim.
+ *
+ * Two district mornings of the SAME domains share a label too (Toronto Fall 2026).
+ * They are one cycle said twice, not two programs, so the nouns stay off: adding
+ * "rec and swim" there would change the sentence a parent already gets.
+ */
 function labelNeedsNouns(event: CycleEvent, townEvents: readonly CycleEvent[]): boolean {
-  return townEvents.filter((other) => other.cycleLabel === event.cycleLabel).length > 1;
+  const nouns = joinNouns(event.domains);
+  return townEvents.some(
+    (other) => other !== event && other.cycleLabel === event.cycleLabel && joinNouns(other.domains) !== nouns,
+  );
 }
 
 function upcomingLine(
@@ -236,13 +247,35 @@ function betweenCyclesLine(
  * rather than falling silent — the dataset has nothing for that program, not nothing
  * for that town, and those are different claims.
  */
+/**
+ * A postal code that resolves to a district of THIS city narrows the rows to that
+ * morning. A postal code for a different town is ignored — the parent named this
+ * city, and dropping its mornings because their FSA is somewhere else would
+ * silence the answer. No postal code keeps every morning, and the soonest one
+ * is what the line names.
+ */
+function rowsForAsk(
+  city: RecHelloCity,
+  rows: readonly RecRow[],
+  postal: string | null,
+): RecRow[] {
+  if (postal === null || postal.trim() === '') return rows;
+  const fsa = postal.replace(/\s+/g, '').toUpperCase().slice(0, 3);
+  if (!/^[A-Z]\d[A-Z]$/.test(fsa)) return rows;
+  if (!municipalitiesForFsa(fsa).some((town) => town === city)) return rows;
+  const district = districtForFsa(fsa);
+  if (district === null) return rows.filter((row) => (row.district ?? null) === null);
+  return preferDistrictRows(rows, district);
+}
+
 export function cityRecLine(
   city: RecHelloCity,
   now: Date,
   domain: RecDomain | null = null,
   windows: readonly RegistrationWindowSeed[] = REGISTRATION_WINDOWS,
+  postal: string | null = null,
 ): string | null {
-  const townRows = recRows(city, windows);
+  const townRows = rowsForAsk(city, recRows(city, windows), postal);
   if (townRows.length === 0) return null;
 
   const asked = townRows.filter((row) => domain === null || row.programDomain === domain);
