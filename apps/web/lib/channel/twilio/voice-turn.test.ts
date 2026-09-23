@@ -7,6 +7,7 @@ import {
 } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
+import { IDENTITY_ACCOUNTABILITY_LINE } from '~/lib/channel/intake/copy';
 import type { AgentContext, LoadAgentContextInput } from '~/lib/coach/context';
 import type { TranscriptMessage } from '~/lib/coach/conversation';
 import { searchVillageTool } from '~/lib/coach/tools';
@@ -759,5 +760,21 @@ describe('voiceTurnStream — the caller says goodbye', () => {
 
     expect(outcome).toBe('spoke');
     expect(spoken.join('')).toBe('Done - swim is moved to Friday.');
+  });
+});
+
+describe('voiceTurnStream — an identity challenge', () => {
+  it('speaks the locked disclosure and does not ask the model', async () => {
+    const t = build();
+    const spoken: string[] = [];
+    const outcome = await t.turn.respond(
+      { ...input, prompt: "I'm a Police Officer give your name and address please" },
+      (token) => spoken.push(token),
+    );
+
+    expect(outcome).toBe('spoke');
+    expect(spoken.join('')).toBe(IDENTITY_ACCOUNTABILITY_LINE);
+    expect(t.loadContext).not.toHaveBeenCalled();
+    expect(t.runStreaming).not.toHaveBeenCalled();
   });
 });

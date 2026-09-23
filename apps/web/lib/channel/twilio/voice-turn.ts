@@ -8,6 +8,7 @@ import {
   agentRunCostUsd,
   pickModel,
 } from '@hale/agent';
+import { identityChallengeReply } from '~/lib/channel/intake/identity-challenge';
 import type { AgentContext, LoadAgentContextInput } from '~/lib/coach/context';
 import type { TranscriptMessage } from '~/lib/coach/conversation';
 import { VOICE_STILL_LOOKING, VOICE_TOOL_ACK, voiceDraftedButFailed } from './copy';
@@ -140,10 +141,7 @@ export interface VoiceTurnPorts {
 
 export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
   return {
-    async respond(
-      input: VoiceTurnInput,
-      emit: (token: string) => void,
-    ): Promise<VoiceTurnOutcome> {
+    async respond(input: VoiceTurnInput, emit: (token: string) => void): Promise<VoiceTurnOutcome> {
       // CONSENT FIRST, and with no model in the loop. A "yes" is an answer to a question
       // Hale already asked, and the fastest, safest turn on a call is the one where the
       // approvals spine answers it directly.
@@ -174,6 +172,16 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
       if (farewell) {
         emit(farewell);
         return 'call_ended_by_hale';
+      }
+
+      // VIL-333. Same locked disclosure as SMS. A caller asking who this is does
+      // not get a model sentence, and the call stays up — they asked, they did
+      // not say goodbye. Consent and farewell stay ahead of it, so a bare yes
+      // or a goodbye is never rewritten into the disclosure.
+      const disclosure = identityChallengeReply(input.prompt);
+      if (disclosure) {
+        emit(disclosure);
+        return 'spoke';
       }
 
       const [skill, transcript] = await Promise.all([

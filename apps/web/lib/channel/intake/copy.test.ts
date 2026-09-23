@@ -341,15 +341,16 @@ describe('detailsBlocked', () => {
   });
 });
 
-describe('the identity-challenge accountability line (doctrine G15/L3)', () => {
-  it('concedes, states what is true, names where the operator lives, and never closes', () => {
+describe('the identity-challenge accountability line (VIL-333)', () => {
+  it('is the design-locked English disclosure, with no ask on the end', () => {
     expect(IDENTITY_ACCOUNTABILITY_LINE).toBe(
-      `Fair to ask. I'm an AI assistant, and Hale is a Canadian service - who runs it and how to reach them: ${PRIVACY_URL}. STOP ends my texts for good.`,
+      'This is Hale from Village Hale Technologies Inc. (villagehale.com). Barton Dong runs it (aloha@villagehale.com). Reply STOP anytime and we stop.',
     );
-    // A distrust turn may never end in a close (R9): no question, no ask.
+    // A distrust turn may never end in a close: no question, no watch re-ask.
     expect(IDENTITY_ACCOUNTABILITY_LINE).not.toContain('?');
-    // The CONSTANT, never a second copy of the URL — same rule as the consent ask.
-    expect(IDENTITY_ACCOUNTABILITY_LINE).toContain(PRIVACY_URL);
+    expect(IDENTITY_ACCOUNTABILITY_LINE).toContain('STOP');
+    expect(IDENTITY_ACCOUNTABILITY_LINE).toContain('villagehale.com');
+    expect(IDENTITY_ACCOUNTABILITY_LINE).toContain('aloha@villagehale.com');
   });
 });
 
@@ -545,12 +546,13 @@ describe('the French script', () => {
     expect(HELP_REPLY).toContain('Reply STOP to unsubscribe.');
   });
 
-  it('answers an identity challenge in French without gendering Hale and without a close', () => {
+  it('answers an identity challenge in the locked French twin, without gendering Hale', () => {
     expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr).toBe(
-      `Bonne question. Je suis une IA - c'est Village Hale, un service canadien, qui me gère: ${PRIVACY_URL}. Répondez ARRET et je ne vous texte plus.`,
+      "C'est Hale, Village Hale Technologies Inc. (villagehale.com). Barton Dong en est responsable (aloha@villagehale.com). Reponds STOP et on arrete.",
     );
     expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr).not.toContain('?');
-    expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr).toContain(PRIVACY_URL);
+    expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr).not.toMatch(/une IA|je suis une/i);
+    expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr).toContain('STOP');
   });
 
   it('answers an unreadable intake reply in French with its own door, not the HELP line', () => {

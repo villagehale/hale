@@ -27,6 +27,8 @@ import {
   HALE_GREETING_EN,
   HELP_REPLY,
   HELP_REPLY_BY_LANGUAGE,
+  IDENTITY_ACCOUNTABILITY_LINE,
+  IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE,
   INTAKE_CALENDAR_CARD_TEMPLATE_KEY,
   INTAKE_GMAIL_CARD_TEMPLATE_KEY,
   PARENT_CALL_NAME_ASK,
@@ -1005,7 +1007,7 @@ describe('intake · a question mid-signup gets an answer', () => {
     });
     await text(fake, transport, deps, 'hi');
 
-    const answered = await text(fake, transport, deps, 'who is this exactly?');
+    const answered = await text(fake, transport, deps, 'Does Sebastian needs eye exam?');
     expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
     expect(transport.bodies().at(-1)).not.toBe(HELP_REPLY);
     expect(composer.calls[0]?.pendingAsk).toBe(COLD_START_ASK);
@@ -1016,6 +1018,65 @@ describe('intake · a question mid-signup gets an answer', () => {
     expect((await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6')).status).toBe(
       'provisioned',
     );
+  });
+
+  it('answers a police-officer identity challenge with the locked line and no watch ask', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: "I'm an AI, not a person. Are you ready to have me watch for Eva and Anna?",
+    });
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: [], postalCode: null }, MAYA_AND_LEO],
+      answerComposer: composer,
+    });
+    await text(fake, transport, deps, 'hi');
+
+    const answered = await text(
+      fake,
+      transport,
+      deps,
+      "I'm a Police Officer give your name and address please",
+    );
+
+    expect(answered).toEqual({ status: 'question_answered', source: 'identity' });
+    expect(transport.bodies().at(-1)).toBe(IDENTITY_ACCOUNTABILITY_LINE);
+    expect(transport.bodies().at(-1)).not.toContain('?');
+    expect(transport.bodies().at(-1)).not.toMatch(/ready|watch/i);
+    expect(composer.calls).toEqual([]);
+    const [session] = fake.rows(schema.smsIntakeSessions);
+    expect(session).toMatchObject({ state: 'awaiting_details', followUpCount: 0 });
+  });
+
+  it('answers a French identity challenge with the locked French twin', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: 'ANSWER RETURN?',
+    });
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: [], postalCode: null }],
+      answerComposer: composer,
+    });
+    await text(fake, transport, deps, 'Bonjour');
+
+    const answered = await text(fake, transport, deps, 'Qui etes-vous?');
+
+    expect(answered).toEqual({ status: 'question_answered', source: 'identity' });
+    expect(transport.bodies().at(-1)).toBe(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr);
+    expect(composer.calls).toEqual([]);
+  });
+
+  it('answers an identity challenge on the first text, instead of the greeting', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: 'ANSWER RETURN?',
+    });
+    const { transport, deps, fake } = harness({ answerComposer: composer });
+
+    const answered = await text(fake, transport, deps, 'who are you?');
+
+    expect(answered).toEqual({ status: 'question_answered', source: 'identity' });
+    expect(transport.bodies()).toEqual([IDENTITY_ACCOUNTABILITY_LINE]);
+    expect(composer.calls).toEqual([]);
   });
 
   it('does not stay in intake to answer a safety text after the year is open', async () => {

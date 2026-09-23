@@ -77,6 +77,7 @@ import {
 } from './copy';
 import { parseCanadianPostal, summarizeChildren } from './derive';
 import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract';
+import { identityChallengeReply } from './identity-challenge';
 import type { IntakeAckComposer } from './intake-voice';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { type IntakeKeyword, type IntakeKeywordMatch, matchKeyword } from './keywords';
@@ -235,7 +236,7 @@ export type IntakeOutcome =
    * `source` separates the two very different messages that can go out: `composed` is
    * the answer, `safety` is the fixed 811/911 line with no signup question after it.
    */
-  | { status: 'question_answered'; source: 'composed' | 'safety' }
+  | { status: 'question_answered'; source: 'composed' | 'safety' | 'identity' }
   /**
    * VIL-348 — the three CASL keyword turns, each carrying what became of HALE'S OWN
    * acknowledgment. The ledger work is identical in every case; only the reply differs,
@@ -693,17 +694,27 @@ async function offScriptReply(
     postalCode?: string | null;
   },
   deps: IntakeDeps,
-): Promise<{ body: string; source: 'composed' | 'safety' } | null> {
-  const outcome = await deps.answerComposer.compose(args);
-  // Crisis / physical emergency go out ALONE. A parent in that moment should be
-  // dialling, not answering a signup question. Checked on the inbound words as
-  // well as the composer outcome so a silent fake still cannot ask-alone.
-  // Physical emergency is Call 911 now. Mental crisis is the 988 line. Neither
-  // is the child-health 811 SAFETY_REPLY.
+): Promise<{ body: string; source: 'composed' | 'safety' | 'identity' } | null> {
+  // Crisis / physical emergency go out ALONE, and before any model. A parent in
+  // that moment should be dialling, not answering a signup question. Token matches
+  // never reach the composer; a composer that still returns `safety` or
+  // `mental_crisis` (a phrasing the tokens missed) is honoured below so a silent
+  // fake cannot ask-alone. Physical emergency is Call 911 now. Mental crisis is
+  // the 988 line. Neither is the child-health 811 SAFETY_REPLY.
   if (namesAnEmergency(args.parentWords)) {
     return { body: EMERGENCY_REPLY, source: 'safety' };
   }
-  if (namesAMentalCrisis(args.parentWords) || outcome.status === 'mental_crisis') {
+  if (namesAMentalCrisis(args.parentWords)) {
+    return { body: MENTAL_CRISIS_REPLY, source: 'safety' };
+  }
+  // VIL-333. The locked disclosure is the whole turn: no composed concession,
+  // no return to the watch ask, no model.
+  const disclosure = identityChallengeReply(args.parentWords);
+  if (disclosure) {
+    return { body: disclosure, source: 'identity' };
+  }
+  const outcome = await deps.answerComposer.compose(args);
+  if (outcome.status === 'mental_crisis') {
     return { body: MENTAL_CRISIS_REPLY, source: 'safety' };
   }
   if (outcome.status === 'safety') {
