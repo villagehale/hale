@@ -239,7 +239,7 @@ export interface EveningCheckInDeps {
    * The production implementation goes through `channelScheduleReader`, the door the
    * texted schedule already comes through, so its rows arrive ALREADY PROJECTED and this
    * file never names the table (teen-access-outbound.test.ts keeps that door count at
-   * three).
+   * four).
    */
   readTodayActivity(
     database: Database,

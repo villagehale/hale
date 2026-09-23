@@ -37,6 +37,10 @@ export function saturdayPlansFromRows(
  * non-cancelled Google and Apple snapshots. `listFamilyEventsInWindow` excludes
  * placements, which is why this query does not use it.
  *
+ * Named door (teen-access-outbound.test.ts). The select is child id and start time
+ * only. A title or a location here would put a 13+ child's calendar words on an
+ * outbound path that has no viewer.
+ *
  * The window is wide in UTC and then filtered to the family-local Saturday, so a
  * zone offset cannot drop an evening session or pull in Friday.
  */

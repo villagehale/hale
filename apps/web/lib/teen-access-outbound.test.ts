@@ -207,8 +207,8 @@ describe('teen access grants never reach an outbound channel', () => {
  * The check above bans a grant READER from an outbound tree. This one bans the raw
  * TABLE: `family_events` carries a 13+ child's calendar content, and `lib/channel` has
  * no authenticated viewer, so a file in there that reads the table decides — on its own,
- * silently — whether a teen's title goes out over SMS. Three files do, each projects or
- * withholds on purpose, and they are listed here with the reason. A fourth is a defect.
+ * silently — whether a teen's title goes out over SMS. Four files do, each projects or
+ * withholds on purpose, and they are listed here with the reason. A fifth is a defect.
  *
  * The key is the TABLE identifier, not a column name. Drizzle hands back `title` and
  * `location` for a bare `.select().from(schema.familyEvents)` with neither column ever
@@ -231,6 +231,10 @@ const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
   [
     'lib/channel/reconcile/view.ts',
     'the reconcile view — titles feed a token-overlap predicate and are never emitted to a recipient',
+  ],
+  [
+    'lib/channel/nudge/saturday-plans.ts',
+    'empty-Saturday occupancy — child id and start time only, never a title or a location, so a teen row can mark that child busy and cannot put their words on the wire',
   ],
 ];
 
