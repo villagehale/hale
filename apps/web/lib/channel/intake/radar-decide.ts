@@ -59,6 +59,9 @@ const MAX_WHY_FACTS = 3;
 const CIVIC_REGISTRY_SOURCE: typeof CIVIC_SOURCE = 'civic_registry';
 
 export interface RadarChild {
+  /** Set by the nudge roster so Saturday occupancy can tell siblings apart. Absent on
+   * the intake radar, which does not read occupancy. */
+  id?: string;
   /** The name the parent gave, or null when they described a child without naming one. */
   name: string | null;
   ageMonths: number | null;
@@ -97,6 +100,10 @@ export interface RadarCandidate {
   /** When it runs, in the source's own words, already ASCII-folded. Null on every
    * model-discovered row. */
   whenLabel: string | null;
+  /** Venue identity for this household's own review bias (VIL-366). Optional so a
+   * fixture that never ranks on reviews stays valid. */
+  placeId?: string | null;
+  civicVenueId?: string | null;
 }
 
 export interface WeekendPick {
@@ -300,7 +307,8 @@ const MONTHS_PER_YEAR = 12;
 const ALL_AGES = /\b(all[\s-]?ages|any age|every ?age)\b/i;
 const MONTH_UNIT = /\b(months?|mos?)\b/i;
 const RANGE = /(\d+(?:\.\d+)?)\s*(?:[-–—]|to)\s*(\d+(?:\.\d+)?)/;
-const OPEN_MIN = /(\d+(?:\.\d+)?)\s*(?:months?|mos?|years?|yrs?)?\s*(?:\+|and up|and older|or older|and over)/i;
+const OPEN_MIN =
+  /(\d+(?:\.\d+)?)\s*(?:months?|mos?|years?|yrs?)?\s*(?:\+|and up|and older|or older|and over)/i;
 const OPEN_MAX = /(?:under|up to|below|younger than)\s*(\d+(?:\.\d+)?)/i;
 
 export interface AgeBand {
@@ -532,9 +540,7 @@ function decideRegistration(input: DecideRadarInput): RegistrationLine | null {
       programDomain: match.window.programDomain,
       cycleLabel: asciiCopy(match.window.cycleLabel),
     },
-    opensAtLocal: asciiSpaces(
-      formatWhenPhrase(match.opensForFamilyAt, input.timeZone, input.now),
-    ),
+    opensAtLocal: asciiSpaces(formatWhenPhrase(match.opensForFamilyAt, input.timeZone, input.now)),
     kidNames,
     residentNote:
       match.isResidentWindow && match.window.residentOpenAt !== null
@@ -620,7 +626,8 @@ function eligibleWeekend(input: DecideRadarInput): Placed[] {
     const coverage = coverageOf(input.children, band);
     if (input.children.length > 0 && coverage.length === 0) continue;
     const exactFit =
-      band !== null && coverage.every((index) => fitsBand(input.children[index] as RadarChild, band, 0));
+      band !== null &&
+      coverage.every((index) => fitsBand(input.children[index] as RadarChild, band, 0));
 
     for (const slot of placements(candidate, weekend, input.weather)) {
       placed.push({
@@ -720,7 +727,9 @@ export function decideYearFinds(input: DecideRadarInput): WeekendPick[] {
  * venue's own, while "a model-supplied source URL ... is often guessed"
  * (lib/village/discover.ts). A row with a url and the wrong source has no url here (R1).
  */
-function accessFor(candidate: RadarCandidate): Pick<WeekendPick, 'access' | 'when' | 'verifiedUrl'> {
+function accessFor(
+  candidate: RadarCandidate,
+): Pick<WeekendPick, 'access' | 'when' | 'verifiedUrl'> {
   const civic = candidate.source === CIVIC_REGISTRY_SOURCE;
   return {
     access:

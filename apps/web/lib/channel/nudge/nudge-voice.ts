@@ -7,7 +7,13 @@ import { loadNudgeVoiceSkill } from '~/lib/cron/skill';
 import { renderHealthNudge } from '~/lib/health/copy';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
-import type { HealthCheckpointNudge, Nudge, WeekdayCareAsk } from './nudge-decide';
+import { renderEmptySaturdayAsk } from './empty-saturday-copy';
+import type {
+  EmptySaturdayNudge,
+  HealthCheckpointNudge,
+  Nudge,
+  WeekdayCareAsk,
+} from './nudge-decide';
 import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from './shell';
 import { renderWeekdayFinderAsk } from './weekday-care-copy';
 
@@ -49,7 +55,10 @@ export interface NudgeVoice {
  * against — and this skill's own contract forbids it anyway ("Never write a question").
  * The weekday FIND is voiced like any other offer; it asks nothing.
  */
-export type VoicedNudge = Exclude<Nudge, HealthCheckpointNudge | WeekdayCareAsk>;
+export type VoicedNudge = Exclude<
+  Nudge,
+  HealthCheckpointNudge | WeekdayCareAsk | EmptySaturdayNudge
+>;
 
 /** Voice fields ONLY, strict: an unknown/extra top-level key fails the parse and the
  * caller falls back to the deterministic render. */
@@ -193,6 +202,10 @@ export function renderNudgeDeterministically(nudge: Nudge): string {
   // sees it (nudge/weekday-care-copy.ts).
   if (nudge.kind === 'weekday_care') return renderWeekdayFinderAsk(nudge.ask);
 
+  // VIL-365. The sentence is the message. The model must not see it: the nudge
+  // voice skill forbids questions, and this ask is byte-locked.
+  if (nudge.kind === 'empty_saturday') return renderEmptySaturdayAsk(nudge.kidName);
+
   if (nudge.kind === 'registration') {
     const who = nudge.kidNames.length > 0 ? ` for ${joinNames(nudge.kidNames)}` : '';
     const resident = nudge.residentNote ? ` - ${nudge.residentNote}` : '';
@@ -228,7 +241,12 @@ export async function composeNudgeMessage(
   // A health checkpoint never reaches the model (VIL-243 · M8): deterministic copy is
   // REVIEWABLE copy, and this is the one message class where a warmer sentence is not
   // worth the chance of a sentence nobody approved.
-  if (nudge.kind === 'health_checkpoint' || nudge.kind === 'weekday_care' || !deps.client) {
+  if (
+    nudge.kind === 'health_checkpoint' ||
+    nudge.kind === 'weekday_care' ||
+    nudge.kind === 'empty_saturday' ||
+    !deps.client
+  ) {
     return deterministic;
   }
 

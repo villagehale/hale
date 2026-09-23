@@ -6,7 +6,6 @@ import {
   bareYesNoQuestions,
   nearDuplicatePairs,
 } from '~/lib/testing/pool-copy';
-import { CADENCE_WORDS, readCadenceWord } from './reply';
 import {
   CHECK_IN_DAILY_ACK,
   CHECK_IN_NOTED_ACK_POOL,
@@ -19,6 +18,7 @@ import {
   childPhrase,
   composeCheckInAsk,
 } from './copy';
+import { CADENCE_WORDS, readCadenceWord } from './reply';
 
 /** The cadence acks, which are single strings and stay single strings: a household sees
  * each of them at most two or three times, ever. */
@@ -206,9 +206,15 @@ describe('the evening asks', () => {
 });
 
 describe('the anchored ask', () => {
-  it('names what Hale saw, in five different ways, and says that it did', () => {
+  it('is the locked how-it-went sentence, every occasion, and names the activity', () => {
     const bodies = anchoredAsks('swim');
-    expect(new Set(bodies).size).toBe(5);
+    expect(bodies).toEqual([
+      'How did swim go? One line is plenty.',
+      'How did swim go? One line is plenty.',
+      'How did swim go? One line is plenty.',
+      'How did swim go? One line is plenty.',
+      'How did swim go? One line is plenty.',
+    ]);
     for (const body of bodies) {
       expect(body, body).toContain('swim');
       // The children are NOT named alongside it: the activity is the specific thing, and
@@ -245,26 +251,14 @@ describe('the anchored ask', () => {
     }
   });
 
-  it('is five framings and not one framing five ways', () => {
-    // JUDGED ON THE FRAMING, with a short activity in the slot. Every member carries the
-    // same fact by design — the site's own calibration note says as much of the two
-    // openings that share a registration date — so a long title would swamp the word sets
-    // with words the members are SUPPOSED to share and measure the title, not the copy.
-    expect(nearDuplicatePairs(anchoredAsks('swim'))).toEqual([]);
+  it('is one locked sentence, not a framing rotation', () => {
+    expect(new Set(anchoredAsks('swim')).size).toBe(1);
   });
 
-  it('does not move in lockstep with the day question', () => {
-    // Its own pool name: a household whose Tuesday is anchored and whose Wednesday is not
-    // should not read the same framing twice in a row from two different pools.
-    const sample = Array.from({ length: 60 }, (_, i) => `anchor-${i}`);
-    const differ = sample.filter((familyId) => {
-      const anchoredIndex = anchoredAsks('swim').indexOf(
-        ask({ todayActivity: 'swim', familyId, occasion: 4 }).body,
-      );
-      const plainIndex = laterAsks().indexOf(ask({ familyId, occasion: 4 }).body);
-      return anchoredIndex !== plainIndex;
-    });
-    expect(differ.length).toBeGreaterThanOrEqual(36);
+  it('is never a member of the day pool', () => {
+    const anchored = ask({ todayActivity: 'swim', occasion: 4 }).body;
+    expect(laterAsks()).not.toContain(anchored);
+    expect(anchored).toBe('How did swim go? One line is plenty.');
   });
 });
 

@@ -27,6 +27,7 @@ import { daycareFollowupQuestion } from '~/lib/channel/followup/question';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
+import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
 import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
@@ -77,6 +78,7 @@ import {
   daycareFollowupHandler,
   emailAlertAddHandler,
   emailCaptureHandler,
+  emptySaturdayHandler,
   eveningCheckInHandler,
   forwardAddressHandler,
   founderWelcomeHandler,
@@ -358,6 +360,9 @@ export function defaultHandlers(): DeterministicHandler[] {
     // chain is free rather than load-bearing. Said out loud so a reader does not have to
     // work out what it is shadowing (nothing).
     weekdayCareHandler(),
+    // Beside it. Claims nothing, so a bare YES is not a Saturday booking. The coach
+    // hears the reply; the held candidate is not delivered from this handler.
+    emptySaturdayHandler(),
     // And its sibling, for the same reason and with the same freedom of position: it
     // owns the daycare check-in's kind and claims nothing.
     daycareFollowupHandler(),
@@ -780,6 +785,7 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
     // a 48h clock of its own rather than the evening's 08:00 lapse, because a household
     // arrangement does not go stale by breakfast.
     weekdayCare: (database, input) => weekdayCareQuestion(database, input),
+    emptySaturday: (database, input) => emptySaturdayQuestion(database, input),
     // VIL-360 · the daycare check-in. The follow-up lane registers nothing when it
     // sends, so this reader is the only thing that makes its ask a question the router
     // can see - and a bare "yes" near it safe.

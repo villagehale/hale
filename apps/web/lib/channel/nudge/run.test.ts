@@ -12,6 +12,7 @@ import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
 import { NUDGE_OPT_OUT } from './nudge-voice.js';
 import {
@@ -23,6 +24,7 @@ import {
   isNudgeSlot,
   runNudgeCron,
 } from './run.js';
+import type { SaturdayPlans } from './saturday-plans';
 
 /**
  * VIL-239 · M4 — the hourly sweep.
@@ -143,6 +145,9 @@ function harness(
     claimedWindowIds?: Set<string>;
     /** VIL-360 — what this household has told Hale about its weekdays. */
     weekdayCare?: WeekdayCareContext;
+    /** VIL-365 — default unread, so existing cases do not grow an empty-Saturday ask. */
+    saturdayPlans?: SaturdayPlans;
+    householdBias?: ReturnType<typeof emptyHouseholdFindBias>;
     /** The family's textable parent seats. One primary parent unless a test says
      * otherwise (channel/family-recipients.ts is the prod reader). */
     recipients?: FamilyTextRecipient[];
@@ -214,6 +219,8 @@ function harness(
     loadClaimedWindowIds: async () => options.claimedWindowIds ?? new Set<string>(),
     loadWeekdayCareContext: async () =>
       options.weekdayCare ?? { stated: [], askedBefore: false, weekendFindSent: false },
+    loadSaturdayPlans: async () => options.saturdayPlans ?? 'unread',
+    loadHouseholdBias: async () => options.householdBias ?? emptyHouseholdFindBias(),
     weather: { getDailyOutlook: async () => options.weather ?? [] },
     buildGate: () => ({
       channelEnrolled: async (parentUserId) =>
@@ -1357,5 +1364,56 @@ describe('the call-name line after a find', () => {
     expect(care.transport.bodies().some((body) => body.includes('weekdays too'))).toBe(true);
     expect(care.transport.bodies().some((body) => body === PARENT_CALL_NAME_ASK)).toBe(false);
     expect(load).not.toHaveBeenCalled();
+  });
+});
+
+describe('runNudgeCron — empty Saturday', () => {
+  it('sends the locked ask once, through the nudge gate, and not a second text', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      saturdayPlans: { householdBusy: false, busyChildIds: new Set() },
+      candidates: [
+        candidate({
+          id: 'sat-1',
+          title: 'EarlyON Saturday',
+          source: 'civic_registry',
+          eventDate: SATURDAY,
+        }),
+      ],
+    });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(result).toMatchObject({ sent: 1, quiet: 0 });
+    expect(h.transport.bodies()).toEqual([
+      `${"This Saturday looks open for Maya. Want one nearby find that's actually running?"}\n\n${NUDGE_OPT_OUT}`,
+    ]);
+    const ledger = h.writes.filter((w) => w.table === schema.channelMessages);
+    expect(ledger[0]?.payload).toMatchObject({
+      templateKey: 'proactive_nudge:empty_saturday',
+      dedupeKey: 'nudge:fam-1:empty_saturday:2026-08-01:user-1',
+      category: 'nudge',
+    });
+    const audit = h.writes.find((w) => w.table === schema.auditLog);
+    expect(audit?.payload).toMatchObject({
+      actionTaken: 'proactive_nudge_sent',
+      after: { kind: 'empty_saturday' },
+    });
+    expect(JSON.stringify(audit?.payload)).not.toContain('sat-1');
+    expect(h.transport.bodies()).toHaveLength(1);
+  });
+
+  it('holds the ask when the parent is not enrolled', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      enrolled: false,
+      saturdayPlans: { householdBusy: false, busyChildIds: new Set() },
+      candidates: [
+        candidate({ source: 'civic_registry', eventDate: SATURDAY, title: 'EarlyON Saturday' }),
+      ],
+    });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(result.sent).toBe(0);
+    expect(result.held.not_enrolled).toBe(1);
+    expect(h.transport.bodies()).toEqual([]);
   });
 });

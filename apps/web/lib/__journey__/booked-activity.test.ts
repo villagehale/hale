@@ -391,9 +391,12 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
     // happened - hears nothing.
     expect(askTransport.sent[0]?.to).toBe(CO_PARENT_PHONE);
     expect(askTransport.sent.map((sent) => sent.to)).not.toContain(PRIMARY_PHONE);
-    // ...and Claude's own words name the class the receipt booked - the composer was
-    // handed the booking's title and nothing else about this household.
+    // The locked how-it-went sentence names the class the receipt booked. The model
+    // is not called for an activity ask (VIL-366).
     expect(askTransport.sent[0]?.body).toContain('Preschool Swim Level 2');
+    expect(askTransport.sent[0]?.body).toContain(
+      'How did Preschool Swim Level 2 go? One line is plenty.',
+    );
 
     const audit = await db.database
       .select()

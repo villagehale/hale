@@ -1,6 +1,7 @@
+import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import { withOptOut } from '~/lib/channel/opt-out';
+import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import { assertPoolSize, pickVariant } from '~/lib/channel/variant';
 
 /**
@@ -59,7 +60,6 @@ export const CHECK_IN_ACK_TEMPLATE_KEY = 'checkin:ack';
  * here would make a pool rename look like a ledger change.
  */
 const LATER_ASK_POOL_NAME = 'checkin:later';
-const ANCHORED_ASK_POOL_NAME = 'checkin:anchored';
 const NOTED_ACK_POOL_NAME = 'checkin:ack';
 
 /** What the question calls the children when it cannot name them. */
@@ -126,7 +126,7 @@ const LATER_ASK_POOL: ReadonlyArray<(phrase: string) => string> = [
 assertPoolSize(LATER_ASK_POOL, LATER_ASK_POOL_NAME);
 
 /**
- * The same evening, when Hale SAW something — "How did swim go?".
+ * The same evening, when Hale SAW something.
  *
  * THE SLOT IS THE ACTIVITY, NOT A CHILD. The caller has already decided that this title
  * is nameable: it is a child's own row, the family put it there rather than Hale, it is
@@ -134,20 +134,9 @@ assertPoolSize(LATER_ASK_POOL, LATER_ASK_POOL_NAME);
  * subtractions and counts each refusal separately). What arrives here is a title that may
  * be said out loud.
  *
- * A SEPARATE POOL RATHER THAN A SLOT IN THE ONE ABOVE, because the sentences genuinely
- * differ: "How did today go with Mia and Leo?" asks about a day and "How did swim go?"
- * asks about a thing, and grafting the second onto the first's framings produces English
- * nobody would text. It has its own pool NAME too, so an anchored evening and a plain one
- * do not advance in lockstep.
+ * VIL-366 locks the sentence. It is not a rotation. The day pool above still rotates
+ * when there is no activity to name, or when the title will not fit one segment.
  */
-const ANCHORED_ASK_POOL: ReadonlyArray<(activity: string) => string> = [
-  (activity) => `How did ${activity} go? One line is plenty.`,
-  (activity) => `How was ${activity}? Even a word helps.`,
-  (activity) => `What did you make of ${activity} today?`,
-  (activity) => `What was ${activity} like?`,
-  (activity) => `What stood out about ${activity}?`,
-];
-assertPoolSize(ANCHORED_ASK_POOL, ANCHORED_ASK_POOL_NAME);
 
 /**
  * The question, named where it fits and generic where it does not.
@@ -189,12 +178,7 @@ export function composeCheckInAsk(input: {
   occasion: number;
 }): CheckInAsk {
   if (!input.first && input.todayActivity !== null) {
-    const anchored = pickVariant(
-      ANCHORED_ASK_POOL,
-      ANCHORED_ASK_POOL_NAME,
-      input.familyId,
-      input.occasion,
-    )(input.todayActivity);
+    const anchored = howItWentAsk(input.todayActivity);
     // Compose then measure, the same trade the names make below: family_events titles are
     // freeform, so a title long enough to split the message gives up the ANCHOR rather
     // than the segment. Falling through to the day form is not a degraded message — it is

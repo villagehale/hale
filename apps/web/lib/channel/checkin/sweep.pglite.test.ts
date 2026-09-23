@@ -579,7 +579,7 @@ describe('what the evening question may name', () => {
     // The tripwire in teen-access-outbound.test.ts bans `familyEvents` from any unlisted
     // file in lib/channel, and this sweep is deliberately not a listed door: its reader is
     // a closure over channelScheduleReader, which projects a private row before this file
-    // ever sees it. Asserted on the source so a future edit that opens a fourth door has
+    // ever sees it. Asserted on the source so a future edit that opens a fifth door has
     // to delete this test on purpose.
     const source = readFileSync(fileURLToPath(new URL('./sweep.ts', import.meta.url)), 'utf8');
     expect(/\bfamilyEvents\b/.test(source)).toBe(false);

@@ -1,29 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
-import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
-import { withOptOut } from '~/lib/channel/opt-out';
-import { type SendRefusalReason, refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
-import { threadProactiveMessage } from '~/lib/channel/thread';
-import {
-  ACTIVITY_FOLLOWUP_ASK_TEMPLATE_KEY,
-  activityFollowupAskDedupeKey,
-} from '~/lib/channel/followup/ask-open';
-import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import {
-  type OutboundGatePorts,
-  type ProactiveHoldReason,
-  assertProactiveSendAllowed,
-  buildOutboundGatePorts,
-} from '~/lib/channel/outbound-gate';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
-import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
-import type { ReminderChild } from '~/lib/loop/templates/reminder/payload';
-import { discoverableUserIds } from '~/lib/village/intros/consent';
-import { readDueBookings } from '~/lib/integrations/booking';
 import {
   type DaycareSubject,
   type WeekdayCareFact,
@@ -31,12 +9,35 @@ import {
   loadWeekdayCare,
   weekdayCareEnabled,
 } from '~/lib/care/weekday';
+import {
+  ACTIVITY_FOLLOWUP_ASK_TEMPLATE_KEY,
+  activityFollowupAskDedupeKey,
+} from '~/lib/channel/followup/ask-open';
+import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { withOptOut } from '~/lib/channel/opt-out';
+import {
+  type OutboundGatePorts,
+  type ProactiveHoldReason,
+  assertProactiveSendAllowed,
+  buildOutboundGatePorts,
+} from '~/lib/channel/outbound-gate';
+import { type SendRefusalReason, refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { readDueBookings } from '~/lib/integrations/booking';
+import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
+import type { ReminderChild } from '~/lib/loop/templates/reminder/payload';
+import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { discoverableUserIds } from '~/lib/village/intros/consent';
 import { inboundSince, mentionsActivity, mentionsDaycare, mentionsIntro } from './screen';
 import {
   type ComposeDeferral,
   type FollowupVoice,
   type FollowupVoiceRequest,
   createFollowupVoice,
+  lockedActivityFollowup,
 } from './voice';
 
 /**
@@ -444,7 +445,10 @@ async function sendFollowup(
   );
   if (!verdict.allowed) return { status: 'held', reason: verdict.reason };
 
-  const composed = await deps.voice.compose(input.ask);
+  const composed =
+    input.ask.kind === 'activity'
+      ? lockedActivityFollowup(input.ask.activity)
+      : await deps.voice.compose(input.ask);
   if (composed.status === 'deferred') {
     return { status: 'compose_deferred', reason: composed.reason };
   }

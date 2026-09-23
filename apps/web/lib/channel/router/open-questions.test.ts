@@ -24,10 +24,7 @@ import {
 const T0 = new Date('2026-08-28T00:00:00.000Z');
 const T1 = new Date('2026-08-28T01:00:00.000Z');
 
-function question(
-  kind: OpenQuestionKind,
-  overrides: Partial<OpenQuestion> = {},
-): OpenQuestion {
+function question(kind: OpenQuestionKind, overrides: Partial<OpenQuestion> = {}): OpenQuestion {
   return {
     id: `${kind}-1`,
     kind,
@@ -115,6 +112,7 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
       eveningCheckIn: async () => null,
       activityFollowupAsk: async () => null,
       weekdayCare: async () => null,
+      emptySaturday: async () => null,
       daycareFollowup: async () => null,
       forwardAddressRevoke: async () => null,
     });
@@ -195,6 +193,7 @@ describe('the registration-readiness question on the open list', () => {
       eveningCheckIn: async () => null,
       activityFollowupAsk: async () => null,
       weekdayCare: async () => null,
+      emptySaturday: async () => null,
       daycareFollowup: async () => null,
       forwardAddressRevoke: async () => null,
     });
@@ -233,6 +232,7 @@ describe('the registration-readiness question on the open list', () => {
       eveningCheckIn: async () => null,
       activityFollowupAsk: async () => null,
       weekdayCare: async () => null,
+      emptySaturday: async () => null,
       daycareFollowup: async () => null,
       forwardAddressRevoke: async () => null,
     });
@@ -295,6 +295,7 @@ describe('the forwarding-address revoke confirm on the open list', () => {
     const reader = createOpenQuestionReader({
       activityFollowupAsk: async () => null,
       weekdayCare: async () => null,
+      emptySaturday: async () => null,
       daycareFollowup: async () => null,
       pendingApprovals: async () => [],
       introOptInOpen: async () => false,

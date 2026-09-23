@@ -1078,6 +1078,23 @@ export function weekdayCareHandler(): DeterministicHandler {
 }
 
 /**
+ * VIL-365 · the empty-Saturday ask's owner, and it claims nothing.
+ *
+ * The question is listed so a bare YES stays ambiguous. The answer is not a
+ * delivery: the held candidate is not sent from here, and a yes falls through
+ * to the coach. Without an owner the resolver logs an impossible state.
+ */
+export function emptySaturdayHandler(): DeterministicHandler {
+  return {
+    name: 'empty_saturday',
+    resolves: new Set<OpenQuestionKind>(['empty_saturday']),
+    async handle(): Promise<HandlerVerdict> {
+      return { claimed: false };
+    },
+  };
+}
+
+/**
  * VIL-360 · the daycare check-in's OWNER, and it claims nothing either.
  *
  * The answer is a sentence the coach reads and the coach's own memory tools persist —

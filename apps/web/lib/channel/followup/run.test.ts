@@ -1,7 +1,9 @@
 import type { Database } from '@hale/db';
-import { withOptOut } from '~/lib/channel/opt-out';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { WEEKDAY_CARE_ENABLED_ENV } from '~/lib/care/weekday';
+import type { DaycareSubject, WeekdayCareFact } from '~/lib/care/weekday';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { withOptOut } from '~/lib/channel/opt-out';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { ReminderChild } from '~/lib/loop/templates/reminder/payload';
 import {
@@ -20,8 +22,6 @@ import {
   introFollowupWindow,
   runFollowupSweep,
 } from './run';
-import { WEEKDAY_CARE_ENABLED_ENV } from '~/lib/care/weekday';
-import type { DaycareSubject, WeekdayCareFact } from '~/lib/care/weekday';
 import type { ComposeDeferral, FollowupVoiceRequest } from './voice';
 
 const DB = {} as Database;
@@ -206,7 +206,9 @@ function harness(
     voice: {
       async compose(request) {
         const defer = overrides.voiceDefers;
-        return defer ? { status: 'deferred', reason: defer } : { status: 'composed', body: composedAsk(request) };
+        return defer
+          ? { status: 'deferred', reason: defer }
+          : { status: 'composed', body: composedAsk(request) };
       },
     },
   };
@@ -388,7 +390,12 @@ describe('the intro follow-up', () => {
 
   it('expires an intro nobody got to in time, and names it', async () => {
     const h = harness({
-      intros: [{ ...PAIR, introducedAt: new Date(NOW.getTime() - (INTRO_FOLLOWUP_MAX_AGE_DAYS + 0.02) * DAY_MS) }],
+      intros: [
+        {
+          ...PAIR,
+          introducedAt: new Date(NOW.getTime() - (INTRO_FOLLOWUP_MAX_AGE_DAYS + 0.02) * DAY_MS),
+        },
+      ],
     });
 
     const result = await runFollowupSweep(DB, h.deps, NOW);
@@ -427,7 +434,7 @@ describe('the activity follow-up', () => {
 
     expect(result.activityAsked).toBe(1);
     expect(h.transport.bodies()).toEqual([
-      withOptOut('How was Swim class? No pressure to reply.', 'short'),
+      withOptOut('How did Swim class go? One line is plenty.', 'short'),
     ]);
     expect(h.recorded[0]).toMatchObject({
       templateKey: 'followup:activity',
@@ -462,7 +469,9 @@ describe('the activity follow-up', () => {
     const h = harness({
       activities: {
         [FAM_A]: [
-          activity({ startsAt: new Date(NOW.getTime() - (ACTIVITY_FOLLOWUP_MAX_AGE_DAYS + 0.02) * DAY_MS) }),
+          activity({
+            startsAt: new Date(NOW.getTime() - (ACTIVITY_FOLLOWUP_MAX_AGE_DAYS + 0.02) * DAY_MS),
+          }),
         ],
       },
     });
@@ -563,22 +572,14 @@ describe('when the voice has nothing sendable', () => {
    * found it. Nothing sent, nothing claimed, nothing audited — and the very next tick
    * tries again and succeeds.
    */
-  it('sends nothing, claims nothing, and asks again on the next tick', async () => {
+  it('sends the locked ask even when the voice would have deferred', async () => {
     const h = harness({ activities: { [FAM_A]: [activity()] }, voiceDefers: 'gate_exhausted' });
 
-    const deferredRun = await runFollowupSweep(DB, h.deps, NOW);
+    const result = await runFollowupSweep(DB, h.deps, NOW);
 
-    expect(deferredRun).toMatchObject({ activityAsked: 0, composeDeferred: 1 });
-    expect(h.transport.bodies()).toEqual([]);
-    expect(h.recorded).toEqual([]);
-    expect(h.audits).toEqual([]);
-
-    const composing = harness({ activities: { [FAM_A]: [activity()] } });
-    const retry = await runFollowupSweep(DB, composing.deps, new Date(NOW.getTime() + 3_600_000));
-
-    expect(retry.activityAsked).toBe(1);
-    expect(composing.transport.bodies()).toEqual([
-      withOptOut('How was Swim class? No pressure to reply.', 'short'),
+    expect(result).toMatchObject({ activityAsked: 1, composeDeferred: 0 });
+    expect(h.transport.bodies()).toEqual([
+      withOptOut('How did Swim class go? One line is plenty.', 'short'),
     ]);
   });
 

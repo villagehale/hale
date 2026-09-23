@@ -21,6 +21,7 @@ import {
   readSubjectVerdicts,
   subjectKey,
 } from '~/lib/reviews/aggregate';
+import { biasFindOrder, readHouseholdFindBias } from '~/lib/reviews/household-bias';
 import { toVillageCandidateView } from '~/lib/village/mappers';
 import { type StandingOption, selectStandingOption } from '~/lib/village/standing-option';
 import { visibleCandidates } from '~/lib/village/visibility';
@@ -317,8 +318,17 @@ export function searchVillageTool(
       }
 
       const offerableNow = await withoutPooledNegatives(database, ctx.familyId, offerable);
-      const candidates = offerableNow.map((entry) => entry.candidate);
-      const offered = offerableNow.flatMap((entry) => (entry.offer ? [entry.offer] : []));
+      // VIL-366 · this household's own verdicts, after the pooled #677 drop. A
+      // worth_it floats; a not_worth_it is dropped when anything else remains.
+      // Neither step returns a sentence.
+      const householdBias = await readHouseholdFindBias(database, ctx.familyId);
+      const ordered = biasFindOrder(
+        offerableNow,
+        (entry) => (entry.offer ? offeredSubject(entry.offer) : null),
+        householdBias,
+      );
+      const candidates = ordered.map((entry) => entry.candidate);
+      const offered = ordered.flatMap((entry) => (entry.offer ? [entry.offer] : []));
       // EXACTLY the rows that went out as `candidates` — never the in-verification
       // count and never a teen-attributed row, which has no venue and no date and must
       // not be nameable at all (rule #1).

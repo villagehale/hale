@@ -11,7 +11,7 @@ import { CHECK_IN_ASK_TEMPLATE_KEY } from '~/lib/channel/checkin/copy';
 import { eveningCheckInQuestion, handleEveningCheckInReply } from '~/lib/channel/checkin/reply';
 import { PRIVATE_EVENT_WHAT } from '~/lib/channel/coach/tools';
 import { F14_ENABLED_ENV } from '~/lib/channel/f14';
-import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
+import { OPT_OUT_LINE, withOptOut } from '~/lib/channel/opt-out';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -24,16 +24,14 @@ import { bareYesNoQuestions } from '~/lib/testing/pool-copy';
  * Each half of this is pinned somewhere already: the pools in checkin/copy.test.ts, the
  * rotation in variant.test.ts, the six subtractions in checkin/sweep.pglite.test.ts, the
  * standing question in checkin/reply.pglite.test.ts. What none of them can see is the
- * SECOND evening. Every one of those files asks the lane one question once, and the
- * failure this journey exists for is a lane that is correct on any single night and the
- * same sentence on all of them — which is exactly what shipped before V5, and is
- * invisible to a test that never runs the sweep twice.
+ * SECOND evening: the teen still absent, the answer filed against Monday, and the
+ * anchored ask still the locked sentence after the occasion has advanced.
  *
  * So the pins here are the ones that only exist across two nights and one reply:
  *
- *   · the rotation reaches the WIRE. pickVariant is proved in variant.test.ts, but a
- *     composer that computed the occasion once, or a sweep that passed a constant, would
- *     leave every one of those tests green and still text the same sentence forever.
+ *   · the anchored ask on the wire is the VIL-366 sentence, both nights. The day pool
+ *     still rotates when there is no activity to name. This fixture names swim, so both
+ *     evenings are that one locked sentence on purpose.
  *   · rule 11 holds on the WIRE BODY, opt-out and all — not on a pool member in
  *     isolation. A parent answering "no" to a question a bare no answers turns the
  *     evening off for good, and what they answer is what arrived on the phone.
@@ -44,15 +42,9 @@ import { bareYesNoQuestions } from '~/lib/testing/pool-copy';
  *     keeps template key checkin:ask precisely so this holds, and nothing else in the
  *     suite reads two asks from one household.
  *
- * MUTATION (run 2026-09-20): pin the selector to a constant index — `pickVariant`'s
- * rotation replaced by `const index = 0` — and this test fails on exactly one line, the
- * one that says the second evening is a different sentence:
- *
- *   expected 'How did swim go? One line is plenty. …' not to be the same string
- *
- * Everything before it — both sends, both anchors, the counts — still passes, so the
- * assertion discriminates the rotation specifically rather than reporting that the lane
- * broke. That is the shape this file is for.
+ * VIL-366 replaced the anchored rotation with one sentence. A composer that paraphrased
+ * it, or that fell through to the day pool while swim was nameable, fails the equality
+ * against that sentence. The unanchored rotation stays in copy.test.ts.
  */
 
 /** 20:17 Toronto on Sunday 2026-07-05 — inside the evening slot. */
@@ -122,7 +114,7 @@ function prodDeps(sent: Array<{ to: string; body: string }>): EveningCheckInDeps
 }
 
 describe('two evenings in the voice', () => {
-  it('names her swim both nights, never the teenager, and never says it the same way twice', async () => {
+  it('names her swim both nights with the locked sentence, and never the teenager', async () => {
     const [family] = await db.database
       .insert(schema.families)
       .values({ displayName: 'Ana + kids', provinceOrState: 'ON', onboardingStage: 'sms_active' })
@@ -189,10 +181,11 @@ describe('two evenings in the voice', () => {
     expect(sent).toHaveLength(2);
     const [nightOne, nightTwo] = sent.map((message) => message.body);
 
-    // THE ROTATION, ON THE WIRE. Two consecutive occasions, a five-member pool, a step of
-    // exactly one: a repeat here is impossible by construction, so a repeat means the
-    // occasion never advanced between the composer and the phone.
-    expect(nightTwo).not.toBe(nightOne);
+    // VIL-366. Same class both nights, so the same locked sentence both nights. The gate
+    // stub reports no earlier proactive send, so both carry the full opt-out.
+    const locked = withOptOut('How did swim go? One line is plenty.', 'full');
+    expect(nightOne).toBe(locked);
+    expect(nightTwo).toBe(locked);
 
     for (const body of [nightOne, nightTwo] as string[]) {
       // One GSM-7 segment WITH the CASL line on it — measured on what went out, because
