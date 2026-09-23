@@ -51,11 +51,16 @@ describe('PricingSection (landing pricing)', () => {
     expect(french).toContain('Rappels et brouillons, à mesure qu’ils arrivent');
     expect(french).toContain('La vue du foyer sur l’année, à mesure qu’elle arrive');
     expect(french).toContain('Conciergerie et soutien prioritaire');
-    // TODO(VIL-367): FR card one-liners stay the previous translations until Design
-    // locks the twins. Do not replace these with a translation of the English bytes.
-    expect(french).toContain(
-      'Textez Hale, dates d’inscription surveillées, réponses, et le tarif fondateur.',
-    );
+    // VIL-367 FR twins, Sloane + Miles 2026-09-23. Exact bytes.
+    const lockedFr = {
+      free: 'Trouvez ce qu’il y a et ouvrez l’année. Les matins que vous surveillez déjà restent gratuits.',
+      plus: 'Des rappels quand un week-end est vide ou qu’une liste d’attente s’ouvre — plus la mémoire de l’année, à mesure qu’elle arrive.',
+      family: 'Un plan pour le foyer. Le coparent reste dedans.',
+    } as const;
+    expect(fr.PricingSection.tierLines).toEqual(lockedFr);
+    for (const line of Object.values(lockedFr)) {
+      expect(french).toContain(line);
+    }
     expect(french).not.toContain('Find what’s on and open the year.');
     // Free-tier bullets stay the French marketing list.
     expect(french).toContain('Textez Hale');

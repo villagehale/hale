@@ -23,10 +23,9 @@ const TIER_PANEL = {
  * is the one front door the site chrome offers — texting Hale — because there is no
  * other way in: these buttons pointed at the app's /onboarding wizard, which F14
  * deleted, so a pricing page's only action 308'd back to the homepage.
- * Names, one-liners, and feature lines come from the locale bundle. English
- * `tierLines` are the VIL-367 bytes locked by Sloane and Miles on 2026-09-23.
- * TODO(VIL-367): fr and zh `tierLines` are still the previous translations.
- * Sloane writes the FR twins when this page ships — do not invent them here.
+ * Names, one-liners, and feature lines come from the locale bundle. English and
+ * French `tierLines` are the VIL-367 bytes locked by Sloane and Miles on 2026-09-23.
+ * Chinese `tierLines` stay the previous translation. Do not invent a ZH twin here.
  * The free price word is the tier name (`Gratuit`, `免费`), not the English `Free`
  * that formatPlanPrice returns. Free-tier features are marketing-only: SMS, rec
  * dates, answers, founding rate — not the Village/Companion bullets the portal
