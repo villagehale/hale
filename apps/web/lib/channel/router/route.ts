@@ -129,6 +129,9 @@ const PARENT_ROLES: ReadonlySet<string> = new Set(['primary_parent', 'co_parent'
 const REPLY_SENT_ACTION: Record<ReplySent['channel'], string> = {
   sms: 'sms_reply_sent',
   whatsapp: 'sms_reply_sent',
+  // Same phone verb as WhatsApp: both pipes answer the same verified number, and
+  // the ledger row beside the audit row records which pipe carried it.
+  imessage: 'sms_reply_sent',
   email: 'email_reply_sent',
 };
 

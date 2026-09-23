@@ -1,5 +1,6 @@
-import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type EmailReplyDeps, sendEmailReply } from '~/lib/channel/email/reply-send';
+import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import type { ReplySent, ReplyTransport } from './reply-route';
 
 /**
@@ -29,7 +30,18 @@ export function createReplyTransport(deps: {
   phone: ChannelTransport;
   /** Null when the inbound-email leg is not provisioned — see the module note. */
   email: EmailReplyDeps | null;
+  /**
+   * The iMessage door. Absent means the real Linq partner send (linq/transport.ts),
+   * which throws a named `not_configured` when `LINQ_API_KEY` is unset — a missing
+   * sender is a failed turn the drain can re-drive, never a text that vanished.
+   * Tests inject a fake so they can prove the chat id is what gets addressed.
+   */
+  imessage?: (input: { chatId: string; body: string }) => Promise<{ providerMessageId: string }>;
 }): ReplyTransport {
+  const sendImessage =
+    deps.imessage ??
+    ((input: { chatId: string; body: string }) =>
+      sendLinqChatMessage({ chatId: input.chatId, text: input.body }));
   return {
     async send({ route, body }): Promise<ReplySent> {
       switch (route.channel) {
@@ -39,6 +51,10 @@ export function createReplyTransport(deps: {
           // Absent means a single-pipe SMS transport (intake/transport.ts) — the same
           // convention sendReply kept before the route existed.
           return { providerMessageId: sent.providerMessageId, channel: sent.transport ?? 'sms' };
+        }
+        case 'imessage': {
+          const sent = await sendImessage({ chatId: route.chatId, body });
+          return { providerMessageId: sent.providerMessageId, channel: 'imessage' };
         }
         case 'email': {
           if (!deps.email) {

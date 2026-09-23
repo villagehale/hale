@@ -1,40 +1,41 @@
-import type { Database } from '@hale/db';
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
+import type { Database } from '@hale/db';
 import { type QueueCreateOptions, createQueueWithPolicy } from '@hale/tools-contracts';
 import { captureInboundRouted } from '~/lib/analytics/server-capture';
-import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
+import { createActivityFinder } from '~/lib/channel/activity/lane';
 import {
   CHANNEL_MESSAGE_RECEIVED_DLQ,
   CHANNEL_MESSAGE_RECEIVED_POLICY,
   CHANNEL_MESSAGE_RECEIVED_QUEUE,
   CHANNEL_MESSAGE_RECEIVED_RETRY,
 } from '~/lib/channel/config';
+import {
+  type DepartureNoticePorts,
+  departureNoticeReaders,
+} from '~/lib/channel/coparent/departure-notice';
 import { createIdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { createIntakeAnswerComposer } from '~/lib/channel/intake/answer';
 import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
-import type { WelcomeCardPorts } from '~/lib/channel/intake/welcome-card';
-import {
-  type DepartureNoticePorts,
-  departureNoticeReaders,
-} from '~/lib/channel/coparent/departure-notice';
-import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
+import type { WelcomeCardPorts } from '~/lib/channel/intake/welcome-card';
+import { createLinqTextTransport } from '~/lib/channel/linq/transport';
+import { createReplyTransport, selectReplyTransport } from '~/lib/channel/reply-transport';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import type { MessageTransport } from '~/lib/channel/transport-address';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { db } from '~/lib/db';
+import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { createOpenMeteoWeather } from '~/lib/weather/open-meteo';
-import { createReplyTransport, selectReplyTransport } from '~/lib/channel/reply-transport';
-import type { MessageTransport } from '~/lib/channel/transport-address';
-import type { ChannelMessageReceivedJob, TwilioInboundDeps } from './inbound';
 import { twilioWhatsAppSender } from './config';
+import type { ChannelMessageReceivedJob, TwilioInboundDeps } from './inbound';
 import { createTwilioTransport, createTwilioWhatsAppTransport } from './transport';
 import type { TwilioVoiceDeps } from './voice';
 
@@ -60,20 +61,29 @@ function anthropicClient(): AgentClient {
  * everything else (or an unprovisioned leg — 'not_configured', named) rides SMS.
  * Defaults to 'sms' for the cron callers that compose intake sends outside a webhook
  * turn; those are proactive lanes and stay on SMS by policy. */
-export function buildIntakeDeps(inboundTransport: MessageTransport = 'sms'): IntakeDeps {
+export function buildIntakeDeps(
+  inboundTransport: MessageTransport = 'sms',
+  linq: { chatId: string } | null = null,
+): IntakeDeps {
   const database = db();
   const client = anthropicClient();
+  // An iMessage turn answers inside the Linq chat. The phone transport would put
+  // the STOP ack or the media line on SMS, which is a different app.
+  const transport =
+    inboundTransport === 'imessage'
+      ? createLinqTextTransport({ chatId: linq?.chatId ?? null })
+      : createReplyTransport({
+          sms: createTwilioTransport(),
+          whatsapp: createTwilioWhatsAppTransport(),
+          decide: async () =>
+            selectReplyTransport({
+              configured: twilioWhatsAppSender() !== null,
+              lastInbound: { transport: inboundTransport, receivedAt: new Date() },
+              now: new Date(),
+            }),
+        });
   return {
-    transport: createReplyTransport({
-      sms: createTwilioTransport(),
-      whatsapp: createTwilioWhatsAppTransport(),
-      decide: async () =>
-        selectReplyTransport({
-          configured: twilioWhatsAppSender() !== null,
-          lastInbound: { transport: inboundTransport, receivedAt: new Date() },
-          now: new Date(),
-        }),
-    }),
+    transport,
     threadMessage: threadProactiveMessage,
     // The SAME reader the router uses for a bare affirmative (router/wiring.ts), so
     // "which questions are open" cannot get two answers on one turn depending on which
@@ -179,18 +189,13 @@ function sendOptions(job: ChannelMessageReceivedJob) {
  * the null path we ask it — including the archive, since a job that already ran and was
  * archived is still a text that was delivered to C1.
  */
-async function sendAndConfirm(
-  queue: MessageQueue,
-  job: ChannelMessageReceivedJob,
-): Promise<void> {
+async function sendAndConfirm(queue: MessageQueue, job: ChannelMessageReceivedJob): Promise<void> {
   const created = await queue.send(CHANNEL_MESSAGE_RECEIVED_QUEUE, job, sendOptions(job));
   if (created) return;
 
-  const existing = await queue.getJobById(
-    CHANNEL_MESSAGE_RECEIVED_QUEUE,
-    job.channel_message_id,
-    { includeArchive: true },
-  );
+  const existing = await queue.getJobById(CHANNEL_MESSAGE_RECEIVED_QUEUE, job.channel_message_id, {
+    includeArchive: true,
+  });
   if (!existing) {
     throw new Error(
       `${CHANNEL_MESSAGE_RECEIVED_QUEUE}: pg-boss created no job and none exists for channel message ${job.channel_message_id}`,

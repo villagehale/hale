@@ -30,6 +30,9 @@ export interface InboundMessage {
   /** The pipe the message arrived on. Absent means 'sms' — the historical transport
    * every pre-WhatsApp caller and fixture assumes; the webhook always sets it. */
   transport?: MessageTransport;
+  /** Linq chat id when `transport` is `imessage`. The within-request reply (a STOP
+   * ack, the media line) sends back into this chat. Absent on SMS and WhatsApp. */
+  chatId?: string;
   /**
    * VIL-348 — the provider's OWN keyword handling already matched this message AND
    * already replied to the sender, so Hale's acknowledgment would be the second one.

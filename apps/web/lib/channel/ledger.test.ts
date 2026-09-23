@@ -41,6 +41,8 @@ describe('acceptedStatus — the status a successful send starts at', () => {
 
   it('leaves the receipt-less channels terminal on accept', () => {
     expect(acceptedStatus('email')).toBe('sent');
+    // Linq's 2xx is the acceptance we record; delivery webhooks are not wired.
+    expect(acceptedStatus('imessage')).toBe('sent');
   });
 });
 

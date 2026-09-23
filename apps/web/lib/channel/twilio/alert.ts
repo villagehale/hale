@@ -35,7 +35,12 @@ import { buildEvent } from '~/lib/analytics/events';
  * that can throw before its first ledger write), and a door this type cannot name is
  * a door the invariant cannot cover — which is exactly how the email route shipped
  * without it (audit P1-5a; webhook-boundary.test.ts holds the inventory). */
-export type WebhookRoute = 'twilio_inbound' | 'twilio_voice' | 'twilio_status' | 'email_inbound';
+export type WebhookRoute =
+  | 'twilio_inbound'
+  | 'twilio_voice'
+  | 'twilio_status'
+  | 'email_inbound'
+  | 'linq_inbound';
 
 export type SmsAlertOutcome =
   | 'sent'

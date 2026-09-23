@@ -31,6 +31,9 @@ const PROVIDER_TOKENS = [
   'createTwilioTransport(',
   'createTwilioWhatsAppTransport(',
   'api.twilio.com',
+  // Linq is the same kind of door: a call here puts bytes on a parent's phone.
+  'sendLinqChatMessage(',
+  'api.linqapp.com',
 ] as const;
 
 /** Every file allowed to reach Twilio, each with the reason its sends are on the
@@ -41,7 +44,12 @@ const PROVIDER_TOKENS = [
  * pre-family row cannot legally exist earlier). RESIDUE entries are sends with no
  * ledger row today, kept deliberately visible here rather than scattered. */
 const ONE_DOOR_ALLOWLIST: Record<string, string> = {
-  'apps/web/lib/channel/twilio/transport.ts': 'the door itself — the one module that speaks Twilio REST',
+  'apps/web/lib/channel/twilio/transport.ts':
+    'the door itself — the one module that speaks Twilio REST',
+  'apps/web/lib/channel/linq/transport.ts':
+    'the iMessage door — the one module that speaks the Linq partner API',
+  'apps/web/lib/channel/router/reply-transport.ts':
+    'iMessage arm of the router reply transport; every send ledgered in router route.ts sendReply',
   'apps/web/lib/channel/twilio/delivery-sweep.ts':
     'read-only status poller (P0-1): fetches Message status by SID, sends nothing — its writes are ledger status updates, never provider sends',
   'apps/web/lib/channel/twilio/deps.ts':
@@ -136,13 +144,14 @@ describe('one door to the provider (rule #6)', () => {
     // every assertion below would pass vacuously ("a refusal is not evidence").
     expect(found).toContain('apps/web/lib/channel/twilio/transport.ts');
     expect(found).toContain('apps/web/lib/channel/twilio/alert.ts');
+    expect(found).toContain('apps/web/lib/channel/linq/transport.ts');
   });
 
   it('no file reaches Twilio outside the allowlisted, ledger-accountable set', () => {
     const strangers = found.filter((file) => !(file in ONE_DOOR_ALLOWLIST));
     expect(
       strangers,
-      `These files reach the Twilio provider but are not in ONE_DOOR_ALLOWLIST.
+      `These files reach a phone provider (Twilio or Linq) but are not in ONE_DOOR_ALLOWLIST.
 Every send must write a channel_messages row (rule #6). Route the send through an existing ledgered path, or add the file here WITH the justification that names where its ledger row is written:
   ${strangers.join('\n  ')}`,
     ).toEqual([]);

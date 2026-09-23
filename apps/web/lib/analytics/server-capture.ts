@@ -184,7 +184,7 @@ export function buildAgentErrorPayload(error: AgentError): {
 // ── Inbound routing outcomes ─────────────────────────────────────────────────
 
 /** The two doors a parent's message can arrive through. */
-export type InboundDoor = 'sms' | 'email';
+export type InboundDoor = 'sms' | 'email' | 'imessage';
 
 /** Inside the Twilio webhook's 15s budget, so a hung PostHog endpoint must fail fast
  * — the same bound the webhook boundary alert puts on its own capture leg

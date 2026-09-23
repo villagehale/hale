@@ -136,6 +136,10 @@ export const channelMessages = pgTable(
     /** The provider's id for the send. Indexed — A3's delivery-status callbacks
      * update `status` by looking a row up on it. */
     providerMessageId: text('provider_message_id'),
+    /** Linq chat id for an iMessage turn (VIL-335). Null on every other pipe. The
+     * reply route reads it back so the answer returns to the same blue-bubble chat
+     * the parent texted, rather than opening a second conversation. */
+    providerChatId: text('provider_chat_id'),
     status: channelMessageStatusEnum('status').notNull(),
     errorCode: text('error_code'),
     /** Verbatim body — direction:'in' ONLY (A3 writes it; C3's legal instrument).

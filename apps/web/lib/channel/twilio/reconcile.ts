@@ -78,13 +78,13 @@ export interface UnhandedInboundRow {
 }
 
 /**
- * The doors C1 consumes. All three of them, and only them: a text, a WhatsApp message
- * and an email are one queue, one router and one conversation, so a message owed a
- * reply is owed one whichever way it arrived (email/inbound.ts, router/reply-route.ts).
- * Both phone pipes belong here (WhatsApp v1): the webhook stamps the real transport,
- * and a sweep pinned to 'sms' would strand every abandoned WhatsApp turn forever.
+ * The doors C1 consumes. A text, a WhatsApp message, an iMessage and an email are one
+ * queue, one router and one conversation, so a message owed a reply is owed one
+ * whichever way it arrived (email/inbound.ts, linq/inbound.ts, router/reply-route.ts).
+ * Each phone pipe belongs here: the webhook stamps the real transport, and a sweep
+ * pinned to 'sms' would strand every abandoned WhatsApp or iMessage turn forever.
  */
-const REDRIVEN_CHANNELS = ['sms', 'whatsapp', 'email'] as const;
+const REDRIVEN_CHANNELS = ['sms', 'whatsapp', 'imessage', 'email'] as const;
 
 /**
  * Inbound rows C1 was never given, oldest first — a parent's messages are re-driven in
@@ -133,9 +133,7 @@ export async function selectUnhandedInbound(
     .limit(RECONCILE_BATCH_LIMIT);
 
   // Restates the SQL's isNotNull for the type system, which cannot read a where clause.
-  return rows.filter(
-    (row): row is UnhandedInboundRow => row.providerMessageId !== null,
-  );
+  return rows.filter((row): row is UnhandedInboundRow => row.providerMessageId !== null);
 }
 
 export interface InboundReconcileDeps {

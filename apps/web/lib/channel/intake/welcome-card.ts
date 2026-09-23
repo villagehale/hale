@@ -3,7 +3,6 @@ import { eq } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
-import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { MARKETING_SITE_URL } from '~/lib/legal-links';
 import type { ChannelTransport } from './transport';
@@ -64,6 +63,20 @@ export type WelcomeCardOutcome =
   | { status: 'not_sent'; reason: 'suppressed_quiet_hours' }
   | { status: 'not_sent'; reason: 'send_failed'; code: string; permanent: boolean };
 
+/** A provider refusal that names itself (`code` + `permanent`), or an unnamed throw.
+ * TwilioSendError and LinqSendError both carry those fields; reading them here keeps
+ * an iMessage card the Linq leg cannot carry (`media_unsupported`) out of the
+ * `unknown` bucket without this module importing either transport. */
+function providerRefusal(err: unknown): { code: string; permanent: boolean } {
+  if (typeof err === 'object' && err !== null && 'code' in err && 'permanent' in err) {
+    const { code, permanent } = err as { code: unknown; permanent: unknown };
+    if (typeof code === 'string' && code.length > 0 && typeof permanent === 'boolean') {
+      return { code, permanent };
+    }
+  }
+  return { code: 'unknown', permanent: false };
+}
+
 export async function sendWelcomeContactCard(
   database: Database,
   args: {
@@ -88,7 +101,10 @@ export async function sendWelcomeContactCard(
   // provisioning — before watch consent can exist — so the full gate cannot serve it.
   // The radar reply this rides beside is exempt by design; the extra is not, unless
   // the caller says this card IS that reply's introduction.
-  if (!args.ridesReply && inProactiveQuietHours(now, await parentTimeZone(database, parentUserId))) {
+  if (
+    !args.ridesReply &&
+    inProactiveQuietHours(now, await parentTimeZone(database, parentUserId))
+  ) {
     await database.insert(schema.channelMessages).values({
       familyId,
       parentUserId,
@@ -143,8 +159,7 @@ export async function sendWelcomeContactCard(
       mediaUrls: [CONTACT_CARD_URL],
     }));
   } catch (err) {
-    const code = err instanceof TwilioSendError ? err.code : 'unknown';
-    const permanent = err instanceof TwilioSendError ? err.permanent : false;
+    const { code, permanent } = providerRefusal(err);
     // The claimed row says what happened, so a family with no card is a query rather
     // than a guess. The key STAYS consumed either way (ledger.ts:
     // CONSUMED_SEND_STATUSES) — a failed delivery must never un-consume idempotency.

@@ -292,6 +292,11 @@ export const channelMessageChannelEnum = pgEnum('channel_message_channel', [
   // 24-hour session window (channel/reply-transport.ts), and a WhatsApp turn recorded
   // as 'sms' is a ledger lying in a PIPEDA right-to-access read (migration 0104).
   'whatsapp',
+  // iMessage via Linq (VIL-335). Same continuity law: the sender handle is an E.164,
+  // and that number is the person the SMS blind index already enrolled. The pipe is
+  // its own value so a blue-bubble turn is not recorded as an SMS, and so the reply
+  // route can send back through the Linq chat id stored beside the row (migration 0130).
+  'imessage',
 ]);
 
 // Direction of a loop message. 'in' rows (replies) are the ONLY rows that carry a

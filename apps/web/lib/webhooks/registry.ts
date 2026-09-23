@@ -186,6 +186,10 @@ const outlookAdapter = unimplementedSignalAdapter(
 // behind POST /api/channels/twilio/{inbound,status}, which now owns all Twilio
 // ingress. `POST /api/webhooks/twilio` is consequently an unknown provider (404).
 // The 'twilio' integration_provider enum value is untouched (rule #9: data stays).
+//
+// Linq iMessage (VIL-335) is the same kind of exception: Standard Webhooks signs
+// `webhook-id.webhook-timestamp.body`, and this verify(signature, rawBody) interface
+// is not given the id or the timestamp. The door is POST /api/channels/linq/inbound.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Stripe (Connect signal leg).
