@@ -26,4 +26,16 @@ describe('empty Saturday ask', () => {
   it('stamps the proactive nudge template the reader looks up', () => {
     expect(EMPTY_SATURDAY_TEMPLATE_KEY).toBe('proactive_nudge:empty_saturday');
   });
+
+  it('is the locked French twin, GSM-7 ASCII, with the space before the question mark', () => {
+    const fr = renderEmptySaturdayAsk('Maya', 'fr');
+    expect(fr).toBe(
+      "Ce samedi a l'air libre pour Maya. Tu veux une seule idee a cote qui tourne vraiment ?",
+    );
+    expect(renderEmptySaturdayAsk('Maya', 'en')).toBe(body);
+    expect(isPrintableGsm7Basic(fr)).toBe(true);
+    expect((fr.match(/\?/g) ?? []).length).toBe(1);
+    expect(smsSegments(`${fr}\n\n${OPT_OUT_LINE}`)).toBe(1);
+    expect(smsSegments(withOptOut(fr, 'full'))).toBe(1);
+  });
 });

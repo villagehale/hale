@@ -1,12 +1,20 @@
+import type { ReplyLanguage } from '~/lib/channel/language';
+
 /**
- * VIL-366 · Design-locked EN ask (byte-stable aside from the activity slot).
+ * VIL-366 · Design-locked ask (byte-stable aside from the activity slot).
  *
- * `How did {activity} go? One line is plenty.`
+ * EN: `How did {activity} go? One line is plenty.`
+ * FR: `Comment ca s'est passe pour {activity} ? Une ligne suffit.`
  *
- * FR TODO: the ticket says a French twin is locked, but it was not in the repo
- * or in the Linear comments and design docs searched on 2026-09-23. Do not invent one.
- * Ship EN only until that twin is pasted in from Design.
+ * The French twin is the accent-free GSM-7 ASCII Sloane locked, with the space
+ * before `?`. Callers that omit the language stay on English. These proactive
+ * asks have no inbound message, and no existing caller selects a locale for them.
  */
-export function howItWentAsk(activity: string): string {
-  return `How did ${activity} go? One line is plenty.`;
+const HOW_IT_WENT_ASK: Record<ReplyLanguage, (activity: string) => string> = {
+  en: (activity) => `How did ${activity} go? One line is plenty.`,
+  fr: (activity) => `Comment ca s'est passe pour ${activity} ? Une ligne suffit.`,
+};
+
+export function howItWentAsk(activity: string, language: ReplyLanguage = 'en'): string {
+  return HOW_IT_WENT_ASK[language](activity);
 }
