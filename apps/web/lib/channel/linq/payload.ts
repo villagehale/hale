@@ -8,6 +8,9 @@ import { LINQ_WEBHOOK_VERSION } from './signature';
  * `message.received` puts the message fields on `data` (not nested under
  * `data.message`), the sender on `data.sender_handle.handle`, and the chat on
  * `data.chat.id`. Group chats are recognised and refused here: this door is 1:1.
+ *
+ * `message.delivered`, `message.read`, and `message.failed` are receipts for a
+ * message we already sent. They are parsed, not routed.
  */
 
 export type LinqIgnoreReason =
@@ -16,6 +19,21 @@ export type LinqIgnoreReason =
   | 'not_message_received'
   | 'outbound'
   | 'group';
+
+/** Delivery receipts the ledger already knows how to store. `read` is its own
+ * event so a log line can pace on it; the ledger status it writes is still
+ * `delivered`, which is the furthest the status enum goes (Twilio does the
+ * same). `message.failed` uses `data.message_id` and `data.code`, not the
+ * message-event envelope the other two share. */
+export type LinqReceiptEvent = 'message.delivered' | 'message.read' | 'message.failed';
+
+export interface LinqDeliveryReceipt {
+  event: LinqReceiptEvent;
+  messageId: string;
+  /** What `applyTwilioStatus` already maps. `read` advances the row to delivered. */
+  rawStatus: 'delivered' | 'read' | 'failed';
+  errorCode: string | null;
+}
 
 export interface LinqInboundText {
   messageId: string;
@@ -30,10 +48,25 @@ export interface LinqInboundText {
 
 export type LinqParsedWebhook =
   | { kind: 'message'; message: LinqInboundText }
+  | { kind: 'receipt'; receipt: LinqDeliveryReceipt }
   | { kind: 'ignored'; reason: LinqIgnoreReason };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+const RECEIPT_EVENTS: readonly LinqReceiptEvent[] = [
+  'message.delivered',
+  'message.read',
+  'message.failed',
+];
+
+function isReceiptEvent(value: unknown): value is LinqReceiptEvent {
+  return typeof value === 'string' && (RECEIPT_EVENTS as readonly string[]).includes(value);
+}
+
+function stringField(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 /**
@@ -45,6 +78,7 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
   if (payload.webhook_version !== LINQ_WEBHOOK_VERSION) {
     return { kind: 'ignored', reason: 'unsupported_version' };
   }
+  if (isReceiptEvent(payload.event_type)) return parseReceipt(payload, payload.event_type);
   if (payload.event_type !== 'message.received') {
     return { kind: 'ignored', reason: 'not_message_received' };
   }
@@ -95,4 +129,26 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
       receivedAt,
     },
   };
+}
+
+function parseReceipt(
+  payload: Record<string, unknown>,
+  event: LinqReceiptEvent,
+): LinqParsedWebhook {
+  if (!isRecord(payload.data)) return { kind: 'ignored', reason: 'malformed' };
+  const data = payload.data;
+  // message.failed is a smaller envelope: message_id + code, not data.id.
+  const messageId =
+    event === 'message.failed'
+      ? stringField(data.message_id) || stringField(data.id)
+      : stringField(data.id);
+  if (!messageId) return { kind: 'ignored', reason: 'malformed' };
+  const code = data.code;
+  const errorCode =
+    event === 'message.failed' && (typeof code === 'number' || typeof code === 'string')
+      ? String(code)
+      : null;
+  const rawStatus =
+    event === 'message.failed' ? 'failed' : event === 'message.read' ? 'read' : 'delivered';
+  return { kind: 'receipt', receipt: { event, messageId, rawStatus, errorCode } };
 }

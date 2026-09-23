@@ -116,6 +116,10 @@ export type TwilioInboundOutcome =
   | 'keyword_ack_refused'
   /** No live channel to route to (never enrolled, or unsubscribed). */
   | 'ignored'
+  /** Linq only: a delivered, read, or failed receipt was applied to the ledger
+   * (or logged when no row carries that provider id). Counted on its own so a
+   * receipt is not an ignored text. SMS never produces this. */
+  | 'receipt'
   /** A verified channel, but not a parent's — never handed to a household agent. */
   | 'not_a_parent';
 

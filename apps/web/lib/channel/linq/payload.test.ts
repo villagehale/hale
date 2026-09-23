@@ -75,6 +75,41 @@ describe('parseLinqWebhook', () => {
       reason: 'not_message_received',
     });
 
+    expect(parseLinqWebhook({ ...received(), event_type: 'message.delivered' }, FALLBACK)).toEqual({
+      kind: 'receipt',
+      receipt: {
+        event: 'message.delivered',
+        messageId: '89e3566e-1d13-49e5-a8ee-48490d5bfeb7',
+        rawStatus: 'delivered',
+        errorCode: null,
+      },
+    });
+
+    const failed = {
+      ...received(),
+      event_type: 'message.failed',
+      data: { message_id: 'fail-1', code: 4001, reason: 'Delivery failed' },
+    };
+    expect(parseLinqWebhook(failed, FALLBACK)).toEqual({
+      kind: 'receipt',
+      receipt: {
+        event: 'message.failed',
+        messageId: 'fail-1',
+        rawStatus: 'failed',
+        errorCode: '4001',
+      },
+    });
+
+    expect(parseLinqWebhook({ ...received(), event_type: 'message.read' }, FALLBACK)).toEqual({
+      kind: 'receipt',
+      receipt: {
+        event: 'message.read',
+        messageId: '89e3566e-1d13-49e5-a8ee-48490d5bfeb7',
+        rawStatus: 'read',
+        errorCode: null,
+      },
+    });
+
     expect(parseLinqWebhook({ ...received(), webhook_version: '2025-01-01' }, FALLBACK)).toEqual({
       kind: 'ignored',
       reason: 'unsupported_version',

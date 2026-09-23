@@ -3,6 +3,7 @@ import {
   type TwilioInboundOutcome,
   routeTwilioInbound,
 } from '~/lib/channel/twilio/inbound';
+import { applyTwilioStatus } from '~/lib/channel/twilio/status';
 import { linqInboundConfigured, linqMissingInboundEnv, linqWebhookSecret } from './config';
 import { parseLinqWebhook } from './payload';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
@@ -20,9 +21,15 @@ import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
  * and nothing is written. Linq retries a 503, so a secret that lands inside the
  * retry window still delivers the text.
  *
- * Group chats, outbound echoes, and every event other than `message.received`
- * answer 200 with a named outcome. A 4xx/5xx would make Linq retry work this
- * door is declining on purpose.
+ * Group chats, outbound echoes, and events this door does not act on answer
+ * 200 with a named outcome. A 4xx/5xx would make Linq retry work this door is
+ * declining on purpose.
+ *
+ * `message.delivered`, `message.read`, and `message.failed` are the exception:
+ * they update the outbound ledger row (the same monotonic write Twilio's
+ * status callback uses) and answer 200 either way. `unknown_message` is
+ * logged. A read is stored as delivered — the status enum has no further
+ * state — and the log line keeps the event name so pacing can tell them apart.
  */
 
 function json(body: Record<string, unknown>, status = 200): Response {
@@ -80,6 +87,26 @@ export async function handleLinqInboundRequest(
   }
 
   const parsed = parseLinqWebhook(payload, deps.now?.() ?? new Date());
+  if (parsed.kind === 'receipt') {
+    const { receipt } = parsed;
+    const apply = await applyTwilioStatus(deps.database, {
+      providerMessageId: receipt.messageId,
+      rawStatus: receipt.rawStatus,
+      errorCode: receipt.errorCode,
+    });
+    deps.log.info(
+      { event: receipt.event, apply, providerMessageId: receipt.messageId },
+      'linq receipt',
+    );
+    if (apply === 'unknown_message') {
+      deps.log.warn(
+        { event: receipt.event, providerMessageId: receipt.messageId },
+        'linq receipt: no ledger row for this provider id',
+      );
+    }
+    await deps.countOutcome('receipt');
+    return json({ outcome: 'receipt', apply });
+  }
   if (parsed.kind === 'ignored') {
     const outcome = IGNORE_OUTCOME[parsed.reason];
     deps.log.info({ outcome }, 'linq inbound: ignored');
