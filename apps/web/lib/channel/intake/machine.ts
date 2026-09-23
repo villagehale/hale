@@ -281,6 +281,10 @@ interface Inbound {
   body: string;
   providerId: string;
   receivedAt: Date;
+  /** The pipe this text arrived on. Absent is SMS — every caller written before
+   * iMessage. An iMessage turn carries `chatId` so the ledger can return to it. */
+  transport?: 'sms' | 'whatsapp' | 'imessage';
+  chatId?: string;
   /** VIL-348 — the provider already answered this keyword itself; see
    * `InboundMessage.providerAnsweredKeyword` (intake/transport.ts) for what that means
    * and what it does NOT suppress. Optional here for the same reason it is optional
@@ -537,6 +541,30 @@ interface SendContext {
   session: IntakeSession;
   phoneE164: string;
   now: Date;
+  /** The pipe this turn arrived on. Outbound rows and the transcript replay
+   * record it, so a later receipt can find the Linq chat. */
+  pipe: { channel: 'sms' | 'imessage'; chatId: string | null };
+}
+
+function messagingPipe(inbound: Inbound): SendContext['pipe'] {
+  if (inbound.transport === 'imessage') {
+    return { channel: 'imessage', chatId: inbound.chatId ?? null };
+  }
+  return { channel: 'sms', chatId: null };
+}
+
+function sendContext(args: {
+  session: IntakeSession;
+  phoneE164: string;
+  inbound: Inbound;
+  now: Date;
+}): SendContext {
+  return {
+    session: args.session,
+    phoneE164: args.phoneE164,
+    now: args.now,
+    pipe: messagingPipe(args.inbound),
+  };
 }
 
 /**
@@ -575,6 +603,8 @@ async function sendAndRecord(
     body,
     providerId: providerMessageId,
     at: ctx.now.toISOString(),
+    channel: ctx.pipe.channel,
+    chatId: ctx.pipe.chatId,
   };
   if (ctx.session.familyId && ctx.session.userId) {
     const id = await writeChannelMessage(
@@ -610,6 +640,8 @@ async function recordInbound(
     body: inbound.body,
     providerId: inbound.providerId,
     at: inbound.receivedAt.toISOString(),
+    channel: ctx.pipe.channel,
+    chatId: ctx.pipe.chatId,
   };
   if (ctx.session.familyId && ctx.session.userId) {
     const id = await writeChannelMessage(
@@ -634,17 +666,19 @@ async function writeChannelMessage(
   templateKey?: string,
 ): Promise<string> {
   const { familyId, parentUserId } = owner;
+  const channel = entry.channel === 'imessage' ? 'imessage' : 'sms';
   const [row] = await database
     .insert(schema.channelMessages)
     .values({
       familyId,
       parentUserId,
-      channel: 'sms',
+      channel,
       direction: entry.direction,
       category: 'intake',
       templateKey: templateKey ?? null,
       providerMessageId: entry.providerId,
-      status: entry.direction === 'in' ? 'delivered' : acceptedStatus('sms'),
+      providerChatId: channel === 'imessage' ? (entry.chatId ?? null) : null,
+      status: entry.direction === 'in' ? 'delivered' : acceptedStatus(channel),
       // Verbatim bodies for INBOUND only — an outbound is reconstructable from the
       // copy module, and storing rendered child data is a liability (rule #1).
       body: entry.direction === 'in' ? entry.body : null,
@@ -830,7 +864,7 @@ async function deliverFirstHello(
   sourceCode: string | null,
 ): Promise<IntakeOutcome> {
   const { session } = args;
-  const ctx: SendContext = { session, phoneE164: args.phoneE164, now: args.now };
+  const ctx = sendContext(args);
 
   // Names / ages / postal on the first text are DETAILS, not a question — the
   // existing extractor / handleDetails path, never offScriptReply. A bare hello,
@@ -909,7 +943,7 @@ async function handleDetails(
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
   const { session, inbound, now } = args;
-  const ctx: SendContext = { session, phoneE164: args.phoneE164, now };
+  const ctx = sendContext(args);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   let transcript = recorded.transcript;
   const language = replyLanguage(inbound.body);
@@ -1095,7 +1129,7 @@ async function provision(
   // From here the session HAS a family, so messages go straight to channel_messages —
   // the transcript it carried has just been replayed there.
   const provisioned: IntakeSession = { ...session, familyId, userId };
-  const ctx: SendContext = { session: provisioned, phoneE164, now };
+  const ctx = sendContext({ session: provisioned, phoneE164, inbound, now });
 
   await seedFirstRadar(database, { familyId, areaCoarse: gathered.location.areaCoarse, now }, deps);
 
@@ -1310,7 +1344,7 @@ async function handleWatchReply(
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
   const { session, inbound, now } = args;
-  const ctx: SendContext = { session, phoneE164: args.phoneE164, now };
+  const ctx = sendContext(args);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   const language = replyLanguage(inbound.body);
 
@@ -1572,6 +1606,7 @@ async function handleKeyword(
               body: HELP_REPLY_BY_LANGUAGE[language],
               providerId: providerMessageId,
               at: now.toISOString(),
+              ...messagingPipe(inbound),
             },
             now,
           );
@@ -1579,7 +1614,7 @@ async function handleKeyword(
       }
       return { status: 'helped', ack };
     }
-    const ctx: SendContext = { session, phoneE164, now };
+    const ctx = sendContext({ session, phoneE164, inbound, now });
     const recorded = await recordInbound(database, ctx, inbound, session.transcript);
     // Suppressed at THIS call site rather than inside `sendAndRecord`: that helper is
     // shared with fourteen other turns and has no business learning about keywords. The
@@ -1622,6 +1657,7 @@ async function handleKeyword(
           body: START_ACK_BY_LANGUAGE[language],
           providerId: providerMessageId,
           at: now.toISOString(),
+          ...messagingPipe(inbound),
         },
         now,
       );
@@ -1722,6 +1758,7 @@ async function handleStop(
           body: STOP_ACK_BY_LANGUAGE[language],
           providerId: providerMessageId,
           at: now.toISOString(),
+          ...messagingPipe(inbound),
         },
         now,
       );

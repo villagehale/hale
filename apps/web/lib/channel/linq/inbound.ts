@@ -7,6 +7,7 @@ import { applyTwilioStatus } from '~/lib/channel/twilio/status';
 import { linqInboundConfigured, linqMissingInboundEnv, linqWebhookSecret } from './config';
 import { parseLinqWebhook } from './payload';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
+import { type LinqEffectResult, markLinqChatRead } from './transport';
 
 /**
  * VIL-335 — POST /api/channels/linq/inbound.
@@ -25,6 +26,10 @@ import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
  * 200 with a named outcome. A 4xx/5xx would make Linq retry work this door is
  * declining on purpose.
  *
+ * A 1:1 `message.received` is marked read on Linq before the turn finishes
+ * thinking. That call is best-effort: a refusal is logged and the reply still
+ * goes out. Group chats are not marked — Linq delivers nothing there.
+ *
  * `message.delivered`, `message.read`, and `message.failed` are the exception:
  * they update the outbound ledger row (the same monotonic write Twilio's
  * status callback uses) and answer 200 either way. `unknown_message` is
@@ -38,7 +43,10 @@ function json(body: Record<string, unknown>, status = 200): Response {
 
 export async function handleLinqInboundRequest(
   req: Request,
-  deps: TwilioInboundDeps,
+  deps: TwilioInboundDeps & {
+    /** Test seam. Production calls Linq. A miss is logged and never fails the turn. */
+    markRead?: (input: { chatId: string }) => Promise<LinqEffectResult>;
+  },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
     deps.log.warn(
@@ -115,19 +123,46 @@ export async function handleLinqInboundRequest(
   }
 
   const message = parsed.message;
-  const outcome = await routeTwilioInbound(
-    deps,
-    {
-      from: message.senderHandle,
-      transport: 'imessage',
-      body: message.text,
-      providerId: message.messageId,
-      receivedAt: message.receivedAt,
-      chatId: message.chatId,
-      providerAnsweredKeyword: null,
-    },
-    message.mediaCount,
-  );
+  // Read receipt first, overlapping the turn. Linq's mark-as-read is what puts
+  // "Read" under the parent's bubble. It must not be able to fail the reply:
+  // the promise is awaited below, and every result but `accepted` is a log line.
+  const markRead = deps.markRead ?? markLinqChatRead;
+  const readPromise = markRead({ chatId: message.chatId });
+  let outcome: TwilioInboundOutcome;
+  try {
+    outcome = await routeTwilioInbound(
+      deps,
+      {
+        from: message.senderHandle,
+        transport: 'imessage',
+        body: message.text,
+        providerId: message.messageId,
+        receivedAt: message.receivedAt,
+        chatId: message.chatId,
+        providerAnsweredKeyword: null,
+      },
+      message.mediaCount,
+    );
+  } finally {
+    try {
+      const read = await readPromise;
+      if (read.status !== 'accepted') {
+        deps.log.warn(
+          {
+            outcome: read.status,
+            ...(read.status === 'refused' ? { code: read.code, httpStatus: read.httpStatus } : {}),
+            ...(read.status === 'unreachable' ? { reason: read.reason } : {}),
+          },
+          'linq inbound: mark read did not land',
+        );
+      }
+    } catch (err) {
+      deps.log.warn(
+        { outcome: 'unreachable', reason: err instanceof Error ? err.name : 'unknown' },
+        'linq inbound: mark read did not land',
+      );
+    }
+  }
   deps.log.info({ outcome, providerMessageId: message.messageId }, 'linq inbound: routed');
   await deps.countOutcome(outcome);
   return json({ outcome });

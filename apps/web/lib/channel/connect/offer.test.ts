@@ -1,6 +1,9 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { consumeChannelSigninToken } from '~/lib/auth/channel-signin';
+import { sendYearConnectorCards } from '~/lib/channel/intake/connector-offer';
+import { FakeTransport } from '~/lib/channel/intake/transport';
 import { connectorLinkHandler } from '~/lib/channel/router/handlers';
 import type { HandlerContext } from '~/lib/channel/router/route';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -94,7 +97,9 @@ describe('offerConnectorLink', () => {
 
     if (outcome.status !== 'minted') throw new Error(`expected minted, got ${outcome.status}`);
     const [calendar, gmail] = outcome.urls;
-    expect(calendar).toMatch(/^https:\/\/app\.villagehale\.com\/connect\?t=[A-Za-z0-9_-]+&to=gcal$/);
+    expect(calendar).toMatch(
+      /^https:\/\/app\.villagehale\.com\/connect\?t=[A-Za-z0-9_-]+&to=gcal$/,
+    );
     expect(gmail).toMatch(/^https:\/\/app\.villagehale\.com\/connect\?t=[A-Za-z0-9_-]+&to=gmail$/);
     expect(calendar).not.toBe(gmail);
 
@@ -111,6 +116,47 @@ describe('offerConnectorLink', () => {
       expect.arrayContaining([{ provider: 'gcal' }, { provider: 'gmail' }]),
     );
     expect(audits).toHaveLength(2);
+  });
+
+  /**
+   * The year-open cards are TWO texts and ONE ask. Minting each card on its own
+   * invalidated the calendar token the moment the Gmail card was minted, so the
+   * calendar tap was dead on arrival and Gmail — the later mint — still worked.
+   */
+  it('keeps both year-card links redeemable after both texts have gone out', async () => {
+    const transport = new FakeTransport();
+    const outcome = await sendYearConnectorCards(
+      db.database,
+      {
+        familyId,
+        parentUserId,
+        phoneE164: PHONE,
+        language: 'en',
+        now: NOW,
+        ridesReply: true,
+      },
+      { transport, threadMessage: async () => 'conversation-id' },
+    );
+
+    expect(outcome).toEqual({ calendar: 'sent', gmail: 'sent' });
+    const [calendarBody, gmailBody] = transport.bodies();
+    const calendarToken = calendarBody?.match(/[?&]t=([A-Za-z0-9_-]+)/)?.[1];
+    const gmailToken = gmailBody?.match(/[?&]t=([A-Za-z0-9_-]+)/)?.[1];
+    if (!calendarToken || !gmailToken) throw new Error('expected a token in each card');
+    expect(calendarBody).toContain('to=gcal');
+    expect(gmailBody).toContain('to=gmail');
+
+    await db.database
+      .update(schema.users)
+      .set({ externalAuthId: 'sms:year-card-test' })
+      .where(eq(schema.users.id, parentUserId));
+    const later = new Date(NOW.getTime() + 1000);
+    expect((await consumeChannelSigninToken(calendarToken, db.database, { now: later })).ok).toBe(
+      true,
+    );
+    expect((await consumeChannelSigninToken(gmailToken, db.database, { now: later })).ok).toBe(
+      true,
+    );
   });
 
   it('names not_enrolled when the channel is gone, and mints nothing', async () => {
@@ -201,7 +247,7 @@ describe('connectorLinkHandler', () => {
     };
   }
 
-  it('claims the founder\'s exact ask and replies with the link', async () => {
+  it("claims the founder's exact ask and replies with the link", async () => {
     const verdict = await connectorLinkHandler().handle(
       db.database,
       turn('I want you to connect my Google Calendar'),
@@ -224,7 +270,7 @@ describe('connectorLinkHandler', () => {
     expect(verdict.reply).toContain('Bon pour 15 minutes.');
   });
 
-  it('does NOT mint for a question about the calendar\'s contents', async () => {
+  it("does NOT mint for a question about the calendar's contents", async () => {
     const verdict = await connectorLinkHandler().handle(
       db.database,
       turn("what's on my calendar this week"),

@@ -1909,6 +1909,10 @@ async function sendReply(
       category: 'reply',
       templateKey: args.templateKey ?? null,
       providerMessageId: sent.providerMessageId,
+      // The chat the blue bubble landed in. Later async sends (a connect
+      // receipt) read it back so they return to this thread rather than
+      // opening a second one, or falling through to SMS.
+      providerChatId: args.route.channel === 'imessage' ? args.route.chatId : null,
       // Accepted by Twilio, not yet on a phone — the receipt advances it
       // (channel/ledger.ts acceptedStatus, channel/twilio/status.ts).
       status: acceptedStatus(carriedBy),

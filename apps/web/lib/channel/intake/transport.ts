@@ -75,9 +75,12 @@ export interface ChannelTransport {
    * lib/channel/reply-transport.ts) — the caller's ledger row must record the pipe
    * that was used, not the one it assumed. Absent means the implementation has only
    * one pipe (the plain SMS transport, every Fake). */
-  send(
-    input: OutboundMessage,
-  ): Promise<{ providerMessageId: string; transport?: MessageTransport }>;
+  send(input: OutboundMessage): Promise<{
+    providerMessageId: string;
+    transport?: MessageTransport;
+    /** The Linq chat a send on `transport: 'imessage'` landed in. */
+    chatId?: string | null;
+  }>;
 }
 
 /**

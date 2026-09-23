@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   LinqSendError,
   createLinqTextTransport,
+  markLinqChatRead,
   reactToLinqMessage,
   sendLinqChatMessage,
   sendLinqParts,
@@ -77,9 +78,105 @@ describe('sendLinqChatMessage', () => {
     expect(error).toMatchObject({ code: '3006', permanent: false });
     expect((error as Error).message).not.toContain('Thursday');
   });
+
+  it('threads the bubble under the inbound message', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = jsonFetch(201, { message: { id: 'msg-out-2' } });
+
+    const sent = await sendLinqChatMessage({
+      chatId: CHAT,
+      text: 'Thursday works',
+      replyTo: { messageId: 'msg-in-1' },
+      fetch: fetchMock,
+    });
+
+    expect(sent).toEqual({ providerMessageId: 'msg-out-2' });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      message: {
+        parts: [{ type: 'text', value: 'Thursday works' }],
+        reply_to: { message_id: 'msg-in-1' },
+      },
+    });
+  });
+
+  it('sends the answer plain when Linq refuses the thread target', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const bodies: unknown[] = [];
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      if (bodies.length === 1) {
+        return Response.json(
+          { error: { status: 400, code: 4001, message: 'reply_to: Thursday works' } },
+          { status: 400 },
+        );
+      }
+      return Response.json({ message: { id: 'msg-plain' } }, { status: 201 });
+    });
+
+    const sent = await sendLinqChatMessage({
+      chatId: CHAT,
+      text: 'Thursday works',
+      replyTo: { messageId: 'msg-in-1' },
+      fetch: fetchMock,
+    });
+
+    expect(sent).toEqual({ providerMessageId: 'msg-plain' });
+    expect(bodies).toEqual([
+      {
+        message: {
+          parts: [{ type: 'text', value: 'Thursday works' }],
+          reply_to: { message_id: 'msg-in-1' },
+        },
+      },
+      { message: { parts: [{ type: 'text', value: 'Thursday works' }] } },
+    ]);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(JSON.stringify(warn.mock.calls[0])).not.toContain('Thursday');
+    expect(JSON.stringify(warn.mock.calls[0])).not.toContain(CHAT);
+    warn.mockRestore();
+  });
+
+  it('does not drop a retryable refusal just because a thread target was set', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const down = vi.fn(async () => Response.json({ error: { code: 3006 } }, { status: 500 }));
+    await expect(
+      sendLinqChatMessage({
+        chatId: CHAT,
+        text: 'Thursday works',
+        replyTo: { messageId: 'msg-in-1' },
+        fetch: down,
+      }),
+    ).rejects.toMatchObject({ code: '3006', permanent: false });
+    expect(down).toHaveBeenCalledOnce();
+  });
 });
 
 describe('createLinqTextTransport', () => {
+  it('threads the within-turn reply under the inbound message', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = jsonFetch(201, { message: { id: 'msg-ack' } });
+    const transport = createLinqTextTransport({
+      chatId: CHAT,
+      replyToMessageId: 'msg-in-9',
+      fetch: fetchMock,
+    });
+
+    const sent = await transport.send({ to: '+12025559876', body: 'Done' });
+
+    expect(sent).toEqual({
+      providerMessageId: 'msg-ack',
+      transport: 'imessage',
+      chatId: CHAT,
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      message: {
+        parts: [{ type: 'text', value: 'Done' }],
+        reply_to: { message_id: 'msg-in-9' },
+      },
+    });
+  });
+
   it('refuses media by name and a turn that arrived without a chat id', async () => {
     const transport = createLinqTextTransport({ chatId: CHAT });
     await expect(
@@ -102,6 +199,49 @@ function jsonFetch(status: number, body: unknown) {
     Response.json(body, { status }),
   );
 }
+
+describe('markLinqChatRead', () => {
+  it('posts the chat read endpoint and names a missing key', async () => {
+    vi.stubEnv('LINQ_API_KEY', '');
+    const fetchMock = vi.fn();
+    expect(await markLinqChatRead({ chatId: CHAT, fetch: fetchMock })).toEqual({
+      status: 'not_configured',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const calls: Array<{ url: string; method: string; body: string | undefined }> = [];
+    const fetchOk = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({
+        url: String(input),
+        method: init?.method ?? '',
+        body: init?.body === undefined ? undefined : String(init.body),
+      });
+      return new Response(null, { status: 204 });
+    });
+    expect(await markLinqChatRead({ chatId: CHAT, fetch: fetchOk })).toEqual({
+      status: 'accepted',
+    });
+    expect(calls).toEqual([
+      {
+        url: `https://api.linqapp.com/api/partner/v3/chats/${CHAT}/read`,
+        method: 'POST',
+        body: undefined,
+      },
+    ]);
+  });
+
+  it('names a refusal and does not throw', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const refused = jsonFetch(404, { error: { code: 2001, message: 'missing chat' } });
+    expect(await markLinqChatRead({ chatId: CHAT, fetch: refused })).toEqual({
+      status: 'refused',
+      code: '2001',
+      httpStatus: 404,
+      permanent: true,
+    });
+  });
+});
 
 describe('Linq human-feel helpers', () => {
   it('starts and stops typing without a body, and names a missing key', async () => {

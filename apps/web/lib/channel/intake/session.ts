@@ -42,6 +42,10 @@ export interface TranscriptEntry {
   body: string;
   providerId: string | null;
   at: string;
+  /** Absent on a session written before iMessage. Replay treats absent as sms. */
+  channel?: 'sms' | 'imessage';
+  /** Linq chat id when `channel` is imessage. Replay writes it onto the ledger row. */
+  chatId?: string | null;
 }
 
 interface IntakeData {
