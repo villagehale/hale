@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { mintChannelSigninTokens } from '~/lib/auth/channel-signin';
-import { isParentRole } from '~/lib/channel/role-scope';
 import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
+import { isParentRole } from '~/lib/channel/role-scope';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
@@ -81,6 +81,11 @@ export async function offerConnectorLinks<const P extends ProviderList>(
     parentUserId: string;
     providers: P;
     now: Date;
+    /**
+     * Default true: a new ask replaces links the parent has not tapped. False
+     * only when this mint finishes an ask whose other link is already out.
+     */
+    invalidatePrior?: boolean;
   },
 ): Promise<ConnectorLinksOutcome<P>> {
   // The two gates the claim flow keeps, re-proven here rather than inherited: an
@@ -113,6 +118,7 @@ export async function offerConnectorLinks<const P extends ProviderList>(
         userId: input.parentUserId,
         count: input.providers.length,
         now: input.now,
+        invalidatePrior: input.invalidatePrior,
       });
       const paired = input.providers.map((provider, index) => {
         const token = minted[index];

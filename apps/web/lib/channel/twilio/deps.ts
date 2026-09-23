@@ -63,7 +63,7 @@ function anthropicClient(): AgentClient {
  * turn; those are proactive lanes and stay on SMS by policy. */
 export function buildIntakeDeps(
   inboundTransport: MessageTransport = 'sms',
-  linq: { chatId: string } | null = null,
+  linq: { chatId: string; replyToMessageId?: string | null } | null = null,
 ): IntakeDeps {
   const database = db();
   const client = anthropicClient();
@@ -71,7 +71,10 @@ export function buildIntakeDeps(
   // the STOP ack or the media line on SMS, which is a different app.
   const transport =
     inboundTransport === 'imessage'
-      ? createLinqTextTransport({ chatId: linq?.chatId ?? null })
+      ? createLinqTextTransport({
+          chatId: linq?.chatId ?? null,
+          replyToMessageId: linq?.replyToMessageId ?? null,
+        })
       : createReplyTransport({
           sms: createTwilioTransport(),
           whatsapp: createTwilioWhatsAppTransport(),

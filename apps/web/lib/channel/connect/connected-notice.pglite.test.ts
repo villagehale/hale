@@ -124,9 +124,7 @@ describe('sendConnectorConnectedText', () => {
       providerMessageId: 'fake-out-1',
     });
     // The coach must be able to read back what Hale just said on this number.
-    expect(threaded).toEqual([
-      { familyId, parentUserId, body: CONNECTOR_CONNECTED_TEXT.gmail },
-    ]);
+    expect(threaded).toEqual([{ familyId, parentUserId, body: CONNECTOR_CONNECTED_TEXT.gmail }]);
   });
 
   it('is a no-op on a replayed callback: the same connect is never texted twice', async () => {
@@ -220,10 +218,118 @@ describe('sendConnectorConnectedText', () => {
     expect(transport.sent).toHaveLength(1);
   });
 
+  it('sends an iMessage family the receipt in the stored Linq chat, not over Twilio', async () => {
+    await seedChannel();
+    const chatId = '8f392755-6865-4b18-880a-227f9d8b458f';
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerMessageId: 'msg-in-parent',
+      providerChatId: chatId,
+      status: 'delivered',
+      body: 'hello',
+      sentAt: new Date('2026-09-23T22:40:00.000Z'),
+    });
+    const imessage = vi.fn(async () => ({ providerMessageId: 'msg-out-linq' }));
+    ports = { ...ports, imessage };
+
+    const outcome = await send('gmail');
+    if (outcome.status !== 'sent') throw new Error(`expected sent, got ${outcome.status}`);
+
+    expect(transport.sent).toEqual([]);
+    expect(imessage).toHaveBeenCalledWith({
+      chatId,
+      body: CONNECTOR_CONNECTED_TEXT.gmail,
+    });
+    const [row] = await db.database
+      .select({
+        channel: schema.channelMessages.channel,
+        providerChatId: schema.channelMessages.providerChatId,
+        providerMessageId: schema.channelMessages.providerMessageId,
+        status: schema.channelMessages.status,
+        body: schema.channelMessages.body,
+      })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.id, outcome.channelMessageId));
+    expect(row).toEqual({
+      channel: 'imessage',
+      providerChatId: chatId,
+      providerMessageId: 'msg-out-linq',
+      status: 'sent',
+      body: null,
+    });
+  });
+
+  it('stays on Twilio when the latest turn was SMS, even if an older iMessage chat exists', async () => {
+    await seedChannel();
+    await db.database.insert(schema.channelMessages).values([
+      {
+        familyId,
+        parentUserId,
+        channel: 'imessage',
+        direction: 'in',
+        category: 'reply',
+        providerChatId: '8f392755-6865-4b18-880a-227f9d8b458f',
+        status: 'delivered',
+        sentAt: new Date('2026-09-23T20:00:00.000Z'),
+        createdAt: new Date('2026-09-23T20:00:00.000Z'),
+      },
+      {
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        sentAt: new Date('2026-09-23T22:00:00.000Z'),
+        createdAt: new Date('2026-09-23T22:00:00.000Z'),
+      },
+    ]);
+    const imessage = vi.fn(async () => ({ providerMessageId: 'should-not-send' }));
+    ports = { ...ports, imessage };
+
+    const outcome = await send('gmail');
+
+    expect(connectedNoticeLabel(outcome)).toBe('sent');
+    expect(transport.sent).toEqual([{ to: PHONE, body: CONNECTOR_CONNECTED_TEXT.gmail }]);
+    expect(imessage).not.toHaveBeenCalled();
+  });
+
+  it('names a missing Linq chat and does not fall through to Twilio', async () => {
+    await seedChannel();
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerChatId: null,
+      status: 'delivered',
+      sentAt: new Date('2026-09-23T22:00:00.000Z'),
+    });
+    const imessage = vi.fn(async () => ({ providerMessageId: 'should-not-send' }));
+    ports = { ...ports, imessage };
+
+    const outcome = await send('gcal');
+
+    expect(connectedNoticeLabel(outcome)).toBe('no_chat');
+    expect(transport.sent).toEqual([]);
+    expect(imessage).not.toHaveBeenCalled();
+    const rows = await db.database
+      .select({ id: schema.channelMessages.id })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.direction, 'out'));
+    expect(rows).toEqual([]);
+  });
+
   it('wires a real transport in production, not just in the tests that inject one', () => {
     // Every test above hands in a fake, which can never fail on a missing default.
     const wired = defaultConnectedNoticePorts();
     expect(typeof wired.transport.send).toBe('function');
+    expect(typeof wired.imessage).toBe('function');
     expect(wired.threadMessage).toBe(threadProactiveMessage);
   });
 

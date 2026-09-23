@@ -1,8 +1,9 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
+import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
@@ -277,82 +278,148 @@ export async function sendYearConnectorCards(
     return { calendar: 'suppressed_quiet_hours', gmail: 'suppressed_quiet_hours' };
   }
 
-  const calendar = connectorOfferLabel(
-    await sendOneConnectorCard(database, args, ports, {
-      provider: 'gcal',
-      templateKey: INTAKE_CALENDAR_CARD_TEMPLATE_KEY,
-      dedupeKey: calendarCardDedupeKey(args.familyId),
-      render: (url) => intakeCalendarCard(args.language, url),
-    }),
+  // ONE mint for both cards. Two calls would be two asks, and the second
+  // invalidates the first token — the calendar link is dead before the parent
+  // can tap it, which is what a live Linq onboard showed on 2026-09-23.
+  const calendarSpec: ConnectorCard = {
+    provider: 'gcal',
+    templateKey: INTAKE_CALENDAR_CARD_TEMPLATE_KEY,
+    dedupeKey: calendarCardDedupeKey(args.familyId),
+    render: (url) => intakeCalendarCard(args.language, url),
+  };
+  const gmailSpec: ConnectorCard = {
+    provider: 'gmail',
+    templateKey: INTAKE_GMAIL_CARD_TEMPLATE_KEY,
+    dedupeKey: gmailCardDedupeKey(args.familyId),
+    render: (url) => intakeGmailCard(args.language, url),
+  };
+  const calendarClaim = await claimConnectorCard(database, args, calendarSpec);
+  const gmailClaim = await claimConnectorCard(database, args, gmailSpec);
+  const needed = [
+    ...(calendarClaim ? [{ spec: calendarSpec, claimId: calendarClaim.id }] : []),
+    ...(gmailClaim ? [{ spec: gmailSpec, claimId: gmailClaim.id }] : []),
+  ];
+
+  const urls = new Map<'gcal' | 'gmail', string>();
+  if (needed.length > 0) {
+    const minted = await offerConnectorLinks(database, {
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      providers: needed.map((item) => item.spec.provider) as [
+        'gcal' | 'gmail',
+        ...('gcal' | 'gmail')[],
+      ],
+      now: args.now,
+      // Both unsent: this is a new ask, and older untapped links should die.
+      // One already sent: this is the rest of THAT ask. Invalidating would
+      // kill the link already in the thread.
+      invalidatePrior: needed.length === 2,
+    });
+    if (minted.status !== 'minted') {
+      for (const item of needed) await failClaim(database, item.claimId, minted.status);
+      console.warn(
+        { familyId: args.familyId, reason: minted.status },
+        'intake connector cards: no links to send',
+      );
+      return {
+        calendar: calendarClaim ? minted.status : 'already_sent',
+        gmail: gmailClaim ? minted.status : 'already_sent',
+      };
+    }
+    needed.forEach((item, index) => {
+      const url = minted.urls[index];
+      if (url) urls.set(item.spec.provider, url);
+    });
+  }
+
+  const calendar = await finishConnectorCard(
+    database,
+    args,
+    ports,
+    calendarSpec,
+    calendarClaim?.id ?? null,
+    urls.get('gcal'),
   );
-  const gmail = connectorOfferLabel(
-    await sendOneConnectorCard(database, args, ports, {
-      provider: 'gmail',
-      templateKey: INTAKE_GMAIL_CARD_TEMPLATE_KEY,
-      dedupeKey: gmailCardDedupeKey(args.familyId),
-      render: (url) => intakeGmailCard(args.language, url),
-    }),
+  const gmail = await finishConnectorCard(
+    database,
+    args,
+    ports,
+    gmailSpec,
+    gmailClaim?.id ?? null,
+    urls.get('gmail'),
   );
   return { calendar, gmail };
 }
 
-async function sendOneConnectorCard(
+interface ConnectorCard {
+  provider: 'gcal' | 'gmail';
+  templateKey: string;
+  dedupeKey: string;
+  render: (url: string) => string;
+}
+
+async function claimConnectorCard(
   database: Database,
-  args: {
-    familyId: string;
-    parentUserId: string;
-    phoneE164: string;
-    now: Date;
-  },
+  args: { familyId: string; parentUserId: string; now: Date },
+  card: ConnectorCard,
+): Promise<{ id: string } | null> {
+  const [claimed] = await database
+    .insert(schema.channelMessages)
+    .values({
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'intake',
+      templateKey: card.templateKey,
+      dedupeKey: card.dedupeKey,
+      status: acceptedStatus('sms'),
+      sentAt: args.now,
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.channelMessages.id });
+  return claimed ?? null;
+}
+
+async function finishConnectorCard(
+  database: Database,
+  args: { familyId: string; parentUserId: string; phoneE164: string; now: Date },
   ports: ConnectorOfferPorts,
-  card: {
-    provider: 'gcal' | 'gmail';
-    templateKey: string;
-    dedupeKey: string;
-    render: (url: string) => string;
-  },
+  card: ConnectorCard,
+  claimId: string | null,
+  url: string | undefined,
+): Promise<ConnectorOfferLabel> {
+  if (!claimId) return 'already_sent';
+  const outcome = await deliverConnectorCard(database, args, ports, card, claimId, url);
+  return connectorOfferLabel(outcome);
+}
+
+async function deliverConnectorCard(
+  database: Database,
+  args: { familyId: string; parentUserId: string; phoneE164: string },
+  ports: ConnectorOfferPorts,
+  card: ConnectorCard,
+  claimId: string,
+  url: string | undefined,
 ): Promise<ConnectorOfferOutcome> {
-  const { familyId, parentUserId, now } = args;
+  const { familyId, parentUserId } = args;
+  if (!url) {
+    await failClaim(database, claimId, 'mint_failed');
+    return { status: 'not_sent', reason: 'mint_failed' };
+  }
   try {
-    const [claimed] = await database
-      .insert(schema.channelMessages)
-      .values({
-        familyId,
-        parentUserId,
-        channel: 'sms',
-        direction: 'out',
-        category: 'intake',
-        templateKey: card.templateKey,
-        dedupeKey: card.dedupeKey,
-        status: acceptedStatus('sms'),
-        sentAt: now,
-      })
-      .onConflictDoNothing()
-      .returning({ id: schema.channelMessages.id });
-    if (!claimed) return { status: 'not_sent', reason: 'already_sent' };
-
-    const minted = await offerConnectorLink(database, {
-      familyId,
-      parentUserId,
-      provider: card.provider,
-      now,
-    });
-    if (minted.status !== 'minted') {
-      await failClaim(database, claimed.id, minted.status);
-      console.warn(
-        { familyId, provider: card.provider, reason: minted.status },
-        'intake connector card: no link to send',
-      );
-      return { status: 'not_sent', reason: minted.status };
-    }
-
-    const body = card.render(minted.url);
-    let providerMessageId: string;
+    const body = card.render(url);
+    let sent: {
+      providerMessageId: string;
+      transport?: 'sms' | 'whatsapp' | 'imessage';
+      chatId?: string | null;
+    };
     try {
-      ({ providerMessageId } = await ports.transport.send({ to: args.phoneE164, body }));
+      sent = await ports.transport.send({ to: args.phoneE164, body });
     } catch (err) {
-      const code = err instanceof TwilioSendError ? err.code : 'unknown';
-      await failClaim(database, claimed.id, code);
+      const code =
+        err instanceof TwilioSendError || err instanceof LinqSendError ? err.code : 'unknown';
+      await failClaim(database, claimId, code);
       console.error(
         { familyId, provider: card.provider, code },
         'intake connector card: the provider refused the card',
@@ -360,12 +427,18 @@ async function sendOneConnectorCard(
       return { status: 'not_sent', reason: 'send_failed', code };
     }
 
+    const carried = sent.transport === 'imessage' ? 'imessage' : 'sms';
     await database
       .update(schema.channelMessages)
-      .set({ providerMessageId })
-      .where(eq(schema.channelMessages.id, claimed.id));
+      .set({
+        providerMessageId: sent.providerMessageId,
+        channel: carried,
+        providerChatId: carried === 'imessage' ? (sent.chatId ?? null) : null,
+        status: acceptedStatus(carried),
+      })
+      .where(eq(schema.channelMessages.id, claimId));
     await ports.threadMessage(database, { familyId, parentUserId, body });
-    return { status: 'sent', channelMessageId: claimed.id };
+    return { status: 'sent', channelMessageId: claimId };
   } catch (err) {
     console.error(
       {

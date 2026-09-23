@@ -233,11 +233,13 @@ export async function provisionFromIntake(
       await tx.insert(schema.channelMessages).values({
         familyId,
         parentUserId: userId,
-        channel: CHANNEL_KIND,
+        channel: entry.channel === 'imessage' ? 'imessage' : CHANNEL_KIND,
         direction: entry.direction,
         category: 'intake',
         providerMessageId: entry.providerId,
-        status: entry.direction === 'in' ? 'delivered' : 'queued',
+        providerChatId: entry.channel === 'imessage' ? (entry.chatId ?? null) : null,
+        status:
+          entry.direction === 'in' ? 'delivered' : entry.channel === 'imessage' ? 'sent' : 'queued',
         // Verbatim bodies are stored for INBOUND only, matching the ledger's rule:
         // an outbound is reconstructable from the copy module, and storing rendered
         // child data is a liability (rule #1).

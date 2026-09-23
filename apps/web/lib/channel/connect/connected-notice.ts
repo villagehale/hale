@@ -2,6 +2,8 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
+import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -37,7 +39,14 @@ export function connectorConnectedDedupeKey(connectId: string): string {
 }
 
 export interface ConnectedNoticePorts {
+  /** The phone door. Used when the parent's last turn was SMS or WhatsApp. */
   transport: ChannelTransport;
+  /**
+   * The iMessage door, bound by the caller to an existing Linq chat. Absent
+   * is named `imessage_not_configured` when the door is iMessage — never a
+   * silent hop onto Twilio.
+   */
+  imessage?: (input: { chatId: string; body: string }) => Promise<{ providerMessageId: string }>;
   threadMessage: typeof threadProactiveMessage;
 }
 
@@ -49,6 +58,9 @@ export type ConnectedNoticeOutcome =
    * from a browser by someone whose number is unverified or STOPped. Nothing is claimed,
    * so a later verified number still earns the receipt. */
   | { status: 'not_sent'; reason: 'no_send_target' }
+  /** The last turn was iMessage and no ledger row stored a Linq chat. Nothing is
+   * claimed, and nothing is sent on SMS: that would be a second identity. */
+  | { status: 'not_sent'; reason: 'no_chat' }
   /** The provider refused it. `code` is Twilio's, or `unknown`. */
   | { status: 'not_sent'; reason: 'send_failed'; code: string }
   /** Something on this path threw — a ledger write, the thread append. Its own outcome
@@ -61,6 +73,7 @@ export type ConnectedNoticeLabel =
   | 'sent'
   | 'already_sent'
   | 'no_send_target'
+  | 'no_chat'
   | 'errored'
   | `send_failed:${string}`;
 
@@ -73,7 +86,11 @@ export function connectedNoticeLabel(outcome: ConnectedNoticeOutcome): Connected
 /** What the callback wires in production. Named here so a test that injects a fake
  * still leaves one path that proves the real transport is reachable. */
 export function defaultConnectedNoticePorts(): ConnectedNoticePorts {
-  return { transport: createTwilioTransport(), threadMessage: threadProactiveMessage };
+  return {
+    transport: createTwilioTransport(),
+    imessage: (input) => sendLinqChatMessage({ chatId: input.chatId, text: input.body }),
+    threadMessage: threadProactiveMessage,
+  };
 }
 
 export interface ConnectedNoticeArgs {
@@ -126,6 +143,26 @@ async function sendReceipt(
     return { status: 'not_sent', reason: 'no_send_target' };
   }
 
+  // The door they are standing in. iMessage returns to the stored Linq chat.
+  // SMS stays on Twilio. A blue-bubble family with no chat id is named and
+  // not texted on the other app.
+  const door = await resolveMessagingDoor(database, parentUserId);
+  if (door.channel === 'imessage' && !door.chatId) {
+    console.warn(
+      { familyId, provider },
+      'connector connected: last turn was iMessage and no chat id is stored - nobody was told',
+    );
+    return { status: 'not_sent', reason: 'no_chat' };
+  }
+  if (door.channel === 'imessage' && !ports.imessage) {
+    console.warn(
+      { familyId, provider },
+      'connector connected: iMessage door has no sender - nobody was told',
+    );
+    return { status: 'not_sent', reason: 'send_failed', code: 'imessage_not_configured' };
+  }
+  const channel = door.channel === 'imessage' ? 'imessage' : 'sms';
+
   // CLAIM FIRST: the unique index is the claim, so "did we already say this?" is
   // answered by the insert rather than by a read a second callback can race.
   const [claimed] = await database
@@ -133,7 +170,7 @@ async function sendReceipt(
     .values({
       familyId,
       parentUserId,
-      channel: 'sms',
+      channel,
       direction: 'out',
       // 'reply' rather than 'intake': this answers something the parent just did, and it
       // can happen years after onboarding. It is outside every loop category, so it
@@ -141,7 +178,8 @@ async function sendReceipt(
       category: 'reply',
       templateKey: CONNECTOR_CONNECTED_TEMPLATE_KEY,
       dedupeKey: connectorConnectedDedupeKey(connectId),
-      status: acceptedStatus('sms'),
+      providerChatId: door.channel === 'imessage' ? door.chatId : null,
+      status: acceptedStatus(channel),
       sentAt: now,
     })
     .onConflictDoNothing()
@@ -151,9 +189,19 @@ async function sendReceipt(
   const body = CONNECTOR_CONNECTED_TEXT[provider];
   let providerMessageId: string;
   try {
-    ({ providerMessageId } = await ports.transport.send({ to: phone, body }));
+    if (door.channel === 'imessage') {
+      // ports.imessage is present: the guard above returned otherwise.
+      const send = ports.imessage;
+      if (!send || !door.chatId) {
+        throw new LinqSendError('imessage_not_configured', 0, true);
+      }
+      ({ providerMessageId } = await send({ chatId: door.chatId, body }));
+    } else {
+      ({ providerMessageId } = await ports.transport.send({ to: phone, body }));
+    }
   } catch (err) {
-    const code = err instanceof TwilioSendError ? err.code : 'unknown';
+    const code =
+      err instanceof TwilioSendError || err instanceof LinqSendError ? err.code : 'unknown';
     // The key STAYS consumed (ledger.ts CONSUMED_SEND_STATUSES): a failed delivery must
     // never un-consume idempotency.
     await database

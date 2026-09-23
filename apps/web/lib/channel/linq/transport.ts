@@ -5,10 +5,11 @@ import { linqApiKey } from './config';
  * VIL-335 — the outbound Linq leg. Raw `fetch`, no SDK, matching the Twilio
  * transport. Every partner call lives in this file (the one-door scanner).
  *
- * The v1 reply is still one text part into the chat the parent just texted:
- * POST /api/partner/v3/chats/{chatId}/messages with `{ message: { parts } }`.
- * Media, link previews, tapbacks, reply-to, and the contact card are helpers
- * on the same client. Product flows do not call them yet.
+ * The v1 reply is one text part into the chat the parent just texted:
+ * POST /api/partner/v3/chats/{chatId}/messages with `{ message: { parts } }`,
+ * threaded under the inbound bubble when we have its message id. Mark-as-read
+ * is the same client. Media, tapbacks, and the contact card stay helpers the
+ * v1 doors do not call.
  *
  * https://docs.linqapp.com/guides/messaging/sending-messages/
  *
@@ -240,14 +241,61 @@ export async function sendLinqParts(input: {
   return { providerMessageId };
 }
 
+/**
+ * One text bubble into an existing chat. `replyTo` threads it under the
+ * parent's bubble. A permanent refusal of that target (Linq 4xx) is logged and
+ * the same text is sent plain — the answer is what the parent is owed, and a
+ * thread target Linq will not accept must not swallow it. A missing key, a
+ * local parts rejection, or a retryable outage still throws: those are not
+ * "reply_to was the problem".
+ */
 export async function sendLinqChatMessage(input: {
   chatId: string;
   text: string;
+  replyTo?: LinqReplyTarget;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
-  return sendLinqParts({
-    chatId: input.chatId,
-    parts: [{ type: 'text', value: input.text }],
+  const send = (replyTo?: LinqReplyTarget) =>
+    sendLinqParts({
+      chatId: input.chatId,
+      parts: [{ type: 'text', value: input.text }],
+      replyTo,
+      fetch: input.fetch,
+    });
+  try {
+    return await send(input.replyTo);
+  } catch (err) {
+    if (
+      !input.replyTo ||
+      !(err instanceof LinqSendError) ||
+      !err.permanent ||
+      err.httpStatus < 400
+    ) {
+      throw err;
+    }
+    // Code and status only. The body and the chat id stay out of the log (rule #1).
+    console.warn(
+      { code: err.code, httpStatus: err.httpStatus },
+      'linq: reply_to refused — sending the answer without a thread target',
+    );
+    return await send();
+  }
+}
+
+/**
+ * Mark the chat read so the parent's bubble shows a read receipt. iMessage
+ * one-to-one only; Linq accepts the call on a group and delivers nothing.
+ * Best-effort: a miss is a named result, never a thrown turn.
+ *
+ * https://docs.linqapp.com/api/resources/chats/methods/mark_as_read/
+ */
+export function markLinqChatRead(input: {
+  chatId: string;
+  fetch?: typeof fetch;
+}): Promise<LinqEffectResult> {
+  return linqEffect({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/read`,
     fetch: input.fetch,
   });
 }
@@ -348,6 +396,8 @@ export async function shareLinqContactCard(input: {
  */
 export function createLinqTextTransport(deps: {
   chatId: string | null;
+  /** The inbound Linq message this turn is answering. Absent sends a plain bubble. */
+  replyToMessageId?: string | null;
   fetch?: typeof fetch;
 }): ChannelTransport {
   return {
@@ -359,9 +409,14 @@ export function createLinqTextTransport(deps: {
       const sent = await sendLinqChatMessage({
         chatId: deps.chatId,
         text: input.body,
+        replyTo: deps.replyToMessageId ? { messageId: deps.replyToMessageId } : undefined,
         fetch: deps.fetch,
       });
-      return { providerMessageId: sent.providerMessageId, transport: 'imessage' };
+      return {
+        providerMessageId: sent.providerMessageId,
+        transport: 'imessage',
+        chatId: deps.chatId,
+      };
     },
   };
 }

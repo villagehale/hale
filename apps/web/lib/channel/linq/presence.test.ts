@@ -3,7 +3,12 @@ import type { ReplyRoute } from '~/lib/channel/router/reply-route';
 import { signalImessageTyping } from './presence';
 
 const CHAT = '8f392755-6865-4b18-880a-227f9d8b458f';
-const IMESSAGE: ReplyRoute = { channel: 'imessage', to: '+12025559876', chatId: CHAT };
+const IMESSAGE: ReplyRoute = {
+  channel: 'imessage',
+  to: '+12025559876',
+  chatId: CHAT,
+  replyToMessageId: null,
+};
 
 afterEach(() => {
   vi.unstubAllEnvs();

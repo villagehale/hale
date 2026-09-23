@@ -96,9 +96,17 @@ function enrol(fake: FakeDb): { familyId: string; userId: string } {
   return { familyId, userId };
 }
 
-function harness(): { fake: FakeDb; jobs: ChannelMessageReceivedJob[]; deps: TwilioInboundDeps } {
+function harness(): {
+  fake: FakeDb;
+  jobs: ChannelMessageReceivedJob[];
+  deps: Parameters<typeof handleLinqInboundRequest>[1];
+  reads: Array<{ chatId: string }>;
+  warns: unknown[];
+} {
   const fake = makeFakeDb();
   const jobs: ChannelMessageReceivedJob[] = [];
+  const reads: Array<{ chatId: string }> = [];
+  const warns: unknown[] = [];
   const intake: IntakeDeps = {
     transport: new FakeTransport(),
     threadMessage: async () => 'conv-1',
@@ -120,11 +128,29 @@ function harness(): { fake: FakeDb; jobs: ChannelMessageReceivedJob[]; deps: Twi
     enqueue: async (job) => {
       jobs.push(job);
     },
-    log: { info: () => {}, warn: () => {}, error: () => {} },
+    log: {
+      info: () => {},
+      warn: (fields) => {
+        warns.push(fields);
+      },
+      error: () => {},
+    },
     countOutcome: async () => {},
     now: () => NOW,
   };
-  return { fake, jobs, deps };
+  return {
+    fake,
+    jobs,
+    reads,
+    warns,
+    deps: {
+      ...deps,
+      markRead: async (input) => {
+        reads.push(input);
+        return { status: 'accepted' };
+      },
+    },
+  };
 }
 
 beforeEach(() => {
@@ -203,6 +229,7 @@ describe('handleLinqInboundRequest', () => {
       body: 'can you move swimming to Thursday?',
       providerChatId: CHAT_ID,
     });
+    expect(h.reads).toEqual([{ chatId: CHAT_ID }]);
     expect(h.jobs).toEqual([
       {
         family_id: familyId,
@@ -228,7 +255,31 @@ describe('handleLinqInboundRequest', () => {
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ outcome: 'group_ignored' });
     expect(h.jobs).toHaveLength(0);
+    expect(h.reads).toEqual([]);
     expect(h.fake.rows(schema.channelMessages)).toHaveLength(0);
+  });
+
+  it('still hands the turn off when mark-read is refused', async () => {
+    const h = harness();
+    enrol(h.fake);
+    h.deps = {
+      ...h.deps,
+      markRead: async (input) => {
+        h.reads.push(input);
+        return { status: 'refused', code: '2001', httpStatus: 404, permanent: true };
+      },
+    };
+
+    const res = await handleLinqInboundRequest(request(messageBody()), h.deps);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ outcome: 'handed_off' });
+    expect(h.reads).toEqual([{ chatId: CHAT_ID }]);
+    expect(h.warns).toEqual([
+      expect.objectContaining({ outcome: 'refused', code: '2001', httpStatus: 404 }),
+    ]);
+    expect(JSON.stringify(h.warns)).not.toContain(CHAT_ID);
+    expect(JSON.stringify(h.warns)).not.toContain('swimming');
   });
 
   it('does not put the webhook secret or the message text in a refusal', async () => {

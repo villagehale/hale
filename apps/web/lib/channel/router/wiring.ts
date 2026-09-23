@@ -196,7 +196,12 @@ async function resolveReplyRoute(
     case 'imessage': {
       const phoneE164 = await resolveSendablePhone(database, parentUserId);
       return phoneE164 && providerChatId
-        ? { channel: 'imessage', to: phoneE164, chatId: providerChatId }
+        ? {
+            channel: 'imessage',
+            to: phoneE164,
+            chatId: providerChatId,
+            replyToMessageId: providerMessageId,
+          }
         : null;
     }
     case 'email': {

@@ -36,7 +36,15 @@ export type ReplyRoute =
    * transport sends into that chat; it does not open a second one, and it does not
    * fall through to SMS.
    */
-  | { channel: 'imessage'; to: string; chatId: string }
+  | {
+      channel: 'imessage';
+      to: string;
+      chatId: string;
+      /** The inbound Linq message id, so the answer threads under that bubble.
+       * Null when the ledger row has no provider id — the send is still an
+       * answer, it simply does not quote. */
+      replyToMessageId: string | null;
+    }
   /**
    * `inReplyTo` is the inbound email's own Message-ID, carried so the answer lands
    * INSIDE the parent's thread. Nullable because a ledger row is not required to hold a

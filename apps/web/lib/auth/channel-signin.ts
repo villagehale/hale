@@ -57,17 +57,22 @@ export interface MintedChannelSigninToken {
  */
 export async function mintChannelSigninTokens(
   database: Database,
-  input: { userId: string; count: number; now: Date },
+  input: { userId: string; count: number; now: Date; invalidatePrior?: boolean },
 ): Promise<MintedChannelSigninToken[]> {
-  await database
-    .update(schema.channelSigninTokens)
-    .set({ consumedAt: input.now })
-    .where(
-      and(
-        eq(schema.channelSigninTokens.userId, input.userId),
-        isNull(schema.channelSigninTokens.consumedAt),
-      ),
-    );
+  // A fresh ask kills every unconsumed link. A continuation of the SAME ask
+  // (the Gmail card finishing after the calendar card already left) must not:
+  // invalidate-prior is per ask, and the sibling is already in the thread.
+  if (input.invalidatePrior !== false) {
+    await database
+      .update(schema.channelSigninTokens)
+      .set({ consumedAt: input.now })
+      .where(
+        and(
+          eq(schema.channelSigninTokens.userId, input.userId),
+          isNull(schema.channelSigninTokens.consumedAt),
+        ),
+      );
+  }
 
   const expiresAt = new Date(input.now.getTime() + CHANNEL_SIGNIN_TTL_MS);
   const minted: MintedChannelSigninToken[] = [];

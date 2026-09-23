@@ -64,7 +64,10 @@ export interface TwilioInboundDeps {
    * reply-transport.ts). An iMessage turn also passes the Linq chat id, because the
    * within-request reply (STOP, the media line) has to return to that chat.
    */
-  intake: (inboundTransport: MessageTransport, linq?: { chatId: string }) => IntakeDeps;
+  intake: (
+    inboundTransport: MessageTransport,
+    linq?: { chatId: string; replyToMessageId?: string | null },
+  ) => IntakeDeps;
   enqueue: (job: ChannelMessageReceivedJob) => Promise<void>;
   /** Required, not optional: the one thing that must never happen quietly here is a
    * text Hale accepted and never queued (rule #11). `info` carries the one routed-
@@ -180,7 +183,7 @@ export async function routeTwilioInbound(
 ): Promise<TwilioInboundOutcome> {
   const intake = deps.intake(
     inbound.transport ?? 'sms',
-    inbound.chatId ? { chatId: inbound.chatId } : undefined,
+    inbound.chatId ? { chatId: inbound.chatId, replyToMessageId: inbound.providerId } : undefined,
   );
 
   // Media is answered here, but never before the CASL keywords: see the module note.
@@ -287,6 +290,7 @@ async function replyMediaUnsupported(
         direction: 'out',
         category: 'reply',
         providerMessageId,
+        providerChatId: inbound.transport === 'imessage' ? (inbound.chatId ?? null) : null,
         status: acceptedStatus(ledgerChannel),
         body: null,
         // A fixed line that answered instead of the coach — the same vocabulary the

@@ -9,7 +9,12 @@ describe('router reply transport — iMessage', () => {
     const transport = createReplyTransport({ phone, email: null, imessage });
 
     const sent = await transport.send({
-      route: { channel: 'imessage', to: '+12025559876', chatId: 'chat-1' },
+      route: {
+        channel: 'imessage',
+        to: '+12025559876',
+        chatId: 'chat-1',
+        replyToMessageId: 'msg-in-1',
+      },
       body: 'swimming moved to Thursday',
     });
 
@@ -17,6 +22,7 @@ describe('router reply transport — iMessage', () => {
     expect(imessage).toHaveBeenCalledWith({
       chatId: 'chat-1',
       body: 'swimming moved to Thursday',
+      replyToMessageId: 'msg-in-1',
     });
     expect(phone.send).not.toHaveBeenCalled();
   });

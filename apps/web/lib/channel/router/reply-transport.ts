@@ -36,12 +36,20 @@ export function createReplyTransport(deps: {
    * sender is a failed turn the drain can re-drive, never a text that vanished.
    * Tests inject a fake so they can prove the chat id is what gets addressed.
    */
-  imessage?: (input: { chatId: string; body: string }) => Promise<{ providerMessageId: string }>;
+  imessage?: (input: {
+    chatId: string;
+    body: string;
+    replyToMessageId: string | null;
+  }) => Promise<{ providerMessageId: string }>;
 }): ReplyTransport {
   const sendImessage =
     deps.imessage ??
-    ((input: { chatId: string; body: string }) =>
-      sendLinqChatMessage({ chatId: input.chatId, text: input.body }));
+    ((input: { chatId: string; body: string; replyToMessageId: string | null }) =>
+      sendLinqChatMessage({
+        chatId: input.chatId,
+        text: input.body,
+        replyTo: input.replyToMessageId ? { messageId: input.replyToMessageId } : undefined,
+      }));
   return {
     async send({ route, body }): Promise<ReplySent> {
       switch (route.channel) {
@@ -53,7 +61,11 @@ export function createReplyTransport(deps: {
           return { providerMessageId: sent.providerMessageId, channel: sent.transport ?? 'sms' };
         }
         case 'imessage': {
-          const sent = await sendImessage({ chatId: route.chatId, body });
+          const sent = await sendImessage({
+            chatId: route.chatId,
+            body,
+            replyToMessageId: route.replyToMessageId,
+          });
           return { providerMessageId: sent.providerMessageId, channel: 'imessage' };
         }
         case 'email': {
