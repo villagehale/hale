@@ -49,10 +49,6 @@ const YEAR_PAYOFF: Record<TextConnectProvider, string> = {
   gmail: 'daycare and school notices get into the year',
 };
 
-function payoffSentence(clause: string): string {
-  return `${clause.charAt(0).toUpperCase()}${clause.slice(1)}`;
-}
-
 /**
  * The one trust line on a connect card. Same shape for both connectors: Hale
  * never sees the password, and the disconnect words are ones the text parser
