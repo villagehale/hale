@@ -268,7 +268,8 @@ describe('household calendars', () => {
       now: DAY,
       fetch: wire.fetch,
     });
-    expect(wire.texts()).toContain('Maya gymnastics');
+    expect(wire.texts()).toContain('Heads up:');
+    expect(wire.texts()).toContain('gymnastics');
     expect(wire.texts()).not.toContain('Quarterly');
     expect(wire.texts()).not.toContain('budget');
     const afterFirst = wire.texts();
@@ -310,11 +311,11 @@ describe('household calendars', () => {
       now: DAY,
       fetch: quietWire.fetch,
     });
-    expect(quietWire.texts()).toContain('Kid event:');
-    expect(quietWire.texts()).toContain('Maya gymnastics');
+    expect(quietWire.texts()).toContain('Heads up:');
+    expect(quietWire.texts()).toContain('gymnastics');
   });
 
-  it('says a kid mailbox subject and not a private one', async () => {
+  it('does not speak mail into the group', async () => {
     const seeded = await seedPair();
     await db.database.insert(schema.integrations).values([
       {
@@ -344,17 +345,47 @@ describe('household calendars', () => {
       now: DAY,
       fetch: wire.fetch,
     });
-    expect(wire.texts()).toContain('Gymnastics registration');
+    expect(wire.texts()).toBe('[]');
+    expect(wire.texts()).not.toContain('Gymnastics');
     expect(wire.texts()).not.toContain('Quarterly');
     expect(wire.texts()).not.toContain('coach@gym.test');
-    const again = wire.texts();
-    await narrateHouseholdMailbox(db.database, {
+  });
+
+  it('sends at most one group bubble a day', async () => {
+    const seeded = await seedPair();
+    const wire = linqFetch();
+    await rememberAndNarrateCalendar(db.database, {
+      integrationId: seeded.primaryIntegrationId,
       familyId: seeded.familyId,
       userId: seeded.primaryUserId,
-      envelopes: [{ messageId: 'mail-gym', subject: 'Gymnastics registration' }],
+      changes: [change({ eventId: 'gym', title: 'Maya gymnastics' })],
+      seeding: false,
       now: DAY,
       fetch: wire.fetch,
     });
-    expect(wire.texts()).toBe(again);
+    expect(wire.texts()).toContain('Heads up:');
+    const afterFirst = wire.texts();
+    await rememberAndNarrateCalendar(db.database, {
+      integrationId: seeded.primaryIntegrationId,
+      familyId: seeded.familyId,
+      userId: seeded.primaryUserId,
+      changes: [
+        change({
+          eventId: 'swim',
+          title: 'Maya swim',
+          start: { dateTime: '2026-09-26T19:00:00.000Z' },
+          end: { dateTime: '2026-09-26T20:00:00.000Z' },
+        }),
+      ],
+      seeding: false,
+      now: DAY,
+      fetch: wire.fetch,
+    });
+    expect(wire.texts()).toBe(afterFirst);
+    const [held] = await db.database
+      .select({ announcedAt: schema.parentCalendarBlocks.announcedAt })
+      .from(schema.parentCalendarBlocks)
+      .where(eq(schema.parentCalendarBlocks.eventId, 'swim'));
+    expect(held?.announcedAt).toBeNull();
   });
 });

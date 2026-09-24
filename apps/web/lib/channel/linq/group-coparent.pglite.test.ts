@@ -1,7 +1,6 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PARENT_CALL_NAME_ASK } from '~/lib/channel/identity/parent-call-name';
 import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -13,6 +12,7 @@ import {
   linqGroupMakeInstruction,
 } from './group';
 import { considerGroupCoparent, steerNotedCoparentOneToOne } from './group-coparent';
+import { GROUP_WELCOME, groupCalendarAsk } from './group-coparent-copy';
 import type { LinqInboundText } from './payload';
 
 /**
@@ -54,28 +54,41 @@ afterEach(async () => {
   await db.exec('truncate table families, users cascade');
 });
 
-function linqFetch(): { fetch: typeof fetch; texts: () => string[] } {
-  const bodies: unknown[] = [];
-  const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
-    bodies.push(init?.body ? JSON.parse(String(init.body)) : null);
-    return new Response(JSON.stringify({ message: { id: `m-${bodies.length}` } }), {
-      status: 200,
-    });
+function linqFetch(opts?: { failCreate?: boolean }): {
+  fetch: typeof fetch;
+  texts: () => string[];
+  groupTexts: () => string[];
+  privateTexts: () => string[];
+} {
+  const sent: { url: string; text: string }[] = [];
+  const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+    const target = String(url);
+    if (opts?.failCreate && target.endsWith('/chats') && !target.includes('/messages')) {
+      return new Response(JSON.stringify({ error: { code: 1006 } }), { status: 400 });
+    }
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    const parts =
+      (body as { message?: { parts?: { type?: string; value?: string }[] } } | null)?.message
+        ?.parts ?? [];
+    for (const part of parts) {
+      if (part.type === 'text' && part.value) sent.push({ url: target, text: part.value });
+    }
+    const id = `m-${sent.length}`;
+    if (target.endsWith('/chats')) {
+      return new Response(
+        JSON.stringify({ chat: { id: 'chat-coparent-private', message: { id } } }),
+        { status: 200 },
+      );
+    }
+    return new Response(JSON.stringify({ message: { id } }), { status: 200 });
   });
+  const textsOf = (pred: (url: string) => boolean) => () =>
+    sent.filter((row) => pred(row.url)).map((row) => row.text);
   return {
     fetch: fetchImpl as unknown as typeof fetch,
-    texts: () => {
-      const texts: string[] = [];
-      for (const body of bodies) {
-        const parts =
-          (body as { message?: { parts?: { type?: string; value?: string }[] } } | null)?.message
-            ?.parts ?? [];
-        for (const part of parts) {
-          if (part.type === 'text' && part.value) texts.push(part.value);
-        }
-      }
-      return texts;
-    },
+    texts: () => sent.map((row) => row.text),
+    groupTexts: textsOf((url) => url.includes(GROUP)),
+    privateTexts: textsOf((url) => url.includes('chat-coparent-private') || url.endsWith('/chats')),
   };
 }
 
@@ -176,7 +189,7 @@ async function childNames(): Promise<string[]> {
 
 describe('group co-parent seating', () => {
   it('does nothing while the flag is off', async () => {
-    vi.stubEnv('LINQ_GROUP_COPARENT', '');
+    vi.stubEnv('LINQ_GROUP_COPARENT', 'off');
     const seeded = await seedHousehold();
     await noteCoparent(seeded);
     await db.database
@@ -239,7 +252,8 @@ describe('group co-parent seating', () => {
       { now: NOW, fetch: wire.fetch, recordInbound },
     );
     expect(effect).toMatchObject({ type: 'done', outcome: 'group_coparent_seated' });
-    expect(wire.texts()).toEqual([PARENT_CALL_NAME_ASK]);
+    expect(wire.groupTexts()).toEqual([GROUP_WELCOME.en]);
+    expect(wire.texts().join('\n')).not.toContain('Maya');
     expect(await familyCount()).toBe(1);
     expect(await childNames()).toEqual(['Maya']);
     const [family] = await db.database
@@ -283,7 +297,7 @@ describe('group co-parent seating', () => {
       .select({ step: schema.linqGroupOnboarding.step })
       .from(schema.linqGroupOnboarding);
     expect(step?.step).toBe('awaiting_calendar');
-    expect(wire.texts().join('\n')).not.toContain('/connect?t=');
+    expect(wire.groupTexts().join('\n')).not.toContain('/connect?t=');
 
     const calendar = await considerGroupCoparent(
       db.database,
@@ -291,16 +305,28 @@ describe('group co-parent seating', () => {
       { now: NOW, fetch: wire.fetch, recordInbound },
     );
     expect(calendar).toMatchObject({ type: 'done', outcome: 'group_coparent_gcal' });
-    expect(wire.texts().at(-1)).toContain('/connect?t=');
-    expect(wire.texts().at(-1)).toContain('to=gcal');
+    expect(wire.groupTexts()).toContain(groupCalendarAsk('en', 'Sam'));
+    expect(wire.groupTexts().join('\n')).not.toContain('/connect?t=');
+    expect(
+      wire.privateTexts().some((text) => text.includes('/connect?t=') && text.includes('to=gcal')),
+    ).toBe(true);
+
+    const thanks = await considerGroupCoparent(
+      db.database,
+      inbound({ messageId: 'm-thanks', senderHandle: COPARENT_PHONE, text: 'thanks' }),
+      { now: NOW, fetch: wire.fetch, recordInbound },
+    );
+    expect(thanks).toMatchObject({ type: 'route_member' });
+    expect(wire.texts().some((text) => text.includes('to=gmail'))).toBe(false);
 
     const gmail = await considerGroupCoparent(
       db.database,
-      inbound({ messageId: 'm-mail', senderHandle: COPARENT_PHONE, text: 'thanks' }),
+      inbound({ messageId: 'm-mail', senderHandle: COPARENT_PHONE, text: 'connect my gmail' }),
       { now: NOW, fetch: wire.fetch, recordInbound },
     );
     expect(gmail).toMatchObject({ type: 'done', outcome: 'group_coparent_gmail' });
-    expect(wire.texts().at(-1)).toContain('to=gmail');
+    expect(wire.groupTexts().join('\n')).not.toContain('to=gmail');
+    expect(wire.privateTexts().some((text) => text.includes('to=gmail'))).toBe(true);
 
     const tokens = await db.database
       .select({

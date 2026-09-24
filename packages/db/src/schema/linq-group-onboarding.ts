@@ -5,9 +5,10 @@ import { users } from './users.js';
 /**
  * Where a co-parent seated from a claimed Linq group is on their own ladder.
  *
- * Name, then their calendar link, then their Gmail link. The family's children
- * and postal code are not collected again. One row per user. `step` is text,
- * not an enum: awaiting_name, awaiting_calendar, awaiting_gmail, done.
+ * Name, then the calendar ask. Gmail is not a step: it is offered only when
+ * the co-parent asks. The family's children and postal code are not collected
+ * again. One row per user. `step` is text, not an enum: awaiting_name,
+ * awaiting_calendar, done. Older `awaiting_gmail` rows are treated as done.
  */
 export const linqGroupOnboarding = pgTable(
   'linq_group_onboarding',

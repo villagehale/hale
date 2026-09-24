@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
@@ -148,7 +148,11 @@ async function sendReceipt(
   // SMS stays on Twilio. A blue-bubble family with no chat id is named and
   // not texted on the other app.
   const door = await resolveMessagingDoor(database, parentUserId);
-  if (door.channel === 'imessage' && !door.chatId) {
+  const receiptChatId =
+    door.channel === 'imessage' && door.chatId
+      ? await imessageChatOutsideGroup(database, parentUserId, door.chatId)
+      : null;
+  if (door.channel === 'imessage' && !receiptChatId) {
     console.warn(
       { familyId, provider },
       'connector connected: last turn was iMessage and no chat id is stored - nobody was told',
@@ -179,7 +183,7 @@ async function sendReceipt(
       category: 'reply',
       templateKey: CONNECTOR_CONNECTED_TEMPLATE_KEY,
       dedupeKey: connectorConnectedDedupeKey(connectId),
-      providerChatId: door.channel === 'imessage' ? door.chatId : null,
+      providerChatId: door.channel === 'imessage' ? receiptChatId : null,
       status: acceptedStatus(channel),
       sentAt: now,
     })
@@ -194,10 +198,10 @@ async function sendReceipt(
     if (door.channel === 'imessage') {
       // ports.imessage is present: the guard above returned otherwise.
       const send = ports.imessage;
-      if (!send || !door.chatId) {
+      if (!send || !receiptChatId) {
         throw new LinqSendError('imessage_not_configured', 0, true);
       }
-      ({ providerMessageId } = await send({ chatId: door.chatId, body }));
+      ({ providerMessageId } = await send({ chatId: receiptChatId, body }));
     } else {
       ({ providerMessageId } = await ports.transport.send({ to: phone, body }));
     }
@@ -240,4 +244,62 @@ async function familyReceiptLanguage(
     .where(eq(schema.families.id, familyId));
   const row = rows.find((candidate) => candidate.id === familyId);
   return row?.primaryLanguage === 'fr' ? 'fr' : 'en';
+}
+
+/**
+ * The locked 1:1 receipt stays out of the household group. If the last turn
+ * was the group, use a personal Linq chat when one exists. Otherwise the
+ * caller names `no_chat` and the group gets only its own receipt.
+ */
+async function imessageChatOutsideGroup(
+  database: Database,
+  parentUserId: string,
+  doorChatId: string,
+): Promise<string | null> {
+  const memberships = await database
+    .select({
+      familyId: schema.familyMembers.familyId,
+      userId: schema.familyMembers.userId,
+    })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.userId, parentUserId));
+  const familyIds = memberships
+    .filter((row) => row.userId === parentUserId)
+    .map((row) => row.familyId);
+  const groups = new Set<string>();
+  if (familyIds.length > 0) {
+    const families = await database
+      .select({
+        id: schema.families.id,
+        linqGroupChatId: schema.families.linqGroupChatId,
+      })
+      .from(schema.families)
+      .where(inArray(schema.families.id, familyIds));
+    for (const family of families) {
+      if (familyIds.includes(family.id) && family.linqGroupChatId)
+        groups.add(family.linqGroupChatId);
+    }
+  }
+  if (!groups.has(doorChatId)) return doorChatId;
+  const rows = await database
+    .select({
+      chatId: schema.channelMessages.providerChatId,
+      channel: schema.channelMessages.channel,
+      parentUserId: schema.channelMessages.parentUserId,
+    })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, parentUserId),
+        eq(schema.channelMessages.channel, 'imessage'),
+      ),
+    );
+  const personal = rows.find(
+    (row) =>
+      row.parentUserId === parentUserId &&
+      row.channel === 'imessage' &&
+      row.chatId !== null &&
+      !groups.has(row.chatId),
+  );
+  return personal?.chatId ?? null;
 }

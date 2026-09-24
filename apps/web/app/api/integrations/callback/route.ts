@@ -8,7 +8,9 @@ import {
 } from '~/lib/channel/connect/connected-notice';
 import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
 import { holdGoogleGivenName } from '~/lib/channel/identity/parent-call-name';
+import { sendCoparentGroupCalendarReceipt } from '~/lib/channel/linq/group-coparent';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
+import { googleAccountBlindIndex } from '~/lib/crypto/blind-index';
 import { db } from '~/lib/db';
 import { resolveUserIdForUser } from '~/lib/family';
 import { type ConnectState, verifyConnectState } from '~/lib/integrations/connect-state';
@@ -18,8 +20,8 @@ import {
   connectorRedirectUri,
   exchangeCodeForTokens,
 } from '~/lib/integrations/google-oauth';
-import { readGoogleGivenName } from '~/lib/integrations/google-profile';
-import { saveConnection } from '~/lib/integrations/store';
+import { readGoogleAccountSub, readGoogleGivenName } from '~/lib/integrations/google-profile';
+import { otherParentHoldsGoogleAccount, saveConnection } from '~/lib/integrations/store';
 
 // Node runtime: node:crypto (state verify), fetch (token exchange), Drizzle.
 export const runtime = 'nodejs';
@@ -133,12 +135,35 @@ export async function GET(req: NextRequest) {
     if (!grantedOk) {
       return back('denied', surface, bound.provider);
     }
+    let providerMetadata: Record<string, unknown> | undefined;
+    if (scopes.includes(GOOGLE_PROFILE_SCOPE) && tokens.accessToken) {
+      const sub = await readGoogleAccountSub(tokens.accessToken);
+      if (!sub) {
+        console.info({ familyId: bound.familyId }, 'google account: identity unread');
+      } else {
+        const accountKey = googleAccountBlindIndex(sub);
+        const held = await otherParentHoldsGoogleAccount(database, {
+          familyId: bound.familyId,
+          userId: bound.userId,
+          accountKey,
+        });
+        if (held) {
+          console.info(
+            { familyId: bound.familyId, provider: bound.provider },
+            'google account: held by the other parent',
+          );
+          return back('denied', surface, bound.provider);
+        }
+        providerMetadata = { googleAccountKey: accountKey };
+      }
+    }
     ({ connectId } = await saveConnection(database, {
       familyId: bound.familyId,
       userId: bound.userId,
       provider: bound.provider,
       scopes,
       tokens,
+      providerMetadata,
     }));
     await rememberGoogleGivenName(database, {
       familyId: bound.familyId,
@@ -170,6 +195,24 @@ export async function GET(req: NextRequest) {
       { familyId: bound.familyId, provider: textProvider, receipt: connectedNoticeLabel(receipt) },
       'connector connected from a text - the done page is up; this is what the receipt did',
     );
+    try {
+      const groupReceipt = await sendCoparentGroupCalendarReceipt(database, {
+        familyId: bound.familyId,
+        userId: bound.userId,
+        provider: textProvider,
+        connectId,
+        now: new Date(),
+      });
+      console.info(
+        { familyId: bound.familyId, provider: textProvider, groupReceipt },
+        'connector connected: group calendar receipt',
+      );
+    } catch (err) {
+      console.warn(
+        { familyId: bound.familyId, err: err instanceof Error ? err.name : 'unknown' },
+        'connector connected: group calendar receipt failed',
+      );
+    }
     return back('ok', 'text', textProvider);
   }
 

@@ -24,6 +24,8 @@ const BLIND_INDEX_INFO = 'hale-phone-blind-index-v1';
  * different identifier spaces, and deriving both from one label would let a hash
  * collected from one surface be probed against the other. */
 const EMAIL_BLIND_INDEX_INFO = 'hale-email-blind-index-v1';
+/** Google `sub`, not an email. A separate label so a phone or mail hash cannot collide. */
+const GOOGLE_ACCOUNT_BLIND_INDEX_INFO = 'hale-google-account-blind-index-v1';
 
 function loadKeyMaterial(): Buffer {
   const raw = process.env.APP_ENCRYPTION_KEY;
@@ -66,5 +68,12 @@ export function phoneBlindIndex(e164Canonical: string): string {
 export function emailBlindIndex(addressLowercased: string): string {
   return createHmac('sha256', blindIndexKey(EMAIL_BLIND_INDEX_INFO))
     .update(addressLowercased)
+    .digest('hex');
+}
+
+/** Equality key for a Google account `sub`. The raw subject is not stored. */
+export function googleAccountBlindIndex(sub: string): string {
+  return createHmac('sha256', blindIndexKey(GOOGLE_ACCOUNT_BLIND_INDEX_INFO))
+    .update(sub)
     .digest('hex');
 }

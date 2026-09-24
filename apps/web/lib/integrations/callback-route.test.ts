@@ -11,6 +11,9 @@ const exchangeMock = vi.fn();
 const saveConnectionMock = vi.fn();
 const noticeMock = vi.fn();
 const readProfileMock = vi.fn();
+const readSubMock = vi.fn();
+const accountHeldMock = vi.fn();
+const groupReceiptMock = vi.fn();
 const holdNameMock = vi.fn();
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
@@ -34,9 +37,14 @@ vi.mock('~/lib/integrations/google-oauth', async () => {
 });
 vi.mock('~/lib/integrations/store', () => ({
   saveConnection: (...a: unknown[]) => saveConnectionMock(...a),
+  otherParentHoldsGoogleAccount: (...a: unknown[]) => accountHeldMock(...a),
 }));
 vi.mock('~/lib/integrations/google-profile', () => ({
   readGoogleGivenName: (...a: unknown[]) => readProfileMock(...a),
+  readGoogleAccountSub: (...a: unknown[]) => readSubMock(...a),
+}));
+vi.mock('~/lib/channel/linq/group-coparent', () => ({
+  sendCoparentGroupCalendarReceipt: (...a: unknown[]) => groupReceiptMock(...a),
 }));
 vi.mock('~/lib/channel/identity/parent-call-name', () => ({
   holdGoogleGivenName: (...a: unknown[]) => holdNameMock(...a),
@@ -72,6 +80,9 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
       exchangeMock,
       saveConnectionMock,
       readProfileMock,
+      readSubMock,
+      accountHeldMock,
+      groupReceiptMock,
       holdNameMock,
     ]) {
       m.mockReset();
@@ -79,6 +90,9 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
     readProfileMock.mockResolvedValue(null);
+    readSubMock.mockResolvedValue(null);
+    accountHeldMock.mockResolvedValue(false);
+    groupReceiptMock.mockResolvedValue('skipped');
     holdNameMock.mockResolvedValue('held');
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
@@ -196,6 +210,9 @@ describe('GET /api/integrations/callback — the text surface', () => {
     });
     saveConnectionMock.mockResolvedValue({ connectId: CONNECT });
     noticeMock.mockResolvedValue({ status: 'sent', channelMessageId: 'cm-1' });
+    readSubMock.mockResolvedValue(null);
+    accountHeldMock.mockResolvedValue(false);
+    groupReceiptMock.mockResolvedValue('skipped');
     authMock.mockResolvedValue({ user: { id: 'ext-minter' } });
     resolveUserIdMock.mockResolvedValue(MINTER);
   });
@@ -295,6 +312,9 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
       exchangeMock,
       saveConnectionMock,
       readProfileMock,
+      readSubMock,
+      accountHeldMock,
+      groupReceiptMock,
       holdNameMock,
     ]) {
       m.mockReset();
@@ -302,6 +322,9 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
     readProfileMock.mockResolvedValue(null);
+    readSubMock.mockResolvedValue(null);
+    accountHeldMock.mockResolvedValue(false);
+    groupReceiptMock.mockResolvedValue('skipped');
     holdNameMock.mockResolvedValue('held');
     saveConnectionMock.mockResolvedValue({ connectId: CONNECT_ID });
     authMock.mockResolvedValue({ user: { id: 'ext-minter' } });
@@ -346,6 +369,20 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
       expect.anything(),
       expect.objectContaining({ userId: MINTER, familyId: FAMILY, givenName: 'Bea' }),
     );
+  });
+
+  it('refuses a Google account the other parent already connected', async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile',
+    });
+    readSubMock.mockResolvedValue('google-sub-shared');
+    accountHeldMock.mockResolvedValue(true);
+    const res = await callCallback(await minterState());
+    expect(location(res)).toContain('connect=denied');
+    expect(saveConnectionMock).not.toHaveBeenCalled();
   });
 
   it('still connects when profile was not granted, and does not read userinfo', async () => {

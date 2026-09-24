@@ -1,126 +1,104 @@
+import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
 import type { ReplyLanguage } from '~/lib/channel/language';
 
 /**
- * Parent-facing lines for in-group co-parent seating and household calendar
- * notices. Every sentence in this file is a placeholder.
- *
- * // NEEDS DESIGN LOCK (Sloane)
- *
- * Do not import these into a locked template. Name ask, name ack, connector
- * cards, and the group-claim lines stay in their own modules.
+ * Design-locked lines for the Linq household group (Sloane).
+ * French twins are ASCII. `{name}` is the parent. The calendar card and the
+ * name ack stay in their own modules.
  */
 
-// NEEDS DESIGN LOCK (Sloane)
-export const GROUP_KID_EVENT_TEXT: Record<ReplyLanguage, string> = {
-  en: 'Kid event: {title}, {when}.',
-  fr: 'Evenement enfant: {title}, {when}.',
+export const GROUP_WELCOME: Record<ReplyLanguage, string> = {
+  en: "Hi, I'm Hale. This thread is your kids' year — both of you, and me. What should I call you?",
+  fr: "Salut, c'est Hale. Ce fil, c'est l'annee des enfants: vous deux, et moi. Comment je t'appelle?",
 };
 
-// NEEDS DESIGN LOCK (Sloane)
-export const GROUP_KID_EVENT_CANCELLED_TEXT: Record<ReplyLanguage, string> = {
-  en: 'Kid event cancelled: {title}, {when}.',
-  fr: 'Evenement enfant annule: {title}, {when}.',
+export const GROUP_CALENDAR_ASK: Record<ReplyLanguage, string> = {
+  en: "{name}, want your calendar in the kids' year too? I'll text you the link one-to-one.",
+  fr: "{name}, tu veux ajouter ton calendrier a l'annee des enfants? Je t'envoie le lien en prive.",
 };
 
-// NEEDS DESIGN LOCK (Sloane)
-/** The other block is not named. `{title}` is the kid event only. */
-export const GROUP_COVERAGE_CONFLICT_TEXT: Record<ReplyLanguage, string> = {
-  en: '{title} at {when} overlaps time the other parent is busy.',
-  fr: '{title} a {when} chevauche un moment ou l autre parent est occupe.',
+export const GROUP_CALENDAR_RECEIPT: Record<ReplyLanguage, string> = {
+  en: "{name}'s calendar is connected. I'll keep the kids' stuff straight across both.",
+  fr: 'Le calendrier de {name} est connecte. Je suis les activites des enfants sur les deux.',
 };
 
-// NEEDS DESIGN LOCK (Sloane)
-export const GROUP_BOTH_BOOKED_TEXT: Record<ReplyLanguage, string> = {
-  en: 'Both booked: {titleA} and {titleB}, {when}.',
-  fr: 'Les deux sont pris: {titleA} et {titleB}, {when}.',
+export const GROUP_KID_EVENT: Record<ReplyLanguage, string> = {
+  en: "Heads up: {name} added {kid}'s {event}, {day} at {time}.",
+  fr: 'Pour info: {name} a ajoute {event} pour {kid}, {day} a {time}.',
 };
 
-// NEEDS DESIGN LOCK (Sloane)
-export const GROUP_HANDOFF_TEXT: Record<ReplyLanguage, string> = {
-  en: 'Handoff: {title}. {whenA} then {whenB}.',
-  fr: 'Relais: {title}. {whenA} puis {whenB}.',
+export const GROUP_CONFLICT: Record<ReplyLanguage, string> = {
+  en: "{kid}'s {event} is {day} at {time}, and you're both busy then. Who's taking it?",
+  fr: "{event} pour {kid}, {day} a {time}, et vous etes pris tous les deux. Qui s'en occupe?",
 };
 
-// NEEDS DESIGN LOCK (Sloane)
-/** Appended when a shared free hour exists. Does not say Hale books it. */
-export const GROUP_FREE_SLOT_TEXT: Record<ReplyLanguage, string> = {
-  en: ' Both free {when}. I can find the page.',
-  fr: ' Libres tous les deux {when}. Je peux trouver la page.',
+export const GROUP_HANDOFF: Record<ReplyLanguage, string> = {
+  en: "Tomorrow: {name} has {kid}'s {event} at {time}.",
+  fr: "Demain: {name} s'occupe de {event} pour {kid} a {time}.",
 };
 
-// NEEDS DESIGN LOCK (Sloane)
-export const GROUP_FOLLOWUP_TEXT: Record<ReplyLanguage, string> = {
-  en: 'How did {title} go?',
-  fr: 'Comment {title} s est passe?',
-};
-
-// NEEDS DESIGN LOCK (Sloane)
-/** Used when the parent has not given a call-name yet. */
-export const GROUP_UNNAMED_PARENT: Record<ReplyLanguage, string> = {
-  en: 'one parent',
-  fr: 'un parent',
-};
-
-// NEEDS DESIGN LOCK (Sloane)
-/** `{subject}` is included only after the kid classifier says yes. */
-export const GROUP_KID_MAIL_TEXT: Record<ReplyLanguage, string> = {
-  en: 'Kid-related mail for {name}: {subject}.',
-  fr: 'Courriel enfant pour {name}: {subject}.',
+export const GROUP_BOTH_FREE: Record<ReplyLanguage, string> = {
+  en: "You're both free {slot1} or {slot2}. Want the sign-up page for one?",
+  fr: "Vous etes libres tous les deux {slot1} ou {slot2}. Vous voulez la page d'inscription pour l'un des deux?",
 };
 
 function fill(pattern: string, slots: Record<string, string>): string {
   return pattern.replace(/\{(\w+)\}/g, (_, key: string) => slots[key] ?? '');
 }
 
+export function groupWelcome(language: ReplyLanguage): string {
+  return GROUP_WELCOME[language];
+}
+
+export function groupCalendarAsk(language: ReplyLanguage, name: string): string {
+  return fill(GROUP_CALENDAR_ASK[language], { name });
+}
+
+export function groupCalendarReceipt(language: ReplyLanguage, name: string): string {
+  return fill(GROUP_CALENDAR_RECEIPT[language], { name });
+}
+
 export function groupKidEventText(
   language: ReplyLanguage,
-  input: { title: string; when: string; cancelled: boolean },
+  input: { name: string; kid: string; event: string; day: string; time: string },
 ): string {
-  const pattern = input.cancelled
-    ? GROUP_KID_EVENT_CANCELLED_TEXT[language]
-    : GROUP_KID_EVENT_TEXT[language];
-  return fill(pattern, { title: input.title, when: input.when });
+  return fill(GROUP_KID_EVENT[language], input);
 }
 
-export function groupCoverageConflictText(
+export function groupConflictText(
   language: ReplyLanguage,
-  input: { title: string; when: string; freeWhen: string | null },
+  input: { kid: string; event: string; day: string; time: string },
 ): string {
-  const body = fill(GROUP_COVERAGE_CONFLICT_TEXT[language], {
-    title: input.title,
-    when: input.when,
-  });
-  if (!input.freeWhen) return body;
-  return `${body}${fill(GROUP_FREE_SLOT_TEXT[language], { when: input.freeWhen })}`;
-}
-
-export function groupBothBookedText(
-  language: ReplyLanguage,
-  input: { titleA: string; titleB: string; when: string; freeWhen: string | null },
-): string {
-  const body = fill(GROUP_BOTH_BOOKED_TEXT[language], {
-    titleA: input.titleA,
-    titleB: input.titleB,
-    when: input.when,
-  });
-  if (!input.freeWhen) return body;
-  return `${body}${fill(GROUP_FREE_SLOT_TEXT[language], { when: input.freeWhen })}`;
+  return fill(GROUP_CONFLICT[language], input);
 }
 
 export function groupHandoffText(
   language: ReplyLanguage,
-  input: { title: string; whenA: string; whenB: string },
+  input: { name: string; kid: string; event: string; time: string },
 ): string {
-  return fill(GROUP_HANDOFF_TEXT[language], input);
+  return fill(GROUP_HANDOFF[language], input);
 }
 
-export function groupFollowupText(language: ReplyLanguage, title: string): string {
-  return fill(GROUP_FOLLOWUP_TEXT[language], { title });
-}
-
-export function groupKidMailText(
+/** `'{name}, ' +` the locked how-it-went line. Capital H stays. */
+export function groupPostEventText(
   language: ReplyLanguage,
-  input: { name: string; subject: string },
+  name: string,
+  activity: string,
 ): string {
-  return fill(GROUP_KID_MAIL_TEXT[language], input);
+  return `${name}, ${howItWentAsk(activity, language)}`;
+}
+
+export function groupBothFreeText(language: ReplyLanguage, slot1: string, slot2: string): string {
+  return fill(GROUP_BOTH_FREE[language], { slot1, slot2 });
+}
+
+/**
+ * A parent asking for a shared free window. Conservative: two-slot copy is
+ * never attached to a nudge.
+ */
+const BOTH_FREE_ASK =
+  /\b(?:both free|when (?:are|can) we both|free together|tous les deux libres|libres tous les deux|quand (?:est-ce qu'on|on) est libres)\b/i;
+
+export function matchBothFreeAsk(body: string): boolean {
+  return BOTH_FREE_ASK.test(body);
 }

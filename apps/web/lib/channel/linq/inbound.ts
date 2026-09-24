@@ -56,8 +56,9 @@ import { type LinqEffectResult, markLinqChatRead } from './transport';
  * `families.linq_group_chat_id`. The parent starts the group and sends the
  * trigger; that write is the claim. A group that is not claimed yet is not
  * handed to the coach. An unknown number is held and not enrolled.
- * `LINQ_GROUP_COPARENT=on` is the exception: a number the parent already noted
- * is seated on that same family when they speak in the claimed group.
+ * Linq group co-parent seating is on unless `LINQ_GROUP_COPARENT=off`. A number
+ * the parent already noted is seated on that same family when they speak in
+ * the claimed group. SMS does not read the flag.
  * Reactions, typing, and participant events answer 200. A poll vote becomes
  * the option's text and enters the same router a typed reply would.
  *

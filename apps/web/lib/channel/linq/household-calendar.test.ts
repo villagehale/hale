@@ -1,9 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import {
+  GROUP_BOTH_FREE,
+  GROUP_CALENDAR_ASK,
+  GROUP_CALENDAR_RECEIPT,
+  GROUP_CONFLICT,
+  GROUP_HANDOFF,
+  GROUP_KID_EVENT,
+  GROUP_WELCOME,
+  groupPostEventText,
+} from './group-coparent-copy';
+import {
   type BusyBlock,
   classifyKidCalendarItem,
+  formatDay,
+  formatTime,
   kidMailboxSubject,
   planHouseholdNotices,
+  proposeSharedFree,
+  splitKidEvent,
 } from './household-calendar';
 
 /**
@@ -32,14 +46,20 @@ function block(over: Partial<BusyBlock> & Pick<BusyBlock, 'eventId' | 'userId'>)
   };
 }
 
-function notices(blocks: BusyBlock[]) {
+function notices(blocks: BusyBlock[], now = NOW) {
   return planHouseholdNotices({
     blocks,
     parentUserIds: [PARENT_A, PARENT_B],
-    now: NOW,
+    parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
+    childNames: ['Maya'],
+    now,
     timeZone: ZONE,
     language: 'en',
   });
+}
+
+function when(date: Date): { day: string; time: string } {
+  return { day: formatDay(date, ZONE, 'en'), time: formatTime(date, ZONE, 'en') };
 }
 
 describe('classifyKidCalendarItem', () => {
@@ -72,79 +92,192 @@ describe('kidMailboxSubject', () => {
   });
 });
 
+describe('design-locked group strings', () => {
+  it('matches Sloane byte for byte', () => {
+    expect(GROUP_WELCOME.en).toBe(
+      "Hi, I'm Hale. This thread is your kids' year — both of you, and me. What should I call you?",
+    );
+    expect(GROUP_WELCOME.fr).toBe(
+      "Salut, c'est Hale. Ce fil, c'est l'annee des enfants: vous deux, et moi. Comment je t'appelle?",
+    );
+    expect(GROUP_CALENDAR_ASK.en).toBe(
+      "{name}, want your calendar in the kids' year too? I'll text you the link one-to-one.",
+    );
+    expect(GROUP_CALENDAR_ASK.fr).toBe(
+      "{name}, tu veux ajouter ton calendrier a l'annee des enfants? Je t'envoie le lien en prive.",
+    );
+    expect(GROUP_CALENDAR_RECEIPT.en).toBe(
+      "{name}'s calendar is connected. I'll keep the kids' stuff straight across both.",
+    );
+    expect(GROUP_CALENDAR_RECEIPT.fr).toBe(
+      'Le calendrier de {name} est connecte. Je suis les activites des enfants sur les deux.',
+    );
+    expect(GROUP_KID_EVENT.en).toBe("Heads up: {name} added {kid}'s {event}, {day} at {time}.");
+    expect(GROUP_KID_EVENT.fr).toBe(
+      'Pour info: {name} a ajoute {event} pour {kid}, {day} a {time}.',
+    );
+    expect(GROUP_CONFLICT.en).toBe(
+      "{kid}'s {event} is {day} at {time}, and you're both busy then. Who's taking it?",
+    );
+    expect(GROUP_CONFLICT.fr).toBe(
+      "{event} pour {kid}, {day} a {time}, et vous etes pris tous les deux. Qui s'en occupe?",
+    );
+    expect(GROUP_HANDOFF.en).toBe("Tomorrow: {name} has {kid}'s {event} at {time}.");
+    expect(GROUP_HANDOFF.fr).toBe("Demain: {name} s'occupe de {event} pour {kid} a {time}.");
+    expect(GROUP_BOTH_FREE.en).toBe(
+      "You're both free {slot1} or {slot2}. Want the sign-up page for one?",
+    );
+    expect(GROUP_BOTH_FREE.fr).toBe(
+      "Vous etes libres tous les deux {slot1} ou {slot2}. Vous voulez la page d'inscription pour l'un des deux?",
+    );
+    expect(groupPostEventText('en', 'Sam', 'swim')).toBe(
+      'Sam, How did swim go? One line is plenty.',
+    );
+    expect(groupPostEventText('fr', 'Sam', 'natation')).toBe(
+      "Sam, Comment ca s'est passe pour natation ? Une ligne suffit.",
+    );
+  });
+});
+
 describe('planHouseholdNotices', () => {
-  it('tells the other parent about a kid event and never the private title', () => {
+  const start = new Date('2026-09-25T19:00:00.000Z');
+
+  it('sends one heads-up and never the private title', () => {
     const planned = notices([
       block({
         eventId: 'gym',
         userId: PARENT_A,
         kidRelated: true,
         title: 'Maya gymnastics',
+        start,
+        end: new Date('2026-09-25T20:00:00.000Z'),
+      }),
+    ]);
+    const clock = when(start);
+    expect(planned).toHaveLength(1);
+    expect(planned[0]?.text).toBe(
+      `Heads up: Barton added Maya's gymnastics, ${clock.day} at ${clock.time}.`,
+    );
+    expect(planned[0]?.text).not.toMatch(/I(?:'ll| will) book/i);
+    expect(planned[0]?.recipientUserId).toBe(PARENT_B);
+  });
+
+  it('says both are busy and does not name the other event', () => {
+    const planned = notices([
+      block({
+        eventId: 'gym',
+        userId: PARENT_A,
+        kidRelated: true,
+        title: 'Maya gymnastics',
+        start,
+        end: new Date('2026-09-25T20:00:00.000Z'),
       }),
       block({
         eventId: 'budget',
         userId: PARENT_B,
         kidRelated: false,
         title: 'Quarterly budget review',
-      }),
-    ]);
-    const kid = planned.find((notice) => notice.kind === 'kid_event');
-    const conflict = planned.find((notice) => notice.kind === 'conflict');
-    expect(kid?.text).toContain('Maya gymnastics');
-    expect(kid?.recipientUserId).toBe(PARENT_B);
-    expect(conflict?.text).toContain('Maya gymnastics');
-    expect(conflict?.text).toContain('I can find the page.');
-    expect(conflict?.text).not.toMatch(/I(?:'ll| will) book/i);
-    for (const notice of planned) {
-      expect(notice.text).not.toContain('Quarterly');
-      expect(notice.text).not.toContain('budget');
-    }
-  });
-
-  it('names both kid titles when both parents are booked, and a handoff across weeks', () => {
-    const both = notices([
-      block({
-        eventId: 'gym-a',
-        userId: PARENT_A,
-        kidRelated: true,
-        title: 'Maya gymnastics',
-      }),
-      block({
-        eventId: 'gym-b',
-        userId: PARENT_B,
-        kidRelated: true,
-        title: 'Swim class',
-      }),
-    ]);
-    const booked = both.find((notice) => notice.kind === 'both_booked');
-    expect(booked?.text).toContain('Maya gymnastics');
-    expect(booked?.text).toContain('Swim class');
-
-    const handoff = notices([
-      block({
-        eventId: 'this-week',
-        userId: PARENT_A,
-        kidRelated: true,
-        title: 'Maya gymnastics',
-        announced: true,
-        start: new Date('2026-09-25T19:00:00.000Z'),
+        start,
         end: new Date('2026-09-25T20:00:00.000Z'),
       }),
-      block({
-        eventId: 'next-week',
-        userId: PARENT_B,
-        kidRelated: true,
-        title: 'Maya gymnastics',
-        announced: true,
-        start: new Date('2026-10-02T19:00:00.000Z'),
-        end: new Date('2026-10-02T20:00:00.000Z'),
-      }),
     ]);
-    expect(handoff.find((notice) => notice.kind === 'handoff')?.text).toContain('Handoff:');
-    expect(handoff.find((notice) => notice.kind === 'handoff')?.text).toContain('Maya gymnastics');
+    const clock = when(start);
+    expect(planned).toHaveLength(1);
+    expect(planned[0]?.kind).toBe('conflict');
+    expect(planned[0]?.text).toBe(
+      `Maya's gymnastics is ${clock.day} at ${clock.time}, and you're both busy then. Who's taking it?`,
+    );
+    expect(planned[0]?.text).not.toContain('Quarterly');
+    expect(planned[0]?.text).not.toContain('budget');
+    expect(planned[0]?.text).not.toContain('free');
   });
 
-  it('asks how it went once', () => {
+  it('does not treat two calendars a week apart as a handoff', () => {
+    const evening = new Date('2026-09-24T22:00:00.000Z');
+    const planned = notices(
+      [
+        block({
+          eventId: 'this-week',
+          userId: PARENT_A,
+          kidRelated: true,
+          title: 'Maya gymnastics',
+          announced: true,
+          start: new Date('2026-09-26T19:00:00.000Z'),
+          end: new Date('2026-09-26T20:00:00.000Z'),
+        }),
+        block({
+          eventId: 'next-week',
+          userId: PARENT_B,
+          kidRelated: true,
+          title: 'Maya gymnastics',
+          announced: true,
+          start: new Date('2026-10-02T19:00:00.000Z'),
+          end: new Date('2026-10-02T20:00:00.000Z'),
+        }),
+      ],
+      evening,
+    );
+    expect(planned.find((notice) => notice.kind === 'handoff')).toBeUndefined();
+  });
+
+  it('states a handoff the evening before when the event is on one calendar', () => {
+    const evening = new Date('2026-09-24T22:00:00.000Z');
+    const planned = notices(
+      [
+        block({
+          eventId: 'tomorrow',
+          userId: PARENT_A,
+          kidRelated: true,
+          title: 'Maya gymnastics',
+          start,
+          end: new Date('2026-09-25T20:00:00.000Z'),
+        }),
+      ],
+      evening,
+    );
+    expect(planned).toHaveLength(1);
+    expect(planned[0]?.text).toBe(
+      `Tomorrow: Barton has Maya's gymnastics at ${formatTime(start, ZONE, 'en')}.`,
+    );
+  });
+
+  it("uses a parent's own words for a handoff when both calendars show the event", () => {
+    const evening = new Date('2026-09-24T22:00:00.000Z');
+    const planned = planHouseholdNotices({
+      blocks: [
+        block({
+          eventId: 'a',
+          userId: PARENT_A,
+          kidRelated: true,
+          title: 'Maya gymnastics',
+          start,
+          end: new Date('2026-09-25T20:00:00.000Z'),
+        }),
+        block({
+          eventId: 'b',
+          userId: PARENT_B,
+          kidRelated: true,
+          title: 'Maya gymnastics',
+          start,
+          end: new Date('2026-09-25T20:00:00.000Z'),
+        }),
+      ],
+      parentUserIds: [PARENT_A, PARENT_B],
+      parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
+      childNames: ['Maya'],
+      now: evening,
+      timeZone: ZONE,
+      language: 'en',
+      statements: [{ userId: PARENT_B, text: "I'll take Maya gymnastics" }],
+    });
+    expect(planned).toHaveLength(1);
+    expect(planned[0]?.kind).toBe('handoff');
+    expect(planned[0]?.text).toBe(
+      `Tomorrow: Sam has Maya's gymnastics at ${formatTime(start, ZONE, 'en')}.`,
+    );
+  });
+
+  it('asks the parent who took the kid, once, with the locked how-it-went line', () => {
     const planned = notices([
       block({
         eventId: 'done-1',
@@ -155,18 +288,73 @@ describe('planHouseholdNotices', () => {
         start: new Date('2026-09-24T15:00:00.000Z'),
         end: new Date('2026-09-24T16:00:00.000Z'),
       }),
+    ]);
+    expect(planned).toHaveLength(1);
+    expect(planned[0]?.kind).toBe('followup');
+    expect(planned[0]?.text).toBe('Barton, How did gymnastics go? One line is plenty.');
+    expect(planned[0]?.recipientUserId).toBe(PARENT_A);
+  });
+
+  it('suppresses a follow-up when both calendars hold the event and nobody said who took it', () => {
+    const planned = notices([
       block({
-        eventId: 'done-2',
-        userId: PARENT_B,
+        eventId: 'done-a',
+        userId: PARENT_A,
         kidRelated: true,
-        title: 'Swim class',
+        title: 'Maya gymnastics',
         announced: true,
         start: new Date('2026-09-24T15:00:00.000Z'),
-        end: new Date('2026-09-24T16:30:00.000Z'),
+        end: new Date('2026-09-24T16:00:00.000Z'),
+      }),
+      block({
+        eventId: 'done-b',
+        userId: PARENT_B,
+        kidRelated: true,
+        title: 'Maya gymnastics',
+        announced: true,
+        start: new Date('2026-09-24T15:00:00.000Z'),
+        end: new Date('2026-09-24T16:00:00.000Z'),
       }),
     ]);
-    const followups = planned.filter((notice) => notice.kind === 'followup');
-    expect(followups).toHaveLength(1);
-    expect(followups[0]?.text).toBe('How did Maya gymnastics go?');
+    expect(planned.filter((notice) => notice.kind === 'followup')).toHaveLength(0);
+  });
+
+  it('folds several new kid events into one bubble of at most three lines', () => {
+    const planned = notices(
+      ['one', 'two', 'three', 'four'].map((eventId, index) =>
+        block({
+          eventId,
+          userId: PARENT_A,
+          kidRelated: true,
+          title: 'Maya gymnastics',
+          start: new Date(start.getTime() + index * 24 * 60 * 60 * 1000),
+          end: new Date(start.getTime() + index * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
+        }),
+      ),
+    );
+    expect(planned).toHaveLength(1);
+    expect(planned[0]?.text.split('\n')).toHaveLength(3);
+    expect(planned[0]?.mark).toHaveLength(3);
+  });
+
+  it('does not offer a shared free window unless someone asked', () => {
+    expect(
+      proposeSharedFree({
+        requested: false,
+        blocks: [],
+        now: NOW,
+        timeZone: ZONE,
+        language: 'en',
+      }),
+    ).toBeNull();
+    const asked = proposeSharedFree({
+      requested: true,
+      blocks: [],
+      now: NOW,
+      timeZone: ZONE,
+      language: 'en',
+    });
+    expect(asked).toMatch(/^You're both free .+ or .+\. Want the sign-up page for one\?$/);
+    expect(splitKidEvent('swim class', ['Maya', 'Leo'])).toBeNull();
   });
 });

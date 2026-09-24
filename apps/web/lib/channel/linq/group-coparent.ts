@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import { matchConnectorRequest } from '~/lib/channel/connect/detect';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { soleGivenName } from '~/lib/channel/identity/name-reply';
-import { PARENT_CALL_NAME_ASK } from '~/lib/channel/identity/parent-call-name';
 import {
   INTAKE_CALENDAR_CARD_TEMPLATE_KEY,
   INTAKE_GMAIL_CARD_TEMPLATE_KEY,
@@ -14,7 +14,10 @@ import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
-import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
+import {
+  resolveSendablePhone,
+  resolveVerifiedChannelByPhone,
+} from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -25,9 +28,16 @@ import {
   linqGroupMakeInstruction,
   matchLinqGroupTrigger,
 } from './group';
+import {
+  groupCalendarAsk,
+  groupCalendarReceipt,
+  groupWelcome,
+  matchBothFreeAsk,
+} from './group-coparent-copy';
+import { answerBothFreeInGroup } from './household-calendar';
 import { sendLinqLinkPreview } from './link-preview';
 import type { LinqInboundText } from './payload';
-import { LinqSendError, sendLinqChatMessage } from './transport';
+import { LinqSendError, createLinqChat, sendLinqChatMessage } from './transport';
 
 /**
  * Seat a co-parent inside a claimed Linq group. SMS is not this module.
@@ -35,16 +45,19 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * The onboarded parent already stored the number (`identity_noted`, #706).
  * When that number speaks in the claimed group, Hale opens a user, a
  * `co_parent` seat, and a channel on the SAME family. Children and postal
- * code are not asked again. The ladder is the locked name ask, then that
- * parent's own calendar link, then their own Gmail link.
+ * code are not asked again. One welcome carries the name ask. The name ack
+ * is the locked line. The next beat asks for that parent's calendar and
+ * texts the link one-to-one. Gmail is offered only when they ask.
  *
- * Dark unless `LINQ_GROUP_COPARENT=on`.
+ * On unless `LINQ_GROUP_COPARENT` is exactly `off`.
  */
 
-const NAME_ASK_KEY = 'parent_name_ask';
+const WELCOME_KEY = 'linq:coparent_welcome';
+const CALENDAR_ASK_KEY = 'linq:coparent_calendar_ask';
 const CALENDAR_KEY = 'linq:coparent_calendar_card';
 const GMAIL_KEY = 'linq:coparent_gmail_card';
 const UNCLAIMED_KEY = 'linq:coparent_unclaimed';
+const RECEIPT_KEY = 'linq:coparent_calendar_receipt';
 
 export type GroupCoparentEffect =
   | { type: 'none' }
@@ -143,9 +156,9 @@ export async function considerGroupCoparent(
     familyId: noted.familyId,
     parentUserId: seated.userId,
     chatId: message.chatId,
-    text: PARENT_CALL_NAME_ASK,
-    templateKey: NAME_ASK_KEY,
-    dedupeKey: `linq:coparent_name:${seated.userId}`,
+    text: groupWelcome(language),
+    templateKey: WELCOME_KEY,
+    dedupeKey: `linq:coparent_welcome:${seated.userId}`,
     now: ports.now,
     fetch: ports.fetch,
   });
@@ -211,7 +224,15 @@ async function advanceSeatedCoparent(
     .from(schema.linqGroupOnboarding)
     .where(eq(schema.linqGroupOnboarding.userId, sender.userId))
     .limit(1);
-  if (!step || step.step === 'done' || step.chatId !== message.chatId) return null;
+  if (!step || step.chatId !== message.chatId) return null;
+  if (step.step === 'awaiting_gmail') {
+    await setStep(database, sender.userId, 'done', ports.now);
+  }
+  const current = step.step === 'awaiting_gmail' ? 'done' : step.step;
+  if (current === 'done') {
+    return answerDoneStep(database, message, sender, language, ports);
+  }
+  if (current !== 'awaiting_name' && current !== 'awaiting_calendar') return null;
 
   const recorded = await ports.recordInbound(message, sender);
   if (!recorded) {
@@ -267,60 +288,158 @@ async function advanceSeatedCoparent(
     };
   }
 
-  if (step.step === 'awaiting_calendar' || step.step === 'awaiting_gmail') {
-    const provider = step.step === 'awaiting_calendar' ? 'gcal' : 'gmail';
-    const sent = await sendConnectorCard(database, {
+  if (step.step === 'awaiting_calendar') {
+    const [named] = await database
+      .select({ name: schema.users.name })
+      .from(schema.users)
+      .where(eq(schema.users.id, sender.userId))
+      .limit(1);
+    const name = named?.name?.trim();
+    if (!name) {
+      return {
+        type: 'done',
+        outcome: 'group_coparent_link_held',
+        count: 'ignored',
+        body: { outcome: 'group_coparent_link_held' },
+      };
+    }
+    await sendLine(database, {
       familyId: sender.familyId,
       parentUserId: sender.userId,
       chatId: message.chatId,
-      provider,
-      language,
+      text: groupCalendarAsk(language, name),
+      templateKey: CALENDAR_ASK_KEY,
+      dedupeKey: `${CALENDAR_ASK_KEY}:${sender.userId}`,
       now: ports.now,
       fetch: ports.fetch,
     });
-    if (sent === 'sent') {
-      await setStep(
-        database,
-        sender.userId,
-        provider === 'gcal' ? 'awaiting_gmail' : 'done',
-        ports.now,
-      );
-    }
+    const sent = await deliverPersonalCard(database, {
+      familyId: sender.familyId,
+      parentUserId: sender.userId,
+      groupChatId: message.chatId,
+      provider: 'gcal',
+      language,
+      opener: groupCalendarAsk(language, name),
+      now: ports.now,
+      fetch: ports.fetch,
+    });
+    if (sent === 'sent') await setStep(database, sender.userId, 'done', ports.now);
     return {
       type: 'done',
-      outcome: sent === 'sent' ? `group_coparent_${provider}` : 'group_coparent_link_held',
+      outcome: sent === 'sent' ? 'group_coparent_gcal' : 'group_coparent_link_held',
       count: 'intake',
-      body: {
-        outcome: sent === 'sent' ? `group_coparent_${provider}` : 'group_coparent_link_held',
-      },
+      body: { outcome: sent === 'sent' ? 'group_coparent_gcal' : 'group_coparent_link_held' },
     };
   }
 
   return null;
 }
 
-async function sendConnectorCard(
+/**
+ * After the ladder, Gmail (or another calendar link) is offered only when
+ * this parent asks. A both-free question is answered here and nowhere else
+ * in the sweep.
+ */
+async function answerDoneStep(
+  database: Database,
+  message: LinqInboundText,
+  sender: { familyId: string; userId: string },
+  language: ReplyLanguage,
+  ports: GroupCoparentPorts,
+): Promise<GroupCoparentEffect | null> {
+  const asked = matchConnectorRequest(message.text);
+  const bothFree = matchBothFreeAsk(message.text);
+  if (asked !== 'gmail' && asked !== 'gcal' && !bothFree) return null;
+  const recorded = await ports.recordInbound(message, sender);
+  if (!recorded) {
+    return {
+      type: 'done',
+      outcome: 'duplicate',
+      count: 'duplicate',
+      body: { outcome: 'duplicate' },
+    };
+  }
+  if (bothFree && asked !== 'gmail' && asked !== 'gcal') {
+    const text = await answerBothFreeInGroup(database, {
+      familyId: sender.familyId,
+      now: ports.now,
+      language,
+    });
+    if (!text) {
+      return {
+        type: 'done',
+        outcome: 'group_coparent_both_free_none',
+        count: 'ignored',
+        body: { outcome: 'group_coparent_both_free_none' },
+      };
+    }
+    await sendLine(database, {
+      familyId: sender.familyId,
+      parentUserId: sender.userId,
+      chatId: message.chatId,
+      text,
+      templateKey: 'linq:coparent_both_free',
+      dedupeKey: `linq:coparent_both_free:${sender.userId}:${ports.now.toISOString().slice(0, 10)}`,
+      now: ports.now,
+      fetch: ports.fetch,
+    });
+    return {
+      type: 'done',
+      outcome: 'group_coparent_both_free',
+      count: 'intake',
+      body: { outcome: 'group_coparent_both_free' },
+    };
+  }
+  const provider = asked === 'gmail' ? 'gmail' : 'gcal';
+  const [named] = await database
+    .select({ name: schema.users.name })
+    .from(schema.users)
+    .where(eq(schema.users.id, sender.userId))
+    .limit(1);
+  const callName = named?.name?.trim();
+  const sent = await deliverPersonalCard(database, {
+    familyId: sender.familyId,
+    parentUserId: sender.userId,
+    groupChatId: message.chatId,
+    provider,
+    language,
+    opener: callName ? groupCalendarAsk(language, callName) : groupWelcome(language),
+    now: ports.now,
+    fetch: ports.fetch,
+    invalidatePrior: provider === 'gcal',
+  });
+  return {
+    type: 'done',
+    outcome: sent === 'sent' ? `group_coparent_${provider}` : 'group_coparent_link_held',
+    count: 'intake',
+    body: { outcome: sent === 'sent' ? `group_coparent_${provider}` : 'group_coparent_link_held' },
+  };
+}
+
+async function deliverPersonalCard(
   database: Database,
   input: {
     familyId: string;
     parentUserId: string;
-    chatId: string;
+    groupChatId: string;
     provider: 'gcal' | 'gmail';
     language: ReplyLanguage;
+    /** URL-free. Used only as the first line of a brand-new 1:1 chat. */
+    opener: string;
     now: Date;
     fetch?: typeof fetch;
+    invalidatePrior?: boolean;
   },
 ): Promise<'sent' | 'not_sent'> {
   const templateKey = input.provider === 'gcal' ? CALENDAR_KEY : GMAIL_KEY;
-  const dedupeKey = `${templateKey}:${input.parentUserId}`;
+  const dedupeKey = `${templateKey}:${input.parentUserId}:${input.now.toISOString()}`;
   const minted = await offerConnectorLinks(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     providers: [input.provider],
     now: input.now,
-    // The Gmail card is the rest of this parent's ask. Killing the calendar
-    // token would pull the link already in the group.
-    invalidatePrior: input.provider === 'gcal',
+    // A later Gmail ask must not invalidate the calendar token already out.
+    invalidatePrior: input.invalidatePrior ?? input.provider === 'gcal',
   });
   if (minted.status !== 'minted') {
     console.warn(
@@ -330,35 +449,212 @@ async function sendConnectorCard(
     return 'not_sent';
   }
   const url = minted.urls[0];
+  if (!url) return 'not_sent';
   const text =
     input.provider === 'gcal'
       ? intakeCalendarCard(input.language, url)
       : intakeGmailCard(input.language, url);
-  const notice = await sendLine(database, {
+  const personal = await personalChatId(database, input.parentUserId, input.groupChatId);
+  const opened = personal ?? (await openPersonalChat(database, input));
+  if (opened) {
+    const notice = await sendCard(database, { ...input, chatId: opened, text, dedupeKey });
+    if (notice === 'sent') {
+      await sendLinqLinkPreview({
+        channel: 'imessage',
+        chatId: opened,
+        url,
+        fetch: input.fetch,
+        database,
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        now: input.now,
+      });
+      return 'sent';
+    }
+  }
+  // 1:1 could not be opened. The card stays bound to this parent. The ask
+  // in the group never carries the token; this fallback is the card itself.
+  console.warn(
+    { familyId: input.familyId, provider: input.provider },
+    'linq group coparent: 1:1 link failed, card falls back to the group',
+  );
+  const fallback = await sendCard(database, {
+    ...input,
+    chatId: input.groupChatId,
+    text,
+    dedupeKey: `${dedupeKey}:group`,
+  });
+  return fallback === 'sent' ? 'sent' : 'not_sent';
+}
+
+async function sendCard(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    chatId: string;
+    provider: 'gcal' | 'gmail';
+    text: string;
+    dedupeKey: string;
+    now: Date;
+    fetch?: typeof fetch;
+  },
+): Promise<'sent' | 'already_sent' | 'not_sent'> {
+  return sendLine(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     chatId: input.chatId,
-    text,
+    text: input.text,
     templateKey:
       input.provider === 'gcal'
         ? INTAKE_CALENDAR_CARD_TEMPLATE_KEY
         : INTAKE_GMAIL_CARD_TEMPLATE_KEY,
-    dedupeKey,
+    dedupeKey: input.dedupeKey,
     now: input.now,
     fetch: input.fetch,
   });
-  if (notice !== 'sent') return 'not_sent';
-  await sendLinqLinkPreview({
-    channel: 'imessage',
-    chatId: input.chatId,
-    url,
-    fetch: input.fetch,
-    database,
+}
+
+async function personalChatId(
+  database: Database,
+  userId: string,
+  groupChatId: string,
+): Promise<string | null> {
+  const rows = await database
+    .select({
+      chatId: schema.channelMessages.providerChatId,
+      channel: schema.channelMessages.channel,
+      parentUserId: schema.channelMessages.parentUserId,
+    })
+    .from(schema.channelMessages)
+    .where(eq(schema.channelMessages.parentUserId, userId));
+  const row = rows.find(
+    (message) =>
+      message.parentUserId === userId &&
+      message.channel === 'imessage' &&
+      message.chatId !== null &&
+      message.chatId !== groupChatId,
+  );
+  return row?.chatId ?? null;
+}
+
+/** Linq rejects a URL on the first message of a new chat. The opener has none. */
+async function openPersonalChat(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    opener: string;
+    now: Date;
+    fetch?: typeof fetch;
+  },
+): Promise<string | null> {
+  const from = linqFromE164();
+  const phone = await resolveSendablePhone(database, input.parentUserId);
+  if (!from || !phone || /https?:\/\//i.test(input.opener)) {
+    console.warn(
+      {
+        familyId: input.familyId,
+        reason: !from ? 'no_from' : !phone ? 'no_phone' : 'opener_has_url',
+      },
+      'linq group coparent: cannot open a 1:1',
+    );
+    return null;
+  }
+  try {
+    const created = await createLinqChat({
+      from,
+      to: [phone],
+      text: input.opener,
+      fetch: input.fetch,
+    });
+    await database.insert(schema.channelMessages).values({
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reply',
+      templateKey: 'linq:coparent_1to1_open',
+      dedupeKey: `linq:coparent_1to1_open:${input.parentUserId}:${created.chatId}`,
+      providerChatId: created.chatId,
+      providerMessageId: created.providerMessageId,
+      status: acceptedStatus('imessage'),
+      sentAt: input.now,
+    });
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: input.parentUserId,
+      actionTaken: 'sms_reply_sent',
+      targetTable: 'channel_messages',
+      after: { via: 'linq_1to1_open' },
+    });
+    return created.chatId;
+  } catch (err) {
+    const code = err instanceof LinqSendError ? err.code : 'unknown';
+    console.warn({ familyId: input.familyId, code }, 'linq group coparent: 1:1 open failed');
+    return null;
+  }
+}
+
+/**
+ * The group receipt for a co-parent calendar connect. Its own bubble, only
+ * for gcal, only into the claimed group. The 1:1 receipt is a different send.
+ */
+export async function sendCoparentGroupCalendarReceipt(
+  database: Database,
+  input: {
+    familyId: string;
+    userId: string;
+    provider: 'gcal' | 'gmail' | 'gdrive';
+    connectId: string;
+    now: Date;
+    fetch?: typeof fetch;
+  },
+): Promise<'sent' | 'skipped'> {
+  if (!linqGroupCoparentEnabled() || input.provider !== 'gcal') return 'skipped';
+  const members = await database
+    .select({
+      userId: schema.familyMembers.userId,
+      role: schema.familyMembers.role,
+      familyId: schema.familyMembers.familyId,
+    })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.familyId, input.familyId));
+  const seat = members.find(
+    (row) =>
+      row.familyId === input.familyId && row.userId === input.userId && row.role === 'co_parent',
+  );
+  if (!seat) return 'skipped';
+  const [family] = await database
+    .select({
+      linqGroupChatId: schema.families.linqGroupChatId,
+      primaryLanguage: schema.families.primaryLanguage,
+    })
+    .from(schema.families)
+    .where(eq(schema.families.id, input.familyId))
+    .limit(1);
+  if (!family?.linqGroupChatId) return 'skipped';
+  const [user] = await database
+    .select({ name: schema.users.name })
+    .from(schema.users)
+    .where(eq(schema.users.id, input.userId))
+    .limit(1);
+  const name = user?.name?.trim();
+  if (!name) return 'skipped';
+  const language: ReplyLanguage = family.primaryLanguage?.toLowerCase().startsWith('fr')
+    ? 'fr'
+    : 'en';
+  const notice = await sendLine(database, {
     familyId: input.familyId,
-    parentUserId: input.parentUserId,
+    parentUserId: input.userId,
+    chatId: family.linqGroupChatId,
+    text: groupCalendarReceipt(language, name),
+    templateKey: RECEIPT_KEY,
+    dedupeKey: `${RECEIPT_KEY}:${input.connectId}`,
     now: input.now,
+    fetch: input.fetch,
   });
-  return 'sent';
+  return notice === 'sent' ? 'sent' : 'skipped';
 }
 
 async function sayUnclaimed(
