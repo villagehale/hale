@@ -1,3 +1,4 @@
+import { matchKeyword } from '~/lib/channel/intake/keywords';
 import {
   type TwilioInboundDeps,
   type TwilioInboundOutcome,
@@ -5,7 +6,9 @@ import {
 } from '~/lib/channel/twilio/inbound';
 import { applyTwilioStatus } from '~/lib/channel/twilio/status';
 import { linqInboundConfigured, linqMissingInboundEnv, linqWebhookSecret } from './config';
-import { parseLinqWebhook } from './payload';
+import { holdUnknownGroupSender, mapGroupHandlesToFamily, rememberLinqGroupChat } from './group';
+import { type LinqInboundText, type LinqSignal, parseLinqWebhook } from './payload';
+import { lookupLinqPollOption } from './poll';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
 import { type LinqEffectResult, markLinqChatRead } from './transport';
 
@@ -22,9 +25,14 @@ import { type LinqEffectResult, markLinqChatRead } from './transport';
  * and nothing is written. Linq retries a 503, so a secret that lands inside the
  * retry window still delivers the text.
  *
- * Group chats, outbound echoes, and events this door does not act on answer
- * 200 with a named outcome. A 4xx/5xx would make Linq retry work this door is
- * declining on purpose.
+ * A group chat from an enrolled parent of one household continues that
+ * family's year in the group. An unknown number is held and not enrolled.
+ * Reactions, typing, and participant events answer 200. A poll vote becomes
+ * the option's text and enters the same router a typed reply would.
+ *
+ * Outbound echoes and events this door does not act on answer 200 with a
+ * named outcome. A 4xx/5xx would make Linq retry work this door is declining
+ * on purpose.
  *
  * A 1:1 `message.received` is marked read on Linq before the turn finishes
  * thinking. That call is best-effort: a refusal is logged and the reply still
@@ -46,6 +54,8 @@ export async function handleLinqInboundRequest(
   deps: TwilioInboundDeps & {
     /** Test seam. Production calls Linq. A miss is logged and never fails the turn. */
     markRead?: (input: { chatId: string }) => Promise<LinqEffectResult>;
+    /** Test seam for the unknown-sender hold. Production texts the group. */
+    holdGroup?: (input: { chatId: string }) => Promise<'sent' | 'not_sent'>;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -121,6 +131,8 @@ export async function handleLinqInboundRequest(
     await deps.countOutcome(ignoreCount(parsed.reason));
     return json({ outcome });
   }
+  if (parsed.kind === 'signal') return handleLinqSignal(deps, parsed.signal);
+  if (parsed.kind === 'group') return handleLinqGroup(deps, parsed.message);
 
   const message = parsed.message;
   // Read receipt first, overlapping the turn. Linq's mark-as-read is what puts
@@ -168,6 +180,113 @@ export async function handleLinqInboundRequest(
   return json({ outcome });
 }
 
+type LinqDoorDeps = Parameters<typeof handleLinqInboundRequest>[1];
+
+/** A group from a parent already on this household continues their year in
+ * that chat. Anyone else is held, and a STOP from them sends nothing. */
+async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
+  const others = message.otherHandles.filter((handle) => handle !== message.senderHandle);
+  const mapped = await mapGroupHandlesToFamily(deps.database, {
+    sender: message.senderHandle,
+    others,
+  });
+  if (mapped.status !== 'same_family') {
+    const keyword = matchKeyword(message.text);
+    if (keyword?.keyword === 'stop') {
+      deps.log.info({ outcome: 'group_opt_out' }, 'linq inbound: group opt-out, no reply');
+      await deps.countOutcome('ignored');
+      return json({ outcome: 'group_opt_out' });
+    }
+    const hold = deps.holdGroup ?? ((input: { chatId: string }) => holdUnknownGroupSender(input));
+    const held = await hold({ chatId: message.chatId });
+    const outcome =
+      mapped.status === 'unknown_sender' ? 'group_unknown_sender' : 'group_mixed_family';
+    deps.log.info({ outcome, hold: held }, 'linq inbound: group held');
+    await deps.countOutcome('ignored');
+    return json({ outcome, hold: held });
+  }
+
+  await rememberLinqGroupChat(deps.database, {
+    familyId: mapped.familyId,
+    chatId: message.chatId,
+    now: deps.now?.() ?? new Date(),
+  });
+  const outcome = await routeTwilioInbound(
+    deps,
+    {
+      from: message.senderHandle,
+      transport: 'imessage',
+      body: message.text,
+      providerId: message.messageId,
+      receivedAt: message.receivedAt,
+      chatId: message.chatId,
+      isGroup: true,
+      providerAnsweredKeyword: null,
+    },
+    message.mediaCount,
+  );
+  deps.log.info({ outcome, providerMessageId: message.messageId }, 'linq inbound: group routed');
+  await deps.countOutcome(outcome);
+  return json({ outcome });
+}
+
+/** Reactions, typing, and participant changes are acked. A poll vote is the
+ * option text, routed like a parent typed it. Handles are not logged. */
+async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise<Response> {
+  deps.log.info(
+    {
+      event: signal.event,
+      chatId: signal.chatId,
+      messageId: signal.messageId,
+      reactionType: signal.reactionType,
+      optionId: signal.optionId,
+      isFromMe: signal.isFromMe,
+    },
+    'linq signal',
+  );
+  if (signal.isFromMe) {
+    await deps.countOutcome('ignored');
+    return json({ outcome: 'signal_from_me' });
+  }
+  if (
+    signal.event === 'poll.vote.added' &&
+    signal.optionId &&
+    signal.senderHandle &&
+    signal.chatId
+  ) {
+    const option = await lookupLinqPollOption(deps.database, signal.optionId);
+    if (!option) {
+      await deps.countOutcome('ignored');
+      return json({ outcome: 'poll_option_unknown' });
+    }
+    const mapped = await mapGroupHandlesToFamily(deps.database, {
+      sender: signal.senderHandle,
+      others: [],
+    });
+    if (mapped.status !== 'same_family' || mapped.familyId !== option.familyId) {
+      await deps.countOutcome('ignored');
+      return json({ outcome: 'poll_sender_unknown' });
+    }
+    const outcome = await routeTwilioInbound(
+      deps,
+      {
+        from: signal.senderHandle,
+        transport: 'imessage',
+        body: option.text,
+        providerId: `poll:${signal.messageId ?? 'vote'}:${signal.optionId}`,
+        receivedAt: deps.now?.() ?? new Date(),
+        chatId: signal.chatId,
+        providerAnsweredKeyword: null,
+      },
+      0,
+    );
+    await deps.countOutcome(outcome);
+    return json({ outcome });
+  }
+  await deps.countOutcome('ignored');
+  return json({ outcome: signal.event });
+}
+
 /** What the HTTP response and the log line call each decline. Finer than the
  * counter, which only has the SMS door's vocabulary. */
 const IGNORE_OUTCOME = {
@@ -175,7 +294,6 @@ const IGNORE_OUTCOME = {
   unsupported_version: 'unsupported_payload_version',
   not_message_received: 'ignored_event',
   outbound: 'ignored_outbound',
-  group: 'group_ignored',
 } as const;
 
 /** The counter's vocabulary is the SMS door's. Group / outbound / other events

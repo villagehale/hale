@@ -52,6 +52,10 @@ export const parentChannels = pgTable(
     consentRecordId: uuid('consent_record_id').references(() => consentRecords.id),
     /** Soft-revoke: in-app toggle or STOP. A revoked row is kept for audit. */
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    /** Set the moment Hale shares the Linq Name and Photo card into this
+     * parent's 1:1 chat. Null means it has not been shared. The share is
+     * one-shot: a later onboard must not push the card again. */
+    linqContactCardSharedAt: timestamp('linq_contact_card_shared_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

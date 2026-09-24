@@ -104,6 +104,8 @@ import {
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
+import { shareHaleContactCardOnce } from '~/lib/channel/linq/contact-card';
+import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
 import { sendWelcomeContactCard } from './welcome-card';
 
 /**
@@ -285,6 +287,8 @@ interface Inbound {
    * iMessage. An iMessage turn carries `chatId` so the ledger can return to it. */
   transport?: 'sms' | 'whatsapp' | 'imessage';
   chatId?: string;
+  /** A Linq group turn. The Name and Photo card is 1:1 only. */
+  isGroup?: boolean;
   /** VIL-348 — the provider already answered this keyword itself; see
    * `InboundMessage.providerAnsweredKeyword` (intake/transport.ts) for what that means
    * and what it does NOT suppress. Optional here for the same reason it is optional
@@ -621,6 +625,20 @@ async function sendAndRecord(
       parentUserId: ctx.session.userId,
       body,
     });
+    if (ctx.pipe.channel === 'imessage' && ctx.pipe.chatId) {
+      const preview = linkPreviewUrl(body);
+      if (preview) {
+        await sendLinqLinkPreview({
+          channel: 'imessage',
+          chatId: ctx.pipe.chatId,
+          url: preview,
+          database,
+          familyId: ctx.session.familyId,
+          parentUserId: ctx.session.userId,
+          now: ctx.now,
+        });
+      }
+    }
     return { transcript, channelMessageId: id };
   }
   return { transcript: [...transcript, entry], channelMessageId: null };
@@ -1101,6 +1119,49 @@ function resolveLocation(
   return null;
 }
 
+/**
+ * SMS still sends the vCard. A finished 1:1 iMessage onboard shares Hale's
+ * Name and Photo card once, after the radar or the yes-ack has already gone
+ * out — Linq will not share a card into a chat with no prior outbound, and a
+ * group is not this moment.
+ */
+async function shareFreshLinqContactCard(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    phoneE164: string;
+    now: Date;
+    inbound: Inbound;
+  },
+  deps: IntakeDeps,
+): Promise<void> {
+  const pipe = messagingPipe(args.inbound);
+  if (pipe.channel === 'imessage' && pipe.chatId && args.inbound.isGroup !== true) {
+    await shareHaleContactCardOnce(database, {
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      chatId: pipe.chatId,
+      channel: 'imessage',
+      isGroup: false,
+      onboardComplete: true,
+      now: args.now,
+    });
+    return;
+  }
+  await sendWelcomeContactCard(
+    database,
+    {
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      phoneE164: args.phoneE164,
+      now: args.now,
+      ridesReply: true,
+    },
+    { transport: deps.transport, threadMessage: deps.threadMessage },
+  );
+}
+
 async function provision(
   database: Database,
   args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
@@ -1169,10 +1230,10 @@ async function provision(
   );
 
   const language = replyLanguage(inbound.body);
-  await sendWelcomeContactCard(
+  await shareFreshLinqContactCard(
     database,
-    { familyId, parentUserId: userId, phoneE164, now, ridesReply: true },
-    { transport: deps.transport, threadMessage: deps.threadMessage },
+    { familyId, parentUserId: userId, phoneE164, now, inbound },
+    deps,
   );
   await askParentCallName(database, {
     familyId,
@@ -1430,16 +1491,16 @@ async function handleWatchReply(
   // night yes that waits until morning is how the card and the inbox ask disappear.
   const earned = granted && session.findWon;
   if (earned) {
-    await sendWelcomeContactCard(
+    await shareFreshLinqContactCard(
       database,
       {
         familyId: session.familyId as string,
         parentUserId: session.userId as string,
         phoneE164: args.phoneE164,
         now,
-        ridesReply: true,
+        inbound,
       },
-      { transport: deps.transport, threadMessage: deps.threadMessage },
+      deps,
     );
   }
   const nameAsked = earned

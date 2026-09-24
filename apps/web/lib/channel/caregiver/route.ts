@@ -20,6 +20,7 @@ import { JOIN_ACCEPTED_ACK } from '~/lib/channel/join/copy';
 import { looksLikeJoinRequest } from '~/lib/channel/join/parse';
 import { type JoinOutcome, handleJoinRequest } from '~/lib/channel/join/route';
 import { replyLanguage } from '~/lib/channel/language';
+import { openHouseholdLinqGroup } from '~/lib/channel/linq/group';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { type OpenQuestion, soleOpenKind } from '~/lib/channel/router/open-questions';
@@ -715,7 +716,8 @@ export async function handleKnownNumberInbound(
   if (pending) {
     const answer = readAffirmative(inbound.body);
     const claimable =
-      pending.role !== 'co_parent' || (await coParentAssentIsSoleQuestion(database, owner, now, deps));
+      pending.role !== 'co_parent' ||
+      (await coParentAssentIsSoleQuestion(database, owner, now, deps));
     if (answer === 'yes' && claimable) {
       return pending.role === 'co_parent'
         ? sendCoParentInvite(database, { pending, owner, inbound, parentPhoneE164, now }, deps)
@@ -839,6 +841,20 @@ async function sendCoParentInvite(
     lane: 'co_parent',
     now,
   });
+  try {
+    await openHouseholdLinqGroup(database, {
+      familyId: owner.familyId,
+      parentUserId: owner.userId,
+      parentPhoneE164: args.parentPhoneE164,
+      coParentPhoneE164: pending.phoneE164,
+      now,
+    });
+  } catch (err) {
+    console.warn(
+      { familyId: owner.familyId, code: err instanceof Error ? err.name : 'unknown' },
+      'linq group: opener threw — the SMS invite still went out',
+    );
+  }
   return { status: 'co_parent_invite_sent' };
 }
 

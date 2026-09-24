@@ -51,6 +51,16 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'the door itself — the one module that speaks Twilio REST',
   'apps/web/lib/channel/linq/transport.ts':
     'the iMessage door — the one module that speaks the Linq partner API',
+  'apps/web/lib/channel/linq/contact-card.ts':
+    'one-shot Hale Name and Photo share after a finished 1:1 onboard; the claim and the linq_contact_card_shared audit sit beside the share',
+  'apps/web/lib/channel/linq/tapback.ts':
+    'a tapback that replaces a throwaway ack; the ledger row is written by moments.ts when the reaction is accepted',
+  'apps/web/lib/channel/linq/link-preview.ts':
+    'a follow-up link part beside locked text; writes its own channel_messages row and linq_link_preview audit when a family id is passed',
+  'apps/web/lib/channel/linq/group.ts':
+    'opens or extends the household group and writes linq:group_open / linq:group_unreachable plus linq_group_opened or linq_group_held; the unknown-sender hold is the one unledgered text because that sender has no family row to attach it to',
+  'apps/web/lib/channel/linq/poll.ts':
+    'sends the placeholder question and the poll, then writes linq:poll and linq_poll_sent',
   'apps/web/lib/channel/router/reply-transport.ts':
     'iMessage arm of the router reply transport; every send ledgered in router route.ts sendReply',
   'apps/web/lib/channel/twilio/delivery-sweep.ts':

@@ -17,6 +17,7 @@ import {
   identityChallengeReply,
 } from '~/lib/channel/intake/identity-challenge';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { considerLinqReply } from '~/lib/channel/linq/moments';
 import { LINQ_TYPING_REFRESH_MS, signalImessageTyping } from '~/lib/channel/linq/presence';
 import type { OffDomainLane, ReplySource } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
@@ -728,6 +729,7 @@ export async function routeChannelMessage(
       replySource,
       templateKey,
       beforeSend: stopTyping,
+      inboundBody: context.body,
     });
 
   // GATE 2a — DID HALE JUST ASK THIS PARENT TO PICK? (VIL-304, disambiguation.ts.)
@@ -1888,9 +1890,38 @@ async function sendReply(
     /** Runs before the transport call. The iMessage think-section uses it to
      * stop the typing bubble before the reply goes out. */
     beforeSend?: () => Promise<void> | void;
+    /** The parent's words, when this reply is the turn's answer. A tapback or
+     * a poll can stand in for the text. Absent on the caregiver line, which
+     * keeps its sentence. */
+    inboundBody?: string;
   },
 ): Promise<string> {
   if (args.beforeSend) await args.beforeSend();
+  if (args.route.channel === 'imessage' && args.inboundBody !== undefined) {
+    try {
+      const moment = await considerLinqReply(deps.database, {
+        route: args.route,
+        inboundBody: args.inboundBody,
+        outboundBody: args.body,
+        templateKey: args.templateKey ?? null,
+        familyId: args.job.family_id,
+        parentUserId: args.job.parent_user_id,
+        now: deps.now(),
+      });
+      if (moment.handled) {
+        if (args.claim) await args.claim();
+        if (args.conversationId && moment.threadBody) {
+          await appendMessage(args.conversationId, 'assistant', moment.threadBody, deps.database);
+        }
+        return moment.channelMessageId;
+      }
+    } catch (err) {
+      deps.log.warn(
+        { code: err instanceof Error ? err.name : 'unknown' },
+        'linq moment: fell through to the text',
+      );
+    }
+  }
   const sent = await deps.transport.send({ route: args.route, body: args.body });
   if (args.claim) await args.claim();
 

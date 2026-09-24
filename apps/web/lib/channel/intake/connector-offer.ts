@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -396,7 +397,7 @@ async function finishConnectorCard(
 
 async function deliverConnectorCard(
   database: Database,
-  args: { familyId: string; parentUserId: string; phoneE164: string },
+  args: { familyId: string; parentUserId: string; phoneE164: string; now?: Date },
   ports: ConnectorOfferPorts,
   card: ConnectorCard,
   claimId: string,
@@ -438,6 +439,17 @@ async function deliverConnectorCard(
       })
       .where(eq(schema.channelMessages.id, claimId));
     await ports.threadMessage(database, { familyId, parentUserId, body });
+    if (carried === 'imessage' && sent.chatId) {
+      await sendLinqLinkPreview({
+        channel: 'imessage',
+        chatId: sent.chatId,
+        url,
+        database,
+        familyId,
+        parentUserId,
+        now: args.now,
+      });
+    }
     return { status: 'sent', channelMessageId: claimId };
   } catch (err) {
     console.error(

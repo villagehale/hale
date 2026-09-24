@@ -3,9 +3,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
- * The helpers that put something other than a reply on a parent's phone stay
- * in the transport. The v1 path may start a typing bubble; it must not react,
- * attach media, or share a contact card on its own.
+ * The router and the inbound door may start a typing bubble. Tapbacks, link
+ * parts, the contact card, polls, and effects are called from the sibling
+ * modules (moments, link-preview, contact-card, poll, group) — not from these
+ * two files, and never as an effect.
  */
 
 const ROUTER = fileURLToPath(new URL('../router/route.ts', import.meta.url));
@@ -32,6 +33,7 @@ describe('iMessage human-feel wiring', () => {
       expect(source).not.toContain('shareLinqContactCard(');
       expect(source).not.toContain('reactToLinqMessage(');
       expect(source).not.toContain('sendLinqParts(');
+      expect(source).not.toContain('sendLinqEffect(');
     }
   });
 });
