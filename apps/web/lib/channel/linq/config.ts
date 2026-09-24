@@ -51,3 +51,12 @@ export function linqFromE164(): string | null {
 export function linqPollsEnabled(): boolean {
   return trimmed('LINQ_POLLS') === 'on';
 }
+
+/**
+ * In-group co-parent seating and household calendar notices on the Linq
+ * channel. On unless `LINQ_GROUP_COPARENT` is exactly `off` (kill switch).
+ * Unset, empty, and `on` all enable it. SMS never reads this flag.
+ */
+export function linqGroupCoparentEnabled(): boolean {
+  return trimmed('LINQ_GROUP_COPARENT') !== 'off';
+}

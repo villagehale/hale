@@ -1,12 +1,8 @@
-import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
-import {
-  CONNECTOR_PROVIDERS,
-  type ConnectorProvider,
-  connectorClientSource,
-} from './google-oauth';
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { CONNECTOR_PROVIDERS, type ConnectorProvider, connectorClientSource } from './google-oauth';
 import type { ConnectorErrorCode } from './sync-error';
-import { decryptTokens, encryptTokens, type OAuthTokens, tokenCustody } from './token-vault';
+import { type OAuthTokens, decryptTokens, encryptTokens, tokenCustody } from './token-vault';
 
 /**
  * Persistence for connector connections over the existing `integrations` table.
@@ -133,6 +129,30 @@ export async function saveConnection(
   });
 }
 
+/**
+ * True when another parent in this family already stored this Google account
+ * key. The connecting parent is not a match against their own row.
+ */
+export async function otherParentHoldsGoogleAccount(
+  database: Database,
+  input: { familyId: string; userId: string; accountKey: string },
+): Promise<boolean> {
+  const rows = await database
+    .select({
+      userId: schema.integrations.userId,
+      familyId: schema.integrations.familyId,
+      providerMetadata: schema.integrations.providerMetadata,
+    })
+    .from(schema.integrations)
+    .where(eq(schema.integrations.familyId, input.familyId));
+  return rows.some((row) => {
+    if (row.familyId !== input.familyId || !row.userId || row.userId === input.userId) return false;
+    const meta = row.providerMetadata;
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return false;
+    return (meta as Record<string, unknown>).googleAccountKey === input.accountKey;
+  });
+}
+
 /** The decrypted tokens for an ACTIVE connection, or null if none/revoked. */
 export async function getConnectionTokens(
   database: Database,
@@ -144,7 +164,10 @@ export async function getConnectionTokens(
     .select({ enc: schema.integrations.oauthTokensEncrypted })
     .from(schema.integrations)
     .where(
-      and(byFamilyUserProvider(familyId, userId, provider), eq(schema.integrations.status, 'active')),
+      and(
+        byFamilyUserProvider(familyId, userId, provider),
+        eq(schema.integrations.status, 'active'),
+      ),
     )
     .limit(1);
   const enc = rows[0]?.enc;
@@ -188,12 +211,7 @@ export async function listUserConnections(
       connectedAt: schema.integrations.createdAt,
     })
     .from(schema.integrations)
-    .where(
-      and(
-        eq(schema.integrations.familyId, familyId),
-        eq(schema.integrations.userId, userId),
-      ),
-    );
+    .where(and(eq(schema.integrations.familyId, familyId), eq(schema.integrations.userId, userId)));
 }
 
 /** One active connector row the poll sync operates on — tokens decrypted, cursor

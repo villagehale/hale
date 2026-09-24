@@ -7,6 +7,11 @@ import { type SpotPortal, portalForMunicipality } from '~/lib/channel/spots/url'
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
+  deliverFamilyOutbound,
+  familyOutboundTarget,
+  householdCopies,
+} from '~/lib/channel/linq/family-outbound';
+import {
   type FamilyTextRecipient,
   loadFamilyTextRecipients,
 } from '~/lib/channel/family-recipients';
@@ -164,12 +169,13 @@ export interface LiveSequence {
 export interface SequenceLedgerWrite {
   familyId: string;
   parentUserId: string;
-  channel: 'sms';
+  channel: 'sms' | 'imessage';
   category: 'registration_sequence';
   templateKey: string;
   dedupeKey: string;
   status: AcceptedStatus;
   providerMessageId: string;
+  providerChatId?: string | null;
   sentAt: Date;
 }
 
@@ -835,11 +841,15 @@ async function runLegForSequence(
   // answered it for each of them above.
   let sent = 0;
   let refused = 0;
+  let wireProvider: { id: string; chatId: string | null } | null = null;
+  const target = await familyOutboundTarget(database, sequence.familyId);
+  const wireCopies = householdCopies(target, allowed);
+  const shadowed = target.channel === 'group' ? allowed.slice(wireCopies.length) : [];
   /** The row a family-scoped promise is opened and discharged against — the first leg
    * that actually left, in the reader's stable primary-parent-first order. */
   let promiseMessageId: string | null = null;
 
-  for (const { recipient, dedupeKey, optOut } of allowed) {
+  for (const { recipient, dedupeKey, optOut } of wireCopies) {
     const to = await deps.resolveSendablePhone(database, recipient.parentUserId);
     if (!to) {
       // The gate just said this parent has a live channel, so there IS one — a missing
@@ -870,16 +880,28 @@ async function runLegForSequence(
       continue;
     }
 
-    const { providerMessageId } = await deps.transport.send({ to, body: wireBody });
+    const delivered = await deliverFamilyOutbound(database, {
+      familyId: sequence.familyId,
+      body: wireBody,
+      to,
+      legacy: deps.transport,
+      target,
+      bubbleKind: 'rec_morning',
+    });
+    if (delivered.status === 'held') {
+      refused += 1;
+      continue;
+    }
     const messageId = await deps.recordSend(database, {
       familyId: sequence.familyId,
       parentUserId: recipient.parentUserId,
-      channel: 'sms',
+      channel: delivered.channel === 'imessage' ? 'imessage' : 'sms',
       category: 'registration_sequence',
       templateKey: `registration_sequence:${leg}`,
       dedupeKey,
-      status: acceptedStatus('sms'),
-      providerMessageId,
+      status: acceptedStatus(delivered.channel === 'imessage' ? 'imessage' : 'sms'),
+      providerMessageId: delivered.providerMessageId,
+      providerChatId: delivered.chatId,
       sentAt: now,
     });
     await deps.audit(database, {
@@ -925,7 +947,27 @@ async function runLegForSequence(
       body,
     });
     if (promiseMessageId === null) promiseMessageId = messageId;
+    wireProvider = { id: delivered.providerMessageId, chatId: delivered.chatId };
     sent += 1;
+  }
+
+  // The other seat shares the group bubble. Their dedupe key is consumed so the
+  // next tick does not put the same leg in the group a second time. No second send.
+  if (wireProvider && target.channel === 'group') {
+    for (const shadow of shadowed) {
+      await deps.recordSend(database, {
+        familyId: sequence.familyId,
+        parentUserId: shadow.recipient.parentUserId,
+        channel: 'imessage',
+        category: 'registration_sequence',
+        templateKey: `registration_sequence:${leg}`,
+        dedupeKey: shadow.dedupeKey,
+        status: acceptedStatus('imessage'),
+        providerMessageId: wireProvider.id,
+        providerChatId: wireProvider.chatId,
+        sentAt: now,
+      });
+    }
   }
 
   // MEM-10 · ONCE PER LEG, not once per number. The promise is the HOUSEHOLD's — "I'll

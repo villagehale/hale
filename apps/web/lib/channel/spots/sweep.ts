@@ -3,6 +3,7 @@ import { and, eq, lt } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type AcceptedStatus, SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
+import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -210,7 +211,8 @@ export async function claimWatchedSpotsSlot(database: Database, now: Date): Prom
 export interface SpotLedgerWrite {
   familyId: string;
   parentUserId: string;
-  channel: 'sms';
+  channel: 'sms' | 'imessage';
+  providerChatId?: string | null;
   category: 'spot_open';
   templateKey: string;
   dedupeKey: string;
@@ -895,16 +897,24 @@ async function sendSpotOpen(
   }
 
   const dedupeKey = spotOpenKey(spot.id, spot.openTransitions, attempt);
-  const { providerMessageId } = await deps.transport.send({ to, body: wireBody });
+  const delivered = await deliverFamilyOutbound(database, {
+    familyId: spot.familyId,
+    body: wireBody,
+    to,
+    legacy: deps.transport,
+    shareGroupCap: false,
+  });
+  if (delivered.status === 'held') return { kind: 'held', reason: 'frequency_cap' };
   const messageId = await deps.recordSend(database, {
     familyId: spot.familyId,
     parentUserId: spot.parentUserId,
-    channel: 'sms',
+    channel: delivered.channel === 'imessage' ? 'imessage' : 'sms',
     category: 'spot_open',
     templateKey: `spot_open:${kind}`,
     dedupeKey,
-    status: acceptedStatus('sms'),
-    providerMessageId,
+    status: acceptedStatus(delivered.channel === 'imessage' ? 'imessage' : 'sms'),
+    providerMessageId: delivered.providerMessageId,
+    providerChatId: delivered.chatId,
     sentAt: now,
   });
   await setNotifiedMessage(database, { spotId: spot.id, channelMessageId: messageId, now });

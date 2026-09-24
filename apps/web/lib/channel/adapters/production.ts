@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { familyOutboundTargetForUser } from '~/lib/channel/linq/family-outbound';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import type { Channel, ChannelKind } from '../types';
 import { createResendEmailChannel } from './resend-email';
@@ -30,6 +31,8 @@ export function productionChannels(database: Database): Partial<Record<ChannelKi
     // dispatch having run the consent check first.
     sms: createTwilioSmsChannel({
       resolveTarget: (userId: string) => resolveSendablePhone(database, userId),
+      familyTarget: (userId: string) => familyOutboundTargetForUser(database, userId),
+      database,
     }),
   };
 }

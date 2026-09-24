@@ -2,6 +2,7 @@ import { namesAPerson } from '~/lib/channel/activity/deidentify';
 import type { ActivityPick } from '~/lib/channel/activity/lane';
 import { SLOTS_IN_TEXT } from '~/lib/channel/activity/share-page';
 import { childPhrase } from '~/lib/channel/checkin/copy';
+import { groupTravelBriefOpening } from '~/lib/channel/linq/group-coparent-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
 
@@ -70,6 +71,8 @@ export interface TravelBriefInput {
   /** The household's 13+ first names. Passed so the render can REFUSE rather than trim —
    * a teen's name reaching this body is a bug upstream, not a string to fix here. */
   teenNames: readonly string[];
+  /** A claimed group hears the locked two-reader opening. 1:1 keeps "You're in". */
+  forGroup?: boolean;
 }
 
 export interface TravelBriefContext {
@@ -183,7 +186,10 @@ export interface TravelBriefRender {
  */
 export function renderTravelBrief(input: TravelBriefInput): TravelBriefRender {
   const dayPhrase = tripDayPhrase(input.startsOn, input.endsOn);
-  const opening = `You're in ${input.city} ${dayPhrase}. A couple of things on for ${childPhrase([...input.childNames])}:`;
+  const kids = childPhrase([...input.childNames]);
+  const opening = input.forGroup
+    ? groupTravelBriefOpening(input.city, dayPhrase, kids)
+    : `You're in ${input.city} ${dayPhrase}. A couple of things on for ${kids}:`;
 
   const rendered: ActivityPick[] = [];
   let body = opening;

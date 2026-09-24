@@ -1,5 +1,13 @@
+import type { Database } from '@hale/db';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import {
+  type FamilyOutboundTarget,
+  deliverFamilyOutbound,
+  familySpeech,
+} from '~/lib/channel/linq/family-outbound';
+import { groupBothReaderFrench } from '~/lib/channel/linq/group-coparent-copy';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { twilioConfig } from '~/lib/channel/twilio/config';
 import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
 import type { Channel } from '../types';
@@ -38,6 +46,13 @@ export interface TwilioSmsChannelDeps {
   transport?: ChannelTransport;
   /** Whether the Twilio leg is provisioned; defaults to the presence of the config. */
   configured?: boolean;
+  /**
+   * The family's home channel, when this parent belongs to one. Absent keeps
+   * SMS, which is what every test double and every family without a group does.
+   */
+  familyTarget?(userId: string): Promise<FamilyOutboundTarget>;
+  /** The database the group cap is counted on. Required when `familyTarget` is set. */
+  database?: Database;
 }
 
 export function createTwilioSmsChannel(deps: TwilioSmsChannelDeps): Channel {
@@ -59,9 +74,46 @@ export function createTwilioSmsChannel(deps: TwilioSmsChannelDeps): Channel {
       }
 
       try {
+        const target = deps.familyTarget
+          ? await deps.familyTarget(userId)
+          : { channel: 'legacy' as const };
+        if (target.channel === 'group') {
+          const database = deps.database ?? ({} as Database);
+          const speech = await familySpeech(database, target.familyId, userId);
+          const body =
+            speech.language === 'fr' ? groupBothReaderFrench(rendered.text) : rendered.text;
+          const delivered = await deliverFamilyOutbound(database, {
+            familyId: target.familyId,
+            body,
+            to,
+            legacy: transport,
+            target,
+            bubbleKind: 'weekly_followup',
+            shareGroupCap: true,
+          });
+          if (delivered.status === 'held') {
+            return {
+              status: 'skipped',
+              reason: 'disabled',
+            };
+          }
+          return {
+            status: 'sent',
+            providerMessageId: delivered.providerMessageId,
+            providerChatId: delivered.chatId,
+          };
+        }
         const { providerMessageId } = await transport.send({ to, body: rendered.text });
         return { status: 'sent', providerMessageId };
       } catch (error) {
+        if (error instanceof LinqSendError) {
+          return {
+            status: 'error',
+            transient: !error.permanent,
+            code: error.code,
+            message: 'linq refused the group send',
+          };
+        }
         if (!(error instanceof TwilioSendError)) throw error;
         // Reported at the point the refusal is CLASSIFIED, which is the only place both
         // halves are known: Twilio's numeric code, and whether a retry could ever help.

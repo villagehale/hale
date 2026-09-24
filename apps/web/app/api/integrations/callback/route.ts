@@ -1,4 +1,5 @@
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import {
@@ -8,7 +9,9 @@ import {
 } from '~/lib/channel/connect/connected-notice';
 import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
 import { holdGoogleGivenName } from '~/lib/channel/identity/parent-call-name';
+import { sendCoparentGroupCalendarReceipt } from '~/lib/channel/linq/group-coparent';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
+import { googleAccountBlindIndex } from '~/lib/crypto/blind-index';
 import { db } from '~/lib/db';
 import { resolveUserIdForUser } from '~/lib/family';
 import { type ConnectState, verifyConnectState } from '~/lib/integrations/connect-state';
@@ -18,8 +21,8 @@ import {
   connectorRedirectUri,
   exchangeCodeForTokens,
 } from '~/lib/integrations/google-oauth';
-import { readGoogleGivenName } from '~/lib/integrations/google-profile';
-import { saveConnection } from '~/lib/integrations/store';
+import { readGoogleAccountSub, readGoogleGivenName } from '~/lib/integrations/google-profile';
+import { otherParentHoldsGoogleAccount, saveConnection } from '~/lib/integrations/store';
 
 // Node runtime: node:crypto (state verify), fetch (token exchange), Drizzle.
 export const runtime = 'nodejs';
@@ -57,9 +60,16 @@ export async function GET(req: NextRequest) {
   const origin = appBaseUrl();
   // Before the state is verified we can't know the surface — web is the safe
   // default (an unverifiable state never reached another flow anyway).
-  const back = (status: string, surface?: ConnectState['surface'], provider?: string) => {
+  const back = (
+    status: string,
+    surface?: ConnectState['surface'],
+    provider?: string,
+    extra?: { who?: string; lang?: string },
+  ) => {
     if (surface === 'text') {
       const query = new URLSearchParams({ provider: provider ?? '', status });
+      if (extra?.who) query.set('who', extra.who);
+      if (extra?.lang) query.set('lang', extra.lang);
       return NextResponse.redirect(`${origin}/connected?${query.toString()}`);
     }
     if (surface === 'mobile') {
@@ -133,12 +143,57 @@ export async function GET(req: NextRequest) {
     if (!grantedOk) {
       return back('denied', surface, bound.provider);
     }
+    let providerMetadata: Record<string, unknown> | undefined;
+    if (scopes.includes(GOOGLE_PROFILE_SCOPE) && tokens.accessToken) {
+      const sub = await readGoogleAccountSub(tokens.accessToken);
+      if (!sub) {
+        console.info({ familyId: bound.familyId }, 'google account: identity unread');
+      } else {
+        const accountKey = googleAccountBlindIndex(sub);
+        const held = await otherParentHoldsGoogleAccount(database, {
+          familyId: bound.familyId,
+          userId: bound.userId,
+          accountKey,
+        });
+        if (held) {
+          console.info(
+            { familyId: bound.familyId, provider: bound.provider },
+            'google account: held by the other parent',
+          );
+          // Nothing is stored. The page tells them the co-parent opens the link.
+          let who = '';
+          let lang = 'en';
+          try {
+            const [named] = await database
+              .select({ name: schema.users.name })
+              .from(schema.users)
+              .where(eq(schema.users.id, bound.userId))
+              .limit(1);
+            const [home] = await database
+              .select({ primaryLanguage: schema.families.primaryLanguage })
+              .from(schema.families)
+              .where(eq(schema.families.id, bound.familyId))
+              .limit(1);
+            who = named?.name?.trim() ?? '';
+            if (home?.primaryLanguage?.toLowerCase().startsWith('fr')) lang = 'fr';
+          } catch (err) {
+            console.info(
+              { familyId: bound.familyId, code: err instanceof Error ? err.name : 'unknown' },
+              'google account: own-link name unread',
+            );
+          }
+          return back('own_link', surface, bound.provider, who ? { who, lang } : undefined);
+        }
+        providerMetadata = { googleAccountKey: accountKey };
+      }
+    }
     ({ connectId } = await saveConnection(database, {
       familyId: bound.familyId,
       userId: bound.userId,
       provider: bound.provider,
       scopes,
       tokens,
+      providerMetadata,
     }));
     await rememberGoogleGivenName(database, {
       familyId: bound.familyId,
@@ -170,6 +225,24 @@ export async function GET(req: NextRequest) {
       { familyId: bound.familyId, provider: textProvider, receipt: connectedNoticeLabel(receipt) },
       'connector connected from a text - the done page is up; this is what the receipt did',
     );
+    try {
+      const groupReceipt = await sendCoparentGroupCalendarReceipt(database, {
+        familyId: bound.familyId,
+        userId: bound.userId,
+        provider: textProvider,
+        connectId,
+        now: new Date(),
+      });
+      console.info(
+        { familyId: bound.familyId, provider: textProvider, groupReceipt },
+        'connector connected: group calendar receipt',
+      );
+    } catch (err) {
+      console.warn(
+        { familyId: bound.familyId, err: err instanceof Error ? err.name : 'unknown' },
+        'connector connected: group calendar receipt failed',
+      );
+    }
     return back('ok', 'text', textProvider);
   }
 

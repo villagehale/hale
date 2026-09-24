@@ -1,12 +1,17 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, gte, isNull, lte, ne } from 'drizzle-orm';
 import { deriveStage } from '@hale/types';
+import { and, asc, eq, gte, isNull, lte, ne } from 'drizzle-orm';
 import type { TravelQueryRefusal } from '~/lib/channel/activity/deidentify';
 import { travelQueryFor } from '~/lib/channel/activity/deidentify';
 import { type ActivityFinder, createActivityFinder } from '~/lib/channel/activity/lane';
-import { type ActivityFamilyReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
+import {
+  type ActivityFamilyReader,
+  productionActivityFamilyReader,
+} from '~/lib/channel/activity/reader';
 import { f14Allowlist, f14Enabled, f14EnabledFor } from '~/lib/channel/f14';
+import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { deliverFamilyOutbound, familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -15,14 +20,13 @@ import {
   buildOutboundGatePorts,
   holdStatus,
 } from '~/lib/channel/outbound-gate';
-import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { activityClient } from '~/lib/pipeline/client';
 import { TRAVEL_BRIEF_TEMPLATE_KEY, type TravelBriefRender, renderTravelBrief } from './copy';
 import { localCalendarDay } from './detect';
-import { travelBriefEnabled, travelBriefEnabledFor, travelBriefAllowlist } from './flag';
+import { travelBriefAllowlist, travelBriefEnabled, travelBriefEnabledFor } from './flag';
 import { TRAVEL_SUBJECT, travelDestination, travelWindow } from './query';
 
 /**
@@ -381,6 +385,7 @@ async function briefOne(
 
   let rendered: TravelBriefRender;
   try {
+    const target = await familyOutboundTarget(database, trip.familyId);
     rendered = renderTravelBrief({
       city: trip.destinationCity,
       startsOn: trip.startsOn,
@@ -388,6 +393,7 @@ async function briefOne(
       childNames: names.namable,
       picks: found.picks,
       teenNames: names.teens,
+      forGroup: target.channel === 'group',
     });
   } catch (err) {
     result.refusedAtRender += 1;
@@ -436,11 +442,26 @@ async function briefOne(
   }
 
   let providerMessageId: string;
+  let carried: 'sms' | 'imessage' = 'sms';
+  let chatId: string | null = null;
   try {
-    ({ providerMessageId } = await deps.transport.send({
-      to,
+    const delivered = await deliverFamilyOutbound(database, {
+      familyId: trip.familyId,
       body: withOptOut(rendered.body, verdict.optOut),
-    }));
+      to,
+      legacy: deps.transport,
+    });
+    if (delivered.status === 'held') {
+      await database
+        .update(schema.channelMessages)
+        .set({ status: 'failed', errorCode: 'group_cap' })
+        .where(eq(schema.channelMessages.id, claimed.id));
+      console.warn({ tripId: trip.id }, 'travel brief: group cap reached');
+      return;
+    }
+    providerMessageId = delivered.providerMessageId;
+    carried = delivered.channel === 'imessage' ? 'imessage' : 'sms';
+    chatId = delivered.chatId;
   } catch (err) {
     const code = err instanceof TwilioSendError ? err.code : 'unknown';
     await database
@@ -454,7 +475,12 @@ async function briefOne(
 
   await database
     .update(schema.channelMessages)
-    .set({ providerMessageId })
+    .set({
+      providerMessageId,
+      channel: carried,
+      providerChatId: chatId,
+      status: acceptedStatus(carried),
+    })
     .where(eq(schema.channelMessages.id, claimed.id));
 
   // R4 · OVERLAP COLLAPSE, at read rather than in the schema. The flight and the hotel for

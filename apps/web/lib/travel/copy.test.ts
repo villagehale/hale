@@ -52,6 +52,14 @@ function renderBrief(overrides: Partial<Parameters<typeof renderTravelBrief>[0]>
 }
 
 describe('renderTravelBrief', () => {
+  it('uses the locked group opening and does not guess who is travelling', () => {
+    const body = brief({ forGroup: true });
+    expect(
+      body.startsWith('Trip: New York, the 12th to the 15th. A couple of things on for Mia:'),
+    ).toBe(true);
+    expect(body).not.toContain("You're in");
+  });
+
   it('names the city, the days and two things, and claims nothing about having been', () => {
     const body = brief();
     expect(body).toBe(
@@ -81,7 +89,9 @@ describe('renderTravelBrief', () => {
 
   it('omits a clause the source never published, and invents nothing in its place', () => {
     const body = brief({ picks: [pick({ price: null }), ZOO] });
-    expect(body).toContain('American Museum of Natural History - open daily 10am-5:30pm (their site).');
+    expect(body).toContain(
+      'American Museum of Natural History - open daily 10am-5:30pm (their site).',
+    );
     expect(body).not.toContain('USD 28');
     // THE POSITIVE CONTROL: the same pick WITH a price renders it, so the absence above is
     // a claim about the null rather than about a renderer that never prints prices.
@@ -94,7 +104,10 @@ describe('renderTravelBrief', () => {
   });
 
   it('carries at most two picks — the third is dropped, not linked', () => {
-    const third = pick({ name: 'Brooklyn Childrens Museum', sourceName: 'Brooklyn Childrens Museum' });
+    const third = pick({
+      name: 'Brooklyn Childrens Museum',
+      sourceName: 'Brooklyn Childrens Museum',
+    });
     const render = renderBrief({ picks: [pick(), ZOO, third] });
     expect(render.body).not.toContain('Brooklyn Childrens Museum');
     // AND IT SAYS SO. `rendered` is what the sweep's audit row counts; counting the picks
@@ -113,8 +126,7 @@ describe('renderTravelBrief', () => {
   it('drops a second pick whole rather than cutting one in half', () => {
     const long = pick({
       name: 'Long Island Childrens Museum and Discovery Centre at Mitchel Field',
-      when:
-        'Tuesday to Sunday 10am to 5pm, and every statutory holiday Monday as well, with the last admission half an hour before closing and the whole building shut for the first week of September',
+      when: 'Tuesday to Sunday 10am to 5pm, and every statutory holiday Monday as well, with the last admission half an hour before closing and the whole building shut for the first week of September',
       price:
         'USD 17 per person over one year old, members free, EBT card holders USD 3, and a family membership that covers two adults and up to four children for the year',
       sourceName: 'Long Island Childrens Museum',

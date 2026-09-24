@@ -60,6 +60,12 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'a follow-up link part beside locked text; writes its own channel_messages row and linq_link_preview audit when a family id is passed',
   'apps/web/lib/channel/linq/group.ts':
     'opens or extends the household group and writes linq:group_open / linq:group_unreachable plus linq_group_opened or linq_group_held; the unknown-sender hold is the one unledgered text because that sender has no family row to attach it to',
+  'apps/web/lib/channel/linq/group-coparent.ts':
+    'seats a noted co-parent in a claimed group; sendLine inserts the channel_messages row (reply, dedupe key) before the Linq send and audits sms_reply_sent',
+  'apps/web/lib/channel/linq/household-calendar.ts':
+    'group notices for kid events, conflicts, handoffs, and how-it-went; sendGroupNotice inserts the channel_messages row before the Linq send',
+  'apps/web/lib/channel/linq/family-outbound.ts':
+    'the household outbound resolver; proactive callers ledger the row beside deliverFamilyOutbound, and postGroupDecisionSync inserts its own channel_messages row before the Linq send',
   'apps/web/lib/channel/linq/poll.ts':
     'sends the placeholder question and the poll, then writes linq:poll and linq_poll_sent',
   'apps/web/lib/channel/router/reply-transport.ts':

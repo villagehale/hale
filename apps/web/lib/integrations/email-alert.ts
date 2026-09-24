@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
+import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
@@ -117,6 +118,9 @@ export const EMAIL_ALERT_OUTCOMES = [
   'no_send_target',
   'send_failed',
   'alert_failed',
+  /** A claimed Linq group. Mailbox subjects, senders, and bodies stay off the
+   * group and off SMS. Kid dates, when they exist, use the kid-event notice. */
+  'group_privacy',
 ] as const;
 
 export type EmailAlertOutcome = (typeof EMAIL_ALERT_OUTCOMES)[number];
@@ -768,6 +772,16 @@ export async function alertParentForGmailSweep(
     return envelopes.map(() => ({ alert: 'no_parent_user', booking: null, going: null }));
   }
   if (input.seeding) return envelopes.map(() => ({ alert: 'seeding_run', booking: null, going: null }));
+  // Nothing from a mailbox reaches the group, and a family whose home channel
+  // is the group is not texted the same mail on SMS either.
+  const outbound = await familyOutboundTarget(database, input.familyId);
+  if (outbound.channel === 'group') {
+    console.info(
+      { familyId: input.familyId },
+      'email alert: mailbox stays off the group and off SMS',
+    );
+    return envelopes.map(() => ({ alert: 'group_privacy', booking: null, going: null }));
+  }
 
   const outcomes: EmailAlertResult[] = [];
   const dated: Array<GmailAlertEnvelope & { receivedAt: string }> = [];

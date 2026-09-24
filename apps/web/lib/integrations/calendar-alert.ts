@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
+import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { asciiCopy, asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
@@ -137,6 +138,10 @@ export const CALENDAR_ALERT_OUTCOMES = [
    * in the past — so there is nothing left to say. Distinct from `outside_window`, which
    * is about a change that arrived this sweep. */
   'pending_outside_window',
+  /** The family has a claimed Linq group. Kid dates are spoken there by the
+   * household notice. This SMS path stays quiet so a non-kid title never
+   * reaches the group and nothing is retried on Twilio. */
+  'group_home',
 ] as const;
 
 export type CalendarAlertOutcome = (typeof CALENDAR_ALERT_OUTCOMES)[number];
@@ -321,6 +326,19 @@ export async function alertParentForCalendarChanges(
   if (!f14EnabledFor(familyId)) {
     await rememberOnly(database, input, parentUserId, ports);
     return { changes: changes.map(() => 'dark'), reoffers: [] };
+  }
+  // The group is the home channel. Kid dates are spoken by the household
+  // notice. The SMS sentence names whatever title Google stored, including
+  // events that are not the kids', so it does not move to the group and it
+  // does not stay on Twilio.
+  const outbound = await familyOutboundTarget(database, familyId);
+  if (outbound.channel === 'group') {
+    await rememberOnly(database, input, parentUserId, ports);
+    console.info(
+      { familyId },
+      'calendar alert: group is the home channel — SMS path quiet, kid dates use the group notice',
+    );
+    return { changes: changes.map(() => 'group_home'), reoffers: [] };
   }
 
   // ONE read for both halves of the memory: what Hale last said about the events in this

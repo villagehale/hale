@@ -9,7 +9,12 @@ import ConnectedPage from './page';
  * and the page renders nothing it was not given.
  */
 
-async function render(searchParams: { provider?: string; status?: string }): Promise<string> {
+async function render(searchParams: {
+  provider?: string;
+  status?: string;
+  who?: string;
+  lang?: string;
+}): Promise<string> {
   return renderToStaticMarkup(await ConnectedPage({ searchParams: Promise.resolve(searchParams) }));
 }
 
@@ -34,6 +39,28 @@ describe('/connected — the done page', () => {
 
     expect(html).toContain('No changes made.');
     expect(html).toContain('connect my calendar');
+  });
+
+  it('tells the wrong parent this link is for someone else, in the locked sentence', async () => {
+    const html = await render({ provider: 'gcal', status: 'own_link', who: 'Sam' });
+
+    expect(html).toContain('This link is for Sam. Yours is already connected.');
+    expect(html).not.toContain('Nothing was saved.');
+  });
+
+  it('uses the locked French sentence when the family is French', async () => {
+    const html = await render({ provider: 'gcal', status: 'own_link', who: 'Sam', lang: 'fr' });
+
+    expect(html).toContain('Ce lien est pour Sam. Le tien est deja connecte.');
+  });
+
+  it('uses the locked French fallback when the link owner has no name', async () => {
+    const html = await render({ provider: 'gcal', status: 'own_link', lang: 'fr' });
+
+    expect(html).toContain(
+      'Ce lien est pour le parent a qui il a ete envoye. Le tien est deja connecte.',
+    );
+    expect(html).toContain('Deja connecte');
   });
 
   it('tells an expired link from a connect that broke', async () => {

@@ -290,6 +290,28 @@ describe('a number on the Linq door', () => {
 });
 
 describe('a number on the SMS door', () => {
+  it('still texts the locked SMS body when the Linq group flag is on', async () => {
+    vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
+    const seeded = await seedHousehold();
+    const inboundId = await seedAsk(seeded, 'sms');
+    const sendSms = vi.fn(async () => ({ providerMessageId: 'SM_invite_flag' }));
+    const outcome = await deliverCoParentNumberInvite(db.database, {
+      ...seeded,
+      body: '9059629821',
+      now: NOW,
+      inboundChannelMessageId: inboundId,
+      sendSms,
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(sendSms).toHaveBeenCalledWith({
+      to: COPARENT_PHONE,
+      body: coParentInviteBody('Jimmy', 'en'),
+    });
+    expect(outcome.status).toBe('sent');
+    expect(await inviteStates()).toEqual(['awaiting_caregiver_reply']);
+    expect(await groupChatId()).toBeNull();
+  });
+
   it('texts the locked SMS body and does not call Linq', async () => {
     const seeded = await seedHousehold();
     const inboundId = await seedAsk(seeded, 'sms');

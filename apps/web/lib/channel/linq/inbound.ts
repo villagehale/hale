@@ -29,6 +29,11 @@ import {
   mapGroupHandlesToFamily,
   matchLinqGroupTrigger,
 } from './group';
+import {
+  type GroupCoparentPorts,
+  considerGroupCoparent,
+  steerNotedCoparentOneToOne,
+} from './group-coparent';
 import { type LinqInboundText, type LinqSignal, parseLinqWebhook } from './payload';
 import { lookupLinqPollOption } from './poll';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
@@ -51,6 +56,9 @@ import { type LinqEffectResult, markLinqChatRead } from './transport';
  * `families.linq_group_chat_id`. The parent starts the group and sends the
  * trigger; that write is the claim. A group that is not claimed yet is not
  * handed to the coach. An unknown number is held and not enrolled.
+ * Linq group co-parent seating is on unless `LINQ_GROUP_COPARENT=off`. A number
+ * the parent already noted is seated on that same family when they speak in
+ * the claimed group. SMS does not read the flag.
  * Reactions, typing, and participant events answer 200. A poll vote becomes
  * the option's text and enters the same router a typed reply would.
  *
@@ -174,21 +182,27 @@ export async function handleLinqInboundRequest(
   let outcome: TwilioInboundOutcome;
   let answered: Record<string, unknown> | null = null;
   try {
-    const trigger = matchLinqGroupTrigger(message.text);
-    if (trigger) {
-      const mapped = await mapGroupHandlesToFamily(deps.database, {
-        sender: message.senderHandle,
-        others: [],
-      });
-      if (mapped.status === 'same_family') {
-        const nudge = await answerGroupTriggerInOneToOne(deps, message, mapped, trigger);
-        outcome = nudge.count;
-        answered = nudge.body;
+    const steered = await steerNotedCoparentOneToOne(deps.database, message, coparentPorts(deps));
+    if (steered.type === 'done') {
+      outcome = steered.count;
+      answered = steered.body;
+    } else {
+      const trigger = matchLinqGroupTrigger(message.text);
+      if (trigger) {
+        const mapped = await mapGroupHandlesToFamily(deps.database, {
+          sender: message.senderHandle,
+          others: [],
+        });
+        if (mapped.status === 'same_family') {
+          const nudge = await answerGroupTriggerInOneToOne(deps, message, mapped, trigger);
+          outcome = nudge.count;
+          answered = nudge.body;
+        } else {
+          outcome = await routeOneToOne(deps, message);
+        }
       } else {
         outcome = await routeOneToOne(deps, message);
       }
-    } else {
-      outcome = await routeOneToOne(deps, message);
     }
   } finally {
     try {
@@ -244,6 +258,13 @@ async function routeOneToOne(
 
 type LinqDoorDeps = Parameters<typeof handleLinqInboundRequest>[1];
 
+function coparentPorts(deps: LinqDoorDeps): GroupCoparentPorts {
+  return {
+    now: deps.now?.() ?? new Date(),
+    recordInbound: (message, owner) => recordHandledInbound(deps, message, owner),
+  };
+}
+
 /**
  * A group is the household year only once Hale has claimed it. The trigger
  * from an enrolled parent of one family is that claim. Anyone else is held,
@@ -251,6 +272,19 @@ type LinqDoorDeps = Parameters<typeof handleLinqInboundRequest>[1];
  * the opt-out does not wait on the claim.
  */
 async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
+  const coparent = await considerGroupCoparent(deps.database, message, coparentPorts(deps));
+  if (coparent.type === 'claim') {
+    return claimGroupFromTrigger(deps, message, coparent, coparent.language);
+  }
+  if (coparent.type === 'route_member') {
+    return routeClaimedGroup(deps, message);
+  }
+  if (coparent.type === 'done') {
+    deps.log.info({ outcome: coparent.outcome }, 'linq inbound: group coparent');
+    await deps.countOutcome(coparent.count);
+    return json(coparent.body);
+  }
+
   const others = message.otherHandles.filter((handle) => handle !== message.senderHandle);
   const mapped = await mapGroupHandlesToFamily(deps.database, {
     sender: message.senderHandle,

@@ -3,6 +3,7 @@ import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
+import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
 import { isGsm7 } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -411,18 +412,27 @@ export async function deliverParentCallNameLine(
   },
   deps: { transport: ChannelTransport; threadMessage: typeof threadProactiveMessage },
 ): Promise<void> {
-  const { providerMessageId } = await deps.transport.send({ to: input.to, body: input.body });
+  const delivered = await deliverFamilyOutbound(database, {
+    familyId: input.familyId,
+    body: input.body,
+    to: input.to,
+    legacy: deps.transport,
+    shareGroupCap: false,
+  });
+  if (delivered.status === 'held') return;
+  const channel = delivered.channel === 'imessage' ? 'imessage' : 'sms';
   const [row] = await database
     .insert(schema.channelMessages)
     .values({
       familyId: input.familyId,
       parentUserId: input.parentUserId,
-      channel: 'sms',
+      channel,
       direction: 'out',
       category: 'reply',
       templateKey: input.templateKey,
-      providerMessageId,
-      status: acceptedStatus('sms'),
+      providerMessageId: delivered.providerMessageId,
+      providerChatId: delivered.chatId,
+      status: acceptedStatus(channel),
       sentAt: input.now,
     })
     .returning({ id: schema.channelMessages.id });

@@ -9,6 +9,7 @@ import {
   type FamilyTextRecipient,
   loadFamilyTextRecipients,
 } from '~/lib/channel/family-recipients';
+import { howItWentLinesForGroupWeekly } from '~/lib/channel/followup/run';
 import {
   type ParentCallNameState,
   decideParentCallName,
@@ -22,6 +23,18 @@ import {
 import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import {
+  type FamilyOutboundTarget,
+  deliverFamilyOutbound,
+  familyOutboundTarget,
+  familySpeech,
+  householdCopies,
+} from '~/lib/channel/linq/family-outbound';
+import {
+  absorbHowItWentLines,
+  groupBothReaderFrench,
+  groupEmptySaturdayLine,
+} from '~/lib/channel/linq/group-coparent-copy';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -139,15 +152,22 @@ export interface NudgeChildRow {
   dobPrecision: 'exact' | 'derived';
 }
 
+export interface GroupHowItWentLine {
+  text: string;
+  dedupeKey: string;
+  parentUserId: string;
+}
+
 export interface NudgeLedgerWrite {
   familyId: string;
   parentUserId: string;
-  channel: 'sms';
+  channel: 'sms' | 'imessage';
   category: 'nudge';
   templateKey: string;
   dedupeKey: string;
   status: AcceptedStatus;
   providerMessageId: string;
+  providerChatId?: string | null;
   sentAt: Date;
 }
 
@@ -249,6 +269,13 @@ export interface NudgeRunDeps {
    */
   transport: ChannelTransport;
   /**
+   * Where Hale-initiated copy for this family goes. Production reads
+   * `families.linq_group_chat_id`. Absent means the legacy door, so a test
+   * double with no family row keeps today's SMS path.
+   */
+  outboundTarget?(database: Database, familyId: string): Promise<FamilyOutboundTarget>;
+  fetch?: typeof fetch;
+  /**
    * Put the sent nudge in the parent's own text thread — REQUIRED, same reason as the
    * three above (rule #11). `channel_messages` carries no body, so a sweep that could be
    * assembled without this would text a parent something and leave their reply with no
@@ -269,6 +296,14 @@ export interface NudgeRunDeps {
     database: Database,
     input: { familyId: string; parentUserId: string },
   ): Promise<ParentCallNameState>;
+  /**
+   * How-it-went lines the weekly group bubble absorbs. Absent means none.
+   * Those lines are not also sent as their own bubble.
+   */
+  pendingHowItWent?(
+    database: Database,
+    input: { familyId: string; parentUserId: string; now: Date },
+  ): Promise<readonly GroupHowItWentLine[]>;
   client: AgentClient | null;
 }
 
@@ -386,6 +421,11 @@ function assertNever(value: never): never {
  * and not the empty-Saturday ask — that one must not grow the call-name second text. */
 function isFindNudge(kind: Nudge['kind']): boolean {
   return kind === 'registration' || kind === 'weather_swap' || kind === 'weekday_dropin';
+}
+
+/** Rec-morning, the weekly follow-up, and find results are for both parents. */
+function isBothParentsNudge(kind: Nudge['kind']): boolean {
+  return kind !== 'empty_saturday';
 }
 
 /**
@@ -621,7 +661,37 @@ async function runForFamily(
    * left, in the reader's stable primary-parent-first order. */
   let firstMessageId: string | null = null;
 
-  for (const { recipient, optOut, dedupeKey } of pending) {
+  const target = deps.outboundTarget
+    ? await deps.outboundTarget(database, family.familyId)
+    : await familyOutboundTarget(database, family.familyId);
+  // One bubble in the group. Both parents still get their own copy when the
+  // family has no group. The weekly cap is counted on the ledger, so the
+  // second seat is held on the next tick rather than texted again.
+  const copies = householdCopies(target, pending);
+  let wireMessage = message;
+  let absorbed: readonly GroupHowItWentLine[] = [];
+  if (target.channel === 'group') {
+    const speakerId = copies[0]?.recipient.parentUserId ?? '';
+    const speech = await familySpeech(database, family.familyId, speakerId);
+    if (nudge.kind === 'empty_saturday') {
+      wireMessage = groupEmptySaturdayLine(speech.language, speech.name, nudge.kidName);
+    } else if (speech.language === 'fr' && isBothParentsNudge(nudge.kind)) {
+      wireMessage = groupBothReaderFrench(message);
+    }
+    if (nudge.kind !== 'registration' && deps.pendingHowItWent) {
+      absorbed = await deps.pendingHowItWent(database, {
+        familyId: family.familyId,
+        parentUserId: speakerId,
+        now,
+      });
+      wireMessage = absorbHowItWentLines(
+        wireMessage,
+        absorbed.map((line) => line.text),
+      );
+    }
+  }
+
+  for (const { recipient, optOut, dedupeKey } of copies) {
     const to = await deps.resolveSendablePhone(database, recipient.parentUserId);
     if (!to) {
       // The gate just said this parent has a live channel, so there IS one — a missing
@@ -629,25 +699,68 @@ async function runForFamily(
       throw new Error(`runNudgeCron: no send target for parent ${recipient.parentUserId}`);
     }
 
-    const { providerMessageId } = await deps.transport.send({
+    const delivered = await deliverFamilyOutbound(database, {
+      familyId: family.familyId,
+      body: withOptOut(wireMessage, optOut),
       to,
-      body: withOptOut(message, optOut),
+      legacy: deps.transport,
+      target,
+      fetch: deps.fetch,
+      now,
+      bubbleKind: nudge.kind === 'registration' ? 'rec_morning' : 'weekly_followup',
     });
+    if (delivered.status === 'held') {
+      await deps.audit(database, {
+        familyId: family.familyId,
+        actor: 'system',
+        actionTaken: 'proactive_nudge_skipped',
+        targetTable: 'families',
+        targetId: family.familyId,
+        after: { reason: delivered.reason, cohort },
+      });
+      return emptyTally({ held });
+    }
+    const { providerMessageId } = delivered;
 
     const messageId = await deps.recordSend(database, {
       familyId: family.familyId,
       parentUserId: recipient.parentUserId,
-      channel: 'sms',
+      channel: delivered.channel === 'imessage' ? 'imessage' : 'sms',
       category: 'nudge',
       templateKey:
         nudge.kind === 'weekday_care'
           ? weekdayFinderTemplateKey(nudge.ask)
           : proactiveNudgeTemplateKey(nudge.kind),
       dedupeKey,
-      status: acceptedStatus('sms'),
+      status: acceptedStatus(delivered.channel === 'imessage' ? 'imessage' : 'sms'),
       providerMessageId,
+      providerChatId: delivered.chatId,
       sentAt: now,
     });
+    if (absorbed.length > 0 && typeof database.insert === 'function') {
+      for (const line of absorbed) {
+        try {
+          await database.insert(schema.channelMessages).values({
+            familyId: family.familyId,
+            parentUserId: line.parentUserId,
+            channel: delivered.channel === 'imessage' ? 'imessage' : 'sms',
+            direction: 'out',
+            category: 'reply',
+            templateKey: 'followup:activity',
+            dedupeKey: line.dedupeKey,
+            providerChatId: delivered.chatId,
+            status: acceptedStatus(delivered.channel === 'imessage' ? 'imessage' : 'sms'),
+            sentAt: now,
+          });
+        } catch (err) {
+          console.warn(
+            { err: err instanceof Error ? err.name : 'unknown', familyId: family.familyId },
+            'nudge: weekly absorbed a how-it-went line but did not claim it',
+          );
+        }
+      }
+      absorbed = [];
+    }
     await deps.audit(database, {
       familyId: family.familyId,
       actor: 'system',
@@ -681,8 +794,11 @@ async function runForFamily(
 
     // A FIND is the value moment the name question waits for, when the opening
     // radar had nothing to show. Weekday-care and health checkpoints are questions
-    // of their own and do not earn this ask. A failure here does not unsend the find.
-    if (isFindNudge(nudge.kind)) {
+    // of their own and do not earn this ask. A claimed group already asked the
+    // name on the ladder, and a second bubble in this turn is not allowed.
+    // Families without a group still get the 1:1 ask. A failure here does not
+    // unsend the find.
+    if (isFindNudge(nudge.kind) && target.channel !== 'group') {
       try {
         const callName = await deps.loadParentCallName(database, {
           familyId: family.familyId,
@@ -889,11 +1005,13 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
       await database.insert(schema.auditLog).values(row);
     },
     transport: createTwilioTransport(),
+    outboundTarget: familyOutboundTarget,
     client: voiceClient(),
     fulfillCommitment,
     recordCheckupOffer: (database, input) =>
       recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
     threadMessage: threadProactiveMessage,
     loadParentCallName,
+    pendingHowItWent: howItWentLinesForGroupWeekly,
   };
 }

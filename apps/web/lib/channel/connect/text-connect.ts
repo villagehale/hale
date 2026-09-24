@@ -21,14 +21,19 @@ import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
  * texts about it, so the receipt below would be a promise it cannot keep; a `to=gdrive`
  * link falls back to the destination the flow has always had.
  */
-export const TEXT_CONNECT_PROVIDERS = ['gcal', 'gmail'] as const satisfies readonly ConnectorProvider[];
+export const TEXT_CONNECT_PROVIDERS = [
+  'gcal',
+  'gmail',
+] as const satisfies readonly ConnectorProvider[];
 
 export type TextConnectProvider = (typeof TEXT_CONNECT_PROVIDERS)[number];
 
 /** The allowlist, as a narrowing. Everything that reaches this flow off a query string —
  * the redeem page's `to`, the done page's `provider` — comes through here (rule #1: the
  * only providers that exist are the ones this module has words for). */
-export function asTextConnectProvider(value: string | undefined | null): TextConnectProvider | null {
+export function asTextConnectProvider(
+  value: string | undefined | null,
+): TextConnectProvider | null {
   return TEXT_CONNECT_PROVIDERS.find((provider) => provider === value) ?? null;
 }
 
@@ -144,6 +149,7 @@ export interface ConnectedNotice {
 export function connectedNotice(
   status: string | undefined,
   provider: string | undefined,
+  options?: { name?: string; language?: 'en' | 'fr' },
 ): ConnectedNotice {
   const connected = asTextConnectProvider(provider);
   if (status === 'ok' && connected) {
@@ -156,6 +162,31 @@ export function connectedNotice(
     return {
       heading: 'Nothing changed',
       body: "No changes made. Text me 'connect my calendar' if you change your mind.",
+    };
+  }
+  if (status === 'own_link') {
+    const named = options?.name?.trim();
+    if (options?.language === 'fr' && named) {
+      return {
+        heading: 'Deja connecte',
+        body: `Ce lien est pour ${named}. Le tien est deja connecte.`,
+      };
+    }
+    if (options?.language === 'fr') {
+      return {
+        heading: 'Deja connecte',
+        body: 'Ce lien est pour le parent a qui il a ete envoye. Le tien est deja connecte.',
+      };
+    }
+    if (named) {
+      return {
+        heading: 'Already connected',
+        body: `This link is for ${named}. Yours is already connected.`,
+      };
+    }
+    return {
+      heading: 'Already connected',
+      body: 'This link is for the parent it was sent to. Yours is already connected.',
     };
   }
   if (status === 'invalid') {

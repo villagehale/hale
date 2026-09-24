@@ -1,10 +1,12 @@
 import type { Database } from '@hale/db';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
-import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
+import { groupAddressedLine } from '~/lib/channel/linq/group-coparent-copy';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
+import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
+import { nightlyOccasion } from '~/lib/channel/variant';
 import type { CheckInState } from './cadence';
-import { CHECK_IN_ASK_TEMPLATE_KEY, CHECK_IN_STEP_DOWN } from './copy';
+import { CHECK_IN_ASK_TEMPLATE_KEY, CHECK_IN_STEP_DOWN, composeCheckInAsk } from './copy';
 import {
   CHECK_IN_ANCHOR_ENABLED_ENV,
   type EveningCheckInDeps,
@@ -81,7 +83,9 @@ function harness(overrides: Overrides = {}) {
       // instant is 20:17 in Toronto and 02:17 the next morning in Paris, so the hold
       // case moves the parent there and everything else keeps the family's zone.
       parentTimeZone: async () =>
-        overrides.hold === 'quiet_hours' ? 'Europe/Paris' : (overrides.timeZone ?? 'America/Toronto'),
+        overrides.hold === 'quiet_hours'
+          ? 'Europe/Paris'
+          : (overrides.timeZone ?? 'America/Toronto'),
     }),
     readinessStanding: async () =>
       overrides.registrationStanding === true
@@ -357,14 +361,14 @@ describe('the ladder, end to end', () => {
     expect(sent[0]?.body.startsWith(CHECK_IN_STEP_DOWN)).toBe(true);
     // Its own dedupe key, anchored on the ask being stepped down from — so a retry
     // tomorrow cannot announce the same change twice.
-    expect(ledger[0]?.dedupeKey).toBe(`evening_check_in:weekly:${FAMILY}:${lastAsked.toISOString()}`);
+    expect(ledger[0]?.dedupeKey).toBe(
+      `evening_check_in:weekly:${FAMILY}:${lastAsked.toISOString()}`,
+    );
     expect(audits[0]?.actionTaken).toBe('evening_check_in_stepped_down');
     // The counter is baselined on this evening, so the lapse this rung just answered is
     // not read off the timestamps again by the first weekly question (which would make
     // "three more" mean two).
-    expect(cadences).toEqual([
-      { cadence: 'weekly', silentStreak: 0, silentStreakSince: EVENING },
-    ]);
+    expect(cadences).toEqual([{ cadence: 'weekly', silentStreak: 0, silentStreakSince: EVENING }]);
     expect(asks).toEqual([]);
   });
 
@@ -503,7 +507,10 @@ describe('the activity anchor', () => {
     // memory read has, so the FLAG goes on it and the activity never does.
     process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
     process.env[F14_ENABLED_ENV] = 'true';
-    const asked = { cadence: 'daily' as const, lastAskedAt: new Date(EVENING.getTime() - 24 * 3_600_000) };
+    const asked = {
+      cadence: 'daily' as const,
+      lastAskedAt: new Date(EVENING.getTime() - 24 * 3_600_000),
+    };
 
     const named = harness({ state: asked, today: { anchor: 'swim' } });
     await runEveningCheckInSweep(database, named.deps, EVENING);
@@ -549,5 +556,90 @@ describe('the activity anchor', () => {
     });
     await runEveningCheckInSweep(database, deps, EVENING);
     expect(reads).toBe(0);
+  });
+});
+
+/** A select double that answers the group resolver and the name read, and nothing else. */
+function groupDatabase(name: string | null): Database {
+  const select = (fields: object) => {
+    const keys = Object.keys(fields);
+    let rows: Array<Record<string, unknown>> = [];
+    if (keys.includes('linqGroupChatId')) rows = [{ linqGroupChatId: 'chat-home' }];
+    else if (keys.includes('primaryLanguage')) rows = [{ primaryLanguage: 'en' }];
+    else if (keys.includes('name') && keys.length === 1) rows = [{ name }];
+    else if (keys.includes('timezone')) rows = [{ timezone: 'America/Toronto' }];
+    const limited = Object.assign(Promise.resolve(rows), {
+      limit: async () => rows,
+    });
+    const chain = {
+      from: () => chain,
+      where: () => limited,
+      limit: async () => rows,
+    };
+    return chain;
+  };
+  return { select } as unknown as Database;
+}
+
+describe('a claimed group', () => {
+  afterEach(() => {
+    process.env.LINQ_API_KEY = undefined;
+    vi.unstubAllGlobals();
+  });
+
+  it('prefixes the evening when the parent is known, and leaves an unknown parent unprefixed', async () => {
+    process.env[F14_ENABLED_ENV] = 'true';
+    process.env.LINQ_API_KEY = 'linq_test_key_not_a_secret';
+    const bodies: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.body) bodies.push(String(init.body));
+        return new Response(JSON.stringify({ message: { id: 'chk-1' } }), { status: 201 });
+      }),
+    );
+    const asked = { lastAskedAt: new Date(EVENING.getTime() - 24 * 3_600_000) };
+    const expected = composeCheckInAsk({
+      first: false,
+      childNames: ['Mia', 'Leo'],
+      todayActivity: null,
+      familyId: FAMILY,
+      occasion: nightlyOccasion(EVENING, 'America/Toronto'),
+    });
+    const named = harness({ state: asked, children: ['Mia', 'Leo'] });
+    await runEveningCheckInSweep(groupDatabase('Sam'), named.deps, EVENING);
+    expect(named.sent).toEqual([]);
+    expect(bodies.join('\n')).toContain(groupAddressedLine('Sam', expected.body));
+
+    bodies.length = 0;
+    const unknown = harness({ state: asked, children: ['Mia', 'Leo'] });
+    await runEveningCheckInSweep(groupDatabase(null), unknown.deps, EVENING);
+    expect(unknown.sent).toEqual([]);
+    expect(bodies.join('\n')).toContain(expected.body);
+    expect(bodies.join('\n')).not.toContain('Sam,');
+  });
+
+  it('does not prefix the step-down notice', async () => {
+    process.env[F14_ENABLED_ENV] = 'true';
+    process.env.LINQ_API_KEY = 'linq_test_key_not_a_secret';
+    const bodies: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.body) bodies.push(String(init.body));
+        return new Response(JSON.stringify({ message: { id: 'chk-2' } }), { status: 201 });
+      }),
+    );
+    const { deps, sent } = harness({
+      state: {
+        cadence: 'daily',
+        lastAskedAt: new Date(EVENING.getTime() - 24 * 3_600_000),
+        silentStreak: 2,
+      },
+    });
+    await runEveningCheckInSweep(groupDatabase('Sam'), deps, EVENING);
+    expect(sent).toEqual([]);
+    expect(bodies.join('\n')).toContain(CHECK_IN_STEP_DOWN);
+    expect(bodies.join('\n')).not.toContain('Sam,');
   });
 });

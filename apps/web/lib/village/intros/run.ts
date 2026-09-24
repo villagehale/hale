@@ -3,6 +3,7 @@ import type { FamilyStage } from '@hale/types';
 import { and, asc, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { MIN_SURFACE_CONFIDENCE } from '~/lib/civic/parse-hours';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
@@ -263,6 +264,8 @@ export interface IntroSweepDeps {
       dedupeKey: string;
       providerMessageId: string;
       sentAt: Date;
+      channel?: 'sms' | 'imessage';
+      providerChatId?: string | null;
     },
   ): Promise<string>;
   audit(database: Database, row: IntroSweepAudit): Promise<void>;
@@ -443,14 +446,22 @@ async function sendIntroSms(
     throw new Error(`village intros: no send target for parent ${input.parentUserId}`);
   }
 
-  const { providerMessageId } = await deps.transport.send({ to, body });
+  const delivered = await deliverFamilyOutbound(database, {
+    familyId: input.familyId,
+    body,
+    to,
+    legacy: deps.transport,
+  });
+  if (delivered.status === 'held') return { sent: false, held: 'frequency_cap' };
   await deps.recordSend(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     templateKey: input.templateKey,
     dedupeKey: input.dedupeKey,
-    providerMessageId,
+    providerMessageId: delivered.providerMessageId,
     sentAt: input.now,
+    channel: delivered.channel === 'imessage' ? 'imessage' : 'sms',
+    providerChatId: delivered.chatId,
   });
   // THE THREAD. This is the one send site behind all three intro templates, so an ask, a
   // card and a soft close all become things the coach can see Hale having said. The
@@ -1392,13 +1403,14 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
         .values({
           familyId: write.familyId,
           parentUserId: write.parentUserId,
-          channel: 'sms',
+          channel: write.channel ?? 'sms',
+          providerChatId: write.providerChatId ?? null,
           direction: 'out',
           category: 'village_intro',
           templateKey: write.templateKey,
           dedupeKey: write.dedupeKey,
           providerMessageId: write.providerMessageId,
-          status: acceptedStatus('sms'),
+          status: acceptedStatus(write.channel ?? 'sms'),
           sentAt: write.sentAt,
         })
         .returning({ id: schema.channelMessages.id });

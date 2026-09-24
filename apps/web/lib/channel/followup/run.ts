@@ -15,6 +15,12 @@ import {
 } from '~/lib/channel/followup/ask-open';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import {
+  deliverFamilyOutbound,
+  familyOutboundTarget,
+  familySpeech,
+} from '~/lib/channel/linq/family-outbound';
+import { groupActivityHowItWent } from '~/lib/channel/linq/group-coparent-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -318,6 +324,8 @@ export interface FollowupSweepDeps {
       dedupeKey: string;
       providerMessageId: string;
       sentAt: Date;
+      channel?: 'sms' | 'imessage';
+      providerChatId?: string | null;
     },
   ): Promise<string>;
   audit(database: Database, row: FollowupAudit): Promise<void>;
@@ -466,7 +474,13 @@ async function sendFollowup(
   // so an empty answer is the ordinary one and costs no query; a non-empty one means the
   // voice wrote a sentence about a row that is not there, and the claim stays unspent for
   // the next tick rather than the sentence being trimmed.
-  const body = withOptOut(composed.body, verdict.optOut);
+  const target = await familyOutboundTarget(database, input.familyId);
+  let spoken = composed.body;
+  if (target.channel === 'group' && input.ask.kind === 'activity') {
+    const speech = await familySpeech(database, input.familyId, input.parentUserId);
+    spoken = groupActivityHowItWent(speech.language, speech.name, input.ask.activity);
+  }
+  const body = withOptOut(spoken, verdict.optOut);
   const unbacked = await deps.refuseUnbackedSend(database, {
     familyId: input.familyId,
     body,
@@ -480,14 +494,25 @@ async function sendFollowup(
     return { status: 'refused_at_send', reasons: unbacked };
   }
 
-  const { providerMessageId } = await deps.transport.send({ to, body });
+  const delivered = await deliverFamilyOutbound(database, {
+    familyId: input.familyId,
+    body,
+    to,
+    legacy: deps.transport,
+    target,
+    now: input.now,
+    bubbleKind: 'discretionary',
+  });
+  if (delivered.status === 'held') return { status: 'held', reason: 'frequency_cap' };
   await deps.recordSend(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     templateKey: input.templateKey,
     dedupeKey: input.dedupeKey,
-    providerMessageId,
+    providerMessageId: delivered.providerMessageId,
     sentAt: input.now,
+    channel: delivered.channel === 'imessage' ? 'imessage' : 'sms',
+    providerChatId: delivered.chatId,
   });
   // THE THREAD, which is where the answer to this question will be read. AFTER the send
   // and unconditional: a compose that never reached a transport asked nobody anything.
@@ -1024,6 +1049,44 @@ function followupVoiceClient(): AgentClient {
   return followupAnthropic;
 }
 
+/**
+ * How-it-went lines for this week's weekly group bubble. At most three.
+ * The weekly send claims their dedupe keys so the follow-up sweep does not
+ * send them again.
+ */
+export async function howItWentLinesForGroupWeekly(
+  database: Database,
+  input: { familyId: string; parentUserId: string; now: Date },
+): Promise<readonly { text: string; dedupeKey: string; parentUserId: string }[]> {
+  if (typeof database.select !== 'function') return [];
+  try {
+    const due = await readDueActivities(database, input.familyId, input.parentUserId, input.now);
+    const children = await readFollowupChildren(database, input.familyId);
+    const speech = await familySpeech(database, input.familyId, input.parentUserId);
+    const lines: { text: string; dedupeKey: string; parentUserId: string }[] = [];
+    for (const event of due) {
+      if (lines.length >= 3) break;
+      if (
+        isPrivateEvent({ childId: event.childId, sensitive: event.sensitive }, children, input.now)
+      ) {
+        continue;
+      }
+      lines.push({
+        text: groupActivityHowItWent(speech.language, speech.name, event.title),
+        dedupeKey: activityFollowupAskDedupeKey(event.ref.id),
+        parentUserId: event.parentUserId,
+      });
+    }
+    return lines;
+  } catch (err) {
+    console.warn(
+      { err: err instanceof Error ? err.name : 'unknown' },
+      'weekly: how-it-went lines unread',
+    );
+    return [];
+  }
+}
+
 export function defaultFollowupSweepDeps(): FollowupSweepDeps {
   return {
     selectFamilies: (database) => selectFollowupFamilies(database),
@@ -1045,13 +1108,14 @@ export function defaultFollowupSweepDeps(): FollowupSweepDeps {
         .values({
           familyId: write.familyId,
           parentUserId: write.parentUserId,
-          channel: 'sms',
+          channel: write.channel ?? 'sms',
           direction: 'out',
           category: 'followup',
           templateKey: write.templateKey,
           dedupeKey: write.dedupeKey,
           providerMessageId: write.providerMessageId,
-          status: acceptedStatus('sms'),
+          providerChatId: write.providerChatId ?? null,
+          status: acceptedStatus(write.channel ?? 'sms'),
           sentAt: write.sentAt,
         })
         .returning({ id: schema.channelMessages.id });

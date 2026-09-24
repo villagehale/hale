@@ -177,7 +177,7 @@ export const CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE: Record<ReplyLanguage, string
  */
 export const CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: 'Your co-parent has left Hale. Your week is yours alone now - nothing in it changed, and the join link still works if you want to add someone.',
-  fr: "Votre co-parent a quitté Hale. Votre semaine est à vous seul maintenant - rien n'y a changé, et le lien d'invitation fonctionne toujours.",
+  fr: "Votre co-parent a quitte Hale. Votre semaine est a vous seul maintenant - rien n'y a change, et le lien d'invitation fonctionne toujours.",
 };
 
 /**

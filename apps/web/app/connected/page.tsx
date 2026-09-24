@@ -6,7 +6,7 @@ import { connectedNotice } from '~/lib/channel/connect/text-connect';
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  searchParams: Promise<{ provider?: string; status?: string }>;
+  searchParams: Promise<{ provider?: string; status?: string; who?: string; lang?: string }>;
 }
 
 export const metadata: Metadata = {
@@ -27,8 +27,11 @@ export const metadata: Metadata = {
  * text say the same thing about the same connection because they read the same module.
  */
 export default async function ConnectedPage({ searchParams }: PageProps) {
-  const { provider, status } = await searchParams;
-  const notice = connectedNotice(status, provider);
+  const { provider, status, who, lang } = await searchParams;
+  const notice = connectedNotice(status, provider, {
+    name: who,
+    language: lang === 'fr' ? 'fr' : 'en',
+  });
 
   return (
     <AuthShell heading={notice.heading}>

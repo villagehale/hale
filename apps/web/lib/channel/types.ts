@@ -117,7 +117,13 @@ export interface TemplateRenderer {
  * skip (channel not configured / no address for this user / channel disabled).
  */
 export type ChannelSendOutcome =
-  | { status: 'sent'; providerMessageId: string | null }
+  | {
+      status: 'sent';
+      providerMessageId: string | null;
+      /** Set when a claimed Linq group carried a loop SMS leg. The ledger
+       * channel stays `sms` so the per-channel cap still sees the send. */
+      providerChatId?: string | null;
+    }
   | { status: 'skipped'; reason: 'not_configured' | 'no_address' | 'disabled' }
   | { status: 'error'; transient: boolean; code: string; message: string };
 
