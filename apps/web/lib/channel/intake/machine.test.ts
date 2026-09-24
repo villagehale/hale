@@ -300,9 +300,15 @@ describe('intake · happy path', () => {
     expect(channel).toMatchObject({ kind: 'sms', verifiedAt: NOW });
     expect(channel?.phoneE164Hash).toMatch(/^[0-9a-f]{64}$/);
     // Ciphertext is an opaque blob (random IV). Assert the structured field, not a
-    // digit run that can appear inside that blob by chance.
-    expect(channel?.phoneE164Encrypted).not.toBe(PHONE);
-    expect(decryptString(channel?.phoneE164Encrypted ?? '')).toBe(PHONE);
+    // digit run that can appear inside that blob by chance. The fake payload is
+    // `unknown`; narrow it so decrypt sees a string (`unknown ?? ''` is `{}`).
+    const phoneCipher = channel?.phoneE164Encrypted;
+    expect(typeof phoneCipher).toBe('string');
+    if (typeof phoneCipher !== 'string') {
+      throw new Error('parent channel phone ciphertext is not a string');
+    }
+    expect(phoneCipher).not.toBe(PHONE);
+    expect(decryptString(phoneCipher)).toBe(PHONE);
 
     // The year find is the whole turn. No watch yes, and no ladder ask yet.
     expectEnglishYearOpen(transport.bodies());
