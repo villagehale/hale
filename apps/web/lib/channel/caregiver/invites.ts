@@ -44,6 +44,12 @@ export type CaregiverInviteState =
   /** The parent asked; Hale has stated the scope and is waiting for their confirmation.
    * NOBODY has been texted yet — this is the state that makes that guarantee. */
   | 'awaiting_parent_assent'
+  /**
+   * Linq door only. The parent named a number after the co-parent ask. Hale
+   * stored it and did not text it. Not a YES gate and not a sent invite: the
+   * household thread is a group the parent starts, claimed later by trigger.
+   */
+  | 'identity_noted'
   /** The parent confirmed and the caregiver has been texted; waiting on them. */
   | 'awaiting_caregiver_reply'
   /** The caregiver said yes. Terminal. */
@@ -211,7 +217,10 @@ async function throughExpiry(
 ): Promise<CaregiverInvite | null> {
   if (new Date(row.expiresAt).getTime() > now.getTime()) return toInvite(row);
   const invite = toInvite(row);
-  const state = invite.state === 'awaiting_parent_assent' ? 'expired_unsent' : 'expired';
+  const state =
+    invite.state === 'awaiting_parent_assent' || invite.state === 'identity_noted'
+      ? 'expired_unsent'
+      : 'expired';
   await closeInvite(database, invite, state, now, inviteVerb(invite.role, 'expired'));
   return null;
 }
@@ -300,6 +309,7 @@ async function invitesDeliveredSince(
       r.familyId === familyId &&
       new Date(r.createdAt).getTime() >= since.getTime() &&
       r.state !== 'awaiting_parent_assent' &&
+      r.state !== 'identity_noted' &&
       r.state !== 'superseded',
   ).length;
 }
@@ -566,6 +576,11 @@ export async function startCoParentInvite(
     parsed: ParsedCoParentAdd;
     language: ReplyLanguage;
     now: Date;
+    /**
+     * Store the number and do not arm the YES that texts them. The Linq door
+     * uses this: the parent makes the group, and a cold text is not the invite.
+     */
+    notedOnly?: boolean;
   },
 ): Promise<StartCoParentResult> {
   const { parsed, now } = input;
@@ -586,14 +601,20 @@ export async function startCoParentInvite(
 
   if (parsed.phoneE164 === input.inviterPhoneE164) return refuse('own_number');
   if (await familyHasCoParent(database, input.familyId)) return refuse('co_parent_seat_taken');
-  if (!inviterNameIsAffordable(input.inviterName)) return refuse('referrer_unnamed');
+  // A cold text has to name who sent it. A noted number is not a cold text.
+  if (!input.notedOnly && !inviterNameIsAffordable(input.inviterName)) {
+    return refuse('referrer_unnamed');
+  }
 
   // THE METER COMES BEFORE THE LOOKUPS, and that ordering is the fix for an oracle: every
   // guard below answers a question about a number the parent typed, so a parent who could
   // ask them for free could enumerate other households' phone numbers a hundred a minute.
   // Behind the cap the whole command costs a refusal that says the same thing every time.
   const since = new Date(now.getTime() - INVITE_CAP_WINDOW_MS);
-  if ((await invitesDeliveredSince(database, input.familyId, since)) >= INVITE_DAILY_CAP) {
+  if (
+    !input.notedOnly &&
+    (await invitesDeliveredSince(database, input.familyId, since)) >= INVITE_DAILY_CAP
+  ) {
     return refuse('too_many');
   }
 
@@ -636,10 +657,22 @@ export async function startCoParentInvite(
   }
 
   const invite = await openInviteRow(database, { ...input, hash });
+  if (input.notedOnly) {
+    await database
+      .update(schema.caregiverInvites)
+      .set({ state: 'identity_noted', updatedAt: now })
+      .where(
+        and(
+          eq(schema.caregiverInvites.id, invite.id),
+          eq(schema.caregiverInvites.state, 'awaiting_parent_assent'),
+        ),
+      );
+    invite.state = 'identity_noted';
+  }
   await database.insert(schema.auditLog).values({
     familyId: input.familyId,
     actor: input.invitedByUserId,
-    actionTaken: 'co_parent_invite_started',
+    actionTaken: input.notedOnly ? 'co_parent_identity_noted' : 'co_parent_invite_started',
     targetTable: 'caregiver_invites',
     targetId: invite.id,
     after: {

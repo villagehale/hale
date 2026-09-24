@@ -18,6 +18,12 @@ import type { ChannelMessageReceivedJob, TwilioInboundDeps } from '~/lib/channel
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import {
+  LINQ_GROUP_CLAIM_REFUSED_TEXT,
+  LINQ_GROUP_OPEN_TEXT,
+  LINQ_GROUP_TRIGGER_PHRASE,
+  linqGroupTriggerInOneToOne,
+} from './group';
 import { handleLinqInboundRequest } from './inbound';
 
 /**
@@ -102,11 +108,13 @@ function harness(): {
   deps: Parameters<typeof handleLinqInboundRequest>[1];
   reads: Array<{ chatId: string }>;
   warns: unknown[];
+  sends: Array<{ chatId: string; text: string }>;
 } {
   const fake = makeFakeDb();
   const jobs: ChannelMessageReceivedJob[] = [];
   const reads: Array<{ chatId: string }> = [];
   const warns: unknown[] = [];
+  const sends: Array<{ chatId: string; text: string }> = [];
   const intake: IntakeDeps = {
     transport: new FakeTransport(),
     threadMessage: async () => 'conv-1',
@@ -143,14 +151,29 @@ function harness(): {
     jobs,
     reads,
     warns,
+    sends,
     deps: {
       ...deps,
       markRead: async (input) => {
         reads.push(input);
         return { status: 'accepted' };
       },
+      sendGroupText: async (input) => {
+        sends.push(input);
+        return { providerMessageId: `out-${sends.length}` };
+      },
     },
   };
+}
+
+function groupBody(text: string, messageId = MESSAGE_ID): string {
+  const body = JSON.parse(messageBody()) as {
+    data: { id: string; chat: { is_group: boolean }; parts: unknown[] };
+  };
+  body.data.chat.is_group = true;
+  body.data.id = messageId;
+  body.data.parts = [{ type: 'text', value: text }];
+  return JSON.stringify(body);
 }
 
 beforeEach(() => {
@@ -241,23 +264,87 @@ describe('handleLinqInboundRequest', () => {
     ]);
   });
 
-  it('routes a group from an enrolled parent into that family and does not mark it read', async () => {
+  it('does not claim a group or hand it to the coach until the trigger', async () => {
+    const h = harness();
+    const { familyId } = enrol(h.fake);
+    await h.fake.db
+      .insert(schema.families)
+      .values({ id: familyId, displayName: 'Fixture' } as never);
+
+    const res = await handleLinqInboundRequest(
+      request(groupBody('can you move swimming to Thursday?')),
+      h.deps,
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ outcome: 'group_unclaimed' });
+    expect(h.reads).toEqual([]);
+    expect(h.jobs).toHaveLength(0);
+    expect(h.sends).toEqual([]);
+    const family = h.fake.rows(schema.families).find((row) => row.id === familyId);
+    expect(family?.linqGroupChatId ?? null).toBeNull();
+  });
+
+  it('claims the group when an enrolled parent sends the trigger, and does not coach it', async () => {
     const h = harness();
     const { familyId, userId } = enrol(h.fake);
     await h.fake.db
       .insert(schema.families)
       .values({ id: familyId, displayName: 'Fixture' } as never);
-    const body = JSON.parse(messageBody()) as {
-      data: { chat: { is_group: boolean } };
-    };
-    body.data.chat.is_group = true;
-    const raw = JSON.stringify(body);
 
-    const res = await handleLinqInboundRequest(request(raw), h.deps);
+    const res = await handleLinqInboundRequest(
+      request(groupBody(LINQ_GROUP_TRIGGER_PHRASE.en)),
+      h.deps,
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      outcome: 'group_claimed',
+      claim: 'claimed',
+      notice: 'sent',
+    });
+    expect(h.jobs).toHaveLength(0);
+    expect(h.sends).toEqual([{ chatId: CHAT_ID, text: LINQ_GROUP_OPEN_TEXT }]);
+    const family = h.fake.rows(schema.families).find((row) => row.id === familyId);
+    expect(family?.linqGroupChatId).toBe(CHAT_ID);
+    const inbound = h.fake
+      .rows(schema.channelMessages)
+      .find((row) => row.providerMessageId === MESSAGE_ID);
+    expect(inbound).toMatchObject({
+      familyId,
+      parentUserId: userId,
+      direction: 'in',
+      body: LINQ_GROUP_TRIGGER_PHRASE.en,
+      providerChatId: CHAT_ID,
+    });
+    expect(inbound?.handedOffAt).toEqual(NOW);
+    const ack = h.fake
+      .rows(schema.channelMessages)
+      .find((row) => row.templateKey === 'linq:group_claimed');
+    expect(ack).toMatchObject({ familyId, direction: 'out', channel: 'imessage' });
+    expect(
+      h.fake.rows(schema.auditLog).some((row) => row.actionTaken === 'linq_group_claimed'),
+    ).toBe(true);
+  });
+
+  it('routes a later message once the group is already this household', async () => {
+    const h = harness();
+    const { familyId, userId } = enrol(h.fake);
+    await h.fake.db.insert(schema.families).values({
+      id: familyId,
+      displayName: 'Fixture',
+      linqGroupChatId: CHAT_ID,
+    } as never);
+
+    const res = await handleLinqInboundRequest(
+      request(groupBody('can you move swimming to Thursday?')),
+      h.deps,
+    );
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ outcome: 'handed_off' });
     expect(h.reads).toEqual([]);
+    expect(h.jobs).toHaveLength(1);
     const message = h.fake
       .rows(schema.channelMessages)
       .find((row) => row.providerMessageId === MESSAGE_ID);
@@ -267,9 +354,67 @@ describe('handleLinqInboundRequest', () => {
       channel: 'imessage',
       providerChatId: CHAT_ID,
     });
-    expect(h.jobs).toHaveLength(1);
+  });
+
+  it('refuses a trigger in a chat another family already claimed', async () => {
+    const h = harness();
+    const { familyId } = enrol(h.fake);
+    const otherId = '00000000-0000-4000-8000-0000000000f2';
+    await h.fake.db
+      .insert(schema.families)
+      .values({ id: familyId, displayName: 'Fixture' } as never);
+    await h.fake.db.insert(schema.families).values({
+      id: otherId,
+      displayName: 'Other',
+      linqGroupChatId: CHAT_ID,
+    } as never);
+
+    const res = await handleLinqInboundRequest(
+      request(groupBody(LINQ_GROUP_TRIGGER_PHRASE.en)),
+      h.deps,
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      outcome: 'group_claim_refused',
+      claim: 'claimed_by_other_family',
+      notice: 'sent',
+    });
+    expect(h.sends).toEqual([{ chatId: CHAT_ID, text: LINQ_GROUP_CLAIM_REFUSED_TEXT }]);
+    expect(h.jobs).toHaveLength(0);
+    const mine = h.fake.rows(schema.families).find((row) => row.id === familyId);
+    const other = h.fake.rows(schema.families).find((row) => row.id === otherId);
+    expect(mine?.linqGroupChatId ?? null).toBeNull();
+    expect(other?.linqGroupChatId).toBe(CHAT_ID);
+  });
+
+  it('does not claim the 1:1 when the trigger arrives there', async () => {
+    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
+    const h = harness();
+    const { familyId } = enrol(h.fake);
+    await h.fake.db
+      .insert(schema.families)
+      .values({ id: familyId, displayName: 'Fixture' } as never);
+    const body = JSON.parse(messageBody()) as { data: { parts: unknown[] } };
+    body.data.parts = [{ type: 'text', value: LINQ_GROUP_TRIGGER_PHRASE.en }];
+
+    const res = await handleLinqInboundRequest(request(JSON.stringify(body)), h.deps);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      outcome: 'group_trigger_in_1to1',
+      notice: 'sent',
+    });
+    expect(h.jobs).toHaveLength(0);
+    expect(h.sends).toEqual([
+      {
+        chatId: CHAT_ID,
+        text: linqGroupTriggerInOneToOne('+1 646-235-2164', 'en'),
+      },
+    ]);
     const family = h.fake.rows(schema.families).find((row) => row.id === familyId);
-    expect(family?.linqGroupChatId).toBe(CHAT_ID);
+    expect(family?.linqGroupChatId ?? null).toBeNull();
+    expect(h.reads).toEqual([{ chatId: CHAT_ID }]);
   });
 
   it('holds an unknown group sender and does not open a family', async () => {
@@ -298,6 +443,43 @@ describe('handleLinqInboundRequest', () => {
     expect(h.jobs).toHaveLength(0);
     expect(h.fake.rows(schema.channelMessages)).toHaveLength(0);
     expect(h.fake.rows(schema.families)).toHaveLength(0);
+  });
+
+  it('does not claim when an unknown sender uses the trigger', async () => {
+    const h = harness();
+    h.deps = {
+      ...h.deps,
+      holdGroup: async () => 'sent',
+    };
+
+    const res = await handleLinqInboundRequest(
+      request(groupBody(LINQ_GROUP_TRIGGER_PHRASE.en)),
+      h.deps,
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ outcome: 'group_unknown_sender' });
+    expect(h.sends).toEqual([]);
+    expect(h.jobs).toHaveLength(0);
+    expect(h.fake.rows(schema.families)).toHaveLength(0);
+  });
+
+  it('does not claim when the trigger is only part of a sentence', async () => {
+    const h = harness();
+    const { familyId } = enrol(h.fake);
+    await h.fake.db
+      .insert(schema.families)
+      .values({ id: familyId, displayName: 'Fixture' } as never);
+
+    const res = await handleLinqInboundRequest(
+      request(groupBody(`please ${LINQ_GROUP_TRIGGER_PHRASE.en} thanks`)),
+      h.deps,
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ outcome: 'group_unclaimed' });
+    const family = h.fake.rows(schema.families).find((row) => row.id === familyId);
+    expect(family?.linqGroupChatId ?? null).toBeNull();
   });
 
   it('sends nothing when an unknown group sender says STOP', async () => {

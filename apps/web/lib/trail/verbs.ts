@@ -158,6 +158,7 @@ export const AUDIT_VERBS = [
   'linq_tapback',
   'linq_link_preview',
   'linq_group_opened',
+  'linq_group_claimed',
   'linq_group_held',
   'linq_poll_sent',
   'voice_call_received',
@@ -236,6 +237,7 @@ export const AUDIT_VERBS = [
   'join_sms_outbound',
   // ── the co-parent SMS invite (VIL-355) ──────────────────────────────────
   'co_parent_invite_started',
+  'co_parent_identity_noted',
   'co_parent_access_granted',
   'co_parent_invite_accepted',
   'co_parent_invite_expired',
@@ -564,6 +566,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale opened a household thread in Messages',
     family: 'done',
   },
+  linq_group_claimed: {
+    sentence: 'Hale joined the household thread you started',
+    family: 'done',
+  },
   linq_group_held: {
     sentence: 'Hale could not open the household thread yet',
     family: 'problem',
@@ -829,6 +835,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   // children is the one reading this feature must never produce.
   co_parent_invite_started: {
     sentence: 'you asked Hale to text your co-parent',
+    family: 'note',
+  },
+  co_parent_identity_noted: {
+    sentence: 'you told Hale your co-parent’s number',
     family: 'note',
   },
   co_parent_access_granted: {

@@ -1,32 +1,34 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
+import { ALREADY_INVITED, CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import { coParentInviteBody, coParentInviteSentAck } from '~/lib/channel/coparent/copy';
-import { CO_PARENT_ASK, INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
+import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
-  LINQ_COPARENT_INVITE_TEMPLATE_KEY,
-  LINQ_COPARENT_INVITE_TEXT,
+  LINQ_GROUP_INSTRUCTIONS_TEMPLATE_KEY,
   SMS_COPARENT_INVITE_TEMPLATE_KEY,
   deliverCoParentNumberInvite,
-  linqCoParentInviteText,
   parseCoParentNumberReply,
 } from './coparent-invite';
-import { LINQ_GROUP_UNREACHABLE_TEXT } from './group';
+import {
+  LINQ_GROUP_LINE_MISSING_TEXT,
+  formatLinqLineForParent,
+  linqGroupMakeInstruction,
+} from './group';
 
 /**
- * The 2026-09-24 Linq sandbox turn: a parent texted 9059629821 after the
- * co-parent ask, and the free agent said an invite was on its way. Nothing
- * was. These prove the deterministic sender, on both doors.
+ * A number after the co-parent ask. SMS still texts the locked invite. Linq
+ * stores the number and tells the parent how to start the group. It does not
+ * text that number, and it does not claim a group from the number alone.
  */
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PARENT_PHONE = '+14165550111';
 const COPARENT_PHONE = '+19059629821';
-const FROM = '+15555550100';
+const FROM = '+16462352164';
 const NOW = new Date('2026-09-24T03:55:00.000Z');
 const CHAT = 'chat-parent-1';
 
@@ -46,9 +48,16 @@ beforeEach(() => {
   vi.stubEnv('F14_ENABLED', 'true');
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
   vi.stubEnv('LINQ_FROM_E164', FROM);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error('Linq must not be called for a co-parent number');
+    }),
+  );
 });
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   process.env.APP_ENCRYPTION_KEY = KEY;
   await db.exec('truncate table families, users cascade');
@@ -115,19 +124,6 @@ async function seedAsk(
   return inbound?.id as string;
 }
 
-function linqFetch() {
-  const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-    const body = init?.body ? (JSON.parse(String(init.body)) as { to?: string[] }) : null;
-    if (String(url).endsWith('/chats') && init?.method === 'POST') {
-      const to = body?.to ?? [];
-      const id = to.length === 1 ? 'coparent-1' : 'group-1';
-      return Response.json({ chat: { id, message: { id: `${id}-msg` } } }, { status: 201 });
-    }
-    return Response.json({}, { status: 200 });
-  });
-  return fetchMock;
-}
-
 async function inviteStates(): Promise<string[]> {
   const rows = await db.database
     .select({ state: schema.caregiverInvites.state })
@@ -135,19 +131,11 @@ async function inviteStates(): Promise<string[]> {
   return rows.map((row) => row.state);
 }
 
-async function inviteOutbounds(): Promise<Array<{ channel: string; templateKey: string | null }>> {
-  const rows = await db.database
-    .select({
-      channel: schema.channelMessages.channel,
-      templateKey: schema.channelMessages.templateKey,
-      direction: schema.channelMessages.direction,
-      category: schema.channelMessages.category,
-    })
-    .from(schema.channelMessages)
-    .where(eq(schema.channelMessages.direction, 'out'));
-  return rows
-    .filter((row) => row.category === 'co_parent_invite')
-    .map((row) => ({ channel: row.channel, templateKey: row.templateKey }));
+async function groupChatId(): Promise<string | null> {
+  const [family] = await db.database
+    .select({ linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families);
+  return family?.linqGroupChatId ?? null;
 }
 
 describe('parseCoParentNumberReply', () => {
@@ -166,20 +154,12 @@ describe('parseCoParentNumberReply', () => {
     expect(parseCoParentNumberReply('Jimmy')).toBeNull();
     expect(parseCoParentNumberReply('the school line is 9059629821')).toBeNull();
   });
-
-  it('keeps the Linq sentence free of a URL, in both languages', () => {
-    expect(linqCoParentInviteText('Jimmy', 'en')).toBe(LINQ_COPARENT_INVITE_TEXT.en('Jimmy'));
-    expect(linqCoParentInviteText('Jimmy', 'fr')).toBe(LINQ_COPARENT_INVITE_TEXT.fr('Jimmy'));
-    expect(linqCoParentInviteText('Jimmy', 'en')).not.toMatch(/https?:\/\//);
-    expect(linqCoParentInviteText('Jimmy', 'fr')).not.toMatch(/https?:\/\//);
-  });
 });
 
 describe('a number on the Linq door', () => {
-  it('sends from LINQ_FROM_E164, ledgers the invite, and opens the group after the ack', async () => {
+  it('stores the number and tells the parent how to start the group', async () => {
     const seeded = await seedHousehold();
     const inboundId = await seedAsk(seeded, 'imessage');
-    const fetchMock = linqFetch();
     const sendSms = vi.fn();
 
     const outcome = await deliverCoParentNumberInvite(db.database, {
@@ -188,129 +168,90 @@ describe('a number on the Linq door', () => {
       now: NOW,
       inboundChannelMessageId: inboundId,
       sendSms,
-      fetch: fetchMock,
     });
 
     expect(sendSms).not.toHaveBeenCalled();
-    expect(outcome).toMatchObject({
-      status: 'sent',
-      reply: coParentInviteSentAck('them', 'en'),
-      templateKey: 'coparent:number_invite_ack',
-    });
-    const created = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    expect(created.from).toBe(FROM);
-    expect(created.to).toEqual([COPARENT_PHONE]);
-    expect(created.message.parts[0].value).toBe(linqCoParentInviteText('Jimmy', 'en'));
-    expect(await inviteStates()).toEqual(['awaiting_caregiver_reply']);
-    expect(await inviteOutbounds()).toEqual([
-      { channel: 'imessage', templateKey: LINQ_COPARENT_INVITE_TEMPLATE_KEY },
-    ]);
-    const consents = await db.database
-      .select({
-        evidence: schema.consentRecords.evidence,
-        consentType: schema.consentRecords.consentType,
-      })
-      .from(schema.consentRecords);
-    expect(consents).toHaveLength(1);
-    expect(consents[0]?.consentType).toBe('co_parent_access_grant');
-    expect(consents[0]?.evidence).toMatchObject({ question: CO_PARENT_ASK });
-    const audits = await db.database
-      .select({ actionTaken: schema.auditLog.actionTaken })
-      .from(schema.auditLog);
-    expect(audits.map((row) => row.actionTaken)).toContain('co_parent_sms_outbound');
-
-    if (outcome.status !== 'sent' || !outcome.afterAck) {
-      throw new Error('the Linq send did not leave an after-ack');
-    }
-    await outcome.afterAck();
-    const group = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
-    expect(group.to).toEqual([PARENT_PHONE, COPARENT_PHONE]);
-    const [family] = await db.database
-      .select({ linqGroupChatId: schema.families.linqGroupChatId })
-      .from(schema.families);
-    expect(family?.linqGroupChatId).toBe('group-1');
-  });
-
-  it('names them when the number reply did', async () => {
-    const seeded = await seedHousehold();
-    const inboundId = await seedAsk(seeded, 'imessage');
-    const outcome = await deliverCoParentNumberInvite(db.database, {
-      ...seeded,
-      body: 'Sam 9059629821',
-      now: NOW,
-      inboundChannelMessageId: inboundId,
-      sendSms: vi.fn(),
-      fetch: linqFetch(),
-    });
-    expect(outcome).toMatchObject({ status: 'sent', reply: coParentInviteSentAck('Sam', 'en') });
-  });
-
-  it('says the group line when Linq refuses the 1:1, and does not claim a send', async () => {
-    const seeded = await seedHousehold();
-    const inboundId = await seedAsk(seeded, 'imessage');
-    const fetchMock = vi.fn(async () => Response.json({ error: { code: 1002 } }, { status: 400 }));
-    const outcome = await deliverCoParentNumberInvite(db.database, {
-      ...seeded,
-      body: '9059629821',
-      now: NOW,
-      inboundChannelMessageId: inboundId,
-      sendSms: vi.fn(),
-      fetch: fetchMock,
-    });
+    expect(fetch).not.toHaveBeenCalled();
     expect(outcome).toEqual({
-      status: 'unreached',
-      reply: LINQ_GROUP_UNREACHABLE_TEXT,
-      templateKey: 'coparent:number_invite_held',
+      status: 'instructed',
+      reply: linqGroupMakeInstruction(formatLinqLineForParent(FROM), 'en'),
+      templateKey: LINQ_GROUP_INSTRUCTIONS_TEMPLATE_KEY,
     });
-    expect(await inviteStates()).toEqual(['awaiting_parent_assent']);
-    expect(await inviteOutbounds()).toEqual([]);
+    expect(outcome.status === 'instructed' ? outcome.reply : '').not.toMatch(/invite/i);
+    expect(await inviteStates()).toEqual(['identity_noted']);
+    expect(await groupChatId()).toBeNull();
+    const outbounds = await db.database
+      .select({
+        category: schema.channelMessages.category,
+        templateKey: schema.channelMessages.templateKey,
+      })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.direction, 'out'));
+    expect(outbounds.filter((row) => row.category === 'co_parent_invite')).toEqual([]);
     const consents = await db.database
       .select({ id: schema.consentRecords.id })
       .from(schema.consentRecords);
     expect(consents).toEqual([]);
+    const audits = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken })
+      .from(schema.auditLog);
+    expect(audits.map((row) => row.actionTaken)).toContain('co_parent_identity_noted');
+    expect(audits.map((row) => row.actionTaken)).not.toContain('co_parent_sms_outbound');
   });
 
-  it('redrives a timed-out 1:1 instead of saying the number was already texted', async () => {
+  it('repeats the instructions when the number is already noted, and does not say it was texted', async () => {
     const seeded = await seedHousehold();
     const inboundId = await seedAsk(seeded, 'imessage');
-    const aborting = vi.fn(async () => {
-      throw Object.assign(new Error('aborted'), { name: 'AbortError' });
-    });
-    await expect(
-      deliverCoParentNumberInvite(db.database, {
-        ...seeded,
-        body: '9059629821',
-        now: NOW,
-        inboundChannelMessageId: inboundId,
-        sendSms: vi.fn(),
-        fetch: aborting,
-      }),
-    ).rejects.toMatchObject({ code: 'timeout' });
-    expect(await inviteStates()).toEqual(['awaiting_parent_assent']);
+    const input = {
+      ...seeded,
+      body: '9059629821',
+      now: NOW,
+      inboundChannelMessageId: inboundId,
+      sendSms: vi.fn(),
+    };
+    await deliverCoParentNumberInvite(db.database, input);
+    const outcome = await deliverCoParentNumberInvite(db.database, input);
 
+    expect(outcome).toMatchObject({
+      status: 'instructed',
+      templateKey: LINQ_GROUP_INSTRUCTIONS_TEMPLATE_KEY,
+    });
+    if (outcome.status !== 'instructed') throw new Error('expected the group instructions');
+    expect(outcome.reply).not.toBe(ALREADY_INVITED);
+    expect(outcome.reply).not.toMatch(/texted/i);
+    expect(await inviteStates()).toEqual(['identity_noted']);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('says the line is missing when Hale has no number to add, and still stores the identity', async () => {
+    vi.stubEnv('LINQ_FROM_E164', '');
+    const seeded = await seedHousehold();
+    const inboundId = await seedAsk(seeded, 'imessage');
     const outcome = await deliverCoParentNumberInvite(db.database, {
       ...seeded,
       body: '9059629821',
       now: NOW,
       inboundChannelMessageId: inboundId,
       sendSms: vi.fn(),
-      fetch: linqFetch(),
     });
-    expect(outcome).toMatchObject({ status: 'sent', reply: coParentInviteSentAck('them', 'en') });
-    expect(await inviteStates()).toEqual(['awaiting_caregiver_reply']);
-    expect(await inviteOutbounds()).toHaveLength(1);
+    expect(outcome).toEqual({
+      status: 'unreached',
+      reply: LINQ_GROUP_LINE_MISSING_TEXT,
+      templateKey: 'coparent:number_invite_held',
+    });
+    expect(await inviteStates()).toEqual(['identity_noted']);
+    expect(await groupChatId()).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('does not take a name, a missing ask, or a dark flag', async () => {
+  it('still instructs when the SMS flag is dark, and does not take a name or a missing ask', async () => {
     const seeded = await seedHousehold();
     const inboundId = await seedAsk(seeded, 'imessage');
-    const fetchMock = linqFetch();
     const send = {
       ...seeded,
       now: NOW,
       inboundChannelMessageId: inboundId,
       sendSms: vi.fn(),
-      fetch: fetchMock,
     };
     expect(await deliverCoParentNumberInvite(db.database, { ...send, body: 'Jimmy' })).toEqual({
       status: 'not_pending',
@@ -335,11 +276,16 @@ describe('a number on the Linq door', () => {
 
     await seedAsk(seeded, 'imessage');
     vi.stubEnv('F14_ENABLED', '');
-    expect(
-      await deliverCoParentNumberInvite(db.database, { ...send, body: '9059629821' }),
-    ).toMatchObject({ status: 'refused', reply: CO_PARENT_REDIRECT });
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(await inviteStates()).toEqual([]);
+    const outcome = await deliverCoParentNumberInvite(db.database, {
+      ...send,
+      body: '9059629821',
+    });
+    expect(outcome).toMatchObject({
+      status: 'instructed',
+      templateKey: LINQ_GROUP_INSTRUCTIONS_TEMPLATE_KEY,
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await inviteStates()).toEqual(['identity_noted']);
   });
 });
 
@@ -347,7 +293,6 @@ describe('a number on the SMS door', () => {
   it('texts the locked SMS body and does not call Linq', async () => {
     const seeded = await seedHousehold();
     const inboundId = await seedAsk(seeded, 'sms');
-    const fetchMock = linqFetch();
     const sendSms = vi.fn(async () => ({ providerMessageId: 'SM_invite' }));
     const outcome = await deliverCoParentNumberInvite(db.database, {
       ...seeded,
@@ -355,30 +300,28 @@ describe('a number on the SMS door', () => {
       now: NOW,
       inboundChannelMessageId: inboundId,
       sendSms,
-      fetch: fetchMock,
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
     expect(sendSms).toHaveBeenCalledWith({
       to: COPARENT_PHONE,
       body: coParentInviteBody('Jimmy', 'en'),
     });
-    expect(outcome).toMatchObject({
+    expect(outcome).toEqual({
       status: 'sent',
       reply: coParentInviteSentAck('them', 'en'),
-      afterAck: null,
+      templateKey: 'coparent:number_invite_ack',
     });
-    expect(await inviteOutbounds()).toEqual([
-      { channel: 'sms', templateKey: SMS_COPARENT_INVITE_TEMPLATE_KEY },
-    ]);
     const [row] = await db.database
       .select({
         status: schema.channelMessages.status,
         templateKey: schema.channelMessages.templateKey,
+        channel: schema.channelMessages.channel,
       })
       .from(schema.channelMessages)
       .where(eq(schema.channelMessages.templateKey, SMS_COPARENT_INVITE_TEMPLATE_KEY));
-    expect(row?.status).toBe('queued');
+    expect(row).toMatchObject({ status: 'queued', channel: 'sms' });
     expect(await inviteStates()).toEqual(['awaiting_caregiver_reply']);
+    expect(await groupChatId()).toBeNull();
   });
 
   it('does not skip a YES the add-command is still waiting on', async () => {
@@ -402,10 +345,26 @@ describe('a number on the SMS door', () => {
       now: NOW,
       inboundChannelMessageId: inboundId,
       sendSms,
-      fetch: linqFetch(),
     });
     expect(outcome).toEqual({ status: 'not_pending' });
     expect(sendSms).not.toHaveBeenCalled();
     expect(await inviteStates()).toEqual(['awaiting_parent_assent']);
+  });
+
+  it('redirects and does not text when the SMS flag is dark', async () => {
+    vi.stubEnv('F14_ENABLED', '');
+    const seeded = await seedHousehold();
+    const inboundId = await seedAsk(seeded, 'sms');
+    const sendSms = vi.fn();
+    const outcome = await deliverCoParentNumberInvite(db.database, {
+      ...seeded,
+      body: '9059629821',
+      now: NOW,
+      inboundChannelMessageId: inboundId,
+      sendSms,
+    });
+    expect(outcome).toMatchObject({ status: 'refused', reply: CO_PARENT_REDIRECT });
+    expect(sendSms).not.toHaveBeenCalled();
+    expect(await inviteStates()).toEqual([]);
   });
 });

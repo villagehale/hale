@@ -380,8 +380,8 @@ export function defaultHandlers(): DeterministicHandler[] {
     // handler's own note. Listed so the router never resolves a kind nobody owns.
     coParentAssentHandler(),
     // The number that answers intake:coparent_ask. Ahead of the name capture so a
-    // phone is an invite and not a name, and ahead of the coach so the coach cannot
-    // acknowledge a send it did not make.
+    // phone is not stored as a name, and ahead of the coach so the coach cannot
+    // acknowledge an invite it did not send. Linq replies with group instructions.
     coParentNumberHandler({
       sendSms: async (sms) => {
         const sent = await createTwilioTransport().send(sms);

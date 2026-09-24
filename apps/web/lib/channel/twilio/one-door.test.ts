@@ -58,8 +58,6 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'a tapback that replaces a throwaway ack; the ledger row is written by moments.ts when the reaction is accepted',
   'apps/web/lib/channel/linq/link-preview.ts':
     'a follow-up link part beside locked text; writes its own channel_messages row and linq_link_preview audit when a family id is passed',
-  'apps/web/lib/channel/linq/coparent-invite.ts':
-    'the co-parent number on the Linq door; createLinqChat to that E.164 writes channel_messages category co_parent_invite template linq:coparent_invite and a co_parent_sms_outbound audit beside the send. The SMS door uses the injected Twilio transport and ledgers sms:coparent_invite the same way',
   'apps/web/lib/channel/linq/group.ts':
     'opens or extends the household group and writes linq:group_open / linq:group_unreachable plus linq_group_opened or linq_group_held; the unknown-sender hold is the one unledgered text because that sender has no family row to attach it to',
   'apps/web/lib/channel/linq/poll.ts':
