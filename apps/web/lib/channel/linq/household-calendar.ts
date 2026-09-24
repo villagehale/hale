@@ -1,11 +1,12 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, gte, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { SENT_STATUSES, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
 import { linqGroupCoparentEnabled } from './config';
+import { groupProactiveCapReached } from './family-outbound';
 import {
   groupBothFreeText,
   groupConflictText,
@@ -20,9 +21,10 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  *
  * Kid-related rows may carry a title. Everything else is free/busy only: the
  * title is dropped before the write, and the table CHECK rejects it if a caller
- * forgets. Notices go to the group only when both parents have an active
- * calendar. The Linq flag defaults on; `LINQ_GROUP_COPARENT=off` is the kill
- * switch. Mail is never spoken here.
+ * forgets. A claimed group hears kid dates from whichever calendars are
+ * connected. Conflict and handoff still need two parents' blocks. The Linq
+ * flag defaults on; `LINQ_GROUP_COPARENT=off` is the kill switch. Mail is
+ * never spoken here.
  *
  * Proactive group speech is one bubble: at most one a day and three a week,
  * never during quiet hours. A cancellation, a weekly recap, and an unprompted
@@ -64,21 +66,11 @@ const KID_WORDS = [
 const LOOKAHEAD_MS = 14 * 24 * 60 * 60 * 1000;
 const FOLLOWUP_MS = 36 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const WEEK_MS = 7 * DAY_MS;
 const SLOT_MS = 60 * 60 * 1000;
 const KID_LINES_MAX = 3;
-const GROUP_DAY_MAX = 1;
-const GROUP_WEEK_MAX = 3;
 /** Evening before quiet hours (21:00). Local hour is in [17, 21). */
 const HANDOFF_HOUR_START = 17;
 const HANDOFF_HOUR_END = 21;
-
-const GROUP_PROACTIVE_TEMPLATES = [
-  'linq:group_kid_event',
-  'linq:group_conflict',
-  'linq:group_handoff',
-  'linq:group_followup',
-] as const;
 
 /** A parent said who takes it. Not a guess from two calendars. */
 const HANDOFF_CLAIM =
@@ -761,8 +753,13 @@ async function loadFamilyCalendarContext(
     .select({ name: schema.children.name })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
-  const pair = parents.length >= 2 ? ([parents[0]?.userId, parents[1]?.userId] as const) : null;
-  const parentUserIds = pair?.[0] && pair[1] ? ([pair[0], pair[1]] as const) : null;
+  const ids = parents.map((row) => row.userId).filter((id): id is string => Boolean(id));
+  const parentUserIds =
+    ids.length >= 2 && ids[0] && ids[1]
+      ? ([ids[0], ids[1]] as const)
+      : ids.length === 1 && ids[0]
+        ? ([ids[0], ids[0]] as const)
+        : null;
   return {
     parentUserIds,
     bothCalendars: gcal.size >= 2,
@@ -784,7 +781,7 @@ export async function narrateHouseholdCalendar(
 ): Promise<void> {
   if (!linqGroupCoparentEnabled()) return;
   const context = await loadFamilyCalendarContext(database, input.familyId);
-  if (!context.bothCalendars || !context.parentUserIds || !context.chatId) return;
+  if (!context.parentUserIds || !context.chatId) return;
   const rows = await database
     .select()
     .from(schema.parentCalendarBlocks)
@@ -829,7 +826,13 @@ export async function narrateHouseholdCalendar(
   });
   const notice = notices[0];
   if (!notice) return;
-  if (await groupCapReached(database, input.familyId, input.now)) {
+  if (
+    await groupProactiveCapReached(database, {
+      familyId: input.familyId,
+      chatId: context.chatId,
+      now: input.now,
+    })
+  ) {
     console.warn({ familyId: input.familyId }, 'household calendar: group cap reached');
     return;
   }
@@ -856,36 +859,6 @@ export async function narrateHouseholdCalendar(
         ),
       );
   }
-}
-
-async function groupCapReached(database: Database, familyId: string, now: Date): Promise<boolean> {
-  const since = new Date(now.getTime() - WEEK_MS);
-  const rows = await database
-    .select({
-      createdAt: schema.channelMessages.createdAt,
-      status: schema.channelMessages.status,
-      templateKey: schema.channelMessages.templateKey,
-      familyId: schema.channelMessages.familyId,
-    })
-    .from(schema.channelMessages)
-    .where(
-      and(
-        eq(schema.channelMessages.familyId, familyId),
-        inArray(schema.channelMessages.templateKey, [...GROUP_PROACTIVE_TEMPLATES]),
-        gte(schema.channelMessages.createdAt, since),
-      ),
-    );
-  const sent = rows.filter(
-    (row) =>
-      row.familyId === familyId &&
-      row.templateKey !== null &&
-      (GROUP_PROACTIVE_TEMPLATES as readonly string[]).includes(row.templateKey) &&
-      (SENT_STATUSES as readonly string[]).includes(row.status) &&
-      row.createdAt.getTime() >= since.getTime(),
-  );
-  const dayAgo = now.getTime() - DAY_MS;
-  const today = sent.filter((row) => row.createdAt.getTime() >= dayAgo).length;
-  return today >= GROUP_DAY_MAX || sent.length >= GROUP_WEEK_MAX;
 }
 
 async function loadHandoffStatements(
@@ -1106,7 +1079,7 @@ export async function rememberAndNarrateCalendar(
     changes: input.changes,
     childNames: context.childNames,
     seeding: input.seeding,
-    bothCalendars: context.bothCalendars,
+    bothCalendars: context.chatId !== null || context.bothCalendars,
     now: input.now,
   });
   await narrateHouseholdCalendar(database, {

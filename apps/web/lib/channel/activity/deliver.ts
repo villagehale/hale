@@ -1,5 +1,6 @@
 import type { Database } from '@hale/db';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import type { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -154,6 +155,8 @@ export interface FollowUpDelivery {
       providerMessageId: string;
       relatedConversationId: string | null;
       sentAt: Date;
+      channel?: 'sms' | 'imessage';
+      providerChatId?: string | null;
     },
   ): Promise<string>;
   audit(database: Database, row: Record<string, unknown>): Promise<void>;
@@ -316,15 +319,28 @@ export async function deliverFollowUp(
     return { status: 'refused_at_send', reasons: unbacked };
   }
 
-  const { providerMessageId } = await deps.transport.send({ to, body });
+  const delivered = await deliverFamilyOutbound(database, {
+    familyId: input.familyId,
+    body,
+    to,
+    legacy: deps.transport,
+    bubbleKind: 'discretionary',
+    now,
+  });
+  if (delivered.status === 'held') {
+    console.warn({ familyId: input.familyId }, 'activity follow-up: group cap reached');
+    return { status: 'deferred', reason: 'group_cap' };
+  }
   const channelMessageId = await deps.recordSend(database, {
     familyId: input.familyId,
     parentUserId: input.recipient.parentUserId,
     templateKey: 'activity_followup:kept',
     dedupeKey: input.dedupeKey,
-    providerMessageId,
+    providerMessageId: delivered.providerMessageId,
     relatedConversationId: input.recipient.conversationId,
     sentAt: now,
+    channel: delivered.channel === 'imessage' ? 'imessage' : 'sms',
+    providerChatId: delivered.chatId,
   });
   await deps.audit(database, {
     familyId: input.familyId,

@@ -8,6 +8,7 @@ import {
 } from '~/lib/channel/coach/tools';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -269,6 +270,8 @@ export interface EveningCheckInDeps {
       dedupeKey: string;
       providerMessageId: string;
       sentAt: Date;
+      channel?: 'sms' | 'imessage';
+      providerChatId?: string | null;
     },
   ): Promise<string>;
   audit(database: Database, row: Record<string, unknown>): Promise<void>;
@@ -427,17 +430,26 @@ async function runForFamily(
     throw new Error(`evening check-in: no send target for parent ${family.parentUserId}`);
   }
 
-  const { providerMessageId } = await deps.transport.send({
-    to,
+  const delivered = await deliverFamilyOutbound(database, {
+    familyId: family.familyId,
     body: withOptOut(message, verdict.optOut),
+    to,
+    legacy: deps.transport,
   });
+  if (delivered.status === 'held') {
+    console.warn({ familyId: family.familyId }, 'evening check-in: group cap reached');
+    return;
+  }
+  const channel = delivered.channel === 'imessage' ? 'imessage' : 'sms';
   const channelMessageId = await deps.recordSend(database, {
     familyId: family.familyId,
     parentUserId: family.parentUserId,
     templateKey: templateKeyFor(decision),
     dedupeKey,
-    providerMessageId,
+    providerMessageId: delivered.providerMessageId,
     sentAt: now,
+    channel,
+    providerChatId: delivered.chatId,
   });
   const steppingDown = decision.kind === 'step_down';
   const actionTaken = steppingDown ? 'evening_check_in_stepped_down' : 'evening_check_in_sent';
@@ -682,13 +694,14 @@ export function defaultEveningCheckInDeps(): EveningCheckInDeps {
         .values({
           familyId: write.familyId,
           parentUserId: write.parentUserId,
-          channel: 'sms',
+          channel: write.channel ?? 'sms',
           direction: 'out',
           category: 'evening_check_in',
           templateKey: write.templateKey,
           dedupeKey: write.dedupeKey,
           providerMessageId: write.providerMessageId,
-          status: acceptedStatus('sms'),
+          providerChatId: write.providerChatId ?? null,
+          status: acceptedStatus(write.channel ?? 'sms'),
           sentAt: write.sentAt,
         })
         .returning({ id: schema.channelMessages.id });

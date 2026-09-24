@@ -21,6 +21,11 @@ import { acceptedStatus } from '~/lib/channel/ledger';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import {
+  type GroupActivityDecision,
+  noteGroupSyncConversation,
+  queueGroupActivityDecision,
+} from '~/lib/channel/linq/family-outbound';
+import {
   LINQ_GROUP_LINE_MISSING_TEXT,
   formatLinqLineForParent,
   linqGroupMakeInstruction,
@@ -248,6 +253,12 @@ export type HandlerVerdict =
        * row with no name on it is indistinguishable from the coach's.
        */
       templateKey?: string;
+      /**
+       * A kid-logistics decision made in this 1:1 turn. After the reply lands
+       * in the thread the parent opened, one short sync bubble goes to the
+       * claimed group. Absent means the turn stays in the thread it started.
+       */
+      groupSync?: GroupActivityDecision;
       /**
        * Work that may only happen once the receipt has actually reached the parent,
        * handed the `channel_messages` id of the message that carried it.
@@ -597,6 +608,22 @@ export async function routeChannelMessage(
     });
   }
 
+  if (context.reply) {
+    const originChatId = context.reply.channel === 'imessage' ? context.reply.chatId : null;
+    try {
+      await noteGroupSyncConversation(deps.database, {
+        familyId: job.family_id,
+        originChatId,
+        now,
+      });
+    } catch (err) {
+      deps.log.warn(
+        { code: err instanceof Error ? err.name : 'unknown' },
+        'group sync: could not extend the settle window',
+      );
+    }
+  }
+
   // Flipped in the same breath as the durable claim (see sendReply), so a failure
   // AFTER the transport accepted the answer cannot make this turn answer a second time
   // on its way out. The durable claim stops the next ATTEMPT; this stops this one.
@@ -727,6 +754,7 @@ export async function routeChannelMessage(
     medicalSource: MedicalReplySource | null = null,
     replySource: ReplySource | null = null,
     templateKey: string | null = null,
+    groupSync?: GroupActivityDecision,
   ) =>
     sendReply(deps, {
       route,
@@ -736,6 +764,7 @@ export async function routeChannelMessage(
       claim: claimAnswer,
       medicalSource,
       replySource,
+      groupSync,
       templateKey,
       beforeSend: stopTyping,
       inboundBody: context.body,
@@ -1314,10 +1343,17 @@ async function deliver(
     medicalSource?: MedicalReplySource | null,
     replySource?: ReplySource | null,
     templateKey?: string | null,
+    groupSync?: GroupActivityDecision,
   ) => Promise<string>,
 ): Promise<void> {
   if (verdict.reply === null) return;
-  const channelMessageId = await answer(verdict.reply, null, null, verdict.templateKey ?? null);
+  const channelMessageId = await answer(
+    verdict.reply,
+    null,
+    null,
+    verdict.templateKey ?? null,
+    verdict.groupSync,
+  );
   await verdict.afterSend?.(channelMessageId);
 }
 
@@ -1919,6 +1955,8 @@ async function sendReply(
     /** The lane's own name for this receipt, or null for a reply nothing reads back
      * (see {@link HandlerVerdict.templateKey}). */
     templateKey?: string | null;
+    /** A 1:1 kid-logistics decision to mirror once into the claimed group. */
+    groupSync?: GroupActivityDecision;
     /** Runs before the transport call. The iMessage think-section uses it to
      * stop the typing bubble before the reply goes out. */
     beforeSend?: () => Promise<void> | void;
@@ -1956,6 +1994,23 @@ async function sendReply(
   }
   const sent = await deps.transport.send({ route: args.route, body: args.body });
   if (args.claim) await args.claim();
+  if (args.groupSync) {
+    const originChatId = args.route.channel === 'imessage' ? args.route.chatId : null;
+    try {
+      await queueGroupActivityDecision(deps.database, {
+        familyId: args.job.family_id,
+        parentUserId: args.job.parent_user_id,
+        originChatId,
+        decision: args.groupSync,
+        now: deps.now(),
+      });
+    } catch (err) {
+      deps.log.warn(
+        { code: err instanceof Error ? err.name : 'unknown' },
+        'group sync: the 1:1 reply landed; the group bubble did not',
+      );
+    }
+  }
 
   // The channel that CARRIED it, reported by the send rather than assumed from the
   // route (WhatsApp v1): a whatsapp route degrades to SMS outside Meta's 24h window,

@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type ProactiveHoldReason,
@@ -209,11 +210,26 @@ export async function tellStayingParent(
   }
 
   let providerMessageId: string;
+  let carried: 'sms' | 'imessage' = 'sms';
+  let chatId: string | null = null;
   try {
-    ({ providerMessageId } = await ports.transport.send({
-      to,
+    const delivered = await deliverFamilyOutbound(database, {
+      familyId,
       body: withOptOut(message, verdict.optOut),
-    }));
+      to,
+      legacy: ports.transport,
+      shareGroupCap: false,
+    });
+    if (delivered.status === 'held') {
+      await database
+        .update(schema.channelMessages)
+        .set({ status: 'failed', errorCode: 'group_cap' })
+        .where(eq(schema.channelMessages.id, claimed.id));
+      return 'send_failed';
+    }
+    providerMessageId = delivered.providerMessageId;
+    carried = delivered.channel === 'imessage' ? 'imessage' : 'sms';
+    chatId = delivered.chatId;
   } catch (err) {
     const code = err instanceof TwilioSendError ? err.code : 'unknown';
     await database
@@ -226,7 +242,12 @@ export async function tellStayingParent(
 
   await database
     .update(schema.channelMessages)
-    .set({ providerMessageId })
+    .set({
+      providerMessageId,
+      channel: carried,
+      providerChatId: chatId,
+      status: acceptedStatus(carried),
+    })
     .where(eq(schema.channelMessages.id, claimed.id));
 
   // The COMPOSED sentence, not the wire body — the CASL line belongs on the wire and

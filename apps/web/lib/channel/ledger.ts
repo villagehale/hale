@@ -58,6 +58,7 @@ export async function recordChannelMessage(
       templateKey: write.templateKey,
       dedupeKey: write.dedupeKey,
       providerMessageId: write.providerMessageId ?? null,
+      providerChatId: write.providerChatId ?? null,
       status: write.status,
       errorCode: write.errorCode ?? null,
       relatedActionId: write.relatedActionId ?? null,

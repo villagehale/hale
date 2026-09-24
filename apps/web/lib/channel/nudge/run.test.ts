@@ -359,6 +359,44 @@ describe('the local send slot', () => {
 });
 
 describe('runNudgeCron — sending', () => {
+  it('sends a family with a group its nudge in the group, not 1:1 and not SMS', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
+    const urls: string[] = [];
+    const fetchMock = vi.fn(async (url: string) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify({ message: { id: 'nudge-group-1' } }), { status: 201 });
+    });
+    const h = harness({
+      windows: [win()],
+      recipients: [
+        { parentUserId: 'user-1', timeZone: TZ, role: 'primary_parent' },
+        { parentUserId: 'user-2', timeZone: TZ, role: 'co_parent' },
+      ],
+    });
+    const result = await runNudgeCron(
+      db(),
+      {
+        ...h.deps,
+        outboundTarget: async () => ({
+          channel: 'group',
+          chatId: 'chat-home',
+          familyId: 'fam-1',
+        }),
+        fetch: fetchMock as unknown as typeof fetch,
+      },
+      FRIDAY_10AM,
+    );
+    expect(result.sent).toBe(1);
+    expect(h.transport.sent).toEqual([]);
+    expect(urls).toEqual(['https://api.linqapp.com/api/partner/v3/chats/chat-home/messages']);
+    const ledger = h.writes.filter((write) => write.table === schema.channelMessages);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]?.payload.channel).toBe('imessage');
+    expect(ledger[0]?.payload.providerChatId).toBe('chat-home');
+  });
+
   it('sends one text carrying the nudge and the opt-out line', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({ windows: [win()] });

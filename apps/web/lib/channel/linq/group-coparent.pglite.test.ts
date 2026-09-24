@@ -359,17 +359,21 @@ describe('group co-parent seating', () => {
     );
     expect(calendar).toMatchObject({ type: 'done', outcome: 'group_coparent_gcal' });
     const afterCalendar = wire.groupTexts();
-    expect(afterCalendar.at(-1)).toBe(groupCalendarAsk('en', 'Sam'));
-    expect(afterCalendar.filter((text) => text === groupCalendarAsk('en', 'Sam'))).toHaveLength(1);
+    const calendarBubble = afterCalendar.at(-1) ?? '';
+    expect(calendarBubble.startsWith(groupCalendarAsk('en', 'Sam'))).toBe(true);
+    expect(
+      afterCalendar.filter((text) => text.startsWith(groupCalendarAsk('en', 'Sam'))),
+    ).toHaveLength(1);
+    expect(calendarBubble).toContain('\n');
+    expect(calendarBubble).toContain('to=gcal');
+    expect(wire.groupLinks()).toEqual([]);
     expect(afterCalendar.join('\n')).not.toContain(groupGmailAsk('en', 'Sam'));
-    expect(afterCalendar.join('\n')).not.toContain('/connect?t=');
+    expect(groupCalendarAsk('en', 'Sam')).not.toContain('/connect?t=');
     expect(wire.createdChats()).toBe(0);
     expect(wire.privateTexts()).toEqual([]);
-    const calendarLink = wire.groupLinks().find((link) => link.includes('to=gcal'));
-    expect(calendarLink).toBeTruthy();
-    const calendarToken = new URL(calendarLink ?? '').searchParams.get('t');
+    const calendarToken = new URL(calendarBubble.split('\n')[1] ?? '').searchParams.get('t');
     expect(calendarToken).toBeTruthy();
-    expect(wire.groupTexts().join('\n')).not.toContain(calendarToken ?? 'missing-token');
+    expect(groupCalendarAsk('en', 'Sam')).not.toContain(calendarToken ?? 'missing-token');
     const [afterAsk] = await db.database
       .select({ step: schema.linqGroupOnboarding.step })
       .from(schema.linqGroupOnboarding);
@@ -383,15 +387,16 @@ describe('group co-parent seating', () => {
     );
     expect(declined).toMatchObject({ type: 'done', outcome: 'group_coparent_gmail' });
     const gmailBubbles = wire.groupTexts().slice(groupBeforeGmail);
-    expect(gmailBubbles).toEqual([groupGmailAsk('en', 'Sam')]);
-    expect(wire.groupTexts().join('\n')).not.toContain('/connect?t=');
+    expect(gmailBubbles).toHaveLength(1);
+    expect(gmailBubbles[0]?.startsWith(groupGmailAsk('en', 'Sam'))).toBe(true);
+    expect(gmailBubbles[0]).toContain('to=gmail');
+    expect(wire.groupLinks()).toEqual([]);
+    expect(groupGmailAsk('en', 'Sam')).not.toContain('/connect?t=');
     expect(wire.createdChats()).toBe(0);
     expect(wire.privateTexts()).toEqual([]);
-    const gmailLink = wire.groupLinks().find((link) => link.includes('to=gmail'));
-    expect(gmailLink).toBeTruthy();
-    const gmailToken = new URL(gmailLink ?? '').searchParams.get('t');
+    const gmailToken = new URL((gmailBubbles[0] ?? '').split('\n')[1] ?? '').searchParams.get('t');
     expect(gmailToken).toBeTruthy();
-    expect(wire.groupTexts().join('\n')).not.toContain(gmailToken ?? 'missing-token');
+    expect(groupGmailAsk('en', 'Sam')).not.toContain(gmailToken ?? 'missing-token');
 
     const beforeIgnore = wire.groupTexts().length;
     const ignored = await considerGroupCoparent(
@@ -401,7 +406,9 @@ describe('group co-parent seating', () => {
     );
     expect(ignored).toMatchObject({ type: 'route_member' });
     expect(wire.groupTexts()).toHaveLength(beforeIgnore);
-    expect(wire.groupTexts().filter((text) => text === groupGmailAsk('en', 'Sam'))).toHaveLength(1);
+    expect(
+      wire.groupTexts().filter((text) => text.startsWith(groupGmailAsk('en', 'Sam'))),
+    ).toHaveLength(1);
 
     const tokens = await db.database
       .select({
@@ -584,16 +591,15 @@ describe('group co-parent seating', () => {
       fetch: wire.fetch,
     });
     expect(calendar).toBe('sent');
-    expect(wire.groupTexts()).toEqual([
-      groupCalendarReceipt('en', 'Sam'),
-      groupGmailAsk('en', 'Sam'),
-    ]);
+    expect(wire.groupTexts()[0]).toBe(groupCalendarReceipt('en', 'Sam'));
+    expect(wire.groupTexts()[1]?.startsWith(groupGmailAsk('en', 'Sam'))).toBe(true);
+    expect(wire.groupTexts()[1]).toContain('to=gmail');
+    expect(wire.groupLinks()).toEqual([]);
     expect(wire.groupTexts()[0]).not.toContain('Gmail link');
     expect(wire.groupTexts()[1]).not.toContain('calendar is connected');
-    expect(wire.groupTexts().join('\n')).not.toContain('/connect?t=');
+    expect(groupGmailAsk('en', 'Sam')).not.toContain('/connect?t=');
     expect(wire.createdChats()).toBe(0);
     expect(wire.privateTexts()).toEqual([]);
-    expect(wire.groupLinks().some((link) => link.includes('to=gmail'))).toBe(true);
     const [asked] = await db.database
       .select({ step: schema.linqGroupOnboarding.step })
       .from(schema.linqGroupOnboarding);
@@ -608,7 +614,9 @@ describe('group co-parent seating', () => {
       fetch: wire.fetch,
     });
     expect(again).toBe('sent');
-    expect(wire.groupTexts().filter((text) => text === groupGmailAsk('en', 'Sam'))).toHaveLength(1);
+    expect(
+      wire.groupTexts().filter((text) => text.startsWith(groupGmailAsk('en', 'Sam'))),
+    ).toHaveLength(1);
 
     const sent = await sendCoparentGroupCalendarReceipt(db.database, {
       familyId: seeded.familyId,
@@ -621,7 +629,9 @@ describe('group co-parent seating', () => {
     expect(sent).toBe('sent');
     expect(wire.groupTexts().at(-1)).toBe(groupGmailReceipt('en', 'Sam'));
     expect(wire.groupTexts().at(-1)).not.toContain('want me to catch');
-    expect(wire.groupTexts().filter((text) => text === groupGmailAsk('en', 'Sam'))).toHaveLength(1);
+    expect(
+      wire.groupTexts().filter((text) => text.startsWith(groupGmailAsk('en', 'Sam'))),
+    ).toHaveLength(1);
     expect(wire.groupTexts().at(-1)).not.toMatch(/@|subject:|snippet/);
     const [step] = await db.database
       .select({ step: schema.linqGroupOnboarding.step })

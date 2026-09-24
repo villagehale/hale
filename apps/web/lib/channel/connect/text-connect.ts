@@ -149,6 +149,7 @@ export interface ConnectedNotice {
 export function connectedNotice(
   status: string | undefined,
   provider: string | undefined,
+  options?: { name?: string; language?: 'en' | 'fr' },
 ): ConnectedNotice {
   const connected = asTextConnectProvider(provider);
   if (status === 'ok' && connected) {
@@ -164,9 +165,22 @@ export function connectedNotice(
     };
   }
   if (status === 'own_link') {
+    const named = options?.name?.trim();
+    if (options?.language === 'fr' && named) {
+      return {
+        heading: 'Deja connecte',
+        body: `Ce lien est pour ${named}. Le tien est deja connecte.`,
+      };
+    }
+    if (named) {
+      return {
+        heading: 'Already connected',
+        body: `This link is for ${named}. Yours is already connected.`,
+      };
+    }
     return {
-      heading: 'Nothing saved',
-      body: 'That Google account is already connected for someone else in the family. Nothing was saved. The co-parent should open the link themselves.',
+      heading: 'Already connected',
+      body: 'This link is for the parent it was sent to. Yours is already connected.',
     };
   }
   if (status === 'invalid') {

@@ -1,4 +1,5 @@
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import {
@@ -59,9 +60,16 @@ export async function GET(req: NextRequest) {
   const origin = appBaseUrl();
   // Before the state is verified we can't know the surface — web is the safe
   // default (an unverifiable state never reached another flow anyway).
-  const back = (status: string, surface?: ConnectState['surface'], provider?: string) => {
+  const back = (
+    status: string,
+    surface?: ConnectState['surface'],
+    provider?: string,
+    extra?: { who?: string; lang?: string },
+  ) => {
     if (surface === 'text') {
       const query = new URLSearchParams({ provider: provider ?? '', status });
+      if (extra?.who) query.set('who', extra.who);
+      if (extra?.lang) query.set('lang', extra.lang);
       return NextResponse.redirect(`${origin}/connected?${query.toString()}`);
     }
     if (surface === 'mobile') {
@@ -153,7 +161,28 @@ export async function GET(req: NextRequest) {
             'google account: held by the other parent',
           );
           // Nothing is stored. The page tells them the co-parent opens the link.
-          return back('own_link', surface, bound.provider);
+          let who = '';
+          let lang = 'en';
+          try {
+            const [named] = await database
+              .select({ name: schema.users.name })
+              .from(schema.users)
+              .where(eq(schema.users.id, bound.userId))
+              .limit(1);
+            const [home] = await database
+              .select({ primaryLanguage: schema.families.primaryLanguage })
+              .from(schema.families)
+              .where(eq(schema.families.id, bound.familyId))
+              .limit(1);
+            who = named?.name?.trim() ?? '';
+            if (home?.primaryLanguage?.toLowerCase().startsWith('fr')) lang = 'fr';
+          } catch (err) {
+            console.info(
+              { familyId: bound.familyId, code: err instanceof Error ? err.name : 'unknown' },
+              'google account: own-link name unread',
+            );
+          }
+          return back('own_link', surface, bound.provider, who ? { who, lang } : undefined);
         }
         providerMetadata = { googleAccountKey: accountKey };
       }

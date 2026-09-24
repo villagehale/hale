@@ -196,6 +196,7 @@ export const AUDIT_VERBS = [
   'activity_booking_recorded',
   'activity_booking_cancelled',
   'calendar_alert_sent',
+  'group_decision_sync_sent',
   // ── the travel brief (v5) ───────────────────────────────────────────────
   'travel_trip_noticed',
   'travel_booking_passed_over',
@@ -672,6 +673,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   // the one above names the inbox: the row is the receipt for Hale having read it.
   calendar_alert_sent: {
     sentence: 'Hale texted you about a change on your calendar',
+    family: 'done',
+  },
+  // A decision the parent made in a 1:1 thread, repeated once in the household
+  // group. The noun is a kid-logistics category. The mailbox stays out.
+  group_decision_sync_sent: {
+    sentence: 'Hale told the household group about a decision you made',
     family: 'done',
   },
   // A booking email said the family is going somewhere with the children. 'note', not

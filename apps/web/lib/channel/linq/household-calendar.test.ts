@@ -99,19 +99,19 @@ describe('kidMailboxSubject', () => {
   });
 });
 
-describe('group ask placeholders', () => {
-  it('marks the calendar and Gmail asks as not yet locked, and drops the private-link line', () => {
+describe('group ask strings', () => {
+  it('matches the locked in-group asks, and drops the private-link line', () => {
     expect(GROUP_CALENDAR_ASK.en).toBe(
-      "{name}, want your calendar in the kids' year too? The link is in this thread.",
+      "{name}, want your calendar in the kids' year too? This link is just for you.",
     );
     expect(GROUP_CALENDAR_ASK.fr).toBe(
-      "{name}, tu veux ajouter ton calendrier a l'annee des enfants? Le lien est dans ce fil.",
+      "{name}, tu veux ajouter ton calendrier a l'annee des enfants? Ce lien est juste pour toi.",
     );
     expect(GROUP_GMAIL_ASK.en).toBe(
-      '{name}, want me to catch school and camp emails for you too? The Gmail link is in this thread. Nothing from your inbox shows up here.',
+      '{name}, want me to catch school and camp emails for you too? This link is just for you. Nothing from your inbox shows up here.',
     );
     expect(GROUP_GMAIL_ASK.fr).toBe(
-      "{name}, tu veux que je repere aussi les courriels de l'ecole et des camps? Le lien Gmail est dans ce fil. Rien de ta boite ne s'affiche ici.",
+      "{name}, tu veux que je repere aussi les courriels de l'ecole et des camps? Ce lien est juste pour toi. Rien de ta boite ne s'affiche ici.",
     );
     for (const line of [
       GROUP_CALENDAR_ASK.en,

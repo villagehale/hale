@@ -989,7 +989,11 @@ export function sequenceReplyHandler(
         deps,
       );
       if (outcome.status === 'recorded') {
-        return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+        return {
+          claimed: true,
+          outcome: outcome.status,
+          reply: outcome.reply,
+        };
       }
       return (await alreadyApprovedReply(database, ctx, prepare)) ?? { claimed: false };
     },

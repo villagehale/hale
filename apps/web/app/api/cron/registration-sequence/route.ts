@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { flushGroupDecisionSyncs } from '~/lib/channel/linq/family-outbound';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { runRegistrationSequenceCron } from '~/lib/registration/sequence/run';
@@ -33,7 +34,8 @@ export const maxDuration = 300;
 export const GET = cronRoute('registration-sequence', async () => {
   try {
     const summary = await runRegistrationSequenceCron(db());
-    return NextResponse.json({ ok: true, ...summary }, { status: 200 });
+    const sync = await flushGroupDecisionSyncs(db(), { now: new Date() });
+    return NextResponse.json({ ok: true, ...summary, groupSync: sync }, { status: 200 });
   } finally {
     await flushTelemetry();
   }

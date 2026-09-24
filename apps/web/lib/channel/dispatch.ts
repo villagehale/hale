@@ -47,6 +47,7 @@ export interface LedgerWrite {
   dedupeKey: string | null;
   status: 'queued' | 'sent' | 'failed' | SuppressionStatus;
   providerMessageId?: string | null;
+  providerChatId?: string | null;
   errorCode?: string | null;
   relatedActionId?: string | null;
   relatedConversationId?: string | null;
@@ -314,6 +315,7 @@ async function dispatchLeg(
     const id = await writeLedgerRow(ports, msg, channel, acceptedStatus(channel), {
       dedupeKey: legKey,
       providerMessageId: result.providerMessageId,
+      providerChatId: result.providerChatId ?? null,
       sentAt: now,
     });
     if (channel === 'email' && parent.email) {

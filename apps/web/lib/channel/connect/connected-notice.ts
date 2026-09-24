@@ -2,6 +2,8 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { familyOutboundTarget, familySpeech } from '~/lib/channel/linq/family-outbound';
+import { groupCalendarReceipt, groupGmailReceipt } from '~/lib/channel/linq/group-coparent-copy';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -62,6 +64,9 @@ export type ConnectedNoticeOutcome =
   /** The last turn was iMessage and no ledger row stored a Linq chat. Nothing is
    * claimed, and nothing is sent on SMS: that would be a second identity. */
   | { status: 'not_sent'; reason: 'no_chat' }
+  /** The co-parent's locked group receipt owns this bubble. This path does not
+   * also send 1:1 or SMS. */
+  | { status: 'not_sent'; reason: 'group_home' }
   /** The provider refused it. `code` is Twilio's, or `unknown`. */
   | { status: 'not_sent'; reason: 'send_failed'; code: string }
   /** Something on this path threw — a ledger write, the thread append. Its own outcome
@@ -75,6 +80,7 @@ export type ConnectedNoticeLabel =
   | 'already_sent'
   | 'no_send_target'
   | 'no_chat'
+  | 'group_home'
   | 'errored'
   | `send_failed:${string}`;
 
@@ -134,6 +140,24 @@ async function sendReceipt(
   ports: ConnectedNoticePorts,
 ): Promise<ConnectedNoticeOutcome> {
   const { familyId, parentUserId, provider, connectId, now } = args;
+
+  const group = await familyOutboundTarget(database, familyId);
+  if (group.channel === 'group') {
+    const members = await database
+      .select({
+        userId: schema.familyMembers.userId,
+        role: schema.familyMembers.role,
+        familyId: schema.familyMembers.familyId,
+      })
+      .from(schema.familyMembers)
+      .where(eq(schema.familyMembers.familyId, familyId));
+    const seat = members.find((row) => row.familyId === familyId && row.userId === parentUserId);
+    if (seat?.role === 'co_parent') {
+      // The locked group receipt is the one bubble. Do not also text 1:1 or SMS.
+      return { status: 'not_sent', reason: 'group_home' };
+    }
+    return sendGroupHomeReceipt(database, args, ports, group.chatId);
+  }
 
   const phone = await resolveSendablePhone(database, parentUserId);
   if (!phone) {
@@ -244,6 +268,72 @@ async function familyReceiptLanguage(
     .where(eq(schema.families.id, familyId));
   const row = rows.find((candidate) => candidate.id === familyId);
   return row?.primaryLanguage === 'fr' ? 'fr' : 'en';
+}
+
+/**
+ * A primary parent's connect receipt, in the claimed group. Not 1:1, not SMS.
+ * The co-parent uses the locked group receipt instead of this sentence.
+ */
+async function sendGroupHomeReceipt(
+  database: Database,
+  args: ConnectedNoticeArgs,
+  ports: ConnectedNoticePorts,
+  chatId: string,
+): Promise<ConnectedNoticeOutcome> {
+  const { familyId, parentUserId, provider, connectId, now } = args;
+  const speech = await familySpeech(database, familyId, parentUserId);
+  if (!speech.name || (provider !== 'gcal' && provider !== 'gmail')) {
+    return { status: 'not_sent', reason: 'group_home' };
+  }
+  const body =
+    provider === 'gmail'
+      ? groupGmailReceipt(speech.language, speech.name)
+      : groupCalendarReceipt(speech.language, speech.name);
+  const [claimed] = await database
+    .insert(schema.channelMessages)
+    .values({
+      familyId,
+      parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reply',
+      templateKey: CONNECTOR_CONNECTED_TEMPLATE_KEY,
+      dedupeKey: connectorConnectedDedupeKey(connectId),
+      providerChatId: chatId,
+      status: acceptedStatus('imessage'),
+      sentAt: now,
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.channelMessages.id });
+  if (!claimed) return { status: 'not_sent', reason: 'already_sent' };
+  if (!ports.imessage) {
+    await database
+      .update(schema.channelMessages)
+      .set({ status: 'failed', errorCode: 'imessage_not_configured' })
+      .where(eq(schema.channelMessages.id, claimed.id));
+    return { status: 'not_sent', reason: 'send_failed', code: 'imessage_not_configured' };
+  }
+  let providerMessageId: string;
+  try {
+    ({ providerMessageId } = await ports.imessage({ chatId, body }));
+  } catch (err) {
+    const code = err instanceof LinqSendError ? err.code : 'unknown';
+    await database
+      .update(schema.channelMessages)
+      .set({ status: 'failed', errorCode: code })
+      .where(eq(schema.channelMessages.id, claimed.id));
+    console.error(
+      { familyId, provider, code },
+      'connector connected: the group refused the receipt',
+    );
+    return { status: 'not_sent', reason: 'send_failed', code };
+  }
+  await database
+    .update(schema.channelMessages)
+    .set({ providerMessageId })
+    .where(eq(schema.channelMessages.id, claimed.id));
+  await ports.threadMessage(database, { familyId, parentUserId, body });
+  return { status: 'sent', channelMessageId: claimed.id };
 }
 
 /**

@@ -9,7 +9,12 @@ import ConnectedPage from './page';
  * and the page renders nothing it was not given.
  */
 
-async function render(searchParams: { provider?: string; status?: string }): Promise<string> {
+async function render(searchParams: {
+  provider?: string;
+  status?: string;
+  who?: string;
+  lang?: string;
+}): Promise<string> {
   return renderToStaticMarkup(await ConnectedPage({ searchParams: Promise.resolve(searchParams) }));
 }
 
@@ -36,12 +41,17 @@ describe('/connected — the done page', () => {
     expect(html).toContain('connect my calendar');
   });
 
-  it('asks the co-parent to open the link themselves when the Google account is already in the family', async () => {
-    const html = await render({ provider: 'gcal', status: 'own_link' });
+  it('tells the wrong parent this link is for someone else, in the locked sentence', async () => {
+    const html = await render({ provider: 'gcal', status: 'own_link', who: 'Sam' });
 
-    expect(html).toContain('Nothing was saved.');
-    expect(html).toContain('The co-parent should open the link themselves.');
-    expect(html).not.toContain('is connected.');
+    expect(html).toContain('This link is for Sam. Yours is already connected.');
+    expect(html).not.toContain('Nothing was saved.');
+  });
+
+  it('uses the locked French sentence when the family is French', async () => {
+    const html = await render({ provider: 'gcal', status: 'own_link', who: 'Sam', lang: 'fr' });
+
+    expect(html).toContain('Ce lien est pour Sam. Le tien est deja connecte.');
   });
 
   it('tells an expired link from a connect that broke', async () => {

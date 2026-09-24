@@ -12,11 +12,10 @@ export const GROUP_WELCOME: Record<ReplyLanguage, string> = {
   fr: "Salut, c'est Hale. Ce fil, c'est l'annee des enfants: vous deux, et moi. Comment je t'appelle?",
 };
 
-// NEEDS DESIGN LOCK (Sloane)
-/** Placeholder. The link is in the group, so the one-to-one line cannot stay. */
+/** Sloane, locked. The card is the next line of this same bubble. */
 export const GROUP_CALENDAR_ASK: Record<ReplyLanguage, string> = {
-  en: "{name}, want your calendar in the kids' year too? The link is in this thread.",
-  fr: "{name}, tu veux ajouter ton calendrier a l'annee des enfants? Le lien est dans ce fil.",
+  en: "{name}, want your calendar in the kids' year too? This link is just for you.",
+  fr: "{name}, tu veux ajouter ton calendrier a l'annee des enfants? Ce lien est juste pour toi.",
 };
 
 export const GROUP_CALENDAR_RECEIPT: Record<ReplyLanguage, string> = {
@@ -24,17 +23,41 @@ export const GROUP_CALENDAR_RECEIPT: Record<ReplyLanguage, string> = {
   fr: 'Le calendrier de {name} est connecte. Je suis les activites des enfants sur les deux.',
 };
 
-// NEEDS DESIGN LOCK (Sloane)
-/** Placeholder. The link is in the group, so the one-to-one line cannot stay. */
+/** Sloane, locked. Its own turn, once, with the card in this same bubble. */
 export const GROUP_GMAIL_ASK: Record<ReplyLanguage, string> = {
-  en: '{name}, want me to catch school and camp emails for you too? The Gmail link is in this thread. Nothing from your inbox shows up here.',
-  fr: "{name}, tu veux que je repere aussi les courriels de l'ecole et des camps? Le lien Gmail est dans ce fil. Rien de ta boite ne s'affiche ici.",
+  en: '{name}, want me to catch school and camp emails for you too? This link is just for you. Nothing from your inbox shows up here.',
+  fr: "{name}, tu veux que je repere aussi les courriels de l'ecole et des camps? Ce lien est juste pour toi. Rien de ta boite ne s'affiche ici.",
 };
 
 export const GROUP_GMAIL_RECEIPT: Record<ReplyLanguage, string> = {
   en: "{name}'s Gmail is connected. I'll pull out the kids' dates; the inbox stays private.",
   fr: 'Le Gmail de {name} est connecte. Je garde les dates des enfants; la boite reste privee.',
 };
+
+/**
+ * Sloane, locked. A 1:1 activity decision, told to the group. Templated only.
+ * The line never says Hale booked anything.
+ */
+export function groupPickedSyncLine(
+  language: ReplyLanguage,
+  input: { name: string; activity: string; kid: string; day: string; time: string },
+): string {
+  if (language === 'fr') {
+    return `Pour info: ${input.name} a choisi ${input.activity} pour ${input.kid}, ${input.day} a ${input.time}.`;
+  }
+  return `Quick sync: ${input.name} picked ${input.activity} for ${input.kid}, ${input.day} at ${input.time}.`;
+}
+
+/** Sloane, locked. The passed twin. No day and no time, because nothing was chosen. */
+export function groupPassedSyncLine(
+  language: ReplyLanguage,
+  input: { name: string; activity: string; kid: string },
+): string {
+  if (language === 'fr') {
+    return `Pour info: ${input.name} a laisse tomber ${input.activity} pour ${input.kid}.`;
+  }
+  return `Quick sync: ${input.name} passed on ${input.activity} for ${input.kid}.`;
+}
 
 export const GROUP_KID_EVENT: Record<ReplyLanguage, string> = {
   en: "Heads up: {name} added {kid}'s {event}, {day} at {time}.",

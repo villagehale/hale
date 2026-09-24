@@ -66,7 +66,8 @@ export type FollowUpFallback =
   | 'skill_unavailable'
   | 'model_unreachable'
   | 'model_failed'
-  | 'gates_exhausted';
+  | 'gates_exhausted'
+  | 'group_cap';
 
 export type FollowUpComposeOutcome =
   | { status: 'composed'; message: string }

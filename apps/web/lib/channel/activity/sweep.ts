@@ -484,13 +484,14 @@ export function defaultActivityFollowUpDeps(): ActivityFollowUpDeps {
         .values({
           familyId: write.familyId,
           parentUserId: write.parentUserId,
-          channel: 'sms',
+          channel: write.channel ?? 'sms',
           direction: 'out',
           category: 'activity_followup',
           templateKey: write.templateKey,
           dedupeKey: write.dedupeKey,
           providerMessageId: write.providerMessageId,
-          status: acceptedStatus('sms'),
+          providerChatId: write.providerChatId ?? null,
+          status: acceptedStatus(write.channel ?? 'sms'),
           relatedConversationId: write.relatedConversationId,
           sentAt: write.sentAt,
         })

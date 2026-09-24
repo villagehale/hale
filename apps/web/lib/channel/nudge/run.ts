@@ -22,6 +22,13 @@ import {
 import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import {
+  type FamilyOutboundTarget,
+  deliverFamilyOutbound,
+  familyOutboundTarget,
+  familySpeech,
+  householdCopies,
+} from '~/lib/channel/linq/family-outbound';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -142,12 +149,13 @@ export interface NudgeChildRow {
 export interface NudgeLedgerWrite {
   familyId: string;
   parentUserId: string;
-  channel: 'sms';
+  channel: 'sms' | 'imessage';
   category: 'nudge';
   templateKey: string;
   dedupeKey: string;
   status: AcceptedStatus;
   providerMessageId: string;
+  providerChatId?: string | null;
   sentAt: Date;
 }
 
@@ -248,6 +256,13 @@ export interface NudgeRunDeps {
    * behind an explicit, result-visible flag, never behind an absent dependency.
    */
   transport: ChannelTransport;
+  /**
+   * Where Hale-initiated copy for this family goes. Production reads
+   * `families.linq_group_chat_id`. Absent means the legacy door, so a test
+   * double with no family row keeps today's SMS path.
+   */
+  outboundTarget?(database: Database, familyId: string): Promise<FamilyOutboundTarget>;
+  fetch?: typeof fetch;
   /**
    * Put the sent nudge in the parent's own text thread — REQUIRED, same reason as the
    * three above (rule #11). `channel_messages` carries no body, so a sweep that could be
@@ -621,7 +636,24 @@ async function runForFamily(
    * left, in the reader's stable primary-parent-first order. */
   let firstMessageId: string | null = null;
 
-  for (const { recipient, optOut, dedupeKey } of pending) {
+  const target = deps.outboundTarget
+    ? await deps.outboundTarget(database, family.familyId)
+    : await familyOutboundTarget(database, family.familyId);
+  // One bubble in the group. Both parents still get their own copy when the
+  // family has no group. The weekly cap is counted on the ledger, so the
+  // second seat is held on the next tick rather than texted again.
+  const copies = householdCopies(target, pending);
+  let wireMessage = message;
+  if (target.channel === 'group' && nudge.kind === 'empty_saturday') {
+    const speech = await familySpeech(
+      database,
+      family.familyId,
+      copies[0]?.recipient.parentUserId ?? '',
+    );
+    if (speech.name) wireMessage = `${speech.name}, ${message}`;
+  }
+
+  for (const { recipient, optOut, dedupeKey } of copies) {
     const to = await deps.resolveSendablePhone(database, recipient.parentUserId);
     if (!to) {
       // The gate just said this parent has a live channel, so there IS one — a missing
@@ -629,23 +661,42 @@ async function runForFamily(
       throw new Error(`runNudgeCron: no send target for parent ${recipient.parentUserId}`);
     }
 
-    const { providerMessageId } = await deps.transport.send({
+    const delivered = await deliverFamilyOutbound(database, {
+      familyId: family.familyId,
+      body: withOptOut(wireMessage, optOut),
       to,
-      body: withOptOut(message, optOut),
+      legacy: deps.transport,
+      target,
+      fetch: deps.fetch,
+      now,
+      bubbleKind: nudge.kind === 'registration' ? 'rec_morning' : 'weekly_followup',
     });
+    if (delivered.status === 'held') {
+      await deps.audit(database, {
+        familyId: family.familyId,
+        actor: 'system',
+        actionTaken: 'proactive_nudge_skipped',
+        targetTable: 'families',
+        targetId: family.familyId,
+        after: { reason: delivered.reason, cohort },
+      });
+      return emptyTally({ held });
+    }
+    const { providerMessageId } = delivered;
 
     const messageId = await deps.recordSend(database, {
       familyId: family.familyId,
       parentUserId: recipient.parentUserId,
-      channel: 'sms',
+      channel: delivered.channel === 'imessage' ? 'imessage' : 'sms',
       category: 'nudge',
       templateKey:
         nudge.kind === 'weekday_care'
           ? weekdayFinderTemplateKey(nudge.ask)
           : proactiveNudgeTemplateKey(nudge.kind),
       dedupeKey,
-      status: acceptedStatus('sms'),
+      status: acceptedStatus(delivered.channel === 'imessage' ? 'imessage' : 'sms'),
       providerMessageId,
+      providerChatId: delivered.chatId,
       sentAt: now,
     });
     await deps.audit(database, {
@@ -889,6 +940,7 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
       await database.insert(schema.auditLog).values(row);
     },
     transport: createTwilioTransport(),
+    outboundTarget: familyOutboundTarget,
     client: voiceClient(),
     fulfillCommitment,
     recordCheckupOffer: (database, input) =>

@@ -7,6 +7,7 @@ import { type ActivityFinder, createActivityFinder } from '~/lib/channel/activit
 import { type ActivityFamilyReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
 import { f14Allowlist, f14Enabled, f14EnabledFor } from '~/lib/channel/f14';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -436,11 +437,26 @@ async function briefOne(
   }
 
   let providerMessageId: string;
+  let carried: 'sms' | 'imessage' = 'sms';
+  let chatId: string | null = null;
   try {
-    ({ providerMessageId } = await deps.transport.send({
-      to,
+    const delivered = await deliverFamilyOutbound(database, {
+      familyId: trip.familyId,
       body: withOptOut(rendered.body, verdict.optOut),
-    }));
+      to,
+      legacy: deps.transport,
+    });
+    if (delivered.status === 'held') {
+      await database
+        .update(schema.channelMessages)
+        .set({ status: 'failed', errorCode: 'group_cap' })
+        .where(eq(schema.channelMessages.id, claimed.id));
+      console.warn({ tripId: trip.id }, 'travel brief: group cap reached');
+      return;
+    }
+    providerMessageId = delivered.providerMessageId;
+    carried = delivered.channel === 'imessage' ? 'imessage' : 'sms';
+    chatId = delivered.chatId;
   } catch (err) {
     const code = err instanceof TwilioSendError ? err.code : 'unknown';
     await database
@@ -454,7 +470,12 @@ async function briefOne(
 
   await database
     .update(schema.channelMessages)
-    .set({ providerMessageId })
+    .set({
+      providerMessageId,
+      channel: carried,
+      providerChatId: chatId,
+      status: acceptedStatus(carried),
+    })
     .where(eq(schema.channelMessages.id, claimed.id));
 
   // R4 · OVERLAP COLLAPSE, at read rather than in the schema. The flight and the hotel for

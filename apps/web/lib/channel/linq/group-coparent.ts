@@ -319,21 +319,13 @@ async function advanceSeatedCoparent(
         body: { outcome },
       };
     }
-    const ask = groupCalendarAsk(language, name);
-    await sendLine(database, {
-      familyId: sender.familyId,
-      parentUserId: sender.userId,
-      chatId: message.chatId,
-      text: ask,
-      templateKey: CALENDAR_ASK_KEY,
-      dedupeKey: `${CALENDAR_ASK_KEY}:${sender.userId}`,
-      now: ports.now,
-      fetch: ports.fetch,
-    });
-    const sent = await deliverGroupLink(database, {
+    const sent = await sendAskWithLink(database, {
       familyId: sender.familyId,
       parentUserId: sender.userId,
       groupChatId: message.chatId,
+      text: groupCalendarAsk(language, name),
+      templateKey: CALENDAR_ASK_KEY,
+      dedupeKey: `${CALENDAR_ASK_KEY}:${sender.userId}`,
       provider: 'gcal',
       now: ports.now,
       fetch: ports.fetch,
@@ -425,8 +417,56 @@ async function answerDoneStep(
 }
 
 /**
- * The connect card, in the group. The token is the link part only. The ask
- * text never carries it, and nothing here opens a 1:1 or falls back to Twilio.
+ * The ask and its card, one bubble. Linq refuses a link part beside text, so
+ * the URL is the next line of the same text part. The locked sentence itself
+ * does not contain the token. Nothing here opens a 1:1 or falls back to Twilio.
+ */
+async function sendAskWithLink(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    groupChatId: string;
+    text: string;
+    templateKey: string;
+    dedupeKey: string;
+    provider: 'gcal' | 'gmail';
+    now: Date;
+    fetch?: typeof fetch;
+    invalidatePrior?: boolean;
+  },
+): Promise<'sent' | 'already_sent' | 'not_sent'> {
+  const minted = await offerConnectorLinks(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    providers: [input.provider],
+    now: input.now,
+    invalidatePrior: input.invalidatePrior ?? input.provider === 'gcal',
+  });
+  if (minted.status !== 'minted') {
+    console.warn(
+      { familyId: input.familyId, provider: input.provider, reason: minted.status },
+      'linq group coparent: no connector link',
+    );
+    return 'not_sent';
+  }
+  const url = minted.urls[0];
+  if (!url) return 'not_sent';
+  return sendLine(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    chatId: input.groupChatId,
+    text: `${input.text}\n${url}`,
+    templateKey: input.templateKey,
+    dedupeKey: input.dedupeKey,
+    now: input.now,
+    fetch: input.fetch,
+  });
+}
+
+/**
+ * A card on its own, when the parent already asked for the link. The token is
+ * the link part only. Nothing here opens a 1:1 or falls back to Twilio.
  */
 async function deliverGroupLink(
   database: Database,
@@ -576,29 +616,19 @@ async function sendGmailAskOnce(
     fetch?: typeof fetch;
   },
 ): Promise<'sent' | 'already_sent' | 'not_sent'> {
-  const ask = groupGmailAsk(input.language, input.name);
-  const notice = await sendLine(database, {
+  const notice = await sendAskWithLink(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
-    chatId: input.chatId,
-    text: ask,
+    groupChatId: input.chatId,
+    text: groupGmailAsk(input.language, input.name),
     templateKey: GMAIL_ASK_KEY,
     dedupeKey: `${GMAIL_ASK_KEY}:${input.parentUserId}`,
+    provider: 'gmail',
     now: input.now,
     fetch: input.fetch,
+    invalidatePrior: false,
   });
   if (notice === 'not_sent') return 'not_sent';
-  if (notice === 'sent') {
-    await deliverGroupLink(database, {
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      groupChatId: input.chatId,
-      provider: 'gmail',
-      now: input.now,
-      fetch: input.fetch,
-      invalidatePrior: false,
-    });
-  }
   await setStep(database, input.parentUserId, 'done', input.now);
   return notice;
 }

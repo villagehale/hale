@@ -64,6 +64,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'seats a noted co-parent in a claimed group; sendLine inserts the channel_messages row (reply, dedupe key) before the Linq send and audits sms_reply_sent',
   'apps/web/lib/channel/linq/household-calendar.ts':
     'group notices for kid events, conflicts, handoffs, and how-it-went; sendGroupNotice inserts the channel_messages row before the Linq send',
+  'apps/web/lib/channel/linq/family-outbound.ts':
+    'the household outbound resolver; proactive callers ledger the row beside deliverFamilyOutbound, and postGroupDecisionSync inserts its own channel_messages row before the Linq send',
   'apps/web/lib/channel/linq/poll.ts':
     'sends the placeholder question and the poll, then writes linq:poll and linq_poll_sent',
   'apps/web/lib/channel/router/reply-transport.ts':

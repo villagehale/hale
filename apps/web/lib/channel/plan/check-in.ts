@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
@@ -118,6 +119,8 @@ export interface PlanCheckInDeps {
       providerMessageId: string;
       relatedConversationId: string | null;
       sentAt: Date;
+      channel?: 'sms' | 'imessage';
+      providerChatId?: string | null;
     },
   ): Promise<string>;
   audit(database: Database, row: Record<string, unknown>): Promise<void>;
@@ -240,15 +243,26 @@ async function sendOne(
   }
 
   const body = withOptOut(composed.message, verdict.optOut);
-  const { providerMessageId } = await deps.transport.send({ to, body });
+  const delivered = await deliverFamilyOutbound(database, {
+    familyId: commitment.familyId,
+    body,
+    to,
+    legacy: deps.transport,
+  });
+  if (delivered.status === 'held') {
+    console.warn({ familyId: commitment.familyId }, 'coach plan check-in: group cap reached');
+    return;
+  }
   const channelMessageId = await deps.recordSend(database, {
     familyId: commitment.familyId,
     parentUserId: recipient.parentUserId,
     templateKey: `coach_plan:check_in:${commitment.topic}`,
     dedupeKey,
-    providerMessageId,
+    providerMessageId: delivered.providerMessageId,
     relatedConversationId: recipient.conversationId,
     sentAt: now,
+    channel: delivered.channel === 'imessage' ? 'imessage' : 'sms',
+    providerChatId: delivered.chatId,
   });
   await deps.audit(database, {
     familyId: commitment.familyId,
@@ -317,13 +331,14 @@ export function defaultPlanCheckInDeps(): PlanCheckInDeps {
         .values({
           familyId: write.familyId,
           parentUserId: write.parentUserId,
-          channel: 'sms',
+          channel: write.channel ?? 'sms',
           direction: 'out',
           category: 'plan_check_in',
           templateKey: write.templateKey,
           dedupeKey: write.dedupeKey,
           providerMessageId: write.providerMessageId,
-          status: acceptedStatus('sms'),
+          providerChatId: write.providerChatId ?? null,
+          status: acceptedStatus(write.channel ?? 'sms'),
           relatedConversationId: write.relatedConversationId,
           sentAt: write.sentAt,
         })

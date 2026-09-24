@@ -26,4 +26,29 @@ describe('router reply transport — iMessage', () => {
     });
     expect(phone.send).not.toHaveBeenCalled();
   });
+
+  it('answers a parent-started 1:1 in that chat, not the household group', async () => {
+    const phone: ChannelTransport = { send: vi.fn() };
+    const imessage = vi.fn(async () => ({ providerMessageId: 'msg-out-2' }));
+    const transport = createReplyTransport({ phone, email: null, imessage });
+    const groupChatId = 'chat-household-group';
+
+    await transport.send({
+      route: {
+        channel: 'imessage',
+        to: '+12025559876',
+        chatId: 'chat-one-to-one',
+        replyToMessageId: 'msg-in-2',
+      },
+      body: 'You are in for swim.',
+    });
+
+    expect(imessage).toHaveBeenCalledWith({
+      chatId: 'chat-one-to-one',
+      body: 'You are in for swim.',
+      replyToMessageId: 'msg-in-2',
+    });
+    expect(JSON.stringify(imessage.mock.calls)).not.toContain(groupChatId);
+    expect(phone.send).not.toHaveBeenCalled();
+  });
 });
