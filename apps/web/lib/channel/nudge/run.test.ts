@@ -419,7 +419,7 @@ describe('runNudgeCron — sending', () => {
         }),
         pendingHowItWent: async () => [
           {
-            text: 'Sam, How did swim go? One line is plenty.',
+            text: 'Sam, how did swim go? One line is plenty.',
             dedupeKey: 'followup:activity:evt-1',
             parentUserId: 'user-1',
           },
@@ -430,7 +430,7 @@ describe('runNudgeCron — sending', () => {
     );
     expect(result.sent).toBe(1);
     expect(urls).toHaveLength(1);
-    expect(bodies.join('\n')).toContain('Sam, How did swim go? One line is plenty.');
+    expect(bodies.join('\n')).toContain('Sam, how did swim go? One line is plenty.');
     expect(h.transport.sent).toEqual([]);
   });
 

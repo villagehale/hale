@@ -11,7 +11,9 @@ import {
   GROUP_WELCOME,
   absorbHowItWentLines,
   groupActivityHowItWent,
+  groupAddressedLine,
   groupBothReaderFrench,
+  groupDepartureNotice,
   groupEmptySaturdayLine,
   groupPostEventText,
 } from './group-coparent-copy';
@@ -131,19 +133,49 @@ describe('group ask strings', () => {
 describe('two-reader group lines', () => {
   it('names a known parent on how-it-went and empty Saturday', () => {
     expect(groupActivityHowItWent('en', 'Sam', 'swim')).toBe(
-      'Sam, How did swim go? One line is plenty.',
+      'Sam, how did swim go? One line is plenty.',
+    );
+    expect(groupActivityHowItWent('fr', 'Sam', 'natation')).toBe(
+      "Sam, comment ca s'est passe pour natation ? Une ligne suffit.",
     );
     expect(groupActivityHowItWent('fr', null, 'swim')).toBe(
       "Comment ca s'est passe pour swim ? Une ligne suffit.",
     );
     expect(groupEmptySaturdayLine('en', 'Sam', 'Maya')).toBe(
-      "Sam, This Saturday looks open for Maya. Want one nearby find that's actually running?",
+      "Sam, this Saturday looks open for Maya. Want one nearby find that's actually running?",
+    );
+    expect(groupEmptySaturdayLine('fr', 'Sam', 'Maya')).toBe(
+      "Sam, ce samedi a l'air libre pour Maya. Tu veux une seule idee a cote qui tourne vraiment ?",
     );
     expect(groupEmptySaturdayLine('en', null, 'Maya')).toBe(
       "This Saturday looks open for Maya. Want one nearby find that's actually running?",
     );
     expect(groupEmptySaturdayLine('fr', null, 'Maya')).toBe(
       "Ce samedi a l'air libre pour Maya. Vous voulez une seule idee a cote qui tourne vraiment ?",
+    );
+  });
+
+  it('prefixes a known evening and leaves an unknown one alone', () => {
+    expect(
+      groupAddressedLine('Sam', 'How did today go with Mia and Leo? One line is plenty.'),
+    ).toBe('Sam, how did today go with Mia and Leo? One line is plenty.');
+    expect(groupAddressedLine('Sam', 'What was the best bit of today with Mia?')).toBe(
+      'Sam, what was the best bit of today with Mia?',
+    );
+  });
+
+  it('uses the locked group departure line, and the role when the name is unknown', () => {
+    expect(groupDepartureNotice('en', 'Sam')).toBe(
+      "Sam left Hale. Nothing in the kids' year changed, and I'm still here.",
+    );
+    expect(groupDepartureNotice('fr', 'Sam')).toBe(
+      "Sam a quitte Hale. Rien n'a change dans l'annee des enfants, et je suis toujours la.",
+    );
+    expect(groupDepartureNotice('en', null)).toBe(
+      "Your co-parent left Hale. Nothing in the kids' year changed, and I'm still here.",
+    );
+    expect(groupDepartureNotice('fr', null)).toBe(
+      "Votre co-parent a quitte Hale. Rien n'a change dans l'annee des enfants, et je suis toujours la.",
     );
   });
 
@@ -160,10 +192,10 @@ describe('two-reader group lines', () => {
   it('folds up to three how-it-went lines into the weekly bubble', () => {
     const weekly = 'This week: swim on Tuesday.';
     const lines = [
-      'Sam, How did swim go? One line is plenty.',
-      'Sam, How did art go? One line is plenty.',
-      'Sam, How did music go? One line is plenty.',
-      'Sam, How did dance go? One line is plenty.',
+      'Sam, how did swim go? One line is plenty.',
+      'Sam, how did art go? One line is plenty.',
+      'Sam, how did music go? One line is plenty.',
+      'Sam, how did dance go? One line is plenty.',
     ];
     const body = absorbHowItWentLines(weekly, lines);
     expect(body).toContain(weekly);
@@ -213,10 +245,10 @@ describe('design-locked group strings', () => {
       "Vous etes libres tous les deux {slot1} ou {slot2}. Vous voulez la page d'inscription pour l'un des deux?",
     );
     expect(groupPostEventText('en', 'Sam', 'swim')).toBe(
-      'Sam, How did swim go? One line is plenty.',
+      'Sam, how did swim go? One line is plenty.',
     );
     expect(groupPostEventText('fr', 'Sam', 'natation')).toBe(
-      "Sam, Comment ca s'est passe pour natation ? Une ligne suffit.",
+      "Sam, comment ca s'est passe pour natation ? Une ligne suffit.",
     );
   });
 });
@@ -373,7 +405,7 @@ describe('planHouseholdNotices', () => {
     ]);
     expect(planned).toHaveLength(1);
     expect(planned[0]?.kind).toBe('followup');
-    expect(planned[0]?.text).toBe('Barton, How did gymnastics go? One line is plenty.');
+    expect(planned[0]?.text).toBe('Barton, how did gymnastics go? One line is plenty.');
     expect(planned[0]?.recipientUserId).toBe(PARENT_A);
   });
 

@@ -7,8 +7,14 @@ import {
   channelScheduleReader,
 } from '~/lib/channel/coach/tools';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
+import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
-import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
+import {
+  deliverFamilyOutbound,
+  familyOutboundTarget,
+  familySpeech,
+} from '~/lib/channel/linq/family-outbound';
+import { groupAddressedLine } from '~/lib/channel/linq/group-coparent-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -16,21 +22,20 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
-import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { threadProactiveMessage } from '~/lib/channel/thread';
-import { nightlyOccasion } from '~/lib/channel/variant';
-import { readinessQuestion } from '~/lib/registration/sequence/prepare-reply';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { nightlyOccasion } from '~/lib/channel/variant';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { dayKeyIn } from '~/lib/plan/spine';
+import { readinessQuestion } from '~/lib/registration/sequence/prepare-reply';
 import {
   type CheckInDecision,
   type CheckInSkipReason,
   type CheckInState,
+  decideCheckIn,
   isEveningCheckInSlot,
   localDateKey,
-  decideCheckIn,
   readCheckInState,
   recordCheckInAsk,
   recordCheckInCadence,
@@ -381,7 +386,9 @@ async function runForFamily(
     return;
   }
 
-  if ((await deps.readinessStanding(database, family.familyId, family.parentUserId, now)) !== null) {
+  if (
+    (await deps.readinessStanding(database, family.familyId, family.parentUserId, now)) !== null
+  ) {
     result.heldForRegistration += 1;
     return;
   }
@@ -430,9 +437,21 @@ async function runForFamily(
     throw new Error(`evening check-in: no send target for parent ${family.parentUserId}`);
   }
 
+  // In a claimed group the evening is about one parent. Name them when known.
+  // An unknown parent keeps the pool line, which already reads to both.
+  // The step-down notice has no "you" and stays as written.
+  let spoken = message;
+  if (decision.kind !== 'step_down') {
+    const target = await familyOutboundTarget(database, family.familyId);
+    if (target.channel === 'group') {
+      const speech = await familySpeech(database, family.familyId, family.parentUserId);
+      if (speech.name) spoken = groupAddressedLine(speech.name, message);
+    }
+  }
+
   const delivered = await deliverFamilyOutbound(database, {
     familyId: family.familyId,
-    body: withOptOut(message, verdict.optOut),
+    body: withOptOut(spoken, verdict.optOut),
     to,
     legacy: deps.transport,
   });
@@ -470,7 +489,7 @@ async function runForFamily(
   await deps.threadMessage(database, {
     familyId: family.familyId,
     parentUserId: family.parentUserId,
-    body: message,
+    body: spoken,
   });
 
   if (decision.kind === 'step_down') {
@@ -556,10 +575,7 @@ async function selectCheckInFamilies(database: Database): Promise<CheckInFamily[
       ),
     )
     .innerJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
-    .leftJoin(
-      schema.familyCheckInPrefs,
-      eq(schema.familyCheckInPrefs.familyId, schema.families.id),
-    )
+    .leftJoin(schema.familyCheckInPrefs, eq(schema.familyCheckInPrefs.familyId, schema.families.id))
     .where(
       and(
         eq(schema.families.onboardingStage, 'sms_active'),
@@ -671,10 +687,10 @@ async function readTodayActivity(
   const nameable = today.filter((event) => anchorRefusal(event) === null);
   const chosen = nameable[nameable.length - 1];
   if (chosen) return { anchor: chosen.title };
-  return { anchor: null, reason: anchorRefusal(latest) as Exclude<
-    ReturnType<typeof anchorRefusal>,
-    null
-  > };
+  return {
+    anchor: null,
+    reason: anchorRefusal(latest) as Exclude<ReturnType<typeof anchorRefusal>, null>,
+  };
 }
 
 export function defaultEveningCheckInDeps(): EveningCheckInDeps {

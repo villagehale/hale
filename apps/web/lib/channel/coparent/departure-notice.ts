@@ -1,9 +1,15 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
+import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
-import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
+import {
+  deliverFamilyOutbound,
+  familyOutboundTarget,
+  familySpeech,
+} from '~/lib/channel/linq/family-outbound';
+import { groupDepartureNotice } from '~/lib/channel/linq/group-coparent-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type ProactiveHoldReason,
@@ -16,7 +22,6 @@ import {
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { f14EnabledFor } from '~/lib/channel/f14';
 import { CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE } from './copy';
 
 /**
@@ -171,8 +176,17 @@ export async function tellStayingParent(
     return `gate_refused:${verdict.reason}`;
   }
 
-  const language = await parentLanguage(database, parentUserId);
-  const message = CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE[language];
+  const target = await familyOutboundTarget(database, familyId);
+  let message: string;
+  let language: ReplyLanguage;
+  if (target.channel === 'group') {
+    const speech = await familySpeech(database, familyId, departedUserId);
+    language = speech.language;
+    message = groupDepartureNotice(language, speech.name);
+  } else {
+    language = await parentLanguage(database, parentUserId);
+    message = CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE[language];
+  }
 
   // CLAIM FIRST, by the insert rather than by the read above: two erasure requests
   // racing the same departure both pass a read and only one wins the unique index.

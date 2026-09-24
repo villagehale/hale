@@ -125,13 +125,21 @@ export function groupHandoffText(
   return fill(GROUP_HANDOFF[language], input);
 }
 
-/** `'{name}, ' +` the locked how-it-went line. Capital H stays. */
+/** `{name}, ` then the locked how-it-went line, with the next letter lowercased. */
 export function groupPostEventText(
   language: ReplyLanguage,
   name: string,
   activity: string,
 ): string {
-  return `${name}, ${howItWentAsk(activity, language)}`;
+  return groupAddressedLine(name, howItWentAsk(activity, language));
+}
+
+/** `{name}, ` then the line. The first letter after the comma is lowercase. */
+export function groupAddressedLine(name: string, line: string): string {
+  const trimmed = line.trimStart();
+  const rest =
+    trimmed.length === 0 ? trimmed : `${trimmed.charAt(0).toLowerCase()}${trimmed.slice(1)}`;
+  return `${name}, ${rest}`;
 }
 
 /**
@@ -157,8 +165,28 @@ export function groupEmptySaturdayLine(
   kid: string,
 ): string {
   const ask = renderEmptySaturdayAsk(kid, language);
-  if (name) return `${name}, ${ask}`;
+  if (name) return groupAddressedLine(name, ask);
   return language === 'fr' ? groupBothReaderFrench(ask) : ask;
+}
+
+/**
+ * Sloane, locked. The group does not guess who is travelling.
+ * `Trip: {city}, {days}. A couple of things on for {kids}:`
+ */
+export function groupTravelBriefOpening(city: string, days: string, kids: string): string {
+  return `Trip: ${city}, ${days}. A couple of things on for ${kids}:`;
+}
+
+/**
+ * Sloane, locked. Said in the group when a parent leaves.
+ * An unknown name is `Your co-parent` / `Votre co-parent`.
+ */
+export function groupDepartureNotice(language: ReplyLanguage, name: string | null): string {
+  const who = name ?? (language === 'fr' ? 'Votre co-parent' : 'Your co-parent');
+  if (language === 'fr') {
+    return `${who} a quitte Hale. Rien n'a change dans l'annee des enfants, et je suis toujours la.`;
+  }
+  return `${who} left Hale. Nothing in the kids' year changed, and I'm still here.`;
 }
 
 /**

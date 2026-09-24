@@ -172,6 +172,12 @@ export function connectedNotice(
         body: `Ce lien est pour ${named}. Le tien est deja connecte.`,
       };
     }
+    if (options?.language === 'fr') {
+      return {
+        heading: 'Deja connecte',
+        body: 'Ce lien est pour le parent a qui il a ete envoye. Le tien est deja connecte.',
+      };
+    }
     if (named) {
       return {
         heading: 'Already connected',

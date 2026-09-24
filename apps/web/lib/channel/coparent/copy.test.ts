@@ -3,11 +3,11 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
 import {
   CO_PARENT_ANSWER_PROMPT_BY_LANGUAGE,
-  CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE,
-  INVITE_EXPIRED_BY_LANGUAGE,
   CO_PARENT_DECLINE_ACK_BY_LANGUAGE,
+  CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE,
   CO_PARENT_NUMBER_IN_USE_BY_LANGUAGE,
   CO_PARENT_SEAT_TAKEN_BY_LANGUAGE,
+  INVITE_EXPIRED_BY_LANGUAGE,
   PREVIOUSLY_DECLINED_BY_LANGUAGE,
   REFERRER_UNNAMED_BY_LANGUAGE,
   coParentInviteBody,
@@ -139,6 +139,12 @@ describe('co-parent copy · the two sentences nobody asked for (VIL-355 follow-u
     const body = CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE[language];
     expect(isGsm7(body)).toBe(true);
     expect(smsSegments(body)).toBe(1);
+  });
+
+  it('keeps the 1:1 French departure line ASCII', () => {
+    expect(CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.fr).toBe(
+      "Votre co-parent a quitte Hale. Votre semaine est a vous seul maintenant - rien n'y a change, et le lien d'invitation fonctionne toujours.",
+    );
   });
 
   it('names nobody in the departure notice — no person, no household, no child', () => {

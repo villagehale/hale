@@ -54,6 +54,15 @@ describe('/connected — the done page', () => {
     expect(html).toContain('Ce lien est pour Sam. Le tien est deja connecte.');
   });
 
+  it('uses the locked French fallback when the link owner has no name', async () => {
+    const html = await render({ provider: 'gcal', status: 'own_link', lang: 'fr' });
+
+    expect(html).toContain(
+      'Ce lien est pour le parent a qui il a ete envoye. Le tien est deja connecte.',
+    );
+    expect(html).toContain('Deja connecte');
+  });
+
   it('tells an expired link from a connect that broke', async () => {
     // Two different things went wrong and the parent is told which, because only one of
     // them is worth retrying immediately. (Apostrophes come back HTML-escaped.)
