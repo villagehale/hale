@@ -276,7 +276,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
   if (keyword) return routeClaimedGroup(deps, message);
 
   const trigger = matchLinqGroupTrigger(message.text);
-  if (trigger) return claimGroupFromTrigger(deps, message, mapped);
+  if (trigger) return claimGroupFromTrigger(deps, message, mapped, trigger);
 
   const owned = await familyOwnsLinqGroupChat(deps.database, mapped.familyId, message.chatId);
   if (!owned) {
@@ -315,6 +315,7 @@ async function claimGroupFromTrigger(
   deps: LinqDoorDeps,
   message: LinqInboundText,
   mapped: { familyId: string; userId: string },
+  language: 'en' | 'fr',
 ): Promise<Response> {
   const recorded = await recordHandledInbound(deps, message, mapped);
   if (!recorded) {
@@ -342,7 +343,7 @@ async function claimGroupFromTrigger(
     familyId: mapped.familyId,
     parentUserId: mapped.userId,
     chatId: message.chatId,
-    text: accepted ? LINQ_GROUP_OPEN_TEXT : LINQ_GROUP_CLAIM_REFUSED_TEXT,
+    text: accepted ? LINQ_GROUP_OPEN_TEXT : LINQ_GROUP_CLAIM_REFUSED_TEXT[language],
     templateKey: accepted ? LINQ_GROUP_CLAIMED_TEMPLATE_KEY : LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY,
     now,
     send: deps.sendGroupText,
@@ -369,7 +370,7 @@ async function answerGroupTriggerInOneToOne(
   const from = linqFromE164();
   const text = from
     ? linqGroupTriggerInOneToOne(formatLinqLineForParent(from), language)
-    : LINQ_GROUP_LINE_MISSING_TEXT;
+    : LINQ_GROUP_LINE_MISSING_TEXT[language];
   const notice = await deliverLinqGroupNotice(deps.database, {
     familyId: mapped.familyId,
     parentUserId: mapped.userId,

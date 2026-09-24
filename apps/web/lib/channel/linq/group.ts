@@ -50,7 +50,7 @@ export const LINQ_GROUP_UNKNOWN_HOLD =
   "I only keep this household's year with parents already on Hale. Text me one to one if that's you.";
 
 /**
- * DESIGN LOCK PENDING (Sloane). The whole message a parent sends in the
+ * Design locked (2026-09-24, #706). The whole message a parent sends in the
  * iMessage group they started, and nothing else. Hale claims that chat when
  * this arrives from an enrolled parent. A sentence that merely contains it
  * is not the trigger.
@@ -61,7 +61,7 @@ export const LINQ_GROUP_TRIGGER_PHRASE: Record<ReplyLanguage, string> = {
 };
 
 /**
- * DESIGN LOCK PENDING (Sloane). Told in the 1:1 after the co-parent number.
+ * Design locked (2026-09-24, #706). Told in the 1:1 after the co-parent number.
  * Hale does not text that number and does not create the group.
  */
 export function linqGroupMakeInstruction(line: string, language: ReplyLanguage): string {
@@ -72,7 +72,7 @@ export function linqGroupMakeInstruction(line: string, language: ReplyLanguage):
 }
 
 /**
- * DESIGN LOCK PENDING (Sloane). The trigger arrived in the 1:1. Hale does
+ * Design locked (2026-09-24, #706). The trigger arrived in the 1:1. Hale does
  * not claim a group from that chat.
  */
 export function linqGroupTriggerInOneToOne(line: string, language: ReplyLanguage): string {
@@ -82,8 +82,11 @@ export function linqGroupTriggerInOneToOne(line: string, language: ReplyLanguage
     : `That phrase belongs in the group. Start an iMessage group with them and ${line}, then send: ${phrase}.`;
 }
 
-/** DESIGN LOCK PENDING (Sloane). This chat cannot become the household thread. */
-export const LINQ_GROUP_CLAIM_REFUSED_TEXT = "I can't use this thread as your household year.";
+/** Design locked (2026-09-24, #706). This chat cannot become the household thread. */
+export const LINQ_GROUP_CLAIM_REFUSED_TEXT: Record<ReplyLanguage, string> = {
+  en: "I can't use this thread as your kids' year.",
+  fr: "Je ne peux pas utiliser ce fil comme l'annee de vos enfants.",
+};
 
 /** Ack after a claim. The body is {@link LINQ_GROUP_OPEN_TEXT}. */
 export const LINQ_GROUP_CLAIMED_TEMPLATE_KEY = 'linq:group_claimed';
@@ -92,8 +95,11 @@ export const LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY = 'linq:group_claim_refused';
 /** The trigger arrived in the 1:1. The body is {@link linqGroupTriggerInOneToOne}. */
 export const LINQ_GROUP_TRIGGER_1TO1_TEMPLATE_KEY = 'linq:group_trigger_1to1';
 
-/** DESIGN LOCK PENDING (Sloane). Hale has no line to tell the parent to add. */
-export const LINQ_GROUP_LINE_MISSING_TEXT = "I don't have a number for you to add to a group yet.";
+/** Design locked (2026-09-24, #706). Hale has no line to tell the parent to add. */
+export const LINQ_GROUP_LINE_MISSING_TEXT: Record<ReplyLanguage, string> = {
+  en: "I don't have a number for you to add to a group yet.",
+  fr: "Je n'ai pas encore de numero a ajouter a un groupe.",
+};
 
 /** A parent-facing rendering of Hale's E.164. NANP numbers read as a phone. */
 export function formatLinqLineForParent(e164: string): string {

@@ -155,7 +155,7 @@ export async function deliverCoParentNumberInvite(
   if (!parentPhone) {
     return {
       status: 'unreached',
-      reply: imessage ? LINQ_GROUP_LINE_MISSING_TEXT : CO_PARENT_REDIRECT,
+      reply: imessage ? LINQ_GROUP_LINE_MISSING_TEXT[language] : CO_PARENT_REDIRECT,
       templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
     };
   }
@@ -264,7 +264,7 @@ async function instructLinqGroup(
   if (!from) {
     return {
       status: 'unreached',
-      reply: LINQ_GROUP_LINE_MISSING_TEXT,
+      reply: LINQ_GROUP_LINE_MISSING_TEXT[input.language],
       templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
     };
   }

@@ -236,7 +236,7 @@ describe('a number on the Linq door', () => {
     });
     expect(outcome).toEqual({
       status: 'unreached',
-      reply: LINQ_GROUP_LINE_MISSING_TEXT,
+      reply: LINQ_GROUP_LINE_MISSING_TEXT.en,
       templateKey: 'coparent:number_invite_held',
     });
     expect(await inviteStates()).toEqual(['identity_noted']);
