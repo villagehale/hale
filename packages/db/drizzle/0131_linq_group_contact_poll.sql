@@ -26,4 +26,8 @@ CREATE TABLE IF NOT EXISTS "linq_poll_options" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "linq_poll_options_option_id_uniq" ON "linq_poll_options" ("option_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "linq_poll_options_message_idx" ON "linq_poll_options" ("provider_message_id");
+CREATE INDEX IF NOT EXISTS "linq_poll_options_message_idx" ON "linq_poll_options" ("provider_message_id");--> statement-breakpoint
+-- The app connects as postgres (BYPASSRLS). PostgREST must not read this table
+-- without a policy. Enabling RLS with no policy is deny-by-default for the
+-- anon role. Idempotent: a second ENABLE does not raise.
+ALTER TABLE "linq_poll_options" ENABLE ROW LEVEL SECURITY;
