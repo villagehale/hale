@@ -9,6 +9,10 @@ import {
   GROUP_HANDOFF,
   GROUP_KID_EVENT,
   GROUP_WELCOME,
+  absorbHowItWentLines,
+  groupActivityHowItWent,
+  groupBothReaderFrench,
+  groupEmptySaturdayLine,
   groupPostEventText,
 } from './group-coparent-copy';
 import {
@@ -121,6 +125,52 @@ describe('group ask strings', () => {
     ]) {
       expect(line).not.toMatch(/one-to-one|en prive/i);
     }
+  });
+});
+
+describe('two-reader group lines', () => {
+  it('names a known parent on how-it-went and empty Saturday', () => {
+    expect(groupActivityHowItWent('en', 'Sam', 'swim')).toBe(
+      'Sam, How did swim go? One line is plenty.',
+    );
+    expect(groupActivityHowItWent('fr', null, 'swim')).toBe(
+      "Comment ca s'est passe pour swim ? Une ligne suffit.",
+    );
+    expect(groupEmptySaturdayLine('en', 'Sam', 'Maya')).toBe(
+      "Sam, This Saturday looks open for Maya. Want one nearby find that's actually running?",
+    );
+    expect(groupEmptySaturdayLine('en', null, 'Maya')).toBe(
+      "This Saturday looks open for Maya. Want one nearby find that's actually running?",
+    );
+    expect(groupEmptySaturdayLine('fr', null, 'Maya')).toBe(
+      "Ce samedi a l'air libre pour Maya. Vous voulez une seule idee a cote qui tourne vraiment ?",
+    );
+  });
+
+  it('switches a both-parents French line to vous and keeps English', () => {
+    expect(groupBothReaderFrench('Tu veux une idee? Envoie-moi un oui.')).toBe(
+      'Vous voulez une idee? Envoyez-moi un oui.',
+    );
+    expect(groupBothReaderFrench('Regarde ton calendrier et ta liste.')).toBe(
+      'Regarde votre calendrier et votre liste.',
+    );
+    expect(groupBothReaderFrench('Want one nearby find?')).toBe('Want one nearby find?');
+  });
+
+  it('folds up to three how-it-went lines into the weekly bubble', () => {
+    const weekly = 'This week: swim on Tuesday.';
+    const lines = [
+      'Sam, How did swim go? One line is plenty.',
+      'Sam, How did art go? One line is plenty.',
+      'Sam, How did music go? One line is plenty.',
+      'Sam, How did dance go? One line is plenty.',
+    ];
+    const body = absorbHowItWentLines(weekly, lines);
+    expect(body).toContain(weekly);
+    expect(body).toContain('swim');
+    expect(body).toContain('music');
+    expect(body).not.toContain('dance');
+    expect(body.split('\n')).toHaveLength(4);
   });
 });
 

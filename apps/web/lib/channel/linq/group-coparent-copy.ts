@@ -1,5 +1,6 @@
 import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { renderEmptySaturdayAsk } from '~/lib/channel/nudge/empty-saturday-copy';
 
 /**
  * Design-locked lines for the Linq household group (Sloane).
@@ -131,6 +132,59 @@ export function groupPostEventText(
   activity: string,
 ): string {
   return `${name}, ${howItWentAsk(activity, language)}`;
+}
+
+/**
+ * How-it-went in the group. A known parent is named. An unknown parent keeps
+ * the English line and uses the French line, which has no tu.
+ */
+export function groupActivityHowItWent(
+  language: ReplyLanguage,
+  name: string | null,
+  activity: string,
+): string {
+  if (name) return groupPostEventText(language, name, activity);
+  return howItWentAsk(activity, language);
+}
+
+/**
+ * Empty Saturday in the group. A known parent is named. An unknown parent
+ * keeps English and switches French tu to vous.
+ */
+export function groupEmptySaturdayLine(
+  language: ReplyLanguage,
+  name: string | null,
+  kid: string,
+): string {
+  const ask = renderEmptySaturdayAsk(kid, language);
+  if (name) return `${name}, ${ask}`;
+  return language === 'fr' ? groupBothReaderFrench(ask) : ask;
+}
+
+/**
+ * A line for both parents. English stays. French tu/ton/ta/envoie-moi become
+ * vous/votre/envoyez-moi. A `{name}, ` line is not passed through here.
+ */
+export function groupBothReaderFrench(text: string): string {
+  return text
+    .replaceAll('Tu veux', 'Vous voulez')
+    .replaceAll('tu veux', 'vous voulez')
+    .replaceAll('Envoie-moi', 'Envoyez-moi')
+    .replaceAll('envoie-moi', 'envoyez-moi')
+    .replaceAll(/\bTon\b/g, 'Votre')
+    .replaceAll(/\bTa\b/g, 'Votre')
+    .replaceAll(/\bton\b/g, 'votre')
+    .replaceAll(/\bta\b/g, 'votre');
+}
+
+/** The weekly bubble, plus up to three how-it-went lines. One text, not a second send. */
+export function absorbHowItWentLines(weekly: string, lines: readonly string[]): string {
+  const extra = lines
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(0, 3);
+  if (extra.length === 0) return weekly;
+  return `${weekly.trimEnd()}\n${extra.join('\n')}`;
 }
 
 export function groupBothFreeText(language: ReplyLanguage, slot1: string, slot2: string): string {

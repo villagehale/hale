@@ -4,7 +4,9 @@ import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import {
   type FamilyOutboundTarget,
   deliverFamilyOutbound,
+  familySpeech,
 } from '~/lib/channel/linq/family-outbound';
+import { groupBothReaderFrench } from '~/lib/channel/linq/group-coparent-copy';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { twilioConfig } from '~/lib/channel/twilio/config';
 import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
@@ -72,11 +74,17 @@ export function createTwilioSmsChannel(deps: TwilioSmsChannelDeps): Channel {
       }
 
       try {
-        const target = deps.familyTarget ? await deps.familyTarget(userId) : { channel: 'legacy' as const };
+        const target = deps.familyTarget
+          ? await deps.familyTarget(userId)
+          : { channel: 'legacy' as const };
         if (target.channel === 'group') {
-          const delivered = await deliverFamilyOutbound(deps.database ?? ({} as Database), {
+          const database = deps.database ?? ({} as Database);
+          const speech = await familySpeech(database, target.familyId, userId);
+          const body =
+            speech.language === 'fr' ? groupBothReaderFrench(rendered.text) : rendered.text;
+          const delivered = await deliverFamilyOutbound(database, {
             familyId: target.familyId,
-            body: rendered.text,
+            body,
             to,
             legacy: transport,
             target,

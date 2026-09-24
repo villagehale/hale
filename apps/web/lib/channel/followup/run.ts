@@ -20,7 +20,7 @@ import {
   familyOutboundTarget,
   familySpeech,
 } from '~/lib/channel/linq/family-outbound';
-import { groupPostEventText } from '~/lib/channel/linq/group-coparent-copy';
+import { groupActivityHowItWent } from '~/lib/channel/linq/group-coparent-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -478,7 +478,7 @@ async function sendFollowup(
   let spoken = composed.body;
   if (target.channel === 'group' && input.ask.kind === 'activity') {
     const speech = await familySpeech(database, input.familyId, input.parentUserId);
-    if (speech.name) spoken = groupPostEventText(speech.language, speech.name, input.ask.activity);
+    spoken = groupActivityHowItWent(speech.language, speech.name, input.ask.activity);
   }
   const body = withOptOut(spoken, verdict.optOut);
   const unbacked = await deps.refuseUnbackedSend(database, {
@@ -1047,6 +1047,44 @@ function followupVoiceClient(): AgentClient {
   // Sweep composer under the nudge cron's maxDuration 300 (audit P1-7).
   followupAnthropic ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
   return followupAnthropic;
+}
+
+/**
+ * How-it-went lines for this week's weekly group bubble. At most three.
+ * The weekly send claims their dedupe keys so the follow-up sweep does not
+ * send them again.
+ */
+export async function howItWentLinesForGroupWeekly(
+  database: Database,
+  input: { familyId: string; parentUserId: string; now: Date },
+): Promise<readonly { text: string; dedupeKey: string; parentUserId: string }[]> {
+  if (typeof database.select !== 'function') return [];
+  try {
+    const due = await readDueActivities(database, input.familyId, input.parentUserId, input.now);
+    const children = await readFollowupChildren(database, input.familyId);
+    const speech = await familySpeech(database, input.familyId, input.parentUserId);
+    const lines: { text: string; dedupeKey: string; parentUserId: string }[] = [];
+    for (const event of due) {
+      if (lines.length >= 3) break;
+      if (
+        isPrivateEvent({ childId: event.childId, sensitive: event.sensitive }, children, input.now)
+      ) {
+        continue;
+      }
+      lines.push({
+        text: groupActivityHowItWent(speech.language, speech.name, event.title),
+        dedupeKey: activityFollowupAskDedupeKey(event.ref.id),
+        parentUserId: event.parentUserId,
+      });
+    }
+    return lines;
+  } catch (err) {
+    console.warn(
+      { err: err instanceof Error ? err.name : 'unknown' },
+      'weekly: how-it-went lines unread',
+    );
+    return [];
+  }
 }
 
 export function defaultFollowupSweepDeps(): FollowupSweepDeps {

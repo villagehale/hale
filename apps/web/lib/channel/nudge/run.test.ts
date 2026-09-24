@@ -397,6 +397,43 @@ describe('runNudgeCron — sending', () => {
     expect(ledger[0]?.payload.providerChatId).toBe('chat-home');
   });
 
+  it('folds how-it-went lines into the weekly group bubble and does not send a second one', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const urls: string[] = [];
+    const bodies: string[] = [];
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      urls.push(String(url));
+      if (init?.body) bodies.push(String(init.body));
+      return new Response(JSON.stringify({ message: { id: 'nudge-group-1' } }), { status: 201 });
+    });
+    const h = harness({ candidates: [candidate()], weather: WET });
+    const result = await runNudgeCron(
+      db(),
+      {
+        ...h.deps,
+        outboundTarget: async () => ({
+          channel: 'group',
+          chatId: 'chat-home',
+          familyId: 'fam-1',
+        }),
+        pendingHowItWent: async () => [
+          {
+            text: 'Sam, How did swim go? One line is plenty.',
+            dedupeKey: 'followup:activity:evt-1',
+            parentUserId: 'user-1',
+          },
+        ],
+        fetch: fetchMock as unknown as typeof fetch,
+      },
+      FRIDAY_10AM,
+    );
+    expect(result.sent).toBe(1);
+    expect(urls).toHaveLength(1);
+    expect(bodies.join('\n')).toContain('Sam, How did swim go? One line is plenty.');
+    expect(h.transport.sent).toEqual([]);
+  });
+
   it('does not add a name ask as a second group bubble after a find', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');

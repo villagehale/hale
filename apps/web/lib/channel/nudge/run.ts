@@ -9,6 +9,7 @@ import {
   type FamilyTextRecipient,
   loadFamilyTextRecipients,
 } from '~/lib/channel/family-recipients';
+import { howItWentLinesForGroupWeekly } from '~/lib/channel/followup/run';
 import {
   type ParentCallNameState,
   decideParentCallName,
@@ -29,6 +30,11 @@ import {
   familySpeech,
   householdCopies,
 } from '~/lib/channel/linq/family-outbound';
+import {
+  absorbHowItWentLines,
+  groupBothReaderFrench,
+  groupEmptySaturdayLine,
+} from '~/lib/channel/linq/group-coparent-copy';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -144,6 +150,12 @@ export interface NudgeChildRow {
    * tolerance in the registration and health matchers; a birthday a parent typed does
    * not, and granting it anyway admits their child to windows they are not in yet. */
   dobPrecision: 'exact' | 'derived';
+}
+
+export interface GroupHowItWentLine {
+  text: string;
+  dedupeKey: string;
+  parentUserId: string;
 }
 
 export interface NudgeLedgerWrite {
@@ -284,6 +296,14 @@ export interface NudgeRunDeps {
     database: Database,
     input: { familyId: string; parentUserId: string },
   ): Promise<ParentCallNameState>;
+  /**
+   * How-it-went lines the weekly group bubble absorbs. Absent means none.
+   * Those lines are not also sent as their own bubble.
+   */
+  pendingHowItWent?(
+    database: Database,
+    input: { familyId: string; parentUserId: string; now: Date },
+  ): Promise<readonly GroupHowItWentLine[]>;
   client: AgentClient | null;
 }
 
@@ -401,6 +421,11 @@ function assertNever(value: never): never {
  * and not the empty-Saturday ask — that one must not grow the call-name second text. */
 function isFindNudge(kind: Nudge['kind']): boolean {
   return kind === 'registration' || kind === 'weather_swap' || kind === 'weekday_dropin';
+}
+
+/** Rec-morning, the weekly follow-up, and find results are for both parents. */
+function isBothParentsNudge(kind: Nudge['kind']): boolean {
+  return kind !== 'empty_saturday';
 }
 
 /**
@@ -644,13 +669,26 @@ async function runForFamily(
   // second seat is held on the next tick rather than texted again.
   const copies = householdCopies(target, pending);
   let wireMessage = message;
-  if (target.channel === 'group' && nudge.kind === 'empty_saturday') {
-    const speech = await familySpeech(
-      database,
-      family.familyId,
-      copies[0]?.recipient.parentUserId ?? '',
-    );
-    if (speech.name) wireMessage = `${speech.name}, ${message}`;
+  let absorbed: readonly GroupHowItWentLine[] = [];
+  if (target.channel === 'group') {
+    const speakerId = copies[0]?.recipient.parentUserId ?? '';
+    const speech = await familySpeech(database, family.familyId, speakerId);
+    if (nudge.kind === 'empty_saturday') {
+      wireMessage = groupEmptySaturdayLine(speech.language, speech.name, nudge.kidName);
+    } else if (speech.language === 'fr' && isBothParentsNudge(nudge.kind)) {
+      wireMessage = groupBothReaderFrench(message);
+    }
+    if (nudge.kind !== 'registration' && deps.pendingHowItWent) {
+      absorbed = await deps.pendingHowItWent(database, {
+        familyId: family.familyId,
+        parentUserId: speakerId,
+        now,
+      });
+      wireMessage = absorbHowItWentLines(
+        wireMessage,
+        absorbed.map((line) => line.text),
+      );
+    }
   }
 
   for (const { recipient, optOut, dedupeKey } of copies) {
@@ -699,6 +737,30 @@ async function runForFamily(
       providerChatId: delivered.chatId,
       sentAt: now,
     });
+    if (absorbed.length > 0 && typeof database.insert === 'function') {
+      for (const line of absorbed) {
+        try {
+          await database.insert(schema.channelMessages).values({
+            familyId: family.familyId,
+            parentUserId: line.parentUserId,
+            channel: delivered.channel === 'imessage' ? 'imessage' : 'sms',
+            direction: 'out',
+            category: 'reply',
+            templateKey: 'followup:activity',
+            dedupeKey: line.dedupeKey,
+            providerChatId: delivered.chatId,
+            status: acceptedStatus(delivered.channel === 'imessage' ? 'imessage' : 'sms'),
+            sentAt: now,
+          });
+        } catch (err) {
+          console.warn(
+            { err: err instanceof Error ? err.name : 'unknown', familyId: family.familyId },
+            'nudge: weekly absorbed a how-it-went line but did not claim it',
+          );
+        }
+      }
+      absorbed = [];
+    }
     await deps.audit(database, {
       familyId: family.familyId,
       actor: 'system',
@@ -950,5 +1012,6 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
       recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
     threadMessage: threadProactiveMessage,
     loadParentCallName,
+    pendingHowItWent: howItWentLinesForGroupWeekly,
   };
 }
