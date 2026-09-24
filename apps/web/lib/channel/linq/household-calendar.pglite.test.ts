@@ -574,7 +574,7 @@ describe('household calendars', () => {
     });
     expect(followupWire.linqUrls()).toEqual([GROUP_MESSAGES]);
     expect(followupWire.twilioUrls()).toEqual([]);
-    expect(followupWire.bodies()).toContain('How did gymnastics go?');
+    expect(followupWire.bodies()).toContain('how did gymnastics go?');
 
     const rows = await db.database
       .select({
@@ -617,9 +617,7 @@ describe('household calendars', () => {
         status: schema.channelMessages.status,
       })
       .from(schema.channelMessages);
-    expect(rows).toEqual([
-      { channel: 'imessage', providerChatId: GROUP, status: 'failed' },
-    ]);
+    expect(rows).toEqual([{ channel: 'imessage', providerChatId: GROUP, status: 'failed' }]);
     const [block] = await db.database
       .select({ announcedAt: schema.parentCalendarBlocks.announcedAt })
       .from(schema.parentCalendarBlocks);
