@@ -7,6 +7,7 @@ import {
   SAFETY_REPLY,
   SAFETY_REPLY_BY_LANGUAGE,
 } from '~/lib/channel/off-domain/copy';
+import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -60,7 +61,6 @@ import {
 } from './fakes';
 import type { IntentReading } from './intent';
 import { CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
-import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
 import { type IntakeDeps, handleInboundSms } from './machine';
 import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from './radar';
@@ -2294,7 +2294,10 @@ describe('intake · one ladder job per reply', () => {
     expect(h.transport.bodies().slice(afterFind)).toEqual([WELCOME_CARD_BODY]);
 
     expect(await reply(h)).toEqual({ status: 'ladder_advanced', step: 'name', closed: false });
-    expect(h.transport.bodies().slice(afterFind)).toEqual([WELCOME_CARD_BODY, PARENT_CALL_NAME_ASK]);
+    expect(h.transport.bodies().slice(afterFind)).toEqual([
+      WELCOME_CARD_BODY,
+      PARENT_CALL_NAME_ASK,
+    ]);
 
     expect(await reply(h, 'Jimmy')).toEqual({
       status: 'ladder_advanced',

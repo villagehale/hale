@@ -24,6 +24,8 @@ import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { shareHaleContactCardOnce } from '~/lib/channel/linq/contact-card';
+import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
 import {
   EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
@@ -98,13 +100,11 @@ import {
   saveSession,
   transcriptHasOutbound,
 } from './session';
-import { yearOpenEmptyMessage } from './year-open';
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
-import { shareHaleContactCardOnce } from '~/lib/channel/linq/contact-card';
-import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
 import { sendWelcomeContactCard } from './welcome-card';
+import { yearOpenEmptyMessage } from './year-open';
 
 /**
  * VIL-237 · M2 — the conversational SMS intake state machine.

@@ -16,18 +16,18 @@ import {
   IDENTITY_CHALLENGE_TEMPLATE_KEY,
   identityChallengeReply,
 } from '~/lib/channel/intake/identity-challenge';
-import { acceptedStatus } from '~/lib/channel/ledger';
 import { replyLanguage } from '~/lib/channel/language';
+import { acceptedStatus } from '~/lib/channel/ledger';
+import { linqFromE164 } from '~/lib/channel/linq/config';
+import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import {
   LINQ_GROUP_LINE_MISSING_TEXT,
   formatLinqLineForParent,
   linqGroupMakeInstruction,
 } from '~/lib/channel/linq/group';
-import { linqFromE164 } from '~/lib/channel/linq/config';
-import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import { considerLinqReply } from '~/lib/channel/linq/moments';
-import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { LINQ_TYPING_REFRESH_MS, signalImessageTyping } from '~/lib/channel/linq/presence';
+import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import type { OffDomainLane, ReplySource } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import type { PlanOffer } from '~/lib/channel/plan/offer';

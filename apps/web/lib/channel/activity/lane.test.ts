@@ -1,7 +1,13 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import type { ActivityQuery } from './deidentify';
-import { MAX_SEARCHES, composeUserMessage, createActivityFinder, groundUserMessage, toPicks } from './lane';
+import {
+  MAX_SEARCHES,
+  composeUserMessage,
+  createActivityFinder,
+  groundUserMessage,
+  toPicks,
+} from './lane';
 
 /**
  * THE LANE'S MECHANICS AND ITS INVARIANTS — not its judgement.
@@ -114,9 +120,9 @@ describe('the payloads', () => {
   });
 
   it('omits a town and a stage it does not have rather than sending a placeholder', () => {
-    expect(groundUserMessage({ subject: 'story time', window: null, town: null, stage: null })).toBe(
-      '{"subject":"story time"}',
-    );
+    expect(
+      groundUserMessage({ subject: 'story time', window: null, town: null, stage: null }),
+    ).toBe('{"subject":"story time"}');
   });
 
   it('gives the compose stage the research and still no identity', () => {
@@ -177,7 +183,10 @@ describe('an ungrounded find never ships', () => {
     const restore = quiet();
     const seen: Seen[] = [];
     const finder = createActivityFinder(
-      makeClient({ ground: groundResult(0), compose: composeResult({ picks: [WHOLE_PICK] }) }, seen),
+      makeClient(
+        { ground: groundResult(0), compose: composeResult({ picks: [WHOLE_PICK] }) },
+        seen,
+      ),
     );
 
     expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'not_grounded' });
@@ -251,7 +260,10 @@ describe('an ungrounded find never ships', () => {
   it('bounds the search spend on every attempt', async () => {
     const seen: Seen[] = [];
     const finder = createActivityFinder(
-      makeClient({ ground: groundResult(2), compose: composeResult({ picks: [WHOLE_PICK] }) }, seen),
+      makeClient(
+        { ground: groundResult(2), compose: composeResult({ picks: [WHOLE_PICK] }) },
+        seen,
+      ),
     );
     await finder.find(QUERY);
 

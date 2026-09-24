@@ -193,9 +193,10 @@ interface Offence {
   text: string;
 }
 
-/** Sloane locked these two intake lines with em dashes and curly apostrophes.
+/** Sloane locked these intake lines with em dashes and curly apostrophes.
  * Any other non-GSM character in the file is still an offence. */
-const SLOANE_LOCKED_UCS2_LINE = /I help plan your kids|Text me a number/;
+const SLOANE_LOCKED_UCS2_LINE =
+  /I help plan your kids|Text me their number|je te montre comment ouvrir/;
 const SLOANE_LOCKED_CODEPOINTS = new Set(['U+2014', 'U+2019']);
 
 function nonGsm7(relativePath: string): Offence[] {
