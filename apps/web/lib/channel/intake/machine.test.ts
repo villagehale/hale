@@ -10,7 +10,7 @@ import {
 import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { encryptString } from '~/lib/crypto/string-cipher';
+import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import { matchHealthCheckpoints } from '~/lib/health/match';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
@@ -299,7 +299,10 @@ describe('intake · happy path', () => {
     const [channel] = inserts(fake, schema.parentChannels);
     expect(channel).toMatchObject({ kind: 'sms', verifiedAt: NOW });
     expect(channel?.phoneE164Hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(channel?.phoneE164Encrypted).not.toContain('416');
+    // Ciphertext is an opaque blob (random IV). Assert the structured field, not a
+    // digit run that can appear inside that blob by chance.
+    expect(channel?.phoneE164Encrypted).not.toBe(PHONE);
+    expect(decryptString(channel?.phoneE164Encrypted ?? '')).toBe(PHONE);
 
     // The year find is the whole turn. No watch yes, and no ladder ask yet.
     expectEnglishYearOpen(transport.bodies());
