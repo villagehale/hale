@@ -267,10 +267,7 @@ export async function activeChannelOwner(
     })
     .from(schema.parentChannels)
     .where(
-      and(
-        eq(schema.parentChannels.phoneE164Hash, hash),
-        isNull(schema.parentChannels.revokedAt),
-      ),
+      and(eq(schema.parentChannels.phoneE164Hash, hash), isNull(schema.parentChannels.revokedAt)),
     );
   const row = rows.find(
     (r) => r.phoneE164Hash === hash && r.verifiedAt !== null && r.revokedAt === null,
@@ -377,7 +374,13 @@ export async function startCaregiverInvite(
   );
   if (superseded) {
     const previous = toInvite(superseded);
-    await closeInvite(database, previous, 'superseded', now, inviteVerb(previous.role, 'superseded'));
+    await closeInvite(
+      database,
+      previous,
+      'superseded',
+      now,
+      inviteVerb(previous.role, 'superseded'),
+    );
   }
 
   const invite = await openInviteRow(database, { ...input, hash });
@@ -443,7 +446,9 @@ export async function familyHasCoParent(database: Database, familyId: string): P
       role: schema.familyMembers.role,
     })
     .from(schema.familyMembers)
-    .where(and(eq(schema.familyMembers.familyId, familyId), eq(schema.familyMembers.role, 'co_parent')));
+    .where(
+      and(eq(schema.familyMembers.familyId, familyId), eq(schema.familyMembers.role, 'co_parent')),
+    );
   return rows.some((r) => r.familyId === familyId && r.role === 'co_parent');
 }
 
@@ -613,9 +618,7 @@ export async function startCoParentInvite(
   const open = await openInvites(database);
   const openOnThisNumber = open.find((r) => r.phoneE164Hash === hash);
   if (openOnThisNumber) {
-    return refuse(
-      openOnThisNumber.familyId === input.familyId ? 'already_invited' : 'unavailable',
-    );
+    return refuse(openOnThisNumber.familyId === input.familyId ? 'already_invited' : 'unavailable');
   }
 
   const superseded = open.find(
@@ -623,7 +626,13 @@ export async function startCoParentInvite(
   );
   if (superseded) {
     const previous = toInvite(superseded);
-    await closeInvite(database, previous, 'superseded', now, inviteVerb(previous.role, 'superseded'));
+    await closeInvite(
+      database,
+      previous,
+      'superseded',
+      now,
+      inviteVerb(previous.role, 'superseded'),
+    );
   }
 
   const invite = await openInviteRow(database, { ...input, hash });
@@ -722,6 +731,13 @@ export async function recordCoParentAssent(
     verbatimReply: string;
     channelMessageId: string | null;
     now: Date;
+    /**
+     * The question the parent actually answered, when it is not the scope
+     * confirm. The intake co-parent ask ("text me a number") is that case:
+     * the number itself is the authorisation, and the evidence has to quote
+     * the line they were shown.
+     */
+    asked?: { question: string; interpretation: string };
   },
 ): Promise<string | null> {
   const { invite, now } = input;
@@ -752,9 +768,11 @@ export async function recordCoParentAssent(
       consentScope: CO_PARENT_GRANT_SCOPE,
       policyVersion: POLICY_VERSION,
       evidence: {
-        question: coParentScopeConfirm(invite.displayName, input.language),
+        question: input.asked?.question ?? coParentScopeConfirm(invite.displayName, input.language),
         verbatimReply: input.verbatimReply,
-        interpretation: `parent authorised texting ${invite.displayName} and seating them as a co-parent, with everything a parent sees`,
+        interpretation:
+          input.asked?.interpretation ??
+          `parent authorised texting ${invite.displayName} and seating them as a co-parent, with everything a parent sees`,
         channelMessageId: input.channelMessageId,
         maskedPhone: maskPhoneE164(invite.phoneE164),
       },

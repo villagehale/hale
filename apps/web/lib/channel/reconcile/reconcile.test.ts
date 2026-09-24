@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { coParentInviteSentAck } from '~/lib/channel/coparent/copy';
 import type { CommitmentKind } from '~/lib/commitments/ledger';
 import { extractStateClaims } from './claims';
 import {
@@ -162,7 +163,10 @@ describe('reconcile — the spot watch', () => {
       const verdict = verdictFor(borrowed, view({ openKinds: new Set(['spot_watch']) }));
 
       expect(verdict.mints, borrowed).toEqual([]);
-      expect(verdict.refused.map((r) => r.reason), borrowed).toEqual(['no_registration_watch']);
+      expect(
+        verdict.refused.map((r) => r.reason),
+        borrowed,
+      ).toEqual(['no_registration_watch']);
     }
   });
 
@@ -296,16 +300,16 @@ describe('reconcile — the activity follow-up', () => {
     expect(verdict.refused).toEqual([]);
   });
 
-  it('never mints one itself — the subject would come from the model\'s own prose', () => {
+  it("never mints one itself — the subject would come from the model's own prose", () => {
     expect(verdictFor(body, view()).mints).toEqual([]);
   });
 });
 
 describe('reconcile — the booking claim', () => {
   it('REFUSES a booking for a family with nothing on the calendar', () => {
-    expect(verdictFor('Your well-baby visit is booked.', view()).refused.map((r) => r.reason)).toEqual([
-      'no_scheduled_row',
-    ]);
+    expect(
+      verdictFor('Your well-baby visit is booked.', view()).refused.map((r) => r.reason),
+    ).toEqual(['no_scheduled_row']);
   });
 
   it('MATCHES a live placement that shares a word with the claim', () => {
@@ -411,5 +415,23 @@ describe('reconcile — what a refused body produces', () => {
     expect(verdict.refused).toEqual([]);
     expect(reconcileViolations(verdict)).toEqual([]);
     expect(withoutRefusedClaims(clean, verdict)).toBe(clean);
+  });
+});
+
+describe('reconcile — a co-parent invite the model did not send', () => {
+  const live = "Got it, I'll send an invite to that number so they can join this thread.";
+
+  it('refuses the sentence and leaves nothing to send', () => {
+    const verdict = verdictFor(live, view());
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_coparent_invite']);
+    expect(withoutRefusedClaims(live, verdict)).toBe('');
+    expect(reconcileViolations(verdict)[0]).toContain('Only the co-parent invite path');
+  });
+
+  it('does not refuse the ack the invite path actually sends', () => {
+    const ack = coParentInviteSentAck('them', 'en');
+    const verdict = verdictFor(ack, view());
+    expect(verdict.refused).toEqual([]);
+    expect(withoutRefusedClaims(ack, verdict)).toBe(ack);
   });
 });

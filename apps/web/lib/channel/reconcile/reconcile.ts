@@ -104,7 +104,9 @@ export type RefusalReason =
   /** "I'll come back with what I find" and the promise tool was never called. */
   | 'no_activity_promise'
   /** A booking claim with nothing on the calendar it could be about. */
-  | 'no_scheduled_row';
+  | 'no_scheduled_row'
+  /** "I'll send an invite" — the invite path is the only thing that may say that. */
+  | 'no_coparent_invite';
 
 export type ClaimResolution =
   | {
@@ -141,7 +143,9 @@ const VIOLATION: Record<RefusalReason, string> = {
   no_activity_promise:
     'The message promises to come back with activities or finds, and no such promise was registered. Call promise_activity_followup so a sweep actually comes back, or hand over what you already have and stop.',
   no_scheduled_row:
-    'The message says something is booked or on the calendar. Nothing on this family\'s calendar matches and the parent has not told you it is booked, so that is a claim about a row that does not exist. Say what would need to happen instead.',
+    "The message says something is booked or on the calendar. Nothing on this family's calendar matches and the parent has not told you it is booked, so that is a claim about a row that does not exist. Say what would need to happen instead.",
+  no_coparent_invite:
+    'The message says an invite was sent or will be sent. Only the co-parent invite path may say that, and only after the message has actually left. Do not say you will invite someone or that you already have.',
 };
 
 /** What a `watched_spots` row is a row ABOUT: one place in one class. The words the
@@ -176,6 +180,9 @@ function aboutTheSeason(sentence: string): boolean {
 
 function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
   const kind: ClaimKind = claim.kind;
+  if (kind === 'co_parent_invite') {
+    return { claim, status: 'refused', reason: 'no_coparent_invite' };
+  }
   if (kind === 'self_referential') {
     return { claim, status: 'refused', reason: 'self_referential' };
   }
@@ -259,10 +266,7 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
   return { claim, status: 'refused', reason: 'no_scheduled_row' };
 }
 
-export function reconcile(
-  claims: readonly StateClaim[],
-  view: ReconcileView,
-): ReconcileVerdict {
+export function reconcile(claims: readonly StateClaim[], view: ReconcileView): ReconcileVerdict {
   const resolutions = claims.map((claim) => resolveOne(claim, view));
   return {
     resolutions,

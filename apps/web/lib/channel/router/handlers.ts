@@ -43,6 +43,10 @@ import { type FounderReplyDeps, handleFounderWelcomeReply } from '~/lib/channel/
 import { type NameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/identity/name-reply';
 import { handleParentCallNameReply } from '~/lib/channel/identity/parent-call-name';
 import { replyLanguage } from '~/lib/channel/language';
+import {
+  type CoParentNumberDeps,
+  deliverCoParentNumberInvite,
+} from '~/lib/channel/linq/coparent-invite';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
@@ -1049,6 +1053,41 @@ export function coParentAssentHandler(): DeterministicHandler {
     resolves: new Set<OpenQuestionKind>(['co_parent_assent']),
     async handle(): Promise<HandlerVerdict> {
       return { claimed: false };
+    },
+  };
+}
+
+/**
+ * The intake co-parent ask's answer: a phone number, and nothing else.
+ *
+ * The ask already authorised the invite ("text me a number and I'll invite
+ * them"). This handler is the sender. A turn that is not that number is
+ * declined so the name capture and the coach still hear it. A turn that is
+ * the number never falls through to a model that can say the invite left
+ * when it did not.
+ */
+export function coParentNumberHandler(deps: CoParentNumberDeps): DeterministicHandler {
+  return {
+    name: 'co_parent_number',
+    async handle(database, ctx): Promise<HandlerVerdict> {
+      const outcome = await deliverCoParentNumberInvite(database, {
+        familyId: ctx.familyId,
+        parentUserId: ctx.parentUserId,
+        body: ctx.body,
+        now: ctx.now,
+        inboundChannelMessageId: ctx.inboundChannelMessageId,
+        sendSms: deps.sendSms,
+        fetch: deps.fetch,
+      });
+      if (outcome.status === 'not_pending') return { claimed: false };
+      const afterAck = outcome.status === 'sent' ? outcome.afterAck : null;
+      return {
+        claimed: true,
+        outcome: outcome.status,
+        reply: outcome.reply,
+        templateKey: outcome.templateKey,
+        afterSend: afterAck ? async () => afterAck() : undefined,
+      };
     },
   };
 }
