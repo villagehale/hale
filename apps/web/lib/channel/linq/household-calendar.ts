@@ -27,6 +27,10 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * Proactive group speech is one bubble: at most one a day and three a week,
  * never during quiet hours. A cancellation, a weekly recap, and an unprompted
  * both-free suggestion are not bubbles.
+ *
+ * Kid-event, conflict, handoff, and post-event notices leave only through the
+ * family's `linq_group_chat_id`. A Linq refusal is `not_sent`. Nothing on this
+ * path sends SMS, and a failed group send is not retried on Twilio.
  */
 
 const KID_WORDS = [
@@ -997,6 +1001,8 @@ async function sendGroupNotice(
     .returning({ id: schema.channelMessages.id });
   if (!claimed) return 'already_sent';
   try {
+    // The claimed group chat is the only door. `chatId` is `families.linq_group_chat_id`.
+    // A refusal stays `not_sent` — this does not call Twilio.
     const sent = await sendLinqChatMessage({
       chatId: input.chatId,
       text: body,

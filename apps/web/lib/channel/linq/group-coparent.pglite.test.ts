@@ -39,6 +39,7 @@ const FROM = '+16462352164';
 const POSTAL = 'M5V2T6';
 const NOW = new Date('2026-09-24T18:00:00.000Z');
 const GROUP = 'chat-household-group';
+const GROUP_MESSAGES = `https://api.linqapp.com/api/partner/v3/chats/${GROUP}/messages`;
 const ONE_TO_ONE = 'chat-coparent-1to1';
 
 let db: TestDb;
@@ -57,29 +58,48 @@ beforeEach(() => {
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
   vi.stubEnv('LINQ_FROM_E164', FROM);
   vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
+  stubTwilioConfigured();
 });
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   process.env.APP_ENCRYPTION_KEY = KEY;
   await db.exec('truncate table families, users cascade');
 });
 
-function linqFetch(opts?: { failCreate?: boolean }): {
+function linqFetch(opts?: { failCreate?: boolean; failMessages?: boolean }): {
   fetch: typeof fetch;
   texts: () => string[];
+  urls: () => string[];
+  twilioUrls: () => string[];
   groupTexts: () => string[];
   groupLinks: () => string[];
   privateTexts: () => string[];
   createdChats: () => number;
 } {
   const sent: { url: string; type: string; value: string }[] = [];
+  const urls: string[] = [];
+  const twilioUrls: string[] = [];
   let created = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      const target = String(url);
+      if (target.includes('twilio.com')) twilioUrls.push(target);
+      return new Response('{}', { status: 500 });
+    }),
+  );
   const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
     const target = String(url);
+    urls.push(target);
+    if (target.includes('twilio.com')) twilioUrls.push(target);
     if (target.endsWith('/chats') && !target.includes('/messages')) created += 1;
     if (opts?.failCreate && target.endsWith('/chats') && !target.includes('/messages')) {
       return new Response(JSON.stringify({ error: { code: 1006 } }), { status: 400 });
+    }
+    if (opts?.failMessages && target.includes('/messages')) {
+      return new Response(JSON.stringify({ error: { code: 5001 } }), { status: 500 });
     }
     const body = init?.body ? JSON.parse(String(init.body)) : null;
     const parts =
@@ -102,11 +122,27 @@ function linqFetch(opts?: { failCreate?: boolean }): {
   return {
     fetch: fetchImpl as unknown as typeof fetch,
     texts: () => sent.map((row) => row.value),
+    urls: () => [...urls],
+    twilioUrls: () => [...twilioUrls],
     groupTexts: values((row) => row.type === 'text' && row.url.includes(GROUP)),
     groupLinks: values((row) => row.type === 'link' && row.url.includes(GROUP)),
     privateTexts: values((row) => !row.url.includes(GROUP)),
     createdChats: () => created,
   };
+}
+
+function stubTwilioConfigured(): void {
+  vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC00000000000000000000000000000000');
+  vi.stubEnv('TWILIO_AUTH_TOKEN', 'auth-token');
+  vi.stubEnv('TWILIO_API_KEY_SID', 'SK11111111111111111111111111111111');
+  vi.stubEnv('TWILIO_API_KEY_SECRET', 'api-key-secret');
+  vi.stubEnv('TWILIO_FROM_NUMBER', '+14165550000');
+}
+
+function expectLinqGroupOnly(wire: { urls: () => string[]; twilioUrls: () => string[] }): void {
+  expect(wire.urls().length).toBeGreaterThan(0);
+  expect(wire.urls().every((url) => url === GROUP_MESSAGES)).toBe(true);
+  expect(wire.twilioUrls()).toEqual([]);
 }
 
 function inbound(
@@ -424,6 +460,7 @@ describe('group co-parent seating', () => {
       .from(schema.linqGroupOnboarding);
     expect(done?.step).toBe('done');
     expect(await childNames()).toEqual(['Maya']);
+    expectLinqGroupOnly(wire);
   });
 
   it('points an unclaimed group and a 1:1 at the locked instruction and does not open a family', async () => {
@@ -590,5 +627,64 @@ describe('group co-parent seating', () => {
       .select({ step: schema.linqGroupOnboarding.step })
       .from(schema.linqGroupOnboarding);
     expect(step?.step).toBe('done');
+    expectLinqGroupOnly(wire);
+  });
+
+  it('does not fall back to Twilio when a group receipt or connect card is refused', async () => {
+    const seeded = await seedHousehold();
+    await noteCoparent(seeded);
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, seeded.familyId));
+    const open = linqFetch();
+    await considerGroupCoparent(
+      db.database,
+      inbound({ messageId: 'm-seat', senderHandle: COPARENT_PHONE, text: 'hi there' }),
+      { now: NOW, fetch: open.fetch, recordInbound },
+    );
+    await considerGroupCoparent(
+      db.database,
+      inbound({ messageId: 'm-name', senderHandle: COPARENT_PHONE, text: 'Sam' }),
+      { now: NOW, fetch: open.fetch, recordInbound },
+    );
+    const refused = linqFetch({ failMessages: true });
+    const card = await considerGroupCoparent(
+      db.database,
+      inbound({ messageId: 'm-cal', senderHandle: COPARENT_PHONE, text: 'ready' }),
+      { now: NOW, fetch: refused.fetch, recordInbound },
+    );
+    expect(card).toMatchObject({ type: 'done', outcome: 'group_coparent_link_held' });
+    expect(refused.urls().length).toBeGreaterThan(0);
+    expect(refused.urls().every((url) => url === GROUP_MESSAGES)).toBe(true);
+    expect(refused.twilioUrls()).toEqual([]);
+    expect(refused.privateTexts()).toEqual([]);
+
+    const [coparent] = await db.database
+      .select({ userId: schema.familyMembers.userId })
+      .from(schema.familyMembers)
+      .where(eq(schema.familyMembers.role, 'co_parent'));
+    const receiptWire = linqFetch({ failMessages: true });
+    const receipt = await sendCoparentGroupCalendarReceipt(db.database, {
+      familyId: seeded.familyId,
+      userId: coparent?.userId as string,
+      provider: 'gcal',
+      connectId: 'connect-refused',
+      now: NOW,
+      fetch: receiptWire.fetch,
+    });
+    expect(receipt).toBe('skipped');
+    expect(receiptWire.urls()).toEqual([GROUP_MESSAGES]);
+    expect(receiptWire.twilioUrls()).toEqual([]);
+
+    const rows = await db.database
+      .select({
+        channel: schema.channelMessages.channel,
+        providerChatId: schema.channelMessages.providerChatId,
+      })
+      .from(schema.channelMessages);
+    expect(rows.every((row) => row.channel === 'imessage')).toBe(true);
+    expect(rows.every((row) => row.providerChatId === GROUP)).toBe(true);
+    expect(rows.some((row) => row.channel === 'sms')).toBe(false);
   });
 });

@@ -13,6 +13,7 @@ import {
   familyHasTwoCalendars,
   formatDay,
   formatTime,
+  narrateHouseholdCalendar,
   narrateHouseholdMailbox,
   rememberAndNarrateCalendar,
   rememberCalendarChanges,
@@ -28,8 +29,11 @@ const KEY = Buffer.alloc(32, 7).toString('base64');
 const PARENT_PHONE = '+14165550111';
 const COPARENT_PHONE = '+19059629821';
 const GROUP = 'chat-household-group';
+const GROUP_MESSAGES = `https://api.linqapp.com/api/partner/v3/chats/${GROUP}/messages`;
 const QUIET = new Date('2026-09-25T03:00:00.000Z');
 const DAY = new Date('2026-09-25T18:00:00.000Z');
+/** 17:30 America/Toronto — inside the evening handoff window, outside quiet hours. */
+const HANDOFF_AT = new Date('2026-09-24T21:30:00.000Z');
 
 let db: TestDb;
 
@@ -49,10 +53,59 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   process.env.APP_ENCRYPTION_KEY = KEY;
   await db.exec('truncate table families, users cascade');
 });
+
+function groupWire(over?: { status?: number }): {
+  fetch: typeof fetch;
+  linqUrls: () => string[];
+  twilioUrls: () => string[];
+  bodies: () => string;
+} {
+  const linqUrls: string[] = [];
+  const twilioUrls: string[] = [];
+  const bodies: string[] = [];
+  const note = (url: string, init?: RequestInit) => {
+    const target = String(url);
+    if (target.includes('twilio.com')) twilioUrls.push(target);
+    else linqUrls.push(target);
+    if (init?.body) bodies.push(String(init.body));
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      note(url, init);
+      return new Response('{}', { status: 500 });
+    }),
+  );
+  const status = over?.status ?? 200;
+  const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+    note(url, init);
+    if (status !== 200) {
+      return new Response(JSON.stringify({ error: { code: status } }), { status });
+    }
+    return new Response(JSON.stringify({ message: { id: `m-${linqUrls.length}` } }), {
+      status: 200,
+    });
+  });
+  return {
+    fetch: fetchImpl as unknown as typeof fetch,
+    linqUrls: () => [...linqUrls],
+    twilioUrls: () => [...twilioUrls],
+    bodies: () => bodies.join('\n'),
+  };
+}
+
+function stubTwilioConfigured(): void {
+  vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC00000000000000000000000000000000');
+  vi.stubEnv('TWILIO_AUTH_TOKEN', 'auth-token');
+  vi.stubEnv('TWILIO_API_KEY_SID', 'SK11111111111111111111111111111111');
+  vi.stubEnv('TWILIO_API_KEY_SECRET', 'api-key-secret');
+  vi.stubEnv('TWILIO_FROM_NUMBER', '+14165550000');
+}
 
 function linqFetch(): { fetch: typeof fetch; texts: () => string } {
   const bodies: unknown[] = [];
@@ -413,5 +466,163 @@ describe('household calendars', () => {
       .from(schema.parentCalendarBlocks)
       .where(eq(schema.parentCalendarBlocks.eventId, 'swim'));
     expect(held?.announcedAt).toBeNull();
+  });
+
+  it('sends kid-event, conflict, handoff, and post-event only to the Linq group chat', async () => {
+    stubTwilioConfigured();
+    const start = new Date('2026-09-25T19:00:00.000Z');
+    const end = new Date('2026-09-25T20:00:00.000Z');
+
+    const kid = await seedPair();
+    const kidWire = groupWire();
+    await rememberAndNarrateCalendar(db.database, {
+      integrationId: kid.primaryIntegrationId,
+      familyId: kid.familyId,
+      userId: kid.primaryUserId,
+      changes: [change({ eventId: 'gym', title: 'Maya gymnastics' })],
+      seeding: false,
+      now: DAY,
+      fetch: kidWire.fetch,
+    });
+    expect(kidWire.linqUrls()).toEqual([GROUP_MESSAGES]);
+    expect(kidWire.twilioUrls()).toEqual([]);
+    expect(kidWire.bodies()).toContain('Heads up:');
+
+    await db.exec('truncate table families, users cascade');
+    const conflict = await seedPair();
+    await db.database.insert(schema.parentCalendarBlocks).values([
+      {
+        integrationId: conflict.primaryIntegrationId,
+        eventId: 'gym',
+        familyId: conflict.familyId,
+        userId: conflict.primaryUserId,
+        startAt: start,
+        endAt: end,
+        kidRelated: true,
+        title: 'Maya gymnastics',
+        status: 'confirmed',
+        updatedStamp: 'stamp-gym',
+      },
+      {
+        integrationId: conflict.coparentIntegrationId,
+        eventId: 'busy',
+        familyId: conflict.familyId,
+        userId: conflict.coparentUserId,
+        startAt: start,
+        endAt: end,
+        kidRelated: false,
+        title: null,
+        status: 'confirmed',
+        updatedStamp: 'stamp-busy',
+      },
+    ]);
+    const conflictWire = groupWire();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: conflict.familyId,
+      now: DAY,
+      fetch: conflictWire.fetch,
+    });
+    expect(conflictWire.linqUrls()).toEqual([GROUP_MESSAGES]);
+    expect(conflictWire.twilioUrls()).toEqual([]);
+    expect(conflictWire.bodies()).toContain("Who's taking it?");
+
+    await db.exec('truncate table families, users cascade');
+    const handoff = await seedPair();
+    const tomorrow = new Date('2026-09-25T19:00:00.000Z');
+    await db.database.insert(schema.parentCalendarBlocks).values({
+      integrationId: handoff.primaryIntegrationId,
+      eventId: 'gym',
+      familyId: handoff.familyId,
+      userId: handoff.primaryUserId,
+      startAt: tomorrow,
+      endAt: new Date('2026-09-25T20:00:00.000Z'),
+      kidRelated: true,
+      title: 'Maya gymnastics',
+      status: 'confirmed',
+      updatedStamp: 'stamp-handoff',
+    });
+    const handoffWire = groupWire();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: handoff.familyId,
+      now: HANDOFF_AT,
+      fetch: handoffWire.fetch,
+    });
+    expect(handoffWire.linqUrls()).toEqual([GROUP_MESSAGES]);
+    expect(handoffWire.twilioUrls()).toEqual([]);
+    expect(handoffWire.bodies()).toContain('Tomorrow:');
+
+    await db.exec('truncate table families, users cascade');
+    const followup = await seedPair();
+    await db.database.insert(schema.parentCalendarBlocks).values({
+      integrationId: followup.primaryIntegrationId,
+      eventId: 'gym',
+      familyId: followup.familyId,
+      userId: followup.primaryUserId,
+      startAt: new Date(DAY.getTime() - 2 * 60 * 60 * 1000),
+      endAt: new Date(DAY.getTime() - 60 * 60 * 1000),
+      kidRelated: true,
+      title: 'Maya gymnastics',
+      status: 'confirmed',
+      updatedStamp: 'stamp-followup',
+      announcedAt: new Date(DAY.getTime() - 3 * 60 * 60 * 1000),
+    });
+    const followupWire = groupWire();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: followup.familyId,
+      now: DAY,
+      fetch: followupWire.fetch,
+    });
+    expect(followupWire.linqUrls()).toEqual([GROUP_MESSAGES]);
+    expect(followupWire.twilioUrls()).toEqual([]);
+    expect(followupWire.bodies()).toContain('How did gymnastics go?');
+
+    const rows = await db.database
+      .select({
+        channel: schema.channelMessages.channel,
+        providerChatId: schema.channelMessages.providerChatId,
+        templateKey: schema.channelMessages.templateKey,
+        status: schema.channelMessages.status,
+      })
+      .from(schema.channelMessages);
+    expect(rows).toEqual([
+      expect.objectContaining({
+        channel: 'imessage',
+        providerChatId: GROUP,
+        templateKey: 'linq:group_followup',
+        status: 'sent',
+      }),
+    ]);
+    expect(rows.some((row) => row.channel === 'sms')).toBe(false);
+  });
+
+  it('does not fall back to Twilio when the group notice is refused', async () => {
+    stubTwilioConfigured();
+    const seeded = await seedPair();
+    const wire = groupWire({ status: 500 });
+    await rememberAndNarrateCalendar(db.database, {
+      integrationId: seeded.primaryIntegrationId,
+      familyId: seeded.familyId,
+      userId: seeded.primaryUserId,
+      changes: [change({ eventId: 'gym', title: 'Maya gymnastics' })],
+      seeding: false,
+      now: DAY,
+      fetch: wire.fetch,
+    });
+    expect(wire.linqUrls()).toEqual([GROUP_MESSAGES]);
+    expect(wire.twilioUrls()).toEqual([]);
+    const rows = await db.database
+      .select({
+        channel: schema.channelMessages.channel,
+        providerChatId: schema.channelMessages.providerChatId,
+        status: schema.channelMessages.status,
+      })
+      .from(schema.channelMessages);
+    expect(rows).toEqual([
+      { channel: 'imessage', providerChatId: GROUP, status: 'failed' },
+    ]);
+    const [block] = await db.database
+      .select({ announcedAt: schema.parentCalendarBlocks.announcedAt })
+      .from(schema.parentCalendarBlocks);
+    expect(block?.announcedAt).toBeNull();
   });
 });

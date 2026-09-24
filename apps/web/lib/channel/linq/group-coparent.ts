@@ -426,7 +426,7 @@ async function answerDoneStep(
 
 /**
  * The connect card, in the group. The token is the link part only. The ask
- * text never carries it, and nothing here opens a 1:1.
+ * text never carries it, and nothing here opens a 1:1 or falls back to Twilio.
  */
 async function deliverGroupLink(
   database: Database,
@@ -478,9 +478,10 @@ async function deliverGroupLink(
 }
 
 /**
- * The group receipt for a co-parent connect. Its own bubble, only into the
- * claimed group, and never paired with the next ask. Gmail's line names the
- * connect and nothing from the mailbox. The 1:1 receipt is a different send.
+ * The group receipt for a co-parent connect. Its own bubble, only into
+ * `families.linq_group_chat_id`, and never paired with the next ask. Gmail's
+ * line names the connect and nothing from the mailbox. A Linq refusal is not
+ * retried on Twilio. The 1:1 receipt is a different send.
  */
 export async function sendCoparentGroupCalendarReceipt(
   database: Database,
