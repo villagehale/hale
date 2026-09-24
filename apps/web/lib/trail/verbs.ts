@@ -154,6 +154,12 @@ export const AUDIT_VERBS = [
   'sms_intake_outbound',
   'sms_intake_provisioned',
   'sms_intake_contact_card',
+  'linq_contact_card_shared',
+  'linq_tapback',
+  'linq_link_preview',
+  'linq_group_opened',
+  'linq_group_held',
+  'linq_poll_sent',
   'voice_call_received',
   // v0's callback text. No new row carries it — an enrolled caller now has a spoken
   // conversation instead — but months of rows in production do, and a verb the trail
@@ -548,6 +554,21 @@ const VERBS: Record<AuditVerb, Verb> = {
   sms_intake_outbound: { sentence: 'Hale texted you while getting set up', family: 'note' },
   sms_intake_provisioned: { sentence: 'your family was set up from your texts', family: 'done' },
   sms_intake_contact_card: { sentence: 'Hale texted you its contact card', family: 'note' },
+  linq_contact_card_shared: {
+    sentence: 'Hale shared its contact card in Messages',
+    family: 'note',
+  },
+  linq_tapback: { sentence: 'Hale reacted to your message', family: 'note' },
+  linq_link_preview: { sentence: 'Hale sent a link preview', family: 'note' },
+  linq_group_opened: {
+    sentence: 'Hale opened a household thread in Messages',
+    family: 'done',
+  },
+  linq_group_held: {
+    sentence: 'Hale could not open the household thread yet',
+    family: 'problem',
+  },
+  linq_poll_sent: { sentence: 'Hale sent you a short choice', family: 'note' },
   voice_call_received: {
     // Hale keeps no audio and no transcript — only that a call arrived.
     sentence: 'a call came in to Hale’s number',

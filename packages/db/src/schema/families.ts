@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { pgTable, uuid, text, timestamp, integer, uniqueIndex } from 'drizzle-orm/pg-core';
 import { onboardingStageEnum, planTierEnum } from './enums.js';
 
@@ -48,6 +49,11 @@ export const families = pgTable('families', {
    * not silently stop their mail being read. Lowercase hex, because the inbound parser
    * lowercases every address it sees. Null = no address minted yet. */
   inboundForwardToken: text('inbound_forward_token'),
+  /** Linq group chat for this household's two caregivers (VIL-335). Null until
+   * Hale opens one, or a group webhook from an enrolled parent is accepted.
+   * The reply still uses the inbound chat id; this column is the durable home
+   * so a later co-parent add does not open a second group. */
+  linqGroupChatId: text('linq_group_chat_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
@@ -56,6 +62,9 @@ export const families = pgTable('families', {
   inboundForwardTokenUniq: uniqueIndex('families_inbound_forward_token_uniq').on(
     table.inboundForwardToken,
   ),
+  linqGroupChatUniq: uniqueIndex('families_linq_group_chat_id_uniq')
+    .on(table.linqGroupChatId)
+    .where(sql`${table.linqGroupChatId} IS NOT NULL`),
 }));
 
 export type Family = typeof families.$inferSelect;

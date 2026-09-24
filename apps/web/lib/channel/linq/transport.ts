@@ -8,8 +8,9 @@ import { linqApiKey } from './config';
  * The v1 reply is one text part into the chat the parent just texted:
  * POST /api/partner/v3/chats/{chatId}/messages with `{ message: { parts } }`,
  * threaded under the inbound bubble when we have its message id. Mark-as-read
- * is the same client. Media, tapbacks, and the contact card stay helpers the
- * v1 doors do not call.
+ * is the same client. Tapbacks, link parts, the contact card, groups, polls,
+ * and effects are the same client; product moments call them from the sibling
+ * modules, not from a door that has not decided to.
  *
  * https://docs.linqapp.com/guides/messaging/sending-messages/
  *
@@ -101,7 +102,7 @@ type LinqHttpResult = {
 };
 
 async function linqRequest(input: {
-  method: 'POST' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   body?: unknown;
   fetch?: typeof fetch;
@@ -144,7 +145,7 @@ async function linqRequest(input: {
 /** Typing, and anything else whose failure must be a named result rather than a
  * lost reply. Throws only on a bug. */
 async function linqEffect(input: {
-  method: 'POST' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   body?: unknown;
   fetch?: typeof fetch;
@@ -387,12 +388,350 @@ export async function shareLinqContactCard(input: {
   return { accepted: true };
 }
 
+/** The chat id on a create-chat body (`chat.id`). Null when the body has none. */
+export function readLinqChatId(payload: unknown): string | null {
+  if (!isRecord(payload) || !isRecord(payload.chat)) return null;
+  const id = payload.chat.id;
+  return typeof id === 'string' && id ? id : null;
+}
+
+/** Message id nested under a create-chat body (`chat.message.id`). */
+export function readLinqCreatedMessageId(payload: unknown): string | null {
+  if (!isRecord(payload) || !isRecord(payload.chat)) return null;
+  return readLinqMessageId({ message: payload.chat.message });
+}
+
+export interface LinqPollOptionRef {
+  optionId: string;
+  text: string;
+}
+
+/** The poll envelope: the definition message, and each option id Linq minted. */
+export function readLinqPollEnvelope(
+  payload: unknown,
+): { messageId: string; options: LinqPollOptionRef[] } | null {
+  if (!isRecord(payload)) return null;
+  const messageId = typeof payload.message_id === 'string' ? payload.message_id : '';
+  const poll = payload.poll;
+  if (!messageId || !isRecord(poll) || !Array.isArray(poll.options)) return null;
+  const options: LinqPollOptionRef[] = [];
+  for (const option of poll.options) {
+    if (!isRecord(option)) continue;
+    const optionId = typeof option.option_id === 'string' ? option.option_id : '';
+    const text = typeof option.text === 'string' ? option.text : '';
+    if (optionId && text) options.push({ optionId, text });
+  }
+  if (options.length < 2) return null;
+  return { messageId, options };
+}
+
+/** Non-me handles on a chat payload. Phones stay in the return value for the
+ * caller to hash; this function does not log them. */
+export function readLinqChatHandles(payload: unknown): string[] {
+  if (!isRecord(payload)) return [];
+  const chat = isRecord(payload.chat) ? payload.chat : payload;
+  const handles = Array.isArray(chat.handles) ? chat.handles : [];
+  const out: string[] = [];
+  for (const handle of handles) {
+    if (!isRecord(handle) || handle.is_me === true) continue;
+    if (typeof handle.handle === 'string' && handle.handle) out.push(handle.handle);
+  }
+  return out;
+}
+
+/**
+ * Open a chat. Two or more `to` handles make it a group. The first message
+ * cannot contain a link — Linq rejects `link` parts and text that contains a
+ * URL on this endpoint. Effects and `reply_to` are likewise refused here.
+ *
+ * https://docs.linqapp.com/guides/chats/group-chats/
+ */
+export async function createLinqChat(input: {
+  from: string;
+  to: readonly string[];
+  text: string;
+  fetch?: typeof fetch;
+}): Promise<{ chatId: string; providerMessageId: string }> {
+  if (input.to.length < 1) throw new LinqSendError('invalid_recipients', 400, true);
+  if (!input.text.trim() || /https?:\/\//i.test(input.text)) {
+    throw new LinqSendError('invalid_parts', 400, true);
+  }
+  const result = await linqRequest({
+    method: 'POST',
+    path: '/chats',
+    body: {
+      from: input.from,
+      to: [...input.to],
+      message: { parts: [{ type: 'text', value: input.text }] },
+    },
+    fetch: input.fetch,
+  });
+  if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
+  const chatId = readLinqChatId(result.payload);
+  const providerMessageId = readLinqCreatedMessageId(result.payload);
+  if (!chatId || !providerMessageId) {
+    throw new LinqSendError('missing_chat_id', result.status, false);
+  }
+  return { chatId, providerMessageId };
+}
+
+/** Group display name and icon. Linq returns 1006 on a 1:1 chat. */
+export async function updateLinqGroupChat(input: {
+  chatId: string;
+  displayName?: string;
+  iconUrl?: string;
+  fetch?: typeof fetch;
+}): Promise<LinqEffectResult> {
+  const body: Record<string, string> = {};
+  if (input.displayName) body.display_name = input.displayName;
+  if (input.iconUrl) body.group_chat_icon = input.iconUrl;
+  if (Object.keys(body).length === 0) {
+    return { status: 'refused', code: 'invalid_parts', httpStatus: 400, permanent: true };
+  }
+  return linqEffect({
+    method: 'PUT',
+    path: `/chats/${encodeURIComponent(input.chatId)}`,
+    body,
+    fetch: input.fetch,
+  });
+}
+
+/** GET the chat and return the other participants' handles. A miss is named. */
+export async function listLinqParticipantHandles(input: {
+  chatId: string;
+  fetch?: typeof fetch;
+}): Promise<
+  { status: 'ok'; handles: string[] } | Exclude<LinqEffectResult, { status: 'accepted' }>
+> {
+  try {
+    const result = await linqRequest({
+      method: 'GET',
+      path: `/chats/${encodeURIComponent(input.chatId)}`,
+      fetch: input.fetch,
+    });
+    if (!result.ok) {
+      return {
+        status: 'refused',
+        code: result.code,
+        httpStatus: result.status,
+        permanent: result.permanent,
+      };
+    }
+    return { status: 'ok', handles: readLinqChatHandles(result.payload) };
+  } catch (err) {
+    if (err instanceof LinqSendError && err.code === 'not_configured') {
+      return { status: 'not_configured' };
+    }
+    if (err instanceof LinqSendError && (err.code === 'timeout' || err.code === 'network')) {
+      return { status: 'unreachable', reason: err.code };
+    }
+    throw err;
+  }
+}
+
+/**
+ * Add a participant to an existing iMessage group. The new handle has to be on
+ * the same service as the group; Linq's sandbox also requires they have texted
+ * the line first. A refusal is a thrown `LinqSendError` so the caller can name
+ * the degrade.
+ *
+ * https://docs.linqapp.com/guides/chats/group-chats/
+ */
+export async function addLinqParticipant(input: {
+  chatId: string;
+  handle: string;
+  fetch?: typeof fetch;
+}): Promise<{ accepted: true }> {
+  if (!input.handle.trim()) throw new LinqSendError('invalid_recipients', 400, true);
+  const result = await linqRequest({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/participants`,
+    body: { handle: input.handle },
+    fetch: input.fetch,
+  });
+  if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
+  return { accepted: true };
+}
+
+/** Remove a participant. The group must still have 3 members afterwards. */
+export async function removeLinqParticipant(input: {
+  chatId: string;
+  handle: string;
+  fetch?: typeof fetch;
+}): Promise<{ accepted: true }> {
+  if (!input.handle.trim()) throw new LinqSendError('invalid_recipients', 400, true);
+  const result = await linqRequest({
+    method: 'DELETE',
+    path: `/chats/${encodeURIComponent(input.chatId)}/participants`,
+    body: { handle: input.handle },
+    fetch: input.fetch,
+  });
+  if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
+  return { accepted: true };
+}
+
+const CONTACT_CARD_ALREADY_ACTIVE = '2014';
+
+/**
+ * Create the Name and Photo card on the sending line, or refresh it when one
+ * is already active (Linq 409 / 2014). `firstName` is the name iMessage shows.
+ * Linq has no organization field. `imageUrl` must be a public HTTPS image;
+ * Linq rehosts it. A local path is not a card photo.
+ *
+ * https://docs.linqapp.com/guides/contact-cards/
+ */
+export async function setupLinqContactCard(input: {
+  phoneNumber: string;
+  firstName: string;
+  imageUrl: string;
+  fetch?: typeof fetch;
+}): Promise<LinqEffectResult> {
+  if (!input.phoneNumber || !input.firstName || !input.imageUrl.startsWith('https://')) {
+    return { status: 'refused', code: 'invalid_contact_card', httpStatus: 400, permanent: true };
+  }
+  const body = {
+    first_name: input.firstName,
+    phone_number: input.phoneNumber,
+    image_url: input.imageUrl,
+  };
+  try {
+    const created = await linqRequest({
+      method: 'POST',
+      path: '/contact_card',
+      body,
+      fetch: input.fetch,
+    });
+    if (created.ok) return contactCardActive(created.payload);
+    if (created.code !== CONTACT_CARD_ALREADY_ACTIVE) {
+      return {
+        status: 'refused',
+        code: created.code,
+        httpStatus: created.status,
+        permanent: created.permanent,
+      };
+    }
+    const patched = await linqRequest({
+      method: 'PATCH',
+      path: `/contact_card?phone_number=${encodeURIComponent(input.phoneNumber)}`,
+      body: { first_name: input.firstName, image_url: input.imageUrl },
+      fetch: input.fetch,
+    });
+    if (!patched.ok) {
+      return {
+        status: 'refused',
+        code: patched.code,
+        httpStatus: patched.status,
+        permanent: patched.permanent,
+      };
+    }
+    return contactCardActive(patched.payload);
+  } catch (err) {
+    if (err instanceof LinqSendError && err.code === 'not_configured') {
+      return { status: 'not_configured' };
+    }
+    if (err instanceof LinqSendError && (err.code === 'timeout' || err.code === 'network')) {
+      return { status: 'unreachable', reason: err.code };
+    }
+    throw err;
+  }
+}
+
+function contactCardActive(payload: unknown): LinqEffectResult {
+  if (isRecord(payload) && payload.is_active === false) {
+    return { status: 'refused', code: 'card_inactive', httpStatus: 200, permanent: false };
+  }
+  return { status: 'accepted' };
+}
+
+/**
+ * Send a poll into a chat that already exists. At least two options. There is
+ * no question field — the caller sends the question as its own text first.
+ * Returns 202-class acceptance plus the option ids a later vote webhook uses.
+ *
+ * https://docs.linqapp.com/guides/messaging/polls/
+ */
+export async function sendLinqPoll(input: {
+  chatId: string;
+  options: readonly string[];
+  idempotencyKey?: string;
+  fetch?: typeof fetch;
+}): Promise<{ messageId: string; options: LinqPollOptionRef[] }> {
+  const texts = input.options.map((option) => option.trim()).filter((option) => option.length > 0);
+  if (texts.length < 2) throw new LinqSendError('invalid_poll', 400, true);
+  const result = await linqRequest({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/polls`,
+    body: {
+      poll: {
+        options: texts.map((text) => ({ text })),
+        ...(input.idempotencyKey ? { idempotency_key: input.idempotencyKey } : {}),
+      },
+    },
+    fetch: input.fetch,
+  });
+  if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
+  const envelope = readLinqPollEnvelope(result.payload);
+  if (!envelope) throw new LinqSendError('missing_message_id', result.status, false);
+  return envelope;
+}
+
+/** Screen effects. iMessage only; Linq ignores them on SMS and RCS. */
+export const LINQ_SCREEN_EFFECTS = [
+  'confetti',
+  'fireworks',
+  'lasers',
+  'sparkles',
+  'celebration',
+  'hearts',
+  'love',
+  'balloons',
+  'happy_birthday',
+  'echo',
+  'spotlight',
+] as const;
+
+/** Bubble effects. `invisible` is invisible ink. */
+export const LINQ_BUBBLE_EFFECTS = ['slam', 'loud', 'gentle', 'invisible'] as const;
+
+export type LinqScreenEffect = (typeof LINQ_SCREEN_EFFECTS)[number];
+export type LinqBubbleEffect = (typeof LINQ_BUBBLE_EFFECTS)[number];
+
+/**
+ * Send one text with an iMessage effect. Helper only — no product moment calls
+ * this. Confetti and invisible ink stay off the kids-year path until Design
+ * names a moment.
+ *
+ * https://docs.linqapp.com/guides/messaging/message-effects/
+ */
+export async function sendLinqEffect(input: {
+  chatId: string;
+  text: string;
+  effect: { type: 'screen'; name: LinqScreenEffect } | { type: 'bubble'; name: LinqBubbleEffect };
+  fetch?: typeof fetch;
+}): Promise<{ providerMessageId: string }> {
+  if (!input.text.trim()) throw new LinqSendError('invalid_parts', 400, true);
+  const result = await linqRequest({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
+    body: {
+      message: {
+        parts: [{ type: 'text', value: input.text }],
+        effect: { type: input.effect.type, name: input.effect.name },
+      },
+    },
+    fetch: input.fetch,
+  });
+  if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
+  const providerMessageId = readLinqMessageId(result.payload);
+  if (!providerMessageId) throw new LinqSendError('missing_message_id', result.status, false);
+  return { providerMessageId };
+}
+
 /**
  * The intake-shaped transport for one iMessage turn, bound to the chat the
  * parent just texted. `mediaUrls` still throws: that argument is the welcome
  * vCard, which this leg does not know how to render, and dropping it would tell
- * the parent a card arrived. A later caller with a public image URL uses
- * `sendLinqParts` instead.
+ * the parent a card arrived. A public image URL goes through `sendLinqParts`.
  */
 export function createLinqTextTransport(deps: {
   chatId: string | null;

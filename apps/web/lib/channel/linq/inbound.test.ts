@@ -241,9 +241,12 @@ describe('handleLinqInboundRequest', () => {
     ]);
   });
 
-  it('acks a group chat by name and does not open a conversation', async () => {
+  it('routes a group from an enrolled parent into that family and does not mark it read', async () => {
     const h = harness();
-    enrol(h.fake);
+    const { familyId, userId } = enrol(h.fake);
+    await h.fake.db
+      .insert(schema.families)
+      .values({ id: familyId, displayName: 'Fixture' } as never);
     const body = JSON.parse(messageBody()) as {
       data: { chat: { is_group: boolean } };
     };
@@ -253,10 +256,132 @@ describe('handleLinqInboundRequest', () => {
     const res = await handleLinqInboundRequest(request(raw), h.deps);
 
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ outcome: 'group_ignored' });
-    expect(h.jobs).toHaveLength(0);
+    await expect(res.json()).resolves.toEqual({ outcome: 'handed_off' });
     expect(h.reads).toEqual([]);
+    const message = h.fake
+      .rows(schema.channelMessages)
+      .find((row) => row.providerMessageId === MESSAGE_ID);
+    expect(message).toMatchObject({
+      familyId,
+      parentUserId: userId,
+      channel: 'imessage',
+      providerChatId: CHAT_ID,
+    });
+    expect(h.jobs).toHaveLength(1);
+    const family = h.fake.rows(schema.families).find((row) => row.id === familyId);
+    expect(family?.linqGroupChatId).toBe(CHAT_ID);
+  });
+
+  it('holds an unknown group sender and does not open a family', async () => {
+    const h = harness();
+    const holds: string[] = [];
+    h.deps = {
+      ...h.deps,
+      holdGroup: async (input) => {
+        holds.push(input.chatId);
+        return 'sent';
+      },
+    };
+    const body = JSON.parse(messageBody()) as {
+      data: { chat: { is_group: boolean } };
+    };
+    body.data.chat.is_group = true;
+
+    const res = await handleLinqInboundRequest(request(JSON.stringify(body)), h.deps);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      outcome: 'group_unknown_sender',
+      hold: 'sent',
+    });
+    expect(holds).toEqual([CHAT_ID]);
+    expect(h.jobs).toHaveLength(0);
     expect(h.fake.rows(schema.channelMessages)).toHaveLength(0);
+    expect(h.fake.rows(schema.families)).toHaveLength(0);
+  });
+
+  it('sends nothing when an unknown group sender says STOP', async () => {
+    const h = harness();
+    const holds: string[] = [];
+    h.deps = {
+      ...h.deps,
+      holdGroup: async () => {
+        holds.push('held');
+        return 'sent';
+      },
+    };
+    const body = JSON.parse(messageBody()) as {
+      data: { chat: { is_group: boolean }; parts: unknown[] };
+    };
+    body.data.chat.is_group = true;
+    body.data.parts = [{ type: 'text', value: 'STOP' }];
+
+    const res = await handleLinqInboundRequest(request(JSON.stringify(body)), h.deps);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ outcome: 'group_opt_out' });
+    expect(holds).toEqual([]);
+    expect(h.jobs).toHaveLength(0);
+  });
+
+  it('acks a reaction and a typing event without routing', async () => {
+    const h = harness();
+    enrol(h.fake);
+    const reaction = JSON.parse(messageBody()) as { event_type: string; data: unknown };
+    reaction.event_type = 'reaction.added';
+    reaction.data = {
+      chat_id: CHAT_ID,
+      message_id: MESSAGE_ID,
+      reaction_type: 'like',
+      is_from_me: false,
+      from: PHONE,
+    };
+    const res = await handleLinqInboundRequest(request(JSON.stringify(reaction)), h.deps);
+    expect(res.status).toBe(200);
+    const reactionBody = await res.json();
+    expect(reactionBody).toEqual({ outcome: 'reaction.added' });
+    expect(JSON.stringify(reactionBody)).not.toContain(PHONE);
+
+    const typing = JSON.parse(messageBody()) as { event_type: string; data: unknown };
+    typing.event_type = 'chat.typing_indicator.started';
+    typing.data = { chat_id: CHAT_ID };
+    const typed = await handleLinqInboundRequest(request(JSON.stringify(typing)), h.deps);
+    expect(typed.status).toBe(200);
+    await expect(typed.json()).resolves.toEqual({ outcome: 'chat.typing_indicator.started' });
+    expect(h.jobs).toHaveLength(0);
+  });
+
+  it('routes a poll vote as the option text', async () => {
+    const h = harness();
+    const { familyId, userId } = enrol(h.fake);
+    await h.fake.db.insert(schema.linqPollOptions).values({
+      familyId,
+      parentUserId: userId,
+      providerChatId: CHAT_ID,
+      providerMessageId: 'poll-msg',
+      optionId: 'opt-soccer',
+      optionText: 'Soccer',
+    } as never);
+    const vote = JSON.parse(messageBody()) as { event_type: string; data: unknown };
+    vote.event_type = 'poll.vote.added';
+    vote.data = {
+      chat_id: CHAT_ID,
+      message_id: 'poll-msg',
+      option_id: 'opt-soccer',
+      sender_handle: { handle: PHONE, is_me: false },
+    };
+
+    const res = await handleLinqInboundRequest(request(JSON.stringify(vote)), h.deps);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ outcome: 'handed_off' });
+    const message = h.fake.rows(schema.channelMessages).find((row) => row.body === 'Soccer');
+    expect(message).toMatchObject({
+      familyId,
+      providerMessageId: 'poll:poll-msg:opt-soccer',
+      providerChatId: CHAT_ID,
+    });
+    expect(h.reads).toEqual([]);
   });
 
   it('still hands the turn off when mark-read is refused', async () => {

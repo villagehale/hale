@@ -43,6 +43,7 @@ describe('parseLinqWebhook', () => {
         text: 'Hello!',
         mediaCount: 0,
         receivedAt: new Date('2026-02-05T19:31:13.074Z'),
+        otherHandles: [],
       },
     });
   });
@@ -63,8 +64,17 @@ describe('parseLinqWebhook', () => {
 
   it('names a group, an outbound echo, another event, and the old payload version', () => {
     const group = received();
-    (group.data as { chat: { is_group: boolean } }).chat.is_group = true;
-    expect(parseLinqWebhook(group, FALLBACK)).toEqual({ kind: 'ignored', reason: 'group' });
+    (group.data as { chat: { is_group: boolean; handles?: unknown[] } }).chat.is_group = true;
+    (group.data.chat as unknown as { handles: unknown[] }).handles = [
+      { handle: '+12025559876', is_me: false },
+      { handle: '+12025550100', is_me: false },
+      { handle: '+12025551234', is_me: true },
+    ];
+    const parsedGroup = parseLinqWebhook(group, FALLBACK);
+    expect(parsedGroup.kind).toBe('group');
+    if (parsedGroup.kind === 'group') {
+      expect(parsedGroup.message.otherHandles).toEqual(['+12025559876', '+12025550100']);
+    }
 
     const outbound = received();
     (outbound.data as { direction: string }).direction = 'outbound';
@@ -113,6 +123,64 @@ describe('parseLinqWebhook', () => {
     expect(parseLinqWebhook({ ...received(), webhook_version: '2025-01-01' }, FALLBACK)).toEqual({
       kind: 'ignored',
       reason: 'unsupported_version',
+    });
+
+    expect(
+      parseLinqWebhook(
+        {
+          ...received(),
+          event_type: 'reaction.added',
+          data: {
+            chat_id: '8f392755-6865-4b18-880a-227f9d8b458f',
+            message_id: '89e3566e-1d13-49e5-a8ee-48490d5bfeb7',
+            reaction_type: 'like',
+            is_from_me: false,
+          },
+        },
+        FALLBACK,
+      ),
+    ).toEqual({
+      kind: 'signal',
+      signal: {
+        event: 'reaction.added',
+        chatId: '8f392755-6865-4b18-880a-227f9d8b458f',
+        messageId: '89e3566e-1d13-49e5-a8ee-48490d5bfeb7',
+        reactionType: 'like',
+        optionId: null,
+        senderHandle: null,
+        isFromMe: false,
+      },
+    });
+
+    expect(
+      parseLinqWebhook(
+        {
+          ...received(),
+          event_type: 'chat.typing_indicator.started',
+          data: {
+            chat_id: '8f392755-6865-4b18-880a-227f9d8b458f',
+          },
+        },
+        FALLBACK,
+      ).kind,
+    ).toBe('signal');
+
+    const vote = parseLinqWebhook(
+      {
+        ...received(),
+        event_type: 'poll.vote.added',
+        data: {
+          chat: { id: '8f392755-6865-4b18-880a-227f9d8b458f' },
+          message_id: 'poll-msg',
+          option_id: 'opt-1',
+          sender_handle: { handle: '+12025559876', is_me: false },
+        },
+      },
+      FALLBACK,
+    );
+    expect(vote).toMatchObject({
+      kind: 'signal',
+      signal: { event: 'poll.vote.added', optionId: 'opt-1', senderHandle: '+12025559876' },
     });
   });
 });

@@ -37,3 +37,17 @@ export function linqMissingInboundEnv(): string[] {
 export function linqInboundConfigured(): boolean {
   return linqMissingInboundEnv().length === 0;
 }
+
+/**
+ * The Hale line that opens a group chat (`from` on POST /chats). Absent is
+ * named `no_from` by the group opener — a group cannot be created without it,
+ * and the number is never hardcoded.
+ */
+export function linqFromE164(): string | null {
+  return trimmed('LINQ_FROM_E164');
+}
+
+/** Polls ship only when this is exactly `on`. Anything else, including unset, is off. */
+export function linqPollsEnabled(): boolean {
+  return trimmed('LINQ_POLLS') === 'on';
+}

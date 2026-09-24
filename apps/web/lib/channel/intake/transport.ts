@@ -33,6 +33,9 @@ export interface InboundMessage {
   /** Linq chat id when `transport` is `imessage`. The within-request reply (a STOP
    * ack, the media line) sends back into this chat. Absent on SMS and WhatsApp. */
   chatId?: string;
+  /** True when this text arrived in a Linq group. The contact-card share stays
+   * on a finished 1:1 onboard and does not fire into a group. */
+  isGroup?: boolean;
   /**
    * VIL-348 — the provider's OWN keyword handling already matched this message AND
    * already replied to the sender, so Hale's acknowledgment would be the second one.

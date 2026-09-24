@@ -1,14 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   LinqSendError,
+  addLinqParticipant,
+  createLinqChat,
   createLinqTextTransport,
   markLinqChatRead,
   reactToLinqMessage,
+  removeLinqParticipant,
   sendLinqChatMessage,
+  sendLinqEffect,
   sendLinqParts,
+  sendLinqPoll,
+  setupLinqContactCard,
   shareLinqContactCard,
   startLinqTyping,
   stopLinqTyping,
+  updateLinqGroupChat,
 } from './transport';
 
 const CHAT = '8f392755-6865-4b18-880a-227f9d8b458f';
@@ -350,5 +357,133 @@ describe('Linq human-feel helpers', () => {
     expect(url).toBe(`https://api.linqapp.com/api/partner/v3/chats/${CHAT}/share_contact_card`);
     expect(init?.method).toBe('POST');
     expect(init?.body).toBeUndefined();
+  });
+});
+
+describe('Linq group, card, poll, and effect helpers', () => {
+  it('creates a group chat without a link in the first text', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json(
+        { chat: { id: 'group-chat-1', message: { id: 'msg-created' } } },
+        { status: 201 },
+      ),
+    );
+    const created = await createLinqChat({
+      from: '+15555550100',
+      to: ['+14165550101', '+14165550102'],
+      text: "This thread is your kids' year — both of you, and me.",
+      fetch: fetchMock,
+    });
+    expect(created).toEqual({ chatId: 'group-chat-1', providerMessageId: 'msg-created' });
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      from: '+15555550100',
+      to: ['+14165550101', '+14165550102'],
+      message: {
+        parts: [{ type: 'text', value: "This thread is your kids' year — both of you, and me." }],
+      },
+    });
+    await expect(
+      createLinqChat({
+        from: '+15555550100',
+        to: ['+14165550101'],
+        text: 'see https://app.villagehale.com',
+        fetch: fetchMock,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_parts' });
+  });
+
+  it('adds and removes a participant', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({}, { status: 200 }),
+    );
+    await addLinqParticipant({ chatId: CHAT, handle: '+14165550102', fetch: fetchMock });
+    await removeLinqParticipant({ chatId: CHAT, handle: '+14165550102', fetch: fetchMock });
+    const add = fetchMock.mock.calls[0];
+    const remove = fetchMock.mock.calls[1];
+    expect(add?.[0]).toBe(`https://api.linqapp.com/api/partner/v3/chats/${CHAT}/participants`);
+    expect(add?.[1]?.method).toBe('POST');
+    expect(JSON.parse(String(add?.[1]?.body))).toEqual({ handle: '+14165550102' });
+    expect(remove?.[1]?.method).toBe('DELETE');
+    expect(JSON.parse(String(remove?.[1]?.body))).toEqual({ handle: '+14165550102' });
+  });
+
+  it('names the Hale card and patches when Linq says one is already active', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {
+      if (String(url).includes('/contact_card?')) {
+        return Response.json({ is_active: true }, { status: 200 });
+      }
+      return Response.json({ error: { status: 409, code: 2014 } }, { status: 409 });
+    });
+    const setup = await setupLinqContactCard({
+      phoneNumber: '+15555550100',
+      firstName: 'Hale',
+      imageUrl: 'https://app.villagehale.com/email-logo.png',
+      fetch: fetchMock,
+    });
+    expect(setup).toEqual({ status: 'accepted' });
+    const created = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(created).toEqual({
+      first_name: 'Hale',
+      phone_number: '+15555550100',
+      image_url: 'https://app.villagehale.com/email-logo.png',
+    });
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe('PATCH');
+  });
+
+  it('sends a poll and a screen effect', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { poll?: unknown; message?: unknown };
+      if (body.poll) {
+        return Response.json(
+          {
+            message_id: 'poll-1',
+            poll: {
+              options: [
+                { option_id: 'o1', text: 'Soccer' },
+                { option_id: 'o2', text: 'Swim' },
+              ],
+            },
+          },
+          { status: 202 },
+        );
+      }
+      return Response.json({ message: { id: 'effect-1' } }, { status: 201 });
+    });
+    const poll = await sendLinqPoll({
+      chatId: CHAT,
+      options: ['Soccer', 'Swim'],
+      idempotencyKey: 'poll:fam:1',
+      fetch: fetchMock,
+    });
+    expect(poll.messageId).toBe('poll-1');
+    expect(poll.options).toEqual([
+      { optionId: 'o1', text: 'Soccer' },
+      { optionId: 'o2', text: 'Swim' },
+    ]);
+    const effect = await sendLinqEffect({
+      chatId: CHAT,
+      text: 'nice',
+      effect: { type: 'screen', name: 'confetti' },
+      fetch: fetchMock,
+    });
+    expect(effect.providerMessageId).toBe('effect-1');
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      message: {
+        parts: [{ type: 'text', value: 'nice' }],
+        effect: { type: 'screen', name: 'confetti' },
+      },
+    });
+    const named = await updateLinqGroupChat({
+      chatId: CHAT,
+      displayName: "Kids' year",
+      iconUrl: 'https://app.villagehale.com/email-logo.png',
+      fetch: fetchMock,
+    });
+    expect(named.status).toBe('accepted');
   });
 });
