@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import { type ActivityFinder, createActivityFinder } from '~/lib/channel/activity/lane';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import type { HealthChild } from '~/lib/health/match';
 import { voiceClient } from '~/lib/loop/voice/compose';
@@ -12,7 +13,6 @@ import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-met
 import type { ExtractedChild } from './extract';
 import { type RadarCandidate, type RadarChild, decideYearFinds } from './radar-decide';
 import { type RadarMessage, promisesFirstFind } from './radar-voice';
-import type { ReplyLanguage } from '~/lib/channel/language';
 import { collectYearOpenLines, renderYearOpen, yearOpenEmptyMessage } from './year-open';
 
 /** Words too generic to prove the checkpoint reached the parent. */
@@ -105,9 +105,11 @@ function phraseSurvivedCompose(message: string, task: string): boolean {
  *                        and which children are 13+ (so a teen's own session never
  *                        rides an SMS to a parent).
  *   DECIDE (pure)      — decideYearFinds: up to three age-fit weekend sessions.
- *   SAY                — year-open.ts: those sessions, filled toward three by a live
- *                        search when fewer than two are already in hand. A registration
- *                        date is not this message. The voice model is not called.
+ *   SAY                — year-open.ts: a live search of the kids' year, ranked by
+ *                        stage, with civic weekend lines filling toward three. The
+ *                        empty sentence is only when that search fails and nothing
+ *                        else is in hand. A registration date is not this message.
+ *                        The voice model is not called.
  *
  * What it is allowed to say is bounded by what the DECIDE object contains. When that
  * object is empty — discovery has not run yet, the area has no covered municipality —
@@ -205,9 +207,9 @@ export interface RadarDeps {
    * render goes out and the intake is never blocked on a model being reachable. */
   client: AgentClient | null;
   /**
-   * Live age-fit search used when fewer than two civic finds are already in hand.
-   * Null is a named skip (`not_configured`), never a silent empty list that then
-   * gets filled with a registration date.
+   * Live search of the kids' year. Always called on this turn. Null is a named
+   * skip (`not_configured`), never a silent empty list that then gets filled
+   * with a registration date.
    */
   yearFinder?: ActivityFinder | null;
   now?: () => Date;
@@ -439,9 +441,9 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
 }
 
 /** The production wiring: the live database, Open-Meteo over coarse coordinates, and
- * the activity lane's web search when fewer than two civic finds are already in hand.
- * The voice client stays on the deps for callers that still pass one; this reply does
- * not call it. */
+ * the activity lane's web search for the kids' year. Civic weekend lines fill toward
+ * three when that search returns fewer. The voice client stays on the deps for
+ * callers that still pass one; this reply does not call it. */
 export function defaultRadarComposer(database: Database): RadarComposer {
   return createRadarComposer({
     database,

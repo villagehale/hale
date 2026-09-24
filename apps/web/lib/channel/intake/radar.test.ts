@@ -10,6 +10,7 @@ import {
   createRadarComposer,
   weekendPickSurvivedCompose,
 } from './radar.js';
+import { YEAR_OPEN_SUBJECT } from './year-open';
 
 /** The rec-morning lane's Toronto line: a different answer, from a different module,
  * that the radar must never recite back as though it had checked this family. Pinned to
@@ -476,7 +477,7 @@ describe('createRadarComposer', () => {
       now: () => new Date('2026-09-17T15:00:00.000Z'),
       yearFinder: {
         async find(query) {
-          expect(query.subject).toBe('programs for a toddler');
+          expect(query.subject).toBe(YEAR_OPEN_SUBJECT);
           expect(query.town).toBe('Halton Hills');
           expect(query.window).toBe('this year');
           expect(JSON.stringify(query)).not.toContain('Seb');
