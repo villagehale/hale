@@ -78,37 +78,44 @@ export function recordedModel(path: string, live: () => AgentClient): RecordedMo
   const requests: string[] = [];
   const recordings = read(path);
 
+  async function create(params: Anthropic.MessageCreateParams) {
+    const userMessage = firstText(params);
+    requests.push(userMessage);
+    const key = keyFor(params.model, String(params.system ?? ''), userMessage);
+
+    const hit = recordings[key];
+    if (hit) return hit.response as unknown as Anthropic.Message;
+
+    if (process.env.HALE_RECORD !== '1') {
+      throw new Error(
+        [
+          `recorded-model: no recording for key ${key} in ${path}.`,
+          'The request changed (a projection, a skill, or a model tier), so the old',
+          'answer is an answer to a different question and will not be replayed.',
+          'Re-record with HALE_RECORD=1 and a live ANTHROPIC_API_KEY, then commit it.',
+          `--- request ---\n${userMessage}`,
+        ].join('\n'),
+      );
+    }
+
+    const response = await live().messages.create(params);
+    recordings[key] = {
+      key,
+      recordedAt: new Date().toISOString(),
+      request: { model: params.model, userMessage },
+      response: response as unknown as Recording['response'],
+    };
+    write(path, recordings);
+    return response;
+  }
+
+  // The activity ground turn streams. Replay goes through `create`, so the
+  // content-addressed key stays the one the recording was made under.
   const client = {
     messages: {
-      async create(params: Anthropic.MessageCreateParams) {
-        const userMessage = firstText(params);
-        requests.push(userMessage);
-        const key = keyFor(params.model, String(params.system ?? ''), userMessage);
-
-        const hit = recordings[key];
-        if (hit) return hit.response as unknown as Anthropic.Message;
-
-        if (process.env.HALE_RECORD !== '1') {
-          throw new Error(
-            [
-              `recorded-model: no recording for key ${key} in ${path}.`,
-              'The request changed (a projection, a skill, or a model tier), so the old',
-              'answer is an answer to a different question and will not be replayed.',
-              'Re-record with HALE_RECORD=1 and a live ANTHROPIC_API_KEY, then commit it.',
-              `--- request ---\n${userMessage}`,
-            ].join('\n'),
-          );
-        }
-
-        const response = await live().messages.create(params);
-        recordings[key] = {
-          key,
-          recordedAt: new Date().toISOString(),
-          request: { model: params.model, userMessage },
-          response: response as unknown as Recording['response'],
-        };
-        write(path, recordings);
-        return response;
+      create,
+      stream(params: Anthropic.MessageCreateParams) {
+        return { finalMessage: () => create(params) };
       },
     },
   } as unknown as AgentClient;

@@ -212,12 +212,14 @@ function expectEnglishYearOpen(bodies: string[]) {
 /** A reply that is not a name, so the name-reply beat stays silent. */
 const LADDER_BEAT = 'later';
 
-function reply(h: ReturnType<typeof harness>, body = LADDER_BEAT) {
+type LadderDrive = Pick<ReturnType<typeof harness>, 'fake' | 'transport' | 'deps'>;
+
+function reply(h: LadderDrive, body = LADDER_BEAT) {
   return text(h.fake, h.transport, h.deps, body);
 }
 
 /** Turtle, name, a non-name, calendar, Gmail, co-parent. The last beat closes. */
-async function walkEnglishLadder(h: ReturnType<typeof harness>) {
+async function walkEnglishLadder(h: LadderDrive) {
   await reply(h);
   await reply(h);
   await reply(h);

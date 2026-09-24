@@ -1,7 +1,18 @@
 import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FakeExtractor, FakeIdentityAsk, FakeIntentReader, type FakeDb, fakeAckComposer, fakeRadar, fakeNoOpenQuestions, fakeSilentAnswerComposer, makeFakeDb } from '~/lib/channel/intake/fakes';
+import { INVITE_EXPIRED_BY_LANGUAGE } from '~/lib/channel/coparent/copy';
 import type { IntakeCollected } from '~/lib/channel/intake/extract';
+import {
+  type FakeDb,
+  FakeExtractor,
+  FakeIdentityAsk,
+  FakeIntentReader,
+  fakeAckComposer,
+  fakeNoOpenQuestions,
+  fakeRadar,
+  fakeSilentAnswerComposer,
+  makeFakeDb,
+} from '~/lib/channel/intake/fakes';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -16,7 +27,6 @@ import {
   OWN_NUMBER,
   TOO_MANY_INVITES,
 } from './copy';
-import { INVITE_EXPIRED_BY_LANGUAGE } from '~/lib/channel/coparent/copy';
 import { INVITE_DAILY_CAP, INVITE_SILENCE_MS, loadOpenInviteByPhone } from './invites';
 
 /**
@@ -332,7 +342,13 @@ describe('caregiver invite · the ways it does not happen', () => {
     const { fake, transport, deps } = harness();
     await seedFamily(fake);
 
-    const outcome = await text(fake, transport, deps, PARENT_PHONE, 'add Sam 647-555-0199 as co-parent');
+    const outcome = await text(
+      fake,
+      transport,
+      deps,
+      PARENT_PHONE,
+      'add Sam 647-555-0199 as co-parent',
+    );
 
     expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'dark' });
     expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: CO_PARENT_REDIRECT });
@@ -346,7 +362,13 @@ describe('caregiver invite · the ways it does not happen', () => {
     const { fake, transport, deps } = harness();
     await seedFamily(fake);
 
-    const outcome = await text(fake, transport, deps, PARENT_PHONE, 'add Sam 647-555-0199 as parent');
+    const outcome = await text(
+      fake,
+      transport,
+      deps,
+      PARENT_PHONE,
+      'add Sam 647-555-0199 as parent',
+    );
 
     expect(outcome).toEqual({ status: 'caregiver_add_refused', reason: 'unsupported_role' });
     expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: CO_PARENT_REDIRECT });
@@ -361,7 +383,13 @@ describe('caregiver invite · the ways it does not happen', () => {
     // Grandma is already in. Re-adding her under a different role would try to hand one
     // number a second active channel — which the partial unique index forbids, and
     // which would silently re-scope someone who never agreed to the new role.
-    const outcome = await text(fake, transport, deps, PARENT_PHONE, 'add grandma 647-555-0199 as nanny');
+    const outcome = await text(
+      fake,
+      transport,
+      deps,
+      PARENT_PHONE,
+      'add grandma 647-555-0199 as nanny',
+    );
 
     expect(outcome).toEqual({ status: 'caregiver_add_refused', reason: 'number_in_use' });
     expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: NUMBER_IN_USE });
@@ -408,7 +436,13 @@ describe('caregiver invite · the ways it does not happen', () => {
     const { fake, transport, deps } = harness();
     await seedFamily(fake);
 
-    const numbers = ['647-555-0101', '647-555-0102', '647-555-0103', '647-555-0104', '647-555-0105'];
+    const numbers = [
+      '647-555-0101',
+      '647-555-0102',
+      '647-555-0103',
+      '647-555-0104',
+      '647-555-0105',
+    ];
     for (const number of numbers) {
       await text(fake, transport, deps, PARENT_PHONE, `add helper ${number} as nanny`);
       expect(await text(fake, transport, deps, PARENT_PHONE, 'yes')).toEqual({
@@ -418,7 +452,13 @@ describe('caregiver invite · the ways it does not happen', () => {
     const strangersTexted = transport.sent.filter((s) => s.to !== PARENT_PHONE).length;
     expect(strangersTexted).toBe(INVITE_DAILY_CAP);
 
-    const capped = await text(fake, transport, deps, PARENT_PHONE, 'add helper 647-555-0106 as nanny');
+    const capped = await text(
+      fake,
+      transport,
+      deps,
+      PARENT_PHONE,
+      'add helper 647-555-0106 as nanny',
+    );
 
     expect(capped).toEqual({ status: 'caregiver_add_refused', reason: 'too_many' });
     expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: TOO_MANY_INVITES });
@@ -430,7 +470,13 @@ describe('caregiver invite · the ways it does not happen', () => {
     const { fake, transport, deps } = harness();
     await seedFamily(fake);
 
-    for (const number of ['647-555-0101', '647-555-0102', '647-555-0103', '647-555-0104', '647-555-0105']) {
+    for (const number of [
+      '647-555-0101',
+      '647-555-0102',
+      '647-555-0103',
+      '647-555-0104',
+      '647-555-0105',
+    ]) {
       await text(fake, transport, deps, PARENT_PHONE, `add helper ${number} as nanny`);
     }
 
@@ -446,13 +492,25 @@ describe('caregiver invite · the ways it does not happen', () => {
   it('lets the meter roll off a day later', async () => {
     const { fake, transport, deps } = harness();
     await seedFamily(fake);
-    for (const number of ['647-555-0101', '647-555-0102', '647-555-0103', '647-555-0104', '647-555-0105']) {
+    for (const number of [
+      '647-555-0101',
+      '647-555-0102',
+      '647-555-0103',
+      '647-555-0104',
+      '647-555-0105',
+    ]) {
       await text(fake, transport, deps, PARENT_PHONE, `add helper ${number} as nanny`);
       await text(fake, transport, deps, PARENT_PHONE, 'yes');
     }
 
     const tomorrow: IntakeDeps = { ...deps, now: new Date(NOW.getTime() + 25 * 60 * 60 * 1000) };
-    const outcome = await text(fake, transport, tomorrow, PARENT_PHONE, 'add helper 647-555-0106 as nanny');
+    const outcome = await text(
+      fake,
+      transport,
+      tomorrow,
+      PARENT_PHONE,
+      'add helper 647-555-0106 as nanny',
+    );
 
     expect(outcome).toEqual({ status: 'caregiver_invite_started' });
   });
@@ -633,7 +691,7 @@ describe('caregiver · after they are in', () => {
     expect(inserts(fake, schema.familyMembers).some((r) => r.role === 'grandparent')).toBe(false);
   });
 
-  it("revokes only THEIR subscription on STOP — the parents stay subscribed", async () => {
+  it('revokes only THEIR subscription on STOP — the parents stay subscribed', async () => {
     const { fake, transport, deps } = harness();
     await upToInvite(fake, transport, deps);
     await text(fake, transport, deps, GRAN_PHONE, 'yes');
@@ -736,7 +794,10 @@ describe('a number with an invite in flight finishes its OWN intake', () => {
 
     // Their yes is SWALLOWED: the machine reads the open conversation first, so an
     // answer to the invite is read as an answer to intake's own question.
-    expect(await text(fake, transport, deps, GRAN_PHONE, 'yes')).toEqual({ status: 'helped', ack: 'sent' });
+    expect(await text(fake, transport, deps, GRAN_PHONE, 'yes')).toEqual({
+      status: 'helped',
+      ack: 'sent',
+    });
     const provisioned = await text(fake, transport, deps, GRAN_PHONE, "Mia's 2, M5V 2T6");
     expect(provisioned.status).toBe('provisioned');
 
@@ -749,12 +810,21 @@ describe('a number with an invite in flight finishes its OWN intake', () => {
     expect(auditActions(fake)).not.toContain('caregiver_invite_refused');
     expect(auditActions(fake)).not.toContain('caregiver_invite_accepted');
 
-    // Year-open closes on kids+postal. Watching is implied by the live find — there
-    // is no YES gate. The exact moment a stale invite used to take the number over is
-    // now an ordinary turn that finds no open conversation.
+    // Watching is implied by the live find — there is no YES gate. The year find
+    // parks the ladder; six replies close it. After that, a stale invite cannot
+    // take the number: the turn finds no open conversation.
     expect(
       inserts(fake, schema.consentRecords).filter((c) => c.consentType === 'proactive_watch'),
     ).toEqual([expect.objectContaining({ granted: true })]);
+
+    const beats = [];
+    for (let beat = 0; beat < 8; beat += 1) {
+      const advanced = await text(fake, transport, deps, GRAN_PHONE, 'later');
+      if (advanced.status !== 'ladder_advanced') break;
+      beats.push(advanced);
+    }
+    expect(beats[0]).toEqual({ status: 'ladder_advanced', step: 'turtle', closed: false });
+    expect(beats.at(-1)).toEqual({ status: 'ladder_advanced', step: 'coparent', closed: true });
 
     const before = transport.sent.length;
     const afterProvision = await text(fake, transport, deps, GRAN_PHONE, 'yes');
