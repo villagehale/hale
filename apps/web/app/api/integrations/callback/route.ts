@@ -152,7 +152,8 @@ export async function GET(req: NextRequest) {
             { familyId: bound.familyId, provider: bound.provider },
             'google account: held by the other parent',
           );
-          return back('denied', surface, bound.provider);
+          // Nothing is stored. The page tells them the co-parent opens the link.
+          return back('own_link', surface, bound.provider);
         }
         providerMetadata = { googleAccountKey: accountKey };
       }

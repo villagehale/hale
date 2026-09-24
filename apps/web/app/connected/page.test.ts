@@ -36,6 +36,14 @@ describe('/connected — the done page', () => {
     expect(html).toContain('connect my calendar');
   });
 
+  it('asks the co-parent to open the link themselves when the Google account is already in the family', async () => {
+    const html = await render({ provider: 'gcal', status: 'own_link' });
+
+    expect(html).toContain('Nothing was saved.');
+    expect(html).toContain('The co-parent should open the link themselves.');
+    expect(html).not.toContain('is connected.');
+  });
+
   it('tells an expired link from a connect that broke', async () => {
     // Two different things went wrong and the parent is told which, because only one of
     // them is worth retrying immediately. (Apostrophes come back HTML-escaped.)

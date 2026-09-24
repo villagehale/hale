@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CHANNEL_SIGNIN_TTL_MS, consumeChannelSigninToken } from '~/lib/auth/channel-signin';
 import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -68,11 +69,15 @@ function linqFetch(opts?: { failCreate?: boolean }): {
   fetch: typeof fetch;
   texts: () => string[];
   groupTexts: () => string[];
+  groupLinks: () => string[];
   privateTexts: () => string[];
+  createdChats: () => number;
 } {
-  const sent: { url: string; text: string }[] = [];
+  const sent: { url: string; type: string; value: string }[] = [];
+  let created = 0;
   const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
     const target = String(url);
+    if (target.endsWith('/chats') && !target.includes('/messages')) created += 1;
     if (opts?.failCreate && target.endsWith('/chats') && !target.includes('/messages')) {
       return new Response(JSON.stringify({ error: { code: 1006 } }), { status: 400 });
     }
@@ -81,7 +86,7 @@ function linqFetch(opts?: { failCreate?: boolean }): {
       (body as { message?: { parts?: { type?: string; value?: string }[] } } | null)?.message
         ?.parts ?? [];
     for (const part of parts) {
-      if (part.type === 'text' && part.value) sent.push({ url: target, text: part.value });
+      if (part.value) sent.push({ url: target, type: part.type ?? 'text', value: part.value });
     }
     const id = `m-${sent.length}`;
     if (target.endsWith('/chats')) {
@@ -92,13 +97,15 @@ function linqFetch(opts?: { failCreate?: boolean }): {
     }
     return new Response(JSON.stringify({ message: { id } }), { status: 200 });
   });
-  const textsOf = (pred: (url: string) => boolean) => () =>
-    sent.filter((row) => pred(row.url)).map((row) => row.text);
+  const values = (pred: (row: { url: string; type: string }) => boolean) => () =>
+    sent.filter(pred).map((row) => row.value);
   return {
     fetch: fetchImpl as unknown as typeof fetch,
-    texts: () => sent.map((row) => row.text),
-    groupTexts: textsOf((url) => url.includes(GROUP)),
-    privateTexts: textsOf((url) => url.includes('chat-coparent-private') || url.endsWith('/chats')),
+    texts: () => sent.map((row) => row.value),
+    groupTexts: values((row) => row.type === 'text' && row.url.includes(GROUP)),
+    groupLinks: values((row) => row.type === 'link' && row.url.includes(GROUP)),
+    privateTexts: values((row) => !row.url.includes(GROUP)),
+    createdChats: () => created,
   };
 }
 
@@ -320,9 +327,13 @@ describe('group co-parent seating', () => {
     expect(afterCalendar.filter((text) => text === groupCalendarAsk('en', 'Sam'))).toHaveLength(1);
     expect(afterCalendar.join('\n')).not.toContain(groupGmailAsk('en', 'Sam'));
     expect(afterCalendar.join('\n')).not.toContain('/connect?t=');
-    expect(
-      wire.privateTexts().some((text) => text.includes('/connect?t=') && text.includes('to=gcal')),
-    ).toBe(true);
+    expect(wire.createdChats()).toBe(0);
+    expect(wire.privateTexts()).toEqual([]);
+    const calendarLink = wire.groupLinks().find((link) => link.includes('to=gcal'));
+    expect(calendarLink).toBeTruthy();
+    const calendarToken = new URL(calendarLink ?? '').searchParams.get('t');
+    expect(calendarToken).toBeTruthy();
+    expect(wire.groupTexts().join('\n')).not.toContain(calendarToken ?? 'missing-token');
     const [afterAsk] = await db.database
       .select({ step: schema.linqGroupOnboarding.step })
       .from(schema.linqGroupOnboarding);
@@ -337,8 +348,14 @@ describe('group co-parent seating', () => {
     expect(declined).toMatchObject({ type: 'done', outcome: 'group_coparent_gmail' });
     const gmailBubbles = wire.groupTexts().slice(groupBeforeGmail);
     expect(gmailBubbles).toEqual([groupGmailAsk('en', 'Sam')]);
-    expect(wire.groupTexts().join('\n')).not.toContain('to=gmail');
-    expect(wire.privateTexts().some((text) => text.includes('to=gmail'))).toBe(true);
+    expect(wire.groupTexts().join('\n')).not.toContain('/connect?t=');
+    expect(wire.createdChats()).toBe(0);
+    expect(wire.privateTexts()).toEqual([]);
+    const gmailLink = wire.groupLinks().find((link) => link.includes('to=gmail'));
+    expect(gmailLink).toBeTruthy();
+    const gmailToken = new URL(gmailLink ?? '').searchParams.get('t');
+    expect(gmailToken).toBeTruthy();
+    expect(wire.groupTexts().join('\n')).not.toContain(gmailToken ?? 'missing-token');
 
     const beforeIgnore = wire.groupTexts().length;
     const ignored = await considerGroupCoparent(
@@ -360,6 +377,42 @@ describe('group co-parent seating', () => {
     expect(live).toHaveLength(2);
     expect(live.every((row) => row.userId === coparent?.userId)).toBe(true);
     expect(live.some((row) => row.userId === seeded.parentUserId)).toBe(false);
+    const seats = await db.database
+      .select({
+        familyId: schema.familyMembers.familyId,
+        userId: schema.familyMembers.userId,
+        role: schema.familyMembers.role,
+      })
+      .from(schema.familyMembers);
+    const seat = seats.find((row) => row.role === 'co_parent');
+    expect(seat?.familyId).toBe(seeded.familyId);
+    expect(seat?.userId).toBe(coparent?.userId);
+    expect(live.every((row) => row.userId === seat?.userId)).toBe(true);
+    const stamped = await db.database
+      .select({
+        userId: schema.channelSigninTokens.userId,
+        expiresAt: schema.channelSigninTokens.expiresAt,
+        consumedAt: schema.channelSigninTokens.consumedAt,
+      })
+      .from(schema.channelSigninTokens);
+    expect(
+      stamped
+        .filter((row) => row.consumedAt === null)
+        .every((row) => row.expiresAt.getTime() === NOW.getTime() + CHANNEL_SIGNIN_TTL_MS),
+    ).toBe(true);
+    const used = await consumeChannelSigninToken(gmailToken ?? '', db.database, { now: NOW });
+    expect(used.ok).toBe(true);
+    const reused = await consumeChannelSigninToken(gmailToken ?? '', db.database, { now: NOW });
+    expect(reused.ok).toBe(false);
+    const expired = await consumeChannelSigninToken(calendarToken ?? '', db.database, {
+      now: new Date(NOW.getTime() + CHANNEL_SIGNIN_TTL_MS),
+    });
+    expect(expired.ok).toBe(false);
+    const after = await db.database
+      .select({ consumedAt: schema.channelSigninTokens.consumedAt })
+      .from(schema.channelSigninTokens);
+    expect(after.filter((row) => row.consumedAt === null)).toHaveLength(1);
+    expect(after.filter((row) => row.consumedAt !== null)).toHaveLength(1);
     const mints = await db.database
       .select({ actor: schema.auditLog.actor, after: schema.auditLog.after })
       .from(schema.auditLog)
@@ -501,7 +554,9 @@ describe('group co-parent seating', () => {
     expect(wire.groupTexts()[0]).not.toContain('Gmail link');
     expect(wire.groupTexts()[1]).not.toContain('calendar is connected');
     expect(wire.groupTexts().join('\n')).not.toContain('/connect?t=');
-    expect(wire.privateTexts().some((text) => text.includes('to=gmail'))).toBe(true);
+    expect(wire.createdChats()).toBe(0);
+    expect(wire.privateTexts()).toEqual([]);
+    expect(wire.groupLinks().some((link) => link.includes('to=gmail'))).toBe(true);
     const [asked] = await db.database
       .select({ step: schema.linqGroupOnboarding.step })
       .from(schema.linqGroupOnboarding);

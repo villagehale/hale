@@ -12,9 +12,11 @@ export const GROUP_WELCOME: Record<ReplyLanguage, string> = {
   fr: "Salut, c'est Hale. Ce fil, c'est l'annee des enfants: vous deux, et moi. Comment je t'appelle?",
 };
 
+// NEEDS DESIGN LOCK (Sloane)
+/** Placeholder. The link is in the group, so the one-to-one line cannot stay. */
 export const GROUP_CALENDAR_ASK: Record<ReplyLanguage, string> = {
-  en: "{name}, want your calendar in the kids' year too? I'll text you the link one-to-one.",
-  fr: "{name}, tu veux ajouter ton calendrier a l'annee des enfants? Je t'envoie le lien en prive.",
+  en: "{name}, want your calendar in the kids' year too? The link is in this thread.",
+  fr: "{name}, tu veux ajouter ton calendrier a l'annee des enfants? Le lien est dans ce fil.",
 };
 
 export const GROUP_CALENDAR_RECEIPT: Record<ReplyLanguage, string> = {
@@ -22,9 +24,11 @@ export const GROUP_CALENDAR_RECEIPT: Record<ReplyLanguage, string> = {
   fr: 'Le calendrier de {name} est connecte. Je suis les activites des enfants sur les deux.',
 };
 
+// NEEDS DESIGN LOCK (Sloane)
+/** Placeholder. The link is in the group, so the one-to-one line cannot stay. */
 export const GROUP_GMAIL_ASK: Record<ReplyLanguage, string> = {
-  en: "{name}, want me to catch school and camp emails for you too? I'll text you the Gmail link one-to-one. Nothing from your inbox shows up here.",
-  fr: "{name}, tu veux que je repere aussi les courriels de l'ecole et des camps? Je t'envoie le lien Gmail en prive. Rien de ta boite ne s'affiche ici.",
+  en: '{name}, want me to catch school and camp emails for you too? The Gmail link is in this thread. Nothing from your inbox shows up here.',
+  fr: "{name}, tu veux que je repere aussi les courriels de l'ecole et des camps? Le lien Gmail est dans ce fil. Rien de ta boite ne s'affiche ici.",
 };
 
 export const GROUP_GMAIL_RECEIPT: Record<ReplyLanguage, string> = {

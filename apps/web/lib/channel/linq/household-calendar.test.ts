@@ -99,6 +99,31 @@ describe('kidMailboxSubject', () => {
   });
 });
 
+describe('group ask placeholders', () => {
+  it('marks the calendar and Gmail asks as not yet locked, and drops the private-link line', () => {
+    expect(GROUP_CALENDAR_ASK.en).toBe(
+      "{name}, want your calendar in the kids' year too? The link is in this thread.",
+    );
+    expect(GROUP_CALENDAR_ASK.fr).toBe(
+      "{name}, tu veux ajouter ton calendrier a l'annee des enfants? Le lien est dans ce fil.",
+    );
+    expect(GROUP_GMAIL_ASK.en).toBe(
+      '{name}, want me to catch school and camp emails for you too? The Gmail link is in this thread. Nothing from your inbox shows up here.',
+    );
+    expect(GROUP_GMAIL_ASK.fr).toBe(
+      "{name}, tu veux que je repere aussi les courriels de l'ecole et des camps? Le lien Gmail est dans ce fil. Rien de ta boite ne s'affiche ici.",
+    );
+    for (const line of [
+      GROUP_CALENDAR_ASK.en,
+      GROUP_CALENDAR_ASK.fr,
+      GROUP_GMAIL_ASK.en,
+      GROUP_GMAIL_ASK.fr,
+    ]) {
+      expect(line).not.toMatch(/one-to-one|en prive/i);
+    }
+  });
+});
+
 describe('design-locked group strings', () => {
   it('matches Sloane byte for byte', () => {
     expect(GROUP_WELCOME.en).toBe(
@@ -107,23 +132,11 @@ describe('design-locked group strings', () => {
     expect(GROUP_WELCOME.fr).toBe(
       "Salut, c'est Hale. Ce fil, c'est l'annee des enfants: vous deux, et moi. Comment je t'appelle?",
     );
-    expect(GROUP_CALENDAR_ASK.en).toBe(
-      "{name}, want your calendar in the kids' year too? I'll text you the link one-to-one.",
-    );
-    expect(GROUP_CALENDAR_ASK.fr).toBe(
-      "{name}, tu veux ajouter ton calendrier a l'annee des enfants? Je t'envoie le lien en prive.",
-    );
     expect(GROUP_CALENDAR_RECEIPT.en).toBe(
       "{name}'s calendar is connected. I'll keep the kids' stuff straight across both.",
     );
     expect(GROUP_CALENDAR_RECEIPT.fr).toBe(
       'Le calendrier de {name} est connecte. Je suis les activites des enfants sur les deux.',
-    );
-    expect(GROUP_GMAIL_ASK.en).toBe(
-      "{name}, want me to catch school and camp emails for you too? I'll text you the Gmail link one-to-one. Nothing from your inbox shows up here.",
-    );
-    expect(GROUP_GMAIL_ASK.fr).toBe(
-      "{name}, tu veux que je repere aussi les courriels de l'ecole et des camps? Je t'envoie le lien Gmail en prive. Rien de ta boite ne s'affiche ici.",
     );
     expect(GROUP_GMAIL_RECEIPT.en).toBe(
       "{name}'s Gmail is connected. I'll pull out the kids' dates; the inbox stays private.",

@@ -316,11 +316,13 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
       accountHeldMock,
       groupReceiptMock,
       holdNameMock,
+      noticeMock,
     ]) {
       m.mockReset();
     }
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
+    noticeMock.mockResolvedValue({ status: 'sent', channelMessageId: 'cm-1' });
     readProfileMock.mockResolvedValue(null);
     readSubMock.mockResolvedValue(null);
     accountHeldMock.mockResolvedValue(false);
@@ -371,7 +373,7 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     );
   });
 
-  it('refuses a Google account the other parent already connected', async () => {
+  it('refuses a Google account the other parent already connected, and does not bind it', async () => {
     vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
@@ -380,9 +382,19 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     });
     readSubMock.mockResolvedValue('google-sub-shared');
     accountHeldMock.mockResolvedValue(true);
-    const res = await callCallback(await minterState());
-    expect(location(res)).toContain('connect=denied');
+    const { signConnectState } = await import('./connect-state');
+    const state = signConnectState({
+      familyId: FAMILY,
+      userId: MINTER,
+      provider: 'gcal',
+      surface: 'text',
+    });
+    const res = await callCallback(state);
+    expect(location(res)).toBe('https://app.example.com/connected?provider=gcal&status=own_link');
     expect(saveConnectionMock).not.toHaveBeenCalled();
+    expect(noticeMock).not.toHaveBeenCalled();
+    expect(groupReceiptMock).not.toHaveBeenCalled();
+    expect(holdNameMock).not.toHaveBeenCalled();
   });
 
   it('still connects when profile was not granted, and does not read userinfo', async () => {

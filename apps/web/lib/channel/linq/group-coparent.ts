@@ -3,21 +3,12 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { matchConnectorRequest } from '~/lib/channel/connect/detect';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { soleGivenName } from '~/lib/channel/identity/name-reply';
-import {
-  INTAKE_CALENDAR_CARD_TEMPLATE_KEY,
-  INTAKE_GMAIL_CARD_TEMPLATE_KEY,
-  intakeCalendarCard,
-  intakeGmailCard,
-} from '~/lib/channel/intake/copy';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
-import {
-  resolveSendablePhone,
-  resolveVerifiedChannelByPhone,
-} from '~/lib/channels/sms-consent-core';
+import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -39,7 +30,7 @@ import {
 import { answerBothFreeInGroup } from './household-calendar';
 import { sendLinqLinkPreview } from './link-preview';
 import type { LinqInboundText } from './payload';
-import { LinqSendError, createLinqChat, sendLinqChatMessage } from './transport';
+import { LinqSendError, sendLinqChatMessage } from './transport';
 
 /**
  * Seat a co-parent inside a claimed Linq group. SMS is not this module.
@@ -48,9 +39,10 @@ import { LinqSendError, createLinqChat, sendLinqChatMessage } from './transport'
  * When that number speaks in the claimed group, Hale opens a user, a
  * `co_parent` seat, and a channel on the SAME family. Children and postal
  * code are not asked again. One welcome carries the name ask. The name ack
- * is the locked line. The next beat asks for that parent's calendar and
- * texts the link one-to-one. The beat after that asks for Gmail, whether
- * or not the calendar connected. One group bubble per turn.
+ * is the locked line. The next beat asks for that parent's calendar. The
+ * connect link is a card in the group, bound to that parent, never a 1:1
+ * and never written into the ask. The beat after that asks for Gmail the
+ * same way. One ask per turn.
  *
  * On unless `LINQ_GROUP_COPARENT` is exactly `off`.
  */
@@ -58,8 +50,6 @@ import { LinqSendError, createLinqChat, sendLinqChatMessage } from './transport'
 const WELCOME_KEY = 'linq:coparent_welcome';
 const CALENDAR_ASK_KEY = 'linq:coparent_calendar_ask';
 const GMAIL_ASK_KEY = 'linq:coparent_gmail_ask';
-const CALENDAR_KEY = 'linq:coparent_calendar_card';
-const GMAIL_KEY = 'linq:coparent_gmail_card';
 const GMAIL_RECEIPT_KEY = 'linq:coparent_gmail_receipt';
 const UNCLAIMED_KEY = 'linq:coparent_unclaimed';
 const RECEIPT_KEY = 'linq:coparent_calendar_receipt';
@@ -340,13 +330,11 @@ async function advanceSeatedCoparent(
       now: ports.now,
       fetch: ports.fetch,
     });
-    const sent = await deliverPersonalCard(database, {
+    const sent = await deliverGroupLink(database, {
       familyId: sender.familyId,
       parentUserId: sender.userId,
       groupChatId: message.chatId,
       provider: 'gcal',
-      language,
-      opener: ask,
       now: ports.now,
       fetch: ports.fetch,
     });
@@ -419,24 +407,11 @@ async function answerDoneStep(
     };
   }
   const provider = asked === 'gmail' ? 'gmail' : 'gcal';
-  const [named] = await database
-    .select({ name: schema.users.name })
-    .from(schema.users)
-    .where(eq(schema.users.id, sender.userId))
-    .limit(1);
-  const callName = named?.name?.trim();
-  const opener = !callName
-    ? groupWelcome(language)
-    : provider === 'gmail'
-      ? groupGmailAsk(language, callName)
-      : groupCalendarAsk(language, callName);
-  const sent = await deliverPersonalCard(database, {
+  const sent = await deliverGroupLink(database, {
     familyId: sender.familyId,
     parentUserId: sender.userId,
     groupChatId: message.chatId,
     provider,
-    language,
-    opener,
     now: ports.now,
     fetch: ports.fetch,
     invalidatePrior: provider === 'gcal',
@@ -449,23 +424,22 @@ async function answerDoneStep(
   };
 }
 
-async function deliverPersonalCard(
+/**
+ * The connect card, in the group. The token is the link part only. The ask
+ * text never carries it, and nothing here opens a 1:1.
+ */
+async function deliverGroupLink(
   database: Database,
   input: {
     familyId: string;
     parentUserId: string;
     groupChatId: string;
     provider: 'gcal' | 'gmail';
-    language: ReplyLanguage;
-    /** URL-free. Used only as the first line of a brand-new 1:1 chat. */
-    opener: string;
     now: Date;
     fetch?: typeof fetch;
     invalidatePrior?: boolean;
   },
 ): Promise<'sent' | 'not_sent'> {
-  const templateKey = input.provider === 'gcal' ? CALENDAR_KEY : GMAIL_KEY;
-  const dedupeKey = `${templateKey}:${input.parentUserId}:${input.now.toISOString()}`;
   const minted = await offerConnectorLinks(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
@@ -483,150 +457,24 @@ async function deliverPersonalCard(
   }
   const url = minted.urls[0];
   if (!url) return 'not_sent';
-  const text =
-    input.provider === 'gcal'
-      ? intakeCalendarCard(input.language, url)
-      : intakeGmailCard(input.language, url);
-  const personal = await personalChatId(database, input.parentUserId, input.groupChatId);
-  const opened = personal ?? (await openPersonalChat(database, input));
-  if (opened) {
-    const notice = await sendCard(database, { ...input, chatId: opened, text, dedupeKey });
-    if (notice === 'sent') {
-      await sendLinqLinkPreview({
-        channel: 'imessage',
-        chatId: opened,
-        url,
-        fetch: input.fetch,
-        database,
-        familyId: input.familyId,
-        parentUserId: input.parentUserId,
-        now: input.now,
-      });
-      return 'sent';
-    }
-  }
-  // 1:1 could not be opened. The card stays bound to this parent. The ask
-  // in the group never carries the token; this fallback is the card itself.
-  console.warn(
-    { familyId: input.familyId, provider: input.provider },
-    'linq group coparent: 1:1 link failed, card falls back to the group',
-  );
-  const fallback = await sendCard(database, {
-    ...input,
+  const preview = await sendLinqLinkPreview({
+    channel: 'imessage',
     chatId: input.groupChatId,
-    text,
-    dedupeKey: `${dedupeKey}:group`,
-  });
-  return fallback === 'sent' ? 'sent' : 'not_sent';
-}
-
-async function sendCard(
-  database: Database,
-  input: {
-    familyId: string;
-    parentUserId: string;
-    chatId: string;
-    provider: 'gcal' | 'gmail';
-    text: string;
-    dedupeKey: string;
-    now: Date;
-    fetch?: typeof fetch;
-  },
-): Promise<'sent' | 'already_sent' | 'not_sent'> {
-  return sendLine(database, {
+    url,
+    fetch: input.fetch,
+    database,
     familyId: input.familyId,
     parentUserId: input.parentUserId,
-    chatId: input.chatId,
-    text: input.text,
-    templateKey:
-      input.provider === 'gcal'
-        ? INTAKE_CALENDAR_CARD_TEMPLATE_KEY
-        : INTAKE_GMAIL_CARD_TEMPLATE_KEY,
-    dedupeKey: input.dedupeKey,
     now: input.now,
-    fetch: input.fetch,
   });
-}
-
-async function personalChatId(
-  database: Database,
-  userId: string,
-  groupChatId: string,
-): Promise<string | null> {
-  const rows = await database
-    .select({
-      chatId: schema.channelMessages.providerChatId,
-      channel: schema.channelMessages.channel,
-      parentUserId: schema.channelMessages.parentUserId,
-    })
-    .from(schema.channelMessages)
-    .where(eq(schema.channelMessages.parentUserId, userId));
-  const row = rows.find(
-    (message) =>
-      message.parentUserId === userId &&
-      message.channel === 'imessage' &&
-      message.chatId !== null &&
-      message.chatId !== groupChatId,
-  );
-  return row?.chatId ?? null;
-}
-
-/** Linq rejects a URL on the first message of a new chat. The opener has none. */
-async function openPersonalChat(
-  database: Database,
-  input: {
-    familyId: string;
-    parentUserId: string;
-    opener: string;
-    now: Date;
-    fetch?: typeof fetch;
-  },
-): Promise<string | null> {
-  const from = linqFromE164();
-  const phone = await resolveSendablePhone(database, input.parentUserId);
-  if (!from || !phone || /https?:\/\//i.test(input.opener)) {
+  if (preview.status !== 'sent') {
     console.warn(
-      {
-        familyId: input.familyId,
-        reason: !from ? 'no_from' : !phone ? 'no_phone' : 'opener_has_url',
-      },
-      'linq group coparent: cannot open a 1:1',
+      { familyId: input.familyId, provider: input.provider, reason: preview.reason },
+      'linq group coparent: group card was not sent',
     );
-    return null;
+    return 'not_sent';
   }
-  try {
-    const created = await createLinqChat({
-      from,
-      to: [phone],
-      text: input.opener,
-      fetch: input.fetch,
-    });
-    await database.insert(schema.channelMessages).values({
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      channel: 'imessage',
-      direction: 'out',
-      category: 'reply',
-      templateKey: 'linq:coparent_1to1_open',
-      dedupeKey: `linq:coparent_1to1_open:${input.parentUserId}:${created.chatId}`,
-      providerChatId: created.chatId,
-      providerMessageId: created.providerMessageId,
-      status: acceptedStatus('imessage'),
-      sentAt: input.now,
-    });
-    await database.insert(schema.auditLog).values({
-      familyId: input.familyId,
-      actor: input.parentUserId,
-      actionTaken: 'sms_reply_sent',
-      targetTable: 'channel_messages',
-      after: { via: 'linq_1to1_open' },
-    });
-    return created.chatId;
-  } catch (err) {
-    const code = err instanceof LinqSendError ? err.code : 'unknown';
-    console.warn({ familyId: input.familyId, code }, 'linq group coparent: 1:1 open failed');
-    return null;
-  }
+  return 'sent';
 }
 
 /**
@@ -740,13 +588,11 @@ async function sendGmailAskOnce(
   });
   if (notice === 'not_sent') return 'not_sent';
   if (notice === 'sent') {
-    await deliverPersonalCard(database, {
+    await deliverGroupLink(database, {
       familyId: input.familyId,
       parentUserId: input.parentUserId,
       groupChatId: input.chatId,
       provider: 'gmail',
-      language: input.language,
-      opener: ask,
       now: input.now,
       fetch: input.fetch,
       invalidatePrior: false,

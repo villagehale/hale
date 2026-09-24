@@ -21,14 +21,19 @@ import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
  * texts about it, so the receipt below would be a promise it cannot keep; a `to=gdrive`
  * link falls back to the destination the flow has always had.
  */
-export const TEXT_CONNECT_PROVIDERS = ['gcal', 'gmail'] as const satisfies readonly ConnectorProvider[];
+export const TEXT_CONNECT_PROVIDERS = [
+  'gcal',
+  'gmail',
+] as const satisfies readonly ConnectorProvider[];
 
 export type TextConnectProvider = (typeof TEXT_CONNECT_PROVIDERS)[number];
 
 /** The allowlist, as a narrowing. Everything that reaches this flow off a query string —
  * the redeem page's `to`, the done page's `provider` — comes through here (rule #1: the
  * only providers that exist are the ones this module has words for). */
-export function asTextConnectProvider(value: string | undefined | null): TextConnectProvider | null {
+export function asTextConnectProvider(
+  value: string | undefined | null,
+): TextConnectProvider | null {
   return TEXT_CONNECT_PROVIDERS.find((provider) => provider === value) ?? null;
 }
 
@@ -156,6 +161,12 @@ export function connectedNotice(
     return {
       heading: 'Nothing changed',
       body: "No changes made. Text me 'connect my calendar' if you change your mind.",
+    };
+  }
+  if (status === 'own_link') {
+    return {
+      heading: 'Nothing saved',
+      body: 'That Google account is already connected for someone else in the family. Nothing was saved. The co-parent should open the link themselves.',
     };
   }
   if (status === 'invalid') {
