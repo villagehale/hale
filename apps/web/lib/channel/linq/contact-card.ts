@@ -14,7 +14,9 @@ import { setupLinqContactCard, shareLinqContactCard } from './transport';
  *
  * The share is one-shot per active channel. Mid-intake does not call this —
  * only a completed onboard on a 1:1 Linq chat does. A failure is logged as
- * code and status and does not fail the turn. The claim stays consumed so a
+ * code and status and does not fail the turn. Setup that never reached the
+ * parent's chat releases the claim, so a later fix of the image URL or the
+ * partner key can retry. A share that was attempted stays consumed so a
  * retry cannot push the card twice.
  */
 
@@ -118,8 +120,10 @@ export async function shareHaleContactCardOnce(
       { familyId: args.familyId, code, httpStatus },
       'linq contact card: the Hale card was not applied',
     );
+    // Nothing was shared. A bad image URL or a missing key must not burn the
+    // one-shot, or a sandbox fix of LINQ_CONTACT_IMAGE_URL could never retry.
+    await clearContactCardClaim(database, claimed.id);
     if (setup.status === 'not_configured') {
-      await clearContactCardClaim(database, claimed.id);
       return { status: 'not_sent', reason: 'not_configured' };
     }
     await database.insert(schema.auditLog).values({
@@ -169,8 +173,8 @@ export async function shareHaleContactCardOnce(
   return { status: 'shared' };
 }
 
-/** A missing key is not a share. Release the claim so the card can still go
- * out once the line is configured. A real refusal stays consumed. */
+/** Setup never reached the parent's chat. Release the claim. A share that
+ * was attempted stays consumed so a retry cannot push the card twice. */
 async function clearContactCardClaim(database: Database, channelId: string): Promise<void> {
   await database
     .update(schema.parentChannels)

@@ -142,6 +142,86 @@ describe('Linq contact card', () => {
     const row = fake.rows(schema.parentChannels)[0];
     expect(row?.linqContactCardSharedAt).toBeNull();
   });
+
+  it('releases the claim when setup is refused, so a later success can share', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fake = makeFakeDb();
+    enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
+    let setups = 0;
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {
+      if (String(url).endsWith('/contact_card')) {
+        setups += 1;
+        if (setups === 1) {
+          return Response.json({ error: { code: 'image_unreachable' } }, { status: 400 });
+        }
+        return Response.json({ is_active: true }, { status: 201 });
+      }
+      return new Response(null, { status: 200 });
+    });
+    const args = {
+      familyId: FAMILY,
+      parentUserId: USER,
+      chatId: CHAT,
+      channel: 'imessage',
+      isGroup: false,
+      onboardComplete: true,
+      now: NOW,
+      fetch: fetchMock,
+    };
+
+    const refused = await shareHaleContactCardOnce(fake.db, args);
+    expect(refused).toEqual({
+      status: 'not_sent',
+      reason: 'card_refused',
+      code: 'image_unreachable',
+      httpStatus: 400,
+    });
+    expect(fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toBeNull();
+
+    const shared = await shareHaleContactCardOnce(fake.db, args);
+    expect(shared).toEqual({ status: 'shared' });
+    expect(fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toEqual(NOW);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps the one-shot when the share itself is refused', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fake = makeFakeDb();
+    enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {
+      if (String(url).endsWith('/contact_card')) {
+        return Response.json({ is_active: true }, { status: 201 });
+      }
+      return Response.json({ error: { code: 'share_rejected' } }, { status: 400 });
+    });
+    const args = {
+      familyId: FAMILY,
+      parentUserId: USER,
+      chatId: CHAT,
+      channel: 'imessage',
+      isGroup: false,
+      onboardComplete: true,
+      now: NOW,
+      fetch: fetchMock,
+    };
+
+    const refused = await shareHaleContactCardOnce(fake.db, args);
+    expect(refused).toEqual({
+      status: 'not_sent',
+      reason: 'share_refused',
+      code: 'share_rejected',
+      httpStatus: 400,
+    });
+    expect(fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toEqual(NOW);
+
+    const second = await shareHaleContactCardOnce(fake.db, args);
+    expect(second).toEqual({ status: 'not_sent', reason: 'already_shared' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('Linq tapbacks', () => {

@@ -13,7 +13,7 @@ import { LinqSendError, sendLinqChatMessage, sendLinqPoll } from './transport';
  * caller refuses, and the flag defaults off.
  */
 
-/** Design-locked (Sloane). The text that precedes a poll. */
+/** DESIGN LOCK PENDING (Sloane). The text that precedes a poll. */
 export const LINQ_POLL_PLACEHOLDER_PROMPT = 'Which of these should I look at first?';
 
 const UNSAFE = /\b(911|stop|arret|arrêt)\b/i;

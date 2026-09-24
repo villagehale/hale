@@ -26,23 +26,23 @@ import {
  */
 
 /**
- * Design-locked (Sloane). First bubble when Hale opens the co-parent
+ * DESIGN LOCK PENDING (Sloane). First bubble when Hale opens the co-parent
  * group. No URL: Linq rejects a link on the create-chat message.
  */
 export const LINQ_GROUP_OPEN_TEXT = "This thread is your kids' year — both of you, and me.";
 
-/** Design-locked (Sloane). Group icon / name. Household dad+mom only, not a logistics brand. */
+/** DESIGN LOCK PENDING (Sloane). Group icon / name. Household dad+mom only, not a logistics brand. */
 export const LINQ_GROUP_DISPLAY_NAME = "Kids' year";
 
 /**
- * Design-locked (Sloane). Sent in the 1:1 when Linq will not open the
+ * DESIGN LOCK PENDING (Sloane). Sent in the 1:1 when Linq will not open the
  * group. The sandbox requires the co-parent to have texted the line first.
  */
 export const LINQ_GROUP_UNREACHABLE_TEXT =
   "I couldn't open the group yet. Ask them to text this number once, then tell me to try again.";
 
 /**
- * Design-locked (Sloane). Hold for a number in the group that is not an
+ * DESIGN LOCK PENDING (Sloane). Hold for a number in the group that is not an
  * enrolled parent of this household. Does not start an intake.
  */
 export const LINQ_GROUP_UNKNOWN_HOLD =
