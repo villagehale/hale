@@ -4,6 +4,8 @@ import {
   GROUP_CALENDAR_ASK,
   GROUP_CALENDAR_RECEIPT,
   GROUP_CONFLICT,
+  GROUP_GMAIL_ASK,
+  GROUP_GMAIL_RECEIPT,
   GROUP_HANDOFF,
   GROUP_KID_EVENT,
   GROUP_WELCOME,
@@ -79,10 +81,15 @@ describe('classifyKidCalendarItem', () => {
 });
 
 describe('kidMailboxSubject', () => {
-  it('keeps a kid subject and drops an address or a private subject', () => {
-    expect(kidMailboxSubject({ subject: 'Gymnastics registration', childNames: [] })).toBe(
-      'Gymnastics registration',
-    );
+  it('returns nothing from a subject, a sender, or a body', () => {
+    expect(
+      kidMailboxSubject({
+        subject: 'Gymnastics registration',
+        from: 'coach@gym.test',
+        body: 'Maya is registered for Tuesday at 4.',
+        childNames: ['Maya'],
+      }),
+    ).toBeNull();
     expect(kidMailboxSubject({ subject: 'Maya <maya@school.test>', childNames: ['Maya'] })).toBe(
       null,
     );
@@ -111,6 +118,18 @@ describe('design-locked group strings', () => {
     );
     expect(GROUP_CALENDAR_RECEIPT.fr).toBe(
       'Le calendrier de {name} est connecte. Je suis les activites des enfants sur les deux.',
+    );
+    expect(GROUP_GMAIL_ASK.en).toBe(
+      "{name}, want me to catch school and camp emails for you too? I'll text you the Gmail link one-to-one. Nothing from your inbox shows up here.",
+    );
+    expect(GROUP_GMAIL_ASK.fr).toBe(
+      "{name}, tu veux que je repere aussi les courriels de l'ecole et des camps? Je t'envoie le lien Gmail en prive. Rien de ta boite ne s'affiche ici.",
+    );
+    expect(GROUP_GMAIL_RECEIPT.en).toBe(
+      "{name}'s Gmail is connected. I'll pull out the kids' dates; the inbox stays private.",
+    );
+    expect(GROUP_GMAIL_RECEIPT.fr).toBe(
+      'Le Gmail de {name} est connecte. Je garde les dates des enfants; la boite reste privee.',
     );
     expect(GROUP_KID_EVENT.en).toBe("Heads up: {name} added {kid}'s {event}, {day} at {time}.");
     expect(GROUP_KID_EVENT.fr).toBe(

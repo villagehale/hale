@@ -310,18 +310,33 @@ async function advanceSeatedCoparent(
         body: { outcome: 'group_coparent_link_held' },
       };
     }
-    const gmail = step.step === 'awaiting_gmail';
-    const ask = gmail ? groupGmailAsk(language, name) : groupCalendarAsk(language, name);
-    const provider = gmail ? 'gmail' : 'gcal';
-    const askKey = gmail ? GMAIL_ASK_KEY : CALENDAR_ASK_KEY;
-    // One group bubble. The card is 1:1. The other ask waits for the next turn.
+    if (step.step === 'awaiting_gmail') {
+      // Their reply to the calendar ask. One bubble, and never again if they ignore it.
+      const asked = await sendGmailAskOnce(database, {
+        familyId: sender.familyId,
+        parentUserId: sender.userId,
+        chatId: message.chatId,
+        name,
+        language,
+        now: ports.now,
+        fetch: ports.fetch,
+      });
+      const outcome = asked === 'not_sent' ? 'group_coparent_link_held' : 'group_coparent_gmail';
+      return {
+        type: 'done',
+        outcome,
+        count: 'intake',
+        body: { outcome },
+      };
+    }
+    const ask = groupCalendarAsk(language, name);
     await sendLine(database, {
       familyId: sender.familyId,
       parentUserId: sender.userId,
       chatId: message.chatId,
       text: ask,
-      templateKey: askKey,
-      dedupeKey: `${askKey}:${sender.userId}`,
+      templateKey: CALENDAR_ASK_KEY,
+      dedupeKey: `${CALENDAR_ASK_KEY}:${sender.userId}`,
       now: ports.now,
       fetch: ports.fetch,
     });
@@ -329,18 +344,14 @@ async function advanceSeatedCoparent(
       familyId: sender.familyId,
       parentUserId: sender.userId,
       groupChatId: message.chatId,
-      provider,
+      provider: 'gcal',
       language,
       opener: ask,
       now: ports.now,
       fetch: ports.fetch,
-      // A Gmail link must not burn the calendar token already in their hands.
-      invalidatePrior: !gmail,
     });
-    if (sent === 'sent') {
-      await setStep(database, sender.userId, gmail ? 'done' : 'awaiting_gmail', ports.now);
-    }
-    const outcome = sent === 'sent' ? `group_coparent_${provider}` : 'group_coparent_link_held';
+    if (sent === 'sent') await setStep(database, sender.userId, 'awaiting_gmail', ports.now);
+    const outcome = sent === 'sent' ? 'group_coparent_gcal' : 'group_coparent_link_held';
     return {
       type: 'done',
       outcome,
@@ -680,9 +691,69 @@ export async function sendCoparentGroupCalendarReceipt(
     now: input.now,
     fetch: input.fetch,
   });
-  // They already connected Gmail. The next message must not ask for it again.
-  if (gmail) await setStep(database, input.userId, 'done', input.now);
+  if (gmail) {
+    // Connected already. The receipt is the whole turn; do not attach an ask.
+    await setStep(database, input.userId, 'done', input.now);
+    return notice === 'sent' ? 'sent' : 'skipped';
+  }
+  if (notice === 'sent' || notice === 'already_sent') {
+    // The receipt has landed. The ask, if it has not gone out, is the next bubble.
+    await sendGmailAskOnce(database, {
+      familyId: input.familyId,
+      parentUserId: input.userId,
+      chatId: family.linqGroupChatId,
+      name,
+      language,
+      now: input.now,
+      fetch: input.fetch,
+    });
+  }
   return notice === 'sent' ? 'sent' : 'skipped';
+}
+
+/**
+ * The Gmail ask, once. A later ignore does not send it again: the dedupe
+ * row is the record, and the step moves to done when the bubble goes out.
+ */
+async function sendGmailAskOnce(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    chatId: string;
+    name: string;
+    language: ReplyLanguage;
+    now: Date;
+    fetch?: typeof fetch;
+  },
+): Promise<'sent' | 'already_sent' | 'not_sent'> {
+  const ask = groupGmailAsk(input.language, input.name);
+  const notice = await sendLine(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    chatId: input.chatId,
+    text: ask,
+    templateKey: GMAIL_ASK_KEY,
+    dedupeKey: `${GMAIL_ASK_KEY}:${input.parentUserId}`,
+    now: input.now,
+    fetch: input.fetch,
+  });
+  if (notice === 'not_sent') return 'not_sent';
+  if (notice === 'sent') {
+    await deliverPersonalCard(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      groupChatId: input.chatId,
+      provider: 'gmail',
+      language: input.language,
+      opener: ask,
+      now: input.now,
+      fetch: input.fetch,
+      invalidatePrior: false,
+    });
+  }
+  await setStep(database, input.parentUserId, 'done', input.now);
+  return notice;
 }
 
 async function sayUnclaimed(

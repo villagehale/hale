@@ -571,16 +571,18 @@ function zonedClock(date: Date, timeZone: string): ZonedParts & { hour: number; 
   };
 }
 
-/** A mailbox subject may be said in the group only when it is kid-related.
- * The sender address is not an input: it cannot appear in the result. */
-export function kidMailboxSubject(input: {
+/**
+ * Mailbox text is not group copy. A subject, sender, or body never comes
+ * back from here. A kid date reaches the group only as the locked kid-event
+ * notice, built from a calendar block, not from a message.
+ */
+export function kidMailboxSubject(_input: {
   subject: string;
+  from?: string;
+  body?: string;
   childNames: readonly string[];
-}): string | null {
-  const subject = input.subject.replace(/\s+/g, ' ').trim();
-  if (subject.length === 0 || subject.includes('@')) return null;
-  if (!classifyKidCalendarItem({ title: subject, childNames: input.childNames })) return null;
-  return subject.slice(0, 80);
+}): null {
+  return null;
 }
 
 interface ChangeStamp {
@@ -920,16 +922,18 @@ async function loadHandoffStatements(
 }
 
 /**
- * Mail stays out of the group. Subjects, senders, and snippets are not
- * spoken here. The owner's existing SMS email alert is a different path.
- * The return is named so a caller can see the suppression.
+ * Mail stays out of the group. Subjects, senders, and bodies are not spoken
+ * here, and this function does not render them. A kid date is a calendar
+ * notice ({@link groupKidEventText}), never a line built from an envelope.
+ * The owner's existing SMS email alert is a different path. The return is
+ * named so a caller can see the suppression.
  */
 export async function narrateHouseholdMailbox(
   _database: Database,
   input: {
     familyId: string;
     userId: string;
-    envelopes: readonly { messageId: string; subject: string }[];
+    envelopes: readonly { messageId: string; subject: string; from?: string; body?: string }[];
     /** A first sync is the mailbox's existing mail. It is not news. */
     seeding?: boolean;
     now: Date;

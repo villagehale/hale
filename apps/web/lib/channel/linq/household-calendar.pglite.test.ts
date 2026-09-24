@@ -8,8 +8,11 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
 import { listActiveConnectorConnections } from '~/lib/integrations/store';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { groupKidEventText } from './group-coparent-copy';
 import {
   familyHasTwoCalendars,
+  formatDay,
+  formatTime,
   narrateHouseholdMailbox,
   rememberAndNarrateCalendar,
   rememberCalendarChanges,
@@ -315,7 +318,7 @@ describe('household calendars', () => {
     expect(quietWire.texts()).toContain('gymnastics');
   });
 
-  it('does not speak mail into the group', async () => {
+  it('keeps mailbox subjects, senders, and bodies out of the group', async () => {
     const seeded = await seedPair();
     await db.database.insert(schema.integrations).values([
       {
@@ -334,21 +337,44 @@ describe('household calendars', () => {
       },
     ]);
     const wire = linqFetch();
-    await narrateHouseholdMailbox(db.database, {
+    const subject = 'Gymnastics registration closes Friday';
+    const sender = 'office@camp-secret.test';
+    const body = 'Please reply with Maya snack preferences and the waiver.';
+    const suppressed = await narrateHouseholdMailbox(db.database, {
       familyId: seeded.familyId,
       userId: seeded.primaryUserId,
       envelopes: [
-        { messageId: 'mail-gym', subject: 'Gymnastics registration' },
-        { messageId: 'mail-budget', subject: 'Quarterly budget review' },
-        { messageId: 'mail-from', subject: 'Maya <coach@gym.test>' },
+        { messageId: 'mail-gym', subject, from: sender, body },
+        { messageId: 'mail-budget', subject: 'Quarterly budget review', from: 'cfo@work.test' },
+        { messageId: 'mail-from', subject: 'Maya <coach@gym.test>', body: 'See you at the gym.' },
       ],
       now: DAY,
       fetch: wire.fetch,
     });
+    expect(suppressed).toEqual({ suppressed: 'mail_not_in_group' });
     expect(wire.texts()).toBe('[]');
-    expect(wire.texts()).not.toContain('Gymnastics');
-    expect(wire.texts()).not.toContain('Quarterly');
-    expect(wire.texts()).not.toContain('coach@gym.test');
+
+    await rememberAndNarrateCalendar(db.database, {
+      integrationId: seeded.primaryIntegrationId,
+      familyId: seeded.familyId,
+      userId: seeded.primaryUserId,
+      changes: [change({ eventId: 'gym', title: 'Maya gymnastics' })],
+      seeding: false,
+      now: DAY,
+      fetch: wire.fetch,
+    });
+    const when = new Date('2026-09-25T19:00:00.000Z');
+    const notice = groupKidEventText('en', {
+      name: 'Barton',
+      kid: 'Maya',
+      event: 'gymnastics',
+      day: formatDay(when, 'America/Toronto', 'en'),
+      time: formatTime(when, 'America/Toronto', 'en'),
+    });
+    expect(wire.texts()).toContain(notice);
+    for (const secret of [subject, sender, body, 'Quarterly budget', 'coach@gym.test', 'snack']) {
+      expect(wire.texts()).not.toContain(secret);
+    }
   });
 
   it('sends at most one group bubble a day', async () => {
