@@ -553,7 +553,7 @@ describe('recMorningHandler', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', async () => {
+  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, co_parent_number, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -582,6 +582,9 @@ describe('the shipped order', () => {
       // heard a yes here is a cold text to a stranger. Its position is free — it claims
       // nothing — but it is listed so the resolver never finds a kind without an owner.
       'co_parent_assent',
+      // The phone that answers intake:coparent_ask. A shape, not a bare word, so it
+      // sits with the other specific matchers and ahead of the name capture.
+      'co_parent_number',
       // Beside it, and for the same reason: it owns the weekday-care question
       // (VIL-360) and declines every reading of it, because the answer is an either/or
       // in ordinary English that a deterministic grammar reads one gate later. Its

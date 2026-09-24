@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { coParentInviteSentAck } from '~/lib/channel/coparent/copy';
 import { claimsNoLedgerCanBack, extractStateClaims } from './claims';
 
 /**
@@ -177,5 +178,12 @@ describe('claimsNoLedgerCanBack', () => {
 
   it('is empty for an ordinary reply', () => {
     expect(claimsNoLedgerCanBack('Swim runs Tuesdays at 4 at the Gellert.')).toEqual([]);
+  });
+
+  it('does not treat a co-parent invite sentence as a promise no ledger can back', () => {
+    const live = "Got it, I'll send an invite to that number so they can join this thread.";
+    expect(kinds(live)).toEqual(['co_parent_invite']);
+    expect(claimsNoLedgerCanBack(live)).toEqual([]);
+    expect(extractStateClaims(coParentInviteSentAck('them', 'en'))).toEqual([]);
   });
 });

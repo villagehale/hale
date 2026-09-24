@@ -73,6 +73,7 @@ import { createDisambiguationStore } from './disambiguation';
 import {
   approvalHandler,
   coParentAssentHandler,
+  coParentNumberHandler,
   connectorDisconnectHandler,
   connectorLinkHandler,
   daycareFollowupHandler,
@@ -378,6 +379,15 @@ export function defaultHandlers(): DeterministicHandler[] {
     // Owns the co-parent scope question and declines every reading of it — see the
     // handler's own note. Listed so the router never resolves a kind nobody owns.
     coParentAssentHandler(),
+    // The number that answers intake:coparent_ask. Ahead of the name capture so a
+    // phone is not stored as a name, and ahead of the coach so the coach cannot
+    // acknowledge an invite it did not send. Linq replies with group instructions.
+    coParentNumberHandler({
+      sendSms: async (sms) => {
+        const sent = await createTwilioTransport().send(sms);
+        return { providerMessageId: sent.providerMessageId };
+      },
+    }),
     // Beside it, and for the same reason: it claims nothing, so its POSITION in this
     // chain is free rather than load-bearing. Said out loud so a reader does not have to
     // work out what it is shadowing (nothing).

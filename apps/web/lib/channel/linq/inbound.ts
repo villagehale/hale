@@ -1,3 +1,5 @@
+import { schema } from '@hale/db';
+import { sql } from 'drizzle-orm';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import {
   type TwilioInboundDeps,
@@ -5,8 +7,28 @@ import {
   routeTwilioInbound,
 } from '~/lib/channel/twilio/inbound';
 import { applyTwilioStatus } from '~/lib/channel/twilio/status';
-import { linqInboundConfigured, linqMissingInboundEnv, linqWebhookSecret } from './config';
-import { holdUnknownGroupSender, mapGroupHandlesToFamily, rememberLinqGroupChat } from './group';
+import {
+  linqFromE164,
+  linqInboundConfigured,
+  linqMissingInboundEnv,
+  linqWebhookSecret,
+} from './config';
+import {
+  LINQ_GROUP_CLAIMED_TEMPLATE_KEY,
+  LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY,
+  LINQ_GROUP_CLAIM_REFUSED_TEXT,
+  LINQ_GROUP_LINE_MISSING_TEXT,
+  LINQ_GROUP_OPEN_TEXT,
+  LINQ_GROUP_TRIGGER_1TO1_TEMPLATE_KEY,
+  claimHouseholdLinqGroup,
+  deliverLinqGroupNotice,
+  familyOwnsLinqGroupChat,
+  formatLinqLineForParent,
+  holdUnknownGroupSender,
+  linqGroupTriggerInOneToOne,
+  mapGroupHandlesToFamily,
+  matchLinqGroupTrigger,
+} from './group';
 import { type LinqInboundText, type LinqSignal, parseLinqWebhook } from './payload';
 import { lookupLinqPollOption } from './poll';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
@@ -25,8 +47,10 @@ import { type LinqEffectResult, markLinqChatRead } from './transport';
  * and nothing is written. Linq retries a 503, so a secret that lands inside the
  * retry window still delivers the text.
  *
- * A group chat from an enrolled parent of one household continues that
- * family's year in the group. An unknown number is held and not enrolled.
+ * A group chat is the household year only after Hale writes
+ * `families.linq_group_chat_id`. The parent starts the group and sends the
+ * trigger; that write is the claim. A group that is not claimed yet is not
+ * handed to the coach. An unknown number is held and not enrolled.
  * Reactions, typing, and participant events answer 200. A poll vote becomes
  * the option's text and enters the same router a typed reply would.
  *
@@ -56,6 +80,13 @@ export async function handleLinqInboundRequest(
     markRead?: (input: { chatId: string }) => Promise<LinqEffectResult>;
     /** Test seam for the unknown-sender hold. Production texts the group. */
     holdGroup?: (input: { chatId: string }) => Promise<'sent' | 'not_sent'>;
+    /**
+     * Test seam for a claim ack or a 1:1 trigger nudge. Production sends
+     * through Linq inside {@link deliverLinqGroupNotice}.
+     */
+    sendGroupText?: (input: { chatId: string; text: string }) => Promise<{
+      providerMessageId: string;
+    }>;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -141,20 +172,24 @@ export async function handleLinqInboundRequest(
   const markRead = deps.markRead ?? markLinqChatRead;
   const readPromise = markRead({ chatId: message.chatId });
   let outcome: TwilioInboundOutcome;
+  let answered: Record<string, unknown> | null = null;
   try {
-    outcome = await routeTwilioInbound(
-      deps,
-      {
-        from: message.senderHandle,
-        transport: 'imessage',
-        body: message.text,
-        providerId: message.messageId,
-        receivedAt: message.receivedAt,
-        chatId: message.chatId,
-        providerAnsweredKeyword: null,
-      },
-      message.mediaCount,
-    );
+    const trigger = matchLinqGroupTrigger(message.text);
+    if (trigger) {
+      const mapped = await mapGroupHandlesToFamily(deps.database, {
+        sender: message.senderHandle,
+        others: [],
+      });
+      if (mapped.status === 'same_family') {
+        const nudge = await answerGroupTriggerInOneToOne(deps, message, mapped, trigger);
+        outcome = nudge.count;
+        answered = nudge.body;
+      } else {
+        outcome = await routeOneToOne(deps, message);
+      }
+    } else {
+      outcome = await routeOneToOne(deps, message);
+    }
   } finally {
     try {
       const read = await readPromise;
@@ -175,15 +210,46 @@ export async function handleLinqInboundRequest(
       );
     }
   }
+  if (answered) {
+    deps.log.info(
+      { outcome: answered.outcome, providerMessageId: message.messageId },
+      'linq inbound: group trigger in the 1:1',
+    );
+    await deps.countOutcome(outcome);
+    return json(answered);
+  }
   deps.log.info({ outcome, providerMessageId: message.messageId }, 'linq inbound: routed');
   await deps.countOutcome(outcome);
   return json({ outcome });
 }
 
+async function routeOneToOne(
+  deps: LinqDoorDeps,
+  message: LinqInboundText,
+): Promise<TwilioInboundOutcome> {
+  return routeTwilioInbound(
+    deps,
+    {
+      from: message.senderHandle,
+      transport: 'imessage',
+      body: message.text,
+      providerId: message.messageId,
+      receivedAt: message.receivedAt,
+      chatId: message.chatId,
+      providerAnsweredKeyword: null,
+    },
+    message.mediaCount,
+  );
+}
+
 type LinqDoorDeps = Parameters<typeof handleLinqInboundRequest>[1];
 
-/** A group from a parent already on this household continues their year in
- * that chat. Anyone else is held, and a STOP from them sends nothing. */
+/**
+ * A group is the household year only once Hale has claimed it. The trigger
+ * from an enrolled parent of one family is that claim. Anyone else is held,
+ * and a STOP from them sends nothing. A STOP from a parent still routes, so
+ * the opt-out does not wait on the claim.
+ */
 async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
   const others = message.otherHandles.filter((handle) => handle !== message.senderHandle);
   const mapped = await mapGroupHandlesToFamily(deps.database, {
@@ -206,11 +272,26 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     return json({ outcome, hold: held });
   }
 
-  await rememberLinqGroupChat(deps.database, {
-    familyId: mapped.familyId,
-    chatId: message.chatId,
-    now: deps.now?.() ?? new Date(),
-  });
+  const keyword = matchKeyword(message.text);
+  if (keyword) return routeClaimedGroup(deps, message);
+
+  const trigger = matchLinqGroupTrigger(message.text);
+  if (trigger) return claimGroupFromTrigger(deps, message, mapped, trigger);
+
+  const owned = await familyOwnsLinqGroupChat(deps.database, mapped.familyId, message.chatId);
+  if (!owned) {
+    deps.log.info(
+      { outcome: 'group_unclaimed' },
+      'linq inbound: group is not the household thread',
+    );
+    await deps.countOutcome('ignored');
+    return json({ outcome: 'group_unclaimed' });
+  }
+
+  return routeClaimedGroup(deps, message);
+}
+
+async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
   const outcome = await routeTwilioInbound(
     deps,
     {
@@ -228,6 +309,121 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
   deps.log.info({ outcome, providerMessageId: message.messageId }, 'linq inbound: group routed');
   await deps.countOutcome(outcome);
   return json({ outcome });
+}
+
+async function claimGroupFromTrigger(
+  deps: LinqDoorDeps,
+  message: LinqInboundText,
+  mapped: { familyId: string; userId: string },
+  language: 'en' | 'fr',
+): Promise<Response> {
+  const recorded = await recordHandledInbound(deps, message, mapped);
+  if (!recorded) {
+    await deps.countOutcome('duplicate');
+    return json({ outcome: 'duplicate' });
+  }
+
+  const now = deps.now?.() ?? new Date();
+  const claim = await claimHouseholdLinqGroup(deps.database, {
+    familyId: mapped.familyId,
+    parentUserId: mapped.userId,
+    chatId: message.chatId,
+    now,
+  });
+  const accepted = claim.status === 'claimed' || claim.status === 'already_this';
+  const refused =
+    claim.status === 'claimed_by_other_family' || claim.status === 'already_other_chat';
+  if (!accepted && !refused) {
+    deps.log.info({ outcome: claim.status }, 'linq inbound: group claim did not land');
+    await deps.countOutcome('ignored');
+    return json({ outcome: 'group_claim_refused', claim: claim.status });
+  }
+
+  const notice = await deliverLinqGroupNotice(deps.database, {
+    familyId: mapped.familyId,
+    parentUserId: mapped.userId,
+    chatId: message.chatId,
+    text: accepted ? LINQ_GROUP_OPEN_TEXT : LINQ_GROUP_CLAIM_REFUSED_TEXT[language],
+    templateKey: accepted ? LINQ_GROUP_CLAIMED_TEMPLATE_KEY : LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY,
+    now,
+    send: deps.sendGroupText,
+  });
+  const outcome = accepted ? 'group_claimed' : 'group_claim_refused';
+  deps.log.info({ outcome, claim: claim.status, notice }, 'linq inbound: group claim');
+  await deps.countOutcome('intake');
+  return json({ outcome, claim: claim.status, notice });
+}
+
+/**
+ * The trigger in the 1:1 is not a claim. Point the parent at the group they
+ * have to start. An unknown sender falls through to the ordinary door.
+ */
+async function answerGroupTriggerInOneToOne(
+  deps: LinqDoorDeps,
+  message: LinqInboundText,
+  mapped: { familyId: string; userId: string },
+  language: 'en' | 'fr',
+): Promise<{ count: TwilioInboundOutcome; body: Record<string, unknown> }> {
+  const recorded = await recordHandledInbound(deps, message, mapped);
+  if (!recorded) return { count: 'duplicate', body: { outcome: 'duplicate' } };
+
+  const from = linqFromE164();
+  const text = from
+    ? linqGroupTriggerInOneToOne(formatLinqLineForParent(from), language)
+    : LINQ_GROUP_LINE_MISSING_TEXT[language];
+  const notice = await deliverLinqGroupNotice(deps.database, {
+    familyId: mapped.familyId,
+    parentUserId: mapped.userId,
+    chatId: message.chatId,
+    text,
+    templateKey: LINQ_GROUP_TRIGGER_1TO1_TEMPLATE_KEY,
+    now: deps.now?.() ?? new Date(),
+    send: deps.sendGroupText,
+  });
+  return { count: 'intake', body: { outcome: 'group_trigger_in_1to1', notice } };
+}
+
+/**
+ * The trigger is on the ledger and is not owed to C1. `handedOffAt` is set
+ * now so the unhanded reconciler does not enqueue a second reply.
+ * A second delivery of the same provider id returns null.
+ */
+async function recordHandledInbound(
+  deps: LinqDoorDeps,
+  message: LinqInboundText,
+  owner: { familyId: string; userId: string },
+): Promise<string | null> {
+  const now = deps.now?.() ?? new Date();
+  const [row] = await deps.database
+    .insert(schema.channelMessages)
+    .values({
+      familyId: owner.familyId,
+      parentUserId: owner.userId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerMessageId: message.messageId,
+      providerChatId: message.chatId,
+      status: 'delivered',
+      body: message.text,
+      sentAt: message.receivedAt,
+      handedOffAt: now,
+    })
+    .onConflictDoNothing({
+      target: schema.channelMessages.providerMessageId,
+      where: sql`${schema.channelMessages.direction} = 'in' AND ${schema.channelMessages.providerMessageId} IS NOT NULL`,
+    })
+    .returning({ id: schema.channelMessages.id });
+  const id = row?.id;
+  if (!id) return null;
+  await deps.database.insert(schema.auditLog).values({
+    familyId: owner.familyId,
+    actor: owner.userId,
+    actionTaken: 'sms_reply_received',
+    targetTable: 'channel_messages',
+    targetId: id,
+  });
+  return id;
 }
 
 /** Reactions, typing, and participant changes are acked. A poll vote is the

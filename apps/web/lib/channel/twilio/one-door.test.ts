@@ -33,6 +33,7 @@ const PROVIDER_TOKENS = [
   'api.twilio.com',
   // Linq is the same kind of door: a call here puts bytes on a parent's phone.
   'sendLinqChatMessage(',
+  'createLinqChat(',
   'sendLinqParts(',
   'reactToLinqMessage(',
   'shareLinqContactCard(',

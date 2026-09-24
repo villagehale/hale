@@ -12,7 +12,7 @@
  * gate that catches a hallucinated promise itself capable of hallucinating. So it is
  * text in, spans out, no client, no await.
  *
- * FOUR CLAIM FAMILIES, and the taxonomy is closed on purpose (see {@link ClaimKind}).
+ * FIVE CLAIM FAMILIES, and the taxonomy is closed on purpose (see {@link ClaimKind}).
  * "I'll let you know once it's done" is not in it, and that is not an oversight: every
  * family here names a question the database can answer, plus the one family whose answer
  * is always no. A wider net would refuse the deterministic templates that have said
@@ -31,11 +31,12 @@
  */
 
 /**
- * The four things a message can claim that this primitive knows how to check.
+ * The five things a message can claim that this primitive knows how to check.
  *
- * Each maps to exactly one question in reconcile.ts, and three of the four can be
- * answered yes. `self_referential` is the one that never can — a promise about how Hale
- * behaves has no table, which is precisely why a model is free to invent it.
+ * Each maps to exactly one question in reconcile.ts, and three of the five can be
+ * answered yes. `self_referential` never can — a promise about how Hale behaves has no
+ * table. `co_parent_invite` never can either: the invite path sends, then says so, and
+ * a model sentence is not that path.
  */
 export type ClaimKind =
   /** "I'm watching that morning and I'll text you before it goes live." */
@@ -45,7 +46,12 @@ export type ClaimKind =
   /** "Your well-baby visit is booked." — an assertion that a placement exists. */
   | 'scheduled_event'
   /** "I'll cut the one sec messages and just answer." — a promise about Hale itself. */
-  | 'self_referential';
+  | 'self_referential'
+  /**
+   * "I'll send an invite to that number." The 2026-09-24 Linq turn: the model said
+   * the invite left, and the number was never texted.
+   */
+  | 'co_parent_invite';
 
 export interface StateClaim {
   /**
@@ -111,8 +117,7 @@ const NOTIFY_VERB =
  * This is the CLAIM'S kind, not what a course page may back: reconcile.ts reads the
  * watched OBJECT ("fall registration", "the registration morning") on its own, because
  * "so you can register" on a one-class ack is a purpose, not a season (VIL-337). */
-const REGISTRATION_NAMED =
-  /\b(?:registration|register|registering|sign[-\s]?ups?|signing\s+up)\b/i;
+const REGISTRATION_NAMED = /\b(?:registration|register|registering|sign[-\s]?ups?|signing\s+up)\b/i;
 /** ...or named by what it is about to do, which is the half a class page shares. */
 const REGISTRATION_OPENING = /\b(?:opens?|opening|goes?\s+live|go\s+live|doors\s+open)\b/i;
 
@@ -210,6 +215,14 @@ function withoutQuotedSpans(sentence: string): string {
   return sentence.replace(/["“”][^"“”]*["“”]/g, ' ');
 }
 
+/** Hale says it has invited someone, or that it is about to. Negation is already out. */
+function isCoParentInviteClaim(text: string): boolean {
+  const future = /\bi(?:['’]ll|\s+will|['’]m\s+going\s+to|\s+am\s+going\s+to)\b/i;
+  const already = /\bi(?:['’]ve|\s+have)\s+(?:sent|texted)\b/i;
+  if (!future.test(text) && !already.test(text)) return false;
+  return /\binvite\b/i.test(text);
+}
+
 function kindOf(sentence: string): ClaimKind | null {
   // A question is a proposal, not a claim. "Want me to watch that morning?" asks for
   // permission Hale does not yet have, and refusing it would refuse the honest move.
@@ -218,6 +231,10 @@ function kindOf(sentence: string): ClaimKind | null {
   const text = withoutQuotedSpans(sentence);
   if (REPORTED_SPEECH.test(text)) return null;
   if (FIRST_PERSON_NEGATED.test(text)) return null;
+  // Before the other first-person families. "I'll send an invite" also contains a
+  // notify verb, and classifying it as a watch or a follow-up would let a ledger
+  // row about something else back a text to a stranger.
+  if (isCoParentInviteClaim(text)) return 'co_parent_invite';
 
   const speaks = FIRST_PERSON_FUTURE.test(text) || FIRST_PERSON_PROGRESSIVE.test(text);
   if (speaks) {
