@@ -1002,14 +1002,20 @@ async function sendGroupNotice(
       .update(schema.channelMessages)
       .set({ providerMessageId: sent.providerMessageId })
       .where(eq(schema.channelMessages.id, claimed.id));
-    await database.insert(schema.auditLog).values({
+    const audit = {
       familyId: input.familyId,
-      actor: 'system',
-      actionTaken: input.notice.category === 'followup' ? 'sms_reply_sent' : 'calendar_alert_sent',
-      targetTable: 'channel_messages',
+      actor: 'system' as const,
+      targetTable: 'channel_messages' as const,
       targetId: claimed.id,
       after: { kind: input.notice.kind },
-    });
+    };
+    if (input.notice.category === 'followup') {
+      await database.insert(schema.auditLog).values({ ...audit, actionTaken: 'sms_reply_sent' });
+    } else {
+      await database
+        .insert(schema.auditLog)
+        .values({ ...audit, actionTaken: 'calendar_alert_sent' });
+    }
     return 'sent';
   } catch (err) {
     const code = err instanceof LinqSendError ? err.code : 'unknown';
