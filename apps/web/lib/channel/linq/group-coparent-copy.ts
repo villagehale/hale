@@ -22,6 +22,20 @@ export const GROUP_CALENDAR_RECEIPT: Record<ReplyLanguage, string> = {
   fr: 'Le calendrier de {name} est connecte. Je suis les activites des enfants sur les deux.',
 };
 
+// NEEDS DESIGN LOCK (Sloane)
+/** Placeholder. Hale asks this on its own turn. It does not name a mailbox. */
+export const GROUP_GMAIL_ASK: Record<ReplyLanguage, string> = {
+  en: '{name}, want Gmail in the kids year too? I will text you the link one-to-one.',
+  fr: "{name}, tu veux ajouter Gmail a l'annee des enfants? Je t'envoie le lien en prive.",
+};
+
+// NEEDS DESIGN LOCK (Sloane)
+/** Placeholder receipt. Names the connect only — no subject, sender, or snippet. */
+export const GROUP_GMAIL_RECEIPT: Record<ReplyLanguage, string> = {
+  en: "{name}'s Gmail is connected.",
+  fr: 'Le Gmail de {name} est connecte.',
+};
+
 export const GROUP_KID_EVENT: Record<ReplyLanguage, string> = {
   en: "Heads up: {name} added {kid}'s {event}, {day} at {time}.",
   fr: 'Pour info: {name} a ajoute {event} pour {kid}, {day} a {time}.',
@@ -56,6 +70,14 @@ export function groupCalendarAsk(language: ReplyLanguage, name: string): string 
 
 export function groupCalendarReceipt(language: ReplyLanguage, name: string): string {
   return fill(GROUP_CALENDAR_RECEIPT[language], { name });
+}
+
+export function groupGmailAsk(language: ReplyLanguage, name: string): string {
+  return fill(GROUP_GMAIL_ASK[language], { name });
+}
+
+export function groupGmailReceipt(language: ReplyLanguage, name: string): string {
+  return fill(GROUP_GMAIL_RECEIPT[language], { name });
 }
 
 export function groupKidEventText(

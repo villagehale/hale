@@ -31,6 +31,8 @@ import {
 import {
   groupCalendarAsk,
   groupCalendarReceipt,
+  groupGmailAsk,
+  groupGmailReceipt,
   groupWelcome,
   matchBothFreeAsk,
 } from './group-coparent-copy';
@@ -47,15 +49,18 @@ import { LinqSendError, createLinqChat, sendLinqChatMessage } from './transport'
  * `co_parent` seat, and a channel on the SAME family. Children and postal
  * code are not asked again. One welcome carries the name ask. The name ack
  * is the locked line. The next beat asks for that parent's calendar and
- * texts the link one-to-one. Gmail is offered only when they ask.
+ * texts the link one-to-one. The beat after that asks for Gmail, whether
+ * or not the calendar connected. One group bubble per turn.
  *
  * On unless `LINQ_GROUP_COPARENT` is exactly `off`.
  */
 
 const WELCOME_KEY = 'linq:coparent_welcome';
 const CALENDAR_ASK_KEY = 'linq:coparent_calendar_ask';
+const GMAIL_ASK_KEY = 'linq:coparent_gmail_ask';
 const CALENDAR_KEY = 'linq:coparent_calendar_card';
 const GMAIL_KEY = 'linq:coparent_gmail_card';
+const GMAIL_RECEIPT_KEY = 'linq:coparent_gmail_receipt';
 const UNCLAIMED_KEY = 'linq:coparent_unclaimed';
 const RECEIPT_KEY = 'linq:coparent_calendar_receipt';
 
@@ -225,14 +230,16 @@ async function advanceSeatedCoparent(
     .where(eq(schema.linqGroupOnboarding.userId, sender.userId))
     .limit(1);
   if (!step || step.chatId !== message.chatId) return null;
-  if (step.step === 'awaiting_gmail') {
-    await setStep(database, sender.userId, 'done', ports.now);
-  }
-  const current = step.step === 'awaiting_gmail' ? 'done' : step.step;
-  if (current === 'done') {
+  if (step.step === 'done') {
     return answerDoneStep(database, message, sender, language, ports);
   }
-  if (current !== 'awaiting_name' && current !== 'awaiting_calendar') return null;
+  if (
+    step.step !== 'awaiting_name' &&
+    step.step !== 'awaiting_calendar' &&
+    step.step !== 'awaiting_gmail'
+  ) {
+    return null;
+  }
 
   const recorded = await ports.recordInbound(message, sender);
   if (!recorded) {
@@ -288,7 +295,7 @@ async function advanceSeatedCoparent(
     };
   }
 
-  if (step.step === 'awaiting_calendar') {
+  if (step.step === 'awaiting_calendar' || step.step === 'awaiting_gmail') {
     const [named] = await database
       .select({ name: schema.users.name })
       .from(schema.users)
@@ -303,13 +310,18 @@ async function advanceSeatedCoparent(
         body: { outcome: 'group_coparent_link_held' },
       };
     }
+    const gmail = step.step === 'awaiting_gmail';
+    const ask = gmail ? groupGmailAsk(language, name) : groupCalendarAsk(language, name);
+    const provider = gmail ? 'gmail' : 'gcal';
+    const askKey = gmail ? GMAIL_ASK_KEY : CALENDAR_ASK_KEY;
+    // One group bubble. The card is 1:1. The other ask waits for the next turn.
     await sendLine(database, {
       familyId: sender.familyId,
       parentUserId: sender.userId,
       chatId: message.chatId,
-      text: groupCalendarAsk(language, name),
-      templateKey: CALENDAR_ASK_KEY,
-      dedupeKey: `${CALENDAR_ASK_KEY}:${sender.userId}`,
+      text: ask,
+      templateKey: askKey,
+      dedupeKey: `${askKey}:${sender.userId}`,
       now: ports.now,
       fetch: ports.fetch,
     });
@@ -317,18 +329,23 @@ async function advanceSeatedCoparent(
       familyId: sender.familyId,
       parentUserId: sender.userId,
       groupChatId: message.chatId,
-      provider: 'gcal',
+      provider,
       language,
-      opener: groupCalendarAsk(language, name),
+      opener: ask,
       now: ports.now,
       fetch: ports.fetch,
+      // A Gmail link must not burn the calendar token already in their hands.
+      invalidatePrior: !gmail,
     });
-    if (sent === 'sent') await setStep(database, sender.userId, 'done', ports.now);
+    if (sent === 'sent') {
+      await setStep(database, sender.userId, gmail ? 'done' : 'awaiting_gmail', ports.now);
+    }
+    const outcome = sent === 'sent' ? `group_coparent_${provider}` : 'group_coparent_link_held';
     return {
       type: 'done',
-      outcome: sent === 'sent' ? 'group_coparent_gcal' : 'group_coparent_link_held',
+      outcome,
       count: 'intake',
-      body: { outcome: sent === 'sent' ? 'group_coparent_gcal' : 'group_coparent_link_held' },
+      body: { outcome },
     };
   }
 
@@ -336,9 +353,9 @@ async function advanceSeatedCoparent(
 }
 
 /**
- * After the ladder, Gmail (or another calendar link) is offered only when
- * this parent asks. A both-free question is answered here and nowhere else
- * in the sweep.
+ * After both asks have gone out, a later "connect my gmail" (or calendar)
+ * still gets a fresh 1:1 link. A both-free question is answered here and
+ * nowhere else in the sweep.
  */
 async function answerDoneStep(
   database: Database,
@@ -397,13 +414,18 @@ async function answerDoneStep(
     .where(eq(schema.users.id, sender.userId))
     .limit(1);
   const callName = named?.name?.trim();
+  const opener = !callName
+    ? groupWelcome(language)
+    : provider === 'gmail'
+      ? groupGmailAsk(language, callName)
+      : groupCalendarAsk(language, callName);
   const sent = await deliverPersonalCard(database, {
     familyId: sender.familyId,
     parentUserId: sender.userId,
     groupChatId: message.chatId,
     provider,
     language,
-    opener: callName ? groupCalendarAsk(language, callName) : groupWelcome(language),
+    opener,
     now: ports.now,
     fetch: ports.fetch,
     invalidatePrior: provider === 'gcal',
@@ -597,8 +619,9 @@ async function openPersonalChat(
 }
 
 /**
- * The group receipt for a co-parent calendar connect. Its own bubble, only
- * for gcal, only into the claimed group. The 1:1 receipt is a different send.
+ * The group receipt for a co-parent connect. Its own bubble, only into the
+ * claimed group, and never paired with the next ask. Gmail's line names the
+ * connect and nothing from the mailbox. The 1:1 receipt is a different send.
  */
 export async function sendCoparentGroupCalendarReceipt(
   database: Database,
@@ -611,7 +634,8 @@ export async function sendCoparentGroupCalendarReceipt(
     fetch?: typeof fetch;
   },
 ): Promise<'sent' | 'skipped'> {
-  if (!linqGroupCoparentEnabled() || input.provider !== 'gcal') return 'skipped';
+  if (!linqGroupCoparentEnabled()) return 'skipped';
+  if (input.provider !== 'gcal' && input.provider !== 'gmail') return 'skipped';
   const members = await database
     .select({
       userId: schema.familyMembers.userId,
@@ -644,16 +668,20 @@ export async function sendCoparentGroupCalendarReceipt(
   const language: ReplyLanguage = family.primaryLanguage?.toLowerCase().startsWith('fr')
     ? 'fr'
     : 'en';
+  const gmail = input.provider === 'gmail';
+  const templateKey = gmail ? GMAIL_RECEIPT_KEY : RECEIPT_KEY;
   const notice = await sendLine(database, {
     familyId: input.familyId,
     parentUserId: input.userId,
     chatId: family.linqGroupChatId,
-    text: groupCalendarReceipt(language, name),
-    templateKey: RECEIPT_KEY,
-    dedupeKey: `${RECEIPT_KEY}:${input.connectId}`,
+    text: gmail ? groupGmailReceipt(language, name) : groupCalendarReceipt(language, name),
+    templateKey,
+    dedupeKey: `${templateKey}:${input.connectId}`,
     now: input.now,
     fetch: input.fetch,
   });
+  // They already connected Gmail. The next message must not ask for it again.
+  if (gmail) await setStep(database, input.userId, 'done', input.now);
   return notice === 'sent' ? 'sent' : 'skipped';
 }
 

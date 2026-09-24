@@ -11,8 +11,18 @@ import {
   formatLinqLineForParent,
   linqGroupMakeInstruction,
 } from './group';
-import { considerGroupCoparent, steerNotedCoparentOneToOne } from './group-coparent';
-import { GROUP_WELCOME, groupCalendarAsk } from './group-coparent-copy';
+import {
+  considerGroupCoparent,
+  sendCoparentGroupCalendarReceipt,
+  steerNotedCoparentOneToOne,
+} from './group-coparent';
+import {
+  GROUP_WELCOME,
+  groupCalendarAsk,
+  groupCalendarReceipt,
+  groupGmailAsk,
+  groupGmailReceipt,
+} from './group-coparent-copy';
 import type { LinqInboundText } from './payload';
 
 /**
@@ -305,26 +315,28 @@ describe('group co-parent seating', () => {
       { now: NOW, fetch: wire.fetch, recordInbound },
     );
     expect(calendar).toMatchObject({ type: 'done', outcome: 'group_coparent_gcal' });
-    expect(wire.groupTexts()).toContain(groupCalendarAsk('en', 'Sam'));
-    expect(wire.groupTexts().join('\n')).not.toContain('/connect?t=');
+    const afterCalendar = wire.groupTexts();
+    expect(afterCalendar.at(-1)).toBe(groupCalendarAsk('en', 'Sam'));
+    expect(afterCalendar.filter((text) => text === groupCalendarAsk('en', 'Sam'))).toHaveLength(1);
+    expect(afterCalendar.join('\n')).not.toContain(groupGmailAsk('en', 'Sam'));
+    expect(afterCalendar.join('\n')).not.toContain('/connect?t=');
     expect(
       wire.privateTexts().some((text) => text.includes('/connect?t=') && text.includes('to=gcal')),
     ).toBe(true);
+    const [afterAsk] = await db.database
+      .select({ step: schema.linqGroupOnboarding.step })
+      .from(schema.linqGroupOnboarding);
+    expect(afterAsk?.step).toBe('awaiting_gmail');
 
-    const thanks = await considerGroupCoparent(
+    const groupBeforeGmail = wire.groupTexts().length;
+    const declined = await considerGroupCoparent(
       db.database,
-      inbound({ messageId: 'm-thanks', senderHandle: COPARENT_PHONE, text: 'thanks' }),
+      inbound({ messageId: 'm-no', senderHandle: COPARENT_PHONE, text: 'no thanks' }),
       { now: NOW, fetch: wire.fetch, recordInbound },
     );
-    expect(thanks).toMatchObject({ type: 'route_member' });
-    expect(wire.texts().some((text) => text.includes('to=gmail'))).toBe(false);
-
-    const gmail = await considerGroupCoparent(
-      db.database,
-      inbound({ messageId: 'm-mail', senderHandle: COPARENT_PHONE, text: 'connect my gmail' }),
-      { now: NOW, fetch: wire.fetch, recordInbound },
-    );
-    expect(gmail).toMatchObject({ type: 'done', outcome: 'group_coparent_gmail' });
+    expect(declined).toMatchObject({ type: 'done', outcome: 'group_coparent_gmail' });
+    const gmailBubbles = wire.groupTexts().slice(groupBeforeGmail);
+    expect(gmailBubbles).toEqual([groupGmailAsk('en', 'Sam')]);
     expect(wire.groupTexts().join('\n')).not.toContain('to=gmail');
     expect(wire.privateTexts().some((text) => text.includes('to=gmail'))).toBe(true);
 
@@ -419,5 +431,74 @@ describe('group co-parent seating', () => {
       .from(schema.familyMembers);
     expect(members.some((row) => row.familyId === other?.id)).toBe(false);
     expect(members.some((row) => row.role === 'co_parent')).toBe(false);
+  });
+
+  it('sends the gmail group receipt on its own and names no mailbox content', async () => {
+    const seeded = await seedHousehold();
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, seeded.familyId));
+    const [coparent] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `imessage:sam-${seeded.familyId}`, name: 'Sam' })
+      .returning({ id: schema.users.id });
+    const coparentId = coparent?.id as string;
+    await db.database.insert(schema.familyMembers).values({
+      familyId: seeded.familyId,
+      userId: coparentId,
+      role: 'co_parent',
+    });
+    await db.database.insert(schema.linqGroupOnboarding).values({
+      familyId: seeded.familyId,
+      userId: coparentId,
+      providerChatId: GROUP,
+      step: 'awaiting_gmail',
+    });
+    const wire = linqFetch();
+    const primary = await sendCoparentGroupCalendarReceipt(db.database, {
+      familyId: seeded.familyId,
+      userId: seeded.parentUserId,
+      provider: 'gmail',
+      connectId: 'connect-primary',
+      now: NOW,
+      fetch: wire.fetch,
+    });
+    expect(primary).toBe('skipped');
+    expect(wire.texts()).toEqual([]);
+
+    const calendar = await sendCoparentGroupCalendarReceipt(db.database, {
+      familyId: seeded.familyId,
+      userId: coparentId,
+      provider: 'gcal',
+      connectId: 'connect-cal',
+      now: NOW,
+      fetch: wire.fetch,
+    });
+    expect(calendar).toBe('sent');
+    expect(wire.groupTexts()).toEqual([groupCalendarReceipt('en', 'Sam')]);
+    const [stillAsking] = await db.database
+      .select({ step: schema.linqGroupOnboarding.step })
+      .from(schema.linqGroupOnboarding);
+    expect(stillAsking?.step).toBe('awaiting_gmail');
+
+    const sent = await sendCoparentGroupCalendarReceipt(db.database, {
+      familyId: seeded.familyId,
+      userId: coparentId,
+      provider: 'gmail',
+      connectId: 'connect-sam',
+      now: NOW,
+      fetch: wire.fetch,
+    });
+    expect(sent).toBe('sent');
+    expect(wire.groupTexts()).toEqual([
+      groupCalendarReceipt('en', 'Sam'),
+      groupGmailReceipt('en', 'Sam'),
+    ]);
+    expect(wire.groupTexts().at(-1)).not.toMatch(/@|subject|inbox|snippet|mailbox/i);
+    const [step] = await db.database
+      .select({ step: schema.linqGroupOnboarding.step })
+      .from(schema.linqGroupOnboarding);
+    expect(step?.step).toBe('done');
   });
 });
