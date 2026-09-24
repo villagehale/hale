@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import type { IntakeCollected } from './extract';
@@ -28,6 +29,12 @@ export type IntakeState =
   | 'awaiting_watch_reply'
   /** The one gentle clarification has been asked; waiting for yes/no. */
   | 'awaiting_clarify'
+  /**
+   * The year find already went out. The next inbound settles exactly one ladder
+   * beat (turtle, name, calendar, Gmail, co-parent). The column is text, so this
+   * state needs no migration.
+   */
+  | 'awaiting_ladder'
   /** The flow finished (watch-offer answered, or the region gate refused). */
   | 'complete'
   /** The parent sent STOP. Terminal. */
@@ -36,6 +43,18 @@ export type IntakeState =
    * Terminal, and deliberately not `complete`: nothing was assembled here, and a row
    * that claimed otherwise would read as a household that finished intake. */
   | 'superseded';
+
+/** One job, after the year-find turn has ended. */
+export type IntakeLadderStep = 'turtle' | 'name' | 'name_reply' | 'calendar' | 'gmail' | 'coparent';
+
+const LADDER_STEPS: readonly IntakeLadderStep[] = [
+  'turtle',
+  'name',
+  'name_reply',
+  'calendar',
+  'gmail',
+  'coparent',
+];
 
 export interface TranscriptEntry {
   direction: 'in' | 'out';
@@ -53,10 +72,13 @@ interface IntakeData {
   transcript: TranscriptEntry[];
   /**
    * The first reply named at least one age-fit thing. Missing on a session written
-   * before this field existed, which decodes as false: the card, the inbox ask, and
-   * the co-parent ask wait on a real win.
+   * before this field existed, which decodes as false.
    */
   findWon?: boolean;
+  /** The next single job. Absent on a session written before the ladder gate. */
+  ladderNext?: IntakeLadderStep | null;
+  /** Language of the kids-and-postal text. Later replies must not re-pick it. */
+  ladderLanguage?: ReplyLanguage | null;
 }
 
 export interface IntakeSession {
@@ -75,12 +97,25 @@ export interface IntakeSession {
   /** True once the first reply named an age-fit thing. False until then, including a
    * blob that predates the field. */
   findWon: boolean;
+  /** Null until the year-find turn parks the conversation on the ladder. */
+  ladderNext: IntakeLadderStep | null;
+  ladderLanguage: ReplyLanguage | null;
 }
 
 export const EMPTY_COLLECTED: IntakeCollected = { children: [], postalCode: null };
 
 function encodeData(data: IntakeData): string {
   return encryptString(JSON.stringify(data));
+}
+
+function decodeLadderNext(value: unknown): IntakeLadderStep | null {
+  return typeof value === 'string' && (LADDER_STEPS as readonly string[]).includes(value)
+    ? (value as IntakeLadderStep)
+    : null;
+}
+
+function decodeLadderLanguage(value: unknown): ReplyLanguage | null {
+  return value === 'en' || value === 'fr' ? value : null;
 }
 
 function decodeData(blob: string): IntakeData {
@@ -92,6 +127,8 @@ function decodeData(blob: string): IntakeData {
     collected: parsed.collected ?? EMPTY_COLLECTED,
     transcript: parsed.transcript ?? [],
     findWon: parsed.findWon === true,
+    ladderNext: decodeLadderNext(parsed.ladderNext),
+    ladderLanguage: decodeLadderLanguage(parsed.ladderLanguage),
   };
 }
 
@@ -128,6 +165,8 @@ export async function loadOpenSession(
     userId: row.userId,
     lastProviderId: row.lastProviderId,
     findWon: data.findWon === true,
+    ladderNext: data.ladderNext ?? null,
+    ladderLanguage: data.ladderLanguage ?? null,
   };
 }
 
@@ -178,6 +217,8 @@ export async function claimIntakeSession(
     userId: null,
     lastProviderId: null,
     findWon: false,
+    ladderNext: null,
+    ladderLanguage: null,
   };
 }
 
@@ -211,6 +252,9 @@ export interface SessionPatch {
   /** Set when the first reply is composed. Omitted patches keep the value already
    * on the session, so a later save cannot forget a win. */
   findWon?: boolean;
+  /** Undefined keeps the stored step. Null clears it (the co-parent beat closes). */
+  ladderNext?: IntakeLadderStep | null;
+  ladderLanguage?: ReplyLanguage | null;
 }
 
 /** Persist a state transition. `collected`/`transcript` are re-encrypted together. */
@@ -223,11 +267,14 @@ export async function saveSession(
   const collected = patch.collected ?? session.collected;
   const transcript = patch.transcript ?? session.transcript;
   const findWon = patch.findWon ?? session.findWon;
+  const ladderNext = patch.ladderNext === undefined ? session.ladderNext : patch.ladderNext;
+  const ladderLanguage =
+    patch.ladderLanguage === undefined ? session.ladderLanguage : patch.ladderLanguage;
   await database
     .update(schema.smsIntakeSessions)
     .set({
       ...(patch.state ? { state: patch.state } : {}),
-      dataEncrypted: encodeData({ collected, transcript, findWon }),
+      dataEncrypted: encodeData({ collected, transcript, findWon, ladderNext, ladderLanguage }),
       ...(patch.followUpCount === undefined ? {} : { followUpCount: patch.followUpCount }),
       ...(patch.clarifyCount === undefined ? {} : { clarifyCount: patch.clarifyCount }),
       ...(patch.familyId ? { familyId: patch.familyId } : {}),

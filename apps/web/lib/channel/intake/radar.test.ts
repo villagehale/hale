@@ -159,8 +159,9 @@ describe('createRadarComposer', () => {
       areaCoarse: 'L7G',
     });
 
-    expect(payload.message).toContain("I'm looking up what's on for your kids this year.");
-    expect(payload.message).toContain('Your first weekend find lands in a day or two.');
+    expect(payload.message).toBe(
+      "Looking nearby for what's on. Nothing age-fit yet — I'll text you the first good one in a day or two.",
+    );
     expect(payload.message).not.toMatch(/registration opens|registration opened/i);
     expect(payload.message).not.toBe(torontoRecMorningLine(NOW));
     expect(payload.message).not.toContain('toronto.ca/OnlineReg');
@@ -198,7 +199,9 @@ describe('createRadarComposer', () => {
       now: () => new Date('2026-09-17T15:00:00.000Z'),
     }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'L7G' });
 
-    expect(payload.message).toContain("I'm looking up what's on for your kids this year.");
+    expect(payload.message).toBe(
+      "Looking nearby for what's on. Nothing age-fit yet — I'll text you the first good one in a day or two.",
+    );
     expect(payload.message).not.toContain('Halton Hills');
     expect(payload.message).not.toContain('Fall 2026');
     expect(payload.message).not.toMatch(/registration opens|registration opened/i);

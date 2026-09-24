@@ -413,13 +413,23 @@ async function runActivityOnce(
   // nobody can see is the one that runs away.
   let research: Anthropic.Message;
   try {
-    research = await resolved.messages.create({
-      model: pickModel(skill.meta.task),
-      max_tokens: GROUND_MAX_TOKENS,
-      system: skill.instructions,
-      tools: groundTools(query),
-      messages: [{ role: 'user', content: groundUserMessage(query) }],
-    });
+    // STREAMED. A non-streamed `messages.create` on this web_search turn dies at the
+    // 50s client timeout (ACTIVITY_CLIENT_OPTIONS): the deep lane measured the same
+    // shape at 50,005 ms and 50,021 ms, and the identical request streamed finished
+    // in ~89s with real results (activity/deep.ts, 2026-08-22). Intake's first year
+    // find is that shape — up to three searches, no named venue — and on Linq it
+    // came back `ground_failed`, which the ladder then read as an empty year.
+    // Streaming makes the 50s bound time-to-headers. A throw is still retried once
+    // by {@link createActivityFinder}; a second failure stays `ground_failed`.
+    research = await resolved.messages
+      .stream({
+        model: pickModel(skill.meta.task),
+        max_tokens: GROUND_MAX_TOKENS,
+        system: skill.instructions,
+        tools: groundTools(query),
+        messages: [{ role: 'user', content: groundUserMessage(query) }],
+      })
+      .finalMessage();
   } catch (err) {
     throw new ActivityUnresolvable('ground_failed', message(err));
   }

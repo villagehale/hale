@@ -551,10 +551,10 @@ describe('the connector receipt stays one GSM-7 segment and says how to undo it'
 
   it('confirms what landed and names one kids-year payoff', () => {
     expect(CONNECTOR_CONNECTED_TEXT.gcal).toBe(
-      "Your Google Calendar is connected. What's on for the kids, and when it moves, stays in the year.",
+      "Calendar's connected. I'll catch class invites and trip dates.",
     );
     expect(CONNECTOR_CONNECTED_TEXT.gmail).toBe(
-      'Gmail is connected. Daycare and school notices get into the year.',
+      "Gmail's connected. I'll flag daycare and school notices.",
     );
     expect(CONNECTOR_CONNECTED_TEXT.gcal).not.toContain('something new lands');
     expect(CONNECTOR_CONNECTED_TEXT.gmail).not.toContain('needs you');

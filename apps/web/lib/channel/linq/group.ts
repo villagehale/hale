@@ -67,7 +67,7 @@ export const LINQ_GROUP_TRIGGER_PHRASE: Record<ReplyLanguage, string> = {
 export function linqGroupMakeInstruction(line: string, language: ReplyLanguage): string {
   const phrase = LINQ_GROUP_TRIGGER_PHRASE[language];
   return language === 'fr'
-    ? `Ouvrez un groupe iMessage avec eux et ce numero: ${line}. Dans ce groupe, envoyez: ${phrase}.`
+    ? `Ouvre un groupe iMessage avec eux et ce numero: ${line}. Dans ce groupe, envoie: ${phrase}.`
     : `Start an iMessage group with them and this number: ${line}. In that group, send: ${phrase}.`;
 }
 

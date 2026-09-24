@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { eq } from 'drizzle-orm';
 import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
 import { resolveReferrerFamilyId } from '~/lib/channel/referral/attribution';
@@ -69,6 +70,8 @@ export interface ProvisionInput {
   firstMessage: string;
   transcript: readonly TranscriptEntry[];
   now: Date;
+  /** The kids-and-postal text's language. Receipts later have no sentence to read. */
+  language?: ReplyLanguage;
 }
 
 export interface ProvisionResult {
@@ -132,6 +135,7 @@ export async function provisionFromIntake(
         // once the live find is out and the implied watch is recorded. The stage
         // is what the sweeps select on, and it must not flip before that row.
         onboardingStage: 'sms_intake',
+        primaryLanguage: input.language === 'fr' ? 'fr' : 'en',
         country: INTAKE_COUNTRY,
         postalCode: location.postalCode,
         areaCoarse: location.areaCoarse,

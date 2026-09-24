@@ -4,9 +4,9 @@ import {
   deidentifyActivityQuery,
 } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { type WeekendPick, asciiCopy } from './radar-decide';
-import { FIRST_FIND_BEAT } from './radar-voice';
 
 /**
  * The first useful text after kids and a postal code: what is on for this child
@@ -18,12 +18,19 @@ import { FIRST_FIND_BEAT } from './radar-voice';
 
 export const YEAR_OPEN_LEAD = "Here's what's on for your kids this year:";
 
-export const YEAR_OPEN_STILL_LOOKING =
-  "I'm looking up what's on for your kids this year. Nothing age-fit is in front of me yet.";
+/**
+ * Design locked (Sloane, 2026-09-24). The only bubble when the live year find
+ * has nothing age-fit, including a search that failed. One sentence. The ladder
+ * does not continue in this turn.
+ */
+export const YEAR_OPEN_EMPTY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: "Looking nearby for what's on. Nothing age-fit yet — I'll text you the first good one in a day or two.",
+  fr: "Je cherche ce qui se passe autour. Rien d'age adapt pour l'instant — je t'envoie le premier bon dans un jour ou deux.",
+};
 
-/** No live find yet. The beat is the existing promise; it is not a registration date. */
-export function yearOpenEmptyMessage(): string {
-  return `${YEAR_OPEN_STILL_LOOKING} ${FIRST_FIND_BEAT}`;
+/** No live find yet. Not a registration date, and not a second ask. */
+export function yearOpenEmptyMessage(language: ReplyLanguage = 'en'): string {
+  return YEAR_OPEN_EMPTY_BY_LANGUAGE[language];
 }
 
 const STAGE_SUBJECT: Record<FamilyStage, string> = {

@@ -440,11 +440,12 @@ describe('the French script', () => {
 
   it('asks for a co-parent last, by the phrase the join route already reads', () => {
     expect(CO_PARENT_ASK).toBe(
-      'Want their other parent on this thread too? Text me a number and I’ll invite them.',
+      "Want the other parent on the kids' year too? Text me their number — I'll show you how to open a group with them and me.",
     );
     expect(CO_PARENT_ASK_BY_LANGUAGE.fr).toBe(
-      "Vous voulez l'autre parent sur ce fil aussi? Envoyez-moi un numero et je les invite.",
+      "Tu veux l'autre parent sur l'annee des enfants aussi? Envoie-moi leur numero — je te montre comment ouvrir un groupe avec eux et moi.",
     );
+    expect(CO_PARENT_ASK).not.toMatch(/I'll invite|I'll send an invite/i);
     expect(CO_PARENT_ASK).not.toContain('add my partner');
     expect(CO_PARENT_ASK.toLowerCase()).not.toContain('activity finder');
   });

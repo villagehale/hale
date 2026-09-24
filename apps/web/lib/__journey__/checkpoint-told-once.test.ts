@@ -11,7 +11,7 @@ import {
   fakeNoOpenQuestions,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
-import { FIRST_FIND_BEAT } from '~/lib/channel/intake/radar-voice';
+import { yearOpenEmptyMessage } from '~/lib/channel/intake/year-open';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createRadarComposer, readCandidates, readWindows } from '~/lib/channel/intake/radar';
 import { FakeTransport } from '~/lib/channel/intake/transport';
@@ -135,7 +135,7 @@ async function runIntakeRadar(): Promise<Intake> {
   const familyId = 'familyId' in provisioned ? (provisioned.familyId as string) : '';
   // The radar is the message CARRYING THE WATCH OFFER, not "the last thing sent" —
   // provisioning follows it with the contact-card MMS (intake/welcome-card.ts).
-  const radarBody = transport.bodies().findLast((b) => b.includes(FIRST_FIND_BEAT)) as string;
+  const radarBody = transport.bodies().find((b) => b === yearOpenEmptyMessage('en')) as string;
 
   const childId = fake.rows(schema.children)[0]?.id as string;
   return { fake, transport, familyId, childId, radarBody };
@@ -331,7 +331,7 @@ describe('the radar never tells a checkpoint (pre-consent — ads-week audit, 20
     // construction — so the health-admin line may not ride it (intake/radar.ts). This
     // geo-empty family gets the honest empty-handed answer with the first-find promise.
     expect(told.intake.radarBody).not.toContain(taskOf(CHECKPOINT_ID));
-    expect(told.intake.radarBody).toContain('Your first weekend find lands in a day or two.');
+    expect(told.intake.radarBody).toBe(yearOpenEmptyMessage('en'));
   });
 
   it('writes no told-marker, so the checkpoint stays live for the post-consent surface', () => {

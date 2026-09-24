@@ -12,6 +12,7 @@ import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-met
 import type { ExtractedChild } from './extract';
 import { type RadarCandidate, type RadarChild, decideYearFinds } from './radar-decide';
 import { type RadarMessage, promisesFirstFind } from './radar-voice';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { collectYearOpenLines, renderYearOpen, yearOpenEmptyMessage } from './year-open';
 
 /** Words too generic to prove the checkpoint reached the parent. */
@@ -121,6 +122,8 @@ export interface RadarInput {
   children: readonly ExtractedChild[];
   /** The coarse area (FSA), never the full postal code (rule #1). */
   areaCoarse: string | null;
+  /** The kids-and-postal text. The empty year-find has a French twin. */
+  language?: ReplyLanguage;
 }
 
 /**
@@ -396,8 +399,9 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
         finder: deps.yearFinder ?? null,
         familyId: input.familyId,
       });
+      const language = input.language ?? 'en';
       const message =
-        opened.lines.length > 0 ? renderYearOpen(opened.lines) : yearOpenEmptyMessage();
+        opened.lines.length > 0 ? renderYearOpen(opened.lines) : yearOpenEmptyMessage(language);
       const findWon = opened.lines.length > 0;
 
       // No child name, no postal code. The finder outcome is the fact an operator
@@ -419,7 +423,10 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
         // weekend find. Stamping the D23 anchor would let weekday-care say "those are
         // all weekend finds" about a list that is the year's contents.
         weekendPickOffered: false,
-        firstFindPromised: promisesFirstFind(message),
+        firstFindPromised:
+          promisesFirstFind(message) ||
+          message === yearOpenEmptyMessage('en') ||
+          message === yearOpenEmptyMessage('fr'),
         findWon,
         actionMove: null,
         actionHeld: 'no_move',

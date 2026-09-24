@@ -180,10 +180,14 @@ describe('claimsNoLedgerCanBack', () => {
     expect(claimsNoLedgerCanBack('Swim runs Tuesdays at 4 at the Gellert.')).toEqual([]);
   });
 
-  it('does not treat a co-parent invite sentence as a promise no ledger can back', () => {
+  it('treats a co-parent invite sentence as a promise no ledger can back', () => {
     const live = "Got it, I'll send an invite to that number so they can join this thread.";
     expect(kinds(live)).toEqual(['co_parent_invite']);
-    expect(claimsNoLedgerCanBack(live)).toEqual([]);
+    expect(claimsNoLedgerCanBack(live).map((claim) => claim.kind)).toEqual(['co_parent_invite']);
+    expect(kinds("I'll invite them")).toEqual(['co_parent_invite']);
+    expect(claimsNoLedgerCanBack("I'll send an invite").map((claim) => claim.kind)).toEqual([
+      'co_parent_invite',
+    ]);
     expect(extractStateClaims(coParentInviteSentAck('them', 'en'))).toEqual([]);
   });
 });

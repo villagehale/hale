@@ -17,7 +17,16 @@ import {
   identityChallengeReply,
 } from '~/lib/channel/intake/identity-challenge';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { replyLanguage } from '~/lib/channel/language';
+import {
+  LINQ_GROUP_LINE_MISSING_TEXT,
+  formatLinqLineForParent,
+  linqGroupMakeInstruction,
+} from '~/lib/channel/linq/group';
+import { linqFromE164 } from '~/lib/channel/linq/config';
+import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import { considerLinqReply } from '~/lib/channel/linq/moments';
+import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { LINQ_TYPING_REFRESH_MS, signalImessageTyping } from '~/lib/channel/linq/presence';
 import type { OffDomainLane, ReplySource } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
@@ -1630,6 +1639,29 @@ async function composeReconciledReply(
   const refusedVerdict = verdict as ReconcileVerdict;
   const reply = withoutRefusedClaims(composed.reply, refusedVerdict);
   if (reply === '') {
+    // The whole reply was "I'll send an invite". On Linq a number is not an
+    // invite: the parent starts the group. Substituting the locked instruction
+    // is the backstop when the deterministic handler did not claim the turn.
+    // SMS is unchanged — an empty cut still fails the turn rather than promising
+    // a text that did not leave.
+    const inviteOnly = refusedVerdict.refused.every(
+      (resolution) => resolution.reason === 'no_coparent_invite',
+    );
+    if (inviteOnly && parseCoParentNumberReply(args.turn.body)) {
+      const door = await resolveMessagingDoor(deps.database, args.turn.parentUserId);
+      if (door.channel === 'imessage') {
+        const language = replyLanguage(args.turn.body);
+        const from = linqFromE164();
+        const instruction = from
+          ? linqGroupMakeInstruction(formatLinqLineForParent(from), language)
+          : LINQ_GROUP_LINE_MISSING_TEXT[language];
+        deps.log.error(
+          { reason: 'no_coparent_invite' },
+          'channel router: an invite claim was replaced with the Linq group instruction',
+        );
+        return { ...composed, reply: instruction, spotWatch: null, mints: [] };
+      }
+    }
     throw new Error(
       'channel router: every sentence of the reply claimed a row that does not exist',
     );

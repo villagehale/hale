@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { YEAR_FIND_CAP, type WeekendPick } from './radar-decide';
 import {
+  YEAR_OPEN_EMPTY_BY_LANGUAGE,
   YEAR_OPEN_LEAD,
-  YEAR_OPEN_STILL_LOOKING,
   collectYearOpenLines,
   renderYearOpen,
   yearOpenEmptyMessage,
@@ -51,9 +51,9 @@ describe('renderYearOpen', () => {
     expect(message.toLowerCase()).not.toContain('activity finder');
   });
 
-  it('says it is still looking when nothing is in hand', () => {
-    expect(yearOpenEmptyMessage()).toContain(YEAR_OPEN_STILL_LOOKING);
-    expect(yearOpenEmptyMessage()).toContain('Your first weekend find lands in a day or two.');
+  it('says the locked empty line when nothing is in hand', () => {
+    expect(yearOpenEmptyMessage()).toBe(YEAR_OPEN_EMPTY_BY_LANGUAGE.en);
+    expect(yearOpenEmptyMessage('fr')).toBe(YEAR_OPEN_EMPTY_BY_LANGUAGE.fr);
     expect(yearOpenEmptyMessage()).not.toMatch(/registration opens|registration opened/i);
     expect(renderYearOpen([])).toBe(yearOpenEmptyMessage());
   });

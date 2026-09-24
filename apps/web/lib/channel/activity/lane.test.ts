@@ -78,25 +78,30 @@ function makeClient(
   script: { ground?: PhaseResponse; compose?: PhaseResponse },
   seen: Seen[] = [],
 ): () => AgentClient {
-  return () =>
-    ({
-      messages: {
-        // biome-ignore lint/suspicious/noExplicitAny: a fake driving the request mechanics
-        async create(req: any) {
-          const isCompose = req.tool_choice?.name === 'activity_picks';
-          seen.push({
-            tools: req.tools,
-            toolChoice: req.tool_choice?.name,
-            userMessage: req.messages?.[0]?.content,
-          });
-          const pick = isCompose ? script.compose : script.ground;
-          const resolved = typeof pick === 'function' ? (pick as () => unknown)() : pick;
-          if (resolved instanceof Error) throw resolved;
-          if (resolved === undefined) throw new Error('activity test: no script for this phase');
-          return resolved;
-        },
+  return () => {
+    const messages = {
+      // biome-ignore lint/suspicious/noExplicitAny: a fake driving the request mechanics
+      async create(req: any) {
+        const isCompose = req.tool_choice?.name === 'activity_picks';
+        seen.push({
+          tools: req.tools,
+          toolChoice: req.tool_choice?.name,
+          userMessage: req.messages?.[0]?.content,
+        });
+        const pick = isCompose ? script.compose : script.ground;
+        const resolved = typeof pick === 'function' ? (pick as () => unknown)() : pick;
+        if (resolved instanceof Error) throw resolved;
+        if (resolved === undefined) throw new Error('activity test: no script for this phase');
+        return resolved;
       },
-    }) as unknown as AgentClient;
+      // The ground turn streams. Compose still uses create. Delegating keeps the
+      // recorded request the same object the eval corpus pins.
+      stream(req: unknown) {
+        return { finalMessage: () => messages.create(req) };
+      },
+    };
+    return { messages } as unknown as AgentClient;
+  };
 }
 
 const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -463,5 +468,31 @@ describe('failure is named, and tried twice', () => {
     // POSITIVE CONTROL: it logged SOMETHING, so the assertion above is not vacuous.
     expect(JSON.stringify(logged)).toContain('not_grounded');
     restore.mockRestore();
+  });
+});
+
+describe('the ground turn does not use the 50s non-stream path', () => {
+  it('still returns picks when messages.create would time out on the ground phase', async () => {
+    const finder = createActivityFinder(
+      () =>
+        ({
+          messages: {
+            async create(req: { tool_choice?: { name?: string } }) {
+              if (req.tool_choice?.name !== 'activity_picks') {
+                throw new Error('Request timed out.');
+              }
+              return composeResult({ picks: [WHOLE_PICK] });
+            },
+            stream() {
+              return { finalMessage: async () => groundResult(1) };
+            },
+          },
+        }) as unknown as AgentClient,
+    );
+
+    const found = await finder.find(QUERY);
+    expect(found.found).toBe(true);
+    if (!found.found) return;
+    expect(found.picks[0]?.name).toBe(WHOLE_PICK.name);
   });
 });

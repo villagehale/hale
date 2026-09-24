@@ -63,15 +63,13 @@ describe('/connected — the done page', () => {
   });
 });
 
-describe('connectedNotice — the words the page and the text share', () => {
-  it('says the same thing about Calendar on the page as Hale texts', async () => {
+describe('connectedNotice — the page keeps its own English line', () => {
+  it('texts the locked receipt and leaves the done page on its own sentence', async () => {
     const { CONNECTOR_CONNECTED_TEXT } = await import('~/lib/channel/connect/text-connect');
     const page = connectedNotice('ok', 'gcal');
 
-    // One promise, written once: a page that drifted from the text would tell a parent
-    // two different things about the same connection inside ten seconds.
-    expect(CONNECTOR_CONNECTED_TEXT.gcal).toContain(
-      "What's on for the kids, and when it moves, stays in the year",
+    expect(CONNECTOR_CONNECTED_TEXT.gcal).toBe(
+      "Calendar's connected. I'll catch class invites and trip dates.",
     );
     expect(page.body).toContain("what's on for the kids, and when it moves, stays in the year");
   });
