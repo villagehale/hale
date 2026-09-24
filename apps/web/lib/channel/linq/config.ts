@@ -51,3 +51,12 @@ export function linqFromE164(): string | null {
 export function linqPollsEnabled(): boolean {
   return trimmed('LINQ_POLLS') === 'on';
 }
+
+/**
+ * In-group co-parent seating and household calendar notices. Exactly `on`.
+ * Unset, empty, or any other value is off: an unknown group sender stays on
+ * the hold, and the calendar sweep does not speak into the group.
+ */
+export function linqGroupCoparentEnabled(): boolean {
+  return trimmed('LINQ_GROUP_COPARENT') === 'on';
+}

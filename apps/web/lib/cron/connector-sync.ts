@@ -2,13 +2,17 @@ import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
 import { ageInMonths } from '@hale/types';
-import type PgBoss from 'pg-boss';
 import { eq } from 'drizzle-orm';
-import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import type PgBoss from 'pg-boss';
+import { productionActivityFamilyReader } from '~/lib/channel/activity/reader';
+import {
+  narrateHouseholdMailbox,
+  rememberAndNarrateCalendar,
+} from '~/lib/channel/linq/household-calendar';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
-import { refreshAccessToken } from '~/lib/integrations/google-oauth';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
   type CalendarAlertCounts,
   type CalendarAlertPorts,
@@ -24,7 +28,7 @@ import {
   emptyEmailAlertCounts,
 } from '~/lib/integrations/email-alert';
 import { type GoingCounts, emptyGoingCounts } from '~/lib/integrations/going';
-import { decryptTokens } from '~/lib/integrations/token-vault';
+import { refreshAccessToken } from '~/lib/integrations/google-oauth';
 import {
   type ActiveConnectorConnection,
   type SweepableConnectorConnection,
@@ -33,13 +37,6 @@ import {
   saveConnectionCursor,
   saveConnectionTokensById,
 } from '~/lib/integrations/store';
-import { pipelineClient } from '~/lib/pipeline/client';
-import {
-  type FamilyChildRef,
-  classifyChildEventEmail,
-  fetchGmailMessageBody,
-  loadCorrelationCandidates,
-} from '~/lib/sentinel';
 import {
   type CalendarAlertBatch,
   type GmailAlertBatch,
@@ -48,7 +45,14 @@ import {
   type SyncDeps,
   syncConnection,
 } from '~/lib/integrations/sync';
-import { productionActivityFamilyReader } from '~/lib/channel/activity/reader';
+import { decryptTokens } from '~/lib/integrations/token-vault';
+import { pipelineClient } from '~/lib/pipeline/client';
+import {
+  type FamilyChildRef,
+  classifyChildEventEmail,
+  fetchGmailMessageBody,
+  loadCorrelationCandidates,
+} from '~/lib/sentinel';
 import {
   type TravelDetectCounts,
   type TravelDetectPorts,
@@ -134,9 +138,7 @@ export interface ConnectorSyncSummary {
  * rest. syncConnection already marks its own row errored on failure; the guard
  * here is a belt-and-suspenders against an unexpected throw in child-name loading.
  */
-export async function runConnectorSync(
-  deps: RunConnectorSyncDeps,
-): Promise<ConnectorSyncSummary> {
+export async function runConnectorSync(deps: RunConnectorSyncDeps): Promise<ConnectorSyncSummary> {
   const connections = await deps.listConnections();
   const base = deps.buildDeps();
   const childNamesByFamily = new Map<string, string[]>();
@@ -225,8 +227,8 @@ export function connectorSyncDeps(database: Database, queue: PgBoss): RunConnect
 /** The sweep's half of the email alert: one connection's Gmail envelopes, the real
  * sentinel, and the real outbound chokepoint. Everything below this line is
  * production-only I/O, which is why the alert module itself takes ports. */
-function alertGmailSweep(database: Database, batch: GmailAlertBatch) {
-  return alertParentForGmailSweep(
+async function alertGmailSweep(database: Database, batch: GmailAlertBatch) {
+  const result = await alertParentForGmailSweep(
     database,
     {
       familyId: batch.connection.familyId,
@@ -238,6 +240,26 @@ function alertGmailSweep(database: Database, batch: GmailAlertBatch) {
     },
     emailAlertPorts(database, batch.connection.familyId, batch.accessToken),
   );
+  if (batch.connection.userId) {
+    try {
+      await narrateHouseholdMailbox(database, {
+        familyId: batch.connection.familyId,
+        userId: batch.connection.userId,
+        envelopes: batch.envelopes.map((envelope) => ({
+          messageId: envelope.messageId,
+          subject: envelope.subject,
+        })),
+        seeding: batch.seeding,
+        now: new Date(),
+      });
+    } catch (err) {
+      console.warn(
+        { reason: err instanceof Error ? err.name : 'unknown' },
+        'household mailbox: narrate failed',
+      );
+    }
+  }
+  return result;
 }
 
 /**
@@ -292,8 +314,8 @@ function travelDetectPorts(
 
 /** The sweep's half of the calendar alert: one connection's raw changes, the real
  * outbound chokepoint, no classifier (the calendar is the parent's own). */
-function alertCalendarSweep(database: Database, batch: CalendarAlertBatch) {
-  return alertParentForCalendarChanges(
+async function alertCalendarSweep(database: Database, batch: CalendarAlertBatch) {
+  const outcomes = await alertParentForCalendarChanges(
     database,
     {
       familyId: batch.connection.familyId,
@@ -305,6 +327,22 @@ function alertCalendarSweep(database: Database, batch: CalendarAlertBatch) {
     },
     proactiveSendPorts(database),
   );
+  try {
+    await rememberAndNarrateCalendar(database, {
+      integrationId: batch.connection.id,
+      familyId: batch.connection.familyId,
+      userId: batch.connection.userId,
+      changes: batch.changes,
+      seeding: batch.seeding,
+      now: new Date(),
+    });
+  } catch (err) {
+    console.warn(
+      { reason: err instanceof Error ? err.name : 'unknown' },
+      'household calendar: narrate failed',
+    );
+  }
+  return outcomes;
 }
 
 /**
