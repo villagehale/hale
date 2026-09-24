@@ -397,6 +397,36 @@ describe('runNudgeCron — sending', () => {
     expect(ledger[0]?.payload.providerChatId).toBe('chat-home');
   });
 
+  it('does not add a name ask as a second group bubble after a find', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const urls: string[] = [];
+    const fetchMock = vi.fn(async (url: string) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify({ message: { id: 'nudge-group-1' } }), { status: 201 });
+    });
+    const h = harness({
+      windows: [win()],
+      parentCallName: { needsName: true, alreadyAsked: false, googleGivenName: null },
+    });
+    const result = await runNudgeCron(
+      db(),
+      {
+        ...h.deps,
+        outboundTarget: async () => ({
+          channel: 'group',
+          chatId: 'chat-home',
+          familyId: 'fam-1',
+        }),
+        fetch: fetchMock as unknown as typeof fetch,
+      },
+      FRIDAY_10AM,
+    );
+    expect(result.sent).toBe(1);
+    expect(urls).toHaveLength(1);
+    expect(h.transport.sent).toEqual([]);
+  });
+
   it('sends one text carrying the nudge and the opt-out line', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({ windows: [win()] });

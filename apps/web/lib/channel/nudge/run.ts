@@ -732,8 +732,11 @@ async function runForFamily(
 
     // A FIND is the value moment the name question waits for, when the opening
     // radar had nothing to show. Weekday-care and health checkpoints are questions
-    // of their own and do not earn this ask. A failure here does not unsend the find.
-    if (isFindNudge(nudge.kind)) {
+    // of their own and do not earn this ask. A claimed group already asked the
+    // name on the ladder, and a second bubble in this turn is not allowed.
+    // Families without a group still get the 1:1 ask. A failure here does not
+    // unsend the find.
+    if (isFindNudge(nudge.kind) && target.channel !== 'group') {
       try {
         const callName = await deps.loadParentCallName(database, {
           familyId: family.familyId,
