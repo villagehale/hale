@@ -10,6 +10,7 @@ import {
   createRadarComposer,
   weekendPickSurvivedCompose,
 } from './radar.js';
+import { YEAR_OPEN_SUBJECT } from './year-open';
 
 /** The rec-morning lane's Toronto line: a different answer, from a different module,
  * that the radar must never recite back as though it had checked this family. Pinned to
@@ -159,8 +160,9 @@ describe('createRadarComposer', () => {
       areaCoarse: 'L7G',
     });
 
-    expect(payload.message).toContain("I'm looking up what's on for your kids this year.");
-    expect(payload.message).toContain('Your first weekend find lands in a day or two.');
+    expect(payload.message).toBe(
+      "Looking nearby for what's on. Nothing age-fit yet — I'll text you the first good one in a day or two.",
+    );
     expect(payload.message).not.toMatch(/registration opens|registration opened/i);
     expect(payload.message).not.toBe(torontoRecMorningLine(NOW));
     expect(payload.message).not.toContain('toronto.ca/OnlineReg');
@@ -198,7 +200,9 @@ describe('createRadarComposer', () => {
       now: () => new Date('2026-09-17T15:00:00.000Z'),
     }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'L7G' });
 
-    expect(payload.message).toContain("I'm looking up what's on for your kids this year.");
+    expect(payload.message).toBe(
+      "Looking nearby for what's on. Nothing age-fit yet — I'll text you the first good one in a day or two.",
+    );
     expect(payload.message).not.toContain('Halton Hills');
     expect(payload.message).not.toContain('Fall 2026');
     expect(payload.message).not.toMatch(/registration opens|registration opened/i);
@@ -238,7 +242,9 @@ describe('createRadarComposer', () => {
 
     expect(payload.message).not.toContain('registration already opened');
     expect(payload.message).not.toContain('Winter 2027');
-    expect(payload.message).toContain('Your first weekend find lands in a day or two.');
+    expect(payload.message).toBe(
+      "Looking nearby for what's on. Nothing age-fit yet — I'll text you the first good one in a day or two.",
+    );
     expect(payload.findWon).toBe(false);
   });
 
@@ -269,7 +275,9 @@ describe('createRadarComposer', () => {
 
     expect(payload.message).not.toContain('registration opened Sep 8, 7:00 a.m.');
     expect(payload.message).not.toContain('Sept 9');
-    expect(payload.message).toContain('Your first weekend find lands in a day or two.');
+    expect(payload.message).toBe(
+      "Looking nearby for what's on. Nothing age-fit yet — I'll text you the first good one in a day or two.",
+    );
     expect(payload.message).not.toBe(torontoRecMorningLine(new Date('2026-09-17T15:00:00.000Z')));
     expect(payload.findWon).toBe(false);
   });
@@ -291,7 +299,9 @@ describe('createRadarComposer', () => {
     // against, and by Sept 16 they were dates that had already gone.
     expect(payload.message).not.toBe(torontoRecMorningLine(NOW));
     expect(payload.message).not.toContain('Sept 9');
-    expect(payload.message).toContain('Your first weekend find lands in a day or two.');
+    expect(payload.message).toBe(
+      "Looking nearby for what's on. Nothing age-fit yet — I'll text you the first good one in a day or two.",
+    );
     expect(payload.message).not.toContain(WATCH_OFFER);
     expect(payload.firstFindPromised).toBe(true);
     expect(payload.followUpNeeded).toBe(true);
@@ -308,7 +318,9 @@ describe('createRadarComposer', () => {
 
     expect(payload.message).not.toBe(torontoRecMorningLine(NOW));
     expect(payload.message).not.toContain('Sept 9');
-    expect(payload.message).toContain('Your first weekend find lands in a day or two.');
+    expect(payload.message).toBe(
+      "Looking nearby for what's on. Nothing age-fit yet — I'll text you the first good one in a day or two.",
+    );
   });
 
   it('never lets a health checkpoint ride the pre-consent first find (ads-week audit, 2026-08-28)', async () => {
@@ -352,7 +364,9 @@ describe('createRadarComposer', () => {
     // PRE-CONSENT first find, so the honest empty-handed answer goes out instead, with
     // the first-find promise on it. The 48h nudge raises the checkpoint post-consent.
     expect(payload.message).not.toMatch(/vaccine|18 month|well-baby/i);
-    expect(payload.message).toContain('Your first weekend find lands in a day or two.');
+    expect(payload.message).toBe(
+      "Looking nearby for what's on. Nothing age-fit yet — I'll text you the first good one in a day or two.",
+    );
     expect(payload.itemCount).toBe(0);
     expect(payload.checkpointTold).toBeNull();
     expect(payload.firstFindPromised).toBe(true);
@@ -463,7 +477,7 @@ describe('createRadarComposer', () => {
       now: () => new Date('2026-09-17T15:00:00.000Z'),
       yearFinder: {
         async find(query) {
-          expect(query.subject).toBe('programs for a toddler');
+          expect(query.subject).toBe(YEAR_OPEN_SUBJECT);
           expect(query.town).toBe('Halton Hills');
           expect(query.window).toBe('this year');
           expect(JSON.stringify(query)).not.toContain('Seb');

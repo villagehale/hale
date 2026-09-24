@@ -12,7 +12,8 @@ import {
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { createRadarComposer, readCandidates, readWindows } from '~/lib/channel/intake/radar';
-import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from '~/lib/channel/intake/radar-voice';
+import { FIRST_FIND_DUE_HOURS } from '~/lib/channel/intake/radar-voice';
+import { yearOpenEmptyMessage } from '~/lib/channel/intake/year-open';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { type NudgeRunDeps, type NudgeRunResult, runNudgeCron } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
@@ -126,10 +127,12 @@ async function runIntakeRadar(): Promise<Intake> {
 
   await text('hi');
   const provisioned = await text('Nora is 30 months, we are at L7G');
+  // The name ask has to land before the sweep, or the find nudge asks it again.
+  // Turtle, then the name. The year-find bubble is already its own turn.
+  await text('later');
+  await text('later');
   const familyId = 'familyId' in provisioned ? (provisioned.familyId as string) : '';
-  // The radar is the message CARRYING THE WATCH OFFER, not "the last thing sent" —
-  // provisioning follows it with the contact-card MMS (intake/welcome-card.ts).
-  const radarBody = transport.bodies().findLast((b) => b.includes(FIRST_FIND_BEAT)) as string;
+  const radarBody = yearOpenEmptyMessage('en');
 
   return { fake, transport, familyId, radarBody };
 }
@@ -296,7 +299,8 @@ afterAll(() => {
 
 describe('the radar makes a promise', () => {
   it('says the forward beat out loud, having nothing else to offer', () => {
-    expect(journey.intake.radarBody).toContain(FIRST_FIND_BEAT);
+    expect(journey.intake.radarBody).toBe(yearOpenEmptyMessage('en'));
+    expect(journey.intake.transport.bodies()).toContain(yearOpenEmptyMessage('en'));
   });
 
   it('records it as a row, against the message that carried it', () => {
@@ -304,7 +308,7 @@ describe('the radar makes a promise', () => {
     expect(journey.promised).toMatchObject({
       familyId: journey.intake.familyId,
       commitmentKind: 'first_find',
-      summary: FIRST_FIND_BEAT,
+      summary: yearOpenEmptyMessage('en'),
       dueAt: DUE_AT,
     });
 
@@ -331,7 +335,7 @@ describe('an unkept promise is a queryable state', () => {
       {
         id: expect.any(String),
         kind: 'first_find',
-        summary: FIRST_FIND_BEAT,
+        summary: yearOpenEmptyMessage('en'),
         dueAt: DUE_AT,
         overdue: true,
       },

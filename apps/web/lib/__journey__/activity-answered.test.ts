@@ -4,6 +4,7 @@ import { invokeTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { type ApproveQueue, approveDraftedAction } from '~/lib/actions/approve';
 import { type DeepResearcher, createDeepResearcher } from '~/lib/channel/activity/deep';
 import { createFollowUpComposer } from '~/lib/channel/activity/followup-note';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
@@ -16,19 +17,18 @@ import {
 import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
 import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { conflictReply } from '~/lib/channel/router/copy';
+import { approvalHandler } from '~/lib/channel/router/handlers';
+import { createReplyTransport } from '~/lib/channel/router/reply-transport';
+import { type ReplyResolver, toReading } from '~/lib/channel/router/resolve';
 import type { ChannelRouterDeps } from '~/lib/channel/router/route';
 import { routeChannelMessage } from '~/lib/channel/router/route';
-import { type ReplyResolver, toReading } from '~/lib/channel/router/resolve';
 import {
   channelRouterDeps,
   defaultApprovalSpine,
   defaultOpenQuestionReader,
 } from '~/lib/channel/router/wiring';
-import { type ApproveQueue, approveDraftedAction } from '~/lib/actions/approve';
-import { approvalHandler } from '~/lib/channel/router/handlers';
 import { searchVillageTool } from '~/lib/coach/tools';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { pipelineClient } from '~/lib/pipeline/client';
@@ -87,11 +87,7 @@ const APP_KEY = Buffer.alloc(32, 7).toString('base64');
 
 /** Real Claude follow-up turns, recorded once. See lib/testing/recorded-model.ts for how
  * to re-record when the projection or the skill changes — which is the point of them. */
-const FOLLOWUP_RECORDINGS = join(
-  import.meta.dirname,
-  '__recordings__',
-  'activity-followup.json',
-);
+const FOLLOWUP_RECORDINGS = join(import.meta.dirname, '__recordings__', 'activity-followup.json');
 
 const TURN_1_AT = new Date('2026-08-20T18:14:44.000Z');
 const TURN_2_AT = new Date('2026-08-20T18:17:52.000Z');
@@ -211,43 +207,46 @@ describe('the activity question is answered', () => {
   } {
     const searched: string[] = [];
     let call = -1;
+    // biome-ignore lint/suspicious/noExplicitAny: a fixture standing in for the web
+    async function turn(req: any) {
+      if (req.tool_choice?.name === 'activity_picks') {
+        return {
+          content: [
+            { type: 'tool_use', name: 'activity_picks', input: { picks: picksByCall[call] ?? [] } },
+          ],
+          usage: { input_tokens: 10, output_tokens: 10 },
+          stop_reason: 'tool_use',
+        };
+      }
+      call += 1;
+      searched.push(req.messages?.[0]?.content as string);
+      return {
+        content: [
+          { type: 'text', text: 'Read the fall schedule and registration pages.' },
+          {
+            type: 'web_search_tool_result',
+            tool_use_id: `srvtu_${call}`,
+            content: [
+              {
+                type: 'web_search_result',
+                url: 'https://venue.example/fall',
+                title: 'Fall programs',
+                encrypted_content: 'x',
+                page_age: null,
+              },
+            ],
+          },
+        ],
+        usage: { input_tokens: 10, output_tokens: 10 },
+        stop_reason: 'end_turn',
+      };
+    }
     const client = () =>
       ({
         messages: {
-          // biome-ignore lint/suspicious/noExplicitAny: a fixture standing in for the web
-          async create(req: any) {
-            if (req.tool_choice?.name === 'activity_picks') {
-              return {
-                content: [
-                  { type: 'tool_use', name: 'activity_picks', input: { picks: picksByCall[call] ?? [] } },
-                ],
-                usage: { input_tokens: 10, output_tokens: 10 },
-                stop_reason: 'tool_use',
-              };
-            }
-            call += 1;
-            searched.push(req.messages?.[0]?.content as string);
-            return {
-              content: [
-                { type: 'text', text: 'Read the fall schedule and registration pages.' },
-                {
-                  type: 'web_search_tool_result',
-                  tool_use_id: `srvtu_${call}`,
-                  content: [
-                    {
-                      type: 'web_search_result',
-                      url: 'https://venue.example/fall',
-                      title: 'Fall programs',
-                      encrypted_content: 'x',
-                      page_age: null,
-                    },
-                  ],
-                },
-              ],
-              usage: { input_tokens: 10, output_tokens: 10 },
-              stop_reason: 'end_turn',
-            };
-          },
+          create: turn,
+          // The ground turn streams. Compose still uses create.
+          stream: (req: unknown) => ({ finalMessage: () => turn(req) }),
         },
       }) as unknown as AgentClient;
     return { client, searched };
@@ -366,9 +365,11 @@ describe('the activity question is answered', () => {
   /** The deep pass as a NAMED absence — the production outcome when the provider cannot be
    * reached, which is what every sweep below that is not about the deep pass should take. */
   function noDeepPass(): DeepResearcher {
-    return { async research() {
-      return { status: 'unavailable', reason: 'client_unavailable' };
-    } };
+    return {
+      async research() {
+        return { status: 'unavailable', reason: 'client_unavailable' };
+      },
+    };
   }
 
   /** Real Claude for the follow-up text, recorded once and replayed by content address. */
@@ -583,12 +584,7 @@ describe('the activity question is answered', () => {
     return (row as { id: string }).id;
   }
 
-  async function route(
-    body: string,
-    at: Date,
-    n: number,
-    deps: ChannelRouterDeps,
-  ): Promise<void> {
+  async function route(body: string, at: Date, n: number, deps: ChannelRouterDeps): Promise<void> {
     await routeChannelMessage(deps, {
       family_id: familyId,
       parent_user_id: parentUserId,
@@ -632,10 +628,16 @@ describe('the activity question is answered', () => {
       [
         // The radar read still happens first — it is the verified tier and it is free.
         { tool: 'search_village', input: { query: 'fall' } },
-        { tool: 'find_activities', input: { subject: 'toddler gymnastics and drop-ins', window: 'September to December' } },
+        {
+          tool: 'find_activities',
+          input: { subject: 'toddler gymnastics and drop-ins', window: 'September to December' },
+        },
       ],
       (results) => {
-        const found = results[1] as { found: boolean; picks: Array<{ name: string; when: string }> };
+        const found = results[1] as {
+          found: boolean;
+          picks: Array<{ name: string; when: string }>;
+        };
         const top = found.picks[0];
         return `${top?.name} has parent & tot ${top?.when}, $142 - their site says. Want me to confirm before you book?`;
       },
@@ -962,11 +964,16 @@ describe('the activity question is answered', () => {
       'Yes, please',
       TURN_3_AT,
       3,
-      routerDeps(transport, coachFor([], () => 'never reached', webPort([[]]).client), TURN_3_AT, {
-        handlers: base.handlers.map((handler) =>
-          handler.name === 'approval' ? approvalHandler(spineWithFakeQueue()) : handler,
-        ),
-      }),
+      routerDeps(
+        transport,
+        coachFor([], () => 'never reached', webPort([[]]).client),
+        TURN_3_AT,
+        {
+          handlers: base.handlers.map((handler) =>
+            handler.name === 'approval' ? approvalHandler(spineWithFakeQueue()) : handler,
+          ),
+        },
+      ),
     );
     expect(transport.bodies()[0]).toBe(conflictReply('not_reviewer_approved'));
 

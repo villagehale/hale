@@ -19,10 +19,10 @@ import {
 import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
 import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
+import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import { type ReplyResolver, toReading } from '~/lib/channel/router/resolve';
 import type { ChannelRouterDeps } from '~/lib/channel/router/route';
 import { routeChannelMessage } from '~/lib/channel/router/route';
@@ -148,55 +148,58 @@ describe('the deep answer arrives at question time', () => {
    * it — no price, which is what a snippet search comes back with and what makes the
    * turn owe depth. */
   function inlineWeb(): () => AgentClient {
+    // biome-ignore lint/suspicious/noExplicitAny: a fixture standing in for the web
+    async function turn(req: any) {
+      if (req.tool_choice?.name === 'activity_picks') {
+        return {
+          content: [
+            {
+              type: 'tool_use',
+              name: 'activity_picks',
+              input: {
+                picks: [
+                  {
+                    name: 'Tiny Gym, Cartwheels Gym Centre',
+                    age_fit: 'walking to 3.5 years',
+                    when: 'Sundays, fall block',
+                    price: null,
+                    source_name: 'Cartwheels Gym Centre',
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { input_tokens: 10, output_tokens: 10 },
+          stop_reason: 'tool_use',
+        };
+      }
+      return {
+        content: [
+          { type: 'text', text: 'Their programs page lists a fall block.' },
+          {
+            type: 'web_search_tool_result',
+            tool_use_id: 'srvtu_1',
+            content: [
+              {
+                type: 'web_search_result',
+                url: VENUE_PAGE,
+                title: 'Programs',
+                encrypted_content: 'x',
+                page_age: null,
+              },
+            ],
+          },
+        ],
+        usage: { input_tokens: 10, output_tokens: 10 },
+        stop_reason: 'end_turn',
+      };
+    }
     return () =>
       ({
         messages: {
-          // biome-ignore lint/suspicious/noExplicitAny: a fixture standing in for the web
-          async create(req: any) {
-            if (req.tool_choice?.name === 'activity_picks') {
-              return {
-                content: [
-                  {
-                    type: 'tool_use',
-                    name: 'activity_picks',
-                    input: {
-                      picks: [
-                        {
-                          name: 'Tiny Gym, Cartwheels Gym Centre',
-                          age_fit: 'walking to 3.5 years',
-                          when: 'Sundays, fall block',
-                          price: null,
-                          source_name: 'Cartwheels Gym Centre',
-                        },
-                      ],
-                    },
-                  },
-                ],
-                usage: { input_tokens: 10, output_tokens: 10 },
-                stop_reason: 'tool_use',
-              };
-            }
-            return {
-              content: [
-                { type: 'text', text: 'Their programs page lists a fall block.' },
-                {
-                  type: 'web_search_tool_result',
-                  tool_use_id: 'srvtu_1',
-                  content: [
-                    {
-                      type: 'web_search_result',
-                      url: VENUE_PAGE,
-                      title: 'Programs',
-                      encrypted_content: 'x',
-                      page_age: null,
-                    },
-                  ],
-                },
-              ],
-              usage: { input_tokens: 10, output_tokens: 10 },
-              stop_reason: 'end_turn',
-            };
-          },
+          create: turn,
+          // The ground turn streams. Compose still uses create.
+          stream: (req: unknown) => ({ finalMessage: () => turn(req) }),
         },
       }) as unknown as AgentClient;
   }

@@ -1,3 +1,4 @@
+import type { ReplyLanguage } from '~/lib/channel/language';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 
 /**
@@ -9,10 +10,9 @@ import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
  * GSM-7 throughout (scanned by sms-copy-encoding.test.ts): the receipts below go out
  * over the carrier, and the page copy shares their clauses.
  *
- * ENGLISH ONLY, deliberately. `ReplyLanguage` is derived per message and never stored
- * (channel/language.ts), and the callback runs on a redirect from Google that carries
- * nothing the parent typed — so there is no language here to answer in, and an FR twin
- * nothing could select would be words no parent can reach.
+ * The TEXT receipts have a French twin (Sloane, 2026-09-24), chosen from the
+ * family's primary language — the redirect itself carries no sentence. The done
+ * page stays English: it is a browser tab, and the locked lines are the texts.
  */
 
 /**
@@ -48,10 +48,6 @@ const YEAR_PAYOFF: Record<TextConnectProvider, string> = {
   gcal: "what's on for the kids, and when it moves, stays in the year",
   gmail: 'daycare and school notices get into the year',
 };
-
-function payoffSentence(clause: string): string {
-  return `${clause.charAt(0).toUpperCase()}${clause.slice(1)}`;
-}
 
 /**
  * The one trust line on a connect card. Same shape for both connectors: Hale
@@ -101,10 +97,34 @@ export function textConnectButtonLabel(provider: TextConnectProvider): string {
  * one kids-year payoff. The trust line (password, disconnect) lives on the card
  * that asked for the tap, not again here.
  */
-export const CONNECTOR_CONNECTED_TEXT: Record<TextConnectProvider, string> = {
-  gcal: `Your ${PROVIDER_NOUN.gcal} is connected. ${payoffSentence(YEAR_PAYOFF.gcal)}.`,
-  gmail: `${PROVIDER_NOUN.gmail} is connected. ${payoffSentence(YEAR_PAYOFF.gmail)}.`,
+/**
+ * Design locked (Sloane, 2026-09-24). The receipt is its own turn: no ask rides
+ * with it. English is the default. French is the family's primary language.
+ */
+export const CONNECTOR_CONNECTED_TEXT_BY_LANGUAGE: Record<
+  ReplyLanguage,
+  Record<TextConnectProvider, string>
+> = {
+  en: {
+    gcal: "Calendar's connected. I'll catch class invites and trip dates.",
+    gmail: "Gmail's connected. I'll flag daycare and school notices.",
+  },
+  fr: {
+    gcal: 'Calendrier connecte. Je note les invitations de cours et les dates de voyage.',
+    gmail: "Gmail connecte. Je flaggue les avis de garderie et d'ecole.",
+  },
 };
+
+/** English receipts. Callers that already hold a language use the map above. */
+export const CONNECTOR_CONNECTED_TEXT: Record<TextConnectProvider, string> =
+  CONNECTOR_CONNECTED_TEXT_BY_LANGUAGE.en;
+
+export function connectorConnectedText(
+  language: ReplyLanguage,
+  provider: TextConnectProvider,
+): string {
+  return CONNECTOR_CONNECTED_TEXT_BY_LANGUAGE[language][provider];
+}
 
 /** What the done page says, per outcome. The heading is the state in two words; the body
  * is the whole sentence, so a parent reading only one of them still knows where they are. */

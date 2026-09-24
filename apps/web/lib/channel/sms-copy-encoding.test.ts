@@ -193,9 +193,10 @@ interface Offence {
   text: string;
 }
 
-/** Sloane locked these two intake lines with em dashes and curly apostrophes.
+/** Sloane locked these intake lines with em dashes and curly apostrophes.
  * Any other non-GSM character in the file is still an offence. */
-const SLOANE_LOCKED_UCS2_LINE = /I help plan your kids|Text me a number/;
+const SLOANE_LOCKED_UCS2_LINE =
+  /I help plan your kids|Text me their number|je te montre comment ouvrir/;
 const SLOANE_LOCKED_CODEPOINTS = new Set(['U+2014', 'U+2019']);
 
 function nonGsm7(relativePath: string): Offence[] {
@@ -551,10 +552,10 @@ describe('the connector receipt stays one GSM-7 segment and says how to undo it'
 
   it('confirms what landed and names one kids-year payoff', () => {
     expect(CONNECTOR_CONNECTED_TEXT.gcal).toBe(
-      "Your Google Calendar is connected. What's on for the kids, and when it moves, stays in the year.",
+      "Calendar's connected. I'll catch class invites and trip dates.",
     );
     expect(CONNECTOR_CONNECTED_TEXT.gmail).toBe(
-      'Gmail is connected. Daycare and school notices get into the year.',
+      "Gmail's connected. I'll flag daycare and school notices.",
     );
     expect(CONNECTOR_CONNECTED_TEXT.gcal).not.toContain('something new lands');
     expect(CONNECTOR_CONNECTED_TEXT.gmail).not.toContain('needs you');

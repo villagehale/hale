@@ -207,7 +207,7 @@ describe('design-locked claim copy', () => {
       'Start an iMessage group with them and this number: +1 646-235-2164. In that group, send: this is our year.',
     );
     expect(linqGroupMakeInstruction('+1 646-235-2164', 'fr')).toBe(
-      'Ouvrez un groupe iMessage avec eux et ce numero: +1 646-235-2164. Dans ce groupe, envoyez: cest notre annee.',
+      'Ouvre un groupe iMessage avec eux et ce numero: +1 646-235-2164. Dans ce groupe, envoie: cest notre annee.',
     );
     expect(linqGroupTriggerInOneToOne('+1 646-235-2164', 'en')).toBe(
       'That phrase belongs in the group. Start an iMessage group with them and +1 646-235-2164, then send: this is our year.',

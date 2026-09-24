@@ -253,6 +253,9 @@ export async function sendYearConnectorCards(
     language: ReplyLanguage;
     now: Date;
     ridesReply?: boolean;
+    /** One card. The other label is `already_sent` and nothing is minted for it,
+     * so a calendar link already in the thread is not invalidated by the Gmail beat. */
+    only?: 'gcal' | 'gmail';
   },
   ports: ConnectorOfferPorts,
 ): Promise<{ calendar: ConnectorOfferLabel; gmail: ConnectorOfferLabel }> {
@@ -260,7 +263,13 @@ export async function sendYearConnectorCards(
     !args.ridesReply &&
     inProactiveQuietHours(args.now, await parentTimeZone(database, args.parentUserId))
   ) {
-    for (const templateKey of [INTAKE_CALENDAR_CARD_TEMPLATE_KEY, INTAKE_GMAIL_CARD_TEMPLATE_KEY]) {
+    const quietKeys =
+      args.only === 'gcal'
+        ? [INTAKE_CALENDAR_CARD_TEMPLATE_KEY]
+        : args.only === 'gmail'
+          ? [INTAKE_GMAIL_CARD_TEMPLATE_KEY]
+          : [INTAKE_CALENDAR_CARD_TEMPLATE_KEY, INTAKE_GMAIL_CARD_TEMPLATE_KEY];
+    for (const templateKey of quietKeys) {
       await database.insert(schema.channelMessages).values({
         familyId: args.familyId,
         parentUserId: args.parentUserId,
@@ -276,7 +285,10 @@ export async function sendYearConnectorCards(
       { familyId: args.familyId },
       'intake connector cards: held for quiet hours - this family is not asked tonight',
     );
-    return { calendar: 'suppressed_quiet_hours', gmail: 'suppressed_quiet_hours' };
+    return {
+      calendar: args.only === 'gmail' ? 'already_sent' : 'suppressed_quiet_hours',
+      gmail: args.only === 'gcal' ? 'already_sent' : 'suppressed_quiet_hours',
+    };
   }
 
   // ONE mint for both cards. Two calls would be two asks, and the second
@@ -294,8 +306,10 @@ export async function sendYearConnectorCards(
     dedupeKey: gmailCardDedupeKey(args.familyId),
     render: (url) => intakeGmailCard(args.language, url),
   };
-  const calendarClaim = await claimConnectorCard(database, args, calendarSpec);
-  const gmailClaim = await claimConnectorCard(database, args, gmailSpec);
+  const calendarClaim =
+    args.only === 'gmail' ? null : await claimConnectorCard(database, args, calendarSpec);
+  const gmailClaim =
+    args.only === 'gcal' ? null : await claimConnectorCard(database, args, gmailSpec);
   const needed = [
     ...(calendarClaim ? [{ spec: calendarSpec, claimId: calendarClaim.id }] : []),
     ...(gmailClaim ? [{ spec: gmailSpec, claimId: gmailClaim.id }] : []),

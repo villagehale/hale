@@ -18,11 +18,14 @@ import {
 } from '~/lib/channel/caregiver/route';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
+import { defaultNameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/identity/name-reply';
 import { maybeSendParentCallName } from '~/lib/channel/identity/parent-call-name';
 import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { shareHaleContactCardOnce } from '~/lib/channel/linq/contact-card';
+import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
 import {
   EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
@@ -45,12 +48,7 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { type LatLng, geocodeArea } from '~/lib/village/geocode';
 import type { IntakeAnswerComposer } from './answer';
 import { findReenrollableChannelOwner, reenrolOnStart } from './channel-state';
-import {
-  type ConnectorOfferLabel,
-  connectorOfferLabel,
-  sendConnectorOffer,
-  sendYearConnectorCards,
-} from './connector-offer';
+import { type ConnectorOfferLabel, sendYearConnectorCards } from './connector-offer';
 import {
   AMBIGUOUS_CLARIFY_BY_LANGUAGE,
   ASSENT_ACK_BY_LANGUAGE,
@@ -92,6 +90,7 @@ import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from '.
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, type RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
 import {
+  type IntakeLadderStep,
   type IntakeSession,
   type IntakeState,
   type SessionPatch,
@@ -104,9 +103,8 @@ import {
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
-import { shareHaleContactCardOnce } from '~/lib/channel/linq/contact-card';
-import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
 import { sendWelcomeContactCard } from './welcome-card';
+import { yearOpenEmptyMessage } from './year-open';
 
 /**
  * VIL-237 · M2 — the conversational SMS intake state machine.
@@ -209,6 +207,11 @@ export type IntakeOutcome =
   /** Something Hale will not invent is still missing after the one follow-up. */
   | { status: 'details_blocked'; missing: IntakeGap[] }
   | { status: 'provisioned'; familyId: string }
+  /**
+   * One ladder beat. `step` is the job this reply settled. `closed` is the
+   * co-parent ask, after which the next text belongs to the coach.
+   */
+  | { status: 'ladder_advanced'; step: IntakeLadderStep; closed: boolean }
   /** `nameAsked` is whether "What should I call you?" went out as its own text,
    * after the turtle card and before the inbox. Never a tail on the assent line.
    * A French reply skips the English line (PR #689). A parent who already has a
@@ -434,6 +437,12 @@ export async function handleInboundSms(
   if (session.state === 'awaiting_watch_reply' || session.state === 'awaiting_clarify') {
     return claimedTurn(database, inbound, now, () =>
       handleWatchReply(database, { session, phoneE164, inbound, now }, deps),
+    );
+  }
+
+  if (session.state === 'awaiting_ladder') {
+    return claimedTurn(database, inbound, now, () =>
+      handleLadder(database, { session, phoneE164, inbound, now }, deps),
     );
   }
 
@@ -1176,6 +1185,7 @@ async function provision(
   const { session, phoneE164, inbound, now } = args;
   const firstInbound = gathered.transcript.find((e) => e.direction === 'in');
 
+  const language = replyLanguage(inbound.body);
   const { familyId, userId } = await provisionFromIntake(database, {
     phoneE164,
     phoneHash: session.phoneHash,
@@ -1185,6 +1195,7 @@ async function provision(
     firstMessage: firstInbound?.body ?? inbound.body,
     transcript: gathered.transcript,
     now,
+    language,
   });
 
   // From here the session HAS a family, so messages go straight to channel_messages —
@@ -1198,6 +1209,7 @@ async function provision(
     familyId,
     children: gathered.collected.children,
     areaCoarse: gathered.location.areaCoarse,
+    language,
   });
   const sent = await sendAndRecord(
     database,
@@ -1212,9 +1224,9 @@ async function provision(
   );
 
   // The find is the watch. There is no separate yes. The parent's own kids-and-postal
-  // text is the verbatim. Consent is written before the stage flip (watch-consent.ts),
-  // and only then do the one-ask texts go out: turtle card, call-name, calendar
-  // card, Gmail card, co-parent.
+  // text is the verbatim. Consent is written before the stage flip (watch-consent.ts).
+  // This turn ENDS on the year find. Turtle, name, calendar, Gmail, and co-parent
+  // each wait for a later reply (handleLadder).
   await recordWatchConsent(
     database,
     {
@@ -1227,39 +1239,6 @@ async function provision(
       question: IMPLIED_WATCH_BASIS,
     },
     now,
-  );
-
-  const language = replyLanguage(inbound.body);
-  await shareFreshLinqContactCard(
-    database,
-    { familyId, parentUserId: userId, phoneE164, now, inbound },
-    deps,
-  );
-  await askParentCallName(database, {
-    familyId,
-    parentUserId: userId,
-    language,
-    send: (body, templateKey) => sendAndRecord(database, ctx, body, deps, [], templateKey),
-  });
-  await sendYearConnectorCards(
-    database,
-    {
-      familyId,
-      parentUserId: userId,
-      phoneE164,
-      language,
-      now,
-      ridesReply: true,
-    },
-    { transport: deps.transport, threadMessage: deps.threadMessage },
-  );
-  await sendAndRecord(
-    database,
-    ctx,
-    CO_PARENT_ASK_BY_LANGUAGE[language],
-    deps,
-    [],
-    INTAKE_COPARENT_ASK_TEMPLATE_KEY,
   );
 
   // The radar can be the first surface ever to tell this family about a health
@@ -1291,7 +1270,10 @@ async function provision(
     await recordCommitment(database, {
       familyId,
       kind: 'first_find',
-      summary: FIRST_FIND_BEAT,
+      summary:
+        radar.message === yearOpenEmptyMessage('en') || radar.message === yearOpenEmptyMessage('fr')
+          ? radar.message
+          : FIRST_FIND_BEAT,
       dueAt: new Date(now.getTime() + FIRST_FIND_DUE_HOURS * 3_600_000),
       channelMessageId: sent.channelMessageId,
     });
@@ -1318,12 +1300,13 @@ async function provision(
     {
       collected: gathered.collected,
       transcript: gathered.transcript,
-      state: 'complete',
-      closedAt: now,
+      state: 'awaiting_ladder',
       familyId,
       userId,
       lastProviderId: inbound.providerId,
       findWon: radar.findWon,
+      ladderNext: 'turtle',
+      ladderLanguage: language,
     },
     now,
   );
@@ -1483,53 +1466,122 @@ async function handleWatchReply(
     : { body: DECLINE_ACK_BY_LANGUAGE[language], asked: false };
   await sendAndRecord(database, ctx, ack.body, deps, recorded.transcript);
 
-  // After a yes and a real find, the rest of onboarding is this chat, one text
-  // each: turtle card, then the call-name, then Gmail and calendar, then the
-  // co-parent. A decline is not asked to save a card or open a mailbox. An empty
-  // first reply has not earned any of them. None of these wait for a later nudge
-  // or for /text. Quiet hours do not hold them: the parent just replied, and a
-  // night yes that waits until morning is how the card and the inbox ask disappear.
+  // A yes that earned the ladder gets the assent only. Turtle waits for the
+  // next reply. A decline closes. Neither turn stacks the name, the cards, or
+  // the co-parent ask onto the acknowledgment.
   const earned = granted && session.findWon;
-  if (earned) {
+  await saveSession(
+    database,
+    session,
+    earned
+      ? {
+          state: 'awaiting_ladder',
+          lastProviderId: inbound.providerId,
+          ladderNext: 'turtle',
+          ladderLanguage: language,
+        }
+      : {
+          state: 'complete',
+          closedAt: now,
+          lastProviderId: inbound.providerId,
+          ladderNext: null,
+        },
+    now,
+  );
+  return {
+    status: 'watch_recorded',
+    intent: reading.intent,
+    granted,
+    nameAsked: false,
+    connectorOffer: 'not_offered',
+    coParentAsk: 'not_offered',
+  };
+}
+
+/**
+ * One inbound, one ladder job. The year find already ended its own turn.
+ * A physical emergency or a mental-health crisis is answered and does not
+ * spend the beat.
+ */
+async function handleLadder(
+  database: Database,
+  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
+  deps: IntakeDeps,
+): Promise<IntakeOutcome> {
+  const { session, phoneE164, inbound, now } = args;
+  const step = session.ladderNext;
+  const familyId = session.familyId;
+  const userId = session.userId;
+  if (!step || !familyId || !userId) {
+    console.error(
+      { sessionId: session.id, state: session.state, step, hasFamily: Boolean(familyId) },
+      'intake ladder: open session has no next step',
+    );
+    await saveSession(
+      database,
+      session,
+      { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
+      now,
+    );
+    return { status: 'ignored', reason: 'no_open_conversation' };
+  }
+
+  const language = session.ladderLanguage ?? replyLanguage(inbound.body);
+  const ctx = sendContext(args);
+  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+
+  if (namesAnEmergency(inbound.body) || namesAMentalCrisis(inbound.body)) {
+    const crisis = namesAnEmergency(inbound.body) ? EMERGENCY_REPLY : MENTAL_CRISIS_REPLY;
+    await sendAndRecord(database, ctx, crisis, deps, recorded.transcript);
+    await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
+    return { status: 'question_answered', source: 'safety' };
+  }
+
+  let next: IntakeLadderStep | null = step;
+  let closed = false;
+
+  if (step === 'turtle') {
     await shareFreshLinqContactCard(
       database,
-      {
-        familyId: session.familyId as string,
-        parentUserId: session.userId as string,
-        phoneE164: args.phoneE164,
-        now,
-        inbound,
-      },
+      { familyId, parentUserId: userId, phoneE164, now, inbound },
       deps,
     );
-  }
-  const nameAsked = earned
-    ? await askParentCallName(database, {
-        familyId: session.familyId as string,
-        parentUserId: session.userId as string,
+    next = language === 'fr' ? 'calendar' : 'name';
+  } else if (step === 'name') {
+    const asked = await askParentCallName(database, {
+      familyId,
+      parentUserId: userId,
+      language,
+      send: (body, templateKey) =>
+        sendAndRecord(database, ctx, body, deps, recorded.transcript, templateKey),
+    });
+    next = asked ? 'name_reply' : 'calendar';
+  } else if (step === 'name_reply') {
+    const captured = await handleNameCaptureReply(
+      database,
+      { familyId, parentUserId: userId, body: inbound.body, now },
+      defaultNameCaptureDeps(),
+    );
+    if (captured.status === 'captured') {
+      await sendAndRecord(database, ctx, captured.reply, deps, recorded.transcript);
+    }
+    next = 'calendar';
+  } else if (step === 'calendar' || step === 'gmail') {
+    await sendYearConnectorCards(
+      database,
+      {
+        familyId,
+        parentUserId: userId,
+        phoneE164,
         language,
-        send: (body, templateKey) =>
-          sendAndRecord(database, ctx, body, deps, recorded.transcript, templateKey),
-      })
-    : false;
-  const connectorOffer: ConnectorOfferLabel | 'not_offered' = earned
-    ? connectorOfferLabel(
-        await sendConnectorOffer(
-          database,
-          {
-            familyId: session.familyId as string,
-            parentUserId: session.userId as string,
-            phoneE164: args.phoneE164,
-            language,
-            now,
-            ridesReply: true,
-          },
-          { transport: deps.transport, threadMessage: deps.threadMessage },
-        ),
-      )
-    : 'not_offered';
-  let coParentAsk: 'sent' | 'not_offered' = 'not_offered';
-  if (earned) {
+        now,
+        ridesReply: true,
+        only: step === 'calendar' ? 'gcal' : 'gmail',
+      },
+      { transport: deps.transport, threadMessage: deps.threadMessage },
+    );
+    next = step === 'calendar' ? 'gmail' : 'coparent';
+  } else {
     await sendAndRecord(
       database,
       ctx,
@@ -1538,23 +1590,24 @@ async function handleWatchReply(
       recorded.transcript,
       INTAKE_COPARENT_ASK_TEMPLATE_KEY,
     );
-    coParentAsk = 'sent';
+    next = null;
+    closed = true;
   }
 
   await saveSession(
     database,
     session,
-    { state: 'complete', closedAt: now, lastProviderId: inbound.providerId },
+    {
+      state: closed ? 'complete' : 'awaiting_ladder',
+      ...(closed ? { closedAt: now } : {}),
+      lastProviderId: inbound.providerId,
+      transcript: recorded.transcript,
+      ladderNext: next,
+      ladderLanguage: language,
+    },
     now,
   );
-  return {
-    status: 'watch_recorded',
-    intent: reading.intent,
-    granted,
-    nameAsked,
-    connectorOffer,
-    coParentAsk,
-  };
+  return { status: 'ladder_advanced', step, closed };
 }
 
 /**

@@ -1,12 +1,9 @@
-import { type FamilyStage, stageFromAgeInMonths } from '@hale/types';
-import {
-  type ActivityQuery,
-  deidentifyActivityQuery,
-} from '~/lib/channel/activity/deidentify';
+import { type FamilyStage, STAGE_BOUNDARIES_MONTHS, stageFromAgeInMonths } from '@hale/types';
+import { type ActivityQuery, deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
-import { type WeekendPick, asciiCopy } from './radar-decide';
-import { FIRST_FIND_BEAT } from './radar-voice';
+import { type WeekendPick, asciiCopy, parseAgeRange } from './radar-decide';
 
 /**
  * The first useful text after kids and a postal code: what is on for this child
@@ -18,34 +15,43 @@ import { FIRST_FIND_BEAT } from './radar-voice';
 
 export const YEAR_OPEN_LEAD = "Here's what's on for your kids this year:";
 
-export const YEAR_OPEN_STILL_LOOKING =
-  "I'm looking up what's on for your kids this year. Nothing age-fit is in front of me yet.";
-
-/** No live find yet. The beat is the existing promise; it is not a registration date. */
-export function yearOpenEmptyMessage(): string {
-  return `${YEAR_OPEN_STILL_LOOKING} ${FIRST_FIND_BEAT}`;
-}
-
-const STAGE_SUBJECT: Record<FamilyStage, string> = {
-  newborn: 'programs for a baby',
-  toddler: 'programs for a toddler',
-  preschool: 'programs for a preschooler',
-  child: 'programs for a school-age child',
-  teenager: 'programs for a teenager',
+/**
+ * Design locked (Sloane, 2026-09-24). The only bubble when the year search
+ * truly failed and no source produced a line. One sentence. The ladder does
+ * not continue in this turn.
+ */
+export const YEAR_OPEN_EMPTY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: "Looking nearby for what's on. Nothing age-fit yet — I'll text you the first good one in a day or two.",
+  fr: "Je cherche ce qui se passe autour. Rien d'age adapt pour l'instant — je t'envoie le premier bon dans un jour ou deux.",
 };
 
-export type YearFinderUse =
-  | 'used'
-  | 'skipped_enough'
-  | 'not_configured'
-  | 'failed'
-  | 'empty'
-  | 'refused';
+/** No live find yet. Not a registration date, and not a second ask. */
+export function yearOpenEmptyMessage(language: ReplyLanguage = 'en'): string {
+  return YEAR_OPEN_EMPTY_BY_LANGUAGE[language];
+}
 
 /**
- * What may be searched: a stage word, a town when the FSA names exactly one, and
- * "this year". No child name, no exact age, no postal code (rule #1). Ages 0-18
- * all get a subject; nothing here refuses a finder because of age.
+ * What the live year search looks for. One subject for every age: the stage
+ * rides on the query and ranks what is said first. It does not choose, and
+ * does not forbid, a kind of activity.
+ *
+ * 119 characters, under {@link MAX_QUERY_FIELD_CHARS}. Lowercase, so the
+ * intake turn does not buy a venue fetch. No digits, so the de-id scrub leaves
+ * it unchanged. The words are search seeds. "examples not a limit" is the
+ * instruction that a kind missing from the 120-character ceiling (skate,
+ * tryouts, dance, a community centre, playgrounds) is still in scope. Nothing
+ * in this module filters a pick against these words.
+ */
+export const YEAR_OPEN_SUBJECT =
+  'kids year, examples not a limit: swim soccer gym earlyon library parks fairs music museum zoo farm trips stem storytime';
+
+export type YearFinderUse = 'used' | 'not_configured' | 'failed' | 'empty' | 'refused';
+
+/**
+ * What may be searched: the year subject above, a stage word, every stage in
+ * the household when siblings differ, a town when the FSA names exactly one,
+ * and "this year". No child name, no exact age, no postal code (rule #1).
+ * Ages 0-18 all get a subject; nothing here refuses a finder because of age.
  */
 export function yearOpenQuery(input: {
   children: readonly { name: string | null; ageMonths: number | null }[];
@@ -64,7 +70,7 @@ export function yearOpenQuery(input: {
     .map((child) => child.name)
     .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
   const deidentified = deidentifyActivityQuery({
-    subject: STAGE_SUBJECT[stage],
+    subject: YEAR_OPEN_SUBJECT,
     window: 'this year',
     municipality,
     stage,
@@ -90,14 +96,20 @@ function webLine(pick: ActivityPick): string {
 }
 
 export function renderYearOpen(lines: readonly string[]): string {
-  const shown = lines.map((line) => line.trim()).filter((line) => line.length > 0).slice(0, 3);
+  const shown = lines
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(0, 3);
   if (shown.length === 0) return yearOpenEmptyMessage();
   return `${YEAR_OPEN_LEAD}\n${shown.map((line, index) => `${index + 1}. ${line}`).join('\n')}`;
 }
 
 /**
- * Civic age-fit lines first. A web search fills toward three only when fewer than
- * two are already in hand. Absence of the finder is logged and named.
+ * The live search always runs. Stage-fitting picks are said first, civic
+ * weekend lines fill toward three, and a pick outside the household's stages
+ * stays in the list when there is room. Absence of the finder is logged and
+ * named. The locked empty sentence is the caller's job, and only when this
+ * returns no lines.
  */
 export async function collectYearOpenLines(input: {
   civic: readonly WeekendPick[];
@@ -107,14 +119,8 @@ export async function collectYearOpenLines(input: {
   familyId: string;
 }): Promise<{ lines: string[]; finder: YearFinderUse }> {
   const civicLines = input.civic.slice(0, 3).map(civicLine);
-  if (civicLines.length >= 2) {
-    return { lines: civicLines, finder: 'skipped_enough' };
-  }
   if (!input.finder) {
-    console.info(
-      { familyId: input.familyId },
-      'intake year find: skipped: not_configured',
-    );
+    console.info({ familyId: input.familyId }, 'intake year find: skipped: not_configured');
     return { lines: civicLines, finder: 'not_configured' };
   }
   const query = yearOpenQuery({ children: input.children, areaCoarse: input.areaCoarse });
@@ -134,9 +140,19 @@ export async function collectYearOpenLines(input: {
       );
       return { lines: civicLines, finder: 'empty' };
     }
-    const room = 3 - civicLines.length;
-    const web = found.picks.slice(0, room).map(webLine);
-    return { lines: [...civicLines, ...web], finder: 'used' };
+    const stages =
+      query.query.stages && query.query.stages.length > 0
+        ? query.query.stages
+        : query.query.stage
+          ? [query.query.stage]
+          : [];
+    const ranked = [...found.picks].sort(
+      (a, b) => ageFitRank(a.ageFit, stages) - ageFitRank(b.ageFit, stages),
+    );
+    const leading = ranked.filter((pick) => ageFitRank(pick.ageFit, stages) === 0);
+    const trailing = ranked.filter((pick) => ageFitRank(pick.ageFit, stages) === 1);
+    const lines = [...leading.map(webLine), ...civicLines, ...trailing.map(webLine)].slice(0, 3);
+    return { lines, finder: 'used' };
   } catch (err) {
     console.error(
       {
@@ -147,4 +163,42 @@ export async function collectYearOpenLines(input: {
     );
     return { lines: civicLines, finder: 'failed' };
   }
+}
+
+/** Month span of one stage. Read from the shared boundaries so a preschool
+ * shift cannot leave this rank on a stale floor. */
+function spanOf(stage: FamilyStage): { min: number; max: number } {
+  const [toddler, preschool, child, teenager] = STAGE_BOUNDARIES_MONTHS;
+  switch (stage) {
+    case 'newborn':
+      return { min: 0, max: toddler - 1 };
+    case 'toddler':
+      return { min: toddler, max: preschool - 1 };
+    case 'preschool':
+      return { min: preschool, max: child - 1 };
+    case 'child':
+      return { min: child, max: teenager - 1 };
+    case 'teenager':
+      return { min: teenager, max: Number.POSITIVE_INFINITY };
+  }
+}
+
+/**
+ * 0 leads, 1 follows. An age label we cannot read, an all-ages label, and a
+ * band that overlaps any household stage all lead. A band we can read that
+ * overlaps none of them follows. It is never dropped.
+ */
+function ageFitRank(ageFit: string, stages: readonly FamilyStage[]): 0 | 1 {
+  if (stages.length === 0) return 0;
+  const band = parseAgeRange(ageFit);
+  if (!band) return 0;
+  if (band.minMonths === null && band.maxMonths === null) return 0;
+  const min = band.minMonths ?? 0;
+  const max = band.maxMonths ?? Number.POSITIVE_INFINITY;
+  if (min > max) return 0;
+  const fits = stages.some((stage) => {
+    const span = spanOf(stage);
+    return min <= span.max && max >= span.min;
+  });
+  return fits ? 0 : 1;
 }

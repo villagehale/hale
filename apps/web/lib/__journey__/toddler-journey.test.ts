@@ -1,19 +1,12 @@
+import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
 import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { type ActionType, ageInMonths, mintApprovedAction } from '@hale/types';
 import { type ExecutorDeps, runExecutor } from '@hale/worker/executor';
-import type { AgentClient } from '@hale/agent';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type ApproveQueue, approveDraftedAction } from '~/lib/actions/approve';
 import { isUndoable } from '~/lib/actions/undo-window';
-import {
-  type CivicSessionForFamily,
-  CIVIC_RUN_TYPE,
-  CIVIC_SOURCE,
-  selectCivicSessions,
-} from '~/lib/civic/project';
-import { IMPLIED_WATCH_BASIS } from '~/lib/channel/intake/watch-consent';
 import { deriveDateOfBirth } from '~/lib/channel/intake/derive';
 import type { IntakeCollected } from '~/lib/channel/intake/extract';
 import {
@@ -21,17 +14,17 @@ import {
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeSilentAnswerComposer,
   fakeNoOpenQuestions,
+  fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import type { IntentReading } from '~/lib/channel/intake/intent';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
-import { readCandidates, readWindows, createRadarComposer } from '~/lib/channel/intake/radar';
+import { createRadarComposer, readCandidates, readWindows } from '~/lib/channel/intake/radar';
 import { MAX_PAYLOAD_SEGMENTS } from '~/lib/channel/intake/radar-voice';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { threadProactiveMessage } from '~/lib/channel/thread';
+import { IMPLIED_WATCH_BASIS } from '~/lib/channel/intake/watch-consent';
 import {
   type NudgeFamily,
   type NudgeRunDeps,
@@ -40,21 +33,27 @@ import {
 } from '~/lib/channel/nudge/run';
 import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
 import { type OutboundGatePorts, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
-import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { roleAllows } from '~/lib/channel/role-scope';
-import { approvalHandler } from '~/lib/channel/router/handlers';
 import type { ApprovalSpine, PendingAction } from '~/lib/channel/router/approval';
 import { approvedReceipt } from '~/lib/channel/router/copy';
+import { approvalHandler } from '~/lib/channel/router/handlers';
 import { smsSegments } from '~/lib/channel/sms-segments';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import {
+  CIVIC_RUN_TYPE,
+  CIVIC_SOURCE,
+  type CivicSessionForFamily,
+  selectCivicSessions,
+} from '~/lib/civic/project';
 import { draftInlineAction } from '~/lib/coach/inline-action';
+import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { findBannedPhrases } from '~/lib/health/framing';
-import { checkpointToldKeyPrefix } from '~/lib/health/told';
 import { matchHealthCheckpoints } from '~/lib/health/match';
 import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
-import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
+import { checkpointToldKeyPrefix } from '~/lib/health/told';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
-import { buildShortlist } from '~/lib/registration/sequence/shortlist';
 import { windowPhrase } from '~/lib/registration/sequence/copy';
 import {
   type LiveSequence,
@@ -64,6 +63,7 @@ import {
   legDedupeKey,
 } from '~/lib/registration/sequence/run';
 import { runRegistrationSequenceCron } from '~/lib/registration/sequence/run';
+import { buildShortlist } from '~/lib/registration/sequence/shortlist';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
 /**
@@ -481,11 +481,16 @@ async function runToddlerJourney(): Promise<Journey> {
     now: INTAKE_AT,
   };
 
-  const text = (body: string) => handleInboundSms(fake.db, transport.inbound(PARENT_PHONE, body), intakeDeps);
+  const text = (body: string) =>
+    handleInboundSms(fake.db, transport.inbound(PARENT_PHONE, body), intakeDeps);
 
   await text('hi');
   const followUp = await text('Max and Mia, we are at L3R');
   const provisioned = await text('Max is 4, Mia is 18 months');
+  // The year find parks the session. Six replies close the ladder (turtle, name,
+  // a non-name, calendar, Gmail, co-parent) so the grandparent texts below are
+  // not eaten as ladder beats.
+  for (let beat = 0; beat < 6; beat += 1) await text('later');
   const familyId = 'familyId' in provisioned ? (provisioned.familyId as string) : '';
   // The radar is the message CARRYING THE WATCH OFFER, not "the last thing sent" —
   // provisioning follows it with the contact-card MMS (intake/welcome-card.ts).
@@ -510,8 +515,7 @@ async function runToddlerJourney(): Promise<Journey> {
             fake
               .rows(schema.consentRecords)
               .filter(
-                (row) =>
-                  row.userId === parentUser.id && row.consentType === 'proactive_watch',
+                (row) => row.userId === parentUser.id && row.consentType === 'proactive_watch',
               )
               .slice()
               .reverse(),
@@ -579,7 +583,8 @@ async function runToddlerJourney(): Promise<Journey> {
       .rows(schema.channelMessages)
       .some(
         (row) =>
-          row.dedupeKey === dedupeKey && ['queued', 'sent', 'delivered'].includes(String(row.status)),
+          row.dedupeKey === dedupeKey &&
+          ['queued', 'sent', 'delivered'].includes(String(row.status)),
       );
 
   const nudgeDeps: NudgeRunDeps = {
@@ -614,7 +619,11 @@ async function runToddlerJourney(): Promise<Journey> {
     },
     loadClaimedWindowIds: async () =>
       new Set(fake.rows(schema.registrationSequences).map((row) => row.windowId as string)),
-    loadWeekdayCareContext: async () => ({ stated: [], askedBefore: false, weekendFindSent: false }),
+    loadWeekdayCareContext: async () => ({
+      stated: [],
+      askedBefore: false,
+      weekendFindSent: false,
+    }),
     loadSaturdayPlans: async () => 'unread' as const,
     loadHouseholdBias: async () => ({ prefer: new Set<string>(), avoid: new Set<string>() }),
     weather: fakeWeather([]),
@@ -736,9 +745,7 @@ async function runToddlerJourney(): Promise<Journey> {
     loadLiveSequences: async (): Promise<LiveSequence[]> => {
       const rows = fake.rows(schema.registrationSequences);
       return rows.map((row) => {
-        const action = fake
-          .rows(schema.actions)
-          .find((candidate) => candidate.id === row.actionId);
+        const action = fake.rows(schema.actions).find((candidate) => candidate.id === row.actionId);
         const optIn =
           row.actionId == null
             ? ('missing' as const)
@@ -991,7 +998,7 @@ describe('2 · the first reply names something real', () => {
 
 // ── stage 3 · consent ────────────────────────────────────────────────────────
 
-describe('3 · watch consent is recorded in the parent\'s own words', () => {
+describe("3 · watch consent is recorded in the parent's own words", () => {
   it('records the kids-and-postal text as the grant', () => {
     expect(journey.watch).toEqual({ status: 'implied', granted: true });
     const watch = inserts(journey.fake, schema.consentRecords).find(
@@ -1078,9 +1085,9 @@ describe('4 · the 48h nudge reaches a transport', () => {
     expect(body).not.toContain(NUDGE_OPT_OUT);
     // Nothing invented: every threaded sentence is one that actually went on the wire.
     const wire = journey.transport.bodies();
-    expect(
-      threaded.every((row) => wire.some((sent) => sent.includes(String(row.content)))),
-    ).toBe(true);
+    expect(threaded.every((row) => wire.some((sent) => sent.includes(String(row.content))))).toBe(
+      true,
+    );
   });
 });
 
@@ -1131,9 +1138,7 @@ describe('5 · the 18-month checkpoints are offered to Mia', () => {
       .rows(schema.auditLog)
       .find((row) => row.actionTaken === 'proactive_nudge_sent');
     expect((audit?.after as Record<string, unknown>)?.kind).toBe('health_checkpoint');
-    expect((audit?.after as Record<string, unknown>)?.checkpointId).toBe(
-      'immunization_18_months',
-    );
+    expect((audit?.after as Record<string, unknown>)?.checkpointId).toBe('immunization_18_months');
   });
 });
 

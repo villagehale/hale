@@ -804,21 +804,20 @@ export function intakeGmailCard(language: ReplyLanguage, url: string): string {
 export const PARENT_CALL_NAME_ASK = 'What should I call you?';
 
 /**
- * Last ask of intake, its own text, after the Gmail card. This is the
- * group-text invite in the onboarding chat: the other parent on this thread.
- * Sloane locked the English line byte for byte. The French twin asks for a
- * number the same way, in GSM-7. A carrier group MMS is not this send. "add my
- * partner" still mints a forwardable link when a parent types that phrase
- * later; this text does not teach it.
+ * Last ask of intake, its own text, after the Gmail card. Sloane locked both
+ * twins on 2026-09-24. The number is identity. On Linq, Hale shows how to open
+ * the group (#706). On SMS, the Twilio invite path still sends after the
+ * number. This ask does not claim an invite already left. "add my partner"
+ * still mints a forwardable link when a parent types that phrase later.
  */
 export const INTAKE_COPARENT_ASK_TEMPLATE_KEY = 'intake:coparent_ask';
 
 export const CO_PARENT_ASK =
-  'Want their other parent on this thread too? Text me a number and I’ll invite them.';
+  "Want the other parent on the kids' year too? Text me their number — I'll show you how to open a group with them and me.";
 
 export const CO_PARENT_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: CO_PARENT_ASK,
-  fr: "Vous voulez l'autre parent sur ce fil aussi? Envoyez-moi un numero et je les invite.",
+  fr: "Tu veux l'autre parent sur l'annee des enfants aussi? Envoie-moi leur numero — je te montre comment ouvrir un groupe avec eux et moi.",
 };
 
 /**

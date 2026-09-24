@@ -7,7 +7,8 @@ import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { CONNECTOR_CONNECTED_TEXT, type TextConnectProvider } from './text-connect';
+import type { ReplyLanguage } from '~/lib/channel/language';
+import { connectorConnectedText, type TextConnectProvider } from './text-connect';
 
 /**
  * The text back that ends the texted connect: the parent tapped a link in a thread,
@@ -186,7 +187,8 @@ async function sendReceipt(
     .returning({ id: schema.channelMessages.id });
   if (!claimed) return { status: 'not_sent', reason: 'already_sent' };
 
-  const body = CONNECTOR_CONNECTED_TEXT[provider];
+  // The receipt is the whole turn. No ladder ask is composed here.
+  const body = connectorConnectedText(await familyReceiptLanguage(database, familyId), provider);
   let providerMessageId: string;
   try {
     if (door.channel === 'imessage') {
@@ -225,4 +227,17 @@ async function sendReceipt(
   await ports.threadMessage(database, { familyId, parentUserId, body });
 
   return { status: 'sent', channelMessageId: claimed.id };
+}
+
+/** Intake stamps this when the kids-and-postal text was French. Anything else is English. */
+async function familyReceiptLanguage(
+  database: Database,
+  familyId: string,
+): Promise<ReplyLanguage> {
+  const rows = await database
+    .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  const row = rows.find((candidate) => candidate.id === familyId);
+  return row?.primaryLanguage === 'fr' ? 'fr' : 'en';
 }
