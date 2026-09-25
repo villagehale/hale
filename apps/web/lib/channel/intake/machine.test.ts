@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatLinqLineForParent, linqCoParentAsk } from '~/lib/channel/linq/group';
+import { createLinqTextTransport } from '~/lib/channel/linq/transport';
 import {
   EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
@@ -2373,6 +2374,177 @@ describe('intake · one ladder job per reply', () => {
           (write.payload.after as { outcome?: string } | undefined)?.outcome === 'shared',
       ),
     ).toBe(true);
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('replies the year find, the card, and the name ask into the inbound Linq chat', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
+    const chatId = 'chat-year';
+    const inboundId = 'msg-in-year';
+    let messageCount = 0;
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes('/contact_card?') || init?.method === 'GET') {
+        return Response.json({
+          contact_cards: [{ phone_number: '+16462352164', first_name: 'Hale', is_active: true }],
+        });
+      }
+      if (target.includes('/contact_card')) {
+        return Response.json({ is_active: true, phone_number: '+16462352164' }, { status: 201 });
+      }
+      if (target.includes('/messages')) {
+        messageCount += 1;
+        return Response.json({ message: { id: `msg-out-${messageCount}` } }, { status: 201 });
+      }
+      return new Response(null, { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const h = harness({});
+    await handleInboundSms(
+      h.fake.db,
+      h.transport.inbound(PHONE, 'hi', { transport: 'imessage', chatId }),
+      h.deps,
+    );
+    const findInbound = h.transport.inbound(PHONE, 'Maya is 4, Leo is 1. M5V 2T6', {
+      transport: 'imessage',
+      chatId,
+      providerId: inboundId,
+    });
+    // The door binds the turn's transport to this chat and this inbound message.
+    const linq = createLinqTextTransport({
+      chatId,
+      replyToMessageId: findInbound.providerId,
+      fetch: fetchMock,
+    });
+    const recorded = await handleInboundSms(h.fake.db, findInbound, {
+      ...h.deps,
+      transport: linq,
+    });
+
+    expect(recorded.status).toBe('provisioned');
+    const calls = fetchMock.mock.calls.map((call) => {
+      const init = call[1];
+      return {
+        url: String(call[0]),
+        method: (init?.method ?? 'GET').toUpperCase(),
+        body: init?.body === undefined ? undefined : JSON.parse(String(init.body)),
+      };
+    });
+    const thread = calls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        (call.url.endsWith(`/chats/${chatId}/messages`) ||
+          call.url.endsWith(`/chats/${chatId}/share_contact_card`)),
+    );
+    expect(thread.map((call) => call.url.split('/chats/')[1])).toEqual([
+      `${chatId}/messages`,
+      `${chatId}/share_contact_card`,
+      `${chatId}/messages`,
+    ]);
+    expect(thread[0]?.body).toEqual({
+      message: {
+        parts: [{ type: 'text', value: 'RADAR' }],
+        reply_to: { message_id: inboundId },
+      },
+    });
+    expect(thread[2]?.body).toEqual({
+      message: {
+        parts: [{ type: 'text', value: PARENT_CALL_NAME_ASK }],
+        reply_to: { message_id: inboundId },
+      },
+    });
+    expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/chats'))).toBe(false);
+    const outbound = inserts(h.fake, schema.channelMessages).filter(
+      (row) => row.direction === 'out',
+    );
+    expect(outbound.length).toBeGreaterThan(0);
+    expect(outbound.every((row) => row.providerChatId === chatId)).toBe(true);
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('replies the French calendar card into that same Linq chat, not a new thread', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
+    const chatId = 'chat-year';
+    const inboundId = 'msg-in-year-fr';
+    let messageCount = 0;
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes('/contact_card?') || init?.method === 'GET') {
+        return Response.json({
+          contact_cards: [{ phone_number: '+16462352164', first_name: 'Hale', is_active: true }],
+        });
+      }
+      if (target.includes('/contact_card')) {
+        return Response.json({ is_active: true, phone_number: '+16462352164' }, { status: 201 });
+      }
+      if (target.includes('/messages')) {
+        messageCount += 1;
+        return Response.json({ message: { id: `msg-out-${messageCount}` } }, { status: 201 });
+      }
+      return new Response(null, { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const h = harness({});
+    await handleInboundSms(
+      h.fake.db,
+      h.transport.inbound(PHONE, 'Bonjour', { transport: 'imessage', chatId }),
+      h.deps,
+    );
+    const findInbound = h.transport.inbound(PHONE, 'Mes enfants ont 4 ans et 1 an, M5V 2T6', {
+      transport: 'imessage',
+      chatId,
+      providerId: inboundId,
+    });
+    const linq = createLinqTextTransport({
+      chatId,
+      replyToMessageId: findInbound.providerId,
+      fetch: fetchMock,
+    });
+    const recorded = await handleInboundSms(h.fake.db, findInbound, {
+      ...h.deps,
+      transport: linq,
+    });
+
+    expect(recorded.status).toBe('provisioned');
+    const calls = fetchMock.mock.calls.map((call) => {
+      const init = call[1];
+      return {
+        url: String(call[0]),
+        method: (init?.method ?? 'GET').toUpperCase(),
+        body: init?.body === undefined ? undefined : JSON.parse(String(init.body)),
+      };
+    });
+    const thread = calls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        (call.url.includes(`/chats/${chatId}/`) || call.url.endsWith('/chats')),
+    );
+    expect(thread.some((call) => call.url.endsWith('/chats'))).toBe(false);
+    expect(thread[0]?.url.endsWith(`/chats/${chatId}/messages`)).toBe(true);
+    expect(thread[0]?.body).toEqual({
+      message: {
+        parts: [{ type: 'text', value: 'RADAR' }],
+        reply_to: { message_id: inboundId },
+      },
+    });
+    expect(thread[1]?.url.endsWith(`/chats/${chatId}/share_contact_card`)).toBe(true);
+    const calendar = thread[2]?.body as {
+      message: { parts: Array<{ type: string; value: string }>; reply_to?: { message_id: string } };
+    };
+    const calendarText = calendar.message.parts[0]?.value ?? '';
+    const calendarUrl = (calendarText.match(/https:\/\/\S+/g) ?? [])[0] as string;
+    expect(calendarText).toBe(intakeCalendarCard('fr', calendarUrl));
+    expect(calendar.message.reply_to).toEqual({ message_id: inboundId });
+    expect(thread.slice(2).every((call) => call.url.endsWith(`/chats/${chatId}/messages`))).toBe(
+      true,
+    );
+    expect(
+      calls.some((call) => String(JSON.stringify(call.body)).includes(PARENT_CALL_NAME_ASK)),
+    ).toBe(false);
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });
