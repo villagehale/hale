@@ -72,6 +72,18 @@ export function linqGroupMakeInstruction(line: string, language: ReplyLanguage):
 }
 
 /**
+ * Design locked (Sloane, 2026-09-25). The co-parent ask on Linq, one bubble.
+ * `{line}` is Hale's number. No "text me their number", no invite promise.
+ */
+export function linqCoParentAsk(line: string, language: ReplyLanguage): string {
+  const lead =
+    language === 'fr'
+      ? "Tu veux l'autre parent sur l'annee des enfants aussi?"
+      : "Want the other parent on the kids' year too?";
+  return `${lead} ${linqGroupMakeInstruction(line, language)}`;
+}
+
+/**
  * Design locked (2026-09-24, #706). The trigger arrived in the 1:1. Hale does
  * not claim a group from that chat.
  */

@@ -9,6 +9,7 @@ import {
 import { applyTwilioStatus } from '~/lib/channel/twilio/status';
 import {
   linqFromE164,
+  linqGroupCoparentEnabled,
   linqInboundConfigured,
   linqMissingInboundEnv,
   linqWebhookSecret,
@@ -32,8 +33,11 @@ import {
 import {
   type GroupCoparentPorts,
   considerGroupCoparent,
+  firstSeatableHandle,
+  seatAppearingCoparent,
   steerNotedCoparentOneToOne,
 } from './group-coparent';
+import { groupWelcome } from './group-coparent-copy';
 import { type LinqInboundText, type LinqSignal, parseLinqWebhook } from './payload';
 import { lookupLinqPollOption } from './poll';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
@@ -56,9 +60,9 @@ import { type LinqEffectResult, markLinqChatRead } from './transport';
  * `families.linq_group_chat_id`. The parent starts the group and sends the
  * trigger; that write is the claim. A group that is not claimed yet is not
  * handed to the coach. An unknown number is held and not enrolled.
- * Linq group co-parent seating is on unless `LINQ_GROUP_COPARENT=off`. A number
- * the parent already noted is seated on that same family when they speak in
- * the claimed group. SMS does not read the flag.
+ * Linq group co-parent seating is on unless `LINQ_GROUP_COPARENT=off`. The
+ * second real person in a claimed group is seated on that family. No prior
+ * phone is required. SMS does not read the flag.
  * Reactions, typing, and participant events answer 200. A poll vote becomes
  * the option's text and enters the same router a typed reply would.
  *
@@ -373,6 +377,38 @@ async function claimGroupFromTrigger(
     return json({ outcome: 'group_claim_refused', claim: claim.status });
   }
 
+  const appearing =
+    accepted && linqGroupCoparentEnabled()
+      ? firstSeatableHandle(message.otherHandles, message.senderHandle)
+      : null;
+  if (appearing) {
+    const seated = await seatAppearingCoparent(deps.database, {
+      familyId: mapped.familyId,
+      invitedByUserId: mapped.userId,
+      phoneE164: appearing,
+      chatId: message.chatId,
+      verbatim: message.text,
+      now,
+    });
+    if (seated.status === 'seated') {
+      const notice = await deliverLinqGroupNotice(deps.database, {
+        familyId: mapped.familyId,
+        parentUserId: seated.userId,
+        chatId: message.chatId,
+        text: groupWelcome(language),
+        templateKey: 'linq:coparent_welcome',
+        now,
+        send: deps.sendGroupText,
+      });
+      deps.log.info(
+        { outcome: 'group_claimed', claim: claim.status, notice },
+        'linq inbound: group claim',
+      );
+      await deps.countOutcome('intake');
+      return json({ outcome: 'group_claimed', claim: claim.status, notice });
+    }
+  }
+
   const notice = await deliverLinqGroupNotice(deps.database, {
     familyId: mapped.familyId,
     parentUserId: mapped.userId,
@@ -513,8 +549,50 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     await deps.countOutcome(outcome);
     return json({ outcome });
   }
+  if (
+    signal.event === 'participant.added' &&
+    signal.chatId &&
+    signal.participantHandle &&
+    linqGroupCoparentEnabled()
+  ) {
+    const familyId = await familyIdForClaimedChat(deps.database, signal.chatId);
+    if (familyId) {
+      const now = deps.now?.() ?? new Date();
+      const seated = await seatAppearingCoparent(deps.database, {
+        familyId,
+        invitedByUserId: null,
+        phoneE164: signal.participantHandle,
+        chatId: signal.chatId,
+        verbatim: '',
+        now,
+      });
+      if (seated.status === 'seated') {
+        const notice = await deliverLinqGroupNotice(deps.database, {
+          familyId,
+          parentUserId: seated.userId,
+          chatId: signal.chatId,
+          text: groupWelcome('en'),
+          templateKey: 'linq:coparent_welcome',
+          now,
+          send: deps.sendGroupText,
+        });
+        await deps.countOutcome('intake');
+        return json({ outcome: 'group_coparent_seated', notice });
+      }
+    }
+  }
   await deps.countOutcome('ignored');
   return json({ outcome: signal.event });
+}
+
+async function familyIdForClaimedChat(
+  database: LinqDoorDeps['database'],
+  chatId: string,
+): Promise<string | null> {
+  const rows = await database
+    .select({ id: schema.families.id, linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families);
+  return rows.find((row) => row.linqGroupChatId === chatId)?.id ?? null;
 }
 
 /** What the HTTP response and the log line call each decline. Finer than the

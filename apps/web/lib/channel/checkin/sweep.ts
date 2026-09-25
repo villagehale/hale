@@ -454,6 +454,9 @@ async function runForFamily(
     body: withOptOut(spoken, verdict.optOut),
     to,
     legacy: deps.transport,
+    // The sweep already picked this evening. Quiet hours follow that clock,
+    // not the wall clock of a worker that catches up in the morning.
+    now,
   });
   if (delivered.status === 'held') {
     console.warn({ familyId: family.familyId }, 'evening check-in: group cap reached');

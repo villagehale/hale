@@ -385,6 +385,16 @@ export async function shareLinqContactCard(input: {
     fetch: input.fetch,
   });
   if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
+  // A 2xx body that says the share did not happen is a no-op. Callers must not
+  // audit it as delivered. An empty 2xx is the documented success (the SDK
+  // returns void) and is accepted only after the card was confirmed active.
+  if (isRecord(result.payload) && result.payload.success === false) {
+    throw new LinqSendError(
+      linqErrorCode(result.payload) ?? 'share_noop',
+      result.status,
+      result.permanent,
+    );
+  }
   return { accepted: true };
 }
 
@@ -601,7 +611,7 @@ export async function setupLinqContactCard(input: {
       body,
       fetch: input.fetch,
     });
-    if (created.ok) return contactCardActive(created.payload);
+    if (created.ok) return contactCardActive(created.payload, input.phoneNumber);
     if (created.code !== CONTACT_CARD_ALREADY_ACTIVE) {
       return {
         status: 'refused',
@@ -624,7 +634,7 @@ export async function setupLinqContactCard(input: {
         permanent: patched.permanent,
       };
     }
-    return contactCardActive(patched.payload);
+    return contactCardActive(patched.payload, input.phoneNumber);
   } catch (err) {
     if (err instanceof LinqSendError && err.code === 'not_configured') {
       return { status: 'not_configured' };
@@ -636,11 +646,79 @@ export async function setupLinqContactCard(input: {
   }
 }
 
-function contactCardActive(payload: unknown): LinqEffectResult {
-  if (isRecord(payload) && payload.is_active === false) {
-    return { status: 'refused', code: 'card_inactive', httpStatus: 200, permanent: false };
+/**
+ * True only when this payload says the card for `phoneNumber` is live.
+ * A missing `is_active` is not live: Linq stores the card inactive first, and
+ * a 2xx with no flag used to be treated as applied.
+ */
+export function contactCardIsLive(payload: unknown, phoneNumber: string): boolean {
+  const want = phoneNumber.trim();
+  for (const card of readContactCards(payload)) {
+    if (card.isActive !== true) continue;
+    if (!card.phone || card.phone === want) return true;
   }
-  return { status: 'accepted' };
+  return false;
+}
+
+function readContactCards(payload: unknown): { phone: string | null; isActive: boolean | null }[] {
+  if (!isRecord(payload)) return [];
+  if (Array.isArray(payload.contact_cards)) {
+    return payload.contact_cards.flatMap((card) => {
+      if (!isRecord(card)) return [];
+      return [
+        {
+          phone: typeof card.phone_number === 'string' ? card.phone_number : null,
+          isActive: typeof card.is_active === 'boolean' ? card.is_active : null,
+        },
+      ];
+    });
+  }
+  if (!('is_active' in payload) && !('phone_number' in payload)) return [];
+  return [
+    {
+      phone: typeof payload.phone_number === 'string' ? payload.phone_number : null,
+      isActive: typeof payload.is_active === 'boolean' ? payload.is_active : null,
+    },
+  ];
+}
+
+function contactCardActive(payload: unknown, phoneNumber: string): LinqEffectResult {
+  if (contactCardIsLive(payload, phoneNumber)) return { status: 'accepted' };
+  return { status: 'refused', code: 'card_inactive', httpStatus: 200, permanent: false };
+}
+
+/** GET the card Linq has for this line. Share only after this says active. */
+export async function retrieveLinqContactCard(input: {
+  phoneNumber: string;
+  fetch?: typeof fetch;
+}): Promise<
+  | { status: 'active' }
+  | { status: 'inactive' }
+  | { status: 'not_configured' }
+  | { status: 'refused'; code: string; httpStatus: number }
+  | { status: 'unreachable' }
+> {
+  try {
+    const result = await linqRequest({
+      method: 'GET',
+      path: `/contact_card?phone_number=${encodeURIComponent(input.phoneNumber)}`,
+      fetch: input.fetch,
+    });
+    if (!result.ok) {
+      return { status: 'refused', code: result.code, httpStatus: result.status };
+    }
+    return contactCardIsLive(result.payload, input.phoneNumber)
+      ? { status: 'active' }
+      : { status: 'inactive' };
+  } catch (err) {
+    if (err instanceof LinqSendError && err.code === 'not_configured') {
+      return { status: 'not_configured' };
+    }
+    if (err instanceof LinqSendError && (err.code === 'timeout' || err.code === 'network')) {
+      return { status: 'unreachable' };
+    }
+    throw err;
+  }
 }
 
 /**

@@ -282,6 +282,18 @@ describe('group co-parent seating', () => {
       familyId: seeded.familyId,
       userId: seeded.parentUserId,
     });
+
+    const unnoted = await considerGroupCoparent(
+      db.database,
+      inbound({
+        messageId: 'm-claim-plain',
+        senderHandle: PARENT_PHONE,
+        text: LINQ_GROUP_TRIGGER_PHRASE.en,
+        otherHandles: ['+14165550999', 'not-a-phone'],
+      }),
+      { now: NOW, fetch: linqFetch().fetch, recordInbound },
+    );
+    expect(unnoted).toMatchObject({ type: 'claim', familyId: seeded.familyId });
     const claim = await claimHouseholdLinqGroup(db.database, {
       familyId: seeded.familyId,
       parentUserId: seeded.parentUserId,
@@ -289,6 +301,53 @@ describe('group co-parent seating', () => {
       now: NOW,
     });
     expect(claim.status).toBe('claimed');
+  });
+
+  it('does not seat a bot or a phone that already belongs to another family', async () => {
+    const seeded = await seedHousehold();
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, seeded.familyId));
+    const bot = await considerGroupCoparent(
+      db.database,
+      inbound({ messageId: 'm-bot', senderHandle: 'camp-bot@example.com', text: 'hi' }),
+      { now: NOW, fetch: linqFetch().fetch, recordInbound },
+    );
+    expect(bot).toEqual({ type: 'none' });
+
+    const [otherFamily] = await db.database
+      .insert(schema.families)
+      .values({ displayName: 'Other household' })
+      .returning({ id: schema.families.id });
+    const [otherUser] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `imessage:other-${otherFamily?.id}`, name: 'Other' })
+      .returning({ id: schema.users.id });
+    await db.database.insert(schema.familyMembers).values({
+      familyId: otherFamily?.id as string,
+      userId: otherUser?.id as string,
+      role: 'primary_parent',
+    });
+    await db.database.insert(schema.parentChannels).values({
+      userId: otherUser?.id as string,
+      familyId: otherFamily?.id as string,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(COPARENT_PHONE),
+      phoneE164Hash: phoneBlindIndex(COPARENT_PHONE),
+      verifiedAt: NOW,
+    });
+    const taken = await considerGroupCoparent(
+      db.database,
+      inbound({ messageId: 'm-taken', senderHandle: COPARENT_PHONE, text: 'hi' }),
+      { now: NOW, fetch: linqFetch().fetch, recordInbound },
+    );
+    expect(taken).toEqual({ type: 'none' });
+    const members = await db.database
+      .select({ familyId: schema.familyMembers.familyId, role: schema.familyMembers.role })
+      .from(schema.familyMembers)
+      .where(eq(schema.familyMembers.familyId, seeded.familyId));
+    expect(members.some((row) => row.role === 'co_parent')).toBe(false);
   });
 
   it('seats the noted number on the same family and asks only for a name', async () => {
@@ -501,19 +560,25 @@ describe('group co-parent seating', () => {
     expect(await childNames()).toEqual(['Maya']);
   });
 
-  it('does not seat an expired note or a chat owned by another family', async () => {
+  it('seats a real phone in a claimed group with no live note, and not another family', async () => {
     const seeded = await seedHousehold();
     await noteCoparent(seeded, new Date(NOW.getTime() - 1000));
     await db.database
       .update(schema.families)
       .set({ linqGroupChatId: GROUP })
       .where(eq(schema.families.id, seeded.familyId));
+    const wire = linqFetch();
     const expired = await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-expired', senderHandle: COPARENT_PHONE, text: 'hi' }),
-      { now: NOW, fetch: linqFetch().fetch, recordInbound },
+      { now: NOW, fetch: wire.fetch, recordInbound },
     );
-    expect(expired).toEqual({ type: 'none' });
+    expect(expired).toMatchObject({ type: 'done', outcome: 'group_coparent_seated' });
+    expect(wire.groupTexts()).toEqual([GROUP_WELCOME.en]);
+    const [invite] = await db.database
+      .select({ state: schema.caregiverInvites.state })
+      .from(schema.caregiverInvites);
+    expect(invite?.state).toBe('identity_noted');
 
     await db.exec('truncate table families, users cascade');
     const home = await seedHousehold();

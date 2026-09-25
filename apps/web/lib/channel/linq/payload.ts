@@ -41,6 +41,8 @@ export interface LinqSignal {
   optionId: string | null;
   /** The voter, for a poll vote only. Never logged. Null on typing and reactions. */
   senderHandle: string | null;
+  /** The person Linq added or removed. Never logged. Null on every other signal. */
+  participantHandle: string | null;
   /** True when Linq says the event is ours. Our own tapback echo is not a parent. */
   isFromMe: boolean;
 }
@@ -199,11 +201,18 @@ function parseSignal(payload: Record<string, unknown>, event: LinqSignalEvent): 
   const fromHandle = isRecord(data.from_handle) ? data.from_handle : null;
   const sender = isRecord(data.sender_handle) ? data.sender_handle : null;
   const from = isRecord(data.from) ? data.from : null;
-  const isFromMe = data.is_from_me === true || fromHandle?.is_me === true || sender?.is_me === true;
+  const participant = isRecord(data.participant) ? data.participant : null;
+  const isFromMe =
+    data.is_from_me === true ||
+    fromHandle?.is_me === true ||
+    sender?.is_me === true ||
+    participant?.is_me === true;
   const senderHandle =
     stringField(sender?.handle) ||
     stringField(from?.handle) ||
     (typeof data.from === 'string' ? data.from : '');
+  const participantHandle =
+    stringField(participant?.handle) || (typeof data.handle === 'string' ? data.handle : '');
   return {
     kind: 'signal',
     signal: {
@@ -213,6 +222,7 @@ function parseSignal(payload: Record<string, unknown>, event: LinqSignalEvent): 
       reactionType,
       optionId,
       senderHandle: senderHandle || null,
+      participantHandle: participantHandle || null,
       isFromMe,
     },
   };

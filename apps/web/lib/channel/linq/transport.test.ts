@@ -358,6 +358,26 @@ describe('Linq human-feel helpers', () => {
     expect(init?.method).toBe('POST');
     expect(init?.body).toBeUndefined();
   });
+
+  it('treats a 2xx share body with success false as a no-op', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = vi.fn(async () => Response.json({ success: false, error: { code: 2012 } }));
+    await expect(shareLinqContactCard({ chatId: CHAT, fetch: fetchMock })).rejects.toMatchObject({
+      code: '2012',
+    });
+  });
+
+  it('does not treat a setup body without is_active as a live card', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = vi.fn(async () => Response.json({}, { status: 201 }));
+    const setup = await setupLinqContactCard({
+      phoneNumber: '+15555550100',
+      firstName: 'Hale',
+      imageUrl: 'https://app.villagehale.com/email-logo.png',
+      fetch: fetchMock,
+    });
+    expect(setup).toMatchObject({ status: 'refused', code: 'card_inactive' });
+  });
 });
 
 describe('Linq group, card, poll, and effect helpers', () => {

@@ -35,14 +35,16 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
 /**
  * Seat a co-parent inside a claimed Linq group. SMS is not this module.
  *
- * The onboarded parent already stored the number (`identity_noted`, #706).
- * When that number speaks in the claimed group, Hale opens a user, a
- * `co_parent` seat, and a channel on the SAME family. Children and postal
- * code are not asked again. One welcome carries the name ask. The name ack
- * is the locked line. The next beat asks for that parent's calendar. The
- * connect link is a card in the group, bound to that parent, never a 1:1
- * and never written into the ask. The beat after that asks for Gmail the
- * same way. One ask per turn.
+ * No phone is collected in the 1:1. The enrolled parent claims the group.
+ * The second real person in that group — not Hale, not a bot, not a handle
+ * that will not parse as a phone — is seated on the SAME family. A legacy
+ * `identity_noted` row is accepted if one still exists; it is not required.
+ * Children and postal code are not asked again. One welcome carries the name
+ * ask. The name ack is the locked line. The next beat asks for that parent's
+ * calendar. The connect link is a card in the group, bound to that parent,
+ * never a 1:1 and never written into the ask. The beat after that asks for
+ * Gmail the same way. One ask per turn. A Google account already on the
+ * family is still refused at the connect callback.
  *
  * On unless `LINQ_GROUP_COPARENT` is exactly `off`.
  */
@@ -101,12 +103,7 @@ export async function considerGroupCoparent(
   }
 
   if (sender && matchLinqGroupTrigger(message.text)) {
-    const allowed = await unknownsAreNoted(
-      database,
-      sender.familyId,
-      message.otherHandles,
-      ports.now,
-    );
+    const allowed = await humansAllowClaim(database, sender.familyId, message.otherHandles);
     if (allowed) {
       return {
         type: 'claim',
@@ -119,15 +116,15 @@ export async function considerGroupCoparent(
 
   if (sender) return { type: 'none' };
 
-  const noted = await notedInviteForPhone(database, senderPhone, ports.now);
-  if (!noted) return { type: 'none' };
-  if (owner && owner.familyId !== noted.familyId) return { type: 'none' };
   if (!owner) {
+    const noted = await notedInviteForPhone(database, senderPhone, ports.now);
+    if (!noted) return { type: 'none' };
     return sayUnclaimed(database, message, noted, language, ports);
   }
 
-  const seated = await seatCoparent(database, {
-    noted,
+  const seated = await seatAppearingCoparent(database, {
+    familyId: owner.familyId,
+    invitedByUserId: await primaryParentId(database, owner.familyId),
     phoneE164: senderPhone,
     chatId: message.chatId,
     verbatim: message.text,
@@ -136,7 +133,7 @@ export async function considerGroupCoparent(
   if (seated.status !== 'seated') return { type: 'none' };
 
   const recorded = await ports.recordInbound(message, {
-    familyId: noted.familyId,
+    familyId: owner.familyId,
     userId: seated.userId,
   });
   if (!recorded) {
@@ -148,7 +145,7 @@ export async function considerGroupCoparent(
     };
   }
   const notice = await sendLine(database, {
-    familyId: noted.familyId,
+    familyId: owner.familyId,
     parentUserId: seated.userId,
     chatId: message.chatId,
     text: groupWelcome(language),
@@ -720,61 +717,76 @@ async function familyForChat(
   return row ? { familyId: row.id } : null;
 }
 
-async function unknownsAreNoted(
+function isHaleLine(phone: string): boolean {
+  const from = linqFromE164();
+  if (!from) return false;
+  return normalizePhoneE164(from) === phone;
+}
+
+/** A phone Hale can seat. Email, short junk, and Hale's own line are not people. */
+export function realHumanPhone(handle: string): string | null {
+  const phone = normalizePhoneE164(handle);
+  if (!phone || isHaleLine(phone)) return null;
+  return phone;
+}
+
+/**
+ * Claim is allowed without a stored number. Another family's member blocks
+ * the claim. A handle that is not a phone is ignored here and never seated.
+ */
+async function humansAllowClaim(
   database: Database,
   familyId: string,
   others: readonly string[],
-  now: Date,
 ): Promise<boolean> {
-  const invites = await database
-    .select({
-      familyId: schema.caregiverInvites.familyId,
-      phoneE164Hash: schema.caregiverInvites.phoneE164Hash,
-      state: schema.caregiverInvites.state,
-      role: schema.caregiverInvites.role,
-      closedAt: schema.caregiverInvites.closedAt,
-      expiresAt: schema.caregiverInvites.expiresAt,
-    })
-    .from(schema.caregiverInvites)
-    .where(eq(schema.caregiverInvites.familyId, familyId));
-  const noted = new Set(
-    invites
-      .filter(
-        (invite) =>
-          invite.familyId === familyId &&
-          invite.state === 'identity_noted' &&
-          invite.role === 'co_parent' &&
-          invite.closedAt === null &&
-          invite.expiresAt.getTime() > now.getTime(),
-      )
-      .map((invite) => invite.phoneE164Hash),
-  );
   for (const handle of others) {
-    const phone = normalizePhoneE164(handle);
-    if (!phone) return false;
+    const phone = realHumanPhone(handle);
+    if (!phone) continue;
     const member = await resolveVerifiedChannelByPhone(database, phone);
-    if (member?.familyId === familyId) continue;
-    if (member) return false;
-    if (!noted.has(phoneBlindIndex(phone))) return false;
+    if (member && member.familyId !== familyId) return false;
   }
   return true;
 }
 
-async function seatCoparent(
+async function primaryParentId(database: Database, familyId: string): Promise<string | null> {
+  const rows = await database
+    .select({
+      userId: schema.familyMembers.userId,
+      role: schema.familyMembers.role,
+      familyId: schema.familyMembers.familyId,
+    })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.familyId, familyId));
+  return (
+    rows.find((row) => row.familyId === familyId && row.role === 'primary_parent')?.userId ?? null
+  );
+}
+
+/**
+ * Seat the second real person in a claimed Linq group. No prior phone.
+ * A legacy `identity_noted` invite for this number is closed when one exists.
+ */
+export async function seatAppearingCoparent(
   database: Database,
   input: {
-    noted: NotedInvite;
+    familyId: string;
+    invitedByUserId: string | null;
     phoneE164: string;
     chatId: string;
     verbatim: string;
     now: Date;
   },
 ): Promise<{ status: 'seated'; userId: string } | { status: 'refused' }> {
-  if (await familyHasCoParent(database, input.noted.familyId)) return { status: 'refused' };
-  const existing = await resolveVerifiedChannelByPhone(database, input.phoneE164);
+  const phone = realHumanPhone(input.phoneE164);
+  if (!phone) return { status: 'refused' };
+  if (await familyHasCoParent(database, input.familyId)) return { status: 'refused' };
+  const existing = await resolveVerifiedChannelByPhone(database, phone);
   if (existing) return { status: 'refused' };
 
-  const phoneHash = phoneBlindIndex(input.phoneE164);
+  const noted = await notedInviteForPhone(database, phone, input.now);
+  // A live note for a different household stays on that household.
+  if (noted && noted.familyId !== input.familyId) return { status: 'refused' };
+  const phoneHash = phoneBlindIndex(phone);
   const userId = await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
     await tx
@@ -786,15 +798,15 @@ async function seatCoparent(
       .from(schema.users)
       .where(eq(schema.users.externalAuthId, `sms:${phoneHash}`))
       .limit(1);
-    if (!user) throw new Error('seatCoparent: users insert returned no row');
+    if (!user) throw new Error('seatAppearingCoparent: users insert returned no row');
 
     await tx
       .insert(schema.familyMembers)
       .values({
-        familyId: input.noted.familyId,
+        familyId: input.familyId,
         userId: user.id,
         role: 'co_parent',
-        invitedByUserId: input.noted.invitedByUserId,
+        invitedByUserId: input.invitedByUserId,
       })
       .onConflictDoNothing();
 
@@ -807,7 +819,7 @@ async function seatCoparent(
       .insert(schema.consentRecords)
       .values({
         userId: user.id,
-        familyId: input.noted.familyId,
+        familyId: input.familyId,
         consentType: 'sms_service_messages',
         granted: true,
         consentScope: 'sms_coparent_invite_reply',
@@ -815,27 +827,25 @@ async function seatCoparent(
         evidence: {
           verbatimReply: input.verbatim,
           interpretation:
-            'co-parent originated contact in the household iMessage group the other parent started',
+            'the second person in the household iMessage group the other parent started',
           channel: 'imessage',
         },
       })
       .returning({ id: schema.consentRecords.id });
-    if (!consent) throw new Error('seatCoparent: consent insert returned no row');
+    if (!consent) throw new Error('seatAppearingCoparent: consent insert returned no row');
 
-    // The household watch stays the primary parent's row. The outbound gate
-    // reads this seating scope for a co-parent who has no watch row of their own.
     await tx.insert(schema.parentChannels).values({
       userId: user.id,
-      familyId: input.noted.familyId,
+      familyId: input.familyId,
       kind: 'sms',
-      phoneE164Encrypted: encryptString(input.phoneE164),
+      phoneE164Encrypted: encryptString(phone),
       phoneE164Hash: phoneHash,
       verifiedAt: input.now,
       consentRecordId: consent.id,
     });
 
     await tx.insert(schema.linqGroupOnboarding).values({
-      familyId: input.noted.familyId,
+      familyId: input.familyId,
       userId: user.id,
       providerChatId: input.chatId,
       step: 'awaiting_name',
@@ -843,33 +853,49 @@ async function seatCoparent(
       updatedAt: input.now,
     });
 
-    await tx
-      .update(schema.caregiverInvites)
-      .set({
-        state: 'accepted',
-        caregiverUserId: user.id,
-        closedAt: input.now,
-        updatedAt: input.now,
-      })
-      .where(
-        and(
-          eq(schema.caregiverInvites.id, input.noted.id),
-          eq(schema.caregiverInvites.state, 'identity_noted'),
-        ),
-      );
+    if (noted && noted.familyId === input.familyId) {
+      await tx
+        .update(schema.caregiverInvites)
+        .set({
+          state: 'accepted',
+          caregiverUserId: user.id,
+          closedAt: input.now,
+          updatedAt: input.now,
+        })
+        .where(
+          and(
+            eq(schema.caregiverInvites.id, noted.id),
+            eq(schema.caregiverInvites.state, 'identity_noted'),
+          ),
+        );
+    }
 
     await tx.insert(schema.auditLog).values({
-      familyId: input.noted.familyId,
+      familyId: input.familyId,
       actor: user.id,
       actionTaken: 'co_parent_invite_accepted',
       targetTable: 'family_members',
       targetId: user.id,
-      after: { via: 'linq_group' },
+      after: { via: 'linq_group', priorPhone: noted ? 'noted' : 'none' },
     });
     return user.id;
   });
 
   return { status: 'seated', userId };
+}
+
+/** The first other phone in the chat that can be a co-parent. Hale's line is not one. */
+export function firstSeatableHandle(
+  handles: readonly string[],
+  senderHandle?: string,
+): string | null {
+  const sender = senderHandle ? normalizePhoneE164(senderHandle) : null;
+  for (const handle of handles) {
+    const phone = realHumanPhone(handle);
+    if (!phone || phone === sender) continue;
+    return phone;
+  }
+  return null;
 }
 
 async function familyHasCoParent(database: Database, familyId: string): Promise<boolean> {

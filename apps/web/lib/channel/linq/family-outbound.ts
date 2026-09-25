@@ -6,6 +6,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { linqGroupCoparentEnabled } from './config';
+import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
 import { groupPassedSyncLine, groupPickedSyncLine } from './group-coparent-copy';
 import { sendLinqChatMessage } from './transport';
 
@@ -226,7 +227,12 @@ export type FamilyOutboundDelivery =
   | { status: 'held'; reason: 'group_cap' | 'quiet_hours' | 'coparent_ask' };
 
 function isCoparentAsk(body: string): boolean {
-  return body.includes(CO_PARENT_ASK_BY_LANGUAGE.en) || body.includes(CO_PARENT_ASK_BY_LANGUAGE.fr);
+  return (
+    body.includes(CO_PARENT_ASK_BY_LANGUAGE.en) ||
+    body.includes(CO_PARENT_ASK_BY_LANGUAGE.fr) ||
+    body.includes(`send: ${LINQ_GROUP_TRIGGER_PHRASE.en}`) ||
+    body.includes(`envoie: ${LINQ_GROUP_TRIGGER_PHRASE.fr}`)
+  );
 }
 
 /**
