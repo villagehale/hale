@@ -30,9 +30,9 @@ export type IntakeState =
   /** The one gentle clarification has been asked; waiting for yes/no. */
   | 'awaiting_clarify'
   /**
-   * The year find already went out. The next inbound settles exactly one ladder
-   * beat (turtle, name, calendar, Gmail, co-parent). The column is text, so this
-   * state needs no migration.
+   * The year find already went out, and with it the turtle card when that share
+   * lands and the next visible ask. The next inbound settles exactly one later
+   * ladder beat. The column is text, so this state needs no migration.
    */
   | 'awaiting_ladder'
   /** The flow finished (watch-offer answered, or the region gate refused). */
@@ -44,7 +44,7 @@ export type IntakeState =
    * that claimed otherwise would read as a household that finished intake. */
   | 'superseded';
 
-/** One job, after the year-find turn has ended. */
+/** One later job. The year-find turn already sent the card, when it shares, and the next ask. */
 export type IntakeLadderStep = 'turtle' | 'name' | 'name_reply' | 'calendar' | 'gmail' | 'coparent';
 
 const LADDER_STEPS: readonly IntakeLadderStep[] = [

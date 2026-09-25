@@ -106,7 +106,7 @@ import {
   saveSession,
   transcriptHasOutbound,
 } from './session';
-import { isQuestionOrNewFind } from './soft-ack';
+import { isQuestionOrNewFind, isSoftLadderAck } from './soft-ack';
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
@@ -1181,6 +1181,62 @@ async function shareFreshLinqContactCard(
   return 'silent';
 }
 
+/**
+ * The beats that used to wait for "cool". They leave in this same turn as the
+ * year find: the find stays its own bubble, then the turtle card when the share
+ * lands (no chat line on the Linq card), then the next visible ask in its own
+ * bubble. A skipped card still sends the ask. French skips the English name and
+ * sends the calendar card instead. Card and name are not alternatives.
+ */
+async function sendPostYearFindLadder(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    phoneE164: string;
+    language: ReplyLanguage;
+    now: Date;
+    inbound: Inbound;
+    send: (body: string, templateKey: string) => Promise<unknown>;
+  },
+  deps: IntakeDeps,
+): Promise<IntakeLadderStep> {
+  await shareFreshLinqContactCard(
+    database,
+    {
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      phoneE164: args.phoneE164,
+      now: args.now,
+      inbound: args.inbound,
+    },
+    deps,
+  );
+  if (args.language === 'fr') {
+    await sendYearConnectorCards(
+      database,
+      {
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        phoneE164: args.phoneE164,
+        language: args.language,
+        now: args.now,
+        ridesReply: true,
+        only: 'gcal',
+      },
+      { transport: deps.transport, threadMessage: deps.threadMessage },
+    );
+    return 'gmail';
+  }
+  const asked = await askParentCallName(database, {
+    familyId: args.familyId,
+    parentUserId: args.parentUserId,
+    language: args.language,
+    send: args.send,
+  });
+  return asked ? 'name_reply' : 'calendar';
+}
+
 async function provision(
   database: Database,
   args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
@@ -1233,10 +1289,25 @@ async function provision(
     radar.weekendPickOffered ? INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY : undefined,
   );
 
+  // The find is its own bubble. The turtle card, when the share lands, and the next
+  // visible ask (the name, or the French calendar card) go out in this same turn.
+  // Nothing waits on "cool".
+  const ladderNext = await sendPostYearFindLadder(
+    database,
+    {
+      familyId,
+      parentUserId: userId,
+      phoneE164,
+      language,
+      now,
+      inbound,
+      send: (body, templateKey) => sendAndRecord(database, ctx, body, deps, [], templateKey),
+    },
+    deps,
+  );
+
   // The find is the watch. There is no separate yes. The parent's own kids-and-postal
   // text is the verbatim. Consent is written before the stage flip (watch-consent.ts).
-  // This turn ENDS on the year find. Turtle, name, calendar, Gmail, and co-parent
-  // each wait for a later reply (handleLadder).
   await recordWatchConsent(
     database,
     {
@@ -1315,7 +1386,7 @@ async function provision(
       userId,
       lastProviderId: inbound.providerId,
       findWon: radar.findWon,
-      ladderNext: 'turtle',
+      ladderNext,
       ladderLanguage: language,
     },
     now,
@@ -1551,7 +1622,7 @@ async function handleLadder(
   let closed = false;
   let heldForQuestion = false;
 
-  if (step === 'turtle' && isQuestionOrNewFind(inbound.body)) {
+  if ((step === 'turtle' || step === 'name_reply') && isQuestionOrNewFind(inbound.body)) {
     const offScript = await offScriptReply(
       {
         parentWords: inbound.body,
@@ -1568,40 +1639,23 @@ async function handleLadder(
   }
 
   if (heldForQuestion) {
-    next = 'turtle';
+    next = step;
   } else if (step === 'turtle') {
-    const card = await shareFreshLinqContactCard(
+    // A session parked here before the year-find turn sent the asks itself.
+    next = await sendPostYearFindLadder(
       database,
-      { familyId, parentUserId: userId, phoneE164, now, inbound },
-      deps,
-    );
-    if (card === 'shown') {
-      next = language === 'fr' ? 'calendar' : 'name';
-    } else if (language === 'fr') {
-      await sendYearConnectorCards(
-        database,
-        {
-          familyId,
-          parentUserId: userId,
-          phoneE164,
-          language,
-          now,
-          ridesReply: true,
-          only: 'gcal',
-        },
-        { transport: deps.transport, threadMessage: deps.threadMessage },
-      );
-      next = 'gmail';
-    } else {
-      const asked = await askParentCallName(database, {
+      {
         familyId,
         parentUserId: userId,
+        phoneE164,
         language,
+        now,
+        inbound,
         send: (body, templateKey) =>
           sendAndRecord(database, ctx, body, deps, recorded.transcript, templateKey),
-      });
-      next = asked ? 'name_reply' : 'calendar';
-    }
+      },
+      deps,
+    );
   } else if (step === 'name') {
     const asked = await askParentCallName(database, {
       familyId,
@@ -1611,6 +1665,9 @@ async function handleLadder(
         sendAndRecord(database, ctx, body, deps, recorded.transcript, templateKey),
     });
     next = asked ? 'name_reply' : 'calendar';
+  } else if (step === 'name_reply' && isSoftLadderAck(inbound.body)) {
+    // The year-find turn already sent the card and the name. "cool" is not a name.
+    next = 'name_reply';
   } else if (step === 'name_reply') {
     const captured = await handleNameCaptureReply(
       database,
@@ -1682,7 +1739,8 @@ function assentAck(language: ReplyLanguage): { body: string; asked: boolean } {
 }
 
 /**
- * The locked call-name line, its own text, after the turtle card.
+ * The locked call-name line, its own bubble, in the same turn as the year find
+ * and after the turtle card when that card shared.
  *
  * "What should I call you?" when there is no safe Google given name, and
  * "Can I call you {first}?" when there is. The composer is not called. A French
