@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { linqFromE164 } from './config';
-import { setupLinqContactCard, shareLinqContactCard } from './transport';
+import { retrieveLinqContactCard, setupLinqContactCard, shareLinqContactCard } from './transport';
 
 /**
  * VIL-335 — push Hale's Name and Photo card once, after a fresh 1:1 onboard.
@@ -113,6 +113,38 @@ export async function shareHaleContactCardOnce(
     imageUrl,
     fetch: args.fetch,
   });
+  if (setup.status === 'accepted') {
+    // Linq: confirm the card is live on the line before share. A create/patch
+    // body that omitted is_active used to count as applied, and the share's
+    // empty 2xx was then audited as delivered.
+    const live = await retrieveLinqContactCard({ phoneNumber: from, fetch: args.fetch });
+    if (live.status !== 'active') {
+      console.warn(
+        { familyId: args.familyId, retrieve: live.status },
+        'linq contact card: the card is not active on the line — nothing was shared',
+      );
+      await clearContactCardClaim(database, claimed.id);
+      await database.insert(schema.auditLog).values({
+        familyId: args.familyId,
+        actor: args.parentUserId,
+        actionTaken: 'linq_contact_card_shared',
+        targetTable: 'parent_channels',
+        targetId: claimed.id,
+        after: { outcome: 'card_inactive', retrieve: live.status },
+      });
+      return live.status === 'not_configured'
+        ? { status: 'not_sent', reason: 'not_configured' }
+        : live.status === 'unreachable'
+          ? { status: 'not_sent', reason: 'unreachable' }
+          : {
+              status: 'not_sent',
+              reason: 'card_refused',
+              code: live.status === 'refused' ? live.code : 'card_inactive',
+              httpStatus: live.status === 'refused' ? live.httpStatus : 0,
+            };
+    }
+  }
+
   if (setup.status !== 'accepted') {
     const code = setup.status === 'refused' ? setup.code : setup.status;
     const httpStatus = setup.status === 'refused' ? setup.httpStatus : 0;

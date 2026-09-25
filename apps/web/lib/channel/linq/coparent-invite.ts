@@ -19,20 +19,13 @@ import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { linqFromE164 } from './config';
-import {
-  LINQ_GROUP_LINE_MISSING_TEXT,
-  formatLinqLineForParent,
-  linqGroupMakeInstruction,
-} from './group';
-
 /**
  * A phone number texted after `intake:coparent_ask`.
  *
- * SMS still sends the locked invite body. Linq does not text that number and
- * does not create a group: the parent starts the iMessage group, and a later
- * trigger claims it. The free agent must not say an invite went out. On
- * 2026-09-24 it did, and nothing left.
+ * SMS still sends the locked invite body. Linq does not collect a number and
+ * does not note an identity: the parent starts the iMessage group, and the
+ * second real person in that group is the co-parent. A number on iMessage is
+ * not this ask, so the turn is left alone.
  */
 
 /** The outbound row that proves the SMS invite left. */
@@ -104,8 +97,8 @@ export type CoParentNumberOutcome =
  * Answer a number reply, or decline the turn.
  *
  * `not_pending` means this message is not the answer to the ask: the handler
- * must not claim it. Linq's reply tells the parent how to make the group.
- * SMS's reply is the locked sent-ack, and only after Twilio accepted the body.
+ * must not claim it. A number on iMessage is always `not_pending`. SMS's
+ * reply is the locked sent-ack, and only after Twilio accepted the body.
  */
 export async function deliverCoParentNumberInvite(
   database: Database,
@@ -122,7 +115,10 @@ export async function deliverCoParentNumberInvite(
   if (!parsed) return { status: 'not_pending' };
 
   const door = await resolveMessagingDoor(database, input.parentUserId);
-  const imessage = door.channel === 'imessage';
+  // Sloane, 2026-09-25. A number on iMessage is not an invite and not a note.
+  // The co-parent ask already told them how to start the group.
+  if (door.channel === 'imessage') return { status: 'not_pending' };
+
   const language = replyLanguage(input.body);
   const label = inviteeLabel(parsed.name, language);
   if (await familyHasCoParent(database, input.familyId)) return { status: 'not_pending' };
@@ -140,10 +136,8 @@ export async function deliverCoParentNumberInvite(
 
   // The SMS add-command is waiting on YES. A bare number must not skip that
   // confirm and text someone the parent has not authorised on that door.
-  if (!imessage) {
-    const pending = await loadPendingAssent(database, input.parentUserId, input.now);
-    if (pending?.role === 'co_parent') return { status: 'not_pending' };
-  }
+  const pending = await loadPendingAssent(database, input.parentUserId, input.now);
+  if (pending?.role === 'co_parent') return { status: 'not_pending' };
 
   const held = (reply: string): CoParentNumberOutcome => ({
     status: 'refused',
@@ -155,13 +149,9 @@ export async function deliverCoParentNumberInvite(
   if (!parentPhone) {
     return {
       status: 'unreached',
-      reply: imessage ? LINQ_GROUP_LINE_MISSING_TEXT[language] : CO_PARENT_REDIRECT,
+      reply: CO_PARENT_REDIRECT,
       templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
     };
-  }
-
-  if (imessage) {
-    return instructLinqGroup(database, { ...input, parsed, language, parentPhone, label });
   }
 
   // Same gate as the YES that texts a stranger (D21). The ask can be on the
@@ -220,58 +210,6 @@ export async function deliverCoParentNumberInvite(
     status: 'sent',
     reply: coParentInviteSentAck(label, language),
     templateKey: COPARENT_NUMBER_ACK_TEMPLATE_KEY,
-  };
-}
-
-async function instructLinqGroup(
-  database: Database,
-  input: {
-    familyId: string;
-    parentUserId: string;
-    body: string;
-    now: Date;
-    parsed: { phoneE164: string; name: string | null };
-    language: ReplyLanguage;
-    parentPhone: string;
-    label: string;
-  },
-): Promise<CoParentNumberOutcome> {
-  const name = await parentName(database, input.parentUserId);
-  const started = await startCoParentInvite(database, {
-    familyId: input.familyId,
-    invitedByUserId: input.parentUserId,
-    inviterPhoneE164: input.parentPhone,
-    inviterName: name,
-    parsed: {
-      ok: true,
-      role: 'co_parent',
-      name: input.label,
-      phoneE164: input.parsed.phoneE164,
-    },
-    language: input.language,
-    now: input.now,
-    notedOnly: true,
-  });
-  if (started.status === 'refused' && started.reason !== 'already_invited') {
-    return {
-      status: 'refused',
-      reply: CO_PARENT_REFUSAL_COPY[started.reason][input.language],
-      templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
-    };
-  }
-
-  const from = linqFromE164();
-  if (!from) {
-    return {
-      status: 'unreached',
-      reply: LINQ_GROUP_LINE_MISSING_TEXT[input.language],
-      templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
-    };
-  }
-  return {
-    status: 'instructed',
-    reply: linqGroupMakeInstruction(formatLinqLineForParent(from), input.language),
-    templateKey: LINQ_GROUP_INSTRUCTIONS_TEMPLATE_KEY,
   };
 }
 

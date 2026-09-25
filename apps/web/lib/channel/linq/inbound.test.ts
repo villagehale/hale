@@ -23,6 +23,7 @@ import {
   LINQ_GROUP_LINE_MISSING_TEXT,
   LINQ_GROUP_OPEN_TEXT,
   LINQ_GROUP_TRIGGER_PHRASE,
+  linqCoParentAsk,
   linqGroupMakeInstruction,
   linqGroupTriggerInOneToOne,
 } from './group';
@@ -208,6 +209,12 @@ describe('design-locked claim copy', () => {
     );
     expect(linqGroupMakeInstruction('+1 646-235-2164', 'fr')).toBe(
       'Ouvre un groupe iMessage avec eux et ce numero: +1 646-235-2164. Dans ce groupe, envoie: cest notre annee.',
+    );
+    expect(linqCoParentAsk('+1 646-235-2164', 'en')).toBe(
+      "Want the other parent on the kids' year too? Start an iMessage group with them and this number: +1 646-235-2164. In that group, send: this is our year.",
+    );
+    expect(linqCoParentAsk('+1 646-235-2164', 'fr')).toBe(
+      "Tu veux l'autre parent sur l'annee des enfants aussi? Ouvre un groupe iMessage avec eux et ce numero: +1 646-235-2164. Dans ce groupe, envoie: cest notre annee.",
     );
     expect(linqGroupTriggerInOneToOne('+1 646-235-2164', 'en')).toBe(
       'That phrase belongs in the group. Start an iMessage group with them and +1 646-235-2164, then send: this is our year.',

@@ -28,7 +28,7 @@ import {
 import {
   LINQ_GROUP_LINE_MISSING_TEXT,
   formatLinqLineForParent,
-  linqGroupMakeInstruction,
+  linqCoParentAsk,
 } from '~/lib/channel/linq/group';
 import { considerLinqReply } from '~/lib/channel/linq/moments';
 import { LINQ_TYPING_REFRESH_MS, signalImessageTyping } from '~/lib/channel/linq/presence';
@@ -1675,11 +1675,10 @@ async function composeReconciledReply(
   const refusedVerdict = verdict as ReconcileVerdict;
   const reply = withoutRefusedClaims(composed.reply, refusedVerdict);
   if (reply === '') {
-    // The whole reply was "I'll send an invite". On Linq a number is not an
-    // invite: the parent starts the group. Substituting the locked instruction
-    // is the backstop when the deterministic handler did not claim the turn.
-    // SMS is unchanged — an empty cut still fails the turn rather than promising
-    // a text that did not leave.
+    // The whole reply was an unbacked invite. On Linq a number is not an
+    // invite. The backstop is the locked co-parent ask, one bubble, so the
+    // cut does not 500 and does not say an invite left. SMS still fails the
+    // turn rather than promising a text that did not leave.
     const inviteOnly = refusedVerdict.refused.every(
       (resolution) => resolution.reason === 'no_coparent_invite',
     );
@@ -1689,11 +1688,11 @@ async function composeReconciledReply(
         const language = replyLanguage(args.turn.body);
         const from = linqFromE164();
         const instruction = from
-          ? linqGroupMakeInstruction(formatLinqLineForParent(from), language)
+          ? linqCoParentAsk(formatLinqLineForParent(from), language)
           : LINQ_GROUP_LINE_MISSING_TEXT[language];
         deps.log.error(
           { reason: 'no_coparent_invite' },
-          'channel router: an invite claim was replaced with the Linq group instruction',
+          'channel router: an invite claim was replaced with the Linq co-parent ask',
         );
         return { ...composed, reply: instruction, spotWatch: null, mints: [] };
       }

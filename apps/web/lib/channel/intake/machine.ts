@@ -24,7 +24,13 @@ import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { linqFromE164 } from '~/lib/channel/linq/config';
 import { shareHaleContactCardOnce } from '~/lib/channel/linq/contact-card';
+import {
+  LINQ_GROUP_LINE_MISSING_TEXT,
+  formatLinqLineForParent,
+  linqCoParentAsk,
+} from '~/lib/channel/linq/group';
 import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
 import {
   EMERGENCY_REPLY,
@@ -100,6 +106,7 @@ import {
   saveSession,
   transcriptHasOutbound,
 } from './session';
+import { isQuestionOrNewFind } from './soft-ack';
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
@@ -1144,10 +1151,10 @@ async function shareFreshLinqContactCard(
     inbound: Inbound;
   },
   deps: IntakeDeps,
-): Promise<void> {
+): Promise<'shown' | 'silent'> {
   const pipe = messagingPipe(args.inbound);
   if (pipe.channel === 'imessage' && pipe.chatId && args.inbound.isGroup !== true) {
-    await shareHaleContactCardOnce(database, {
+    const shared = await shareHaleContactCardOnce(database, {
       familyId: args.familyId,
       parentUserId: args.parentUserId,
       chatId: pipe.chatId,
@@ -1156,9 +1163,9 @@ async function shareFreshLinqContactCard(
       onboardComplete: true,
       now: args.now,
     });
-    return;
+    return shared.status === 'shared' ? 'shown' : 'silent';
   }
-  await sendWelcomeContactCard(
+  const card = await sendWelcomeContactCard(
     database,
     {
       familyId: args.familyId,
@@ -1169,6 +1176,9 @@ async function shareFreshLinqContactCard(
     },
     { transport: deps.transport, threadMessage: deps.threadMessage },
   );
+  if (card.status === 'sent') return 'shown';
+  if (card.status === 'not_sent' && card.reason === 'already_sent') return 'shown';
+  return 'silent';
 }
 
 async function provision(
@@ -1539,14 +1549,59 @@ async function handleLadder(
 
   let next: IntakeLadderStep | null = step;
   let closed = false;
+  let heldForQuestion = false;
 
-  if (step === 'turtle') {
-    await shareFreshLinqContactCard(
+  if (step === 'turtle' && isQuestionOrNewFind(inbound.body)) {
+    const offScript = await offScriptReply(
+      {
+        parentWords: inbound.body,
+        pendingAsk: '',
+        children: session.collected.children,
+        postalCode: session.collected.postalCode,
+      },
+      deps,
+    );
+    if (offScript) {
+      await sendAndRecord(database, ctx, offScript.body, deps, recorded.transcript);
+      heldForQuestion = true;
+    }
+  }
+
+  if (heldForQuestion) {
+    next = 'turtle';
+  } else if (step === 'turtle') {
+    const card = await shareFreshLinqContactCard(
       database,
       { familyId, parentUserId: userId, phoneE164, now, inbound },
       deps,
     );
-    next = language === 'fr' ? 'calendar' : 'name';
+    if (card === 'shown') {
+      next = language === 'fr' ? 'calendar' : 'name';
+    } else if (language === 'fr') {
+      await sendYearConnectorCards(
+        database,
+        {
+          familyId,
+          parentUserId: userId,
+          phoneE164,
+          language,
+          now,
+          ridesReply: true,
+          only: 'gcal',
+        },
+        { transport: deps.transport, threadMessage: deps.threadMessage },
+      );
+      next = 'gmail';
+    } else {
+      const asked = await askParentCallName(database, {
+        familyId,
+        parentUserId: userId,
+        language,
+        send: (body, templateKey) =>
+          sendAndRecord(database, ctx, body, deps, recorded.transcript, templateKey),
+      });
+      next = asked ? 'name_reply' : 'calendar';
+    }
   } else if (step === 'name') {
     const asked = await askParentCallName(database, {
       familyId,
@@ -1582,10 +1637,18 @@ async function handleLadder(
     );
     next = step === 'calendar' ? 'gmail' : 'coparent';
   } else {
+    const pipe = messagingPipe(inbound);
+    const from = pipe.channel === 'imessage' ? linqFromE164() : null;
+    const coparentAsk =
+      pipe.channel === 'imessage'
+        ? from
+          ? linqCoParentAsk(formatLinqLineForParent(from), language)
+          : LINQ_GROUP_LINE_MISSING_TEXT[language]
+        : CO_PARENT_ASK_BY_LANGUAGE[language];
     await sendAndRecord(
       database,
       ctx,
-      CO_PARENT_ASK_BY_LANGUAGE[language],
+      coparentAsk,
       deps,
       recorded.transcript,
       INTAKE_COPARENT_ASK_TEMPLATE_KEY,

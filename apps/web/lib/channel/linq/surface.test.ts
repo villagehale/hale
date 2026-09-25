@@ -83,9 +83,15 @@ describe('Linq contact card', () => {
     vi.stubEnv('LINQ_FROM_E164', '+15555550100');
     const fake = makeFakeDb();
     enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
-    const fetchMock = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {
-      if (String(url).endsWith('/contact_card')) {
-        return Response.json({ is_active: true }, { status: 201 });
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes('/contact_card?') || init?.method === 'GET') {
+        return Response.json({
+          contact_cards: [{ phone_number: '+15555550100', first_name: 'Hale', is_active: true }],
+        });
+      }
+      if (target.endsWith('/contact_card')) {
+        return Response.json({ is_active: true, phone_number: '+15555550100' }, { status: 201 });
       }
       return new Response(null, { status: 200 });
     });
@@ -113,13 +119,17 @@ describe('Linq contact card', () => {
 
     expect(first).toEqual({ status: 'shared' });
     expect(second).toEqual({ status: 'not_sent', reason: 'already_shared' });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     const card = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(card.first_name).toBe(HALE_CONTACT_FIRST_NAME);
     expect(card.image_url).toBe(HALE_CONTACT_IMAGE_URL_DEFAULT);
-    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+    expect(fetchMock.mock.calls[2]?.[0]).toBe(
       `https://api.linqapp.com/api/partner/v3/chats/${CHAT}/share_contact_card`,
     );
+    const shared = fake
+      .rows(schema.auditLog)
+      .find((row) => row.actionTaken === 'linq_contact_card_shared');
+    expect(shared?.after).toMatchObject({ outcome: 'shared' });
   });
 
   it('releases the one-shot claim when the partner key is missing', async () => {
@@ -150,13 +160,19 @@ describe('Linq contact card', () => {
     const fake = makeFakeDb();
     enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
     let setups = 0;
-    const fetchMock = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {
-      if (String(url).endsWith('/contact_card')) {
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes('/contact_card?') || init?.method === 'GET') {
+        return Response.json({
+          contact_cards: [{ phone_number: '+15555550100', first_name: 'Hale', is_active: true }],
+        });
+      }
+      if (target.endsWith('/contact_card')) {
         setups += 1;
         if (setups === 1) {
           return Response.json({ error: { code: 'image_unreachable' } }, { status: 400 });
         }
-        return Response.json({ is_active: true }, { status: 201 });
+        return Response.json({ is_active: true, phone_number: '+15555550100' }, { status: 201 });
       }
       return new Response(null, { status: 200 });
     });
@@ -183,7 +199,7 @@ describe('Linq contact card', () => {
     const shared = await shareHaleContactCardOnce(fake.db, args);
     expect(shared).toEqual({ status: 'shared' });
     expect(fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toEqual(NOW);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it('keeps the one-shot when the share itself is refused', async () => {
@@ -192,9 +208,15 @@ describe('Linq contact card', () => {
     vi.stubEnv('LINQ_FROM_E164', '+15555550100');
     const fake = makeFakeDb();
     enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
-    const fetchMock = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {
-      if (String(url).endsWith('/contact_card')) {
-        return Response.json({ is_active: true }, { status: 201 });
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes('/contact_card?') || init?.method === 'GET') {
+        return Response.json({
+          contact_cards: [{ phone_number: '+15555550100', first_name: 'Hale', is_active: true }],
+        });
+      }
+      if (target.endsWith('/contact_card')) {
+        return Response.json({ is_active: true, phone_number: '+15555550100' }, { status: 201 });
       }
       return Response.json({ error: { code: 'share_rejected' } }, { status: 400 });
     });
@@ -220,7 +242,60 @@ describe('Linq contact card', () => {
 
     const second = await shareHaleContactCardOnce(fake.db, args);
     expect(second).toEqual({ status: 'not_sent', reason: 'already_shared' });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(
+      fake
+        .rows(schema.auditLog)
+        .some(
+          (row) =>
+            row.actionTaken === 'linq_contact_card_shared' &&
+            (row.after as { outcome?: string } | null)?.outcome === 'shared',
+        ),
+    ).toBe(false);
+  });
+
+  it('does not audit shared when the line card is not active', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fake = makeFakeDb();
+    enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes('/contact_card?') || init?.method === 'GET') {
+        return Response.json({
+          contact_cards: [{ phone_number: '+15555550100', first_name: 'Hale', is_active: false }],
+        });
+      }
+      if (target.endsWith('/contact_card')) {
+        return Response.json({ is_active: true, phone_number: '+15555550100' }, { status: 201 });
+      }
+      return new Response(null, { status: 200 });
+    });
+    const outcome = await shareHaleContactCardOnce(fake.db, {
+      familyId: FAMILY,
+      parentUserId: USER,
+      chatId: CHAT,
+      channel: 'imessage',
+      isGroup: false,
+      onboardComplete: true,
+      now: NOW,
+      fetch: fetchMock,
+    });
+    expect(outcome).toMatchObject({
+      status: 'not_sent',
+      reason: 'card_refused',
+      code: 'card_inactive',
+    });
+    expect(
+      fetchMock.mock.calls.some((call) => String(call[0]).includes('share_contact_card')),
+    ).toBe(false);
+    expect(fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toBeNull();
+    const audit = fake
+      .rows(schema.auditLog)
+      .find((row) => row.actionTaken === 'linq_contact_card_shared');
+    expect(audit?.after).toMatchObject({ outcome: 'card_inactive' });
+    expect((audit?.after as { outcome?: string } | null)?.outcome).not.toBe('shared');
   });
 });
 

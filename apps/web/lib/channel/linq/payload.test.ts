@@ -148,6 +148,33 @@ describe('parseLinqWebhook', () => {
         reactionType: 'like',
         optionId: null,
         senderHandle: null,
+        participantHandle: null,
+        isFromMe: false,
+      },
+    });
+
+    const added = parseLinqWebhook(
+      {
+        ...received(),
+        event_type: 'participant.added',
+        data: {
+          chat_id: '8f392755-6865-4b18-880a-227f9d8b458f',
+          handle: '+14165550199',
+          participant: {
+            handle: '+14165550199',
+            is_me: false,
+            service: 'iMessage',
+            status: 'active',
+          },
+        },
+      },
+      FALLBACK,
+    );
+    expect(added).toMatchObject({
+      kind: 'signal',
+      signal: {
+        event: 'participant.added',
+        participantHandle: '+14165550199',
         isFromMe: false,
       },
     });

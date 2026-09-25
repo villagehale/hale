@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { formatLinqLineForParent, linqCoParentAsk } from '~/lib/channel/linq/group';
 import {
   EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
@@ -592,8 +593,8 @@ describe('intake · the contact card', () => {
   /**
    * The reason the card is a separate send, stated as a test: the radar is already on
    * the parent's phone as plain text before the card is attempted, so a provider that
-   * refuses the MMS costs the card and nothing else. The refusal is counted — the
-   * claimed ledger row flips to `failed` with the code — never silently dropped.
+   * refuses the MMS costs the card. The name ask is the visible next beat. The
+   * refusal is counted — the claimed ledger row flips to `failed` with the code.
    */
   it('loses only the card when the provider refuses media, and writes down why', async () => {
     const errors: unknown[] = [];
@@ -623,7 +624,8 @@ describe('intake · the contact card', () => {
     expect(cardTurn).toEqual({ status: 'ladder_advanced', step: 'turtle', closed: false });
     expect(transport.bodies().some((body) => body.includes(WATCH_OFFER))).toBe(false);
     expect(transport.bodies()).toContain('RADAR');
-    expect(transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
+    // The card did not leave. The name ask is the visible next beat, in this same turn.
+    expect(transport.bodies().at(-1)).toBe(PARENT_CALL_NAME_ASK);
     expect(transport.bodies().some((body) => body.includes('Connect your calendar:'))).toBe(false);
     expect(transport.media()).toEqual([]);
     // Counted, not dropped: the row that claimed the send says the provider refused it.
@@ -1026,8 +1028,9 @@ describe('intake · a question mid-signup gets an answer', () => {
     const answered = await text(fake, transport, deps, 'Does Sebastian needs eye exam?');
     expect(answered).toEqual({ status: 'ladder_advanced', step: 'turtle', closed: false });
     expect(transport.bodies()).toHaveLength(sent + 1);
-    expect(transport.bodies().at(-1)).toBe(WELCOME_CARD_BODY);
-    expect(composer.calls).toEqual([]);
+    expect(transport.bodies().at(-1)).toBe(`${ANSWER} ${RETURN}`);
+    expect(transport.bodies()).not.toContain(WELCOME_CARD_BODY);
+    expect(composer.calls).toHaveLength(1);
     expect(
       inserts(fake, schema.consentRecords).filter((c) => c.consentType === 'proactive_watch'),
     ).toHaveLength(1);
@@ -2333,6 +2336,73 @@ describe('intake · one ladder job per reply', () => {
     expect(h.transport.bodies().at(-1)).toBe(CO_PARENT_ASK);
     expect(h.transport.bodies().at(-1)).not.toContain("Calendar's connected");
     expect(h.transport.bodies().at(-1)).not.toContain("Gmail's connected");
+  });
+
+  it('sends only the welcome card on a soft ack when SMS can deliver it', async () => {
+    const h = harness({});
+    await text(h.fake, h.transport, h.deps, 'hi');
+    await text(h.fake, h.transport, h.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    const afterFind = h.transport.bodies().length;
+    expect(await text(h.fake, h.transport, h.deps, 'cool')).toEqual({
+      status: 'ladder_advanced',
+      step: 'turtle',
+      closed: false,
+    });
+    expect(h.transport.bodies().slice(afterFind)).toEqual([WELCOME_CARD_BODY]);
+  });
+
+  it('asks what to call you when a soft ack cannot deliver the iMessage card', async () => {
+    vi.stubEnv('LINQ_FROM_E164', '');
+    const h = harness({});
+    const imessage = (body: string) =>
+      handleInboundSms(
+        h.fake.db,
+        h.transport.inbound(PHONE, body, { transport: 'imessage', chatId: 'chat-year' }),
+        h.deps,
+      );
+    await imessage('hi');
+    await imessage('Maya is 4, Leo is 1. M5V 2T6');
+    const afterFind = h.transport.bodies().length;
+    expect(await imessage('cool')).toEqual({
+      status: 'ladder_advanced',
+      step: 'turtle',
+      closed: false,
+    });
+    expect(h.transport.bodies().slice(afterFind)).toEqual([PARENT_CALL_NAME_ASK]);
+    expect(
+      h.fake.writes.some(
+        (write) =>
+          write.op === 'insert' &&
+          write.table === schema.auditLog &&
+          write.payload.actionTaken === 'linq_contact_card_shared' &&
+          (write.payload.after as { outcome?: string } | undefined)?.outcome === 'shared',
+      ),
+    ).toBe(false);
+  });
+
+  it('asks for the iMessage group on the co-parent beat and does not collect a number', async () => {
+    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
+    vi.stubEnv('LINQ_API_KEY', '');
+    const h = harness({});
+    const imessage = (body: string) =>
+      handleInboundSms(
+        h.fake.db,
+        h.transport.inbound(PHONE, body, { transport: 'imessage', chatId: 'chat-year' }),
+        h.deps,
+      );
+    await imessage('hi');
+    await imessage('Maya is 4, Leo is 1. M5V 2T6');
+    await imessage('cool');
+    await imessage('Jimmy');
+    await imessage('later');
+    await imessage('later');
+    const closed = await imessage('later');
+    expect(closed).toEqual({ status: 'ladder_advanced', step: 'coparent', closed: true });
+    expect(h.transport.bodies().at(-1)).toBe(
+      linqCoParentAsk(formatLinqLineForParent('+16462352164'), 'en'),
+    );
+    expect(h.transport.bodies().at(-1)).not.toMatch(/text me their number/i);
+    expect(h.transport.bodies().join('\n')).not.toMatch(/I'll invite|I'll send an invite/i);
   });
 });
 
