@@ -811,8 +811,8 @@ describe('a number with an invite in flight finishes its OWN intake', () => {
     expect(auditActions(fake)).not.toContain('caregiver_invite_accepted');
 
     // Watching is implied by the live find — there is no YES gate. The year find
-    // parks the ladder; six replies close it. After that, a stale invite cannot
-    // take the number: the turn finds no open conversation.
+    // sends the card and the name; later replies close the ladder. After that, a
+    // stale invite cannot take the number: the turn finds no open conversation.
     expect(
       inserts(fake, schema.consentRecords).filter((c) => c.consentType === 'proactive_watch'),
     ).toEqual([expect.objectContaining({ granted: true })]);
@@ -823,7 +823,9 @@ describe('a number with an invite in flight finishes its OWN intake', () => {
       if (advanced.status !== 'ladder_advanced') break;
       beats.push(advanced);
     }
-    expect(beats[0]).toEqual({ status: 'ladder_advanced', step: 'turtle', closed: false });
+    // This harness's name lookup declines, so the year-find turn parks on the
+    // calendar card. The ladder still closes, and the invite does not take the number.
+    expect(beats[0]).toEqual({ status: 'ladder_advanced', step: 'calendar', closed: false });
     expect(beats.at(-1)).toEqual({ status: 'ladder_advanced', step: 'coparent', closed: true });
 
     const before = transport.sent.length;

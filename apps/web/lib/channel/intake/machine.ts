@@ -106,11 +106,10 @@ import {
   saveSession,
   transcriptHasOutbound,
 } from './session';
-import { isQuestionOrNewFind } from './soft-ack';
+import { isQuestionOrNewFind, isSoftLadderAck } from './soft-ack';
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
-import { sendWelcomeContactCard } from './welcome-card';
 import { yearOpenEmptyMessage } from './year-open';
 
 /**
@@ -1136,21 +1135,20 @@ function resolveLocation(
 }
 
 /**
- * SMS still sends the vCard. A finished 1:1 iMessage onboard shares Hale's
- * Name and Photo card once, after the radar or the yes-ack has already gone
- * out — Linq will not share a card into a chat with no prior outbound, and a
- * group is not this moment.
+ * The turtle card is Hale's Linq Name and Photo share, and only that.
+ * It leaves when Linq reports the line card active and the share lands.
+ * No chat line rides with it. SMS has no Linq card, so this returns silent
+ * and the name ask (or the French calendar card) still goes out.
+ * A group is not this moment. Linq will not share into a chat with no prior outbound.
  */
 async function shareFreshLinqContactCard(
   database: Database,
   args: {
     familyId: string;
     parentUserId: string;
-    phoneE164: string;
     now: Date;
     inbound: Inbound;
   },
-  deps: IntakeDeps,
 ): Promise<'shown' | 'silent'> {
   const pipe = messagingPipe(args.inbound);
   if (pipe.channel === 'imessage' && pipe.chatId && args.inbound.isGroup !== true) {
@@ -1165,20 +1163,57 @@ async function shareFreshLinqContactCard(
     });
     return shared.status === 'shared' ? 'shown' : 'silent';
   }
-  const card = await sendWelcomeContactCard(
-    database,
-    {
-      familyId: args.familyId,
-      parentUserId: args.parentUserId,
-      phoneE164: args.phoneE164,
-      now: args.now,
-      ridesReply: true,
-    },
-    { transport: deps.transport, threadMessage: deps.threadMessage },
-  );
-  if (card.status === 'sent') return 'shown';
-  if (card.status === 'not_sent' && card.reason === 'already_sent') return 'shown';
   return 'silent';
+}
+
+/**
+ * The beats that used to wait for "cool". Same turn, in order: the year find
+ * (already sent, its own bubble), the Linq turtle card when that share lands
+ * (no chat line), then the name ask. A card that cannot leave still sends the
+ * name ask. French skips the English name and sends the calendar card instead.
+ */
+async function sendPostYearFindLadder(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    phoneE164: string;
+    language: ReplyLanguage;
+    now: Date;
+    inbound: Inbound;
+    send: (body: string, templateKey: string) => Promise<unknown>;
+  },
+  deps: IntakeDeps,
+): Promise<IntakeLadderStep> {
+  await shareFreshLinqContactCard(database, {
+    familyId: args.familyId,
+    parentUserId: args.parentUserId,
+    now: args.now,
+    inbound: args.inbound,
+  });
+  if (args.language === 'fr') {
+    await sendYearConnectorCards(
+      database,
+      {
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        phoneE164: args.phoneE164,
+        language: args.language,
+        now: args.now,
+        ridesReply: true,
+        only: 'gcal',
+      },
+      { transport: deps.transport, threadMessage: deps.threadMessage },
+    );
+    return 'gmail';
+  }
+  const asked = await askParentCallName(database, {
+    familyId: args.familyId,
+    parentUserId: args.parentUserId,
+    language: args.language,
+    send: args.send,
+  });
+  return asked ? 'name_reply' : 'calendar';
 }
 
 async function provision(
@@ -1233,10 +1268,25 @@ async function provision(
     radar.weekendPickOffered ? INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY : undefined,
   );
 
+  // The find is its own bubble. The turtle card, when the share lands, and the next
+  // visible ask (the name, or the French calendar card) go out in this same turn.
+  // Nothing waits on "cool".
+  const ladderNext = await sendPostYearFindLadder(
+    database,
+    {
+      familyId,
+      parentUserId: userId,
+      phoneE164,
+      language,
+      now,
+      inbound,
+      send: (body, templateKey) => sendAndRecord(database, ctx, body, deps, [], templateKey),
+    },
+    deps,
+  );
+
   // The find is the watch. There is no separate yes. The parent's own kids-and-postal
   // text is the verbatim. Consent is written before the stage flip (watch-consent.ts).
-  // This turn ENDS on the year find. Turtle, name, calendar, Gmail, and co-parent
-  // each wait for a later reply (handleLadder).
   await recordWatchConsent(
     database,
     {
@@ -1315,7 +1365,7 @@ async function provision(
       userId,
       lastProviderId: inbound.providerId,
       findWon: radar.findWon,
-      ladderNext: 'turtle',
+      ladderNext,
       ladderLanguage: language,
     },
     now,
@@ -1551,7 +1601,7 @@ async function handleLadder(
   let closed = false;
   let heldForQuestion = false;
 
-  if (step === 'turtle' && isQuestionOrNewFind(inbound.body)) {
+  if ((step === 'turtle' || step === 'name_reply') && isQuestionOrNewFind(inbound.body)) {
     const offScript = await offScriptReply(
       {
         parentWords: inbound.body,
@@ -1568,40 +1618,23 @@ async function handleLadder(
   }
 
   if (heldForQuestion) {
-    next = 'turtle';
+    next = step;
   } else if (step === 'turtle') {
-    const card = await shareFreshLinqContactCard(
+    // A session parked here before the year-find turn sent the asks itself.
+    next = await sendPostYearFindLadder(
       database,
-      { familyId, parentUserId: userId, phoneE164, now, inbound },
-      deps,
-    );
-    if (card === 'shown') {
-      next = language === 'fr' ? 'calendar' : 'name';
-    } else if (language === 'fr') {
-      await sendYearConnectorCards(
-        database,
-        {
-          familyId,
-          parentUserId: userId,
-          phoneE164,
-          language,
-          now,
-          ridesReply: true,
-          only: 'gcal',
-        },
-        { transport: deps.transport, threadMessage: deps.threadMessage },
-      );
-      next = 'gmail';
-    } else {
-      const asked = await askParentCallName(database, {
+      {
         familyId,
         parentUserId: userId,
+        phoneE164,
         language,
+        now,
+        inbound,
         send: (body, templateKey) =>
           sendAndRecord(database, ctx, body, deps, recorded.transcript, templateKey),
-      });
-      next = asked ? 'name_reply' : 'calendar';
-    }
+      },
+      deps,
+    );
   } else if (step === 'name') {
     const asked = await askParentCallName(database, {
       familyId,
@@ -1611,6 +1644,9 @@ async function handleLadder(
         sendAndRecord(database, ctx, body, deps, recorded.transcript, templateKey),
     });
     next = asked ? 'name_reply' : 'calendar';
+  } else if (step === 'name_reply' && isSoftLadderAck(inbound.body)) {
+    // The year-find turn already sent the name. "cool" is not a name.
+    next = 'name_reply';
   } else if (step === 'name_reply') {
     const captured = await handleNameCaptureReply(
       database,
@@ -1682,7 +1718,8 @@ function assentAck(language: ReplyLanguage): { body: string; asked: boolean } {
 }
 
 /**
- * The locked call-name line, its own text, after the turtle card.
+ * The locked call-name line, its own bubble, in the same turn as the year find
+ * and after the turtle card when that card shared.
  *
  * "What should I call you?" when there is no safe Google given name, and
  * "Can I call you {first}?" when there is. The composer is not called. A French

@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatLinqLineForParent, linqCoParentAsk } from '~/lib/channel/linq/group';
+import { createLinqTextTransport } from '~/lib/channel/linq/transport';
 import {
   EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
@@ -68,7 +69,7 @@ import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from './radar';
 import { FakeTransport } from './transport';
 import { claimIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS } from './watch-consent';
-import { CONTACT_CARD_URL, WELCOME_CARD_BODY, WELCOME_CARD_TEMPLATE_KEY } from './welcome-card';
+import { WELCOME_CARD_BODY } from './welcome-card';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PHONE = '+14165551234';
@@ -193,13 +194,13 @@ function text(
   return handleInboundSms(fake.db, transport.inbound(PHONE, body), override ?? deps);
 }
 
-/** Hale #1, then the year find alone. The ladder is later replies. */
+/**
+ * Hale #1, the year find in its own bubble, then the name ask. SMS has no Linq
+ * card, so there is no card chat line. No calendar, Gmail, co-parent, or watch yes.
+ */
 function expectEnglishYearOpen(bodies: string[]) {
-  expect(bodies).toHaveLength(2);
-  expect(bodies[1]).toBe('RADAR');
+  expect(bodies).toEqual([HALE_GREETING_EN, 'RADAR', PARENT_CALL_NAME_ASK]);
   expect(bodies).not.toContain(WELCOME_CARD_BODY);
-  expect(bodies).not.toContain(PARENT_CALL_NAME_ASK);
-  expect(bodies).not.toContain(CO_PARENT_ASK);
   const joined = bodies.join('\n');
   expect(joined).not.toContain('Connect your calendar:');
   expect(joined).not.toContain('Gmail:');
@@ -219,10 +220,11 @@ function reply(h: LadderDrive, body = LADDER_BEAT) {
   return text(h.fake, h.transport, h.deps, body);
 }
 
-/** Turtle, name, a non-name, calendar, Gmail, co-parent. The last beat closes. */
+/**
+ * The year-find turn already sent the name. A non-name, then calendar,
+ * Gmail, co-parent. The last beat closes.
+ */
 async function walkEnglishLadder(h: LadderDrive) {
-  await reply(h);
-  await reply(h);
   await reply(h);
   await reply(h);
   await reply(h);
@@ -311,13 +313,13 @@ describe('intake · happy path', () => {
     expect(phoneCipher).not.toBe(PHONE);
     expect(decryptString(phoneCipher)).toBe(PHONE);
 
-    // The year find is the whole turn. No watch yes, and no ladder ask yet.
+    // The year find is its own bubble. The card and the name ask leave with it.
     expectEnglishYearOpen(transport.bodies());
 
     const closed = await walkEnglishLadder({ fake, transport, deps });
     expect(closed).toEqual({ status: 'ladder_advanced', step: 'coparent', closed: true });
     expect(transport.bodies().at(-1)).toBe(CO_PARENT_ASK);
-    expect(transport.bodies().filter((body) => body === WELCOME_CARD_BODY)).toHaveLength(1);
+    expect(transport.bodies()).not.toContain(WELCOME_CARD_BODY);
     expect(transport.bodies().filter((body) => body === PARENT_CALL_NAME_ASK)).toHaveLength(1);
 
     const sent = transport.bodies().length;
@@ -384,23 +386,19 @@ describe('intake · happy path', () => {
       return text(h.fake, h.transport, h.deps, 'Maya is 4, Leo is 1. M5V 2T6');
     }
 
-    it('sends the locked name line as its own text, after the card and before the calendar', async () => {
+    it('sends the locked name line as its own text, after the year find', async () => {
       const h = harness({ intents: [assent('yes please')] });
 
       await openYear(h);
-      expect(h.transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
-
-      await reply(h);
-      expect(h.transport.bodies().at(-1)).toBe(WELCOME_CARD_BODY);
-      await reply(h);
 
       expect(h.identityAsk.calls).toEqual([]);
       expect(h.transport.bodies().filter((b) => b.startsWith('Done -'))).toEqual([]);
       expect(h.transport.bodies().filter((b) => b === PARENT_CALL_NAME_ASK)).toEqual([
         PARENT_CALL_NAME_ASK,
       ]);
-      expect(h.transport.bodies().at(-2)).toBe(WELCOME_CARD_BODY);
+      expect(h.transport.bodies().at(-2)).toBe('RADAR');
       expect(h.transport.bodies().at(-1)).toBe(PARENT_CALL_NAME_ASK);
+      expect(h.transport.bodies()).not.toContain(WELCOME_CARD_BODY);
       expect(h.transport.bodies().join('\n')).not.toContain('Connect your calendar:');
     });
 
@@ -408,8 +406,6 @@ describe('intake · happy path', () => {
       const h = harness({ intents: [assent('yes please')] });
 
       await openYear(h);
-      await reply(h);
-      await reply(h);
 
       const stamped = inserts(h.fake, schema.channelMessages).filter(
         (row) => row.templateKey === 'parent_name_ask',
@@ -425,8 +421,6 @@ describe('intake · happy path', () => {
       });
 
       const opened = await openYear(h);
-      await reply(h);
-      await reply(h);
 
       expect(opened.status).toBe('provisioned');
       expect(h.identityAsk.calls).toEqual([]);
@@ -440,8 +434,6 @@ describe('intake · happy path', () => {
       });
 
       await openYear(h);
-      await reply(h);
-      await reply(h);
       const sent = h.transport.bodies().length;
       const later = await text(h.fake, h.transport, h.deps, 'no thanks');
 
@@ -488,7 +480,7 @@ describe('intake · happy path', () => {
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
     const result = await text(fake, transport, deps, 'no thanks');
 
-    expect(result).toEqual({ status: 'ladder_advanced', step: 'turtle', closed: false });
+    expect(result).toEqual({ status: 'ladder_advanced', step: 'name_reply', closed: false });
     expect(transport.bodies()).not.toContain(DECLINE_ACK);
     const watches = inserts(fake, schema.consentRecords).filter(
       (c) => c.consentType === 'proactive_watch',
@@ -522,11 +514,12 @@ describe("intake · the handoff into the parent's own thread", () => {
     await text(fake, transport, deps, 'Maya is 4 and Leo is 1, M5V');
 
     await walkEnglishLadder({ fake, transport, deps });
-    // Find, card, call-name, calendar, Gmail, co-parent. The greeting is pre-family.
+    // Find, call-name, calendar, Gmail, co-parent. The greeting is pre-family.
+    // SMS has no Linq card, so no card line sits between the find and the name.
     expect(threaded.map((t) => t.body)).toEqual(transport.bodies().slice(1));
     expect(threaded[0]?.body).toBe('RADAR');
-    expect(threaded[1]?.body).toBe(WELCOME_CARD_BODY);
-    expect(threaded[2]?.body).toBe(PARENT_CALL_NAME_ASK);
+    expect(threaded[1]?.body).toBe(PARENT_CALL_NAME_ASK);
+    expect(threaded.some((t) => t.body === WELCOME_CARD_BODY)).toBe(false);
     expect(threaded.at(-1)?.body).toBe(CO_PARENT_ASK);
     expect(threaded.some((t) => t.body === ASSENT_ACK)).toBe(false);
     expect(threaded.every((t) => t.familyId.length > 0 && t.parentUserId.length > 0)).toBe(true);
@@ -549,56 +542,31 @@ describe("intake · the handoff into the parent's own thread", () => {
 
 describe('intake · the contact card', () => {
   /**
-   * The SMS-native equivalent of sharing a profile: one MMS carrying Hale's own vCard,
-   * so the parent taps Add once and every later text arrives under a name and a face
-   * instead of a 289 number nobody recognises.
-   *
-   * ITS OWN MESSAGE, on the kids-and-postal turn — never media hung on the find, and
-   * never stacked into the name or connector ask. Verified live against the prod
-   * messaging service: a MediaUrl Twilio cannot fetch fails the WHOLE message
-   * (error_code 11200), body included, so attaching the card to the find would put
-   * the one text a stranger is guaranteed to read behind a static file.
+   * SMS has no Linq Name and Photo card. The year-find turn is the find bubble
+   * and the name ask. No vCard, no card chat line, and no media on the radar.
+   * The Linq share, when the line card is active, is covered in the ladder tests.
    */
-  it('sends one MMS carrying its own vCard on the find turn', async () => {
+  it('does not send an SMS vCard or a card chat line on the find turn', async () => {
     const { fake, transport, deps } = harness({ intents: [assent('yes please')] });
 
     await text(fake, transport, deps, 'hi');
     await text(fake, transport, deps, 'Maya is 4 and Leo is 1, M5V');
-    await text(fake, transport, deps, LADDER_BEAT);
 
     const radar = transport.sent.find((message) => message.body === 'RADAR');
-    const card = transport.sent.find((message) => message.body === WELCOME_CARD_BODY);
     expect(radar?.mediaUrls).toBeUndefined();
-    expect(card).toEqual({
-      to: PHONE,
-      body: WELCOME_CARD_BODY,
-      mediaUrls: [CONTACT_CARD_URL],
-    });
-  });
-
-  it('carries the card exactly once across the whole conversation', async () => {
-    const { fake, transport, deps } = harness({ intents: [assent('yes please')] });
-
-    await text(fake, transport, deps, 'hi');
-    await text(fake, transport, deps, 'Maya is 4 and Leo is 1, M5V');
-    await text(fake, transport, deps, LADDER_BEAT);
-
-    expect(transport.media()).toEqual([[CONTACT_CARD_URL]]);
-    const cardRows = inserts(fake, schema.channelMessages).filter(
-      (r) => r.templateKey === WELCOME_CARD_TEMPLATE_KEY,
-    );
-    expect(cardRows).toHaveLength(1);
+    expect(transport.bodies()).toEqual([HALE_GREETING_EN, 'RADAR', PARENT_CALL_NAME_ASK]);
+    expect(transport.bodies()).not.toContain(WELCOME_CARD_BODY);
+    expect(transport.media()).toEqual([]);
+    expect(
+      inserts(fake, schema.channelMessages).some((r) => r.templateKey === 'intake:welcome_card'),
+    ).toBe(false);
   });
 
   /**
-   * The reason the card is a separate send, stated as a test: the radar is already on
-   * the parent's phone as plain text before the card is attempted, so a provider that
-   * refuses the MMS costs the card. The name ask is the visible next beat. The
-   * refusal is counted — the claimed ledger row flips to `failed` with the code.
+   * A provider that refuses media must not be able to eat the year find. Nothing
+   * on this turn attaches media, so a refusal never fires and the name ask still leaves.
    */
-  it('loses only the card when the provider refuses media, and writes down why', async () => {
-    const errors: unknown[] = [];
-    vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => errors.push(...args));
+  it('sends the year find and the name ask when a provider would refuse media', async () => {
     const { fake, transport, deps } = harness({});
     const mediaRefusing: IntakeDeps['transport'] = {
       async send(input) {
@@ -613,29 +581,15 @@ describe('intake · the contact card', () => {
       transport: mediaRefusing,
     });
 
-    // The year find landed as plain text. The card is the next reply, and a
-    // refused MMS costs that card only — the find turn already ended.
     expect(provisioned.status).toBe('provisioned');
-    expect(transport.bodies()).toEqual([HALE_GREETING_EN, 'RADAR']);
-    const cardTurn = await text(fake, transport, deps, LADDER_BEAT, {
-      ...deps,
-      transport: mediaRefusing,
-    });
-    expect(cardTurn).toEqual({ status: 'ladder_advanced', step: 'turtle', closed: false });
-    expect(transport.bodies().some((body) => body.includes(WATCH_OFFER))).toBe(false);
-    expect(transport.bodies()).toContain('RADAR');
-    // The card did not leave. The name ask is the visible next beat, in this same turn.
-    expect(transport.bodies().at(-1)).toBe(PARENT_CALL_NAME_ASK);
-    expect(transport.bodies().some((body) => body.includes('Connect your calendar:'))).toBe(false);
+    expect(transport.bodies()).toEqual([HALE_GREETING_EN, 'RADAR', PARENT_CALL_NAME_ASK]);
+    expect(transport.bodies()).not.toContain(WELCOME_CARD_BODY);
     expect(transport.media()).toEqual([]);
-    // Counted, not dropped: the row that claimed the send says the provider refused it.
     expect(
       fake.writes
         .filter((w) => w.op === 'update' && w.table === schema.channelMessages)
         .map((w) => w.payload),
-    ).toContainEqual({ status: 'failed', errorCode: '21620' });
-    expect(JSON.stringify(errors)).toContain('21620');
-    vi.restoreAllMocks();
+    ).not.toContainEqual({ status: 'failed', errorCode: '21620' });
   });
 });
 
@@ -886,7 +840,8 @@ describe('intake · seeding the first radar', () => {
     });
 
     expect(result.status).toBe('provisioned');
-    expect(transport.bodies().at(-1)).toBe('RADAR');
+    expect(transport.bodies()).toContain('RADAR');
+    expect(transport.bodies().at(-1)).toBe(PARENT_CALL_NAME_ASK);
     expect(transport.bodies().join('\n')).not.toContain(WATCH_OFFER);
   });
 
@@ -982,12 +937,13 @@ describe('intake · ambiguity', () => {
     const sent = transport.bodies().length;
 
     const clarified = await text(fake, transport, deps, 'what would you even watch?');
-    expect(clarified).toEqual({ status: 'ladder_advanced', step: 'turtle', closed: false });
+    expect(clarified).toEqual({ status: 'ladder_advanced', step: 'name_reply', closed: false });
     const resolved = await text(fake, transport, deps, 'hmm');
-    expect(resolved).toEqual({ status: 'ladder_advanced', step: 'name', closed: false });
-    expect(transport.bodies()).toHaveLength(sent + 2);
-    expect(transport.bodies().at(-2)).toBe(WELCOME_CARD_BODY);
-    expect(transport.bodies().at(-1)).toBe(PARENT_CALL_NAME_ASK);
+    expect(resolved).toEqual({ status: 'ladder_advanced', step: 'calendar', closed: false });
+    expect(transport.bodies()).toHaveLength(sent + 1);
+    expect(transport.bodies()).not.toContain(WELCOME_CARD_BODY);
+    expect(transport.bodies()).toContain(PARENT_CALL_NAME_ASK);
+    expect(transport.bodies().at(-1)).toContain('Connect your calendar:');
     expect(transport.bodies().filter((b) => b === AMBIGUOUS_CLARIFY)).toHaveLength(0);
 
     const watches = inserts(fake, schema.consentRecords).filter(
@@ -1026,7 +982,7 @@ describe('intake · a question mid-signup gets an answer', () => {
     const sent = transport.bodies().length;
 
     const answered = await text(fake, transport, deps, 'Does Sebastian needs eye exam?');
-    expect(answered).toEqual({ status: 'ladder_advanced', step: 'turtle', closed: false });
+    expect(answered).toEqual({ status: 'ladder_advanced', step: 'name_reply', closed: false });
     expect(transport.bodies()).toHaveLength(sent + 1);
     expect(transport.bodies().at(-1)).toBe(`${ANSWER} ${RETURN}`);
     expect(transport.bodies()).not.toContain(WELCOME_CARD_BODY);
@@ -1044,11 +1000,12 @@ describe('intake · a question mid-signup gets an answer', () => {
 
     expect(await text(fake, transport, deps, 'hmm, maybe')).toEqual({
       status: 'ladder_advanced',
-      step: 'turtle',
+      step: 'name_reply',
       closed: false,
     });
-    expect(transport.bodies()).toHaveLength(sent + 1);
-    expect(transport.bodies().at(-1)).toBe(WELCOME_CARD_BODY);
+    expect(transport.bodies()).toHaveLength(sent);
+    expect(transport.bodies()).not.toContain(WELCOME_CARD_BODY);
+    expect(transport.bodies().at(-1)).toBe(PARENT_CALL_NAME_ASK);
     expect(transport.bodies().filter((b) => b === AMBIGUOUS_CLARIFY)).toHaveLength(0);
   });
 
@@ -1152,8 +1109,8 @@ describe('intake · a question mid-signup gets an answer', () => {
     expect(transport.bodies()).not.toContain(WELCOME_CARD_BODY);
     expect(composer.calls).toEqual([]);
     const held = await text(fake, transport, deps, LADDER_BEAT);
-    expect(held).toEqual({ status: 'ladder_advanced', step: 'turtle', closed: false });
-    expect(transport.bodies().at(-1)).toBe(WELCOME_CARD_BODY);
+    expect(held).toEqual({ status: 'ladder_advanced', step: 'name_reply', closed: false });
+    expect(transport.bodies().at(-1)).toBe(EMERGENCY_REPLY);
   });
 
   it('never sends HELP_REPLY alone when a mid-signup rec question is declined', async () => {
@@ -1903,9 +1860,9 @@ describe('intake · answers in the language the parent wrote in', () => {
     const sent = transport.bodies().length;
 
     const clarified = await text(fake, transport, deps, 'vous surveillez quoi au juste?');
-    expect(clarified).toEqual({ status: 'ladder_advanced', step: 'turtle', closed: false });
-    expect(transport.bodies()).toHaveLength(sent + 1);
-    expect(transport.bodies().at(-1)).toBe(WELCOME_CARD_BODY);
+    expect(clarified).toEqual({ status: 'ladder_advanced', step: 'name_reply', closed: false });
+    expect(transport.bodies()).toHaveLength(sent);
+    expect(transport.bodies()).not.toContain(WELCOME_CARD_BODY);
     expect(transport.bodies()).not.toContain(AMBIGUOUS_CLARIFY_BY_LANGUAGE.fr);
   });
 
@@ -1915,17 +1872,20 @@ describe('intake · answers in the language the parent wrote in', () => {
     await text(fr.fake, fr.transport, fr.deps, 'Mes enfants ont 4 ans et 1 an, M5V 2T6');
     const frSent = fr.transport.bodies().length;
     await text(fr.fake, fr.transport, fr.deps, 'non merci');
-    expect(fr.transport.bodies()).toHaveLength(frSent + 1);
-    expect(fr.transport.bodies().at(-1)).toBe(WELCOME_CARD_BODY);
+    expect(fr.transport.bodies()).not.toContain(WELCOME_CARD_BODY);
+    expect(fr.transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
     expect(fr.transport.bodies()).not.toContain(DECLINE_ACK_BY_LANGUAGE.fr);
+    expect(fr.transport.bodies().at(-1)).toContain('Gmail');
+    expect(fr.transport.bodies()).toHaveLength(frSent + 1);
 
     const en = harness({ intents: [decline('no thanks')] });
     await text(en.fake, en.transport, en.deps, 'hi');
     await text(en.fake, en.transport, en.deps, 'Maya is 4, Leo is 1. M5V 2T6');
     const enSent = en.transport.bodies().length;
     await text(en.fake, en.transport, en.deps, 'no thanks');
-    expect(en.transport.bodies()).toHaveLength(enSent + 1);
-    expect(en.transport.bodies().at(-1)).toBe(WELCOME_CARD_BODY);
+    expect(en.transport.bodies()).toHaveLength(enSent);
+    expect(en.transport.bodies()).not.toContain(WELCOME_CARD_BODY);
+    expect(en.transport.bodies().at(-1)).toBe(PARENT_CALL_NAME_ASK);
     expect(en.transport.bodies()).not.toContain(DECLINE_ACK);
   });
 
@@ -1944,11 +1904,9 @@ describe('intake · answers in the language the parent wrote in', () => {
     expect(fr.transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
     expect(fr.transport.bodies()).not.toContain(ASSENT_ACK_BY_LANGUAGE.fr);
     expect(fr.transport.bodies().at(-1)).not.toBe(CO_PARENT_ASK_BY_LANGUAGE.fr);
-
-    await text(fr.fake, fr.transport, fr.deps, 'plus tard');
-    expect(fr.transport.bodies().at(-1)).toBe(WELCOME_CARD_BODY);
-    await text(fr.fake, fr.transport, fr.deps, 'plus tard');
     const calendar = fr.transport.bodies().at(-1) as string;
+    expect(fr.transport.bodies().at(-2)).toBe('RADAR');
+
     await text(fr.fake, fr.transport, fr.deps, 'plus tard');
     const gmail = fr.transport.bodies().at(-1) as string;
     expect(fr.transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
@@ -1966,11 +1924,8 @@ describe('intake · answers in the language the parent wrote in', () => {
     const enRecorded = await text(en.fake, en.transport, en.deps, 'Maya is 4, Leo is 1. M5V 2T6');
 
     expect(enRecorded.status).toBe('provisioned');
-    expect(en.transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
-    expect(en.transport.bodies()).not.toContain(ASSENT_ACK);
-    await text(en.fake, en.transport, en.deps, LADDER_BEAT);
-    await text(en.fake, en.transport, en.deps, LADDER_BEAT);
     expect(en.transport.bodies()).toContain(PARENT_CALL_NAME_ASK);
+    expect(en.transport.bodies()).not.toContain(ASSENT_ACK);
   });
 
   /**
@@ -2294,35 +2249,24 @@ describe('intake · P1-4 the turn claim', () => {
 });
 
 /**
- * Calendar card, then Gmail card, each its own reply after the name. Each text
- * is one link. A night reply still sends the one card that beat is for.
+ * The year-find turn sends the find, then the name. Later replies settle one
+ * job each. A night reply still sends the connector card that beat is for.
  */
 describe('intake · one ladder job per reply', () => {
-  it('walks turtle, name, the name ack, calendar, Gmail, then co-parent, each alone', async () => {
+  it('sends the name with the year find, then one later job per reply', async () => {
     const h = harness({});
     await text(h.fake, h.transport, h.deps, 'hi');
+    const beforeFind = h.transport.bodies().length;
     await text(h.fake, h.transport, h.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    expect(h.transport.bodies().slice(beforeFind)).toEqual(['RADAR', PARENT_CALL_NAME_ASK]);
     const afterFind = h.transport.bodies().length;
-
-    expect(await reply(h)).toEqual({ status: 'ladder_advanced', step: 'turtle', closed: false });
-    expect(h.transport.bodies().slice(afterFind)).toEqual([WELCOME_CARD_BODY]);
-
-    expect(await reply(h)).toEqual({ status: 'ladder_advanced', step: 'name', closed: false });
-    expect(h.transport.bodies().slice(afterFind)).toEqual([
-      WELCOME_CARD_BODY,
-      PARENT_CALL_NAME_ASK,
-    ]);
 
     expect(await reply(h, 'Jimmy')).toEqual({
       status: 'ladder_advanced',
       step: 'name_reply',
       closed: false,
     });
-    expect(h.transport.bodies().slice(afterFind)).toEqual([
-      WELCOME_CARD_BODY,
-      PARENT_CALL_NAME_ASK,
-      NAME_CAPTURED_REPLY,
-    ]);
+    expect(h.transport.bodies().slice(afterFind)).toEqual([NAME_CAPTURED_REPLY]);
 
     expect(await reply(h)).toEqual({ status: 'ladder_advanced', step: 'calendar', closed: false });
     expect(h.transport.bodies().at(-1)).toContain('Connect your calendar:');
@@ -2338,20 +2282,26 @@ describe('intake · one ladder job per reply', () => {
     expect(h.transport.bodies().at(-1)).not.toContain("Gmail's connected");
   });
 
-  it('sends only the welcome card on a soft ack when SMS can deliver it', async () => {
+  it('does not wait for a soft ack, and does not read cool as a name', async () => {
     const h = harness({});
     await text(h.fake, h.transport, h.deps, 'hi');
     await text(h.fake, h.transport, h.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    expect(h.transport.bodies().at(-2)).toBe('RADAR');
+    expect(h.transport.bodies().at(-1)).toBe(PARENT_CALL_NAME_ASK);
     const afterFind = h.transport.bodies().length;
+
     expect(await text(h.fake, h.transport, h.deps, 'cool')).toEqual({
       status: 'ladder_advanced',
-      step: 'turtle',
+      step: 'name_reply',
       closed: false,
     });
-    expect(h.transport.bodies().slice(afterFind)).toEqual([WELCOME_CARD_BODY]);
+    expect(h.transport.bodies()).toHaveLength(afterFind);
+    expect(
+      inserts(h.fake, schema.auditLog).some((row) => row.actionTaken === 'parent_name_captured'),
+    ).toBe(false);
   });
 
-  it('asks what to call you when a soft ack cannot deliver the iMessage card', async () => {
+  it('asks what to call you on the year-find turn when the iMessage card cannot be shared', async () => {
     vi.stubEnv('LINQ_FROM_E164', '');
     const h = harness({});
     const imessage = (body: string) =>
@@ -2361,14 +2311,17 @@ describe('intake · one ladder job per reply', () => {
         h.deps,
       );
     await imessage('hi');
+    const beforeFind = h.transport.bodies().length;
     await imessage('Maya is 4, Leo is 1. M5V 2T6');
+    expect(h.transport.bodies().slice(beforeFind)).toEqual(['RADAR', PARENT_CALL_NAME_ASK]);
+    expect(h.transport.bodies()).not.toContain(WELCOME_CARD_BODY);
     const afterFind = h.transport.bodies().length;
     expect(await imessage('cool')).toEqual({
       status: 'ladder_advanced',
-      step: 'turtle',
+      step: 'name_reply',
       closed: false,
     });
-    expect(h.transport.bodies().slice(afterFind)).toEqual([PARENT_CALL_NAME_ASK]);
+    expect(h.transport.bodies()).toHaveLength(afterFind);
     expect(
       h.fake.writes.some(
         (write) =>
@@ -2378,6 +2331,313 @@ describe('intake · one ladder job per reply', () => {
           (write.payload.after as { outcome?: string } | undefined)?.outcome === 'shared',
       ),
     ).toBe(false);
+  });
+
+  it('shares the live Linq card and still asks the name on the year-find turn', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes('/contact_card?') || init?.method === 'GET') {
+        return Response.json({
+          contact_cards: [{ phone_number: '+16462352164', first_name: 'Hale', is_active: true }],
+        });
+      }
+      if (target.includes('/contact_card')) {
+        return Response.json({ is_active: true, phone_number: '+16462352164' }, { status: 201 });
+      }
+      return new Response(null, { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const h = harness({});
+    const imessage = (body: string) =>
+      handleInboundSms(
+        h.fake.db,
+        h.transport.inbound(PHONE, body, { transport: 'imessage', chatId: 'chat-year' }),
+        h.deps,
+      );
+    await imessage('hi');
+    const beforeFind = h.transport.bodies().length;
+    await imessage('Maya is 4, Leo is 1. M5V 2T6');
+
+    expect(h.transport.bodies().slice(beforeFind)).toEqual(['RADAR', PARENT_CALL_NAME_ASK]);
+    expect(h.transport.bodies()).not.toContain(WELCOME_CARD_BODY);
+    expect(
+      fetchMock.mock.calls.some((call) => String(call[0]).includes('share_contact_card')),
+    ).toBe(true);
+    expect(
+      h.fake.writes.some(
+        (write) =>
+          write.op === 'insert' &&
+          write.table === schema.auditLog &&
+          write.payload.actionTaken === 'linq_contact_card_shared' &&
+          (write.payload.after as { outcome?: string } | undefined)?.outcome === 'shared',
+      ),
+    ).toBe(true);
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('replies the year find, the card, and the name ask into the inbound Linq chat', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
+    const chatId = 'chat-year';
+    const inboundId = 'msg-in-year';
+    let messageCount = 0;
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes('/contact_card?') || init?.method === 'GET') {
+        return Response.json({
+          contact_cards: [{ phone_number: '+16462352164', first_name: 'Hale', is_active: true }],
+        });
+      }
+      if (target.includes('/contact_card')) {
+        return Response.json({ is_active: true, phone_number: '+16462352164' }, { status: 201 });
+      }
+      if (target.includes('/messages')) {
+        messageCount += 1;
+        return Response.json({ message: { id: `msg-out-${messageCount}` } }, { status: 201 });
+      }
+      return new Response(null, { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const h = harness({});
+    await handleInboundSms(
+      h.fake.db,
+      h.transport.inbound(PHONE, 'hi', { transport: 'imessage', chatId }),
+      h.deps,
+    );
+    const findInbound = h.transport.inbound(PHONE, 'Maya is 4, Leo is 1. M5V 2T6', {
+      transport: 'imessage',
+      chatId,
+      providerId: inboundId,
+    });
+    // The door binds the turn's transport to this chat and this inbound message.
+    const linq = createLinqTextTransport({
+      chatId,
+      replyToMessageId: findInbound.providerId,
+      fetch: fetchMock,
+    });
+    const recorded = await handleInboundSms(h.fake.db, findInbound, {
+      ...h.deps,
+      transport: linq,
+    });
+
+    expect(recorded.status).toBe('provisioned');
+    const calls = fetchMock.mock.calls.map((call) => {
+      const init = call[1];
+      return {
+        url: String(call[0]),
+        method: (init?.method ?? 'GET').toUpperCase(),
+        body: init?.body === undefined ? undefined : JSON.parse(String(init.body)),
+      };
+    });
+    const thread = calls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        (call.url.endsWith(`/chats/${chatId}/messages`) ||
+          call.url.endsWith(`/chats/${chatId}/share_contact_card`)),
+    );
+    expect(thread.map((call) => call.url.split('/chats/')[1])).toEqual([
+      `${chatId}/messages`,
+      `${chatId}/share_contact_card`,
+      `${chatId}/messages`,
+    ]);
+    expect(thread[0]?.body).toEqual({
+      message: {
+        parts: [{ type: 'text', value: 'RADAR' }],
+        reply_to: { message_id: inboundId },
+      },
+    });
+    expect(thread[2]?.body).toEqual({
+      message: {
+        parts: [{ type: 'text', value: PARENT_CALL_NAME_ASK }],
+        reply_to: { message_id: inboundId },
+      },
+    });
+    expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/chats'))).toBe(false);
+    const outbound = inserts(h.fake, schema.channelMessages).filter(
+      (row) => row.direction === 'out',
+    );
+    expect(outbound.length).toBeGreaterThan(0);
+    expect(outbound.every((row) => row.providerChatId === chatId)).toBe(true);
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('replies the French calendar card into that same Linq chat, not a new thread', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
+    const chatId = 'chat-year';
+    const inboundId = 'msg-in-year-fr';
+    let messageCount = 0;
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes('/contact_card?') || init?.method === 'GET') {
+        return Response.json({
+          contact_cards: [{ phone_number: '+16462352164', first_name: 'Hale', is_active: true }],
+        });
+      }
+      if (target.includes('/contact_card')) {
+        return Response.json({ is_active: true, phone_number: '+16462352164' }, { status: 201 });
+      }
+      if (target.includes('/messages')) {
+        messageCount += 1;
+        return Response.json({ message: { id: `msg-out-${messageCount}` } }, { status: 201 });
+      }
+      return new Response(null, { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const h = harness({});
+    await handleInboundSms(
+      h.fake.db,
+      h.transport.inbound(PHONE, 'Bonjour', { transport: 'imessage', chatId }),
+      h.deps,
+    );
+    const findInbound = h.transport.inbound(PHONE, 'Mes enfants ont 4 ans et 1 an, M5V 2T6', {
+      transport: 'imessage',
+      chatId,
+      providerId: inboundId,
+    });
+    const linq = createLinqTextTransport({
+      chatId,
+      replyToMessageId: findInbound.providerId,
+      fetch: fetchMock,
+    });
+    const recorded = await handleInboundSms(h.fake.db, findInbound, {
+      ...h.deps,
+      transport: linq,
+    });
+
+    expect(recorded.status).toBe('provisioned');
+    const calls = fetchMock.mock.calls.map((call) => {
+      const init = call[1];
+      return {
+        url: String(call[0]),
+        method: (init?.method ?? 'GET').toUpperCase(),
+        body: init?.body === undefined ? undefined : JSON.parse(String(init.body)),
+      };
+    });
+    const thread = calls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        (call.url.includes(`/chats/${chatId}/`) || call.url.endsWith('/chats')),
+    );
+    expect(thread.some((call) => call.url.endsWith('/chats'))).toBe(false);
+    expect(thread[0]?.url.endsWith(`/chats/${chatId}/messages`)).toBe(true);
+    expect(thread[0]?.body).toEqual({
+      message: {
+        parts: [{ type: 'text', value: 'RADAR' }],
+        reply_to: { message_id: inboundId },
+      },
+    });
+    expect(thread[1]?.url.endsWith(`/chats/${chatId}/share_contact_card`)).toBe(true);
+    const calendar = thread[2]?.body as {
+      message: { parts: Array<{ type: string; value: string }>; reply_to?: { message_id: string } };
+    };
+    const calendarText = calendar.message.parts[0]?.value ?? '';
+    const calendarUrl = (calendarText.match(/https:\/\/\S+/g) ?? [])[0] as string;
+    expect(calendarText).toBe(intakeCalendarCard('fr', calendarUrl));
+    expect(calendar.message.reply_to).toEqual({ message_id: inboundId });
+    expect(thread.slice(2).every((call) => call.url.endsWith(`/chats/${chatId}/messages`))).toBe(
+      true,
+    );
+    expect(
+      calls.some((call) => String(JSON.stringify(call.body)).includes(PARENT_CALL_NAME_ASK)),
+    ).toBe(false);
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('still asks the name when Linq reports the card inactive', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes('/contact_card?') || init?.method === 'GET') {
+        return Response.json({
+          contact_cards: [{ phone_number: '+16462352164', first_name: 'Hale', is_active: false }],
+        });
+      }
+      if (target.includes('/contact_card')) {
+        return Response.json({ is_active: true, phone_number: '+16462352164' }, { status: 201 });
+      }
+      return new Response(null, { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const h = harness({});
+    await handleInboundSms(
+      h.fake.db,
+      h.transport.inbound(PHONE, 'hi', { transport: 'imessage', chatId: 'chat-year' }),
+      h.deps,
+    );
+    const beforeFind = h.transport.bodies().length;
+    await handleInboundSms(
+      h.fake.db,
+      h.transport.inbound(PHONE, 'Maya is 4, Leo is 1. M5V 2T6', {
+        transport: 'imessage',
+        chatId: 'chat-year',
+      }),
+      h.deps,
+    );
+
+    expect(h.transport.bodies().slice(beforeFind)).toEqual(['RADAR', PARENT_CALL_NAME_ASK]);
+    expect(
+      fetchMock.mock.calls.some((call) => String(call[0]).includes('share_contact_card')),
+    ).toBe(false);
+    expect(
+      h.fake.writes.some(
+        (write) =>
+          write.op === 'insert' &&
+          write.table === schema.auditLog &&
+          write.payload.actionTaken === 'linq_contact_card_shared' &&
+          (write.payload.after as { outcome?: string } | undefined)?.outcome === 'shared',
+      ),
+    ).toBe(false);
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('shares a live French Linq card and sends the calendar card, not the English name', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes('/contact_card?') || init?.method === 'GET') {
+        return Response.json({
+          contact_cards: [{ phone_number: '+16462352164', first_name: 'Hale', is_active: true }],
+        });
+      }
+      if (target.includes('/contact_card')) {
+        return Response.json({ is_active: true, phone_number: '+16462352164' }, { status: 201 });
+      }
+      return new Response(null, { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const h = harness({});
+    const imessage = (body: string) =>
+      handleInboundSms(
+        h.fake.db,
+        h.transport.inbound(PHONE, body, { transport: 'imessage', chatId: 'chat-year' }),
+        h.deps,
+      );
+    await imessage('Bonjour');
+    const beforeFind = h.transport.bodies().length;
+    await imessage('Mes enfants ont 4 ans et 1 an, M5V 2T6');
+
+    const sent = h.transport.bodies().slice(beforeFind);
+    expect(sent[0]).toBe('RADAR');
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toBe(
+      intakeCalendarCard('fr', (sent[1]?.match(/https:\/\/\S+/g) ?? [])[0] as string),
+    );
+    expect(h.transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
+    expect(h.transport.bodies()).not.toContain(WELCOME_CARD_BODY);
+    expect(
+      fetchMock.mock.calls.some((call) => String(call[0]).includes('share_contact_card')),
+    ).toBe(true);
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it('asks for the iMessage group on the co-parent beat and does not collect a number', async () => {
@@ -2419,8 +2679,6 @@ describe('intake · the calendar card and the Gmail card', () => {
 
     expect(recorded.status).toBe('provisioned');
     expectEnglishYearOpen(h.transport.bodies());
-    await reply(h);
-    await reply(h);
     await reply(h);
     await reply(h);
     const calendar = h.transport.bodies().at(-1) as string;
@@ -2469,8 +2727,6 @@ describe('intake · the calendar card and the Gmail card', () => {
     await reply(h);
     await reply(h);
     await reply(h);
-    await reply(h);
-    await reply(h);
 
     expect(recorded.status).toBe('provisioned');
     expect(h.identityAsk.calls).toEqual([]);
@@ -2486,11 +2742,9 @@ describe('intake · the calendar card and the Gmail card', () => {
 
     const recorded = await openYear(h, { ...h.deps, now: late });
     expect(recorded.status).toBe('provisioned');
-    expect(h.transport.bodies().at(-1)).toBe('RADAR');
+    expect(h.transport.bodies().at(-1)).toBe(PARENT_CALL_NAME_ASK);
 
     const night = { ...h.deps, now: late };
-    await text(h.fake, h.transport, h.deps, LADDER_BEAT, night);
-    await text(h.fake, h.transport, h.deps, LADDER_BEAT, night);
     await text(h.fake, h.transport, h.deps, LADDER_BEAT, night);
     await text(h.fake, h.transport, h.deps, LADDER_BEAT, night);
     await text(h.fake, h.transport, h.deps, LADDER_BEAT, night);
@@ -2498,7 +2752,7 @@ describe('intake · the calendar card and the Gmail card', () => {
 
     expect(closed).toEqual({ status: 'ladder_advanced', step: 'coparent', closed: true });
     expect(h.transport.bodies().at(-1)).toBe(CO_PARENT_ASK);
-    expect(h.transport.bodies().some((body) => body === WELCOME_CARD_BODY)).toBe(true);
+    expect(h.transport.bodies()).not.toContain(WELCOME_CARD_BODY);
     expect(
       inserts(h.fake, schema.channelMessages).filter(
         (row) =>
@@ -2541,8 +2795,6 @@ describe('intake · the calendar card and the Gmail card', () => {
     await text(h.fake, h.transport, h.deps, LADDER_BEAT, refuse);
     await text(h.fake, h.transport, h.deps, LADDER_BEAT, refuse);
     await text(h.fake, h.transport, h.deps, LADDER_BEAT, refuse);
-    await text(h.fake, h.transport, h.deps, LADDER_BEAT, refuse);
-    await text(h.fake, h.transport, h.deps, LADDER_BEAT, refuse);
 
     expect(recorded.status).toBe('provisioned');
     expect(h.transport.bodies().at(-1)).toBe(CO_PARENT_ASK);
@@ -2574,9 +2826,7 @@ describe('intake · the calendar card and the Gmail card', () => {
     );
 
     expect(recorded.status).toBe('provisioned');
-    await text(h.fake, h.transport, h.deps, 'plus tard');
-    expect(h.transport.bodies().at(-1)).toBe(WELCOME_CARD_BODY);
-    await text(h.fake, h.transport, h.deps, 'plus tard');
+    expect(h.transport.bodies().at(-2)).toBe('RADAR');
     const calendar = h.transport.bodies().at(-1) as string;
     await text(h.fake, h.transport, h.deps, 'plus tard');
     const gmail = h.transport.bodies().at(-1) as string;
@@ -2591,18 +2841,19 @@ describe('intake · the calendar card and the Gmail card', () => {
     );
   });
 
-  it('still sends the card, the name, both links, and the co-parent ask when the find is empty', async () => {
+  it('still sends the name, both links, and the co-parent ask when the find is empty', async () => {
     const h = harness({ intents: [assent('yes please')], findWon: false });
 
     await openYear(h);
     expectEnglishYearOpen(h.transport.bodies());
-    expect(h.transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
+    expect(h.transport.bodies()).toContain(PARENT_CALL_NAME_ASK);
     expect(h.transport.bodies()).not.toContain(CO_PARENT_ASK);
 
+    const sent = h.transport.bodies().length;
     const later = await text(h.fake, h.transport, h.deps, 'yes please');
-    expect(later).toEqual({ status: 'ladder_advanced', step: 'turtle', closed: false });
-    expect(h.transport.bodies().at(-1)).toBe(WELCOME_CARD_BODY);
-    expect(h.transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
+    expect(later).toEqual({ status: 'ladder_advanced', step: 'name_reply', closed: false });
+    expect(h.transport.bodies()).toHaveLength(sent);
+    expect(h.transport.bodies()).not.toContain(WELCOME_CARD_BODY);
     expect(h.transport.bodies().join('\n')).not.toContain('Connect your calendar:');
   });
 });
