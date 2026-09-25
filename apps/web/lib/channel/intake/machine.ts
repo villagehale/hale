@@ -110,7 +110,6 @@ import { isQuestionOrNewFind, isSoftLadderAck } from './soft-ack';
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
-import { sendWelcomeContactCard } from './welcome-card';
 import { yearOpenEmptyMessage } from './year-open';
 
 /**
@@ -1136,21 +1135,20 @@ function resolveLocation(
 }
 
 /**
- * SMS still sends the vCard. A finished 1:1 iMessage onboard shares Hale's
- * Name and Photo card once, after the radar or the yes-ack has already gone
- * out — Linq will not share a card into a chat with no prior outbound, and a
- * group is not this moment.
+ * The turtle card is Hale's Linq Name and Photo share, and only that.
+ * It leaves when Linq reports the line card active and the share lands.
+ * No chat line rides with it. SMS has no Linq card, so this returns silent
+ * and the name ask (or the French calendar card) still goes out.
+ * A group is not this moment. Linq will not share into a chat with no prior outbound.
  */
 async function shareFreshLinqContactCard(
   database: Database,
   args: {
     familyId: string;
     parentUserId: string;
-    phoneE164: string;
     now: Date;
     inbound: Inbound;
   },
-  deps: IntakeDeps,
 ): Promise<'shown' | 'silent'> {
   const pipe = messagingPipe(args.inbound);
   if (pipe.channel === 'imessage' && pipe.chatId && args.inbound.isGroup !== true) {
@@ -1165,28 +1163,14 @@ async function shareFreshLinqContactCard(
     });
     return shared.status === 'shared' ? 'shown' : 'silent';
   }
-  const card = await sendWelcomeContactCard(
-    database,
-    {
-      familyId: args.familyId,
-      parentUserId: args.parentUserId,
-      phoneE164: args.phoneE164,
-      now: args.now,
-      ridesReply: true,
-    },
-    { transport: deps.transport, threadMessage: deps.threadMessage },
-  );
-  if (card.status === 'sent') return 'shown';
-  if (card.status === 'not_sent' && card.reason === 'already_sent') return 'shown';
   return 'silent';
 }
 
 /**
- * The beats that used to wait for "cool". They leave in this same turn as the
- * year find: the find stays its own bubble, then the turtle card when the share
- * lands (no chat line on the Linq card), then the next visible ask in its own
- * bubble. A skipped card still sends the ask. French skips the English name and
- * sends the calendar card instead. Card and name are not alternatives.
+ * The beats that used to wait for "cool". Same turn, in order: the year find
+ * (already sent, its own bubble), the Linq turtle card when that share lands
+ * (no chat line), then the name ask. A card that cannot leave still sends the
+ * name ask. French skips the English name and sends the calendar card instead.
  */
 async function sendPostYearFindLadder(
   database: Database,
@@ -1201,17 +1185,12 @@ async function sendPostYearFindLadder(
   },
   deps: IntakeDeps,
 ): Promise<IntakeLadderStep> {
-  await shareFreshLinqContactCard(
-    database,
-    {
-      familyId: args.familyId,
-      parentUserId: args.parentUserId,
-      phoneE164: args.phoneE164,
-      now: args.now,
-      inbound: args.inbound,
-    },
-    deps,
-  );
+  await shareFreshLinqContactCard(database, {
+    familyId: args.familyId,
+    parentUserId: args.parentUserId,
+    now: args.now,
+    inbound: args.inbound,
+  });
   if (args.language === 'fr') {
     await sendYearConnectorCards(
       database,
@@ -1666,7 +1645,7 @@ async function handleLadder(
     });
     next = asked ? 'name_reply' : 'calendar';
   } else if (step === 'name_reply' && isSoftLadderAck(inbound.body)) {
-    // The year-find turn already sent the card and the name. "cool" is not a name.
+    // The year-find turn already sent the name. "cool" is not a name.
     next = 'name_reply';
   } else if (step === 'name_reply') {
     const captured = await handleNameCaptureReply(
