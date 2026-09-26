@@ -11,7 +11,7 @@ import {
   parseTwilioParams,
   twilioWebhookUrl,
 } from '../twilio/signature';
-import { CANARY_ANSWERED_ACTION, CANARY_PHONE_E164 } from './config';
+import { CANARY_ANSWERED_ACTION, CANARY_PHONE_E164, canaryChannel } from './config';
 import { CANARY_SID_PREFIX, runInboundCanary, VERIFY_NOT_BEFORE_MS } from './run';
 
 /**
@@ -222,18 +222,30 @@ describe('runInboundCanary · fail-closed ordering', () => {
     expect(door.calls).toHaveLength(0);
   });
 
-  it('refuses before posting anything when the household is not seeded', async () => {
-    // The whole reason this check precedes the injection: an unknown `From`
-    // reaches the intake machine, which would start a conversation and text
-    // +1 437-555-0100 every single tick.
+  it('refuses before posting anything when the household is inactive', async () => {
+    // Revoked (or never-verified) is refuse-closed: seedCanaryHousehold names
+    // `inactive` and does not re-activate. An unknown `From` must never reach
+    // intake and text +1 437-555-0100 every tick.
     await db.database
       .update(schema.parentChannels)
       .set({ revokedAt: NOW })
       .where(eq(schema.parentChannels.familyId, canary.familyId));
     const door = fakeDoor();
 
-    await expect(run(door.fetch)).rejects.toThrow(/household not seeded/);
+    await expect(run(door.fetch)).rejects.toThrow(/household inactive/);
     expect(door.calls).toHaveLength(0);
+  });
+
+  it('re-seeds a missing household, then injects before verifying', async () => {
+    // Roster wipe (hard-delete of test families) can take the canary with it.
+    // Seed restores the household; this tick still has no previous inject to
+    // verify, so it pages once and the next tick clears the alarm.
+    await db.database.delete(schema.parentChannels);
+    const door = fakeDoor();
+
+    await expect(run(door.fetch)).rejects.toThrow(/no injection in the last 22 minutes/);
+    expect(door.calls).toHaveLength(1);
+    expect(await canaryChannel(db.database)).not.toBeNull();
   });
 
   it('names the door when the door refuses the injection', async () => {
