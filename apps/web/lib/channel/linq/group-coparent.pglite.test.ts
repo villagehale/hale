@@ -762,4 +762,115 @@ describe('group co-parent seating', () => {
     expect(rows.every((row) => row.providerChatId === GROUP)).toBe(true);
     expect(rows.some((row) => row.channel === 'sms')).toBe(false);
   });
+
+  it('keeps a later calendar connect as a link card in the group', async () => {
+    const seeded = await seedHousehold();
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, seeded.familyId));
+    await db.database.insert(schema.linqGroupOnboarding).values({
+      familyId: seeded.familyId,
+      userId: seeded.parentUserId,
+      providerChatId: GROUP,
+      step: 'done',
+    });
+    const wire = linqFetch();
+    const asked = await considerGroupCoparent(
+      db.database,
+      inbound({
+        messageId: 'm-connect-cal',
+        senderHandle: PARENT_PHONE,
+        text: 'connect my calendar',
+      }),
+      { now: NOW, fetch: wire.fetch, recordInbound },
+    );
+    expect(asked).toMatchObject({ type: 'done', outcome: 'group_coparent_gcal' });
+    expect(wire.groupTexts()).toEqual([]);
+    expect(wire.groupLinks()).toHaveLength(1);
+    expect(wire.groupLinks()[0]).toContain('https://');
+    expect(wire.groupLinks()[0]).toContain('to=gcal');
+    expect(wire.privateTexts()).toEqual([]);
+    expect(wire.twilioUrls()).toEqual([]);
+    expectLinqGroupOnly(wire);
+  });
+
+  it('keeps the both-free sentence and does not attach a poll', async () => {
+    const seeded = await seedHousehold();
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, seeded.familyId));
+    await db.database.insert(schema.linqGroupOnboarding).values({
+      familyId: seeded.familyId,
+      userId: seeded.parentUserId,
+      providerChatId: GROUP,
+      step: 'done',
+    });
+
+    vi.stubEnv('LINQ_POLLS', 'on');
+    const wire = pollAwareFetch();
+    const textOnly = await considerGroupCoparent(
+      db.database,
+      inbound({
+        messageId: 'm-both-free',
+        senderHandle: PARENT_PHONE,
+        text: 'when are we both free',
+      }),
+      { now: NOW, fetch: wire.fetch, recordInbound },
+    );
+    expect(textOnly).toMatchObject({ type: 'done', outcome: 'group_coparent_both_free' });
+    expect(wire.texts()).toHaveLength(1);
+    expect(wire.texts()[0]).toMatch(
+      /^You're both free .+ or .+\. Want the sign-up page for one\?$/,
+    );
+    expect(wire.pollOptions()).toEqual([]);
+    expect(wire.urls().some((url) => url.includes('/polls'))).toBe(false);
+    expect(wire.urls().every((url) => url === GROUP_MESSAGES)).toBe(true);
+  });
 });
+
+function pollAwareFetch(): {
+  fetch: typeof fetch;
+  texts: () => string[];
+  pollOptions: () => string[];
+  urls: () => string[];
+} {
+  const texts: string[] = [];
+  const pollOptions: string[] = [];
+  const urls: string[] = [];
+  const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+    urls.push(String(url));
+    const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
+    const message = body?.message as { parts?: { type?: string; value?: string }[] } | undefined;
+    for (const part of message?.parts ?? []) {
+      if (part.type === 'text' && part.value) texts.push(part.value);
+    }
+    const poll = body?.poll as { options?: { text?: string }[] } | undefined;
+    const options = poll?.options ?? [];
+    if (options.length > 0) {
+      for (const option of options) {
+        if (option.text) pollOptions.push(option.text);
+      }
+      return new Response(
+        JSON.stringify({
+          message_id: 'poll-1',
+          poll: {
+            options: options.map((option, index) => ({
+              option_id: `opt-${index}`,
+              text: option.text,
+            })),
+          },
+        }),
+        { status: 202 },
+      );
+    }
+    return new Response(JSON.stringify({ message: { id: `m-${texts.length}` } }), { status: 201 });
+  });
+  return {
+    fetch: fetchImpl as unknown as typeof fetch,
+    texts: () => texts,
+    pollOptions: () => pollOptions,
+    urls: () => urls,
+  };
+}

@@ -7,6 +7,7 @@ import {
   routeTwilioInbound,
 } from '~/lib/channel/twilio/inbound';
 import { applyTwilioStatus } from '~/lib/channel/twilio/status';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import {
   linqFromE164,
   linqGroupCoparentEnabled,
@@ -39,7 +40,7 @@ import {
 } from './group-coparent';
 import { groupWelcome } from './group-coparent-copy';
 import { type LinqInboundText, type LinqSignal, parseLinqWebhook } from './payload';
-import { lookupLinqPollOption } from './poll';
+import { isYearFindPollNone, lookupLinqPollOption } from './poll';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
 import { type LinqEffectResult, markLinqChatRead } from './transport';
 
@@ -63,8 +64,9 @@ import { type LinqEffectResult, markLinqChatRead } from './transport';
  * Linq group co-parent seating is on unless `LINQ_GROUP_COPARENT=off`. The
  * second real person in a claimed group is seated on that family. No prior
  * phone is required. SMS does not read the flag.
- * Reactions, typing, and participant events answer 200. A poll vote becomes
- * the option's text and enters the same router a typed reply would.
+ * Reactions, typing, and participant events answer 200. A poll vote for a
+ * find title becomes that title and enters the same router a typed reply
+ * would. "None of these" is recorded and not routed, so that turn asks nothing.
  *
  * Outbound echoes and events this door does not act on answer 200 with a
  * named outcome. A 4xx/5xx would make Linq retry work this door is declining
@@ -496,8 +498,9 @@ async function recordHandledInbound(
   return id;
 }
 
-/** Reactions, typing, and participant changes are acked. A poll vote is the
- * option text, routed like a parent typed it. Handles are not logged. */
+/** Reactions, typing, and participant changes are acked. A poll vote for a
+ * find title is that title, routed like a parent typed it. The locked none
+ * option is recorded and not routed. Handles are not logged. */
 async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise<Response> {
   deps.log.info(
     {
@@ -533,19 +536,65 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
       await deps.countOutcome('ignored');
       return json({ outcome: 'poll_sender_unknown' });
     }
-    const outcome = await routeTwilioInbound(
-      deps,
-      {
-        from: signal.senderHandle,
-        transport: 'imessage',
-        body: option.text,
-        providerId: `poll:${signal.messageId ?? 'vote'}:${signal.optionId}`,
-        receivedAt: deps.now?.() ?? new Date(),
-        chatId: signal.chatId,
-        providerAnsweredKeyword: null,
-      },
-      0,
-    );
+    // Same as a 1:1 message: mark read overlaps the turn and cannot fail it.
+    // A group chat no-ops at Linq; the call is still the 1:1 receipt.
+    const markRead = deps.markRead ?? markLinqChatRead;
+    const readPromise = markRead({ chatId: signal.chatId });
+    const providerId = `poll:${signal.messageId ?? 'vote'}:${signal.optionId}:${phoneBlindIndex(signal.senderHandle)}`;
+    let outcome: TwilioInboundOutcome;
+    try {
+      if (isYearFindPollNone(option.text)) {
+        const recorded = await recordHandledInbound(
+          deps,
+          {
+            messageId: providerId,
+            chatId: signal.chatId,
+            senderHandle: signal.senderHandle,
+            text: option.text,
+            mediaCount: 0,
+            receivedAt: deps.now?.() ?? new Date(),
+            otherHandles: [],
+          },
+          { familyId: mapped.familyId, userId: mapped.userId },
+        );
+        outcome = recorded ? 'poll_none' : 'duplicate';
+      } else {
+        outcome = await routeTwilioInbound(
+          deps,
+          {
+            from: signal.senderHandle,
+            transport: 'imessage',
+            body: option.text,
+            providerId,
+            receivedAt: deps.now?.() ?? new Date(),
+            chatId: signal.chatId,
+            providerAnsweredKeyword: null,
+          },
+          0,
+        );
+      }
+    } finally {
+      try {
+        const read = await readPromise;
+        if (read.status !== 'accepted') {
+          deps.log.warn(
+            {
+              outcome: read.status,
+              ...(read.status === 'refused'
+                ? { code: read.code, httpStatus: read.httpStatus }
+                : {}),
+              ...(read.status === 'unreachable' ? { reason: read.reason } : {}),
+            },
+            'linq inbound: mark read did not land',
+          );
+        }
+      } catch (err) {
+        deps.log.warn(
+          { outcome: 'unreachable', reason: err instanceof Error ? err.name : 'unknown' },
+          'linq inbound: mark read did not land',
+        );
+      }
+    }
     await deps.countOutcome(outcome);
     return json({ outcome });
   }

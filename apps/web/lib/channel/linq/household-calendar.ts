@@ -470,6 +470,17 @@ export function proposeSharedFree(input: {
   timeZone: string;
   language: ReplyLanguage;
 }): string | null {
+  return sharedFreeOffer(input)?.text ?? null;
+}
+
+/** The locked both-free sentence plus the two slot phrases a poll can reuse. */
+export function sharedFreeOffer(input: {
+  requested: boolean;
+  blocks: readonly BusyBlock[];
+  now: Date;
+  timeZone: string;
+  language: ReplyLanguage;
+}): { text: string; slot1: string; slot2: string } | null {
   if (!input.requested) return null;
   const slots = sharedFreeSlots(input.blocks, input.now, input.timeZone, 2);
   const first = slots[0];
@@ -477,7 +488,9 @@ export function proposeSharedFree(input: {
   if (!first || !second) return null;
   const phrase = (slot: Date) =>
     `${formatDay(slot, input.timeZone, input.language)} ${formatTime(slot, input.timeZone, input.language)}`;
-  return groupBothFreeText(input.language, phrase(first), phrase(second));
+  const slot1 = phrase(first);
+  const slot2 = phrase(second);
+  return { text: groupBothFreeText(input.language, slot1, slot2), slot1, slot2 };
 }
 
 export function formatDay(date: Date, timeZone: string, language: ReplyLanguage): string {
@@ -1019,6 +1032,14 @@ export async function answerBothFreeInGroup(
   database: Database,
   input: { familyId: string; now: Date; language: ReplyLanguage },
 ): Promise<string | null> {
+  return (await answerBothFreeOffer(database, input))?.text ?? null;
+}
+
+/** The locked both-free sentence. Not a poll. */
+export async function answerBothFreeOffer(
+  database: Database,
+  input: { familyId: string; now: Date; language: ReplyLanguage },
+): Promise<{ text: string; slot1: string; slot2: string } | null> {
   const context = await loadFamilyCalendarContext(database, input.familyId);
   const rows = await database
     .select()
@@ -1040,7 +1061,7 @@ export async function answerBothFreeInGroup(
       followupSent: row.followupAt !== null,
       recurringEventId: row.recurringEventId,
     }));
-  return proposeSharedFree({
+  return sharedFreeOffer({
     requested: true,
     blocks,
     now: input.now,

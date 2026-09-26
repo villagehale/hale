@@ -47,7 +47,10 @@ export function linqFromE164(): string | null {
   return trimmed('LINQ_FROM_E164');
 }
 
-/** Polls ship only when this is exactly `on`. Anything else, including unset, is off. */
+/**
+ * Polls ship only when this is exactly `on`. Anything else, including unset, is off.
+ * This tree does not set the flag. Ops turns LINQ_POLLS on after the poll PR ships.
+ */
 export function linqPollsEnabled(): boolean {
   return trimmed('LINQ_POLLS') === 'on';
 }

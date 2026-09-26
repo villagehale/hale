@@ -16,7 +16,16 @@ import {
   openHouseholdLinqGroup,
 } from './group';
 import { linkPreviewUrl, sendLinqLinkPreview } from './link-preview';
-import { LINQ_POLL_PLACEHOLDER_PROMPT, binaryChoiceFromReply, offerLinqChoicePoll } from './poll';
+import { considerLinqReply } from './moments';
+import {
+  SANDBOX_YEAR_FIND_TITLES,
+  YEAR_FIND_POLL_NONE,
+  YEAR_FIND_POLL_PROMPT,
+  offerSandboxYearFindPoll,
+  offerYearFindPoll,
+  sandboxYearFindPollOptions,
+  yearFindPollOptions,
+} from './poll';
 import { applyLinqTapback, decideLinqTapback } from './tapback';
 
 const ENC_KEY = Buffer.alloc(32, 7).toString('base64');
@@ -508,51 +517,86 @@ describe('Linq household group', () => {
   });
 });
 
+function pollFetch() {
+  return vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as {
+      poll?: { options?: { text: string }[] };
+    };
+    if (body.poll?.options) {
+      return Response.json(
+        {
+          message_id: 'poll-year',
+          poll: {
+            options: body.poll.options.map((option, index) => ({
+              option_id: `slot-${index}`,
+              text: option.text,
+            })),
+          },
+        },
+        { status: 202 },
+      );
+    }
+    return Response.json({ message: { id: 'q-year' } }, { status: 201 });
+  });
+}
+
 describe('Linq polls', () => {
-  it('stays off unless the flag is on, and then replaces only an unlocked binary sentence', async () => {
+  it('does not turn a two-option sentence into a poll', async () => {
     process.env.APP_ENCRYPTION_KEY = ENC_KEY;
-    vi.stubEnv('LINQ_POLLS', '');
+    vi.stubEnv('LINQ_POLLS', 'on');
     const fake = makeFakeDb();
-    const fetchMock = vi.fn();
-    const off = await offerLinqChoicePoll(fake.db, {
-      channel: 'imessage',
-      chatId: CHAT,
-      body: 'Soccer or swim?',
+    const fellThrough = await considerLinqReply(fake.db, {
+      route: {
+        channel: 'imessage',
+        to: PARENT,
+        chatId: CHAT,
+        replyToMessageId: 'in-1',
+      },
+      inboundBody: 'when are we both free',
+      outboundBody: 'Soccer or swim?',
       templateKey: null,
       familyId: FAMILY,
       parentUserId: USER,
       now: NOW,
-      fetch: fetchMock,
+      fetch: vi.fn(),
     });
-    expect(off).toEqual({ status: 'skipped', reason: 'flag_off' });
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(binaryChoiceFromReply('Soccer or swim?', 'intake:coparent')).toBeNull();
+    expect(fellThrough).toEqual({ handled: false });
+  });
 
-    vi.stubEnv('LINQ_POLLS', 'on');
-    const sending = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body)) as { poll?: unknown };
-      if (body.poll) {
-        return Response.json(
-          {
-            message_id: 'poll-1',
-            poll: {
-              options: [
-                { option_id: 'o1', text: 'Soccer' },
-                { option_id: 'o2', text: 'swim' },
-              ],
-            },
-          },
-          { status: 202 },
-        );
-      }
-      return Response.json({ message: { id: 'q-1' } }, { status: 201 });
-    });
-    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
-    const sent = await offerLinqChoicePoll(fake.db, {
+  it('asks which find to look at first only when there are two titles and the flag is on', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_POLLS', '');
+    const fake = makeFakeDb();
+    const quiet = vi.fn();
+    const off = await offerYearFindPoll(fake.db, {
       channel: 'imessage',
       chatId: CHAT,
-      body: 'Soccer or swim?',
-      templateKey: null,
+      titles: ['Parent and tot swim', 'Story time'],
+      language: 'en',
+      familyId: FAMILY,
+      parentUserId: USER,
+      now: NOW,
+      fetch: quiet,
+    });
+    expect(off).toEqual({ status: 'skipped', reason: 'flag_off' });
+    expect(quiet).not.toHaveBeenCalled();
+    expect(yearFindPollOptions('en', ['Only one'])).toBeNull();
+    expect(yearFindPollOptions('en', [])).toBeNull();
+    expect(yearFindPollOptions('fr', ['Nage', 'Conte', 'Zoo', 'Fourth'])).toEqual([
+      'Nage',
+      'Conte',
+      'Zoo',
+      YEAR_FIND_POLL_NONE.fr,
+    ]);
+
+    vi.stubEnv('LINQ_POLLS', 'on');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const sending = pollFetch();
+    const sent = await offerYearFindPoll(fake.db, {
+      channel: 'imessage',
+      chatId: CHAT,
+      titles: ['Parent and tot swim', 'Story time', 'U12 soccer tryouts', 'Fourth'],
+      language: 'en',
       familyId: FAMILY,
       parentUserId: USER,
       now: NOW,
@@ -560,7 +604,71 @@ describe('Linq polls', () => {
     });
     expect(sent.status).toBe('sent');
     const question = JSON.parse(String(sending.mock.calls[0]?.[1]?.body));
-    expect(question.message.parts[0].value).toBe(LINQ_POLL_PLACEHOLDER_PROMPT);
-    expect(fake.rows(schema.linqPollOptions)).toHaveLength(2);
+    expect(question.message.parts[0].value).toBe(YEAR_FIND_POLL_PROMPT.en);
+    const poll = JSON.parse(String(sending.mock.calls[1]?.[1]?.body));
+    expect(poll.poll.options.map((option: { text: string }) => option.text)).toEqual([
+      'Parent and tot swim',
+      'Story time',
+      'U12 soccer tryouts',
+      YEAR_FIND_POLL_NONE.en,
+    ]);
+    expect(String(sending.mock.calls[1]?.[0])).toContain(`/chats/${CHAT}/polls`);
+    expect(fake.rows(schema.linqPollOptions)).toHaveLength(4);
+
+    const french = pollFetch();
+    const sentFr = await offerYearFindPoll(fake.db, {
+      channel: 'imessage',
+      chatId: CHAT,
+      titles: ['Nage', 'Conte'],
+      language: 'fr',
+      familyId: FAMILY,
+      parentUserId: USER,
+      now: NOW,
+      fetch: french,
+    });
+    expect(sentFr.status).toBe('sent');
+    const questionFr = JSON.parse(String(french.mock.calls[0]?.[1]?.body));
+    expect(questionFr.message.parts[0].value).toBe(YEAR_FIND_POLL_PROMPT.fr);
+    const pollFr = JSON.parse(String(french.mock.calls[1]?.[1]?.body));
+    expect(pollFr.poll.options.map((option: { text: string }) => option.text)).toEqual([
+      'Nage',
+      'Conte',
+      YEAR_FIND_POLL_NONE.fr,
+    ]);
+  });
+
+  it('sends the sandbox scenario verbatim and does not invent a title', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_POLLS', 'on');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    expect(sandboxYearFindPollOptions('en')).toEqual([
+      ...SANDBOX_YEAR_FIND_TITLES.en,
+      YEAR_FIND_POLL_NONE.en,
+    ]);
+    expect(sandboxYearFindPollOptions('fr')).toEqual([
+      'Nage au centre recreatif',
+      'Heure du conte a la bibliotheque',
+      'Aucun de ceux-la',
+    ]);
+    const fake = makeFakeDb();
+    const sending = pollFetch();
+    const sent = await offerSandboxYearFindPoll(fake.db, {
+      channel: 'imessage',
+      chatId: CHAT,
+      language: 'en',
+      familyId: FAMILY,
+      parentUserId: USER,
+      now: NOW,
+      fetch: sending,
+    });
+    expect(sent.status).toBe('sent');
+    const question = JSON.parse(String(sending.mock.calls[0]?.[1]?.body));
+    expect(question.message.parts[0].value).toBe('Which of these should I look at first?');
+    const poll = JSON.parse(String(sending.mock.calls[1]?.[1]?.body));
+    expect(poll.poll.options.map((option: { text: string }) => option.text)).toEqual([
+      'Swim at the rec centre',
+      'Library storytime',
+      'None of these',
+    ]);
   });
 });

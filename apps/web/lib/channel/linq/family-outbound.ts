@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, gte, isNull } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull } from 'drizzle-orm';
 import { CO_PARENT_ASK_BY_LANGUAGE } from '~/lib/channel/intake/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
@@ -394,7 +394,50 @@ export async function queueGroupActivityDecision(
     return 'skipped';
   }
   if (decision.decision === 'passed' && (decision.day || decision.time)) return 'skipped';
+  const activity = decision.activity.trim();
+  const kid = decision.kid.trim();
+  const day = decision.decision === 'picked' ? (decision.day?.trim() ?? null) : null;
+  const time = decision.decision === 'picked' ? (decision.time?.trim() ?? null) : null;
   const flushAfter = new Date(input.now.getTime() + SETTLE_MS);
+  const prior = await database
+    .select({
+      familyId: schema.groupDecisionSync.familyId,
+      decision: schema.groupDecisionSync.decision,
+      activity: schema.groupDecisionSync.activity,
+      kid: schema.groupDecisionSync.kid,
+      day: schema.groupDecisionSync.day,
+      time: schema.groupDecisionSync.time,
+      flushedAt: schema.groupDecisionSync.flushedAt,
+    })
+    .from(schema.groupDecisionSync)
+    .where(eq(schema.groupDecisionSync.familyId, input.familyId));
+  const sameSlot = (row: (typeof prior)[number]) =>
+    row.familyId === input.familyId &&
+    row.decision === decision.decision &&
+    row.activity === activity &&
+    row.kid === kid &&
+    (row.day ?? null) === day &&
+    (row.time ?? null) === time;
+  if (prior.some((row) => row.flushedAt === null && sameSlot(row))) {
+    await database
+      .update(schema.groupDecisionSync)
+      .set({ flushAfter })
+      .where(
+        and(
+          eq(schema.groupDecisionSync.familyId, input.familyId),
+          isNull(schema.groupDecisionSync.flushedAt),
+        ),
+      );
+    return 'queued';
+  }
+  const recent = input.now.getTime() - DAY_MS;
+  if (
+    prior.some(
+      (row) => row.flushedAt !== null && row.flushedAt.getTime() >= recent && sameSlot(row),
+    )
+  ) {
+    return 'skipped';
+  }
   await database
     .update(schema.groupDecisionSync)
     .set({ flushAfter })
@@ -409,10 +452,10 @@ export async function queueGroupActivityDecision(
     parentUserId: input.parentUserId,
     originChatId: input.originChatId,
     decision: decision.decision,
-    activity: decision.activity.trim(),
-    kid: decision.kid.trim(),
-    day: decision.decision === 'picked' ? decision.day?.trim() : null,
-    time: decision.decision === 'picked' ? decision.time?.trim() : null,
+    activity,
+    kid,
+    day,
+    time,
     flushAfter,
     createdAt: input.now,
   });
@@ -567,15 +610,11 @@ export async function flushGroupDecisionSyncs(
         targetId: claimed.id,
         after: { lines: lines.length },
       });
+      const dueIds = rows.map((row) => row.id);
       await database
         .update(schema.groupDecisionSync)
         .set({ flushedAt: input.now })
-        .where(
-          and(
-            eq(schema.groupDecisionSync.familyId, familyId),
-            isNull(schema.groupDecisionSync.flushedAt),
-          ),
-        );
+        .where(inArray(schema.groupDecisionSync.id, dueIds));
       sent += 1;
     } catch (err) {
       const code = err instanceof Error ? err.name : 'unknown';

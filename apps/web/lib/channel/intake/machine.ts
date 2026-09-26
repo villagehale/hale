@@ -35,6 +35,7 @@ import {
   linqCoParentAsk,
 } from '~/lib/channel/linq/group';
 import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
+import { offerYearFindPoll } from '~/lib/channel/linq/poll';
 import {
   EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
@@ -1344,23 +1345,49 @@ async function provision(
     radar.weekendPickOffered ? INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY : undefined,
   );
 
-  // The find is its own bubble. The next visible ask (the name, or the French
-  // calendar card) goes out in this same turn. The Linq card, when it was not
-  // already shared on an earlier outbound, is a silent retry inside that ladder.
-  // Nothing waits on "cool".
-  const ladderNext = await sendPostYearFindLadder(
-    database,
-    {
-      familyId,
-      parentUserId: userId,
-      phoneE164,
-      language,
-      now,
-      inbound,
-      send: (body, templateKey) => sendAndRecord(database, ctx, body, deps, [], templateKey),
-    },
-    deps,
-  );
+  // The find is its own bubble. A year-find with two or more titles, on the
+  // Linq thread that just carried it, may ask which to look at first. That
+  // poll is the one ask of this turn: the name (English) or the calendar card
+  // (French) waits for the next inbound. Fewer than two titles, a flag that
+  // is not exactly on, SMS, or a send that never asked — the ladder ask goes
+  // out now, as before. The Linq card is not an ask.
+  await shareFreshLinqContactCard(database, {
+    familyId,
+    parentUserId: userId,
+    now,
+    inbound,
+  });
+  const titles = radar.titles ?? [];
+  const poll =
+    ctx.pipe.channel === 'imessage'
+      ? await offerYearFindPoll(database, {
+          channel: 'imessage',
+          chatId: ctx.pipe.chatId,
+          titles,
+          language,
+          familyId,
+          parentUserId: userId,
+          now,
+        })
+      : null;
+  const ladderNext =
+    poll?.status === 'sent' || poll?.status === 'prompted'
+      ? language === 'fr'
+        ? 'calendar'
+        : 'name'
+      : await sendPostYearFindLadder(
+          database,
+          {
+            familyId,
+            parentUserId: userId,
+            phoneE164,
+            language,
+            now,
+            inbound,
+            send: (body, templateKey) => sendAndRecord(database, ctx, body, deps, [], templateKey),
+          },
+          deps,
+        );
 
   // The find is the watch. There is no separate yes. The parent's own kids-and-postal
   // text is the verbatim. Consent is written before the stage flip (watch-consent.ts).
