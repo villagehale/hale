@@ -27,9 +27,10 @@ import {
   groupWelcome,
   matchBothFreeAsk,
 } from './group-coparent-copy';
-import { answerBothFreeInGroup } from './household-calendar';
+import { answerBothFreeOffer } from './household-calendar';
 import { sendLinqLinkPreview } from './link-preview';
 import type { LinqInboundText } from './payload';
+import { offerKidsYearChoicePoll } from './poll';
 import { LinqSendError, sendLinqChatMessage } from './transport';
 
 /**
@@ -365,12 +366,12 @@ async function answerDoneStep(
     };
   }
   if (bothFree && asked !== 'gmail' && asked !== 'gcal') {
-    const text = await answerBothFreeInGroup(database, {
+    const offer = await answerBothFreeOffer(database, {
       familyId: sender.familyId,
       now: ports.now,
       language,
     });
-    if (!text) {
+    if (!offer) {
       return {
         type: 'done',
         outcome: 'group_coparent_both_free_none',
@@ -378,16 +379,29 @@ async function answerDoneStep(
         body: { outcome: 'group_coparent_both_free_none' },
       };
     }
-    await sendLine(database, {
+    const posted = await sendLine(database, {
       familyId: sender.familyId,
       parentUserId: sender.userId,
       chatId: message.chatId,
-      text,
+      text: offer.text,
       templateKey: 'linq:coparent_both_free',
       dedupeKey: `linq:coparent_both_free:${sender.userId}:${ports.now.toISOString().slice(0, 10)}`,
       now: ports.now,
       fetch: ports.fetch,
     });
+    if (posted === 'sent') {
+      // The locked sentence already went out. The poll is additive and
+      // uses the slot phrases. Flag off is a no-op here.
+      await offerKidsYearChoicePoll(database, {
+        channel: 'imessage',
+        chatId: message.chatId,
+        options: [offer.slot1, offer.slot2],
+        familyId: sender.familyId,
+        parentUserId: sender.userId,
+        now: ports.now,
+        fetch: ports.fetch,
+      });
+    }
     return {
       type: 'done',
       outcome: 'group_coparent_both_free',

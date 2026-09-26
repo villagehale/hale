@@ -11,6 +11,11 @@ import { LinqSendError, sendLinqChatMessage, sendLinqPoll } from './transport';
  * Sloane. It is sent as its own text because a Linq poll has no question
  * field. Locked ask strings are not rewritten: a template key means this
  * caller refuses, and the flag defaults off.
+ *
+ * The kids-year scenario is the both-free reply. That sentence stays
+ * locked. When the flag is on, {@link offerKidsYearChoicePoll} adds this
+ * placeholder and a poll whose options are the two slot phrases. When the
+ * flag is off, the locked sentence is the whole reply.
  */
 
 /** DESIGN LOCK PENDING (Sloane). The text that precedes a poll. */
@@ -62,7 +67,73 @@ export async function offerLinqChoicePoll(
   if (!args.chatId) return { status: 'skipped', reason: 'no_chat' };
   const choice = binaryChoiceFromReply(args.body, args.templateKey);
   if (!choice) return { status: 'skipped', reason: 'not_a_choice' };
+  return deliverChoicePoll(database, {
+    chatId: args.chatId,
+    options: choice,
+    familyId: args.familyId,
+    parentUserId: args.parentUserId,
+    now: args.now,
+    fetch: args.fetch,
+    idempotencyKey: `poll:${args.familyId}:${args.now.getTime()}`,
+  });
+}
 
+/**
+ * A both-free (or other kids-year) choice whose sentence is already locked.
+ * The options are the slot phrases, not new voice. The placeholder question
+ * is {@link LINQ_POLL_PLACEHOLDER_PROMPT}. Flag off sends nothing here.
+ */
+export async function offerKidsYearChoicePoll(
+  database: Database,
+  args: {
+    channel: string;
+    chatId: string | null;
+    options: readonly [string, string];
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+    fetch?: typeof fetch;
+  },
+): Promise<LinqPollOffer> {
+  if (!linqPollsEnabled()) return { status: 'skipped', reason: 'flag_off' };
+  if (args.channel !== 'imessage') return { status: 'skipped', reason: 'not_imessage' };
+  if (!args.chatId) return { status: 'skipped', reason: 'no_chat' };
+  const left = args.options[0].trim();
+  const right = args.options[1].trim();
+  if (
+    !left ||
+    !right ||
+    left.includes('http') ||
+    right.includes('http') ||
+    UNSAFE.test(left) ||
+    UNSAFE.test(right)
+  ) {
+    return { status: 'skipped', reason: 'not_a_choice' };
+  }
+  const day = args.now.toISOString().slice(0, 10);
+  return deliverChoicePoll(database, {
+    chatId: args.chatId,
+    options: [left, right],
+    familyId: args.familyId,
+    parentUserId: args.parentUserId,
+    now: args.now,
+    fetch: args.fetch,
+    idempotencyKey: `poll:both-free:${args.familyId}:${day}`,
+  });
+}
+
+async function deliverChoicePoll(
+  database: Database,
+  args: {
+    chatId: string;
+    options: readonly [string, string];
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+    fetch?: typeof fetch;
+    idempotencyKey: string;
+  },
+): Promise<LinqPollOffer> {
   try {
     await sendLinqChatMessage({
       chatId: args.chatId,
@@ -71,8 +142,8 @@ export async function offerLinqChoicePoll(
     });
     const poll = await sendLinqPoll({
       chatId: args.chatId,
-      options: [choice[0], choice[1]],
-      idempotencyKey: `poll:${args.familyId}:${args.now.getTime()}`,
+      options: [args.options[0], args.options[1]],
+      idempotencyKey: args.idempotencyKey,
       fetch: args.fetch,
     });
     const [row] = await database

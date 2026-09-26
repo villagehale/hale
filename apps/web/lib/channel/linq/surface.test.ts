@@ -16,7 +16,13 @@ import {
   openHouseholdLinqGroup,
 } from './group';
 import { linkPreviewUrl, sendLinqLinkPreview } from './link-preview';
-import { LINQ_POLL_PLACEHOLDER_PROMPT, binaryChoiceFromReply, offerLinqChoicePoll } from './poll';
+import { considerLinqReply } from './moments';
+import {
+  LINQ_POLL_PLACEHOLDER_PROMPT,
+  binaryChoiceFromReply,
+  offerKidsYearChoicePoll,
+  offerLinqChoicePoll,
+} from './poll';
 import { applyLinqTapback, decideLinqTapback } from './tapback';
 
 const ENC_KEY = Buffer.alloc(32, 7).toString('base64');
@@ -562,5 +568,82 @@ describe('Linq polls', () => {
     const question = JSON.parse(String(sending.mock.calls[0]?.[1]?.body));
     expect(question.message.parts[0].value).toBe(LINQ_POLL_PLACEHOLDER_PROMPT);
     expect(fake.rows(schema.linqPollOptions)).toHaveLength(2);
+
+    vi.stubEnv('LINQ_POLLS', '');
+    const fellThrough = await considerLinqReply(fake.db, {
+      route: {
+        channel: 'imessage',
+        to: PARENT,
+        chatId: CHAT,
+        replyToMessageId: 'in-1',
+      },
+      inboundBody: 'when are we both free',
+      outboundBody: 'Soccer or swim?',
+      templateKey: null,
+      familyId: FAMILY,
+      parentUserId: USER,
+      now: NOW,
+      fetch: vi.fn(),
+    });
+    expect(fellThrough).toEqual({ handled: false });
+  });
+
+  it('offers the kids-year slots behind the flag and stays quiet when the flag is off', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_POLLS', '');
+    const fake = makeFakeDb();
+    const quiet = vi.fn();
+    const off = await offerKidsYearChoicePoll(fake.db, {
+      channel: 'imessage',
+      chatId: CHAT,
+      options: ['Thu, Sep 24 16:00', 'Fri, Sep 25 16:00'],
+      familyId: FAMILY,
+      parentUserId: USER,
+      now: NOW,
+      fetch: quiet,
+    });
+    expect(off).toEqual({ status: 'skipped', reason: 'flag_off' });
+    expect(quiet).not.toHaveBeenCalled();
+
+    vi.stubEnv('LINQ_POLLS', 'on');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const sending = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as {
+        poll?: { options?: { text: string }[] };
+      };
+      if (body.poll?.options) {
+        return Response.json(
+          {
+            message_id: 'poll-year',
+            poll: {
+              options: body.poll.options.map((option, index) => ({
+                option_id: `slot-${index}`,
+                text: option.text,
+              })),
+            },
+          },
+          { status: 202 },
+        );
+      }
+      return Response.json({ message: { id: 'q-year' } }, { status: 201 });
+    });
+    const sent = await offerKidsYearChoicePoll(fake.db, {
+      channel: 'imessage',
+      chatId: CHAT,
+      options: ['Thu, Sep 24 16:00', 'Fri, Sep 25 16:00'],
+      familyId: FAMILY,
+      parentUserId: USER,
+      now: NOW,
+      fetch: sending,
+    });
+    expect(sent.status).toBe('sent');
+    const question = JSON.parse(String(sending.mock.calls[0]?.[1]?.body));
+    expect(question.message.parts[0].value).toBe(LINQ_POLL_PLACEHOLDER_PROMPT);
+    const poll = JSON.parse(String(sending.mock.calls[1]?.[1]?.body));
+    expect(poll.poll.options.map((option: { text: string }) => option.text)).toEqual([
+      'Thu, Sep 24 16:00',
+      'Fri, Sep 25 16:00',
+    ]);
+    expect(String(sending.mock.calls[1]?.[0])).toContain('/polls');
   });
 });

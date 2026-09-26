@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { CO_PARENT_ASK } from '~/lib/channel/intake/copy';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { queueActivityDecisionFromReply } from './activity-decision';
 import {
   deliverFamilyOutbound,
   familyOutboundTarget,
@@ -249,6 +250,14 @@ describe('a 1:1 decision syncs the group', () => {
     expect(body).toContain('Quick sync: Barton picked music for Leo, Wednesday at 5:00.');
     expect(body).not.toContain('dance');
     expect(body).not.toMatch(/booked/i);
+    const waiting = await db.database
+      .select({
+        activity: schema.groupDecisionSync.activity,
+        flushedAt: schema.groupDecisionSync.flushedAt,
+      })
+      .from(schema.groupDecisionSync);
+    expect(waiting).toHaveLength(4);
+    expect(waiting.every((row) => row.flushedAt !== null)).toBe(true);
   });
 
   it('uses the French template and waits out a later 1:1 reply', async () => {
@@ -294,6 +303,236 @@ describe('a 1:1 decision syncs the group', () => {
       now: NOW,
     });
     expect(skipped).toBe('skipped');
+  });
+
+  it('queues one row for a repeated pick, and does not sync it again the same day', async () => {
+    const seeded = await seed(GROUP);
+    const http = wire();
+    const decision = {
+      decision: 'picked' as const,
+      activity: 'swim',
+      kid: 'Maya',
+      day: 'Tuesday',
+      time: '4:00',
+    };
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision,
+      now: NOW,
+    });
+    const again = await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision,
+      now: new Date(NOW.getTime() + 60 * 1000),
+    });
+    expect(again).toBe('queued');
+    const rows = await db.database
+      .select({ id: schema.groupDecisionSync.id })
+      .from(schema.groupDecisionSync);
+    expect(rows).toHaveLength(1);
+    const settled = new Date(NOW.getTime() + 11 * 60 * 1000);
+    await flushGroupDecisionSyncs(db.database, { now: settled, fetch: http.fetch });
+    const repeat = await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision,
+      now: new Date(settled.getTime() + 60 * 1000),
+    });
+    expect(repeat).toBe('skipped');
+    const later = await flushGroupDecisionSyncs(db.database, {
+      now: new Date(settled.getTime() + 20 * 60 * 1000),
+      fetch: http.fetch,
+    });
+    expect(later.sent).toBe(0);
+    expect(http.linqUrls()).toEqual([GROUP_MESSAGES]);
+  });
+
+  it('holds through quiet hours and the daily ceiling, then retries a failed send once', async () => {
+    const seeded = await seed(GROUP);
+    const quiet = new Date('2026-09-25T02:30:00.000Z');
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'passed',
+        activity: 'art',
+        kid: 'Maya',
+      },
+      now: new Date(quiet.getTime() - 11 * 60 * 1000),
+    });
+    const http = wire();
+    const heldQuiet = await flushGroupDecisionSyncs(db.database, { now: quiet, fetch: http.fetch });
+    expect(heldQuiet).toEqual({ sent: 0, held: 1 });
+    expect(http.linqUrls()).toEqual([]);
+    const morning = new Date('2026-09-25T12:30:00.000Z');
+    const sent = await flushGroupDecisionSyncs(db.database, { now: morning, fetch: http.fetch });
+    expect(sent.sent).toBe(1);
+    expect(http.bodies()).toContain('Quick sync: Barton passed on art for Maya.');
+
+    await db.database.insert(schema.channelMessages).values([
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        channel: 'imessage',
+        direction: 'out',
+        category: 'nudge',
+        templateKey: 'proactive_nudge:weekly',
+        providerChatId: GROUP,
+        status: 'sent',
+        sentAt: morning,
+        createdAt: morning,
+      },
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        channel: 'imessage',
+        direction: 'out',
+        category: 'nudge',
+        templateKey: 'proactive_nudge:weekly',
+        providerChatId: GROUP,
+        status: 'sent',
+        sentAt: morning,
+        createdAt: morning,
+      },
+    ]);
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'picked',
+        activity: 'music',
+        kid: 'Maya',
+        day: 'Thursday',
+        time: '5:00',
+      },
+      now: new Date(morning.getTime() - 11 * 60 * 1000),
+    });
+    const capped = await flushGroupDecisionSyncs(db.database, { now: morning, fetch: http.fetch });
+    expect(capped.held).toBe(1);
+    expect(http.linqUrls()).toEqual([GROUP_MESSAGES]);
+
+    const failing = vi.fn(async () => {
+      throw new Error('linq down');
+    });
+    await db.exec('delete from channel_messages');
+    await db.exec('delete from group_decision_sync');
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'picked',
+        activity: 'swim',
+        kid: 'Maya',
+        day: 'Friday',
+        time: '3:00',
+      },
+      now: NOW,
+    });
+    const failed = await flushGroupDecisionSyncs(db.database, {
+      now: new Date(NOW.getTime() + 10 * 60 * 1000),
+      fetch: failing as unknown as typeof fetch,
+    });
+    expect(failed.sent).toBe(0);
+    const [unflushed] = await db.database
+      .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+      .from(schema.groupDecisionSync);
+    expect(unflushed?.flushedAt).toBeNull();
+    const retry = wire();
+    const recovered = await flushGroupDecisionSyncs(db.database, {
+      now: new Date(NOW.getTime() + 20 * 60 * 1000),
+      fetch: retry.fetch,
+    });
+    expect(recovered.sent).toBe(1);
+    expect(retry.linqUrls()).toEqual([GROUP_MESSAGES]);
+    expect(retry.bodies()).toContain('Quick sync: Barton picked swim for Maya, Friday at 3:00.');
+  });
+
+  it('does not mark a not-yet-due row flushed with the sitting', async () => {
+    const seeded = await seed(GROUP);
+    const http = wire();
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'passed',
+        activity: 'art',
+        kid: 'Maya',
+      },
+      now: NOW,
+    });
+    await db.database.insert(schema.groupDecisionSync).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: 'picked',
+      activity: 'music',
+      kid: 'Leo',
+      day: 'Thursday',
+      time: '6:00',
+      flushAfter: new Date(NOW.getTime() + 2 * 60 * 60 * 1000),
+      createdAt: new Date(NOW.getTime() + 1000),
+    });
+    await flushGroupDecisionSyncs(db.database, {
+      now: new Date(NOW.getTime() + 10 * 60 * 1000),
+      fetch: http.fetch,
+    });
+    const rows = await db.database
+      .select({
+        activity: schema.groupDecisionSync.activity,
+        flushedAt: schema.groupDecisionSync.flushedAt,
+      })
+      .from(schema.groupDecisionSync);
+    const art = rows.find((row) => row.activity === 'art');
+    const music = rows.find((row) => row.activity === 'music');
+    expect(art?.flushedAt).not.toBeNull();
+    expect(music?.flushedAt).toBeNull();
+    expect(http.bodies()).not.toContain('music');
+  });
+
+  it('reads a 1:1 sentence only when the kid is on the family', async () => {
+    const seeded = await seed(GROUP);
+    await db.database.insert(schema.children).values({
+      familyId: seeded.familyId,
+      name: 'Maya',
+      dateOfBirth: '2022-04-01',
+    });
+    const queued = await queueActivityDecisionFromReply(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      body: 'picked swim for maya, Tuesday at 4:00',
+      now: NOW,
+    });
+    expect(queued).toBe('queued');
+    const [row] = await db.database
+      .select({ kid: schema.groupDecisionSync.kid, activity: schema.groupDecisionSync.activity })
+      .from(schema.groupDecisionSync);
+    expect(row).toEqual({ kid: 'Maya', activity: 'swim' });
+    const unknown = await queueActivityDecisionFromReply(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      body: 'picked swim for Tuesday, Tuesday at 4:00',
+      now: NOW,
+    });
+    expect(unknown).toBe('skipped');
+    const question = await queueActivityDecisionFromReply(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      body: 'picked swim for Maya, Tuesday at 4:00?',
+      now: NOW,
+    });
+    expect(question).toBe('skipped');
   });
 });
 

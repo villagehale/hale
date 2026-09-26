@@ -627,10 +627,79 @@ describe('handleLinqInboundRequest', () => {
     const message = h.fake.rows(schema.channelMessages).find((row) => row.body === 'Soccer');
     expect(message).toMatchObject({
       familyId,
-      providerMessageId: 'poll:poll-msg:opt-soccer',
+      providerMessageId: `poll:poll-msg:opt-soccer:${phoneBlindIndex(PHONE)}`,
       providerChatId: CHAT_ID,
     });
-    expect(h.reads).toEqual([]);
+    expect(h.reads).toEqual([{ chatId: CHAT_ID }]);
+    expect(JSON.stringify(h.warns)).not.toContain(PHONE);
+  });
+
+  it('routes a second parent voting the same option, and drops a repeat from the first', async () => {
+    const h = harness();
+    const { familyId, userId } = enrol(h.fake);
+    const other = '+14165559876';
+    const otherUser = '00000000-0000-4000-8000-0000000000u9';
+    h.fake.db.insert(schema.parentChannels).values({
+      userId: otherUser,
+      familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(other),
+      phoneE164Hash: phoneBlindIndex(other),
+      verifiedAt: NOW,
+    } as never);
+    h.fake.db
+      .insert(schema.familyMembers)
+      .values({ userId: otherUser, familyId, role: 'co_parent' } as never);
+    h.fake.db.insert(schema.smsIntakeSessions).values({
+      phoneHash: phoneBlindIndex(other),
+      state: 'complete',
+      closedAt: NOW,
+    } as never);
+    await h.fake.db.insert(schema.linqPollOptions).values({
+      familyId,
+      parentUserId: userId,
+      providerChatId: CHAT_ID,
+      providerMessageId: 'poll-msg',
+      optionId: 'opt-soccer',
+      optionText: 'Soccer',
+    } as never);
+
+    const vote = (handle: string, eventId: string) => {
+      const body = JSON.parse(messageBody()) as {
+        event_id: string;
+        event_type: string;
+        data: unknown;
+      };
+      body.event_id = eventId;
+      body.event_type = 'poll.vote.added';
+      body.data = {
+        chat_id: CHAT_ID,
+        message_id: 'poll-msg',
+        option_id: 'opt-soccer',
+        sender_handle: { handle, is_me: false },
+      };
+      return JSON.stringify(body);
+    };
+
+    const first = await handleLinqInboundRequest(request(vote(PHONE, 'evt_fixture')), h.deps);
+    const second = await handleLinqInboundRequest(request(vote(other, 'evt_second')), h.deps);
+    const repeat = await handleLinqInboundRequest(request(vote(PHONE, 'evt_repeat')), h.deps);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(repeat.status).toBe(200);
+    await expect(second.json()).resolves.toEqual({ outcome: 'handed_off' });
+    await expect(repeat.json()).resolves.toEqual({ outcome: 'duplicate' });
+    const votes = h.fake
+      .rows(schema.channelMessages)
+      .filter((row) => row.body === 'Soccer')
+      .map((row) => row.providerMessageId);
+    expect(votes).toEqual([
+      `poll:poll-msg:opt-soccer:${phoneBlindIndex(PHONE)}`,
+      `poll:poll-msg:opt-soccer:${phoneBlindIndex(other)}`,
+    ]);
+    expect(JSON.stringify(votes)).not.toContain(PHONE);
+    expect(JSON.stringify(votes)).not.toContain(other);
   });
 
   it('still hands the turn off when mark-read is refused', async () => {

@@ -18,6 +18,7 @@ import {
 } from '~/lib/channel/intake/identity-challenge';
 import { replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import {
@@ -1982,6 +1983,7 @@ async function sendReply(
         if (args.conversationId && moment.threadBody) {
           await appendMessage(args.conversationId, 'assistant', moment.threadBody, deps.database);
         }
+        await mirrorActivityDecision(deps, args);
         return moment.channelMessageId;
       }
     } catch (err) {
@@ -1993,23 +1995,7 @@ async function sendReply(
   }
   const sent = await deps.transport.send({ route: args.route, body: args.body });
   if (args.claim) await args.claim();
-  if (args.groupSync) {
-    const originChatId = args.route.channel === 'imessage' ? args.route.chatId : null;
-    try {
-      await queueGroupActivityDecision(deps.database, {
-        familyId: args.job.family_id,
-        parentUserId: args.job.parent_user_id,
-        originChatId,
-        decision: args.groupSync,
-        now: deps.now(),
-      });
-    } catch (err) {
-      deps.log.warn(
-        { code: err instanceof Error ? err.name : 'unknown' },
-        'group sync: the 1:1 reply landed; the group bubble did not',
-      );
-    }
-  }
+  await mirrorActivityDecision(deps, args);
 
   // The channel that CARRIED it, reported by the send rather than assumed from the
   // route (WhatsApp v1): a whatsapp route degrades to SMS outside Meta's 24h window,
@@ -2057,6 +2043,51 @@ async function sendReply(
     await appendMessage(args.conversationId, 'assistant', args.body, deps.database);
   }
   return channelMessageId;
+}
+
+/**
+ * Mirror a 1:1 kid-logistics decision into the claimed group. An explicit
+ * `groupSync` wins. Otherwise the parent's own words are read, and only a
+ * complete pick or pass whose kid is on this family is queued. A tapback
+ * or a poll that already replaced the text still reaches this, so the
+ * decision is not dropped with the sentence. Failure is a log line: the
+ * 1:1 reply has already landed.
+ */
+async function mirrorActivityDecision(
+  deps: ChannelRouterDeps,
+  args: {
+    route: ReplyRoute;
+    job: ChannelMessageReceivedJob;
+    groupSync?: GroupActivityDecision;
+    inboundBody?: string;
+  },
+): Promise<void> {
+  const originChatId = args.route.channel === 'imessage' ? args.route.chatId : null;
+  try {
+    if (args.groupSync) {
+      await queueGroupActivityDecision(deps.database, {
+        familyId: args.job.family_id,
+        parentUserId: args.job.parent_user_id,
+        originChatId,
+        decision: args.groupSync,
+        now: deps.now(),
+      });
+      return;
+    }
+    if (args.inboundBody === undefined || args.route.channel !== 'imessage') return;
+    await queueActivityDecisionFromReply(deps.database, {
+      familyId: args.job.family_id,
+      parentUserId: args.job.parent_user_id,
+      originChatId,
+      body: args.inboundBody,
+      now: deps.now(),
+    });
+  } catch (err) {
+    deps.log.warn(
+      { code: err instanceof Error ? err.name : 'unknown' },
+      'group sync: the 1:1 reply landed; the group bubble did not',
+    );
+  }
 }
 
 /** One structured line per routed message: ids and outcome enums, never a body. The

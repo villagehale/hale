@@ -7,6 +7,7 @@ import {
   routeTwilioInbound,
 } from '~/lib/channel/twilio/inbound';
 import { applyTwilioStatus } from '~/lib/channel/twilio/status';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import {
   linqFromE164,
   linqGroupCoparentEnabled,
@@ -533,19 +534,47 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
       await deps.countOutcome('ignored');
       return json({ outcome: 'poll_sender_unknown' });
     }
-    const outcome = await routeTwilioInbound(
-      deps,
-      {
-        from: signal.senderHandle,
-        transport: 'imessage',
-        body: option.text,
-        providerId: `poll:${signal.messageId ?? 'vote'}:${signal.optionId}`,
-        receivedAt: deps.now?.() ?? new Date(),
-        chatId: signal.chatId,
-        providerAnsweredKeyword: null,
-      },
-      0,
-    );
+    // Same as a 1:1 message: mark read overlaps the turn and cannot fail it.
+    // A group chat no-ops at Linq; the call is still the 1:1 receipt.
+    const markRead = deps.markRead ?? markLinqChatRead;
+    const readPromise = markRead({ chatId: signal.chatId });
+    let outcome: TwilioInboundOutcome;
+    try {
+      outcome = await routeTwilioInbound(
+        deps,
+        {
+          from: signal.senderHandle,
+          transport: 'imessage',
+          body: option.text,
+          providerId: `poll:${signal.messageId ?? 'vote'}:${signal.optionId}:${phoneBlindIndex(signal.senderHandle)}`,
+          receivedAt: deps.now?.() ?? new Date(),
+          chatId: signal.chatId,
+          providerAnsweredKeyword: null,
+        },
+        0,
+      );
+    } finally {
+      try {
+        const read = await readPromise;
+        if (read.status !== 'accepted') {
+          deps.log.warn(
+            {
+              outcome: read.status,
+              ...(read.status === 'refused'
+                ? { code: read.code, httpStatus: read.httpStatus }
+                : {}),
+              ...(read.status === 'unreachable' ? { reason: read.reason } : {}),
+            },
+            'linq inbound: mark read did not land',
+          );
+        }
+      } catch (err) {
+        deps.log.warn(
+          { outcome: 'unreachable', reason: err instanceof Error ? err.name : 'unknown' },
+          'linq inbound: mark read did not land',
+        );
+      }
+    }
     await deps.countOutcome(outcome);
     return json({ outcome });
   }
