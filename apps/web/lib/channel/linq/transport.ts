@@ -369,9 +369,8 @@ export async function reactToLinqMessage(input: {
 
 /**
  * Push the Name and Photo card already configured on the sending line. iMessage
- * only, and only after at least one outbound message. NOT called from the v1
- * inbound path — sharing a card unasked is a spam, and the card itself is set
- * up in the Linq dashboard, not here.
+ * only, and only after at least one outbound message. Hale calls this once,
+ * after the first successful 1:1 outbound. The call is silent: no chat bubble.
  *
  * https://docs.linqapp.com/guides/chats/share-contact-card/
  */

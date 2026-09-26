@@ -1,7 +1,8 @@
 import { type Database, schema } from '@hale/db';
-import type { ReplyLanguage } from '~/lib/channel/language';
 import { eq } from 'drizzle-orm';
 import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
+import type { ReplyLanguage } from '~/lib/channel/language';
+import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
 import { resolveReferrerFamilyId } from '~/lib/channel/referral/attribution';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
@@ -9,7 +10,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { INTAKE_COUNTRY, type PostalContext, deriveDateOfBirth, intakeFamilyName } from './derive';
 import type { AgePrecision } from './extract';
 import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
-import type { TranscriptEntry } from './session';
+import type { LinqContactCardClaim, TranscriptEntry } from './session';
 
 /**
  * VIL-237 · M2 — provisioning a family from a text conversation. Mirrors
@@ -72,6 +73,12 @@ export interface ProvisionInput {
   now: Date;
   /** The kids-and-postal text's language. Receipts later have no sentence to read. */
   language?: ReplyLanguage;
+  /**
+   * A Name and Photo share that already happened, before this channel existed.
+   * Stamped onto the new parent_channels row so the year-find turn does not
+   * share the card again. Null when the first outbound has not held the claim.
+   */
+  linqContactCardClaim?: LinqContactCardClaim | null;
 }
 
 export interface ProvisionResult {
@@ -203,6 +210,9 @@ export async function provisionFromIntake(
         phoneE164Hash: phoneHash,
         verifiedAt: now,
         consentRecordId: consentId,
+        ...(input.linqContactCardClaim
+          ? { linqContactCardSharedAt: new Date(input.linqContactCardClaim.at) }
+          : {}),
       })
       .returning({ id: schema.parentChannels.id });
     const channelId = channel?.id;
@@ -300,6 +310,27 @@ export async function provisionFromIntake(
               targetId: familyId,
               before: { planTier: 'free' as const },
               after: { planTier: 'family' as const, source: input.sourceCode, lifetime: true },
+            },
+          ]
+        : []),
+      // The share itself was before this family existed, so audit_log could not
+      // hold it then (family_id is required). The session claim is that record;
+      // this row is the same action, written once the family is real.
+      ...(input.linqContactCardClaim
+        ? [
+            {
+              familyId,
+              actor: userId,
+              actionTaken: 'linq_contact_card_shared',
+              targetTable: 'parent_channels',
+              targetId: channelId,
+              after:
+                input.linqContactCardClaim.outcome === 'shared'
+                  ? { outcome: 'shared', firstName: HALE_CONTACT_FIRST_NAME }
+                  : {
+                      outcome: 'share_refused',
+                      code: input.linqContactCardClaim.code ?? 'unknown',
+                    },
             },
           ]
         : []),

@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 describe('Linq contact card', () => {
-  it('is not a moment mid-intake, in a group, or off iMessage', () => {
+  it('is a 1:1 iMessage moment before onboard finishes, and never a group or SMS', () => {
     expect(
       linqContactCardMoment({
         channel: 'imessage',
@@ -58,7 +58,7 @@ describe('Linq contact card', () => {
         isGroup: false,
         onboardComplete: false,
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       linqContactCardMoment({
         channel: 'imessage',
@@ -73,6 +73,13 @@ describe('Linq contact card', () => {
         chatId: null,
         isGroup: false,
         onboardComplete: true,
+      }),
+    ).toBe(false);
+    expect(
+      linqContactCardMoment({
+        channel: 'imessage',
+        chatId: '',
+        isGroup: false,
       }),
     ).toBe(false);
   });
@@ -130,6 +137,40 @@ describe('Linq contact card', () => {
       .rows(schema.auditLog)
       .find((row) => row.actionTaken === 'linq_contact_card_shared');
     expect(shared?.after).toMatchObject({ outcome: 'shared' });
+  });
+
+  it('shares when onboard is not finished, once a 1:1 channel row exists', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fake = makeFakeDb();
+    enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes('/contact_card?') || init?.method === 'GET') {
+        return Response.json({
+          contact_cards: [{ phone_number: '+15555550100', first_name: 'Hale', is_active: true }],
+        });
+      }
+      if (target.endsWith('/contact_card')) {
+        return Response.json({ is_active: true, phone_number: '+15555550100' }, { status: 201 });
+      }
+      return new Response(null, { status: 200 });
+    });
+
+    const outcome = await shareHaleContactCardOnce(fake.db, {
+      familyId: FAMILY,
+      parentUserId: USER,
+      chatId: CHAT,
+      channel: 'imessage',
+      isGroup: false,
+      onboardComplete: false,
+      now: NOW,
+      fetch: fetchMock,
+    });
+
+    expect(outcome).toEqual({ status: 'shared' });
+    expect(fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toEqual(NOW);
   });
 
   it('releases the one-shot claim when the partner key is missing', async () => {

@@ -2248,9 +2248,46 @@ describe('intake · P1-4 the turn claim', () => {
   });
 });
 
+const LINQ_LINE = '+16462352164';
+
+/** A live Hale card: setup 201, retrieve active, share 200. */
+function liveLinqCardFetch(options?: {
+  refuseSetupTimes?: number;
+  refuseShare?: boolean;
+}) {
+  let setups = 0;
+  return vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+    const target = String(url);
+    if (target.includes('/contact_card?') || init?.method === 'GET') {
+      return Response.json({
+        contact_cards: [{ phone_number: LINQ_LINE, first_name: 'Hale', is_active: true }],
+      });
+    }
+    if (target.includes('/contact_card') && !target.includes('share_contact_card')) {
+      setups += 1;
+      if (options?.refuseSetupTimes !== undefined && setups <= options.refuseSetupTimes) {
+        return Response.json({ error: { code: 'image_unreachable' } }, { status: 400 });
+      }
+      return Response.json({ is_active: true, phone_number: LINQ_LINE }, { status: 201 });
+    }
+    if (target.includes('share_contact_card') && options?.refuseShare) {
+      return Response.json({ error: { code: 'share_rejected' } }, { status: 400 });
+    }
+    if (target.includes('/messages')) {
+      return Response.json({ message: { id: `msg-out-${setups}` } }, { status: 201 });
+    }
+    return new Response(null, { status: 200 });
+  });
+}
+
+function shareCardCalls(fetchMock: { mock: { calls: unknown[][] } }) {
+  return fetchMock.mock.calls.filter((call) => String(call[0]).includes('share_contact_card'));
+}
+
 /**
  * The year-find turn sends the find, then the name. Later replies settle one
  * job each. A night reply still sends the connector card that beat is for.
+ * The Linq Name and Photo share is silent and happens on the first outbound.
  */
 describe('intake · one ladder job per reply', () => {
   it('sends the name with the year find, then one later job per reply', async () => {
@@ -2333,21 +2370,10 @@ describe('intake · one ladder job per reply', () => {
     ).toBe(false);
   });
 
-  it('shares the live Linq card and still asks the name on the year-find turn', async () => {
+  it('shares the live Linq card once on the first hello, and the year-find turn does not share again', async () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
-    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
-    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-      const target = String(url);
-      if (target.includes('/contact_card?') || init?.method === 'GET') {
-        return Response.json({
-          contact_cards: [{ phone_number: '+16462352164', first_name: 'Hale', is_active: true }],
-        });
-      }
-      if (target.includes('/contact_card')) {
-        return Response.json({ is_active: true, phone_number: '+16462352164' }, { status: 201 });
-      }
-      return new Response(null, { status: 200 });
-    });
+    vi.stubEnv('LINQ_FROM_E164', LINQ_LINE);
+    const fetchMock = liveLinqCardFetch();
     vi.stubGlobal('fetch', fetchMock);
     const h = harness({});
     const imessage = (body: string) =>
@@ -2357,14 +2383,16 @@ describe('intake · one ladder job per reply', () => {
         h.deps,
       );
     await imessage('hi');
+    expect(h.transport.bodies()).toEqual([greeting(null, 'en')]);
+    expect(shareCardCalls(fetchMock)).toHaveLength(1);
+    expect(h.transport.bodies()).not.toContain(WELCOME_CARD_BODY);
+
     const beforeFind = h.transport.bodies().length;
     await imessage('Maya is 4, Leo is 1. M5V 2T6');
 
     expect(h.transport.bodies().slice(beforeFind)).toEqual(['RADAR', PARENT_CALL_NAME_ASK]);
-    expect(h.transport.bodies()).not.toContain(WELCOME_CARD_BODY);
-    expect(
-      fetchMock.mock.calls.some((call) => String(call[0]).includes('share_contact_card')),
-    ).toBe(true);
+    expect(shareCardCalls(fetchMock)).toHaveLength(1);
+    expect(h.fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toEqual(NOW);
     expect(
       h.fake.writes.some(
         (write) =>
@@ -2378,7 +2406,149 @@ describe('intake · one ladder job per reply', () => {
     vi.unstubAllEnvs();
   });
 
-  it('replies the year find, the card, and the name ask into the inbound Linq chat', async () => {
+  it('never shares the Linq card on SMS', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', LINQ_LINE);
+    const fetchMock = liveLinqCardFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const h = harness({});
+    await text(h.fake, h.transport, h.deps, 'hi');
+    await text(h.fake, h.transport, h.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    expect(h.transport.bodies()).toEqual([greeting(null, 'en'), 'RADAR', PARENT_CALL_NAME_ASK]);
+    expect(shareCardCalls(fetchMock)).toHaveLength(0);
+    expect(h.fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt ?? null).toBeNull();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('never shares the Linq card into a group', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', LINQ_LINE);
+    const fetchMock = liveLinqCardFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const h = harness({});
+    await handleInboundSms(
+      h.fake.db,
+      h.transport.inbound(PHONE, 'hi', {
+        transport: 'imessage',
+        chatId: 'chat-group',
+        isGroup: true,
+      }),
+      h.deps,
+    );
+    expect(h.transport.bodies()).toEqual([greeting(null, 'en')]);
+    expect(shareCardCalls(fetchMock)).toHaveLength(0);
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('releases a refused setup on the first hello so the year-find turn can share once', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', LINQ_LINE);
+    const fetchMock = liveLinqCardFetch({ refuseSetupTimes: 1 });
+    vi.stubGlobal('fetch', fetchMock);
+    const h = harness({});
+    const imessage = (body: string) =>
+      handleInboundSms(
+        h.fake.db,
+        h.transport.inbound(PHONE, body, { transport: 'imessage', chatId: 'chat-year' }),
+        h.deps,
+      );
+    await imessage('hi');
+    expect(shareCardCalls(fetchMock)).toHaveLength(0);
+    expect(h.transport.bodies()).toEqual([greeting(null, 'en')]);
+
+    const beforeFind = h.transport.bodies().length;
+    await imessage('Maya is 4, Leo is 1. M5V 2T6');
+    expect(h.transport.bodies().slice(beforeFind)).toEqual(['RADAR', PARENT_CALL_NAME_ASK]);
+    expect(shareCardCalls(fetchMock)).toHaveLength(1);
+    expect(h.fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toEqual(NOW);
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('keeps the claim when the share itself is refused and does not retry at year-find', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', LINQ_LINE);
+    const fetchMock = liveLinqCardFetch({ refuseShare: true });
+    vi.stubGlobal('fetch', fetchMock);
+    const h = harness({});
+    const imessage = (body: string) =>
+      handleInboundSms(
+        h.fake.db,
+        h.transport.inbound(PHONE, body, { transport: 'imessage', chatId: 'chat-year' }),
+        h.deps,
+      );
+    await imessage('hi');
+    expect(shareCardCalls(fetchMock)).toHaveLength(1);
+    await imessage('Maya is 4, Leo is 1. M5V 2T6');
+    expect(shareCardCalls(fetchMock)).toHaveLength(1);
+    expect(h.transport.bodies()).toEqual([greeting(null, 'en'), 'RADAR', PARENT_CALL_NAME_ASK]);
+    expect(h.fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toEqual(NOW);
+    expect(
+      h.fake.writes.some(
+        (write) =>
+          write.op === 'insert' &&
+          write.table === schema.auditLog &&
+          write.payload.actionTaken === 'linq_contact_card_shared' &&
+          (write.payload.after as { outcome?: string } | undefined)?.outcome === 'shared',
+      ),
+    ).toBe(false);
+    expect(
+      h.fake.writes.some(
+        (write) =>
+          write.op === 'insert' &&
+          write.table === schema.auditLog &&
+          write.payload.actionTaken === 'linq_contact_card_shared' &&
+          (write.payload.after as { outcome?: string } | undefined)?.outcome === 'share_refused',
+      ),
+    ).toBe(true);
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('shares once on a details-first iMessage send, between the find and the name', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', LINQ_LINE);
+    const chatId = 'chat-year';
+    const fetchMock = liveLinqCardFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const h = harness({});
+    const inbound = h.transport.inbound(PHONE, 'Maya is 4, Leo is 1. M5V 2T6', {
+      transport: 'imessage',
+      chatId,
+      providerId: 'msg-in-details',
+    });
+    const linq = createLinqTextTransport({
+      chatId,
+      replyToMessageId: inbound.providerId,
+      fetch: fetchMock,
+    });
+    const recorded = await handleInboundSms(h.fake.db, inbound, { ...h.deps, transport: linq });
+
+    expect(recorded.status).toBe('provisioned');
+    expect(shareCardCalls(fetchMock)).toHaveLength(1);
+    const calls = fetchMock.mock.calls.map((call) => ({
+      url: String(call[0]),
+      method: (call[1]?.method ?? 'GET').toUpperCase(),
+    }));
+    const thread = calls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        (call.url.endsWith(`/chats/${chatId}/messages`) ||
+          call.url.endsWith(`/chats/${chatId}/share_contact_card`)),
+    );
+    expect(thread.map((call) => call.url.split('/chats/')[1])).toEqual([
+      `${chatId}/messages`,
+      `${chatId}/share_contact_card`,
+      `${chatId}/messages`,
+    ]);
+    expect(h.transport.bodies()).not.toContain(WELCOME_CARD_BODY);
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('shares into the inbound Linq chat on the first hello, then replies the year find and the name', async () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     vi.stubEnv('LINQ_FROM_E164', '+16462352164');
     const chatId = 'chat-year';
@@ -2439,11 +2609,11 @@ describe('intake · one ladder job per reply', () => {
           call.url.endsWith(`/chats/${chatId}/share_contact_card`)),
     );
     expect(thread.map((call) => call.url.split('/chats/')[1])).toEqual([
-      `${chatId}/messages`,
       `${chatId}/share_contact_card`,
       `${chatId}/messages`,
+      `${chatId}/messages`,
     ]);
-    expect(thread[0]?.body).toEqual({
+    expect(thread[1]?.body).toEqual({
       message: {
         parts: [{ type: 'text', value: 'RADAR' }],
         reply_to: { message_id: inboundId },
@@ -2524,14 +2694,15 @@ describe('intake · one ladder job per reply', () => {
         (call.url.includes(`/chats/${chatId}/`) || call.url.endsWith('/chats')),
     );
     expect(thread.some((call) => call.url.endsWith('/chats'))).toBe(false);
-    expect(thread[0]?.url.endsWith(`/chats/${chatId}/messages`)).toBe(true);
-    expect(thread[0]?.body).toEqual({
+    expect(thread[0]?.url.endsWith(`/chats/${chatId}/share_contact_card`)).toBe(true);
+    expect(thread[1]?.url.endsWith(`/chats/${chatId}/messages`)).toBe(true);
+    expect(thread[1]?.body).toEqual({
       message: {
         parts: [{ type: 'text', value: 'RADAR' }],
         reply_to: { message_id: inboundId },
       },
     });
-    expect(thread[1]?.url.endsWith(`/chats/${chatId}/share_contact_card`)).toBe(true);
+    expect(thread.slice(1).every((call) => !call.url.endsWith('/share_contact_card'))).toBe(true);
     const calendar = thread[2]?.body as {
       message: { parts: Array<{ type: string; value: string }>; reply_to?: { message_id: string } };
     };
@@ -2633,9 +2804,7 @@ describe('intake · one ladder job per reply', () => {
     );
     expect(h.transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
     expect(h.transport.bodies()).not.toContain(WELCOME_CARD_BODY);
-    expect(
-      fetchMock.mock.calls.some((call) => String(call[0]).includes('share_contact_card')),
-    ).toBe(true);
+    expect(shareCardCalls(fetchMock)).toHaveLength(1);
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });

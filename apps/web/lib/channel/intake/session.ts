@@ -30,9 +30,10 @@ export type IntakeState =
   /** The one gentle clarification has been asked; waiting for yes/no. */
   | 'awaiting_clarify'
   /**
-   * The year find already went out, and with it the turtle card when that share
-   * lands and the next visible ask. The next inbound settles exactly one later
-   * ladder beat. The column is text, so this state needs no migration.
+   * The year find already went out, and with it the next visible ask. The Linq
+   * Name and Photo share, when it lands, went out on the first outbound. The
+   * next inbound settles exactly one later ladder beat. The column is text, so
+   * this state needs no migration.
    */
   | 'awaiting_ladder'
   /** The flow finished (watch-offer answered, or the region gate refused). */
@@ -44,7 +45,7 @@ export type IntakeState =
    * that claimed otherwise would read as a household that finished intake. */
   | 'superseded';
 
-/** One later job. The year-find turn already sent the card, when it shares, and the next ask. */
+/** One later job. The year-find turn already sent the next ask. The Linq card, when it shares, left on the first outbound. */
 export type IntakeLadderStep = 'turtle' | 'name' | 'name_reply' | 'calendar' | 'gmail' | 'coparent';
 
 const LADDER_STEPS: readonly IntakeLadderStep[] = [
@@ -79,6 +80,20 @@ interface IntakeData {
   ladderNext?: IntakeLadderStep | null;
   /** Language of the kids-and-postal text. Later replies must not re-pick it. */
   ladderLanguage?: ReplyLanguage | null;
+  /**
+   * Pre-family one-shot for the Linq Name and Photo share. Parent channels do
+   * not exist yet, so the claim lives here until provisioning copies it onto
+   * parent_channels.linq_contact_card_shared_at. Absent means unclaimed.
+   * `share_refused` stays consumed so a retry cannot push the card twice.
+   */
+  linqContactCardClaim?: LinqContactCardClaim | null;
+}
+
+/** Held when the share was attempted. Setup that never reached the chat stays null. */
+export interface LinqContactCardClaim {
+  at: string;
+  outcome: 'shared' | 'share_refused';
+  code?: string;
 }
 
 export interface IntakeSession {
@@ -100,12 +115,34 @@ export interface IntakeSession {
   /** Null until the year-find turn parks the conversation on the ladder. */
   ladderNext: IntakeLadderStep | null;
   ladderLanguage: ReplyLanguage | null;
+  /** Null until a pre-family iMessage share holds the one-shot. */
+  linqContactCardClaim: LinqContactCardClaim | null;
 }
 
 export const EMPTY_COLLECTED: IntakeCollected = { children: [], postalCode: null };
 
 function encodeData(data: IntakeData): string {
-  return encryptString(JSON.stringify(data));
+  const payload: IntakeData = {
+    collected: data.collected,
+    transcript: data.transcript,
+    findWon: data.findWon,
+    ladderNext: data.ladderNext,
+    ladderLanguage: data.ladderLanguage,
+  };
+  if (data.linqContactCardClaim) payload.linqContactCardClaim = data.linqContactCardClaim;
+  return encryptString(JSON.stringify(payload));
+}
+
+function decodeLinqContactCardClaim(value: unknown): LinqContactCardClaim | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as { at?: unknown; outcome?: unknown; code?: unknown };
+  if (row.outcome !== 'shared' && row.outcome !== 'share_refused') return null;
+  if (typeof row.at !== 'string' || row.at.length === 0) return null;
+  return {
+    at: row.at,
+    outcome: row.outcome,
+    ...(typeof row.code === 'string' ? { code: row.code } : {}),
+  };
 }
 
 function decodeLadderNext(value: unknown): IntakeLadderStep | null {
@@ -129,6 +166,7 @@ function decodeData(blob: string): IntakeData {
     findWon: parsed.findWon === true,
     ladderNext: decodeLadderNext(parsed.ladderNext),
     ladderLanguage: decodeLadderLanguage(parsed.ladderLanguage),
+    linqContactCardClaim: decodeLinqContactCardClaim(parsed.linqContactCardClaim),
   };
 }
 
@@ -167,6 +205,7 @@ export async function loadOpenSession(
     findWon: data.findWon === true,
     ladderNext: data.ladderNext ?? null,
     ladderLanguage: data.ladderLanguage ?? null,
+    linqContactCardClaim: data.linqContactCardClaim ?? null,
   };
 }
 
@@ -219,6 +258,7 @@ export async function claimIntakeSession(
     findWon: false,
     ladderNext: null,
     ladderLanguage: null,
+    linqContactCardClaim: null,
   };
 }
 
@@ -255,6 +295,8 @@ export interface SessionPatch {
   /** Undefined keeps the stored step. Null clears it (the co-parent beat closes). */
   ladderNext?: IntakeLadderStep | null;
   ladderLanguage?: ReplyLanguage | null;
+  /** Undefined keeps the stored claim. Null clears a released attempt. */
+  linqContactCardClaim?: LinqContactCardClaim | null;
 }
 
 /** Persist a state transition. `collected`/`transcript` are re-encrypted together. */
@@ -270,11 +312,22 @@ export async function saveSession(
   const ladderNext = patch.ladderNext === undefined ? session.ladderNext : patch.ladderNext;
   const ladderLanguage =
     patch.ladderLanguage === undefined ? session.ladderLanguage : patch.ladderLanguage;
+  const linqContactCardClaim =
+    patch.linqContactCardClaim === undefined
+      ? session.linqContactCardClaim
+      : patch.linqContactCardClaim;
   await database
     .update(schema.smsIntakeSessions)
     .set({
       ...(patch.state ? { state: patch.state } : {}),
-      dataEncrypted: encodeData({ collected, transcript, findWon, ladderNext, ladderLanguage }),
+      dataEncrypted: encodeData({
+        collected,
+        transcript,
+        findWon,
+        ladderNext,
+        ladderLanguage,
+        linqContactCardClaim,
+      }),
       ...(patch.followUpCount === undefined ? {} : { followUpCount: patch.followUpCount }),
       ...(patch.clarifyCount === undefined ? {} : { clarifyCount: patch.clarifyCount }),
       ...(patch.familyId ? { familyId: patch.familyId } : {}),
