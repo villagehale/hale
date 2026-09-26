@@ -9,6 +9,7 @@ import {
   CANARY_PHONE_E164,
   canaryChannel,
 } from './config';
+import { seedCanaryHousehold } from './seed';
 
 /**
  * THE WRITE SIDE — one synthetic turn every ten minutes, and a verdict on the
@@ -145,11 +146,10 @@ async function verifyPreviousTick(
  * Order matters, and every step of it is a fail-closed decision:
  *
  *   1. Twilio config, or the signature cannot be computed at all.
- *   2. THE HOUSEHOLD, before anything is posted. An unseeded (or revoked)
- *      canary number is an unknown `From`, and an unknown `From` reaches the
- *      intake machine — which would start a conversation and text
- *      +1 437-555-0100 every tick. Refusing here is the difference between a
- *      monitor that pages and a monitor that spams a phone number.
+ *   2. THE HOUSEHOLD, before anything is posted. Missing → seed (idempotent).
+ *      Inactive/revoked → throw (never auto-reactivate). An unknown `From`
+ *      reaches intake and would text +1 437-555-0100 every tick; refusing
+ *      here is the difference between a monitor that pages and one that spams.
  *   3. INJECT, then
  *   4. VERIFY THE PREVIOUS TICK — in that order, so a broken lane keeps being
  *      probed and the alarm clears itself on the tick after a fix lands.
@@ -158,8 +158,20 @@ export async function runInboundCanary(deps: InboundCanaryDeps): Promise<void> {
   const twilio = twilioConfig();
   if (!twilio) throw new Error('inbound canary: not configured');
 
-  const household = await canaryChannel(deps.database);
-  if (!household) throw new Error('inbound canary: household not seeded');
+  // Self-heal after a roster wipe: the canary household is data, not schema, and
+  // a hard-delete of test families can take it with them. Seed is idempotent and
+  // refuse-closed on inactive — we never re-activate a revoked channel here.
+  let household = await canaryChannel(deps.database);
+  if (!household) {
+    const seeded = await seedCanaryHousehold(deps.database);
+    if (seeded.status === 'inactive') {
+      throw new Error(
+        `inbound canary: household inactive on family ${seeded.familyId} — re-activate deliberately`,
+      );
+    }
+    household = await canaryChannel(deps.database);
+    if (!household) throw new Error('inbound canary: household not seeded');
+  }
 
   const now = deps.now();
   await inject(deps, twilio, now);
