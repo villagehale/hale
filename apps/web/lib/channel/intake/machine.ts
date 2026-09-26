@@ -25,7 +25,10 @@ import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { linqFromE164 } from '~/lib/channel/linq/config';
-import { shareHaleContactCardOnce } from '~/lib/channel/linq/contact-card';
+import {
+  deliverHaleLinqContactCard,
+  shareHaleContactCardOnce,
+} from '~/lib/channel/linq/contact-card';
 import {
   LINQ_GROUP_LINE_MISSING_TEXT,
   formatLinqLineForParent,
@@ -296,7 +299,7 @@ interface Inbound {
    * iMessage. An iMessage turn carries `chatId` so the ledger can return to it. */
   transport?: 'sms' | 'whatsapp' | 'imessage';
   chatId?: string;
-  /** A Linq group turn. The Name and Photo card is 1:1 only. */
+  /** A Linq group turn. The Name and Photo card is 1:1 only and never shares here. */
   isGroup?: boolean;
   /** VIL-348 — the provider already answered this keyword itself; see
    * `InboundMessage.providerAnsweredKeyword` (intake/transport.ts) for what that means
@@ -562,15 +565,22 @@ interface SendContext {
   now: Date;
   /** The pipe this turn arrived on. Outbound rows and the transcript replay
    * record it, so a later receipt can find the Linq chat. */
-  pipe: { channel: 'sms' | 'imessage'; chatId: string | null };
+  pipe: { channel: 'sms' | 'imessage'; chatId: string | null; isGroup: boolean };
 }
 
 function messagingPipe(inbound: Inbound): SendContext['pipe'] {
   if (inbound.transport === 'imessage') {
-    return { channel: 'imessage', chatId: inbound.chatId ?? null };
+    return {
+      channel: 'imessage',
+      chatId: inbound.chatId ?? null,
+      isGroup: inbound.isGroup === true,
+    };
   }
-  return { channel: 'sms', chatId: null };
+  return { channel: 'sms', chatId: null, isGroup: false };
 }
+
+/** One in-flight share per session object, so a second bubble in the same turn cannot double-post. */
+const linqCardStarted = new WeakSet<IntakeSession>();
 
 function sendContext(args: {
   session: IntakeSession;
@@ -617,6 +627,7 @@ async function sendAndRecord(
   templateKey?: string,
 ): Promise<{ transcript: TranscriptEntry[]; channelMessageId: string | null }> {
   const { providerMessageId } = await deps.transport.send({ to: ctx.phoneE164, body });
+  await shareLinqCardAfterFirstOutbound(database, ctx, transcript);
   const entry: TranscriptEntry = {
     direction: 'out',
     body,
@@ -1135,11 +1146,73 @@ function resolveLocation(
 }
 
 /**
- * The turtle card is Hale's Linq Name and Photo share, and only that.
- * It leaves when Linq reports the line card active and the share lands.
- * No chat line rides with it. SMS has no Linq card, so this returns silent
- * and the name ask (or the French calendar card) still goes out.
- * A group is not this moment. Linq will not share into a chat with no prior outbound.
+ * After the first successful outbound on a 1:1 iMessage chat, share Hale's
+ * Name and Photo card once. Linq will not show the card before that outbound.
+ * A second bubble in this turn, SMS, and groups do not share. A failure here
+ * is logged and does not fail the send that already landed.
+ *
+ * Before a family exists the claim is the session marker provisioning copies
+ * onto parent_channels. After that, the channel row is the one-shot.
+ */
+async function shareLinqCardAfterFirstOutbound(
+  database: Database,
+  ctx: SendContext,
+  priorTranscript: readonly TranscriptEntry[],
+): Promise<void> {
+  try {
+    const chatId = ctx.pipe.chatId;
+    if (
+      !chatId ||
+      ctx.pipe.channel !== 'imessage' ||
+      ctx.pipe.isGroup ||
+      linqCardStarted.has(ctx.session) ||
+      ctx.session.linqContactCardClaim ||
+      transcriptHasOutbound(ctx.session.transcript) ||
+      transcriptHasOutbound(priorTranscript)
+    ) {
+      return;
+    }
+    linqCardStarted.add(ctx.session);
+
+    if (ctx.session.familyId && ctx.session.userId) {
+      await shareHaleContactCardOnce(database, {
+        familyId: ctx.session.familyId,
+        parentUserId: ctx.session.userId,
+        chatId,
+        channel: 'imessage',
+        isGroup: false,
+        now: ctx.now,
+      });
+      return;
+    }
+
+    const delivered = await deliverHaleLinqContactCard({
+      chatId,
+      familyId: null,
+    });
+    if (delivered.outcome.status === 'shared') {
+      ctx.session.linqContactCardClaim = { at: ctx.now.toISOString(), outcome: 'shared' };
+      return;
+    }
+    if (delivered.outcome.status === 'not_sent' && delivered.outcome.reason === 'share_refused') {
+      ctx.session.linqContactCardClaim = {
+        at: ctx.now.toISOString(),
+        outcome: 'share_refused',
+        code: delivered.outcome.code,
+      };
+    }
+  } catch (err) {
+    console.warn(
+      { err: err instanceof Error ? err.name : 'unknown' },
+      'linq contact card: first outbound share did not finish',
+    );
+  }
+}
+
+/**
+ * Retry the Linq Name and Photo share when the first outbound released the
+ * claim. Silent either way: a claim already held returns without a second
+ * POST and without a chat line. SMS and groups are not this moment.
  */
 async function shareFreshLinqContactCard(
   database: Database,
@@ -1158,7 +1231,6 @@ async function shareFreshLinqContactCard(
       chatId: pipe.chatId,
       channel: 'imessage',
       isGroup: false,
-      onboardComplete: true,
       now: args.now,
     });
     return shared.status === 'shared' ? 'shown' : 'silent';
@@ -1168,9 +1240,12 @@ async function shareFreshLinqContactCard(
 
 /**
  * The beats that used to wait for "cool". Same turn, in order: the year find
- * (already sent, its own bubble), the Linq turtle card when that share lands
- * (no chat line), then the name ask. A card that cannot leave still sends the
- * name ask. French skips the English name and sends the calendar card instead.
+ * (already sent, its own bubble), then the name ask. French skips the English
+ * name and sends the calendar card instead.
+ *
+ * The Linq card is not a bubble. It shares on the first outbound. This ladder
+ * calls the share again only so a released claim can still land once. A card
+ * already shared is skipped. Nothing here apologises or adds a line.
  */
 async function sendPostYearFindLadder(
   database: Database,
@@ -1241,6 +1316,7 @@ async function provision(
     transcript: gathered.transcript,
     now,
     language,
+    linqContactCardClaim: session.linqContactCardClaim,
   });
 
   // From here the session HAS a family, so messages go straight to channel_messages —
@@ -1268,8 +1344,9 @@ async function provision(
     radar.weekendPickOffered ? INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY : undefined,
   );
 
-  // The find is its own bubble. The turtle card, when the share lands, and the next
-  // visible ask (the name, or the French calendar card) go out in this same turn.
+  // The find is its own bubble. The next visible ask (the name, or the French
+  // calendar card) goes out in this same turn. The Linq card, when it was not
+  // already shared on an earlier outbound, is a silent retry inside that ladder.
   // Nothing waits on "cool".
   const ladderNext = await sendPostYearFindLadder(
     database,
