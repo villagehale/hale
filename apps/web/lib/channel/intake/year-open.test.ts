@@ -133,6 +133,7 @@ describe('collectYearOpenLines', () => {
     expect(opened.lines[0]).toContain('Parent and tot swim');
     expect(opened.lines.join('\n')).toContain('Story time');
     expect(opened.lines.join('\n')).toContain('Music');
+    expect(opened.titles).toEqual(['Parent and tot swim', 'Story time', 'Music']);
   });
 
   it('names a missing search instead of inventing a registration date', async () => {
@@ -146,6 +147,7 @@ describe('collectYearOpenLines', () => {
     });
     expect(opened.finder).toBe('not_configured');
     expect(opened.lines).toEqual([]);
+    expect(opened.titles).toEqual([]);
     expect(info.mock.calls.map((call) => call.join(' ')).join('\n')).toContain(
       'skipped: not_configured',
     );
@@ -165,6 +167,7 @@ describe('collectYearOpenLines', () => {
     expect(opened.lines[0]).toContain('Drop-in gym');
     expect(opened.lines[1]).toContain('Second');
     expect(opened.lines.join('\n')).not.toContain('Story time');
+    expect(opened.titles).toEqual(['Drop-in gym', 'Second', 'Third']);
     expect(YEAR_FIND_CAP).toBe(3);
   });
 
@@ -191,6 +194,8 @@ describe('collectYearOpenLines', () => {
       'Saturday: Story time',
       'U12 soccer tryouts',
     ]);
+    expect(opened.titles).toEqual(['Parent and tot swim', 'Story time', 'U12 soccer tryouts']);
+    expect(opened.titles.join('\n')).not.toContain('Saturday:');
   });
 
   it('does not sink an older sibling behind the youngest stage', async () => {
@@ -247,6 +252,7 @@ describe('collectYearOpenLines', () => {
     });
     expect(opened.finder).toBe('empty');
     expect(opened.lines).toEqual([]);
+    expect(opened.titles).toEqual([]);
     expect(renderYearOpen(opened.lines)).toBe(yearOpenEmptyMessage());
   });
 

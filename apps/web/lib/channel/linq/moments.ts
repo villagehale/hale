@@ -2,15 +2,12 @@ import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import type { ReplyRoute } from '~/lib/channel/router/reply-route';
-import { offerLinqChoicePoll } from './poll';
 import { applyLinqTapback } from './tapback';
 
 /**
- * The product moments on an iMessage reply: a tapback instead of a throwaway
- * ack, or a poll instead of a two-option sentence when LINQ_POLLS=on.
- *
- * Either one that lands replaces the text. A miss falls through and the text
- * still goes out. SMS and email never call Linq from here.
+ * The product moment on an iMessage reply: a tapback instead of a throwaway
+ * ack. A miss falls through and the text still goes out. SMS and email never
+ * call Linq from here. A year-find poll is not a reply moment.
  */
 
 export type LinqMoment =
@@ -48,19 +45,6 @@ export async function considerLinqReply(
     return { handled: true, channelMessageId, threadBody: null };
   }
 
-  const poll = await offerLinqChoicePoll(database, {
-    channel: args.route.channel,
-    chatId: args.route.chatId,
-    body: args.outboundBody,
-    templateKey: args.templateKey,
-    familyId: args.familyId,
-    parentUserId: args.parentUserId,
-    now: args.now,
-    fetch: args.fetch,
-  });
-  if (poll.status === 'sent') {
-    return { handled: true, channelMessageId: poll.channelMessageId, threadBody: null };
-  }
   return { handled: false };
 }
 

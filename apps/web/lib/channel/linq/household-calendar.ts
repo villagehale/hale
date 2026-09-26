@@ -1035,7 +1035,7 @@ export async function answerBothFreeInGroup(
   return (await answerBothFreeOffer(database, input))?.text ?? null;
 }
 
-/** The locked sentence and the two slot phrases. The poll uses the phrases. */
+/** The locked both-free sentence. Not a poll. */
 export async function answerBothFreeOffer(
   database: Database,
   input: { familyId: string; now: Date; language: ReplyLanguage },

@@ -634,6 +634,45 @@ describe('handleLinqInboundRequest', () => {
     expect(JSON.stringify(h.warns)).not.toContain(PHONE);
   });
 
+  it('records None of these and does not route another ask', async () => {
+    const h = harness();
+    const { familyId, userId } = enrol(h.fake);
+    await h.fake.db.insert(schema.linqPollOptions).values({
+      familyId,
+      parentUserId: userId,
+      providerChatId: CHAT_ID,
+      providerMessageId: 'poll-msg',
+      optionId: 'opt-none',
+      optionText: 'None of these',
+    } as never);
+    const vote = JSON.parse(messageBody()) as { event_type: string; data: unknown };
+    vote.event_type = 'poll.vote.added';
+    vote.data = {
+      chat_id: CHAT_ID,
+      message_id: 'poll-msg',
+      option_id: 'opt-none',
+      sender_handle: { handle: PHONE, is_me: false },
+    };
+
+    const res = await handleLinqInboundRequest(request(JSON.stringify(vote)), h.deps);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ outcome: 'poll_none' });
+    expect(h.jobs).toEqual([]);
+    const message = h.fake.rows(schema.channelMessages).find((row) => row.body === 'None of these');
+    expect(message).toMatchObject({
+      familyId,
+      direction: 'in',
+      providerMessageId: `poll:poll-msg:opt-none:${phoneBlindIndex(PHONE)}`,
+    });
+    expect(h.reads).toEqual([{ chatId: CHAT_ID }]);
+    expect(h.sends).toEqual([]);
+
+    const again = await handleLinqInboundRequest(request(JSON.stringify(vote)), h.deps);
+    await expect(again.json()).resolves.toEqual({ outcome: 'duplicate' });
+    expect(h.jobs).toEqual([]);
+  });
+
   it('routes a second parent voting the same option, and drops a repeat from the first', async () => {
     const h = harness();
     const { familyId, userId } = enrol(h.fake);

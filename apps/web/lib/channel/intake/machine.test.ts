@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatLinqLineForParent, linqCoParentAsk } from '~/lib/channel/linq/group';
+import { YEAR_FIND_POLL_NONE, YEAR_FIND_POLL_PROMPT } from '~/lib/channel/linq/poll';
 import { createLinqTextTransport } from '~/lib/channel/linq/transport';
 import {
   EMERGENCY_REPLY,
@@ -114,6 +115,8 @@ function harness(options: {
   /** Whether the first reply named an age-fit thing. The card, the name, both
    * connector cards, and the co-parent ask still go out when it did not. */
   findWon?: boolean;
+  /** Titles from that find. Two or more can become a year-find poll. */
+  titles?: readonly string[];
 }): {
   fake: FakeDb;
   transport: FakeTransport;
@@ -152,6 +155,7 @@ function harness(options: {
             ...payload,
             weekendPickOffered: options.weekendPickOffered ?? false,
             findWon: options.findWon ?? true,
+            ...(options.titles ? { titles: options.titles } : {}),
           };
         },
       },
@@ -2716,6 +2720,110 @@ describe('intake · one ladder job per reply', () => {
     expect(
       calls.some((call) => String(JSON.stringify(call.body)).includes(PARENT_CALL_NAME_ASK)),
     ).toBe(false);
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('asks which find to look at first and holds the name until the next text', async () => {
+    vi.stubEnv('LINQ_POLLS', 'on');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
+    const chatId = 'chat-year';
+    const inboundId = 'msg-in-poll';
+    let messageCount = 0;
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      const body = init?.body === undefined ? null : JSON.parse(String(init.body));
+      if (target.includes('/contact_card?') || init?.method === 'GET') {
+        return Response.json({
+          contact_cards: [{ phone_number: '+16462352164', first_name: 'Hale', is_active: true }],
+        });
+      }
+      if (target.includes('/contact_card')) {
+        return Response.json({ is_active: true, phone_number: '+16462352164' }, { status: 201 });
+      }
+      if (target.includes('/polls')) {
+        const options = (body?.poll?.options ?? []) as { text: string }[];
+        return Response.json(
+          {
+            message_id: 'poll-year',
+            poll: {
+              options: options.map((option, index) => ({
+                option_id: `opt-${index}`,
+                text: option.text,
+              })),
+            },
+          },
+          { status: 202 },
+        );
+      }
+      if (target.includes('/messages')) {
+        messageCount += 1;
+        return Response.json({ message: { id: `msg-out-${messageCount}` } }, { status: 201 });
+      }
+      return new Response(null, { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const h = harness({
+      titles: ['Swim at the rec centre', 'Library storytime', 'Zoo morning', 'Invented extra'],
+    });
+    await handleInboundSms(
+      h.fake.db,
+      h.transport.inbound(PHONE, 'hi', { transport: 'imessage', chatId }),
+      h.deps,
+    );
+    const findInbound = h.transport.inbound(PHONE, 'Maya is 4, Leo is 1. M5V 2T6', {
+      transport: 'imessage',
+      chatId,
+      providerId: inboundId,
+    });
+    const linq = createLinqTextTransport({
+      chatId,
+      replyToMessageId: findInbound.providerId,
+      fetch: fetchMock,
+    });
+    const recorded = await handleInboundSms(h.fake.db, findInbound, {
+      ...h.deps,
+      transport: linq,
+    });
+
+    expect(recorded.status).toBe('provisioned');
+    const calls = fetchMock.mock.calls.map((call) => {
+      const init = call[1];
+      return {
+        url: String(call[0]),
+        method: (init?.method ?? 'GET').toUpperCase(),
+        body: init?.body === undefined ? undefined : JSON.parse(String(init.body)),
+      };
+    });
+    const prompt = calls.find(
+      (call) => call.body?.message?.parts?.[0]?.value === YEAR_FIND_POLL_PROMPT.en,
+    );
+    expect(prompt?.url).toContain(`/chats/${chatId}/messages`);
+    const poll = calls.find((call) => call.url.includes('/polls'));
+    expect(poll?.url).toContain(`/chats/${chatId}/polls`);
+    expect(poll?.body.poll.options.map((option: { text: string }) => option.text)).toEqual([
+      'Swim at the rec centre',
+      'Library storytime',
+      'Zoo morning',
+      YEAR_FIND_POLL_NONE.en,
+    ]);
+    expect(
+      calls.some((call) => String(JSON.stringify(call.body)).includes(PARENT_CALL_NAME_ASK)),
+    ).toBe(false);
+    expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/chats'))).toBe(false);
+
+    const picked = h.transport.inbound(PHONE, 'Swim at the rec centre', {
+      transport: 'imessage',
+      chatId,
+      providerId: 'msg-in-pick',
+    });
+    await handleInboundSms(h.fake.db, picked, { ...h.deps, transport: linq });
+    const afterPick = fetchMock.mock.calls.map((call) =>
+      call[1]?.body === undefined ? '' : String(call[1].body),
+    );
+    expect(afterPick.some((body) => body.includes(PARENT_CALL_NAME_ASK))).toBe(true);
+    expect(afterPick.some((body) => body.includes('You picked'))).toBe(false);
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });

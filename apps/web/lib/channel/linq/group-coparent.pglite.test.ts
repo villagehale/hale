@@ -25,7 +25,6 @@ import {
   groupGmailReceipt,
 } from './group-coparent-copy';
 import type { LinqInboundText } from './payload';
-import { LINQ_POLL_PLACEHOLDER_PROMPT } from './poll';
 
 /**
  * A noted number speaking in the claimed group becomes the co-parent of the
@@ -796,7 +795,7 @@ describe('group co-parent seating', () => {
     expectLinqGroupOnly(wire);
   });
 
-  it('adds a both-free poll only when LINQ_POLLS is on, and keeps the locked sentence', async () => {
+  it('keeps the both-free sentence and does not attach a poll', async () => {
     const seeded = await seedHousehold();
     await db.database
       .update(schema.families)
@@ -809,59 +808,25 @@ describe('group co-parent seating', () => {
       step: 'done',
     });
 
-    const off = pollAwareFetch();
+    vi.stubEnv('LINQ_POLLS', 'on');
+    const wire = pollAwareFetch();
     const textOnly = await considerGroupCoparent(
       db.database,
       inbound({
-        messageId: 'm-both-off',
+        messageId: 'm-both-free',
         senderHandle: PARENT_PHONE,
         text: 'when are we both free',
       }),
-      { now: NOW, fetch: off.fetch, recordInbound },
+      { now: NOW, fetch: wire.fetch, recordInbound },
     );
     expect(textOnly).toMatchObject({ type: 'done', outcome: 'group_coparent_both_free' });
-    expect(off.texts()).toHaveLength(1);
-    expect(off.texts()[0]).toMatch(/^You're both free .+ or .+\. Want the sign-up page for one\?$/);
-    expect(off.texts()[0]).not.toBe(LINQ_POLL_PLACEHOLDER_PROMPT);
-    expect(off.pollOptions()).toEqual([]);
-    expect(off.urls().some((url) => url.includes('/polls'))).toBe(false);
-    expect(off.urls().every((url) => url === GROUP_MESSAGES)).toBe(true);
-
-    await db.exec('delete from channel_messages');
-    vi.stubEnv('LINQ_POLLS', 'on');
-    const on = pollAwareFetch();
-    const polled = await considerGroupCoparent(
-      db.database,
-      inbound({
-        messageId: 'm-both-on',
-        senderHandle: PARENT_PHONE,
-        text: 'when are we both free',
-      }),
-      { now: NOW, fetch: on.fetch, recordInbound },
+    expect(wire.texts()).toHaveLength(1);
+    expect(wire.texts()[0]).toMatch(
+      /^You're both free .+ or .+\. Want the sign-up page for one\?$/,
     );
-    expect(polled).toMatchObject({ type: 'done', outcome: 'group_coparent_both_free' });
-    expect(on.texts()[0]).toMatch(/^You're both free .+ or .+\. Want the sign-up page for one\?$/);
-    expect(on.texts()[1]).toBe(LINQ_POLL_PLACEHOLDER_PROMPT);
-    expect(on.pollOptions()).toHaveLength(2);
-    for (const option of on.pollOptions()) {
-      expect(on.texts()[0]).toContain(option);
-    }
-    expect(
-      on.urls().some((url) => url === `${GROUP_MESSAGES.replace('/messages', '/polls')}`),
-    ).toBe(true);
-    expect(on.urls().every((url) => url.includes(GROUP))).toBe(true);
-
-    const again = await considerGroupCoparent(
-      db.database,
-      inbound({
-        messageId: 'm-both-again',
-        senderHandle: PARENT_PHONE,
-        text: 'when are we both free',
-      }),
-      { now: NOW, fetch: on.fetch, recordInbound },
-    );
-    expect(again).toMatchObject({ type: 'done', outcome: 'group_coparent_both_free' });
-    expect(on.pollOptions()).toHaveLength(2);
+    expect(wire.pollOptions()).toEqual([]);
+    expect(wire.urls().some((url) => url.includes('/polls'))).toBe(false);
+    expect(wire.urls().every((url) => url === GROUP_MESSAGES)).toBe(true);
   });
 });
 

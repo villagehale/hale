@@ -183,6 +183,13 @@ export interface RadarPayload {
    */
   findWon: boolean;
   /**
+   * Titles of the lines in {@link message}, in the same order, at most three.
+   * A pick's name or a civic candidate's title — not the rendered line.
+   * Empty when the find has no line. The year-find poll reads this and does
+   * not invent a title when it is missing.
+   */
+  titles?: readonly string[];
+  /**
    * The three rule #11 outcomes of the one turn, carried so a test and any future
    * caller can read what the log line below says. See {@link RadarMessage}: an
    * `actionMove` WITH an `actionHeld` is the compute-and-hold state the dark flag
@@ -418,6 +425,7 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       return {
         message,
         itemCount: opened.lines.length,
+        titles: opened.titles,
         followUpNeeded: !findWon,
         // This path never decides a checkpoint, so it never marks one told.
         checkpointTold: null,

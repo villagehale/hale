@@ -1,132 +1,136 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { linqPollsEnabled } from './config';
 import { LinqSendError, sendLinqChatMessage, sendLinqPoll } from './transport';
 
 /**
- * VIL-335 — a poll for a binary choice, behind LINQ_POLLS=on.
+ * VIL-335 — the year-find poll, behind LINQ_POLLS=on.
  *
- * Design has not locked a poll prompt. The question below is a placeholder for
- * Sloane. It is sent as its own text because a Linq poll has no question
- * field. Locked ask strings are not rewritten: a template key means this
- * caller refuses, and the flag defaults off.
+ * Design locked (Sloane). One ask, only after a year-find with two or more
+ * hits, in the Linq thread that find already used. Never an empty find, never
+ * unprompted, never on a conflict, a handoff, or a receipt. Titles are the
+ * find's own titles. This module does not search and does not invent one.
  *
- * The kids-year scenario is the both-free reply. That sentence stays
- * locked. When the flag is on, {@link offerKidsYearChoicePoll} adds this
- * placeholder and a poll whose options are the two slot phrases. When the
- * flag is off, the locked sentence is the whole reply.
+ * LINQ_POLLS stays off in this change. Ops turns it on after the PR ships.
  */
 
-/** DESIGN LOCK PENDING (Sloane). The text that precedes a poll. */
-export const LINQ_POLL_PLACEHOLDER_PROMPT = 'Which of these should I look at first?';
+/** Design locked. The text that precedes the poll. A Linq poll has no question field. */
+export const YEAR_FIND_POLL_PROMPT: Record<ReplyLanguage, string> = {
+  en: 'Which of these should I look at first?',
+  fr: 'Lequel je regarde en premier?',
+};
 
-const UNSAFE = /\b(911|stop|arret|arrêt)\b/i;
+/** Design locked. Always the last option. A vote for it is not another ask. */
+export const YEAR_FIND_POLL_NONE: Record<ReplyLanguage, string> = {
+  en: 'None of these',
+  fr: 'Aucun de ceux-la',
+};
 
 /**
- * Two short options in a coach sentence that is not a locked template.
- * "Soccer or swim?" qualifies. A Connect card, a co-parent ask, and anything
- * with a URL or an emergency number does not.
+ * Design locked sandbox scenario. A demo send when there is no live find.
+ * Not a fallback for an empty search, and not sent on its own.
  */
-export function binaryChoiceFromReply(
-  body: string,
-  templateKey: string | null,
-): readonly [string, string] | null {
-  if (templateKey) return null;
-  const trimmed = body.trim();
-  if (trimmed.length > 160 || trimmed.includes('http') || !trimmed.endsWith('?')) return null;
-  if (UNSAFE.test(trimmed)) return null;
-  const match = /^(.{2,40}) or (.{2,40})\?$/.exec(trimmed);
-  if (!match?.[1] || !match[2]) return null;
-  const left = match[1].trim();
-  const right = match[2].trim();
-  if (!left || !right || left.includes('?') || right.includes('?')) return null;
-  return [left, right];
+export const SANDBOX_YEAR_FIND_TITLES: Record<ReplyLanguage, readonly [string, string]> = {
+  en: ['Swim at the rec centre', 'Library storytime'],
+  fr: ['Nage au centre recreatif', 'Heure du conte a la bibliotheque'],
+};
+
+const NONE_OPTIONS = new Set<string>([YEAR_FIND_POLL_NONE.en, YEAR_FIND_POLL_NONE.fr]);
+
+/** Exact match on the locked "none" option, either language. */
+export function isYearFindPollNone(text: string): boolean {
+  return NONE_OPTIONS.has(text.trim());
+}
+
+/**
+ * Up to three find titles, then the locked none option. Fewer than two
+ * titles is no poll. A title that is itself the none line is dropped.
+ */
+export function yearFindPollOptions(
+  language: ReplyLanguage,
+  titles: readonly string[],
+): readonly string[] | null {
+  const seen = new Set<string>();
+  const cleaned: string[] = [];
+  for (const raw of titles) {
+    const title = raw.trim();
+    if (!title || seen.has(title) || NONE_OPTIONS.has(title)) continue;
+    seen.add(title);
+    cleaned.push(title);
+    if (cleaned.length === 3) break;
+  }
+  if (cleaned.length < 2) return null;
+  return [...cleaned, YEAR_FIND_POLL_NONE[language]];
+}
+
+/** The sandbox options, verbatim. Two fixed titles plus the none line. */
+export function sandboxYearFindPollOptions(language: ReplyLanguage): readonly string[] {
+  return [...SANDBOX_YEAR_FIND_TITLES[language], YEAR_FIND_POLL_NONE[language]];
 }
 
 export type LinqPollOffer =
   | { status: 'sent'; providerMessageId: string; channelMessageId: string }
+  | { status: 'prompted' }
   | { status: 'skipped'; reason: 'flag_off' | 'not_a_choice' | 'not_imessage' | 'no_chat' }
   | { status: 'skipped'; reason: 'refused' | 'not_configured'; code: string };
 
-export async function offerLinqChoicePoll(
+/**
+ * The live year-find ask. `titles` are the find's titles (pick name or civic
+ * title), already sliced with the lines the parent just read. Same chat.
+ */
+export async function offerYearFindPoll(
   database: Database,
   args: {
     channel: string;
     chatId: string | null;
-    body: string;
-    templateKey: string | null;
+    titles: readonly string[];
+    language: ReplyLanguage;
     familyId: string;
     parentUserId: string;
     now: Date;
     fetch?: typeof fetch;
   },
 ): Promise<LinqPollOffer> {
-  if (!linqPollsEnabled()) return { status: 'skipped', reason: 'flag_off' };
-  if (args.channel !== 'imessage') return { status: 'skipped', reason: 'not_imessage' };
-  if (!args.chatId) return { status: 'skipped', reason: 'no_chat' };
-  const choice = binaryChoiceFromReply(args.body, args.templateKey);
-  if (!choice) return { status: 'skipped', reason: 'not_a_choice' };
-  return deliverChoicePoll(database, {
-    chatId: args.chatId,
-    options: choice,
-    familyId: args.familyId,
-    parentUserId: args.parentUserId,
-    now: args.now,
-    fetch: args.fetch,
-    idempotencyKey: `poll:${args.familyId}:${args.now.getTime()}`,
+  const options = yearFindPollOptions(args.language, args.titles);
+  return offerPoll(database, {
+    ...args,
+    options,
+    idempotencyKey: `poll:year-find:${args.familyId}:${args.now.toISOString().slice(0, 10)}`,
   });
 }
 
 /**
- * A both-free (or other kids-year) choice whose sentence is already locked.
- * The options are the slot phrases, not new voice. The placeholder question
- * is {@link LINQ_POLL_PLACEHOLDER_PROMPT}. Flag off sends nothing here.
+ * The sandbox scenario. Callers that want the demo pass this explicitly.
+ * An empty year-find does not.
  */
-export async function offerKidsYearChoicePoll(
+export async function offerSandboxYearFindPoll(
   database: Database,
   args: {
     channel: string;
     chatId: string | null;
-    options: readonly [string, string];
+    language: ReplyLanguage;
     familyId: string;
     parentUserId: string;
     now: Date;
     fetch?: typeof fetch;
   },
 ): Promise<LinqPollOffer> {
-  if (!linqPollsEnabled()) return { status: 'skipped', reason: 'flag_off' };
-  if (args.channel !== 'imessage') return { status: 'skipped', reason: 'not_imessage' };
-  if (!args.chatId) return { status: 'skipped', reason: 'no_chat' };
-  const left = args.options[0].trim();
-  const right = args.options[1].trim();
-  if (
-    !left ||
-    !right ||
-    left.includes('http') ||
-    right.includes('http') ||
-    UNSAFE.test(left) ||
-    UNSAFE.test(right)
-  ) {
-    return { status: 'skipped', reason: 'not_a_choice' };
-  }
-  const day = args.now.toISOString().slice(0, 10);
-  return deliverChoicePoll(database, {
-    chatId: args.chatId,
-    options: [left, right],
-    familyId: args.familyId,
-    parentUserId: args.parentUserId,
-    now: args.now,
-    fetch: args.fetch,
-    idempotencyKey: `poll:both-free:${args.familyId}:${day}`,
+  return offerPoll(database, {
+    ...args,
+    options: sandboxYearFindPollOptions(args.language),
+    idempotencyKey: `poll:year-find-sandbox:${args.familyId}:${args.now.toISOString().slice(0, 10)}`,
   });
 }
 
-async function deliverChoicePoll(
+async function offerPoll(
   database: Database,
   args: {
-    chatId: string;
-    options: readonly [string, string];
+    channel: string;
+    chatId: string | null;
+    options: readonly string[] | null;
+    language: ReplyLanguage;
     familyId: string;
     parentUserId: string;
     now: Date;
@@ -134,15 +138,46 @@ async function deliverChoicePoll(
     idempotencyKey: string;
   },
 ): Promise<LinqPollOffer> {
+  if (!linqPollsEnabled()) return { status: 'skipped', reason: 'flag_off' };
+  if (args.channel !== 'imessage') return { status: 'skipped', reason: 'not_imessage' };
+  if (!args.chatId) return { status: 'skipped', reason: 'no_chat' };
+  if (!args.options) return { status: 'skipped', reason: 'not_a_choice' };
+  return deliverChoicePoll(database, {
+    chatId: args.chatId,
+    prompt: YEAR_FIND_POLL_PROMPT[args.language],
+    options: args.options,
+    familyId: args.familyId,
+    parentUserId: args.parentUserId,
+    now: args.now,
+    fetch: args.fetch,
+    idempotencyKey: args.idempotencyKey,
+  });
+}
+
+async function deliverChoicePoll(
+  database: Database,
+  args: {
+    chatId: string;
+    prompt: string;
+    options: readonly string[];
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+    fetch?: typeof fetch;
+    idempotencyKey: string;
+  },
+): Promise<LinqPollOffer> {
+  let prompted = false;
   try {
     await sendLinqChatMessage({
       chatId: args.chatId,
-      text: LINQ_POLL_PLACEHOLDER_PROMPT,
+      text: args.prompt,
       fetch: args.fetch,
     });
+    prompted = true;
     const poll = await sendLinqPoll({
       chatId: args.chatId,
-      options: [args.options[0], args.options[1]],
+      options: args.options,
       idempotencyKey: args.idempotencyKey,
       fetch: args.fetch,
     });
@@ -182,6 +217,13 @@ async function deliverChoicePoll(
     });
     return { status: 'sent', providerMessageId: poll.messageId, channelMessageId };
   } catch (err) {
+    if (prompted) {
+      console.warn(
+        { familyId: args.familyId, code: err instanceof LinqSendError ? err.code : 'unknown' },
+        'linq poll: question landed, poll did not — no second ask this turn',
+      );
+      return { status: 'prompted' };
+    }
     const code = err instanceof LinqSendError ? err.code : 'unknown';
     console.warn(
       {
@@ -189,7 +231,7 @@ async function deliverChoicePoll(
         code,
         httpStatus: err instanceof LinqSendError ? err.httpStatus : 0,
       },
-      'linq poll: not sent — the text choice still goes out',
+      'linq poll: not sent',
     );
     return {
       status: 'skipped',

@@ -124,7 +124,10 @@ export type TwilioInboundOutcome =
    * receipt is not an ignored text. SMS never produces this. */
   | 'receipt'
   /** A verified channel, but not a parent's — never handed to a household agent. */
-  | 'not_a_parent';
+  | 'not_a_parent'
+  /** Linq year-find poll: the parent chose "None of these". Recorded, not routed,
+   * so this turn does not ask again. A later text still advances the ladder. */
+  | 'poll_none';
 
 /** Twilio's count of attached media parts. Absent/garbage reads as none. */
 function mediaCount(params: Record<string, string>): number {

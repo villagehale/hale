@@ -81,6 +81,12 @@ export function yearOpenQuery(input: {
   return deidentified;
 }
 
+interface YearOpenHit {
+  line: string;
+  /** The find's own title. The poll uses this, never the rendered line. */
+  title: string;
+}
+
 function civicLine(pick: WeekendPick): string {
   const where = pick.candidateRef.venueName ? ` at ${pick.candidateRef.venueName}` : '';
   const who = pick.kidNames.length > 0 ? ` for ${pick.kidNames.join(' and ')}` : '';
@@ -93,6 +99,26 @@ function webLine(pick: ActivityPick): string {
   const when = pick.when ? ` - ${pick.when}` : '';
   const price = pick.price ? ` - ${pick.price}` : '';
   return asciiCopy(`${pick.name} (${pick.ageFit})${when}${price}`);
+}
+
+function civicHit(pick: WeekendPick): YearOpenHit {
+  return { line: civicLine(pick), title: pick.candidateRef.title.trim() };
+}
+
+function webHit(pick: ActivityPick): YearOpenHit {
+  return { line: webLine(pick), title: pick.name.trim() };
+}
+
+function packYearOpen(
+  hits: readonly YearOpenHit[],
+  finder: YearFinderUse,
+): { lines: string[]; titles: string[]; finder: YearFinderUse } {
+  const shown = hits.slice(0, 3);
+  return {
+    lines: shown.map((hit) => hit.line),
+    titles: shown.map((hit) => hit.title).filter((title) => title.length > 0),
+    finder,
+  };
 }
 
 export function renderYearOpen(lines: readonly string[]): string {
@@ -117,11 +143,11 @@ export async function collectYearOpenLines(input: {
   areaCoarse: string | null;
   finder: ActivityFinder | null;
   familyId: string;
-}): Promise<{ lines: string[]; finder: YearFinderUse }> {
-  const civicLines = input.civic.slice(0, 3).map(civicLine);
+}): Promise<{ lines: string[]; titles: string[]; finder: YearFinderUse }> {
+  const civic = input.civic.slice(0, 3).map(civicHit);
   if (!input.finder) {
     console.info({ familyId: input.familyId }, 'intake year find: skipped: not_configured');
-    return { lines: civicLines, finder: 'not_configured' };
+    return packYearOpen(civic, 'not_configured');
   }
   const query = yearOpenQuery({ children: input.children, areaCoarse: input.areaCoarse });
   if (!query.ok) {
@@ -129,7 +155,7 @@ export async function collectYearOpenLines(input: {
       { familyId: input.familyId, reason: query.reason },
       'intake year find: query refused',
     );
-    return { lines: civicLines, finder: 'refused' };
+    return packYearOpen(civic, 'refused');
   }
   try {
     const found = await input.finder.find(query.query);
@@ -138,7 +164,7 @@ export async function collectYearOpenLines(input: {
         { familyId: input.familyId, reason: found.reason },
         'intake year find: no web picks',
       );
-      return { lines: civicLines, finder: 'empty' };
+      return packYearOpen(civic, 'empty');
     }
     const stages =
       query.query.stages && query.query.stages.length > 0
@@ -151,8 +177,7 @@ export async function collectYearOpenLines(input: {
     );
     const leading = ranked.filter((pick) => ageFitRank(pick.ageFit, stages) === 0);
     const trailing = ranked.filter((pick) => ageFitRank(pick.ageFit, stages) === 1);
-    const lines = [...leading.map(webLine), ...civicLines, ...trailing.map(webLine)].slice(0, 3);
-    return { lines, finder: 'used' };
+    return packYearOpen([...leading.map(webHit), ...civic, ...trailing.map(webHit)], 'used');
   } catch (err) {
     console.error(
       {
@@ -161,7 +186,7 @@ export async function collectYearOpenLines(input: {
       },
       'intake year find: search failed',
     );
-    return { lines: civicLines, finder: 'failed' };
+    return packYearOpen(civic, 'failed');
   }
 }
 
