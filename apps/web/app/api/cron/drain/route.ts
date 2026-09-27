@@ -1,6 +1,7 @@
-import { after, NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { cronRoute } from '~/lib/cron/auth';
 import { DRAINABLE_QUEUES, isConnectionExhaustion, runDrainCron } from '~/lib/cron/drain';
+import { socialWatchlistEnabled } from '~/lib/social/flag';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
 // Node runtime: the drain instantiates pg-boss (prepared statements, raw pg) and
@@ -67,7 +68,24 @@ export const GET = cronRoute('drain', async (req: Request) => {
 
   try {
     const summary = await runDrainCron({ queues });
-    return NextResponse.json({ ok: true, ...summary }, { status: 200 });
+    // Signup-open watches need a tick inside two minutes of registration_opens_at.
+    // The hourly social-watch cron is too coarse for that, so the scheduled drain
+    // (already every minute) runs the tick when the flag is on. A kicked drain is
+    // a parent's inbound slice and does not take this detour. Flag off is named.
+    let socialSignup:
+      | { skipped: 'flag_off' | 'tick_failed' }
+      | { checked: number; updated: number } = { skipped: 'flag_off' };
+    if (socialWatchlistEnabled()) {
+      try {
+        const { runDueSignupWatches } = await import('~/lib/social/poll');
+        const { db } = await import('~/lib/db');
+        socialSignup = await runDueSignupWatches(db());
+      } catch (err) {
+        console.error({ err, skipped: 'tick_failed' }, 'cron/drain social signup tick failed');
+        socialSignup = { skipped: 'tick_failed' };
+      }
+    }
+    return NextResponse.json({ ok: true, ...summary, socialSignup }, { status: 200 });
   } catch (err) {
     // Surface the failure instead of letting it 500 silently: log to the
     // platform, then re-throw so the run is still a real error, not a masked

@@ -8,6 +8,8 @@ import {
 } from '~/lib/channel/twilio/inbound';
 import { applyTwilioStatus } from '~/lib/channel/twilio/status';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { socialWatchlistEnabled } from '~/lib/social/flag';
+import { considerSocialForward } from '~/lib/social/forward';
 import {
   linqFromE164,
   linqGroupCoparentEnabled,
@@ -249,6 +251,24 @@ async function routeOneToOne(
   deps: LinqDoorDeps,
   message: LinqInboundText,
 ): Promise<TwilioInboundOutcome> {
+  // A forwarded link is queued for extraction. The reply the parent was already
+  // going to get does not change, and a failure here is named rather than fatal.
+  if (socialWatchlistEnabled()) {
+    try {
+      const forward = await considerSocialForward(deps.database, {
+        text: message.text,
+        senderHandle: message.senderHandle,
+      });
+      if (forward.status === 'queued') {
+        deps.log.info({ outcome: 'social_forward_queued' }, 'linq inbound: social forward queued');
+      }
+    } catch (err) {
+      deps.log.error(
+        { err, outcome: 'social_forward_failed' },
+        'linq inbound: social forward failed',
+      );
+    }
+  }
   return routeTwilioInbound(
     deps,
     {
