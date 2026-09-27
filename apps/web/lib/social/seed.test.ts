@@ -8,15 +8,18 @@ const NEEDED_CATEGORIES = ['T1', 'T2', 'T3', 'T5', 'T6', 'T10', 'T11'] as const;
 describe('SOCIAL_SEED', () => {
   const active = SOCIAL_SEED.filter((row) => row.active);
 
-  it('covers at least 100 sources, all five GTA regions, a day trip, and six categories', () => {
-    expect(SOCIAL_SEED.length).toBeGreaterThanOrEqual(100);
+  it('covers the full GTA, with at least 20 active sources in each region and most of them outside Toronto', () => {
+    expect(SOCIAL_SEED.length).toBeGreaterThanOrEqual(150);
+    expect(SOCIAL_SEED.length).toBeLessThanOrEqual(200);
     expect(active.length).toBeGreaterThanOrEqual(100);
     for (const region of ['toronto', 'peel', 'york', 'halton', 'durham'] as const) {
-      expect(
-        active.some((row) => row.region === region),
-        region,
-      ).toBe(true);
+      const count = active.filter((row) => row.region === region).length;
+      expect(count, region).toBeGreaterThanOrEqual(20);
     }
+    const outside = active.filter((row) => row.region !== 'toronto').length;
+    expect(outside / active.length).toBeGreaterThanOrEqual(0.3);
+    const outsideAll = SOCIAL_SEED.filter((row) => row.region !== 'toronto').length;
+    expect(outsideAll / SOCIAL_SEED.length).toBeGreaterThanOrEqual(0.3);
     expect(active.some((row) => row.region === 'day_trip')).toBe(true);
     expect(new Set(active.map((row) => row.category)).size).toBeGreaterThanOrEqual(6);
     for (const category of NEEDED_CATEGORIES) {

@@ -12,7 +12,17 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * and a fact the caption does not contain is dropped. Placeholder confidence
  * stays under the alert bar unless the caption itself states an age and a date
  * or a registration URL. No parent-facing copy is produced here.
+ *
+ * Caption-first on purpose. Ask Hale can already hand the model an image
+ * block (lib/coach/attachment-blocks.ts), but forceToolJson only accepts a
+ * text user message, and Business Discovery does not give Hale a durable
+ * copy of the flyer. TODO(VIL-378): when a post image is cached locally,
+ * read it through that image block and drop any fact the caption and the
+ * image do not both support. Do not store expiring CDN media URLs.
  */
+
+/** The poll extracts captions. Flyer vision is not wired. */
+export const FLYER_VISION = 'caption_only' as const;
 
 export const PLACEHOLDER_CONFIDENCE_CEILING = 0.75;
 export const LLM_CONFIDENCE_CEILING = 0.9;

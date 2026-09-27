@@ -55,13 +55,38 @@ Graph version in code: `v21.0` (`META_GRAPH_VERSION`).
 
 ## Signup-open watches
 
-When an extracted spot has both `registration_opens_at` and `registration_url`,
-the row is the job: `watch_status = scheduled`, `next_wake_at` fifteen minutes
-before open. The every-minute drain ticks due rows while the flag is on, so a
-read lands inside the two minutes after open. The organizer's page is fetched.
-Sold-out copy marks the watch `filled`. An unreadable page stays `armed` and
-wakes again in sixty seconds. After the two-minute window the watch is
-`missed`. No SMS is sent.
+Registration alerts are part of the same job as discovery. When an extracted
+spot has both `registration_opens_at` and `registration_url`, the row is the
+job: `watch_status = scheduled`, `next_wake_at` fifteen minutes before open.
+The every-minute drain ticks due rows while the flag is on, so a read lands
+inside the two minutes after open. The organizer's page is fetched. Sold-out
+copy marks the watch `filled`. An unreadable page stays `armed` and wakes
+again in sixty seconds. After the two-minute window the watch is `missed`.
+No SMS is sent.
+
+## Structured rails, beside this list
+
+Municipal season catalogs, EarlyON locators, and library calendars already
+have civic and registration paths in Hale. This watchlist does not rebuild
+those portals. It is the hidden-social layer: professional accounts that
+post a drop-in, a farm weekend, or a PA-day camp that never lands in
+PerfectMind. A city Instagram account is here only because it announces a
+registration window. The season catalog stays on the civic rail.
+
+## Captions, not flyer vision yet
+
+Extraction reads the caption. Ask Hale can already send an image to the
+model (`lib/coach/attachment-blocks.ts`), and `forceToolJson` only accepts
+text, so a flyer image is not read. `FLYER_VISION` is `caption_only`.
+TODO: when a post image is cached locally, pass it through that image block
+and drop any fact the caption and the image do not both support. Do not
+store expiring CDN media URLs.
+
+## Out of scope
+
+A free "claim this listing" for organizers (the GoPlay-style supply
+conversion) is phase 2. This PR does not add a claim flow, a provider
+portal, or a partner pack.
 
 ## Parent forwards
 
@@ -72,7 +97,10 @@ same queue without a phone. The URL is not fetched.
 
 ## Seed
 
-`seed.ts` is the watchlist: handles read off each organization's public page
-on 2026-09-27. Rows with `active: false` were on a page but the region was
-not a single answer. Loading them into `watched_sources` is a deliberate
-insert, not a migration.
+`seed.ts` is the watchlist. Handles were read off an organization page, a
+municipal homepage, or a Kids Pass directory card on 2026-09-27. The list
+is balanced across Toronto, Peel, York, Halton, and Durham: at least 20
+active accounts in each region, and most of the list sits outside Toronto.
+Rows with `active: false` were named in that pass but the city was not on
+the page, so they are not polled. Loading them into `watched_sources` is a
+deliberate insert, not a migration.

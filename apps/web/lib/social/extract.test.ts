@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  FLYER_VISION,
   PLACEHOLDER_CONFIDENCE_CEILING,
   extractSocialSpot,
   extractSocialSpotPlaceholder,
@@ -44,6 +45,10 @@ describe('extractSocialSpotPlaceholder', () => {
 });
 
 describe('extractSocialSpot', () => {
+  it('stays on the caption until a cached flyer image exists', () => {
+    expect(FLYER_VISION).toBe('caption_only');
+  });
+
   it('uses the placeholder when no model client is passed', async () => {
     const spot = await extractSocialSpot('Ages 2-4 years', 'EarlyON', {});
     expect(spot.method).toBe('placeholder');
