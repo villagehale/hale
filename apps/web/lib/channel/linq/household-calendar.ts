@@ -21,6 +21,7 @@ import {
   bothFreeDay,
   bothFreeFactKey,
   bothFreePollOptions,
+  isFigureItOutLine,
   loadRememberedLogistics,
   readSlotReply,
   readWhoTakesReply,
@@ -28,6 +29,7 @@ import {
   whoTakesFactKey,
   whoTakesPollOptions,
   whoTakesPrompt,
+  withholdWhoTakes,
   writeLogisticsDecision,
 } from './logistics-poll';
 import { sendChoicePoll } from './poll';
@@ -47,12 +49,13 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * never during quiet hours. A cancellation, a weekly recap, and an unprompted
  * both-free suggestion are not bubbles.
  *
- * VIL-377: when LINQ_POLLS is on, a conflict narration is followed by a who-takes
- * poll in the same turn. The narration is the one discretionary bubble. The
- * poll ledger row does not spend a second one. The who-takes prompt is not
- * sent as well — the locked conflict line already asks who's taking it.
- * An evening event with no taker and no conflict uses that prompt alone.
- * Flag off keeps the locked text and does not poll.
+ * VIL-377, Design locked 2026-09-26: when LINQ_POLLS is on, a conflict is the
+ * who-takes prompt alone, then the poll. The locked conflict sentence is not
+ * sent on that turn. The prompt carries day and time. The poll ledger row
+ * does not spend a second discretionary bubble. An evening event with no
+ * taker and no conflict uses that same prompt. Flag off keeps the locked
+ * conflict text and does not poll. "We'll figure it out" stores no taker
+ * and does not ask again that day.
  *
  * Kid-event, conflict, handoff, and post-event notices leave only through the
  * family's `linq_group_chat_id`. A Linq refusal is `not_sent`. Nothing on this
@@ -154,6 +157,8 @@ export interface WhoTakesAsk {
   titleNorm: string;
   kid: string;
   event: string;
+  day: string;
+  time: string;
 }
 
 export interface HouseholdNotice {
@@ -177,6 +182,8 @@ export interface HouseholdNotice {
 export interface HandoffStatement {
   userId: string;
   text: string;
+  /** When the parent said it. Absent means the plan's own `now`. */
+  at?: Date;
 }
 
 export interface NoticePlanInput {
@@ -213,9 +220,10 @@ export function planHouseholdNotices(input: NoticePlanInput): HouseholdNotice[] 
 /**
  * Evening before, a tomorrow kid event, and nobody has said who takes it.
  * A conflict still owns that turn — this is only the case with no overlap.
- * Flag off does not call this. The bubble is the Design-pending who-takes prompt.
+ * Flag off does not call this. The bubble is the locked who-takes prompt.
  */
 export function planAmbiguousWhoTakes(input: NoticePlanInput): HouseholdNotice | null {
+  if (passedFigureItOutToday(input)) return null;
   const hour = zonedClock(input.now, input.timeZone).hour;
   if (hour < HANDOFF_HOUR_START || hour >= HANDOFF_HOUR_END) return null;
   const [first, second] = input.parentUserIds;
@@ -249,22 +257,18 @@ export function planAmbiguousWhoTakes(input: NoticePlanInput): HouseholdNotice |
   if (!best?.title || !best.start) return null;
   const parts = splitKidEvent(best.title, input.childNames);
   const recipient = otherParent(best.userId, first, second) ?? best.userId;
-  if (!parts) return null;
+  if (!parts || !best.start) return null;
   const startIso = best.start.toISOString();
+  const ask = whoTakesAsk(best, parts, input);
   return {
     kind: 'who_takes',
     dedupeKey: `linq-group:who-takes:${best.eventId}:${startIso}`,
     gateKind: 'activity_followup',
     category: 'calendar_alert',
-    text: whoTakesPrompt(input.language, parts.kid, parts.event),
+    text: whoTakesPrompt(input.language, ask),
     recipientUserId: recipient,
     mark: [{ integrationId: best.integrationId, eventId: best.eventId, field: 'announced' }],
-    whoTakes: {
-      startIso,
-      titleNorm: normalizeTitle(best.title),
-      kid: parts.kid,
-      event: parts.event,
-    },
+    whoTakes: ask,
   };
 }
 
@@ -282,6 +286,7 @@ function upcomingKid(block: BusyBlock, now: Date): boolean {
 }
 
 function soonestConflict(input: NoticePlanInput): HouseholdNotice | null {
+  if (passedFigureItOutToday(input)) return null;
   const [first, second] = input.parentUserIds;
   let best: { block: BusyBlock; at: number } | null = null;
   for (const block of input.blocks) {
@@ -310,6 +315,7 @@ function soonestConflict(input: NoticePlanInput): HouseholdNotice | null {
   const recipient = otherParent(best.block.userId, first, second);
   if (!parts || !recipient) return null;
   const startIso = best.block.start.toISOString();
+  const ask = whoTakesAsk(best.block, parts, input);
   return {
     kind: 'conflict',
     dedupeKey: `linq-group:conflict:${best.block.eventId}:${startIso}`,
@@ -318,8 +324,8 @@ function soonestConflict(input: NoticePlanInput): HouseholdNotice | null {
     text: groupConflictText(input.language, {
       kid: parts.kid,
       event: parts.event,
-      day: formatDay(best.block.start, input.timeZone, input.language),
-      time: formatTime(best.block.start, input.timeZone, input.language),
+      day: ask.day,
+      time: ask.time,
     }),
     recipientUserId: recipient,
     mark: [
@@ -329,13 +335,38 @@ function soonestConflict(input: NoticePlanInput): HouseholdNotice | null {
         field: 'announced',
       },
     ],
-    whoTakes: {
-      startIso,
-      titleNorm: normalizeTitle(best.block.title),
-      kid: parts.kid,
-      event: parts.event,
-    },
+    whoTakes: ask,
   };
+}
+
+/** The locked who-takes prompt fields. Parent names are never filled in here. */
+function whoTakesAsk(
+  block: BusyBlock,
+  parts: { kid: string; event: string },
+  input: NoticePlanInput,
+): WhoTakesAsk {
+  const start = block.start ?? input.now;
+  return {
+    startIso: start.toISOString(),
+    titleNorm: normalizeTitle(block.title ?? ''),
+    kid: parts.kid,
+    event: parts.event,
+    day: formatDay(start, input.timeZone, input.language),
+    time: formatTime(start, input.timeZone, input.language),
+  };
+}
+
+/**
+ * They already passed for today. No taker is stored. Do not ask again until
+ * the next local day. A statement with no timestamp is this plan's own now.
+ */
+function passedFigureItOutToday(input: NoticePlanInput): boolean {
+  const today = bothFreeDay(input.now, input.timeZone);
+  return (input.statements ?? []).some((statement) => {
+    if (!isFigureItOutLine(statement.text)) return false;
+    const at = statement.at ?? input.now;
+    return bothFreeDay(at, input.timeZone) === today;
+  });
 }
 
 function soonestHandoff(input: NoticePlanInput): HouseholdNotice | null {
@@ -363,7 +394,7 @@ function soonestHandoff(input: NoticePlanInput): HouseholdNotice | null {
           normalizeTitle(block.title),
         )
       : null;
-    // An open ask or an explicit "I'll figure it out" is not a taker.
+    // An open ask or a stored pass is not a taker. "We'll figure it out" stores none.
     // A stored vote names one. Otherwise the event on exactly one calendar does.
     if (memory?.status === 'declined' || memory?.status === 'open') continue;
     const sole = soleCalendarOwner(block, input.blocks);
@@ -968,6 +999,9 @@ export async function narrateHouseholdCalendar(
     }
   }
   if (!notice) return;
+  if (linqPollsEnabled() && notice.kind === 'conflict' && notice.whoTakes) {
+    notice = { ...notice, text: whoTakesPrompt(context.language, notice.whoTakes) };
+  }
   if (
     await groupProactiveCapReached(database, {
       familyId: input.familyId,
@@ -1052,7 +1086,11 @@ async function loadHandoffStatements(
         row.body &&
         row.createdAt.getTime() >= since.getTime(),
     )
-    .map((row) => ({ userId: row.parentUserId as string, text: row.body as string }));
+    .map((row) => ({
+      userId: row.parentUserId as string,
+      text: row.body as string,
+      at: row.createdAt,
+    }));
 }
 
 /**
@@ -1086,9 +1124,9 @@ export async function narrateHouseholdMailbox(
 }
 
 /**
- * The conflict narration (or the who-takes prompt) already went out. The poll
- * is the choices, not a second question. A missing name is no poll — the text
- * stands. An open fact stops the same ask while it is fresh.
+ * The who-takes prompt already went out as the one bubble. The poll is the
+ * choices, not a second question, and not the locked conflict sentence.
+ * A missing or duplicated name is no poll — the text stands.
  */
 async function attachWhoTakesPoll(
   database: Database,
@@ -1309,8 +1347,11 @@ export type BothFreeDelivery =
 
 /**
  * Parent asked. Flag off and two or more slots: the locked sentence.
- * Flag on and two or more slots: the Design-pending prompt plus a slot poll.
+ * Flag on and two or more slots: the locked prompt plus a slot poll.
+ * The locked both-free sentence is not sent on that turn.
  * One slot: nothing. A fresh decision for today: nothing.
+ * A slot pick is stored for the existing find page handoff. This does not
+ * send a second sentence. "None of these" ends the ask.
  */
 export async function planBothFreeAsk(
   database: Database,
@@ -1386,7 +1427,7 @@ export async function captureLogisticsText(
     body: string;
     now: Date;
   },
-): Promise<'stored' | 'skipped'> {
+): Promise<'stored' | 'skipped' | 'withheld'> {
   if (typeof database.select !== 'function') return 'skipped';
   const context = await loadFamilyCalendarContext(database, input.familyId);
   if (!context.parentUserIds) return 'skipped';
@@ -1401,6 +1442,19 @@ export async function captureLogisticsText(
   const remembered = await loadRememberedLogistics(database, input.familyId);
   const blocks = await loadFamilyBlocks(database, input.familyId);
   const who = readWhoTakesReply(input.body, parents, input.parentUserId);
+  if (who && 'declined' in who) {
+    const target = matchWhoTakesTarget(input.body, blocks, input.now, context.childNames);
+    if (target) {
+      await withholdWhoTakes(database, {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        factKey: whoTakesFactKey(target.startIso, target.titleNorm),
+        now: input.now,
+        source: 'text',
+      });
+    }
+    return 'withheld';
+  }
   if (who) {
     const target = matchWhoTakesTarget(input.body, blocks, input.now, context.childNames);
     if (!target) return 'skipped';

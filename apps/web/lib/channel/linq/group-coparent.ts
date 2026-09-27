@@ -379,6 +379,7 @@ async function answerDoneStep(
         body: { outcome: 'group_coparent_both_free_none' },
       };
     }
+    // Flag on: the locked prompt replaces the both-free sentence. Do not send both.
     const text = plan.mode === 'text' ? plan.text : plan.prompt;
     const sent = await sendLine(database, {
       familyId: sender.familyId,

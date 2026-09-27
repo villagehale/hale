@@ -29,7 +29,7 @@ import {
   proposeSharedFree,
   splitKidEvent,
 } from './household-calendar';
-import { whoTakesFactKey } from './logistics-poll';
+import { whoTakesFactKey, whoTakesPrompt } from './logistics-poll';
 
 /**
  * Kid vs not-kid is a function, not a prompt. A non-kid title must be unable
@@ -307,6 +307,34 @@ describe('planHouseholdNotices', () => {
     expect(planned[0]?.text).not.toContain('Quarterly');
     expect(planned[0]?.text).not.toContain('budget');
     expect(planned[0]?.text).not.toContain('free');
+    const passed = planHouseholdNotices({
+      blocks: [
+        block({
+          eventId: 'gym',
+          userId: PARENT_A,
+          kidRelated: true,
+          title: 'Maya gymnastics',
+          start,
+          end: new Date('2026-09-25T20:00:00.000Z'),
+        }),
+        block({
+          eventId: 'budget',
+          userId: PARENT_B,
+          kidRelated: false,
+          title: 'Quarterly budget review',
+          start,
+          end: new Date('2026-09-25T20:00:00.000Z'),
+        }),
+      ],
+      parentUserIds: [PARENT_A, PARENT_B],
+      parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
+      childNames: ['Maya'],
+      now: NOW,
+      timeZone: ZONE,
+      language: 'en',
+      statements: [{ userId: PARENT_A, text: "We'll figure it out", at: NOW }],
+    });
+    expect(passed.find((notice) => notice.kind === 'conflict')).toBeUndefined();
   });
 
   it('does not treat two calendars a week apart as a handoff', () => {
@@ -589,7 +617,11 @@ describe('planAmbiguousWhoTakes', () => {
       language: 'en',
     });
     expect(ask?.kind).toBe('who_takes');
-    expect(ask?.text).toBe("Who's taking Maya's gymnastics?");
+    const clock = when(start);
+    expect(ask?.text).toBe(
+      whoTakesPrompt('en', { kid: 'Maya', event: 'gymnastics', day: clock.day, time: clock.time }),
+    );
     expect(ask?.text).not.toContain('busy');
+    expect(ask?.text).not.toContain("Who's taking it?");
   });
 });

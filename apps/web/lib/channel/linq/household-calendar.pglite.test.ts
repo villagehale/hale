@@ -19,7 +19,7 @@ import {
   rememberAndNarrateCalendar,
   rememberCalendarChanges,
 } from './household-calendar';
-import { recordLogisticsVote } from './logistics-poll';
+import { recordLogisticsVote, whoTakesPrompt } from './logistics-poll';
 
 /**
  * Both calendars in one family. Kid news may be said in the group. A non-kid
@@ -626,7 +626,7 @@ describe('household calendars', () => {
     expect(block?.announcedAt).toBeNull();
   });
 
-  it('posts a who-takes poll after the conflict narration when the flag is on', async () => {
+  it('posts a who-takes poll instead of the conflict sentence when the flag is on', async () => {
     vi.stubEnv('LINQ_POLLS', 'on');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const seeded = await seedPair();
@@ -665,11 +665,19 @@ describe('household calendars', () => {
       fetch: wire.fetch,
     });
     expect(wire.texts()).toHaveLength(1);
-    expect(wire.texts()[0]).toContain("Who's taking it?");
-    expect(wire.texts()[0]).not.toContain("Who's taking Maya's gymnastics?");
+    expect(wire.texts()[0]).toContain(
+      whoTakesPrompt('en', {
+        kid: 'Maya',
+        event: 'gymnastics',
+        day: formatDay(start, 'America/Toronto', 'en'),
+        time: formatTime(start, 'America/Toronto', 'en'),
+      }),
+    );
+    expect(wire.texts()[0]).not.toContain("you're both busy");
+    expect(wire.texts()[0]).not.toContain("Who's taking it?");
     expect(wire.texts()[0]).not.toContain('Quarterly');
     expect(wire.pollOptions().slice(0, 2).sort()).toEqual(['Barton', 'Sam']);
-    expect(wire.pollOptions().at(-1)).toBe("I'll figure it out");
+    expect(wire.pollOptions().at(-1)).toBe("We'll figure it out");
     expect(wire.urls().some((url) => url.includes('/polls'))).toBe(true);
     expect(wire.urls().some((url) => url.includes('twilio.com'))).toBe(false);
     const options = await db.database
@@ -681,11 +689,11 @@ describe('household calendars', () => {
       .from(schema.linqPollOptions);
     expect(options.map((row) => row.optionText).sort()).toEqual([
       'Barton',
-      "I'll figure it out",
       'Sam',
+      "We'll figure it out",
     ]);
     expect(options.every((row) => row.pollKind === 'who_takes')).toBe(true);
-    expect(options.find((row) => row.optionText === "I'll figure it out")?.choiceKind).toBe(
+    expect(options.find((row) => row.optionText === "We'll figure it out")?.choiceKind).toBe(
       'figure_it_out',
     );
   });
@@ -812,7 +820,7 @@ describe('household calendars', () => {
       fetch: ask.fetch,
     });
     expect(ask.pollOptions().slice(0, 2).sort()).toEqual(['Barton', 'Sam']);
-    expect(ask.pollOptions().at(-1)).toBe("I'll figure it out");
+    expect(ask.pollOptions().at(-1)).toBe("We'll figure it out");
     await db.database
       .update(schema.channelMessages)
       .set({ createdAt: askedAt })
@@ -890,6 +898,74 @@ describe('household calendars', () => {
     expect(
       live.some((row) => row.status === 'decided' && row.takerUserId === voted.primaryUserId),
     ).toBe(true);
+  });
+
+  it('stores nothing when they pass and does not ask again that day', async () => {
+    vi.stubEnv('LINQ_POLLS', 'on');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const start = new Date('2026-09-25T19:00:00.000Z');
+    const end = new Date('2026-09-25T20:00:00.000Z');
+    const askedAt = new Date('2026-09-23T14:00:00.000Z');
+    const seeded = await seedPair();
+    await insertSharedKid(seeded, start, end);
+    const ask = pollWire();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: askedAt,
+      fetch: ask.fetch,
+    });
+    const pass = await db.database
+      .select({
+        subjectKey: schema.linqPollOptions.subjectKey,
+        choiceKind: schema.linqPollOptions.choiceKind,
+        choiceValue: schema.linqPollOptions.choiceValue,
+        optionText: schema.linqPollOptions.optionText,
+      })
+      .from(schema.linqPollOptions)
+      .where(eq(schema.linqPollOptions.optionText, "We'll figure it out"));
+    const option = pass[0];
+    expect(option?.choiceKind).toBe('figure_it_out');
+    const vote = await recordLogisticsVote(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.primaryUserId,
+      subjectKey: option?.subjectKey ?? '',
+      pollKind: 'who_takes',
+      choiceKind: option?.choiceKind ?? null,
+      choiceValue: option?.choiceValue ?? null,
+      optionText: option?.optionText ?? '',
+      now: askedAt,
+    });
+    expect(vote).toBe('passed');
+    const live = await db.database
+      .select({ id: schema.familyMemoryFacts.id })
+      .from(schema.familyMemoryFacts)
+      .where(
+        and(
+          eq(schema.familyMemoryFacts.familyId, seeded.familyId),
+          eq(schema.familyMemoryFacts.factType, 'logistic'),
+          isNull(schema.familyMemoryFacts.validUntil),
+        ),
+      );
+    expect(live).toEqual([]);
+    await db.database
+      .update(schema.channelMessages)
+      .set({ createdAt: askedAt })
+      .where(eq(schema.channelMessages.familyId, seeded.familyId));
+    const again = pollWire();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: new Date(askedAt.getTime() + 60 * 60 * 1000),
+      fetch: again.fetch,
+    });
+    expect(again.texts().join('\n')).not.toContain("Who's taking");
+    expect(again.pollOptions()).toEqual([]);
+    const evening = pollWire();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: HANDOFF_AT,
+      fetch: evening.fetch,
+    });
+    expect(evening.texts().join('\n')).not.toContain('Tomorrow:');
   });
 });
 

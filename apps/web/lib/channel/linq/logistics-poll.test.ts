@@ -13,7 +13,7 @@ import {
 import { yearFindPollOptions } from './poll';
 
 /**
- * Design-pending placeholders. French is ASCII. Year-find still needs two titles.
+ * Design locked (Sloane, 2026-09-26). French is ASCII. Year-find still needs two titles.
  */
 
 function isAscii(line: string): boolean {
@@ -21,13 +21,15 @@ function isAscii(line: string): boolean {
 }
 
 describe('logistics poll copy', () => {
-  it('uses the Design-pending placeholders, and French is ASCII', () => {
-    expect(whoTakesPrompt('en', 'Maya', 'gymnastics')).toBe("Who's taking Maya's gymnastics?");
-    expect(whoTakesPrompt('fr', 'Maya', 'gymnastique')).toBe(
-      "Qui s'occupe de gymnastique pour Maya?",
-    );
+  it('uses the locked strings verbatim, and French is ASCII', () => {
+    expect(
+      whoTakesPrompt('en', { kid: 'Maya', event: 'gymnastics', day: 'Fri', time: '15:00' }),
+    ).toBe("Who's taking Maya's gymnastics, Fri at 15:00?");
+    expect(
+      whoTakesPrompt('fr', { kid: 'Maya', event: 'gymnastique', day: 'ven.', time: '15:00' }),
+    ).toBe("Qui s'occupe de gymnastique pour Maya, ven. a 15:00?");
     expect(isAscii(WHO_TAKES_PROMPT.fr)).toBe(true);
-    expect(FIGURE_IT_OUT).toEqual({ en: "I'll figure it out", fr: 'On verra' });
+    expect(FIGURE_IT_OUT).toEqual({ en: "We'll figure it out", fr: 'On verra' });
     expect(BOTH_FREE_PROMPT).toEqual({
       en: 'Which time works for both of you?',
       fr: 'Quel creneau vous arrange tous les deux?',
@@ -56,7 +58,7 @@ describe('logistics poll copy', () => {
       ],
       'who-takes/start/title',
     );
-    expect(who?.map((option) => option.text)).toEqual(['Barton', 'Sam', "I'll figure it out"]);
+    expect(who?.map((option) => option.text)).toEqual(['Barton', 'Sam', "We'll figure it out"]);
     expect(who?.[2]).toMatchObject({ choiceKind: 'figure_it_out', choiceValue: null });
     expect(
       whoTakesPollOptions('fr', [{ userId: 'a', name: 'Sam' }], 'key')?.map(
@@ -103,7 +105,7 @@ describe('logistics poll copy', () => {
     expect(readWhoTakesReply('Sam will take Maya gymnastics', parents, 'a')).toEqual({
       takerUserId: 'b',
     });
-    expect(readWhoTakesReply("I'll figure it out", parents, 'a')).toEqual({ declined: true });
+    expect(readWhoTakesReply("We'll figure it out", parents, 'a')).toEqual({ declined: true });
     expect(readWhoTakesReply('On verra', parents, 'a')).toEqual({ declined: true });
     expect(readWhoTakesReply("Who's taking it?", parents, 'a')).toBeNull();
     const slots = [{ label: 'Thu, Sep 24, 15:00', startIso: '2026-09-24T19:00:00.000Z' }];

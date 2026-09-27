@@ -1,36 +1,40 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { writeFact } from '~/lib/memory/facts';
+import { closeFacts, writeFact } from '~/lib/memory/facts';
 import type { PollOptionWrite } from './poll';
 
 /**
  * VIL-377 — logistics polls in a claimed Linq group.
  *
- * Design pending (Sloane). These strings are placeholders until APPROVE.
+ * Design locked (Sloane, 2026-09-26). These strings are verbatim.
  * French is ASCII. One flag: LINQ_POLLS, shared with the year-find poll.
  * Year-find copy and the "only after two or more hits" rule stay in poll.ts.
+ *
+ * The who-takes prompt is the one bubble that turn. It carries day and time
+ * so it stands alone. The locked conflict sentence is not sent with it.
+ * "We'll figure it out" / "On verra" stores no taker.
  */
 
-/** Design pending. The who-takes bubble when there is no conflict narration. */
+/** Design locked. The one who-takes bubble. Day and time are in the prompt. */
 export const WHO_TAKES_PROMPT: Record<ReplyLanguage, string> = {
-  en: "Who's taking {kid}'s {event}?",
-  fr: "Qui s'occupe de {event} pour {kid}?",
+  en: "Who's taking {kid}'s {event}, {day} at {time}?",
+  fr: "Qui s'occupe de {event} pour {kid}, {day} a {time}?",
 };
 
-/** Design pending. Always the last who-takes option. Not a named taker. */
+/** Design locked. Always the last who-takes option. Not a named taker. */
 export const FIGURE_IT_OUT: Record<ReplyLanguage, string> = {
-  en: "I'll figure it out",
+  en: "We'll figure it out",
   fr: 'On verra',
 };
 
-/** Design pending. The both-free bubble when a parent asked and there are 2+ slots. */
+/** Design locked. Replaces the both-free sentence when a parent asked and there are 2+ slots. */
 export const BOTH_FREE_PROMPT: Record<ReplyLanguage, string> = {
   en: 'Which time works for both of you?',
   fr: 'Quel creneau vous arrange tous les deux?',
 };
 
-/** Design pending. Always the last both-free option. Not a chosen slot. */
+/** Design locked. Always the last both-free option. Ends the ask. Not a chosen slot. */
 export const BOTH_FREE_NONE: Record<ReplyLanguage, string> = {
   en: 'None of these',
   fr: 'Aucun de ceux-la',
@@ -97,8 +101,16 @@ function fill(pattern: string, slots: Record<string, string>): string {
   return pattern.replace(/\{(\w+)\}/g, (_, key: string) => slots[key] ?? '');
 }
 
-export function whoTakesPrompt(language: ReplyLanguage, kid: string, event: string): string {
-  return fill(WHO_TAKES_PROMPT[language], { kid, event });
+export function whoTakesPrompt(
+  language: ReplyLanguage,
+  input: { kid: string; event: string; day: string; time: string },
+): string {
+  return fill(WHO_TAKES_PROMPT[language], input);
+}
+
+/** The locked pass line, either language. Not a parent name. */
+export function isFigureItOutLine(text: string): boolean {
+  return FIGURE_OPTIONS.has(text.trim().replace(/\s+/g, ' ').toLowerCase());
 }
 
 export function whoTakesFactKey(startIso: string, titleNorm: string): string {
@@ -373,15 +385,25 @@ export async function recordLogisticsVote(
     optionText: string;
     now: Date;
   },
-): Promise<'decided' | 'declined' | 'ignored'> {
+): Promise<'decided' | 'declined' | 'passed' | 'ignored'> {
   if (!input.subjectKey) return 'ignored';
+  if (input.choiceKind === 'figure_it_out') {
+    await withholdWhoTakes(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      factKey: input.subjectKey,
+      now: input.now,
+      source: 'poll',
+    });
+    return 'passed';
+  }
   const existing = (await loadRememberedLogistics(database, input.familyId)).find(
     (row) => row.factKey === input.subjectKey,
   );
   const parsed = parseWhoTakesKey(input.subjectKey);
   if (input.choiceKind === 'parent' && !input.choiceValue) return 'ignored';
   if (input.choiceKind === 'slot' && !input.choiceValue) return 'ignored';
-  const declined = input.choiceKind === 'figure_it_out' || input.choiceKind === 'none';
+  const declined = input.choiceKind === 'none';
   const status: LogisticsStatus = declined ? 'declined' : 'decided';
   await writeLogisticsDecision(database, {
     familyId: input.familyId,
@@ -405,4 +427,58 @@ export async function recordLogisticsVote(
     },
   });
   return status === 'decided' ? 'decided' : 'declined';
+}
+
+/**
+ * "We'll figure it out" stores no taker. A live open ask for this event is
+ * closed, and nothing is written in its place. The evening handoff does not
+ * read a name from this. Same-day silence is the caller's dedupe and the
+ * statement check, not a stored decision.
+ */
+export async function withholdWhoTakes(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    factKey: string;
+    now: Date;
+    source: 'poll' | 'text';
+  },
+): Promise<void> {
+  const audit = {
+    familyId: input.familyId,
+    actor: input.parentUserId,
+    actionTaken: 'logistics_decision_withheld',
+    targetTable: 'family_memory_facts' as const,
+    targetId: input.familyId,
+    after: { kind: 'who_takes' as const, stored: false, source: input.source },
+  };
+  const run = async (
+    writer: Parameters<typeof closeFacts>[0] & Pick<Database, 'insert' | 'select'>,
+  ) => {
+    await writer.insert(schema.auditLog).values(audit);
+    const live = await writer
+      .select({ id: schema.familyMemoryFacts.id })
+      .from(schema.familyMemoryFacts)
+      .where(
+        and(
+          eq(schema.familyMemoryFacts.familyId, input.familyId),
+          eq(schema.familyMemoryFacts.factType, 'logistic'),
+          eq(schema.familyMemoryFacts.factKey, input.factKey),
+          isNull(schema.familyMemoryFacts.validUntil),
+        ),
+      );
+    await closeFacts(writer, {
+      factIds: live.map((row) => row.id),
+      closedAt: input.now,
+      supersededBy: null,
+    });
+  };
+  if (typeof database.transaction === 'function') {
+    await database.transaction(async (tx) => {
+      await run(tx);
+    });
+    return;
+  }
+  await run(database);
 }
