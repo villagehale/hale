@@ -161,6 +161,13 @@ export const AUDIT_VERBS = [
   'linq_group_claimed',
   'linq_group_held',
   'linq_poll_sent',
+  // A live logistics fact: an open ask, a named taker, a chosen time, or
+  // "none of these" ending the both-free ask. One verb, because every one of
+  // those writes goes through the same audit row.
+  'logistics_decision_recorded',
+  // "We'll figure it out" / "On verra". The open ask is closed and no taker
+  // is written. The evening handoff does not read a name from this row.
+  'logistics_decision_withheld',
   'voice_call_received',
   // v0's callback text. No new row carries it — an enrolled caller now has a spoken
   // conversation instead — but months of rows in production do, and a verb the trail
@@ -576,6 +583,18 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'problem',
   },
   linq_poll_sent: { sentence: 'Hale sent you a short choice', family: 'note' },
+  // True for an open ask, a named taker, a chosen time, and a both-free
+  // "none of these". It does not say who, or that a taker was named, because
+  // this same verb is also the open ask and the ended ask.
+  logistics_decision_recorded: {
+    sentence: 'Hale wrote down a household logistics note',
+    family: 'note',
+  },
+  // No taker. The live ask is closed and nothing is stored in its place.
+  logistics_decision_withheld: {
+    sentence: 'Hale did not store who is taking it',
+    family: 'note',
+  },
   voice_call_received: {
     // Hale keeps no audio and no transcript — only that a call arrived.
     sentence: 'a call came in to Hale’s number',
