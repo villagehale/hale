@@ -795,7 +795,7 @@ describe('group co-parent seating', () => {
     expectLinqGroupOnly(wire);
   });
 
-  it('keeps the both-free sentence and does not attach a poll', async () => {
+  it('keeps the both-free sentence and does not attach a poll when the flag is off', async () => {
     const seeded = await seedHousehold();
     await db.database
       .update(schema.families)
@@ -808,7 +808,7 @@ describe('group co-parent seating', () => {
       step: 'done',
     });
 
-    vi.stubEnv('LINQ_POLLS', 'on');
+    vi.stubEnv('LINQ_POLLS', '');
     const wire = pollAwareFetch();
     const textOnly = await considerGroupCoparent(
       db.database,
@@ -827,6 +827,52 @@ describe('group co-parent seating', () => {
     expect(wire.pollOptions()).toEqual([]);
     expect(wire.urls().some((url) => url.includes('/polls'))).toBe(false);
     expect(wire.urls().every((url) => url === GROUP_MESSAGES)).toBe(true);
+  });
+
+  it('polls up to three shared slots when a parent asks and the flag is on', async () => {
+    const seeded = await seedHousehold();
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, seeded.familyId));
+    await db.database.insert(schema.linqGroupOnboarding).values({
+      familyId: seeded.familyId,
+      userId: seeded.parentUserId,
+      providerChatId: GROUP,
+      step: 'done',
+    });
+
+    vi.stubEnv('LINQ_POLLS', 'on');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const wire = pollAwareFetch();
+    const polled = await considerGroupCoparent(
+      db.database,
+      inbound({
+        messageId: 'm-both-free-poll',
+        senderHandle: PARENT_PHONE,
+        text: 'when are we both free',
+      }),
+      { now: NOW, fetch: wire.fetch, recordInbound },
+    );
+    expect(polled).toMatchObject({ type: 'done', outcome: 'group_coparent_both_free' });
+    expect(wire.texts()).toEqual(['Which time works for both of you?']);
+    expect(wire.pollOptions().length).toBeGreaterThanOrEqual(3);
+    expect(wire.pollOptions().at(-1)).toBe('None of these');
+    expect(wire.texts().join('\n')).not.toMatch(/Want the sign-up page/);
+    expect(wire.urls().some((url) => url.includes('/polls'))).toBe(true);
+
+    const again = pollAwareFetch();
+    const repeat = await considerGroupCoparent(
+      db.database,
+      inbound({
+        messageId: 'm-both-free-again',
+        senderHandle: PARENT_PHONE,
+        text: 'when are we both free',
+      }),
+      { now: NOW, fetch: again.fetch, recordInbound },
+    );
+    expect(repeat).toMatchObject({ type: 'done', outcome: 'group_coparent_both_free_none' });
+    expect(again.pollOptions()).toEqual([]);
   });
 });
 

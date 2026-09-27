@@ -23,10 +23,13 @@ import {
   formatDay,
   formatTime,
   kidMailboxSubject,
+  listSharedFreeSlots,
+  planAmbiguousWhoTakes,
   planHouseholdNotices,
   proposeSharedFree,
   splitKidEvent,
 } from './household-calendar';
+import { whoTakesFactKey } from './logistics-poll';
 
 /**
  * Kid vs not-kid is a function, not a prompt. A non-kid title must be unable
@@ -470,5 +473,123 @@ describe('planHouseholdNotices', () => {
     });
     expect(asked).toMatch(/^You're both free .+ or .+\. Want the sign-up page for one\?$/);
     expect(splitKidEvent('swim class', ['Maya', 'Leo'])).toBeNull();
+    const oneHour = listSharedFreeSlots({
+      requested: true,
+      blocks: [
+        block({
+          eventId: 'fill',
+          userId: PARENT_A,
+          start: new Date('2026-09-24T19:00:00.000Z'),
+          end: new Date('2026-09-30T23:00:00.000Z'),
+        }),
+      ],
+      now: NOW,
+      timeZone: ZONE,
+      language: 'en',
+    });
+    expect(oneHour.length).toBeLessThan(2);
+  });
+
+  it('reads a stored taker at the evening handoff and does not invent one', () => {
+    const evening = new Date('2026-09-24T22:00:00.000Z');
+    const both = [
+      block({
+        eventId: 'a',
+        userId: PARENT_A,
+        kidRelated: true,
+        title: 'Maya gymnastics',
+        announced: true,
+        start,
+        end: new Date('2026-09-25T20:00:00.000Z'),
+      }),
+      block({
+        eventId: 'b',
+        userId: PARENT_B,
+        kidRelated: true,
+        title: 'Maya gymnastics',
+        announced: true,
+        start,
+        end: new Date('2026-09-25T20:00:00.000Z'),
+      }),
+    ];
+    const key = whoTakesFactKey(start.toISOString(), 'maya gymnastics');
+    const remembered = {
+      factKey: key,
+      kind: 'who_takes' as const,
+      startIso: start.toISOString(),
+      titleNorm: 'maya gymnastics',
+      slotLabel: null,
+      slotStart: null,
+      kid: 'Maya',
+      event: 'gymnastics',
+      day: null,
+      slots: [],
+    };
+    const decided = planHouseholdNotices({
+      blocks: both,
+      parentUserIds: [PARENT_A, PARENT_B],
+      parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
+      childNames: ['Maya'],
+      now: evening,
+      timeZone: ZONE,
+      language: 'en',
+      remembered: [{ ...remembered, status: 'decided', takerUserId: PARENT_B }],
+    });
+    expect(decided[0]?.kind).toBe('handoff');
+    expect(decided[0]?.text).toBe(
+      `Tomorrow: Sam has Maya's gymnastics at ${formatTime(start, ZONE, 'en')}.`,
+    );
+    const unanswered = planHouseholdNotices({
+      blocks: both,
+      parentUserIds: [PARENT_A, PARENT_B],
+      parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
+      childNames: ['Maya'],
+      now: evening,
+      timeZone: ZONE,
+      language: 'en',
+      remembered: [{ ...remembered, status: 'open', takerUserId: null }],
+    });
+    expect(unanswered.find((notice) => notice.kind === 'handoff')).toBeUndefined();
+    expect(unanswered.find((notice) => notice.text.includes('Tomorrow:'))).toBeUndefined();
+    const declined = planHouseholdNotices({
+      blocks: both,
+      parentUserIds: [PARENT_A, PARENT_B],
+      parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
+      childNames: ['Maya'],
+      now: evening,
+      timeZone: ZONE,
+      language: 'en',
+      remembered: [{ ...remembered, status: 'declined', takerUserId: null }],
+    });
+    expect(declined.find((notice) => notice.kind === 'handoff')).toBeUndefined();
+    expect(declined.find((notice) => notice.kind === 'conflict')).toBeUndefined();
+  });
+});
+
+describe('planAmbiguousWhoTakes', () => {
+  it('asks who takes a tomorrow event when nobody is the taker and nobody else is busy', () => {
+    const evening = new Date('2026-09-24T22:00:00.000Z');
+    const start = new Date('2026-09-25T19:00:00.000Z');
+    const ask = planAmbiguousWhoTakes({
+      blocks: [
+        block({
+          eventId: 'gym',
+          userId: PARENT_A,
+          kidRelated: true,
+          title: 'Maya gymnastics',
+          start,
+          end: start,
+        }),
+      ],
+      parentUserIds: [PARENT_A, PARENT_B],
+      parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
+      childNames: ['Maya'],
+      now: evening,
+      timeZone: ZONE,
+      language: 'en',
+    });
+    expect(ask?.kind).toBe('who_takes');
+    expect(ask?.text).toBe("Who's taking Maya's gymnastics?");
+    expect(ask?.text).not.toContain('busy');
   });
 });

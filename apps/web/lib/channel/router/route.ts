@@ -31,6 +31,7 @@ import {
   formatLinqLineForParent,
   linqCoParentAsk,
 } from '~/lib/channel/linq/group';
+import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
 import { considerLinqReply } from '~/lib/channel/linq/moments';
 import { LINQ_TYPING_REFRESH_MS, signalImessageTyping } from '~/lib/channel/linq/presence';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
@@ -2075,6 +2076,12 @@ async function mirrorActivityDecision(
       return;
     }
     if (args.inboundBody === undefined || args.route.channel !== 'imessage') return;
+    await captureLogisticsText(deps.database, {
+      familyId: args.job.family_id,
+      parentUserId: args.job.parent_user_id,
+      body: args.inboundBody,
+      now: deps.now(),
+    });
     await queueActivityDecisionFromReply(deps.database, {
       familyId: args.job.family_id,
       parentUserId: args.job.parent_user_id,

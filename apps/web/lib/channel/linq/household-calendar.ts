@@ -5,7 +5,7 @@ import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
-import { linqGroupCoparentEnabled } from './config';
+import { linqGroupCoparentEnabled, linqPollsEnabled } from './config';
 import { groupProactiveCapReached } from './family-outbound';
 import {
   groupBothFreeText,
@@ -14,6 +14,23 @@ import {
   groupKidEventText,
   groupPostEventText,
 } from './group-coparent-copy';
+import {
+  BOTH_FREE_PROMPT,
+  type LogisticsSlot,
+  type RememberedLogistics,
+  bothFreeDay,
+  bothFreeFactKey,
+  bothFreePollOptions,
+  loadRememberedLogistics,
+  readSlotReply,
+  readWhoTakesReply,
+  rememberedWhoTakes,
+  whoTakesFactKey,
+  whoTakesPollOptions,
+  whoTakesPrompt,
+  writeLogisticsDecision,
+} from './logistics-poll';
+import { sendChoicePoll } from './poll';
 import { LinqSendError, sendLinqChatMessage } from './transport';
 
 /**
@@ -29,6 +46,13 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * Proactive group speech is one bubble: at most one a day and three a week,
  * never during quiet hours. A cancellation, a weekly recap, and an unprompted
  * both-free suggestion are not bubbles.
+ *
+ * VIL-377: when LINQ_POLLS is on, a conflict narration is followed by a who-takes
+ * poll in the same turn. The narration is the one discretionary bubble. The
+ * poll ledger row does not spend a second one. The who-takes prompt is not
+ * sent as well — the locked conflict line already asks who's taking it.
+ * An evening event with no taker and no conflict uses that prompt alone.
+ * Flag off keeps the locked text and does not poll.
  *
  * Kid-event, conflict, handoff, and post-event notices leave only through the
  * family's `linq_group_chat_id`. A Linq refusal is `not_sent`. Nothing on this
@@ -125,8 +149,15 @@ export interface BusyBlock {
   recurringEventId: string | null;
 }
 
+export interface WhoTakesAsk {
+  startIso: string;
+  titleNorm: string;
+  kid: string;
+  event: string;
+}
+
 export interface HouseholdNotice {
-  kind: 'kid_event' | 'conflict' | 'handoff' | 'followup';
+  kind: 'kid_event' | 'conflict' | 'handoff' | 'followup' | 'who_takes';
   dedupeKey: string;
   /**
    * `activity_followup` has no frequency counter, so an SMS calendar alert
@@ -139,6 +170,8 @@ export interface HouseholdNotice {
   recipientUserId: string;
   /** Rows to stamp after the send lands. */
   mark: Array<{ integrationId: string; eventId: string; field: 'announced' | 'followup' }>;
+  /** Set when this bubble may be followed by a who-takes poll. */
+  whoTakes?: WhoTakesAsk;
 }
 
 export interface HandoffStatement {
@@ -156,6 +189,8 @@ export interface NoticePlanInput {
   language: ReplyLanguage;
   /** Something a parent said in the group. Never inferred from turn-taking. */
   statements?: readonly HandoffStatement[];
+  /** A poll vote or a clear text reply already stored. Not a guess. */
+  remembered?: readonly RememberedLogistics[];
 }
 
 /**
@@ -173,6 +208,64 @@ export function planHouseholdNotices(input: NoticePlanInput): HouseholdNotice[] 
   if (kids) return [kids];
   const followup = soonestFollowup(input);
   return followup ? [followup] : [];
+}
+
+/**
+ * Evening before, a tomorrow kid event, and nobody has said who takes it.
+ * A conflict still owns that turn — this is only the case with no overlap.
+ * Flag off does not call this. The bubble is the Design-pending who-takes prompt.
+ */
+export function planAmbiguousWhoTakes(input: NoticePlanInput): HouseholdNotice | null {
+  const hour = zonedClock(input.now, input.timeZone).hour;
+  if (hour < HANDOFF_HOUR_START || hour >= HANDOFF_HOUR_END) return null;
+  const [first, second] = input.parentUserIds;
+  const tomorrow = addDays(zonedParts(input.now, input.timeZone), 1);
+  let best: BusyBlock | null = null;
+  for (const block of input.blocks) {
+    if (!upcomingKid(block, input.now) || !block.start || !block.title) continue;
+    const local = zonedParts(block.start, input.timeZone);
+    if (
+      local.year !== tomorrow.year ||
+      local.month !== tomorrow.month ||
+      local.day !== tomorrow.day
+    ) {
+      continue;
+    }
+    const memory = rememberedWhoTakes(
+      input.remembered ?? [],
+      block.start.toISOString(),
+      normalizeTitle(block.title),
+    );
+    if (memory) continue;
+    if (statedOwner(block, input.statements ?? [], input.blocks)) continue;
+    if (soleCalendarOwner(block, input.blocks)) continue;
+    const busy = input.blocks.some(
+      (other) =>
+        other.userId !== block.userId && other.status !== 'cancelled' && overlaps(block, other),
+    );
+    if (busy) continue;
+    if (!best || block.start.getTime() < (best.start?.getTime() ?? 0)) best = block;
+  }
+  if (!best?.title || !best.start) return null;
+  const parts = splitKidEvent(best.title, input.childNames);
+  const recipient = otherParent(best.userId, first, second) ?? best.userId;
+  if (!parts) return null;
+  const startIso = best.start.toISOString();
+  return {
+    kind: 'who_takes',
+    dedupeKey: `linq-group:who-takes:${best.eventId}:${startIso}`,
+    gateKind: 'activity_followup',
+    category: 'calendar_alert',
+    text: whoTakesPrompt(input.language, parts.kid, parts.event),
+    recipientUserId: recipient,
+    mark: [{ integrationId: best.integrationId, eventId: best.eventId, field: 'announced' }],
+    whoTakes: {
+      startIso,
+      titleNorm: normalizeTitle(best.title),
+      kid: parts.kid,
+      event: parts.event,
+    },
+  };
 }
 
 function otherParent(userId: string, first: string, second: string): string | null {
@@ -194,6 +287,16 @@ function soonestConflict(input: NoticePlanInput): HouseholdNotice | null {
   for (const block of input.blocks) {
     if (!upcomingKid(block, input.now) || !block.start || !block.end) continue;
     if (block.start.getTime() < input.now.getTime()) continue;
+    if (!block.title) continue;
+    if (
+      rememberedWhoTakes(
+        input.remembered ?? [],
+        block.start.toISOString(),
+        normalizeTitle(block.title),
+      )
+    ) {
+      continue;
+    }
     const busy = input.blocks.some(
       (other) =>
         other.userId !== block.userId && other.status !== 'cancelled' && overlaps(block, other),
@@ -206,9 +309,10 @@ function soonestConflict(input: NoticePlanInput): HouseholdNotice | null {
   const parts = splitKidEvent(best.block.title, input.childNames);
   const recipient = otherParent(best.block.userId, first, second);
   if (!parts || !recipient) return null;
+  const startIso = best.block.start.toISOString();
   return {
     kind: 'conflict',
-    dedupeKey: `linq-group:conflict:${best.block.eventId}:${best.block.start.toISOString()}`,
+    dedupeKey: `linq-group:conflict:${best.block.eventId}:${startIso}`,
     gateKind: 'activity_followup',
     category: 'calendar_alert',
     text: groupConflictText(input.language, {
@@ -225,6 +329,12 @@ function soonestConflict(input: NoticePlanInput): HouseholdNotice | null {
         field: 'announced',
       },
     ],
+    whoTakes: {
+      startIso,
+      titleNorm: normalizeTitle(best.block.title),
+      kid: parts.kid,
+      event: parts.event,
+    },
   };
 }
 
@@ -246,8 +356,18 @@ function soonestHandoff(input: NoticePlanInput): HouseholdNotice | null {
       continue;
     }
     const stated = statedOwner(block, input.statements ?? [], input.blocks);
+    const memory = block.title
+      ? rememberedWhoTakes(
+          input.remembered ?? [],
+          block.start.toISOString(),
+          normalizeTitle(block.title),
+        )
+      : null;
+    // An open ask or an explicit "I'll figure it out" is not a taker.
+    // A stored vote names one. Otherwise the event on exactly one calendar does.
+    if (memory?.status === 'declined' || memory?.status === 'open') continue;
     const sole = soleCalendarOwner(block, input.blocks);
-    const owner = stated ?? sole;
+    const owner = stated ?? (memory?.status === 'decided' ? memory.takerUserId : null) ?? sole;
     if (!owner) continue;
     if (!best || block.start.getTime() < (best.start?.getTime() ?? 0)) {
       best = block;
@@ -827,7 +947,8 @@ export async function narrateHouseholdCalendar(
     context.chatId,
     input.now,
   );
-  const notices = planHouseholdNotices({
+  const remembered = await loadRememberedLogistics(database, input.familyId);
+  const planInput: NoticePlanInput = {
     blocks,
     parentUserIds: context.parentUserIds,
     parentNames,
@@ -836,8 +957,16 @@ export async function narrateHouseholdCalendar(
     timeZone: context.timeZone,
     language: context.language,
     statements,
-  });
-  const notice = notices[0];
+    remembered,
+  };
+  const notices = planHouseholdNotices(planInput);
+  let notice = notices[0] ?? null;
+  if (linqPollsEnabled()) {
+    const ambiguous = planAmbiguousWhoTakes(planInput);
+    if (ambiguous && (!notice || notice.kind === 'kid_event' || notice.kind === 'followup')) {
+      notice = ambiguous;
+    }
+  }
   if (!notice) return;
   if (
     await groupProactiveCapReached(database, {
@@ -856,6 +985,21 @@ export async function narrateHouseholdCalendar(
     now: input.now,
     fetch: input.fetch,
   });
+  if (sent === 'sent' && notice.whoTakes && linqPollsEnabled()) {
+    await attachWhoTakesPoll(database, {
+      familyId: input.familyId,
+      chatId: context.chatId,
+      parentUserId: notice.recipientUserId,
+      parents: context.parentUserIds.map((userId) => ({
+        userId,
+        name: parentNames[userId] ?? '',
+      })),
+      ask: notice.whoTakes,
+      language: context.language,
+      now: input.now,
+      fetch: input.fetch,
+    });
+  }
   if (sent !== 'sent') return;
   for (const mark of notice.mark) {
     await database
@@ -939,6 +1083,61 @@ export async function narrateHouseholdMailbox(
     'household mailbox: group speech suppressed',
   );
   return { suppressed: 'mail_not_in_group' };
+}
+
+/**
+ * The conflict narration (or the who-takes prompt) already went out. The poll
+ * is the choices, not a second question. A missing name is no poll — the text
+ * stands. An open fact stops the same ask while it is fresh.
+ */
+async function attachWhoTakesPoll(
+  database: Database,
+  input: {
+    familyId: string;
+    chatId: string;
+    parentUserId: string;
+    parents: readonly { userId: string; name: string }[];
+    ask: WhoTakesAsk;
+    language: ReplyLanguage;
+    now: Date;
+    fetch?: typeof fetch;
+  },
+): Promise<void> {
+  const factKey = whoTakesFactKey(input.ask.startIso, input.ask.titleNorm);
+  const options = whoTakesPollOptions(input.language, input.parents, factKey);
+  if (!options) return;
+  const poll = await sendChoicePoll(database, {
+    chatId: input.chatId,
+    prompt: null,
+    options,
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    now: input.now,
+    fetch: input.fetch,
+    idempotencyKey: `poll:${factKey}:${input.familyId}`.slice(0, 180),
+  });
+  if (poll.status !== 'sent' && poll.status !== 'prompted') return;
+  await writeLogisticsDecision(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    factKey,
+    childId: null,
+    now: input.now,
+    value: {
+      kind: 'who_takes',
+      status: 'open',
+      startIso: input.ask.startIso,
+      titleNorm: input.ask.titleNorm,
+      takerUserId: null,
+      slotLabel: null,
+      slotStart: null,
+      kid: input.ask.kid,
+      event: input.ask.event,
+      day: null,
+      slots: [],
+      source: 'poll',
+    },
+  });
 }
 
 async function sendGroupNotice(
@@ -1035,7 +1234,12 @@ export async function answerBothFreeInGroup(
   return (await answerBothFreeOffer(database, input))?.text ?? null;
 }
 
-/** The locked both-free sentence. Not a poll. */
+/**
+ * The locked both-free sentence when the flag is off. Two slots only.
+ * A poll, when LINQ_POLLS is on and there are two or more slots, is
+ * {@link deliverBothFreeAsk}. One slot stays quiet: there is no locked
+ * one-slot sentence, and this ticket does not invent one.
+ */
 export async function answerBothFreeOffer(
   database: Database,
   input: { familyId: string; now: Date; language: ReplyLanguage },
@@ -1068,6 +1272,238 @@ export async function answerBothFreeOffer(
     timeZone: context.timeZone,
     language: input.language,
   });
+}
+
+/** Up to three shared hours, labeled the same way the locked sentence labels two. */
+export function listSharedFreeSlots(input: {
+  requested: boolean;
+  blocks: readonly BusyBlock[];
+  now: Date;
+  timeZone: string;
+  language: ReplyLanguage;
+}): LogisticsSlot[] {
+  if (!input.requested) return [];
+  return sharedFreeSlots(input.blocks, input.now, input.timeZone, 3).map((slot) => ({
+    label: `${formatDay(slot, input.timeZone, input.language)} ${formatTime(slot, input.timeZone, input.language)}`,
+    startIso: slot.toISOString(),
+  }));
+}
+
+export type BothFreeDelivery =
+  | { mode: 'none' }
+  | { mode: 'text'; text: string }
+  | {
+      mode: 'poll';
+      prompt: string;
+      options: readonly {
+        text: string;
+        pollKind?: string | null;
+        subjectKey?: string | null;
+        choiceKind?: string | null;
+        choiceValue?: string | null;
+      }[];
+      factKey: string;
+      day: string;
+      slots: readonly LogisticsSlot[];
+    };
+
+/**
+ * Parent asked. Flag off and two or more slots: the locked sentence.
+ * Flag on and two or more slots: the Design-pending prompt plus a slot poll.
+ * One slot: nothing. A fresh decision for today: nothing.
+ */
+export async function planBothFreeAsk(
+  database: Database,
+  input: { familyId: string; now: Date; language: ReplyLanguage },
+): Promise<BothFreeDelivery> {
+  const context = await loadFamilyCalendarContext(database, input.familyId);
+  const blocks = await loadFamilyBlocks(database, input.familyId);
+  const day = bothFreeDay(input.now, context.timeZone);
+  const remembered = await loadRememberedLogistics(database, input.familyId);
+  if (remembered.some((row) => row.factKey === bothFreeFactKey(day))) return { mode: 'none' };
+  const slots = listSharedFreeSlots({
+    requested: true,
+    blocks,
+    now: input.now,
+    timeZone: context.timeZone,
+    language: input.language,
+  });
+  if (slots.length < 2) return { mode: 'none' };
+  if (!linqPollsEnabled()) {
+    const text = groupBothFreeText(input.language, slots[0]?.label ?? '', slots[1]?.label ?? '');
+    return { mode: 'text', text };
+  }
+  const factKey = bothFreeFactKey(day);
+  const options = bothFreePollOptions(input.language, slots, factKey);
+  if (!options) return { mode: 'none' };
+  return { mode: 'poll', prompt: BOTH_FREE_PROMPT[input.language], options, factKey, day, slots };
+}
+
+export async function rememberBothFreeAsked(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    factKey: string;
+    day: string;
+    slots: readonly LogisticsSlot[];
+    now: Date;
+  },
+): Promise<void> {
+  await writeLogisticsDecision(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    factKey: input.factKey,
+    childId: null,
+    now: input.now,
+    value: {
+      kind: 'both_free',
+      status: 'open',
+      startIso: null,
+      titleNorm: null,
+      takerUserId: null,
+      slotLabel: null,
+      slotStart: null,
+      kid: null,
+      event: null,
+      day: input.day,
+      slots: [...input.slots],
+      source: 'poll',
+    },
+  });
+}
+
+/**
+ * A clear who-takes or slot reply, in the group or in a 1:1 the parent
+ * started. Stored on the family so the evening handoff can read it. Does not
+ * send. An unclear sentence is left alone.
+ */
+export async function captureLogisticsText(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    body: string;
+    now: Date;
+  },
+): Promise<'stored' | 'skipped'> {
+  if (typeof database.select !== 'function') return 'skipped';
+  const context = await loadFamilyCalendarContext(database, input.familyId);
+  if (!context.parentUserIds) return 'skipped';
+  const names = await database
+    .select({ id: schema.users.id, name: schema.users.name })
+    .from(schema.users)
+    .where(inArray(schema.users.id, [...context.parentUserIds]));
+  const parents = context.parentUserIds.map((userId) => ({
+    userId,
+    name: names.find((row) => row.id === userId)?.name ?? '',
+  }));
+  const remembered = await loadRememberedLogistics(database, input.familyId);
+  const blocks = await loadFamilyBlocks(database, input.familyId);
+  const who = readWhoTakesReply(input.body, parents, input.parentUserId);
+  if (who) {
+    const target = matchWhoTakesTarget(input.body, blocks, input.now, context.childNames);
+    if (!target) return 'skipped';
+    await writeLogisticsDecision(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      factKey: whoTakesFactKey(target.startIso, target.titleNorm),
+      childId: null,
+      now: input.now,
+      value: {
+        kind: 'who_takes',
+        status: 'declined' in who ? 'declined' : 'decided',
+        startIso: target.startIso,
+        titleNorm: target.titleNorm,
+        takerUserId: 'takerUserId' in who ? who.takerUserId : null,
+        slotLabel: null,
+        slotStart: null,
+        kid: target.kid,
+        event: target.event,
+        day: null,
+        slots: [],
+        source: 'text',
+      },
+    });
+    return 'stored';
+  }
+  const openSlot = remembered.find((row) => row.kind === 'both_free' && row.status === 'open');
+  if (!openSlot) return 'skipped';
+  const slot = readSlotReply(input.body, openSlot.slots);
+  if (!slot) return 'skipped';
+  await writeLogisticsDecision(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    factKey: openSlot.factKey,
+    childId: null,
+    now: input.now,
+    value: {
+      kind: 'both_free',
+      status: 'declined' in slot ? 'declined' : 'decided',
+      startIso: null,
+      titleNorm: null,
+      takerUserId: null,
+      slotLabel: 'slot' in slot ? slot.slot.label : null,
+      slotStart: 'slot' in slot ? slot.slot.startIso : null,
+      kid: null,
+      event: null,
+      day: openSlot.day,
+      slots: [...openSlot.slots],
+      source: 'text',
+    },
+  });
+  return 'stored';
+}
+
+function matchWhoTakesTarget(
+  body: string,
+  blocks: readonly BusyBlock[],
+  now: Date,
+  childNames: readonly string[],
+): { startIso: string; titleNorm: string; kid: string; event: string } | null {
+  const open = blocks.filter((block) => upcomingKid(block, now) && block.title && block.start);
+  const normalized = body.trim().toLowerCase();
+  const named = open.filter((block) => normalized.includes(normalizeTitle(block.title as string)));
+  const pool = named.length > 0 ? named : open;
+  const unique = new Map<string, BusyBlock>();
+  for (const block of pool) {
+    const key = `${(block.start as Date).toISOString()}/${normalizeTitle(block.title as string)}`;
+    unique.set(key, block);
+  }
+  if (unique.size !== 1) return null;
+  const block = [...unique.values()][0];
+  if (!block?.title || !block.start) return null;
+  const parts = splitKidEvent(block.title, childNames);
+  if (!parts) return null;
+  return {
+    startIso: block.start.toISOString(),
+    titleNorm: normalizeTitle(block.title),
+    kid: parts.kid,
+    event: parts.event,
+  };
+}
+
+async function loadFamilyBlocks(database: Database, familyId: string): Promise<BusyBlock[]> {
+  const rows = await database
+    .select()
+    .from(schema.parentCalendarBlocks)
+    .where(eq(schema.parentCalendarBlocks.familyId, familyId));
+  return rows
+    .filter((row) => row.familyId === familyId)
+    .map((row) => ({
+      integrationId: row.integrationId,
+      userId: row.userId,
+      eventId: row.eventId,
+      start: row.startAt,
+      end: row.endAt,
+      allDay: row.allDay,
+      kidRelated: row.kidRelated,
+      title: row.title,
+      status: row.status,
+      announced: row.announcedAt !== null,
+      followupSent: row.followupAt !== null,
+      recurringEventId: row.recurringEventId,
+    }));
 }
 
 export async function familyHasTwoCalendars(

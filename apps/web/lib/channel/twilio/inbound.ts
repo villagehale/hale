@@ -127,7 +127,9 @@ export type TwilioInboundOutcome =
   | 'not_a_parent'
   /** Linq year-find poll: the parent chose "None of these". Recorded, not routed,
    * so this turn does not ask again. A later text still advances the ladder. */
-  | 'poll_none';
+  | 'poll_none'
+  /** Linq logistics poll: the vote is stored. It is not routed as a find title. */
+  | 'poll_logistics';
 
 /** Twilio's count of attached media parts. Absent/garbage reads as none. */
 function mediaCount(params: Record<string, string>): number {

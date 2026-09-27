@@ -10,10 +10,15 @@ import { LinqSendError, sendLinqChatMessage, sendLinqPoll } from './transport';
  *
  * Design locked (Sloane). One ask, only after a year-find with two or more
  * hits, in the Linq thread that find already used. Never an empty find, never
- * unprompted, never on a conflict, a handoff, or a receipt. Titles are the
- * find's own titles. This module does not search and does not invent one.
+ * unprompted. A year-find poll is never the conflict, handoff, or receipt
+ * itself. Titles are the find's own titles. This module does not search and
+ * does not invent one.
  *
- * LINQ_POLLS stays off in this change. Ops turns it on after the PR ships.
+ * VIL-377 logistics polls (conflict, ambiguous handoff, both-free) reuse
+ * {@link sendChoicePoll} and the same LINQ_POLLS flag. They are a different
+ * ask. They do not change when a year-find poll is offered.
+ *
+ * LINQ_POLLS stays off until ops turns it on.
  */
 
 /** Design locked. The text that precedes the poll. A Linq poll has no question field. */
@@ -124,6 +129,15 @@ export async function offerSandboxYearFindPoll(
   });
 }
 
+/** One poll choice. Year-find leaves the logistics columns empty. */
+export interface PollOptionWrite {
+  text: string;
+  pollKind?: string | null;
+  subjectKey?: string | null;
+  choiceKind?: string | null;
+  choiceValue?: string | null;
+}
+
 async function offerPoll(
   database: Database,
   args: {
@@ -142,10 +156,10 @@ async function offerPoll(
   if (args.channel !== 'imessage') return { status: 'skipped', reason: 'not_imessage' };
   if (!args.chatId) return { status: 'skipped', reason: 'no_chat' };
   if (!args.options) return { status: 'skipped', reason: 'not_a_choice' };
-  return deliverChoicePoll(database, {
+  return sendChoicePoll(database, {
     chatId: args.chatId,
     prompt: YEAR_FIND_POLL_PROMPT[args.language],
-    options: args.options,
+    options: args.options.map((text) => ({ text })),
     familyId: args.familyId,
     parentUserId: args.parentUserId,
     now: args.now,
@@ -154,12 +168,18 @@ async function offerPoll(
   });
 }
 
-async function deliverChoicePoll(
+/**
+ * Text first when `prompt` is set — a Linq poll has no question field — then
+ * the poll. A null prompt sends only the poll, for a turn whose text bubble
+ * already landed. The poll ledger row is `linq:poll` / `reply`, so it does
+ * not spend a second discretionary group bubble.
+ */
+export async function sendChoicePoll(
   database: Database,
   args: {
     chatId: string;
-    prompt: string;
-    options: readonly string[];
+    prompt: string | null;
+    options: readonly PollOptionWrite[];
     familyId: string;
     parentUserId: string;
     now: Date;
@@ -167,17 +187,21 @@ async function deliverChoicePoll(
     idempotencyKey: string;
   },
 ): Promise<LinqPollOffer> {
+  if (!linqPollsEnabled()) return { status: 'skipped', reason: 'flag_off' };
+  if (args.options.length < 2) return { status: 'skipped', reason: 'not_a_choice' };
   let prompted = false;
   try {
-    await sendLinqChatMessage({
-      chatId: args.chatId,
-      text: args.prompt,
-      fetch: args.fetch,
-    });
-    prompted = true;
+    if (args.prompt) {
+      await sendLinqChatMessage({
+        chatId: args.chatId,
+        text: args.prompt,
+        fetch: args.fetch,
+      });
+      prompted = true;
+    }
     const poll = await sendLinqPoll({
       chatId: args.chatId,
-      options: args.options,
+      options: args.options.map((option) => option.text),
       idempotencyKey: args.idempotencyKey,
       fetch: args.fetch,
     });
@@ -198,15 +222,23 @@ async function deliverChoicePoll(
       .returning({ id: schema.channelMessages.id });
     const channelMessageId = row?.id;
     if (!channelMessageId) throw new Error('linq poll: channel_messages insert returned no row');
+    const byText = new Map(args.options.map((option) => [option.text, option]));
     await database.insert(schema.linqPollOptions).values(
-      poll.options.map((option) => ({
-        familyId: args.familyId,
-        parentUserId: args.parentUserId,
-        providerChatId: args.chatId as string,
-        providerMessageId: poll.messageId,
-        optionId: option.optionId,
-        optionText: option.text,
-      })),
+      poll.options.map((option) => {
+        const meta = byText.get(option.text);
+        return {
+          familyId: args.familyId,
+          parentUserId: args.parentUserId,
+          providerChatId: args.chatId,
+          providerMessageId: poll.messageId,
+          optionId: option.optionId,
+          optionText: option.text,
+          pollKind: meta?.pollKind ?? null,
+          subjectKey: meta?.subjectKey ?? null,
+          choiceKind: meta?.choiceKind ?? null,
+          choiceValue: meta?.choiceValue ?? null,
+        };
+      }),
     );
     await database.insert(schema.auditLog).values({
       familyId: args.familyId,
@@ -241,17 +273,34 @@ async function deliverChoicePoll(
   }
 }
 
+export interface LinqPollOptionLookup {
+  familyId: string;
+  parentUserId: string;
+  chatId: string;
+  text: string;
+  providerMessageId: string;
+  pollKind: string | null;
+  subjectKey: string | null;
+  choiceKind: string | null;
+  choiceValue: string | null;
+}
+
 export async function lookupLinqPollOption(
   database: Database,
   optionId: string,
-): Promise<{ familyId: string; parentUserId: string; chatId: string; text: string } | null> {
+): Promise<LinqPollOptionLookup | null> {
   const rows = await database
     .select({
       familyId: schema.linqPollOptions.familyId,
       parentUserId: schema.linqPollOptions.parentUserId,
       providerChatId: schema.linqPollOptions.providerChatId,
+      providerMessageId: schema.linqPollOptions.providerMessageId,
       optionText: schema.linqPollOptions.optionText,
       optionId: schema.linqPollOptions.optionId,
+      pollKind: schema.linqPollOptions.pollKind,
+      subjectKey: schema.linqPollOptions.subjectKey,
+      choiceKind: schema.linqPollOptions.choiceKind,
+      choiceValue: schema.linqPollOptions.choiceValue,
     })
     .from(schema.linqPollOptions)
     .where(eq(schema.linqPollOptions.optionId, optionId));
@@ -262,5 +311,10 @@ export async function lookupLinqPollOption(
     parentUserId: row.parentUserId,
     chatId: row.providerChatId,
     text: row.optionText,
+    providerMessageId: row.providerMessageId,
+    pollKind: row.pollKind ?? null,
+    subjectKey: row.subjectKey ?? null,
+    choiceKind: row.choiceKind ?? null,
+    choiceValue: row.choiceValue ?? null,
   };
 }

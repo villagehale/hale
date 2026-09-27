@@ -27,9 +27,10 @@ import {
   groupWelcome,
   matchBothFreeAsk,
 } from './group-coparent-copy';
-import { answerBothFreeInGroup } from './household-calendar';
+import { planBothFreeAsk, rememberBothFreeAsked } from './household-calendar';
 import { sendLinqLinkPreview } from './link-preview';
 import type { LinqInboundText } from './payload';
+import { sendChoicePoll } from './poll';
 import { LinqSendError, sendLinqChatMessage } from './transport';
 
 /**
@@ -365,12 +366,12 @@ async function answerDoneStep(
     };
   }
   if (bothFree && asked !== 'gmail' && asked !== 'gcal') {
-    const text = await answerBothFreeInGroup(database, {
+    const plan = await planBothFreeAsk(database, {
       familyId: sender.familyId,
       now: ports.now,
       language,
     });
-    if (!text) {
+    if (plan.mode === 'none') {
       return {
         type: 'done',
         outcome: 'group_coparent_both_free_none',
@@ -378,7 +379,8 @@ async function answerDoneStep(
         body: { outcome: 'group_coparent_both_free_none' },
       };
     }
-    await sendLine(database, {
+    const text = plan.mode === 'text' ? plan.text : plan.prompt;
+    const sent = await sendLine(database, {
       familyId: sender.familyId,
       parentUserId: sender.userId,
       chatId: message.chatId,
@@ -388,6 +390,28 @@ async function answerDoneStep(
       now: ports.now,
       fetch: ports.fetch,
     });
+    if (plan.mode === 'poll' && (sent === 'sent' || sent === 'already_sent')) {
+      const poll = await sendChoicePoll(database, {
+        chatId: message.chatId,
+        prompt: null,
+        options: plan.options,
+        familyId: sender.familyId,
+        parentUserId: sender.userId,
+        now: ports.now,
+        fetch: ports.fetch,
+        idempotencyKey: `poll:${plan.factKey}:${sender.familyId}`.slice(0, 180),
+      });
+      if (poll.status === 'sent' || poll.status === 'prompted') {
+        await rememberBothFreeAsked(database, {
+          familyId: sender.familyId,
+          parentUserId: sender.userId,
+          factKey: plan.factKey,
+          day: plan.day,
+          slots: plan.slots,
+          now: ports.now,
+        });
+      }
+    }
     return {
       type: 'done',
       outcome: 'group_coparent_both_free',
