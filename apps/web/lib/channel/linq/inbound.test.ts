@@ -634,6 +634,50 @@ describe('handleLinqInboundRequest', () => {
     expect(JSON.stringify(h.warns)).not.toContain(PHONE);
   });
 
+  it('stores a logistics vote and does not route it as a find', async () => {
+    const h = harness();
+    const { familyId, userId } = enrol(h.fake);
+    const subjectKey = 'who-takes/2026-09-25T19:00:00.000Z/maya%20gymnastics';
+    await h.fake.db.insert(schema.linqPollOptions).values({
+      familyId,
+      parentUserId: userId,
+      providerChatId: CHAT_ID,
+      providerMessageId: 'poll-msg',
+      optionId: 'opt-sam',
+      optionText: 'Sam',
+      pollKind: 'who_takes',
+      subjectKey,
+      choiceKind: 'parent',
+      choiceValue: userId,
+    } as never);
+    const vote = JSON.parse(messageBody()) as { event_type: string; data: unknown };
+    vote.event_type = 'poll.vote.added';
+    vote.data = {
+      chat_id: CHAT_ID,
+      message_id: 'poll-msg',
+      option_id: 'opt-sam',
+      sender_handle: { handle: PHONE, is_me: false },
+    };
+
+    const res = await handleLinqInboundRequest(request(JSON.stringify(vote)), h.deps);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ outcome: 'poll_logistics' });
+    expect(h.jobs).toEqual([]);
+    const facts = h.fake.rows(schema.familyMemoryFacts);
+    expect(facts).toHaveLength(1);
+    expect(facts[0]).toMatchObject({
+      familyId,
+      factType: 'logistic',
+      factKey: subjectKey,
+    });
+    expect(facts[0]?.factValue).toMatchObject({
+      kind: 'who_takes',
+      status: 'decided',
+      takerUserId: userId,
+    });
+  });
+
   it('records None of these and does not route another ask', async () => {
     const h = harness();
     const { familyId, userId } = enrol(h.fake);

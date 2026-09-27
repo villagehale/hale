@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { families } from './families.js';
 import { users } from './users.js';
 
@@ -25,6 +25,17 @@ export const linqPollOptions = pgTable(
     providerMessageId: text('provider_message_id').notNull(),
     optionId: text('option_id').notNull(),
     optionText: text('option_text').notNull(),
+    /**
+     * VIL-377. Null is a year-find poll (rows from before logistics polls).
+     * `who_takes` and `both_free` are logistics and must not be routed as a find title.
+     */
+    pollKind: text('poll_kind'),
+    /** Fact key the vote closes. Null on a year-find option. */
+    subjectKey: text('subject_key'),
+    /** `find`, `none`, `parent`, `figure_it_out`, or `slot`. Null on a year-find option. */
+    choiceKind: text('choice_kind'),
+    /** Parent user id, or the slot start instant. Null when the choice names nobody. */
+    choiceValue: text('choice_value'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

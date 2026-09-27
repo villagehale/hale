@@ -33,13 +33,14 @@ const HARD_DAY_MAX = 2;
 const QUIET_START = '21:00:00';
 const QUIET_END = '08:00:00';
 
-/** Kid-event, conflict, handoff, post-event, both-free. The 1/day and 3/week budget. */
+/** Kid-event, conflict, handoff, post-event, both-free, who-takes. The 1/day and 3/week budget. */
 const DISCRETIONARY_TEMPLATES = [
   'linq:group_kid_event',
   'linq:group_conflict',
   'linq:group_handoff',
   'linq:group_followup',
   'linq:group_both_free',
+  'linq:group_who_takes',
 ] as const;
 
 const SYNC_TEMPLATE = 'linq:group_sync';

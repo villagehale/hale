@@ -39,6 +39,8 @@ import {
   steerNotedCoparentOneToOne,
 } from './group-coparent';
 import { groupWelcome } from './group-coparent-copy';
+import { captureLogisticsText } from './household-calendar';
+import { isLogisticsPollKind, recordLogisticsVote } from './logistics-poll';
 import { type LinqInboundText, type LinqSignal, parseLinqWebhook } from './payload';
 import { isYearFindPollNone, lookupLinqPollOption } from './poll';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
@@ -332,6 +334,25 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
 }
 
 async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
+  const mapped = await mapGroupHandlesToFamily(deps.database, {
+    sender: message.senderHandle,
+    others: [],
+  });
+  if (mapped.status === 'same_family') {
+    try {
+      await captureLogisticsText(deps.database, {
+        familyId: mapped.familyId,
+        parentUserId: mapped.userId,
+        body: message.text,
+        now: deps.now?.() ?? new Date(),
+      });
+    } catch (err) {
+      deps.log.warn(
+        { code: err instanceof Error ? err.name : 'unknown' },
+        'linq inbound: logistics text was not stored',
+      );
+    }
+  }
   const outcome = await routeTwilioInbound(
     deps,
     {
@@ -543,7 +564,36 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     const providerId = `poll:${signal.messageId ?? 'vote'}:${signal.optionId}:${phoneBlindIndex(signal.senderHandle)}`;
     let outcome: TwilioInboundOutcome;
     try {
-      if (isYearFindPollNone(option.text)) {
+      if (isLogisticsPollKind(option.pollKind) && option.subjectKey) {
+        const recorded = await recordHandledInbound(
+          deps,
+          {
+            messageId: providerId,
+            chatId: signal.chatId,
+            senderHandle: signal.senderHandle,
+            text: option.text,
+            mediaCount: 0,
+            receivedAt: deps.now?.() ?? new Date(),
+            otherHandles: [],
+          },
+          { familyId: mapped.familyId, userId: mapped.userId },
+        );
+        if (!recorded) {
+          outcome = 'duplicate';
+        } else {
+          const vote = await recordLogisticsVote(deps.database, {
+            familyId: option.familyId,
+            parentUserId: mapped.userId,
+            subjectKey: option.subjectKey,
+            pollKind: option.pollKind === 'both_free' ? 'both_free' : 'who_takes',
+            choiceKind: option.choiceKind,
+            choiceValue: option.choiceValue,
+            optionText: option.text,
+            now: deps.now?.() ?? new Date(),
+          });
+          outcome = vote === 'ignored' ? 'ignored' : 'poll_logistics';
+        }
+      } else if (isYearFindPollNone(option.text)) {
         const recorded = await recordHandledInbound(
           deps,
           {
