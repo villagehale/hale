@@ -3,14 +3,14 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { schema } from '@hale/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
-  assessCronHealth,
   type CronManifestEntry,
-  cronSlug,
-  STALE_GRACE_SECONDS,
   INBOUND_LANE_STALL_SECONDS,
+  STALE_GRACE_SECONDS,
+  assessCronHealth,
   assessInboundLane,
+  cronSlug,
   schedulePeriodSeconds,
   staleAfterSeconds,
 } from './deadman';
@@ -38,11 +38,10 @@ function manifest(): CronManifestEntry[] {
 /** Runs the real checker in --stdin mode; returns its exit code and output. */
 function runChecker(httpStatus: number, body: string): { exitCode: number; output: string } {
   try {
-    const output = execFileSync(
-      process.execPath,
-      [CHECKER, '--stdin', String(httpStatus)],
-      { input: body, encoding: 'utf8' },
-    );
+    const output = execFileSync(process.execPath, [CHECKER, '--stdin', String(httpStatus)], {
+      input: body,
+      encoding: 'utf8',
+    });
     return { exitCode: 0, output };
   } catch (err) {
     const failure = err as { status: number | null; stdout: string };
@@ -300,10 +299,24 @@ describe('assessInboundLane', () => {
     expect(assessInboundLane(601)).toEqual({
       name: 'lane:inbound-turns',
       // The SAME token the off-Vercel checker filters on — a lane named 'stalled'
-      // would flip ok:false and then be left out of the founder's SMS.
+      // would flip ok:false and then be left out of the Slack #ops page.
       status: 'stale',
       ageSeconds: 601,
       staleAfterSeconds: 600,
     });
+  });
+});
+
+describe('the off-Vercel page', () => {
+  it('posts to Slack #ops and does not text a founder phone', () => {
+    const yml = readFileSync(
+      fileURLToPath(new URL('../../../../.github/workflows/cron-deadman.yml', import.meta.url)),
+      'utf8',
+    );
+    expect(yml).toContain('OPS_SLACK_WEBHOOK_URL');
+    expect(yml).toContain('C0C5XMCAQ56');
+    expect(yml).not.toContain('FOUNDER_ALERT_PHONE');
+    expect(yml).not.toContain('Messages.json');
+    expect(yml).not.toContain('api.twilio.com');
   });
 });

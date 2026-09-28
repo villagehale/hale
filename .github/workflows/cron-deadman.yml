@@ -18,19 +18,20 @@
 #
 # WHAT IT DOES: every 10 minutes, probe /api/health/crons (names + ages only —
 # the endpoint is deliberately unrevealing) and, if the endpoint is
-# unreachable, unparseable, empty, or reports ANY stale entry, text the founder
-# via Twilio's REST API. An unreachable endpoint pages exactly like a stale
-# cron: a refusal is not evidence of health. The array carries one entry that
-# is not a cron — `lane:inbound-turns`, the age of the oldest unfinished
-# inbound text — and this checker needs no special case for it: it filters on
-# the 'stale' token, not on a manifest slug.
+# unreachable, unparseable, empty, or reports ANY stale entry, post to Slack
+# #ops. An unreachable endpoint pages exactly like a stale cron: a refusal is
+# not evidence of health. The array carries one entry that is not a cron —
+# `lane:inbound-turns`, the age of the oldest unfinished inbound text — and
+# this checker needs no special case for it: it filters on the 'stale' token,
+# not on a manifest slug. It does not text a founder phone.
 #
 # SECRETS (Actions repo secrets, same names as the app's own env vars):
-#   TWILIO_ACCOUNT_SID   — Twilio REST credential
-#   TWILIO_AUTH_TOKEN    — Twilio REST credential
-#   FOUNDER_ALERT_PHONE  — E.164 destination for the page
-# If any is missing while crons are stale, the SMS step FAILS LOUDLY naming
-# the missing secret — it never silently no-ops (rule #11).
+#   OPS_SLACK_WEBHOOK_URL — Incoming Webhook bound to #ops (C0C5XMCAQ56)
+# Optional repository variable:
+#   SLACK_OPS_CHANNEL     — defaults to C0C5XMCAQ56
+# If the webhook secret is missing while crons are stale, the page step FAILS
+# LOUDLY naming it — it never silently no-ops, and it never falls back to SMS
+# (rule #11).
 
 name: Cron dead-man
 
@@ -57,32 +58,40 @@ jobs:
         continue-on-error: true
         run: node .github/scripts/cron-deadman-check.mjs "https://app.villagehale.com/api/health/crons"
 
-      - name: Page the founder (Twilio REST)
+      - name: Page Slack #ops
         if: steps.probe.outcome == 'failure'
         env:
-          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
-          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
-          FOUNDER_ALERT_PHONE: ${{ secrets.FOUNDER_ALERT_PHONE }}
+          OPS_SLACK_WEBHOOK_URL: ${{ secrets.OPS_SLACK_WEBHOOK_URL }}
+          SLACK_OPS_CHANNEL: ${{ vars.SLACK_OPS_CHANNEL }}
           SUMMARY: ${{ steps.probe.outputs.summary }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          missing=""
-          for name in TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN FOUNDER_ALERT_PHONE; do
-            if [ -z "${!name:-}" ]; then missing="$missing $name"; fi
-          done
-          if [ -n "$missing" ]; then
-            echo "::error::cron-deadman ALARM (${SUMMARY:-no summary}) but the founder SMS cannot send — missing Actions secret(s):$missing. Add them under repo Settings > Secrets and variables > Actions."
+          if [ -z "${OPS_SLACK_WEBHOOK_URL:-}" ]; then
+            echo "::error::cron-deadman ALARM (${SUMMARY:-no summary}) but the ops Slack page cannot send — missing Actions secret OPS_SLACK_WEBHOOK_URL. Add an Incoming Webhook for #ops (C0C5XMCAQ56) under repo Settings > Secrets and variables > Actions."
             exit 1
           fi
-          # From = Hale's own brand number (ALERT_FROM_NUMBER in
-          # apps/web/lib/channel/twilio/alert.ts) — committed there, not a secret.
-          curl -sS --fail-with-body --max-time 15 \
-            -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json" \
-            -u "${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}" \
-            --data-urlencode "To=${FOUNDER_ALERT_PHONE}" \
-            --data-urlencode "From=+12892172279" \
-            --data-urlencode "Body=Hale DEADMAN: ${SUMMARY:-cron health check failed}. A cron or the inbound lane stopped reporting healthy. ${RUN_URL}"
+          node --input-type=module <<'EOF'
+          const url = process.env.OPS_SLACK_WEBHOOK_URL ?? '';
+          if (!url.startsWith('https://')) {
+            console.error('::error::OPS_SLACK_WEBHOOK_URL must be an https incoming-webhook URL');
+            process.exit(1);
+          }
+          const channel = (process.env.SLACK_OPS_CHANNEL || 'C0C5XMCAQ56').trim();
+          const summary = process.env.SUMMARY || 'cron health check failed';
+          const runUrl = process.env.RUN_URL || '';
+          const text = `Hale DEADMAN: ${summary}. A cron or the inbound lane stopped reporting healthy. ${runUrl}`;
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text, channel }),
+            signal: AbortSignal.timeout(15_000),
+          });
+          if (!response.ok) {
+            console.error(`::error::ops Slack webhook refused with HTTP ${response.status}`);
+            process.exit(1);
+          }
+          EOF
 
       - name: Fail the run when the probe alarmed
         if: steps.probe.outcome == 'failure'

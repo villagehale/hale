@@ -11,9 +11,10 @@ import { resetWebhookAlertWindowForTests } from '~/lib/channel/twilio/alert';
  * SmsFallbackUrl retries on nothing else — a 200 would trade a visible failure for a
  * permanently lost message), and somebody is told.
  *
- * The alert module is NOT mocked: `fetch` is, so what Twilio and PostHog would have
- * received is asserted through the real reporter. What IS mocked is everything that
- * needs infrastructure — the point of a shell is that it holds no logic of its own.
+ * The alert module is NOT mocked: `fetch` is, so what Slack and PostHog would have
+ * received is asserted through the real reporter. A configured founder phone must not
+ * produce a Twilio request. What IS mocked is everything that needs infrastructure —
+ * the point of a shell is that it holds no logic of its own.
  */
 
 const handleInbound = vi.fn();
@@ -37,8 +38,7 @@ vi.mock('~/lib/channel/twilio/deps', () => ({
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
 vi.mock('~/lib/cron/kick-drain', () => ({ kickDrain: async () => {} }));
 
-const ACCOUNT_SID = 'AC00000000000000000000000000000000';
-const FOUNDER_PHONE = '+14165550111';
+const WEBHOOK = 'https://hooks.slack.com/services/T000/B000/XXXX';
 const POSTHOG_HOST = 'https://ph.example.com';
 
 const calls: { url: string; body: string }[] = [];
@@ -51,6 +51,7 @@ function request(): Request {
   });
 }
 
+const slackCalls = () => calls.filter((call) => call.url === WEBHOOK);
 const twilioCalls = () => calls.filter((call) => call.url.includes('api.twilio.com'));
 const posthogCalls = () => calls.filter((call) => call.url.startsWith(POSTHOG_HOST));
 
@@ -65,7 +66,14 @@ function only(of: { url: string; body: string }[], label: string): { url: string
   return first;
 }
 
-const smsBody = () => new URLSearchParams(only(twilioCalls(), 'twilio').body).get('Body') ?? '';
+const pageText = () => {
+  const posted = JSON.parse(only(slackCalls(), 'slack').body) as {
+    text?: string;
+    channel?: string;
+  };
+  expect(posted.channel).toBe('C0C5XMCAQ56');
+  return posted.text ?? '';
+};
 const captured = () => JSON.parse(only(posthogCalls(), 'posthog').body);
 
 beforeEach(() => {
@@ -76,9 +84,10 @@ beforeEach(() => {
   handleStatus.mockReset();
   inboundDeps.mockReset().mockReturnValue({ enqueue: async () => {} });
   vi.spyOn(console, 'error').mockImplementation(() => {});
-  vi.stubEnv('TWILIO_ACCOUNT_SID', ACCOUNT_SID);
+  vi.stubEnv('OPS_SLACK_WEBHOOK_URL', WEBHOOK);
+  vi.stubEnv('FOUNDER_ALERT_PHONE', '+14165550111');
+  vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC00000000000000000000000000000000');
   vi.stubEnv('TWILIO_AUTH_TOKEN', 'twilio_auth_token_value');
-  vi.stubEnv('FOUNDER_ALERT_PHONE', FOUNDER_PHONE);
   vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', 'phc_test_key');
   vi.stubEnv('NEXT_PUBLIC_POSTHOG_HOST', POSTHOG_HOST);
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -102,9 +111,10 @@ describe('POST /api/channels/twilio/inbound', () => {
 
     expect(response.status).toBe(500);
     expect(console.error).toHaveBeenCalled();
-    expect(twilioCalls()).toHaveLength(1);
-    expect(smsBody()).toContain('twilio_inbound');
-    expect(smsBody()).not.toContain('too many clients');
+    expect(slackCalls()).toHaveLength(1);
+    expect(twilioCalls()).toHaveLength(0);
+    expect(pageText()).toContain('twilio_inbound');
+    expect(pageText()).not.toContain('too many clients');
     expect(captured()).toMatchObject({
       event: 'webhook_route_failed',
       properties: { route: 'twilio_inbound', error_class: 'Error' },
@@ -121,7 +131,8 @@ describe('POST /api/channels/twilio/inbound', () => {
     const response = await POST(request());
 
     expect(response.status).toBe(500);
-    expect(twilioCalls()).toHaveLength(1);
+    expect(slackCalls()).toHaveLength(1);
+    expect(twilioCalls()).toHaveLength(0);
     expect(posthogCalls()).toHaveLength(1);
   });
 
@@ -133,9 +144,9 @@ describe('POST /api/channels/twilio/inbound', () => {
 
     await POST(request());
 
-    expect(smsBody()).not.toContain('14165551234');
-    expect(smsBody()).not.toContain('Nora');
-    expect(smsBody()).not.toContain('insert into channel_messages');
+    expect(pageText()).not.toContain('14165551234');
+    expect(pageText()).not.toContain('Nora');
+    expect(pageText()).not.toContain('insert into channel_messages');
     expect(captured().properties).toEqual({
       route: 'twilio_inbound',
       error_class: 'Error',
@@ -163,7 +174,8 @@ describe('POST /api/channels/twilio/voice', () => {
     const response = await POST(request());
 
     expect(response.status).toBe(500);
-    expect(smsBody()).toContain('twilio_voice');
+    expect(pageText()).toContain('twilio_voice');
+    expect(twilioCalls()).toHaveLength(0);
     expect(captured().properties.route).toBe('twilio_voice');
   });
 });
@@ -176,7 +188,8 @@ describe('POST /api/channels/twilio/status', () => {
     const response = await POST(request());
 
     expect(response.status).toBe(500);
-    expect(smsBody()).toContain('twilio_status');
+    expect(pageText()).toContain('twilio_status');
+    expect(twilioCalls()).toHaveLength(0);
     expect(captured().properties.route).toBe('twilio_status');
   });
 });

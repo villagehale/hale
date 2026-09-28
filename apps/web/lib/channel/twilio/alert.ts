@@ -1,4 +1,5 @@
 import { buildEvent } from '~/lib/analytics/events';
+import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
 
 /**
  * VIL-331 — the alarm on the webhook itself.
@@ -16,17 +17,17 @@ import { buildEvent } from '~/lib/analytics/events';
  * `createTwilioTransport` (which resolves config through the all-or-nothing send path)
  * or `captureServerEvent` (whose fetch is not injectable).
  *
- * Privacy (rule #1). The founder SMS carries a route name, an error class, and a
- * digit-scrubbed slice of the error message. The PostHog event carries a route name and
- * an error class and NOTHING ELSE — a message can echo whatever the failing statement
- * was handling, and PostHog is a third party. The scrub is structural rather than a
- * convention: no parameter of this function can carry a parent's text, and any run of 7+
- * digits (a phone number, an E.164 To, an account id) is replaced before the body is
- * built.
+ * The page goes to Slack #ops (`postOpsSlack`). It does not text a founder phone.
+ * Parent-facing Twilio and Linq sends are a different door and are not this module.
  *
- * Rule #11. Neither leg is allowed to quietly do nothing: an absent phone number, an
- * absent credential and a refused request are three DIFFERENT named outcomes, all
- * logged, and both are returned to the caller.
+ * Privacy (rule #1). The Slack page carries a route name and an error class only.
+ * The PostHog event carries a route name and an error class and NOTHING ELSE — a
+ * message can echo whatever the failing statement was handling, and PostHog is a third
+ * party. The scrub is structural rather than a convention: no parameter of this
+ * function can carry a parent's text, and the error message is never placed in the page.
+ *
+ * Rule #11. Neither leg is allowed to quietly do nothing: an absent Slack webhook and a
+ * refused request are named outcomes, logged, and both are returned to the caller.
  */
 
 /** The webhooks that can 500 anonymously. One token per route, snake_case so it reads
@@ -42,15 +43,10 @@ export type WebhookRoute =
   | 'email_inbound'
   | 'linq_inbound';
 
-export type SmsAlertOutcome =
-  | 'sent'
-  | 'skipped_not_configured'
-  | 'suppressed_rate_limit'
-  | 'failed';
 export type AnalyticsAlertOutcome = 'sent' | 'skipped_not_configured' | 'failed';
 
 export interface WebhookAlertOutcome {
-  readonly sms: SmsAlertOutcome;
+  readonly page: OpsPageOutcome | 'suppressed_rate_limit';
   readonly analytics: AnalyticsAlertOutcome;
 }
 
@@ -59,103 +55,54 @@ export interface WebhookAlertDeps {
   fetch?: typeof fetch;
 }
 
-const TWILIO_API_BASE = 'https://api.twilio.com/2010-04-01';
 const DEFAULT_POSTHOG_HOST = 'https://us.i.posthog.com';
-
-/**
- * Hale's own brand number — the one parents text — named here rather than read from
- * TWILIO_FROM_NUMBER on purpose: this module's configuration surface is deliberately the
- * two account secrets plus one recipient, the fewest things that can be missing on the
- * day everything else is.
- */
-export const ALERT_FROM_NUMBER = '+12892172279';
 
 /** The alert sits on the failure path of a webhook Twilio gives 15s, and the caller
  * still owes Twilio a 500 afterwards — so a hung provider must lose seconds, not the
  * response. */
 const ALERT_TIMEOUT_MS = 4_000;
 
-/** One founder SMS per instance per window: the incident that motivated this fired on
+/** One founder page per instance per window: the incident that motivated this fired on
  * every inbound message for six hours. */
-const FOUNDER_SMS_MIN_INTERVAL_MS = 15 * 60 * 1_000;
+const FOUNDER_PAGE_MIN_INTERVAL_MS = 15 * 60 * 1_000;
 
-/** Spent on the ATTEMPT rather than on delivery: an unconfigured or refusing Twilio
- * must not produce a log line per inbound message for six hours either. */
-let lastFounderSmsAttemptAt: number | null = null;
+/** Spent on the ATTEMPT rather than on delivery: an unconfigured or refusing Slack
+ * webhook must not produce a log line per inbound message for six hours either. */
+let lastFounderPageAttemptAt: number | null = null;
 
 /** Test seam: the window above is module state and would otherwise leak between cases. */
 export function resetWebhookAlertWindowForTests(): void {
-  lastFounderSmsAttemptAt = null;
+  lastFounderPageAttemptAt = null;
 }
 
 function errorClass(error: unknown): string {
   return error instanceof Error ? error.name : typeof error;
 }
 
-async function sendFounderSms(
+async function sendFounderPage(
   route: WebhookRoute,
   error: unknown,
   doFetch: typeof fetch,
-): Promise<SmsAlertOutcome> {
+): Promise<WebhookAlertOutcome['page']> {
   const now = Date.now();
   if (
-    lastFounderSmsAttemptAt !== null &&
-    now - lastFounderSmsAttemptAt < FOUNDER_SMS_MIN_INTERVAL_MS
+    lastFounderPageAttemptAt !== null &&
+    now - lastFounderPageAttemptAt < FOUNDER_PAGE_MIN_INTERVAL_MS
   ) {
     return 'suppressed_rate_limit';
   }
-  lastFounderSmsAttemptAt = now;
+  lastFounderPageAttemptAt = now;
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const to = process.env.FOUNDER_ALERT_PHONE?.trim();
-  if (!accountSid || !authToken || !to) {
-    const missing = ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'FOUNDER_ALERT_PHONE'].filter(
-      (name) => !process.env[name]?.trim(),
-    );
-    console.error('webhook alert: founder SMS not configured — nobody was paged', {
-      route,
-      missing,
-    });
-    return 'skipped_not_configured';
+  // Route + error CLASS only, never the message: a DB error string can embed a
+  // parent's own words ("insert failed for ...: is Nora ok?"), and no scrub of
+  // free text is airtight (416-555-1234 slips a digit-run filter). The full
+  // message goes to console.error at the boundary; the class is enough to page.
+  const text = `Hale ALERT: ${route} threw - ${errorClass(error)}. Details in logs + PostHog.`;
+  const page = await postOpsSlack(text, doFetch);
+  if (page !== 'sent') {
+    console.error('webhook alert: founder page not delivered', { route, page });
   }
-
-  const form = new URLSearchParams({
-    To: to,
-    From: ALERT_FROM_NUMBER,
-    // Route + error CLASS only, never the message: a DB error string can embed a
-    // parent's own words ("insert failed for ...: is Nora ok?"), and no scrub of
-    // free text is airtight (416-555-1234 slips a digit-run filter). The full
-    // message goes to console.error at the boundary; the class is enough to page.
-    // ASCII on purpose - GSM-7, one segment.
-    Body: `Hale ALERT: ${route} threw - ${errorClass(error)}. Details in logs + PostHog.`,
-  });
-
-  try {
-    const response = await doFetch(`${TWILIO_API_BASE}/Accounts/${accountSid}/Messages.json`, {
-      method: 'POST',
-      headers: {
-        authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
-        'content-type': 'application/x-www-form-urlencoded',
-      },
-      body: form.toString(),
-      signal: AbortSignal.timeout(ALERT_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      console.error('webhook alert: founder SMS refused', { route, status: response.status });
-      return 'failed';
-    }
-    return 'sent';
-  } catch (err) {
-    // The one place this module swallows, for the same reason captureAgentError does: a
-    // REPORTER that throws replaces a diagnosable failure with an undiagnosable one, and
-    // it is called from inside a catch. Named in the return value, never silent.
-    console.error('webhook alert: founder SMS threw', {
-      route,
-      err: err instanceof Error ? err.name : 'unknown',
-    });
-    return 'failed';
-  }
+  return page;
 }
 
 async function captureFailure(
@@ -210,19 +157,19 @@ async function captureFailure(
 }
 
 /**
- * Page the founder and record the failure. Never throws; both legs run in parallel and
- * each reports what it did.
+ * Page ops in Slack and record the failure. Never throws; both legs run in parallel
+ * and each reports what it did. Does not send SMS.
  */
 export async function webhookFailureAlert(
   input: { route: WebhookRoute; error: unknown },
   deps: WebhookAlertDeps = {},
 ): Promise<WebhookAlertOutcome> {
   const doFetch = deps.fetch ?? globalThis.fetch;
-  const [sms, analytics] = await Promise.all([
-    sendFounderSms(input.route, input.error, doFetch),
+  const [page, analytics] = await Promise.all([
+    sendFounderPage(input.route, input.error, doFetch),
     captureFailure(input.route, input.error, doFetch),
   ]);
-  return { sms, analytics };
+  return { page, analytics };
 }
 
 /**

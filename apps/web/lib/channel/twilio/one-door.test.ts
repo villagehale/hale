@@ -10,8 +10,8 @@ import { describe, expect, it } from 'vitest';
  *
  * The invariant: every module that can put bytes on a parent's phone either writes a
  * channel_messages row for each send, or is a NAMED residue with a structural reason
- * (pre-family sends have no NOT NULL family_id to satisfy; the founder alert is
- * DB-independent by design because it fires when the DB is down). A code review
+ * (pre-family sends have no NOT NULL family_id to satisfy). Ops pages go to Slack
+ * #ops and are not a phone door. A code review
  * cannot keep that true as the codebase grows, so it is a test: constructing a Twilio
  * transport — or reaching Twilio REST directly — in any file not on this list fails
  * here, loudly, with the question the new file must answer ("where is your ledger
@@ -106,10 +106,6 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'RESIDUE: sign-in codes are unledgered. The claim flow resolves userId+familyId before sending, but the OTP seam returns no provider id and channel_message_category has no honest value for an auth code. Closing this needs an additive category migration + provider-id plumbing — its own change, not a quiet edit here.',
   'apps/web/lib/channels/otp-sender.ts':
     'RESIDUE (latent): env-driven CPaaS sender, unconfigured in every environment — claim-code-sender deliberately routes around it. Bound + ledger it before A3 provisions it.',
-  'apps/web/lib/channel/twilio/alert.ts':
-    'RESIDUE BY DESIGN: the founder webhook-failure alert is database-independent on purpose — it fires when the DB is down (2026-08-28), so a ledger write is structurally impossible. Founder-directed, digit-scrubbed, rate-limited.',
-  'apps/web/lib/monitoring/twilio-triage.ts':
-    'RESIDUE BY DESIGN: founder diagnosis SMS for Twilio Monitor alerts — same ops class as alert.ts, founder-directed, not family traffic.',
 };
 
 /** The trees a send could hide in. Worker is scanned even though it has no Twilio
@@ -165,7 +161,7 @@ describe('one door to the provider (rule #6)', () => {
     // A scan that cannot find transport.ts is a broken scanner, not a clean repo —
     // every assertion below would pass vacuously ("a refusal is not evidence").
     expect(found).toContain('apps/web/lib/channel/twilio/transport.ts');
-    expect(found).toContain('apps/web/lib/channel/twilio/alert.ts');
+    expect(found).toContain('apps/web/lib/channel/twilio/delivery-sweep.ts');
     expect(found).toContain('apps/web/lib/channel/linq/transport.ts');
   });
 

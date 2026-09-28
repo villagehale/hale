@@ -1,11 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, lt, sql } from 'drizzle-orm';
 import {
-  ALERTS_URL,
-  credentials,
-} from '~/lib/admin/services/twilio';
-import { SERVICE_TIMEOUT_MS, notConfigured, type ServiceOutcome, unreachable } from '~/lib/admin/services/outcome';
-import { ALERT_FROM_NUMBER } from '~/lib/channel/twilio/alert';
+  SERVICE_TIMEOUT_MS,
+  type ServiceOutcome,
+  notConfigured,
+  unreachable,
+} from '~/lib/admin/services/outcome';
+import { ALERTS_URL, credentials } from '~/lib/admin/services/twilio';
 import {
   type LikelyLayer,
   type MonitorAlert,
@@ -14,13 +15,15 @@ import {
   composeTriageDigest,
   triageAlerts,
 } from '~/lib/channel/twilio/triage';
+import { opsSlackMissing, postOpsSlack } from './ops-slack';
 import { escalateDigestSendFailure } from './provider-health';
 
 /**
  * VIL-331 · the alert-triage cron: poll Twilio's Monitor Alerts log every ten
- * minutes and turn a burst of webhook failures into ONE founder diagnosis SMS —
+ * minutes and turn a burst of webhook failures into ONE ops diagnosis in Slack #ops —
  * which class of failure, since when, which layer to suspect, what to check —
- * instead of a page per inbound message or nothing at all.
+ * instead of a page per inbound message or nothing at all. Founder SMS is not this
+ * path.
  *
  * It complements lib/channel/twilio/alert.ts, not replaces it: the boundary alert
  * is the DB-independent floor that fires from inside the failing request; this cron
@@ -44,7 +47,7 @@ export const TRIAGE_CLAIM_ROUTE = 'ops:twilio-triage';
 const CURSOR_IDENTIFIER = 'cursor';
 const DIGEST_IDENTIFIER = 'digest';
 
-/** One diagnosis SMS per half hour: long enough not to double-page a single
+/** One diagnosis page per half hour: long enough not to double-page a single
  * incident the 10-minute cron sees three times, short enough that a NEW wave inside
  * the same hour is still reported. */
 export const TRIAGE_DIGEST_WINDOW_MS = 30 * 60_000;
@@ -63,8 +66,6 @@ const WEBHOOK_PATH_PREFIX = '/api/channels/twilio/';
 
 /** How far back the outbound probe looks for landed sends. */
 const OUTBOUND_WINDOW_MS = 15 * 60_000;
-
-const SMS_TIMEOUT_MS = 4_000;
 
 /** How many Monitor pages one run may follow back toward the cursor (PageSize=50, so
  * 250 alerts). A burst of alerts about something ELSE — a 30007 carrier-filter storm
@@ -117,10 +118,10 @@ export interface TwilioTriageDeps {
   /** True exactly once per digest window — first claimer pages. */
   claimWindow(database: Database, now: Date): Promise<boolean>;
   outboundSentCount(database: Database, since: Date): Promise<number>;
-  sendSms(body: string): Promise<'sent' | 'failed' | 'skipped_not_configured'>;
-  /** Escalate a failed digest SMS through the ops seam (provider-health incident →
+  sendAlert(body: string): Promise<'sent' | 'failed' | 'skipped_not_configured'>;
+  /** Escalate a failed Slack page through the ops seam (provider-health incident →
    * founder EMAIL — deliberately the other transport, since the thing that just
-   * failed is a founder SMS). Required (rule #11): a page that died as a console
+   * failed is the Slack webhook). Required (rule #11): a page that died as a console
    * line is the 2026-09-03 audit's exact finding. */
   escalateDigestFailure(database: Database, reason: string, now: Date): Promise<void>;
 }
@@ -228,14 +229,21 @@ export async function runTwilioTriage(
       outcome: 'no_new_alerts',
       ignoredOtherAlerts: newAlerts.length,
       scan,
-      cursor: newAlerts.length ? await advance() : cursorStore === 'ok' ? 'unchanged' : 'store_unavailable',
+      cursor: newAlerts.length
+        ? await advance()
+        : cursorStore === 'ok'
+          ? 'unchanged'
+          : 'store_unavailable',
     };
   }
 
   const summary = triageAlerts(webhookAlerts);
   let outbound: OutboundHealth = 'unchecked';
   try {
-    const sent = await deps.outboundSentCount(database, new Date(now.getTime() - OUTBOUND_WINDOW_MS));
+    const sent = await deps.outboundSentCount(
+      database,
+      new Date(now.getTime() - OUTBOUND_WINDOW_MS),
+    );
     outbound = sent > 0 ? 'ok' : 'quiet';
   } catch (err) {
     console.error('twilio triage: outbound probe failed — reporting unchecked', {
@@ -256,7 +264,8 @@ export async function runTwilioTriage(
       err: err instanceof Error ? err.name : 'unknown',
     });
     won =
-      lastDigestAttemptAt === null || now.getTime() - lastDigestAttemptAt >= TRIAGE_DIGEST_WINDOW_MS;
+      lastDigestAttemptAt === null ||
+      now.getTime() - lastDigestAttemptAt >= TRIAGE_DIGEST_WINDOW_MS;
     if (!won) {
       return {
         outcome: 'suppressed_rate_limit',
@@ -270,15 +279,19 @@ export async function runTwilioTriage(
   }
 
   lastDigestAttemptAt = now.getTime();
-  const sms = await deps.sendSms(body);
-  if (sms !== 'sent') {
-    console.error('twilio triage: digest SMS not delivered', {
-      sms,
+  const page = await deps.sendAlert(body);
+  if (page !== 'sent') {
+    console.error('twilio triage: digest page not delivered', {
+      page,
       class: summary.dominant.class,
       alerts: summary.total,
     });
-    if (sms === 'skipped_not_configured') {
-      return { outcome: 'skipped_not_configured', missing: ['FOUNDER_ALERT_PHONE'] };
+    if (page === 'skipped_not_configured') {
+      const missing = opsSlackMissing();
+      return {
+        outcome: 'skipped_not_configured',
+        missing: missing.length > 0 ? missing : ['OPS_SLACK_WEBHOOK_URL'],
+      };
     }
     // Escalated over the OTHER transport (founder email via the provider-health
     // seam): the failed page said webhooks are failing, and the failure of the page
@@ -329,7 +342,11 @@ export async function advanceTriageCursor(database: Database, to: Date): Promise
     .insert(schema.rateLimits)
     .values({ identifier: CURSOR_IDENTIFIER, route: TRIAGE_CLAIM_ROUTE, windowStart: to, count: 0 })
     .onConflictDoNothing({
-      target: [schema.rateLimits.identifier, schema.rateLimits.route, schema.rateLimits.windowStart],
+      target: [
+        schema.rateLimits.identifier,
+        schema.rateLimits.route,
+        schema.rateLimits.windowStart,
+      ],
     })
     .returning({ id: schema.rateLimits.id });
   await database
@@ -363,54 +380,17 @@ export async function claimTriageDigestWindow(database: Database, now: Date): Pr
     .insert(schema.rateLimits)
     .values({ identifier: DIGEST_IDENTIFIER, route: TRIAGE_CLAIM_ROUTE, windowStart, count: 1 })
     .onConflictDoNothing({
-      target: [schema.rateLimits.identifier, schema.rateLimits.route, schema.rateLimits.windowStart],
+      target: [
+        schema.rateLimits.identifier,
+        schema.rateLimits.route,
+        schema.rateLimits.windowStart,
+      ],
     })
     .returning({ id: schema.rateLimits.id });
   return claimed.length > 0;
 }
 
 // ── default deps ─────────────────────────────────────────────────────────────
-
-/** The SMS leg mirrors lib/channel/twilio/alert.ts: raw Messages.json POST from the
- * brand number, env-only config, timeout, named refusal. Exported as the shared
- * founder ops-SMS sender — delivery-health pages through this same leg rather than
- * growing a third copy. */
-export async function sendFounderOpsSms(
-  body: string,
-  fetchImpl: typeof fetch,
-): Promise<'sent' | 'failed' | 'skipped_not_configured'> {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const to = process.env.FOUNDER_ALERT_PHONE?.trim();
-  if (!accountSid || !authToken || !to) {
-    return 'skipped_not_configured';
-  }
-  const form = new URLSearchParams({ To: to, From: ALERT_FROM_NUMBER, Body: body });
-  try {
-    const response = await fetchImpl(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-      {
-        method: 'POST',
-        headers: {
-          authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
-          'content-type': 'application/x-www-form-urlencoded',
-        },
-        body: form.toString(),
-        signal: AbortSignal.timeout(SMS_TIMEOUT_MS),
-      },
-    );
-    if (!response.ok) {
-      console.error('founder ops SMS refused', { status: response.status });
-      return 'failed';
-    }
-    return 'sent';
-  } catch (err) {
-    console.error('founder ops SMS threw', {
-      err: err instanceof Error ? err.name : 'unknown',
-    });
-    return 'failed';
-  }
-}
 
 /** The raw Monitor Alerts read — same creds precedence and rule-#11 union as the
  * admin portal's fetchTwilioAlerts, but keeping the fields triage classifies on (that
@@ -436,7 +416,10 @@ export async function fetchMonitorAlerts(
   let next: string | null = ALERTS_URL;
   try {
     for (let page = 0; page < MAX_ALERT_PAGES && next !== null; page += 1) {
-      const res = await fetchImpl(next, { headers, signal: AbortSignal.timeout(SERVICE_TIMEOUT_MS) });
+      const res = await fetchImpl(next, {
+        headers,
+        signal: AbortSignal.timeout(SERVICE_TIMEOUT_MS),
+      });
       if (!res.ok) {
         return unreachable(`Twilio answered ${res.status}`);
       }
@@ -464,9 +447,10 @@ export async function fetchMonitorAlerts(
 export function defaultTwilioTriageDeps(fetchImpl: typeof fetch = fetch): TwilioTriageDeps {
   return {
     configured() {
-      const missing = ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'FOUNDER_ALERT_PHONE'].filter(
-        (name) => !process.env[name]?.trim(),
-      );
+      const missing = [
+        ...['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'].filter((name) => !process.env[name]?.trim()),
+        ...opsSlackMissing(),
+      ];
       return missing.length === 0 ? { ok: true } : { ok: false, missing };
     },
     fetchAlerts: (since) => fetchMonitorAlerts(fetchImpl, since),
@@ -483,7 +467,7 @@ export function defaultTwilioTriageDeps(fetchImpl: typeof fetch = fetch): Twilio
         );
       return rows[0]?.n ?? 0;
     },
-    sendSms: (body) => sendFounderOpsSms(body, fetchImpl),
+    sendAlert: (body) => postOpsSlack(body, fetchImpl),
     escalateDigestFailure: async (database, reason, now) => {
       await escalateDigestSendFailure(database, 'twilio_triage', reason, undefined, now);
     },

@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
 import { credentials } from '~/lib/admin/services/twilio';
 import { sweepUnconfirmedClaims } from '~/lib/channel/claim-sweep';
-import {
-  fetchTwilioMessageState,
-  runDeliverySweep,
-} from '~/lib/channel/twilio/delivery-sweep';
+import { fetchTwilioMessageState, runDeliverySweep } from '~/lib/channel/twilio/delivery-sweep';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import {
@@ -12,7 +9,7 @@ import {
   claimDeliveryIncident,
   loadDeliveryStats,
 } from '~/lib/monitoring/delivery-health';
-import { sendFounderOpsSms } from '~/lib/monitoring/twilio-triage';
+import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 
 // Node runtime: reads channel_messages via the postgres driver (not edge).
 export const runtime = 'nodejs';
@@ -25,14 +22,13 @@ export const maxDuration = 300;
  * minutes: name the executor's stale unconfirmed send claims (claim-sweep.ts),
  * re-fetch provider truth for stale pre-terminal rows (or force a named terminal
  * when nothing can confirm the send), then judge the trailing window's delivery
- * health and page the founder on an incident. Sweep before health, on purpose:
+ * health and page Slack #ops on an incident. Sweep before health, on purpose:
  * the health check must see the statuses this tick just recovered.
  *
  * Cron-secret gated like every cron route: a request without the matching
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and does NOTHING.
  */
 export const GET = cronRoute('delivery-sweep', async () => {
-
   try {
     const database = db();
     // The executor's claim residue first, and OUTSIDE the Twilio gate: outbound_sends
@@ -59,7 +55,7 @@ export const GET = cronRoute('delivery-sweep', async () => {
       {
         loadStats: loadDeliveryStats,
         claim: claimDeliveryIncident,
-        sendSms: (body) => sendFounderOpsSms(body, fetch),
+        sendAlert: (body) => postOpsSlack(body, fetch),
       },
       new Date(),
     );

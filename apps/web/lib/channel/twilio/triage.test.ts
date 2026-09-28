@@ -157,15 +157,17 @@ describe('triageAlerts', () => {
 describe('composeTriageDigest', () => {
   const crashSummary = triageAlerts([ALERT_FAST_500, ALERT_FAST_500, ALERT_FAST_500]);
 
-  it('the crash digest names the count, start time, status, suspected layer and next check', () => {
+  it('the crash digest names the count, start time, and status, and does not call the DB without a failed probe', () => {
     const body = composeTriageDigest(crashSummary, 'ok');
     expect(body).toContain('inbound webhook failing');
     expect(body).toContain('3 alerts');
     expect(body).toContain('since 13:02Z');
     expect(body).toContain('HTTP 500');
-    expect(body).toContain('DB/connection');
+    expect(body).toContain('early crash');
     expect(body).toContain('Outbound OK');
-    expect(body).toContain('Supabase');
+    expect(body).toContain('does not prove the DB');
+    expect(body).not.toContain('likely DB');
+    expect(body).not.toContain('Supabase');
   });
 
   it('the rejected digest points at signature/config, the no-response digest at deploy/network', () => {
@@ -180,7 +182,14 @@ describe('composeTriageDigest', () => {
 
   it('the unclassified digest says so and points at the Twilio console', () => {
     const body = composeTriageDigest(
-      triageAlerts([{ sid: 'NO1', alert_text: 'Msg=new', error_code: '99999', date_created: '2026-08-28T13:05:00Z' }]),
+      triageAlerts([
+        {
+          sid: 'NO1',
+          alert_text: 'Msg=new',
+          error_code: '99999',
+          date_created: '2026-08-28T13:05:00Z',
+        },
+      ]),
       'unchecked',
     );
     expect(body).toContain('shape unknown');
@@ -188,8 +197,15 @@ describe('composeTriageDigest', () => {
   });
 
   it('names an unchecked and a quiet outbound path instead of claiming health it did not see', () => {
-    expect(composeTriageDigest(crashSummary, 'quiet')).toContain('Outbound quiet');
-    expect(composeTriageDigest(crashSummary, 'unchecked')).toContain('Outbound unchecked');
+    const quiet = composeTriageDigest(crashSummary, 'quiet');
+    expect(quiet).toContain('Outbound quiet');
+    expect(quiet).not.toContain('likely DB');
+    expect(quiet).not.toContain('Supabase');
+
+    const unchecked = composeTriageDigest(crashSummary, 'unchecked');
+    expect(unchecked).toContain('Outbound unchecked');
+    expect(unchecked).toContain('Supabase');
+    expect(unchecked).not.toContain('likely DB');
   });
 
   it('every variant is GSM-7-safe and fits one 160-septet segment', () => {
