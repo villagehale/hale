@@ -27,6 +27,11 @@ export type {
   NewRegistrationWindow,
 } from './schema/registration-windows.js';
 export type {
+  GtaRegion,
+  SocialCategory,
+  SocialPlatform,
+} from './schema/social-watchlist.js';
+export type {
   CivicExtraction,
   CivicRecurrence,
   CivicSystem,

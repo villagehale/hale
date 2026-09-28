@@ -64,3 +64,4 @@ export * from './linq-poll-options.js';
 export * from './linq-group-onboarding.js';
 export * from './parent-calendar-blocks.js';
 export * from './group-decision-sync.js';
+export * from './social-watchlist.js';
