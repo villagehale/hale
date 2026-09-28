@@ -102,5 +102,8 @@ municipal homepage, or a Kids Pass directory card on 2026-09-27. The list
 is balanced across Toronto, Peel, York, Halton, and Durham: at least 20
 active accounts in each region, and most of the list sits outside Toronto.
 Rows with `active: false` were named in that pass but the city was not on
-the page, so they are not polled. Loading them into `watched_sources` is a
-deliberate insert, not a migration.
+the page, so they are not polled. `ensureSocialSeed` upserts the list into
+`watched_sources` on `(platform, handle)` from the social-watch cron, including
+when `SOCIAL_WATCHLIST` is off, so a deploy fills the table before Meta tokens
+exist. A re-run refreshes display and metadata and leaves `last_polled_at` and
+`last_media_id` alone. This is not a migration.

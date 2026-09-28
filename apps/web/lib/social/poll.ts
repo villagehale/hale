@@ -6,6 +6,7 @@ import {
   metaBusinessDiscoveryConfigured,
   pollBusinessDiscovery,
 } from './discovery';
+import { ensureSocialSeed } from './ensure-seed';
 import { type ExtractedSocialSpot, extractSocialSpot } from './extract';
 import { socialWatchlistEnabled } from './flag';
 import { ARM_LEAD_MS, type SignupWatchStore, runSignupWatchTick } from './signup-watch';
@@ -192,13 +193,16 @@ export async function fetchRegistrationPage(url: string): Promise<{ ok: boolean;
 }
 
 /**
- * Cron entry. Flag off does not open a database connection for this feature.
- * A missing Meta token is a named stub; signup watches still tick.
+ * Cron entry. The seed upsert runs even when the flag is off, so the watchlist
+ * is in the database before Meta tokens exist. A missing Meta token is a named
+ * stub; signup watches still tick only while the flag is on.
  */
 export async function runSocialWatchCron(
   database: Database,
   now: Date = new Date(),
 ): Promise<SocialWatchSummary> {
+  // Seed even when SOCIAL_WATCHLIST is off so rows land before Meta tokens exist.
+  await ensureSocialSeed(database);
   if (!socialWatchlistEnabled()) return { skipped: 'flag_off' };
   const { drizzleSocialPorts } = await import('./store');
   const llmConfigured = Boolean(process.env.ANTHROPIC_API_KEY);
