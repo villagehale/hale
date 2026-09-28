@@ -1,7 +1,7 @@
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
-import { SOCIAL_SEED, SOCIAL_SEED_TOS_RISK, profileUrlFor, type SocialSeedSource } from './seed';
+import { SOCIAL_SEED, SOCIAL_SEED_TOS_RISK, type SocialSeedSource, profileUrlFor } from './seed';
 
 /**
  * VIL-378 — load SOCIAL_SEED into watched_sources.

@@ -1,7 +1,7 @@
 import { schema } from '@hale/db';
 import { and, count, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { ensureSocialSeed } from './ensure-seed';
 import { SOCIAL_SEED, profileUrlFor } from './seed';
 
