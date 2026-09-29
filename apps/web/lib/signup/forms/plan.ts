@@ -79,13 +79,13 @@ export function planBookingStep(input: BookingStepInput): Inspection {
     });
     if (dateControl) {
       const dated = dateFill(dateControl, input.sessionStartsAt);
-      if (dated.action === 'stop') return dated;
-      fills.push(dated.fill);
+      if (dated.action === 'fill') fills.push(dated.fill);
+      else return dated;
     }
   } else if (dateControl) {
     const dated = dateFill(dateControl, input.sessionStartsAt);
-    if (dated.action === 'stop') return dated;
-    fills.push(dated.fill);
+    if (dated.action === 'fill') fills.push(dated.fill);
+    else return dated;
     mode = 'continue';
   } else if (!input.sessionSelected) {
     return stop('unexpected_field');
