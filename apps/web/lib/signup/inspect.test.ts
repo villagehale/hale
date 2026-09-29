@@ -32,6 +32,8 @@ function snapshot(controls: PageControl[], extra: Partial<PageSnapshot> = {}): P
     priceCents: [],
     captcha: false,
     confirmed: false,
+    formText: '',
+    waitingRoom: false,
     ...extra,
   };
 }
@@ -139,6 +141,24 @@ describe('inspectRegistrationPage', () => {
       expectedOrigin: ORIGIN,
     });
     expect(result).toMatchObject({ action: 'stop', reason: 'missing_detail' });
+  });
+
+  it('stops on a waiver, a medical form, an allergy form, or a waiting room', () => {
+    expect(inspect(SAFE, { formText: 'Please sign the waiver' })).toMatchObject({
+      action: 'stop',
+      reason: 'waiver',
+    });
+    expect(inspect(SAFE, { formText: 'List any medication or medical conditions' })).toMatchObject({
+      action: 'stop',
+      reason: 'medical',
+    });
+    expect(
+      inspect([...SAFE, control({ name: 'allergy_notes', label: 'Allergies', required: false })]),
+    ).toMatchObject({ action: 'stop', reason: 'allergy' });
+    expect(inspect(SAFE, { waitingRoom: true })).toMatchObject({
+      action: 'stop',
+      reason: 'waiting_room',
+    });
   });
 
   it('stops when the page left the registration origin', () => {

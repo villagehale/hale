@@ -8,13 +8,15 @@ import { recordSignupOffer } from './store';
 import type { PageSnapshot, SignupBrowser, SignupPage } from './types';
 
 const NOW = new Date('2026-09-29T15:00:00.000Z');
-const ORIGIN = 'https://register.example.test';
+const ORIGIN = 'http://127.0.0.1';
 
 const SAFE: PageSnapshot = {
   href: `${ORIGIN}/register`,
   captcha: false,
   confirmed: false,
   priceCents: [],
+  formText: '',
+  waitingRoom: false,
   controls: [
     {
       name: 'child_first_name',
@@ -331,6 +333,88 @@ describe('authorized signup runner', () => {
     expect(trail).toContain('tue-1630');
     expect(trail).not.toContain('Ada');
     expect(trail).not.toContain('@');
+  });
+
+  it('hands the parent the link and a pack when the provider is not allowlisted', async () => {
+    const seeded = await familyWithOffer({
+      ageMonths: 36,
+      url: 'https://www.toronto.ca/explore-enjoy/recreation/registrations',
+    });
+    const { browser, calls } = browserFor(SAFE, { ...SAFE, confirmed: true });
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: 'msg-handoff',
+        existingThread: true,
+        now: NOW,
+      },
+      { browser },
+    );
+    expect(result.outcome).toBe('assisted_handoff');
+    expect(result.reply).toContain('TODO-Design: assisted handoff');
+    expect(result.reply).toContain('https://www.toronto.ca/explore-enjoy/recreation/registrations');
+    expect(result.reply).toContain('session=Tue 4:30');
+    expect(result.reply).toContain('child_first_name=Ada');
+    expect(result.reply).toContain('postal_code=M5V2T6');
+    expect(calls.opened).toBe(0);
+    expect(calls.submitted).toBe(0);
+    const trail = await audits(seeded.familyId);
+    expect(trail).toContain('assisted_handoff');
+    expect(trail).not.toContain('Ada');
+    expect(trail).not.toContain('M5V2T6');
+    expect(trail).not.toContain('Test Parent');
+    expect(trail).not.toContain('@');
+  });
+
+  it('does not open a browser for an ActiveNet host', async () => {
+    const seeded = await familyWithOffer({
+      ageMonths: 36,
+      url: 'https://anc.ca.apm.activecommunities.com/toronto/activity/search',
+    });
+    const { browser, calls } = browserFor(SAFE);
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: null,
+        existingThread: true,
+        now: NOW,
+      },
+      { browser },
+    );
+    expect(result.outcome).toBe('assisted_handoff');
+    expect(calls.opened).toBe(0);
+  });
+
+  it('stops an allowlisted form that asks for a waiver and does not submit', async () => {
+    const seeded = await familyWithOffer({ ageMonths: 36 });
+    const { browser, calls } = browserFor({
+      ...SAFE,
+      formText: 'Please sign the waiver to continue',
+    });
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: null,
+        existingThread: true,
+        now: NOW,
+      },
+      { browser },
+    );
+    expect(result.outcome).toBe('waiver');
+    expect(result.reply).toContain('reason=waiver');
+    expect(result.reply).toContain('prefilled=none');
+    expect(calls.opened).toBe(1);
+    expect(calls.submitted).toBe(0);
+    expect(await audits(seeded.familyId)).not.toContain('Ada');
   });
 
   it('sends the result to the co-parent group and not as a new 1:1 reply', async () => {

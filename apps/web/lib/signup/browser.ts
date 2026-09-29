@@ -132,12 +132,23 @@ async function readSnapshot(page: EvalPage): Promise<PageSnapshot> {
       document.querySelector(
         'iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="turnstile"], .g-recaptcha, .h-captcha, [data-sitekey]',
       ) !== null;
+    const formText = Array.from(document.querySelectorAll('form'))
+      .map((form) => text(form.innerText))
+      .join('\n')
+      .slice(0, 4000);
+    const waitingRoom =
+      document.querySelector(
+        'iframe[src*="queue-it"], iframe[src*="queueit"], script[src*="queue-it"], script[src*="queueit"]',
+      ) !== null ||
+      /\bqueue-it\b|\bqueueit\b|waiting room|you are in line/i.test(document.body?.innerText ?? '');
     return {
       href: location.href,
       controls,
       priceCents: Array.from(new Set([...fromAttr, ...fromText])),
       captcha,
       confirmed: document.querySelector('[data-signup-status="confirmed"]') !== null,
+      formText,
+      waitingRoom,
     };
   });
 }

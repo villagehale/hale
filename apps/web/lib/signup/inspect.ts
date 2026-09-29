@@ -18,13 +18,17 @@ export type Inspection =
   | { action: 'stop'; reason: SignupStopReason; prefilled: string[] };
 
 const PAYMENT = /card|cc-number|cc-exp|cc-csc|\bcvv\b|\bcvc\b|payment|stripe/;
+const WAIVER = /\bwaivers?\b|liability release|release of liability|assumption of risk/;
+const MEDICAL = /\bmedical\b|\bmedication\b|\bphysician\b|health condition|immuniz/;
+const ALLERGY = /\ballerg|\banaphylax|\bepipen\b|\bepi-pen\b/;
 
 /**
  * Decide whether this page can be completed safely.
  *
- * Inspect before any fill. Payment, captcha, a login wall, a price the parent
- * has not approved, a full or missing session, or a required field Hale does
- * not know how to fill are stops. Only required known fields are filled.
+ * Inspect before any fill. Payment, captcha, a login wall, a waiver, a medical
+ * or allergy form, a waiting room, a price the parent has not approved, a full
+ * or missing session, or a required field Hale does not know how to fill are
+ * stops. Only required known fields are filled.
  */
 export function inspectRegistrationPage(input: {
   snapshot: PageSnapshot;
@@ -41,6 +45,8 @@ export function inspectRegistrationPage(input: {
   }
   if (origin !== input.expectedOrigin) return stop('redirect');
   if (input.snapshot.captcha) return stop('captcha');
+  const sensitive = sensitiveForm(input.snapshot);
+  if (sensitive) return stop(sensitive);
   if (!pricesApproved(input.snapshot.priceCents, input.approvedPriceCents)) {
     return stop('price_not_approved');
   }
@@ -94,6 +100,21 @@ function stop(reason: SignupStopReason): Inspection {
   return { action: 'stop', reason, prefilled: [] };
 }
 
+function sensitiveForm(snapshot: PageSnapshot): SignupStopReason | null {
+  if (snapshot.waitingRoom) return 'waiting_room';
+  const hay = [snapshot.formText, ...snapshot.controls.map((control) => controlHay(control))]
+    .join(' ')
+    .toLowerCase();
+  if (WAIVER.test(hay)) return 'waiver';
+  if (MEDICAL.test(hay)) return 'medical';
+  if (ALLERGY.test(hay)) return 'allergy';
+  return null;
+}
+
+function controlHay(control: PageControl): string {
+  return `${control.name} ${control.label} ${control.autocomplete ?? ''}`;
+}
+
 function pricesApproved(found: readonly number[], approved: number | null): boolean {
   const charged = found.filter((cents) => cents > 0);
   if (charged.length === 0) return true;
@@ -106,9 +127,7 @@ function ignored(control: PageControl): boolean {
 }
 
 function slotKind(control: PageControl): FieldSlot | 'payment' | 'login' | 'unknown' {
-  const hay = `${control.name} ${control.label} ${control.autocomplete ?? ''} ${control.type}`
-    .toLowerCase()
-    .replace(/[_-]+/g, ' ');
+  const hay = `${controlHay(control)} ${control.type}`.toLowerCase().replace(/[_-]+/g, ' ');
   if (PAYMENT.test(hay) || (control.autocomplete ?? '').toLowerCase().startsWith('cc-')) {
     return 'payment';
   }

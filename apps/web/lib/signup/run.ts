@@ -2,10 +2,12 @@ import { type Database, schema } from '@hale/db';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup, isExplicitSignupUtterance } from './authorize';
-import { SIGNUP_COMPLETED_LINE, signupHandbackLine } from './copy';
+import { SIGNUP_COMPLETED_LINE, signupAssistedHandoffLine, signupHandbackLine } from './copy';
 import { type ReportDoor, chooseReportDoor } from './door';
 import { authorizedSignupEnabled } from './flag';
 import { inspectRegistrationPage } from './inspect';
+import { signupInfoPack } from './pack';
+import { signupProviderFor } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import { loadBusy, loadPendingOffer, loadSignupIdentity, markOffer } from './store';
 import type { SignupBrowser, SignupPage, SignupStopReason } from './types';
@@ -42,8 +44,10 @@ const UNCLAIMED: SignupRunResult = {
 };
 
 /**
- * Parent-authorized signup. The browser opens only after the gate accepts one
- * activity and one session, the result has a door, and the child is not a teen.
+ * Parent-authorized signup. The browser opens only for an allowlisted provider,
+ * after the gate accepts one activity and one session, the result has a door,
+ * and the child is not a teen. Every other provider is an assisted handoff:
+ * the link and a prefilled pack, and no click.
  */
 export async function runAuthorizedSignup(
   database: Database,
@@ -139,6 +143,26 @@ export async function runAuthorizedSignup(
     });
   }
 
+  const provider = signupProviderFor(allowed.href);
+  if (!provider) {
+    const session = offer.sessions.find((item) => item.id === decision.sessionId);
+    const pack = signupInfoPack(identity);
+    await markFromPending(database, input, offer.id, decision.sessionId);
+    return replyFor(database, input, deps, door, {
+      offerId: offer.id,
+      outcome: 'assisted_handoff',
+      reason: 'assisted_handoff',
+      link: offer.registrationUrl,
+      prefilled: pack.map((slot) => slot.slot),
+      host,
+      line: signupAssistedHandoffLine({
+        link: offer.registrationUrl,
+        sessionLabel: session?.label ?? decision.sessionId,
+        pack,
+      }),
+    });
+  }
+
   const claimed = await markOffer(database, {
     offerId: offer.id,
     familyId: input.familyId,
@@ -163,6 +187,7 @@ export async function runAuthorizedSignup(
     step: 'authorized',
     activityKey: decision.activityKey,
     sessionId: decision.sessionId,
+    provider: provider.id,
     host,
   });
 
@@ -309,6 +334,8 @@ interface ReplyFacts {
   link: string;
   prefilled: string[];
   host: string | null;
+  /** Set for the assisted handoff, whose pack values must not be audited. */
+  line?: string;
 }
 
 async function replyFor(
@@ -319,13 +346,14 @@ async function replyFor(
   facts: ReplyFacts,
 ): Promise<SignupRunResult> {
   const line =
-    facts.outcome === 'completed'
+    facts.line ??
+    (facts.outcome === 'completed'
       ? SIGNUP_COMPLETED_LINE
       : signupHandbackLine({
           reason: facts.reason ?? facts.outcome,
           link: facts.link,
           prefilled: facts.prefilled,
-        });
+        }));
   await writeAudit(database, input, facts.offerId, {
     step: 'report',
     outcome: facts.outcome,

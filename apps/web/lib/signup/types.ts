@@ -66,6 +66,13 @@ export interface PageSnapshot {
   priceCents: number[];
   captcha: boolean;
   confirmed: boolean;
+  /**
+   * Text inside the registration form, used only to notice a waiver, medical,
+   * or allergy form. Never written to the audit trail.
+   */
+  formText: string;
+  /** A Queue-it style waiting room. The runner does not click through one. */
+  waitingRoom: boolean;
 }
 
 export type SignupStopReason =
@@ -78,6 +85,11 @@ export type SignupStopReason =
   | 'payment'
   | 'captcha'
   | 'login_wall'
+  | 'waiver'
+  | 'medical'
+  | 'allergy'
+  | 'waiting_room'
+  | 'assisted_handoff'
   | 'unexpected_field'
   | 'missing_detail'
   | 'teen_privacy'
