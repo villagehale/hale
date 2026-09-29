@@ -127,7 +127,21 @@ describe('yearRetentionReply', () => {
 });
 
 describe('year retention copy', () => {
-  it('is framed as keeping the year, and lives in one module', () => {
+  it('ships the design-locked English lines', () => {
+    expect(YEAR_RETENTION_COPY.ask).toBe(
+      "Want to keep the kids' year going with me? Finds stay free.",
+    );
+    expect(YEAR_RETENTION_COPY.link('https://buy.stripe.com/test_x')).toBe(
+      "Here's the year link: https://buy.stripe.com/test_x",
+    );
+    expect(YEAR_RETENTION_COPY.declined).toBe('All good — finds stay free.');
+    expect(YEAR_RETENTION_COPY.notReady).toBe(
+      "The year link isn't ready yet. I'll send it when it is.",
+    );
+    expect(YEAR_RETENTION_COPY.alreadyPaid).toBe("You're already set for the year.");
+    expect(YEAR_RETENTION_COPY.groupSyncYes).toBe("They're keeping Hale for the year.");
+    expect(YEAR_RETENTION_COPY.groupSyncNo).toBe("They're staying on free finds.");
+
     const blob = [
       YEAR_RETENTION_COPY.ask,
       YEAR_RETENTION_COPY.link('https://buy.stripe.com/test_x'),
@@ -137,9 +151,9 @@ describe('year retention copy', () => {
       YEAR_RETENTION_COPY.groupSyncYes,
       YEAR_RETENTION_COPY.groupSyncNo,
     ].join('\n');
-    expect(blob.toLowerCase()).not.toMatch(/subscription|ai assistant/);
-    expect(YEAR_RETENTION_COPY.ask.toLowerCase()).toContain('year');
-    expect(YEAR_RETENTION_COPY.alreadyPaid.toLowerCase()).toContain('year');
+    expect(blob.toLowerCase()).not.toMatch(
+      /subscription|ai assistant|\bupgrade\b|\bplus\b|paid part|free side/,
+    );
     expect(YEAR_RETENTION_COPY.groupSyncYes).not.toMatch(/https?:\/\//);
   });
 });

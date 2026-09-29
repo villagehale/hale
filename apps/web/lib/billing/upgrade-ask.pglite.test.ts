@@ -241,7 +241,9 @@ describe('year retention on postgres', () => {
     expect(answer.claimed).toBe(true);
     if (!answer.claimed) return;
     expect(answer.reply).toContain(url);
-    expect(answer.reply.toLowerCase()).not.toMatch(/subscription|ai assistant/);
+    expect(answer.reply.toLowerCase()).not.toMatch(
+      /subscription|ai assistant|\bupgrade\b|\bplus\b|paid part|free side/,
+    );
     await answer.afterSend?.('msg-link');
 
     const [offer] = await db.database

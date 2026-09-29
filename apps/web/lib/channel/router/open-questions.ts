@@ -169,8 +169,8 @@ export type OpenQuestionKind =
    */
   | 'forward_address_revoke'
   /**
-   * "Keeping Hale for the year is the paid part — want the link?" — the later
-   * iMessage upgrade ask (ENG-1). Listed so a bare yes cannot approve an unrelated
+   * "Want to keep the kids' year going with me? Finds stay free." — the later
+   * iMessage year-retention ask (ENG-1). Listed so a bare yes cannot approve an unrelated
    * draft while the ask is standing. The flag hides it when the ask is off.
    * Yes sends a payment link. It does not charge the card by itself.
    */
