@@ -254,8 +254,9 @@ describe('formatProviderAlert', () => {
       { kind: 'digest_send_failed', digest: 'twilio_triage', reason: 'provider_error' },
       AT,
     );
-    // The triage digest is a founder SMS, so its remedy points at the SMS leg.
-    expect(triage.text).toContain('FOUNDER_ALERT_PHONE');
+    // The triage digest pages Slack #ops, so its remedy points at that webhook.
+    expect(triage.text).toContain('OPS_SLACK_WEBHOOK_URL');
+    expect(triage.text).not.toContain('FOUNDER_ALERT_PHONE');
   });
 });
 
@@ -312,7 +313,11 @@ describe('claimProviderIncident', () => {
     const { database } = fakeClaimDb(true);
 
     expect(
-      await claimProviderIncident(database, 'provider_health:billing', new Date('2026-08-01T12:00:00Z')),
+      await claimProviderIncident(
+        database,
+        'provider_health:billing',
+        new Date('2026-08-01T12:00:00Z'),
+      ),
     ).toBe(false);
   });
 });
@@ -448,8 +453,9 @@ describe('createProviderAlertSender', () => {
     const sent = await createProviderAlertSender(client).send('a subject', 'a body');
 
     expect(sent).toBe(true);
-    const payload = (client as unknown as { emails: { send: { mock: { calls: [SendPayload][] } } } })
-      .emails.send.mock.calls[0]?.[0];
+    const payload = (
+      client as unknown as { emails: { send: { mock: { calls: [SendPayload][] } } } }
+    ).emails.send.mock.calls[0]?.[0];
     expect(payload?.to).toBe('founder@villagehale.com');
     expect(payload?.subject).toBe('a subject');
     expect(payload?.text).toBe('a body');

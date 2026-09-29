@@ -43,11 +43,7 @@ export type ProviderHealth =
   | { ok: false; failure: ProviderFailureClass; detail: string };
 
 /** The LLM cron windows this pre-flight guards. */
-export type SendWindow =
-  | 'weekly_plan'
-  | 'nudge_sweep'
-  | 'memory_inference'
-  | 'registration_verify';
+export type SendWindow = 'weekly_plan' | 'nudge_sweep' | 'memory_inference' | 'registration_verify';
 
 /** Substrings that make a 4xx a BILLING problem rather than a bad request. Matched
  * against the provider's own message — Anthropic reports an exhausted balance as a
@@ -214,7 +210,11 @@ export async function claimProviderIncident(
     .insert(schema.rateLimits)
     .values({ identifier: key, route: PROVIDER_INCIDENT_ROUTE, windowStart, count: 1 })
     .onConflictDoNothing({
-      target: [schema.rateLimits.identifier, schema.rateLimits.route, schema.rateLimits.windowStart],
+      target: [
+        schema.rateLimits.identifier,
+        schema.rateLimits.route,
+        schema.rateLimits.windowStart,
+      ],
     })
     .returning({ id: schema.rateLimits.id });
 
@@ -271,7 +271,7 @@ export function formatProviderAlert(
   if (incident.kind === 'digest_send_failed') {
     const remedy =
       incident.digest === 'twilio_triage'
-        ? 'check FOUNDER_ALERT_PHONE and the Twilio console, then re-run /api/cron/twilio-triage.'
+        ? 'check OPS_SLACK_WEBHOOK_URL (Slack #ops) and re-run /api/cron/twilio-triage.'
         : 'check RESEND_API_KEY / FOUNDER_ALERT_EMAIL and the Resend dashboard, then re-run the digest cron.';
     return {
       subject: `Hale ops: the ${DIGEST_LABEL[incident.digest]} digest failed to send`,

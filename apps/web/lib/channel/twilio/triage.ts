@@ -1,7 +1,7 @@
 /**
  * VIL-331 · pure triage over Twilio Monitor Alert rows — the diagnosis half of the
- * alert-triage cron. No fetch, no DB, no env: rows in, classification and a founder
- * SMS body out, so every wording and privacy property is tested directly.
+ * alert-triage cron. No fetch, no DB, no env: rows in, classification and an ops
+ * alert body out, so every wording and privacy property is tested directly.
  *
  * Classification keys on the only two signals the Alerts list actually carries about
  * a failing webhook: the `httpResponse` status buried in the URL-encoded `alert_text`
@@ -15,7 +15,7 @@
  * request params, so neither is ever quoted. Evidence lines are rebuilt from parsed
  * fields only — error code, HTTP status, the route PATH with its query dropped — and
  * the digest body is composed from the classification alone. ASCII on purpose:
- * GSM-7, one segment, like every founder SMS this codebase sends.
+ * GSM-7, one segment, so the same body is safe on Slack and would still fit an SMS.
  */
 
 /** The Monitor Alerts list-row shape (`GET monitor.twilio.com/v1/Alerts`), the
@@ -169,16 +169,24 @@ function sinceLabel(earliest: Date | null): string {
 }
 
 /**
- * The founder diagnosis SMS. Counts, times, codes and layer names only — the body is
- * built from the classification, so nothing a parent typed can reach it.
+ * The ops diagnosis posted to Slack #ops. Counts, times, codes and layer names only —
+ * the body is built from the classification, so nothing a parent typed can reach it.
+ *
+ * A 5xx is an early crash. It is not, by itself, proof the database is down. The
+ * digest names Supabase only when the outbound probe — the live check — itself failed.
  */
 export function composeTriageDigest(summary: TriageSummary, outbound: OutboundHealth): string {
   const { dominant, total, earliest } = summary;
   const head = `Hale: inbound webhook failing. ${total} alerts ${sinceLabel(earliest)}.`;
   const ob = OUTBOUND_LINE[outbound];
   switch (dominant.class) {
-    case 'crash_5xx':
-      return `${head} HTTP ${dominant.httpStatus} = early crash, likely DB/connection. ${ob} Check Supabase status+connections.`;
+    case 'crash_5xx': {
+      const next =
+        outbound === 'unchecked'
+          ? 'Outbound unchecked (probe failed). Check Supabase.'
+          : `${ob} Check inbound logs; a 500 alone does not prove the DB.`;
+      return `${head} HTTP ${dominant.httpStatus} = early crash. ${next}`;
+    }
     case 'rejected_4xx':
       return `${head} HTTP ${dominant.httpStatus} = rejected, likely signature/config. ${ob} Check Twilio webhook URL+auth.`;
     case 'no_response':

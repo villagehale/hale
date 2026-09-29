@@ -19,10 +19,10 @@ import { and, desc, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm';
  *
  * The alert leg follows the webhook-alert/triage machinery, not provider-health's
  * email: a delivery outage is the same "families are not receiving Hale" class as a
- * webhook outage, and it pages the same way — founder SMS, class-only (counts and
+ * webhook outage, and it pages the same way — Slack #ops, class-only (counts and
  * provider error codes, never a number or a name — rule #1), deduped by an atomic
  * rate_limits claim per incident kind, braked by the 15-minute per-instance
- * founder-SMS floor the boundary alert established (alert.ts).
+ * page floor the boundary alert established (alert.ts). It does not text a phone.
  *
  * Rule #11 throughout: every path out of `checkDeliveryHealth` is a named outcome.
  */
@@ -70,7 +70,12 @@ export function evaluateDeliveryHealth(stats: DeliveryStats): DeliveryIncident |
     stats.attempted >= DELIVERY_RATE_MIN_ATTEMPTED &&
     stats.failed / stats.attempted >= DELIVERY_RATE_THRESHOLD
   ) {
-    return { kind: 'failure_rate', failed: stats.failed, attempted: stats.attempted, codes: stats.codes };
+    return {
+      kind: 'failure_rate',
+      failed: stats.failed,
+      attempted: stats.attempted,
+      codes: stats.codes,
+    };
   }
   return null;
 }
@@ -117,9 +122,8 @@ export async function loadDeliveryStats(database: Database, since: Date): Promis
  * one GSM-7 segment whatever the counts. */
 const ALERT_TOP_CODES = 2;
 
-/** The founder SMS. Counts and provider error codes only — an error code is Twilio's
- * enum, never a parent's number or words (rule #1). ASCII on purpose: GSM-7, one
- * segment, like every founder SMS this codebase sends. */
+/** The Slack #ops page. Counts and provider error codes only — an error code is
+ * Twilio's enum, never a parent's number or words (rule #1). ASCII on purpose. */
 export function composeDeliveryAlert(incident: DeliveryIncident): string {
   if (incident.kind === 'registration_error') {
     return `Hale: SMS delivery failing. A2P/registration error ${incident.code} on ${incident.count} send(s) in 24h - sender registration broken. Check Twilio Messaging setup.`;
@@ -169,23 +173,26 @@ export async function claimDeliveryIncident(
     .insert(schema.rateLimits)
     .values({ identifier: kind, route: DELIVERY_INCIDENT_ROUTE, windowStart, count: 1 })
     .onConflictDoNothing({
-      target: [schema.rateLimits.identifier, schema.rateLimits.route, schema.rateLimits.windowStart],
+      target: [
+        schema.rateLimits.identifier,
+        schema.rateLimits.route,
+        schema.rateLimits.windowStart,
+      ],
     })
     .returning({ id: schema.rateLimits.id });
 
   return claimed.length > 0;
 }
 
-/** The 15-minute per-instance founder-SMS floor (the alert.ts convention), spent on
- * the ATTEMPT: whatever the claims say, one instance never sends founder SMS more
- * often than this. */
-const FOUNDER_SMS_MIN_INTERVAL_MS = 15 * 60 * 1000;
+/** The 15-minute per-instance page floor (the alert.ts convention), spent on
+ * the ATTEMPT: whatever the claims say, one instance never pages more often than this. */
+const FOUNDER_PAGE_MIN_INTERVAL_MS = 15 * 60 * 1000;
 
-let lastDeliverySmsAttemptAt: number | null = null;
+let lastDeliveryPageAttemptAt: number | null = null;
 
 /** Test seam: the floor above is module state and would otherwise leak between cases. */
 export function resetDeliveryAlertWindowForTests(): void {
-  lastDeliverySmsAttemptAt = null;
+  lastDeliveryPageAttemptAt = null;
 }
 
 // ── orchestration ────────────────────────────────────────────────────────────
@@ -193,7 +200,7 @@ export function resetDeliveryAlertWindowForTests(): void {
 export interface DeliveryHealthDeps {
   loadStats(database: Database, since: Date): Promise<DeliveryStats>;
   claim(database: Database, kind: DeliveryIncidentKind, now: Date): Promise<boolean>;
-  sendSms(body: string): Promise<'sent' | 'failed' | 'skipped_not_configured'>;
+  sendAlert(body: string): Promise<'sent' | 'failed' | 'skipped_not_configured'>;
 }
 
 export type DeliveryHealthOutcome =
@@ -206,8 +213,8 @@ export type DeliveryHealthOutcome =
   | { outcome: 'skipped_not_configured'; kind: DeliveryIncidentKind };
 
 /**
- * Read the window, page on an incident, at most one SMS per kind per day and never
- * two from one instance inside 15 minutes. Unlike the triage (whose claim store's
+ * Read the window, page on an incident, at most one Slack page per kind per day and
+ * never two from one instance inside 15 minutes. Unlike the triage (whose claim store's
  * outage IS its diagnosis), this check's evidence just came FROM the database — a
  * claim store that cannot answer is a named outcome and the page is withheld,
  * because a DB that flapped mid-check must not double-page tomorrow's dedupe away.
@@ -228,8 +235,8 @@ export async function checkDeliveryHealth(
   console.error({ incident }, 'delivery health: incident detected');
 
   if (
-    lastDeliverySmsAttemptAt !== null &&
-    now.getTime() - lastDeliverySmsAttemptAt < FOUNDER_SMS_MIN_INTERVAL_MS
+    lastDeliveryPageAttemptAt !== null &&
+    now.getTime() - lastDeliveryPageAttemptAt < FOUNDER_PAGE_MIN_INTERVAL_MS
   ) {
     return { outcome: 'suppressed_instance_window', kind: incident.kind };
   }
@@ -247,13 +254,13 @@ export async function checkDeliveryHealth(
     return { outcome: 'suppressed_dedupe', kind: incident.kind };
   }
 
-  lastDeliverySmsAttemptAt = now.getTime();
-  const sms = await deps.sendSms(composeDeliveryAlert(incident));
-  if (sms === 'sent') {
+  lastDeliveryPageAttemptAt = now.getTime();
+  const page = await deps.sendAlert(composeDeliveryAlert(incident));
+  if (page === 'sent') {
     return { outcome: 'alerted', kind: incident.kind };
   }
-  console.error('delivery health: founder page not delivered', { sms, kind: incident.kind });
-  return sms === 'skipped_not_configured'
+  console.error('delivery health: founder page not delivered', { page, kind: incident.kind });
+  return page === 'skipped_not_configured'
     ? { outcome: 'skipped_not_configured', kind: incident.kind }
     : { outcome: 'alert_send_failed', kind: incident.kind };
 }

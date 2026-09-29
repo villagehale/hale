@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { OPS_SLACK_CHANNEL_DEFAULT } from '~/lib/monitoring/ops-slack';
 import {
-  ALERT_FROM_NUMBER,
   resetWebhookAlertWindowForTests,
   webhookFailureAlert,
   withWebhookFailureAlert,
@@ -12,20 +12,23 @@ import {
  * Every assertion here is about a request that leaves the instance WITHOUT a database:
  * the 2026-08-28 incident made the first query in routeTwilioInbound throw for six
  * hours, and an alert that needed a row to be written would have been just as silent as
- * the 500s were. The fetch is injected, so what Twilio and PostHog would have received
- * is asserted directly — including what is NOT in it (rule #1).
+ * the 500s were. The fetch is injected, so what Slack and PostHog would have received
+ * is asserted directly — including what is NOT in it (rule #1). Founder SMS is not a
+ * leg: a configured FOUNDER_ALERT_PHONE must not produce a Twilio request.
  */
 
 const ACCOUNT_SID = 'AC00000000000000000000000000000000';
 const AUTH_TOKEN = 'twilio_auth_token_value';
 const FOUNDER_PHONE = '+14165550111';
+const WEBHOOK = 'https://hooks.slack.com/services/T000/B000/XXXX';
 const POSTHOG_KEY = 'phc_test_key';
 const POSTHOG_HOST = 'https://ph.example.com';
 
 function configure(): void {
+  vi.stubEnv('OPS_SLACK_WEBHOOK_URL', WEBHOOK);
+  vi.stubEnv('FOUNDER_ALERT_PHONE', FOUNDER_PHONE);
   vi.stubEnv('TWILIO_ACCOUNT_SID', ACCOUNT_SID);
   vi.stubEnv('TWILIO_AUTH_TOKEN', AUTH_TOKEN);
-  vi.stubEnv('FOUNDER_ALERT_PHONE', FOUNDER_PHONE);
   vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', POSTHOG_KEY);
   vi.stubEnv('NEXT_PUBLIC_POSTHOG_HOST', POSTHOG_HOST);
 }
@@ -36,7 +39,7 @@ interface Call {
   body: string;
 }
 
-function recorder(respond: () => Promise<Response> = async () => new Response('{}')): {
+function recorder(respond: () => Promise<Response> = async () => new Response('ok')): {
   calls: Call[];
   fetch: typeof globalThis.fetch;
 } {
@@ -52,8 +55,9 @@ function recorder(respond: () => Promise<Response> = async () => new Response('{
   return { calls, fetch: record };
 }
 
-const twilioCall = (calls: Call[]) => calls.filter((call) => call.url.includes('api.twilio.com'));
+const slackCall = (calls: Call[]) => calls.filter((call) => call.url === WEBHOOK);
 const posthogCall = (calls: Call[]) => calls.filter((call) => call.url.startsWith(POSTHOG_HOST));
+const twilioCall = (calls: Call[]) => calls.filter((call) => call.url.includes('api.twilio.com'));
 
 /** The single request of its kind, or a thrown failure — never an optional-chained
  * `undefined` that would let a "must not contain" assertion pass on a request that was
@@ -64,6 +68,15 @@ function only(calls: Call[], label: string): Call {
     throw new Error(`expected exactly one ${label} request, saw ${calls.length}`);
   }
   return first;
+}
+
+function pageText(calls: Call[]): string {
+  const posted = JSON.parse(only(slackCall(calls), 'slack').body) as {
+    text?: string;
+    channel?: string;
+  };
+  expect(posted.channel).toBe(OPS_SLACK_CHANNEL_DEFAULT);
+  return posted.text ?? '';
 }
 
 beforeEach(() => {
@@ -78,7 +91,7 @@ afterEach(() => {
 });
 
 describe('webhookFailureAlert', () => {
-  it('texts the founder and captures the failure, naming the route and the error class', async () => {
+  it('pages Slack #ops and captures the failure, naming the route and the error class', async () => {
     configure();
     const { calls, fetch } = recorder();
 
@@ -87,19 +100,16 @@ describe('webhookFailureAlert', () => {
       { fetch },
     );
 
-    expect(outcome).toEqual({ sms: 'sent', analytics: 'sent' });
+    expect(outcome).toEqual({ page: 'sent', analytics: 'sent' });
+    expect(twilioCall(calls)).toHaveLength(0);
 
-    const sms = only(twilioCall(calls), 'twilio');
-    expect(sms.url).toBe(`https://api.twilio.com/2010-04-01/Accounts/${ACCOUNT_SID}/Messages.json`);
-    expect(sms.headers.authorization).toBe(
-      `Basic ${Buffer.from(`${ACCOUNT_SID}:${AUTH_TOKEN}`).toString('base64')}`,
-    );
-    const form = new URLSearchParams(sms.body);
-    expect(form.get('To')).toBe(FOUNDER_PHONE);
-    expect(form.get('From')).toBe(ALERT_FROM_NUMBER);
-    expect(form.get('Body')).toContain('twilio_inbound');
-    expect(form.get('Body')).toContain('TypeError');
-    expect(form.get('Body')).not.toContain('fetch failed');
+    const slack = only(slackCall(calls), 'slack');
+    expect(slack.headers['content-type']).toBe('application/json');
+    const text = pageText(calls);
+    expect(text).toContain('twilio_inbound');
+    expect(text).toContain('TypeError');
+    expect(text).not.toContain('fetch failed');
+    expect(text).not.toContain(FOUNDER_PHONE);
 
     const captured = only(posthogCall(calls), 'posthog');
     expect(captured.url).toBe(`${POSTHOG_HOST}/i/v0/e/`);
@@ -122,9 +132,8 @@ describe('webhookFailureAlert', () => {
       { fetch },
     );
 
-    expect(outcome).toEqual({ sms: 'sent', analytics: 'sent' });
-    const form = new URLSearchParams(only(twilioCall(calls), 'twilio').body);
-    expect(form.get('Body')).toBe(
+    expect(outcome).toEqual({ page: 'sent', analytics: 'sent' });
+    expect(pageText(calls)).toBe(
       'Hale ALERT: email_inbound threw - TypeError. Details in logs + PostHog.',
     );
     expect(JSON.parse(only(posthogCall(calls), 'posthog').body)).toMatchObject({
@@ -149,12 +158,11 @@ describe('webhookFailureAlert', () => {
       { fetch },
     );
 
-    const body = new URLSearchParams(only(twilioCall(calls), 'twilio').body).get('Body') ?? '';
+    const body = pageText(calls);
     expect(body).not.toContain('14165551234');
     expect(body).not.toContain('Nora');
     expect(body).not.toContain('416-555');
     expect(body).not.toContain('insert into channel_messages');
-    // The founder still learns which route and what KIND of failure.
     expect(body).toContain('twilio_inbound');
     expect(body).toContain('Error');
 
@@ -166,7 +174,7 @@ describe('webhookFailureAlert', () => {
     expect(JSON.stringify(properties)).not.toContain('Nora');
   });
 
-  it('stays one GSM-7 segment no matter how long the error message is', async () => {
+  it('stays a short class-only page no matter how long the error message is', async () => {
     configure();
     const { calls, fetch } = recorder();
 
@@ -175,15 +183,15 @@ describe('webhookFailureAlert', () => {
       { fetch },
     );
 
-    const body = new URLSearchParams(only(twilioCall(calls), 'twilio').body).get('Body') ?? '';
+    const body = pageText(calls);
+    expect(body).not.toContain('xxx');
     expect(body.length).toBeLessThanOrEqual(160);
-    // ASCII-only: a stray typographic character would silently flip the alert to UCS-2.
     expect(/^[\x20-\x7e]*$/.test(body)).toBe(true);
   });
 
-  it('names a missing FOUNDER_ALERT_PHONE instead of skipping in silence', async () => {
+  it('names a missing OPS_SLACK_WEBHOOK_URL and does not text the founder phone', async () => {
     configure();
-    vi.stubEnv('FOUNDER_ALERT_PHONE', '');
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', '');
     const { calls, fetch } = recorder();
 
     const outcome = await webhookFailureAlert(
@@ -191,16 +199,17 @@ describe('webhookFailureAlert', () => {
       { fetch },
     );
 
-    expect(outcome.sms).toBe('skipped_not_configured');
+    expect(outcome.page).toBe('skipped_not_configured');
     expect(console.error).toHaveBeenCalled();
+    expect(slackCall(calls)).toHaveLength(0);
     expect(twilioCall(calls)).toHaveLength(0);
-    // The other leg is independent: an unconfigured phone must not cost the event too.
     expect(outcome.analytics).toBe('sent');
     expect(posthogCall(calls)).toHaveLength(1);
   });
 
-  it('names missing Twilio credentials the same way', async () => {
+  it('still pages Slack when Twilio credentials are absent', async () => {
     configure();
+    vi.stubEnv('TWILIO_ACCOUNT_SID', '');
     vi.stubEnv('TWILIO_AUTH_TOKEN', '');
     const { calls, fetch } = recorder();
 
@@ -209,7 +218,8 @@ describe('webhookFailureAlert', () => {
       { fetch },
     );
 
-    expect(outcome.sms).toBe('skipped_not_configured');
+    expect(outcome.page).toBe('sent');
+    expect(pageText(calls)).toContain('twilio_inbound');
     expect(twilioCall(calls)).toHaveLength(0);
   });
 
@@ -223,7 +233,7 @@ describe('webhookFailureAlert', () => {
       { fetch },
     );
 
-    expect(outcome).toEqual({ sms: 'sent', analytics: 'skipped_not_configured' });
+    expect(outcome).toEqual({ page: 'sent', analytics: 'skipped_not_configured' });
     expect(console.error).toHaveBeenCalled();
     expect(posthogCall(calls)).toHaveLength(0);
   });
@@ -237,8 +247,9 @@ describe('webhookFailureAlert', () => {
       { fetch },
     );
 
-    expect(outcome).toEqual({ sms: 'failed', analytics: 'failed' });
-    expect(twilioCall(calls)).toHaveLength(1);
+    expect(outcome).toEqual({ page: 'failed', analytics: 'failed' });
+    expect(slackCall(calls)).toHaveLength(1);
+    expect(twilioCall(calls)).toHaveLength(0);
     expect(console.error).toHaveBeenCalled();
   });
 
@@ -250,10 +261,10 @@ describe('webhookFailureAlert', () => {
 
     await expect(
       webhookFailureAlert({ route: 'twilio_inbound', error: new Error('boom') }, { fetch }),
-    ).resolves.toEqual({ sms: 'failed', analytics: 'failed' });
+    ).resolves.toEqual({ page: 'failed', analytics: 'failed' });
   });
 
-  it('suppresses the second founder SMS inside 15 minutes but still captures every failure', async () => {
+  it('suppresses the second founder page inside 15 minutes but still captures every failure', async () => {
     configure();
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-08-28T09:00:00.000Z'));
@@ -269,16 +280,14 @@ describe('webhookFailureAlert', () => {
       { fetch },
     );
 
-    expect(first.sms).toBe('sent');
-    expect(second.sms).toBe('suppressed_rate_limit');
-    expect(twilioCall(calls)).toHaveLength(1);
-    // Not rate limited: the event stream is the audit, and it is what says a six-hour
-    // outage was six hours long.
+    expect(first.page).toBe('sent');
+    expect(second.page).toBe('suppressed_rate_limit');
+    expect(slackCall(calls)).toHaveLength(1);
     expect(second.analytics).toBe('sent');
     expect(posthogCall(calls)).toHaveLength(2);
   });
 
-  it('reopens the founder SMS window once 15 minutes have passed', async () => {
+  it('reopens the founder page window once 15 minutes have passed', async () => {
     configure();
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-08-28T09:00:00.000Z'));
@@ -291,8 +300,8 @@ describe('webhookFailureAlert', () => {
       { fetch },
     );
 
-    expect(later.sms).toBe('sent');
-    expect(twilioCall(calls)).toHaveLength(2);
+    expect(later.page).toBe('sent');
+    expect(slackCall(calls)).toHaveLength(2);
   });
 
   it('spends its once-per-window attempt even when the send fails, so an outage cannot log 400 times', async () => {
@@ -308,9 +317,9 @@ describe('webhookFailureAlert', () => {
       { fetch },
     );
 
-    expect(first.sms).toBe('failed');
-    expect(second.sms).toBe('suppressed_rate_limit');
-    expect(twilioCall(calls)).toHaveLength(1);
+    expect(first.page).toBe('failed');
+    expect(second.page).toBe('suppressed_rate_limit');
+    expect(slackCall(calls)).toHaveLength(1);
   });
 });
 
@@ -331,7 +340,8 @@ describe('withWebhookFailureAlert', () => {
     // drop the parent's text for good.
     expect(response.status).toBe(500);
     expect(console.error).toHaveBeenCalled();
-    expect(twilioCall(calls)).toHaveLength(1);
+    expect(slackCall(calls)).toHaveLength(1);
+    expect(twilioCall(calls)).toHaveLength(0);
     expect(posthogCall(calls)).toHaveLength(1);
   });
 

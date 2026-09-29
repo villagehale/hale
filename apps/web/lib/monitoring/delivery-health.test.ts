@@ -71,7 +71,11 @@ describe('evaluateDeliveryHealth', () => {
   });
 
   it('stays quiet below the threshold, and on too small a sample to mean anything', () => {
-    expect(evaluateDeliveryHealth(stats({ attempted: 8, failed: 1, codes: [{ code: '30006', count: 1 }] }))).toBeNull();
+    expect(
+      evaluateDeliveryHealth(
+        stats({ attempted: 8, failed: 1, codes: [{ code: '30006', count: 1 }] }),
+      ),
+    ).toBeNull();
     expect(
       evaluateDeliveryHealth(
         stats({
@@ -165,7 +169,11 @@ describe('loadDeliveryStats (real DDL)', () => {
     await seed({ status: 'delivered', direction: 'in' });
     await seed({ status: 'sent', channel: 'email' });
     // Outside the window.
-    await seed({ status: 'failed', errorCode: '30006', createdAt: new Date(NOW.getTime() - 48 * 3_600_000) });
+    await seed({
+      status: 'failed',
+      errorCode: '30006',
+      createdAt: new Date(NOW.getTime() - 48 * 3_600_000),
+    });
 
     const result = await loadDeliveryStats(db.database, new Date(NOW.getTime() - 24 * 3_600_000));
 
@@ -199,7 +207,7 @@ describe('checkDeliveryHealth', () => {
     const deps = {
       loadStats: vi.fn().mockResolvedValue(over.stats),
       claim: vi.fn().mockResolvedValue(over.claim ?? true),
-      sendSms: vi.fn().mockImplementation(async (body: string) => {
+      sendAlert: vi.fn().mockImplementation(async (body: string) => {
         sent.push(body);
         return over.sms ?? 'sent';
       }),
@@ -243,7 +251,7 @@ describe('checkDeliveryHealth', () => {
     expect(sent).toEqual([]);
   });
 
-  it('the 15-minute founder-SMS floor holds across incident kinds (the alert.ts convention)', async () => {
+  it('the 15-minute page floor holds across incident kinds (the alert.ts convention)', async () => {
     const first = fakes({
       stats: stats({ attempted: 10, failed: 5, codes: [{ code: '30006', count: 5 }] }),
     });
@@ -273,7 +281,7 @@ describe('checkDeliveryHealth', () => {
     expect(later).toEqual({ outcome: 'alerted', kind: 'registration_error' });
   });
 
-  it('a refused or unconfigured SMS leg is a named outcome, never a silent success', async () => {
+  it('a refused or unconfigured Slack leg is a named outcome, never a silent success', async () => {
     const failed = fakes({
       stats: stats({ failed: 1, codes: [{ code: '30034', count: 1 }] }),
       sms: 'failed',

@@ -1,12 +1,14 @@
 import type { Database } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MonitorAlert } from '~/lib/channel/twilio/triage';
+import { OPS_SLACK_CHANNEL_DEFAULT } from './ops-slack';
 import {
   TRIAGE_CLAIM_ROUTE,
   TRIAGE_DIGEST_WINDOW_MS,
   type TwilioTriageDeps,
   advanceTriageCursor,
   claimTriageDigestWindow,
+  defaultTwilioTriageDeps,
   fetchMonitorAlerts,
   loadTriageCursor,
   resetTriageInstanceWindowForTests,
@@ -15,7 +17,7 @@ import {
 
 /**
  * VIL-331 · the alert-triage cron's orchestration: cursor filtering, the 30-minute
- * digest window, and every rule-#11 outcome. The Twilio fetch, the SMS send and the
+ * digest window, and every rule-#11 outcome. The Twilio fetch, the Slack page and the
  * three rate_limits store calls are injected; the store functions themselves are
  * tested below against a captured drizzle chain, the same way provider-health tests
  * claimProviderIncident.
@@ -65,7 +67,7 @@ function deps(overrides: DepsOverrides = {}): TwilioTriageDeps {
     advanceCursor: vi.fn(async () => {}),
     claimWindow: vi.fn(async () => true),
     outboundSentCount: vi.fn(async () => 3),
-    sendSms: vi.fn(async () => 'sent' as const),
+    sendAlert: vi.fn(async () => 'sent' as const),
     escalateDigestFailure: vi.fn(async () => {}),
     ...overrides,
   };
@@ -79,11 +81,14 @@ beforeEach(() => {
 
 describe('runTwilioTriage', () => {
   it('skips with the missing names before touching Twilio or the phone', async () => {
-    const d = deps({ configured: () => ({ ok: false, missing: ['FOUNDER_ALERT_PHONE'] }) });
+    const d = deps({ configured: () => ({ ok: false, missing: ['OPS_SLACK_WEBHOOK_URL'] }) });
     const result = await runTwilioTriage(database, d, NOW);
-    expect(result).toEqual({ outcome: 'skipped_not_configured', missing: ['FOUNDER_ALERT_PHONE'] });
+    expect(result).toEqual({
+      outcome: 'skipped_not_configured',
+      missing: ['OPS_SLACK_WEBHOOK_URL'],
+    });
     expect(d.fetchAlerts).not.toHaveBeenCalled();
-    expect(d.sendSms).not.toHaveBeenCalled();
+    expect(d.sendAlert).not.toHaveBeenCalled();
   });
 
   it('names an unreachable Monitor API instead of reporting a quiet webhook', async () => {
@@ -96,15 +101,15 @@ describe('runTwilioTriage', () => {
     });
     const result = await runTwilioTriage(database, d, NOW);
     expect(result).toEqual({ outcome: 'monitor_unreachable', detail: 'Twilio answered 503' });
-    expect(d.sendSms).not.toHaveBeenCalled();
+    expect(d.sendAlert).not.toHaveBeenCalled();
   });
 
   it('sends the diagnosis digest on new webhook alerts, claims the window, advances the cursor', async () => {
     const d = deps();
     const result = await runTwilioTriage(database, d, NOW);
 
-    expect(d.sendSms).toHaveBeenCalledTimes(1);
-    const body = (d.sendSms as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
+    expect(d.sendAlert).toHaveBeenCalledTimes(1);
+    const body = (d.sendAlert as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
     expect(body).toContain('inbound webhook failing');
     expect(body).toContain('2 alerts');
     expect(body).toContain('Outbound OK');
@@ -127,7 +132,7 @@ describe('runTwilioTriage', () => {
     const result = await runTwilioTriage(database, d, NOW);
     // Boundary is strict: the alert AT the cursor was already reported.
     expect(result).toMatchObject({ outcome: 'no_new_alerts' });
-    expect(d.sendSms).not.toHaveBeenCalled();
+    expect(d.sendAlert).not.toHaveBeenCalled();
     expect(d.advanceCursor).not.toHaveBeenCalled();
   });
 
@@ -149,7 +154,7 @@ describe('runTwilioTriage', () => {
       source: 'claim',
       pendingAlerts: 2,
     });
-    expect(d.sendSms).not.toHaveBeenCalled();
+    expect(d.sendAlert).not.toHaveBeenCalled();
     // Not advanced: the suppressed alerts roll into the next window's digest.
     expect(d.advanceCursor).not.toHaveBeenCalled();
   });
@@ -162,15 +167,15 @@ describe('runTwilioTriage', () => {
 
     const first = await runTwilioTriage(database, d, NOW);
     expect(first).toMatchObject({ outcome: 'digest_sent', rateLimitStore: 'unavailable' });
-    expect(d.sendSms).toHaveBeenCalledTimes(1);
+    expect(d.sendAlert).toHaveBeenCalledTimes(1);
 
     const second = await runTwilioTriage(database, d, new Date(NOW.getTime() + 10 * 60_000));
     expect(second).toMatchObject({ outcome: 'suppressed_rate_limit', source: 'instance_window' });
-    expect(d.sendSms).toHaveBeenCalledTimes(1);
+    expect(d.sendAlert).toHaveBeenCalledTimes(1);
   });
 
-  it('a refused SMS is digest_send_failed, escalated over the other transport, cursor stays for a retry', async () => {
-    const d = deps({ sendSms: vi.fn(async () => 'failed' as const) });
+  it('a refused Slack page is digest_send_failed, escalated over email, cursor stays for a retry', async () => {
+    const d = deps({ sendAlert: vi.fn(async () => 'failed' as const) });
     const result = await runTwilioTriage(database, d, NOW);
     expect(result).toMatchObject({ outcome: 'digest_send_failed', alerts: 2, class: 'crash_5xx' });
     expect(d.advanceCursor).not.toHaveBeenCalled();
@@ -179,8 +184,8 @@ describe('runTwilioTriage', () => {
     expect(d.escalateDigestFailure).toHaveBeenCalledWith(database, 'provider_error', NOW);
   });
 
-  it('a not-configured SMS leg is a named skip, never escalated as an incident', async () => {
-    const d = deps({ sendSms: vi.fn(async () => 'skipped_not_configured' as const) });
+  it('a not-configured Slack leg is a named skip, never escalated as an incident', async () => {
+    const d = deps({ sendAlert: vi.fn(async () => 'skipped_not_configured' as const) });
     const result = await runTwilioTriage(database, d, NOW);
     expect(result).toMatchObject({ outcome: 'skipped_not_configured' });
     expect(d.escalateDigestFailure).not.toHaveBeenCalled();
@@ -193,9 +198,13 @@ describe('runTwilioTriage', () => {
       ),
     });
     const result = await runTwilioTriage(database, d, NOW);
-    expect(result).toMatchObject({ outcome: 'no_new_alerts', ignoredOtherAlerts: 2, cursor: 'advanced' });
+    expect(result).toMatchObject({
+      outcome: 'no_new_alerts',
+      ignoredOtherAlerts: 2,
+      cursor: 'advanced',
+    });
     expect(d.advanceCursor).toHaveBeenCalledWith(database, new Date('2026-08-28T13:06:00Z'));
-    expect(d.sendSms).not.toHaveBeenCalled();
+    expect(d.sendAlert).not.toHaveBeenCalled();
   });
 
   it('a failed outbound probe becomes "Outbound unchecked", never a health claim', async () => {
@@ -205,7 +214,7 @@ describe('runTwilioTriage', () => {
       }),
     });
     await runTwilioTriage(database, d, NOW);
-    const body = (d.sendSms as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
+    const body = (d.sendAlert as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
     expect(body).toContain('Outbound unchecked');
   });
 
@@ -220,7 +229,7 @@ describe('runTwilioTriage', () => {
     });
     const result = await runTwilioTriage(database, d, NOW);
     expect(result).toMatchObject({ outcome: 'digest_sent', cursor: 'store_unavailable' });
-    expect(d.sendSms).toHaveBeenCalledTimes(1);
+    expect(d.sendAlert).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -280,8 +289,8 @@ describe('the Monitor scan follows pages', () => {
 
     const result = await runTwilioTriage(database, d, NOW);
 
-    expect(d.sendSms).toHaveBeenCalledTimes(1);
-    const body = (d.sendSms as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
+    expect(d.sendAlert).toHaveBeenCalledTimes(1);
+    const body = (d.sendAlert as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
     expect(body).toContain('inbound webhook failing');
     expect(result).toMatchObject({
       outcome: 'digest_sent',
@@ -323,7 +332,11 @@ describe('the Monitor scan follows pages', () => {
     const result = await runTwilioTriage(database, d, NOW);
 
     expect(monitor).toHaveBeenCalledTimes(1);
-    expect(result).toMatchObject({ outcome: 'no_new_alerts', ignoredOtherAlerts: 9, scan: 'complete' });
+    expect(result).toMatchObject({
+      outcome: 'no_new_alerts',
+      ignoredOtherAlerts: 9,
+      scan: 'complete',
+    });
   });
 });
 
@@ -334,7 +347,9 @@ interface StoreCapture {
   deletes: number;
 }
 
-function fakeStoreDb(opts: { alreadyClaimed?: boolean; cursorRows?: Array<{ windowStart: Date }> } = {}): {
+function fakeStoreDb(
+  opts: { alreadyClaimed?: boolean; cursorRows?: Array<{ windowStart: Date }> } = {},
+): {
   database: Database;
   capture: StoreCapture;
 } {
@@ -412,5 +427,43 @@ describe('triage cursor store', () => {
 
     const { database: empty } = fakeStoreDb();
     expect(await loadTriageCursor(empty)).toBeNull();
+  });
+});
+
+describe('defaultTwilioTriageDeps pages Slack, not a founder phone', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('is configured from Twilio creds plus the Slack webhook, never FOUNDER_ALERT_PHONE', () => {
+    vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC-test');
+    vi.stubEnv('TWILIO_AUTH_TOKEN', 'token');
+    vi.stubEnv('FOUNDER_ALERT_PHONE', '+14165550111');
+    expect(defaultTwilioTriageDeps().configured()).toEqual({
+      ok: false,
+      missing: ['OPS_SLACK_WEBHOOK_URL'],
+    });
+
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.com/services/T/B/X');
+    expect(defaultTwilioTriageDeps().configured()).toEqual({ ok: true });
+  });
+
+  it('posts the digest to #ops and does not call Twilio Messages', async () => {
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.com/services/T/B/X');
+    vi.stubEnv('FOUNDER_ALERT_PHONE', '+14165550111');
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(String(input));
+      expect(String(init?.body)).toContain('inbound webhook failing');
+      expect(JSON.parse(String(init?.body))).toMatchObject({ channel: OPS_SLACK_CHANNEL_DEFAULT });
+      return new Response('ok', { status: 200 });
+    });
+
+    const outcome = await defaultTwilioTriageDeps(fetchImpl as unknown as typeof fetch).sendAlert(
+      'Hale: inbound webhook failing.',
+    );
+
+    expect(outcome).toBe('sent');
+    expect(calls).toEqual(['https://hooks.slack.com/services/T/B/X']);
   });
 });
