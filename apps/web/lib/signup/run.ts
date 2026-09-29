@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup, isExplicitSignupUtterance } from './authorize';
-import { SIGNUP_COMPLETED_LINE, signupAssistedHandoffLine, signupHandbackLine } from './copy';
+import { signupAssistedHandoffLine, signupCompletedLine, signupHandbackLine } from './copy';
 import { type ReportDoor, chooseReportDoor } from './door';
 import { authorizedSignupEnabled } from './flag';
 import { inspectRegistrationPage } from './inspect';
@@ -233,6 +233,7 @@ export async function runAuthorizedSignup(
         link: offer.registrationUrl,
         prefilled: [],
         host,
+        sessionLabel: labelFor(offer, decision.sessionId),
       });
     } catch {
       await finish(database, input, offer.id, 'handed_back');
@@ -330,6 +331,7 @@ export async function runAuthorizedSignup(
           link: offer.registrationUrl,
           prefilled: filled,
           host,
+          sessionLabel: labelFor(offer, decision.sessionId),
         });
       }
       await page.continue();
@@ -410,6 +412,10 @@ async function finish(
   });
 }
 
+function labelFor(offer: { sessions: { id: string; label: string }[] }, sessionId: string): string {
+  return offer.sessions.find((item) => item.id === sessionId)?.label ?? '';
+}
+
 interface ReplyFacts {
   offerId: string | null;
   outcome: string;
@@ -419,6 +425,8 @@ interface ReplyFacts {
   host: string | null;
   /** Set for the assisted handoff, whose pack values must not be audited. */
   line?: string;
+  /** Session label for the completed line. */
+  sessionLabel?: string;
 }
 
 async function replyFor(
@@ -431,7 +439,7 @@ async function replyFor(
   const line =
     facts.line ??
     (facts.outcome === 'completed'
-      ? SIGNUP_COMPLETED_LINE
+      ? signupCompletedLine(facts.sessionLabel ?? '')
       : signupHandbackLine({
           reason: facts.reason ?? facts.outcome,
           link: facts.link,

@@ -224,8 +224,9 @@ describe('authorized signup runner', () => {
       { browser },
     );
     expect(result.outcome).toBe('ambiguous_session');
-    expect(result.reply).toContain('TODO-Design');
-    expect(result.reply).toContain('reason=ambiguous_session');
+    expect(result.reply).toBe(
+      `I can't tell which session you mean. Which one? Here's the page: ${ORIGIN}/register`,
+    );
     expect(calls.opened).toBe(0);
     expect(await audits(seeded.familyId)).not.toContain('Ada');
   });
@@ -302,8 +303,9 @@ describe('authorized signup runner', () => {
       { browser },
     );
     expect(result.outcome).toBe('payment');
-    expect(result.reply).toContain(`${ORIGIN}/register`);
-    expect(result.reply).toContain('prefilled=none');
+    expect(result.reply).toBe(
+      `It's asking for payment, so that part is yours. Here's the page: ${ORIGIN}/register`,
+    );
     expect(calls.opened).toBe(1);
     expect(calls.submitted).toBe(0);
     const trail = await audits(seeded.familyId);
@@ -329,7 +331,7 @@ describe('authorized signup runner', () => {
     );
     expect(result.outcome).toBe('completed');
     expect(result.deliverOnThread).toBe(true);
-    expect(result.reply).toBe('TODO-Design: authorized signup completed');
+    expect(result.reply).toBe(`You're signed up for Tue 4:30.`);
     expect(calls.submitted).toBe(1);
     const trail = await audits(seeded.familyId);
     expect(trail).toContain('tue-1630');
@@ -514,11 +516,14 @@ describe('authorized signup runner', () => {
       { browser },
     );
     expect(result.outcome).toBe('assisted_handoff');
-    expect(result.reply).toContain('TODO-Design: assisted handoff');
-    expect(result.reply).toContain('https://www.toronto.ca/explore-enjoy/recreation/registrations');
-    expect(result.reply).toContain('session=Tue 4:30');
-    expect(result.reply).toContain('child_first_name=Ada');
-    expect(result.reply).toContain('postal_code=M5V2T6');
+    expect(result.reply).toContain(
+      `This one has to be done by you. Here's the page: https://www.toronto.ca/explore-enjoy/recreation/registrations`,
+    );
+    expect(result.reply).toContain(`For Tue 4:30, you'll want `);
+    expect(result.reply).toContain('child_first_name: Ada');
+    expect(result.reply).toContain('postal_code: M5V2T6');
+    expect(result.reply).not.toContain('pack=');
+    expect(result.reply).not.toContain('session=');
     expect(calls.opened).toBe(0);
     expect(calls.submitted).toBe(0);
     const trail = await audits(seeded.familyId);
@@ -570,8 +575,9 @@ describe('authorized signup runner', () => {
       { browser },
     );
     expect(result.outcome).toBe('waiver');
-    expect(result.reply).toContain('reason=waiver');
-    expect(result.reply).toContain('prefilled=none');
+    expect(result.reply).toBe(
+      `There's a waiver to read and sign, so that part's yours. Here's the page: ${ORIGIN}/register`,
+    );
     expect(calls.opened).toBe(1);
     expect(calls.submitted).toBe(0);
     expect(await audits(seeded.familyId)).not.toContain('Ada');
@@ -688,7 +694,7 @@ describe('authorized signup runner', () => {
       browser,
       deliverGroup: async (item) => {
         sent.push(item.chatId);
-        expect(item.body).toContain('TODO-Design');
+        expect(item.body).toBe(`You're signed up for Tue 4:30.`);
         return 'sent';
       },
     });
