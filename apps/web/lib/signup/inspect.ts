@@ -6,8 +6,8 @@ export type { FillInstruction, Inspection } from './forms/plan';
 /**
  * One step on a provider's own booking page.
  *
- * Field names come from the form adapters (tickets, classes, reservations,
- * appointments). This wrapper is what the runner calls.
+ * Field names come from the form adapters. Those adapters are not a category
+ * allowlist. This wrapper is what the runner calls.
  */
 export function inspectRegistrationPage(input: {
   snapshot: PageSnapshot;

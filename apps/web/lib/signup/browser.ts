@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { rushSignal } from './forms/rush';
 import type { PageSnapshot, SignupBrowser, SignupPage } from './types';
 import { registrationUrlAllowed } from './url';
 
@@ -100,7 +101,7 @@ function byName(name: string): string {
 }
 
 async function readSnapshot(page: EvalPage): Promise<PageSnapshot> {
-  return page.evaluate(() => {
+  const raw = await page.evaluate(() => {
     const text = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
     const controls = Array.from(document.querySelectorAll('input, select, textarea')).map(
       (node) => {
@@ -143,12 +144,12 @@ async function readSnapshot(page: EvalPage): Promise<PageSnapshot> {
     const waitingRoom =
       document.querySelector(
         'iframe[src*="queue-it"], iframe[src*="queueit"], script[src*="queue-it"], script[src*="queueit"]',
-      ) !== null ||
-      /\bqueue-it\b|\bqueueit\b|waiting room|you are in line/i.test(document.body?.innerText ?? '');
+      ) !== null;
     const submit = document.querySelector('button[type="submit"], input[type="submit"]');
     const submitLabel = submit
       ? text(submit instanceof HTMLInputElement ? submit.value : submit.textContent)
       : '';
+    const bodyText = text(document.body?.innerText).slice(0, 4000);
     return {
       href: location.href,
       controls,
@@ -158,6 +159,20 @@ async function readSnapshot(page: EvalPage): Promise<PageSnapshot> {
       formText,
       waitingRoom,
       submitLabel,
+      bodyText,
     };
   });
+  const signal = rushSignal(`${raw.bodyText}\n${raw.formText}`);
+  return {
+    href: raw.href,
+    controls: raw.controls,
+    priceCents: raw.priceCents,
+    captcha: raw.captcha,
+    confirmed: raw.confirmed,
+    formText: raw.formText,
+    waitingRoom: raw.waitingRoom || signal === 'waiting_room',
+    residentVerification: signal === 'resident_verification',
+    timedOpen: signal === 'timed_open',
+    submitLabel: raw.submitLabel,
+  };
 }

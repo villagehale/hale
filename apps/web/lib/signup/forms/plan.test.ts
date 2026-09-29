@@ -268,6 +268,27 @@ describe('planBookingStep', () => {
     expect(result.fills.find((fill) => fill.slot === 'session')?.value).toBe('sat-1100');
   });
 
+  it('hands back a rush open or a resident check on any host', () => {
+    const session = control({
+      name: 'session',
+      type: 'select',
+      label: 'Session',
+      options: [{ value: 'sat-1100', label: 'Sat 11:00', disabled: false }],
+    });
+    expect(plan([session], { formText: 'Registration opens at 7:00am.' })).toMatchObject({
+      action: 'stop',
+      reason: 'timed_open',
+    });
+    expect(plan([session], { formText: 'Resident ID verification is required.' })).toMatchObject({
+      action: 'stop',
+      reason: 'resident_verification',
+    });
+    expect(plan([session], { formText: 'You are in the queue.' })).toMatchObject({
+      action: 'stop',
+      reason: 'waiting_room',
+    });
+  });
+
   it('books a drop-in from the child name and the gym time', () => {
     const result = plan([
       control({ name: 'player_name', label: 'Player name' }),

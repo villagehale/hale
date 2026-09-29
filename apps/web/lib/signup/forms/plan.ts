@@ -39,9 +39,11 @@ const UNAVAILABLE = /\b(full|waitlist|sold out)\b/i;
  *
  * Adapters classify the controls. This plans the step: continue when the page
  * is only the date of a ticket cart, submit when the authorized slot is on the
- * page or a later page is the cart review. Payment, captcha, login, a waiver,
- * medical or allergy content, a waitlist, a price change, and a required field
- * Hale does not know are stops. Optional unknown fields are left blank.
+ * page or a later page is the cart review. Rush signals (queue, captcha,
+ * resident or identity verification, a timed open-at), payment, login, a
+ * waiver, medical or allergy content, a waitlist, a price change, and a
+ * required field Hale does not know are stops. Optional unknown fields are
+ * left blank.
  */
 export function planBookingStep(input: BookingStepInput): Inspection {
   const stopped = pageStops(input.snapshot, input.expectedOrigin, input.approvedPriceCents);

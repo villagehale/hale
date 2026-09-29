@@ -3,17 +3,18 @@ import type { SignupIdentity, SignupStopReason } from './types';
 /**
  * How an authorized booking is carried out (VIL-375).
  *
- * City recreation is out of scope. Toronto, Brampton, and Markham, and the
- * ActiveNet, Xplor, and PerfectMind hosts those programs run on, are a denylist:
- * assisted handoff only (deep link plus a prefilled pack), never a browser and
- * never a connector.
+ * Scope is anything a parent needs help booking or signing up for. The
+ * exclusion is narrow: Toronto, Brampton, Markham, ActiveNet, Xplor, and
+ * PerfectMind are a denylist (assisted handoff, never a browser or a
+ * connector). Any other host is handed back, without submitting, when the
+ * page shows a rush signal: waiting room or queue, captcha, resident or
+ * identity verification, or a timed open-at.
  *
- * Every other official booking page is in scope for a generic family booking:
- * museum and show tickets, classes, camps, drop-in play, lessons, leagues,
- * party venues, haircuts, and the same kinds of private page. A registered
- * connector or API runs first. The sandboxed browser is the fallback and opens
- * that page only. Form adapters name the fields. No connector is registered yet.
- * Local mock forms are ordinary loopback pages, so they take the browser path.
+ * A registered connector or API runs first. The sandboxed browser is the
+ * fallback and opens that provider's own page only. Form adapters name
+ * fields they already know; they are not a category allowlist. No connector
+ * is registered yet. Local mock forms are ordinary loopback pages, so they
+ * take the browser path.
  */
 
 /** A partnership or official API. Empty until one is actually agreed. */

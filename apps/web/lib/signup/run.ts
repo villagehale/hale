@@ -46,13 +46,13 @@ const UNCLAIMED: SignupRunResult = {
 };
 
 /**
- * Parent-authorized booking for a private provider. A connector runs first when
- * one is registered for the host. Otherwise the sandbox browser opens that
- * provider's own booking page and follows at most three steps (a date, a time
- * slot, a review). A denylisted municipal host is an assisted handoff: the
- * link and a prefilled pack, and no click. The browser opens only after the
- * gate accepts one activity, one session, and the price, the result has a
- * door, and the child is not a teen.
+ * Parent-authorized booking for anything a parent needs signed up. A connector
+ * runs first when one is registered for the host. Otherwise the sandbox
+ * browser opens that provider's own page and follows at most three steps.
+ * A denylisted municipal host is an assisted handoff. A rush signal (queue,
+ * captcha, resident or identity check, timed open-at) hands back with no
+ * submit. The browser opens only after the gate accepts one activity, one
+ * session, and the price, the result has a door, and the child is not a teen.
  */
 export async function runAuthorizedSignup(
   database: Database,

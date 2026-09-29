@@ -9,9 +9,9 @@ import { classifyTicketField } from './tickets';
 export type ClassifiedField = FieldSlot | 'payment' | 'login' | 'unknown';
 
 /**
- * Adapters name the fields Hale knows how to fill. A new private-provider
- * shape is a new file here. The runner does not grow a branch per venue.
- * Safety (payment, login, a second factor) wins over every adapter.
+ * Adapters name fields Hale already knows how to fill. They are not a list
+ * of allowed categories. A booking of any kind uses this same path. Safety
+ * (payment, login, a second factor) wins over every adapter.
  */
 export function classifyField(control: PageControl): ClassifiedField {
   return (

@@ -1,5 +1,6 @@
 import type { PageControl, PageSnapshot, SignupStopReason } from '../types';
 import { controlHay } from './hay';
+import { rushSignal } from './rush';
 
 const PAYMENT = /card|cc-number|cc-exp|cc-csc|\bcvv\b|\bcvc\b|payment|stripe/;
 const WAIVER = /\bwaivers?\b|liability release|release of liability|assumption of risk/;
@@ -21,9 +22,13 @@ export function pageStops(
   if (origin !== expectedOrigin) return 'redirect';
   if (snapshot.captcha) return 'captcha';
   if (snapshot.waitingRoom) return 'waiting_room';
+  if (snapshot.residentVerification) return 'resident_verification';
+  if (snapshot.timedOpen) return 'timed_open';
   const hay = [snapshot.formText, ...snapshot.controls.map((control) => controlHay(control))]
     .join(' ')
     .toLowerCase();
+  const rush = rushSignal(hay);
+  if (rush) return rush;
   if (WAIVER.test(hay)) return 'waiver';
   if (MEDICAL.test(hay)) return 'medical';
   if (ALLERGY.test(hay)) return 'allergy';

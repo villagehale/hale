@@ -81,8 +81,12 @@ export interface PageSnapshot {
    * or allergy form. Never written to the audit trail.
    */
   formText: string;
-  /** A Queue-it style waiting room. The runner does not click through one. */
+  /** A Queue-it style waiting room or queue. The runner does not click through one. */
   waitingRoom: boolean;
+  /** Resident or identity verification. A rush-registration exclusion, any host. */
+  residentVerification?: boolean;
+  /** Timed open-at registration. A rush-registration exclusion, any host. */
+  timedOpen?: boolean;
   /**
    * The primary submit button's text. "Continue" advances a cart. A missing
    * label is treated as the final step.
@@ -106,6 +110,8 @@ export type SignupStopReason =
   | 'medical'
   | 'allergy'
   | 'waiting_room'
+  | 'resident_verification'
+  | 'timed_open'
   | 'assisted_handoff'
   | 'unexpected_field'
   | 'missing_detail'

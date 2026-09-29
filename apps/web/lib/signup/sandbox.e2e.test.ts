@@ -141,6 +141,34 @@ const PARTY_FORM = `<!doctype html>
 </form>
 </body></html>`;
 
+const TIMED_OPEN_FORM = `<!doctype html>
+<html><body>
+<form method="POST" action="/submit">
+  <p>Registration opens at 7:00am.</p>
+  <label>Child first name <input name="child_first_name" required></label>
+  <label>Session
+    <select name="session" required>
+      <option value="tue-1630">Tue 4:30</option>
+    </select>
+  </label>
+  <button type="submit">Register</button>
+</form>
+</body></html>`;
+
+const RESIDENT_FORM = `<!doctype html>
+<html><body>
+<form method="POST" action="/submit">
+  <p>Enter your resident ID to verify your residency.</p>
+  <label>Child first name <input name="child_first_name" required></label>
+  <label>Session
+    <select name="session" required>
+      <option value="tue-1630">Tue 4:30</option>
+    </select>
+  </label>
+  <button type="submit">Register</button>
+</form>
+</body></html>`;
+
 const UNEXPECTED_FORM = `<!doctype html>
 <html><body>
 <form method="POST" action="/submit">
@@ -216,6 +244,8 @@ describe('authorized signup sandbox', () => {
       '/party': PARTY_FORM,
       '/waitlist': WAITLIST_FORM,
       '/unexpected': UNEXPECTED_FORM,
+      '/timed-open': TIMED_OPEN_FORM,
+      '/resident': RESIDENT_FORM,
       '/pay': PAYMENT_FORM,
     };
     res.writeHead(200, { 'content-type': 'text/html' });
@@ -471,6 +501,36 @@ describe('authorized signup sandbox', () => {
     expect(posts).toHaveLength(0);
     expect(result.reply).toContain('reason=unexpected_field');
     expect(result.reply).toContain('prefilled=none');
+  }, 60_000);
+
+  it('hands back a timed open without joining the rush', async () => {
+    const seeded = await offer({
+      path: '/timed-open',
+      activityKey: 'swim-lesson',
+      sessionId: 'tue-1630',
+      sessionLabel: 'Tue 4:30',
+      priceCents: null,
+      approvedPriceCents: null,
+    });
+    const result = await book(seeded);
+    expect(result.outcome).toBe('timed_open');
+    expect(posts).toHaveLength(0);
+    expect(result.reply).toContain('reason=timed_open');
+  }, 60_000);
+
+  it('hands back when the page asks for a resident id', async () => {
+    const seeded = await offer({
+      path: '/resident',
+      activityKey: 'swim-lesson',
+      sessionId: 'tue-1630',
+      sessionLabel: 'Tue 4:30',
+      priceCents: null,
+      approvedPriceCents: null,
+    });
+    const result = await book(seeded);
+    expect(result.outcome).toBe('resident_verification');
+    expect(posts).toHaveLength(0);
+    expect(result.reply).toContain('reason=resident_verification');
   }, 60_000);
 
   it('does not submit a local form that asks for a card', async () => {
