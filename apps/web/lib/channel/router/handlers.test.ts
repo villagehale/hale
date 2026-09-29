@@ -553,7 +553,7 @@ describe('recMorningHandler', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, co_parent_number, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', async () => {
+  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, co_parent_number, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, year_retention, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -606,6 +606,9 @@ describe('the shipped order', () => {
       // more than three texts of advice, less than filing a health checkpoint as handled.
       'email_alert_add',
       'coach_plan',
+      // After the plan. A bare yes binds here only when this ask is the sole open
+      // question, and a wrong link is cheaper than a mis-sent plan.
+      'year_retention',
       'registration',
       'rec_morning',
       // Immediately before the bare-word capture, so "yes" to "Can I call you Bea?"
