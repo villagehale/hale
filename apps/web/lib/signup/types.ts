@@ -82,6 +82,8 @@ export type SignupStopReason =
   | 'session_full'
   | 'session_not_offered'
   | 'price_not_approved'
+  | 'price_change'
+  | 'connector_failed'
   | 'payment'
   | 'captcha'
   | 'login_wall'

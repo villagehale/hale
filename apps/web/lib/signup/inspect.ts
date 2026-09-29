@@ -25,7 +25,7 @@ const ALLERGY = /\ballerg|\banaphylax|\bepipen\b|\bepi-pen\b/;
 /**
  * Decide whether this page can be completed safely.
  *
- * Inspect before any fill. Payment, captcha, a login wall, a waiver, a medical
+ * Inspect before any fill. Payment, captcha, a login wall or a second factor, a waiver, a medical
  * or allergy form, a waiting room, a price the parent has not approved, a full
  * or missing session, or a required field Hale does not know how to fill are
  * stops. Only required known fields are filled.
@@ -47,9 +47,8 @@ export function inspectRegistrationPage(input: {
   if (input.snapshot.captcha) return stop('captcha');
   const sensitive = sensitiveForm(input.snapshot);
   if (sensitive) return stop(sensitive);
-  if (!pricesApproved(input.snapshot.priceCents, input.approvedPriceCents)) {
-    return stop('price_not_approved');
-  }
+  const priced = pricesApproved(input.snapshot.priceCents, input.approvedPriceCents);
+  if (priced !== true) return stop(priced);
 
   const controls = input.snapshot.controls.filter((control) => !ignored(control));
   if (controls.some((control) => control.type === 'password' || slotKind(control) === 'login')) {
@@ -115,11 +114,15 @@ function controlHay(control: PageControl): string {
   return `${control.name} ${control.label} ${control.autocomplete ?? ''}`;
 }
 
-function pricesApproved(found: readonly number[], approved: number | null): boolean {
+function pricesApproved(
+  found: readonly number[],
+  approved: number | null,
+): true | 'price_not_approved' | 'price_change' {
   const charged = found.filter((cents) => cents > 0);
   if (charged.length === 0) return true;
-  if (charged.length > 1) return false;
-  return approved === charged[0];
+  if (charged.length !== 1 || approved === null) return 'price_not_approved';
+  if (approved !== charged[0]) return 'price_change';
+  return true;
 }
 
 function ignored(control: PageControl): boolean {
@@ -131,7 +134,16 @@ function slotKind(control: PageControl): FieldSlot | 'payment' | 'login' | 'unkn
   if (PAYMENT.test(hay) || (control.autocomplete ?? '').toLowerCase().startsWith('cc-')) {
     return 'payment';
   }
-  if (control.type === 'password' || /\bpassword\b/.test(hay)) return 'login';
+  const autocomplete = (control.autocomplete ?? '').toLowerCase();
+  if (
+    control.type === 'password' ||
+    autocomplete === 'one-time-code' ||
+    /\bpassword\b|\b(2fa|otp|mfa|totp)\b|two factor|authenticator|verification code|one time code/.test(
+      hay,
+    )
+  ) {
+    return 'login';
+  }
   if (/child (first|given)|participant first|camper first|kid first|child name/.test(hay)) {
     return 'child_first_name';
   }
@@ -139,8 +151,18 @@ function slotKind(control: PageControl): FieldSlot | 'payment' | 'login' | 'unkn
   if (/\bdob\b|date of birth|birth date|birthdate/.test(hay)) return 'child_dob';
   if (/\bemail\b/.test(hay)) return 'parent_email';
   if (/postal|postcode|\bzip\b/.test(hay)) return 'postal_code';
-  if (/session|time slot|timeslot|class time/.test(hay)) return 'session';
-  if (/parent (first|given)|guardian first|guardian name|your name|contact name/.test(hay)) {
+  if (
+    /session|time slot|timeslot|class time|showtime|show time|reservation time|seating time|booking time/.test(
+      hay,
+    )
+  ) {
+    return 'session';
+  }
+  if (
+    /parent (first|given)|guardian first|guardian name|your name|contact name|guest name|visitor name|reservation name|ticket holder|booker name/.test(
+      hay,
+    )
+  ) {
     return 'parent_first_name';
   }
   return 'unknown';

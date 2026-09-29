@@ -31,7 +31,7 @@ export function signupHandbackLine(input: {
 }
 
 /**
- * TODO-Design (Sloane): provider is not on the form-fill allowlist.
+ * TODO-Design (Sloane): this host is on the municipal denylist.
  * `{link}` `{session}` `{pack}` — pack values are the parent's own details.
  */
 export function signupAssistedHandoffLine(input: {

@@ -8,12 +8,13 @@ import { runAuthorizedSignup } from './run';
 import { recordSignupOffer } from './store';
 
 /**
- * A local mock registration form. This file must not point the browser at a
- * municipal or provider site.
+ * Local mock booking forms only: a class, a ticket, and a restaurant
+ * reservation. This file must not point the browser at a municipal or
+ * provider site.
  */
 const NOW = new Date('2026-09-29T15:00:00.000Z');
 
-const REGISTER_FORM = `<!doctype html>
+const CLASS_FORM = `<!doctype html>
 <html><body>
 <form method="POST" action="/submit">
   <label>Child first name <input name="child_first_name" required></label>
@@ -26,6 +27,42 @@ const REGISTER_FORM = `<!doctype html>
     </select>
   </label>
   <button type="submit">Register</button>
+</form>
+</body></html>`;
+
+const TICKET_FORM = `<!doctype html>
+<html><body>
+<form method="POST" action="/submit">
+  <p data-price-cents="1800"></p>
+  <label>Your name <input name="guest_name" required></label>
+  <label>Email <input name="email" type="email" required></label>
+  <label>Showtime
+    <select name="showtime" required>
+      <option value="">Choose</option>
+      <option value="sat-1100">Sat 11:00</option>
+    </select>
+  </label>
+  <button type="submit">Get tickets</button>
+</form>
+</body></html>`;
+
+const TICKET_REPRICED_FORM = TICKET_FORM.replace(
+  'data-price-cents="1800"',
+  'data-price-cents="2400"',
+);
+
+const RESERVATION_FORM = `<!doctype html>
+<html><body>
+<form method="POST" action="/submit">
+  <label>Name <input name="reservation_name" required></label>
+  <label>Email <input name="email" type="email" required></label>
+  <label>Reservation time
+    <select name="reservation_time" required>
+      <option value="">Choose</option>
+      <option value="fri-1900">Fri 7:00</option>
+    </select>
+  </label>
+  <button type="submit">Reserve</button>
 </form>
 </body></html>`;
 
@@ -65,8 +102,16 @@ describe('authorized signup sandbox', () => {
       res.end('<!doctype html><html><body><p data-signup-status="confirmed">ok</p></body></html>');
       return;
     }
+    const pages: Record<string, string> = {
+      '/class': CLASS_FORM,
+      '/register': CLASS_FORM,
+      '/tickets': TICKET_FORM,
+      '/tickets-repriced': TICKET_REPRICED_FORM,
+      '/reserve': RESERVATION_FORM,
+      '/pay': PAYMENT_FORM,
+    };
     res.writeHead(200, { 'content-type': 'text/html' });
-    res.end(path === '/pay' ? PAYMENT_FORM : REGISTER_FORM);
+    res.end(pages[path ?? ''] ?? CLASS_FORM);
   });
 
   beforeAll(async () => {
@@ -91,7 +136,14 @@ describe('authorized signup sandbox', () => {
     vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
   });
 
-  async function offer(path: string) {
+  async function offer(input: {
+    path: string;
+    activityKey: string;
+    sessionId: string;
+    sessionLabel: string;
+    priceCents: number | null;
+    approvedPriceCents: number | null;
+  }) {
     const seeded = await seedFamily(db.database);
     await db.database
       .update(schema.families)
@@ -102,30 +154,29 @@ describe('authorized signup sandbox', () => {
       familyId: seeded.familyId,
       childId,
       parentUserId: seeded.parentUserId,
-      activityKey: 'swim-parent-tot',
-      registrationUrl: `${base}${path}`,
+      activityKey: input.activityKey,
+      registrationUrl: `${base}${input.path}`,
       sessions: [
         {
-          id: 'tue-1630',
-          label: 'Tue 4:30',
+          id: input.sessionId,
+          label: input.sessionLabel,
           startsAt: '2026-10-06T20:30:00.000Z',
           endsAt: '2026-10-06T21:15:00.000Z',
           full: false,
-          priceCents: null,
+          priceCents: input.priceCents,
         },
       ],
-      approvedPriceCents: null,
+      approvedPriceCents: input.approvedPriceCents,
       now: NOW,
     });
     expect(stored.ok).toBe(true);
     return seeded;
   }
 
-  it('fills the local mock form and submits the authorized session', async () => {
+  async function book(seeded: { familyId: string; parentUserId: string }) {
     const browser = await playwrightSignupBrowser();
     expect(browser, 'Playwright is a dev dependency of apps/web').not.toBeNull();
-    const seeded = await offer('/register');
-    const result = await runAuthorizedSignup(
+    return runAuthorizedSignup(
       db.database,
       {
         familyId: seeded.familyId,
@@ -137,38 +188,107 @@ describe('authorized signup sandbox', () => {
       },
       { browser },
     );
+  }
+
+  async function trail(familyId: string): Promise<string> {
+    const rows = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, familyId));
+    return JSON.stringify(rows);
+  }
+
+  it('signs up for a class on the local mock', async () => {
+    const seeded = await offer({
+      path: '/class',
+      activityKey: 'soccer-class',
+      sessionId: 'tue-1630',
+      sessionLabel: 'Tue 4:30',
+      priceCents: null,
+      approvedPriceCents: null,
+    });
+    const result = await book(seeded);
     expect(result.outcome).toBe('completed');
     expect(posts).toHaveLength(1);
     const body = posts[0] ?? '';
     expect(body).toContain('child_first_name=Ada');
     expect(body).toContain('session=tue-1630');
     expect(body).toContain('postal_code=M5V2T6');
-    const rows = await db.database
-      .select({ after: schema.auditLog.after })
-      .from(schema.auditLog)
-      .where(eq(schema.auditLog.familyId, seeded.familyId));
-    const trail = JSON.stringify(rows);
-    expect(trail).not.toContain('Ada');
-    expect(trail).not.toContain('M5V2T6');
-    expect(trail).not.toContain('@');
+    const logged = await trail(seeded.familyId);
+    expect(logged).not.toContain('Ada');
+    expect(logged).not.toContain('M5V2T6');
+    expect(logged).not.toContain('@');
+  }, 60_000);
+
+  it('books zoo-style tickets on the local mock when the approved price matches', async () => {
+    const seeded = await offer({
+      path: '/tickets',
+      activityKey: 'zoo-tickets',
+      sessionId: 'sat-1100',
+      sessionLabel: 'Sat 11:00',
+      priceCents: 1800,
+      approvedPriceCents: 1800,
+    });
+    const result = await book(seeded);
+    expect(result.outcome).toBe('completed');
+    expect(posts).toHaveLength(1);
+    const body = posts[0] ?? '';
+    expect(body).toMatch(/guest_name=Test(?:\+|%20)Parent/);
+    expect(body).toContain('showtime=sat-1100');
+    expect(body).not.toContain('Ada');
+    const logged = await trail(seeded.familyId);
+    expect(logged).not.toContain('Ada');
+    expect(logged).not.toContain('Test Parent');
+    expect(logged).not.toContain('@');
+  }, 60_000);
+
+  it('does not buy tickets when the page price changed', async () => {
+    const seeded = await offer({
+      path: '/tickets-repriced',
+      activityKey: 'zoo-tickets',
+      sessionId: 'sat-1100',
+      sessionLabel: 'Sat 11:00',
+      priceCents: 1800,
+      approvedPriceCents: 1800,
+    });
+    const result = await book(seeded);
+    expect(result.outcome).toBe('price_change');
+    expect(posts).toHaveLength(0);
+    expect(result.reply).toContain('reason=price_change');
+  }, 60_000);
+
+  it('reserves a restaurant table on the local mock without child details', async () => {
+    const seeded = await offer({
+      path: '/reserve',
+      activityKey: 'dinner-reservation',
+      sessionId: 'fri-1900',
+      sessionLabel: 'Fri 7:00',
+      priceCents: null,
+      approvedPriceCents: null,
+    });
+    const result = await book(seeded);
+    expect(result.outcome).toBe('completed');
+    expect(posts).toHaveLength(1);
+    const body = posts[0] ?? '';
+    expect(body).toMatch(/reservation_name=Test(?:\+|%20)Parent/);
+    expect(body).toContain('reservation_time=fri-1900');
+    expect(body).not.toContain('Ada');
+    const logged = await trail(seeded.familyId);
+    expect(logged).not.toContain('Ada');
+    expect(logged).not.toContain('Test Parent');
+    expect(logged).not.toContain('@');
   }, 60_000);
 
   it('does not submit a local form that asks for a card', async () => {
-    const browser = await playwrightSignupBrowser();
-    expect(browser).not.toBeNull();
-    const seeded = await offer('/pay');
-    const result = await runAuthorizedSignup(
-      db.database,
-      {
-        familyId: seeded.familyId,
-        parentUserId: seeded.parentUserId,
-        body: 'Yes, sign us up',
-        inboundChannelMessageId: null,
-        existingThread: true,
-        now: NOW,
-      },
-      { browser },
-    );
+    const seeded = await offer({
+      path: '/pay',
+      activityKey: 'soccer-class',
+      sessionId: 'tue-1630',
+      sessionLabel: 'Tue 4:30',
+      priceCents: null,
+      approvedPriceCents: null,
+    });
+    const result = await book(seeded);
     expect(result.outcome).toBe('payment');
     expect(result.reply).toContain('TODO-Design');
     expect(result.reply).toContain(`${base}/pay`);

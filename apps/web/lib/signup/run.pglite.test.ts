@@ -102,6 +102,7 @@ describe('authorized signup runner', () => {
       priceCents: number | null;
     }[];
     url?: string;
+    approvedPriceCents?: number | null;
   }) {
     const seeded = await seedFamily(db.database);
     await db.database
@@ -132,7 +133,7 @@ describe('authorized signup runner', () => {
           priceCents: null,
         },
       ],
-      approvedPriceCents: null,
+      approvedPriceCents: input.approvedPriceCents ?? null,
       now: NOW,
     });
     expect(stored.ok).toBe(true);
@@ -335,7 +336,165 @@ describe('authorized signup runner', () => {
     expect(trail).not.toContain('@');
   });
 
-  it('hands the parent the link and a pack when the provider is not allowlisted', async () => {
+  it('books a private host in the sandbox browser', async () => {
+    const href = 'https://tickets.example-zoo.test/book';
+    const seeded = await familyWithOffer({ ageMonths: 36, url: href });
+    const page = { ...SAFE, href };
+    const { browser, calls } = browserFor(page, { ...page, confirmed: true });
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: null,
+        existingThread: true,
+        now: NOW,
+      },
+      { browser },
+    );
+    expect(result.outcome).toBe('completed');
+    expect(calls.opened).toBe(1);
+    expect(calls.submitted).toBe(1);
+  });
+
+  it('uses a connector and does not open the browser', async () => {
+    const href = 'https://book.example-swim.test/lessons';
+    const seeded = await familyWithOffer({ ageMonths: 36, url: href });
+    const { browser, calls } = browserFor(SAFE);
+    let seenSession = '';
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: null,
+        existingThread: true,
+        now: NOW,
+      },
+      {
+        browser,
+        connectors: [
+          {
+            id: 'example-swim-api',
+            matches: (url) => url.hostname === 'book.example-swim.test',
+            book: async (booking) => {
+              seenSession = booking.sessionId;
+              return { ok: true };
+            },
+          },
+        ],
+      },
+    );
+    expect(result.outcome).toBe('completed');
+    expect(seenSession).toBe('tue-1630');
+    expect(calls.opened).toBe(0);
+    expect(await audits(seeded.familyId)).not.toContain('Ada');
+  });
+
+  it('does not let a connector automate a denylisted host', async () => {
+    const seeded = await familyWithOffer({
+      ageMonths: 36,
+      url: 'https://www.toronto.ca/explore-enjoy/recreation/registrations',
+    });
+    const { browser, calls } = browserFor(SAFE);
+    let called = false;
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: null,
+        existingThread: true,
+        now: NOW,
+      },
+      {
+        browser,
+        connectors: [
+          {
+            id: 'should-not-run',
+            matches: () => true,
+            book: async () => {
+              called = true;
+              return { ok: true };
+            },
+          },
+        ],
+      },
+    );
+    expect(result.outcome).toBe('assisted_handoff');
+    expect(called).toBe(false);
+    expect(calls.opened).toBe(0);
+  });
+
+  it('does not open a browser when the session price was not approved', async () => {
+    const seeded = await familyWithOffer({
+      ageMonths: 36,
+      sessions: [
+        {
+          id: 'sat-1100',
+          label: 'Sat 11:00',
+          startsAt: '2026-10-10T15:00:00.000Z',
+          endsAt: '2026-10-10T16:00:00.000Z',
+          full: false,
+          priceCents: 1800,
+        },
+      ],
+    });
+    const { browser, calls } = browserFor(SAFE);
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: null,
+        existingThread: true,
+        now: NOW,
+      },
+      { browser },
+    );
+    expect(result.outcome).toBe('price_not_approved');
+    expect(calls.opened).toBe(0);
+  });
+
+  it('hands back when the page price changed after approval', async () => {
+    const seeded = await familyWithOffer({
+      ageMonths: 36,
+      approvedPriceCents: 1800,
+      sessions: [
+        {
+          id: 'sat-1100',
+          label: 'Sat 11:00',
+          startsAt: '2026-10-10T15:00:00.000Z',
+          endsAt: '2026-10-10T16:00:00.000Z',
+          full: false,
+          priceCents: 1800,
+        },
+      ],
+    });
+    const { browser, calls } = browserFor({ ...SAFE, priceCents: [2400] });
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: null,
+        existingThread: true,
+        now: NOW,
+      },
+      { browser },
+    );
+    expect(result.outcome).toBe('price_change');
+    expect(calls.opened).toBe(1);
+    expect(calls.submitted).toBe(0);
+    expect(await audits(seeded.familyId)).not.toContain('Ada');
+  });
+
+  it('hands the parent the link and a pack for a municipal host', async () => {
     const seeded = await familyWithOffer({
       ageMonths: 36,
       url: 'https://www.toronto.ca/explore-enjoy/recreation/registrations',
@@ -391,7 +550,7 @@ describe('authorized signup runner', () => {
     expect(calls.opened).toBe(0);
   });
 
-  it('stops an allowlisted form that asks for a waiver and does not submit', async () => {
+  it('stops a booking form that asks for a waiver and does not submit', async () => {
     const seeded = await familyWithOffer({ ageMonths: 36 });
     const { browser, calls } = browserFor({
       ...SAFE,

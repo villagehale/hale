@@ -7,7 +7,7 @@ import { type ReportDoor, chooseReportDoor } from './door';
 import { authorizedSignupEnabled } from './flag';
 import { inspectRegistrationPage } from './inspect';
 import { signupInfoPack } from './pack';
-import { signupProviderFor } from './providers';
+import { BOOKING_CONNECTORS, type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import { loadBusy, loadPendingOffer, loadSignupIdentity, markOffer } from './store';
 import type { SignupBrowser, SignupPage, SignupStopReason } from './types';
@@ -26,6 +26,8 @@ export interface SignupRunInput {
 export interface SignupRunDeps {
   /** Undefined loads Playwright. Null means the browser is absent. */
   browser?: SignupBrowser | null;
+  /** Defaults to none. A denylisted host never reaches a connector. */
+  connectors?: readonly BookingConnector[];
   deliverGroup?: (input: GroupSignupDelivery) => Promise<'sent' | 'failed' | 'already_sent'>;
 }
 
@@ -44,10 +46,12 @@ const UNCLAIMED: SignupRunResult = {
 };
 
 /**
- * Parent-authorized signup. The browser opens only for an allowlisted provider,
- * after the gate accepts one activity and one session, the result has a door,
- * and the child is not a teen. Every other provider is an assisted handoff:
- * the link and a prefilled pack, and no click.
+ * Parent-authorized booking. A connector runs first when one is registered for
+ * the host. Otherwise the sandbox browser opens the official booking page.
+ * A denylisted municipal host is an assisted handoff: the link and a prefilled
+ * pack, and no click. The browser opens only after the gate accepts one
+ * activity, one session, and the price, the result has a door, and the child
+ * is not a teen.
  */
 export async function runAuthorizedSignup(
   database: Database,
@@ -143,8 +147,8 @@ export async function runAuthorizedSignup(
     });
   }
 
-  const provider = signupProviderFor(allowed.href);
-  if (!provider) {
+  const route = bookingRoute(allowed.href, deps.connectors ?? BOOKING_CONNECTORS);
+  if (route.kind === 'handoff') {
     const session = offer.sessions.find((item) => item.id === decision.sessionId);
     const pack = signupInfoPack(identity);
     await markFromPending(database, input, offer.id, decision.sessionId);
@@ -187,9 +191,64 @@ export async function runAuthorizedSignup(
     step: 'authorized',
     activityKey: decision.activityKey,
     sessionId: decision.sessionId,
-    provider: provider.id,
+    route: route.kind,
+    connector: route.kind === 'connector' ? route.connector.id : null,
     host,
   });
+
+  if (route.kind === 'connector') {
+    try {
+      const booked = await route.connector.book({
+        url: allowed.href,
+        activityKey: decision.activityKey,
+        sessionId: decision.sessionId,
+        approvedPriceCents: offer.approvedPriceCents,
+        identity,
+      });
+      if (!booked.ok) {
+        await finish(database, input, offer.id, 'handed_back');
+        return replyFor(database, input, deps, door, {
+          offerId: offer.id,
+          outcome: booked.reason,
+          reason: booked.reason,
+          link: offer.registrationUrl,
+          prefilled: [],
+          host,
+        });
+      }
+      await finish(database, input, offer.id, 'completed');
+      await writeAudit(database, input, offer.id, {
+        step: 'completed',
+        activityKey: decision.activityKey,
+        sessionId: decision.sessionId,
+        route: 'connector',
+        connector: route.connector.id,
+        host,
+      });
+      return replyFor(database, input, deps, door, {
+        offerId: offer.id,
+        outcome: 'completed',
+        reason: null,
+        link: offer.registrationUrl,
+        prefilled: [],
+        host,
+      });
+    } catch {
+      await finish(database, input, offer.id, 'handed_back');
+      console.warn(
+        { familyId: input.familyId, offerId: offer.id, connector: route.connector.id },
+        'authorized signup: connector stopped',
+      );
+      return replyFor(database, input, deps, door, {
+        offerId: offer.id,
+        outcome: 'connector_failed',
+        reason: 'connector_failed',
+        link: offer.registrationUrl,
+        prefilled: [],
+        host,
+      });
+    }
+  }
 
   const browser = await resolveBrowser(deps);
   if (!browser) {

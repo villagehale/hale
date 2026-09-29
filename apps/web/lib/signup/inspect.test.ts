@@ -132,6 +132,78 @@ describe('inspectRegistrationPage', () => {
     expect(result).toMatchObject({ action: 'stop', reason: 'price_not_approved' });
   });
 
+  it('stops when the page price differs from the price the parent approved', () => {
+    const result = inspectRegistrationPage({
+      snapshot: snapshot(SAFE, { priceCents: [2400] }),
+      identity: IDENTITY,
+      sessionId: 'tue-1630',
+      approvedPriceCents: 1800,
+      expectedOrigin: ORIGIN,
+    });
+    expect(result).toMatchObject({ action: 'stop', reason: 'price_change' });
+  });
+
+  it('stops on a verification code', () => {
+    const result = inspect([
+      ...SAFE,
+      control({ name: 'otp', label: 'Verification code', autocomplete: 'one-time-code' }),
+    ]);
+    expect(result).toMatchObject({ action: 'stop', reason: 'login_wall' });
+  });
+
+  it('stops when the authorized session is sold out', () => {
+    const result = inspect([
+      control({
+        name: 'session',
+        type: 'select',
+        label: 'Session',
+        options: [{ value: 'tue-1630', label: 'Tue 4:30 sold out', disabled: false }],
+      }),
+    ]);
+    expect(result).toMatchObject({ action: 'stop', reason: 'session_full' });
+  });
+
+  it('fills a ticket or a reservation from the adult name and the time, not a child field', () => {
+    const ticket = inspect(
+      [
+        control({ name: 'guest_name', label: 'Your name' }),
+        control({ name: 'email', type: 'email', label: 'Email' }),
+        control({
+          name: 'showtime',
+          type: 'select',
+          label: 'Showtime',
+          options: [{ value: 'sat-1100', label: 'Sat 11:00', disabled: false }],
+        }),
+      ],
+      {},
+      'sat-1100',
+    );
+    expect(ticket.action).toBe('submit');
+    if (ticket.action !== 'submit') return;
+    expect(ticket.fills.find((fill) => fill.slot === 'parent_first_name')?.value).toBe('Ana');
+    expect(ticket.fills.some((fill) => fill.slot === 'child_first_name')).toBe(false);
+
+    const table = inspect(
+      [
+        control({ name: 'reservation_name', label: 'Name' }),
+        control({ name: 'email', type: 'email', label: 'Email' }),
+        control({
+          name: 'reservation_time',
+          type: 'select',
+          label: 'Reservation time',
+          options: [{ value: 'fri-1900', label: 'Fri 7:00', disabled: false }],
+        }),
+      ],
+      {},
+      'fri-1900',
+    );
+    expect(table.action).toBe('submit');
+    if (table.action !== 'submit') return;
+    expect(table.fills.map((fill) => fill.value).sort()).toEqual(
+      ['Ana', 'ana@example.test', 'fri-1900'].sort(),
+    );
+  });
+
   it('stops when a required known field has no family value', () => {
     const result = inspectRegistrationPage({
       snapshot: snapshot(SAFE),
