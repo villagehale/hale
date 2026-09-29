@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { BillingPeriod } from '@hale/types';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
 
@@ -81,9 +82,20 @@ function checkoutForm(params: CheckoutSessionParams): URLSearchParams {
     'metadata[tier]': params.tier,
     'metadata[priceId]': params.priceId,
     'subscription_data[metadata][familyId]': params.familyId,
+    'subscription_data[metadata][tier]': params.tier,
+    integration_identifier: integrationIdentifier(),
   });
   if (params.customerEmail) {
     form.set('customer_email', params.customerEmail);
   }
   return form;
+}
+
+/** Dashboard label. The 8-letter suffix is what Stripe asks for on this field. */
+function integrationIdentifier(): string {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+  const bytes = randomBytes(8);
+  let suffix = '';
+  for (const byte of bytes) suffix += alphabet[byte % 26];
+  return `hale-checkout-${suffix}`;
 }

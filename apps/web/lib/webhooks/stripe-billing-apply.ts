@@ -3,11 +3,14 @@ import type { PlanTier } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import {
+  type PriceTierMap,
+  type StripeTierOptions,
   eventIdFromStripeEvent,
   familyIdFromStripeEvent,
+  paymentLinkTierOptionsFromEnv,
   planTierFromStripeEvent,
   priceTierMapFromEnv,
-  type PriceTierMap,
+  stripeRefsFromStripeEvent,
 } from './stripe-billing.js';
 
 /**
@@ -39,12 +42,13 @@ export async function applyStripeBillingEvent(
   event: unknown,
   database: Database = defaultDb(),
   priceTierMap: PriceTierMap = priceTierMapFromEnv(),
+  tierOptions: StripeTierOptions = paymentLinkTierOptionsFromEnv(),
 ): Promise<ApplyStripeBillingResult> {
   const eventId = eventIdFromStripeEvent(event);
   if (!eventId) {
     return { status: 'ignored' };
   }
-  const tier = planTierFromStripeEvent(event, priceTierMap);
+  const tier = planTierFromStripeEvent(event, priceTierMap, tierOptions);
   if (tier === null) {
     return { status: 'no_tier' };
   }
@@ -69,9 +73,19 @@ export async function applyStripeBillingEvent(
       .where(eq(schema.families.id, familyId))
       .limit(1);
 
+    const refs = stripeRefsFromStripeEvent(event);
+    const patch: {
+      planTier: PlanTier;
+      updatedAt: Date;
+      stripeCustomerId?: string;
+      stripeSubscriptionId?: string;
+    } = { planTier: tier, updatedAt: new Date() };
+    if (refs.customerId) patch.stripeCustomerId = refs.customerId;
+    if (refs.subscriptionId) patch.stripeSubscriptionId = refs.subscriptionId;
+
     const updated = await tx
       .update(schema.families)
-      .set({ planTier: tier })
+      .set(patch)
       .where(eq(schema.families.id, familyId))
       .returning({ id: schema.families.id });
     if (updated.length === 0) {

@@ -23,7 +23,8 @@ import type { BillingPeriod, PlanTier } from '@hale/types';
  *      arrive as STRIPE_PRICE_{PLUS,FAMILY}_{MONTHLY,ANNUAL} env at go-live.
  *
  * ── Event → plan_tier mapping (the contract the live handler honours) ──
- *   checkout.session.completed        → tier of the purchased price (plus|family)
+ *   checkout.session.completed        → metadata.tier, else the configured Payment Link tier
+ *   invoice.paid                      → metadata.tier, else the invoice line's price
  *   customer.subscription.updated     → tier of the active price after the change
  *   customer.subscription.deleted     → 'free' (subscription ended → downgrade)
  *   (any other event type)            → null (not a tier-affecting event)
@@ -40,6 +41,19 @@ export type PriceTierMap = Readonly<Record<string, PlanTier>>;
 
 /** The paid tiers a checkout can be created for (Free is never purchased). */
 export type PaidTier = Exclude<PlanTier, 'free'>;
+
+/**
+ * Payment Link fallback for checkout.session.completed.
+ *
+ * A Dashboard Payment Link does not carry the per-family metadata a Checkout
+ * Session does. When the event's `payment_link` equals `paymentLinkId` and
+ * metadata.tier is absent, grant `paymentLinkTier`. Both must be set — an
+ * unset id never grants.
+ */
+export interface StripeTierOptions {
+  paymentLinkId?: string | null;
+  paymentLinkTier?: PaidTier | null;
+}
 
 type VerifyResult =
   | { status: 'verified' }
@@ -89,9 +103,7 @@ export function verifyStripeBillingSignature(
 }
 
 /** Parses `t=…,v1=…[,v1=…]` into a timestamp + candidate signatures, or null. */
-function parseSignatureHeader(
-  header: string,
-): { timestamp: number; signatures: string[] } | null {
+function parseSignatureHeader(header: string): { timestamp: number; signatures: string[] } | null {
   let timestamp: number | null = null;
   const signatures: string[] = [];
   for (const part of header.split(',')) {
@@ -184,9 +196,20 @@ export function isStripeCheckoutConfigured(
  *
  * Returns null (never throws) for anything else.
  */
+export function paymentLinkTierOptionsFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): StripeTierOptions {
+  const tier = env.STRIPE_PAYMENT_LINK_TIER?.trim();
+  return {
+    paymentLinkId: env.STRIPE_PAYMENT_LINK_ID?.trim() || null,
+    paymentLinkTier: tier === 'plus' || tier === 'family' ? tier : null,
+  };
+}
+
 export function planTierFromStripeEvent(
   payload: unknown,
   priceTierMap: PriceTierMap,
+  options: StripeTierOptions = {},
 ): PlanTier | null {
   if (!isRecord(payload)) return null;
   const type = readString(payload.type);
@@ -204,7 +227,15 @@ export function planTierFromStripeEvent(
     }
     case 'checkout.session.completed': {
       const tier = isRecord(object.metadata) ? readString(object.metadata.tier) : null;
-      return tier && isPaidTier(tier) ? tier : null;
+      if (tier && isPaidTier(tier)) return tier;
+      return paymentLinkTierFrom(object, options);
+    }
+    case 'invoice.paid': {
+      const tier = isRecord(object.metadata) ? readString(object.metadata.tier) : null;
+      if (tier && isPaidTier(tier)) return tier;
+      const priceId = invoicePriceId(object);
+      if (!priceId) return null;
+      return priceTierMap[priceId] ?? null;
     }
     default:
       return null;
@@ -221,16 +252,90 @@ export function familyIdFromStripeEvent(payload: unknown): string | null {
   if (!isRecord(payload)) return null;
   const object = isRecord(payload.data) ? payload.data.object : undefined;
   if (!isRecord(object)) return null;
-  const metadataFamilyId = isRecord(object.metadata)
-    ? readString(object.metadata.familyId)
-    : null;
-  return metadataFamilyId ?? readString(object.client_reference_id);
+  const metadataFamilyId = isRecord(object.metadata) ? readString(object.metadata.familyId) : null;
+  return (
+    metadataFamilyId ??
+    readString(object.client_reference_id) ??
+    subscriptionDetailsFamilyId(object) ??
+    invoiceLineFamilyId(object)
+  );
+}
+
+/** Customer and subscription ids carried on a billing event, when Stripe sent them. */
+export function stripeRefsFromStripeEvent(payload: unknown): {
+  customerId: string | null;
+  subscriptionId: string | null;
+} {
+  if (!isRecord(payload)) return { customerId: null, subscriptionId: null };
+  const object = isRecord(payload.data) ? payload.data.object : undefined;
+  if (!isRecord(object)) return { customerId: null, subscriptionId: null };
+  const details = subscriptionDetails(object);
+  return {
+    customerId: readId(object.customer),
+    subscriptionId: readId(object.subscription) ?? (details ? readId(details.subscription) : null),
+  };
 }
 
 /** The Stripe event id (`evt_…`) — the natural idempotency key. Null if malformed. */
 export function eventIdFromStripeEvent(payload: unknown): string | null {
   if (!isRecord(payload)) return null;
   return readString(payload.id);
+}
+
+/** Grant the configured Payment Link tier only when the event names that link. */
+function paymentLinkTierFrom(
+  object: Record<string, unknown>,
+  options: StripeTierOptions,
+): PaidTier | null {
+  if (!options.paymentLinkId || !options.paymentLinkTier) return null;
+  if (!isPaidTier(options.paymentLinkTier)) return null;
+  if (readString(object.payment_link) !== options.paymentLinkId) return null;
+  return options.paymentLinkTier;
+}
+
+/** Newest invoice line price, either the legacy price object or the 2025 price_details. */
+function invoicePriceId(object: Record<string, unknown>): string | null {
+  const lines = isRecord(object.lines) ? object.lines.data : undefined;
+  if (!Array.isArray(lines) || !isRecord(lines[0])) return null;
+  const line = lines[0];
+  if (isRecord(line.price)) {
+    const id = readString(line.price.id);
+    if (id) return id;
+  }
+  const pricing = isRecord(line.pricing) ? line.pricing.price_details : undefined;
+  if (isRecord(pricing)) return readString(pricing.price);
+  return null;
+}
+
+function invoiceLineFamilyId(object: Record<string, unknown>): string | null {
+  const lines = isRecord(object.lines) ? object.lines.data : undefined;
+  if (!Array.isArray(lines)) return null;
+  for (const line of lines) {
+    if (!isRecord(line) || !isRecord(line.metadata)) continue;
+    const familyId = readString(line.metadata.familyId);
+    if (familyId) return familyId;
+  }
+  return null;
+}
+
+/** Subscription metadata lives on parent.subscription_details in current API versions. */
+function subscriptionDetails(object: Record<string, unknown>): Record<string, unknown> | null {
+  const parent = isRecord(object.parent) ? object.parent : null;
+  if (parent && isRecord(parent.subscription_details)) return parent.subscription_details;
+  if (isRecord(object.subscription_details)) return object.subscription_details;
+  return null;
+}
+
+function subscriptionDetailsFamilyId(object: Record<string, unknown>): string | null {
+  const details = subscriptionDetails(object);
+  if (!details || !isRecord(details.metadata)) return null;
+  return readString(details.metadata.familyId);
+}
+
+function readId(value: unknown): string | null {
+  if (typeof value === 'string' && value.length > 0) return value;
+  if (isRecord(value)) return readString(value.id);
+  return null;
 }
 
 /** The active price id on a subscription object (items.data[0].price.id), or null. */

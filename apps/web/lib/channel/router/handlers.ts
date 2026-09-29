@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { imessageUpgradeAskEnabled, prepareYearRetentionAnswer } from '~/lib/billing/upgrade-ask';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import type { CheckInCadence } from '~/lib/channel/checkin/cadence';
 import { CHECK_IN_ACK_TEMPLATE_KEY } from '~/lib/channel/checkin/copy';
@@ -908,6 +909,44 @@ export function emailAlertAddHandler(): DeterministicHandler {
  * something sendable throws {@link PlanDeferred} and the drain redrives it, because a
  * plan that lands late beats an apology that lands on time.
  */
+/**
+ * ENG-1 — yes sends the year-retention link, no closes the offer.
+ *
+ * Flag off never claims. A bare yes claims only when this ask is the sole
+ * open question, the same rule as every other offer. No offer row means the
+ * word belongs to someone else, even when the open list is empty.
+ */
+export function yearRetentionHandler(): DeterministicHandler {
+  return {
+    name: 'year_retention',
+    resolves: new Set<OpenQuestionKind>(['year_retention']),
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      if (!imessageUpgradeAskEnabled()) return { claimed: false };
+      const resolved = ctx.resolved?.kind === 'year_retention' ? ctx.resolved.polarity : null;
+      const word = resolved ?? readAffirmative(ctx.body);
+      if (word !== 'yes' && word !== 'no') return { claimed: false };
+      if (!resolved && !soleOpenKind(await ctx.openQuestions(), 'year_retention')) {
+        return { claimed: false };
+      }
+      const outcome = await prepareYearRetentionAnswer(database, {
+        familyId: ctx.familyId,
+        parentUserId: ctx.parentUserId,
+        inboundChannelMessageId: ctx.inboundChannelMessageId,
+        now: ctx.now,
+        polarity: word,
+      });
+      if (!outcome.claimed) return { claimed: false };
+      return {
+        claimed: true,
+        outcome: outcome.outcome,
+        reply: outcome.reply,
+        templateKey: outcome.templateKey,
+        afterSend: outcome.afterSend,
+      };
+    },
+  };
+}
+
 export function planReplyHandler(deps: PlanReplyDeps): DeterministicHandler {
   return {
     name: 'coach_plan',

@@ -45,7 +45,10 @@ describe('stripeCheckoutClientFromEnv', () => {
     expect(body.get('metadata[tier]')).toBe('plus');
     expect(body.get('metadata[priceId]')).toBe('price_plus_annual');
     expect(body.get('subscription_data[metadata][familyId]')).toBe('fam-7');
+    expect(body.get('subscription_data[metadata][tier]')).toBe('plus');
     expect(body.get('customer_email')).toBe('p@example.com');
+    expect(body.get('integration_identifier')).toMatch(/^hale-checkout-[a-z]{8}$/);
+    expect(body.has('payment_method_types')).toBe(false);
   });
 
   it('throws (never returns a broken url) when Stripe responds non-2xx', async () => {

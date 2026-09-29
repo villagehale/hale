@@ -1,5 +1,5 @@
 import type { Database } from '@hale/db';
-import { hasEntitlement, type PlanTier } from '@hale/types';
+import { type PlanTier, hasEntitlement } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { applyStripeBillingEvent } from './stripe-billing-apply.js';
 import type { PriceTierMap } from './stripe-billing.js';
@@ -36,7 +36,11 @@ function subscription(eventId: string, type: string, priceId: string, familyId =
 }
 
 interface Recorder {
-  planWrites: Array<{ tier: string }>;
+  planWrites: Array<{
+    tier: string;
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+  }>;
   audits: Array<Record<string, unknown>>;
   claimed: Set<string>;
 }
@@ -86,18 +90,27 @@ function fakeDb(
       }),
     }),
     update: () => ({
-      set: (v: { planTier: string }) => ({
+      set: (v: { planTier: string; stripeCustomerId?: string; stripeSubscriptionId?: string }) => ({
         where: () => ({
           returning: async () => {
             if (!familyExists) return [];
-            rec.planWrites.push({ tier: v.planTier });
+            const recorded: {
+              tier: string;
+              stripeCustomerId?: string;
+              stripeSubscriptionId?: string;
+            } = { tier: v.planTier };
+            if (v.stripeCustomerId) recorded.stripeCustomerId = v.stripeCustomerId;
+            if (v.stripeSubscriptionId) recorded.stripeSubscriptionId = v.stripeSubscriptionId;
+            rec.planWrites.push(recorded);
             return [{ id: FAMILY_ID }];
           },
         }),
       }),
     }),
   };
-  const db = { transaction: async (cb: (t: typeof tx) => unknown) => cb(tx) } as unknown as Database;
+  const db = {
+    transaction: async (cb: (t: typeof tx) => unknown) => cb(tx),
+  } as unknown as Database;
   return { db, rec };
 }
 
@@ -205,5 +218,47 @@ describe('applyStripeBillingEvent', () => {
 
     expect(result).toEqual({ status: 'ignored' });
     expect(rec.planWrites).toEqual([]);
+  });
+
+  it('stores the Stripe customer and subscription ids beside the tier', async () => {
+    const { db, rec } = fakeDb({ existingTier: 'free' });
+    const event = checkout('evt_ids', 'plus');
+    const object = (event.data as { object: Record<string, unknown> }).object;
+    object.customer = 'cus_123';
+    object.subscription = 'sub_123';
+
+    const result = await applyStripeBillingEvent(event, db, MAP);
+
+    expect(result).toEqual({ status: 'applied', tier: 'plus' });
+    expect(rec.planWrites).toEqual([
+      { tier: 'plus', stripeCustomerId: 'cus_123', stripeSubscriptionId: 'sub_123' },
+    ]);
+  });
+
+  it('marks the family paid from invoice.paid when the line price is mapped', async () => {
+    const { db, rec } = fakeDb({ existingTier: 'free' });
+    const event = {
+      id: 'evt_inv',
+      type: 'invoice.paid',
+      data: {
+        object: {
+          customer: 'cus_9',
+          lines: { data: [{ price: { id: PRICE_PLUS } }] },
+          parent: {
+            subscription_details: {
+              subscription: 'sub_9',
+              metadata: { familyId: FAMILY_ID },
+            },
+          },
+        },
+      },
+    };
+
+    const result = await applyStripeBillingEvent(event, db, MAP);
+
+    expect(result).toEqual({ status: 'applied', tier: 'plus' });
+    expect(rec.planWrites).toEqual([
+      { tier: 'plus', stripeCustomerId: 'cus_9', stripeSubscriptionId: 'sub_9' },
+    ]);
   });
 });

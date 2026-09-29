@@ -174,6 +174,13 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'proactive_watch_granted',
     'proactive_watch_declined',
   ],
+  // closeOffer takes the verb as a parameter: decline, the year link, or
+  // "already paid". The ask and the group-sync writes are string literals.
+  'apps/web/lib/billing/upgrade-ask.ts': [
+    'upgrade_declined',
+    'upgrade_link_sent',
+    'upgrade_already_paid',
+  ],
   'apps/web/lib/integrations/store.ts': ['integration_connected', 'integration_revoked'],
   'apps/web/lib/village/intros/consent.ts': [
     'village_intro_discoverability_granted',
