@@ -32,8 +32,24 @@ const config: NextConfig = {
       { source: '/onboarding/:path*', destination: MARKETING_SITE_URL, permanent: true },
     ];
   },
-  transpilePackages: ['@hale/db', '@hale/types', '@hale/tools-contracts', '@hale/agent', '@hale/worker'],
-  serverExternalPackages: ['postgres', 'pg-boss', '@node-rs/argon2'],
+  transpilePackages: [
+    '@hale/db',
+    '@hale/types',
+    '@hale/tools-contracts',
+    '@hale/agent',
+    '@hale/worker',
+  ],
+  serverExternalPackages: [
+    'postgres',
+    'pg-boss',
+    '@node-rs/argon2',
+    // Authorized signup loads Playwright at runtime when the flag is on.
+    // Absent in a runtime that did not install it — the runner hands back
+    // browser_unavailable rather than bundling a browser into the function.
+    '@playwright/test',
+    'playwright',
+    'playwright-core',
+  ],
   // The coach (and any web-side agent) reads the worker's single-source prompt +
   // model files off disk at runtime, plus the agent harness reads its skill files
   // (rule #2 — the skill markdown is the source of truth, never inlined). They

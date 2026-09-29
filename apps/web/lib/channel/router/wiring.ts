@@ -65,6 +65,7 @@ import {
 } from '~/lib/registration/sequence/prepare-reply';
 import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { recordRegistrationWatch } from '~/lib/registration/watch';
+import { authorizedSignupHandler } from '~/lib/signup/handler';
 import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { introAskDedupeKey } from '~/lib/village/intros/run';
@@ -406,6 +407,9 @@ export function defaultHandlers(): DeterministicHandler[] {
     // ENG-1. Claims a bare yes only while the year-retention ask is the open
     // question. Flag off, the handler returns before it reads anything.
     yearRetentionHandler(),
+    // Explicit "sign us up" only. A bare yes is not a signup. Placed before the
+    // registration reader, which also claims messages it cannot read.
+    authorizedSignupHandler(),
     sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
     recMorningHandler(),
     parentCallNameHandler(),
