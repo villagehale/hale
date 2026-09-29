@@ -21,6 +21,8 @@ export interface AuthorizedSignupSession {
   endsAt: string;
   full: boolean;
   priceCents: number | null;
+  partySize?: number | null;
+  seatingNote?: string | null;
 }
 
 /**

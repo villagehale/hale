@@ -46,12 +46,13 @@ const UNCLAIMED: SignupRunResult = {
 };
 
 /**
- * Parent-authorized booking. A connector runs first when one is registered for
- * the host. Otherwise the sandbox browser opens the official booking page.
- * A denylisted municipal host is an assisted handoff: the link and a prefilled
- * pack, and no click. The browser opens only after the gate accepts one
- * activity, one session, and the price, the result has a door, and the child
- * is not a teen.
+ * Parent-authorized booking for a private provider. A connector runs first when
+ * one is registered for the host. Otherwise the sandbox browser opens that
+ * provider's own booking page and follows at most three steps (a date, a time
+ * slot, a review). A denylisted municipal host is an assisted handoff: the
+ * link and a prefilled pack, and no click. The browser opens only after the
+ * gate accepts one activity, one session, and the price, the result has a
+ * door, and the child is not a teen.
  */
 export async function runAuthorizedSignup(
   database: Database,
@@ -264,59 +265,82 @@ export async function runAuthorizedSignup(
   }
 
   let page: SignupPage | null = null;
+  const filled: string[] = [];
   try {
     page = await browser.open(allowed.href);
-    const before = await page.snapshot();
-    const inspection = inspectRegistrationPage({
-      snapshot: before,
-      identity,
-      sessionId: decision.sessionId,
-      approvedPriceCents: offer.approvedPriceCents,
-      expectedOrigin: new URL(allowed.href).origin,
-    });
-    if (inspection.action === 'stop') {
-      await finish(database, input, offer.id, 'handed_back');
-      return replyFor(database, input, deps, door, {
-        offerId: offer.id,
-        outcome: inspection.reason,
-        reason: inspection.reason,
-        link: offer.registrationUrl,
-        prefilled: [],
-        host,
+    const origin = new URL(allowed.href).origin;
+    const chosen = offer.sessions.find((item) => item.id === decision.sessionId);
+    let sessionSelected = false;
+    for (let step = 0; step < 3; step += 1) {
+      const snapshot = await page.snapshot();
+      const inspection = inspectRegistrationPage({
+        snapshot,
+        identity,
+        sessionId: decision.sessionId,
+        sessionStartsAt: chosen?.startsAt ?? null,
+        partySize: chosen?.partySize ?? null,
+        seatingNote: chosen?.seatingNote ?? null,
+        approvedPriceCents: offer.approvedPriceCents,
+        expectedOrigin: origin,
+        sessionSelected,
       });
+      if (inspection.action === 'stop') {
+        await finish(database, input, offer.id, 'handed_back');
+        return replyFor(database, input, deps, door, {
+          offerId: offer.id,
+          outcome: inspection.reason,
+          reason: inspection.reason,
+          link: offer.registrationUrl,
+          prefilled: filled,
+          host,
+        });
+      }
+      for (const fill of inspection.fills) {
+        if (fill.control === 'select') await page.select(fill.name, fill.value);
+        else await page.fill(fill.name, fill.value);
+        if (fill.slot === 'session') sessionSelected = true;
+      }
+      filled.push(...inspection.fills.map((item) => item.slot));
+      if (inspection.action === 'submit') {
+        await page.submit();
+        const after = await page.snapshot();
+        if (!after.confirmed) {
+          await finish(database, input, offer.id, 'handed_back');
+          return replyFor(database, input, deps, door, {
+            offerId: offer.id,
+            outcome: 'unconfirmed',
+            reason: 'unconfirmed',
+            link: offer.registrationUrl,
+            prefilled: filled,
+            host,
+          });
+        }
+        await finish(database, input, offer.id, 'completed');
+        await writeAudit(database, input, offer.id, {
+          step: 'completed',
+          activityKey: decision.activityKey,
+          sessionId: decision.sessionId,
+          fieldsFilled: filled,
+          host,
+        });
+        return replyFor(database, input, deps, door, {
+          offerId: offer.id,
+          outcome: 'completed',
+          reason: null,
+          link: offer.registrationUrl,
+          prefilled: filled,
+          host,
+        });
+      }
+      await page.continue();
     }
-    for (const fill of inspection.fills) {
-      if (fill.control === 'select') await page.select(fill.name, fill.value);
-      else await page.fill(fill.name, fill.value);
-    }
-    const prefilled = inspection.fills.map((fill) => fill.slot);
-    await page.submit();
-    const after = await page.snapshot();
-    if (!after.confirmed) {
-      await finish(database, input, offer.id, 'handed_back');
-      return replyFor(database, input, deps, door, {
-        offerId: offer.id,
-        outcome: 'unconfirmed',
-        reason: 'unconfirmed',
-        link: offer.registrationUrl,
-        prefilled,
-        host,
-      });
-    }
-    await finish(database, input, offer.id, 'completed');
-    await writeAudit(database, input, offer.id, {
-      step: 'completed',
-      activityKey: decision.activityKey,
-      sessionId: decision.sessionId,
-      fieldsFilled: prefilled,
-      host,
-    });
+    await finish(database, input, offer.id, 'handed_back');
     return replyFor(database, input, deps, door, {
       offerId: offer.id,
-      outcome: 'completed',
-      reason: null,
+      outcome: 'unconfirmed',
+      reason: 'unconfirmed',
       link: offer.registrationUrl,
-      prefilled,
+      prefilled: filled,
       host,
     });
   } catch (err) {

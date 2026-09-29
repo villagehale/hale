@@ -66,6 +66,95 @@ const RESERVATION_FORM = `<!doctype html>
 </form>
 </body></html>`;
 
+const TICKET_CART_DATE = `<!doctype html>
+<html><body>
+<form method="POST" action="/tickets-cart/date">
+  <p data-price-cents="1800"></p>
+  <label>Visit date
+    <select name="visit_date" required>
+      <option value="">Choose</option>
+      <option value="2026-10-10">Sat Oct 10</option>
+    </select>
+  </label>
+  <button type="submit">Continue</button>
+</form>
+</body></html>`;
+
+const TICKET_CART_TIME = `<!doctype html>
+<html><body>
+<form method="POST" action="/tickets-cart/time">
+  <p data-price-cents="1800"></p>
+  <label>Your name <input name="guest_name" required></label>
+  <label>Email <input name="email" type="email" required></label>
+  <label>Showtime
+    <select name="showtime" required>
+      <option value="">Choose</option>
+      <option value="sat-1100">Sat 11:00</option>
+    </select>
+  </label>
+  <button type="submit">Continue</button>
+</form>
+</body></html>`;
+
+const TICKET_CART_REVIEW = `<!doctype html>
+<html><body>
+<form method="POST" action="/tickets-cart/confirm">
+  <p data-price-cents="1800"></p>
+  <p>Sat Oct 10, 11:00</p>
+  <button type="submit">Confirm tickets</button>
+</form>
+</body></html>`;
+
+const WAITLIST_FORM = `<!doctype html>
+<html><body>
+<form method="POST" action="/submit">
+  <label>Child first name <input name="child_first_name" required></label>
+  <label>Class time
+    <select name="session" required>
+      <option value="tue-1630">Tue 4:30 waitlist</option>
+    </select>
+  </label>
+  <button type="submit">Join waitlist</button>
+</form>
+</body></html>`;
+
+const PARTY_FORM = `<!doctype html>
+<html><body>
+<form method="POST" action="/submit">
+  <label>Name <input name="reservation_name" required></label>
+  <label>Email <input name="email" type="email" required></label>
+  <label>Party size
+    <select name="party_size" required>
+      <option value="">Choose</option>
+      <option value="2">2</option>
+      <option value="4">4</option>
+    </select>
+  </label>
+  <label>Seating note <input name="seating_note" required></label>
+  <label>Reservation time
+    <select name="reservation_time" required>
+      <option value="">Choose</option>
+      <option value="fri-1900">Fri 7:00</option>
+    </select>
+  </label>
+  <button type="submit">Reserve</button>
+</form>
+</body></html>`;
+
+const UNEXPECTED_FORM = `<!doctype html>
+<html><body>
+<form method="POST" action="/submit">
+  <label>Child first name <input name="child_first_name" required></label>
+  <label>School <input name="school_name" required></label>
+  <label>Session
+    <select name="session" required>
+      <option value="tue-1630">Tue 4:30</option>
+    </select>
+  </label>
+  <button type="submit">Register</button>
+</form>
+</body></html>`;
+
 const PAYMENT_FORM = `<!doctype html>
 <html><body>
 <form method="POST" action="/submit">
@@ -96,18 +185,37 @@ describe('authorized signup sandbox', () => {
 
   const server = createServer(async (req, res: ServerResponse) => {
     const path = req.url?.split('?')[0];
-    if (req.method === 'POST' && path === '/submit') {
-      posts.push(await readBody(req));
-      res.writeHead(200, { 'content-type': 'text/html' });
-      res.end('<!doctype html><html><body><p data-signup-status="confirmed">ok</p></body></html>');
-      return;
+    if (req.method === 'POST') {
+      const body = await readBody(req);
+      posts.push(body);
+      const next: Record<string, string> = {
+        '/tickets-cart/date': TICKET_CART_TIME,
+        '/tickets-cart/time': TICKET_CART_REVIEW,
+      };
+      const page = next[path ?? ''];
+      if (page) {
+        res.writeHead(200, { 'content-type': 'text/html' });
+        res.end(page);
+        return;
+      }
+      if (path === '/submit' || path === '/tickets-cart/confirm') {
+        res.writeHead(200, { 'content-type': 'text/html' });
+        res.end(
+          '<!doctype html><html><body><p data-signup-status="confirmed">ok</p></body></html>',
+        );
+        return;
+      }
     }
     const pages: Record<string, string> = {
       '/class': CLASS_FORM,
       '/register': CLASS_FORM,
       '/tickets': TICKET_FORM,
       '/tickets-repriced': TICKET_REPRICED_FORM,
+      '/tickets-cart': TICKET_CART_DATE,
       '/reserve': RESERVATION_FORM,
+      '/party': PARTY_FORM,
+      '/waitlist': WAITLIST_FORM,
+      '/unexpected': UNEXPECTED_FORM,
       '/pay': PAYMENT_FORM,
     };
     res.writeHead(200, { 'content-type': 'text/html' });
@@ -143,6 +251,10 @@ describe('authorized signup sandbox', () => {
     sessionLabel: string;
     priceCents: number | null;
     approvedPriceCents: number | null;
+    partySize?: number | null;
+    seatingNote?: string | null;
+    startsAt?: string;
+    endsAt?: string;
   }) {
     const seeded = await seedFamily(db.database);
     await db.database
@@ -160,10 +272,12 @@ describe('authorized signup sandbox', () => {
         {
           id: input.sessionId,
           label: input.sessionLabel,
-          startsAt: '2026-10-06T20:30:00.000Z',
-          endsAt: '2026-10-06T21:15:00.000Z',
+          startsAt: input.startsAt ?? '2026-10-06T20:30:00.000Z',
+          endsAt: input.endsAt ?? '2026-10-06T21:15:00.000Z',
           full: false,
           priceCents: input.priceCents,
+          partySize: input.partySize ?? null,
+          seatingNote: input.seatingNote ?? null,
         },
       ],
       approvedPriceCents: input.approvedPriceCents,
@@ -277,6 +391,86 @@ describe('authorized signup sandbox', () => {
     expect(logged).not.toContain('Ada');
     expect(logged).not.toContain('Test Parent');
     expect(logged).not.toContain('@');
+  }, 60_000);
+
+  it('walks a multi-step ticket cart for the authorized date and time', async () => {
+    const seeded = await offer({
+      path: '/tickets-cart',
+      activityKey: 'museum-tickets',
+      sessionId: 'sat-1100',
+      sessionLabel: 'Sat 11:00',
+      priceCents: 1800,
+      approvedPriceCents: 1800,
+      startsAt: '2026-10-10T15:00:00.000Z',
+      endsAt: '2026-10-10T16:00:00.000Z',
+    });
+    const result = await book(seeded);
+    expect(result.outcome).toBe('completed');
+    const posted = posts.join('\n');
+    expect(posted).toContain('visit_date=2026-10-10');
+    expect(posted).toContain('showtime=sat-1100');
+    expect(posted).toMatch(/guest_name=Test(?:\+|%20)Parent/);
+    expect(posted).not.toContain('Ada');
+    const logged = await trail(seeded.familyId);
+    expect(logged).not.toContain('Ada');
+    expect(logged).not.toContain('Test Parent');
+    expect(logged).not.toContain('@');
+  }, 60_000);
+
+  it('does not join a class waitlist', async () => {
+    const seeded = await offer({
+      path: '/waitlist',
+      activityKey: 'soccer-class',
+      sessionId: 'tue-1630',
+      sessionLabel: 'Tue 4:30',
+      priceCents: null,
+      approvedPriceCents: null,
+    });
+    const result = await book(seeded);
+    expect(result.outcome).toBe('session_full');
+    expect(posts).toHaveLength(0);
+    expect(result.reply).toContain('reason=session_full');
+  }, 60_000);
+
+  it('reserves a party table with the authorized size and seating note', async () => {
+    const seeded = await offer({
+      path: '/party',
+      activityKey: 'birthday-party',
+      sessionId: 'fri-1900',
+      sessionLabel: 'Fri 7:00',
+      priceCents: null,
+      approvedPriceCents: null,
+      partySize: 4,
+      seatingNote: 'Window',
+    });
+    const result = await book(seeded);
+    expect(result.outcome).toBe('completed');
+    expect(posts).toHaveLength(1);
+    const body = posts[0] ?? '';
+    expect(body).toContain('party_size=4');
+    expect(body).toContain('seating_note=Window');
+    expect(body).toContain('reservation_time=fri-1900');
+    expect(body).not.toContain('Ada');
+    const logged = await trail(seeded.familyId);
+    expect(logged).not.toContain('Window');
+    expect(logged).not.toContain('Ada');
+    expect(logged).not.toContain('@');
+  }, 60_000);
+
+  it('hands back when the form asks for a field the adapters do not know', async () => {
+    const seeded = await offer({
+      path: '/unexpected',
+      activityKey: 'soccer-class',
+      sessionId: 'tue-1630',
+      sessionLabel: 'Tue 4:30',
+      priceCents: null,
+      approvedPriceCents: null,
+    });
+    const result = await book(seeded);
+    expect(result.outcome).toBe('unexpected_field');
+    expect(posts).toHaveLength(0);
+    expect(result.reply).toContain('reason=unexpected_field');
+    expect(result.reply).toContain('prefilled=none');
   }, 60_000);
 
   it('does not submit a local form that asks for a card', async () => {

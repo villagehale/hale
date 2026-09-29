@@ -8,9 +8,11 @@ import type { SignupIdentity, SignupStopReason } from './types';
  * assisted handoff only (deep link plus a prefilled pack), never a browser and
  * never a connector.
  *
- * Every other official booking page is in scope: a registered connector or API
- * runs first, and the sandboxed browser is the fallback. The browser opens that
- * page and does not go looking for another one. No connector is registered yet.
+ * Every other official booking page is in scope for a generic family booking:
+ * museum and show tickets, classes, camps, drop-in play, lessons, leagues,
+ * party venues, haircuts, and the same kinds of private page. A registered
+ * connector or API runs first. The sandboxed browser is the fallback and opens
+ * that page only. Form adapters name the fields. No connector is registered yet.
  * Local mock forms are ordinary loopback pages, so they take the browser path.
  */
 

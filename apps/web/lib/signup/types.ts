@@ -6,6 +6,13 @@ export interface SignupSession {
   endsAt: string;
   full: boolean;
   priceCents: number | null;
+  /** Parent-approved headcount. Absent means a party-size field cannot be filled. */
+  partySize?: number | null;
+  /**
+   * Parent-approved seating or table note. Absent means the field stays blank.
+   * Health, contact, and waiver text are refused before they are stored.
+   */
+  seatingNote?: string | null;
 }
 
 export interface SignupOffer {
@@ -42,7 +49,10 @@ export type FieldSlot =
   | 'parent_first_name'
   | 'parent_email'
   | 'postal_code'
-  | 'session';
+  | 'session'
+  | 'visit_date'
+  | 'party_size'
+  | 'seating_note';
 
 export interface PageOption {
   value: string;
@@ -73,6 +83,11 @@ export interface PageSnapshot {
   formText: string;
   /** A Queue-it style waiting room. The runner does not click through one. */
   waitingRoom: boolean;
+  /**
+   * The primary submit button's text. "Continue" advances a cart. A missing
+   * label is treated as the final step.
+   */
+  submitLabel?: string | null;
 }
 
 export type SignupStopReason =
@@ -106,6 +121,8 @@ export interface SignupPage {
   snapshot(): Promise<PageSnapshot>;
   fill(name: string, value: string): Promise<void>;
   select(name: string, value: string): Promise<void>;
+  /** Advance a multi-step cart. Does not treat the page as a finished booking. */
+  continue(): Promise<void>;
   submit(): Promise<void>;
   close(): Promise<void>;
 }

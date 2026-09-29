@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
+import { normalizeSession } from './forms/details';
 import type { BusyInterval, SignupIdentity, SignupOffer, SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
 
@@ -27,8 +28,11 @@ export async function recordSignupOffer(
   if (input.sessions.length === 0 || input.sessions.length > 12) {
     return { ok: false, reason: 'sessions' };
   }
+  const sessions = input.sessions.map((session) => normalizeSession(session));
   if (
-    input.sessions.some((session) => !KEY.test(session.id) || session.label.trim().length === 0)
+    sessions.some(
+      (session) => session === null || !KEY.test(session.id) || session.label.trim().length === 0,
+    )
   ) {
     return { ok: false, reason: 'sessions' };
   }
@@ -48,7 +52,7 @@ export async function recordSignupOffer(
       parentUserId: input.parentUserId,
       activityKey: input.activityKey,
       registrationUrl: input.registrationUrl,
-      sessions: input.sessions,
+      sessions: sessions.filter((session): session is SignupSession => session !== null),
       approvedPriceCents: input.approvedPriceCents,
       status: 'pending',
       createdAt: input.now,

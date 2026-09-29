@@ -79,6 +79,10 @@ class PlaywrightSignupPage implements SignupPage {
     await this.page.locator(byName(name)).selectOption(value);
   }
 
+  async continue(): Promise<void> {
+    await this.page.locator('button[type="submit"], input[type="submit"]').first().click();
+  }
+
   async submit(): Promise<void> {
     await this.page.locator('button[type="submit"], input[type="submit"]').first().click();
     await this.page
@@ -141,6 +145,10 @@ async function readSnapshot(page: EvalPage): Promise<PageSnapshot> {
         'iframe[src*="queue-it"], iframe[src*="queueit"], script[src*="queue-it"], script[src*="queueit"]',
       ) !== null ||
       /\bqueue-it\b|\bqueueit\b|waiting room|you are in line/i.test(document.body?.innerText ?? '');
+    const submit = document.querySelector('button[type="submit"], input[type="submit"]');
+    const submitLabel = submit
+      ? text(submit instanceof HTMLInputElement ? submit.value : submit.textContent)
+      : '';
     return {
       href: location.href,
       controls,
@@ -149,6 +157,7 @@ async function readSnapshot(page: EvalPage): Promise<PageSnapshot> {
       confirmed: document.querySelector('[data-signup-status="confirmed"]') !== null,
       formText,
       waitingRoom,
+      submitLabel,
     };
   });
 }

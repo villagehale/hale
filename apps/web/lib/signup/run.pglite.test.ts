@@ -65,6 +65,7 @@ function browserFor(first: PageSnapshot, afterSubmit?: PageSnapshot) {
         },
         async fill() {},
         async select() {},
+        async continue() {},
         async submit() {
           calls.submitted += 1;
           submitted = true;
@@ -573,6 +574,105 @@ describe('authorized signup runner', () => {
     expect(result.reply).toContain('prefilled=none');
     expect(calls.opened).toBe(1);
     expect(calls.submitted).toBe(0);
+    expect(await audits(seeded.familyId)).not.toContain('Ada');
+  });
+
+  it('walks a ticket cart from the date to the time slot without a second host', async () => {
+    const href = 'https://tickets.example-museum.test/cart';
+    const seeded = await familyWithOffer({
+      ageMonths: 36,
+      url: href,
+      approvedPriceCents: 1800,
+      sessions: [
+        {
+          id: 'sat-1100',
+          label: 'Sat 11:00',
+          startsAt: '2026-10-10T15:00:00.000Z',
+          endsAt: '2026-10-10T16:00:00.000Z',
+          full: false,
+          priceCents: 1800,
+        },
+      ],
+    });
+    const datePage: PageSnapshot = {
+      href,
+      captcha: false,
+      confirmed: false,
+      priceCents: [1800],
+      formText: '',
+      waitingRoom: false,
+      controls: [
+        {
+          name: 'visit_date',
+          type: 'select',
+          required: true,
+          label: 'Visit date',
+          autocomplete: null,
+          options: [{ value: '2026-10-10', label: 'Sat Oct 10', disabled: false }],
+        },
+      ],
+    };
+    const timePage: PageSnapshot = {
+      ...datePage,
+      href: `${href}/time`,
+      controls: [
+        {
+          name: 'guest_name',
+          type: 'text',
+          required: true,
+          label: 'Your name',
+          autocomplete: null,
+          options: [],
+        },
+        {
+          name: 'showtime',
+          type: 'select',
+          required: true,
+          label: 'Showtime',
+          autocomplete: null,
+          options: [{ value: 'sat-1100', label: 'Sat 11:00', disabled: false }],
+        },
+      ],
+    };
+    const calls = { opened: 0, continued: 0, submitted: 0 };
+    let index = 0;
+    let submitted = false;
+    const browser: SignupBrowser = {
+      async open(): Promise<SignupPage> {
+        calls.opened += 1;
+        return {
+          async snapshot() {
+            if (submitted) return { ...timePage, confirmed: true };
+            return index === 0 ? datePage : timePage;
+          },
+          async fill() {},
+          async select() {},
+          async continue() {
+            calls.continued += 1;
+            index += 1;
+          },
+          async submit() {
+            calls.submitted += 1;
+            submitted = true;
+          },
+          async close() {},
+        };
+      },
+    };
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: null,
+        existingThread: true,
+        now: NOW,
+      },
+      { browser },
+    );
+    expect(result.outcome).toBe('completed');
+    expect(calls).toEqual({ opened: 1, continued: 1, submitted: 1 });
     expect(await audits(seeded.familyId)).not.toContain('Ada');
   });
 
