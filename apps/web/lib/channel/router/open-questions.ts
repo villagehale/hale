@@ -167,7 +167,14 @@ export type OpenQuestionKind =
    *
    * Ledger-derived like the two above it, and per-PARENT.
    */
-  | 'forward_address_revoke';
+  | 'forward_address_revoke'
+  /**
+   * "Keeping Hale for the year is the paid part — want the link?" — the later
+   * iMessage upgrade ask (ENG-1). Listed so a bare yes cannot approve an unrelated
+   * draft while the ask is standing. The flag hides it when the ask is off.
+   * Yes sends a payment link. It does not charge the card by itself.
+   */
+  | 'year_retention';
 
 /**
  * How much certainty an answer to this class needs before it is acted on.
@@ -237,6 +244,9 @@ const GRADE: Record<OpenQuestionKind, QuestionGrade> = {
   // stops working and the replacement is a different address. Nothing else on this list
   // is less undoable, so nothing else has a stronger claim on this grade.
   forward_address_revoke: 'consequential',
+  // A wrong yes sends a payment link. The parent still has to pay on Stripe's
+  // page, so the cost is one message, the same grade as the other offers.
+  year_retention: 'ordinary',
 };
 
 export function questionGrade(kind: OpenQuestionKind): QuestionGrade {
@@ -320,6 +330,9 @@ const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   // leave a declined revoke standing for the rest of its window, waiting for the parent's
   // next unrelated affirmative.
   forward_address_revoke: { yes: true, no: true },
+  // BOTH polarities. Yes sends the link. No closes the offer so it cannot
+  // keep making every later yes ambiguous.
+  year_retention: { yes: true, no: true },
 };
 
 export interface Answerable {
@@ -439,6 +452,9 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   // lane nothing, because its own handler requires every open question to be this one —
   // a revoke must not win a race it only won by being the most recent thing Hale said.
   forward_address_revoke: true,
+  // FALSE. The placeholder ask does not print "Reply YES", and marking it
+  // solicited would let it steal a newer bare yes from a keyword ask.
+  year_retention: false,
 };
 
 /**
@@ -503,6 +519,7 @@ const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval' | 'email_alert_add'>,
   // ...?" sentence, and an address in one would be a secret re-sent to a thread that may
   // not be the one it was minted for (rule #1).
   forward_address_revoke: 'turning off your forwarding address',
+  year_retention: 'keeping Hale for the year',
 };
 
 /**
@@ -728,6 +745,14 @@ export interface OpenQuestionSources {
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
   ): Promise<{ id: string; askedAt: Date } | null>;
+  /**
+   * The year-retention ask still waiting on a yes or no (ENG-1), or null.
+   * The owning module hides it when the flag is off or the family is paid.
+   */
+  yearRetention(
+    database: Database,
+    input: { familyId: string },
+  ): Promise<{ id: string; askedAt: Date } | null>;
 }
 
 /**
@@ -763,6 +788,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
         emptySaturday,
         daycareFollowup,
         revokeConfirm,
+        yearRetention,
       ] = await Promise.all([
         sources.pendingApprovals(database, input.familyId),
         sources.introOptInOpen(database, {
@@ -783,6 +809,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
         sources.emptySaturday(database, input),
         sources.daycareFollowup(database, input),
         sources.forwardAddressRevoke(database, input),
+        sources.yearRetention(database, input),
       ]);
 
       const questions: OpenQuestion[] = namedApprovals(approvals).slice(0, MAX_LISTED_APPROVALS);
@@ -975,6 +1002,17 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           answerable: KIND_ANSWERABLE.forward_address_revoke,
           askedAt: revokeConfirm.askedAt,
           solicited: SOLICITED.forward_address_revoke,
+        });
+      }
+      if (yearRetention) {
+        questions.push({
+          id: yearRetention.id,
+          kind: 'year_retention',
+          description: 'Whether to keep Hale for the year',
+          subject: SUBJECT.year_retention,
+          answerable: KIND_ANSWERABLE.year_retention,
+          askedAt: yearRetention.askedAt,
+          solicited: SOLICITED.year_retention,
         });
       }
       if (promise) {

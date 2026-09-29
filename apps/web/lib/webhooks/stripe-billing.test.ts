@@ -1,14 +1,15 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
+  type PriceTierMap,
   checkoutPriceIdFromEnv,
   eventIdFromStripeEvent,
   familyIdFromStripeEvent,
   isStripeCheckoutConfigured,
   planTierFromStripeEvent,
   priceTierMapFromEnv,
+  stripeRefsFromStripeEvent,
   verifyStripeBillingSignature,
-  type PriceTierMap,
 } from './stripe-billing.js';
 
 /**
@@ -93,6 +94,50 @@ describe('planTierFromStripeEvent', () => {
     expect(planTierFromStripeEvent('not-json', MAP)).toBeNull();
     expect(planTierFromStripeEvent({ type: 'checkout.session.completed' }, MAP)).toBeNull();
   });
+
+  it('grants the Payment Link tier only when the event names that link', () => {
+    const event = {
+      id: 'evt_plink',
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          payment_link: 'plink_year',
+          client_reference_id: FAMILY_ID,
+          metadata: {},
+        },
+      },
+    };
+    expect(
+      planTierFromStripeEvent(event, MAP, {
+        paymentLinkId: 'plink_year',
+        paymentLinkTier: 'plus',
+      }),
+    ).toBe('plus');
+    expect(
+      planTierFromStripeEvent(event, MAP, {
+        paymentLinkId: 'plink_other',
+        paymentLinkTier: 'plus',
+      }),
+    ).toBeNull();
+    expect(planTierFromStripeEvent(event, MAP)).toBeNull();
+  });
+
+  it('maps invoice.paid from the line price and refuses an unknown price', () => {
+    const paid = {
+      id: 'evt_inv',
+      type: 'invoice.paid',
+      data: { object: { lines: { data: [{ price: { id: PRICE_FAMILY } }] } } },
+    };
+    expect(planTierFromStripeEvent(paid, MAP)).toBe('family');
+    const unknown = {
+      id: 'evt_inv_2',
+      type: 'invoice.paid',
+      data: {
+        object: { lines: { data: [{ pricing: { price_details: { price: 'price_nope' } } }] } },
+      },
+    };
+    expect(planTierFromStripeEvent(unknown, MAP)).toBeNull();
+  });
 });
 
 describe('familyIdFromStripeEvent', () => {
@@ -108,6 +153,33 @@ describe('familyIdFromStripeEvent', () => {
   it('returns null when the event carries no family reference', () => {
     expect(familyIdFromStripeEvent(checkoutCompleted('plus', null))).toBeNull();
     expect(familyIdFromStripeEvent(null)).toBeNull();
+  });
+
+  it('reads family id from invoice subscription metadata', () => {
+    const event = {
+      id: 'evt_inv',
+      type: 'invoice.paid',
+      data: {
+        object: {
+          parent: { subscription_details: { metadata: { familyId: 'fam-inv' } } },
+        },
+      },
+    };
+    expect(familyIdFromStripeEvent(event)).toBe('fam-inv');
+  });
+});
+
+describe('stripeRefsFromStripeEvent', () => {
+  it('reads a customer id and a subscription id off the object', () => {
+    const event = {
+      id: 'evt_1',
+      type: 'checkout.session.completed',
+      data: { object: { customer: 'cus_1', subscription: { id: 'sub_1' } } },
+    };
+    expect(stripeRefsFromStripeEvent(event)).toEqual({
+      customerId: 'cus_1',
+      subscriptionId: 'sub_1',
+    });
   });
 });
 

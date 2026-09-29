@@ -331,6 +331,11 @@ export const AUDIT_VERBS = [
   'integration_revoked',
   'user_preferences_updated',
   'billing_checkout_started',
+  'upgrade_ask_sent',
+  'upgrade_link_sent',
+  'upgrade_declined',
+  'upgrade_already_paid',
+  'upgrade_decision_synced',
   // ── parties ─────────────────────────────────────────────────────────────
   'party_invite_created',
   'party_invite_cancelled',
@@ -1112,6 +1117,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   user_preferences_updated: { sentence: 'you updated your preferences', family: 'done' },
   // Started, not finished: the row is written before checkout completes.
   billing_checkout_started: { sentence: 'you started an upgrade', family: 'note' },
+  upgrade_ask_sent: { sentence: 'Hale asked about keeping it for the year', family: 'awaiting' },
+  upgrade_link_sent: { sentence: 'Hale sent the link to keep it for the year', family: 'done' },
+  upgrade_declined: { sentence: 'you stayed on the free side', family: 'done' },
+  upgrade_already_paid: { sentence: "you're already set for the year", family: 'done' },
+  upgrade_decision_synced: {
+    sentence: 'Hale told the group chat about that decision',
+    family: 'note',
+  },
   // ── parties ─────────────────────────────────────────────────────────────
   party_invite_created: { sentence: 'you made a party invite link', family: 'done' },
   party_invite_cancelled: { sentence: 'you cancelled a party invite', family: 'done' },
