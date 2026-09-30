@@ -169,7 +169,7 @@ describe('family memory kinds', () => {
     const sendGroup = vi.fn(async () => 'sent' as const);
     await db.database
       .update(schema.families)
-      .set({ linqGroupChatId: 'chat-group' })
+      .set({ linqGroupChatId: `group-${familyId}` })
       .where(eq(schema.families.id, familyId));
     const [inbound] = await db.database
       .insert(schema.channelMessages)
@@ -180,7 +180,7 @@ describe('family memory kinds', () => {
         direction: 'in',
         category: 'reply',
         status: 'delivered',
-        providerChatId: 'chat-1-1',
+        providerChatId: `one-${familyId}`,
         body: 'forget swimming',
       })
       .returning({ id: schema.channelMessages.id });
@@ -220,13 +220,14 @@ describe('family memory kinds', () => {
 
   it('syncs a locked correction to the group chat and not the 1:1', async () => {
     const { familyId, parentUserId } = await seedSwim('one_off');
+    const groupChatId = `group-${familyId}`;
     const sendGroup = vi.fn(async (chatId: string) => {
-      expect(chatId).toBe('chat-group');
+      expect(chatId).toBe(groupChatId);
       return 'sent' as const;
     });
     await db.database
       .update(schema.families)
-      .set({ linqGroupChatId: 'chat-group' })
+      .set({ linqGroupChatId: groupChatId })
       .where(eq(schema.families.id, familyId));
     const [inbound] = await db.database
       .insert(schema.channelMessages)
@@ -237,7 +238,7 @@ describe('family memory kinds', () => {
         direction: 'in',
         category: 'reply',
         status: 'delivered',
-        providerChatId: 'chat-1-1',
+        providerChatId: `one-${familyId}`,
       })
       .returning({ id: schema.channelMessages.id });
 
@@ -254,7 +255,7 @@ describe('family memory kinds', () => {
     expect(result.corrected).toBe(1);
     expect(result.reply).toBe(MEMORY_KIND_COPY.en.corrected);
     expect(sendGroup).toHaveBeenCalledTimes(1);
-    expect(sendGroup.mock.calls.map((call) => call[0])).toEqual(['chat-group']);
+    expect(sendGroup.mock.calls.map((call) => call[0])).toEqual([groupChatId]);
 
     const rows = await db.database
       .select({

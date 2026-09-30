@@ -172,7 +172,7 @@ describe('copy gate', () => {
     expect(bodies.length).toBe(12);
     for (const body of bodies) {
       expect(body.startsWith('TODO-Design:')).toBe(true);
-      expect(/^[\u0000-\u007F]+$/.test(body)).toBe(true);
+      expect([...body].every((char) => char.charCodeAt(0) <= 0x7f)).toBe(true);
     }
     expect(MEMORY_KIND_COPY.en.recall).not.toBe(MEMORY_KIND_COPY.fr.recall);
   });

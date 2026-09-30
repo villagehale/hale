@@ -1,5 +1,5 @@
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 
@@ -31,9 +31,46 @@ afterEach(async () => {
   await db?.close();
 });
 
+/**
+ * Raw SQL, not a Drizzle insert. The live table type includes columns from
+ * later migrations (VIL-391's kind and source). Drizzle names every column,
+ * and this database is still at 0083, so those names do not exist yet.
+ */
+async function insertLegacyFact(row: {
+  familyId: string;
+  childId: string | null;
+  factType: string;
+  factKey: string;
+  factValue: unknown;
+  confidence: number;
+  validFrom?: Date;
+  validUntil?: Date | null;
+}) {
+  await db.database.execute(sql`
+    insert into family_memory_facts
+      (family_id, child_id, fact_type, fact_key, fact_value, confidence, valid_from, valid_until)
+    values (
+      ${row.familyId},
+      ${row.childId},
+      ${row.factType},
+      ${row.factKey},
+      ${JSON.stringify(row.factValue)}::jsonb,
+      ${row.confidence},
+      ${row.validFrom ?? sql`now()`},
+      ${row.validUntil ?? null}
+    )
+  `);
+}
+
 async function factsFor(familyId: string) {
   return db.database
-    .select()
+    .select({
+      id: schema.familyMemoryFacts.id,
+      confidence: schema.familyMemoryFacts.confidence,
+      factValue: schema.familyMemoryFacts.factValue,
+      validUntil: schema.familyMemoryFacts.validUntil,
+      supersededBy: schema.familyMemoryFacts.supersededBy,
+    })
     .from(schema.familyMemoryFacts)
     .where(eq(schema.familyMemoryFacts.familyId, familyId));
 }
@@ -41,35 +78,33 @@ async function factsFor(familyId: string) {
 describe('migration 0084 — one live fact per key', () => {
   it('closes pre-existing duplicates, keeping the highest-confidence row', async () => {
     const { familyId } = await seedFamily(db.database);
-    await db.database.insert(schema.familyMemoryFacts).values([
-      {
-        familyId,
-        childId: null,
-        factType: 'routine',
-        factKey: 'naptime',
-        factValue: { at: '12:00' },
-        confidence: 0.7,
-        validFrom: new Date('2026-01-01T00:00:00Z'),
-      },
-      {
-        familyId,
-        childId: null,
-        factType: 'routine',
-        factKey: 'naptime',
-        factValue: { at: '13:00' },
-        confidence: 0.95,
-        validFrom: new Date('2026-01-02T00:00:00Z'),
-      },
-      {
-        familyId,
-        childId: null,
-        factType: 'routine',
-        factKey: 'naptime',
-        factValue: { at: '14:00' },
-        confidence: 0.8,
-        validFrom: new Date('2026-01-03T00:00:00Z'),
-      },
-    ]);
+    await insertLegacyFact({
+      familyId,
+      childId: null,
+      factType: 'routine',
+      factKey: 'naptime',
+      factValue: { at: '12:00' },
+      confidence: 0.7,
+      validFrom: new Date('2026-01-01T00:00:00Z'),
+    });
+    await insertLegacyFact({
+      familyId,
+      childId: null,
+      factType: 'routine',
+      factKey: 'naptime',
+      factValue: { at: '13:00' },
+      confidence: 0.95,
+      validFrom: new Date('2026-01-02T00:00:00Z'),
+    });
+    await insertLegacyFact({
+      familyId,
+      childId: null,
+      factType: 'routine',
+      factKey: 'naptime',
+      factValue: { at: '14:00' },
+      confidence: 0.8,
+      validFrom: new Date('2026-01-03T00:00:00Z'),
+    });
 
     await db.applyMigration(MIGRATION);
 
@@ -89,26 +124,24 @@ describe('migration 0084 — one live fact per key', () => {
 
   it('breaks a confidence tie by recency, not arbitrarily', async () => {
     const { familyId } = await seedFamily(db.database);
-    await db.database.insert(schema.familyMemoryFacts).values([
-      {
-        familyId,
-        childId: null,
-        factType: 'preference',
-        factKey: 'park',
-        factValue: { name: 'older' },
-        confidence: 1,
-        validFrom: new Date('2026-01-01T00:00:00Z'),
-      },
-      {
-        familyId,
-        childId: null,
-        factType: 'preference',
-        factKey: 'park',
-        factValue: { name: 'newer' },
-        confidence: 1,
-        validFrom: new Date('2026-02-01T00:00:00Z'),
-      },
-    ]);
+    await insertLegacyFact({
+      familyId,
+      childId: null,
+      factType: 'preference',
+      factKey: 'park',
+      factValue: { name: 'older' },
+      confidence: 1,
+      validFrom: new Date('2026-01-01T00:00:00Z'),
+    });
+    await insertLegacyFact({
+      familyId,
+      childId: null,
+      factType: 'preference',
+      factKey: 'park',
+      factValue: { name: 'newer' },
+      confidence: 1,
+      validFrom: new Date('2026-02-01T00:00:00Z'),
+    });
 
     await db.applyMigration(MIGRATION);
 
@@ -121,43 +154,41 @@ describe('migration 0084 — one live fact per key', () => {
     const { familyId } = await seedFamily(db.database);
     const ella = await seedChild(db.database, familyId, 'Ella', 30);
     const noah = await seedChild(db.database, familyId, 'Noah', 84);
-    await db.database.insert(schema.familyMemoryFacts).values([
-      // Same key, different children — two different truths, both still true.
-      {
-        familyId,
-        childId: ella,
-        factType: 'routine',
-        factKey: 'bedtime',
-        factValue: { at: '19:00' },
-        confidence: 1,
-      },
-      {
-        familyId,
-        childId: noah,
-        factType: 'routine',
-        factKey: 'bedtime',
-        factValue: { at: '20:00' },
-        confidence: 1,
-      },
-      // Same key, already superseded — history, not a duplicate.
-      {
-        familyId,
-        childId: null,
-        factType: 'routine',
-        factKey: 'dinner',
-        factValue: { at: '17:00' },
-        confidence: 1,
-        validUntil: new Date('2026-01-01T00:00:00Z'),
-      },
-      {
-        familyId,
-        childId: null,
-        factType: 'routine',
-        factKey: 'dinner',
-        factValue: { at: '18:00' },
-        confidence: 1,
-      },
-    ]);
+    // Same key, different children — two different truths, both still true.
+    await insertLegacyFact({
+      familyId,
+      childId: ella,
+      factType: 'routine',
+      factKey: 'bedtime',
+      factValue: { at: '19:00' },
+      confidence: 1,
+    });
+    await insertLegacyFact({
+      familyId,
+      childId: noah,
+      factType: 'routine',
+      factKey: 'bedtime',
+      factValue: { at: '20:00' },
+      confidence: 1,
+    });
+    // Same key, already superseded — history, not a duplicate.
+    await insertLegacyFact({
+      familyId,
+      childId: null,
+      factType: 'routine',
+      factKey: 'dinner',
+      factValue: { at: '17:00' },
+      confidence: 1,
+      validUntil: new Date('2026-01-01T00:00:00Z'),
+    });
+    await insertLegacyFact({
+      familyId,
+      childId: null,
+      factType: 'routine',
+      factKey: 'dinner',
+      factValue: { at: '18:00' },
+      confidence: 1,
+    });
 
     await db.applyMigration(MIGRATION);
 
@@ -172,16 +203,14 @@ describe('migration 0084 — one live fact per key', () => {
     const row = {
       familyId,
       childId: null,
-      factType: 'routine' as const,
+      factType: 'routine',
       factKey: 'naptime',
       factValue: { at: '13:00' },
       confidence: 1,
     };
-    await db.database.insert(schema.familyMemoryFacts).values(row);
+    await insertLegacyFact(row);
 
-    await expect(db.database.insert(schema.familyMemoryFacts).values(row)).rejects.toThrow(
-      /memory_facts_one_live_per_key_idx/,
-    );
+    await expect(insertLegacyFact(row)).rejects.toThrow(/memory_facts_one_live_per_key_idx/);
   });
 
   it('still refuses a duplicate when the fact is family-wide (child_id NULL)', async () => {
@@ -199,13 +228,13 @@ describe('migration 0084 — one live fact per key', () => {
     const row = {
       familyId,
       childId: null,
-      factType: 'logistic' as const,
+      factType: 'logistic',
       factKey: 'home_city',
       factValue: { city: 'Toronto' },
       confidence: 1,
     };
-    await db.database.insert(schema.familyMemoryFacts).values(row);
+    await insertLegacyFact(row);
 
-    await expect(db.database.insert(schema.familyMemoryFacts).values(row)).rejects.toThrow();
+    await expect(insertLegacyFact(row)).rejects.toThrow();
   });
 });
