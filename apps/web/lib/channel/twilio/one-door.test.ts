@@ -34,6 +34,7 @@ const PROVIDER_TOKENS = [
   // Linq is the same kind of door: a call here puts bytes on a parent's phone.
   'sendLinqChatMessage(',
   'createLinqChat(',
+  'createLinqPhoneTransport(',
   'sendLinqParts(',
   'reactToLinqMessage(',
   'shareLinqContactCard(',
@@ -85,7 +86,7 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/router/wiring.ts':
     'coach reply transport; every send ledgered in router route.ts sendReply',
   'apps/web/lib/channel/adapters/twilio-sms.ts':
-    'loop dispatch adapter; every leg ledgered by dispatch.ts writeLedgerRow',
+    'loop dispatch adapter; the default sender is the Linq phone transport, and every leg is ledgered by dispatch.ts writeLedgerRow',
   'apps/web/lib/registration/sequence/run.ts': 'records its own rows (recordSend port)',
   'apps/web/lib/party/reminders.ts': 'records its own rows (rsvp category)',
   'apps/web/lib/village/intros/run.ts': 'records its own rows (village_intro category)',

@@ -3,10 +3,12 @@ import {
   LinqSendError,
   addLinqParticipant,
   createLinqChat,
+  createLinqPhoneTransport,
   createLinqTextTransport,
   localityFromLocationPayload,
   markLinqChatRead,
   reactToLinqMessage,
+  readListedDirectChatId,
   removeLinqParticipant,
   requestLinqLocation,
   retrieveLinqLocation,
@@ -586,5 +588,142 @@ describe('Linq location request', () => {
     expect(JSON.stringify(read)).not.toContain('King');
     expect(JSON.stringify(read)).not.toContain('-79');
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('GET');
+  });
+});
+
+const FROM = '+16462352164';
+const TO = '+14165550100';
+
+describe('createLinqPhoneTransport', () => {
+  it('names a missing Hale line and does not call the network', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    vi.stubEnv('LINQ_FROM_E164', '');
+    const fetchMock = vi.fn();
+    const transport = createLinqPhoneTransport({ fetch: fetchMock });
+
+    await expect(transport.send({ to: TO, body: 'Thursday works' })).rejects.toMatchObject({
+      code: 'not_configured',
+      permanent: true,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('posts plain text to POST /chats and leaves the service chain to Linq', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    vi.stubEnv('LINQ_FROM_E164', FROM);
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ chat: { id: CHAT, message: { id: 'msg-phone-1' } } }, { status: 201 }),
+    );
+    const transport = createLinqPhoneTransport({ fetch: fetchMock });
+
+    const sent = await transport.send({ to: TO, body: 'Thursday works' });
+
+    expect(sent).toEqual({ providerMessageId: 'msg-phone-1', chatId: CHAT });
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.linqapp.com/api/partner/v3/chats');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      from: FROM,
+      to: [TO],
+      message: { parts: [{ type: 'text', value: 'Thursday works' }] },
+    });
+  });
+
+  it('refuses an empty media list instead of dropping the attachment', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    vi.stubEnv('LINQ_FROM_E164', FROM);
+    const fetchMock = vi.fn();
+    const transport = createLinqPhoneTransport({ fetch: fetchMock });
+
+    await expect(transport.send({ to: TO, body: 'card', mediaUrls: [] })).rejects.toMatchObject({
+      code: 'invalid_parts',
+      permanent: true,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sends a link into an existing 1:1 and refuses one that would open a new chat', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    vi.stubEnv('LINQ_FROM_E164', FROM);
+    const body = 'the week is here https://app.villagehale.com/week';
+    const listed = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {
+      if (String(url).includes('/chats?')) {
+        return Response.json({
+          chats: [
+            { id: 'group-1', is_group: true },
+            { id: CHAT, is_group: false },
+          ],
+        });
+      }
+      return Response.json({ message: { id: 'msg-link' } }, { status: 202 });
+    });
+    const transport = createLinqPhoneTransport({ fetch: listed });
+
+    const sent = await transport.send({ to: TO, body });
+
+    expect(sent).toEqual({ providerMessageId: 'msg-link', chatId: CHAT });
+    expect(String(listed.mock.calls[0]?.[0])).toContain('/chats?');
+    expect(String(listed.mock.calls[0]?.[0])).toContain(encodeURIComponent(FROM));
+    expect(String(listed.mock.calls[0]?.[0])).toContain(encodeURIComponent(TO));
+    expect(listed.mock.calls[1]?.[0]).toBe(
+      `https://api.linqapp.com/api/partner/v3/chats/${CHAT}/messages`,
+    );
+    expect(JSON.parse(String(listed.mock.calls[1]?.[1]?.body))).toEqual({
+      message: { parts: [{ type: 'text', value: body }] },
+    });
+
+    const empty = vi.fn(async () => Response.json({ chats: [] }));
+    await expect(
+      createLinqPhoneTransport({ fetch: empty }).send({ to: TO, body }),
+    ).rejects.toMatchObject({ code: 'link_on_new_chat', permanent: true });
+    expect(empty).toHaveBeenCalledOnce();
+  });
+
+  it('attaches media on an existing 1:1 and names a new chat that cannot take it', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    vi.stubEnv('LINQ_FROM_E164', FROM);
+    const media = 'https://www.villagehale.com/hale.vcf';
+    const listed = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {
+      if (String(url).includes('/chats?')) return Response.json({ chats: [{ id: CHAT }] });
+      return Response.json({ message: { id: 'msg-card' } }, { status: 202 });
+    });
+
+    const sent = await createLinqPhoneTransport({ fetch: listed }).send({
+      to: TO,
+      body: 'save this',
+      mediaUrls: [media],
+    });
+
+    expect(sent.providerMessageId).toBe('msg-card');
+    expect(JSON.parse(String(listed.mock.calls[1]?.[1]?.body))).toEqual({
+      message: {
+        parts: [
+          { type: 'text', value: 'save this' },
+          { type: 'media', url: media },
+        ],
+      },
+    });
+
+    const empty = vi.fn(async () => Response.json({ chats: [] }));
+    await expect(
+      createLinqPhoneTransport({ fetch: empty }).send({
+        to: TO,
+        body: 'save this',
+        mediaUrls: [media],
+      }),
+    ).rejects.toMatchObject({ code: 'media_on_new_chat', permanent: true });
+  });
+
+  it('reads a direct chat id and skips groups', () => {
+    expect(
+      readListedDirectChatId({
+        chats: [
+          { id: 'group-1', is_group: true },
+          { id: '', is_group: false },
+          { id: CHAT, is_group: false },
+        ],
+      }),
+    ).toBe(CHAT);
+    expect(readListedDirectChatId({ chats: [] })).toBeNull();
+    expect(readListedDirectChatId(null)).toBeNull();
   });
 });
