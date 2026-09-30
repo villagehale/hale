@@ -112,6 +112,105 @@ describe('the preview bubble is Hale’s CURRENT greeting, byte-for-byte', () =>
   });
 });
 
+/**
+ * The ladder's first message, read out of copy.ts the same way the greeting
+ * pin is: a byte comparison against the source, not a transpiled import.
+ */
+function ladderFromSource(): {
+  imessage: { en: string; fr: string };
+  sms: { en: string; fr: string };
+} {
+  const src = readFileSync(COPY_TS, 'utf8');
+  const block = (name: string): string => {
+    const start = src.indexOf(`export const ${name}`);
+    const end = src.indexOf('};', start);
+    if (start < 0 || end < 0) throw new Error(`${name} is missing from copy.ts`);
+    return src.slice(start, end);
+  };
+  const literal = (chunk: string, lang: 'en' | 'fr'): string => {
+    const at = chunk.indexOf(`${lang}:`);
+    if (at < 0) throw new Error(`no ${lang} field`);
+    let i = at + lang.length + 1;
+    while (chunk[i] === ' ' || chunk[i] === '\n') i += 1;
+    const quote = chunk[i];
+    if (quote !== '"' && quote !== "'") throw new Error(`no string for ${lang}`);
+    i += 1;
+    let out = '';
+    while (i < chunk.length) {
+      const ch = chunk[i];
+      if (ch === '\\') {
+        out += chunk[i + 1] ?? '';
+        i += 2;
+        continue;
+      }
+      if (ch === quote) return out;
+      out += ch ?? '';
+      i += 1;
+    }
+    throw new Error(`unterminated ${lang} string`);
+  };
+  const imessage = block('FIRST_TOUCH_IMESSAGE_BY_LANGUAGE');
+  const sms = block('FIRST_TOUCH_SMS_BY_LANGUAGE');
+  return {
+    imessage: { en: literal(imessage, 'en'), fr: literal(imessage, 'fr') },
+    sms: { en: literal(sms, 'en'), fr: literal(sms, 'fr') },
+  };
+}
+
+describe('the preview bubble matches the ladder’s first message when the flag is on', () => {
+  const ladder = ladderFromSource();
+
+  it('pins the iMessage and SMS sentences to copy.ts, in EN and FR', () => {
+    expect(ladder.imessage.en).toBe(
+      "Hey, it's Hale. I find what's on for kids across the GTA. Tap to share where you are and I'll show you what's on this week.",
+    );
+    expect(ladder.sms.en).toBe(
+      "Hey, it's Hale. I find what's on for kids across the GTA. What's your postal code? I'll show you what's on this week.",
+    );
+    expect(ladder.imessage.fr).toBe(
+      "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants dans le GTA. Partage ta position et je te montre ce qui est au programme cette semaine.",
+    );
+    expect(ladder.sms.fr).toBe(
+      "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants dans le GTA. Quel est ton code postal? Je te montre ce qui est au programme cette semaine.",
+    );
+    expect(messages('en').Text.greetingLadderImessage).toBe(ladder.imessage.en);
+    expect(messages('en').Text.greetingLadderSms).toBe(ladder.sms.en);
+    expect(messages('fr').Text.greetingLadderImessage).toBe(ladder.imessage.fr);
+    expect(messages('fr').Text.greetingLadderSms).toBe(ladder.sms.fr);
+    expect(messages('zh').Text.greetingLadderImessage).toBe(ladder.imessage.en);
+    expect(messages('zh').Text.greetingLadderSms).toBe(ladder.sms.en);
+  });
+
+  it('shows the iMessage sentence on Apple phone and Mac, and the postal sentence everywhere else', () => {
+    for (const locale of ['en', 'fr', 'zh'] as const) {
+      const imessage = locale === 'fr' ? ladder.imessage.fr : ladder.imessage.en;
+      const sms = locale === 'fr' ? ladder.sms.fr : ladder.sms.en;
+      expect(render(locale, { firstTouchLadder: true, platform: 'apple' })).toContain(
+        escapeHtml(imessage),
+      );
+      expect(render(locale, { firstTouchLadder: true, platform: 'desktop-mac' })).toContain(
+        escapeHtml(imessage),
+      );
+      expect(render(locale, { firstTouchLadder: true, platform: 'android' })).toContain(
+        escapeHtml(sms),
+      );
+      expect(render(locale, { firstTouchLadder: true, platform: 'unknown' })).toContain(
+        escapeHtml(sms),
+      );
+      expect(render(locale, { firstTouchLadder: true, platform: 'apple' })).not.toContain(
+        escapeHtml(sms),
+      );
+    }
+  });
+
+  it('leaves the parent prefill and the flag-off greeting untouched', () => {
+    const html = render('en', { firstTouchLadder: true, platform: 'apple' });
+    expect(html).toContain(escapeHtml("Hey Hale, what's going on?"));
+    expect(render('en')).toContain(escapeHtml(greetingFromSource().en));
+    expect(render('en')).not.toContain(escapeHtml(ladder.sms.en));
+  });
+});
+
 describe('the (via …) token never renders as page copy', () => {
   const SOURCE = 'earlyon-richmondhill';
 

@@ -37,6 +37,8 @@ const PROVIDER_TOKENS = [
   'sendLinqParts(',
   'reactToLinqMessage(',
   'shareLinqContactCard(',
+  'requestLinqLocation(',
+  'retrieveLinqLocation(',
   'api.linqapp.com',
 ] as const;
 
@@ -52,6 +54,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'the door itself — the one module that speaks Twilio REST',
   'apps/web/lib/channel/linq/transport.ts':
     'the iMessage door — the one module that speaks the Linq partner API',
+  'apps/web/lib/channel/linq/location-share.ts':
+    'reads a shared locality after the parent accepts the location card; retrieveLinqLocation drops the street before return, and the next bubble is the intake transport, not a send from this file',
   'apps/web/lib/channel/linq/contact-card.ts':
     'one-shot Hale Name and Photo share after a finished 1:1 onboard; the claim and the linq_contact_card_shared audit sit beside the share',
   'apps/web/lib/channel/linq/tapback.ts':

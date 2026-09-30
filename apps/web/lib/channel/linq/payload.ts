@@ -76,11 +76,24 @@ export interface LinqInboundText {
   otherHandles: string[];
 }
 
+export type LinqLocationEvent = 'location.sharing.started' | 'location.sharing.stopped';
+
+/** A location-share lifecycle event. Coordinates are not on this payload. */
+export interface LinqLocationSignal {
+  event: LinqLocationEvent;
+  chatId: string;
+  /** Phone or Apple ID email, as Linq sent it. Not logged by the door. */
+  sharedBy: string;
+  beganAt: string | null;
+  eventId: string | null;
+}
+
 export type LinqParsedWebhook =
   | { kind: 'message'; message: LinqInboundText }
   | { kind: 'group'; message: LinqInboundText }
   | { kind: 'receipt'; receipt: LinqDeliveryReceipt }
   | { kind: 'signal'; signal: LinqSignal }
+  | { kind: 'location'; location: LinqLocationSignal }
   | { kind: 'ignored'; reason: LinqIgnoreReason };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -108,6 +121,29 @@ const SIGNAL_EVENTS: readonly LinqSignalEvent[] = [
   'participant.removed',
 ];
 
+const LOCATION_EVENTS: readonly LinqLocationEvent[] = [
+  'location.sharing.started',
+  'location.sharing.stopped',
+];
+
+function isLocationEvent(value: unknown): value is LinqLocationEvent {
+  return typeof value === 'string' && (LOCATION_EVENTS as readonly string[]).includes(value);
+}
+
+function parseLocation(
+  payload: Record<string, unknown>,
+  event: LinqLocationEvent,
+): LinqParsedWebhook {
+  if (!isRecord(payload.data)) return { kind: 'ignored', reason: 'malformed' };
+  const data = payload.data;
+  const chatId = stringField(data.chat_id);
+  const sharedBy = stringField(data.shared_by);
+  if (!chatId || !sharedBy) return { kind: 'ignored', reason: 'malformed' };
+  const beganAt = stringField(data.began_at) || null;
+  const eventId = stringField(payload.event_id) || null;
+  return { kind: 'location', location: { event, chatId, sharedBy, beganAt, eventId } };
+}
+
 function isSignalEvent(value: unknown): value is LinqSignalEvent {
   return typeof value === 'string' && (SIGNAL_EVENTS as readonly string[]).includes(value);
 }
@@ -126,6 +162,7 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
     return { kind: 'ignored', reason: 'unsupported_version' };
   }
   if (isReceiptEvent(payload.event_type)) return parseReceipt(payload, payload.event_type);
+  if (isLocationEvent(payload.event_type)) return parseLocation(payload, payload.event_type);
   if (isSignalEvent(payload.event_type)) return parseSignal(payload, payload.event_type);
   if (payload.event_type !== 'message.received') {
     return { kind: 'ignored', reason: 'not_message_received' };

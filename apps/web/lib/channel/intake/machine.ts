@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
+import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import {
   declineOpenInviteOnStop,
@@ -65,6 +66,10 @@ import {
   COLD_START_ASK_BY_LANGUAGE,
   CO_PARENT_ASK_BY_LANGUAGE,
   DECLINE_ACK_BY_LANGUAGE,
+  FIRST_TOUCH_AGES_BY_LANGUAGE,
+  FIRST_TOUCH_EMPTY_BY_LANGUAGE,
+  FIRST_TOUCH_IMESSAGE_BY_LANGUAGE,
+  FIRST_TOUCH_SMS_BY_LANGUAGE,
   HELP_REPLY_BY_LANGUAGE,
   INTAKE_COPARENT_ASK_TEMPLATE_KEY,
   type IntakeGap,
@@ -85,6 +90,9 @@ import {
 } from './copy';
 import { parseCanadianPostal, summarizeChildren } from './derive';
 import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract';
+import { findThisWeek, renderWeekFind } from './first-touch-find';
+import { firstTouchLadderEnabled } from './first-touch-flag';
+import { type FirstTouchPlace, placeFromMessage } from './first-touch-place';
 import { identityChallengeReply } from './identity-challenge';
 import type { IntakeAckComposer } from './intake-voice';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
@@ -100,6 +108,7 @@ import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from '.
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, type RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
 import {
+  type FirstTouchPersisted,
   type IntakeLadderStep,
   type IntakeSession,
   type IntakeState,
@@ -202,6 +211,11 @@ export interface IntakeDeps {
    * for an inbound webhook). Its payoff is the 48h nudge, which otherwise sweeps a
    * family whose candidate table is empty. Same trigger the web onboarding path uses. */
   discoveryTrigger?: DiscoveryTrigger;
+  /**
+   * Live "this week" lookup for the first-touch ladder. Absent is named
+   * `not_configured` and the locked empty line goes out — never a guess.
+   */
+  weekFinder?: ActivityFinder | null;
   /** The funnel's two milestones. Optional because the DEFAULT IS THE REAL EFFECT —
    * `captureServerEvent`, which already names its own absence on a dead PostHog key
    * (rule #11) — so this is a test seam, never a way to withhold the send. */
@@ -213,6 +227,8 @@ export type KeywordAck = 'sent' | 'provider_answered' | 'provider_refused';
 
 export type IntakeOutcome =
   | { status: 'greeted' }
+  /** VIL-385 ladder beat that is not yet a provisioned family. */
+  | { status: 'first_touch'; step: 'place_asked' | 'place_waiting' | 'find_sent' | 'ages_waiting' }
   | { status: 'follow_up_asked' }
   /** Something Hale will not invent is still missing after the one follow-up. */
   | { status: 'details_blocked'; missing: IntakeGap[] }
@@ -447,6 +463,12 @@ export async function handleInboundSms(
   if (session.state === 'awaiting_watch_reply' || session.state === 'awaiting_clarify') {
     return claimedTurn(database, inbound, now, () =>
       handleWatchReply(database, { session, phoneE164, inbound, now }, deps),
+    );
+  }
+
+  if (session.state === 'awaiting_place' || session.state === 'awaiting_ages') {
+    return claimedTurn(database, inbound, now, () =>
+      continueFirstTouch(database, { session, phoneE164, inbound, now }, deps),
     );
   }
 
@@ -911,6 +933,10 @@ async function deliverFirstHello(
   const { session } = args;
   const ctx = sendContext(args);
 
+  if (firstTouchLadderEnabled()) {
+    return openFirstTouch(database, args, deps, ctx);
+  }
+
   // Names / ages / postal on the first text are DETAILS, not a question — the
   // existing extractor / handleDetails path, never offScriptReply. A bare hello,
   // including the /text warm prefill, still takes greeting() below. Rec/camp
@@ -980,6 +1006,298 @@ async function deliverFirstHello(
   );
   await reportIntakeStep(deps, 'intake_started', session.id);
   return outcome;
+}
+
+/**
+ * VIL-385. New parent, flag on. Place first unless the message already has one,
+ * then a live week find, then ages. One place ask. No area-code guess.
+ */
+async function openFirstTouch(
+  database: Database,
+  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
+  deps: IntakeDeps,
+  ctx: SendContext,
+): Promise<IntakeOutcome> {
+  const { session } = args;
+  const recorded = await recordInbound(database, ctx, args.inbound, session.transcript);
+  const language = replyLanguage(args.inbound.body);
+  const collected = await deps.extractor.extract({
+    message: args.inbound.body,
+    alreadyKnown: session.collected,
+  });
+  const place = placeFromMessage(firstInboundWords(args.inbound.body));
+  const touch: FirstTouchPersisted = {
+    language,
+    place: place ? persistPlace(place) : null,
+    locationRequest: null,
+  };
+  if (!place) {
+    const asked = await sendPlaceAsk(database, ctx, deps, language, recorded.transcript);
+    await saveSession(
+      database,
+      session,
+      {
+        state: 'awaiting_place',
+        transcript: asked.transcript,
+        collected,
+        lastProviderId: args.inbound.providerId,
+        firstReplyRecoveredAt: args.now,
+        ladderLanguage: language,
+        firstTouch: { ...touch, locationRequest: asked.locationRequest },
+      },
+      args.now,
+    );
+    await reportIntakeStep(deps, 'intake_started', session.id);
+    return { status: 'first_touch', step: 'place_asked' };
+  }
+  return sendWeekFindThenAgesOrProvision(database, args, deps, ctx, {
+    language,
+    place,
+    collected,
+    transcript: recorded.transcript,
+    locationRequest: null,
+    started: true,
+  });
+}
+
+async function continueFirstTouch(
+  database: Database,
+  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
+  deps: IntakeDeps,
+): Promise<IntakeOutcome> {
+  const { session, inbound, now } = args;
+  const ctx = sendContext(args);
+  const language =
+    session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
+  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+
+  if (session.state === 'awaiting_ages') {
+    return answerAges(database, args, deps, language, recorded.transcript);
+  }
+
+  const place = placeFromMessage(firstInboundWords(inbound.body));
+  if (!place) {
+    const offScript = await offScriptReply(
+      {
+        parentWords: inbound.body,
+        pendingAsk: FIRST_TOUCH_SMS_BY_LANGUAGE[language],
+        children: session.collected.children,
+        postalCode: session.collected.postalCode,
+      },
+      deps,
+    );
+    let transcript = recorded.transcript;
+    if (offScript) {
+      ({ transcript } = await sendAndRecord(database, ctx, offScript.body, deps, transcript));
+    }
+    await saveSession(
+      database,
+      session,
+      { transcript, collected: session.collected, lastProviderId: inbound.providerId },
+      now,
+    );
+    return { status: 'first_touch', step: 'place_waiting' };
+  }
+
+  const collected = await deps.extractor.extract({
+    message: inbound.body,
+    alreadyKnown: session.collected,
+  });
+  return sendWeekFindThenAgesOrProvision(database, args, deps, ctx, {
+    language,
+    place,
+    collected,
+    transcript: recorded.transcript,
+    locationRequest: session.firstTouch?.locationRequest ?? null,
+    started: false,
+  });
+}
+
+async function sendPlaceAsk(
+  database: Database,
+  ctx: SendContext,
+  deps: IntakeDeps,
+  language: ReplyLanguage,
+  transcript: TranscriptEntry[],
+): Promise<{
+  transcript: TranscriptEntry[];
+  locationRequest: FirstTouchPersisted['locationRequest'];
+}> {
+  const chatId = ctx.pipe.chatId;
+  const card =
+    ctx.pipe.channel === 'imessage' &&
+    !ctx.pipe.isGroup &&
+    typeof chatId === 'string' &&
+    chatId.length > 0 &&
+    typeof deps.transport.requestLocation === 'function';
+  const body = card
+    ? FIRST_TOUCH_IMESSAGE_BY_LANGUAGE[language]
+    : FIRST_TOUCH_SMS_BY_LANGUAGE[language];
+  const sent = await sendAndRecord(database, ctx, body, deps, transcript);
+  const at = ctx.now.toISOString();
+  if (!card || !chatId || !deps.transport.requestLocation) {
+    return {
+      transcript: sent.transcript,
+      locationRequest: {
+        at,
+        outcome: ctx.pipe.isGroup ? 'skipped_group' : 'not_a_moment',
+      },
+    };
+  }
+  try {
+    const result = await deps.transport.requestLocation({ chatId });
+    if (result.status === 'sent') {
+      return { transcript: sent.transcript, locationRequest: { at, outcome: 'sent' } };
+    }
+    if (result.status === 'refused') {
+      console.info({ outcome: 'refused', code: result.code }, 'first-touch location card: refused');
+      return {
+        transcript: sent.transcript,
+        locationRequest: { at, outcome: 'refused', code: result.code },
+      };
+    }
+    console.info({ outcome: result.status }, 'first-touch location card: not sent');
+    return { transcript: sent.transcript, locationRequest: { at, outcome: result.status } };
+  } catch (err) {
+    console.warn(
+      { outcome: 'unreachable', err: err instanceof Error ? err.name : 'unknown' },
+      'first-touch location card: unreachable',
+    );
+    return { transcript: sent.transcript, locationRequest: { at, outcome: 'unreachable' } };
+  }
+}
+
+async function sendWeekFindThenAgesOrProvision(
+  database: Database,
+  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
+  deps: IntakeDeps,
+  ctx: SendContext,
+  input: {
+    language: ReplyLanguage;
+    place: FirstTouchPlace;
+    collected: IntakeCollected;
+    transcript: TranscriptEntry[];
+    locationRequest: FirstTouchPersisted['locationRequest'];
+    started: boolean;
+  },
+): Promise<IntakeOutcome> {
+  const { session, inbound, now } = args;
+  const found = await findThisWeek({ finder: deps.weekFinder ?? null, place: input.place });
+  const rendered = renderWeekFind(found.lines);
+  const findBody = rendered ?? FIRST_TOUCH_EMPTY_BY_LANGUAGE[input.language];
+  let transcript = (await sendAndRecord(database, ctx, findBody, deps, input.transcript))
+    .transcript;
+  const touch: FirstTouchPersisted = {
+    language: input.language,
+    place: persistPlace(input.place),
+    locationRequest: input.locationRequest,
+  };
+  const located: IntakeSession = {
+    ...session,
+    collected: {
+      ...input.collected,
+      postalCode: input.place.postalCode ?? input.collected.postalCode,
+    },
+    ladderLanguage: input.language,
+    firstTouch: touch,
+  };
+  const children = withKnownAges(input.collected.children);
+  const location = intakeLocationFor(input.place);
+  // An empty list is truthy and means no ages were known. Provision only with real ages.
+  if (children && children.length > 0 && location) {
+    if (input.started) await reportIntakeStep(deps, 'intake_started', session.id);
+    return provision(
+      database,
+      { session: located, phoneE164: args.phoneE164, inbound, now },
+      deps,
+      {
+        collected: located.collected,
+        children,
+        location,
+        transcript,
+      },
+    );
+  }
+  ({ transcript } = await sendAndRecord(
+    database,
+    ctx,
+    FIRST_TOUCH_AGES_BY_LANGUAGE[input.language],
+    deps,
+    transcript,
+  ));
+  await saveSession(
+    database,
+    session,
+    {
+      state: 'awaiting_ages',
+      transcript,
+      collected: located.collected,
+      lastProviderId: inbound.providerId,
+      firstReplyRecoveredAt: now,
+      ladderLanguage: input.language,
+      firstTouch: touch,
+    },
+    now,
+  );
+  if (input.started) await reportIntakeStep(deps, 'intake_started', session.id);
+  return { status: 'first_touch', step: 'find_sent' };
+}
+
+async function answerAges(
+  database: Database,
+  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
+  deps: IntakeDeps,
+  language: ReplyLanguage,
+  transcript: TranscriptEntry[],
+): Promise<IntakeOutcome> {
+  const { session, inbound, now } = args;
+  const collected = await deps.extractor.extract({
+    message: inbound.body,
+    alreadyKnown: session.collected,
+  });
+  const children = withKnownAges(collected.children);
+  const place = session.firstTouch?.place;
+  const location = place ? intakeLocationFor(place) : null;
+  if (!children || children.length === 0 || !location || !place) {
+    await saveSession(
+      database,
+      session,
+      { transcript, collected, lastProviderId: inbound.providerId },
+      now,
+    );
+    return { status: 'first_touch', step: 'ages_waiting' };
+  }
+  const located: IntakeSession = {
+    ...session,
+    collected: { ...collected, postalCode: place.postalCode ?? collected.postalCode },
+    ladderLanguage: language,
+  };
+  return provision(database, { session: located, phoneE164: args.phoneE164, inbound, now }, deps, {
+    collected: located.collected,
+    children,
+    location,
+    transcript,
+  });
+}
+
+function persistPlace(place: FirstTouchPlace): NonNullable<FirstTouchPersisted['place']> {
+  return {
+    kind: place.kind,
+    areaCoarse: place.areaCoarse,
+    postalCode: place.postalCode,
+    municipality: place.municipality,
+    city: place.city,
+  };
+}
+
+function intakeLocationFor(
+  place: NonNullable<FirstTouchPersisted['place']> | FirstTouchPlace,
+): IntakeLocation | null {
+  if (place.kind === 'postal') {
+    return parseCanadianPostal(place.postalCode ?? place.areaCoarse);
+  }
+  if (!place.areaCoarse.trim()) return null;
+  return { postalCode: null, areaCoarse: place.areaCoarse };
 }
 
 async function handleDetails(
@@ -1306,7 +1624,7 @@ async function provision(
   const { session, phoneE164, inbound, now } = args;
   const firstInbound = gathered.transcript.find((e) => e.direction === 'in');
 
-  const language = replyLanguage(inbound.body);
+  const language = session.ladderLanguage ?? replyLanguage(inbound.body);
   const { familyId, userId } = await provisionFromIntake(database, {
     phoneE164,
     phoneHash: session.phoneHash,
@@ -1319,6 +1637,21 @@ async function provision(
     language,
     linqContactCardClaim: session.linqContactCardClaim,
   });
+
+  const locationRequest = session.firstTouch?.locationRequest;
+  if (locationRequest) {
+    await database.insert(schema.auditLog).values({
+      familyId,
+      actor: userId,
+      actionTaken: 'first_touch_location_requested',
+      targetTable: 'sms_intake_sessions',
+      targetId: session.id,
+      after: {
+        outcome: locationRequest.outcome,
+        ...(locationRequest.code ? { code: locationRequest.code } : {}),
+      },
+    });
+  }
 
   // From here the session HAS a family, so messages go straight to channel_messages —
   // the transcript it carried has just been replayed there.

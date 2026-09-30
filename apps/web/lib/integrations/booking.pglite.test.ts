@@ -6,15 +6,15 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
-import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
-import { correlateExtraction } from '~/lib/sentinel/correlate';
-import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
 import type {
   ExtractedEvent,
   ExtractionKind,
   FamilyChildRef,
   SentinelClassification,
 } from '~/lib/sentinel';
+import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
+import { correlateExtraction } from '~/lib/sentinel/correlate';
+import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   BOOKING_CONFIDENCE_FLOOR,
@@ -24,10 +24,7 @@ import {
   stampBookingEvent,
 } from './booking';
 import { type EmailAlertPorts, alertParentForEmail, alertParentForGmailSweep } from './email-alert';
-import {
-  handleEmailAlertOfferReply,
-  loadOpenEmailAlertOffers,
-} from './email-alert-offer';
+import { handleEmailAlertOfferReply, loadOpenEmailAlertOffers } from './email-alert-offer';
 
 /**
  * THE BOOKING — the decision, the write, and the two things that must not happen.
@@ -174,7 +171,9 @@ function harness(
         };
       },
       gate: async () =>
-        over.gateHold ? { allowed: false, reason: over.gateHold } : { allowed: true, optOut: 'full' },
+        over.gateHold
+          ? { allowed: false, reason: over.gateHold }
+          : { allowed: true, optOut: 'full' },
       resolvePhone: async () => PHONE,
       transport: over.sendThrows
         ? {
@@ -448,7 +447,11 @@ describe('the teen floor (rule #1)', () => {
     expect(classification.extraction?.teenAttributed).toBe(true);
 
     const h = harness({ classification });
-    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'teen_attributed', going: 'teen_attributed' });
+    await expect(alert(h)).resolves.toEqual({
+      alert: 'sent',
+      booking: 'teen_attributed',
+      going: 'teen_attributed',
+    });
     await expect(bookingRows()).resolves.toEqual([]);
   });
 
@@ -460,7 +463,11 @@ describe('the teen floor (rule #1)', () => {
     expect(classification.extraction?.teenAttributed).toBe(false);
 
     const h = harness({ classification });
-    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'teen_content', going: null });
+    await expect(alert(h)).resolves.toEqual({
+      alert: 'sent',
+      booking: 'teen_content',
+      going: null,
+    });
     await expect(bookingRows()).resolves.toEqual([]);
   });
 
@@ -469,7 +476,11 @@ describe('the teen floor (rule #1)', () => {
     expect(classification.extraction?.teenAttributed).toBe(false);
 
     const h = harness({ classification });
-    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'recorded', going: 'going_dark' });
+    await expect(alert(h)).resolves.toEqual({
+      alert: 'sent',
+      booking: 'recorded',
+      going: 'going_dark',
+    });
     await expect(bookingRows()).resolves.toHaveLength(1);
   });
 
@@ -481,7 +492,11 @@ describe('the teen floor (rule #1)', () => {
     expect(classification.extraction?.teenAttributed).toBe(false);
 
     const h = harness({ classification });
-    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'recorded', going: 'going_dark' });
+    await expect(alert(h)).resolves.toEqual({
+      alert: 'sent',
+      booking: 'recorded',
+      going: 'going_dark',
+    });
     await expect(bookingRows()).resolves.toHaveLength(1);
   });
 });
@@ -525,6 +540,8 @@ describe('a provider cancellation closes what it cancelled', () => {
     // The vendor's second email spells the class differently. One normaliser — casefold,
     // collapse whitespace, trim — and nothing else: no instant equality (a cancellation
     // rarely repeats the time), no location, no fuzzy match.
+    // Case and whitespace, and — separately — a weekday abbreviation. No instant
+    // equality and no fuzzy match: "Swim Level 2" must not close "Swim Level 1".
     const h = cancellation('  swim   LEVEL 2 ', 'quiet_hours');
     await expect(alert(h, 'm2')).resolves.toEqual({
       alert: 'gate_refused:quiet_hours',
@@ -624,7 +641,11 @@ describe('a provider cancellation closes what it cancelled', () => {
     // the calendar question for a class that is still going ahead.
     await booked();
     const second = harness({ classification: classified({ title: 'Skating Level 1' }) });
-    await expect(alert(second, 'm2')).resolves.toEqual({ alert: 'sent', booking: 'recorded', going: 'going_dark' });
+    await expect(alert(second, 'm2')).resolves.toEqual({
+      alert: 'sent',
+      booking: 'recorded',
+      going: 'going_dark',
+    });
     await expect(offerRows()).resolves.toHaveLength(2);
 
     await alert(cancellation('Swim Level 2'), 'm3');
@@ -642,6 +663,28 @@ describe('a provider cancellation closes what it cancelled', () => {
     await booked();
     await alert(cancellation('Skating Level 1'), 'm2');
     await expect(bookingRows().then((r) => r[0]?.cancelledAt)).resolves.toBeNull();
+  });
+
+  it('closes a class whose title only differs by a weekday abbreviation', async () => {
+    const h = harness({ classification: classified({ title: 'Parent and Tot Tuesday' }) });
+    await expect(alert(h)).resolves.toMatchObject({ booking: 'recorded' });
+
+    await alert(cancellation('Parent and Tot (Tues)'), 'm2');
+    await expect(bookingRows().then((rows) => rows[0]?.cancelledAt)).resolves.toEqual(NOW);
+  });
+
+  it('does not close a different weekday or a different level', async () => {
+    const h = harness({ classification: classified({ title: 'Art Tues' }) });
+    await expect(alert(h)).resolves.toMatchObject({ booking: 'recorded' });
+
+    await alert(cancellation('Art Thursday'), 'm2');
+    await expect(bookingRows().then((rows) => rows[0]?.cancelledAt)).resolves.toBeNull();
+
+    await alert(cancellation('Swim Level 1'), 'm3');
+    await expect(bookingRows().then((rows) => rows[0]?.cancelledAt)).resolves.toBeNull();
+
+    await alert(cancellation('Art Tuesday'), 'm4');
+    await expect(bookingRows().then((rows) => rows[0]?.cancelledAt)).resolves.toEqual(NOW);
   });
 
   it('leaves a session that already happened alone', async () => {
@@ -778,7 +821,11 @@ describe('a cancellation the same sweep has already read', () => {
 describe('the booking write', () => {
   it('writes one row after the send, with the audit row carrying ONLY { offered: true }', async () => {
     const h = harness();
-    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'recorded', going: 'going_dark' });
+    await expect(alert(h)).resolves.toEqual({
+      alert: 'sent',
+      booking: 'recorded',
+      going: 'going_dark',
+    });
 
     const rows = await bookingRows();
     expect(rows).toHaveLength(1);
@@ -840,7 +887,11 @@ describe('the booking write', () => {
           'the \u201cRiverside\u201d Leisure Centre \u2014 Pool 2, 1200 Lakeshore Road West, Brookfield',
       }),
     });
-    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'recorded', going: 'going_dark' });
+    await expect(alert(h)).resolves.toEqual({
+      alert: 'sent',
+      booking: 'recorded',
+      going: 'going_dark',
+    });
 
     const [booking] = await bookingRows();
     const [offer] = await offerRows();
@@ -878,16 +929,131 @@ describe('the booking write', () => {
     expect(rows[0]?.title).toBe('Swim Level 2');
   });
 
+  it('updates a re-sent receipt instead of inserting a second class', async () => {
+    const draft = bookingDraft(DRAFT_INPUT);
+    if (!draft.ok) throw new Error('fixture lost its draft');
+    const channelMessageId = await sentAlertRow();
+    const again = await sentAlertRow();
+
+    const first = await recordActivityBooking(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      integrationId: INTEGRATION,
+      messageId: 'm-invoice',
+      channelMessageId,
+      draft: draft.draft,
+    });
+    expect(first.outcome).toBe('recorded');
+
+    // Same class, same UTC day, a later clock time, the title cased differently.
+    // A second row here is a second follow-up and a second family in the count.
+    const second = await recordActivityBooking(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      integrationId: INTEGRATION,
+      messageId: 'm-receipt',
+      channelMessageId: again,
+      draft: {
+        ...draft.draft,
+        title: 'swim LEVEL 2',
+        firstSessionAt: new Date('2026-09-26T13:30:00.000Z'),
+        location: 'pool 2',
+      },
+    });
+    expect(second).toEqual({ outcome: 'refreshed', bookingId: first.bookingId });
+
+    // A weekday abbreviation is the same class, not a second one.
+    const abbrev = bookingDraft({
+      ...DRAFT_INPUT,
+      title: 'Parent and Tot Tuesday',
+      event: { ...DRAFT_INPUT.event, title: 'Parent and Tot Tuesday' },
+    });
+    if (!abbrev.ok) throw new Error('fixture lost its draft');
+    const abbrevRow = await recordActivityBooking(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      integrationId: INTEGRATION,
+      messageId: 'm-tot',
+      channelMessageId: await sentAlertRow(),
+      draft: abbrev.draft,
+    });
+    expect(abbrevRow.outcome).toBe('recorded');
+    const abbrevAgain = await recordActivityBooking(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      integrationId: INTEGRATION,
+      messageId: 'm-tot-2',
+      channelMessageId: await sentAlertRow(),
+      draft: { ...abbrev.draft, title: 'Parent and Tot (Tues)' },
+    });
+    expect(abbrevAgain).toEqual({ outcome: 'refreshed', bookingId: abbrevRow.bookingId });
+
+    const rows = await bookingRows();
+    expect(rows).toHaveLength(2);
+    const swim = rows.find((row) => row.title === 'Swim Level 2');
+    // The first receipt stays the identity the calendar YES looks up, and the
+    // first instant stays the session the count is read on.
+    expect(swim).toMatchObject({
+      messageId: 'm-invoice',
+      title: 'Swim Level 2',
+      firstSessionAt: new Date(FIRST_SESSION),
+      location: 'pool 2',
+    });
+    expect(swim?.dedupeKey).toBe('recreation.brookfield.example.ca|swim level 2|2026-09-26');
+
+    const window = {
+      floor: new Date('2026-09-21T13:00:00.000Z'),
+      latest: new Date('2026-09-27T13:00:00.000Z'),
+    };
+    const due = await readDueBookings(db.database, family.familyId, window);
+    expect(due.map((row) => row.title).sort()).toEqual(['Parent and Tot Tuesday', 'Swim Level 2']);
+  });
+
+  it('still records a different class, and a different day, as their own rows', async () => {
+    const draft = bookingDraft(DRAFT_INPUT);
+    if (!draft.ok) throw new Error('fixture lost its draft');
+    const channelMessageId = await sentAlertRow();
+    const base = {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      integrationId: INTEGRATION,
+      channelMessageId,
+      draft: draft.draft,
+    };
+    await recordActivityBooking(db.database, { ...base, messageId: 'm1' });
+    await recordActivityBooking(db.database, {
+      ...base,
+      messageId: 'm2',
+      channelMessageId: await sentAlertRow(),
+      draft: { ...draft.draft, title: 'Skating Level 1' },
+    });
+    await recordActivityBooking(db.database, {
+      ...base,
+      messageId: 'm3',
+      channelMessageId: await sentAlertRow(),
+      draft: { ...draft.draft, firstSessionAt: new Date('2026-09-27T13:00:00.000Z') },
+    });
+    await expect(bookingRows()).resolves.toHaveLength(3);
+  });
+
   it('writes NO row for a 13+ child, and the same email for a 5-year-old DOES write one', async () => {
     // The positive control is the test. A 13+ child's title has already been genericised
     // by the pipeline, so recording it would let a follow-up ask about a teen's activity
     // four days later on the strength of a title Hale deliberately erased (rule #1).
     const teen = harness({ classification: classified({ teenContent: true }) });
-    await expect(alert(teen)).resolves.toEqual({ alert: 'sent', booking: 'teen_content', going: null });
+    await expect(alert(teen)).resolves.toEqual({
+      alert: 'sent',
+      booking: 'teen_content',
+      going: null,
+    });
     await expect(bookingRows()).resolves.toHaveLength(0);
 
     const young = harness();
-    await expect(alert(young, 'm2')).resolves.toEqual({ alert: 'sent', booking: 'recorded', going: 'going_dark' });
+    await expect(alert(young, 'm2')).resolves.toEqual({
+      alert: 'sent',
+      booking: 'recorded',
+      going: 'going_dark',
+    });
     await expect(bookingRows()).resolves.toHaveLength(1);
   });
 
@@ -1023,7 +1189,11 @@ describe('the offer that must not be made twice', () => {
     if (!event) throw new Error('fixture lost its event');
 
     const h = harness({ correlate: true });
-    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'recorded', going: 'going_dark' });
+    await expect(alert(h)).resolves.toEqual({
+      alert: 'sent',
+      booking: 'recorded',
+      going: 'going_dark',
+    });
 
     // No question, because no row would have been behind it.
     expect(h.transport.sent[0]?.body).not.toContain('?');
@@ -1055,7 +1225,11 @@ describe('the offer that must not be made twice', () => {
     });
 
     const h = harness({ correlate: true });
-    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'recorded', going: 'going_dark' });
+    await expect(alert(h)).resolves.toEqual({
+      alert: 'sent',
+      booking: 'recorded',
+      going: 'going_dark',
+    });
 
     expect(h.transport.sent[0]?.body).toContain('Want it on your calendar?');
     await expect(offerRows()).resolves.toHaveLength(1);
@@ -1065,9 +1239,13 @@ describe('the offer that must not be made twice', () => {
 });
 
 describe('stampBookingEvent', () => {
-  it("stamps the placed event onto the booking born from the same email, once", async () => {
+  it('stamps the placed event onto the booking born from the same email, once', async () => {
     const h = harness();
-    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'recorded', going: 'going_dark' });
+    await expect(alert(h)).resolves.toEqual({
+      alert: 'sent',
+      booking: 'recorded',
+      going: 'going_dark',
+    });
     const eventId = randomUUID();
 
     await expect(
@@ -1150,6 +1328,40 @@ describe('readDueBookings', () => {
 
     const due = await readDueBookings(db.database, family.familyId, WINDOW);
     expect(due.map((row) => row.bookingId)).toEqual([parentPlaced]);
+  });
+
+  it('asks once when two legacy rows are the same class', async () => {
+    // Written the way a pair of receipts was written before the dedupe key: two
+    // message ids, no stored key, titles that differ by a weekday abbreviation
+    // and a clock time on the same UTC day.
+    const firstChannel = await sentAlertRow();
+    const secondChannel = await sentAlertRow();
+    await db.database.insert(schema.activityBookings).values([
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId: INTEGRATION,
+        messageId: randomUUID(),
+        providerHost: 'recreation.brookfield.example.ca',
+        title: 'Swim Level 2 Tuesday',
+        firstSessionAt: new Date(FIRST_SESSION),
+        channelMessageId: firstChannel,
+      },
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId: INTEGRATION,
+        messageId: randomUUID(),
+        providerHost: 'recreation.brookfield.example.ca',
+        title: 'Swim Level 2 (Tues)',
+        firstSessionAt: new Date('2026-09-26T13:30:00.000Z'),
+        channelMessageId: secondChannel,
+      },
+    ]);
+
+    const due = await readDueBookings(db.database, family.familyId, WINDOW);
+    expect(due).toHaveLength(1);
+    expect(due[0]?.title).toBe('Swim Level 2 Tuesday');
   });
 
   it('never reaches another family', async () => {

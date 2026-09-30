@@ -33,7 +33,10 @@ import { CONTACT_EMAIL, buildSmsHref, buildWaHref, smsUriFormForPlatform } from 
  * as hero: the numbered steps are folded into one line under it, because the
  * exchange shows the first beat and the greeting asks for the second.
  * The page never invents Hale speech: ZH shows the English reply under a
- * translated label because copy.ts has no Chinese greeting. The "(via <code>)"
+ * translated label because copy.ts has no Chinese greeting. When
+ * FIRST_TOUCH_LADDER_ENABLED is exactly on, the received bubble is that
+ * ladder's first message: the iMessage sentence on Apple phone and Mac, the
+ * postal-code sentence on every other platform. The "(via <code>)"
  * attribution token rides ONLY inside composer hrefs; on the page it is
  * disclosed in words (prefilledWithSource), never printed raw — the sent bubble
  * shows the locale's prefill itself, tokenless. FR sends
@@ -118,6 +121,7 @@ export function TextEntry({
   whatsappNumber = '',
   platform = 'unknown',
   locale = routing.defaultLocale,
+  firstTouchLadder = false,
 }: {
   source: string | null;
   smsNumber: string;
@@ -127,6 +131,8 @@ export function TextEntry({
   /** The server's UA reading — ordering input only (lib/chooser.ts). */
   platform?: Platform;
   locale?: Locale;
+  /** VIL-385. The received bubble matches the ladder's first message. */
+  firstTouchLadder?: boolean;
 }) {
   const t = getTranslator(locale, 'Text');
   const common = getTranslator(locale, 'Common');
@@ -221,6 +227,10 @@ export function TextEntry({
   const sentLabel = t('sentLabel');
   const previewLabel = t('previewLabel');
   const sentGloss = t('sentGloss');
+  const messagesPipe = platform === 'apple' || platform === 'desktop-mac';
+  const haleFirst = firstTouchLadder
+    ? t(messagesPipe ? 'greetingLadderImessage' : 'greetingLadderSms')
+    : t('greeting');
   const exchange = live ? (
     <div className="v4-thread text-thread mt-8">
       <p className="text-thread-label text-thread-label-out" aria-hidden="true">
@@ -236,7 +246,7 @@ export function TextEntry({
       </p>
       <p className="v4-bubble v4-bubble-in">
         <span className="sr-only">{previewLabel} </span>
-        {t('greeting')}
+        {haleFirst}
       </p>
     </div>
   ) : null;
