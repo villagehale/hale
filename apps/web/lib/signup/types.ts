@@ -121,7 +121,10 @@ export type SignupStopReason =
   | 'unconfirmed'
   | 'url_refused'
   | 'already_in_progress'
-  | 'would_initiate_1_1';
+  | 'would_initiate_1_1'
+  | 'consent_missing'
+  | 'consent_wider'
+  | 'consent_short';
 
 export interface SignupPage {
   snapshot(): Promise<PageSnapshot>;

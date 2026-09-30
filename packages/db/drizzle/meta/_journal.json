@@ -953,6 +953,13 @@
       "when": 1781469632000,
       "tag": "0138_activity_bookings_dedupe",
       "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1781469633000,
+      "tag": "0139_authorized_signup_consent",
+      "breakpoints": true
     }
   ]
 }

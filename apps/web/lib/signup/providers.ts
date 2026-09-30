@@ -4,9 +4,9 @@ import type { SignupIdentity, SignupStopReason } from './types';
  * How an authorized booking is carried out (VIL-375).
  *
  * Scope is anything a parent needs help booking or signing up for. The
- * exclusion is narrow: Toronto, Brampton, Markham, ActiveNet, Xplor, and
- * PerfectMind are a denylist (assisted handoff, never a browser or a
- * connector). Any other host is handed back, without submitting, when the
+ * exclusion is narrow: the named city sites plus ActiveNet, Xplor,
+ * PerfectMind, and Amilia are a denylist (assisted handoff, never a browser
+ * or a connector). Any other host is handed back, without submitting, when the
  * page shows a rush signal: waiting room or queue, captcha, resident or
  * identity verification, or a timed open-at.
  *
@@ -49,6 +49,14 @@ export const BOOKING_DENY_SUFFIXES = [
   'toronto.ca',
   'brampton.ca',
   'markham.ca',
+  'mississauga.ca',
+  'richmondhill.ca',
+  'vaughan.ca',
+  'oakville.ca',
+  'caledon.ca',
+  'haltonhills.ca',
+  'burlington.ca',
+  'amilia.com',
 ] as const;
 
 export type BookingRoute =

@@ -332,11 +332,37 @@ describe('authorized signup runner', () => {
     expect(result.outcome).toBe('completed');
     expect(result.deliverOnThread).toBe(true);
     expect(result.reply).toBe(`You're signed up for Tue 4:30.`);
+    expect(result.reply).not.toContain('TODO-Design');
     expect(calls.submitted).toBe(1);
     const trail = await audits(seeded.familyId);
     expect(trail).toContain('tue-1630');
     expect(trail).not.toContain('Ada');
     expect(trail).not.toContain('@');
+    const [consent] = await db.database
+      .select()
+      .from(schema.authorizedSignupConsents)
+      .where(eq(schema.authorizedSignupConsents.familyId, seeded.familyId));
+    expect(consent).toMatchObject({
+      familyId: seeded.familyId,
+      messageId: 'msg-2',
+      activityKey: 'swim-parent-tot',
+      providerHost: '127.0.0.1',
+      fieldsAllowed: [
+        'child_first_name',
+        'child_dob',
+        'parent_first_name',
+        'parent_email',
+        'postal_code',
+        'session',
+        'visit_date',
+      ],
+    });
+    expect(consent?.createdAt).toEqual(NOW);
+    const stored = JSON.stringify(consent);
+    expect(stored).not.toContain('Ada');
+    expect(stored).not.toContain('Test Parent');
+    expect(stored).not.toContain('@');
+    expect(consent?.fieldsAllowed.join(' ')).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
 
   it('books a private host in the sandbox browser', async () => {
@@ -350,7 +376,7 @@ describe('authorized signup runner', () => {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
         body: 'Yes, sign us up',
-        inboundChannelMessageId: null,
+        inboundChannelMessageId: 'msg-private',
         existingThread: true,
         now: NOW,
       },
@@ -372,7 +398,7 @@ describe('authorized signup runner', () => {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
         body: 'Yes, sign us up',
-        inboundChannelMessageId: null,
+        inboundChannelMessageId: 'msg-connector',
         existingThread: true,
         now: NOW,
       },
@@ -409,7 +435,7 @@ describe('authorized signup runner', () => {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
         body: 'Yes, sign us up',
-        inboundChannelMessageId: null,
+        inboundChannelMessageId: 'msg-toronto',
         existingThread: true,
         now: NOW,
       },
@@ -485,7 +511,7 @@ describe('authorized signup runner', () => {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
         body: 'Yes, sign us up',
-        inboundChannelMessageId: null,
+        inboundChannelMessageId: 'msg-price',
         existingThread: true,
         now: NOW,
       },
@@ -546,7 +572,7 @@ describe('authorized signup runner', () => {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
         body: 'Yes, sign us up',
-        inboundChannelMessageId: null,
+        inboundChannelMessageId: 'msg-activenet',
         existingThread: true,
         now: NOW,
       },
@@ -568,7 +594,7 @@ describe('authorized signup runner', () => {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
         body: 'Yes, sign us up',
-        inboundChannelMessageId: null,
+        inboundChannelMessageId: 'msg-waiver',
         existingThread: true,
         now: NOW,
       },
@@ -671,7 +697,7 @@ describe('authorized signup runner', () => {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
         body: 'Yes, sign us up',
-        inboundChannelMessageId: null,
+        inboundChannelMessageId: 'msg-cart',
         existingThread: true,
         now: NOW,
       },
@@ -715,5 +741,139 @@ describe('authorized signup runner', () => {
     if (!verdict.claimed) return;
     expect(verdict.reply).toBeNull();
     expect(sent).toEqual(['group-chat-1']);
+  });
+
+  it('hands back before a browser or a pack when the yes has no message id', async () => {
+    const seeded = await familyWithOffer({
+      ageMonths: 36,
+      url: 'https://www.toronto.ca/explore-enjoy/recreation/registrations',
+    });
+    const { browser, calls } = browserFor(SAFE, { ...SAFE, confirmed: true });
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: null,
+        existingThread: true,
+        now: NOW,
+      },
+      { browser },
+    );
+    expect(result.outcome).toBe('consent_missing');
+    expect(result.reply).toBe(
+      `I stopped before finishing. Here's the page: https://www.toronto.ca/explore-enjoy/recreation/registrations`,
+    );
+    expect(result.reply).not.toContain('Ada');
+    expect(result.reply).not.toContain('M5V2T6');
+    expect(result.reply).not.toContain('TODO-Design');
+    expect(calls.opened).toBe(0);
+    const rows = await db.database
+      .select({ id: schema.authorizedSignupConsents.id })
+      .from(schema.authorizedSignupConsents)
+      .where(eq(schema.authorizedSignupConsents.familyId, seeded.familyId));
+    expect(rows).toEqual([]);
+  });
+
+  it('hands back when the consent field list is wider than the pack', async () => {
+    const seeded = await familyWithOffer({
+      ageMonths: 36,
+      url: 'https://www.brampton.ca/recreation',
+    });
+    await db.database.insert(schema.authorizedSignupConsents).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      messageId: 'msg-wider',
+      activityKey: 'swim-parent-tot',
+      providerHost: 'www.brampton.ca',
+      fieldsAllowed: [
+        'child_first_name',
+        'parent_first_name',
+        'parent_email',
+        'postal_code',
+        'session',
+      ],
+      createdAt: NOW,
+    });
+    const { browser, calls } = browserFor(SAFE);
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: 'msg-wider',
+        existingThread: true,
+        now: NOW,
+      },
+      { browser },
+    );
+    expect(result.outcome).toBe('consent_wider');
+    expect(result.reply).not.toContain('Ada');
+    expect(result.reply).not.toContain('M5V2T6');
+    expect(result.reply).not.toContain('@');
+    expect(calls.opened).toBe(0);
+  });
+
+  it('hands back before the browser when the grant omits a slot that would be typed', async () => {
+    const seeded = await familyWithOffer({ ageMonths: 36 });
+    await db.database.insert(schema.authorizedSignupConsents).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      messageId: 'msg-short',
+      activityKey: 'swim-parent-tot',
+      providerHost: '127.0.0.1',
+      fieldsAllowed: ['session'],
+      createdAt: NOW,
+    });
+    const { browser, calls } = browserFor(SAFE, { ...SAFE, confirmed: true });
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: 'msg-short',
+        existingThread: true,
+        now: NOW,
+      },
+      { browser },
+    );
+    expect(result.outcome).toBe('consent_short');
+    expect(calls.opened).toBe(0);
+    expect(calls.submitted).toBe(0);
+    expect(result.reply).not.toContain('Ada');
+  });
+
+  it('collapses a padded session label on the completed line', async () => {
+    const seeded = await familyWithOffer({
+      ageMonths: 36,
+      sessions: [
+        {
+          id: 'tue-1630',
+          label: '  Tue   4:30 \n',
+          startsAt: '2026-10-06T20:30:00.000Z',
+          endsAt: '2026-10-06T21:15:00.000Z',
+          full: false,
+          priceCents: null,
+        },
+      ],
+    });
+    const { browser } = browserFor(SAFE, { ...SAFE, confirmed: true });
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: 'msg-label',
+        existingThread: true,
+        now: NOW,
+      },
+      { browser },
+    );
+    expect(result.outcome).toBe('completed');
+    expect(result.reply).toBe(`You're signed up for Tue 4:30.`);
   });
 });

@@ -176,6 +176,11 @@ function fakeDb(args: {
     return { orderBy: vi.fn().mockResolvedValue([]) };
   });
 
+  const consentsWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue([]) };
+  });
+
   // Route each select to the right terminal by call order: family, children,
   // members, the village-saves join, this parent's assistant grants, the registration
   // preparation join, the watched spots, the activity bookings, the evening check-in
@@ -197,6 +202,7 @@ function fakeDb(args: {
     if (which === 11) return { from: () => ({ where: tripsWhere }) };
     if (which === 12) return { from: () => ({ where: digestsWhere }) };
     if (which === 13) return { from: () => ({ where: signupsWhere }) };
+    if (which === 14) return { from: () => ({ where: consentsWhere }) };
     throw new Error(`assembleFamilyExport fake: unexpected select #${which}`);
   });
 
@@ -267,6 +273,7 @@ describe('assembleFamilyExport', () => {
     expect(doc.registrationPreparation).toEqual([]);
     expect(doc.watchedSpots).toEqual([]);
     expect(doc.authorizedSignups).toEqual([]);
+    expect(doc.signupFieldConsents).toEqual([]);
   });
 
   it('exports an unconfirmed Google given name apart from the confirmed call name', async () => {
@@ -573,13 +580,14 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Fourteen scoped selects (family, children, members, village saves, this parent's
+    // Fifteen scoped selects (family, children, members, village saves, this parent's
     // assistant grants, the registration preparations, the watched spots, the activity
     // bookings, the evening check-in prefs and notes, the activity verdicts, this
-    // parent's trips, the memory digests, and the authorized signup offers) each
-    // recorded a where-condition; none was left unscoped. (The condition objects are
-    // opaque Drizzle SQL, so we assert on arity — every select passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(14);
+    // parent's trips, the memory digests, the authorized signup offers, and the
+    // signup field consents) each recorded a where-condition; none was left unscoped.
+    // (The condition objects are opaque Drizzle SQL, so we assert on arity — every
+    // select passed through a where.)
+    expect(spies.whereFamilyIds).toHaveLength(15);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 

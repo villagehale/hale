@@ -2,10 +2,16 @@ import { type Database, schema } from '@hale/db';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup, isExplicitSignupUtterance } from './authorize';
+import {
+  ensureSignupConsent,
+  fieldsPreparedToType,
+  signupProviderHost,
+  typedOutsideGrant,
+} from './consent';
 import { signupCompletedLine, signupHandbackLine } from './copy';
 import { type ReportDoor, chooseReportDoor } from './door';
 import { authorizedSignupEnabled } from './flag';
-import { assistedHandoffLine } from './handoff';
+import { assistedHandoffLine, collapseSignupFact } from './handoff';
 import { inspectRegistrationPage } from './inspect';
 import { signupInfoPack } from './pack';
 import { BOOKING_CONNECTORS, type BookingConnector, bookingRoute } from './providers';
@@ -53,7 +59,8 @@ const UNCLAIMED: SignupRunResult = {
  * A denylisted municipal host is an assisted handoff. A rush signal (queue,
  * captcha, resident or identity check, timed open-at) hands back with no
  * submit. The browser opens only after the gate accepts one activity, one
- * session, and the price, the result has a door, and the child is not a teen.
+ * session, and the price, the result has a door, the child is not a teen, and
+ * a consent row from this yes covers every slot about to be typed or packed.
  */
 export async function runAuthorizedSignup(
   database: Database,
@@ -150,21 +157,56 @@ export async function runAuthorizedSignup(
   }
 
   const route = bookingRoute(allowed.href, deps.connectors ?? BOOKING_CONNECTORS);
+  const session = offer.sessions.find((item) => item.id === decision.sessionId);
+  if (!session) {
+    await markFromPending(database, input, offer.id, decision.sessionId);
+    return replyFor(database, input, deps, door, {
+      offerId: offer.id,
+      outcome: 'session_not_offered',
+      reason: 'session_not_offered',
+      link: offer.registrationUrl,
+      prefilled: [],
+      host,
+    });
+  }
+  const providerHost = signupProviderHost(new URL(allowed.href).hostname);
+  const pack = route.kind === 'handoff' ? signupInfoPack(identity) : null;
+  const typedFields = pack
+    ? pack.map((slot) => slot.slot)
+    : fieldsPreparedToType(identity, session);
+  const consent = await ensureSignupConsent(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    messageId: input.inboundChannelMessageId,
+    activityKey: decision.activityKey,
+    providerHost,
+    fieldsAllowed: typedFields,
+    now: input.now,
+  });
+  if (!consent.ok) {
+    await markFromPending(database, input, offer.id, decision.sessionId);
+    return replyFor(database, input, deps, door, {
+      offerId: offer.id,
+      outcome: consent.reason,
+      reason: consent.reason,
+      link: offer.registrationUrl,
+      prefilled: [],
+      host,
+    });
+  }
   if (route.kind === 'handoff') {
-    const session = offer.sessions.find((item) => item.id === decision.sessionId);
-    const pack = signupInfoPack(identity);
     await markFromPending(database, input, offer.id, decision.sessionId);
     return replyFor(database, input, deps, door, {
       offerId: offer.id,
       outcome: 'assisted_handoff',
       reason: 'assisted_handoff',
       link: offer.registrationUrl,
-      prefilled: pack.map((slot) => slot.slot),
+      prefilled: pack?.map((slot) => slot.slot) ?? [],
       host,
       line: assistedHandoffLine({
         link: offer.registrationUrl,
-        sessionLabel: session?.label ?? decision.sessionId,
-        pack,
+        sessionLabel: session.label,
+        pack: pack ?? [],
       }),
     });
   }
@@ -292,6 +334,22 @@ export async function runAuthorizedSignup(
           offerId: offer.id,
           outcome: inspection.reason,
           reason: inspection.reason,
+          link: offer.registrationUrl,
+          prefilled: filled,
+          host,
+        });
+      }
+      if (
+        typedOutsideGrant(
+          inspection.fills.map((item) => item.slot),
+          consent.fieldsAllowed,
+        )
+      ) {
+        await finish(database, input, offer.id, 'handed_back');
+        return replyFor(database, input, deps, door, {
+          offerId: offer.id,
+          outcome: 'consent_short',
+          reason: 'consent_short',
           link: offer.registrationUrl,
           prefilled: filled,
           host,
@@ -440,7 +498,7 @@ async function replyFor(
   const line =
     facts.line ??
     (facts.outcome === 'completed'
-      ? signupCompletedLine(facts.sessionLabel ?? '')
+      ? signupCompletedLine(collapseSignupFact(facts.sessionLabel ?? ''))
       : signupHandbackLine({
           reason: facts.reason ?? facts.outcome,
           link: facts.link,
