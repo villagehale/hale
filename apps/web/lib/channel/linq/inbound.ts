@@ -1,5 +1,7 @@
 import { schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
+import { coparentDutyAsksArmed } from '~/lib/channel/coparent/duty/flag';
+import { shadowTapbackIfDuty, shadowWhenArmed } from '~/lib/channel/coparent/duty/shadow';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import {
   type TwilioInboundDeps,
@@ -359,6 +361,19 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
     others: [],
   });
   if (mapped.status === 'same_family') {
+    if (coparentDutyAsksArmed()) {
+      await shadowWhenArmed(deps.database, deps.log, {
+        familyId: mapped.familyId,
+        actorUserId: mapped.userId,
+        source: 'text',
+        text: message.text,
+        tapback: null,
+        choiceKind: null,
+        choiceValue: null,
+        subjectKey: null,
+        now: deps.now?.() ?? new Date(),
+      });
+    }
     try {
       await captureLogisticsText(deps.database, {
         familyId: mapped.familyId,
@@ -601,6 +616,19 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         if (!recorded) {
           outcome = 'duplicate';
         } else {
+          if (coparentDutyAsksArmed() && option.pollKind === 'who_takes') {
+            await shadowWhenArmed(deps.database, deps.log, {
+              familyId: option.familyId,
+              actorUserId: mapped.userId,
+              source: 'poll',
+              text: option.text,
+              tapback: null,
+              choiceKind: option.choiceKind,
+              choiceValue: option.choiceValue,
+              subjectKey: option.subjectKey,
+              now: deps.now?.() ?? new Date(),
+            });
+          }
           const vote = await recordLogisticsVote(deps.database, {
             familyId: option.familyId,
             parentUserId: mapped.userId,
@@ -697,6 +725,49 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         });
         await deps.countOutcome('intake');
         return json({ outcome: 'group_coparent_seated', notice });
+      }
+    }
+  }
+  if (
+    coparentDutyAsksArmed() &&
+    signal.senderHandle &&
+    signal.chatId &&
+    (signal.event === 'poll.vote.removed' || signal.event === 'reaction.added')
+  ) {
+    const mapped = await mapGroupHandlesToFamily(deps.database, {
+      sender: signal.senderHandle,
+      others: [],
+    });
+    if (mapped.status === 'same_family') {
+      const now = deps.now?.() ?? new Date();
+      if (signal.event === 'reaction.added' && signal.messageId) {
+        await shadowTapbackIfDuty(deps.database, deps.log, {
+          familyId: mapped.familyId,
+          actorUserId: mapped.userId,
+          messageId: signal.messageId,
+          reactionType: signal.reactionType,
+          now,
+        });
+      } else if (signal.event === 'poll.vote.removed' && signal.optionId) {
+        const option = await lookupLinqPollOption(deps.database, signal.optionId);
+        if (
+          option &&
+          option.familyId === mapped.familyId &&
+          option.pollKind === 'who_takes' &&
+          option.subjectKey
+        ) {
+          await shadowWhenArmed(deps.database, deps.log, {
+            familyId: option.familyId,
+            actorUserId: mapped.userId,
+            source: 'poll_vote_removed',
+            text: option.text,
+            tapback: null,
+            choiceKind: option.choiceKind,
+            choiceValue: option.choiceValue,
+            subjectKey: option.subjectKey,
+            now,
+          });
+        }
       }
     }
   }
