@@ -123,7 +123,13 @@ describe('cta_message_click — a chooser navigation is not a composer open', ()
       sessionStorage: { getItem: () => null, setItem: () => {} },
     });
     const { ChooserLink } = await import('./chooser-link.js');
-    const element = ChooserLink({ locale: 'en', placement: 'hero', children: 'Message Hale' });
+    const element = ChooserLink({
+      locale: 'en',
+      placement: 'hero',
+      smsNumber: '+16475551234',
+      prefill: "Hey Hale, what's going on?",
+      children: 'Text Hale',
+    });
     expect(element.props.href).toBe('/text');
     expect(element.props['data-cta']).toBe('cta_message_click');
     expect(element.props['data-cta-placement']).toBe('hero');

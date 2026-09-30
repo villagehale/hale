@@ -13,6 +13,7 @@ import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { SITE_URL } from '~/lib/app-url';
 import type { FaqItem } from '~/lib/faq';
+import { intakePrefill } from '~/lib/intake-prefill';
 import { MUNICIPALITIES, MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
 import { CONTACT_EMAIL, buildSmsHref, readSmsNumber } from '~/lib/text-entry';
 
@@ -214,7 +215,7 @@ export default async function ForCentresPage({ params }: PageProps) {
                         event="cta_text_click"
                         channel="sms"
                         placement="for_centres"
-                        href={buildSmsHref(number, null)}
+                        href={buildSmsHref(number, null, intakePrefill(locale))}
                         className="btn-secondary"
                       >
                         {common('textHale')}

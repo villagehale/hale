@@ -4,38 +4,45 @@ import { useEffect, useState } from 'react';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
-import { SOURCE_CODE_PARAM, readFirstTouchSourceCode } from '~/lib/analytics/source-code';
+import { readFirstTouchSourceCode } from '~/lib/analytics/source-code';
+import { platformFromUa } from '~/lib/chooser';
+import { primaryTextTarget } from '~/lib/primary-cta';
 
 /**
- * An internal CTA to the /text chooser — the header pill, the hero and the
- * closing band all open the channel choice rather than one composer, so the
- * button works on every device.
+ * The primary "Text Hale" door — header pill, hero, closing band.
  *
- * THE BODY-TOKEN SEAM (poster attribution): analytics attribution survives the
- * hop through the provider's first-touch `source_code`, but the chooser is
- * server-rendered and cannot read sessionStorage — the `(via <code>)` token in
- * the pre-filled SMS/WhatsApp body comes from ITS url's `?s=`. So on hydration
- * this link re-tags itself with the remembered first-touch code (the same
- * exported reader the provider uses — no second validator). Progressive
- * enhancement: without JS the chooser still opens, only the body token is
- * dropped; the click is still counted by `cta_message_click`, which is an
- * internal navigation and deliberately NOT cta_text_click (no composer opened —
- * see lib/analytics/events.ts).
+ * First paint (and no JS, and every desktop) is the /text page: the QR and the
+ * number already live there, and an `sms:` link is a dead click on Windows and
+ * Linux. After hydration a phone retargets the same anchor at the messaging
+ * app, prefilled, in the form that OS reads (`&body=` on iOS, `?body=` on
+ * Android). The click event follows the href: `cta_message_click` while it is
+ * a navigation, `cta_text_click` once it opens a composer.
+ *
+ * THE BODY-TOKEN SEAM (poster attribution): the `(via <code>)` token comes from
+ * the remembered first-touch code (the same reader the provider uses). Without
+ * JS the /text page still opens; only the body token is dropped.
  */
 export function ChooserLink({
   locale,
   placement,
   className,
   children,
+  smsNumber,
+  prefill,
 }: {
   locale: Locale;
   placement: string;
   className?: string;
   children: React.ReactNode;
+  /** Already-validated E.164, or '' when the number is not live. */
+  smsNumber: string;
+  /** Locked composer body for this locale. The server passes it; this client
+   * component does not load the message bundles. */
+  prefill: string;
 }) {
   const capture = useAnalytics();
   const base = localeHref(locale, '/text');
-  const [href, setHref] = useState(base);
+  const [target, setTarget] = useState({ href: base, composer: false });
 
   useEffect(() => {
     let storage: Pick<Storage, 'getItem' | 'setItem'> | null = null;
@@ -47,16 +54,33 @@ export function ChooserLink({
       storage = null;
     }
     const code = readFirstTouchSourceCode(window.location.search, storage);
-    if (code) setHref(`${base}?${SOURCE_CODE_PARAM}=${code}`);
-  }, [base]);
+    const ua = typeof navigator === 'undefined' ? null : (navigator.userAgent ?? null);
+    setTarget(
+      primaryTextTarget({
+        platform: platformFromUa(ua),
+        smsNumber,
+        prefill,
+        source: code,
+        textPath: base,
+      }),
+    );
+  }, [base, smsNumber, prefill]);
 
   return (
     <a
-      href={href}
+      href={target.href}
       className={className}
-      data-cta="cta_message_click"
+      data-cta={target.composer ? 'cta_text_click' : 'cta_message_click'}
       data-cta-placement={placement}
-      onClick={() => capture('cta_message_click', { cta_placement: placement })}
+      {...(target.composer ? { 'data-cta-channel': 'sms' as const } : {})}
+      onClick={() =>
+        capture(
+          target.composer ? 'cta_text_click' : 'cta_message_click',
+          target.composer
+            ? { cta_placement: placement, channel: 'sms' }
+            : { cta_placement: placement },
+        )
+      }
     >
       {children}
     </a>

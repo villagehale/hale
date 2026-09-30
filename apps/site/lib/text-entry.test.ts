@@ -3,11 +3,13 @@ import {
   INTAKE_PREFILL,
   buildSmsBody,
   buildSmsHref,
+  buildSmsHrefForBody,
   buildWaHref,
   displaySmsNumber,
   parseSourceCode,
   readSmsNumber,
   readWhatsAppNumber,
+  smsUriFormForPlatform,
 } from './text-entry.js';
 
 /**
@@ -67,9 +69,12 @@ describe('parseSourceCode (venue attribution from ?s=)', () => {
 
 const LOCKED_PREFILL = "Hey Hale, what's going on?";
 
-/** The query body a composer href will hand the phone, percent-decoding included. */
+/** The query body a composer href will hand the phone, percent-decoding included.
+ * iOS has no `?` (`sms:<number>&body=`); Android and the cross form do. */
 function hrefQueryBody(href: string, key: 'body' | 'text'): string {
-  const query = href.slice(href.indexOf('?') + 1).replace(/^&/, '');
+  const query = href.includes('?')
+    ? href.slice(href.indexOf('?') + 1).replace(/^&/, '')
+    : href.slice(href.indexOf('&') + 1);
   const value = new URLSearchParams(query).get(key);
   if (value === null) throw new Error(`missing ${key} in ${href}`);
   return value;
@@ -110,6 +115,25 @@ describe('buildSmsHref (the deep link)', () => {
     expect(hrefQueryBody(buildSmsHref('+16475551234', 'earlyon-richmondhill'), 'body')).toBe(
       `${LOCKED_PREFILL} (via earlyon-richmondhill)`,
     );
+  });
+
+  it('uses the form the opening phone reads, and every form decodes to the same body', () => {
+    const ios = buildSmsHrefForBody('+16475551234', LOCKED_PREFILL, 'ios');
+    const android = buildSmsHrefForBody('+16475551234', LOCKED_PREFILL, 'android');
+    const cross = buildSmsHrefForBody('+16475551234', LOCKED_PREFILL, 'cross');
+    expect(ios).toBe('sms:+16475551234&body=Hey%20Hale%2C%20what%27s%20going%20on%3F');
+    expect(android).toBe('sms:+16475551234?body=Hey%20Hale%2C%20what%27s%20going%20on%3F');
+    expect(cross).toBe('sms:+16475551234?&body=Hey%20Hale%2C%20what%27s%20going%20on%3F');
+    expect(ios).not.toContain('?');
+    expect(android).not.toContain('?&');
+    for (const href of [ios, android, cross]) {
+      expect(hrefQueryBody(href, 'body')).toBe(LOCKED_PREFILL);
+    }
+    expect(smsUriFormForPlatform('apple')).toBe('ios');
+    expect(smsUriFormForPlatform('desktop-mac')).toBe('ios');
+    expect(smsUriFormForPlatform('android')).toBe('android');
+    expect(smsUriFormForPlatform('desktop-other')).toBe('cross');
+    expect(smsUriFormForPlatform('unknown')).toBe('cross');
   });
 });
 

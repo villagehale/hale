@@ -69,6 +69,22 @@ describe('the /text prefill and the bare-hello classifier agree', () => {
     expect(isBareFirstHello(prefill as string)).toBe(true);
     expect(isBareFirstHello(`${prefill} (via earlyon-richmondhill)`)).toBe(true);
     expect(looksLikeIntakeDetails(prefill as string)).toBe(false);
+    // FR twin: the existing Text.sentGloss, read from the message bundle so a
+    // retype here cannot drift from the line the French composer actually sends.
+    const frBundle = JSON.parse(
+      readFileSync(
+        fileURLToPath(new URL('../../../../site/messages/fr.json', import.meta.url)),
+        'utf8',
+      ),
+    ) as { Text: { sentGloss: string } };
+    const frPrefill = frBundle.Text.sentGloss;
+    expect(frPrefill).toBe('Salut Hale, qu\u2019est-ce qui se passe ?');
+    expect(isBareFirstHello(frPrefill)).toBe(true);
+    expect(isBareFirstHello(`${frPrefill} (via earlyon-richmondhill)`)).toBe(true);
+    expect(isBareFirstHello("Salut Hale, qu'est-ce qui se passe?")).toBe(true);
+    expect(isBareFirstHello('Salut Hale, qu\u2019est-ce qui se passe avec la piscine ?')).toBe(
+      false,
+    );
     const retired = 'What is worth doing with the kids near us?';
     expect(src).not.toContain(retired);
     expect(isBareFirstHello(retired)).toBe(false);

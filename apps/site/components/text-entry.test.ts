@@ -77,13 +77,16 @@ function bubbleText(html: string, dir: 'out' | 'in'): string | null {
   );
 }
 
-/** The composer body after HTML-attribute decoding and percent-decoding. */
+/** The composer body after HTML-attribute decoding and percent-decoding.
+ * iOS hrefs have no `?` (`sms:<number>&body=`); Android and wa.me do. */
 function composerBody(html: string, kind: 'sms' | 'wa'): string {
   const pattern = kind === 'sms' ? /href="(sms:[^"]+)"/ : /href="(https:\/\/wa\.me\/[^"]+)"/;
   const raw = pattern.exec(html)?.[1];
   if (raw === undefined) throw new Error(`missing ${kind} href`);
   const href = decodeHtml(raw);
-  const query = href.slice(href.indexOf('?') + 1).replace(/^&/, '');
+  const query = href.includes('?')
+    ? href.slice(href.indexOf('?') + 1).replace(/^&/, '')
+    : href.slice(href.indexOf('&') + 1);
   const value = new URLSearchParams(query).get(kind === 'sms' ? 'body' : 'text');
   if (value === null) throw new Error(`missing ${kind} body in ${href}`);
   return value;
@@ -293,7 +296,9 @@ describe('TextEntry — the exchange is the hero', () => {
   it('puts ONE primary CTA directly under the exchange, and it is the sms: composer', () => {
     const primaries = anchors(liveHtml).filter((a) => a.includes('btn-primary'));
     expect(primaries).toHaveLength(1);
-    expect(primaries[0]).toContain('href="sms:+16475551234?&amp;body=');
+    // Apple renders the iOS form: `sms:<number>&body=`, no `?`. React escapes `&`.
+    expect(primaries[0]).toContain('href="sms:+16475551234&amp;body=');
+    expect(primaries[0]).not.toContain('?');
     expect(primaries[0]).toContain('data-cta="cta_text_click"');
     expect(liveHtml).toContain('>Text Hale</a>');
     // Order: exchange, then the folded line, then the button.
@@ -324,19 +329,20 @@ describe('TextEntry — the exchange is the hero', () => {
     );
   });
 
-  it('glosses the English prefill wherever the page is not English — and nowhere else', () => {
-    // The out bubble is the literal SMS body, so it stays English in every
-    // locale (a translated bubble would misrepresent what the composer sends).
-    // The gloss beside it is how a FR/ZH reader learns what they are sending.
-    for (const locale of ['fr', 'zh'] as const) {
-      const html = render({ source: null, locale });
-      expect(bubbleText(html, 'out')).toBe(INTAKE_PREFILL);
-      expect(html).toContain('text-thread-gloss');
-    }
-    expect(render({ source: null, locale: 'fr' })).toContain(
-      'Salut Hale, qu’est-ce qui se passe ?',
-    );
-    expect(render({ source: null, locale: 'zh' })).toContain('嘿 Hale，最近怎么样？');
+  it('sends the locked hello in the bubble, and glosses only where that hello is still English', () => {
+    // FR: the composer body IS the existing sentGloss, so the bubble shows it
+    // and a second gloss line would repeat it. ZH has no locked line to send,
+    // so the bubble stays the English hello and the gloss says what it means.
+    const fr = render({ source: null, locale: 'fr' });
+    const frHello = 'Salut Hale, qu\u2019est-ce qui se passe ?';
+    expect(messages('fr').Text.sentGloss).toBe(frHello);
+    expect(bubbleText(fr, 'out')).toBe(frHello);
+    expect(fr).not.toContain('text-thread-gloss');
+    expect(composerBody(fr, 'sms')).toBe(frHello);
+    const zh = render({ source: null, locale: 'zh' });
+    expect(bubbleText(zh, 'out')).toBe(INTAKE_PREFILL);
+    expect(zh).toContain('text-thread-gloss');
+    expect(zh).toContain('嘿 Hale，最近怎么样？');
     // English needs no gloss of English — the key exists, and it is the prefill
     // itself, which is exactly the condition that suppresses the line.
     expect(liveHtml).not.toContain('text-thread-gloss');
@@ -354,9 +360,9 @@ describe('TextEntry — the channel matrix, rendered', () => {
   const WA = { whatsappNumber: LIVE_NUMBER };
 
   it('apple WhatsApp dark: one Text Hale sms: CTA carrying the pre-filled body and venue token', () => {
-    // React escapes the `&` of the cross-platform `?&body=` form into `&amp;`.
+    // React escapes the `&` of the iOS `sms:<number>&body=` form into `&amp;`.
     expect(liveHtml).toContain(
-      'href="sms:+16475551234?&amp;body=Hey%20Hale%2C%20what%27s%20going%20on%3F%20(via%20earlyon-richmondhill)"',
+      'href="sms:+16475551234&amp;body=Hey%20Hale%2C%20what%27s%20going%20on%3F%20(via%20earlyon-richmondhill)"',
     );
     expect(liveHtml).toContain('>Text Hale</a>');
     const primary = anchors(liveHtml).find((a) => a.includes('href="sms:')) ?? '';
@@ -394,6 +400,11 @@ describe('TextEntry — the channel matrix, rendered', () => {
     expect(html).not.toContain('Continue in Messages');
     expect(html).not.toContain('wa.me');
     expect(html).not.toContain('WhatsApp');
+    // Android reads `sms:<number>?body=`. The iOS `&body=` form and the QR's
+    // `?&body=` form are different links.
+    expect(html).toContain('href="sms:+16475551234?body=');
+    expect(html).not.toContain('?&amp;body=');
+    expect(html).not.toContain('&amp;body=');
   });
 
   it('desktop-other: WhatsApp live withholds sms: (dead on Windows/Linux) and the QR card leads', () => {
@@ -433,7 +444,7 @@ describe('TextEntry — the channel matrix, rendered', () => {
 
   it('pre-fills the locked hello when no venue sent them', () => {
     expect(liveNoSourceHtml).toContain(
-      'href="sms:+16475551234?&amp;body=Hey%20Hale%2C%20what%27s%20going%20on%3F"',
+      'href="sms:+16475551234&amp;body=Hey%20Hale%2C%20what%27s%20going%20on%3F"',
     );
   });
 
@@ -583,9 +594,10 @@ describe('TextEntry (the other two locales)', () => {
     for (const html of [fr, zh]) {
       expect(html).not.toContain('Text.sentLabel');
       expect(html).not.toContain('Text.afterSend');
-      // The prefill is a literal the parent will send — never translated.
-      expect(bubbleText(html, 'out')).toBe(INTAKE_PREFILL);
     }
+    // FR sends the locked twin. ZH keeps the English body (no locked Chinese line).
+    expect(bubbleText(fr, 'out')).toBe(messages('fr').Text.sentGloss);
+    expect(bubbleText(zh, 'out')).toBe(INTAKE_PREFILL);
   });
 
   it('speaks the chooser in French and Chinese — no key paths, no English fallback', () => {
@@ -606,7 +618,7 @@ describe('TextEntry (the other two locales)', () => {
     expect(bubbleText(fr, 'in')).toBe(messages('fr').Text.greeting);
     expect(bubbleText(fr, 'in')).toContain('Bonjour, je suis Hale.');
     expect(bubbleText(fr, 'in')).toContain("l'age de vos enfants");
-    expect(bubbleText(fr, 'out')).toBe(INTAKE_PREFILL);
+    expect(bubbleText(fr, 'out')).toBe(messages('fr').Text.sentGloss);
     // ZH: copy.ts has no Chinese greeting, and the page never invents Hale
     // speech — the bubble stays the locked English Hale #1, the frame label says so in Chinese.
     const zh = render({ source: null, locale: 'zh' });
