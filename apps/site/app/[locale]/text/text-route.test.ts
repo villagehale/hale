@@ -84,10 +84,15 @@ describe('/text (unlisted entry surface)', () => {
       expect(header).toContain('class="v4-nav v4-glass"');
       expect(header).toContain('hale-logo');
       expect(header).toContain('viewBox="0 0 905.840370 590.701960"');
-      // The column under the bar is still the conversion door. The sent
-      // bubble is the warm prefill in every locale; the Hale reply is pinned
-      // below to the locked preview bytes.
-      expect(html).toContain('Hey Hale, what&#x27;s going on?');
+      // The column under the bar is still the conversion door. EN and ZH send
+      // the English hello; FR sends Sloane's ASCII line. The Hale reply is
+      // pinned below to the locked preview bytes — that bubble does not move.
+      if (locale === 'fr') {
+        expect(html).toContain('Salut Hale, qu&#x27;est-ce qui se passe?');
+        expect(html).not.toContain('qu\u2019est-ce qui se passe ?');
+      } else {
+        expect(html).toContain('Hey Hale, what&#x27;s going on?');
+      }
     }
     const en = renderToStaticMarkup(
       await TextPage({

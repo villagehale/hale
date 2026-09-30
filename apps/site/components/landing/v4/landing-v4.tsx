@@ -10,6 +10,7 @@ import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
+import { intakePrefill } from '~/lib/intake-prefill';
 import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
 import { siteJsonLd } from '~/lib/site/structured-data';
 import { CONTACT_EMAIL, buildSmsHref } from '~/lib/text-entry';
@@ -66,7 +67,11 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
   const t = getTranslator(locale, 'Landing');
   const common = getTranslator(locale, 'Common');
   const textNs = getTranslator(locale, 'Text');
-  const smsHref = smsNumber ? buildSmsHref(smsNumber, null) : null;
+  const prefill = intakePrefill(locale);
+  // The closing QR is scanned by a phone whose OS we do not know, so it keeps
+  // the cross-platform `?&body=` form. The buttons below retarget themselves
+  // to the OS-specific form after hydration.
+  const smsHref = smsNumber ? buildSmsHref(smsNumber, null, prefill) : null;
 
   const heroBubbles = t.raw('heroThread') as ThreadRow[];
   const bubbles = t.raw('threadBubbles') as ThreadRow[];
@@ -155,16 +160,22 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             ))}
           </div>
 
-          {/* Stanley beat: ONE big CTA — the chooser works on every device, so
-              the hero no longer needs a second (copy-chip) door; the desktop
-              affordances live on /text now. The founding line rides with it
-              rather than waiting for the closing band: a visitor who is already
-              convinced should not have to scroll a whole page to act on it. */}
+          {/* Stanley beat: ONE big CTA. A phone opens the composer; a laptop
+              keeps /text, where the QR and the number live. The founding line
+              rides with it rather than waiting for the closing band: a visitor
+              who is already convinced should not have to scroll a whole page
+              to act on it. */}
           <div className="v4-hero-offer">
             <p className="v4-hero-founding">{t('heroFounding')}</p>
             <div className="flex flex-wrap items-center justify-center gap-3">
               {smsHref ? (
-                <ChooserLink locale={locale} placement="hero" className="v4-btn-solid v4-glass">
+                <ChooserLink
+                  locale={locale}
+                  placement="hero"
+                  className="v4-btn-solid v4-glass"
+                  smsNumber={smsNumber}
+                  prefill={prefill}
+                >
                   {common('textHale')} <span aria-hidden="true">→</span>
                 </ChooserLink>
               ) : (
@@ -395,7 +406,13 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
                 chooser; the QR below keeps the zero-hop desktop path. */}
             <div className="flex flex-wrap items-center justify-center gap-3">
               {smsHref ? (
-                <ChooserLink locale={locale} placement="closing" className="v4-btn-solid v4-glass">
+                <ChooserLink
+                  locale={locale}
+                  placement="closing"
+                  className="v4-btn-solid v4-glass"
+                  smsNumber={smsNumber}
+                  prefill={prefill}
+                >
                   {common('textHale')} <span aria-hidden="true">→</span>
                 </ChooserLink>
               ) : (

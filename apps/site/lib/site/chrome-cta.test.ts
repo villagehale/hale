@@ -20,6 +20,19 @@ describe('site chrome CTA', () => {
     expect(cta.href).not.toContain('/onboarding');
   });
 
+  it('prefills the French twin on a French page, still the cross-platform form', () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
+    const cta = chromeCta('fr');
+    expect(cta.label).toBe('Texter Hale');
+    expect(cta.href).toContain('sms:+16475551234?&body=');
+    expect(cta.href).toContain('Salut%20Hale');
+    expect(cta.href).toContain('%27');
+    expect(cta.href).not.toContain('%E2%80%99');
+    expect(decodeURIComponent(cta.href.slice(cta.href.indexOf('body=') + 5))).toBe(
+      "Salut Hale, qu'est-ce qui se passe?",
+    );
+  });
+
   it('degrades to email rather than a dead sms: link when no number is provisioned', () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '');
     const cta = chromeCta();

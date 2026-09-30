@@ -1,5 +1,6 @@
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
+import { intakePrefill } from '~/lib/intake-prefill';
 import { CONTACT_EMAIL, buildSmsHref, readSmsNumber } from '~/lib/text-entry';
 
 /**
@@ -23,6 +24,6 @@ export function chromeCta(locale: Locale = routing.defaultLocale): ChromeCta {
   const t = getTranslator(locale, 'Common');
   const number = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
   return number
-    ? { label: t('textHale'), href: buildSmsHref(number, null) }
+    ? { label: t('textHale'), href: buildSmsHref(number, null, intakePrefill(locale)) }
     : { label: t('emailHale'), href: `mailto:${CONTACT_EMAIL}` };
 }

@@ -48,12 +48,15 @@ export type AnalyticsEvent =
   // inflate it. Composer events fired from the chooser carry a coarse `channel`
   // property ('sms' today, 'amb' after the Apple Messages for Business swap;
   // cta_whatsapp_click stamps 'whatsapp').
-  // DASHBOARD NOTES (2026-08 chooser ship):
-  //   1. placements `hero`/`closing`/`header` moved from cta_text_click to
-  //      cta_message_click on ship date — the composer now opens on /text,
-  //      placement `text_entry`.
+  // DASHBOARD NOTES:
+  //   1. 2026-08 chooser ship: placements `hero`/`closing`/`header` moved from
+  //      cta_text_click to cta_message_click — the composer opened on /text.
   //   2. copy_number_click placements `hero`/`closing` went quiet the same day
   //      (the chip moved to the chooser, placement `text_entry`).
+  //   3. VIL-385: on a phone those three doors open the composer again
+  //      (cta_text_click, channel sms) after hydration. Desktop and the
+  //      no-JS first paint stay cta_message_click to /text. A query that
+  //      wants "tapped Text Hale" must read both events for those placements.
   | 'cta_message_click'
   // The desktop path to the same act — the number onto the clipboard, because
   // `sms:` is a silent no-op on a laptop. Counted separately: it is an intention

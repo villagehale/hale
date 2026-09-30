@@ -426,14 +426,15 @@ export function firstInboundWords(body: string): string {
   return trimmed.replace(SOURCE_TAG_SUFFIX, '').trim();
 }
 
-// A wave emoji (U+1F44B), a getting-started tail, and the locked /text prefill
-// ("Hey Hale, what's going on?") are still a hello, in either apostrophe iOS may
-// send (U+2019 or ASCII). Written as escapes so this file stays inside the GSM-7
-// gate that guards the outbound copy around it. The venue "(via …)" tag is
-// stripped by firstInboundWords before this runs. Anything with other words is a
-// message and goes to the answerer.
+// A wave emoji (U+1F44B), a getting-started tail, and the locked /text prefills
+// ("Hey Hale, what's going on?" and the French twin "Salut Hale, qu'est-ce qui
+// se passe?") are still a hello, in either apostrophe iOS may send (U+2019 or
+// ASCII). Written as escapes so this file stays inside the GSM-7 gate that
+// guards the outbound copy around it. The venue "(via …)" tag is stripped by
+// firstInboundWords before this runs. Anything with other words is a message
+// and goes to the answerer.
 const BARE_HELLO =
-  /^(hi|hey|hello|yo|howdy|bonjour|salut|allo)(?:[,!]?\s+hale)?(?:\s*\u{1F44B})?(?:[,!]?\s*(?:ready to get started|let[\u2019']?s get started|i[\u2019']?d like to get started|on commence|what[\u2019']s going on))?[.!?,\s]*$/iu;
+  /^(hi|hey|hello|yo|howdy|bonjour|salut|allo)(?:[,!]?\s+hale)?(?:\s*\u{1F44B})?(?:[,!]?\s*(?:ready to get started|let[\u2019']?s get started|i[\u2019']?d like to get started|on commence|what[\u2019']s going on|qu[\u2019']est-ce qui se passe))?[.!?,\s]*$/iu;
 
 /**
  * True when the first inbound is just a hello — with or without Hale's own name,

@@ -5,6 +5,7 @@ import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { APP_URL } from '~/lib/app-url';
+import { intakePrefill } from '~/lib/intake-prefill';
 import { CONTACT_EMAIL, readSmsNumber } from '~/lib/text-entry';
 
 /**
@@ -19,11 +20,10 @@ import { CONTACT_EMAIL, readSmsNumber } from '~/lib/text-entry';
  * every page ends in. The bar carries the three pages that introduce the product,
  * a quiet sign-in link for the parent who already has an account (the app is the
  * receipts surface, so the link whispers rather than sells), and ONE primary
- * pill: Message Hale, which opens the /text chooser — the universal target that
- * works on every device, which is why the pill no longer forks per surface
- * (`sms:` deep link vs scroll target vs dead laptop click; the chooser ended
- * that three-way fork). No number provisioned → email, which works everywhere.
- * Every internal link carries the locale prefix.
+ * pill: Text Hale. On a phone it opens the messaging app with the locked
+ * prefill; on a desktop the first paint (and the no-JS href) is /text, where
+ * the QR and the number already live. No number provisioned → email, which
+ * works everywhere. Every internal link carries the locale prefix.
  */
 
 export function SiteHeader({ locale = routing.defaultLocale }: { locale?: Locale }) {
@@ -38,7 +38,13 @@ export function SiteHeader({ locale = routing.defaultLocale }: { locale?: Locale
   ];
 
   const cta = smsNumber ? (
-    <ChooserLink locale={locale} placement="header" className="v4-btn-solid">
+    <ChooserLink
+      locale={locale}
+      placement="header"
+      className="v4-btn-solid"
+      smsNumber={smsNumber}
+      prefill={intakePrefill(locale)}
+    >
       {common('textHale')}
     </ChooserLink>
   ) : (

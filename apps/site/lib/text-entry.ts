@@ -39,6 +39,13 @@ export const CONTACT_EMAIL = 'aloha@villagehale.com';
  */
 export const INTAKE_PREFILL = "Hey Hale, what's going on?";
 
+/**
+ * Sloane 2026-09-30. The French composer body, byte-locked: ASCII apostrophe,
+ * no space before the question mark. Intake treats this line as a bare hello
+ * and answers with `greeting()`. Not the typographic gloss.
+ */
+export const INTAKE_PREFILL_FR = "Salut Hale, qu'est-ce qui se passe?";
+
 /** A `?s=` value, or null when absent, repeated, or not a venue code. */
 export function parseSourceCode(raw: string | string[] | undefined): string | null {
   if (typeof raw !== 'string') return null;
@@ -46,9 +53,36 @@ export function parseSourceCode(raw: string | string[] | undefined): string | nu
   return SOURCE_CODE_PATTERN.test(raw) ? raw : null;
 }
 
-/** The pre-filled composer body — the locked intake sample, plus the venue token when we have one. */
-export function buildSmsBody(source: string | null): string {
-  return source ? `${INTAKE_PREFILL} (via ${source})` : INTAKE_PREFILL;
+/**
+ * The pre-filled composer body — the locked intake sample, plus the venue token
+ * when we have one. `prefill` is the locale's locked hello (EN
+ * {@link INTAKE_PREFILL}; FR is {@link INTAKE_PREFILL_FR}). Callers that
+ * omit it send the English line.
+ */
+export function buildSmsBody(source: string | null, prefill: string = INTAKE_PREFILL): string {
+  return source ? `${prefill} (via ${source})` : prefill;
+}
+
+/**
+ * Which `sms:` spelling a link uses.
+ *
+ * - `ios` — `sms:<number>&body=` (no `?`). Apple Messages reads the body as a
+ *   second parameter. This is the form for a known iPhone, iPad, or Mac.
+ * - `android` — `sms:<number>?body=`. Android's composer reads a query string.
+ * - `cross` — `sms:<number>?&body=`. One URI for a phone whose OS we do not
+ *   know (a QR a laptop shows, a server-rendered link). iOS still sees
+ *   `&body=`; Android treats the empty parameter as optional.
+ */
+export type SmsUriForm = 'ios' | 'android' | 'cross';
+
+/** The form for a platform we already classified. Unknown and non-Apple
+ * desktops stay on `cross` — those links are QRs, not buttons. */
+export function smsUriFormForPlatform(
+  platform: 'apple' | 'android' | 'desktop-mac' | 'desktop-other' | 'unknown',
+): SmsUriForm {
+  if (platform === 'android') return 'android';
+  if (platform === 'apple' || platform === 'desktop-mac') return 'ios';
+  return 'cross';
 }
 
 /**
@@ -64,21 +98,35 @@ export function encodeComposerBody(body: string): string {
 }
 
 /**
- * The composer deep link for a message we hand the parent verbatim. `?&body=`
- * rather than `?body=` is the cross-platform form: iOS wants the body as a
- * second parameter, Android reads either.
+ * The composer deep link for a message we hand the parent verbatim.
+ *
+ * The default form is `cross` (`?&body=`): one URI when the opening phone's OS
+ * is unknown. Pass `ios` or `android` when the tap itself is on that OS — those
+ * are the forms each composer actually reads. The body is still the parent's
+ * to edit or delete before they send it — Hale never texts first.
  *
  * Split from {@link buildSmsHref} so a caller can hand the parent a specific
- * body. The body is still the parent's to edit or delete before they send it —
- * Hale never texts first.
+ * body.
  */
-export function buildSmsHrefForBody(number: string, body: string): string {
-  return `sms:${number}?&body=${encodeComposerBody(body)}`;
+export function buildSmsHrefForBody(
+  number: string,
+  body: string,
+  form: SmsUriForm = 'cross',
+): string {
+  const encoded = encodeComposerBody(body);
+  if (form === 'ios') return `sms:${number}&body=${encoded}`;
+  if (form === 'android') return `sms:${number}?body=${encoded}`;
+  return `sms:${number}?&body=${encoded}`;
 }
 
 /** The composer deep link for the QR/entry greeting, venue token included. */
-export function buildSmsHref(number: string, source: string | null): string {
-  return buildSmsHrefForBody(number, buildSmsBody(source));
+export function buildSmsHref(
+  number: string,
+  source: string | null,
+  prefill: string = INTAKE_PREFILL,
+  form: SmsUriForm = 'cross',
+): string {
+  return buildSmsHrefForBody(number, buildSmsBody(source, prefill), form);
 }
 
 /**
@@ -115,6 +163,10 @@ export function readWhatsAppNumber(raw: string | undefined): string {
  * venue token works verbatim in a WhatsApp prefill, so QR attribution carries
  * over). wa.me addresses the number as bare digits, no `+`.
  */
-export function buildWaHref(number: string, source: string | null): string {
-  return `https://wa.me/${number.replace(/^\+/, '')}?text=${encodeComposerBody(buildSmsBody(source))}`;
+export function buildWaHref(
+  number: string,
+  source: string | null,
+  prefill: string = INTAKE_PREFILL,
+): string {
+  return `https://wa.me/${number.replace(/^\+/, '')}?text=${encodeComposerBody(buildSmsBody(source, prefill))}`;
 }
