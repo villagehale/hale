@@ -111,6 +111,17 @@ export interface FamilyExportDocument {
     cancelledAt: string | null;
   }[];
   /**
+   * VIL-375 — a signup the parent authorized Hale to attempt. Host and status
+   * only. The registration path, the child, and anything typed into the form
+   * stay off this copy; the trail below has the step codes.
+   */
+  authorizedSignups: {
+    host: string | null;
+    status: string;
+    sessionId: string | null;
+    updatedAt: string;
+  }[];
+  /**
    * VIL-353 · the evening check-in: how often this household is asked how the day went,
    * and what THIS parent wrote back.
    *
@@ -517,6 +528,24 @@ export async function assembleFamilyExport(
     .from(schema.familyMemoryDigests)
     .where(eq(schema.familyMemoryDigests.familyId, familyId))
     .orderBy(schema.familyMemoryDigests.periodStart);
+
+  const signupRows = await database
+    .select({
+      registrationUrl: schema.authorizedSignupOffers.registrationUrl,
+      status: schema.authorizedSignupOffers.status,
+      authorizedSessionId: schema.authorizedSignupOffers.authorizedSessionId,
+      updatedAt: schema.authorizedSignupOffers.updatedAt,
+    })
+    .from(schema.authorizedSignupOffers)
+    .where(eq(schema.authorizedSignupOffers.familyId, familyId))
+    .orderBy(schema.authorizedSignupOffers.createdAt);
+  const authorizedSignups = signupRows.map((row) => ({
+    host: hostOf(row.registrationUrl),
+    status: row.status,
+    sessionId: row.authorizedSessionId,
+    updatedAt: row.updatedAt.toISOString(),
+  }));
+
   const memoryDigests = digestRows.flatMap((row) => {
     const grain = digestGrain(row.grain);
     if (grain === null) return [];
@@ -564,6 +593,7 @@ export async function assembleFamilyExport(
     registrationPreparation,
     watchedSpots,
     activityBookings,
+    authorizedSignups,
     eveningCheckIn,
     activityReviews,
     trips,

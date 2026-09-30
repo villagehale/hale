@@ -62,7 +62,9 @@ jobs:
   verify:
     name: Workspace lint, typecheck, test, build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Chromium install plus the authorized-signup sandbox (local mock forms)
+    # sits on top of the workspace suite and the production build.
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -87,6 +89,19 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      # The signup sandbox drives local mock forms through Playwright. The
+      # package is already a web devDependency; the browser binary is not.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-ms-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-ms-playwright-
+
+      - name: Install Playwright chromium
+        run: pnpm --filter @hale/web exec playwright install --with-deps chromium
 
       - name: Test
         run: pnpm test

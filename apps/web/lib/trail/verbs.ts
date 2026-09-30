@@ -348,6 +348,7 @@ export const AUDIT_VERBS = [
   'registration_course_bound',
   'registration_readiness_stated',
   'registration_bind_read_throttled',
+  'authorized_signup_step',
   // ── watched spots (VIL-337) ─────────────────────────────────────────────
   'watched_spot_armed',
   'watched_spot_arm_failed',
@@ -1158,6 +1159,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   // sentence the parent was texted back.
   registration_bind_read_throttled: {
     sentence: 'Hale held off on reading a course page you sent',
+    family: 'note',
+  },
+  // One verb for every step of an authorized signup, including a handback, so
+  // the sentence does not claim the signup finished. Sloane locks the wording
+  // before the flag is lit.
+  authorized_signup_step: {
+    sentence: 'Hale recorded a step of a signup you authorized',
     family: 'note',
   },
   // ── watched spots (VIL-337) ─────────────────────────────────────────────
