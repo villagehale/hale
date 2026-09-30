@@ -27,7 +27,7 @@ it, or build another renderer.** A new poster is a data entry, not a layout.
    FOR <BAND> FAMILIES), `localLine` (name the actual nearby parks/rec, keep the
    sentence shape), `qrValue`:
    - Indoor board → the sms: deep link:
-     `sms:+12892172279?&body=Hi%20(via%20<code>)`
+     `sms:+16462352164?&body=Hi%20(via%20<code>)`
    - Street column → the landing: `https://www.villagehale.com/text?s=<code>`
 3. **Cut it** — `node tools/posters/render.mjs <code>` writes
    `print/<code>.{html,pdf,png}`. Commit the pdf + png (not the html — it
