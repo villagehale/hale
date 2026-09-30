@@ -10,6 +10,8 @@ import {
 } from '~/lib/channel/followup/ask-open';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { familyMemoryKindsEnabled } from '~/lib/memory/kinds';
+import { promoteMatchingInferredFacts } from '~/lib/memory/store';
 import { familyAreaKey } from './aggregate';
 import { type ReviewSubject, type SubjectUnresolved, resolveReviewSubject } from './subject';
 import type { VerdictReader } from './verdict';
@@ -438,6 +440,39 @@ async function captureReply(
       result.noVerdict += 1;
     }
   });
+
+  if (outcome.status === 'read' && outcome.verdict === 'worth_it' && familyMemoryKindsEnabled()) {
+    const title = await reviewedEventTitle(database, ask.familyId, ask.familyEventId);
+    if (!title) return;
+    try {
+      await promoteMatchingInferredFacts(database, {
+        familyId: ask.familyId,
+        signal: 'positive_feedback',
+        needle: title,
+        now: deps.now,
+      });
+    } catch (err) {
+      console.error(
+        { code: err instanceof Error ? err.name : 'unknown' },
+        'memory kinds: positive feedback did not promote',
+      );
+    }
+  }
+}
+
+async function reviewedEventTitle(
+  database: Database,
+  familyId: string,
+  familyEventId: string | null,
+): Promise<string | null> {
+  if (!familyEventId) return null;
+  const [event] = await database
+    .select({ title: schema.familyEvents.title })
+    .from(schema.familyEvents)
+    .where(and(eq(schema.familyEvents.id, familyEventId), eq(schema.familyEvents.familyId, familyId)))
+    .limit(1);
+  const title = event?.title?.trim() ?? '';
+  return title.length >= 4 ? title : null;
 }
 
 /** Has this inbound already been read? The audit row is the cheap filter, not the claim:

@@ -50,6 +50,16 @@ export interface FactWrite {
    * its own history.
    */
   validFrom: Date;
+  /**
+   * VIL-391. Omit every field below and the row is the backfill shape
+   * (`lasting` / `legacy`), which is what a write does while the kinds flag
+   * is off. Passing them is the flag-on path.
+   */
+  memoryKind?: 'lasting' | 'temporary' | 'one_off';
+  memorySource?: 'parent_message' | 'calendar' | 'receipt' | 'inferred' | 'legacy';
+  sourcedAt?: Date;
+  expiresAt?: Date | null;
+  signalCount?: number;
 }
 
 export interface FactWriteResult {
@@ -103,6 +113,11 @@ export async function writeFact(writer: FactWriter, write: FactWrite): Promise<F
       inferredBy: write.inferredBy,
       sourceEventId: write.sourceEventId,
       validFrom: write.validFrom,
+      ...(write.memoryKind ? { memoryKind: write.memoryKind } : {}),
+      ...(write.memorySource ? { memorySource: write.memorySource } : {}),
+      ...(write.sourcedAt ? { sourcedAt: write.sourcedAt } : {}),
+      ...(write.expiresAt !== undefined ? { expiresAt: write.expiresAt } : {}),
+      ...(write.signalCount !== undefined ? { signalCount: write.signalCount } : {}),
     })
     .returning({ id: schema.familyMemoryFacts.id });
 

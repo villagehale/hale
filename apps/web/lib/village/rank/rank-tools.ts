@@ -4,6 +4,7 @@ import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { loadRecommendationMemory } from '~/lib/memory/store';
 import { resolveActiveAreaCoarse } from '~/lib/village/areas';
 import { toVillageCandidateView } from '~/lib/village/mappers';
 import { countEndorsementsForCandidates } from '~/lib/village/endorse';
@@ -139,23 +140,7 @@ export function buildRankTools(database: Database): RegisteredTool[] {
     touchesChildContent: false,
     handler: async (_input, ctx) => {
       const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
-      const factRows = await database
-        .select({
-          childId: schema.familyMemoryFacts.childId,
-          factType: schema.familyMemoryFacts.factType,
-          factKey: schema.familyMemoryFacts.factKey,
-          factValue: schema.familyMemoryFacts.factValue,
-          confidence: schema.familyMemoryFacts.confidence,
-        })
-        .from(schema.familyMemoryFacts)
-        .where(
-          and(
-            eq(schema.familyMemoryFacts.familyId, ctx.familyId),
-            isNull(schema.familyMemoryFacts.validUntil),
-          ),
-        )
-        .limit(CANDIDATE_LIMIT);
-
+      const factRows = await loadRecommendationMemory(database, ctx.familyId, new Date());
       const tastes = factRows
         .filter((f) => !isTeenAttributed(f.childId, teenChildIds))
         .map(({ childId: _childId, ...fact }) => fact);

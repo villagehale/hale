@@ -8,6 +8,7 @@ import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { dayKeyOf, formatCalendarDayLabel } from '~/lib/format/datetime';
 import { CONFIDENCE_FLOOR, writeFact } from '~/lib/memory/facts';
 import { forgetFamilyFact } from '~/lib/memory/forget';
+import { memoryTypingForWrite } from '~/lib/memory/store';
 import {
   getFamilyMemoryFact,
   listMemoryBuckets,
@@ -485,6 +486,14 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
         return { saved: false as const, reason: 'below_confidence_floor' };
       }
 
+      const typing = await memoryTypingForWrite(database, {
+        familyId: ctx.familyId,
+        childId: null,
+        factType: input.factType,
+        factKey: input.factKey,
+        source: 'parent_message',
+        now,
+      });
       const { factId } = await writeFact(database, {
         familyId: ctx.familyId,
         childId: null,
@@ -495,6 +504,7 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
         inferredBy: 'ask-hale',
         // The parent said it in this turn, so the turn clock IS the event time.
         validFrom: now,
+        ...typing,
       });
       return { saved: true as const, factId };
     },

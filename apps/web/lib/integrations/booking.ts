@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or } from 'drizzle-orm';
+import { promoteMatchingInferredFacts } from '~/lib/memory/store';
 import type { CorrelatedEventRef, ExtractedEvent, ExtractionKind } from '~/lib/sentinel';
 import { sessionKey } from './going';
 
@@ -294,6 +295,7 @@ export async function recordActivityBooking(
         eventId: existing.eventId ?? input.draft.eventId,
       })
       .where(eq(schema.activityBookings.id, existing.id));
+    await noteBookingMemory(database, input.familyId, input.draft.title);
     return { outcome: 'refreshed', bookingId: existing.id };
   }
 
@@ -320,6 +322,7 @@ export async function recordActivityBooking(
       })
       .returning({ id: schema.activityBookings.id });
     if (!row) return { outcome: 'already_recorded', bookingId: null };
+    await noteBookingMemory(database, input.familyId, input.draft.title);
     return { outcome: 'recorded', bookingId: row.id };
   } catch (err) {
     if (!isUniqueViolation(err)) throw err;
@@ -331,8 +334,36 @@ export async function recordActivityBooking(
       title: input.draft.title,
       firstSessionAt: input.draft.firstSessionAt,
     });
-    if (raced) return { outcome: 'refreshed', bookingId: raced.id };
+    if (raced) {
+      await noteBookingMemory(database, input.familyId, input.draft.title);
+      return { outcome: 'refreshed', bookingId: raced.id };
+    }
     return { outcome: 'already_recorded', bookingId: null };
+  }
+}
+
+/**
+ * A booking is the second signal an inferred one-off needs before it can steer
+ * recommendations. Flag off returns before a read. A failure here must not
+ * un-record the booking the receipt already wrote.
+ */
+async function noteBookingMemory(
+  database: Database,
+  familyId: string,
+  title: string,
+): Promise<void> {
+  try {
+    await promoteMatchingInferredFacts(database, {
+      familyId,
+      signal: 'booking',
+      needle: title,
+      now: new Date(),
+    });
+  } catch (err) {
+    console.error(
+      { code: err instanceof Error ? err.name : 'unknown' },
+      'memory kinds: booking signal did not promote',
+    );
   }
 }
 
