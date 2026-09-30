@@ -323,8 +323,13 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
     expect(booking?.firstSessionAt.toISOString()).toBe('2026-08-01T13:00:00.000Z');
     // Rule #1, on the row this time: the confirmation number, the amount, the card and
     // the child's surname have no column and are therefore unwritable.
+    //
+    // THE CARD CANARY IS THE RECEIPT'S CLAUSE, NOT THE FOUR DIGITS. `4412` is hex, and
+    // this JSON carries random uuids (`parentUserId`, the row id, the channel message).
+    // An id that happens to spell those digits fails the check even though the card was
+    // never written. `Visa ending 4412` is the clause in BODY, and a uuid cannot spell it.
     const stored = JSON.stringify(booking);
-    for (const secret of ['RC-88214', '96.00', '4412', 'Tremblay']) {
+    for (const secret of ['RC-88214', '96.00', 'Visa ending 4412', 'Tremblay']) {
       expect(stored).not.toContain(secret);
     }
 
