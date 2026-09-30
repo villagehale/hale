@@ -1,20 +1,21 @@
 import { NextResponse } from 'next/server';
+import { runActivityFollowUpSweep } from '~/lib/channel/activity/sweep';
+import { runEveningCheckInSweep } from '~/lib/channel/checkin/sweep';
+import { runDepartureNoticeRedrive } from '~/lib/channel/coparent/departure-redrive';
+import { sweepDutyAsks } from '~/lib/channel/coparent/duty/asks';
+import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import { runFollowupSweep } from '~/lib/channel/followup/run';
+import { runWelcomeCardRedrive } from '~/lib/channel/intake/welcome-card-redrive';
 import { runNudgeCron } from '~/lib/channel/nudge/run';
+import { runPlanCheckInSweep } from '~/lib/channel/plan/check-in';
+import { departureNoticePorts, welcomeCardRedrivePorts } from '~/lib/channel/twilio/deps';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
-import { flushTelemetry } from '~/lib/telemetry/langfuse';
-import { runActivityFollowUpSweep } from '~/lib/channel/activity/sweep';
-import { runTravelBriefSweep } from '~/lib/travel/sweep';
-import { runEveningCheckInSweep } from '~/lib/channel/checkin/sweep';
-import { runPlanCheckInSweep } from '~/lib/channel/plan/check-in';
-import { runVillageIntroSweep } from '~/lib/village/intros/run';
-import { runDepartureNoticeRedrive } from '~/lib/channel/coparent/departure-redrive';
-import { runWelcomeCardRedrive } from '~/lib/channel/intake/welcome-card-redrive';
-import { departureNoticePorts, welcomeCardRedrivePorts } from '~/lib/channel/twilio/deps';
-import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
-import { runReviewCapture, reviewVerdictClient } from '~/lib/reviews/capture';
+import { reviewVerdictClient, runReviewCapture } from '~/lib/reviews/capture';
 import { createVerdictReader } from '~/lib/reviews/verdict';
+import { flushTelemetry } from '~/lib/telemetry/langfuse';
+import { runTravelBriefSweep } from '~/lib/travel/sweep';
+import { runVillageIntroSweep } from '~/lib/village/intros/run';
 
 // Node runtime: the sweep reaches the voice client and the channel seam, neither of
 // which runs on the edge runtime.
@@ -90,6 +91,10 @@ export const maxDuration = 300;
 export const GET = cronRoute('nudge', async () => {
   try {
     const summary = await runNudgeCron(db());
+    // Sunday overview is folded inside the nudge. This pass is the night-before
+    // confirmation, the 48-hour re-ask that can ride it, and cancelled-duty
+    // invalidation. Its own flag: arming the nudge does not arm duty sends.
+    const dutyAsks = await sweepDutyAsks(db());
     const villageIntros = await runVillageIntroSweep(db());
     const followups = await runFollowupSweep(db());
     const planCheckIns = await runPlanCheckInSweep(db());
@@ -109,6 +114,7 @@ export const GET = cronRoute('nudge', async () => {
       {
         ok: true,
         ...summary,
+        dutyAsks,
         villageIntros,
         followups,
         planCheckIns,

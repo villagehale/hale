@@ -2,9 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   COPARENT_DUTY_ASKS_ALLOWLIST_ENV,
   COPARENT_DUTY_ASKS_ENABLED_ENV,
+  COPARENT_DUTY_SENDS_ALLOWLIST_ENV,
+  COPARENT_DUTY_SENDS_ENABLED_ENV,
   coparentDutyAsksActive,
   coparentDutyAsksArmed,
   coparentDutyAsksEnabled,
+  coparentDutySendsActive,
+  coparentDutySendsArmed,
+  coparentDutySendsEnabled,
 } from './flag';
 
 afterEach(() => {
@@ -32,5 +37,29 @@ describe('coparent duty asks flag', () => {
     expect(coparentDutyAsksArmed()).toBe(true);
     expect(coparentDutyAsksActive('fam-a')).toBe(true);
     expect(coparentDutyAsksActive('fam-c')).toBe(false);
+  });
+});
+
+describe('coparent duty sends flag', () => {
+  it('is off unless the value is exactly true', () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, '');
+    expect(coparentDutySendsEnabled()).toBe(false);
+    expect(coparentDutySendsArmed()).toBe(false);
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true\n');
+    expect(coparentDutySendsEnabled()).toBe(false);
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'TRUE');
+    expect(coparentDutySendsEnabled()).toBe(false);
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
+    expect(coparentDutySendsEnabled()).toBe(true);
+    expect(coparentDutySendsActive('fam-1')).toBe(true);
+  });
+
+  it('allowlists families while the global flag is off', () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, '');
+    vi.stubEnv(COPARENT_DUTY_SENDS_ALLOWLIST_ENV, ' fam-a , fam-b ,, ');
+    expect(coparentDutySendsEnabled()).toBe(false);
+    expect(coparentDutySendsArmed()).toBe(true);
+    expect(coparentDutySendsActive('fam-a')).toBe(true);
+    expect(coparentDutySendsActive('fam-c')).toBe(false);
   });
 });

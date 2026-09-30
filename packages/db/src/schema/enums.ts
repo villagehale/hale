@@ -446,6 +446,11 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // loop-health digest's EXCLUSION list (PARENT_STARTED_CATEGORIES, health-digest.ts) is
   // correct to leave it out.
   'travel_brief',
+  // VIL-382 · a co-parent duty ask in the Linq group: the Sunday overview rides the
+  // weekly bubble, and a night-before confirmation is its own send. Its own category
+  // so that budget cannot be spent by a nudge or a calendar alert, and a PIPEDA
+  // right-to-access read can tell a duty question from either of those.
+  'duty_ask',
 ]);
 
 /**

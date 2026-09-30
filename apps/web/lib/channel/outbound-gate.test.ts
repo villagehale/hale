@@ -2,15 +2,15 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { OPT_OUT_PERIOD_DAYS, optOutPeriodStart } from './opt-out.js';
 import {
   type OutboundGatePorts,
   PROACTIVE_CAP,
   PROACTIVE_CATEGORY,
-  holdStatus,
   PROACTIVE_QUIET_HOURS,
   assertProactiveSendAllowed,
+  holdStatus,
 } from './outbound-gate.js';
-import { OPT_OUT_PERIOD_DAYS, optOutPeriodStart } from './opt-out.js';
 
 /**
  * VIL-239 · M4 — the F14 outbound chokepoint.
@@ -259,7 +259,10 @@ describe('the registration-sequence class', () => {
       allowed: false,
       reason: 'quiet_hours',
     });
-    await expect(callSequenceGate(dawn, {}, true).verdict).resolves.toEqual({ allowed: true, optOut: 'short' });
+    await expect(callSequenceGate(dawn, {}, true).verdict).resolves.toEqual({
+      allowed: true,
+      optOut: 'short',
+    });
   });
 
   it('does NOT let a nudge claim the same exemption', async () => {
@@ -604,6 +607,48 @@ describe('the travel brief class', () => {
     // emails silence a family's one travel text — and then read the inbox cap as spent by
     // a message the alert path never sent.
     expect(PROACTIVE_CATEGORY.travel_brief).toBe('travel_brief');
+  });
+});
+
+describe('the duty ask class', () => {
+  /** 02:00 Toronto — inside the 21:00-08:00 proactive quiet window. */
+  const TWO_AM = new Date('2026-07-15T06:00:00.000Z');
+
+  it('never claims urgency — a pickup confirmation keeps until 08:00', async () => {
+    await expect(
+      assertProactiveSendAllowed(
+        {
+          familyId: FAMILY,
+          parentUserId: PARENT,
+          kind: 'duty_ask',
+          now: TWO_AM,
+          urgent: true,
+        },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+
+  it('holds the third duty ask in a day, on a counter of its own', async () => {
+    expect(PROACTIVE_CAP.duty_ask).toEqual({ max: 2, windowHours: 24 });
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'duty_ask', now: MIDDAY },
+        ports({ recentSends: 2 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'duty_ask', now: MIDDAY },
+        ports({ recentSends: 1 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
+  });
+
+  it('counts apart from the weekly nudge and the calendar', () => {
+    expect(PROACTIVE_CATEGORY.duty_ask).toBe('duty_ask');
+    expect(PROACTIVE_CATEGORY.nudge).toBe('nudge');
+    expect(PROACTIVE_CATEGORY.calendar_alert).toBe('calendar_alert');
   });
 });
 
