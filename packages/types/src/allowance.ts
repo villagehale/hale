@@ -82,11 +82,11 @@ export function hardCeilingUsd(planTier: PlanTier, childCount: number): number {
 /**
  * The distinct HARD ceiling — a runaway breaker, NOT the soft autonomy valve.
  * `isOverAllowance` throttles AUTONOMY (holds actions for approval) after the LLM
- * stages have already spent; this breaker short-circuits the pipeline BEFORE any
- * billable stage runs, so a family that has blown far past its budget stops
- * costing money entirely instead of paying for three LLM calls per event forever.
- * The `multiplier` defaults to HARD_CEILING_MULTIPLIER. Boundary is OVER, not at.
- * Pure — no I/O.
+ * stages have already spent. This predicate is the ceiling itself: spend strictly
+ * over allowance × multiplier. Whether a caller drops the event or only warns is
+ * {@link spendCeilingEnforced} — paid tiers are not launched, so the default is
+ * to keep going. The `multiplier` defaults to HARD_CEILING_MULTIPLIER. Boundary
+ * is OVER, not at. Pure — no I/O.
  */
 export function isOverHardCeiling(
   spentUsd: number,
@@ -95,4 +95,39 @@ export function isOverHardCeiling(
   multiplier = HARD_CEILING_MULTIPLIER,
 ): boolean {
   return spentUsd > monthlyAllowanceUsd(planTier, childCount) * multiplier;
+}
+
+/** Env flag. Literal `true` enforces the hard ceiling (drop before classify).
+ * Anything else — unset, `false`, `1`, a trailing newline from `echo` — leaves
+ * enforcement off. Paid tiers are not launched; a mis-set value must not resume
+ * dropping a family's events or chat. Set it with `printf '%s'`. */
+export const SPEND_CEILING_ENFORCED_ENV = 'SPEND_CEILING_ENFORCED';
+
+export function spendCeilingEnforced(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[SPEND_CEILING_ENFORCED_ENV] === 'true';
+}
+
+/** UTC day key for the once-per-family warn audit. */
+export function spendCeilingDay(now: Date): string {
+  return now.toISOString().slice(0, 10);
+}
+
+/**
+ * Ops page for a family over the ceiling while enforcement is off. Opaque family
+ * id and the dollar figures only — no name, no message, no child. The audit row
+ * is `spend_ceiling_exceeded_warn`.
+ */
+export function spendCeilingWarnText(input: {
+  familyId: string;
+  planTier: string;
+  childCount: number;
+  monthToDateCostUsd: number;
+  ceilingUsd: number;
+  day: string;
+}): string {
+  const spent = input.monthToDateCostUsd.toFixed(2);
+  const ceiling = input.ceilingUsd.toFixed(2);
+  return `Hale ops: family ${input.familyId} is over its monthly LLM-cost ceiling ($${spent} of $${ceiling}, plan ${input.planTier}, ${input.childCount} children, ${input.day}). Enforcement is off, so ingest and chat continue. Audit verb spend_ceiling_exceeded_warn.`;
 }

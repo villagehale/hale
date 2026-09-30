@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { type AgentUsage, agentRunCostUsd } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import type { ActionType, DraftedAction, ReviewerVerdict } from '@hale/types';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
 
 /**
@@ -108,6 +108,12 @@ export async function recordEvent(
     return { eventId: existingId, duplicate: true };
   }
 
+  // A deterministic pre-filter (ended calendar item) never called a priced model.
+  // agentRunCostUsd throws on a model with no rate, and booking Haiku for a call
+  // that did not happen would lie about the bill.
+  const costUsd =
+    input.model === 'deterministic' ? 0 : agentRunCostUsd(input.model, input.usage);
+
   await recordAgentRun(database, {
     familyId: input.familyId,
     eventId: newId,
@@ -115,7 +121,7 @@ export async function recordEvent(
     modelUsed: input.model,
     promptTokens: input.usage.promptTokens,
     completionTokens: input.usage.completionTokens,
-    costUsd: agentRunCostUsd(input.model, input.usage),
+    costUsd,
     status: 'completed',
     langfuseTraceId: input.langfuseTraceId,
   });
@@ -277,12 +283,12 @@ export async function recordVerdict(
 }
 
 /**
- * Audit-only record of the HARD monthly LLM-cost ceiling short-circuit: the
- * pipeline stopped BEFORE the classifier ran because the family is far past its
- * budget (the runaway breaker, distinct from the soft over-allowance valve). No
- * event row exists — the classifier never fired — so the audit is family-scoped
- * (targets `families`), mirroring the worker's event.dropped.spend_ceiling
- * without acting. Immutable audit row per rule #6.
+ * Audit-only record of the HARD monthly LLM-cost ceiling short-circuit when
+ * SPEND_CEILING_ENFORCED is on: the pipeline returned BEFORE the classifier ran
+ * because the family is far past its budget. No event row exists — the
+ * classifier never fired — so the audit is family-scoped (targets `families`),
+ * mirroring the worker's event.dropped.spend_ceiling. Immutable audit row per
+ * rule #6. While enforcement is off the caller uses {@link writeSpendCeilingWarn}.
  */
 export async function writeSpendCeilingDrop(
   database: Database,
@@ -296,6 +302,39 @@ export async function writeSpendCeilingDrop(
     targetId: input.familyId,
     after: input.detail,
   });
+}
+
+/**
+ * Non-blocking note that the family is over the hard ceiling while enforcement
+ * is off. One row per family per UTC day. Twin of the worker's
+ * recordSpendCeilingExceeded — the dedupe query is the same shape.
+ */
+export async function writeSpendCeilingWarn(
+  database: Database,
+  input: { familyId: string; day: string; detail: Record<string, unknown> },
+): Promise<{ recorded: boolean }> {
+  const existing = await database
+    .select({ id: schema.auditLog.id })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, input.familyId),
+        eq(schema.auditLog.actionTaken, 'spend_ceiling_exceeded_warn'),
+        sql`${schema.auditLog.after}->>'day' = ${input.day}`,
+      ),
+    )
+    .limit(1);
+  if (existing.length > 0) return { recorded: false };
+
+  await writeAudit(database, {
+    familyId: input.familyId,
+    actor: 'system',
+    actionTaken: 'spend_ceiling_exceeded_warn',
+    targetTable: 'families',
+    targetId: input.familyId,
+    after: { ...input.detail, day: input.day },
+  });
+  return { recorded: true };
 }
 
 /**

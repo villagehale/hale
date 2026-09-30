@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
-import { type Mock, describe, expect, it, vi } from 'vitest';
+import { type Mock, afterEach, describe, expect, it, vi } from 'vitest';
 import { ingestEvent } from './ingest';
 
 /**
@@ -404,7 +404,7 @@ describe('ingestEvent — classify → draft → review → drafted_for_approval
   });
 });
 
-describe('ingestEvent — hard monthly LLM-cost ceiling short-circuits before any billable stage', () => {
+describe('ingestEvent — hard monthly LLM-cost ceiling', () => {
   const freshCapture = (): Capture => ({
     events: [],
     actions: [],
@@ -414,24 +414,63 @@ describe('ingestEvent — hard monthly LLM-cost ceiling short-circuits before an
     eventUpdates: [],
   });
 
-  it('over the ceiling → NO LLM call, drops with reason spend_ceiling, writes the family-scoped audit', async () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const overFree = vi.fn(async () => ({ spentUsd: 20.0, planTier: 'free' as const, childCount: 1 }));
+
+  it('over the ceiling with enforcement off continues, warns once, and pages ops', async () => {
+    const capture = freshCapture();
+    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const client = scriptedClient([{ content: REVIEWER_CHECKS }, SUBMIT('approve', 'all green')]);
+    const notify = vi.fn(async () => 'sent');
+    // free, 1 child → $2 allowance → $6 hard ceiling. $20 is well over.
+    const readCeiling = overFree;
+
+    const outcome = await ingestEvent(baseInput, db, client, NOW, readCeiling, notify);
+
+    expect(outcome.status).toBe('drafted_for_approval');
+    expect(capture.agentRuns.map((r) => r.agentName)).toContain('classifier');
+    expect(capture.audit.map((a) => a.actionTaken)).not.toContain('event.dropped.spend_ceiling');
+    const warn = capture.audit.find((a) => a.actionTaken === 'spend_ceiling_exceeded_warn');
+    expect(warn).toMatchObject({
+      familyId: FAMILY_ID,
+      targetTable: 'families',
+      targetId: FAMILY_ID,
+      after: {
+        planTier: 'free',
+        childCount: 1,
+        monthToDateCostUsd: 20.0,
+        ceilingUsd: 6.0,
+        day: '2026-06-21',
+        enforced: false,
+      },
+    });
+    expect(notify).toHaveBeenCalledOnce();
+    const page = String(notify.mock.calls[0]?.[0]);
+    expect(page).toContain(FAMILY_ID);
+    expect(page).toContain('$20.00 of $6.00');
+    expect(page).not.toMatch(/\bunsubscribe\b/i);
+    expect(page).not.toMatch(/\bstop\b/i);
+  });
+
+  it('SPEND_CEILING_ENFORCED=true drops before any LLM call and writes the drop audit', async () => {
+    vi.stubEnv('SPEND_CEILING_ENFORCED', 'true');
     const capture = freshCapture();
     const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
     const create = vi.fn();
     const client = { messages: { create } } as unknown as AgentClient;
-    // free, 1 child → $2 allowance → $6 hard ceiling. $20 is well over.
-    const readCeiling = vi.fn(async () => ({ spentUsd: 20.0, planTier: 'free' as const, childCount: 1 }));
+    const notify = vi.fn(async () => 'sent');
 
-    const outcome = await ingestEvent(baseInput, db, client, NOW, readCeiling);
+    const outcome = await ingestEvent(baseInput, db, client, NOW, overFree, notify);
 
-    // The whole point: the model is NEVER reached.
     expect(create).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
     expect(outcome).toEqual({ status: 'dropped', eventId: null, reason: 'spend_ceiling' });
-    // No event / action / agent_run was created — pure short-circuit.
     expect(capture.events).toHaveLength(0);
     expect(capture.actions).toHaveLength(0);
     expect(capture.agentRuns).toHaveLength(0);
-    // Rule #6: the drop is on the immutable audit trail, family-scoped, with the numbers.
     const ceilingAudit = capture.audit.find((a) => a.actionTaken === 'event.dropped.spend_ceiling');
     expect(ceilingAudit).toMatchObject({
       familyId: FAMILY_ID,
@@ -439,23 +478,183 @@ describe('ingestEvent — hard monthly LLM-cost ceiling short-circuits before an
       targetId: FAMILY_ID,
       after: { planTier: 'free', childCount: 1, monthToDateCostUsd: 20.0, ceilingUsd: 6.0 },
     });
+    expect(capture.audit.map((a) => a.actionTaken)).not.toContain('spend_ceiling_exceeded_warn');
+  });
+
+  it('a trailing newline on the flag does not enforce the drop', async () => {
+    vi.stubEnv('SPEND_CEILING_ENFORCED', 'true\n');
+    const capture = freshCapture();
+    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const client = scriptedClient([{ content: REVIEWER_CHECKS }, SUBMIT('approve', 'all green')]);
+    const notify = vi.fn(async () => 'sent');
+
+    const outcome = await ingestEvent(baseInput, db, client, NOW, overFree, notify);
+
+    expect(outcome.status).toBe('drafted_for_approval');
+    expect(notify).toHaveBeenCalledOnce();
+    expect(capture.audit.map((a) => a.actionTaken)).not.toContain('event.dropped.spend_ceiling');
   });
 
   it('under the ceiling → pipeline proceeds exactly as before (classifier runs, draft produced)', async () => {
     const capture = freshCapture();
     const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
     const client = scriptedClient([{ content: REVIEWER_CHECKS }, SUBMIT('approve', 'all green')]);
+    const notify = vi.fn(async () => 'sent');
     // free, 1 child → $6 ceiling. $4 is over the soft $2 allowance but under the hard ceiling.
     const readCeiling = vi.fn(async () => ({ spentUsd: 4.0, planTier: 'free' as const, childCount: 1 }));
 
-    const outcome = await ingestEvent(baseInput, db, client, NOW, readCeiling);
+    const outcome = await ingestEvent(baseInput, db, client, NOW, readCeiling, notify);
 
     expect(outcome.status).toBe('drafted_for_approval');
+    expect(notify).not.toHaveBeenCalled();
     expect(capture.agentRuns.map((r) => r.agentName).sort()).toEqual([
       'classifier',
       'drafter',
       'reviewer',
     ]);
     expect(capture.audit.map((a) => a.actionTaken)).not.toContain('event.dropped.spend_ceiling');
+    expect(capture.audit.map((a) => a.actionTaken)).not.toContain('spend_ceiling_exceeded_warn');
+  });
+});
+
+describe('ingestEvent — ended calendar items skip the classifier', () => {
+  const freshCapture = (): Capture => ({
+    events: [],
+    actions: [],
+    agentRuns: [],
+    audit: [],
+    actionUpdates: [],
+    eventUpdates: [],
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const endedGcal = {
+    familyId: FAMILY_ID,
+    source: 'gcal',
+    subject: 'dentist',
+    body: '',
+    extra: {
+      start: { dateTime: '2026-06-01T12:00:00Z' },
+      end: { dateTime: '2026-06-01T13:00:00Z' },
+    },
+  };
+
+  it('records an ended gcal item without calling the model', async () => {
+    const capture = freshCapture();
+    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const create = vi.fn();
+    const client = { messages: { create } } as unknown as AgentClient;
+
+    const outcome = await ingestEvent(endedGcal, db, client, NOW);
+
+    expect(create).not.toHaveBeenCalled();
+    expect(outcome.status).toBe('surfaced_only');
+    expect(capture.events).toHaveLength(1);
+    expect(capture.actions).toHaveLength(0);
+    expect(capture.agentRuns).toEqual([
+      expect.objectContaining({
+        agentName: 'classifier',
+        modelUsed: 'deterministic',
+        costUsd: '0.000000',
+      }),
+    ]);
+  });
+
+  it('still classifies a future gcal item', async () => {
+    const capture = freshCapture();
+    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const create = vi.fn().mockResolvedValue({
+      content: [
+        {
+          type: 'tool_use',
+          id: 'c1',
+          name: 'classification',
+          input: {
+            event_type: 'family_event_invite',
+            confidence: 0.9,
+            rationale: 'upcoming visit',
+            payload: {},
+            suggested_action: { kind: 'ignore' },
+            teen_content: false,
+            concerns_child_id: null,
+          },
+        },
+      ],
+      usage,
+    });
+    const client = { messages: { create } } as unknown as AgentClient;
+
+    const outcome = await ingestEvent(
+      {
+        ...endedGcal,
+        extra: {
+          start: { dateTime: '2026-07-01T12:00:00Z' },
+          end: { dateTime: '2026-07-01T13:00:00Z' },
+        },
+      },
+      db,
+      client,
+      NOW,
+    );
+
+    expect(create).toHaveBeenCalledOnce();
+    expect(outcome.status).toBe('surfaced_only');
+    expect(capture.agentRuns[0]?.modelUsed).not.toBe('deterministic');
+  });
+
+  it('GCAL_PAST_CLASSIFY_SKIP=false sends an ended item through the classifier', async () => {
+    vi.stubEnv('GCAL_PAST_CLASSIFY_SKIP', 'false');
+    const capture = freshCapture();
+    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const create = vi.fn().mockResolvedValue({
+      content: [
+        {
+          type: 'tool_use',
+          id: 'c1',
+          name: 'classification',
+          input: {
+            event_type: 'family_event_invite',
+            confidence: 0.9,
+            rationale: 'old calendar item',
+            payload: {},
+            suggested_action: { kind: 'ignore' },
+            teen_content: false,
+            concerns_child_id: null,
+          },
+        },
+      ],
+      usage,
+    });
+    const client = { messages: { create } } as unknown as AgentClient;
+
+    const outcome = await ingestEvent(endedGcal, db, client, NOW);
+
+    expect(create).toHaveBeenCalledOnce();
+    expect(outcome.status).toBe('surfaced_only');
+  });
+
+  it('does not skip gmail even when the payload carries a past calendar time', async () => {
+    const capture = freshCapture();
+    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const client = scriptedClient([{ content: REVIEWER_CHECKS }, SUBMIT('approve', 'all green')]);
+
+    const outcome = await ingestEvent(
+      {
+        ...baseInput,
+        extra: {
+          start: { dateTime: '2026-06-01T12:00:00Z' },
+          end: { dateTime: '2026-06-01T13:00:00Z' },
+        },
+      },
+      db,
+      client,
+      NOW,
+    );
+
+    expect(outcome.status).toBe('drafted_for_approval');
+    expect((client.messages.create as unknown as Mock).mock.calls.length).toBeGreaterThan(0);
   });
 });

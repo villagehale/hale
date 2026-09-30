@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import type { ClassifierSuggestion, FamilyStage } from '@hale/types';
@@ -7,9 +7,11 @@ import type { ClassifierSuggestion, FamilyStage } from '@hale/types';
  * HARD monthly LLM-cost ceiling wired into the orchestrator BEFORE the first
  * billable stage (classify). Distinct from the soft over-allowance autonomy valve
  * (that one downgrades autonomy AFTER classify/draft/review have already spent).
- * A family far past its budget must stop costing money entirely: the classifier,
- * drafter, reviewer and executor are NEVER invoked, and a family-scoped
- * event.dropped.spend_ceiling audit is written (hard rule #6).
+ *
+ * Enforcement is OFF unless SPEND_CEILING_ENFORCED is the literal 'true'. Off:
+ * the classifier still runs, a once-per-day warn audit is written, and Slack #ops
+ * is paged. On: the classifier is not invoked and event.dropped.spend_ceiling is
+ * written (hard rule #6).
  *
  * We spy every LLM stage entry and inject the month-to-date cost + plan + child
  * count so the ceiling is the only thing under test.
@@ -70,14 +72,19 @@ const runExecutor = vi.fn(async () => ({ ok: true, detail: {} }));
 vi.mock('../agents/drafter.js', () => ({ runDrafter: () => runDrafter() }));
 vi.mock('../agents/reviewer.js', () => ({ runReviewer: () => runReviewer() }));
 vi.mock('../services/executor.js', () => ({ runExecutor: () => runExecutor() }));
+vi.mock('../services/ops-slack.js', () => ({
+  postWorkerOpsSlack: (...args: unknown[]) => postWorkerOpsSlack(...(args as [])),
+}));
 
-// Injected inputs. Baseline clears every downstream gate so ONLY the ceiling can
-// stop the pipeline: old family, full streak, single-parent, newborn.
+// Injected inputs. Baseline clears every downstream gate so the ceiling is the
+// only one that can hold the pipeline: old family, full streak, single-parent, newborn.
 let monthToDateCostUsd = 0;
 let childStages: FamilyStage[] = ['newborn'];
 
 const recordSpendCeilingDrop = vi.fn(async () => {});
+const recordSpendCeilingExceeded = vi.fn(async () => ({ recorded: true }));
 const recordExecution = vi.fn(async () => {});
+const postWorkerOpsSlack = vi.fn(async () => 'skipped_not_configured' as const);
 
 vi.mock('../services/memory-writer.js', () => ({
   loadResumePoint: vi.fn(async () => null),
@@ -90,6 +97,7 @@ vi.mock('../services/memory-writer.js', () => ({
   recordExecution: (...args: unknown[]) => recordExecution(...(args as [])),
   recordDrop: vi.fn(async () => {}),
   recordSpendCeilingDrop: (...args: unknown[]) => recordSpendCeilingDrop(...(args as [])),
+  recordSpendCeilingExceeded: (...args: unknown[]) => recordSpendCeilingExceeded(...(args as [])),
   markEventStage: vi.fn(async () => {}),
   loadActionForEvent: vi.fn(async () => null),
   loadFamilyPlanTier: vi.fn(async () => 'plus' as const),
@@ -124,12 +132,59 @@ describe('runOrchestrator — hard monthly LLM-cost ceiling', () => {
     runReviewer.mockClear();
     runExecutor.mockClear();
     recordSpendCeilingDrop.mockClear();
+    recordSpendCeilingExceeded.mockClear();
+    recordSpendCeilingExceeded.mockResolvedValue({ recorded: true });
+    postWorkerOpsSlack.mockClear();
     recordExecution.mockClear();
     monthToDateCostUsd = 0;
     childStages = ['newborn'];
+    vi.unstubAllEnvs();
   });
 
-  it('over the ceiling ($20 spent, plus, 1 child / $15 ceiling) → no LLM stage runs, spend_ceiling audit written', async () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('over the ceiling with enforcement off → classifier still runs, warn audit + ops page, no drop', async () => {
+    monthToDateCostUsd = 20.0; // > $5 allowance × 3 = $15 ceiling
+    childStages = ['newborn'];
+
+    await runOrchestrator(job);
+
+    expect(runClassifier).toHaveBeenCalledTimes(1);
+    expect(recordSpendCeilingDrop).not.toHaveBeenCalled();
+    expect(recordSpendCeilingExceeded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        familyId: 'fam-1',
+        detail: expect.objectContaining({
+          planTier: 'plus',
+          childCount: 1,
+          monthToDateCostUsd: 20.0,
+          ceilingUsd: 15.0,
+          enforced: false,
+        }),
+      }),
+    );
+    expect(postWorkerOpsSlack).toHaveBeenCalledTimes(1);
+    const page = String(postWorkerOpsSlack.mock.calls[0]?.[0]);
+    expect(page).toContain('fam-1');
+    expect(page.toLowerCase()).not.toContain('unsubscribe');
+    expect(page.toLowerCase()).not.toMatch(/\bstop\b/);
+  });
+
+  it('a second event the same day does not page again when the warn was already recorded', async () => {
+    monthToDateCostUsd = 20.0;
+    recordSpendCeilingExceeded.mockResolvedValue({ recorded: false });
+
+    await runOrchestrator(job);
+
+    expect(runClassifier).toHaveBeenCalledTimes(1);
+    expect(postWorkerOpsSlack).not.toHaveBeenCalled();
+    expect(recordSpendCeilingDrop).not.toHaveBeenCalled();
+  });
+
+  it('SPEND_CEILING_ENFORCED=true → no LLM stage runs, spend_ceiling audit written', async () => {
+    vi.stubEnv('SPEND_CEILING_ENFORCED', 'true');
     monthToDateCostUsd = 20.0; // > $5 allowance × 3 = $15 ceiling
     childStages = ['newborn'];
 
@@ -139,6 +194,8 @@ describe('runOrchestrator — hard monthly LLM-cost ceiling', () => {
     expect(runDrafter).not.toHaveBeenCalled();
     expect(runReviewer).not.toHaveBeenCalled();
     expect(runExecutor).not.toHaveBeenCalled();
+    expect(recordSpendCeilingExceeded).not.toHaveBeenCalled();
+    expect(postWorkerOpsSlack).not.toHaveBeenCalled();
     expect(recordSpendCeilingDrop).toHaveBeenCalledWith(
       expect.objectContaining({
         familyId: 'fam-1',
@@ -152,6 +209,16 @@ describe('runOrchestrator — hard monthly LLM-cost ceiling', () => {
     );
   });
 
+  it('a trailing newline does not enforce — the family is not dropped', async () => {
+    vi.stubEnv('SPEND_CEILING_ENFORCED', 'true\n');
+    monthToDateCostUsd = 20.0;
+
+    await runOrchestrator(job);
+
+    expect(runClassifier).toHaveBeenCalledTimes(1);
+    expect(recordSpendCeilingDrop).not.toHaveBeenCalled();
+  });
+
   it('under the ceiling ($8 spent, plus, 1 child / $15 ceiling) → pipeline proceeds, classifier runs, no spend_ceiling audit', async () => {
     monthToDateCostUsd = 8.0; // over the $5 soft allowance but under the $15 hard ceiling
     childStages = ['newborn'];
@@ -161,6 +228,8 @@ describe('runOrchestrator — hard monthly LLM-cost ceiling', () => {
     expect(runClassifier).toHaveBeenCalledTimes(1);
     expect(runReviewer).toHaveBeenCalledTimes(1);
     expect(recordSpendCeilingDrop).not.toHaveBeenCalled();
+    expect(recordSpendCeilingExceeded).not.toHaveBeenCalled();
+    expect(postWorkerOpsSlack).not.toHaveBeenCalled();
   });
 
   it('fairness: same $20 spend with a bigger family raises the ceiling and lets the pipeline run', async () => {
@@ -172,5 +241,60 @@ describe('runOrchestrator — hard monthly LLM-cost ceiling', () => {
 
     expect(runClassifier).toHaveBeenCalledTimes(1);
     expect(recordSpendCeilingDrop).not.toHaveBeenCalled();
+  });
+
+  it('an ended gcal item skips the classifier; a future one and a non-gcal item do not', async () => {
+    const ended = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const upcoming = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+
+    await runOrchestrator({
+      ...job,
+      source: 'gcal',
+      payload: {
+        id: 'past',
+        summary: 'Old dentist',
+        start: { dateTime: ended },
+        end: { dateTime: ended },
+      },
+    });
+    expect(runClassifier).not.toHaveBeenCalled();
+
+    await runOrchestrator({
+      ...job,
+      source: 'gcal',
+      payload: {
+        id: 'soon',
+        summary: 'Pediatric checkup',
+        start: { dateTime: upcoming },
+        end: { dateTime: upcoming },
+      },
+    });
+    expect(runClassifier).toHaveBeenCalledTimes(1);
+
+    runClassifier.mockClear();
+    await runOrchestrator({
+      ...job,
+      source: 'gmail',
+      payload: {
+        id: 'mail',
+        summary: 'Old dentist',
+        start: { dateTime: ended },
+        end: { dateTime: ended },
+      },
+    });
+    expect(runClassifier).toHaveBeenCalledTimes(1);
+  });
+
+  it('GCAL_PAST_CLASSIFY_SKIP=false sends an ended calendar item through the classifier', async () => {
+    vi.stubEnv('GCAL_PAST_CLASSIFY_SKIP', 'false');
+    const ended = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+
+    await runOrchestrator({
+      ...job,
+      source: 'gcal',
+      payload: { id: 'past', start: { dateTime: ended }, end: { dateTime: ended } },
+    });
+
+    expect(runClassifier).toHaveBeenCalledTimes(1);
   });
 });
