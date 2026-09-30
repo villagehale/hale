@@ -1,5 +1,6 @@
 import { schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
+import { answerParentDutyAsk } from '~/lib/channel/coparent/duty/asks';
 import { coparentDutyAsksArmed } from '~/lib/channel/coparent/duty/flag';
 import { shadowTapbackIfDuty, shadowWhenArmed } from '~/lib/channel/coparent/duty/shadow';
 import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
@@ -453,6 +454,19 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
         subjectKey: null,
         now: deps.now?.() ?? new Date(),
       });
+      try {
+        await answerParentDutyAsk(deps.database, {
+          familyId: mapped.familyId,
+          actorUserId: mapped.userId,
+          text: message.text,
+          now: deps.now?.() ?? new Date(),
+        });
+      } catch (err) {
+        deps.log.warn(
+          { code: err instanceof Error ? err.name : 'unknown' },
+          'linq inbound: duty ask was not answered',
+        );
+      }
     }
     try {
       await captureLogisticsText(deps.database, {

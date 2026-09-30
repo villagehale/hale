@@ -27,9 +27,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 const SETTLE_MS = 10 * 60 * 1000;
 const SYNC_LINE_MAX = 3;
-const DISCRETIONARY_DAY_MAX = 1;
-const DISCRETIONARY_WEEK_MAX = 3;
-const HARD_DAY_MAX = 2;
+export const GROUP_DISCRETIONARY_DAY_MAX = 1;
+export const GROUP_DISCRETIONARY_WEEK_MAX = 3;
+export const GROUP_HARD_DAY_MAX = 2;
 const QUIET_START = '21:00:00';
 const QUIET_END = '08:00:00';
 
@@ -41,6 +41,9 @@ const DISCRETIONARY_TEMPLATES = [
   'linq:group_followup',
   'linq:group_both_free',
   'linq:group_who_takes',
+  // VIL-382 · night-before duty confirmation. The Sunday overview is folded into
+  // the weekly nudge and does not take a template of its own.
+  'linq:group_duty_night_before',
 ] as const;
 
 const SYNC_TEMPLATE = 'linq:group_sync';
@@ -112,7 +115,7 @@ interface GroupSpend {
   ceilingToday: number;
 }
 
-async function groupSpend(
+export async function readGroupBubbleSpend(
   database: Database,
   input: { familyId: string; chatId: string; now: Date },
 ): Promise<GroupSpend> {
@@ -169,11 +172,11 @@ export async function groupProactiveCapReached(
   database: Database,
   input: { familyId: string; chatId: string; now: Date },
 ): Promise<boolean> {
-  const spend = await groupSpend(database, input);
+  const spend = await readGroupBubbleSpend(database, input);
   return (
-    spend.discretionaryDay >= DISCRETIONARY_DAY_MAX ||
-    spend.discretionaryWeek >= DISCRETIONARY_WEEK_MAX ||
-    spend.ceilingToday >= HARD_DAY_MAX
+    spend.discretionaryDay >= GROUP_DISCRETIONARY_DAY_MAX ||
+    spend.discretionaryWeek >= GROUP_DISCRETIONARY_WEEK_MAX ||
+    spend.ceilingToday >= GROUP_HARD_DAY_MAX
   );
 }
 
@@ -205,13 +208,13 @@ async function householdQuiet(database: Database, familyId: string, now: Date): 
 
 function kindHeld(kind: GroupBubbleKind, spend: GroupSpend): 'group_cap' | null {
   if (kind === 'uncapped') return null;
-  const ceiling = spend.ceilingToday >= HARD_DAY_MAX;
+  const ceiling = spend.ceilingToday >= GROUP_HARD_DAY_MAX;
   if (kind === 'rec_morning') return null;
   if (ceiling) return 'group_cap';
   if (kind !== 'discretionary') return null;
   if (
-    spend.discretionaryDay >= DISCRETIONARY_DAY_MAX ||
-    spend.discretionaryWeek >= DISCRETIONARY_WEEK_MAX
+    spend.discretionaryDay >= GROUP_DISCRETIONARY_DAY_MAX ||
+    spend.discretionaryWeek >= GROUP_DISCRETIONARY_WEEK_MAX
   ) {
     return 'group_cap';
   }
@@ -285,7 +288,7 @@ export async function deliverFamilyOutbound(
       );
       return { status: 'held', reason: 'quiet_hours' };
     }
-    const spend = await groupSpend(database, {
+    const spend = await readGroupBubbleSpend(database, {
       familyId: input.familyId,
       chatId: target.chatId,
       now,
@@ -298,7 +301,7 @@ export async function deliverFamilyOutbound(
       );
       return { status: 'held', reason: held };
     }
-    if (kind === 'rec_morning' && spend.ceilingToday >= HARD_DAY_MAX) {
+    if (kind === 'rec_morning' && spend.ceilingToday >= GROUP_HARD_DAY_MAX) {
       console.warn(
         { familyId: input.familyId },
         'family outbound: ceiling already met — rec-morning still sent',
@@ -538,12 +541,12 @@ export async function flushGroupDecisionSyncs(
       held += 1;
       continue;
     }
-    const spend = await groupSpend(database, {
+    const spend = await readGroupBubbleSpend(database, {
       familyId,
       chatId: target.chatId,
       now: input.now,
     });
-    if (spend.ceilingToday >= HARD_DAY_MAX) {
+    if (spend.ceilingToday >= GROUP_HARD_DAY_MAX) {
       held += 1;
       continue;
     }
