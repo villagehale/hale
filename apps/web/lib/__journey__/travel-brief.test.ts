@@ -371,7 +371,38 @@ async function runBrief() {
   return { result, sent, searched };
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Instants only. A calendar day (`2026-09-12`) has no time and stays in the scan. */
+const INSTANT_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/;
+
+/** Content columns only. Timestamps and uuid identity are generated and can contain the
+ * fare digits by chance (`….812Z`, or `812` as a hex run), so they are not part of the
+ * "nothing from the confirmation survived" scan. A new text column is still included. */
+function tripFacts(trip: object): Record<string, unknown> {
+  const facts: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(trip)) {
+    if (value instanceof Date) continue;
+    if (typeof value === 'string' && (UUID_RE.test(value) || INSTANT_RE.test(value))) continue;
+    facts[key] = value;
+  }
+  return facts;
+}
+
 describe('a booking email becomes one text a week before the trip', () => {
+  it('does not treat a timestamp or an id as the fare', () => {
+    const facts = JSON.stringify(
+      tripFacts({
+        id: '11111111-2222-3333-4444-555555558121',
+        destinationCity: 'New York',
+        createdAt: new Date('2026-09-01T15:00:22.812Z'),
+        closedAt: '2026-09-05T13:00:00.812Z',
+        startsOn: '2026-09-12',
+      }),
+    );
+    expect(facts).toBe('{"destinationCity":"New York","startsOn":"2026-09-12"}');
+    expect(facts).not.toContain('812');
+  });
+
   it('writes the trip on the sweep, and texts it at T-7d', async () => {
     // ── the connector sweep, for real ────────────────────────────────────────
     const { sync, requests } = await runSync();
@@ -389,8 +420,10 @@ describe('a booking email becomes one text a week before the trip', () => {
       closedAt: null,
     });
     // Nothing the confirmation said survived: no body, no reference, no fare, no
-    // passenger line. Asserted over the whole serialised row rather than a field list.
-    const row = JSON.stringify(trip);
+    // passenger line. Asserted over the serialised facts rather than a field list, with
+    // timestamps and ids left out: `createdAt` is `….812Z` often enough that the fare
+    // digits match the milliseconds, and `812` is also a hex run inside a random uuid.
+    const row = JSON.stringify(tripFacts(trip));
     for (const forbidden of ['QRT4LM', '812', 'CHEN', 'AC 704', 'Seat']) {
       expect(row, `the trip row must not carry ${forbidden}`).not.toContain(forbidden);
     }
