@@ -479,7 +479,9 @@ describe('duty ask sweep', () => {
     const family = await seedFamily(db.database, 'Group send');
     await secondParent(family.familyId, 'Sam');
     await claimGroup(family.familyId, 'chat-send');
-    const send = vi.fn(async () => ({ providerMessageId: 'linq-1' }));
+    const send = vi.fn(async (input: { chatId: string; text: string }) => ({
+      providerMessageId: `linq-${input.chatId}`,
+    }));
     const gate = vi.fn(async () => ({ allowed: true as const, optOut: 'short' as const }));
     const ports = sendPorts(send);
     ports.gate = gate;

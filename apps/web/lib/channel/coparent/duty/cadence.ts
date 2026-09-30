@@ -227,10 +227,13 @@ function questionLine(occasion: DutyOccasion, ctx: CadenceContext): CadenceLine 
   ) {
     return line('reask_48h', occasion, { opensQuestion: true, discretionary: true });
   }
+  // Quiet hours still name the confirmation so the caller can hold it.
+  // 21:00 is the end of the window and the start of quiet; a 21:30 tick must
+  // not look like "nothing was due".
   if (
     occasion.hasOwner &&
     isLocalTomorrow(ctx.now, occasion.startsAt, ctx.timeZone) &&
-    inNightBeforeWindow(ctx.localMinutes, ctx.quietStartMin)
+    (inNightBeforeWindow(ctx.localMinutes, ctx.quietStartMin) || ctx.quiet)
   ) {
     return line('night_before', occasion, { opensQuestion: false, discretionary: true });
   }
