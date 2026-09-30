@@ -2,9 +2,10 @@ import { type Database, schema } from '@hale/db';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup, isExplicitSignupUtterance } from './authorize';
-import { signupAssistedHandoffLine, signupCompletedLine, signupHandbackLine } from './copy';
+import { signupCompletedLine, signupHandbackLine } from './copy';
 import { type ReportDoor, chooseReportDoor } from './door';
 import { authorizedSignupEnabled } from './flag';
+import { assistedHandoffLine } from './handoff';
 import { inspectRegistrationPage } from './inspect';
 import { signupInfoPack } from './pack';
 import { BOOKING_CONNECTORS, type BookingConnector, bookingRoute } from './providers';
@@ -160,7 +161,7 @@ export async function runAuthorizedSignup(
       link: offer.registrationUrl,
       prefilled: pack.map((slot) => slot.slot),
       host,
-      line: signupAssistedHandoffLine({
+      line: assistedHandoffLine({
         link: offer.registrationUrl,
         sessionLabel: session?.label ?? decision.sessionId,
         pack,
