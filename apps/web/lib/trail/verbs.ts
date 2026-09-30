@@ -152,6 +152,7 @@ export const AUDIT_VERBS = [
   'sms_canary_answered',
   'sms_intake_inbound',
   'sms_intake_outbound',
+  'first_touch_location_requested',
   'sms_intake_provisioned',
   'sms_intake_contact_card',
   'linq_contact_card_shared',
@@ -568,6 +569,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   sms_canary_answered: { sentence: 'Hale answered its own service check', family: 'note' },
   sms_intake_inbound: { sentence: 'you texted Hale while getting set up', family: 'note' },
   sms_intake_outbound: { sentence: 'Hale texted you while getting set up', family: 'note' },
+  first_touch_location_requested: {
+    sentence: 'Hale recorded the place ask from your first text',
+    family: 'note',
+  },
   sms_intake_provisioned: { sentence: 'your family was set up from your texts', family: 'done' },
   sms_intake_contact_card: { sentence: 'Hale texted you its contact card', family: 'note' },
   linq_contact_card_shared: {

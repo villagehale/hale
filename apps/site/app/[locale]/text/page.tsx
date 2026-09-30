@@ -7,6 +7,7 @@ import { buildAlternates } from '~/i18n/metadata';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { platformFromUa } from '~/lib/chooser';
+import { firstTouchLadderEnabled } from '~/lib/first-touch-flag';
 import { parseSourceCode, readSmsNumber, readWhatsAppNumber } from '~/lib/text-entry';
 
 /**
@@ -80,6 +81,7 @@ export default async function TextEntryPage({
         whatsappNumber={readWhatsAppNumber(process.env.NEXT_PUBLIC_HALE_WHATSAPP_NUMBER)}
         platform={platformFromUa(ua)}
         locale={locale}
+        firstTouchLadder={firstTouchLadderEnabled()}
       />
       {/* The column already links the policy on the Canada line. Omitting the
           footer's copy leaves the rendered page with exactly one privacy link. */}

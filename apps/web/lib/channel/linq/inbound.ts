@@ -1,12 +1,15 @@
 import { schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
+import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
+import { loadOpenSession } from '~/lib/channel/intake/session';
 import {
   type TwilioInboundDeps,
   type TwilioInboundOutcome,
   routeTwilioInbound,
 } from '~/lib/channel/twilio/inbound';
 import { applyTwilioStatus } from '~/lib/channel/twilio/status';
+import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { socialWatchlistEnabled } from '~/lib/social/flag';
 import { considerSocialForward } from '~/lib/social/forward';
@@ -43,7 +46,8 @@ import {
 import { groupWelcome } from './group-coparent-copy';
 import { captureLogisticsText } from './household-calendar';
 import { isLogisticsPollKind, recordLogisticsVote } from './logistics-poll';
-import { type LinqInboundText, type LinqSignal, parseLinqWebhook } from './payload';
+import { readSharedLocality } from './location-share';
+import { type LinqInboundText, type LinqLocationSignal, type LinqSignal, parseLinqWebhook } from './payload';
 import { isYearFindPollNone, lookupLinqPollOption } from './poll';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
 import { type LinqEffectResult, markLinqChatRead } from './transport';
@@ -105,6 +109,8 @@ export async function handleLinqInboundRequest(
     sendGroupText?: (input: { chatId: string; text: string }) => Promise<{
       providerMessageId: string;
     }>;
+    /** Test seam. Production reads Linq and keeps the street address inside that door. */
+    readSharedLocality?: typeof readSharedLocality;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -181,6 +187,7 @@ export async function handleLinqInboundRequest(
     return json({ outcome });
   }
   if (parsed.kind === 'signal') return handleLinqSignal(deps, parsed.signal);
+  if (parsed.kind === 'location') return handleLinqLocation(deps, parsed.location);
   if (parsed.kind === 'group') return handleLinqGroup(deps, parsed.message);
 
   const message = parsed.message;
@@ -243,6 +250,67 @@ export async function handleLinqInboundRequest(
     return json(answered);
   }
   deps.log.info({ outcome, providerMessageId: message.messageId }, 'linq inbound: routed');
+  await deps.countOutcome(outcome);
+  return json({ outcome });
+}
+
+async function handleLinqLocation(
+  deps: Parameters<typeof handleLinqInboundRequest>[1],
+  location: LinqLocationSignal,
+): Promise<Response> {
+  if (location.event === 'location.sharing.stopped') {
+    await deps.countOutcome('location_stopped');
+    return json({ outcome: 'location_stopped' });
+  }
+  if (!firstTouchLadderEnabled()) {
+    deps.log.info({ outcome: 'location_ignored' }, 'linq inbound: location share while ladder is off');
+    await deps.countOutcome('location_ignored');
+    return json({ outcome: 'location_ignored' });
+  }
+  const phone = normalizePhoneE164(location.sharedBy);
+  if (!phone) {
+    deps.log.info(
+      { outcome: 'location_handle_not_phone' },
+      'linq inbound: location share is not a phone handle',
+    );
+    await deps.countOutcome('location_handle_not_phone');
+    return json({ outcome: 'location_handle_not_phone' });
+  }
+  const session = await loadOpenSession(deps.database, phone);
+  if (!session || session.state !== 'awaiting_place') {
+    deps.log.info({ outcome: 'location_not_waiting' }, 'linq inbound: location share is not a place ask');
+    await deps.countOutcome('location_not_waiting');
+    return json({ outcome: 'location_not_waiting' });
+  }
+  const read = deps.readSharedLocality ?? readSharedLocality;
+  const shared = await read(location.chatId);
+  if (shared.status !== 'locality') {
+    deps.log.info(
+      {
+        outcome: 'location_unread',
+        read: shared.status,
+        ...(shared.status === 'refused' ? { code: shared.code } : {}),
+      },
+      'linq inbound: location share had no locality',
+    );
+    await deps.countOutcome('location_unread');
+    return json({ outcome: 'location_unread' });
+  }
+  const providerId = location.eventId ?? `location:${location.chatId}:${location.beganAt ?? 'open'}`;
+  const outcome = await routeTwilioInbound(
+    deps,
+    {
+      from: phone,
+      transport: 'imessage',
+      body: shared.locality,
+      providerId,
+      receivedAt: deps.now?.() ?? new Date(),
+      chatId: location.chatId,
+      isGroup: false,
+    },
+    0,
+  );
+  deps.log.info({ outcome }, 'linq inbound: location share continued the ladder');
   await deps.countOutcome(outcome);
   return json({ outcome });
 }

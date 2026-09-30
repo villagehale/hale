@@ -210,4 +210,42 @@ describe('parseLinqWebhook', () => {
       signal: { event: 'poll.vote.added', optionId: 'opt-1', senderHandle: '+12025559876' },
     });
   });
+
+  it('reads a location-share lifecycle event and drops anything that is not a handle', () => {
+    const started = parseLinqWebhook(
+      {
+        webhook_version: '2026-02-03',
+        event_type: 'location.sharing.started',
+        event_id: 'evt-loc-1',
+        data: {
+          chat_id: '8f392755-6865-4b18-880a-227f9d8b458f',
+          shared_by: '+12025559876',
+          began_at: '2026-09-30T12:00:00.000Z',
+          address: '1 King St',
+        },
+      },
+      FALLBACK,
+    );
+    expect(started).toEqual({
+      kind: 'location',
+      location: {
+        event: 'location.sharing.started',
+        chatId: '8f392755-6865-4b18-880a-227f9d8b458f',
+        sharedBy: '+12025559876',
+        beganAt: '2026-09-30T12:00:00.000Z',
+        eventId: 'evt-loc-1',
+      },
+    });
+    expect(JSON.stringify(started)).not.toContain('King');
+    expect(
+      parseLinqWebhook(
+        {
+          webhook_version: '2026-02-03',
+          event_type: 'location.sharing.stopped',
+          data: { chat_id: 'chat-1' },
+        },
+        FALLBACK,
+      ),
+    ).toEqual({ kind: 'ignored', reason: 'malformed' });
+  });
 });

@@ -72,6 +72,13 @@ export interface OutboundMessage {
   mediaUrls?: string[];
 }
 
+/** The native iMessage location-request card. SMS transports do not implement it. */
+export type LocationRequestResult =
+  | { status: 'sent' }
+  | { status: 'not_configured' }
+  | { status: 'unreachable' }
+  | { status: 'refused'; code: string };
+
 export interface ChannelTransport {
   /** `transport` in the result names which pipe actually carried the send, for the
    * one implementation that chooses per message (the reply-routing transport,
@@ -84,6 +91,11 @@ export interface ChannelTransport {
     /** The Linq chat a send on `transport: 'imessage'` landed in. */
     chatId?: string | null;
   }>;
+  /**
+   * iMessage location-request card, its own send after the text bubble.
+   * Absent on SMS. A refusal is named; callers must not pretend the card left.
+   */
+  requestLocation?(input: { chatId: string }): Promise<LocationRequestResult>;
 }
 
 /**
@@ -95,12 +107,19 @@ export class FakeTransport implements ChannelTransport {
   /** Every send verbatim, INCLUDING its media — a fake that recorded only the body
    * could never fail on a dropped attachment. */
   readonly sent: OutboundMessage[] = [];
+  /** Chat ids the location-request card was asked for, in order. */
+  readonly locationRequests: string[] = [];
   private counter = 0;
 
   async send(input: OutboundMessage): Promise<{ providerMessageId: string }> {
     this.sent.push(input);
     this.counter += 1;
     return { providerMessageId: `fake-out-${this.counter}` };
+  }
+
+  async requestLocation(input: { chatId: string }): Promise<LocationRequestResult> {
+    this.locationRequests.push(input.chatId);
+    return { status: 'sent' };
   }
 
   /** The media urls sent so far, one entry per send that carried any. */
