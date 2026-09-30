@@ -805,6 +805,81 @@ export async function sendLinqEffect(input: {
 }
 
 /**
+ * Native iMessage location-request card. 1:1 iMessage only — Linq returns 409
+ * for a group (`2016`) or for SMS/RCS (`2017`). The call prompts the parent;
+ * it does not return coordinates.
+ *
+ * https://docs.linqapp.com/channel/imessage/api/resources/chats/subresources/location/methods/request/
+ */
+export async function requestLinqLocation(input: {
+  chatId: string;
+  fetch?: typeof fetch;
+}): Promise<LinqEffectResult> {
+  if (!input.chatId) {
+    return { status: 'refused', code: 'missing_chat_id', httpStatus: 400, permanent: true };
+  }
+  return linqEffect({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/location/request`,
+    fetch: input.fetch,
+  });
+}
+
+/**
+ * Current shares in a chat. The street `address` is dropped here: callers
+ * receive a city locality or nothing. Coordinates are not returned.
+ *
+ * https://docs.linqapp.com/channel/imessage/api/resources/chats/subresources/location/methods/retrieve/
+ */
+export async function retrieveLinqLocation(input: {
+  chatId: string;
+  fetch?: typeof fetch;
+}): Promise<
+  | { status: 'locality'; locality: string }
+  | { status: 'empty' }
+  | { status: 'not_configured' }
+  | { status: 'refused'; code: string; httpStatus: number }
+  | { status: 'unreachable' }
+> {
+  if (!input.chatId) {
+    return { status: 'refused', code: 'missing_chat_id', httpStatus: 400 };
+  }
+  try {
+    const result = await linqRequest({
+      method: 'GET',
+      path: `/chats/${encodeURIComponent(input.chatId)}/location`,
+      fetch: input.fetch,
+    });
+    if (!result.ok) {
+      return { status: 'refused', code: result.code, httpStatus: result.status };
+    }
+    const locality = localityFromLocationPayload(result.payload);
+    return locality ? { status: 'locality', locality } : { status: 'empty' };
+  } catch (err) {
+    if (err instanceof LinqSendError && err.code === 'not_configured') {
+      return { status: 'not_configured' };
+    }
+    if (err instanceof LinqSendError && (err.code === 'timeout' || err.code === 'network')) {
+      return { status: 'unreachable' };
+    }
+    throw err;
+  }
+}
+
+/** City name only. A street address on the feature is ignored and not returned. */
+export function localityFromLocationPayload(payload: unknown): string | null {
+  if (!isRecord(payload)) return null;
+  const data = isRecord(payload.data) ? payload.data : payload;
+  if (!isRecord(data) || !Array.isArray(data.features)) return null;
+  for (const feature of data.features) {
+    if (!isRecord(feature) || !isRecord(feature.properties)) continue;
+    const locality = feature.properties.locality;
+    if (typeof locality === 'string' && locality.trim()) return locality.trim();
+  }
+  return null;
+}
+
+/**
  * The intake-shaped transport for one iMessage turn, bound to the chat the
  * parent just texted. `mediaUrls` still throws: that argument is the welcome
  * vCard, which this leg does not know how to render, and dropping it would tell
@@ -833,6 +908,14 @@ export function createLinqTextTransport(deps: {
         transport: 'imessage',
         chatId: deps.chatId,
       };
+    },
+    async requestLocation() {
+      if (!deps.chatId) return { status: 'refused', code: 'missing_chat_id' };
+      const result = await requestLinqLocation({ chatId: deps.chatId, fetch: deps.fetch });
+      if (result.status === 'accepted') return { status: 'sent' };
+      if (result.status === 'not_configured') return { status: 'not_configured' };
+      if (result.status === 'unreachable') return { status: 'unreachable' };
+      return { status: 'refused', code: result.code };
     },
   };
 }
