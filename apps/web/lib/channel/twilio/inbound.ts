@@ -129,7 +129,17 @@ export type TwilioInboundOutcome =
    * so this turn does not ask again. A later text still advances the ladder. */
   | 'poll_none'
   /** Linq logistics poll: the vote is stored. It is not routed as a find title. */
-  | 'poll_logistics';
+  | 'poll_logistics'
+  /** Linq location share ended. No text. */
+  | 'location_stopped'
+  /** Location share arrived while the first-touch ladder is off. No text. */
+  | 'location_ignored'
+  /** shared_by was an email, not a phone. Not guessed from an area code. */
+  | 'location_handle_not_phone'
+  /** No open place-ask for this number. No text. */
+  | 'location_not_waiting'
+  /** The share started but Linq had no city locality yet. No nudge. */
+  | 'location_unread';
 
 /** Twilio's count of attached media parts. Absent/garbage reads as none. */
 function mediaCount(params: Record<string, string>): number {

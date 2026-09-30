@@ -23,6 +23,10 @@ import type { IntakeCollected } from './extract';
 export type IntakeState =
   /** Greeting sent; waiting for the parent's free-form answer. */
   | 'awaiting_details'
+  /** VIL-385. Place ask sent. One ask, no reminder. */
+  | 'awaiting_place'
+  /** VIL-385. Week find sent, ages asked. Waiting for ages. */
+  | 'awaiting_ages'
   /** The one targeted follow-up has been asked; waiting for the missing field. */
   | 'awaiting_follow_up'
   /** Family provisioned, watch-offer sent; waiting for yes/no. */
@@ -87,6 +91,31 @@ interface IntakeData {
    * `share_refused` stays consumed so a retry cannot push the card twice.
    */
   linqContactCardClaim?: LinqContactCardClaim | null;
+  /** VIL-385. Absent means this session is not on the ladder. */
+  firstTouch?: FirstTouchPersisted | null;
+}
+
+/** Coarse place plus the location-card outcome. No street, no coordinates. */
+export interface FirstTouchPersisted {
+  language: ReplyLanguage;
+  place: {
+    kind: 'postal' | 'city';
+    areaCoarse: string;
+    postalCode: string | null;
+    municipality: string | null;
+    city: string | null;
+  } | null;
+  locationRequest: {
+    at: string;
+    outcome:
+      | 'sent'
+      | 'refused'
+      | 'not_configured'
+      | 'unreachable'
+      | 'skipped_group'
+      | 'not_a_moment';
+    code?: string;
+  } | null;
 }
 
 /** Held when the share was attempted. Setup that never reached the chat stays null. */
@@ -117,6 +146,12 @@ export interface IntakeSession {
   ladderLanguage: ReplyLanguage | null;
   /** Null until a pre-family iMessage share holds the one-shot. */
   linqContactCardClaim: LinqContactCardClaim | null;
+  /**
+   * VIL-385. Absent on a session that started before the ladder, which decodes
+   * as null. The place is coarse (FSA or city). A location-card outcome is
+   * named here until provisioning can write the audit row.
+   */
+  firstTouch: FirstTouchPersisted | null;
 }
 
 export const EMPTY_COLLECTED: IntakeCollected = { children: [], postalCode: null };
@@ -130,6 +165,7 @@ function encodeData(data: IntakeData): string {
     ladderLanguage: data.ladderLanguage,
   };
   if (data.linqContactCardClaim) payload.linqContactCardClaim = data.linqContactCardClaim;
+  if (data.firstTouch) payload.firstTouch = data.firstTouch;
   return encryptString(JSON.stringify(payload));
 }
 
@@ -167,6 +203,69 @@ function decodeData(blob: string): IntakeData {
     ladderNext: decodeLadderNext(parsed.ladderNext),
     ladderLanguage: decodeLadderLanguage(parsed.ladderLanguage),
     linqContactCardClaim: decodeLinqContactCardClaim(parsed.linqContactCardClaim),
+    firstTouch: decodeFirstTouch(parsed.firstTouch),
+  };
+}
+
+const LOCATION_REQUEST_OUTCOMES = [
+  'sent',
+  'refused',
+  'not_configured',
+  'unreachable',
+  'skipped_group',
+  'not_a_moment',
+] as const;
+
+function decodeFirstTouch(value: unknown): FirstTouchPersisted | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as {
+    language?: unknown;
+    place?: unknown;
+    locationRequest?: unknown;
+  };
+  const language = row.language === 'fr' ? 'fr' : row.language === 'en' ? 'en' : null;
+  if (!language) return null;
+  return {
+    language,
+    place: decodeFirstTouchPlace(row.place),
+    locationRequest: decodeLocationRequest(row.locationRequest),
+  };
+}
+
+function decodeFirstTouchPlace(value: unknown): FirstTouchPersisted['place'] {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as {
+    kind?: unknown;
+    areaCoarse?: unknown;
+    postalCode?: unknown;
+    municipality?: unknown;
+    city?: unknown;
+  };
+  if (row.kind !== 'postal' && row.kind !== 'city') return null;
+  if (typeof row.areaCoarse !== 'string' || row.areaCoarse.length === 0) return null;
+  return {
+    kind: row.kind,
+    areaCoarse: row.areaCoarse,
+    postalCode: typeof row.postalCode === 'string' ? row.postalCode : null,
+    municipality: typeof row.municipality === 'string' ? row.municipality : null,
+    city: typeof row.city === 'string' ? row.city : null,
+  };
+}
+
+function decodeLocationRequest(value: unknown): FirstTouchPersisted['locationRequest'] {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as { at?: unknown; outcome?: unknown; code?: unknown };
+  if (typeof row.at !== 'string' || row.at.length === 0) return null;
+  if (
+    typeof row.outcome !== 'string' ||
+    !(LOCATION_REQUEST_OUTCOMES as readonly string[]).includes(row.outcome)
+  ) {
+    return null;
+  }
+  return {
+    at: row.at,
+    outcome: row.outcome as NonNullable<FirstTouchPersisted['locationRequest']>['outcome'],
+    ...(typeof row.code === 'string' ? { code: row.code } : {}),
   };
 }
 
@@ -206,6 +305,7 @@ export async function loadOpenSession(
     ladderNext: data.ladderNext ?? null,
     ladderLanguage: data.ladderLanguage ?? null,
     linqContactCardClaim: data.linqContactCardClaim ?? null,
+    firstTouch: data.firstTouch ?? null,
   };
 }
 
@@ -259,6 +359,7 @@ export async function claimIntakeSession(
     ladderNext: null,
     ladderLanguage: null,
     linqContactCardClaim: null,
+    firstTouch: null,
   };
 }
 
@@ -297,6 +398,8 @@ export interface SessionPatch {
   ladderLanguage?: ReplyLanguage | null;
   /** Undefined keeps the stored claim. Null clears a released attempt. */
   linqContactCardClaim?: LinqContactCardClaim | null;
+  /** Undefined keeps the stored ladder. Null clears it. */
+  firstTouch?: FirstTouchPersisted | null;
 }
 
 /** Persist a state transition. `collected`/`transcript` are re-encrypted together. */
@@ -316,6 +419,7 @@ export async function saveSession(
     patch.linqContactCardClaim === undefined
       ? session.linqContactCardClaim
       : patch.linqContactCardClaim;
+  const firstTouch = patch.firstTouch === undefined ? session.firstTouch : patch.firstTouch;
   await database
     .update(schema.smsIntakeSessions)
     .set({
@@ -327,6 +431,7 @@ export async function saveSession(
         ladderNext,
         ladderLanguage,
         linqContactCardClaim,
+        firstTouch,
       }),
       ...(patch.followUpCount === undefined ? {} : { followUpCount: patch.followUpCount }),
       ...(patch.clarifyCount === undefined ? {} : { clarifyCount: patch.clarifyCount }),

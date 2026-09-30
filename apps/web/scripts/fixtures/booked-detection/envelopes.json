@@ -1,0 +1,76 @@
+{
+  "emails": [
+    {
+      "id": "class-receipt",
+      "sender": "Northwind Recreation <noreply@recreation.northwind.example>",
+      "subject": "Registration confirmation — Tadpole Swim",
+      "snippet": "You're registered for Tadpole Swim. First class is Saturday, October 4 at 9:00 a.m. at the Northwind Pool.",
+      "date": "2026-09-20T15:00:00.000Z",
+      "body": "Hello, you're registered for Tadpole Swim. First class is Saturday, October 4 at 9:00 a.m. at the Northwind Pool. This is a receipt for the registration. No payment amount is included in this notice."
+    },
+    {
+      "id": "resent-receipt",
+      "sender": "Northwind Recreation <noreply@recreation.northwind.example>",
+      "subject": "Payment receipt — Tadpole Swim",
+      "snippet": "Receipt for Tadpole Swim. You are registered. First class remains Saturday, October 4 at 9:00 a.m.",
+      "date": "2026-09-21T15:00:00.000Z",
+      "body": "This is a receipt for Tadpole Swim. You are registered. The first class is still Saturday, October 4 at 9:00 a.m. at the Northwind Pool. This message is a second copy of the registration, not a new class."
+    },
+    {
+      "id": "waitlist",
+      "sender": "Northwind Recreation <noreply@recreation.northwind.example>",
+      "subject": "Waitlist Update",
+      "snippet": "You are on the waitlist for Tadpole Swim. Nothing is held yet.",
+      "date": "2026-09-18T15:00:00.000Z",
+      "body": "Waitlist Update. You are on the waitlist for Tadpole Swim. A place has not been offered. Nothing is held yet."
+    },
+    {
+      "id": "adult-ticket",
+      "sender": "Lumen Hall <box-office@tickets.lumen-hall.example>",
+      "subject": "Your tickets — Thursday Jazz Quartet",
+      "snippet": "Two adult tickets are confirmed for Thursday at 8:00 p.m. at Lumen Hall.",
+      "date": "2026-09-20T18:00:00.000Z",
+      "body": "Your tickets for Thursday Jazz Quartet are confirmed. Two adult tickets, Thursday at 8:00 p.m., Lumen Hall. This is not a children's class."
+    },
+    {
+      "id": "airline-booking",
+      "sender": "Northair <itinerary@itinerary.northair.example>",
+      "subject": "Your flight to Calgary is confirmed",
+      "snippet": "Northair flight NA204 departs Thursday at 6:10 a.m.",
+      "date": "2026-09-20T12:00:00.000Z",
+      "body": "Your flight is confirmed. Northair flight NA204 to Calgary departs Thursday at 6:10 a.m. This is an airline booking, not a children's activity."
+    },
+    {
+      "id": "restaurant-booking",
+      "sender": "Birch Room <book@book.birch-room.example>",
+      "subject": "Your table at Birch Room",
+      "snippet": "A table for two is booked for Friday at 7:00 p.m.",
+      "date": "2026-09-20T19:00:00.000Z",
+      "body": "Your table at Birch Room is booked for Friday at 7:00 p.m., a table for two. This is a restaurant reservation, not a class."
+    },
+    {
+      "id": "registration-opens",
+      "sender": "Northwind Recreation <noreply@recreation.northwind.example>",
+      "subject": "Fall registration opens October 7",
+      "snippet": "Registration opens October 7 at 7:00 a.m. for residents. No place is held.",
+      "date": "2026-09-15T12:00:00.000Z",
+      "body": "Fall registration opens October 7 at 7:00 a.m. for residents. This notice does not register anyone. No place is held."
+    },
+    {
+      "id": "session-reminder",
+      "sender": "Northwind Recreation <noreply@recreation.northwind.example>",
+      "subject": "Reminder: Tadpole Swim is this Saturday",
+      "snippet": "This is a reminder that Tadpole Swim meets Saturday, October 4 at 9:00 a.m.",
+      "date": "2026-10-02T15:00:00.000Z",
+      "body": "Reminder: Tadpole Swim is this Saturday. This is a reminder that the class meets Saturday, October 4 at 9:00 a.m. at the Northwind Pool. It is not a new registration."
+    },
+    {
+      "id": "cancellation",
+      "sender": "Northwind Recreation <noreply@recreation.northwind.example>",
+      "subject": "CANCELLED — Tadpole Swim",
+      "snippet": "Tadpole Swim on Saturday, October 4 has been cancelled.",
+      "date": "2026-09-28T15:00:00.000Z",
+      "body": "Tadpole Swim on Saturday, October 4 at 9:00 a.m. has been cancelled. The class will not run."
+    }
+  ]
+}

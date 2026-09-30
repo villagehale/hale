@@ -1,10 +1,16 @@
 import type { AgentClient } from '@hale/agent';
 import { stageFromAgeInMonths } from '@hale/types';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
-import { correlateExtraction, type CorrelationCandidate } from './correlate';
+import { guardBookingConfirmation } from './booking-guard';
+import { type CorrelationCandidate, correlateExtraction } from './correlate';
 import { extractChildEvent } from './extract';
 import { triageEmail } from './triage';
-import type { ExtractionKind, FamilyChildRef, InboxEnvelope, SentinelClassification } from './types';
+import type {
+  ExtractionKind,
+  FamilyChildRef,
+  InboxEnvelope,
+  SentinelClassification,
+} from './types';
 
 /**
  * The E2 sentinel — the callable library function E3 wires up. Two-stage,
@@ -132,17 +138,26 @@ export async function classifyChildEventEmail(
     deps.client,
   );
 
+  // AFTER the model, BEFORE anything is correlated or returned. A waitlist, a
+  // "registration opens" notice, or a reminder that the model called a confirmation
+  // must not reach the booking write as one. The kind change is the refusal: the
+  // booking frame and the booking row both key off `booking_confirmation`.
+  const kind = guardBookingConfirmation(extracted.kind, {
+    subject: envelope.subject,
+    snippet: envelope.snippet,
+  });
+
   const teenAttributed = resolveTeenAttributed(extracted.event.childRef, deps.children);
   const teenContent = resolveTeenContent(
     extracted.teenContent,
-    extracted.kind,
+    kind,
     extracted.sourceConfidence,
     teenAttributed,
   );
 
   const matchedEventRef = correlateExtraction(
     {
-      kind: extracted.kind,
+      kind,
       title: extracted.event.title,
       originalTime: extracted.event.originalTime,
       newTime: extracted.event.newTime,
@@ -155,13 +170,11 @@ export async function classifyChildEventEmail(
     familyId: envelope.familyId,
     messageId: envelope.messageId,
     extraction: {
-      kind: extracted.kind,
+      kind,
       // Teen-redacted (rule #1): the title/quote generalize, the same shape
       // week_plans.ts uses ("keeps the id(s) for de-dup but carries a generic
       // title + no name"). childRef stays on the event for de-dup, not shown raw.
-      event: teenContent
-        ? { ...extracted.event, title: GENERIC_TITLE[extracted.kind] }
-        : extracted.event,
+      event: teenContent ? { ...extracted.event, title: GENERIC_TITLE[kind] } : extracted.event,
       sourceConfidence: extracted.sourceConfidence,
       quoteEvidence: teenContent ? null : extracted.quoteEvidence,
       teenContent,

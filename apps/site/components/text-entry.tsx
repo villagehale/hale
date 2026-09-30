@@ -9,7 +9,8 @@ import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { type ChannelId, type Platform, channelOrder, qrLeads } from '~/lib/chooser';
 import { CONTACT_CARD_PATH } from '~/lib/contact-card';
-import { CONTACT_EMAIL, INTAKE_PREFILL, buildSmsHref, buildWaHref } from '~/lib/text-entry';
+import { intakePrefill } from '~/lib/intake-prefill';
+import { CONTACT_EMAIL, buildSmsHref, buildWaHref, smsUriFormForPlatform } from '~/lib/text-entry';
 
 /**
  * The /text conversion column (VIL-240 · M5) — what a QR card, a poster, a
@@ -32,10 +33,14 @@ import { CONTACT_EMAIL, INTAKE_PREFILL, buildSmsHref, buildWaHref } from '~/lib/
  * as hero: the numbered steps are folded into one line under it, because the
  * exchange shows the first beat and the greeting asks for the second.
  * The page never invents Hale speech: ZH shows the English reply under a
- * translated label because copy.ts has no Chinese greeting. The "(via <code>)"
+ * translated label because copy.ts has no Chinese greeting. When
+ * FIRST_TOUCH_LADDER_ENABLED is exactly on, the received bubble is that
+ * ladder's first message: the iMessage sentence on Apple phone and Mac, the
+ * postal-code sentence on every other platform. The "(via <code>)"
  * attribution token rides ONLY inside composer hrefs; on the page it is
  * disclosed in words (prefilledWithSource), never printed raw — the sent bubble
- * shows INTAKE_PREFILL itself, tokenless.
+ * shows the locale's prefill itself, tokenless. FR sends
+ * {@link INTAKE_PREFILL_FR}; ZH keeps the English hello.
  *
  * When both pipes are live, lib/chooser.ts orders them: liveness gates (a dark
  * channel renders NOTHING), and the UA hint only ORDERS. The one withholding
@@ -116,6 +121,7 @@ export function TextEntry({
   whatsappNumber = '',
   platform = 'unknown',
   locale = routing.defaultLocale,
+  firstTouchLadder = false,
 }: {
   source: string | null;
   smsNumber: string;
@@ -125,11 +131,17 @@ export function TextEntry({
   /** The server's UA reading — ordering input only (lib/chooser.ts). */
   platform?: Platform;
   locale?: Locale;
+  /** VIL-385. The received bubble matches the ladder's first message. */
+  firstTouchLadder?: boolean;
 }) {
   const t = getTranslator(locale, 'Text');
   const common = getTranslator(locale, 'Common');
   const copy = getTranslator(locale, 'CopyNumber');
   const ec = getTranslator(locale, 'EmailCta');
+  const prefill = intakePrefill(locale);
+  /** The tap is on a known OS, so the button uses the form that OS reads. The
+   * QR stays `cross`: the phone that scans a laptop is not the laptop. */
+  const buttonForm = smsUriFormForPlatform(platform);
   const live = smsNumber !== '';
   const waLive = whatsappNumber !== '';
   /** A picker only exists when there is a second live pipe. WhatsApp dark is
@@ -138,7 +150,9 @@ export function TextEntry({
 
   const channels = picker ? channelOrder(platform, { sms: true, wa: true }) : [];
   const hrefFor = (id: ChannelId): string =>
-    id === 'messages' ? buildSmsHref(smsNumber, source) : buildWaHref(whatsappNumber, source);
+    id === 'messages'
+      ? buildSmsHref(smsNumber, source, prefill, buttonForm)
+      : buildWaHref(whatsappNumber, source, prefill);
   const primary = channels[0];
   const secondary = channels[1];
 
@@ -165,7 +179,11 @@ export function TextEntry({
   const desktopCard = live ? (
     <div className="card mt-8 hidden flex-col gap-6 sm:flex sm:flex-row sm:items-center">
       <QrCode
-        value={primary ? hrefFor(primary) : buildSmsHref(smsNumber, source)}
+        value={
+          primary === 'whatsapp'
+            ? hrefFor(primary)
+            : buildSmsHref(smsNumber, source, prefill, 'cross')
+        }
         label={t('qrAria')}
       />
       <div>
@@ -186,8 +204,8 @@ export function TextEntry({
   ) : null;
 
   /** THE EXCHANGE — the page's hero since the 2026-09-16 redesign. What the
-   * parent is about to send (INTAKE_PREFILL verbatim, the composer's own body
-   * minus the `(via …)` token, which stays in the href) and what Hale really
+   * parent is about to send (the locale's prefill verbatim, the composer's own
+   * body minus the `(via …)` token, which stays in the href) and what Hale really
    * sends back. Both bubbles are the LANDING's primitives (v4-bubble), so the
    * two surfaces speak one messaging idiom.
    *
@@ -200,14 +218,19 @@ export function TextEntry({
    * previewLabel carries its own "(English original)" because copy.ts has no
    * Chinese greeting.
    *
-   * The sent bubble is the literal SMS body, so it is English on every locale;
-   * `sentGloss` says what it means, and is the prefill itself in EN — which is
-   * exactly the condition that leaves the line off a page that needs no gloss.
+   * The sent bubble is the literal SMS body. EN sends {@link INTAKE_PREFILL},
+   * FR sends {@link INTAKE_PREFILL_FR}. ZH keeps the English body and glosses
+   * it — there is no locked Chinese line to send. The gloss renders only when
+   * it differs from that body.
    *
    * Only where a channel is live: the dark page promises no text back. */
   const sentLabel = t('sentLabel');
   const previewLabel = t('previewLabel');
   const sentGloss = t('sentGloss');
+  const messagesPipe = platform === 'apple' || platform === 'desktop-mac';
+  const haleFirst = firstTouchLadder
+    ? t(messagesPipe ? 'greetingLadderImessage' : 'greetingLadderSms')
+    : t('greeting');
   const exchange = live ? (
     <div className="v4-thread text-thread mt-8">
       <p className="text-thread-label text-thread-label-out" aria-hidden="true">
@@ -215,15 +238,15 @@ export function TextEntry({
       </p>
       <p className="v4-bubble v4-bubble-out">
         <span className="sr-only">{sentLabel} </span>
-        {INTAKE_PREFILL}
+        {prefill}
       </p>
-      {sentGloss !== INTAKE_PREFILL && <p className="text-thread-gloss">{sentGloss}</p>}
+      {sentGloss !== prefill && <p className="text-thread-gloss">{sentGloss}</p>}
       <p className="text-thread-label" aria-hidden="true">
         {previewLabel}
       </p>
       <p className="v4-bubble v4-bubble-in">
         <span className="sr-only">{previewLabel} </span>
-        {t('greeting')}
+        {haleFirst}
       </p>
     </div>
   ) : null;
@@ -269,32 +292,28 @@ export function TextEntry({
         <div className="mt-10 rise rise-2">
           {qrLeads(platform) ? <div className="mb-8">{desktopCard}</div> : null}
 
-          {picker ? (
-            primary !== undefined && (
-              <div className="flex flex-col items-start gap-3">
-                {channelCta(primary, true)}
-                {secondary !== undefined && channelCta(secondary, false)}
-              </div>
-            )
-          ) : (
-            !qrLeads(platform) && (
-              <LandingCta
-                event="cta_text_click"
-                placement="text_entry"
-                channel="sms"
-                href={buildSmsHref(smsNumber, source)}
-                className="btn-primary"
-              >
-                {common('textHale')}
-              </LandingCta>
-            )
-          )}
+          {picker
+            ? primary !== undefined && (
+                <div className="flex flex-col items-start gap-3">
+                  {channelCta(primary, true)}
+                  {secondary !== undefined && channelCta(secondary, false)}
+                </div>
+              )
+            : !qrLeads(platform) && (
+                <LandingCta
+                  event="cta_text_click"
+                  placement="text_entry"
+                  channel="sms"
+                  href={buildSmsHref(smsNumber, source, prefill, buttonForm)}
+                  className="btn-primary"
+                >
+                  {common('textHale')}
+                </LandingCta>
+              )}
 
           {/* The attribution disclosure, in words — the raw "(via <code>)" token
               stays inside the composer hrefs and never renders as page copy. */}
-          <p className="meta mt-4">
-            {source ? t('prefilledWithSource') : t('prefilledNoSource')}
-          </p>
+          <p className="meta mt-4">{source ? t('prefilledWithSource') : t('prefilledNoSource')}</p>
 
           {/* Saved once, every later Hale text arrives with the turtle and a name
               on it. Only offered while the number is live — the card is the

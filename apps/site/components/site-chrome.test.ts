@@ -228,8 +228,9 @@ describe('the header carries the two doors, weighted correctly', () => {
     // act (components/text-entry.test.ts).
     expect(header).toContain('>Text Hale</a>');
     expect(header).not.toContain('Message Hale');
-    // The pill stopped being an sms: deep link — the chooser ended the header's
-    // three-way fork (deep link / scroll target / dead laptop click).
+    // First paint is /text on every device, including a phone: the composer
+    // href is applied after hydration (lib/primary-cta.ts), so this server
+    // markup must not contain an sms: link a laptop would dead-click.
     expect(header).not.toContain('sms:');
     expect(header).not.toContain('cta_text_click');
   });

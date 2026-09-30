@@ -20,7 +20,13 @@ interface TriageInput {
 }
 interface ExtractionInput {
   kind: string;
-  event: { title: string; child_ref?: string | null; original_time?: string | null; new_time?: string | null; location?: string | null };
+  event: {
+    title: string;
+    child_ref?: string | null;
+    original_time?: string | null;
+    new_time?: string | null;
+    location?: string | null;
+  };
   source_confidence: number;
   quote_evidence: string;
   teen_content?: boolean;
@@ -33,8 +39,12 @@ function scriptedClient(triage: TriageInput, extraction?: ExtractionInput): Agen
       return { content: [{ type: 'tool_use', id: 't1', name: 'triage', input: triage }], usage };
     }
     if (toolName === 'extraction') {
-      if (!extraction) throw new Error('unexpected extraction call — triage should have short-circuited');
-      return { content: [{ type: 'tool_use', id: 'e1', name: 'extraction', input: extraction }], usage };
+      if (!extraction)
+        throw new Error('unexpected extraction call — triage should have short-circuited');
+      return {
+        content: [{ type: 'tool_use', id: 'e1', name: 'extraction', input: extraction }],
+        usage,
+      };
     }
     throw new Error(`unexpected tool ${String(toolName)}`);
   });
@@ -56,7 +66,11 @@ const YOUNG_CHILD: FamilyChildRef = { id: 'child-young', name: 'Leo', ageInMonth
 describe('classifyChildEventEmail — routing', () => {
   it('short-circuits on a triage-negative envelope without fetching the body', async () => {
     const fetchBody = vi.fn();
-    const client = scriptedClient({ child_related: false, confidence: 0.9, rationale: 'newsletter' });
+    const client = scriptedClient({
+      child_related: false,
+      confidence: 0.9,
+      rationale: 'newsletter',
+    });
 
     const result = await classifyChildEventEmail(ENVELOPE, {
       client,
@@ -76,7 +90,13 @@ describe('classifyChildEventEmail — routing', () => {
       { child_related: true, confidence: 0.9, rationale: 'cancellation notice' },
       {
         kind: 'cancellation',
-        event: { title: 'Swim class', original_time: '2026-07-25T14:00:00Z', new_time: null, location: null, child_ref: null },
+        event: {
+          title: 'Swim class',
+          original_time: '2026-07-25T14:00:00Z',
+          new_time: null,
+          location: null,
+          child_ref: null,
+        },
         source_confidence: 0.9,
         quote_evidence: 'Swim class is cancelled this Saturday at 2pm.',
         teen_content: false,
@@ -103,7 +123,13 @@ describe('classifyChildEventEmail — routing', () => {
       { child_related: true, confidence: 0.9, rationale: 'x' },
       {
         kind: 'cancellation',
-        event: { title: 'Swim lessons', original_time: '2026-08-01T14:00:00Z', new_time: null, location: null, child_ref: null },
+        event: {
+          title: 'Swim lessons',
+          original_time: '2026-08-01T14:00:00Z',
+          new_time: null,
+          location: null,
+          child_ref: null,
+        },
         source_confidence: 0.9,
         quote_evidence: 'quote',
       },
@@ -114,7 +140,11 @@ describe('classifyChildEventEmail — routing', () => {
       children: [YOUNG_CHILD],
       fetchBody,
       correlationCandidates: [
-        { ref: { table: 'family_events', id: 'fe-9' }, title: 'Swim lessons', startsAt: '2026-08-01T14:00:00Z' },
+        {
+          ref: { table: 'family_events', id: 'fe-9' },
+          title: 'Swim lessons',
+          startsAt: '2026-08-01T14:00:00Z',
+        },
       ],
     });
 
@@ -148,7 +178,11 @@ describe('classifyChildEventEmail — routing', () => {
       children: [YOUNG_CHILD],
       fetchBody,
       correlationCandidates: [
-        { ref: { table: 'family_events', id: 'fe-9' }, title: 'Swim lessons', startsAt: '2026-08-01T14:00:00Z' },
+        {
+          ref: { table: 'family_events', id: 'fe-9' },
+          title: 'Swim lessons',
+          startsAt: '2026-08-01T14:00:00Z',
+        },
       ],
     });
 
@@ -189,6 +223,91 @@ describe('classifyChildEventEmail — routing', () => {
     expect(result.extraction?.event.title).toBe('A registration notice');
     expect(result.extraction?.quoteEvidence).toBeNull();
   });
+
+  it('refuses a booking_confirmation the subject or snippet shows is not a held place', async () => {
+    const fetchBody = vi.fn().mockResolvedValue('body');
+    const booking = {
+      kind: 'booking_confirmation',
+      event: {
+        title: 'Tadpole Swim',
+        original_time: null,
+        new_time: '2026-10-04T13:00:00Z',
+        location: null,
+        child_ref: null,
+      },
+      source_confidence: 0.92,
+      quote_evidence: 'You are on the waitlist for Tadpole Swim.',
+    };
+    const client = scriptedClient(
+      { child_related: true, confidence: 0.9, rationale: 'registration' },
+      booking,
+    );
+
+    const refused = await classifyChildEventEmail(
+      {
+        ...ENVELOPE,
+        subject: 'Waitlist Update',
+        snippet: 'You are on the waitlist for Tadpole Swim.',
+      },
+      { client, children: [YOUNG_CHILD], fetchBody, correlationCandidates: [] },
+    );
+    expect(refused.extraction?.kind).toBe('reminder_only');
+
+    const opens = await classifyChildEventEmail(
+      {
+        ...ENVELOPE,
+        subject: 'Fall registration opens October 7',
+        snippet: 'Registration opens October 7 at 7:00 a.m.',
+      },
+      {
+        client: scriptedClient(
+          { child_related: true, confidence: 0.9, rationale: 'registration' },
+          booking,
+        ),
+        children: [YOUNG_CHILD],
+        fetchBody,
+        correlationCandidates: [],
+      },
+    );
+    expect(opens.extraction?.kind).toBe('reminder_only');
+
+    const reminder = await classifyChildEventEmail(
+      {
+        ...ENVELOPE,
+        subject: 'Reminder: Tadpole Swim is this Saturday',
+        snippet: 'Just a reminder — Tadpole Swim meets Saturday.',
+      },
+      {
+        client: scriptedClient(
+          { child_related: true, confidence: 0.9, rationale: 'reminder' },
+          booking,
+        ),
+        children: [YOUNG_CHILD],
+        fetchBody,
+        correlationCandidates: [],
+      },
+    );
+    expect(reminder.extraction?.kind).toBe('reminder_only');
+
+    // THE POSITIVE CONTROL. The same scripted confirmation, on a receipt, stays one.
+    const receipt = await classifyChildEventEmail(
+      {
+        ...ENVELOPE,
+        subject: 'Registration confirmation — Tadpole Swim',
+        snippet: "You're registered for Tadpole Swim.",
+      },
+      {
+        client: scriptedClient(
+          { child_related: true, confidence: 0.9, rationale: 'receipt' },
+          { ...booking, quote_evidence: "You're registered for Tadpole Swim." },
+        ),
+        children: [YOUNG_CHILD],
+        fetchBody,
+        correlationCandidates: [],
+      },
+    );
+    expect(receipt.extraction?.kind).toBe('booking_confirmation');
+  });
 });
 
 describe('classifyChildEventEmail — teen-content backstop (rule #1)', () => {
@@ -197,7 +316,11 @@ describe('classifyChildEventEmail — teen-content backstop (rule #1)', () => {
       { child_related: true, confidence: 0.9, rationale: 'x' },
       {
         kind: 'reminder_only',
-        event: { title: "Maya's counselling session", child_ref: TEEN_CHILD.id, original_time: '2026-07-25T14:00:00Z' },
+        event: {
+          title: "Maya's counselling session",
+          child_ref: TEEN_CHILD.id,
+          original_time: '2026-07-25T14:00:00Z',
+        },
         source_confidence: 0.9,
         quote_evidence: 'Maya mentioned feeling anxious about the session.',
         teen_content: true,
@@ -243,7 +366,11 @@ describe('classifyChildEventEmail — teen-content backstop (rule #1)', () => {
       { child_related: true, confidence: 0.8, rationale: 'x' },
       {
         kind: 'cancellation',
-        event: { title: "Maya's class", child_ref: TEEN_CHILD.id, original_time: '2026-07-25T14:00:00Z' },
+        event: {
+          title: "Maya's class",
+          child_ref: TEEN_CHILD.id,
+          original_time: '2026-07-25T14:00:00Z',
+        },
         source_confidence: 0.5,
         quote_evidence: 'quote',
         teen_content: false,
@@ -265,7 +392,11 @@ describe('classifyChildEventEmail — teen-content backstop (rule #1)', () => {
       { child_related: true, confidence: 0.9, rationale: 'x' },
       {
         kind: 'cancellation',
-        event: { title: "Maya's swim class", child_ref: TEEN_CHILD.id, original_time: '2026-07-25T14:00:00Z' },
+        event: {
+          title: "Maya's swim class",
+          child_ref: TEEN_CHILD.id,
+          original_time: '2026-07-25T14:00:00Z',
+        },
         source_confidence: 0.95,
         quote_evidence: 'Swim class cancelled Saturday due to pool maintenance.',
         teen_content: false,
@@ -280,7 +411,9 @@ describe('classifyChildEventEmail — teen-content backstop (rule #1)', () => {
     });
 
     expect(result.extraction?.teenContent).toBe(false);
-    expect(result.extraction?.quoteEvidence).toBe('Swim class cancelled Saturday due to pool maintenance.');
+    expect(result.extraction?.quoteEvidence).toBe(
+      'Swim class cancelled Saturday due to pool maintenance.',
+    );
   });
 
   it('never forces teenContent for a non-teen child_ref', async () => {

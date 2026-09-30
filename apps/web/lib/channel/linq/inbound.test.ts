@@ -107,6 +107,7 @@ function enrol(fake: FakeDb): { familyId: string; userId: string } {
 
 function harness(): {
   fake: FakeDb;
+  transport: FakeTransport;
   jobs: ChannelMessageReceivedJob[];
   deps: Parameters<typeof handleLinqInboundRequest>[1];
   reads: Array<{ chatId: string }>;
@@ -114,12 +115,13 @@ function harness(): {
   sends: Array<{ chatId: string; text: string }>;
 } {
   const fake = makeFakeDb();
+  const transport = new FakeTransport();
   const jobs: ChannelMessageReceivedJob[] = [];
   const reads: Array<{ chatId: string }> = [];
   const warns: unknown[] = [];
   const sends: Array<{ chatId: string; text: string }> = [];
   const intake: IntakeDeps = {
-    transport: new FakeTransport(),
+    transport,
     threadMessage: async () => 'conv-1',
     extractor: new FakeExtractor([{ children: [], postalCode: null }]),
     intentReader: new FakeIntentReader([
@@ -151,6 +153,7 @@ function harness(): {
   };
   return {
     fake,
+    transport,
     jobs,
     reads,
     warns,
@@ -1051,5 +1054,96 @@ describe('handleLinqInboundRequest', () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+});
+
+describe('location sharing', () => {
+  function hiBody(): string {
+    const parsed = JSON.parse(messageBody()) as { data: { parts: unknown[] } };
+    parsed.data.parts = [{ type: 'text', value: 'hi' }];
+    return JSON.stringify(parsed);
+  }
+
+  function locationBody(event: string, sharedBy: string): string {
+    return JSON.stringify({
+      api_version: 'v3',
+      webhook_version: '2026-02-03',
+      event_type: event,
+      event_id: 'evt-loc',
+      created_at: NOW.toISOString(),
+      data: {
+        chat_id: CHAT_ID,
+        shared_by: sharedBy,
+        began_at: NOW.toISOString(),
+      },
+    });
+  }
+
+  it('ignores a share while the ladder is off and does not read a location', async () => {
+    const h = harness();
+    let reads = 0;
+    h.deps = {
+      ...h.deps,
+      readSharedLocality: async () => {
+        reads += 1;
+        return { status: 'locality', locality: 'Toronto' };
+      },
+    };
+    const res = await handleLinqInboundRequest(
+      request(locationBody('location.sharing.started', PHONE)),
+      h.deps,
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ outcome: 'location_ignored' });
+    expect(reads).toBe(0);
+    expect(h.transport.bodies()).toEqual([]);
+  });
+
+  it('does not guess a place from an email handle', async () => {
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
+    const h = harness();
+    const res = await handleLinqInboundRequest(
+      request(locationBody('location.sharing.started', 'parent@icloud.com')),
+      h.deps,
+    );
+    await expect(res.json()).resolves.toEqual({ outcome: 'location_handle_not_phone' });
+    expect(h.transport.bodies()).toEqual([]);
+  });
+
+  it('accepts a shared city after the card, as its own find and ages bubbles', async () => {
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
+    const h = harness();
+    h.deps = {
+      ...h.deps,
+      readSharedLocality: async () => ({ status: 'locality', locality: 'Toronto' }),
+    };
+    const opened = await handleLinqInboundRequest(request(hiBody()), h.deps);
+    await expect(opened.json()).resolves.toEqual({ outcome: 'intake' });
+    expect(h.transport.locationRequests).toEqual([CHAT_ID]);
+    expect(h.transport.bodies()[0]).toBe(
+      "Hey, it's Hale. I find what's on for kids across the GTA. Tap to share where you are and I'll show you what's on this week.",
+    );
+
+    const shared = await handleLinqInboundRequest(
+      request(locationBody('location.sharing.started', PHONE)),
+      h.deps,
+    );
+    await expect(shared.json()).resolves.toEqual({ outcome: 'intake' });
+    expect(h.transport.bodies().slice(1)).toEqual([
+      "Nothing on near you this week yet. I'll text you the first good one in a day or two.",
+      'How old are the kids?',
+    ]);
+    expect(h.transport.locationRequests).toEqual([CHAT_ID]);
+  });
+
+  it('records a stop and sends nothing', async () => {
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
+    const h = harness();
+    const res = await handleLinqInboundRequest(
+      request(locationBody('location.sharing.stopped', PHONE)),
+      h.deps,
+    );
+    await expect(res.json()).resolves.toEqual({ outcome: 'location_stopped' });
+    expect(h.transport.bodies()).toEqual([]);
   });
 });

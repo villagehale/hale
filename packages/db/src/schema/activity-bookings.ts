@@ -97,6 +97,19 @@ export const activityBookings = pgTable(
      */
     sessionKey: text('session_key'),
     /**
+     * THE CLASS, as one string — sender domain, canonical title, and the UTC date of the
+     * first session. Written by `bookingDedupeKey` so a second email about the same class
+     * (an invoice, then the receipt) updates this row instead of inserting another.
+     *
+     * NULLABLE. A row written before the column existed has no key, and the readers
+     * recompute the same function from the columns rather than trusting a missing one.
+     * NULL is not unique: Postgres treats nulls as distinct, so a backfill that cannot
+     * prove two legacy rows are the same class does not have to delete one of them.
+     *
+     * It discloses nothing new. The three parts are already columns on this row.
+     */
+    dedupeKey: text('dedupe_key'),
+    /**
      * THE PROVIDER CALLED IT OFF — set when a later email from the same `provider_host`
      * cancels the same class, and the follow-up reader's `IS NULL`.
      *
@@ -132,6 +145,12 @@ export const activityBookings = pgTable(
       table.integrationId,
       table.messageId,
     ),
+    // One LIVE class per family. A cancelled booking drops out of the predicate so a
+    // later re-registration of the same class can be written. Partial, and null keys
+    // are not covered — see `dedupe_key`.
+    dedupeUniq: uniqueIndex('activity_bookings_dedupe_uniq')
+      .on(table.familyId, table.dedupeKey)
+      .where(sql`${table.cancelledAt} IS NULL AND ${table.dedupeKey} IS NOT NULL`),
     // The follow-up reader's working set. Plain, not partial: the window is relative to
     // `now`, so there is no constant predicate to make it partial with.
     dueIdx: index('activity_bookings_due_idx').on(table.familyId, table.firstSessionAt),

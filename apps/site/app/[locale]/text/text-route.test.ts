@@ -84,10 +84,15 @@ describe('/text (unlisted entry surface)', () => {
       expect(header).toContain('class="v4-nav v4-glass"');
       expect(header).toContain('hale-logo');
       expect(header).toContain('viewBox="0 0 905.840370 590.701960"');
-      // The column under the bar is still the conversion door. The sent
-      // bubble is the warm prefill in every locale; the Hale reply is pinned
-      // below to the locked preview bytes.
-      expect(html).toContain('Hey Hale, what&#x27;s going on?');
+      // The column under the bar is still the conversion door. EN and ZH send
+      // the English hello; FR sends Sloane's ASCII line. The Hale reply is
+      // pinned below to the locked preview bytes — that bubble does not move.
+      if (locale === 'fr') {
+        expect(html).toContain('Salut Hale, qu&#x27;est-ce qui se passe?');
+        expect(html).not.toContain('qu\u2019est-ce qui se passe ?');
+      } else {
+        expect(html).toContain('Hey Hale, what&#x27;s going on?');
+      }
     }
     const en = renderToStaticMarkup(
       await TextPage({
@@ -114,6 +119,23 @@ describe('/text (unlisted entry surface)', () => {
     expect(fr).toContain(
       'Bonjour, je suis Hale. J&#x27;aide a planifier l&#x27;annee de vos enfants - ce qui se passe près d&#x27;eux, les matins d&#x27;inscription, et comment ca s&#x27;est passé. Le nom et l&#x27;age de vos enfants, et votre code postal - et je verrai ce qui arrive.',
     );
+    vi.unstubAllEnvs();
+  });
+
+  it('when the ladder flag is exactly on, the preview is the postal-code first message', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
+    const html = renderToStaticMarkup(
+      await TextPage({
+        params: Promise.resolve({ locale: 'en' }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(html).toContain('Hey Hale, what&#x27;s going on?');
+    expect(html).toContain(
+      'Hey, it&#x27;s Hale. I find what&#x27;s on for kids across the GTA. What&#x27;s your postal code? I&#x27;ll show you what&#x27;s on this week.',
+    );
+    expect(html).not.toContain(LOCKED_PREVIEW_EN);
     vi.unstubAllEnvs();
   });
 });

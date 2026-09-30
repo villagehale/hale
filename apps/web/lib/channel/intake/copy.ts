@@ -426,14 +426,15 @@ export function firstInboundWords(body: string): string {
   return trimmed.replace(SOURCE_TAG_SUFFIX, '').trim();
 }
 
-// A wave emoji (U+1F44B), a getting-started tail, and the locked /text prefill
-// ("Hey Hale, what's going on?") are still a hello, in either apostrophe iOS may
-// send (U+2019 or ASCII). Written as escapes so this file stays inside the GSM-7
-// gate that guards the outbound copy around it. The venue "(via …)" tag is
-// stripped by firstInboundWords before this runs. Anything with other words is a
-// message and goes to the answerer.
+// A wave emoji (U+1F44B), a getting-started tail, and the locked /text prefills
+// ("Hey Hale, what's going on?" and the French twin "Salut Hale, qu'est-ce qui
+// se passe?") are still a hello, in either apostrophe iOS may send (U+2019 or
+// ASCII). Written as escapes so this file stays inside the GSM-7 gate that
+// guards the outbound copy around it. The venue "(via …)" tag is stripped by
+// firstInboundWords before this runs. Anything with other words is a message
+// and goes to the answerer.
 const BARE_HELLO =
-  /^(hi|hey|hello|yo|howdy|bonjour|salut|allo)(?:[,!]?\s+hale)?(?:\s*\u{1F44B})?(?:[,!]?\s*(?:ready to get started|let[\u2019']?s get started|i[\u2019']?d like to get started|on commence|what[\u2019']s going on))?[.!?,\s]*$/iu;
+  /^(hi|hey|hello|yo|howdy|bonjour|salut|allo)(?:[,!]?\s+hale)?(?:\s*\u{1F44B})?(?:[,!]?\s*(?:ready to get started|let[\u2019']?s get started|i[\u2019']?d like to get started|on commence|what[\u2019']s going on|qu[\u2019']est-ce qui se passe))?[.!?,\s]*$/iu;
 
 /**
  * True when the first inbound is just a hello — with or without Hale's own name,
@@ -524,6 +525,33 @@ export function posterLocation(code: string | null): string | null {
  */
 export const HALE_GREETING_EN =
   'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.';
+
+/**
+ * VIL-385 · Sloane lock. The iMessage first bubble, then the location card
+ * alone. Byte-stable. ASCII apostrophes. French is ASCII, tu.
+ */
+export const FIRST_TOUCH_IMESSAGE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: "Hey, it's Hale. I find what's on for kids across the GTA. Tap to share where you are and I'll show you what's on this week.",
+  fr: 'Salut, c\'est Hale. Je trouve ce qui se passe pour les enfants dans le GTA. Partage ta position et je te montre ce qui est au programme cette semaine.',
+};
+
+/** VIL-385 · Sloane lock. SMS has no location card, so this is the whole first message. */
+export const FIRST_TOUCH_SMS_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: "Hey, it's Hale. I find what's on for kids across the GTA. What's your postal code? I'll show you what's on this week.",
+  fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants dans le GTA. Quel est ton code postal? Je te montre ce qui est au programme cette semaine.",
+};
+
+/** VIL-385 · Sloane lock. The week find when the live lookup has nothing. No CTA. */
+export const FIRST_TOUCH_EMPTY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: "Nothing on near you this week yet. I'll text you the first good one in a day or two.",
+  fr: "Rien pres de toi cette semaine pour l'instant. Je t'envoie le premier bon dans un jour ou deux.",
+};
+
+/** VIL-385 · Sloane lock. Its own bubble, the turn after the week find. */
+export const FIRST_TOUCH_AGES_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: 'How old are the kids?',
+  fr: 'Quel age ont les enfants?',
+};
 
 export function greeting(venue: string | null, language: ReplyLanguage): string {
   if (venue) {

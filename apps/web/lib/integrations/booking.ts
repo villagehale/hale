@@ -156,6 +156,88 @@ export function bookingDraft(input: {
   };
 }
 
+interface LiveClassBooking {
+  id: string;
+  providerHost: string;
+  title: string;
+  firstSessionAt: Date;
+  location: string | null;
+  eventId: string | null;
+  createdAt: Date;
+}
+
+/**
+ * The live booking this receipt is a second copy of, if this family already holds the
+ * class. Compared in TypeScript on {@link bookingDedupeKey} so the weekday fold stays in
+ * one language — a SQL `lower(regexp_replace(...))` beside it is how the two drift.
+ *
+ * The OLDEST row wins. A household that already has two copies (written before this
+ * key existed) keeps the original; the follow-up reader collapses the rest.
+ */
+async function findLiveClassBooking(
+  database: Database,
+  input: { familyId: string; providerHost: string; title: string; firstSessionAt: Date },
+): Promise<LiveClassBooking | null> {
+  const wanted = bookingDedupeKey(input);
+  if (wanted === null) return null;
+  const host = input.providerHost.trim().toLowerCase();
+  const rows = await database
+    .select({
+      id: schema.activityBookings.id,
+      providerHost: schema.activityBookings.providerHost,
+      title: schema.activityBookings.title,
+      firstSessionAt: schema.activityBookings.firstSessionAt,
+      location: schema.activityBookings.location,
+      eventId: schema.activityBookings.eventId,
+      createdAt: schema.activityBookings.createdAt,
+    })
+    .from(schema.activityBookings)
+    .where(
+      and(
+        eq(schema.activityBookings.familyId, input.familyId),
+        eq(schema.activityBookings.providerHost, host),
+        isNull(schema.activityBookings.cancelledAt),
+      ),
+    );
+  const matches = rows.filter(
+    (row) =>
+      bookingDedupeKey({
+        providerHost: row.providerHost,
+        title: row.title,
+        firstSessionAt: row.firstSessionAt,
+      }) === wanted,
+  );
+  matches.sort((a, b) => {
+    const created = a.createdAt.getTime() - b.createdAt.getTime();
+    if (created !== 0) return created;
+    return a.id.localeCompare(b.id);
+  });
+  return matches[0] ?? null;
+}
+
+/** Whether this family already holds the class, so a second receipt is not counted as
+ * another household. The session key is the full instant; this is the date. */
+export async function familyHoldsLiveBooking(
+  database: Database,
+  input: { familyId: string; providerHost: string; title: string; firstSessionAt: Date },
+): Promise<boolean> {
+  const row = await findLiveClassBooking(database, input);
+  return row !== null;
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = err;
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    const code = (current as { code?: string }).code;
+    if (code === '23505') return true;
+    if (/duplicate key|unique constraint/i.test(current.message)) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 /**
  * Write the booking down, against the message that told the parent.
  *
@@ -163,8 +245,13 @@ export function bookingDraft(input: {
  * the same reason: a booking minted for a text the transport refused is a fact Hale acts
  * on a week later with nobody having been told.
  *
- * `onConflictDoNothing` on (connection, message): one email is one booking, forever, so a
- * re-fired sweep conflicts here instead of minting a second one.
+ * TWO IDENTITIES. (connection, message) is one email, forever: a re-fired sweep returns
+ * `already_recorded` and does not touch the row, because that pair is how the calendar
+ * YES finds it. (family, sender domain, canonical title, first-session date) is one
+ * CLASS: an invoice and the receipt that follows it refresh the row instead of inserting
+ * a second one. The message id stays the first receipt's, so the standing offer still
+ * stamps; the first instant stays too, so the "N other Hale families" key does not move
+ * onto a second clock time and count this household twice.
  */
 export async function recordActivityBooking(
   database: Database,
@@ -176,27 +263,77 @@ export async function recordActivityBooking(
     channelMessageId: string;
     draft: BookingDraft;
   },
-): Promise<{ outcome: 'recorded' | 'already_recorded'; bookingId: string | null }> {
-  const [row] = await database
-    .insert(schema.activityBookings)
-    .values({
+): Promise<{ outcome: 'recorded' | 'already_recorded' | 'refreshed'; bookingId: string | null }> {
+  const [sameEmail] = await database
+    .select({ id: schema.activityBookings.id })
+    .from(schema.activityBookings)
+    .where(
+      and(
+        eq(schema.activityBookings.integrationId, input.integrationId),
+        eq(schema.activityBookings.messageId, input.messageId),
+      ),
+    );
+  if (sameEmail) return { outcome: 'already_recorded', bookingId: null };
+
+  const existing = await findLiveClassBooking(database, {
+    familyId: input.familyId,
+    providerHost: input.draft.providerHost,
+    title: input.draft.title,
+    firstSessionAt: input.draft.firstSessionAt,
+  });
+  if (existing) {
+    await database
+      .update(schema.activityBookings)
+      .set({
+        dedupeKey: bookingDedupeKey({
+          providerHost: input.draft.providerHost,
+          title: input.draft.title,
+          firstSessionAt: input.draft.firstSessionAt,
+        }),
+        location: input.draft.location ?? existing.location,
+        eventId: existing.eventId ?? input.draft.eventId,
+      })
+      .where(eq(schema.activityBookings.id, existing.id));
+    return { outcome: 'refreshed', bookingId: existing.id };
+  }
+
+  try {
+    const [row] = await database
+      .insert(schema.activityBookings)
+      .values({
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        integrationId: input.integrationId,
+        messageId: input.messageId,
+        providerHost: input.draft.providerHost,
+        title: input.draft.title,
+        firstSessionAt: input.draft.firstSessionAt,
+        location: input.draft.location,
+        sessionKey: input.draft.sessionKey,
+        dedupeKey: bookingDedupeKey({
+          providerHost: input.draft.providerHost,
+          title: input.draft.title,
+          firstSessionAt: input.draft.firstSessionAt,
+        }),
+        eventId: input.draft.eventId,
+        channelMessageId: input.channelMessageId,
+      })
+      .returning({ id: schema.activityBookings.id });
+    if (!row) return { outcome: 'already_recorded', bookingId: null };
+    return { outcome: 'recorded', bookingId: row.id };
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+    // The other writer won the class, or this email landed between the read and the
+    // insert. Either way there is one row.
+    const raced = await findLiveClassBooking(database, {
       familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      integrationId: input.integrationId,
-      messageId: input.messageId,
       providerHost: input.draft.providerHost,
       title: input.draft.title,
       firstSessionAt: input.draft.firstSessionAt,
-      location: input.draft.location,
-      sessionKey: input.draft.sessionKey,
-      eventId: input.draft.eventId,
-      channelMessageId: input.channelMessageId,
-    })
-    .onConflictDoNothing()
-    .returning({ id: schema.activityBookings.id });
-  return row
-    ? { outcome: 'recorded', bookingId: row.id }
-    : { outcome: 'already_recorded', bookingId: null };
+    });
+    if (raced) return { outcome: 'refreshed', bookingId: raced.id };
+    return { outcome: 'already_recorded', bookingId: null };
+  }
 }
 
 /**
@@ -228,23 +365,90 @@ export async function stampBookingEvent(
 }
 
 /**
- * The ONE fold a cancellation is matched to a booking by: casefold, collapse whitespace,
- * trim. Exported because a match is only as honest as both sides using the same function —
- * a second copy of this three-step normalisation is how "Swim Level 2" stops closing
- * "Swim  Level 2".
- *
- * DELIBERATELY NOTHING ELSE. No instant equality, because a cancellation rarely repeats the
- * session time and the ones that do repeat it disagree about the timezone; no location,
- * because the vendor writes the place differently in the two emails; no fuzzy match,
- * because a near-miss here closes a class the family is still going to.
+ * The fold shared by cancellation matching and receipt dedupe: casefold, collapse
+ * whitespace, trim. Exported because a match is only as honest as both sides using the
+ * same function — a second copy of this three-step normalisation is how "Swim Level 2"
+ * stops closing "Swim  Level 2".
  */
 export function normalisedBookingTitle(raw: string): string {
   return raw.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+/** Weekday abbreviations a provider swaps between the receipt and the cancellation.
+ * Whole tokens only: "Tues" becomes "tuesday", and "Swim Level 2" does not become
+ * "Swim Level 1". Not a fuzzy match — a near-miss here closes a class the family is
+ * still going to. */
+const WEEKDAY_TOKENS: Readonly<Record<string, string>> = {
+  mon: 'monday',
+  monday: 'monday',
+  tue: 'tuesday',
+  tues: 'tuesday',
+  tuesday: 'tuesday',
+  wed: 'wednesday',
+  weds: 'wednesday',
+  wednesday: 'wednesday',
+  thu: 'thursday',
+  thur: 'thursday',
+  thurs: 'thursday',
+  thursday: 'thursday',
+  fri: 'friday',
+  friday: 'friday',
+  sat: 'saturday',
+  saturday: 'saturday',
+  sun: 'sunday',
+  sunday: 'sunday',
+};
+
+/**
+ * The title a cancellation is compared on, and the title half of a receipt's dedupe key.
+ *
+ * Case, whitespace, and a weekday abbreviation ("Tues" / "Tuesday"). Nothing else: no
+ * instant equality, because a cancellation rarely repeats the session time and the ones
+ * that do disagree about the timezone; no location, because the vendor writes the place
+ * differently in the two emails; no edit distance, because "Swim Level 2" must not close
+ * "Swim Level 1" and "Art Tues" must not close "Art Thursday".
+ */
+export function canonicalBookingTitle(raw: string): string {
+  return normalisedBookingTitle(raw)
+    .split(' ')
+    .map((token) => {
+      const bare = token.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
+      return WEEKDAY_TOKENS[bare] ?? bare;
+    })
+    .filter((token) => token.length > 0)
+    .join(' ');
+}
+
+/** True when two titles are the same class under {@link canonicalBookingTitle}. */
+export function bookingTitlesMatch(a: string, b: string): boolean {
+  const left = canonicalBookingTitle(a);
+  const right = canonicalBookingTitle(b);
+  return left !== '' && left === right;
+}
+
+/**
+ * The class a re-sent receipt is the same booking BY — family is the caller's column,
+ * and this string is sender domain, canonical title, and the UTC calendar date of the
+ * first session.
+ *
+ * DATE, not the full instant. An invoice at 1:00 and a receipt at 1:05 are one class;
+ * a second section on another day is not. NULL when there is no host or no title, and a
+ * NULL key is not deduped — the same refusal a nameless cancellation makes.
+ */
+export function bookingDedupeKey(input: {
+  providerHost: string;
+  title: string;
+  firstSessionAt: Date;
+}): string | null {
+  const host = input.providerHost.trim().toLowerCase();
+  const title = canonicalBookingTitle(input.title);
+  if (host === '' || title === '') return null;
+  return `${host}|${title}|${input.firstSessionAt.toISOString().slice(0, 10)}`;
+}
+
 /**
  * The identity a cancellation and a receipt are the same class BY — the provider's domain
- * and the folded title, the exact pair {@link closeCancelledBookings} matches a row on.
+ * and the canonical title, the exact pair {@link closeCancelledBookings} matches a row on.
  *
  * It exists because one sweep reads a batch NEWEST FIRST, so a cancellation arrives at the
  * closer BEFORE the receipt it cancels has been written down, and the closer has nothing to
@@ -258,8 +462,8 @@ export function normalisedBookingTitle(raw: string): string {
  * line would silence every receipt from that provider for the rest of the sweep.
  */
 export function bookingCancellationKey(from: string, title: string): string | null {
-  const folded = normalisedBookingTitle(title);
-  return folded === '' ? null : `${senderHost(from)} ${folded}`;
+  const folded = canonicalBookingTitle(title);
+  return folded === '' ? null : `${senderHost(from)}\u0000${folded}`;
 }
 
 /** A booking the provider called off, and the email it was born from — the pair that also
@@ -280,7 +484,7 @@ export interface ClosedBooking {
  * about the cancellation, in a text from Hale, and Hale then asks how it went.
  *
  * BOUNDED BY THE PROVIDER AND THE TITLE, and by nothing else. Same family, same
- * `provider_host`, same normalised title, still live, still in the future. A cancellation
+ * `provider_host`, same canonical title, still live, still in the future. A cancellation
  * from a different provider that happens to name the same generic class ("Swim Level 2" is
  * not a rare string) closes nothing.
  *
@@ -299,7 +503,7 @@ export async function closeCancelledBookings(
   database: Database,
   input: { familyId: string; from: string; title: string; now: Date },
 ): Promise<ClosedBooking[]> {
-  const wanted = normalisedBookingTitle(input.title);
+  const wanted = canonicalBookingTitle(input.title);
   // A cancellation that names no class closes nothing. Without this, every booking whose
   // own title folded to the same emptiness would be closed by one nameless email.
   if (wanted === '') return [];
@@ -324,7 +528,7 @@ export async function closeCancelledBookings(
   // Folded in TS rather than in SQL so there is ONE normaliser and not a hand-written
   // `lower(regexp_replace(...))` beside it that can drift from it.
   const closing = live
-    .filter((row) => normalisedBookingTitle(row.title) === wanted)
+    .filter((row) => canonicalBookingTitle(row.title) === wanted)
     .map((row) => ({ id: row.id, integrationId: row.integrationId, messageId: row.messageId }));
   if (closing.length === 0) return [];
   await database
@@ -377,8 +581,10 @@ export async function readDueBookings(
       bookingId: schema.activityBookings.id,
       familyId: schema.activityBookings.familyId,
       parentUserId: schema.activityBookings.parentUserId,
+      providerHost: schema.activityBookings.providerHost,
       title: schema.activityBookings.title,
       firstSessionAt: schema.activityBookings.firstSessionAt,
+      createdAt: schema.activityBookings.createdAt,
     })
     .from(schema.activityBookings)
     .leftJoin(schema.familyEvents, eq(schema.familyEvents.id, schema.activityBookings.eventId))
@@ -396,8 +602,24 @@ export async function readDueBookings(
         or(isNull(schema.familyEvents.id), ne(schema.familyEvents.source, 'placement')),
       ),
     )
-    .orderBy(asc(schema.activityBookings.firstSessionAt));
-  return rows.map((row) => ({
+    .orderBy(asc(schema.activityBookings.firstSessionAt), asc(schema.activityBookings.createdAt));
+  // One ask per class. Two rows for one receipt-then-invoice pair (written before the
+  // dedupe, or lost a race) would be two "how did it go?" texts. A row with no dedupe
+  // key keeps its own id, so a nameless booking is not folded into another.
+  const seen = new Set<string>();
+  const collapsed = [];
+  for (const row of rows) {
+    const key =
+      bookingDedupeKey({
+        providerHost: row.providerHost,
+        title: row.title,
+        firstSessionAt: row.firstSessionAt,
+      }) ?? row.bookingId;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    collapsed.push(row);
+  }
+  return collapsed.map((row) => ({
     bookingId: row.bookingId,
     familyId: row.familyId,
     parentUserId: row.parentUserId,

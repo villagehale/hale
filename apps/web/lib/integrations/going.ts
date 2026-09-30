@@ -74,9 +74,8 @@ export type GoingCount =
   | { shown: true; others: number }
   | {
       shown: false;
-      reason:
-        // 0 or 1 other family. The normal case, forever, and the one a key MISS also
-        // produces — which is why `no_session` is its own bucket below.
+      reason: // 0 or 1 other family. The normal case, forever, and the one a key MISS also
+      // produces — which is why `no_session` is its own bucket below.
         | 'below_floor'
         // A NULL session_key: a fallback title, a freemail host, or a title that folds to
         // nothing. Separate from `below_floor` because a rising rate here is the signal
@@ -185,9 +184,9 @@ export function sessionKey(input: {
  * DISTINCT other families on this session, and whether THIS family already holds it —
  * TWO FACTS IN ONE ROUND TRIP, so they are read at one instant and cannot disagree.
  *
- * `count(DISTINCT family_id)` and not `count(*)`: the row is per RECEIPT, so two
- * co-parents on a provider's list, or one household registering two children, produce two
- * rows for one family. The word in the sentence is *families*.
+ * `count(DISTINCT family_id)` and not `count(*)`: a family can still hold two rows for
+ * one session (a pair written before receipt dedupe, or two sections that did not fold
+ * into one class). The word in the sentence is *families*.
  *
  * `family_id <> $2` is the PRIMARY self-exclusion guard, not a belt — the recipient's own
  * row is absent only at the FIRST receipt, and there can be a second.

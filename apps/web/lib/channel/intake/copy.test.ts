@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MAX_TAIL_ASK_CHARS } from '~/lib/channel/identity/ask-voice';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { replyLanguage } from '~/lib/channel/language';
-import { smsSegments } from '~/lib/channel/sms-segments';
+import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { PRIVACY_URL } from '~/lib/legal-links';
 import {
   AMBIGUOUS_CLARIFY,
@@ -15,6 +15,10 @@ import {
   CO_PARENT_ASK_BY_LANGUAGE,
   DECLINE_ACK,
   DECLINE_ACK_BY_LANGUAGE,
+  FIRST_TOUCH_AGES_BY_LANGUAGE,
+  FIRST_TOUCH_EMPTY_BY_LANGUAGE,
+  FIRST_TOUCH_IMESSAGE_BY_LANGUAGE,
+  FIRST_TOUCH_SMS_BY_LANGUAGE,
   HALE_GREETING_EN,
   HELP_REPLY,
   HELP_REPLY_BY_LANGUAGE,
@@ -69,6 +73,24 @@ describe('the /text prefill and the bare-hello classifier agree', () => {
     expect(isBareFirstHello(prefill as string)).toBe(true);
     expect(isBareFirstHello(`${prefill} (via earlyon-richmondhill)`)).toBe(true);
     expect(looksLikeIntakeDetails(prefill as string)).toBe(false);
+    // FR twin: the composer constant, not a retype. sentGloss must be the same
+    // bytes, or the /text bubble and the SMS body drift apart.
+    const frPrefill = /export const INTAKE_PREFILL_FR = (["'])(.*?)\1;/.exec(src)?.[2];
+    expect(frPrefill, 'INTAKE_PREFILL_FR must be a single literal').toBeTruthy();
+    expect(frPrefill).toBe("Salut Hale, qu'est-ce qui se passe?");
+    const frBundle = JSON.parse(
+      readFileSync(
+        fileURLToPath(new URL('../../../../site/messages/fr.json', import.meta.url)),
+        'utf8',
+      ),
+    ) as { Text: { sentGloss: string } };
+    expect(frBundle.Text.sentGloss).toBe(frPrefill);
+    expect(isBareFirstHello(frPrefill as string)).toBe(true);
+    expect(isBareFirstHello(`${frPrefill} (via earlyon-richmondhill)`)).toBe(true);
+    expect(isBareFirstHello('Salut Hale, qu\u2019est-ce qui se passe ?')).toBe(true);
+    expect(isBareFirstHello('Salut Hale, qu\u2019est-ce qui se passe avec la piscine ?')).toBe(
+      false,
+    );
     const retired = 'What is worth doing with the kids near us?';
     expect(src).not.toContain(retired);
     expect(isBareFirstHello(retired)).toBe(false);
@@ -660,5 +682,51 @@ describe('the French script', () => {
     expect(ASSENT_ACK_BY_LANGUAGE[replyLanguage(englishReply)]).toBe(ASSENT_ACK);
     expect(DECLINE_ACK_BY_LANGUAGE[replyLanguage('Non merci')]).toBe(DECLINE_ACK_BY_LANGUAGE.fr);
     expect(DECLINE_ACK_BY_LANGUAGE[replyLanguage('no thanks')]).toBe(DECLINE_ACK);
+  });
+});
+
+describe('VIL-385 first-touch ladder copy', () => {
+  const locked = [
+    ...Object.values(FIRST_TOUCH_IMESSAGE_BY_LANGUAGE),
+    ...Object.values(FIRST_TOUCH_SMS_BY_LANGUAGE),
+    ...Object.values(FIRST_TOUCH_EMPTY_BY_LANGUAGE),
+    ...Object.values(FIRST_TOUCH_AGES_BY_LANGUAGE),
+  ];
+
+  it('keeps Sloane’s sentences byte for byte', () => {
+    expect(FIRST_TOUCH_IMESSAGE_BY_LANGUAGE).toEqual({
+      en: "Hey, it's Hale. I find what's on for kids across the GTA. Tap to share where you are and I'll show you what's on this week.",
+      fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants dans le GTA. Partage ta position et je te montre ce qui est au programme cette semaine.",
+    });
+    expect(FIRST_TOUCH_SMS_BY_LANGUAGE).toEqual({
+      en: "Hey, it's Hale. I find what's on for kids across the GTA. What's your postal code? I'll show you what's on this week.",
+      fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants dans le GTA. Quel est ton code postal? Je te montre ce qui est au programme cette semaine.",
+    });
+    expect(FIRST_TOUCH_EMPTY_BY_LANGUAGE).toEqual({
+      en: "Nothing on near you this week yet. I'll text you the first good one in a day or two.",
+      fr: "Rien pres de toi cette semaine pour l'instant. Je t'envoie le premier bon dans un jour ou deux.",
+    });
+    expect(FIRST_TOUCH_AGES_BY_LANGUAGE).toEqual({
+      en: 'How old are the kids?',
+      fr: 'Quel age ont les enfants?',
+    });
+    expect(PARENT_CALL_NAME_ASK).toBe('What should I call you?');
+  });
+
+  it('stays GSM-7, ASCII in French, and free of signup or booking claims', () => {
+    const banned =
+      /sign up|welcome|how can I help|\bassistant\b|\bAI\b|\bbook\b|\breserve\b|on your behalf/i;
+    for (const line of locked) {
+      expect(smsEncoding(line), line).toBe('gsm7');
+      expect(line, line).not.toMatch(banned);
+    }
+    for (const line of [
+      FIRST_TOUCH_IMESSAGE_BY_LANGUAGE.fr,
+      FIRST_TOUCH_SMS_BY_LANGUAGE.fr,
+      FIRST_TOUCH_EMPTY_BY_LANGUAGE.fr,
+      FIRST_TOUCH_AGES_BY_LANGUAGE.fr,
+    ]) {
+      expect(line).toMatch(/^[\x20-\x7E]+$/);
+    }
   });
 });
