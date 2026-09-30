@@ -121,6 +121,23 @@ describe('/text (unlisted entry surface)', () => {
     );
     vi.unstubAllEnvs();
   });
+
+  it('when the ladder flag is exactly on, the preview is the postal-code first message', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
+    const html = renderToStaticMarkup(
+      await TextPage({
+        params: Promise.resolve({ locale: 'en' }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(html).toContain('Hey Hale, what&#x27;s going on?');
+    expect(html).toContain(
+      'Hey, it&#x27;s Hale. I find what&#x27;s on for kids across the GTA. What&#x27;s your postal code? I&#x27;ll show you what&#x27;s on this week.',
+    );
+    expect(html).not.toContain(LOCKED_PREVIEW_EN);
+    vi.unstubAllEnvs();
+  });
 });
 
 function chrome(html: string, tag: 'header' | 'footer'): string {
