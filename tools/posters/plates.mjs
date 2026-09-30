@@ -57,6 +57,6 @@ export const PLATES = [
     localLine:
       "Hale's top tier — full autonomy with your OK, bookings handled, priority support. Free forever when you join from this poster.",
     scanPill: 'Scan → your Family plan is free, for life',
-    qrValue: 'sms:+12892172279?&body=Hi%20(via%20ossington)',
+    qrValue: 'sms:+16462352164?&body=Hi%20(via%20ossington)',
   },
 ];

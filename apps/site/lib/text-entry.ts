@@ -141,10 +141,22 @@ export function readSmsNumber(raw: string | undefined): string {
   return /^\+[1-9]\d{7,14}$/.test(compact) ? compact : '';
 }
 
+/**
+ * Hale's public SMS/iMessage line (Linq). `sms:`, `tel:`, and the vCard use
+ * {@link HALE_PUBLIC_SMS_E164}. Parents read {@link HALE_PUBLIC_SMS_DISPLAY}.
+ * The live site still reads `NEXT_PUBLIC_HALE_SMS_NUMBER` so a deploy can
+ * point at this line without a code change; these constants are the digits
+ * posters, the env example, and tests must match.
+ */
+export const HALE_PUBLIC_SMS_E164 = '+16462352164';
+
+/** Parent-facing form of {@link HALE_PUBLIC_SMS_E164}. */
+export const HALE_PUBLIC_SMS_DISPLAY = '(646) 235-2164';
+
 /** The number as a human reads it. North American grouping; other codes untouched. */
 export function displaySmsNumber(number: string): string {
   const nanp = number.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
-  return nanp ? `+1 (${nanp[1]}) ${nanp[2]}-${nanp[3]}` : number;
+  return nanp ? `(${nanp[1]}) ${nanp[2]}-${nanp[3]}` : number;
 }
 
 /**

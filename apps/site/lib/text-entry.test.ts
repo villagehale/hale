@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  HALE_PUBLIC_SMS_DISPLAY,
+  HALE_PUBLIC_SMS_E164,
   INTAKE_PREFILL,
   buildSmsBody,
   buildSmsHref,
@@ -191,7 +193,13 @@ describe('buildWaHref (the wa.me deep link)', () => {
 
 describe('displaySmsNumber (the number shown on the page)', () => {
   it('spaces a North American number into its readable grouping', () => {
-    expect(displaySmsNumber('+16475551234')).toBe('+1 (647) 555-1234');
+    expect(displaySmsNumber('+16475551234')).toBe('(647) 555-1234');
+  });
+
+  it('renders the public Linq line as (646) 235-2164', () => {
+    expect(HALE_PUBLIC_SMS_E164).toBe('+16462352164');
+    expect(HALE_PUBLIC_SMS_DISPLAY).toBe('(646) 235-2164');
+    expect(displaySmsNumber(HALE_PUBLIC_SMS_E164)).toBe(HALE_PUBLIC_SMS_DISPLAY);
   });
 
   it('shows any other country code as-is rather than mangling it', () => {
