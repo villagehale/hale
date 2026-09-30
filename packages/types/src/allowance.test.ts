@@ -5,6 +5,9 @@ import {
   isOverAllowance,
   isOverHardCeiling,
   monthlyAllowanceUsd,
+  spendCeilingDay,
+  spendCeilingEnforced,
+  spendCeilingWarnText,
 } from './allowance.js';
 
 /**
@@ -97,5 +100,40 @@ describe('hardCeilingUsd', () => {
     const ceiling = hardCeilingUsd('plus', 1);
     expect(isOverHardCeiling(ceiling, 'plus', 1)).toBe(false); // at is within
     expect(isOverHardCeiling(ceiling + 0.01, 'plus', 1)).toBe(true); // just over trips
+  });
+});
+
+describe('spendCeilingEnforced', () => {
+  it('is off unless the env is the literal true', () => {
+    expect(spendCeilingEnforced({})).toBe(false);
+    expect(spendCeilingEnforced({ SPEND_CEILING_ENFORCED: 'false' })).toBe(false);
+    expect(spendCeilingEnforced({ SPEND_CEILING_ENFORCED: '1' })).toBe(false);
+    expect(spendCeilingEnforced({ SPEND_CEILING_ENFORCED: 'true\n' })).toBe(false);
+    expect(spendCeilingEnforced({ SPEND_CEILING_ENFORCED: 'true' })).toBe(true);
+  });
+});
+
+describe('spendCeilingWarnText', () => {
+  const text = spendCeilingWarnText({
+    familyId: '2c939172-0000-4000-8000-000000000000',
+    planTier: 'free',
+    childCount: 1,
+    monthToDateCostUsd: 6.01,
+    ceilingUsd: 6,
+    day: '2026-09-30',
+  });
+
+  it('names the family, the dollars, and that processing continues', () => {
+    expect(text).toContain('2c939172-0000-4000-8000-000000000000');
+    expect(text).toContain('$6.01 of $6.00');
+    expect(text).toContain('plan free');
+    expect(text).toContain('2026-09-30');
+    expect(text).toContain('ingest and chat continue');
+    expect(spendCeilingDay(new Date('2026-09-30T23:30:00.000Z'))).toBe('2026-09-30');
+  });
+
+  it('carries no opt-out wording', () => {
+    expect(text.toLowerCase()).not.toContain('unsubscribe');
+    expect(text.toLowerCase()).not.toMatch(/\bstop\b/);
   });
 });

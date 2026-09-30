@@ -9,12 +9,17 @@ import {
   type DraftedAction,
   type FamilyStage,
   entitlementRequiredFor,
+  gcalItemAlreadyEnded,
+  gcalPastClassifySkipEnabled,
   hardCeilingUsd,
   hasEntitlement,
   isOverAllowance,
   isOverHardCeiling,
   mintApprovedAction,
   monthlyAllowanceUsd,
+  spendCeilingDay,
+  spendCeilingEnforced,
+  spendCeilingWarnText,
   stageFromAgeInMonths,
 } from '@hale/types';
 import { computeActionHash } from '../agents/action-hash.js';
@@ -54,7 +59,9 @@ import {
   recordReviewerRejection,
   recordReviewerVerdict,
   recordSpendCeilingDrop,
+  recordSpendCeilingExceeded,
 } from '../services/memory-writer.js';
+import { postWorkerOpsSlack } from '../services/ops-slack.js';
 import {
   streakSatisfiesAutonomy,
   teenRedactionCapApplies,
@@ -148,6 +155,70 @@ function classifyAcceptedVillageItem(job: IngestedEventPayload): FreshClassifica
 }
 
 /**
+ * Deterministic classify for a calendar item that has already ended. No LLM
+ * call. The suggestion is ignore at full confidence so the event is recorded
+ * (dedup, rule #6) and the pipeline does not draft. Future and in-progress
+ * items never reach here.
+ */
+function classifyEndedCalendarItem(job: IngestedEventPayload): FreshClassification {
+  return {
+    eventType: 'unclassified',
+    payload: job.payload,
+    confidence: {
+      score: 1,
+      rationale: 'calendar item already ended — classifier not called',
+    },
+    suggestion: { kind: 'ignore' },
+    teenContent: false,
+    concernsChildId: null,
+    dedupHash: dedupHashFor(job.family_id, job.source, JSON.stringify(job.payload)),
+    runMetrics: {
+      agentName: 'classifier',
+      modelUsed: 'deterministic',
+      promptTokens: 0,
+      completionTokens: 0,
+      costUsd: 0,
+      latencyMs: 0,
+    },
+  };
+}
+
+/**
+ * Family is over the hard ceiling and enforcement is off. Log, write at most
+ * one warn audit per UTC day, and page Slack #ops once for that audit. A
+ * failure here must not drop the event — that is the bug this path exists to
+ * end — so it is caught and the caller continues into classify.
+ */
+async function noteUnenforcedCeiling(input: {
+  familyId: string;
+  planTier: string;
+  childCount: number;
+  monthToDateCostUsd: number;
+  ceilingUsd: number;
+}): Promise<void> {
+  const day = spendCeilingDay(new Date());
+  logger.warn(
+    { ...input, day },
+    'orchestrator: family over HARD monthly LLM-cost ceiling — enforcement off, continuing',
+  );
+  try {
+    const noted = await recordSpendCeilingExceeded({
+      familyId: input.familyId,
+      day,
+      detail: { ...input, day, enforced: false },
+    });
+    if (!noted.recorded) return;
+    const slack = await postWorkerOpsSlack(spendCeilingWarnText({ ...input, day }));
+    logger.warn({ familyId: input.familyId, slack }, 'orchestrator: spend-ceiling ops page');
+  } catch (err) {
+    logger.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'orchestrator: spend-ceiling warn failed; continuing',
+    );
+  }
+}
+
+/**
  * The collaborators the pipeline cannot build for itself. Today that is one: the
  * calendar-invite sender, which lives in apps/web (the ICS composer + the A2
  * dispatch) and is therefore bound by the web drain rather than resolved here.
@@ -236,37 +307,60 @@ export async function runOrchestrator(
       teenContent: resume.teenContent,
     };
   } else {
-    // HARD monthly LLM-cost ceiling — the runaway breaker, distinct from the soft
-    // over-allowance autonomy valve below (line ~458). That valve only downgrades
-    // autonomy AFTER classify/draft/review have already spent; a family far past
-    // its budget would keep paying for three LLM calls per event forever. This
-    // short-circuits BEFORE the first billable stage: no event row exists yet, so
-    // we write only the family-scoped audit (hard rule #6) and return. Loaded once
-    // here for the fresh path only — a resume never reaches this branch, so
-    // committed in-flight work is never stranded.
+    // HARD monthly LLM-cost ceiling — distinct from the soft over-allowance
+    // autonomy valve below. The cost is always computed. Dropping before classify
+    // happens only when SPEND_CEILING_ENFORCED is the literal 'true' (paid tiers
+    // are not launched, so the default keeps the event). Otherwise we warn once
+    // per family per UTC day, page Slack #ops, and continue. A resume never
+    // reaches this branch, so committed in-flight work is never stranded.
+    // Chat turns do not enter this function: the channel router has no ceiling
+    // check of its own.
     const ceilingPlanTier = await loadFamilyPlanTier(familyId);
     const childCount = familyContext.stages.length;
     const monthToDateCostUsd = await loadFamilyMonthToDateCostUsd(familyId);
     if (isOverHardCeiling(monthToDateCostUsd, ceilingPlanTier, childCount)) {
       const ceilingUsd = hardCeilingUsd(ceilingPlanTier, childCount);
-      logger.warn(
-        { familyId, planTier: ceilingPlanTier, childCount, monthToDateCostUsd, ceilingUsd },
-        'orchestrator: family over HARD monthly LLM-cost ceiling — dropping before classify (no billable stage run)',
-      );
-      await recordSpendCeilingDrop({
+      const ceilingDetail = {
         familyId,
-        detail: { planTier: ceilingPlanTier, childCount, monthToDateCostUsd, ceilingUsd },
-      });
-      return;
+        planTier: ceilingPlanTier,
+        childCount,
+        monthToDateCostUsd,
+        ceilingUsd,
+      };
+      if (spendCeilingEnforced()) {
+        logger.warn(
+          ceilingDetail,
+          'orchestrator: family over HARD monthly LLM-cost ceiling — dropping before classify (enforcement on)',
+        );
+        await recordSpendCeilingDrop({
+          familyId,
+          detail: { planTier: ceilingPlanTier, childCount, monthToDateCostUsd, ceilingUsd },
+        });
+        return;
+      }
+      await noteUnenforcedCeiling(ceilingDetail);
     }
 
     const childNames = familyContext.children.map((c) => c.name);
 
     const isAcceptedVillageItem =
       job.source === VILLAGE_SOURCE && job.payload.event_type === VILLAGE_ACCEPT_EVENT_TYPE;
+    const skipEndedCalendar =
+      !isAcceptedVillageItem &&
+      gcalPastClassifySkipEnabled() &&
+      job.source === 'gcal' &&
+      gcalItemAlreadyEnded(job.payload, new Date());
+    if (skipEndedCalendar) {
+      logger.info(
+        { familyId, source: job.source },
+        'orchestrator: ended calendar item skipped the classifier',
+      );
+    }
     const fresh = isAcceptedVillageItem
       ? classifyAcceptedVillageItem(job)
-      : await runClassifier({
+      : skipEndedCalendar
+        ? classifyEndedCalendarItem(job)
+        : await runClassifier({
           familyId,
           source: job.source,
           payload: job.payload,

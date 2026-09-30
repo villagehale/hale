@@ -488,12 +488,14 @@ interface RecordSpendCeilingDropInput {
 }
 
 /**
- * Records the HARD monthly LLM-cost ceiling short-circuit: the pipeline stopped
- * BEFORE any billable stage ran because the family is far past its budget (the
- * runaway breaker, distinct from the soft over-allowance autonomy valve). No event
- * row exists yet — the classifier never fired — so this writes only the immutable,
- * family-scoped audit row (hard rule #6). The audit targets the family; there is no
- * event/action to update.
+ * Records the HARD monthly LLM-cost ceiling short-circuit when
+ * `SPEND_CEILING_ENFORCED=true`: the pipeline returned BEFORE any billable stage
+ * ran because the family is far past its budget (the runaway breaker, distinct
+ * from the soft over-allowance autonomy valve). No event row exists yet — the
+ * classifier never fired — so this writes only the immutable, family-scoped audit
+ * row (hard rule #6). The audit targets the family; there is no event/action to
+ * update. While enforcement is off the caller uses {@link recordSpendCeilingExceeded}
+ * instead and keeps going.
  */
 export async function recordSpendCeilingDrop(
   input: RecordSpendCeilingDropInput,
@@ -512,6 +514,45 @@ export async function recordSpendCeilingDrop(
       },
     };
   }, database);
+}
+
+/**
+ * Non-blocking note that the family is over the hard ceiling while enforcement
+ * is off. One audit row per family per UTC `day` (a second event the same day
+ * returns `{ recorded: false }` and writes nothing). The pipeline keeps going
+ * either way — this row is the trail, not a gate.
+ */
+export async function recordSpendCeilingExceeded(
+  input: { familyId: string; day: string; detail: Record<string, unknown> },
+  database: Database = db(),
+): Promise<{ recorded: boolean }> {
+  const existing = await database
+    .select({ id: schema.auditLog.id })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, input.familyId),
+        eq(schema.auditLog.actionTaken, 'spend_ceiling_exceeded_warn'),
+        sql`${schema.auditLog.after}->>'day' = ${input.day}`,
+      ),
+    )
+    .limit(1);
+  if (existing.length > 0) return { recorded: false };
+
+  await recordTransition(async () => {
+    return {
+      value: undefined,
+      audit: {
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: 'spend_ceiling_exceeded_warn',
+        targetTable: 'families',
+        targetId: input.familyId,
+        after: { ...input.detail, day: input.day },
+      },
+    };
+  }, database);
+  return { recorded: true };
 }
 
 /**

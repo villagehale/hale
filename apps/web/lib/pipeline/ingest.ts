@@ -4,12 +4,18 @@ import {
   type ActionType,
   type PlanTier,
   deriveStage,
+  gcalItemAlreadyEnded,
+  gcalPastClassifySkipEnabled,
   hardCeilingUsd,
   isOverHardCeiling,
+  spendCeilingDay,
+  spendCeilingEnforced,
+  spendCeilingWarnText,
 } from '@hale/types';
 import { and, count, eq, sql } from 'drizzle-orm';
+import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
-import { classifyEvent } from './classify';
+import { type ClassifyResult, classifyEvent } from './classify';
 import { draftAction } from './draft';
 import {
   dedupHashFor,
@@ -18,6 +24,7 @@ import {
   recordVerdict,
   writeAutonomyGate,
   writeSpendCeilingDrop,
+  writeSpendCeilingWarn,
 } from './record';
 import { reviewAction } from './review';
 
@@ -130,33 +137,69 @@ export const readCeilingInputs: ReadCeilingInputs = async (database, familyId) =
   };
 };
 
+const ZERO_USAGE = {
+  promptTokens: 0,
+  completionTokens: 0,
+  cacheReadTokens: 0,
+  cacheCreationTokens: 0,
+};
+
+/** ClassifyResult.model is a priced ModelId. The ended-calendar pre-filter never
+ * called one, so this widens the field and recordEvent books cost 0. */
+type PipelineClassification = Omit<ClassifyResult, 'model'> & { model: string };
+
 export async function ingestEvent(
   input: IngestInput,
   database: Database,
   client: AgentClient,
   now: Date = new Date(),
   readCeiling: ReadCeilingInputs = readCeilingInputs,
+  notifySpendCeiling: (text: string) => Promise<unknown> = (text) => postOpsSlack(text),
 ): Promise<IngestOutcome> {
   const familyId = input.familyId;
 
-  // HARD monthly LLM-cost ceiling — the runaway breaker. This engine never
-  // executes, but it DOES pay for classify → draft → review on every event, so a
-  // family far past its budget still burns three LLM calls per event forever with
-  // nothing to stop it. Short-circuit BEFORE the first billable stage: no event
-  // row exists yet, so we write only the family-scoped audit (rule #6) and drop.
+  // HARD monthly LLM-cost ceiling. The cost is always read. Dropping before
+  // classify happens only when SPEND_CEILING_ENFORCED is the literal 'true'.
+  // Otherwise we warn once per family per UTC day, page Slack #ops, and continue.
+  // Chat turns do not enter this function.
   const ceiling = await readCeiling(database, familyId);
   if (isOverHardCeiling(ceiling.spentUsd, ceiling.planTier, ceiling.childCount)) {
     const ceilingUsd = hardCeilingUsd(ceiling.planTier, ceiling.childCount);
-    await writeSpendCeilingDrop(database, {
-      familyId,
-      detail: {
-        planTier: ceiling.planTier,
-        childCount: ceiling.childCount,
-        monthToDateCostUsd: ceiling.spentUsd,
-        ceilingUsd,
-      },
-    });
-    return { status: 'dropped', eventId: null, reason: 'spend_ceiling' };
+    const detail = {
+      planTier: ceiling.planTier,
+      childCount: ceiling.childCount,
+      monthToDateCostUsd: ceiling.spentUsd,
+      ceilingUsd,
+    };
+    if (spendCeilingEnforced()) {
+      await writeSpendCeilingDrop(database, { familyId, detail });
+      return { status: 'dropped', eventId: null, reason: 'spend_ceiling' };
+    }
+    const day = spendCeilingDay(now);
+    try {
+      const noted = await writeSpendCeilingWarn(database, {
+        familyId,
+        day,
+        detail: { ...detail, day, enforced: false },
+      });
+      if (noted.recorded) {
+        await notifySpendCeiling(
+          spendCeilingWarnText({
+            familyId,
+            planTier: ceiling.planTier,
+            childCount: ceiling.childCount,
+            monthToDateCostUsd: ceiling.spentUsd,
+            ceilingUsd,
+            day,
+          }),
+        );
+      }
+    } catch (err) {
+      console.error('ingest: spend-ceiling warn failed; continuing', {
+        familyId,
+        err: err instanceof Error ? err.name : 'unknown',
+      });
+    }
   }
 
   const payload = {
@@ -169,22 +212,49 @@ export async function ingestEvent(
 
   const childNames = await loadFamilyChildNames(database, familyId);
 
+  // Ended calendar items are already over. Classifying them cannot yield an action
+  // the family can still take, and a first sync is mostly those items. Future items,
+  // items still in progress, and every other source still call the model.
+  const skipEndedCalendar =
+    gcalPastClassifySkipEnabled() &&
+    input.source === 'gcal' &&
+    gcalItemAlreadyEnded(payload, now);
+
   // 1. Classify. Traced as 'classify-event'; the mask is the rule-#1 backstop over the
   // inbound raw content the classifier sees. WHICH MODEL RAN IS THE STAGE'S TO SAY, not
   // this caller's: the tier comes from the skill's declared task (pickModel), and a
   // constant written here instead was a label that had already drifted a whole tier from
   // what Anthropic billed us for.
-  const { classified, classifyTraceId } = await traceAgentRun(
-    { name: 'classify-event', userId: 'system', tags: ['classify-event'], metadata: { familyId } },
-    async (trace) => {
-      const result = await classifyEvent(
-        { source: input.source, payload, childNames },
-        client,
-      );
-      trace.recordGeneration('classify-event-call', { model: result.model, usage: result.usage });
-      return { classified: result, classifyTraceId: trace.traceId };
-    },
-  );
+  let classified: PipelineClassification;
+  let classifyTraceId: string | null;
+  if (skipEndedCalendar) {
+    classified = {
+      eventType: 'unclassified',
+      payload,
+      confidence: 1,
+      rationale: 'calendar item already ended — classifier not called',
+      suggestion: { kind: 'ignore' },
+      teenContent: false,
+      concernsChildId: null,
+      usage: ZERO_USAGE,
+      model: 'deterministic',
+    };
+    classifyTraceId = null;
+  } else {
+    const traced = await traceAgentRun(
+      { name: 'classify-event', userId: 'system', tags: ['classify-event'], metadata: { familyId } },
+      async (trace) => {
+        const result = await classifyEvent(
+          { source: input.source, payload, childNames },
+          client,
+        );
+        trace.recordGeneration('classify-event-call', { model: result.model, usage: result.usage });
+        return { classified: result, classifyTraceId: trace.traceId };
+      },
+    );
+    classified = traced.classified;
+    classifyTraceId = traced.classifyTraceId;
+  }
 
   // Validate child attribution against THIS family's children before persisting a
   // reference: a hallucinated/stale/cross-family id is dropped to null (rule #1 —

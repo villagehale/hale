@@ -72,6 +72,7 @@ export const AUDIT_VERBS = [
   'event.dropped.unknown_action_type',
   'event.dropped.needs_human',
   'event.dropped.spend_ceiling',
+  'spend_ceiling_exceeded_warn',
   'action.surfaced_to_user',
   'action.entitlement_gated',
   'action.gated.observation_window',
@@ -448,6 +449,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   'event.dropped.spend_ceiling': {
     sentence: 'stopped at your spending cap',
     family: 'problem',
+  },
+  spend_ceiling_exceeded_warn: {
+    sentence: 'noted the monthly cost ceiling and kept going',
+    family: 'note',
   },
   'action.surfaced_to_user': { sentence: 'brought a draft to you', family: 'awaiting' },
   'action.entitlement_gated': {
