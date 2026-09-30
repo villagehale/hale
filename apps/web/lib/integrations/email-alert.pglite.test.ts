@@ -10,7 +10,6 @@ import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
 import {
   EMAIL_ALERT_MAX_PER_SWEEP,
   EMAIL_ALERT_TEMPLATE_KEY,
@@ -24,6 +23,7 @@ import {
   emailAlertDedupeKey,
   renderEmailAlert,
 } from './email-alert';
+import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
 import { GOING_COUNT_ENABLED_ENV, type GoingCount, sessionKey } from './going';
 
 /**
@@ -507,8 +507,7 @@ describe('the text itself', () => {
    * including every shape that must NOT carry it, so stripping here cannot hide one.
    */
   const CTA = ' Reply YES and it goes on your week.';
-  const frame = (input: EmailAlertRenderInput): string =>
-    sentence(input).replace(CTA, '');
+  const frame = (input: EmailAlertRenderInput): string => sentence(input).replace(CTA, '');
 
   it('is a plain sentence: the sender did it, the time is a clause, and it ends there', () => {
     // The first cut opened "From your email:" and closed "I can add it to your week -
@@ -886,9 +885,9 @@ describe('the text itself', () => {
   it('drops a time the model did not write as a date', () => {
     // `original_time` is a model's free text. "Invalid Date" in a parent's phone is worse
     // than no time at all.
-    expect(
-      frame({ ...RENDER, event: { ...RENDER.event, originalTime: 'this Saturday' } }),
-    ).toBe('Riverside Pool cancelled Saturday swim class.');
+    expect(frame({ ...RENDER, event: { ...RENDER.event, originalTime: 'this Saturday' } })).toBe(
+      'Riverside Pool cancelled Saturday swim class.',
+    );
   });
 
   it('carries the YEAR on a date in another year, in both halves of a reschedule', () => {
@@ -1344,8 +1343,11 @@ describe('who else is going', () => {
     // THE MUTATION: the same clause written as an assertion DOES produce a claim, so this
     // is a gate rather than an absence test.
     expect(
-      extractStateClaims(body.replace(', with two other Hale families', '')
-        .replace('.', ' and two other Hale families are booked.')).length,
+      extractStateClaims(
+        body
+          .replace(', with two other Hale families', '')
+          .replace('.', ' and two other Hale families are booked.'),
+      ).length,
     ).toBeGreaterThan(0);
   });
 
@@ -1583,6 +1585,51 @@ describe('the going count in the alert path', () => {
     expect(second.transport.sent[0]?.body).not.toContain('Hale families');
   });
 
+  it('a receipt later the same day refreshes the row and does not raise the count', async () => {
+    vi.stubEnv(GOING_COUNT_ENABLED_ENV, 'true');
+    await otherFamilyBooked('Other A');
+    await otherFamilyBooked('Other B');
+    const first = harness({ classification: receipt() });
+    await expect(alertPair(first, 'm1', { envelope: RECEIPT })).resolves.toMatchObject({
+      booking: 'recorded',
+      going: 'shown',
+    });
+    expect(first.transport.sent[0]?.body).toContain('with two other Hale families');
+
+    // The invoice said 1:00; the receipt says 1:30 and spells the title differently.
+    // Same class, same UTC day. A second row would be a second follow-up, and a
+    // second session key would let the next family read 3.
+    const second = harness({
+      classification: classified({
+        kind: 'booking_confirmation',
+        title: 'swim LEVEL 2',
+        originalTime: null,
+        newTime: '2026-09-26T13:30:00.000Z',
+        location: 'the Leisure Centre',
+      }),
+    });
+    await expect(
+      alertPair(second, 'm2', {
+        envelope: {
+          ...RECEIPT,
+          subject: 'Payment receipt — Swim Level 2',
+          snippet: 'Receipt for Swim Level 2. You are registered.',
+        },
+      }),
+    ).resolves.toMatchObject({ booking: 'refreshed', going: 'repeat_receipt' });
+    expect(second.transport.sent[0]?.body).not.toContain('Hale families');
+
+    const rows = await db.database
+      .select()
+      .from(schema.activityBookings)
+      .where(eq(schema.activityBookings.familyId, family.familyId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.messageId).toBe('m1');
+    expect(
+      (await auditRows()).filter((row) => row.actionTaken === 'activity_booking_recorded'),
+    ).toHaveLength(1);
+  });
+
   it('DARK: the query is not issued at all, and the body is byte-identical', async () => {
     await otherFamilyBooked('Other A');
     await otherFamilyBooked('Other B');
@@ -1594,14 +1641,22 @@ describe('the going count in the alert path', () => {
     // ...and now with the flag in its `vercel env add` failure shape.
     vi.stubEnv(GOING_COUNT_ENABLED_ENV, 'true\n');
     const dark = harness({ classification: receipt() });
-    const { sql, out } = await statementsDuring(() =>
-      alertPair(dark, 'm2', { envelope: RECEIPT }),
-    );
+    const { sql, out } = await statementsDuring(() => alertPair(dark, 'm2', { envelope: RECEIPT }));
     expect(out.going).toBe('going_dark');
     expect(sql.some((text) => text.includes(COUNT_QUERY))).toBe(false);
     expect(dark.transport.sent[0]?.body).toBe(spoken.replace(', with two other Hale families', ''));
-    // The positive control for the observation itself: the LIT run does issue it.
-    const litAgain = harness({ classification: receipt() });
+    // The positive control for the observation itself: a LIT run of a class this
+    // family does not already hold does issue the count query. A second receipt of
+    // the class above returns before that query — it is already a repeat.
+    const litAgain = harness({
+      classification: classified({
+        kind: 'booking_confirmation',
+        title: 'Skating Level 1',
+        originalTime: null,
+        newTime: FIRST_SESSION,
+        location: 'the Leisure Centre',
+      }),
+    });
     vi.stubEnv(GOING_COUNT_ENABLED_ENV, 'true');
     const observed = await statementsDuring(() => alertPair(litAgain, 'm3', { envelope: RECEIPT }));
     expect(observed.sql.some((text) => text.includes(COUNT_QUERY))).toBe(true);
