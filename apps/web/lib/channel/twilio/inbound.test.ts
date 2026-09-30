@@ -3,7 +3,17 @@ import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
 import { STOP_ACK, STOP_ACK_BY_LANGUAGE } from '~/lib/channel/intake/copy';
-import { FakeExtractor, FakeIdentityAsk, FakeIntentReader, type FakeDb, fakeAckComposer, fakeRadar, fakeNoOpenQuestions, fakeSilentAnswerComposer, makeFakeDb } from '~/lib/channel/intake/fakes';
+import {
+  FakeExtractor,
+  FakeIdentityAsk,
+  FakeIntentReader,
+  type FakeDb,
+  fakeAckComposer,
+  fakeRadar,
+  fakeNoOpenQuestions,
+  fakeSilentAnswerComposer,
+  makeFakeDb,
+} from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -64,8 +74,7 @@ function twilioRequest(
   options: { signature?: string | null; url?: string } = {},
 ): Request {
   const url = options.url ?? INBOUND_URL;
-  const signature =
-    options.signature === undefined ? sign(INBOUND_URL, params) : options.signature;
+  const signature = options.signature === undefined ? sign(INBOUND_URL, params) : options.signature;
   const headers: Record<string, string> = {
     'content-type': 'application/x-www-form-urlencoded',
   };
@@ -171,16 +180,14 @@ function enrol(
 ): { familyId: string; userId: string } {
   const familyId = '00000000-0000-4000-8000-0000000000f1';
   const userId = '00000000-0000-4000-8000-0000000000u1';
-  fake.db
-    .insert(schema.parentChannels)
-    .values({
-      userId,
-      familyId,
-      kind: 'sms',
-      phoneE164Encrypted: encryptString(phone),
-      phoneE164Hash: phoneBlindIndex(phone),
-      verifiedAt: NOW,
-    } as never);
+  fake.db.insert(schema.parentChannels).values({
+    userId,
+    familyId,
+    kind: 'sms',
+    phoneE164Encrypted: encryptString(phone),
+    phoneE164Hash: phoneBlindIndex(phone),
+    verifiedAt: NOW,
+  } as never);
   fake.db.insert(schema.familyMembers).values({ userId, familyId, role } as never);
   return { familyId, userId };
 }
@@ -478,9 +485,7 @@ describe('handoff to C1', () => {
       body: 'can you move swimming to Thursday?',
     });
 
-    const audit = h.fake
-      .rows(schema.auditLog)
-      .find((r) => r.actionTaken === 'sms_reply_received');
+    const audit = h.fake.rows(schema.auditLog).find((r) => r.actionTaken === 'sms_reply_received');
     expect(audit).toMatchObject({ familyId, actor: userId, targetTable: 'channel_messages' });
 
     expect(h.jobs).toEqual([
@@ -810,7 +815,10 @@ describe('routing outcomes are logged and counted (rule #11)', () => {
   it('counts NOTHING for a refused request — forged traffic must not pollute the rates', async () => {
     const h = harness();
 
-    await handleTwilioInboundRequest(twilioRequest(twilioParams(), { signature: 'forged' }), h.deps);
+    await handleTwilioInboundRequest(
+      twilioRequest(twilioParams(), { signature: 'forged' }),
+      h.deps,
+    );
 
     expect(h.counted).toEqual([]);
     expect(h.infos).toEqual([]);
@@ -844,10 +852,7 @@ describe('privacy (rule #1)', () => {
     enrol(h.fake);
     const secret = 'Maya has an appointment at 4';
 
-    await handleTwilioInboundRequest(
-      twilioRequest(twilioParams({ Body: secret })),
-      h.deps,
-    );
+    await handleTwilioInboundRequest(twilioRequest(twilioParams({ Body: secret })), h.deps);
     // …and on the rejected path too.
     await handleTwilioInboundRequest(
       twilioRequest(twilioParams({ Body: secret }), { signature: 'forged' }),
@@ -870,15 +875,14 @@ describe('privacy (rule #1)', () => {
   });
 });
 
-describe('WhatsApp continuity — whatsapp:+1416… IS +1416… (one person, one family)', () => {
+describe('WhatsApp is dropped — a whatsapp: address is not a door', () => {
   const WA_SID = 'SM22222222222222222222222222222222';
 
-  /** THE continuity test: a family enrolled via the SMS blind index, reached over
-   * WhatsApp, resolves to the SAME family — and the ledger records the real pipe. */
-  it('routes a signed WhatsApp webhook to the family the SMS hash enrolled, recording channel whatsapp', async () => {
+  it('counts whatsapp_dropped and writes nothing, including for a number already enrolled by SMS', async () => {
     const h = harness();
-    const { familyId, userId } = enrol(h.fake); // seeded via phoneBlindIndex(PHONE) — the SMS twin
+    enrol(h.fake);
     closeIntake(h.fake);
+    const writesBefore = h.fake.writes.length;
 
     const params = twilioParams({
       From: `whatsapp:${PHONE}`,
@@ -886,77 +890,38 @@ describe('WhatsApp continuity — whatsapp:+1416… IS +1416… (one person, one
       MessageSid: WA_SID,
     });
     const res = await handleTwilioInboundRequest(twilioRequest(params), h.deps);
+
     expect(res.status).toBe(200);
-
-    const message = h.fake
-      .rows(schema.channelMessages)
-      .find((r) => r.providerMessageId === WA_SID);
-    expect(message).toMatchObject({
-      familyId,
-      parentUserId: userId,
-      channel: 'whatsapp',
-      direction: 'in',
-      category: 'reply',
-      status: 'delivered',
-      body: 'can you move swimming to Thursday?',
-    });
-
-    expect(h.jobs).toEqual([
-      {
-        family_id: familyId,
-        parent_user_id: userId,
-        channel_message_id: message?.id,
-        provider_message_id: WA_SID,
-        received_at: NOW.toISOString(),
-      },
-    ]);
-
-    // The intake deps were built knowing the pipe, so the reply can ride it back.
-    expect(h.intakeTransports).toEqual(['whatsapp']);
+    expect(await res.text()).toBe('<Response/>');
+    expect(h.counted).toEqual(['whatsapp_dropped']);
+    expect(h.fake.writes).toHaveLength(writesBefore);
+    expect(h.jobs).toHaveLength(0);
+    expect(h.transport.sent).toHaveLength(0);
+    expect(h.intakeBuilds).toBe(0);
   });
 
-  it('a WhatsApp STOP revokes the SAME channel row the SMS enrolment created (no carrier STOP on WhatsApp)', async () => {
+  it('does not treat a WhatsApp STOP as consent — the pipe is not read', async () => {
     const h = harness();
     enrol(h.fake);
+    const writesBefore = h.fake.writes.length;
 
     const params = twilioParams({ From: `whatsapp:${PHONE}`, Body: 'STOP', MessageSid: WA_SID });
     const res = await handleTwilioInboundRequest(twilioRequest(params), h.deps);
 
     expect(res.status).toBe(200);
-    expect(h.transport.bodies()).toEqual([STOP_ACK]);
-    const revoked = h.fake.writes.filter(
-      (w) => w.op === 'update' && w.table === schema.parentChannels,
-    );
-    expect(revoked.length).toBeGreaterThan(0);
+    expect(h.counted).toEqual(['whatsapp_dropped']);
+    expect(h.transport.sent).toHaveLength(0);
+    expect(h.fake.writes).toHaveLength(writesBefore);
   });
 
-  it('rate limiting keys on the BARE number — one budget per person across both pipes', async () => {
-    const h = harness();
-    const limiter = h.deps.intake('sms').limiter as FakeRateLimiter;
-    const spy = vi.spyOn(limiter, 'check');
-
-    const params = twilioParams({
-      From: `whatsapp:${PHONE}`,
-      Body: '',
-      NumMedia: '1',
-      MessageSid: WA_SID,
-    });
-    await handleTwilioInboundRequest(twilioRequest(params), h.deps);
-
-    expect(spy).toHaveBeenCalledWith(
-      phoneBlindIndex(PHONE),
-      'sms-inbound',
-      expect.objectContaining({ limit: 30 }),
-    );
-  });
-
-  it('drops whatsapp:garbage exactly as it drops garbage — the one normalizer still refuses', async () => {
+  it('drops a non-number whatsapp address the same way — still named, still nothing written', async () => {
     const h = harness();
 
     const params = twilioParams({ From: 'whatsapp:not-a-number', MessageSid: WA_SID });
     const res = await handleTwilioInboundRequest(twilioRequest(params), h.deps);
 
     expect(res.status).toBe(200);
+    expect(h.counted).toEqual(['whatsapp_dropped']);
     expect(h.fake.writes).toHaveLength(0);
     expect(h.transport.sent).toHaveLength(0);
     expect(h.jobs).toHaveLength(0);

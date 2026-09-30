@@ -33,17 +33,10 @@ import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
 import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
-import {
-  createOwnerReplyDecider,
-  createReplyTransport as createPhoneReplyTransport,
-} from '~/lib/channel/reply-transport';
 import type { FamilyRole } from '~/lib/channel/role-scope';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
 import { recordStatedState } from '~/lib/channel/stated-state';
-import {
-  createTwilioTransport,
-  createTwilioWhatsAppTransport,
-} from '~/lib/channel/twilio/transport';
+import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
 import { searchWeekdaysForFamily } from '~/lib/channel/weekday-care/search';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -178,8 +171,9 @@ export async function loadInboundContext(
  * `push` is not a door a parent can arrive through: nothing writes an inbound push row
  * and there is no way to answer one, so it resolves to no route and the router says
  * `unreachable` rather than guessing at a channel the message did not come from. A
- * `voice` row is a spoken turn the call already answered (twilio/voice-answer.ts), so
- * it too resolves to no route here.
+ * `voice` row is a historical spoken turn; the call door is gone, so it resolves to
+ * no route. A `whatsapp` row is the same: the pipe is retired, and the answer is
+ * not moved onto SMS.
  */
 async function resolveReplyRoute(
   database: Database,
@@ -189,16 +183,14 @@ async function resolveReplyRoute(
   providerChatId: string | null,
 ): Promise<ReplyRoute | null> {
   switch (channel) {
-    // Both phone pipes resolve through the SAME live consent check: whatsapp:+1416…
-    // and +1416… are one person (the transport-address continuity law), so a STOP on
-    // the number silences both. The route keeps the door the parent used; the phone
-    // transport decides at send time which pipe may answer through it (Meta's 24h
-    // window, reply-transport.ts).
-    case 'sms':
-    case 'whatsapp': {
+    case 'sms': {
       const phoneE164 = await resolveSendablePhone(database, parentUserId);
-      return phoneE164 ? { channel, to: phoneE164 } : null;
+      return phoneE164 ? { channel: 'sms', to: phoneE164 } : null;
     }
+    // Retired pipe. A leftover row is unreachable: answering it on SMS would be a
+    // replacement, and there isn't one.
+    case 'whatsapp':
+      return null;
     // iMessage is the same person (the handle is the enrolled E.164) and a different
     // pipe. No chat id means there is nowhere to send the blue bubble, so the route
     // is null and the router says unreachable rather than answering on SMS.
@@ -644,16 +636,9 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     database,
     loadContext: loadInboundContext,
     transport: createReplyTransport({
-      // The phone door, both pipes (WhatsApp v1): the router's sends are ANSWERS to a
-      // parent's own message, minutes later via the queue — so the pipe is decided per
-      // send from their newest inbound row (WhatsApp inside its 24h window, SMS with a
-      // named fallback otherwise), and the result carries which pipe was used so
-      // sendReply's ledger row records what happened.
-      phone: createPhoneReplyTransport({
-        sms: createTwilioTransport(),
-        whatsapp: createTwilioWhatsAppTransport(),
-        decide: createOwnerReplyDecider(database),
-      }),
+      // SMS answers still leave through Twilio. The loop's proactive phone door is
+      // Linq (iMessage, then RCS, then SMS); this slice does not move the router.
+      phone: createTwilioTransport(),
       // Null until the inbound-email leg is provisioned, which is the same condition
       // that makes an email route impossible to reach — dark by construction, and named
       // rather than silent if it is ever reached anyway (reply-transport.ts).

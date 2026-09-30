@@ -59,10 +59,9 @@ export interface TwilioInboundDeps {
   /**
    * Built LAZILY. Constructing the intake deps reaches for an Anthropic client and a
    * Twilio transport; a forged request must never cause either, so nothing is built
-   * until the signature has passed. Told which pipe the message arrived on so the
-   * reply transport can ride it back (WhatsApp within its session, SMS otherwise —
-   * reply-transport.ts). An iMessage turn also passes the Linq chat id, because the
-   * within-request reply (STOP, the media line) has to return to that chat.
+   * until the signature has passed. Told which pipe the message arrived on so an
+   * iMessage turn can answer inside that Linq chat. A WhatsApp address never
+   * reaches the machine.
    */
   intake: (
     inboundTransport: MessageTransport,
@@ -139,7 +138,10 @@ export type TwilioInboundOutcome =
   /** No open place-ask for this number. No text. */
   | 'location_not_waiting'
   /** The share started but Linq had no city locality yet. No nudge. */
-  | 'location_unread';
+  | 'location_unread'
+  /** WhatsApp is retired. The prefix is still recognized so a leftover Twilio
+   * webhook is counted and dropped: no ledger row, no keyword, no SMS answer. */
+  | 'whatsapp_dropped';
 
 /** Twilio's count of attached media parts. Absent/garbage reads as none. */
 function mediaCount(params: Record<string, string>): number {
@@ -290,8 +292,7 @@ async function replyMediaUnsupported(
   // household member, their ledger must show it (rule #6). A stranger's MMS stays
   // unrecorded by structural necessity, not omission — channel_messages.family_id is
   // NOT NULL, so there is no row it could occupy before a family exists.
-  // iMessage records the pipe it actually used. WhatsApp's media line still rides
-  // SMS (the reply transport's media rule) and keeps the historical 'sms' row.
+  // iMessage records the pipe it actually used. An SMS media line stays 'sms'.
   const ledgerChannel = inbound.transport === 'imessage' ? 'imessage' : 'sms';
   const owner = await resolveVerifiedChannelByPhone(database, phoneE164);
   if (owner) {
@@ -391,10 +392,8 @@ async function handOffToConversation(
     .values({
       familyId: owner.familyId,
       parentUserId: owner.userId,
-      // The REAL pipe (WhatsApp v1). The reply-destination decision reads this row
-      // back to honor Meta's 24h session window, and the reconciler's select names
-      // both transports — a WhatsApp turn recorded as 'sms' would be re-driven down
-      // the wrong leg and lie in a right-to-access export.
+      // The pipe this turn arrived on. iMessage is its own ledger value; SMS is the
+      // rest. WhatsApp never reaches this insert.
       channel: inbound.transport ?? 'sms',
       direction: 'in',
       category: 'reply',
@@ -502,10 +501,9 @@ export async function handleTwilioInboundRequest(
     return Response.json({ error: 'invalid_signature' }, { status: 403 });
   }
 
-  // THE boundary strip (WhatsApp v1): `From=whatsapp:+1416…` is the same person as
-  // `From=+1416…`, so the prefix comes off HERE — once — and the entire spine
-  // (normalize → blind index → resolve → keywords → machine → C1) runs on the bare
-  // number unchanged. The pipe travels beside the address, never inside it.
+  // `From=whatsapp:+E.164` is still parsed so the retired pipe can be named.
+  // It is not stripped into the SMS spine: answering it, or moving the reply
+  // onto SMS, would keep a door that has been dropped.
   const { transport, address } = parseTransportAddress(params.From ?? '');
   const providerId = params.MessageSid ?? params.SmsSid ?? '';
   if (!address || !providerId) {
@@ -517,6 +515,15 @@ export async function handleTwilioInboundRequest(
       'twilio inbound: malformed — authentic POST with no sender or no message id, nothing to act on',
     );
     await deps.countOutcome('malformed');
+    return emptyTwiml();
+  }
+
+  if (transport === 'whatsapp') {
+    deps.log.info(
+      { outcome: 'whatsapp_dropped', providerMessageId: providerId },
+      'twilio inbound: whatsapp dropped',
+    );
+    await deps.countOutcome('whatsapp_dropped');
     return emptyTwiml();
   }
 

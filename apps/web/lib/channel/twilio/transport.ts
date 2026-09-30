@@ -1,7 +1,6 @@
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { WHATSAPP_ADDRESS_PREFIX } from '~/lib/channel/transport-address';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
-import { type TwilioConfig, requireTwilioConfig, twilioWhatsAppSender } from './config';
+import { type TwilioConfig, requireTwilioConfig } from './config';
 
 /**
  * VIL-214 · A3 — the real SMS leg behind M2's {@link ChannelTransport}: the ONE place
@@ -51,16 +50,6 @@ const PERMANENT_TWILIO_CODES = new Set([
   '12300',
   '21617',
   '21623',
-  // The WHATSAPP refusals (WhatsApp v1), permanent for the same reason. 63016 a
-  // free-form message outside Meta's 24h customer-service window — the reply decider
-  // (reply-transport.ts) exists to prevent this send, and when it happens anyway the
-  // identical retry meets the identical shut window. 63003 channel could not find the
-  // recipient, 63005 the message violated a channel policy, 63024 the recipient is not
-  // a valid WhatsApp user.
-  '63016',
-  '63003',
-  '63005',
-  '63024',
 ]);
 
 /**
@@ -91,8 +80,8 @@ function readErrorCode(payload: unknown): string {
   return 'unknown';
 }
 
-/** The one POST both transports share: auth, timeout, refusal typing, and the
- * no-sid guard live here so the SMS and WhatsApp legs cannot drift apart. */
+/** The one POST the SMS transport uses: auth, timeout, refusal typing, and the
+ * no-sid guard. */
 async function postTwilioMessage(
   doFetch: typeof fetch,
   config: TwilioConfig,
@@ -169,47 +158,6 @@ export function createTwilioTransport(deps: TwilioTransportDeps = {}): ChannelTr
       }
 
       return postTwilioMessage(doFetch, config, form);
-    },
-  };
-}
-
-/**
- * The WhatsApp leg (WhatsApp v1): the identical REST call with `whatsapp:` applied to
- * BOTH ends — and never the Messaging Service, because a WhatsApp sender is addressed
- * by `From` alone. `StatusCallback` is shared: Twilio posts WhatsApp receipts to the
- * same webhook, and `mapTwilioStatus` already reads its `read` as delivered.
- *
- * MEDIA IS REFUSED, not dropped (the OutboundMessage contract): WhatsApp delivery of
- * the text/vcard welcome card via Twilio is unverified territory, so the routing
- * transport (reply-transport.ts) sends media down the SMS leg to the same number —
- * this throw is the backstop that makes a bypass loud rather than a card that never
- * arrives.
- */
-export function createTwilioWhatsAppTransport(deps: TwilioTransportDeps = {}): ChannelTransport {
-  const doFetch = deps.fetch ?? globalThis.fetch;
-  return {
-    async send({ to, body, mediaUrls }) {
-      if (mediaUrls) {
-        throw new Error(
-          'twilio whatsapp send: media is not supported on the WhatsApp leg — route it via SMS',
-        );
-      }
-
-      const config = requireTwilioConfig();
-      const sender = twilioWhatsAppSender();
-      if (!sender) {
-        throw new Error('twilio whatsapp not configured: missing TWILIO_WHATSAPP_FROM');
-      }
-
-      const form = new URLSearchParams({
-        To: `${WHATSAPP_ADDRESS_PREFIX}${to}`,
-        From: `${WHATSAPP_ADDRESS_PREFIX}${sender}`,
-        Body: body,
-        StatusCallback: `${appBaseUrl()}/api/channels/twilio/status`,
-      });
-
-      const sent = await postTwilioMessage(doFetch, config, form);
-      return { ...sent, transport: 'whatsapp' };
     },
   };
 }

@@ -1,15 +1,11 @@
 /**
- * WhatsApp v1 — the transport-address boundary parser, the missing primitive the
- * silent-swallow bug traced to: Twilio posts a WhatsApp sender as
- * `From=whatsapp:+14165551234`, and `normalizePhoneE164` (correctly) rejects the
- * letters, so the message died as `invalid_number` with no ledger row and no log.
+ * Transport-address boundary parser.
  *
- * The prefix is stripped HERE, once, at the webhook boundary — never inside
- * `normalizePhoneE164`, which is the canonicalizer the phone blind index keys on
- * and must stay E.164-pure. Downstream the entire SMS spine (normalize → blind
- * index → resolve → keywords → machine → C1) runs on the bare address unchanged,
- * which is what makes `whatsapp:+1416…` and `+1416…` the SAME person, family,
- * consent state, and coach thread by construction (the continuity law).
+ * Twilio posts a WhatsApp sender as `From=whatsapp:+14165551234`. The prefix is
+ * recognized HERE so the inbound webhook can count `whatsapp_dropped` and return
+ * empty TwiML. It is not folded into the SMS spine: the pipe is retired, and a
+ * WhatsApp turn is not the same door as a text. `normalizePhoneE164` stays
+ * E.164-pure.
  */
 
 /** The pipe a message rides. The ledger's channel_message_channel enum carries the

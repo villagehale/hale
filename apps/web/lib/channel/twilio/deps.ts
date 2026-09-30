@@ -24,7 +24,6 @@ import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
 import type { WelcomeCardPorts } from '~/lib/channel/intake/welcome-card';
 import { createLinqTextTransport } from '~/lib/channel/linq/transport';
-import { createReplyTransport, selectReplyTransport } from '~/lib/channel/reply-transport';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { MessageTransport } from '~/lib/channel/transport-address';
@@ -34,10 +33,8 @@ import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { createOpenMeteoWeather } from '~/lib/weather/open-meteo';
-import { twilioWhatsAppSender } from './config';
 import type { ChannelMessageReceivedJob, TwilioInboundDeps } from './inbound';
-import { createTwilioTransport, createTwilioWhatsAppTransport } from './transport';
-import type { TwilioVoiceDeps } from './voice';
+import { createTwilioTransport } from './transport';
 
 /**
  * VIL-214 · A3 — the production wiring for the inbound webhook. The one place the
@@ -55,12 +52,12 @@ function anthropicClient(): AgentClient {
 /** M2's deps, built for real. Called only AFTER the signature passes (see inbound.ts),
  * so a forged request never constructs a model client.
  *
- * `inboundTransport` (WhatsApp v1) is the pipe THIS turn arrived on: a within-turn
- * reply is trivially inside Meta's 24h window, so the decision needs no history read —
- * a WhatsApp turn is answered on WhatsApp while the sender is provisioned, and
- * everything else (or an unprovisioned leg — 'not_configured', named) rides SMS.
- * Defaults to 'sms' for the cron callers that compose intake sends outside a webhook
- * turn; those are proactive lanes and stay on SMS by policy. */
+ * `inboundTransport` is the pipe THIS turn arrived on. An iMessage turn answers
+ * inside the Linq chat. Everything else is the phone transport (Linq's iMessage →
+ * RCS → SMS chain on the loop door; this intake reply still uses the Twilio SMS
+ * sender until that slice moves). A WhatsApp inbound never reaches here: the
+ * webhook counts `whatsapp_dropped` and returns empty TwiML. Defaults to 'sms'
+ * for the cron callers that compose intake sends outside a webhook turn. */
 export function buildIntakeDeps(
   inboundTransport: MessageTransport = 'sms',
   linq: { chatId: string; replyToMessageId?: string | null } | null = null,
@@ -75,16 +72,7 @@ export function buildIntakeDeps(
           chatId: linq?.chatId ?? null,
           replyToMessageId: linq?.replyToMessageId ?? null,
         })
-      : createReplyTransport({
-          sms: createTwilioTransport(),
-          whatsapp: createTwilioWhatsAppTransport(),
-          decide: async () =>
-            selectReplyTransport({
-              configured: twilioWhatsAppSender() !== null,
-              lastInbound: { transport: inboundTransport, receivedAt: new Date() },
-              now: new Date(),
-            }),
-        });
+      : createTwilioTransport();
   return {
     transport,
     threadMessage: threadProactiveMessage,
@@ -257,15 +245,5 @@ export function twilioInboundDeps(): TwilioInboundDeps {
     countOutcome: async (outcome) => {
       await captureInboundRouted('sms', outcome);
     },
-  };
-}
-
-/** The voice front door's wiring. Only a database and the SMS leg — the call itself is
- * answered with a static document, so no model and no queue is involved. */
-export function twilioVoiceDeps(): TwilioVoiceDeps {
-  return {
-    database: db(),
-    transport: () => createTwilioTransport(),
-    log: console,
   };
 }

@@ -163,6 +163,7 @@ describe('loadDeliveryStats (real DDL)', () => {
     await seed({ status: 'queued' });
     await seed({ status: 'failed', errorCode: '30006' });
     await seed({ status: 'failed', errorCode: '30006', channel: 'whatsapp' });
+    // A historical whatsapp row is not in the SMS receipt rate.
     await seed({ status: 'failed', errorCode: '30034' });
     // Diluters (the msgsOut lesson): none of these may enter the rate.
     await seed({ status: 'suppressed_cap' });
@@ -177,10 +178,10 @@ describe('loadDeliveryStats (real DDL)', () => {
 
     const result = await loadDeliveryStats(db.database, new Date(NOW.getTime() - 24 * 3_600_000));
 
-    expect(result.attempted).toBe(6);
-    expect(result.failed).toBe(3);
+    expect(result.attempted).toBe(5);
+    expect(result.failed).toBe(2);
     expect(result.codes).toEqual([
-      { code: '30006', count: 2 },
+      { code: '30006', count: 1 },
       { code: '30034', count: 1 },
     ]);
   });

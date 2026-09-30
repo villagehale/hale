@@ -115,10 +115,8 @@ export const agentNameEnum = pgEnum('agent_name', [
   'radar-voice',
   'nudge-voice',
   'coach-channel-sms',
-  // Voice v1 · one spoken turn of a live call. Its own name for the same reason the SMS
-  // turn has one: a call runs on a different tier with a different latency budget and a
-  // per-minute carrier cost on top, so averaging it into any other name produces a
-  // number that describes neither surface.
+  // Historical. The spoken-turn agent is retired; the enum value stays so old
+  // agent_runs rows still type-check. Nothing writes it.
   'voice-turn',
 ]);
 
@@ -279,18 +277,11 @@ export const channelMessageChannelEnum = pgEnum('channel_message_channel', [
   'email',
   'sms',
   'push',
-  // Voice v1 · a spoken turn on a call, in either direction. Its own leg because
-  // nothing was texted: folding a call into 'sms' would make the ledger claim a message
-  // that does not exist, in the one table a PIPEDA right-to-access read is built from.
-  // It is also what keeps the inbound reconciler off these rows — that sweep selects
-  // sms 'reply' rows and re-drives them to the SMS coach, so a spoken turn recorded as
-  // 'sms' would be answered a second time, by text, five minutes later.
+  // Historical. The call door is retired; the value stays so old ledger rows still
+  // type-check. The inbound reconciler does not select it.
   'voice',
-  // WhatsApp v1 · the same number, a different pipe. The person is the SAME (the blind
-  // index keys on the bare E.164 — continuity law), but the pipe must be recorded
-  // truthfully: the reply-destination decision reads this column to honor Meta's
-  // 24-hour session window (channel/reply-transport.ts), and a WhatsApp turn recorded
-  // as 'sms' is a ledger lying in a PIPEDA right-to-access read (migration 0104).
+  // Historical. WhatsApp is retired and is not answered on SMS. The value stays
+  // so old ledger rows still type-check (migration 0104).
   'whatsapp',
   // iMessage via Linq (VIL-335). Same continuity law: the sender handle is an E.164,
   // and that number is the person the SMS blind index already enrolled. The pipe is

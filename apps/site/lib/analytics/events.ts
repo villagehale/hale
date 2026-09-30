@@ -46,8 +46,7 @@ export type AnalyticsEvent =
   // cta_text_click — that event's contract is "a composer opened" and the funnel
   // dashboards read it that way; a nav click inside the site would silently
   // inflate it. Composer events fired from the chooser carry a coarse `channel`
-  // property ('sms' today, 'amb' after the Apple Messages for Business swap;
-  // cta_whatsapp_click stamps 'whatsapp').
+  // property ('sms' today, 'amb' after the Apple Messages for Business swap).
   // DASHBOARD NOTES:
   //   1. 2026-08 chooser ship: placements `hero`/`closing`/`header` moved from
   //      cta_text_click to cta_message_click — the composer opened on /text.
@@ -62,10 +61,6 @@ export type AnalyticsEvent =
   // `sms:` is a silent no-op on a laptop. Counted separately: it is an intention
   // to text later, not a composer that opened.
   | 'copy_number_click'
-  // The same conversion through the OTHER pipe: a tap on a wa.me deep link
-  // (WhatsApp v1). Separate from cta_text_click because the two funnels light up
-  // at different times — the WhatsApp sender ships dark behind its own env var.
-  | 'cta_whatsapp_click'
   // Hale's contact card saved (/hale.vcf). The one thing a parent does on the
   // site that changes what every LATER Hale text looks like on their phone.
   | 'save_contact_click'

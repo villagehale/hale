@@ -115,8 +115,8 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       if (!result.found) {
         // A SEARCH THAT RAN OUT OF THE CALLER'S TIME REGISTERS ITS OWN FOLLOW-UP.
         //
-        // `over_budget` is reachable only from a call (twilio/voice-lookup.ts) and it
-        // means the search is STILL RUNNING — Hale is coming back either way, so the
+        // The call door that reported `over_budget` is retired. If a finder still returns
+        // it, the search is STILL RUNNING — Hale is coming back either way, so the
         // debt is a fact about the tool's own outcome rather than about whether the model
         // remembered to call the promise verb beside it. Same move, same reason, as the
         // hole-in-a-find case below: the gap is the trigger.

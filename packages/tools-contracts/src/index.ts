@@ -106,7 +106,7 @@ export const channelSendJobPayloadSchema = z.object({
   // has both addresses and fatal for one who does not — a texted caregiver has
   // `users.email = null`, so the dropped pin routed their schedule to the email adapter
   // and produced a `no_address` failure every week instead of a text.
-  channel: z.enum(['email', 'sms', 'whatsapp']).optional(),
+  channel: z.enum(['email', 'sms']).optional(),
 });
 export type ChannelSendJobPayload = z.infer<typeof channelSendJobPayloadSchema>;
 

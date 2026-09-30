@@ -619,20 +619,17 @@ describe('threading', () => {
     expect(auditRows(h.fake).map((r) => r.actionTaken)).toContain('sms_reply_sent');
   });
 
-  it('records the pipe the transport actually used — a WhatsApp-carried reply is a whatsapp row', async () => {
-    // WhatsApp v1: the reply-routing transport names its pipe in the send result
-    // (reply-transport.ts); the ledger row must record that, not assume 'sms'.
+  it('records the pipe the transport actually used — an iMessage-carried reply is an imessage row', async () => {
     const h = harness();
     const inner = h.deps.transport;
     h.deps.transport = {
-      send: async (input) => ({ ...(await inner.send(input)), channel: 'whatsapp' as const }),
+      send: async (input) => ({ ...(await inner.send(input)), channel: 'imessage' as const }),
     };
     await routeChannelMessage(h.deps, job());
 
     const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
     expect(out).toHaveLength(1);
-    // Born queued like every phone leg: WhatsApp receipts ride the same StatusCallback.
-    expect(out[0]).toMatchObject({ channel: 'whatsapp', status: 'queued' });
+    expect(out[0]).toMatchObject({ channel: 'imessage', status: 'sent' });
   });
 
   /**

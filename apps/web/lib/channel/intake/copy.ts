@@ -578,15 +578,9 @@ export function greetingWithArea(areaCoarse: string): string {
 }
 
 /**
- * The ONE thing Hale asks a stranger for, extracted from {@link greeting} because a
- * second door onto intake now exists: somebody who CALLS the number is texted an opener
- * by the voice front door (lib/channel/twilio/voice.ts), and their reply lands in this
- * same machine.
- *
- * Shared rather than re-worded on purpose. Two openers asking for the same two facts in
- * two voices is how a product starts sounding like two products — and the reply parser
- * behind both is one extractor, so an ask that drifts is an ask the machine is no longer
- * tuned for.
+ * The ONE thing Hale asks a stranger for, extracted from {@link greeting} so the reply
+ * parser stays tuned for that answer. The phone-call door that used to text this same
+ * ask is retired; the texted greeting still uses it.
  */
 export const COLD_START_ASK =
   "Reply with your kids' names, ages, and postal code and I'll text back what's coming.";

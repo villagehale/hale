@@ -1228,7 +1228,7 @@ async function preOpenReply(
   if (ctx.inboundChannelMessageId === null) {
     // A spoken turn: what the caller said is a transcription, and there is no message
     // row to attribute the fact to. Named rather than assumed away — no handler owning
-    // one of these kinds is in SPOKEN_QUESTION_KINDS today (voice-answer.ts), so this
+    // one of these kinds is a spoken-turn kind, so this
     // is unreachable, and if that set ever widens the parent's answer must not be
     // filed against provenance Hale invented.
     console.error(

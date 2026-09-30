@@ -20,16 +20,6 @@
 export type ReplyRoute =
   | { channel: 'sms'; to: string }
   /**
-   * A message that arrived on the WhatsApp pipe (WhatsApp v1). The `to` is the SAME
-   * verified number an SMS route carries — whatsapp:+1416… and +1416… are one person —
-   * and the pipe that finally carries the answer is decided at send time by the
-   * reply-routing phone transport (lib/channel/reply-transport.ts): WhatsApp inside
-   * Meta's 24h customer-service window, SMS with a named fallback outside it. The route
-   * names the door the parent used; the transport owns Meta's rules about answering
-   * through it.
-   */
-  | { channel: 'whatsapp'; to: string }
-  /**
    * A message that arrived as an iMessage through Linq (VIL-335). `to` is the SAME
    * verified E.164 an SMS route carries — the sender handle and the enrolled number
    * are one person — and `chatId` is the Linq chat the reply must return to. The

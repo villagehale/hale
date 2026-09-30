@@ -356,10 +356,9 @@ const RETENTION_CURVE_WEEKS = 8;
  *
  *   `direction = 'in'`   — Hale's own reply is not a family coming back. Without this
  *                          every contacted family retains itself.
- *   `category = 'reply'` — the parent talking to the coach, on ANY channel: SMS, email,
- *                          and a phone call (voice turns are written `channel:'voice',
- *                          category:'reply'` — see channel/twilio/voice-record.ts), so a
- *                          family whose whole week-4 contact was a call does count.
+ *   `category = 'reply'` — the parent talking to the coach, on SMS or email. Historical
+ *                          `channel:'voice'` rows from the retired ConversationRelay door
+ *                          still count if one exists; nothing writes new ones.
  *                          `intake` is held out because it is the signup conversation
  *                          itself, replayed at provisioning with its original timestamps
  *                          — counting it would retain every family in its own week 0.

@@ -53,7 +53,7 @@ export function imessageUpgradeAskEnabled(
  */
 export function decideUpgradeAsk(input: {
   flagOn: boolean;
-  channel: 'imessage' | 'sms' | 'whatsapp' | 'email';
+  channel: 'imessage' | 'sms' | 'email';
   parentChatId: string | null;
   onboardingStage: string;
   planTier: 'free' | 'plus' | 'family';
@@ -173,7 +173,7 @@ export async function maybeOfferYearRetention(
     familyId: string;
     parentUserId: string;
     parentChatId: string | null;
-    channel: 'imessage' | 'sms' | 'whatsapp' | 'email';
+    channel: 'imessage' | 'sms' | 'email';
     templateKey: string | null;
     excludeMessageId: string | null;
     now: Date;

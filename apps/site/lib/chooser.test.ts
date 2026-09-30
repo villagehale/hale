@@ -40,37 +40,22 @@ describe('platformFromUa — a hint, parsed with fixed probes', () => {
   });
 });
 
-describe('channelOrder — the full matrix', () => {
-  const BOTH = { sms: true, wa: true };
-  const WA_DARK = { sms: true, wa: false };
-  const SMS_DARK = { sms: false, wa: true };
-  const NONE = { sms: false, wa: false };
+describe('channelOrder — SMS when the link works, otherwise the QR', () => {
+  const LIVE = { sms: true };
+  const DARK = { sms: false };
 
-  it('apple: Messages primary, WhatsApp secondary when live', () => {
-    expect(channelOrder('apple', BOTH)).toEqual(['messages', 'whatsapp']);
-    expect(channelOrder('apple', WA_DARK)).toEqual(['messages']);
+  it('offers Messages on the platforms where sms: opens a composer', () => {
+    expect(channelOrder('apple', LIVE)).toEqual(['messages']);
+    expect(channelOrder('android', LIVE)).toEqual(['messages']);
+    expect(channelOrder('desktop-mac', LIVE)).toEqual(['messages']);
   });
 
-  it('android: WhatsApp primary when live, Messages still one tap away — the hint never gates it', () => {
-    expect(channelOrder('android', BOTH)).toEqual(['whatsapp', 'messages']);
-    // WhatsApp dark: Messages alone, primary — no dead WhatsApp button.
-    expect(channelOrder('android', WA_DARK)).toEqual(['messages']);
+  it('offers no button on desktop-other and unknown — the QR is the path', () => {
+    expect(channelOrder('desktop-other', LIVE)).toEqual([]);
+    expect(channelOrder('unknown', LIVE)).toEqual([]);
   });
 
-  it('desktop-mac: Messages.app really opens, so it leads; wa.me (WhatsApp Web) trails', () => {
-    expect(channelOrder('desktop-mac', BOTH)).toEqual(['messages', 'whatsapp']);
-    expect(channelOrder('desktop-mac', WA_DARK)).toEqual(['messages']);
-  });
-
-  it('desktop-other and unknown: never an sms: button — dead on Windows/Linux; WhatsApp iff live', () => {
-    for (const platform of ['desktop-other', 'unknown'] as const) {
-      expect(channelOrder(platform, BOTH)).toEqual(['whatsapp']);
-      // WhatsApp dark too: no buttons at all — the QR card is the whole path.
-      expect(channelOrder(platform, WA_DARK)).toEqual([]);
-    }
-  });
-
-  it('a dark channel is absent on every platform — liveness gates, no disabled buttons', () => {
+  it('offers nothing when the number is dark', () => {
     for (const platform of [
       'apple',
       'android',
@@ -78,9 +63,7 @@ describe('channelOrder — the full matrix', () => {
       'desktop-other',
       'unknown',
     ] as const) {
-      expect(channelOrder(platform, NONE)).toEqual([]);
-      expect(channelOrder(platform, SMS_DARK)).not.toContain('messages');
-      expect(channelOrder(platform, WA_DARK)).not.toContain('whatsapp');
+      expect(channelOrder(platform, DARK)).toEqual([]);
     }
   });
 });

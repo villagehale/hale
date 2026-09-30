@@ -25,12 +25,9 @@ import type { ChildNameLevel } from '~/lib/loop/prefs';
  */
 
 /** The live delivery legs. The persisted channel_message_channel enum still
- * carries 'push' (and 'voice') for historical rows — this union is only what the
- * dispatch can SEND today, narrowed when the Expo push channel died (VIL-318).
- * 'whatsapp' is representable so the dispatch can REFUSE it by name: WhatsApp is a
- * REPLY pipe only (Meta's 24h session policy, reply-transport.ts) — every proactive
- * lane stays email/sms, and a whatsapp leg here is a named failed row, never a send. */
-export type ChannelKind = 'email' | 'sms' | 'whatsapp';
+ * carries 'push', 'voice', and 'whatsapp' for historical rows — this union is
+ * only what the dispatch can SEND today. Push, voice, and WhatsApp are retired. */
+export type ChannelKind = 'email' | 'sms';
 
 /** Outbound loop taxonomy (mirrors loop_prefs categories; inbound 'reply' is A3). */
 export type LoopCategory = 'weekly_plan' | 'reminder' | 'approval' | 'alert';

@@ -107,8 +107,6 @@ describe('the preview bubble is Hale’s CURRENT greeting, byte-for-byte', () =>
     expect(render('en')).toContain(escapeHtml(source.en));
     expect(render('fr')).toContain(escapeHtml(source.fr));
     expect(render('zh')).toContain(escapeHtml(source.en));
-    // And on the chooser arm too — the promise does not change with the pipe.
-    expect(render('en', { whatsappNumber: LIVE_NUMBER })).toContain(escapeHtml(source.en));
   });
 });
 

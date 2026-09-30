@@ -164,9 +164,7 @@ const PARENT_ROLES: ReadonlySet<string> = new Set(['primary_parent', 'co_parent'
  */
 const REPLY_SENT_ACTION: Record<ReplySent['channel'], string> = {
   sms: 'sms_reply_sent',
-  whatsapp: 'sms_reply_sent',
-  // Same phone verb as WhatsApp: both pipes answer the same verified number, and
-  // the ledger row beside the audit row records which pipe carried it.
+  // The ledger row beside the audit row records which pipe carried it.
   imessage: 'sms_reply_sent',
   email: 'email_reply_sent',
 };
@@ -235,7 +233,7 @@ export interface HandlerContext extends Omit<ChannelTurn, 'standingQuestions'> {
    * NULL ON A SPOKEN TURN, and that is a fact rather than a default: a call produces a
    * transcription and no `channel_messages` row at all, so a handler whose write needs
    * the parent's own words has nothing to attribute them to and must say so rather than
-   * write a receipt with no provenance (voice-answer.ts).
+   * write a receipt with no provenance. The call door that produced those turns is retired.
    */
   inboundChannelMessageId: string | null;
 }
@@ -2132,10 +2130,8 @@ async function sendReply(
   }
   await mirrorActivityDecision(deps, args);
 
-  // The channel that CARRIED it, reported by the send rather than assumed from the
-  // route (WhatsApp v1): a whatsapp route degrades to SMS outside Meta's 24h window,
-  // and the row records what happened — the reply decider reads these rows back for
-  // the window, and a PIPEDA export renders the door that was actually used.
+  // The channel the send reported. The ledger records that door, which is what a
+  // PIPEDA export renders.
   const carriedBy = sent.channel;
   const [row] = await deps.database
     .insert(schema.channelMessages)

@@ -78,11 +78,11 @@ export interface UnhandedInboundRow {
 }
 
 /**
- * The doors C1 consumes. A text, a WhatsApp message, an iMessage and an email are one
- * queue, one router and one conversation, so a message owed a reply is owed one
- * whichever way it arrived (email/inbound.ts, linq/inbound.ts, router/reply-route.ts).
- * Each phone pipe belongs here: the webhook stamps the real transport, and a sweep
- * pinned to 'sms' would strand every abandoned WhatsApp or iMessage turn forever.
+ * The doors C1 consumes. A text, an iMessage and an email are one queue, one
+ * router and one conversation. A historical whatsapp row is still selected so a
+ * leftover turn is closed: the router resolves that channel to no route, and
+ * the answer is not moved onto SMS. A sweep pinned to 'sms' would strand an
+ * abandoned iMessage turn.
  */
 const REDRIVEN_CHANNELS = ['sms', 'whatsapp', 'imessage', 'email'] as const;
 

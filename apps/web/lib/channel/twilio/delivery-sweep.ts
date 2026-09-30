@@ -64,7 +64,7 @@ export const DELIVERY_SWEEP_BATCH_LIMIT = 50;
 
 /** The channels whose rows are born 'queued' and advanced by a Twilio receipt
  * (ledger.ts `acceptedStatus`) — the only rows a Twilio poll can speak for. */
-const RECEIPT_CHANNELS = ['sms', 'whatsapp'] as const;
+const RECEIPT_CHANNELS = ['sms'] as const;
 
 export interface UnconfirmedOutboundRow {
   id: string;
