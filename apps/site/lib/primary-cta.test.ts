@@ -8,11 +8,11 @@ import { INTAKE_PREFILL } from './text-entry.js';
  * A phone opens the messaging app with the locked prefill, in the form that
  * OS reads. Desktop stays on /text (the page that already shows the QR and
  * the number). The body is whatever the caller passes: EN is INTAKE_PREFILL,
- * FR is the existing sentGloss, handed in so this module stays copy-free.
+ * FR is INTAKE_PREFILL_FR, handed in so this module stays copy-free.
  */
 
 const NUMBER = '+16475551234';
-const FR = 'Salut Hale, qu\u2019est-ce qui se passe ?';
+const FR = "Salut Hale, qu'est-ce qui se passe?";
 
 function bodyOf(href: string): string {
   const raw = href.includes('?')
@@ -61,8 +61,8 @@ describe('primaryTextTarget', () => {
       textPath: '/fr/text',
     });
     expect(bodyOf(target.href)).toBe(`${FR} (via earlyon-richmondhill)`);
-    expect(target.href).toContain('%E2%80%99');
-    expect(target.href).not.toContain('\u2019');
+    expect(target.href).toContain('%27');
+    expect(target.href).not.toContain("'");
   });
 
   it('keeps every desktop on /text, including the Mac where Messages.app exists', () => {

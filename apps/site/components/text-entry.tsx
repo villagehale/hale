@@ -36,8 +36,8 @@ import { CONTACT_EMAIL, buildSmsHref, buildWaHref, smsUriFormForPlatform } from 
  * translated label because copy.ts has no Chinese greeting. The "(via <code>)"
  * attribution token rides ONLY inside composer hrefs; on the page it is
  * disclosed in words (prefilledWithSource), never printed raw — the sent bubble
- * shows the locale's prefill itself, tokenless. FR sends the existing
- * sentGloss; ZH keeps the English hello.
+ * shows the locale's prefill itself, tokenless. FR sends
+ * {@link INTAKE_PREFILL_FR}; ZH keeps the English hello.
  *
  * When both pipes are live, lib/chooser.ts orders them: liveness gates (a dark
  * channel renders NOTHING), and the UA hint only ORDERS. The one withholding
@@ -212,8 +212,8 @@ export function TextEntry({
    * previewLabel carries its own "(English original)" because copy.ts has no
    * Chinese greeting.
    *
-   * The sent bubble is the literal SMS body. EN and FR send their locked hello
-   * (the French twin is `Text.sentGloss`). ZH keeps the English body and glosses
+   * The sent bubble is the literal SMS body. EN sends {@link INTAKE_PREFILL},
+   * FR sends {@link INTAKE_PREFILL_FR}. ZH keeps the English body and glosses
    * it — there is no locked Chinese line to send. The gloss renders only when
    * it differs from that body.
    *

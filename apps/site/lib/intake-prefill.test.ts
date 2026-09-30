@@ -1,20 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { intakePrefill } from './intake-prefill.js';
-import { INTAKE_PREFILL } from './text-entry.js';
+import { INTAKE_PREFILL, INTAKE_PREFILL_FR } from './text-entry.js';
 
 /**
- * The composer body is existing copy. EN is the locked constant. FR is
- * Text.sentGloss, already on the /text page. ZH has no locked line to send,
- * so it keeps the English hello and the page glosses it.
+ * The composer body is locked copy. EN is INTAKE_PREFILL. FR is
+ * INTAKE_PREFILL_FR (ASCII apostrophe, no space before ?). ZH has no locked
+ * line to send, so it keeps the English hello and the page glosses it.
  */
 
-const FR_HELLO = 'Salut Hale, qu\u2019est-ce qui se passe ?';
-
 describe('intakePrefill', () => {
-  it('is the locked English hello, and the French page reuses sentGloss exactly', () => {
+  it('is the locked English hello, and French is Sloane’s exact line', () => {
     expect(intakePrefill('en')).toBe(INTAKE_PREFILL);
     expect(intakePrefill('en')).toBe("Hey Hale, what's going on?");
-    expect(intakePrefill('fr')).toBe(FR_HELLO);
+    expect(INTAKE_PREFILL_FR).toBe("Salut Hale, qu'est-ce qui se passe?");
+    expect(intakePrefill('fr')).toBe(INTAKE_PREFILL_FR);
+    expect(intakePrefill('fr')).not.toContain('\u2019');
+    expect(intakePrefill('fr')).not.toContain(' ?');
     expect(intakePrefill('fr')).not.toBe(INTAKE_PREFILL);
   });
 

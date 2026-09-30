@@ -39,6 +39,13 @@ export const CONTACT_EMAIL = 'aloha@villagehale.com';
  */
 export const INTAKE_PREFILL = "Hey Hale, what's going on?";
 
+/**
+ * Sloane 2026-09-30. The French composer body, byte-locked: ASCII apostrophe,
+ * no space before the question mark. Intake treats this line as a bare hello
+ * and answers with `greeting()`. Not the typographic gloss.
+ */
+export const INTAKE_PREFILL_FR = "Salut Hale, qu'est-ce qui se passe?";
+
 /** A `?s=` value, or null when absent, repeated, or not a venue code. */
 export function parseSourceCode(raw: string | string[] | undefined): string | null {
   if (typeof raw !== 'string') return null;
@@ -49,7 +56,7 @@ export function parseSourceCode(raw: string | string[] | undefined): string | nu
 /**
  * The pre-filled composer body — the locked intake sample, plus the venue token
  * when we have one. `prefill` is the locale's locked hello (EN
- * {@link INTAKE_PREFILL}; FR is the existing `Text.sentGloss`). Callers that
+ * {@link INTAKE_PREFILL}; FR is {@link INTAKE_PREFILL_FR}). Callers that
  * omit it send the English line.
  */
 export function buildSmsBody(source: string | null, prefill: string = INTAKE_PREFILL): string {

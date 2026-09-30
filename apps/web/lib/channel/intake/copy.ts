@@ -428,7 +428,7 @@ export function firstInboundWords(body: string): string {
 
 // A wave emoji (U+1F44B), a getting-started tail, and the locked /text prefills
 // ("Hey Hale, what's going on?" and the French twin "Salut Hale, qu'est-ce qui
-// se passe ?") are still a hello, in either apostrophe iOS may send (U+2019 or
+// se passe?") are still a hello, in either apostrophe iOS may send (U+2019 or
 // ASCII). Written as escapes so this file stays inside the GSM-7 gate that
 // guards the outbound copy around it. The venue "(via …)" tag is stripped by
 // firstInboundWords before this runs. Anything with other words is a message

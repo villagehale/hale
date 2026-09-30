@@ -330,11 +330,11 @@ describe('TextEntry — the exchange is the hero', () => {
   });
 
   it('sends the locked hello in the bubble, and glosses only where that hello is still English', () => {
-    // FR: the composer body IS the existing sentGloss, so the bubble shows it
+    // FR: the composer body is Sloane's ASCII line, so the bubble shows it
     // and a second gloss line would repeat it. ZH has no locked line to send,
     // so the bubble stays the English hello and the gloss says what it means.
     const fr = render({ source: null, locale: 'fr' });
-    const frHello = 'Salut Hale, qu\u2019est-ce qui se passe ?';
+    const frHello = "Salut Hale, qu'est-ce qui se passe?";
     expect(messages('fr').Text.sentGloss).toBe(frHello);
     expect(bubbleText(fr, 'out')).toBe(frHello);
     expect(fr).not.toContain('text-thread-gloss');
