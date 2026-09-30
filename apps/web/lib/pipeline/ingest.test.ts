@@ -424,7 +424,7 @@ describe('ingestEvent — hard monthly LLM-cost ceiling', () => {
     const capture = freshCapture();
     const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
     const client = scriptedClient([{ content: REVIEWER_CHECKS }, SUBMIT('approve', 'all green')]);
-    const notify = vi.fn(async () => 'sent');
+    const notify = vi.fn(async (_text: string) => 'sent');
     // free, 1 child → $2 allowance → $6 hard ceiling. $20 is well over.
     const readCeiling = overFree;
 
@@ -461,7 +461,7 @@ describe('ingestEvent — hard monthly LLM-cost ceiling', () => {
     const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
     const create = vi.fn();
     const client = { messages: { create } } as unknown as AgentClient;
-    const notify = vi.fn(async () => 'sent');
+    const notify = vi.fn(async (_text: string) => 'sent');
 
     const outcome = await ingestEvent(baseInput, db, client, NOW, overFree, notify);
 
@@ -486,7 +486,7 @@ describe('ingestEvent — hard monthly LLM-cost ceiling', () => {
     const capture = freshCapture();
     const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
     const client = scriptedClient([{ content: REVIEWER_CHECKS }, SUBMIT('approve', 'all green')]);
-    const notify = vi.fn(async () => 'sent');
+    const notify = vi.fn(async (_text: string) => 'sent');
 
     const outcome = await ingestEvent(baseInput, db, client, NOW, overFree, notify);
 
@@ -499,7 +499,7 @@ describe('ingestEvent — hard monthly LLM-cost ceiling', () => {
     const capture = freshCapture();
     const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
     const client = scriptedClient([{ content: REVIEWER_CHECKS }, SUBMIT('approve', 'all green')]);
-    const notify = vi.fn(async () => 'sent');
+    const notify = vi.fn(async (_text: string) => 'sent');
     // free, 1 child → $6 ceiling. $4 is over the soft $2 allowance but under the hard ceiling.
     const readCeiling = vi.fn(async () => ({ spentUsd: 4.0, planTier: 'free' as const, childCount: 1 }));
 

@@ -73,7 +73,7 @@ vi.mock('../agents/drafter.js', () => ({ runDrafter: () => runDrafter() }));
 vi.mock('../agents/reviewer.js', () => ({ runReviewer: () => runReviewer() }));
 vi.mock('../services/executor.js', () => ({ runExecutor: () => runExecutor() }));
 vi.mock('../services/ops-slack.js', () => ({
-  postWorkerOpsSlack: (...args: unknown[]) => postWorkerOpsSlack(...(args as [])),
+  postWorkerOpsSlack: (...args: unknown[]) => postWorkerOpsSlack(...(args as [string])),
 }));
 
 // Injected inputs. Baseline clears every downstream gate so the ceiling is the
@@ -84,7 +84,7 @@ let childStages: FamilyStage[] = ['newborn'];
 const recordSpendCeilingDrop = vi.fn(async () => {});
 const recordSpendCeilingExceeded = vi.fn(async () => ({ recorded: true }));
 const recordExecution = vi.fn(async () => {});
-const postWorkerOpsSlack = vi.fn(async () => 'skipped_not_configured' as const);
+const postWorkerOpsSlack = vi.fn(async (_text: string) => 'skipped_not_configured' as const);
 
 vi.mock('../services/memory-writer.js', () => ({
   loadResumePoint: vi.fn(async () => null),

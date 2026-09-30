@@ -17,7 +17,7 @@ describe('postWorkerOpsSlack', () => {
 
   it('posts the text and does not include a phone number', async () => {
     vi.stubEnv('OPS_SLACK_WEBHOOK_URL', WEBHOOK);
-    const fetchImpl = vi.fn(async () => new Response('ok', { status: 200 }));
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response('ok', { status: 200 }));
     await expect(postWorkerOpsSlack('Hale ops: family over ceiling', fetchImpl)).resolves.toBe(
       'sent',
     );
