@@ -59,6 +59,10 @@
     "file": "extract-child-event.md",
     "sha256": "4989569d42cf0eb4ce3950082b53e3920a0fe002bec774c2a23e00a731a17dd6"
   },
+  "extract-coparent-duty.md": {
+    "file": "extract-coparent-duty.md",
+    "sha256": "8fdf3208e62c7dab9bafd00eb64ac6368e522831169de1cd3593dd790f47a3dd"
+  },
   "extract-social-spot.md": {
     "file": "extract-social-spot.md",
     "sha256": "857109da57e81bdb802f6bf2897b14e9544c3b8c6bf262bf1272bec0ec911086"

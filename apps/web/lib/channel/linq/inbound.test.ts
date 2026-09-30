@@ -822,6 +822,239 @@ describe('handleLinqInboundRequest', () => {
     expect(text).not.toContain('swimming');
     expect(text).not.toContain(API_KEY);
   });
+
+  it('shadows a vote for the other parent without a duty write or a send', async () => {
+    vi.stubEnv('COPARENT_DUTY_ASKS_ENABLED', 'true');
+    try {
+      const infos: unknown[] = [];
+      const h = harness();
+      h.deps.log = {
+        info: (fields) => {
+          infos.push(fields);
+        },
+        warn: (fields) => {
+          h.warns.push(fields);
+        },
+        error: () => {},
+      };
+      const { familyId, userId } = enrol(h.fake);
+      const other = '00000000-0000-4000-8000-0000000000b2';
+      h.fake.db
+        .insert(schema.familyMembers)
+        .values({ userId: other, familyId, role: 'co_parent' } as never);
+      const subjectKey = 'who-takes/2026-09-25T19:00:00.000Z/maya%20gymnastics';
+      await h.fake.db.insert(schema.linqPollOptions).values({
+        familyId,
+        parentUserId: userId,
+        providerChatId: CHAT_ID,
+        providerMessageId: 'poll-msg',
+        optionId: 'opt-other',
+        optionText: 'Sam',
+        pollKind: 'who_takes',
+        subjectKey,
+        choiceKind: 'parent',
+        choiceValue: other,
+      } as never);
+      const vote = JSON.parse(messageBody()) as { event_type: string; data: unknown };
+      vote.event_type = 'poll.vote.added';
+      vote.data = {
+        chat_id: CHAT_ID,
+        message_id: 'poll-msg',
+        option_id: 'opt-other',
+        sender_handle: { handle: PHONE, is_me: false },
+      };
+
+      const res = await handleLinqInboundRequest(request(JSON.stringify(vote)), h.deps);
+
+      expect(res.status).toBe(200);
+      await expect(res.json()).resolves.toEqual({ outcome: 'poll_logistics' });
+      const facts = h.fake.rows(schema.familyMemoryFacts);
+      expect(facts.map((row) => row.factKey)).toEqual([subjectKey]);
+      expect(facts[0]?.factValue).toMatchObject({ status: 'decided', takerUserId: other });
+      const shadow = infos.find(
+        (row) =>
+          !!row &&
+          typeof row === 'object' &&
+          (row as { shadow?: string }).shadow === 'coparent_duty',
+      ) as { wrote?: boolean; sent?: boolean; proposal?: boolean; skipped?: string } | undefined;
+      expect(shadow).toMatchObject({ wrote: false, sent: false, proposal: true, skipped: null });
+      expect(h.sends).toEqual([]);
+      expect(JSON.stringify(shadow)).not.toContain('gymnastics');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('does not enable duty shadow for a single-parent family', async () => {
+    vi.stubEnv('COPARENT_DUTY_ASKS_ENABLED', 'true');
+    try {
+      const infos: unknown[] = [];
+      const h = harness();
+      h.deps.log = {
+        info: (fields) => {
+          infos.push(fields);
+        },
+        warn: () => {},
+        error: () => {},
+      };
+      const { familyId, userId } = enrol(h.fake);
+      const subjectKey = 'who-takes/2026-09-25T19:00:00.000Z/maya%20gymnastics';
+      await h.fake.db.insert(schema.linqPollOptions).values({
+        familyId,
+        parentUserId: userId,
+        providerChatId: CHAT_ID,
+        providerMessageId: 'poll-msg',
+        optionId: 'opt-solo',
+        optionText: 'Sam',
+        pollKind: 'who_takes',
+        subjectKey,
+        choiceKind: 'parent',
+        choiceValue: userId,
+      } as never);
+      const vote = JSON.parse(messageBody()) as { event_type: string; data: unknown };
+      vote.event_type = 'poll.vote.added';
+      vote.data = {
+        chat_id: CHAT_ID,
+        message_id: 'poll-msg',
+        option_id: 'opt-solo',
+        sender_handle: { handle: PHONE, is_me: false },
+      };
+      const res = await handleLinqInboundRequest(request(JSON.stringify(vote)), h.deps);
+      await expect(res.json()).resolves.toEqual({ outcome: 'poll_logistics' });
+      expect(h.fake.rows(schema.familyMemoryFacts).map((row) => row.factKey)).toEqual([subjectKey]);
+      expect(infos).toContainEqual(
+        expect.objectContaining({
+          shadow: 'coparent_duty',
+          skipped: 'single_parent',
+          wrote: false,
+        }),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('does not shadow a logistics vote while the flag is off', async () => {
+    const infos: unknown[] = [];
+    const h = harness();
+    h.deps.log = {
+      info: (fields) => {
+        infos.push(fields);
+      },
+      warn: () => {},
+      error: () => {},
+    };
+    const { familyId, userId } = enrol(h.fake);
+    const subjectKey = 'who-takes/2026-09-25T19:00:00.000Z/maya%20gymnastics';
+    await h.fake.db.insert(schema.linqPollOptions).values({
+      familyId,
+      parentUserId: userId,
+      providerChatId: CHAT_ID,
+      providerMessageId: 'poll-msg',
+      optionId: 'opt-self',
+      optionText: 'Sam',
+      pollKind: 'who_takes',
+      subjectKey,
+      choiceKind: 'parent',
+      choiceValue: userId,
+    } as never);
+    const vote = JSON.parse(messageBody()) as { event_type: string; data: unknown };
+    vote.event_type = 'poll.vote.added';
+    vote.data = {
+      chat_id: CHAT_ID,
+      message_id: 'poll-msg',
+      option_id: 'opt-self',
+      sender_handle: { handle: PHONE, is_me: false },
+    };
+    const res = await handleLinqInboundRequest(request(JSON.stringify(vote)), h.deps);
+    await expect(res.json()).resolves.toEqual({ outcome: 'poll_logistics' });
+    expect(
+      infos.some(
+        (row) =>
+          !!row &&
+          typeof row === 'object' &&
+          (row as { shadow?: string }).shadow === 'coparent_duty',
+      ),
+    ).toBe(false);
+  });
+
+  it('acks a removed vote either way, and only logs the duty plan when the flag is on', async () => {
+    const removedBody = () => {
+      const vote = JSON.parse(messageBody()) as { event_type: string; data: unknown };
+      vote.event_type = 'poll.vote.removed';
+      vote.data = {
+        chat_id: CHAT_ID,
+        message_id: 'poll-msg',
+        option_id: 'opt-other',
+        sender_handle: { handle: PHONE, is_me: false },
+      };
+      return JSON.stringify(vote);
+    };
+    const off = harness();
+    const offInfos: unknown[] = [];
+    off.deps.log = { info: (fields) => offInfos.push(fields), warn: () => {}, error: () => {} };
+    const seeded = enrol(off.fake);
+    await off.fake.db.insert(schema.linqPollOptions).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.userId,
+      providerChatId: CHAT_ID,
+      providerMessageId: 'poll-msg',
+      optionId: 'opt-other',
+      optionText: 'Sam',
+      pollKind: 'who_takes',
+      subjectKey: 'who-takes/2026-09-25T19:00:00.000Z/maya%20gymnastics',
+      choiceKind: 'parent',
+      choiceValue: seeded.userId,
+    } as never);
+    const dark = await handleLinqInboundRequest(request(removedBody()), off.deps);
+    await expect(dark.json()).resolves.toEqual({ outcome: 'poll.vote.removed' });
+    expect(
+      offInfos.some(
+        (row) =>
+          !!row &&
+          typeof row === 'object' &&
+          (row as { shadow?: string }).shadow === 'coparent_duty',
+      ),
+    ).toBe(false);
+
+    vi.stubEnv('COPARENT_DUTY_ASKS_ENABLED', 'true');
+    try {
+      const on = harness();
+      const infos: unknown[] = [];
+      on.deps.log = { info: (fields) => infos.push(fields), warn: () => {}, error: () => {} };
+      const { familyId, userId } = enrol(on.fake);
+      const other = '00000000-0000-4000-8000-0000000000b3';
+      on.fake.db
+        .insert(schema.familyMembers)
+        .values({ userId: other, familyId, role: 'co_parent' } as never);
+      await on.fake.db.insert(schema.linqPollOptions).values({
+        familyId,
+        parentUserId: userId,
+        providerChatId: CHAT_ID,
+        providerMessageId: 'poll-msg',
+        optionId: 'opt-other',
+        optionText: 'Sam',
+        pollKind: 'who_takes',
+        subjectKey: 'who-takes/2026-09-25T19:00:00.000Z/maya%20gymnastics',
+        choiceKind: 'parent',
+        choiceValue: other,
+      } as never);
+      const lit = await handleLinqInboundRequest(request(removedBody()), on.deps);
+      await expect(lit.json()).resolves.toEqual({ outcome: 'poll.vote.removed' });
+      expect(on.fake.rows(schema.familyMemoryFacts)).toEqual([]);
+      expect(on.sends).toEqual([]);
+      expect(infos).toContainEqual(
+        expect.objectContaining({
+          shadow: 'coparent_duty',
+          wrote: false,
+          sent: false,
+          voteRemoved: true,
+        }),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe('location sharing', () => {
