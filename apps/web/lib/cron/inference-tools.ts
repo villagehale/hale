@@ -4,6 +4,7 @@ import { type FamilyStage, deriveStage } from '@hale/types';
 import { and, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { CONFIDENCE_FLOOR, resolveValidFrom, writeFact } from '~/lib/memory/facts';
+import { memoryTypingForWrite } from '~/lib/memory/store';
 
 /**
  * The memory-inferencer agent's tools — family-scoped (rule #1) and run through
@@ -210,6 +211,14 @@ export function buildInferenceTools(
         return { saved: false as const, reason: 'below_confidence_floor' };
       }
 
+      const typing = await memoryTypingForWrite(database, {
+        familyId: ctx.familyId,
+        childId: null,
+        factType: input.factType,
+        factKey: input.factKey,
+        source: 'inferred',
+        now,
+      });
       const { factId } = await writeFact(database, {
         familyId: ctx.familyId,
         childId: null,
@@ -219,6 +228,7 @@ export function buildInferenceTools(
         confidence: input.confidence,
         inferredBy: 'memory_inferencer',
         validFrom: resolveValidFrom(input.observedAt, now),
+        ...typing,
       });
       return { saved: true as const, factId };
     },
@@ -395,15 +405,26 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
         return { saved: false as const, reason: 'below_confidence_floor' };
       }
 
+      const childId = input.childId ?? null;
+      const factType = CATEGORY_TO_FACT_TYPE[input.category];
+      const typing = await memoryTypingForWrite(database, {
+        familyId: ctx.familyId,
+        childId,
+        factType,
+        factKey: input.factKey,
+        source: 'inferred',
+        now,
+      });
       const { factId } = await writeFact(database, {
         familyId: ctx.familyId,
-        childId: input.childId ?? null,
-        factType: CATEGORY_TO_FACT_TYPE[input.category],
+        childId,
+        factType,
         factKey: input.factKey,
         factValue: { category: input.category, summary: input.summary },
         confidence: input.confidence,
         inferredBy: 'chat_distiller',
         validFrom: now,
+        ...typing,
       });
       return { saved: true as const, factId };
     },

@@ -5,10 +5,10 @@ import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
-import { linqGroupCoparentEnabled } from './config';
+import { linqApiKey, linqGroupCoparentEnabled } from './config';
 import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
 import { groupPassedSyncLine, groupPickedSyncLine } from './group-coparent-copy';
-import { sendLinqChatMessage } from './transport';
+import { LinqSendError, sendLinqChatMessage } from './transport';
 
 /**
  * Where a Hale-initiated message for this family goes.
@@ -630,4 +630,72 @@ export async function flushGroupDecisionSyncs(
     }
   }
   return { sent, held };
+}
+
+/**
+ * A decision the parent already made, mirrored into the claimed group.
+ * The chat id has to be that family's group. Anything else — including a
+ * 1:1 — is refused and nothing is sent. The ledger row is written first.
+ */
+export async function sendClaimedGroupLine(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    chatId: string;
+    body: string;
+    now: Date;
+    dedupeKey: string;
+    templateKey: string;
+  },
+): Promise<'sent' | 'not_configured' | 'not_the_group' | 'already_sent' | 'not_sent'> {
+  if (!linqApiKey()) return 'not_configured';
+  const [family] = await database
+    .select({ linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, input.familyId))
+    .limit(1);
+  if (!family?.linqGroupChatId || family.linqGroupChatId !== input.chatId) {
+    return 'not_the_group';
+  }
+  const [claimed] = await database
+    .insert(schema.channelMessages)
+    .values({
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reply',
+      templateKey: input.templateKey,
+      dedupeKey: input.dedupeKey,
+      providerChatId: input.chatId,
+      status: acceptedStatus('imessage'),
+      sentAt: input.now,
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.channelMessages.id });
+  if (!claimed) return 'already_sent';
+  try {
+    const delivered = await sendLinqChatMessage({ chatId: input.chatId, text: input.body });
+    await database
+      .update(schema.channelMessages)
+      .set({ providerMessageId: delivered.providerMessageId })
+      .where(eq(schema.channelMessages.id, claimed.id));
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: input.parentUserId,
+      actionTaken: 'sms_reply_sent',
+      targetTable: 'channel_messages',
+      targetId: claimed.id,
+      after: { templateKey: input.templateKey },
+    });
+    return 'sent';
+  } catch (err) {
+    const code = err instanceof LinqSendError ? err.code : 'unknown';
+    await database
+      .update(schema.channelMessages)
+      .set({ status: 'failed', errorCode: code })
+      .where(eq(schema.channelMessages.id, claimed.id));
+    return 'not_sent';
+  }
 }

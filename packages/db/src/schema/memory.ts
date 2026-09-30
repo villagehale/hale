@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  check,
   date,
   doublePrecision,
   index,
@@ -38,6 +39,25 @@ export const familyMemoryFacts = pgTable(
     validUntil: timestamp('valid_until', { withTimezone: true }),
     supersededBy: uuid('superseded_by'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * VIL-391. How long the fact should steer Hale. Existing rows backfill as
+     * `lasting` (migration 0141) so a flag-off reader is unchanged.
+     */
+    memoryKind: text('memory_kind').notNull().default('lasting'),
+    /**
+     * Where the fact came from. `legacy` is the backfill and every write made
+     * while the kinds flag is off.
+     */
+    memorySource: text('memory_source').notNull().default('legacy'),
+    /** When the source was observed. Backfilled from `created_at`. */
+    sourcedAt: timestamp('sourced_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Required when `memory_kind` is `temporary`. Read-time expiry uses this. */
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    /**
+     * Promotion signals seen after an inferred one-off (repeat ask, booking,
+     * positive feedback). The inference itself does not increment this.
+     */
+    signalCount: integer('signal_count').notNull().default(0),
   },
   (table) => ({
     // Hot path: agent reads facts by (family, type, key) where still valid
@@ -45,6 +65,18 @@ export const familyMemoryFacts = pgTable(
       .on(table.familyId, table.factType, table.factKey)
       .where(sql`${table.validUntil} IS NULL`),
     childIdx: index('memory_facts_child_idx').on(table.childId),
+    kindCheck: check(
+      'family_memory_facts_kind_chk',
+      sql`${table.memoryKind} IN ('lasting', 'temporary', 'one_off')`,
+    ),
+    sourceCheck: check(
+      'family_memory_facts_source_chk',
+      sql`${table.memorySource} IN ('parent_message', 'calendar', 'receipt', 'inferred', 'legacy')`,
+    ),
+    temporaryExpiryCheck: check(
+      'family_memory_facts_temporary_expiry_chk',
+      sql`${table.memoryKind} <> 'temporary' OR ${table.expiresAt} IS NOT NULL`,
+    ),
     // NOT DECLARED HERE, deliberately: `memory_facts_one_live_per_key_idx` (migration
     // 0084) is a partial UNIQUE index on (family_id, child_id, fact_type, fact_key)
     // WHERE valid_until IS NULL, with NULLS NOT DISTINCT so family-wide facts are

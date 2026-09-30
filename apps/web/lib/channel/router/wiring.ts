@@ -56,6 +56,7 @@ import {
   emailAlertOfferSummary,
   loadOpenEmailAlertOffers,
 } from '~/lib/integrations/email-alert-offer';
+import { familyMemoryKindsHandler } from '~/lib/memory/handler';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
@@ -410,6 +411,9 @@ export function defaultHandlers(): DeterministicHandler[] {
     // Explicit "sign us up" only. A bare yes is not a signup. Placed before the
     // registration reader, which also claims messages it cannot read.
     authorizedSignupHandler(),
+    // Exact "what do you know" / "forget …" / "correct …" only, and only when
+    // FAMILY_MEMORY_KINDS_ENABLED is exactly true. Flag off claims nothing.
+    familyMemoryKindsHandler(),
     sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
     recMorningHandler(),
     parentCallNameHandler(),
