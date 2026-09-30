@@ -41,7 +41,7 @@ export const familyMemoryFacts = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /**
      * VIL-391. How long the fact should steer Hale. Existing rows backfill as
-     * `lasting` (migration 0140) so a flag-off reader is unchanged.
+     * `lasting` (migration 0141) so a flag-off reader is unchanged.
      */
     memoryKind: text('memory_kind').notNull().default('lasting'),
     /**

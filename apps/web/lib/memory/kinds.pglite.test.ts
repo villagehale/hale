@@ -20,7 +20,7 @@ const LOCKED = {
   FAMILY_MEMORY_KINDS_COPY_LOCKED: 'true',
 };
 
-describe('migration 0140 backfill', () => {
+describe('migration 0141 backfill', () => {
   let db: TestDb;
 
   beforeEach(async () => {
@@ -40,7 +40,7 @@ describe('migration 0140 backfill', () => {
         returning id`,
     )) as unknown as { rows?: Array<{ id: string }> };
 
-    await db.applyMigration('0140_family_memory_kinds.sql');
+    await db.applyMigration('0141_family_memory_kinds.sql');
 
     const [row] = await db.database
       .select({
