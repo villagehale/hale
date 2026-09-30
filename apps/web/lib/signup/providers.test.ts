@@ -18,6 +18,14 @@ describe('booking route', () => {
       'toronto.ca',
       'brampton.ca',
       'markham.ca',
+      'mississauga.ca',
+      'richmondhill.ca',
+      'vaughan.ca',
+      'oakville.ca',
+      'caledon.ca',
+      'haltonhills.ca',
+      'burlington.ca',
+      'amilia.com',
     ]);
   });
 
@@ -36,6 +44,46 @@ describe('booking route', () => {
       expect(bookingRoute(href).kind, href).toBe('handoff');
       expect(municipalBookingHost(new URL(href).hostname), href).toBe(true);
     }
+  });
+
+  it('denies the added city sites and Amilia, including subdomains', () => {
+    const denied = [
+      'https://www.mississauga.ca/recreation',
+      'https://recreation.richmondhill.ca/programs',
+      'https://www.vaughan.ca/register',
+      'https://activities.oakville.ca/camps',
+      'https://www.caledon.ca/recreation',
+      'https://www.haltonhills.ca/recreation',
+      'https://www.burlington.ca/en/recreation.aspx',
+      'https://app.amilia.com/register',
+    ];
+    for (const href of denied) {
+      expect(bookingRoute(href).kind, href).toBe('handoff');
+      expect(municipalBookingHost(new URL(href).hostname), href).toBe(true);
+    }
+  });
+
+  it('does not treat a lookalike host as a denied city or platform', () => {
+    const allowed = [
+      'notbrampton.ca.evil.com',
+      'brampton.ca.evil.com',
+      'notmississauga.ca',
+      'mississauga.ca.evil.com',
+      'amilia.com.evil.com',
+      'notamilia.com',
+      'vaughan.ca.example.test',
+    ];
+    for (const host of allowed) {
+      expect(municipalBookingHost(host), host).toBe(false);
+      expect(bookingRoute(`https://${host}/register`).kind, host).toBe('browser');
+    }
+    const connector: BookingConnector = {
+      id: 'should-not-override',
+      matches: () => true,
+      book: async () => ({ ok: true }),
+    };
+    expect(bookingRoute('https://www.mississauga.ca/recreation', [connector]).kind).toBe('handoff');
+    expect(bookingRoute('https://app.amilia.com/register', [connector]).kind).toBe('handoff');
   });
 
   it('does not deny a private host or a name that merely contains a city', () => {

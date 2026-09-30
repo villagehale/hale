@@ -12,11 +12,12 @@ export function assistedHandoffLine(input: {
 }): string {
   return signupAssistedHandoffLine({
     link: input.link,
-    sessionLabel: tidy(input.sessionLabel),
-    pack: input.pack.map((item) => ({ slot: item.slot, value: tidy(item.value) })),
+    sessionLabel: collapseSignupFact(input.sessionLabel),
+    pack: input.pack.map((item) => ({ slot: item.slot, value: collapseSignupFact(item.value) })),
   });
 }
 
-function tidy(value: string): string {
+/** Collapse whitespace at the call site. The locked sentences in copy.ts do not trim. */
+export function collapseSignupFact(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }

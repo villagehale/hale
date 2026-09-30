@@ -122,6 +122,18 @@ export interface FamilyExportDocument {
     updatedAt: string;
   }[];
   /**
+   * VIL-375 — slots a parent allowed Hale to share with one provider, taken
+   * from their explicit yes. Slot names, host, and time only. No values and
+   * no message body.
+   */
+  signupFieldConsents: {
+    activityKey: string;
+    providerHost: string;
+    fieldsAllowed: string[];
+    messageId: string;
+    createdAt: string;
+  }[];
+  /**
    * VIL-353 · the evening check-in: how often this household is asked how the day went,
    * and what THIS parent wrote back.
    *
@@ -546,6 +558,25 @@ export async function assembleFamilyExport(
     updatedAt: row.updatedAt.toISOString(),
   }));
 
+  const consentRows = await database
+    .select({
+      activityKey: schema.authorizedSignupConsents.activityKey,
+      providerHost: schema.authorizedSignupConsents.providerHost,
+      fieldsAllowed: schema.authorizedSignupConsents.fieldsAllowed,
+      messageId: schema.authorizedSignupConsents.messageId,
+      createdAt: schema.authorizedSignupConsents.createdAt,
+    })
+    .from(schema.authorizedSignupConsents)
+    .where(eq(schema.authorizedSignupConsents.familyId, familyId))
+    .orderBy(schema.authorizedSignupConsents.createdAt);
+  const signupFieldConsents = consentRows.map((row) => ({
+    activityKey: row.activityKey,
+    providerHost: row.providerHost,
+    fieldsAllowed: row.fieldsAllowed,
+    messageId: row.messageId,
+    createdAt: row.createdAt.toISOString(),
+  }));
+
   const memoryDigests = digestRows.flatMap((row) => {
     const grain = digestGrain(row.grain);
     if (grain === null) return [];
@@ -594,6 +625,7 @@ export async function assembleFamilyExport(
     watchedSpots,
     activityBookings,
     authorizedSignups,
+    signupFieldConsents,
     eveningCheckIn,
     activityReviews,
     trips,

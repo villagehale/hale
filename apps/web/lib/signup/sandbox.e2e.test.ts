@@ -326,7 +326,7 @@ describe('authorized signup sandbox', () => {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
         body: 'Yes, sign us up',
-        inboundChannelMessageId: null,
+        inboundChannelMessageId: 'msg-sandbox',
         existingThread: true,
         now: NOW,
       },

@@ -37,6 +37,9 @@ describe('authorized signup copy', () => {
     ['redirect', `I couldn't get through on my end.`],
     ['already_in_progress', 'I stopped before finishing.'],
     ['would_initiate_1_1', 'I stopped before finishing.'],
+    ['consent_missing', 'I stopped before finishing.'],
+    ['consent_wider', 'I stopped before finishing.'],
+    ['consent_short', 'I stopped before finishing.'],
   ])('states %s and nothing else when there is no link and nothing was filled', (reason, line) => {
     expect(signupHandbackLine({ reason, link: '', prefilled: [] })).toBe(line);
   });
