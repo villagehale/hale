@@ -359,7 +359,9 @@ export async function syncMemoryDecisionToGroup(
   if (!gated.deliver) return { synced: false, skipped: gated.skipped };
   if (!input.sendGroup) return { synced: false, skipped: 'sender_absent' };
   const sent = await input.sendGroup(groupChatId, gated.body);
-  if (sent === 'not_configured') return { synced: false, skipped: 'not_configured' };
+  if (sent !== 'sent') {
+    return { synced: false, skipped: typeof sent === 'string' ? sent : 'not_sent' };
+  }
   return { synced: true, skipped: 'sent' };
 }
 

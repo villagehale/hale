@@ -69,7 +69,7 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/linq/household-calendar.ts':
     'group notices for kid events, conflicts, handoffs, and how-it-went; sendGroupNotice inserts the channel_messages row before the Linq send',
   'apps/web/lib/channel/linq/family-outbound.ts':
-    'the household outbound resolver; proactive callers ledger the row beside deliverFamilyOutbound, and postGroupDecisionSync inserts its own channel_messages row before the Linq send',
+    'the household outbound resolver; proactive callers ledger the row beside deliverFamilyOutbound, postGroupDecisionSync inserts its own channel_messages row before the Linq send, and sendClaimedGroupLine does the same before mirroring a memory decision into the claimed group only',
   'apps/web/lib/billing/upgrade-ask.ts':
     'year-retention ask and group sync; maybeOfferYearRetention inserts channel_messages (template linq:upgrade_ask) after the Linq send, and closeOffer inserts channel_messages (template linq:upgrade_sync) after the group-sync send',
   'apps/web/lib/channel/linq/poll.ts':

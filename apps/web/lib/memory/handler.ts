@@ -1,6 +1,5 @@
 import type { Database } from '@hale/db';
-import { linqApiKey } from '~/lib/channel/linq/config';
-import { sendLinqChatMessage } from '~/lib/channel/linq/transport';
+import { sendClaimedGroupLine } from '~/lib/channel/linq/family-outbound';
 import type {
   DeterministicHandler,
   HandlerContext,
@@ -10,22 +9,12 @@ import { type MemoryKindEnv, familyMemoryKindsEnabled } from './kinds';
 import { handleParentMemory } from './store';
 
 /**
- * Group chat only. The chat id is the family's claimed Linq group, chosen
- * by the caller. A missing API key is named `not_configured` and sends nothing.
- * This never looks up a 1:1 chat.
- */
-async function sendGroupOnly(chatId: string, body: string): Promise<'sent' | 'not_configured'> {
-  if (!linqApiKey()) return 'not_configured';
-  await sendLinqChatMessage({ chatId, text: body });
-  return 'sent';
-}
-
-/**
  * Claims "what do you know" / "forget …" / "correct …" only while the kinds
  * flag is exactly on. Flag off returns before a read, so the coach still
  * owns the turn. The reply string is null unless the copy gate is also
  * exactly true — the placeholder must not reach the transport before Sloane
- * locks it.
+ * locks it. A group mirror goes through the ledgered group door, which
+ * refuses any chat that is not this family's claimed group.
  */
 export function familyMemoryKindsHandler(env?: MemoryKindEnv): DeterministicHandler {
   return {
@@ -40,7 +29,18 @@ export function familyMemoryKindsHandler(env?: MemoryKindEnv): DeterministicHand
         now: ctx.now,
         inboundChannelMessageId: ctx.inboundChannelMessageId,
         env: flags,
-        sendGroup: sendGroupOnly,
+        sendGroup: (chatId, body) => {
+          const inbound = ctx.inboundChannelMessageId ?? ctx.now.toISOString();
+          return sendClaimedGroupLine(database, {
+            familyId: ctx.familyId,
+            parentUserId: ctx.parentUserId,
+            chatId,
+            body,
+            now: ctx.now,
+            dedupeKey: `linq:memory_kinds:${inbound}`,
+            templateKey: 'linq:memory_kinds',
+          });
+        },
       });
       if (!result.claimed) return { claimed: false };
       return {
