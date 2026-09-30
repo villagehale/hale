@@ -423,6 +423,7 @@ describe('a booking email becomes one text a week before the trip', () => {
     // passenger line. Asserted over the serialised facts rather than a field list, with
     // timestamps and ids left out: `createdAt` is `….812Z` often enough that the fare
     // digits match the milliseconds, and `812` is also a hex run inside a random uuid.
+    if (trip === undefined) throw new Error('expected one trip row');
     const row = JSON.stringify(tripFacts(trip));
     for (const forbidden of ['QRT4LM', '812', 'CHEN', 'AC 704', 'Seat']) {
       expect(row, `the trip row must not carry ${forbidden}`).not.toContain(forbidden);
