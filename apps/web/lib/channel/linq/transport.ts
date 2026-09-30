@@ -472,10 +472,14 @@ export function readLinqChatHandles(payload: unknown): string[] {
 }
 
 /**
- * Open a chat. Two or more `to` handles make it a group. The first message
- * cannot contain a link — Linq rejects `link` parts and text that contains a
- * URL on this endpoint. Effects and `reply_to` are likewise refused here.
+ * Open a chat. One `to` handle is a 1:1. Two or more make a group. The
+ * request does not set `preferred_service`, so Linq's chain applies to either
+ * shape: iMessage, then RCS, then SMS (MMS for a group that cannot stay on
+ * iMessage or RCS). The first message cannot contain a link — Linq rejects
+ * `link` parts and text that contains a URL on this endpoint. Effects and
+ * `reply_to` are likewise refused here.
  *
+ * https://docs.linqapp.com/guides/messaging/protocol-selection/
  * https://docs.linqapp.com/guides/chats/group-chats/
  */
 export async function createLinqChat(input: {
@@ -858,10 +862,29 @@ async function findLinqDirectChat(input: {
  * Phone-addressed outbound, the same `ChannelTransport` contract the Twilio
  * SMS transport implements: `to` is a bare E.164.
  *
- * Linq keys a 1:1 on the Hale line plus that number. Plain text with no URL
- * goes through POST /chats, which sends into the existing chat instead of
- * opening a second thread. `preferred_service` is omitted so Linq's own
- * chain applies: iMessage, then RCS, then SMS.
+ * This door is a 1:1 on the Hale line. `preferred_service` is omitted, so
+ * Linq selects the protocol
+ * (https://docs.linqapp.com/guides/messaging/protocol-selection/):
+ *
+ * - iMessage when the handset can take it
+ * - otherwise RCS
+ * - otherwise SMS
+ *
+ * `preferred_service: "iMessage"` would fail a handset that is not on
+ * iMessage. `"SMS"` and `"RCS"` both skip iMessage (RCS if the handset has
+ * it, otherwise SMS). Hale leaves the choice to Linq. Which of the three
+ * carried a given bubble is the webhook `service` field, not this request.
+ *
+ * A co-parent group is a different Linq chat: two or more handles on
+ * `POST /v3/chats`, then sends into `linq_group_chat_id`. Opening that chat
+ * also omits `preferred_service`, so the same chain applies. A group that
+ * falls through to SMS is MMS. Adding or removing a participant is
+ * iMessage-only; a mixed household is a new chat
+ * (https://docs.linqapp.com/channel/imessage/guides/chats/group-chats/).
+ *
+ * Linq keys the 1:1 on the Hale line plus `to`. Plain text with no URL goes
+ * through POST /chats, which sends into the existing chat instead of opening
+ * a second thread.
  *
  * A URL or a file needs a chat that already exists. The first message of a
  * new chat cannot contain a link (Linq 1005), and this door does not invent
