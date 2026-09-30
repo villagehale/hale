@@ -15,6 +15,10 @@ import { config } from '../config.js';
 
 export { HAIKU_MODEL, SONNET_MODEL, SONNET5_MODEL, OPUS_MODEL } from '@hale/agent';
 
+/** Under the web function wall. The SDK default is 600s plus two retries. */
+export const ANTHROPIC_TIMEOUT_MS = 60_000;
+export const ANTHROPIC_MAX_RETRIES = 1;
+
 let client: Anthropic | undefined;
 
 export function anthropicClient(): Anthropic {
@@ -23,6 +27,10 @@ export function anthropicClient(): Anthropic {
       'ANTHROPIC_API_KEY is not set. Configure it in your environment to enable agent calls.',
     );
   }
-  client ??= new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
+  client ??= new Anthropic({
+    apiKey: config.ANTHROPIC_API_KEY,
+    timeout: ANTHROPIC_TIMEOUT_MS,
+    maxRetries: ANTHROPIC_MAX_RETRIES,
+  });
   return client;
 }

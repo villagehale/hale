@@ -1,8 +1,8 @@
 import {
-  approvedActionPayloadSchema,
   type ChannelMessageReceivedPayload,
   type DeepResearchPayload,
   type QueueCreateOptions,
+  approvedActionPayloadSchema,
   channelMessageReceivedPayloadSchema,
   channelSendJobPayloadSchema,
   createQueueWithPolicy,
@@ -26,6 +26,7 @@ import {
 } from '~/lib/channel/activity/deep-queue';
 import {
   CHANNEL_MESSAGE_RECEIVED_DLQ,
+  CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
   CHANNEL_MESSAGE_RECEIVED_POLICY,
   CHANNEL_MESSAGE_RECEIVED_QUEUE,
   CHANNEL_MESSAGE_RECEIVED_RETRY,
@@ -562,7 +563,10 @@ const DRAIN_PLAN = [
   },
 ] as const satisfies ReadonlyArray<{
   queue: string;
-  process: (deps: DrainDeps, job: { id: string; data: unknown }) => Promise<'processed' | 'dropped'>;
+  process: (
+    deps: DrainDeps,
+    job: { id: string; data: unknown },
+  ) => Promise<'processed' | 'dropped'>;
   budgetMs?: number;
   batchSize?: number;
 }>;
@@ -631,7 +635,7 @@ export async function drainHotQueues(
   // as well as by the producer (channel/twilio/deps.ts) so a cold start in either order
   // lands the same queue.
   await createQueueWithPolicy(deps.boss, CHANNEL_MESSAGE_RECEIVED_QUEUE, {
-    expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+    expireInSeconds: CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
     policy: CHANNEL_MESSAGE_RECEIVED_POLICY,
     retry: CHANNEL_MESSAGE_RECEIVED_RETRY,
     deadLetter: CHANNEL_MESSAGE_RECEIVED_DLQ,

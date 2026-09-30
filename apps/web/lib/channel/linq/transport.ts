@@ -23,7 +23,7 @@ const LINQ_API_BASE = 'https://api.linqapp.com/api/partner/v3';
 
 /** Inside Linq's 10s webhook budget when a keyword ack sends inline, and short
  * enough that a hung partner fails the turn instead of holding the instance. */
-const SEND_TIMEOUT_MS = 8_000;
+export const SEND_TIMEOUT_MS = 8_000;
 
 const TEXT_MAX = 10_000;
 const LINK_MAX = 2_048;
@@ -140,6 +140,29 @@ async function linqRequest(input: {
     code: linqErrorCode(payload) ?? `http_${response.status}`,
     permanent,
   };
+}
+
+/**
+ * GET /webhook-subscriptions. No key is `unconfigured` and does not fetch.
+ * Any transport failure is `unreachable` — the health probe must not throw.
+ */
+export async function listLinqWebhookSubscriptions(
+  fetchImpl?: typeof fetch,
+): Promise<
+  { status: 'unconfigured' } | { status: 'unreachable' } | { status: 'ok'; payload: unknown }
+> {
+  if (!linqApiKey()) return { status: 'unconfigured' };
+  try {
+    const result = await linqRequest({
+      method: 'GET',
+      path: '/webhook-subscriptions',
+      fetch: fetchImpl,
+    });
+    if (!result.ok) return { status: 'unreachable' };
+    return { status: 'ok', payload: result.payload };
+  } catch {
+    return { status: 'unreachable' };
+  }
 }
 
 /** Typing, and anything else whose failure must be a named result rather than a

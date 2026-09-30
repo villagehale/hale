@@ -14,6 +14,15 @@ import {
 import { readAffirmative } from '~/lib/channel/affirmative';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import {
+  CALL_TIMEOUT_MS,
+  GATE_TIMEOUT,
+  OFF_DOMAIN_BUDGET_MS,
+  OFF_DOMAIN_TIMEOUT,
+  TURN_DEADLINE_MS,
+  TURN_TIMEOUT,
+  TURN_UNREACHABLE,
+} from '~/lib/channel/config';
+import {
   IDENTITY_CHALLENGE_TEMPLATE_KEY,
   identityChallengeReply,
 } from '~/lib/channel/intake/identity-challenge';
@@ -64,6 +73,14 @@ import {
   draftsFromFailure,
 } from './coach-runtime';
 import { FLOOD_REPLY, clarifyWhichQuestion, partialFailureReply } from './copy';
+import {
+  assertTurnLive,
+  isCallTimeout,
+  isTurnTimeout,
+  runTurn,
+  turnSignalAborted,
+  withTimeout,
+} from './deadline';
 import {
   type DisambiguationOption,
   type DisambiguationStore,
@@ -504,12 +521,16 @@ export interface ChannelRouterDeps {
   limiter: RateLimiter;
   now(): Date;
   log: Pick<Console, 'info' | 'warn' | 'error'>;
+  /** Test seam. Production uses {@link TURN_DEADLINE_MS}. */
+  turnDeadlineMs?: number;
+  /** Test seam for GATE 2c / 2c-bis. Production uses {@link CALL_TIMEOUT_MS}. */
+  callTimeoutMs?: number;
 }
 
 /** Why a turn went back to the queue instead of answering. `model_unreachable` is the
  * arc's own reason; the rest are the composer's, and they mean Hale had nothing
  * sendable to say rather than nobody to say it. */
-export type TurnDeferralReason = 'model_unreachable' | ApologyFallback;
+export type TurnDeferralReason = 'model_unreachable' | 'turn_timeout' | ApologyFallback;
 
 /**
  * The turn is not finished, and the parent gets NOTHING right now.
@@ -577,6 +598,48 @@ export interface RouterResult {
 }
 
 export async function routeChannelMessage(
+  deps: ChannelRouterDeps,
+  job: ChannelMessageReceivedJob,
+): Promise<RouterResult> {
+  const deadlineMs = deps.turnDeadlineMs ?? TURN_DEADLINE_MS;
+  const signal = AbortSignal.timeout(deadlineMs);
+  try {
+    return await runTurn(signal, () => routeChannelMessageInner(deps, job));
+  } catch (err) {
+    if (!isTurnTimeout(err) && !signal.aborted) throw err;
+    // Nothing goes out. The job fails so the per-parent key is free for the
+    // next text; the ledger is what makes a re-drive answer at most once.
+    deps.log.error(
+      {
+        channelMessageId: job.channel_message_id,
+        familyId: job.family_id,
+        outcome: TURN_TIMEOUT,
+      },
+      'channel router: turn deadline fired — nothing sent',
+    );
+    try {
+      await deps.turns.recordDeferred({
+        familyId: job.family_id,
+        parentUserId: job.parent_user_id,
+        channelMessageId: job.channel_message_id,
+        reason: TURN_TIMEOUT,
+      });
+    } catch (ledgerErr) {
+      deps.log.error(
+        { code: ledgerErr instanceof Error ? ledgerErr.name : 'unknown', outcome: TURN_TIMEOUT },
+        'channel router: could not record the turn timeout',
+      );
+    }
+    await captureAgentError({
+      lane: 'coach',
+      reason: TURN_TIMEOUT,
+      familyId: job.family_id,
+    });
+    throw new TurnDeferred('turn_timeout', err);
+  }
+}
+
+async function routeChannelMessageInner(
   deps: ChannelRouterDeps,
   job: ChannelMessageReceivedJob,
 ): Promise<RouterResult> {
@@ -676,6 +739,7 @@ export async function routeChannelMessage(
   }
 
   if (!context.reply) {
+    await noteUnanswered(deps, job, TURN_UNREACHABLE);
     return done(deps, job, {
       status: 'unreachable',
       handler: null,
@@ -706,6 +770,7 @@ export async function routeChannelMessage(
       familyId: job.family_id,
       parentUserId: job.parent_user_id,
       now,
+      channelMessageId: job.channel_message_id,
     });
     return openQuestions;
   };
@@ -863,12 +928,30 @@ export async function routeChannelMessage(
   //
   // ABOVE FLOOD CONTROL because a parent whose hour is spent still told us something true,
   // and losing it would cost them a reminder they had already answered.
-  const stated = await deps.recordStatedState(deps.database, {
-    familyId: turn.familyId,
-    parentUserId: turn.parentUserId,
-    body: turn.body,
-    now,
-  });
+  const callTimeoutMs = deps.callTimeoutMs ?? CALL_TIMEOUT_MS;
+  let stated: StatedStateOutcome;
+  try {
+    stated = await withTimeout(
+      deps.recordStatedState(deps.database, {
+        familyId: turn.familyId,
+        parentUserId: turn.parentUserId,
+        body: turn.body,
+        now,
+      }),
+      callTimeoutMs,
+      GATE_TIMEOUT,
+    );
+  } catch (err) {
+    if (!isCallTimeout(err)) throw err;
+    // not `not_recorded`: that status means the vocabulary drifted. A timeout
+    // means we did not learn whether anything was stated.
+    deps.log.warn(
+      { familyId: turn.familyId, outcome: GATE_TIMEOUT },
+      'channel router: stated-state gate timed out',
+    );
+    await noteUnanswered(deps, job, GATE_TIMEOUT);
+    stated = { status: 'nothing_stated' };
+  }
   if (stated.status === 'not_recorded') {
     // Named, never silent (rule #11). This reader believed the parent settled something
     // and found nothing open to settle — the signal that its vocabulary has drifted from
@@ -903,15 +986,27 @@ export async function routeChannelMessage(
     // body), and a message about a child's care arrangement is the last thing that
     // belongs in a log line. `recorded` is the one that needs no line: it leaves an
     // immutable audit row carrying the state it wrote.
-    const outcome = await recordWeekdayCareAnswer(deps, turn);
-    if (outcome.status === 'search') {
+    let outcome: Awaited<ReturnType<typeof recordWeekdayCareAnswer>> | null;
+    try {
+      outcome = await withTimeout(recordWeekdayCareAnswer(deps, turn), callTimeoutMs, GATE_TIMEOUT);
+    } catch (err) {
+      if (!isCallTimeout(err)) throw err;
+      // Do not return `unreadable`: that status means the grammar drifted.
+      deps.log.warn(
+        { familyId: turn.familyId, outcome: GATE_TIMEOUT },
+        'channel router: weekday-care gate timed out',
+      );
+      await noteUnanswered(deps, job, GATE_TIMEOUT);
+      outcome = null;
+    }
+    if (outcome?.status === 'search') {
       weekdaySearch = { prompt: outcome.prompt, eventKey: outcome.eventKey };
-    } else if (outcome.status === 'declined') {
+    } else if (outcome?.status === 'declined') {
       deps.log.info(
         { familyId: turn.familyId, status: outcome.status },
         'channel router: weekday search declined',
       );
-    } else if (outcome.status === 'unreadable') {
+    } else if (outcome?.status === 'unreadable') {
       // WARN, NOT ERROR. A bare "yes" or "no" to an either/or is ordinary parent
       // behaviour, not a fault: it is the signal the grammar has drifted, and it is
       // worth a line only because nothing else makes it visible. Logging it at ERROR
@@ -920,7 +1015,7 @@ export async function routeChannelMessage(
         { familyId: turn.familyId, status: outcome.status },
         'channel router: the weekday-care ask is standing and the reply settles neither side',
       );
-    } else if (outcome.status === 'not_recorded') {
+    } else if (outcome?.status === 'not_recorded') {
       // The open-question list said this was standing and the ask's own reader did not:
       // `wrong_channel` is a forwarded email inside the window, `no_open_ask` is the two
       // readers disagreeing across the same turn, and `child_gone` is a child removed
@@ -993,11 +1088,26 @@ export async function routeChannelMessage(
     // answers it briefly or hands over one of the two fixed doors — so an off-domain turn
     // costs two Haiku calls and no coach turn at all. An in-domain verdict, including
     // every fail-open one, falls through untouched.
-    const verdict = await deps.offDomain.consider({
-      familyId: job.family_id,
-      channelMessageId: job.channel_message_id,
-      text: context.body,
-    });
+    let verdict: Awaited<ReturnType<OffDomainLane['consider']>>;
+    try {
+      verdict = await withTimeout(
+        deps.offDomain.consider({
+          familyId: job.family_id,
+          channelMessageId: job.channel_message_id,
+          text: context.body,
+        }),
+        OFF_DOMAIN_BUDGET_MS,
+        OFF_DOMAIN_TIMEOUT,
+      );
+    } catch (err) {
+      if (!isCallTimeout(err)) throw err;
+      deps.log.warn(
+        { familyId: job.family_id, outcome: OFF_DOMAIN_TIMEOUT },
+        'channel router: off-domain screen timed out',
+      );
+      await noteUnanswered(deps, job, OFF_DOMAIN_TIMEOUT);
+      verdict = { status: 'in_domain', fallback: null };
+    }
     if (verdict.status === 'deflected') {
       await answer(verdict.reply, verdict.medicalSource, verdict.replySource);
       return done(deps, job, {
@@ -1526,6 +1636,9 @@ async function runAgentTurn(
       lane: null,
     });
   } catch (err) {
+    // The turn deadline already decided this attempt is over. An apology here
+    // would be a text the parent did not ask for, sent after the drain moved on.
+    if (isTurnTimeout(err) || turnSignalAborted()) throw err;
     // A turn can break AFTER its drafts landed, and those are real rows the parent can
     // approve. Saying "nothing was changed" would be false AND would orphan them — see
     // coach-runtime.ts (VIL-260).
@@ -1968,6 +2081,7 @@ async function sendReply(
     inboundBody?: string;
   },
 ): Promise<string> {
+  assertTurnLive();
   if (args.beforeSend) await args.beforeSend();
   if (args.route.channel === 'imessage' && args.inboundBody !== undefined) {
     try {
@@ -2123,6 +2237,34 @@ async function mirrorActivityDecision(
 /** One structured line per routed message: ids and outcome enums, never a body. The
  * lane rides along because a deflection is the one outcome where Hale said no, and how
  * often it does that is the number X1 reports weekly. */
+async function noteUnanswered(
+  deps: ChannelRouterDeps,
+  job: ChannelMessageReceivedJob,
+  reason: string,
+): Promise<void> {
+  deps.log.warn(
+    {
+      channelMessageId: job.channel_message_id,
+      familyId: job.family_id,
+      outcome: reason,
+    },
+    'channel router: no reply for this step',
+  );
+  try {
+    await deps.turns.recordUnanswered({
+      familyId: job.family_id,
+      parentUserId: job.parent_user_id,
+      channelMessageId: job.channel_message_id,
+      reason,
+    });
+  } catch (err) {
+    deps.log.error(
+      { code: err instanceof Error ? err.name : 'unknown', outcome: reason },
+      'channel router: could not record the unanswered step',
+    );
+  }
+}
+
 function done(
   deps: ChannelRouterDeps,
   job: ChannelMessageReceivedJob,

@@ -1,9 +1,11 @@
 import type { Database } from '@hale/db';
+import { CALL_TIMEOUT_MS, READER_TIMEOUT } from '~/lib/channel/config';
 import { actionTypeLabel } from '~/lib/format/labels';
 // Type-only, so the cycle with approval.ts (which imports `approvalSubjects` from here)
 // is erased at build time. One shape for a drafted action, owned by the spine that reads
 // them, rather than a structural copy the two files could drift apart on.
 import type { PendingAction } from './approval';
+import { isCallTimeout, withTimeout } from './deadline';
 import { MAX_LISTED_APPROVALS } from './fast-path';
 
 /**
@@ -572,8 +574,19 @@ export function soleOpenKind(
 export interface OpenQuestionReader {
   open(
     database: Database,
-    input: { familyId: string; parentUserId: string; now: Date },
+    input: { familyId: string; parentUserId: string; now: Date; channelMessageId?: string },
   ): Promise<OpenQuestion[]>;
+}
+
+/** A stalled reader degrades to "not open". A thrown reader still fails the turn. */
+export interface OpenQuestionReaderOptions {
+  timeoutMs?: number;
+  onReaderTimeout?: (info: {
+    reader: string;
+    familyId: string;
+    parentUserId: string;
+    channelMessageId?: string;
+  }) => Promise<void> | void;
 }
 
 /**
@@ -768,9 +781,114 @@ export interface OpenQuestionSources {
  * own backoff, because "no questions are open" is the answer that sends a parent's yes to
  * the coach — and a coach that has been told nothing is pending will say so.
  */
-export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQuestionReader {
+
+interface ReaderTask<T> {
+  name: string;
+  empty: T;
+  run: () => Promise<T>;
+}
+
+function readerTask<T>(name: string, empty: T, run: () => Promise<T>): ReaderTask<T> {
+  return { name, empty, run };
+}
+
+/** A drizzle transaction exposes rollback. The pool does not. One connection
+ * cannot run the readers concurrently without pipelining them. */
+function onOneConnection(database: unknown): boolean {
+  return typeof (database as { rollback?: unknown }).rollback === 'function';
+}
+
+async function settleReaders<const T extends readonly ReaderTask<unknown>[]>(
+  database: unknown,
+  tasks: T,
+  timeoutMs: number,
+  onTimeout: (reader: string) => Promise<void>,
+): Promise<{ [K in keyof T]: T[K] extends ReaderTask<infer V> ? V : never }> {
+  const runOne = async <V>(task: ReaderTask<V>): Promise<V> => {
+    try {
+      return await withTimeout(task.run(), timeoutMs, READER_TIMEOUT);
+    } catch (err) {
+      if (!isCallTimeout(err)) throw err;
+      await onTimeout(task.name);
+      return task.empty;
+    }
+  };
+
+  if (onOneConnection(database)) {
+    const out: unknown[] = [];
+    for (const task of tasks) out.push(await runOne(task));
+    return out as { [K in keyof T]: T[K] extends ReaderTask<infer V> ? V : never };
+  }
+
+  const settled = await Promise.allSettled(tasks.map((task) => runOne(task)));
+  const out: unknown[] = [];
+  for (const result of settled) {
+    if (result.status === 'rejected') throw result.reason;
+    out.push(result.value);
+  }
+  return out as { [K in keyof T]: T[K] extends ReaderTask<infer V> ? V : never };
+}
+
+/**
+ * A STALLED READER IS. One query that never returns used to hold all seventeen, and
+ * the turn with them: Promise.all on a single reserved connection pipelines every
+ * statement, Postgres finishes the first and waits in ClientRead, and the client
+ * waits forever. Each reader now has its own budget. A timeout is "not open" for
+ * that one question. Inside a transaction (one connection — `rollback` is the
+ * tell) they run one at a time, so they cannot pipeline onto that connection.
+ */
+export function createOpenQuestionReader(
+  sources: OpenQuestionSources,
+  options: OpenQuestionReaderOptions = {},
+): OpenQuestionReader {
   return {
     async open(database, input) {
+      const timeoutMs = options.timeoutMs ?? CALL_TIMEOUT_MS;
+      const tasks = [
+        readerTask(
+          'pendingApprovals',
+          [] as Awaited<ReturnType<OpenQuestionSources['pendingApprovals']>>,
+          () => sources.pendingApprovals(database, input.familyId),
+        ),
+        readerTask('introOptIn', false, () =>
+          sources.introOptInOpen(database, {
+            familyId: input.familyId,
+            parentUserId: input.parentUserId,
+          }),
+        ),
+        readerTask('introProposal', null, () =>
+          sources.introProposal(database, input.familyId, input.now),
+        ),
+        readerTask('planOffer', null, () => sources.planOffer(database, input.familyId, input.now)),
+        readerTask('checkupOffer', null, () =>
+          sources.checkupOffer(database, input.familyId, input.now),
+        ),
+        readerTask('activityPromise', null, () =>
+          sources.activityPromise(database, input.familyId),
+        ),
+        readerTask('founderWelcomeOffer', null, () =>
+          sources.founderWelcomeOffer(database, input.familyId, input.now),
+        ),
+        readerTask('registrationReadiness', null, () =>
+          sources.registrationReadiness(database, input.familyId, input.parentUserId, input.now),
+        ),
+        readerTask('coParentAssent', null, () => sources.coParentAssent(database, input)),
+        readerTask(
+          'emailAlertOffers',
+          [] as Awaited<ReturnType<OpenQuestionSources['emailAlertOffers']>>,
+          () => sources.emailAlertOffers(database, input),
+        ),
+        readerTask('eveningCheckIn', null, () => sources.eveningCheckIn(database, input)),
+        readerTask('activityFollowupAsk', null, () => sources.activityFollowupAsk(database, input)),
+        readerTask('weekdayCare', null, () => sources.weekdayCare(database, input)),
+        readerTask('emptySaturday', null, () => sources.emptySaturday(database, input)),
+        readerTask('daycareFollowup', null, () => sources.daycareFollowup(database, input)),
+        readerTask('forwardAddressRevoke', null, () =>
+          sources.forwardAddressRevoke(database, input),
+        ),
+        readerTask('yearRetention', null, () => sources.yearRetention(database, input)),
+      ] as const;
+
       const [
         approvals,
         optIn,
@@ -789,28 +907,18 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
         daycareFollowup,
         revokeConfirm,
         yearRetention,
-      ] = await Promise.all([
-        sources.pendingApprovals(database, input.familyId),
-        sources.introOptInOpen(database, {
-          familyId: input.familyId,
-          parentUserId: input.parentUserId,
-        }),
-        sources.introProposal(database, input.familyId, input.now),
-        sources.planOffer(database, input.familyId, input.now),
-        sources.checkupOffer(database, input.familyId, input.now),
-        sources.activityPromise(database, input.familyId),
-        sources.founderWelcomeOffer(database, input.familyId, input.now),
-        sources.registrationReadiness(database, input.familyId, input.parentUserId, input.now),
-        sources.coParentAssent(database, input),
-        sources.emailAlertOffers(database, input),
-        sources.eveningCheckIn(database, input),
-        sources.activityFollowupAsk(database, input),
-        sources.weekdayCare(database, input),
-        sources.emptySaturday(database, input),
-        sources.daycareFollowup(database, input),
-        sources.forwardAddressRevoke(database, input),
-        sources.yearRetention(database, input),
-      ]);
+      ] = await settleReaders(database, tasks, timeoutMs, async (reader) => {
+        try {
+          await options.onReaderTimeout?.({
+            reader,
+            familyId: input.familyId,
+            parentUserId: input.parentUserId,
+            channelMessageId: input.channelMessageId,
+          });
+        } catch {
+          // The timeout is already the outcome. Recording it must not fail the turn.
+        }
+      });
 
       const questions: OpenQuestion[] = namedApprovals(approvals).slice(0, MAX_LISTED_APPROVALS);
 

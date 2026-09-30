@@ -34,21 +34,177 @@ interface CreateDbOptions {
    * server-side role setting, deliberately NOT smuggled into this client.
    */
   statementTimeoutMs?: number;
+  /**
+   * Client-side bound in ms. The transaction pooler strips startup parameters,
+   * and a session stuck in ClientRead is not running a statement, so
+   * statement_timeout never starts. This timer cancels the query from the
+   * client. Default 8s, the same budget an inbound reader gets.
+   */
+  queryTimeoutMs?: number;
+}
+
+/** Client gave up waiting. The statement may still be open until cancel lands. */
+export class QueryTimeoutError extends Error {
+  constructor() {
+    super('query_timeout');
+    this.name = 'QueryTimeoutError';
+  }
+}
+
+/** Matches the inbound reader's per-call budget (channel/config.ts CALL_TIMEOUT_MS). */
+export const QUERY_TIMEOUT_MS = 8_000;
+
+/** 30 minutes. Explicit, so a connection cannot outlive a stuck turn by the
+ * driver's random 30–60 minute default. */
+const MAX_LIFETIME_SECONDS = 30 * 60;
+
+/** A transaction left idle — not the ClientRead stall, which is `active` —
+ * is cut here. Startup parameter, so the transaction pooler may strip it;
+ * the client query timer above is the bound that still holds. */
+const IDLE_IN_TRANSACTION_SESSION_TIMEOUT_MS = 15_000;
+
+interface CancellableQuery {
+  cancel: () => void;
+  // postgres.js Query.then is the Promise overload. A structural match is
+  // wider than that overload, which is what a fake in the unit test needs.
+  // biome-ignore lint/suspicious/noExplicitAny: matches Promise.then's overload set
+  then: (...args: any[]) => Promise<unknown>;
+}
+
+/**
+ * Race a postgres.js query against a client timer. `.values()` / `.raw()`
+ * return the same query and do not start it; `then` does. The timer is armed
+ * only then, so drizzle's `.unsafe().values()` still switches the row mode
+ * before the query is sent. A timeout calls `.cancel()` and rejects with
+ * {@link QueryTimeoutError}. The original promise is caught so a late cancel
+ * rejection is not unhandled.
+ */
+export function guardQuery<Q extends CancellableQuery>(query: Q, timeoutMs: number): Q {
+  const originalThen = query.then.bind(query);
+  // postgres.js Query is a Promise. The timer has to wrap then, which is what
+  // starts the query; .values() returns the same object and does not.
+  // biome-ignore lint/suspicious/noThenProperty: wrapping the driver's own then
+  query.then = ((onFulfilled, onRejected) => {
+    let settled = false;
+    const pending = originalThen(
+      (value: unknown) => value,
+      (err: unknown) => {
+        throw err;
+      },
+    );
+    const raced = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        try {
+          query.cancel();
+        } catch {
+          // Cancel is best-effort. The caller stops waiting either way.
+        }
+        const timeout = new QueryTimeoutError();
+        if (onRejected) {
+          try {
+            resolve(onRejected(timeout));
+          } catch (err) {
+            reject(err);
+          }
+        } else {
+          reject(timeout);
+        }
+      }, timeoutMs);
+      pending.then(
+        (value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          try {
+            resolve(onFulfilled ? onFulfilled(value) : value);
+          } catch (err) {
+            reject(err);
+          }
+        },
+        (err: unknown) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          if (onRejected) {
+            try {
+              resolve(onRejected(err));
+            } catch (error) {
+              reject(error);
+            }
+          } else {
+            reject(err);
+          }
+        },
+      );
+    });
+    void pending.catch(() => {});
+    return raced;
+  }) as Q['then'];
+  return query;
+}
+
+interface GuardableSql {
+  unsafe: (...args: never[]) => CancellableQuery;
+  begin?: (...args: never[]) => Promise<unknown>;
+}
+
+function installQueryGuard(sql: GuardableSql, timeoutMs: number): void {
+  const originalUnsafe = sql.unsafe.bind(sql);
+  sql.unsafe = ((...args: never[]) =>
+    guardQuery(originalUnsafe(...args), timeoutMs)) as GuardableSql['unsafe'];
+
+  const begin = sql.begin;
+  if (typeof begin !== 'function') return;
+  if ((begin as { __guarded?: boolean }).__guarded) return;
+  const originalBegin = begin.bind(sql);
+  const wrapped = ((...args: never[]) => {
+    const list = args as unknown[];
+    const last = list[list.length - 1];
+    if (typeof last === 'function') {
+      const fn = last as (tx: GuardableSql) => unknown;
+      list[list.length - 1] = (tx: GuardableSql) => {
+        installQueryGuard(tx, timeoutMs);
+        return fn(tx);
+      };
+    }
+    return originalBegin(...(list as never[]));
+  }) as GuardableSql['begin'] & { __guarded?: boolean };
+  wrapped.__guarded = true;
+  sql.begin = wrapped;
 }
 
 /** date, time, timestamp, timestamptz — the oids drizzle/postgres-js makes transparent. */
 const DATE_OIDS = [1082, 1083, 1114, 1184] as const;
 
 export function createDb(options: CreateDbOptions) {
-  const client = postgres(options.connectionString, {
+  // max_pipeline is honoured by postgres.js 3.4.5 and missing from its
+  // published Options type. It is read when each connection is constructed,
+  // so it has to be on the object passed to postgres(), not set afterwards.
+  // 0: one query in flight per connection. The driver otherwise pipelines up
+  // to 100 extended-query messages before reading. Supavisor transaction mode
+  // does not tolerate that — the backend finishes the first statement and sits
+  // active/ClientRead with the transaction open, waiting for a client that is
+  // waiting on the other in-flight queries. statement_timeout never starts.
+  const driverOptions = {
     max: options.max ?? 10,
     idle_timeout: options.idleTimeout ?? 20,
     prepare: false,
     connect_timeout: options.connectTimeoutSeconds ?? 5,
+    max_pipeline: 0,
+    max_lifetime: MAX_LIFETIME_SECONDS,
     connection: {
       statement_timeout: options.statementTimeoutMs ?? 10_000,
+      idle_in_transaction_session_timeout: IDLE_IN_TRANSACTION_SESSION_TIMEOUT_MS,
     },
-  });
+  };
+  const client = postgres(
+    options.connectionString,
+    driverOptions as unknown as postgres.Options<Record<string, postgres.PostgresType>>,
+  );
+
+  installQueryGuard(client as unknown as GuardableSql, options.queryTimeoutMs ?? QUERY_TIMEOUT_MS);
 
   const db = drizzle(client, { schema, casing: 'snake_case' });
 

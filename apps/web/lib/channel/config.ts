@@ -107,9 +107,63 @@ export const CHANNEL_MESSAGE_RECEIVED_RETRY = {
  */
 export const CHANNEL_MESSAGE_RECEIVED_DLQ = 'channel.message.received.dead';
 
+/**
+ * How long one inbound turn may run before the router fails it and the drain
+ * moves on. Well under the platform's 800s function wall, and under the
+ * queue expiry below so a live turn is not reaped while it is still inside
+ * its own budget.
+ */
+export const TURN_DEADLINE_MS = 90_000;
+
+/**
+ * Bound for one DB read on the turn (an open-question reader, GATE 2c, GATE
+ * 2c-bis). A stalled read degrades; it does not hold the turn.
+ */
+export const CALL_TIMEOUT_MS = 8_000;
+
+/**
+ * Bound for `offDomain.consider`. Longer than {@link CALL_TIMEOUT_MS} because
+ * the screen is a model call with its own client budget, and shorter than
+ * {@link TURN_DEADLINE_MS} so a hung screen cannot outlive the turn.
+ */
+export const OFF_DOMAIN_BUDGET_MS = 60_000;
+
+/**
+ * Active-job expiry for {@link CHANNEL_MESSAGE_RECEIVED_QUEUE} only.
+ *
+ * The other hot queues keep {@link HOT_QUEUE_EXPIRE_SECONDS} (900s), which sits
+ * above the 800s function wall so a killed worker is the only thing an expiry
+ * can redeliver. This queue cannot: it is per-parent singleton, and a job that
+ * stays `active` until 900s blocks every later text from that parent. 180s is
+ * above the 90s turn deadline and below the function wall, so a dead turn
+ * frees the key in minutes. Re-drives are safe — the turn ledger
+ * (router/turn-ledger.ts) answers a text at most once.
+ */
+export const CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS = 180;
+
 /** The log outcome for a turn that ran out of retries. A DATA value: it is what
  * telemetry counts, so it is never renamed with the code. */
 export const TURN_EXPIRED_UNANSWERED = 'turn_expired_unanswered';
+
+/**
+ * Named outcomes for an inbound from a known parent that did not get a reply,
+ * or that gave up on one read and continued. DATA values, same rule as
+ * {@link TURN_EXPIRED_UNANSWERED}: telemetry and audit rows count them, so
+ * they are never renamed with the code.
+ *
+ *   turn_timeout       — the turn's own deadline fired. Nothing sent. Job fails.
+ *   turn_deferred      — handed back to the queue (model down, or the same).
+ *   reader_timeout     — one open-question read stalled and was treated as closed.
+ *   gate_timeout       — GATE 2c / 2c-bis did not finish. The turn continued.
+ *   off_domain_timeout — the off-domain screen did not finish. The turn continued.
+ *   unreachable        — a parent with no live channel. Nothing sent (CASL).
+ */
+export const TURN_TIMEOUT = 'turn_timeout';
+export const TURN_DEFERRED = 'turn_deferred';
+export const READER_TIMEOUT = 'reader_timeout';
+export const GATE_TIMEOUT = 'gate_timeout';
+export const OFF_DOMAIN_TIMEOUT = 'off_domain_timeout';
+export const TURN_UNREACHABLE = 'unreachable';
 
 /**
  * SMS reliability audit P0-3 — the OUTBOUND ceiling, cut from the same cloth as

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHANNEL_MESSAGE_RECEIVED_DLQ,
+  CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
   CHANNEL_MESSAGE_RECEIVED_POLICY,
   CHANNEL_MESSAGE_RECEIVED_QUEUE,
   CHANNEL_MESSAGE_RECEIVED_RETRY,
 } from '~/lib/channel/config';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
-import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { type MessageQueue, type QueueOptions, sendChannelMessageReceived } from './deps';
 import type { ChannelMessageReceivedJob } from './inbound';
 
@@ -42,9 +42,7 @@ type QueueCall = QueueOptions & { name: string };
  * ALSO what a send that landed nowhere returns. `existing` is the job table, which is
  * the only thing that can tell those two apart.
  */
-function fakeQueue(
-  options: { accepts?: boolean } = {},
-): MessageQueue & {
+function fakeQueue(options: { accepts?: boolean } = {}): MessageQueue & {
   sent: Sent[];
   created: QueueCall[];
   updated: QueueCall[];
@@ -149,7 +147,7 @@ describe('sendChannelMessageReceived', () => {
       expect.objectContaining({
         name: CHANNEL_MESSAGE_RECEIVED_QUEUE,
         policy: CHANNEL_MESSAGE_RECEIVED_POLICY,
-        expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+        expireInSeconds: CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
       }),
     );
   });
