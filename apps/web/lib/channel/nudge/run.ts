@@ -4,6 +4,8 @@ import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, lte } from 'drizzle-orm';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import { loadWeekdayCareContext, weekdayCareEnabled } from '~/lib/care/weekday';
+import { dutyOverviewForWeeklyBubble } from '~/lib/channel/coparent/duty/asks';
+import { absorbDutyLine } from '~/lib/channel/coparent/duty/copy';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import {
   type FamilyTextRecipient,
@@ -304,6 +306,14 @@ export interface NudgeRunDeps {
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
   ): Promise<readonly GroupHowItWentLine[]>;
+  /**
+   * Sunday duty overview folded into this same bubble. Absent means none.
+   * Flag off returns null before any read. A placeholder is not appended.
+   */
+  pendingDutyOverview?(
+    database: Database,
+    input: { familyId: string; parentUserId: string; now: Date },
+  ): Promise<{ text: string; commit: () => Promise<void> } | null>;
   client: AgentClient | null;
 }
 
@@ -670,6 +680,7 @@ async function runForFamily(
   const copies = householdCopies(target, pending);
   let wireMessage = message;
   let absorbed: readonly GroupHowItWentLine[] = [];
+  let dutyFold: { text: string; commit: () => Promise<void> } | null = null;
   if (target.channel === 'group') {
     const speakerId = copies[0]?.recipient.parentUserId ?? '';
     const speech = await familySpeech(database, family.familyId, speakerId);
@@ -688,6 +699,18 @@ async function runForFamily(
         wireMessage,
         absorbed.map((line) => line.text),
       );
+    }
+    if (nudge.kind !== 'registration' && deps.pendingDutyOverview) {
+      dutyFold = await deps.pendingDutyOverview(database, {
+        familyId: family.familyId,
+        parentUserId: speakerId,
+        now,
+      });
+      if (dutyFold) {
+        const next = absorbDutyLine(wireMessage, dutyFold.text);
+        if (next === wireMessage) dutyFold = null;
+        else wireMessage = next;
+      }
     }
   }
 
@@ -737,6 +760,17 @@ async function runForFamily(
       providerChatId: delivered.chatId,
       sentAt: now,
     });
+    if (dutyFold) {
+      try {
+        await dutyFold.commit();
+      } catch (err) {
+        console.warn(
+          { err: err instanceof Error ? err.name : 'unknown', familyId: family.familyId },
+          'nudge: weekly absorbed a duty line but did not record it',
+        );
+      }
+      dutyFold = null;
+    }
     if (absorbed.length > 0 && typeof database.insert === 'function') {
       for (const line of absorbed) {
         try {
@@ -1013,5 +1047,6 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     threadMessage: threadProactiveMessage,
     loadParentCallName,
     pendingHowItWent: howItWentLinesForGroupWeekly,
+    pendingDutyOverview: dutyOverviewForWeeklyBubble,
   };
 }
