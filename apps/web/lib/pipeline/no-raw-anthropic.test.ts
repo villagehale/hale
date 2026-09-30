@@ -30,7 +30,7 @@ const ALLOWLIST: Record<string, string> = {
   'apps/web/lib/pipeline/client.ts':
     'the door itself — budgetedAnthropic() and the named per-lane budget constants',
   'apps/worker/src/anthropic/client.ts':
-    'RESIDUE: the worker’s own single construction site on a long-lived Node runtime — no serverless wall to violate today (the Fly worker is not deployed; drain runs web-side). Budget it when the worker ships.',
+    'the worker’s single construction site — timeout ANTHROPIC_TIMEOUT_MS (60s) and maxRetries 1, under the function wall',
 };
 
 /** Where a client could hide. Eval harnesses (the per-app evals dirs) are deliberately

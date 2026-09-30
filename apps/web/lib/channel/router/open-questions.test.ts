@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type OpenQuestion,
   type OpenQuestionKind,
+  type OpenQuestionSources,
   createOpenQuestionReader,
   newestSolicitedKind,
   soleOpenKind,
@@ -332,5 +333,88 @@ describe('the forwarding-address revoke confirm on the open list', () => {
     });
     // Rule #1: the description goes to a model, and it carries no address and no token.
     expect(questions[0]?.description).not.toMatch(/hale\+|@/);
+  });
+});
+
+describe('a stalled reader (VIL-400)', () => {
+  function sources(overrides: Partial<OpenQuestionSources> = {}): OpenQuestionSources {
+    return {
+      pendingApprovals: async () => [],
+      introOptInOpen: async () => false,
+      introProposal: async () => null,
+      planOffer: async () => ({ id: 'plan-1', summary: 'a plan', askedAt: T0 }),
+      checkupOffer: async () => null,
+      founderWelcomeOffer: async () => null,
+      activityPromise: async () => null,
+      registrationReadiness: async () => null,
+      coParentAssent: async () => null,
+      emailAlertOffers: async () => [],
+      eveningCheckIn: async () => null,
+      activityFollowupAsk: async () => null,
+      weekdayCare: async () => null,
+      emptySaturday: async () => null,
+      daycareFollowup: async () => null,
+      forwardAddressRevoke: async () => null,
+      yearRetention: async () => null,
+      ...overrides,
+    };
+  }
+
+  const input = { familyId: 'fam-1', parentUserId: 'parent-1', now: T1 };
+
+  it('treats one stalled reader as not open and keeps the others', async () => {
+    const timedOut: string[] = [];
+    const reader = createOpenQuestionReader(
+      sources({
+        eveningCheckIn: () => new Promise(() => null),
+      }),
+      {
+        timeoutMs: 30,
+        onReaderTimeout: ({ reader: name }) => {
+          timedOut.push(name);
+        },
+      },
+    );
+
+    const questions = await reader.open({} as never, input);
+
+    expect(timedOut).toEqual(['eveningCheckIn']);
+    expect(questions.map((q) => q.kind)).toEqual(['plan_offer']);
+  });
+
+  it('still throws when a reader fails', async () => {
+    const reader = createOpenQuestionReader(
+      sources({
+        pendingApprovals: async () => {
+          throw new Error('db down');
+        },
+      }),
+      { timeoutMs: 200 },
+    );
+
+    await expect(reader.open({} as never, input)).rejects.toThrow('db down');
+  });
+
+  it('runs one at a time on a transaction connection', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const slow = async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      inFlight -= 1;
+      return null;
+    };
+    const reader = createOpenQuestionReader(
+      sources({
+        planOffer: slow,
+        eveningCheckIn: slow,
+      }),
+      { timeoutMs: 500 },
+    );
+
+    await reader.open({ rollback() {} } as never, input);
+
+    expect(maxInFlight).toBe(1);
   });
 });

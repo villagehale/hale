@@ -390,6 +390,8 @@ export const AUDIT_VERBS = [
   'followup_intro_asked',
   'followup_activity_asked',
   'smoke_alarm_fired',
+  'sms_reader_timeout',
+  'sms_turn_unanswered',
   // ── the founder's welcome note ──────────────────────────────────────────
   'founder_welcome_offered',
   'founder_welcome_sent',
@@ -1301,6 +1303,14 @@ const VERBS: Record<AuditVerb, Verb> = {
     // safety line went out instead of an answer. 'problem', not 'done': the parent
     // was texted, but they were not actually helped, and the trail should say so.
     sentence: 'Hale could not reach its model, so it sent you a fixed safety message',
+    family: 'problem',
+  },
+  sms_reader_timeout: {
+    sentence: 'Hale could not check one open question in time',
+    family: 'problem',
+  },
+  sms_turn_unanswered: {
+    sentence: 'Hale had no reply to send',
     family: 'problem',
   },
   // Written on the FOUNDER's own trail when a family arrives from one of his posters.

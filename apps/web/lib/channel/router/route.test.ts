@@ -213,12 +213,16 @@ function fakeSmokeAlarmClaim(): SmokeAlarmClaim & { fired: string[]; reads: stri
 function fakeTurnLedger(): InboundTurnLedger & {
   answered: string[];
   deferred: string[];
+  deferredReasons: { channelMessageId: string; reason?: string }[];
+  unanswered: { channelMessageId: string; reason: string }[];
   failed: { channelMessageId: string; reason: string }[];
   reads: string[];
 } {
   const ledger = {
     answered: [] as string[],
     deferred: [] as string[],
+    deferredReasons: [] as { channelMessageId: string; reason?: string }[],
+    unanswered: [] as { channelMessageId: string; reason: string }[],
     failed: [] as { channelMessageId: string; reason: string }[],
     reads: [] as string[],
     async stageOf({ channelMessageId }: { channelMessageId: string }): Promise<TurnStage> {
@@ -231,8 +235,18 @@ function fakeTurnLedger(): InboundTurnLedger & {
       ledger.answered.push(input.channelMessageId);
       return 'claimed' as const;
     },
-    async recordDeferred(input: { channelMessageId: string }) {
+    async recordDeferred(input: { channelMessageId: string; reason?: string }) {
       ledger.deferred.push(input.channelMessageId);
+      ledger.deferredReasons.push({
+        channelMessageId: input.channelMessageId,
+        reason: input.reason,
+      });
+    },
+    async recordUnanswered(input: { channelMessageId: string; reason: string }) {
+      ledger.unanswered.push({
+        channelMessageId: input.channelMessageId,
+        reason: input.reason,
+      });
     },
     async recordFailed(input: { channelMessageId: string; reason: string }) {
       ledger.failed.push({ channelMessageId: input.channelMessageId, reason: input.reason });
@@ -389,6 +403,8 @@ function harness(
     recordWeekdayCare?: ChannelRouterDeps['recordWeekdayCare'];
     searchWeekdays?: ChannelRouterDeps['searchWeekdays'];
     dispatchDeepResearch?: ChannelRouterDeps['dispatchDeepResearch'];
+    turnDeadlineMs?: number;
+    callTimeoutMs?: number;
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -456,6 +472,8 @@ function harness(
       apology: options.apology ?? fakeApology(),
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       now: () => NOW,
+      turnDeadlineMs: options.turnDeadlineMs,
+      callTimeoutMs: options.callTimeoutMs,
       log: {
         info: (...args: unknown[]) => logs.push(args),
         warn: (...args: unknown[]) => logs.push(args),
@@ -3864,5 +3882,39 @@ describe('a bare yes while the daycare check-in is standing', () => {
     await routeChannelMessage(h.deps, job());
 
     expect(queue.approved).toEqual(['a-1']);
+  });
+});
+
+describe('turn deadline (VIL-400)', () => {
+  it('fails a turn that outlives its deadline and sends nothing', async () => {
+    const h = harness({
+      turnDeadlineMs: 40,
+      coach: {
+        async respond() {
+          await new Promise(() => {});
+          return { reply: 'late', planOffer: null, activityPromise: null, spotWatch: null };
+        },
+      },
+    });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toMatchObject({
+      name: 'TurnDeferred',
+      reason: 'turn_timeout',
+    });
+    expect(h.transport.sent).toEqual([]);
+    expect(h.turns.deferredReasons).toEqual([expect.objectContaining({ reason: 'turn_timeout' })]);
+  });
+
+  it('treats a stalled stated-state read as nothing stated and still answers', async () => {
+    const h = harness({
+      callTimeoutMs: 30,
+      recordStatedState: () => new Promise(() => ({ status: 'nothing_stated' as const })),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.sent).toHaveLength(1);
+    expect(h.turns.unanswered).toEqual([expect.objectContaining({ reason: 'gate_timeout' })]);
   });
 });

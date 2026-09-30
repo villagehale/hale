@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
+import { linqWebhookHealth } from '~/lib/channel/linq/subscription';
 import { db } from '~/lib/db';
 
 // Node runtime: the DB ping uses the postgres driver (not edge).
@@ -17,6 +18,7 @@ export async function GET() {
     status: 'ok',
     service: 'hale-web',
     db: await pingDb(),
+    linqWebhooks: await linqWebhookHealth(),
     timestamp: new Date().toISOString(),
   });
 }

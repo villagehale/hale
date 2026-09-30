@@ -7,8 +7,10 @@ import {
   DEEP_RESEARCH_QUEUE,
 } from '~/lib/channel/activity/deep-queue';
 import {
+  CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
   CHANNEL_MESSAGE_RECEIVED_RETRY,
   INBOUND_TURN_QUEUES,
+  TURN_DEADLINE_MS,
   TURN_EXPIRED_UNANSWERED,
 } from '~/lib/channel/config';
 import {
@@ -142,12 +144,16 @@ function makeFakeBoss(initial: Record<string, Pending>) {
   });
 
   const boss = {
-    createQueue: vi.fn(async (name: string, options?: Omit<QueueCall, 'name'> & { name?: string }) => {
-      created.push({ ...options, name: options?.name ?? name });
-    }),
-    updateQueue: vi.fn(async (name: string, options?: Omit<QueueCall, 'name'> & { name?: string }) => {
-      updated.push({ ...options, name: options?.name ?? name });
-    }),
+    createQueue: vi.fn(
+      async (name: string, options?: Omit<QueueCall, 'name'> & { name?: string }) => {
+        created.push({ ...options, name: options?.name ?? name });
+      },
+    ),
+    updateQueue: vi.fn(
+      async (name: string, options?: Omit<QueueCall, 'name'> & { name?: string }) => {
+        updated.push({ ...options, name: options?.name ?? name });
+      },
+    ),
     fetch,
     complete: vi.fn(async (name: string, id: string) => {
       completed.get(name)?.push(id);
@@ -566,10 +572,17 @@ describe('channel.message.received', () => {
     expect(created).toContainEqual(
       expect.objectContaining({
         name: INBOUND,
-        expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+        expireInSeconds: CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
         policy: 'singleton',
       }),
     );
+    // Above the turn deadline, below the 800s function wall, and not the 900s
+    // hot-queue expiry that held the per-parent singleton key.
+    expect(CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS).toBeGreaterThanOrEqual(150);
+    expect(CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS).toBeLessThanOrEqual(200);
+    expect(CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS).toBeGreaterThan(TURN_DEADLINE_MS / 1000);
+    expect(CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS).toBeLessThan(800);
+    expect(CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS).not.toBe(HOT_QUEUE_EXPIRE_SECONDS);
   });
 
   /**
@@ -578,7 +591,7 @@ describe('channel.message.received', () => {
    * than a lost text if the queue carries a real retry policy — pg-boss's default is two
    * attempts with no delay between them.
    */
-  it('creates the queue with the defer arc\'s retry ceiling and its dead letter', async () => {
+  it("creates the queue with the defer arc's retry ceiling and its dead letter", async () => {
     const { boss, created } = makeFakeBoss({});
     await drainHotQueues(makeDeps(boss));
 
@@ -618,6 +631,7 @@ describe('channel.message.received', () => {
     const summary = await drainHotQueues(deps);
 
     expect(channelMessage).not.toHaveBeenCalled();
+    expect(deps.handlers.channelSend).not.toHaveBeenCalled();
     expect(completed(DEAD)).toEqual(['d1']);
     expect(summary.dropped).toBe(1);
     expect(deps.log.error).toHaveBeenCalledWith(
@@ -638,9 +652,18 @@ describe('channel.message.received', () => {
   it('fetches the inbound queue with the full batch window, and drains it serially', async () => {
     const { boss, completed } = makeFakeBoss({
       [INBOUND]: [
-        { id: 'i1', data: { ...inbound('SM1'), parent_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1' } },
-        { id: 'i2', data: { ...inbound('SM2'), parent_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2' } },
-        { id: 'i3', data: { ...inbound('SM3'), parent_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3' } },
+        {
+          id: 'i1',
+          data: { ...inbound('SM1'), parent_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1' },
+        },
+        {
+          id: 'i2',
+          data: { ...inbound('SM2'), parent_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2' },
+        },
+        {
+          id: 'i3',
+          data: { ...inbound('SM3'), parent_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3' },
+        },
       ],
     });
     const order: string[] = [];

@@ -6,6 +6,7 @@ import { captureInboundRouted } from '~/lib/analytics/server-capture';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import {
   CHANNEL_MESSAGE_RECEIVED_DLQ,
+  CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
   CHANNEL_MESSAGE_RECEIVED_POLICY,
   CHANNEL_MESSAGE_RECEIVED_QUEUE,
   CHANNEL_MESSAGE_RECEIVED_RETRY,
@@ -28,7 +29,6 @@ import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { MessageTransport } from '~/lib/channel/transport-address';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
-import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { db } from '~/lib/db';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
@@ -174,7 +174,7 @@ export interface MessageQueue {
  */
 function sendOptions(job: ChannelMessageReceivedJob) {
   return {
-    expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+    expireInSeconds: CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
     singletonKey: channelSmsNoteKey(job.parent_user_id),
     id: job.channel_message_id,
   };
@@ -226,7 +226,7 @@ export async function sendChannelMessageReceived(
   job: ChannelMessageReceivedJob,
 ): Promise<void> {
   await createQueueWithPolicy(queue, CHANNEL_MESSAGE_RECEIVED_QUEUE, {
-    expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+    expireInSeconds: CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
     policy: CHANNEL_MESSAGE_RECEIVED_POLICY,
     retry: CHANNEL_MESSAGE_RECEIVED_RETRY,
     deadLetter: CHANNEL_MESSAGE_RECEIVED_DLQ,

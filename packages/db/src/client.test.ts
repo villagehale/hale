@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { createDb } from './client.js';
+import { describe, expect, it, vi } from 'vitest';
+import { QUERY_TIMEOUT_MS, QueryTimeoutError, createDb, guardQuery } from './client.js';
 
 /**
  * Timeout discipline at the ONE postgres() chokepoint (2026-09-03 SMS audit P1-9):
@@ -28,6 +28,16 @@ describe('createDb timeout discipline (audit P1-9)', () => {
     expect(db.$client.options.connection.statement_timeout).toBe(10_000);
   });
 
+  it('does not pipeline, and bounds lifetime and idle transactions', () => {
+    const db = createDb({ connectionString: url });
+    // 0: one query in flight per connection. The 17 open-question readers used
+    // to pipeline onto one session; Postgres finished the check-in select and
+    // waited in ClientRead while the client waited on the rest.
+    expect((db.$client.options as { max_pipeline?: number }).max_pipeline).toBe(0);
+    expect(db.$client.options.max_lifetime).toBe(30 * 60);
+    expect(db.$client.options.connection.idle_in_transaction_session_timeout).toBe(15_000);
+  });
+
   it('per-site overrides reach the driver', () => {
     const db = createDb({
       connectionString: url,
@@ -36,6 +46,47 @@ describe('createDb timeout discipline (audit P1-9)', () => {
     });
     expect(db.$client.options.connect_timeout).toBe(10);
     expect(db.$client.options.connection.statement_timeout).toBe(60_000);
+  });
+});
+
+describe('guardQuery', () => {
+  it('cancels a query that does not settle and rejects by name', async () => {
+    vi.useFakeTimers();
+    const query = {
+      cancel: vi.fn(),
+      // biome-ignore lint/suspicious/noThenProperty: stand-in for a postgres.js Query
+      then(onFulfilled?: (value: unknown) => unknown, onRejected?: (err: unknown) => unknown) {
+        return new Promise((resolve, reject) => {
+          query.settle = (err?: unknown) => {
+            if (err === undefined) resolve(onFulfilled ? onFulfilled('row') : 'row');
+            else if (onRejected) resolve(onRejected(err));
+            else reject(err);
+          };
+        });
+      },
+      settle: (_err?: unknown) => {},
+    };
+    const guarded = guardQuery(query, QUERY_TIMEOUT_MS);
+    const pending = Promise.resolve(guarded).then(
+      () => 'resolved',
+      (err: unknown) => err,
+    );
+    await vi.advanceTimersByTimeAsync(QUERY_TIMEOUT_MS);
+    await expect(pending).resolves.toBeInstanceOf(QueryTimeoutError);
+    expect(query.cancel).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it('returns a fast query without cancelling it', async () => {
+    const query = {
+      cancel: vi.fn(),
+      // biome-ignore lint/suspicious/noThenProperty: stand-in for a postgres.js Query
+      then(onFulfilled?: (value: unknown) => unknown) {
+        return Promise.resolve('ok').then(onFulfilled);
+      },
+    };
+    await expect(guardQuery(query, QUERY_TIMEOUT_MS)).resolves.toBe('ok');
+    expect(query.cancel).not.toHaveBeenCalled();
   });
 });
 

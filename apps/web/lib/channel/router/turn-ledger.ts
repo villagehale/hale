@@ -100,6 +100,20 @@ export interface InboundTurnLedger {
     familyId: string;
     parentUserId: string;
     channelMessageId: string;
+    /** Why the turn went back. Absent on the older model-unreachable path's
+     * callers that only need the stage. */
+    reason?: string;
+  }): Promise<void>;
+  /**
+   * A known parent's inbound ended a step with nothing sent, or a step gave
+   * up and the turn kept going. `reason` is one of the named outcomes in
+   * channel/config.ts. Queryable: the row is the count, not a log line.
+   */
+  recordUnanswered(input: {
+    familyId: string;
+    parentUserId: string;
+    channelMessageId: string;
+    reason: string;
   }): Promise<void>;
   /**
    * THE TURN BROKE, AND SOMETHING WENT OUT ANYWAY.

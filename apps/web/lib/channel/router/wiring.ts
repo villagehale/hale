@@ -96,7 +96,11 @@ import {
   weekdayCareHandler,
   yearRetentionHandler,
 } from './handlers';
-import { type OpenQuestionReader, createOpenQuestionReader } from './open-questions';
+import {
+  type OpenQuestionReader,
+  type OpenQuestionReaderOptions,
+  createOpenQuestionReader,
+} from './open-questions';
 import type { ReplyRoute } from './reply-route';
 import { createReplyTransport } from './reply-transport';
 import { createReplyResolver } from './resolve';
@@ -547,22 +551,6 @@ const TURN_LEDGER_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
  * scoping every lookup to the family the job claims is the router's rule-#1 habit.
  */
 export function auditTurnLedger(database: Database): InboundTurnLedger {
-  const write =
-    (actionTaken: string) =>
-    async (input: {
-      familyId: string;
-      parentUserId: string;
-      channelMessageId: string;
-    }) => {
-      await database.insert(schema.auditLog).values({
-        familyId: input.familyId,
-        actor: input.parentUserId,
-        actionTaken,
-        targetTable: TURN_LEDGER_TARGET,
-        targetId: input.channelMessageId,
-      });
-    };
-
   return {
     // THE INSERT IS THE CLAIM (relay-claim.ts's rule, applied here by audit P1-4). The
     // arbiter is channel_turn_answer_claims (migration 0106), NOT an index over the
@@ -615,7 +603,26 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
       if (rows.some((row) => row.actionTaken === TURN_ANSWERED_ACTION)) return 'answered';
       return rows.length > 0 ? 'deferred' : 'fresh';
     },
-    recordDeferred: write(TURN_DEFERRED_ACTION),
+    recordDeferred: async (input) => {
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.parentUserId,
+        actionTaken: TURN_DEFERRED_ACTION,
+        targetTable: TURN_LEDGER_TARGET,
+        targetId: input.channelMessageId,
+        after: input.reason ? { reason: input.reason } : null,
+      });
+    },
+    recordUnanswered: async (input) => {
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.parentUserId,
+        actionTaken: 'sms_turn_unanswered',
+        targetTable: TURN_LEDGER_TARGET,
+        targetId: input.channelMessageId,
+        after: { reason: input.reason },
+      });
+    },
     recordFailed: async (input) => {
       await database.insert(schema.auditLog).values({
         familyId: input.familyId,
@@ -656,7 +663,18 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // What Hale is still waiting to hear back about, and the stage that reads a parent's
     // own words against it. On the same lazy client as the screen and the apology: one
     // key, one failure story, and a missing key never stops an approval.
-    questions: defaultOpenQuestionReader(),
+    questions: defaultOpenQuestionReader({
+      onReaderTimeout: async ({ reader, familyId, parentUserId, channelMessageId }) => {
+        await database.insert(schema.auditLog).values({
+          familyId,
+          actor: parentUserId,
+          actionTaken: 'sms_reader_timeout',
+          targetTable: TURN_LEDGER_TARGET,
+          targetId: channelMessageId ?? null,
+          after: { reader },
+        });
+      },
+    }),
     replyResolver: createReplyResolver(screenClient),
     // VIL-304. The menu Hale last put in front of this parent — a row per asked question,
     // spent by the next inbound. No model and no client: picking one of a handful of
@@ -743,127 +761,133 @@ export async function routeInboundChannelMessage(
  * commitments ledger's own `loadOpenCommitment`. That is the invariant: one reader per
  * question, so "is this open" cannot get two answers on the same turn.
  */
-export function defaultOpenQuestionReader(): OpenQuestionReader {
+export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): OpenQuestionReader {
   const spine = defaultApprovalSpine();
   const intros = defaultVillageIntroReplyDeps();
-  return createOpenQuestionReader({
-    pendingApprovals: (database, familyId) => spine.listPending(database, familyId),
-    introOptInOpen: async (database, { familyId, parentUserId }) => {
-      // ASKED AND UNANSWERED, read from two different places because they are two
-      // different facts: the ask is an outbound ledger row (so a card that was composed
-      // and never sent is not a question), and the answer is a consent row of EITHER
-      // polarity (a decline is an answer, and re-asking a family that said no would be
-      // the worst version of this feature).
-      //
-      // ASKED THIS PARENT, not this family. The dedupe key is family-scoped because the
-      // question is asked once per household, but only the parent it was TEXTED to has it
-      // open — otherwise a co-parent who never saw it could answer it, and Hale would
-      // write a consent row in their name for a question it never put to them.
-      const [askedParentUserId, answered] = await Promise.all([
-        introAskRecipient(database, familyId),
-        discoverabilityAsked(database, parentUserId),
-      ]);
-      return askedParentUserId === parentUserId && !answered;
+  return createOpenQuestionReader(
+    {
+      pendingApprovals: (database, familyId) => spine.listPending(database, familyId),
+      introOptInOpen: async (database, { familyId, parentUserId }) => {
+        // ASKED AND UNANSWERED, read from two different places because they are two
+        // different facts: the ask is an outbound ledger row (so a card that was composed
+        // and never sent is not a question), and the answer is a consent row of EITHER
+        // polarity (a decline is an answer, and re-asking a family that said no would be
+        // the worst version of this feature).
+        //
+        // ASKED THIS PARENT, not this family. The dedupe key is family-scoped because the
+        // question is asked once per household, but only the parent it was TEXTED to has it
+        // open — otherwise a co-parent who never saw it could answer it, and Hale would
+        // write a consent row in their name for a question it never put to them.
+        const [askedParentUserId, answered] = await Promise.all([
+          introAskRecipient(database, familyId),
+          discoverabilityAsked(database, parentUserId),
+        ]);
+        return askedParentUserId === parentUserId && !answered;
+      },
+      introProposal: async (database, familyId, now) => {
+        // ONLY AN UNANSWERED CARD IS AN OPEN QUESTION. The lane's reader deliberately also
+        // returns cards this family has already answered (so a repeat can be told from a
+        // card that never existed), and offering one of those to the resolver would invite
+        // it to resolve a question that is already closed.
+        const proposal = await intros.answerableProposal(database, familyId, now);
+        return proposal?.standing === 'unanswered' ? { id: proposal.id } : null;
+      },
+      planOffer: async (database, familyId, now) => {
+        const offer = await loadOpenCommitment(database, familyId, 'plan_offer');
+        // The TTL lives at the caller in plan/reply.ts too, and for the same reason: an
+        // expired offer is still an open ledger row, it has simply stopped being
+        // answerable. Reporting one as a question would let a parent accept a plan the
+        // handler behind it is about to decline.
+        if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
+        return { id: offer.id, summary: offer.summary, askedAt: offer.createdAt };
+      },
+      // The health nudge's booking offer. Its TTL is applied inside the reader, so an
+      // offer past its week can never be listed, named in a clarifying sentence, or
+      // resolved — the same discipline the plan offer keeps one line above.
+      checkupOffer: async (database, familyId, now) => {
+        const offer = await loadOpenCheckupOffer(database, familyId, now);
+        return offer && { id: offer.id, summary: offer.summary, askedAt: offer.askedAt };
+      },
+      // The founder's welcome offer. Its TTL is applied HERE, the same discipline the two
+      // offers above keep: an expired offer is still an open ledger row, it has simply
+      // stopped being answerable — and listing one would let a YES two days later text a
+      // family "thank you for being one of our first" about a week they have already had.
+      founderWelcomeOffer: async (database, familyId, now) => {
+        const offer = await loadOpenCommitment(database, familyId, 'founder_welcome_offer');
+        if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
+        return { id: offer.id, summary: offer.summary, askedAt: offer.createdAt };
+      },
+      // The coach's "I'll come back to you". NO TTL, unlike the two offers above: a promise
+      // does not stop being owed by getting late (commitment.ts), so it is listed until the
+      // sweep keeps it or a cancellation voids it.
+      activityPromise: async (database, familyId) => {
+        const promise = await loadOpenActivityPromise(database, familyId);
+        return promise && { id: promise.id, summary: promise.summary, askedAt: promise.askedAt };
+      },
+      // The registration ladder's readiness checklist. Its whole TTL is the last-word rule
+      // inside the reader — the question closes the moment anything else goes out to this
+      // parent — so, unlike the offers above, there is no window to apply here.
+      registrationReadiness: (database, familyId, parentUserId, now) =>
+        readinessQuestion(database, familyId, parentUserId, now),
+      // The co-parent scope question (VIL-355), read through the invite module's own
+      // `loadPendingAssent` — which also applies the 72h expiry on read, so a lapsed ask
+      // is never listed. Filtered to the co-parent role here rather than in the reader: a
+      // caregiver invite awaiting the same parent's yes is answered by the caregiver lane
+      // before a router turn exists, and listing it would make every bare affirmative in
+      // the household ambiguous for a question nothing on this list can resolve.
+      // The evening check-in, read through the lane's own last-word reader — the same
+      // discipline the readiness question keeps, and for the same reason: openness is
+      // already implied by the message ledger, so a stored flag would be a second answer
+      // every other sender in the product would have to remember to clear.
+      eveningCheckIn: (database, input) => eveningCheckInQuestion(database, input),
+      // The activity follow-up ask, read through the followup lane's own last-word reader
+      // — the same discipline the readiness question and the evening check-in keep, and
+      // the line that stops a bare "yes" meant for "how did swim go?" approving a drafted
+      // calendar write.
+      activityFollowupAsk: (database, input) => activityFollowupAskOpen(database, input),
+      // VIL-360 · the weekday-care ask, through the same kind of last-word reader. It has
+      // a 48h clock of its own rather than the evening's 08:00 lapse, because a household
+      // arrangement does not go stale by breakfast.
+      weekdayCare: (database, input) => weekdayCareQuestion(database, input),
+      emptySaturday: (database, input) => emptySaturdayQuestion(database, input),
+      // VIL-360 · the daycare check-in. The follow-up lane registers nothing when it
+      // sends, so this reader is the only thing that makes its ask a question the router
+      // can see - and a bare "yes" near it safe.
+      daycareFollowup: (database, input) => daycareFollowupQuestion(database, input),
+      coParentAssent: async (database, { parentUserId, familyId, now }) => {
+        const pending = await loadPendingAssent(database, parentUserId, now);
+        if (!pending || pending.role !== 'co_parent' || pending.familyId !== familyId) return null;
+        // The ask went out with the invite, so the invite's own clock is when it was put to
+        // them: `expiresAt` is 72h after that, by construction.
+        return {
+          id: pending.id,
+          askedAt: new Date(pending.expiresAt.getTime() - INVITE_SILENCE_MS),
+        };
+      },
+      // The Gmail alerts this parent has not answered. Its TTL is applied inside the reader,
+      // the same discipline the three offers above keep — and `askedAt` is the row's own mint
+      // time, which is the moment the text went out, because the row is written at send.
+      emailAlertOffers: async (database, input) => {
+        const offers = await loadOpenEmailAlertOffers(database, input);
+        return offers.map((offer) => ({
+          id: offer.id,
+          summary: emailAlertOfferSummary(offer),
+          subject: emailAlertOfferSubject(offer),
+          askedAt: offer.askedAt,
+        }));
+      },
+      // The forwarding-address revoke confirm (VIL-352 round 6), read through the lane's own
+      // ledger reader — the evening check-in's discipline for the same reason, with the
+      // fifteen-minute window applied inside it so a lapsed confirm is never listed. It
+      // stands until one of its own receipts answers it, NOT until Hale next speaks: the
+      // clarifying menu Hale sends about this very question is a thing Hale said, and it
+      // used to close the question it was asking about (round 7). The last-word rule lives
+      // on the bare-word door in handlers.ts, which is the only reader it protects.
+      forwardAddressRevoke: (database, input) => forwardRevokeAsk(database, input),
+      yearRetention: (database, input) => openYearRetentionQuestion(database, input),
     },
-    introProposal: async (database, familyId, now) => {
-      // ONLY AN UNANSWERED CARD IS AN OPEN QUESTION. The lane's reader deliberately also
-      // returns cards this family has already answered (so a repeat can be told from a
-      // card that never existed), and offering one of those to the resolver would invite
-      // it to resolve a question that is already closed.
-      const proposal = await intros.answerableProposal(database, familyId, now);
-      return proposal?.standing === 'unanswered' ? { id: proposal.id } : null;
-    },
-    planOffer: async (database, familyId, now) => {
-      const offer = await loadOpenCommitment(database, familyId, 'plan_offer');
-      // The TTL lives at the caller in plan/reply.ts too, and for the same reason: an
-      // expired offer is still an open ledger row, it has simply stopped being
-      // answerable. Reporting one as a question would let a parent accept a plan the
-      // handler behind it is about to decline.
-      if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
-      return { id: offer.id, summary: offer.summary, askedAt: offer.createdAt };
-    },
-    // The health nudge's booking offer. Its TTL is applied inside the reader, so an
-    // offer past its week can never be listed, named in a clarifying sentence, or
-    // resolved — the same discipline the plan offer keeps one line above.
-    checkupOffer: async (database, familyId, now) => {
-      const offer = await loadOpenCheckupOffer(database, familyId, now);
-      return offer && { id: offer.id, summary: offer.summary, askedAt: offer.askedAt };
-    },
-    // The founder's welcome offer. Its TTL is applied HERE, the same discipline the two
-    // offers above keep: an expired offer is still an open ledger row, it has simply
-    // stopped being answerable — and listing one would let a YES two days later text a
-    // family "thank you for being one of our first" about a week they have already had.
-    founderWelcomeOffer: async (database, familyId, now) => {
-      const offer = await loadOpenCommitment(database, familyId, 'founder_welcome_offer');
-      if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
-      return { id: offer.id, summary: offer.summary, askedAt: offer.createdAt };
-    },
-    // The coach's "I'll come back to you". NO TTL, unlike the two offers above: a promise
-    // does not stop being owed by getting late (commitment.ts), so it is listed until the
-    // sweep keeps it or a cancellation voids it.
-    activityPromise: async (database, familyId) => {
-      const promise = await loadOpenActivityPromise(database, familyId);
-      return promise && { id: promise.id, summary: promise.summary, askedAt: promise.askedAt };
-    },
-    // The registration ladder's readiness checklist. Its whole TTL is the last-word rule
-    // inside the reader — the question closes the moment anything else goes out to this
-    // parent — so, unlike the offers above, there is no window to apply here.
-    registrationReadiness: (database, familyId, parentUserId, now) =>
-      readinessQuestion(database, familyId, parentUserId, now),
-    // The co-parent scope question (VIL-355), read through the invite module's own
-    // `loadPendingAssent` — which also applies the 72h expiry on read, so a lapsed ask
-    // is never listed. Filtered to the co-parent role here rather than in the reader: a
-    // caregiver invite awaiting the same parent's yes is answered by the caregiver lane
-    // before a router turn exists, and listing it would make every bare affirmative in
-    // the household ambiguous for a question nothing on this list can resolve.
-    // The evening check-in, read through the lane's own last-word reader — the same
-    // discipline the readiness question keeps, and for the same reason: openness is
-    // already implied by the message ledger, so a stored flag would be a second answer
-    // every other sender in the product would have to remember to clear.
-    eveningCheckIn: (database, input) => eveningCheckInQuestion(database, input),
-    // The activity follow-up ask, read through the followup lane's own last-word reader
-    // — the same discipline the readiness question and the evening check-in keep, and
-    // the line that stops a bare "yes" meant for "how did swim go?" approving a drafted
-    // calendar write.
-    activityFollowupAsk: (database, input) => activityFollowupAskOpen(database, input),
-    // VIL-360 · the weekday-care ask, through the same kind of last-word reader. It has
-    // a 48h clock of its own rather than the evening's 08:00 lapse, because a household
-    // arrangement does not go stale by breakfast.
-    weekdayCare: (database, input) => weekdayCareQuestion(database, input),
-    emptySaturday: (database, input) => emptySaturdayQuestion(database, input),
-    // VIL-360 · the daycare check-in. The follow-up lane registers nothing when it
-    // sends, so this reader is the only thing that makes its ask a question the router
-    // can see - and a bare "yes" near it safe.
-    daycareFollowup: (database, input) => daycareFollowupQuestion(database, input),
-    coParentAssent: async (database, { parentUserId, familyId, now }) => {
-      const pending = await loadPendingAssent(database, parentUserId, now);
-      if (!pending || pending.role !== 'co_parent' || pending.familyId !== familyId) return null;
-      // The ask went out with the invite, so the invite's own clock is when it was put to
-      // them: `expiresAt` is 72h after that, by construction.
-      return { id: pending.id, askedAt: new Date(pending.expiresAt.getTime() - INVITE_SILENCE_MS) };
-    },
-    // The Gmail alerts this parent has not answered. Its TTL is applied inside the reader,
-    // the same discipline the three offers above keep — and `askedAt` is the row's own mint
-    // time, which is the moment the text went out, because the row is written at send.
-    emailAlertOffers: async (database, input) => {
-      const offers = await loadOpenEmailAlertOffers(database, input);
-      return offers.map((offer) => ({
-        id: offer.id,
-        summary: emailAlertOfferSummary(offer),
-        subject: emailAlertOfferSubject(offer),
-        askedAt: offer.askedAt,
-      }));
-    },
-    // The forwarding-address revoke confirm (VIL-352 round 6), read through the lane's own
-    // ledger reader — the evening check-in's discipline for the same reason, with the
-    // fifteen-minute window applied inside it so a lapsed confirm is never listed. It
-    // stands until one of its own receipts answers it, NOT until Hale next speaks: the
-    // clarifying menu Hale sends about this very question is a thing Hale said, and it
-    // used to close the question it was asking about (round 7). The last-word rule lives
-    // on the bare-word door in handlers.ts, which is the only reader it protects.
-    forwardAddressRevoke: (database, input) => forwardRevokeAsk(database, input),
-    yearRetention: (database, input) => openYearRetentionQuestion(database, input),
-  });
+    options,
+  );
 }
 
 /** Who the one discoverability ask actually went to, or null if it never went. The
