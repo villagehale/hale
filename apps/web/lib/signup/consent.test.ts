@@ -26,7 +26,7 @@ describe('signup field consent', () => {
     const sql = readFileSync(
       fileURLToPath(
         new URL(
-          '../../../../packages/db/drizzle/0138_authorized_signup_consent.sql',
+          '../../../../packages/db/drizzle/0139_authorized_signup_consent.sql',
           import.meta.url,
         ),
       ),

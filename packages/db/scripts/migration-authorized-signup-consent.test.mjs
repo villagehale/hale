@@ -6,7 +6,7 @@ import { readJournal } from './migration-drift.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const drizzleDir = path.resolve(scriptDir, '..', 'drizzle');
-const TAG = '0138_authorized_signup_consent';
+const TAG = '0139_authorized_signup_consent';
 
 function statementsOf(sql) {
   return sql
@@ -21,12 +21,15 @@ function statementsOf(sql) {
     .filter((stmt) => stmt.length > 0);
 }
 
-describe('0138_authorized_signup_consent', () => {
+describe('0139_authorized_signup_consent', () => {
   const sql = fs.readFileSync(path.join(drizzleDir, `${TAG}.sql`), 'utf8');
 
-  it('is journaled immediately after 0137_authorized_signup', () => {
+  it('is journaled immediately after 0138_activity_bookings_dedupe', () => {
     const tags = readJournal(drizzleDir).map((entry) => entry.tag);
-    expect(tags.indexOf(TAG)).toBe(tags.indexOf('0137_authorized_signup') + 1);
+    expect(tags.indexOf(TAG)).toBe(tags.indexOf('0138_activity_bookings_dedupe') + 1);
+    expect(tags.indexOf('0138_activity_bookings_dedupe')).toBe(
+      tags.indexOf('0137_authorized_signup') + 1,
+    );
   });
 
   it('creates the consent table with the grant columns and the closed field list', () => {

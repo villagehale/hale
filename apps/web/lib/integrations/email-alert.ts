@@ -1,15 +1,15 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
-import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
+import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type ProactiveSendRequest,
   type ProactiveSendVerdict,
   holdStatus,
 } from '~/lib/channel/outbound-gate';
-import { withOptOut } from '~/lib/channel/opt-out';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
@@ -27,8 +27,14 @@ import {
   bookingCancellationKey,
   bookingDraft,
   closeCancelledBookings,
+  familyHoldsLiveBooking,
   recordActivityBooking,
 } from './booking';
+import {
+  type EmailAlertOfferDraft,
+  recordEmailAlertOffer,
+  withdrawEmailAlertOffer,
+} from './email-alert-offer';
 import {
   type GoingCount,
   type GoingOutcome,
@@ -38,11 +44,6 @@ import {
   goingOutcome,
   readSessionGoing,
 } from './going';
-import {
-  type EmailAlertOfferDraft,
-  recordEmailAlertOffer,
-  withdrawEmailAlertOffer,
-} from './email-alert-offer';
 
 /**
  * A parenting email in a connected Gmail becomes ONE text to the parent.
@@ -147,6 +148,9 @@ export function emptyEmailAlertCounts(): EmailAlertCounts {
 export const BOOKING_OUTCOMES = [
   'recorded',
   'already_recorded',
+  // A later receipt for a class this family already holds refreshed that row. Not a
+  // second booking: no second follow-up, and no second audit claim.
+  'refreshed',
   'booked_dark',
   'not_a_booking',
   // The model's own flag, and the child's date of birth. Two counters, because which of
@@ -254,7 +258,8 @@ export async function alertParentForEmail(
   // Read BEFORE the classifier, not only via the claim below: a re-fired sweep over a
   // mailbox it has already read must cost nothing, and the claim happens after two model
   // calls have already been paid for.
-  if (await dedupeActive(dedupeKey, database)) return { alert: 'already_sent', booking: null, going: null };
+  if (await dedupeActive(dedupeKey, database))
+    return { alert: 'already_sent', booking: null, going: null };
 
   let classification: SentinelClassification;
   try {
@@ -583,9 +588,20 @@ async function readGoingFor(
     return draft.reason === 'teen_attributed' ? { shown: false, reason: 'teen_attributed' } : null;
   }
   if (!goingCountEnabled()) return { shown: false, reason: 'going_dark' };
-  const sessionKey = draft.draft.sessionKey;
-  if (sessionKey === null) return { shown: false, reason: 'no_session' };
   try {
+    // The session key is the full instant, so an invoice at 1:00 and a receipt at 1:05
+    // are two keys and `alreadyHeld` never fires. The class key is the date. Holding it
+    // already is `repeat_receipt` — the count is not spoken, and this household is not
+    // added to it a second time.
+    const held = await familyHoldsLiveBooking(database, {
+      familyId,
+      providerHost: draft.draft.providerHost,
+      title: draft.draft.title,
+      firstSessionAt: draft.draft.firstSessionAt,
+    });
+    if (held) return { shown: false, reason: 'repeat_receipt' };
+    const sessionKey = draft.draft.sessionKey;
+    if (sessionKey === null) return { shown: false, reason: 'no_session' };
     return goingCount(await readSessionGoing(database, { familyId, sessionKey }));
   } catch (err) {
     // THE TEXT STILL GOES. The count is the least important thing in this message, and a
@@ -701,15 +717,17 @@ async function recordBooking(
     return 'record_failed';
   }
 
-  // Rule #6, and only for the pass that actually wrote it: a conflicted redrive changed
-  // nothing, and audit_log is append-only, so a second row would be a second claim.
+  // Rule #6, and only for the pass that actually INSERTED it. A redrive
+  // (`already_recorded`) and a re-sent receipt (`refreshed`) changed no class into
+  // being — a second `activity_booking_recorded` row would read as a second class.
+  // audit_log is append-only, so the original row stays the receipt.
   //
   // OUTSIDE the catch above, deliberately. `record_failed` means "the text went, the row
   // did not"; a failure here is the opposite — the row is there and the ask WILL happen —
   // so reporting it as a missing booking would be a counter saying the opposite of the
   // table. It propagates instead, exactly as this module's own `email_alert_sent` audit
   // already does.
-  if (recorded.bookingId !== null) {
+  if (recorded.outcome === 'recorded' && recorded.bookingId !== null) {
     await database.insert(schema.auditLog).values({
       familyId: input.familyId,
       actor: 'system',
@@ -771,7 +789,8 @@ export async function alertParentForGmailSweep(
   if (parentUserId === null) {
     return envelopes.map(() => ({ alert: 'no_parent_user', booking: null, going: null }));
   }
-  if (input.seeding) return envelopes.map(() => ({ alert: 'seeding_run', booking: null, going: null }));
+  if (input.seeding)
+    return envelopes.map(() => ({ alert: 'seeding_run', booking: null, going: null }));
   // Nothing from a mailbox reaches the group, and a family whose home channel
   // is the group is not texted the same mail on SMS either.
   const outbound = await familyOutboundTarget(database, input.familyId);
@@ -1058,10 +1077,7 @@ export function renderEmailAlert(input: EmailAlertRenderInput): EmailAlertRender
     return { body: `${title}. ${TEEN_CLOSER}`, going: input.going };
   }
 
-  const sender = clamp(gsm7(senderLabel(input.from)), SENDER_MAX).replace(
-    TRAILING_PUNCTUATION,
-    '',
-  );
+  const sender = clamp(gsm7(senderLabel(input.from)), SENDER_MAX).replace(TRAILING_PUNCTUATION, '');
   // The offer, decided by the one function that also decides whether the row gets
   // written. Appended AFTER `compose`, never inside it: every frame in there ends through
   // `end()`, and a clause spliced before that would put Hale's own offer inside the

@@ -4,9 +4,12 @@ import {
   addLinqParticipant,
   createLinqChat,
   createLinqTextTransport,
+  localityFromLocationPayload,
   markLinqChatRead,
   reactToLinqMessage,
   removeLinqParticipant,
+  requestLinqLocation,
+  retrieveLinqLocation,
   sendLinqChatMessage,
   sendLinqEffect,
   sendLinqParts,
@@ -505,5 +508,83 @@ describe('Linq group, card, poll, and effect helpers', () => {
       fetch: fetchMock,
     });
     expect(named.status).toBe('accepted');
+  });
+});
+
+describe('Linq location request', () => {
+  it('posts the native location-request card and does not send a message part', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ success: true }, { status: 200 }),
+    );
+    const result = await requestLinqLocation({ chatId: CHAT, fetch: fetchMock });
+    expect(result).toEqual({ status: 'accepted' });
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe(`https://api.linqapp.com/api/partner/v3/chats/${CHAT}/location/request`);
+    expect(init?.method).toBe('POST');
+    expect(init?.body).toBeUndefined();
+  });
+
+  it('names a group refusal and a missing key', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const refused = vi.fn(async () =>
+      Response.json({ error: { status: 409, code: 2016, message: 'group' } }, { status: 409 }),
+    );
+    await expect(requestLinqLocation({ chatId: CHAT, fetch: refused })).resolves.toMatchObject({
+      status: 'refused',
+      code: '2016',
+    });
+    vi.stubEnv('LINQ_API_KEY', '');
+    const fetchMock = vi.fn();
+    await expect(requestLinqLocation({ chatId: CHAT, fetch: fetchMock })).resolves.toMatchObject({
+      status: 'not_configured',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the city and drops the street', () => {
+    expect(
+      localityFromLocationPayload({
+        data: {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [-79.38, 43.65] },
+              properties: {
+                address: '1 King Street West',
+                locality: ' Toronto ',
+              },
+            },
+          ],
+        },
+      }),
+    ).toBe('Toronto');
+    expect(
+      localityFromLocationPayload({
+        features: [{ properties: { address: '1 King Street West' } }],
+      }),
+    ).toBeNull();
+  });
+
+  it('reads locality from the retrieve call and does not return coordinates', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({
+        data: {
+          features: [
+            {
+              geometry: { type: 'Point', coordinates: [-79.38, 43.65] },
+              properties: { address: '1 King Street West', locality: 'Toronto' },
+            },
+          ],
+        },
+      }),
+    );
+    const read = await retrieveLinqLocation({ chatId: CHAT, fetch: fetchMock });
+    expect(read).toEqual({ status: 'locality', locality: 'Toronto' });
+    expect(JSON.stringify(read)).not.toContain('King');
+    expect(JSON.stringify(read)).not.toContain('-79');
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('GET');
   });
 });

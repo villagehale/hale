@@ -15,6 +15,7 @@
     "eval:coach": "node evals/run-coach-eval.mjs --cached-only",
     "backfill:source-urls": "tsx scripts/backfill-source-urls.ts",
     "probe:week-plan": "tsx scripts/probe-week-plan.ts",
+    "booked-detection:dry-run": "tsx scripts/booked-detection-dry-run.ts",
     "probe:ics-feed": "tsx scripts/probe-ics-feed.ts",
     "seed:curated-resources": "tsx scripts/seed-curated-resources.ts",
     "seed:registration-windows": "tsx scripts/seed-registration-windows.ts",

@@ -30,7 +30,7 @@ const NAVY = '#17294a';
 const AMBER = '#b26b1f';
 const SLATE = '#41546f';
 const FONTS = join(REPO, 'apps/site/app/fonts');
-const SMS_DISPLAY = '+1 (289) 217-2279';
+const SMS_DISPLAY = '(646) 235-2164';
 
 const wm = readFileSync(join(REPO, 'apps/site/components/wordmark.tsx'), 'utf8');
 const wmViewBox = wm.match(/viewBox="([^"]+)"/)[1];
