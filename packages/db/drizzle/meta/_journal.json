@@ -993,11 +993,14 @@
       "idx": 143,
       "version": "7",
       "when": 1781469638000,
-<<<<<<< HEAD
       "tag": "0144_family_trips_no_picks_backoff",
-=======
-      "tag": "0144_optional_ask_ledger",
->>>>>>> d8d8e706 (feat: add the cold-start discovery ladder)
+      "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1781469639000,
+      "tag": "0145_optional_ask_ledger",
       "breakpoints": true
     }
   ]
