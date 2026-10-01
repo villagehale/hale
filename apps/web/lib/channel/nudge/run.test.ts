@@ -464,7 +464,7 @@ describe('runNudgeCron — sending', () => {
     expect(h.transport.sent).toEqual([]);
   });
 
-  it('sends one text carrying the nudge and the opt-out line', async () => {
+  it('sends one text carrying the nudge and no opt-out line', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({ windows: [win()] });
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
@@ -475,7 +475,8 @@ describe('runNudgeCron — sending', () => {
     expect(body).toContain('Richmond Hill');
     expect(body).toContain('Fall 2026');
     expect(body).toContain('Maya');
-    expect(body.endsWith(NUDGE_OPT_OUT)).toBe(true);
+    expect(body).not.toContain(NUDGE_OPT_OUT);
+    expect(body).not.toContain('STOP to opt out.');
   });
 
   it('writes ONE channel_messages row and its audit row (rule #6)', async () => {
@@ -724,16 +725,14 @@ describe('runNudgeCron — the prod send path (VIL-260)', () => {
     expect(h.transport.bodies()[0]).toContain(h.threaded[0]?.body ?? '\u0000');
   });
 
-  it('threads the composed sentence, never the CASL footer on the wire', async () => {
+  it('threads the composed sentence, and the wire does not add an opt-out line', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
-    // A first send of the period carries the opt-out line; the thread must not, or the
-    // coach re-reads "Reply STOP to opt out" as something Hale said to the parent.
     const h = harness({ windows: [win()] });
     await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
     const wire = h.transport.bodies()[0] ?? '';
-    expect(wire).toMatch(/STOP/i);
-    expect(h.threaded[0]?.body).not.toMatch(/STOP/i);
+    expect(wire).not.toContain(NUDGE_OPT_OUT);
+    expect(h.threaded[0]?.body).not.toContain(NUDGE_OPT_OUT);
     // ...and it is still the real sentence, not an empty string that trivially passes.
     expect(wire).toContain(h.threaded[0]?.body ?? '\u0000');
   });
@@ -827,7 +826,8 @@ describe('runNudgeCron — health checkpoints (M8)', () => {
     expect(body).toContain('a visit at 6 months');
     expect(body).toContain('https://www.ontario.ca/page/ontarios-routine-immunization-schedule');
     expect(body).toContain('Done, or want a reminder next week?');
-    expect(body.endsWith(NUDGE_OPT_OUT)).toBe(true);
+    expect(body).not.toContain(NUDGE_OPT_OUT);
+    expect(body).not.toContain('STOP to opt out.');
   });
 
   it('never runs the voice model for health copy', async () => {
@@ -1490,7 +1490,7 @@ describe('runNudgeCron — empty Saturday', () => {
 
     expect(result).toMatchObject({ sent: 1, quiet: 0 });
     expect(h.transport.bodies()).toEqual([
-      `${"This Saturday looks open for Maya. Want one nearby find that's actually running?"}\n\n${NUDGE_OPT_OUT}`,
+      "This Saturday looks open for Maya. Want one nearby find that's actually running?",
     ]);
     const ledger = h.writes.filter((w) => w.table === schema.channelMessages);
     expect(ledger[0]?.payload).toMatchObject({

@@ -1085,13 +1085,11 @@ describe('VIL-338 · preparedCopyViolations, the composer’s own self-gate', ()
     expect(unbacked).toContain("Tomorrow: Oakville's portal opens");
   });
 
-  it('measures a solicited reply without a CASL footer it will never carry', () => {
+  it('does not lengthen a proactive body with an opt-out footer', () => {
     const solicited = { url: null, printed: [], backed: [], optOut: null } as const;
     const body = 'a'.repeat(455);
     expect(preparedCopyViolations(body, solicited)).toEqual([]);
-    expect(preparedCopyViolations(body, { ...solicited, optOut: 'full' })).toContain(
-      'too_many_segments',
-    );
+    expect(preparedCopyViolations(body, { ...solicited, optOut: 'full' })).toEqual([]);
     // A solicited reply carries no link at all, so one appearing in it is a link the
     // parent never asked for.
     expect(preparedCopyViolations(`Noted. ${COURSE_URL}`, solicited)).toContain('unexpected_link');

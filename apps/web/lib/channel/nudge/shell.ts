@@ -8,16 +8,16 @@
  */
 
 /**
- * The CASL opt-out. Not the model's to write, and no longer appended to EVERY nudge —
- * the outbound gate decides which sends carry it (lib/channel/opt-out.ts), at most once
- * per family per period. Re-exported here under its old name because the two segment
- * budgets below are written against a body that includes it, and they stay that way: a
- * message must fit two segments on the periods when the line does ride.
+ * The opt-out sentence. Not the model's to write, and no longer appended to any nudge
+ * (founder decision, 2026-10-01; lib/channel/opt-out.ts). Re-exported here under its
+ * old name because composers reject a message that writes it, and the segment budget
+ * below was sized against a body that included it.
  */
 export { OPT_OUT_LINE as NUDGE_OPT_OUT } from '../opt-out';
 
-/** The whole payload — a message plus the appended opt-out — must fit two SMS
- * segments. Every renderer holds itself to this before its words reach a transport. */
+/** A composed nudge must fit two SMS segments. Every renderer holds itself to this
+ * before its words reach a transport. The budget still reserves the old opt-out line,
+ * so a message that used to fit still fits; the line itself is not sent. */
 export const MAX_NUDGE_SEGMENTS = 2;
 
 /**

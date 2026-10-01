@@ -235,11 +235,12 @@ describe('alertParentForEmail', () => {
       targetId: rows[0]?.id,
       after: { kind: 'cancellation', teenContent: false },
     });
-    // The COMPOSED sentence goes in the thread, not the wire body: the CASL line belongs
-    // on the wire and nowhere else (channel/thread.ts).
+    // The composed sentence is the wire body. Neither carries an opt-out line.
     expect(h.threaded).toHaveLength(1);
     expect(h.threaded[0]?.body).not.toContain(OPT_OUT_LINE);
-    expect(h.transport.sent[0]?.body).toContain(OPT_OUT_LINE);
+    expect(h.transport.sent[0]?.body).not.toContain(OPT_OUT_LINE);
+    expect(h.transport.sent[0]?.body).not.toContain('STOP to opt out.');
+    expect(h.transport.sent[0]?.body).toBe(h.threaded[0]?.body);
   });
 
   it('carries the EXTRACTION and no line of the email — not the snippet, not the subject', async () => {

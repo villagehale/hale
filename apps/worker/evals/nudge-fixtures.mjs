@@ -19,8 +19,8 @@
 // decision (apps/web/lib/channel/nudge/run.ts), so a regression that composed first and
 // checked later would fail here as well as in the vitest suite.
 
-/** The CASL line the sender appends after the composed message. Mirrors NUDGE_OPT_OUT
- * in apps/web/lib/channel/nudge/nudge-voice.ts — the composer must never write it. */
+/** The opt-out sentence a composer must never write. Outbound texts no longer append it
+ * (founder decision 2026-10-01). Mirrors NUDGE_OPT_OUT in nudge-voice.ts. */
 export const NUDGE_OPT_OUT = 'Reply STOP to opt out.';
 
 function registration(over = {}) {

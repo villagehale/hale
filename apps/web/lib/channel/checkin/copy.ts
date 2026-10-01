@@ -23,10 +23,10 @@ import { assertPoolSize, pickVariant } from '~/lib/channel/variant';
  * message in front of it. The REPLIES below are bilingual, because by then the parent has
  * written something and the ordinary per-message rule applies.
  *
- * GSM-7 AND ONE SEGMENT, both asks measured against the FULL opt-out line (`\n\n` +
- * 'Reply STOP to opt out.'), which is the conservative bound for both of its forms.
- * A curly apostrophe or an em dash anywhere here halves the budget to 70 and splits a
- * nightly message into two, every night. copy.test.ts holds the line.
+ * GSM-7 AND ONE SEGMENT. The opt-out line is no longer appended (founder decision,
+ * 2026-10-01), so the body itself is the wire. A curly apostrophe or an em dash
+ * anywhere here halves the budget to 70 and splits a nightly message into two, every
+ * night. copy.test.ts holds the line.
  */
 
 /**
@@ -104,7 +104,7 @@ function firstCheckInAsk(phrase: string): string {
  * number: a five-evening cycle, twenty sentences across the four pools, all reviewed.
  *
  * WHAT BINDS EVERY MEMBER, and all four are tests (copy.test.ts):
- *   · GSM-7, and one segment MEASURED with the full opt-out line on it;
+ *   · GSM-7, and one segment on the wire. The opt-out line is not appended.
  *   · exactly one "?" — a second question is one a parent's reply cannot answer (D14);
  *   · rule 11 — no member may be answerable by a bare yes or no. `readCadenceWord` maps a
  *     whole-string "no" to cadence OFF before anything else reads the message, so "Did
@@ -153,7 +153,7 @@ assertPoolSize(LATER_ASK_POOL, LATER_ASK_POOL_NAME);
  * that must not vary.
  */
 export interface CheckInAsk {
-  /** What goes on the wire, before the opt-out line rides on it. */
+  /** What goes on the wire. The opt-out line is not appended. */
   body: string;
   /**
    * Whether the activity the caller offered was actually named.
@@ -286,10 +286,8 @@ export const CHECK_IN_NOT_KEPT_ACK: Record<ReplyLanguage, string> = {
 };
 
 /**
- * Whether a proactive body still fits one segment once the opt-out rides on it.
- *
- * Measured against the FULL line, which is the conservative bound for both of its forms
- * (opt-out.ts) — the short one can only ever be smaller.
+ * Whether a proactive body fits one segment on the wire. The opt-out line is not
+ * appended, so this is the body itself.
  */
 export function fitsOneSegment(body: string): boolean {
   return smsSegments(withOptOut(body, 'full')) === 1;

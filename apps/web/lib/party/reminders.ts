@@ -37,8 +37,9 @@ import { claimGuestReminder, loadTeenFirstNames, releaseGuestReminder } from './
  *     HOST family's mid-morning hour — the party is local, the guests are local, and a
  *     10 a.m. send cannot land at 3 a.m. for anyone plausibly attending. This is the
  *     subtraction: no timezone to store, no check to get wrong.
- *   THE WAY OUT travels with every message (`GUEST_OPT_OUT`). A guest STOP is honoured
- *     two ways — the carrier's own opt-out list rejects the send (Twilio 21610), and
+ *   THE WAY OUT is inbound, not a footer. Guest texts do not end with an opt-out line
+ *     (founder decision, 2026-10-01). A guest STOP is still honoured two ways — the
+ *     carrier's own opt-out list rejects the send (Twilio 21610), and
  *     `optOutGuestRemindersOnStop` erases the opt-in and the stored number the moment a
  *     STOP reaches the inbound webhook.
  *
@@ -302,10 +303,7 @@ async function loadPartiesStartingSoon(database: Database, now: Date): Promise<D
     );
 }
 
-async function loadPartyByInvite(
-  database: Database,
-  inviteId: string,
-): Promise<DueParty | null> {
+async function loadPartyByInvite(database: Database, inviteId: string): Promise<DueParty | null> {
   const rows = await database
     .select({
       inviteId: schema.partyInvites.id,

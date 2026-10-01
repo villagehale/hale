@@ -190,7 +190,7 @@ describe('a promise with finds', () => {
       { familyId: FAMILY, kind: 'activity_followup', channelMessageId: 'msg-out-1', now: NOW },
     ]);
     // Threaded, so the parent's reply arrives as an ordinary coach turn with the finds in
-    // front of it — and the CASL line stays on the wire, out of the history.
+    // front of it. The opt-out line is not on the wire.
     expect(h.threaded).toEqual([`${PICK.name} runs Saturdays.`]);
     // The audit row counts the finds and never names them (rule #1).
     expect(h.audited[0]).toMatchObject({
@@ -459,7 +459,7 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
 
     await runActivityFollowUpSweep(database, h.deps, NOW);
 
-    // The CASL tail belongs on the wire and nowhere else; the link is part of the answer.
+    // The link is part of the answer. The opt-out line is not.
     expect(h.threaded[0]).toContain(SHARE_URL);
     expect(h.threaded[0]).not.toContain('STOP');
   });
@@ -939,12 +939,14 @@ describe('the last read of the string that actually leaves', () => {
 
     const result = await runActivityFollowUpSweep(database, h.deps, NOW);
 
-    // The CASL line and the share link are the whole of what runs after the gate today.
-    // Neither carries a question mark, and this is the assertion that says so out loud -
-    // without it the refusal above would pass just as well on a sweep that sends nothing.
+    // The share link is what code still appends after the gate. The opt-out line is
+    // not. Neither carries a question mark, and this is the assertion that says so
+    // out loud - without it the refusal above would pass just as well on a sweep that
+    // sends nothing.
     expect(result).toMatchObject({ sent: 1, refusedAtSend: 0, shared: 1 });
     const sent = h.transport.sent[0]?.body ?? '';
-    expect(sent).toContain('STOP to opt out.');
+    expect(sent).not.toContain('STOP to opt out.');
+    expect(sent).not.toContain('Reply STOP to opt out.');
     expect(sent).toContain(SHARE_URL);
     expect(sent).not.toContain('?');
   });

@@ -195,8 +195,9 @@ export function renderTravelBrief(input: TravelBriefInput): TravelBriefRender {
   let body = opening;
   for (const pick of input.picks.slice(0, SLOTS_IN_TEXT)) {
     const candidate = `${body} ${renderPick(pick)}`;
-    // Measured against the FULL form and WITH the closing sentence already counted, so the
-    // provenance line can never be the thing that pushes a sent body over the ceiling.
+    // Measured with the closing sentence already counted, so the provenance line can never
+    // be the thing that pushes a sent body over the ceiling. The opt-out line is not
+    // part of the measurement: it is not appended.
     if (smsSegments(withOptOut(`${candidate} ${PROVENANCE}`, 'full')) > MAX_TRAVEL_BRIEF_SEGMENTS) {
       break;
     }

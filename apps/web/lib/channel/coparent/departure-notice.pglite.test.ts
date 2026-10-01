@@ -204,12 +204,10 @@ describe('telling the parent who stayed', () => {
     expect(transport.sent).toHaveLength(1);
     expect(transport.sent[0]?.to).toBe(household.stayingPhone);
     expect(transport.sent[0]?.to).not.toBe(household.departedPhone);
-    // The sentence, plus the CASL line the gate decided — never instead of it.
-    expect(transport.sent[0]?.body).toContain(CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.en);
-    expect(
-      transport.sent[0]?.body.includes(OPT_OUT_LINE) ||
-        transport.sent[0]?.body.includes(OPT_OUT_SHORT),
-    ).toBe(true);
+    // The sentence, and nothing after it.
+    expect(transport.sent[0]?.body).toBe(CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.en);
+    expect(transport.sent[0]?.body).not.toContain(OPT_OUT_LINE);
+    expect(transport.sent[0]?.body).not.toContain(OPT_OUT_SHORT);
     // Nobody is named — see the dedicated wire test below for the whole household.
     expect(transport.sent[0]?.body).not.toContain(DEPARTED_NAME);
 
@@ -386,7 +384,7 @@ describe('telling the parent who stayed', () => {
       ports(transport).ports,
     );
 
-    expect(transport.sent[0]?.body).toContain(CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.fr);
+    expect(transport.sent[0]?.body).toBe(CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.fr);
     // The audit row records the language that was CHOSEN. It used to be re-derived by
     // comparing the rendered body against the EN constant, so any change to how the
     // message is built relabelled every row — including the English ones.

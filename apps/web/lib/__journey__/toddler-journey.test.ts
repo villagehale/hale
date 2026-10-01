@@ -1056,7 +1056,9 @@ describe('4 · the 48h nudge reaches a transport', () => {
     // this is the recorder on the other side of the seam.
     expect(journey.nudgeSends).toHaveLength(1);
     expect(journey.nudgeSends[0]?.to).toBe(PARENT_PHONE);
-    expect(journey.nudgeSends[0]?.body.endsWith(NUDGE_OPT_OUT)).toBe(true);
+    expect(journey.nudgeSends[0]?.body.length).toBeGreaterThan(0);
+    expect(journey.nudgeSends[0]?.body).not.toContain(NUDGE_OPT_OUT);
+    expect(journey.nudgeSends[0]?.body).not.toContain('STOP to opt out.');
     // And the ledger row that consumes the family's weekly budget was written only
     // because the message left — its provider id is the one the transport returned.
     const ledger = journey.fake
@@ -1071,8 +1073,8 @@ describe('4 · the 48h nudge reaches a transport', () => {
     // not something the coach can read back. `messages` is, and until 2026-08-22 no
     // nudge ever reached it: 11 of 71 post-account SMS outbounds in prod were invisible
     // to the very thread their reply would arrive in, so "yes" landed on whatever else
-    // happened to be standing. The wire body carries the CASL line and this row must
-    // not — the thread is history, not a compliance surface.
+    // happened to be standing. The opt-out line is not on the wire, and this row must
+    // not carry it either.
     const threaded = journey.fake.rows(schema.messages).filter((row) => row.role === 'assistant');
     // Four proactive sends happen in this journey and all four are now sentences the
     // coach can see: the 48h nudge, then the registration ladder's heads-up, its

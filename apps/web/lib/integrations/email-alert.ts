@@ -490,8 +490,8 @@ export async function alertParentForEmail(
     message,
   });
 
-  // The composed sentence, not the wire body — the CASL line belongs on the wire, and
-  // the coach re-reads this row next turn (channel/thread.ts).
+  // The composed sentence. The opt-out line is not appended, so this is also the wire
+  // body. The coach re-reads this row next turn (channel/thread.ts).
   await ports.threadMessage(database, { familyId, parentUserId, body: message });
 
   await database.insert(schema.auditLog).values({
@@ -1093,10 +1093,9 @@ export function renderEmailAlert(input: EmailAlertRenderInput): EmailAlertRender
   if (clause === '') return { body: assemble(''), going: input.going };
   const spoken = assemble(clause);
   // THE MEASURED FOLD (R2), and it is measured rather than argued. At the clamp maxima the
-  // worst case is 287 septets of 306 - sender 40, title 60, the longest `longWhen`
+  // worst case is inside two segments - sender 40, title 60, the longest `longWhen`
   // ("Wednesday, Sep 30, 2027 at 12:00 p.m.", 37), a 30-character place, the longest count
-  // word, the CTA and the FULL opt-out - which is nineteen of headroom, thin enough that it
-  // has to be a test and not a paragraph.
+  // word and the CTA. The opt-out line is not part of the measurement: it is not appended.
   //
   // THE COUNT IS THE FIRST THING DROPPED AND IT IS DROPPED WHOLE. Never a cut inside the
   // clause ("with two other Hale fam"), and never a third segment: this text is billed per

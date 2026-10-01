@@ -309,7 +309,7 @@ nothing around it to correct it, and a message that is merely *fine* is still an
   each sentence, and "Sunday is the backup." is exactly the invention this message turns on (it
   slipped through during calibration until the day check was added).
 - **The CASL gate**: a fixture the outbound gate or the selector ruled out must produce NO message.
-- Plus: never writes the "Reply STOP to opt out." line the sender appends, never asks a question,
+- Plus: never writes the "Reply STOP to opt out." line (outbound texts no longer append it), never asks a question,
   ≤ 2 SMS segments for the whole payload, ≤ 2 sentences (tighter than the radar's three), and
   per-fixture must-recall / forbidden tokens derived from the decision — including "says wet when
   the fact is cold", a fabrication with a correct conclusion.
