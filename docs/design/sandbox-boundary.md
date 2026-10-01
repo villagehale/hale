@@ -24,7 +24,11 @@ The browser does not choose the next step. A snapshot comes back. The backend re
 
 ## What the sandbox is
 
-The sandbox is `SignupBrowser` / `SignupPage` in `apps/web/lib/signup/types.ts`, implemented by `playwrightSignupBrowser` in `apps/web/lib/signup/browser.ts`. Playwright is loaded with `require('@playwright/test')` only when the flag is on and the route is the browser. If Chromium is missing, the backend returns `browser_unavailable`.
+The sandbox is `SignupBrowser` / `SignupPage` in `apps/web/lib/signup/types.ts`. The local implementation is `playwrightSignupBrowser` in `apps/web/lib/signup/browser.ts`. Playwright is loaded with `require('@playwright/test')` only when that runtime is selected. If Chromium is missing, the backend returns `browser_unavailable` and the audit row names `runtimeSkipped: chromium_missing`.
+
+`SIGNUP_SANDBOX_RUNTIME_ENABLED` (exact `true`, no trim) selects a remote runtime instead. Unset, `true\n`, `1`, and `on` keep the local Playwright path. With the flag on, `SIGNUP_BROWSER_RUNTIME` must be exactly `local`, `vercel_sandbox`, or `browserbase`. An unset id is `not_configured` and does not open a sandbox.
+
+`vercel_sandbox` (`apps/web/lib/signup/runtime/vercel.ts`) is the Vercel Sandbox adapter. It creates a VM only when a snapshot id and credentials are also present, writes a hands script, and sends one command at a time (`open`, `snapshot`, `fill`, `select`, `continue`, `submit`, `close`). The command is a URL or a control name and value. The VM is not given `env`. OIDC and access tokens stay in this process for the SDK client. Rush classification still runs in `rawSnapshotToPage` after the snapshot comes back. The VM is created in `yul1` (Montreal). There is no fallback to `iad1`. `browserbase` (`apps/web/lib/signup/runtime/browserbase.ts`) is the empty slot: it returns `skipped: not_built` and does not start a session.
 
 The page methods are the whole interface:
 

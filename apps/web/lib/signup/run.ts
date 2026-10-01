@@ -16,6 +16,7 @@ import { inspectRegistrationPage } from './inspect';
 import { signupInfoPack } from './pack';
 import { BOOKING_CONNECTORS, type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
+import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
 import { loadBusy, loadPendingOffer, loadSignupIdentity, markOffer } from './store';
 import type { SignupBrowser, SignupPage, SignupStopReason } from './types';
 import { registrationUrlAllowed } from './url';
@@ -295,8 +296,8 @@ export async function runAuthorizedSignup(
     }
   }
 
-  const browser = await resolveBrowser(deps);
-  if (!browser) {
+  const acquired = await resolveBrowser(deps);
+  if (!acquired.browser) {
     await finish(database, input, offer.id, 'handed_back');
     return replyFor(database, input, deps, door, {
       offerId: offer.id,
@@ -305,8 +306,10 @@ export async function runAuthorizedSignup(
       link: offer.registrationUrl,
       prefilled: [],
       host,
+      runtimeSkipped: acquired.skipped,
     });
   }
+  const browser = acquired.browser;
 
   let page: SignupPage | null = null;
   const filled: string[] = [];
@@ -425,10 +428,12 @@ export async function runAuthorizedSignup(
   }
 }
 
-async function resolveBrowser(deps: SignupRunDeps): Promise<SignupBrowser | null> {
-  if (deps.browser !== undefined) return deps.browser;
-  const { playwrightSignupBrowser } = await import('./browser');
-  return playwrightSignupBrowser();
+async function resolveBrowser(deps: SignupRunDeps): Promise<SignupRuntimeAcquire> {
+  if (deps.browser !== undefined) {
+    return { runtime: 'local', browser: deps.browser, skipped: null, missing: [] };
+  }
+  const { acquireSignupBrowser } = await import('./runtime/acquire');
+  return acquireSignupBrowser();
 }
 
 async function reportDoor(database: Database, input: SignupRunInput): Promise<ReportDoor> {
@@ -486,6 +491,8 @@ interface ReplyFacts {
   line?: string;
   /** Session label for the completed line. */
   sessionLabel?: string;
+  /** Named reason the runtime handed back no browser. Absent when a browser ran. */
+  runtimeSkipped?: SignupRuntimeSkipped | null;
 }
 
 async function replyFor(
@@ -511,6 +518,7 @@ async function replyFor(
     door: door.kind,
     host: facts.host,
     fieldsFilled: facts.prefilled,
+    ...(facts.runtimeSkipped ? { runtimeSkipped: facts.runtimeSkipped } : {}),
   });
   if (door.kind === 'held') {
     return { claimed: true, outcome: facts.outcome, reply: null, deliverOnThread: false };
