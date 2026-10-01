@@ -1,3 +1,5 @@
+import { sql } from 'drizzle-orm';
+import postgres from 'postgres';
 import { describe, expect, it, vi } from 'vitest';
 import { QUERY_TIMEOUT_MS, QueryTimeoutError, createDb, guardQuery } from './client.js';
 
@@ -28,12 +30,14 @@ describe('createDb timeout discipline (audit P1-9)', () => {
     expect(db.$client.options.connection.statement_timeout).toBe(10_000);
   });
 
-  it('does not pipeline, and bounds lifetime and idle transactions', () => {
+  it('keeps one statement in flight per connection, and bounds lifetime and idle transactions', () => {
     const db = createDb({ connectionString: url });
-    // 0: one query in flight per connection. The 17 open-question readers used
-    // to pipeline onto one session; Postgres finished the check-in select and
-    // waited in ClientRead while the client waited on the rest.
-    expect((db.$client.options as { max_pipeline?: number }).max_pipeline).toBe(0);
+    // 1: the active BEGIN still reserves the connection (postgres.js runs
+    // onexecute only when sent.length < max_pipeline, and the active
+    // statement is not in `sent`). 0 skips that hook and every
+    // db.transaction throws UNSAFE_TRANSACTION. The default of 100 is what
+    // pipelined the open-question readers onto one session.
+    expect((db.$client.options as { max_pipeline?: number }).max_pipeline).toBe(1);
     expect(db.$client.options.max_lifetime).toBe(30 * 60);
     expect(db.$client.options.connection.idle_in_transaction_session_timeout).toBe(15_000);
   });
@@ -119,6 +123,56 @@ describe('Date parameters reach postgres.js as ISO strings (2026-09-09 inbound o
       const passthrough = serializers[oid];
       if (!passthrough) throw new Error(`no serializer registered for oid ${oid}`);
       expect(passthrough('{"a":1}')).toBe('{"a":1}');
+    }
+  });
+});
+
+/**
+ * UNSAFE_TRANSACTION is raised in CommandComplete, after BEGIN has reached a
+ * server, so the reproduction needs a live Postgres. CI's unit job has none.
+ * Set HALE_TEST_DATABASE_URL (a real server) to run these. The placeholder
+ * DATABASE_URL values injected for module-load and the production build are
+ * not a server.
+ */
+const PLACEHOLDER_DATABASE_URLS = new Set([
+  'postgres://test:test@localhost:5432/test',
+  'postgresql://stub:stub@localhost:5432/stub',
+]);
+
+function liveDatabaseUrl(): string | undefined {
+  const url = process.env.HALE_TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+  if (!url || PLACEHOLDER_DATABASE_URLS.has(url)) return undefined;
+  return url;
+}
+
+describe.skipIf(!liveDatabaseUrl())('createDb transactions reserve a connection', () => {
+  const url = liveDatabaseUrl() ?? '';
+
+  it('db.transaction commits through the production client (pool max > 1)', async () => {
+    const db = createDb({ connectionString: url, max: 4 });
+    try {
+      const rows = await db.transaction(async (tx) => {
+        return await tx.execute(sql`select 1 as ok`);
+      });
+      expect(rows[0]).toMatchObject({ ok: 1 });
+    } finally {
+      await db.$client.end({ timeout: 1 });
+    }
+  });
+
+  it('max_pipeline 0 throws UNSAFE_TRANSACTION on BEGIN', async () => {
+    const client = postgres(url, {
+      max: 4,
+      prepare: false,
+      connect_timeout: 5,
+      max_pipeline: 0,
+    } as postgres.Options<Record<string, postgres.PostgresType>>);
+    try {
+      await expect(client.begin(async (tx) => tx`select 1`)).rejects.toMatchObject({
+        code: 'UNSAFE_TRANSACTION',
+      });
+    } finally {
+      await client.end({ timeout: 1 });
     }
   });
 });

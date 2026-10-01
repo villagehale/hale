@@ -179,20 +179,30 @@ function installQueryGuard(sql: GuardableSql, timeoutMs: number): void {
 const DATE_OIDS = [1082, 1083, 1114, 1184] as const;
 
 export function createDb(options: CreateDbOptions) {
-  // max_pipeline is honoured by postgres.js 3.4.5 and missing from its
+  // max_pipeline is honoured by postgres.js 3.4.5+ and missing from its
   // published Options type. It is read when each connection is constructed,
   // so it has to be on the object passed to postgres(), not set afterwards.
-  // 0: one query in flight per connection. The driver otherwise pipelines up
-  // to 100 extended-query messages before reading. Supavisor transaction mode
-  // does not tolerate that — the backend finishes the first statement and sits
-  // active/ClientRead with the transaction open, waiting for a client that is
-  // waiting on the other in-flight queries. statement_timeout never starts.
+  //
+  // 1 is the smallest limit at which sql.begin still reserves the
+  // connection, and the limit that stops a pipeline from filling.
+  // connection.js runs the reservation hook only when
+  // `sent.length < max_pipeline`. The statement currently executing is not
+  // in `sent`, so a limit of 0 skips the hook on every BEGIN.
+  // CommandComplete then throws UNSAFE_TRANSACTION ("Only use sql.begin,
+  // sql.reserved or max: 1") and every db.transaction fails — the reply is
+  // already on the phone, and the ledger write never lands. With 1 the
+  // active BEGIN reserves (`0 < 1`). Once one statement sits in `sent`,
+  // `sent.length < 1` is false and the connection is marked full, so the
+  // open-question readers cannot pile a hundred statements onto one
+  // session the way the driver's default of 100 did. That pile-up is what
+  // left Supavisor active/ClientRead with statement_timeout never started
+  // (#732).
   const driverOptions = {
     max: options.max ?? 10,
     idle_timeout: options.idleTimeout ?? 20,
     prepare: false,
     connect_timeout: options.connectTimeoutSeconds ?? 5,
-    max_pipeline: 0,
+    max_pipeline: 1,
     max_lifetime: MAX_LIFETIME_SECONDS,
     connection: {
       statement_timeout: options.statementTimeoutMs ?? 10_000,

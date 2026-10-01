@@ -2110,7 +2110,26 @@ async function sendReply(
     }
   }
   const sent = await deps.transport.send({ route: args.route, body: args.body });
-  if (args.claim) await args.claim();
+  // The claim is a transaction (auditTurnLedger.recordAnswered). It can fail
+  // after the carrier has already accepted the reply — UNSAFE_TRANSACTION did,
+  // on every turn, while max_pipeline was 0. The outbound channel_messages row
+  // and the assistant thread row below are the receipt Hale reads back. They
+  // stay outside that transaction, so a ledger failure leaves the reply on
+  // record and does not fail the turn.
+  if (args.claim) {
+    try {
+      await args.claim();
+    } catch (err) {
+      deps.log.warn(
+        {
+          channelMessageId: args.job.channel_message_id,
+          familyId: args.job.family_id,
+          err: err instanceof Error ? err.message : 'unknown',
+        },
+        'channel router: the reply landed; the answer ledger did not',
+      );
+    }
+  }
   await mirrorActivityDecision(deps, args);
 
   // The channel that CARRIED it, reported by the send rather than assumed from the
