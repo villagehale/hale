@@ -21,6 +21,7 @@ import {
   alertParentForEmail,
   alertParentForGmailSweep,
   emailAlertDedupeKey,
+  emailAlertOfferDraft,
   renderEmailAlert,
 } from './email-alert';
 import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
@@ -1242,6 +1243,127 @@ describe('the offer at the end', () => {
 
     expect(h.transport.sent[0]?.body).not.toContain('YES');
     await expect(offerRows()).resolves.toHaveLength(0);
+  });
+
+  it('names a Google Calendar event and does not offer to add it', async () => {
+    // The event is already on the parent's calendar. "Reply YES and it goes on your
+    // week" asks them to add it again. The notice is the name and the time.
+    const when = '2026-10-01T20:15:00.000Z';
+    const from = 'Google Calendar <calendar-notification@google.com>';
+    const event = {
+      title: 'Gymnastics',
+      childRef: null,
+      originalTime: when,
+      newTime: null,
+      location: 'the gym',
+    };
+    const notice = sentence({
+      ...RENDER_FOR_OFFER,
+      from,
+      kind: 'reminder_only',
+      event,
+    });
+    expect(notice).toBe('Gymnastics on Thursday, Oct 1 at 4:15 p.m.');
+    expect(notice).not.toContain('YES');
+    expect(notice).not.toContain('STOP');
+    expect(notice).not.toContain('Google Calendar');
+    // The classifier may file the same reminder as a new date. Same notice, and the
+    // place stays off it: the parent already has the event.
+    expect(
+      sentence({
+        ...RENDER_FOR_OFFER,
+        from,
+        kind: 'new_event',
+        event: { ...event, originalTime: null, newTime: when },
+      }),
+    ).toBe(notice);
+    expect(
+      emailAlertOfferDraft({
+        kind: 'reminder_only',
+        event,
+        teenContent: false,
+        matchedEventRef: null,
+        booked: false,
+        from,
+        now: NOW,
+      }),
+    ).toBeNull();
+
+    // The address alone is enough. A display name that is not Google Calendar is not.
+    expect(
+      sentence({
+        ...RENDER_FOR_OFFER,
+        from: 'calendar-notification@google.com',
+        kind: 'reminder_only',
+        event,
+      }),
+    ).toBe(notice);
+    const school = sentence({
+      ...RENDER_FOR_OFFER,
+      from: 'Google Classroom <classroom-noreply@google.com>',
+      kind: 'new_event',
+      event: { ...event, originalTime: null, newTime: when, location: null },
+    });
+    expect(school).toBe(
+      'Google Classroom has Gymnastics on Thursday, Oct 1 at 4:15 p.m. Reply YES and it goes on your week.',
+    );
+
+    const h = harness({
+      classification: classified({
+        kind: 'reminder_only',
+        title: 'Gymnastics',
+        originalTime: when,
+        newTime: null,
+        location: 'the gym',
+      }),
+    });
+    await expect(
+      alertPair(h, 'm-cal', {
+        envelope: {
+          subject: 'Notification: Gymnastics',
+          from,
+          snippet: 'Gymnastics tomorrow',
+          receivedAt: '2026-09-17T14:00:00.000Z',
+        },
+      }),
+    ).resolves.toMatchObject({ alert: 'sent' });
+    expect(h.transport.sent[0]?.body).toBe(notice);
+    expect(h.threaded[0]?.body).toBe(notice);
+    await expect(offerRows()).resolves.toHaveLength(0);
+  });
+
+  it('keeps a calendar cancellation as the change, still with no offer', () => {
+    const body = sentence({
+      ...RENDER_FOR_OFFER,
+      from: 'Google Calendar <calendar-notification@google.com>',
+      kind: 'cancellation',
+      event: {
+        title: 'Gymnastics',
+        childRef: null,
+        originalTime: '2026-10-01T20:15:00.000Z',
+        newTime: null,
+        location: null,
+      },
+    });
+    expect(body).toBe('Google Calendar cancelled Gymnastics - it was Thursday, Oct 1 at 4:15 p.m.');
+    expect(body).not.toContain('YES');
+    // A move is still the change. It is already on the calendar, so it is not an offer.
+    const moved = sentence({
+      ...RENDER_FOR_OFFER,
+      from: 'Google Calendar <calendar-notification@google.com>',
+      kind: 'reschedule',
+      event: {
+        title: 'Gymnastics',
+        childRef: null,
+        originalTime: '2026-10-01T20:15:00.000Z',
+        newTime: '2026-10-02T20:15:00.000Z',
+        location: null,
+      },
+    });
+    expect(moved).toBe(
+      'Google Calendar moved Gymnastics to Friday, Oct 2 at 4:15 p.m. (was Oct 1).',
+    );
+    expect(moved).not.toContain('YES');
   });
 
   it('puts the clause after the sentence ends, once, and never inside a teen text', () => {
