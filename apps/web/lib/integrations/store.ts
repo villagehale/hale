@@ -240,7 +240,9 @@ export interface SweepableConnectorConnection {
 /** The connection statuses the poll sweep retries. 'error' is included: a
  * markConnectionError leaves the cursor intact, so re-running from the last good
  * point is safe and lets a transient Google 5xx/429 self-heal (a successful sync
- * flips it back to 'active'). 'revoked' stays out — its tokens are purged. */
+ * flips it back to 'active'). A gmail row parked on google_404 is the same shape —
+ * nothing here filters on last_error_code, and the cursor write that ends a
+ * successful run clears the code. 'revoked' stays out — its tokens are purged. */
 const SWEEPABLE_STATUSES: Array<(typeof schema.integrations.status.enumValues)[number]> = [
   'active',
   'error',

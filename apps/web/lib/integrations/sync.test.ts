@@ -601,6 +601,162 @@ describe('syncConnection — Gmail', () => {
     onlyEvent(cap);
     expect(cap.cursor).toEqual({ historyId: '9100' });
   });
+
+  it('a messages.get 404 skips that message and keeps the connection healthy', async () => {
+    // Deleted or trashed between history.list and the fetch. One missing id used to
+    // park the whole mailbox on google_404; the rest of the batch is still real mail.
+    const logged = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchImpl: GoogleFetch = async (url) => {
+      if (url.includes('/messages/gone')) {
+        return { ok: false, status: 404, json: async () => ({ error: { code: 404 } }) };
+      }
+      if (url.includes('/messages/m2')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: 'm2',
+            snippet: 'hello',
+            payload: { headers: [{ name: 'Subject', value: 'Hi' }] },
+          }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          history: [{ messagesAdded: [{ message: { id: 'gone' } }, { message: { id: 'm2' } }] }],
+          historyId: '9100',
+        }),
+      };
+    };
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    expect(cap.errored).toBe(false);
+    expect(cap.enqueued.map((event) => event.payload.id)).toEqual(['m2']);
+    expect(cap.cursor).toEqual({ historyId: '9100' });
+    expect(cap.alerted[0]?.seeding).toBe(false);
+    expect(cap.alerted[0]?.envelopes.map((envelope) => envelope.messageId)).toEqual(['m2']);
+    // mockRestore clears the call record along with the stub.
+    expect(logged).toHaveBeenCalledWith(
+      { integrationId: 'i1', skippedNotFound: 1 },
+      'connector sync: gmail messages gone before fetch, skipped',
+    );
+    logged.mockRestore();
+  });
+
+  it('a history.list 404 re-seeds like a first run and does not alert on the old mail', async () => {
+    // Gmail's history window moved past the stored historyId. The recovery is the
+    // seeding run: profile cursor, a bounded page of mail already in the mailbox,
+    // and seeding so those messages are not texts. The cursor write is also what
+    // clears status=error / last_error_code — the sweep already retries error rows.
+    const urls: string[] = [];
+    const logged = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchImpl: GoogleFetch = async (url) => {
+      urls.push(url);
+      if (url.includes('/history')) {
+        return { ok: false, status: 404, json: async () => ({ error: { code: 404 } }) };
+      }
+      if (url.includes('/profile')) {
+        return { ok: true, status: 200, json: async () => ({ historyId: '9500' }) };
+      }
+      if (url.includes('/messages/m1')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: 'm1',
+            snippet: 'already read',
+            payload: { headers: [{ name: 'Subject', value: 'Old mail' }] },
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ messages: [{ id: 'm1' }] }) };
+    };
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gmail', { historyId: '22161400' }), deps);
+
+    expect(cap.errored).toBe(false);
+    expect(cap.cursor).toEqual({ historyId: '9500' });
+    expect(cap.enqueued.map((event) => event.payload.id)).toEqual(['m1']);
+    expect(cap.alerted[0]?.seeding).toBe(true);
+    expect(cap.travelDetected[0]?.seeding).toBe(true);
+    expect(urls.filter((url) => url.includes('/history'))).toHaveLength(1);
+    expect(urls.some((url) => url.includes('/profile'))).toBe(true);
+    expect(urls.some((url) => url.includes('/messages?maxResults=25'))).toBe(true);
+    expect(logged).toHaveBeenCalledWith(
+      { integrationId: 'i1' },
+      'connector sync: gmail historyId expired, re-seeding',
+    );
+    logged.mockRestore();
+  });
+
+  it('a 404 that is not a deleted message or a stale historyId still errors the connection', async () => {
+    // messages.list during a seed is neither recoverable 404. Swallowing it would
+    // advance a cursor over a mailbox we never read.
+    const fetchImpl: GoogleFetch = async (url) => {
+      if (url.includes('/profile')) {
+        return { ok: true, status: 200, json: async () => ({ historyId: '9002' }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    };
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gmail', {}), deps);
+
+    expect(cap.errored).toBe(true);
+    expect(cap.errorCode).toBe('google_404');
+    expect(cap.cursor).toBeUndefined();
+    expect(cap.enqueued).toHaveLength(0);
+    expect(cap.alerted).toEqual([]);
+  });
+
+  it('a non-404 failure on messages.get still errors the connection and leaves the cursor', async () => {
+    const fetchImpl: GoogleFetch = async (url) => {
+      if (url.includes('/messages/m2')) {
+        return { ok: false, status: 500, json: async () => ({}) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          history: [{ messagesAdded: [{ message: { id: 'm2' } }] }],
+          historyId: '9100',
+        }),
+      };
+    };
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    expect(cap.errored).toBe(true);
+    expect(cap.errorCode).toBe('google_500');
+    expect(cap.cursor).toBeUndefined();
+    expect(cap.enqueued).toHaveLength(0);
+  });
+
+  it('a 404 on a later history page still errors — only the startHistoryId 404 re-seeds', async () => {
+    const fetchImpl: GoogleFetch = async (url) => {
+      if (url.includes('pageToken=H2')) {
+        return { ok: false, status: 404, json: async () => ({}) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          history: [{ messagesAdded: [{ message: { id: 'm1' } }] }],
+          nextPageToken: 'H2',
+          historyId: '9100',
+        }),
+      };
+    };
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    expect(cap.errored).toBe(true);
+    expect(cap.errorCode).toBe('google_404');
+    expect(cap.cursor).toBeUndefined();
+    expect(cap.enqueued).toHaveLength(0);
+  });
 });
 
 describe('syncConnection — the gmail alert hand-off', () => {
