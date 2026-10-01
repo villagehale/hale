@@ -2,14 +2,13 @@ import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte } from 'drizzle-orm';
 import { writeFact } from '~/lib/memory/facts';
+import { dutyCopyMayLeave, dutyTitleMayBeSpoken } from './copy';
 import {
   DUTY_BURDEN_ANSWER_TODO,
   DUTY_DEFAULT_OWNER_TODO,
   DUTY_LOPSIDED_CONSENT_TODO,
   DUTY_LOPSIDED_NUDGE_TODO,
-  dutyCopyMayLeave,
-  dutyTitleMayBeSpoken,
-} from './copy';
+} from './placeholders';
 import {
   coparentDutyBurdenSurfaceEnabled,
   coparentDutyLopsidedEnabled,

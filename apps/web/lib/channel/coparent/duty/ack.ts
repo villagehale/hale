@@ -1,5 +1,8 @@
-import { isWithinQuietHours } from '~/lib/loop/prefs';
+import { type Database, schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
+import { acceptedStatus } from '~/lib/channel/ledger';
 import { LinqSendError, reactToLinqMessage, sendLinqChatMessage } from '~/lib/channel/linq/transport';
+import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { dutyOwnerEcho, dutyTitleMayBeSpoken } from './copy';
 import { coparentDutyMemoryEnabled } from './flag';
 
@@ -40,6 +43,9 @@ export type DutyAck =
     };
 
 export async function acknowledgeDutyWrite(input: {
+  database: Database;
+  familyId: string;
+  actorUserId: string;
   source: 'rules' | 'llm' | 'text' | 'poll' | 'tapback';
   now: Date;
   timeZone: string;
@@ -63,15 +69,45 @@ export async function acknowledgeDutyWrite(input: {
   if (!input.inboundChatId) return skip('no_proactive_1to1');
   if (input.event && !dutyTitleMayBeSpoken(input.event)) return skip('non_kid_title');
 
-  if (input.source === 'llm') {
-    const line = dutyOwnerEcho(input.language, {
-      name: input.name,
-      kid: input.kid,
-      event: input.event,
-      day: input.day,
-      time: input.time,
-    });
-    if (!line) return skip('copy_locked');
+  const templateKey = input.source === 'llm' ? 'linq:duty_restate' : 'linq:duty_tapback';
+  const line =
+    input.source === 'llm'
+      ? dutyOwnerEcho(input.language, {
+          name: input.name,
+          kid: input.kid,
+          event: input.event,
+          day: input.day,
+          time: input.time,
+        })
+      : null;
+  if (input.source === 'llm' && !line) return skip('copy_locked');
+  if (input.source !== 'llm' && !input.inboundMessageId) return skip('no_proactive_1to1');
+
+  const [claimed] = await input.database
+    .insert(schema.channelMessages)
+    .values({
+      familyId: input.familyId,
+      parentUserId: input.actorUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reply',
+      templateKey,
+      dedupeKey: `linq:duty_ack:${input.familyId}:${input.inboundMessageId ?? input.now.toISOString()}`,
+      providerChatId: input.inboundChatId,
+      status: acceptedStatus('imessage'),
+      sentAt: input.now,
+    })
+    .returning({ id: schema.channelMessages.id });
+  if (!claimed) return skip('not_configured');
+
+  const markFailed = async (code: string) => {
+    await input.database
+      .update(schema.channelMessages)
+      .set({ status: 'failed', errorCode: code })
+      .where(eq(schema.channelMessages.id, claimed.id));
+  };
+
+  if (input.source === 'llm' && line) {
     try {
       await sendLinqChatMessage({
         chatId: input.inboundChatId,
@@ -80,15 +116,17 @@ export async function acknowledgeDutyWrite(input: {
       });
       return { status: 'restated', sent: true, text: line };
     } catch (err) {
-      if (err instanceof LinqSendError && err.code === 'not_configured') return skip('not_configured');
+      if (err instanceof LinqSendError && err.code === 'not_configured') {
+        await markFailed('not_configured');
+        return skip('not_configured');
+      }
       throw err;
     }
   }
 
-  if (!input.inboundMessageId) return skip('no_proactive_1to1');
   try {
     await reactToLinqMessage({
-      messageId: input.inboundMessageId,
+      messageId: input.inboundMessageId as string,
       operation: 'add',
       type: 'like',
       fetch: input.fetch,
@@ -96,6 +134,7 @@ export async function acknowledgeDutyWrite(input: {
     return { status: 'tapback', sent: false, text: null };
   } catch (err) {
     if (err instanceof LinqSendError && err.code === 'not_configured') {
+      await markFailed('not_configured');
       console.info({ reason: 'not_configured' }, 'duty memory: tapback was not sent');
       return skip('not_configured');
     }

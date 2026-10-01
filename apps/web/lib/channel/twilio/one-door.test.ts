@@ -70,6 +70,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'group notices for kid events, conflicts, handoffs, and how-it-went; sendGroupNotice inserts the channel_messages row before the Linq send',
   'apps/web/lib/channel/coparent/duty/asks.ts':
     'duty asks in the co-parent group; deliverDutyGroupLine inserts the channel_messages row (category duty_ask, provider chat id is the group) before sendLinqChatMessage, and a family with no group returns no_group without calling the transport',
+  'apps/web/lib/channel/coparent/duty/ack.ts':
+    'duty tapback and one-line restate on the chat the parent just used; acknowledgeDutyWrite inserts the channel_messages row (category reply, template linq:duty_tapback or linq:duty_restate) before reactToLinqMessage or sendLinqChatMessage, and a missing chat id returns no_proactive_1to1 without calling the transport',
   'apps/web/lib/channel/linq/family-outbound.ts':
     'the household outbound resolver; proactive callers ledger the row beside deliverFamilyOutbound, postGroupDecisionSync inserts its own channel_messages row before the Linq send, and sendClaimedGroupLine does the same before mirroring a memory decision into the claimed group only',
   'apps/web/lib/billing/upgrade-ask.ts':

@@ -1,7 +1,21 @@
+import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { acknowledgeDutyWrite, dutyQuietHours } from './ack';
 import { COPARENT_DUTY_COPY_LOCKED_ENV } from './copy';
 import { COPARENT_DUTY_MEMORY_ENABLED_ENV } from './flag';
-import { acknowledgeDutyWrite, dutyQuietHours } from './ack';
+
+const FAMILY = '11111111-1111-4111-8111-111111111111';
+const ACTOR = '22222222-2222-4222-8222-222222222222';
+
+function ledgerDb(): Database {
+  const returning = vi.fn().mockResolvedValue([{ id: 'ledger-1' }]);
+  const values = vi.fn().mockReturnValue({ returning });
+  const insert = vi.fn().mockReturnValue({ values });
+  const where = vi.fn().mockResolvedValue(undefined);
+  const set = vi.fn().mockReturnValue({ where });
+  const update = vi.fn().mockReturnValue({ set });
+  return { insert, update } as unknown as Database;
+}
 
 const CHAT = 'chat-parent-started';
 const DAY = new Date('2026-09-24T15:00:00.000Z');
@@ -34,6 +48,9 @@ describe('acknowledgeDutyWrite', () => {
     expect(dutyQuietHours(DAY, 'America/Toronto')).toBe(false);
     const wire = http();
     const held = await acknowledgeDutyWrite({
+      database: ledgerDb(),
+      familyId: FAMILY,
+      actorUserId: ACTOR,
       source: 'rules',
       now: QUIET,
       timeZone: 'America/Toronto',
@@ -49,6 +66,9 @@ describe('acknowledgeDutyWrite', () => {
     });
     expect(held).toEqual({ status: 'held', reason: 'quiet_hours', sent: false, text: null });
     const unsolicited = await acknowledgeDutyWrite({
+      database: ledgerDb(),
+      familyId: FAMILY,
+      actorUserId: ACTOR,
       source: 'llm',
       now: DAY,
       timeZone: 'America/Toronto',
@@ -76,6 +96,9 @@ describe('acknowledgeDutyWrite', () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const tap = http();
     const tapped = await acknowledgeDutyWrite({
+      database: ledgerDb(),
+      familyId: FAMILY,
+      actorUserId: ACTOR,
       source: 'rules',
       now: DAY,
       timeZone: 'America/Toronto',
@@ -98,6 +121,9 @@ describe('acknowledgeDutyWrite', () => {
 
     const rest = http();
     const restated = await acknowledgeDutyWrite({
+      database: ledgerDb(),
+      familyId: FAMILY,
+      actorUserId: ACTOR,
       source: 'llm',
       now: DAY,
       timeZone: 'America/Toronto',
@@ -126,6 +152,9 @@ describe('acknowledgeDutyWrite', () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const wire = http();
     const skipped = await acknowledgeDutyWrite({
+      database: ledgerDb(),
+      familyId: FAMILY,
+      actorUserId: ACTOR,
       source: 'llm',
       now: DAY,
       timeZone: 'America/Toronto',

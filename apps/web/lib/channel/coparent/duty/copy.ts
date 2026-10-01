@@ -315,28 +315,6 @@ export function absorbDutyLine(weekly: string, line: string | null | undefined):
 export const DUTY_CHANGE_NEXT_EN = 'Say so here if that changes.';
 export const DUTY_CHANGE_NEXT_FR = 'Dites-le ici si ca change.';
 
-/**
- * TODO-Design — not locked. These must not leave. The memory flag does not
- * unlock them. `dutyCopyMayLeave` rejects the marker. Listed for Design in
- * the VIL-383 PR. No counts, no event titles, no STOP wording.
- */
-export const DUTY_UNDO_TEXT_TODO = 'TODO-Design: Done. Say so here if that is wrong.';
-export const DUTY_BURDEN_ANSWER_TODO =
-  'TODO-Design: I can answer that in words once this line is locked. Want me to keep the counts internal?';
-export const DUTY_DEFAULT_OWNER_TODO =
-  'TODO-Design: Want this as the usual plan? Say yes or no.';
-export const DUTY_LOPSIDED_CONSENT_TODO =
-  'TODO-Design: Want me to keep an eye on keeping things balanced? Say yes or no.';
-export const DUTY_LOPSIDED_NUDGE_TODO = 'TODO-Design: Want the open one? Say yes or no.';
-
-export const DUTY_PLACEHOLDER_COPY = [
-  DUTY_UNDO_TEXT_TODO,
-  DUTY_BURDEN_ANSWER_TODO,
-  DUTY_DEFAULT_OWNER_TODO,
-  DUTY_LOPSIDED_CONSENT_TODO,
-  DUTY_LOPSIDED_NUDGE_TODO,
-] as const;
-
 /** Kid-word title only. A child's name alone does not make an adult title speakable. */
 export function dutyTitleMayBeSpoken(title: string | null | undefined): boolean {
   const trimmed = title?.trim() ?? '';

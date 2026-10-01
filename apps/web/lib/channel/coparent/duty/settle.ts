@@ -72,6 +72,9 @@ export async function settleDutyMemory(
   });
   if (undo.status === 'undone' || undo.status === 'reassigned') {
     const ack = await acknowledgeDutyWrite({
+      database,
+      familyId: input.familyId,
+      actorUserId: input.actorUserId,
       source: 'text',
       now: input.now,
       timeZone,
@@ -126,6 +129,9 @@ export async function settleDutyMemory(
       askWhichKid: false,
     });
     const ack = await acknowledgeDutyWrite({
+      database,
+      familyId: input.familyId,
+      actorUserId: input.actorUserId,
       source: 'text',
       now: input.now,
       timeZone,
@@ -183,6 +189,9 @@ export async function settleDutyMemory(
     return { status: 'skipped', reason: committed.reason, sent: false, spoken: null };
   }
   const ack = await acknowledgeDutyWrite({
+    database,
+    familyId: input.familyId,
+    actorUserId: input.actorUserId,
     source: interpreted.method === 'llm' ? 'llm' : 'rules',
     now: input.now,
     timeZone,

@@ -159,11 +159,10 @@ export async function projectDutyOnFamilyEvent(
     .update(schema.familyEvents)
     .set(next)
     .where(and(eq(schema.familyEvents.id, event.id), eq(schema.familyEvents.familyId, input.familyId)));
-  await database.insert(schema.auditLog).values({
+  const audit = {
     familyId: input.familyId,
     actor: input.actorUserId,
-    actionTaken: owner ? 'duty_calendar_projected' : 'duty_calendar_cleared',
-    targetTable: 'family_events',
+    targetTable: 'family_events' as const,
     targetId: event.id,
     before: {
       dutyOwnerUserId: event.dutyOwnerUserId,
@@ -173,7 +172,18 @@ export async function projectDutyOnFamilyEvent(
       dutyFactKey: event.dutyFactKey,
     },
     after: next,
-  });
+  };
+  if (owner) {
+    await database.insert(schema.auditLog).values({
+      ...audit,
+      actionTaken: 'duty_calendar_projected',
+    });
+  } else {
+    await database.insert(schema.auditLog).values({
+      ...audit,
+      actionTaken: 'duty_calendar_cleared',
+    });
+  }
   return owner ? { status: 'updated', eventId: event.id } : { status: 'cleared', eventId: event.id };
 }
 
