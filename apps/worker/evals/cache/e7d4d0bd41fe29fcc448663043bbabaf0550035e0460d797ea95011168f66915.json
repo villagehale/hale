@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "not right now",
+    "rationale": "Explicit refusal phrase \"not right now\"",
+    "confidence": 0.95
+  },
+  "latencyMs": 1432
+}

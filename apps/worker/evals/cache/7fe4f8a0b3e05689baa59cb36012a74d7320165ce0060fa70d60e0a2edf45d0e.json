@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "don't text me about it",
+    "rationale": "Explicit refusal of further contact",
+    "confidence": 0.95
+  },
+  "latencyMs": 1409
+}

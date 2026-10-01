@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "maybe later",
+    "rationale": "\"maybe later\" is a deferral/soft no, explicitly listed as a decline example",
+    "confidence": 0.85
+  },
+  "latencyMs": 1621
+}

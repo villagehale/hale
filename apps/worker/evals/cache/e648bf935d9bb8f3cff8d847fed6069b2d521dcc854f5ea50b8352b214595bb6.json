@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "I'd rather handle this myself",
+    "rationale": "Parent explicitly states preference to handle it themselves, declining the offer",
+    "confidence": 0.95
+  },
+  "latencyMs": 1399
+}

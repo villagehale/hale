@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "nah, we're good",
+    "rationale": "\"nah, we're good\" is a clear refusal",
+    "confidence": 0.97
+  },
+  "latencyMs": 1380
+}

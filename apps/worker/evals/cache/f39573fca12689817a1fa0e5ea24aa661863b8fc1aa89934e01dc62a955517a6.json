@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "her name is spelled Mya",
+    "rationale": "Reply provides unrelated intake detail, not an answer to the yes/no question asked",
+    "confidence": 0.97
+  },
+  "latencyMs": 1637
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "please don't keep watching",
+    "rationale": "Explicit request not to continue, a clear refusal",
+    "confidence": 0.97
+  },
+  "latencyMs": 1495
+}
