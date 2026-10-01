@@ -179,7 +179,7 @@ export async function discoverabilityGranted(
         eq(schema.consentRecords.consentScope, DISCOVERABILITY_SCOPE),
       ),
     )
-    .orderBy(desc(schema.consentRecords.grantedAt))
+    .orderBy(desc(schema.consentRecords.grantedAt), desc(schema.consentRecords.id))
     .limit(1);
   return latest?.granted === true && latest.revokedAt === null;
 }
@@ -236,7 +236,7 @@ export async function discoverableUserIds(
         eq(schema.consentRecords.consentScope, DISCOVERABILITY_SCOPE),
       ),
     )
-    .orderBy(desc(schema.consentRecords.grantedAt));
+    .orderBy(desc(schema.consentRecords.grantedAt), desc(schema.consentRecords.id));
 
   const decided = new Set<string>();
   const granted = new Set<string>();

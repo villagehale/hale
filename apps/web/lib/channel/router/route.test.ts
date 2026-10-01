@@ -1581,6 +1581,35 @@ describe('a re-driven turn never answers twice', () => {
     expect(redriven.transport.sent).toEqual([]);
   });
 
+  /**
+   * The claim itself is the transaction. When that transaction throws after the
+   * carrier has accepted the reply (UNSAFE_TRANSACTION, every turn, while
+   * max_pipeline was 0), the turn used to die in disposeOfFailedTurn as
+   * broke_after_answering before the outbound row and the assistant thread row
+   * existed. Hale had texted, and then could not see its own reply. The ledger
+   * failure is logged; the receipt is still written, outside that transaction.
+   */
+  it('keeps the outbound row and the assistant message when the answer ledger throws after the send', async () => {
+    const turns = fakeTurnLedger();
+    turns.recordAnswered = async () => {
+      throw new Error('UNSAFE_TRANSACTION');
+    };
+    const coach = fakeCoach('Splash pad opens at 10.');
+    const h = harness({ coach, turns });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.bodies()).toEqual(['Splash pad opens at 10.']);
+    expect(ledgerRows(h.fake).filter((row) => row.direction === 'out')).toHaveLength(1);
+    expect(messageRows(h.fake).map((row) => [row.role, row.content])).toEqual([
+      ['user', 'anything indoors this weekend?'],
+      ['assistant', 'Splash pad opens at 10.'],
+    ]);
+    expect(JSON.stringify(h.logs)).toContain('the reply landed; the answer ledger did not');
+    expect(JSON.stringify(h.logs)).not.toContain('brokeAfterAnswering');
+  });
+
   it('claims the caregiver line too — it is an answer like any other', async () => {
     const turns = fakeTurnLedger();
     const first = harness({ context: { role: 'nanny' }, turns });

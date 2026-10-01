@@ -1157,7 +1157,7 @@ export async function hasAutonomousActionOptIn(
         eq(schema.consentRecords.consentScope, actionType),
       ),
     )
-    .orderBy(desc(schema.consentRecords.grantedAt))
+    .orderBy(desc(schema.consentRecords.grantedAt), desc(schema.consentRecords.id))
     .limit(1);
 
   const row = latest[0];

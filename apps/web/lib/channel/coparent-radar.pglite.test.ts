@@ -31,13 +31,9 @@ const PARTNER_PHONE = '+16475550199';
 const NANNY_PHONE = '+16475550177';
 const NOW = new Date('2026-09-15T12:00:00.000Z');
 /**
- * When the departing parent leaves — the REAL clock plus an hour, not `NOW` plus one.
- *
- * `consent_records.granted_at` defaults to the insert's own wall clock, and a withdrawal
- * is an APPENDED `granted=false` row that only supersedes the grant by being NEWER. In
- * production both stamps come from the same monotonic clock so the ordering is free; in
- * a fixture whose `NOW` sits in the past, a withdrawal stamped `NOW + 1h` is older than
- * the grant it is meant to end, and latest-row-wins correctly reads the grant.
+ * When the departing parent leaves. The seating grant is stamped with `NOW`, and a
+ * withdrawal supersedes it only by being newer, so this sits an hour past the real
+ * clock — after `NOW`, and after any other row this file writes at wall time.
  */
 const LATER = new Date(Date.now() + 3_600_000);
 

@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { POLICY_VERSION } from '~/lib/consent';
 import { appendMcpGrantWithdrawals } from '~/lib/mcp/oauth-store';
@@ -91,8 +91,10 @@ export type CoParentDeparture =
  * the forwardable link writes `sms_join_origination`. Appending a withdrawal for a scope
  * that was never granted would be a false ledger row, and leaving the other standing
  * would be a worse one. The ledger convention is the house's: latest row by
- * `granted_at` wins, and a withdrawal is an APPENDED `granted=false` row, never an
- * update (`revokeSmsChannel`, `sms-consent-core.ts:352`).
+ * `granted_at` wins, and a row with the same `granted_at` loses to the greater
+ * id, so two stamps in the same instant do not depend on scan order. A
+ * withdrawal is an APPENDED `granted=false` row, never an update
+ * (`revokeSmsChannel`, `sms-consent-core.ts:352`).
  */
 async function standingMessagingScopes(
   tx: Database,
@@ -100,9 +102,9 @@ async function standingMessagingScopes(
 ): Promise<(string | null)[]> {
   const rows = await tx
     .select({
+      id: schema.consentRecords.id,
       consentScope: schema.consentRecords.consentScope,
       granted: schema.consentRecords.granted,
-      grantedAt: schema.consentRecords.grantedAt,
     })
     .from(schema.consentRecords)
     .where(
@@ -111,15 +113,14 @@ async function standingMessagingScopes(
         eq(schema.consentRecords.familyId, input.familyId),
         eq(schema.consentRecords.consentType, 'sms_service_messages'),
       ),
-    );
+    )
+    .orderBy(desc(schema.consentRecords.grantedAt), desc(schema.consentRecords.id));
 
-  const latest = new Map<string, { granted: boolean; grantedAt: Date; scope: string | null }>();
+  const latest = new Map<string, { granted: boolean; scope: string | null }>();
   for (const row of rows) {
     const key = row.consentScope ?? '';
-    const held = latest.get(key);
-    if (!held || row.grantedAt >= held.grantedAt) {
-      latest.set(key, { granted: row.granted, grantedAt: row.grantedAt, scope: row.consentScope });
-    }
+    if (latest.has(key)) continue;
+    latest.set(key, { granted: row.granted, scope: row.consentScope });
   }
   return [...latest.values()].filter((v) => v.granted).map((v) => v.scope);
 }

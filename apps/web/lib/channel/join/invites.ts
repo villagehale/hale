@@ -359,6 +359,9 @@ export async function redeemJoinInvite(
         granted: true,
         consentScope: JOIN_CONSENT_SCOPE,
         policyVersion: POLICY_VERSION,
+        // Same clock as the burn and the channel. The column default is the
+        // database clock, and a later withdrawal compares granted_at against it.
+        grantedAt: now,
         evidence: {
           verbatimReply: input.verbatimReply,
           interpretation: 'co-parent originated contact by texting their join link',

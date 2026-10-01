@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { POLICY_VERSION } from '../consent.js';
 
 /**
@@ -245,8 +245,9 @@ export async function selectOrphanedUsers(
  *
  * The same latest-row-wins convention `departCoParent` reads by, for the same reason: a
  * withdrawal is an APPENDED `granted=false` row, so the ledger carries both answers and
- * only the newest one is true. Appending a withdrawal for a scope that was never granted
- * would be a false row; leaving a standing one would be a worse one.
+ * only the newest one is true. Equal `granted_at` breaks on id descending, the same
+ * tie the departure reader uses. Appending a withdrawal for a scope that was never
+ * granted would be a false row; leaving a standing one would be a worse one.
  */
 async function standingMessagingConsents(
   tx: Database,
@@ -257,7 +258,6 @@ async function standingMessagingConsents(
       familyId: schema.consentRecords.familyId,
       consentScope: schema.consentRecords.consentScope,
       granted: schema.consentRecords.granted,
-      grantedAt: schema.consentRecords.grantedAt,
     })
     .from(schema.consentRecords)
     .where(
@@ -265,16 +265,17 @@ async function standingMessagingConsents(
         eq(schema.consentRecords.userId, userId),
         eq(schema.consentRecords.consentType, 'sms_service_messages'),
       ),
-    );
+    )
+    .orderBy(desc(schema.consentRecords.grantedAt), desc(schema.consentRecords.id));
 
   const latest = new Map<
     string,
-    { granted: boolean; grantedAt: Date; familyId: string | null; consentScope: string | null }
+    { granted: boolean; familyId: string | null; consentScope: string | null }
   >();
   for (const row of rows) {
     const key = `${row.familyId ?? ''}|${row.consentScope ?? ''}`;
-    const held = latest.get(key);
-    if (!held || row.grantedAt >= held.grantedAt) latest.set(key, row);
+    if (latest.has(key)) continue;
+    latest.set(key, row);
   }
   return [...latest.values()]
     .filter((v) => v.granted)

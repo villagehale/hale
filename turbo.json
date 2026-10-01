@@ -30,7 +30,8 @@
       "dependsOn": ["^build"]
     },
     "test": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "env": ["HALE_TEST_DATABASE_URL"]
     },
     "clean": {
       "cache": false
