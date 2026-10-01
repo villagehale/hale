@@ -96,7 +96,8 @@ export interface SyncDeps {
 export interface GmailAlertBatch {
   connection: ActiveConnectorConnection;
   accessToken: string;
-  /** This run had no stored historyId, so its messages are the mailbox's existing 25. */
+  /** This run seeded the cursor — a first sync, or a re-seed after Gmail expired the
+   * stored historyId — so its messages are the mailbox's existing 25. */
   seeding: boolean;
   envelopes: readonly GmailAlertEnvelope[];
 }
@@ -130,6 +131,7 @@ export interface SyncConnectionResult {
 }
 
 const GONE = 410;
+const NOT_FOUND = 404;
 /** Refresh a token this many ms before its stated expiry, so a sync doesn't start
  * with a token that expires mid-run. */
 const EXPIRY_SKEW_MS = 60_000;
@@ -325,7 +327,7 @@ async function getJson<T>(
   googleFetch: GoogleFetch,
   url: string,
   accessToken: string,
-  opts?: { allowGone?: boolean },
+  opts?: { allowGone?: boolean; allowNotFound?: boolean },
 ): Promise<{ status: number; data: T }> {
   const res = await googleFetch(url, accessToken);
   if (!res.ok) {
@@ -334,6 +336,11 @@ async function getJson<T>(
     // 410 treated as empty success would advance the cursor to undefined and
     // trigger a re-seed double-enqueue — so it throws like any other non-ok.
     if (res.status === GONE && opts?.allowGone) return { status: GONE, data: {} as T };
+    // 404 is a signal ONLY where the caller opted in. Gmail messages.get 404 is one
+    // message deleted before the fetch; the first history.list page's 404 is an
+    // expired historyId. Every other 404 still errors the whole connection.
+    if (res.status === NOT_FOUND && opts?.allowNotFound)
+      return { status: NOT_FOUND, data: {} as T };
     throw new ConnectorSyncError(`google_${res.status}`);
   }
   return { status: res.status, data: (await res.json()) as T };
@@ -511,8 +518,12 @@ function readSelf(organizer: unknown): boolean | undefined {
 
 // ── Gmail ────────────────────────────────────────────────────────────────────
 // First run (no historyId): messages.list → seed the historyId cursor. Incremental:
-// history.list from the stored historyId → the ids of messages added since. Either
-// way we fetch each changed message's metadata (subject header + snippet only).
+// history.list from the stored historyId → the ids of messages added since. A
+// history.list 404 means that historyId has aged out of Gmail's window, and the
+// run re-seeds exactly like a first run (seeding, so old mail is not texted).
+// Either way we fetch each changed message's metadata (subject + snippet only).
+// A messages.get 404 — deleted or trashed before the fetch — skips that one
+// message; it does not error the connection.
 interface GmailProfileResponse {
   historyId?: string;
 }
@@ -536,74 +547,57 @@ interface GmailMessageResponse {
   payload?: { headers?: Array<{ name?: string; value?: string }> };
 }
 
+type GmailHistoryDrain =
+  | { stale: true }
+  | { stale: false; messageIds: string[]; nextHistoryId: string };
+
 async function syncGmail(
   connection: ActiveConnectorConnection,
   accessToken: string,
   googleFetch: GoogleFetch,
 ): Promise<ProviderResult> {
   const startHistoryId = readString(connection.providerMetadata.historyId);
-  const messageIds: string[] = [];
-  let nextHistoryId: string | undefined;
+  // No stored cursor is the first-run seed. A stored one that Gmail 404s is the
+  // same seed again: the history window moved on, and the sweep already retries
+  // status=error rows, so this successful cursor write is what clears google_404.
+  const history: GmailHistoryDrain = startHistoryId
+    ? await drainGmailHistory(googleFetch, accessToken, startHistoryId)
+    : { stale: true };
+  const reseeded = startHistoryId !== undefined && history.stale;
 
-  if (startHistoryId) {
-    // Drain every history page before advancing historyId — otherwise messages on
-    // later pages are dropped AND the cursor jumps past them permanently.
-    let pageToken: string | undefined;
-    for (let page = 0; page < MAX_PAGES; page += 1) {
-      let url = `https://gmail.googleapis.com/gmail/v1/users/me/history?startHistoryId=${encodeURIComponent(startHistoryId)}&historyTypes=messageAdded`;
-      if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
-      const { data } = await getJson<GmailHistoryResponse>(googleFetch, url, accessToken);
-      for (const h of data.history ?? []) {
-        for (const m of h.messagesAdded ?? []) {
-          if (m.message?.id) messageIds.push(m.message.id);
-        }
-      }
-      nextHistoryId = data.historyId ?? nextHistoryId;
-      if (data.nextPageToken) {
-        pageToken = data.nextPageToken;
-        continue;
-      }
-      break;
+  let messageIds: string[];
+  let nextHistoryId: string;
+  if (history.stale) {
+    if (reseeded) {
+      console.warn(
+        { integrationId: connection.id },
+        'connector sync: gmail historyId expired, re-seeding',
+      );
     }
-    if (nextHistoryId === undefined) {
-      // Mirrors the calendar/drive terminal-cursor guard: advancing the cursor to
-      // {historyId: undefined} would make the next run re-seed and double-enqueue.
-      throw new ConnectorSyncError('cursor_missing');
-    }
+    const seeded = await seedGmailMailbox(googleFetch, accessToken);
+    messageIds = seeded.messageIds;
+    nextHistoryId = seeded.nextHistoryId;
   } else {
-    // First run: seed the historyId cursor from getProfile (the mailbox's current
-    // historyId — messages.list does NOT return one, so reading it there yielded a
-    // {} cursor and re-seeded every run) and emit a bounded page of recent messages
-    // as the starting point.
-    const { data: profile } = await getJson<GmailProfileResponse>(
-      googleFetch,
-      'https://gmail.googleapis.com/gmail/v1/users/me/profile',
-      accessToken,
-    );
-    nextHistoryId = profile.historyId;
-    const { data } = await getJson<GmailListResponse>(
-      googleFetch,
-      'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=25',
-      accessToken,
-    );
-    for (const m of data.messages ?? []) {
-      if (m.id) messageIds.push(m.id);
-    }
-    if (nextHistoryId === undefined) {
-      // No mailbox historyId means no safe incremental cursor to resume from — err
-      // rather than persist {} and re-seed forever.
-      throw new ConnectorSyncError('cursor_missing');
-    }
+    messageIds = history.messageIds;
+    nextHistoryId = history.nextHistoryId;
   }
 
   const events: IngestedEventPayload[] = [];
   const envelopes: GmailAlertEnvelope[] = [];
+  let skippedNotFound = 0;
   for (const id of messageIds) {
-    const { data } = await getJson<GmailMessageResponse>(
+    const { status, data } = await getJson<GmailMessageResponse>(
       googleFetch,
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
       accessToken,
+      { allowNotFound: true },
     );
+    if (status === NOT_FOUND) {
+      // Gone between history.list and this fetch (deleted or trashed). The rest
+      // of the batch is still real mail — one missing id must not park the mailbox.
+      skippedNotFound += 1;
+      continue;
+    }
     const headers = data.payload?.headers ?? [];
     const subject = headers.find((h) => h.name === 'Subject')?.value;
     const from = headers.find((h) => h.name === 'From')?.value;
@@ -623,11 +617,89 @@ async function syncGmail(
       receivedAt: epochMsToIso(data.internalDate),
     });
   }
+  if (skippedNotFound > 0) {
+    // The COUNT only: a message id is still a pointer at one family's mail (rule #1).
+    console.warn(
+      { integrationId: connection.id, skippedNotFound },
+      'connector sync: gmail messages gone before fetch, skipped',
+    );
+  }
   return {
     events,
     nextMetadata: { historyId: nextHistoryId },
-    gmail: { seeding: startHistoryId === undefined, envelopes },
+    // A first run and a re-seed both saw mail that was already in the mailbox.
+    // seeding is what keeps either from becoming a burst of texts.
+    gmail: { seeding: startHistoryId === undefined || reseeded, envelopes },
   };
+}
+
+/** history.list from a stored historyId, drained to its terminal cursor. A 404 on
+ * the FIRST page is Gmail's "startHistoryId is no longer in the history window"
+ * and nothing else — a later page's 404 stays an error, same as any other status. */
+async function drainGmailHistory(
+  googleFetch: GoogleFetch,
+  accessToken: string,
+  startHistoryId: string,
+): Promise<GmailHistoryDrain> {
+  const messageIds: string[] = [];
+  let nextHistoryId: string | undefined;
+  let pageToken: string | undefined;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    let url = `https://gmail.googleapis.com/gmail/v1/users/me/history?startHistoryId=${encodeURIComponent(startHistoryId)}&historyTypes=messageAdded`;
+    if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
+    const { status, data } = await getJson<GmailHistoryResponse>(googleFetch, url, accessToken, {
+      allowNotFound: pageToken === undefined,
+    });
+    if (status === NOT_FOUND) return { stale: true };
+    for (const h of data.history ?? []) {
+      for (const m of h.messagesAdded ?? []) {
+        if (m.message?.id) messageIds.push(m.message.id);
+      }
+    }
+    nextHistoryId = data.historyId ?? nextHistoryId;
+    if (data.nextPageToken) {
+      pageToken = data.nextPageToken;
+      continue;
+    }
+    break;
+  }
+  if (nextHistoryId === undefined) {
+    // Mirrors the calendar/drive terminal-cursor guard: advancing the cursor to
+    // {historyId: undefined} would make the next run re-seed and double-enqueue.
+    throw new ConnectorSyncError('cursor_missing');
+  }
+  return { stale: false, messageIds, nextHistoryId };
+}
+
+/** First run, and the re-seed an expired historyId forces. getProfile is the
+ * cursor source — messages.list does NOT return a historyId, so reading it there
+ * yielded a {} cursor and re-seeded every run. The bounded page of recent
+ * messages is the starting point; callers mark the run seeding so it is not texted. */
+async function seedGmailMailbox(
+  googleFetch: GoogleFetch,
+  accessToken: string,
+): Promise<{ messageIds: string[]; nextHistoryId: string }> {
+  const { data: profile } = await getJson<GmailProfileResponse>(
+    googleFetch,
+    'https://gmail.googleapis.com/gmail/v1/users/me/profile',
+    accessToken,
+  );
+  const nextHistoryId = profile.historyId;
+  const { data } = await getJson<GmailListResponse>(
+    googleFetch,
+    'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=25',
+    accessToken,
+  );
+  const messageIds: string[] = [];
+  for (const m of data.messages ?? []) {
+    if (m.id) messageIds.push(m.id);
+  }
+  if (nextHistoryId === undefined) {
+    // No mailbox historyId means no safe incremental cursor to resume from — err
+    // rather than persist {} and re-seed forever.
+    throw new ConnectorSyncError('cursor_missing');
+  }
+  return { messageIds, nextHistoryId };
 }
 
 // ── Drive ────────────────────────────────────────────────────────────────────
