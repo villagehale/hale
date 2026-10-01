@@ -259,7 +259,9 @@ async function household(
     .where(eq(schema.children.familyId, familyId));
   return {
     parents,
-    childNames: children.filter((row) => row.familyId === familyId && row.name).map((row) => row.name),
+    childNames: children
+      .filter((row) => row.familyId === familyId && row.name)
+      .map((row) => row.name),
     parentCount: parentIds.length,
     timeZone: people[0]?.timezone ?? 'America/Toronto',
     language: family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en',

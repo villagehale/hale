@@ -13,7 +13,6 @@ import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { linqFromE164, linqGroupCoparentEnabled, linqGroupMembersEnabled } from './config';
-import { liveSeatBlocksPrivileged, nonParentWithoutLiveSeat } from './group-members';
 import {
   LINQ_GROUP_LINE_MISSING_TEXT,
   formatLinqLineForParent,
@@ -28,6 +27,7 @@ import {
   groupWelcome,
   matchBothFreeAsk,
 } from './group-coparent-copy';
+import { liveSeatBlocksPrivileged, nonParentWithoutLiveSeat } from './group-members';
 import { planBothFreeAsk, rememberBothFreeAsked } from './household-calendar';
 import { sendLinqLinkPreview } from './link-preview';
 import type { LinqInboundText } from './payload';

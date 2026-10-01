@@ -14,7 +14,12 @@ import { users } from './users.js';
  * The number is encrypted. `phone_e164_hash` is the blind index the webhook
  * resolves. Unseat sets `removed_at` and keeps the row.
  */
-export const LINQ_GROUP_MEMBER_ROLES = ['parent', 'co_parent', 'other_family', 'caregiver'] as const;
+export const LINQ_GROUP_MEMBER_ROLES = [
+  'parent',
+  'co_parent',
+  'other_family',
+  'caregiver',
+] as const;
 export type LinqGroupMemberRole = (typeof LINQ_GROUP_MEMBER_ROLES)[number];
 
 export const linqGroupMembers = pgTable(

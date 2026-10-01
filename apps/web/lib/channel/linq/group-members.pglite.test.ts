@@ -55,7 +55,11 @@ function sender() {
 async function seedFamily(phone: string, name: string) {
   const [family] = await db.database
     .insert(schema.families)
-    .values({ displayName: name, provinceOrState: 'ON', linqGroupChatId: phone === PARENT ? CHAT : null })
+    .values({
+      displayName: name,
+      provinceOrState: 'ON',
+      linqGroupChatId: phone === PARENT ? CHAT : null,
+    })
     .returning({ id: schema.families.id });
   const [user] = await db.database
     .insert(schema.users)
@@ -104,7 +108,11 @@ describe('linq group members', () => {
       now: NOW,
       send: wire.send,
     });
-    expect(first).toMatchObject({ outcome: 'group_member_seated', role: 'co_parent', notice: 'sent' });
+    expect(first).toMatchObject({
+      outcome: 'group_member_seated',
+      role: 'co_parent',
+      notice: 'sent',
+    });
     expect(wire.texts).toEqual([LINQ_GROUP_MEMBER_WELCOME]);
 
     const again = await seatParticipantAdded(db.database, {
@@ -127,7 +135,11 @@ describe('linq group members', () => {
         now: NOW,
         send: wire.send,
       });
-      expect(seated).toMatchObject({ outcome: 'group_member_seated', role: 'other_family', notice: 'sent' });
+      expect(seated).toMatchObject({
+        outcome: 'group_member_seated',
+        role: 'other_family',
+        notice: 'sent',
+      });
     }
     const roles = await liveRoles(seeded.familyId);
     expect(roles.filter((role) => role === 'co_parent')).toHaveLength(1);
@@ -305,9 +317,9 @@ describe('linq group members', () => {
       .select({ actionTaken: schema.auditLog.actionTaken, after: schema.auditLog.after })
       .from(schema.auditLog)
       .where(eq(schema.auditLog.actionTaken, 'linq_group_member_refused'));
-    expect(audits.some((row) => (row.after as { capability?: string }).capability === 'calendar_email')).toBe(
-      true,
-    );
+    expect(
+      audits.some((row) => (row.after as { capability?: string }).capability === 'calendar_email'),
+    ).toBe(true);
   });
 
   it('does nothing when the flag is off', async () => {
@@ -321,7 +333,9 @@ describe('linq group members', () => {
       now: NOW,
     });
     expect(seated.outcome).toBe('flag_off');
-    const rows = await db.database.select({ id: schema.linqGroupMembers.id }).from(schema.linqGroupMembers);
+    const rows = await db.database
+      .select({ id: schema.linqGroupMembers.id })
+      .from(schema.linqGroupMembers);
     expect(rows).toEqual([]);
   });
 });

@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { linqGroupMembersEnabled } from './config';
-import {
-  LINQ_GROUP_MEMBER_WELCOME,
-  classifyParticipantAdd,
-} from './group-members';
 import { LINQ_GROUP_UNKNOWN_HOLD } from './group';
+import { LINQ_GROUP_MEMBER_WELCOME, classifyParticipantAdd } from './group-members';
 
 describe('LINQ_GROUP_MEMBERS_ENABLED', () => {
   afterEach(() => {
@@ -18,7 +15,7 @@ describe('LINQ_GROUP_MEMBERS_ENABLED', () => {
     expect(linqGroupMembersEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_MEMBERS_ENABLED', '');
     expect(linqGroupMembersEnabled()).toBe(false);
-    delete process.env.LINQ_GROUP_MEMBERS_ENABLED;
+    vi.unstubAllEnvs();
     expect(linqGroupMembersEnabled()).toBe(false);
   });
 });

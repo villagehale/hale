@@ -17,7 +17,6 @@ import {
   matchConnectorRequest,
 } from '~/lib/channel/connect/detect';
 import { offerConnectorLink } from '~/lib/channel/connect/offer';
-import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
 import { type EmailCaptureDeps, handleEmailCaptureReply } from '~/lib/channel/email-capture/reply';
 import { emailInboundConfig } from '~/lib/channel/email/config';
@@ -49,6 +48,7 @@ import {
   type CoParentNumberDeps,
   deliverCoParentNumberInvite,
 } from '~/lib/channel/linq/coparent-invite';
+import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';

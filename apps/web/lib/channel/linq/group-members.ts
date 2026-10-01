@@ -58,7 +58,9 @@ export type SeatParticipantResult =
   | { outcome: 'group_member_already' }
   | { outcome: 'group_member_seated'; role: LinqGroupMemberRole; notice: SeatNotice };
 
-type SendGroup = (notice: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
+type SendGroup = (notice: { chatId: string; text: string }) => Promise<{
+  providerMessageId: string;
+}>;
 
 async function familyIdForChat(database: Database, chatId: string): Promise<string | null> {
   const rows = await database
@@ -94,9 +96,7 @@ async function familyRoleOf(
     })
     .from(schema.familyMembers)
     .where(eq(schema.familyMembers.familyId, familyId));
-  return (
-    rows.find((row) => row.familyId === familyId && row.userId === userId)?.role ?? null
-  );
+  return rows.find((row) => row.familyId === familyId && row.userId === userId)?.role ?? null;
 }
 
 function groupRoleFor(familyRole: string | null, hasCoParent: boolean): LinqGroupMemberRole {
@@ -514,7 +514,9 @@ export async function holdTrueStrangerOnce(
     now: Date;
     send?: SendGroup;
   },
-): Promise<'sent' | 'already_sent' | 'not_sent' | 'no_primary_parent' | 'not_a_phone' | 'no_family'> {
+): Promise<
+  'sent' | 'already_sent' | 'not_sent' | 'no_primary_parent' | 'not_a_phone' | 'no_family'
+> {
   const phone = seatablePhone(input.senderHandle);
   if (!phone) return 'not_a_phone';
   const familyId = await familyIdForChat(database, input.chatId);

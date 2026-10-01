@@ -4,15 +4,15 @@ import { answerParentDutyAsk } from '~/lib/channel/coparent/duty/asks';
 import { coparentDutyAsksArmed } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
 import { shadowTapbackIfDuty, shadowWhenArmed } from '~/lib/channel/coparent/duty/shadow';
-import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
-import { loadOpenSession } from '~/lib/channel/intake/session';
+import { applyDeliveryStatus } from '~/lib/channel/delivery-status';
 import {
   type InboundRouteDeps,
   type InboundRouteOutcome,
   routeInboundText,
 } from '~/lib/channel/inbound-route';
-import { applyDeliveryStatus } from '~/lib/channel/delivery-status';
+import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
+import { matchKeyword } from '~/lib/channel/intake/keywords';
+import { loadOpenSession } from '~/lib/channel/intake/session';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { socialWatchlistEnabled } from '~/lib/social/flag';
@@ -25,12 +25,6 @@ import {
   linqMissingInboundEnv,
   linqWebhookSecret,
 } from './config';
-import {
-  holdTrueStrangerOnce,
-  seatParticipantAdded,
-  shouldHoldGroupStranger,
-  unseatParticipantRemoved,
-} from './group-members';
 import {
   LINQ_GROUP_CLAIMED_TEMPLATE_KEY,
   LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY,
@@ -55,6 +49,12 @@ import {
   steerNotedCoparentOneToOne,
 } from './group-coparent';
 import { groupWelcome } from './group-coparent-copy';
+import {
+  holdTrueStrangerOnce,
+  seatParticipantAdded,
+  shouldHoldGroupStranger,
+  unseatParticipantRemoved,
+} from './group-members';
 import { captureLogisticsText } from './household-calendar';
 import { readSharedLocality } from './location-share';
 import { isLogisticsPollKind, recordLogisticsVote } from './logistics-poll';
@@ -851,7 +851,12 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         send: deps.sendGroupText,
       });
       await deps.countOutcome(seated.outcome === 'group_member_seated' ? 'intake' : 'ignored');
-      return json({ outcome: seated.outcome, ...(seated.outcome === 'group_member_seated' ? { notice: seated.notice, role: seated.role } : {}) });
+      return json({
+        outcome: seated.outcome,
+        ...(seated.outcome === 'group_member_seated'
+          ? { notice: seated.notice, role: seated.role }
+          : {}),
+      });
     }
     const unseated = await unseatParticipantRemoved(deps.database, {
       chatId: signal.chatId,
