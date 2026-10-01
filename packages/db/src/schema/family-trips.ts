@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { check, date, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  check,
+  date,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { channelMessages } from './channel-messages.js';
 import { families } from './families.js';
 import { users } from './users.js';
@@ -99,6 +108,16 @@ export const familyTrips = pgTable(
     briefChannelMessageId: uuid('brief_channel_message_id').references(() => channelMessages.id, {
       onDelete: 'cascade',
     }),
+    /**
+     * THE NO-PICKS COOLDOWN. Written together, and only when the live search came back
+     * empty. `last_attempt_at` is when that search ran; `next_attempt_at` is the earliest
+     * instant it may run again. Both null means the trip has not missed yet. The sweep is
+     * hourly, and without these a city with nothing on is searched every hour until
+     * `starts_on` passes. The first gap is a day and each later miss doubles it. The week
+     * still ends at `overtaken` — these columns do not extend it.
+     */
+    lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -106,9 +125,7 @@ export const familyTrips = pgTable(
     messageUniq: uniqueIndex('family_trips_message_uniq').on(table.integrationId, table.messageId),
     // The send sweep's whole working set. Partial, and it really does empty: every row
     // closes for one of three named reasons.
-    dueIdx: index('family_trips_due_idx')
-      .on(table.startsOn)
-      .where(sql`${table.closedAt} IS NULL`),
+    dueIdx: index('family_trips_due_idx').on(table.startsOn).where(sql`${table.closedAt} IS NULL`),
     childEvidenceCheck: check(
       'family_trips_child_evidence_check',
       sql`${table.childEvidence} IN ('named_traveller', 'child_fare')`,
@@ -127,6 +144,15 @@ export const familyTrips = pgTable(
     briefMessageCheck: check(
       'family_trips_brief_message_check',
       sql`(${table.briefChannelMessageId} IS NOT NULL) = (COALESCE(${table.closedReason}, '') IN ('sent', 'merged'))`,
+    ),
+    // Both or neither. A half-written cooldown would either retry hourly or never.
+    attemptPairCheck: check(
+      'family_trips_attempt_pair_check',
+      sql`(${table.lastAttemptAt} IS NULL) = (${table.nextAttemptAt} IS NULL)`,
+    ),
+    attemptOrderCheck: check(
+      'family_trips_attempt_order_check',
+      sql`${table.nextAttemptAt} IS NULL OR ${table.nextAttemptAt} >= ${table.lastAttemptAt}`,
     ),
   }),
 );

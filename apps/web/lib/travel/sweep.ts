@@ -20,12 +20,12 @@ import {
   buildOutboundGatePorts,
   holdStatus,
 } from '~/lib/channel/outbound-gate';
-import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   createOutboundTransport,
   failedSendPatch,
   readSendRefusal,
 } from '~/lib/channel/outbound-transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { activityClient } from '~/lib/pipeline/client';
 import { TRAVEL_BRIEF_TEMPLATE_KEY, type TravelBriefRender, renderTravelBrief } from './copy';
@@ -61,6 +61,20 @@ export const TRAVEL_BRIEF_LEAD_DAYS = 7;
  * which costs a family an hour rather than a text.
  */
 export const MAX_TRIPS_PER_RUN = 3;
+
+/**
+ * The first gap after a search that found nothing.
+ *
+ * The nudge is hourly. Without a gap, a city with nothing on is a live web search
+ * every hour until `starts_on` passes — up to the whole lead week. A day is the gap
+ * the no-picks path already promised ("tomorrow's search may differ"), and each later
+ * miss doubles the gap already recorded on the row. The week still ends at
+ * `overtaken`; this does not extend it.
+ */
+export const NO_PICKS_BACKOFF_BASE_MS = 24 * 60 * 60 * 1000;
+
+/** Each repeated no-picks multiplies the previous gap by this. */
+const NO_PICKS_BACKOFF_GROWTH = 2;
 
 /**
  * The coarse SQL prefilter's bound. The DUE decision is made on the PARENT's calendar day
@@ -117,8 +131,9 @@ export interface TravelBriefResult {
   held: Record<ProactiveHoldReason, number>;
   /** The finder came back `{ found: false }` for a reason that is not `no_picks`. */
   searchFailed: number;
-  /** The search RAN and there is nothing on. Not a failure, and the trip is left OPEN — a
-   * search that found nothing is not a brief the parent received. */
+  /** The search RAN and there is nothing on. Not a failure. The trip stays OPEN and
+   * records when it may be searched again — a search that found nothing is not a brief
+   * the parent received, and it is not searched again this hour. */
   noPicks: number;
   /** `travelBriefViolations` was non-empty. Its own count, because a body the gates had
    * already passed and the composer still could not back is a bug in CODE. */
@@ -201,6 +216,25 @@ interface OpenTrip {
   destinationRegion: string | null;
   startsOn: string;
   endsOn: string;
+  lastAttemptAt: Date | string | null;
+  nextAttemptAt: Date | string | null;
+}
+
+function attemptAt(value: Date | string | null): Date | null {
+  if (value == null) return null;
+  const at = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
+/** How long to wait after this no-picks before searching again. The previous gap is
+ * the one already on the row, so a late cron tick does not stretch it. */
+function noPicksBackoffMs(trip: OpenTrip): number {
+  const last = attemptAt(trip.lastAttemptAt);
+  const next = attemptAt(trip.nextAttemptAt);
+  if (!last || !next) return NO_PICKS_BACKOFF_BASE_MS;
+  const previous = next.getTime() - last.getTime();
+  if (!Number.isFinite(previous) || previous <= 0) return NO_PICKS_BACKOFF_BASE_MS;
+  return previous * NO_PICKS_BACKOFF_GROWTH;
 }
 
 /** `2026-09-12` + n days, as a calendar day. Plain date arithmetic: these are wall-clock
@@ -238,6 +272,8 @@ export async function runTravelBriefSweep(
       destinationRegion: schema.familyTrips.destinationRegion,
       startsOn: schema.familyTrips.startsOn,
       endsOn: schema.familyTrips.endsOn,
+      lastAttemptAt: schema.familyTrips.lastAttemptAt,
+      nextAttemptAt: schema.familyTrips.nextAttemptAt,
     })
     .from(schema.familyTrips)
     .where(and(isNull(schema.familyTrips.closedAt), lte(schema.familyTrips.startsOn, horizon)))
@@ -246,6 +282,9 @@ export async function runTravelBriefSweep(
   // ONE TRIP PER FAMILY PER TICK, and it is the EARLIEST — which is what makes the overlap
   // collapse below well defined rather than a race between two rows about the same trip.
   const earliestByFamily = new Map<string, OpenTrip>();
+  // A family whose earliest in-window trip is waiting on its no-picks cooldown. A later
+  // trip must not jump ahead of it.
+  const coolingFamily = new Set<string>();
   for (const trip of open) {
     if (!f14EnabledFor(trip.familyId) || !travelBriefEnabledFor(trip.familyId)) continue;
 
@@ -257,7 +296,8 @@ export async function runTravelBriefSweep(
     if (trip.startsOn < today) {
       // OVERTAKEN. It closes with a NULL message id, which the COALESCE'd CHECK permits
       // and the other two reasons forbid: a trip nobody was told about must never read as
-      // one they were. Counted HERE, at the write, so it is counted exactly once.
+      // one they were. Counted HERE, at the write, so it is counted exactly once. This
+      // runs BEFORE the cooldown check: a scheduled retry does not extend the week.
       await database
         .update(schema.familyTrips)
         .set({ closedAt: now, closedReason: 'overtaken' })
@@ -266,7 +306,13 @@ export async function runTravelBriefSweep(
       continue;
     }
     if (trip.startsOn > addDays(today, TRAVEL_BRIEF_LEAD_DAYS)) continue;
-    if (!earliestByFamily.has(trip.familyId)) earliestByFamily.set(trip.familyId, trip);
+    if (coolingFamily.has(trip.familyId) || earliestByFamily.has(trip.familyId)) continue;
+    const retryAt = attemptAt(trip.nextAttemptAt);
+    if (retryAt && retryAt.getTime() > now.getTime()) {
+      coolingFamily.add(trip.familyId);
+      continue;
+    }
+    earliestByFamily.set(trip.familyId, trip);
   }
 
   // FILTER FIRST, THEN CAP. A cap-then-filter would starve every family past the oldest N
@@ -378,7 +424,17 @@ async function briefOne(
   if (!found.found) {
     if (found.reason === 'no_picks') {
       // The search ran and there is nothing on. The trip is LEFT OPEN: a search that found
-      // nothing is not a brief the parent received, and tomorrow's search may differ.
+      // nothing is not a brief the parent received. Record the attempt and the next one,
+      // so the hourly tick does not run the same live search again until that time. The
+      // gap starts at a day and doubles on each miss. Tomorrow's search may differ.
+      const delay = noPicksBackoffMs(trip);
+      await database
+        .update(schema.familyTrips)
+        .set({
+          lastAttemptAt: now,
+          nextAttemptAt: new Date(now.getTime() + delay),
+        })
+        .where(eq(schema.familyTrips.id, trip.id));
       result.noPicks += 1;
       return;
     }
