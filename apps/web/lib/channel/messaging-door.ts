@@ -8,15 +8,16 @@ import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm';
  * doors — the number is the person. The door is whichever pipe they used last.
  * An iMessage turn stores the Linq chat id on the inbound row; that is the
  * chat a later receipt has to return to. Falling through to Twilio would put
- * the sentence on a different app (a second identity). An SMS or WhatsApp
- * last turn stays on the phone transport this caller already had.
+ * the sentence on a different app (a second identity). An SMS last turn stays
+ * on the phone transport this caller already had. WhatsApp is retired, so a
+ * historical whatsapp row is not a door.
  *
  * No inbound phone row yet means SMS: that is the historical door, and a
  * connect receipt for someone we have never heard from on iMessage has no
  * chat to enter.
  */
 
-const PHONE_CHANNELS = ['sms', 'whatsapp', 'imessage'] as const;
+const PHONE_CHANNELS = ['sms', 'imessage'] as const;
 
 export type MessagingDoor =
   | { channel: 'sms' }

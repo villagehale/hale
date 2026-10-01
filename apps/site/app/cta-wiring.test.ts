@@ -236,17 +236,16 @@ describe('the desktop path is wired the same way', () => {
 });
 
 describe('every composer anchor names its channel', () => {
-  // The one funnel splits by PIPE without a second event name: cta_text_click
-  // carries channel=sms (→ 'amb' after the Apple Messages for Business swap),
-  // cta_whatsapp_click carries channel=whatsapp. The attribute is the wiring
-  // made visible, same as data-cta itself.
+  // The one funnel splits by PIPE: cta_text_click carries channel=sms
+  // (→ 'amb' after the Apple Messages for Business swap). The attribute is the
+  // wiring made visible, same as data-cta itself.
   it('stamps data-cta-channel="sms" on every sms: anchor', () => {
     const unstamped = smsAnchors.filter((anchor) => !anchor.tag.includes('data-cta-channel="sms"'));
     expect(unstamped.map((anchor) => `${anchor.route} — ${anchor.tag}`)).toEqual([]);
     // Positive control shared with the suite: smsAnchors is non-empty above.
   });
 
-  it('renders no wa.me anchor anywhere while the WhatsApp env is unset — the never-dead-button pin, structural', () => {
+  it('renders no wa.me anchor — WhatsApp is not a door', () => {
     const waAnchors = rendered.flatMap(({ route, html }) =>
       [...html.matchAll(/<a\s[^>]*>/g)]
         .map((match) => match[0])
@@ -254,31 +253,7 @@ describe('every composer anchor names its channel', () => {
         .map((tag) => `${route} — ${tag}`),
     );
     expect(waAnchors).toEqual([]);
-  });
-
-  it('positive control: with the WhatsApp env set, the chooser offers wa.me, wired and stamped', async () => {
-    // The absence above fails OPEN without this: prove the same walk machinery
-    // DOES surface a wa.me anchor once the sender env validates.
-    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
-    vi.stubEnv('NEXT_PUBLIC_HALE_WHATSAPP_NUMBER', LIVE_NUMBER);
-    const { default: TextPage } = await import(
-      pathToFileURL(join(LOCALE_ROOT, 'text/page.tsx')).href
-    );
-    const html = renderToStaticMarkup(
-      await TextPage({
-        params: Promise.resolve({ locale: 'en' }),
-        searchParams: Promise.resolve({}),
-      }),
-    );
-    vi.unstubAllEnvs();
-    const waAnchors = [...html.matchAll(/<a\s[^>]*>/g)]
-      .map((match) => match[0])
-      .filter((tag) => tag.includes('wa.me'));
-    expect(waAnchors.length).toBeGreaterThanOrEqual(1);
-    for (const tag of waAnchors) {
-      expect(tag).toContain('data-cta="cta_whatsapp_click"');
-      expect(tag).toContain('data-cta-channel="whatsapp"');
-    }
+    expect(rendered.map((page) => page.html).join('\n')).not.toContain('wa.me');
   });
 });
 

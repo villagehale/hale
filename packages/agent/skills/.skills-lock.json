@@ -175,10 +175,6 @@
     "file": "voice-register.md",
     "sha256": "30fa3a658249ac041d8899d54836e36a9a88177bf5219e564c973d807b77f4f3"
   },
-  "voice-turn.md": {
-    "file": "voice-turn.md",
-    "sha256": "2b5e322af338df8fe18cb69a7de33894368168780f8f468866bb53f3e592466a"
-  },
   "week-summary.md": {
     "file": "week-summary.md",
     "sha256": "2a01ea52cfc2cd1268bc23c60f15fbbc11e95eab00365169f9164a6e06331e50"

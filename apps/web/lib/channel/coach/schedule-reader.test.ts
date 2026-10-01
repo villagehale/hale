@@ -283,8 +283,8 @@ describe('the texted verbs over the real door (VIL-270)', () => {
       spots: null,
       now: NOW,
     });
-    // The REAL guard, wired exactly as both channel surfaces wire it: no viewer, so no
-    // grant is consultable (runtime.ts:428, relay-deps.ts:121).
+    // The REAL guard, wired exactly as the text channel wires it: no viewer, so no
+    // grant is consultable (runtime.ts).
     const deps = buildGuardDeps(db.database);
     return {
       drafts,

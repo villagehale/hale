@@ -36,11 +36,11 @@ beforeEach(() => {
 describe('TextEntryAnalytics', () => {
   it('captures the view with the chooser’s two coarse facts, and nothing identifying', () => {
     renderToStaticMarkup(
-      createElement(TextEntryAnalytics, { deviceHint: 'android', channelsLive: 'sms+whatsapp' }),
+      createElement(TextEntryAnalytics, { deviceHint: 'android', channelsLive: 'sms' }),
     );
     expect(capture).toHaveBeenCalledWith('text_entry_viewed', {
       device_hint: 'android',
-      channels_live: 'sms+whatsapp',
+      channels_live: 'sms',
     });
   });
 

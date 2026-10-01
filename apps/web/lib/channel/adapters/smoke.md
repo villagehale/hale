@@ -38,19 +38,16 @@ console.log(await adapter.send({
 // with RESEND_API_KEY unset it must instead be { status: 'skipped', reason: 'not_configured' }
 ```
 
-## 3. Twilio SMS — `createTwilioSmsChannel`
+## 3. Loop SMS — `createTwilioSmsChannel`
 
-No live send today — SMS is unprovisioned (A3 finishes the Twilio account + number and
-the raw send). The only smoke now is the config gate:
+The default sender is Linq (`LINQ_API_KEY` and `LINQ_FROM_E164`). Twilio is not
+constructed. The config gate:
 
 ```ts
 import { createTwilioSmsChannel } from './twilio-sms';
 
-const adapter = createTwilioSmsChannel();
+const adapter = createTwilioSmsChannel({ resolveTarget: async () => '+15555550100' });
 console.log(await adapter.send({ userId: 'smoke', rendered: { kind: 'sms', text: 'sms leg' } }));
-// creds unset  → { status: 'skipped', reason: 'not_configured' }
-// all 3 TWILIO_* set → throws 'twilio send not implemented' (the A3 seam)
+// Linq key or line unset → { status: 'skipped', reason: 'not_configured' }
+// both set → posts to Linq POST /v3/chats (iMessage, then RCS, then SMS)
 ```
-
-When A3 lands, run the real send with Twilio **test credentials** (magic from-number
-`+15005550006`) so no live SMS bill or delivery occurs.

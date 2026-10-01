@@ -3,10 +3,9 @@ import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { parseTransportAddress } from './transport-address';
 
 /**
- * The webhook-boundary parser — the ONE place the `whatsapp:` prefix is stripped.
- * Everything downstream (normalize → blind index → resolve → keywords → machine)
- * runs on the bare address, which is what makes `whatsapp:+1416…` and `+1416…`
- * the same person by construction (the continuity law).
+ * The webhook-boundary parser. A `whatsapp:` prefix is named so the inbound
+ * webhook can drop that pipe. The bare address is what `normalizePhoneE164`
+ * would see; the webhook does not hand a WhatsApp turn to that normalizer.
  */
 
 describe('parseTransportAddress', () => {

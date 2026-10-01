@@ -1,39 +1,36 @@
 import type { Database } from '@hale/db';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { linqPhoneOutboundConfigured } from '~/lib/channel/linq/config';
 import {
   type FamilyOutboundTarget,
   deliverFamilyOutbound,
   familySpeech,
 } from '~/lib/channel/linq/family-outbound';
 import { groupBothReaderFrench } from '~/lib/channel/linq/group-coparent-copy';
-import { LinqSendError } from '~/lib/channel/linq/transport';
-import { twilioConfig } from '~/lib/channel/twilio/config';
-import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
+import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import type { Channel } from '../types';
 
 /**
  * The LOOP's SMS leg of the channel seam (VIL-213 · A2), lit up by VIL-260.
  *
- * A2 defined the seam and A3 (VIL-214) built the raw send, but behind M2's
- * `ChannelTransport` (lib/channel/twilio/transport.ts), which addresses a bare E.164 —
- * the shape intake needs, because intake has a number before it has an account. THIS
- * seam is the other shape: it is handed a `userId`. What was missing was the reader
- * that resolves one to a SENDABLE number; `resolveSendablePhone` (sms-consent-core) is
+ * A2 defined the seam and A3 (VIL-214) built the raw send behind M2's
+ * `ChannelTransport`, which addresses a bare E.164 — the shape intake needs,
+ * because intake has a number before it has an account. THIS seam is the other
+ * shape: it is handed a `userId`. `resolveSendablePhone` (sms-consent-core) is
  * that reader, so the adapter composes the two rather than growing a third.
  *
- * Config is read all-or-nothing (see twilio/config.ts): a deploy holding some of the
- * credentials skips cleanly rather than half-sending, and the dispatch records the
- * skip as a not_configured leg.
+ * The default transport is Linq (`createLinqPhoneTransport`). A family with a
+ * claimed group still goes to that group; a family without one is a Linq 1:1
+ * on the Hale line, which falls through iMessage → RCS → SMS. Twilio is not
+ * constructed here. An injected transport may still be the Twilio one — the
+ * dispatch tests classify a 21610 that way — and that refusal stays a
+ * non-transient error so a retry cannot re-earn it.
  *
- * A provider failure is CLASSIFIED here, not swallowed and not blindly rethrown. A
- * transient refusal becomes the transient error variant, which the dispatch turns back
- * into a throw so pg-boss redelivers with backoff (the per-channel dedupe key keeps the
- * retry from double-sending) — a Twilio outage must never become a silent week. A
- * PERMANENT refusal — 21610 above all, the parent has opted out at the carrier — becomes
- * the non-transient variant instead: retrying can only re-earn the same refusal, so the
- * dispatch writes the failed row with the Twilio code and the loop stops texting a
- * number that has told the carrier no.
+ * Config is the Linq outbound pair (`LINQ_API_KEY` and `LINQ_FROM_E164`). A
+ * deploy holding one of them skips cleanly rather than half-sending, and the
+ * dispatch records the skip as a not_configured leg.
  *
  * Privacy (rule #1): the phone number and the rendered body are never logged.
  */
@@ -42,9 +39,9 @@ export interface TwilioSmsChannelDeps {
   /** Resolve an internal user id to a sendable E.164, or null when this parent has no
    * active verified SMS channel (prod: `resolveSendablePhone`). */
   resolveTarget(userId: string): Promise<string | null>;
-  /** The shared outbound leg; defaults to the real Twilio transport. */
+  /** The shared outbound leg; defaults to the Linq phone transport. */
   transport?: ChannelTransport;
-  /** Whether the Twilio leg is provisioned; defaults to the presence of the config. */
+  /** Whether the outbound leg is provisioned; defaults to the Linq key and line. */
   configured?: boolean;
   /**
    * The family's home channel, when this parent belongs to one. Absent keeps
@@ -56,7 +53,7 @@ export interface TwilioSmsChannelDeps {
 }
 
 export function createTwilioSmsChannel(deps: TwilioSmsChannelDeps): Channel {
-  const transport = deps.transport ?? createTwilioTransport();
+  const transport = deps.transport ?? createLinqPhoneTransport();
   return {
     kind: 'sms',
     async send({ userId, rendered }) {
@@ -64,7 +61,7 @@ export function createTwilioSmsChannel(deps: TwilioSmsChannelDeps): Channel {
         throw new Error(`twilio sms adapter received ${rendered.kind} content`);
       }
 
-      if (!(deps.configured ?? twilioConfig() !== null)) {
+      if (!(deps.configured ?? linqPhoneOutboundConfigured())) {
         return { status: 'skipped', reason: 'not_configured' };
       }
 
@@ -103,15 +100,19 @@ export function createTwilioSmsChannel(deps: TwilioSmsChannelDeps): Channel {
             providerChatId: delivered.chatId,
           };
         }
-        const { providerMessageId } = await transport.send({ to, body: rendered.text });
-        return { status: 'sent', providerMessageId };
+        const sent = await transport.send({ to, body: rendered.text });
+        return {
+          status: 'sent',
+          providerMessageId: sent.providerMessageId,
+          ...(sent.chatId ? { providerChatId: sent.chatId } : {}),
+        };
       } catch (error) {
         if (error instanceof LinqSendError) {
           return {
             status: 'error',
             transient: !error.permanent,
             code: error.code,
-            message: 'linq refused the group send',
+            message: 'linq refused the send',
           };
         }
         if (!(error instanceof TwilioSendError)) throw error;

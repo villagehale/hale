@@ -8,13 +8,12 @@ import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { platformFromUa } from '~/lib/chooser';
 import { firstTouchLadderEnabled } from '~/lib/first-touch-flag';
-import { parseSourceCode, readSmsNumber, readWhatsAppNumber } from '~/lib/text-entry';
+import { parseSourceCode, readSmsNumber } from '~/lib/text-entry';
 
 /**
  * villagehale.com/text — the QR cards' landing surface (VIL-240 · M5), and the
- * destination of the site's "Text Hale" CTAs. Production is PR 566 one-tap
- * until the WhatsApp sender is approved; the chooser only renders when
- * NEXT_PUBLIC_HALE_WHATSAPP_NUMBER validates. Still noindex and absent from
+ * destination of the site's "Text Hale" CTAs. One tap into Messages when the
+ * number is live. Still noindex and absent from
  * the sitemap: it is a handoff, not a page to rank.
  *
  * The shell is the same one About and Pricing wear: sticky SiteHeader (turtle
@@ -78,7 +77,6 @@ export default async function TextEntryPage({
       <TextEntry
         source={parseSourceCode(s)}
         smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
-        whatsappNumber={readWhatsAppNumber(process.env.NEXT_PUBLIC_HALE_WHATSAPP_NUMBER)}
         platform={platformFromUa(ua)}
         locale={locale}
         firstTouchLadder={firstTouchLadderEnabled()}

@@ -113,13 +113,12 @@ describe('loadSkill partials', () => {
   it('gives the classifier and the coach byte-identical capability text', async () => {
     const coach = await loadSkill('coach-channel-sms');
     const lane = await loadSkill('inbound-lane');
-    const voice = await loadSkill('voice-turn');
     const table = await readFile(
       join(dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'capability-table.md'),
       'utf8',
     );
 
-    for (const skill of [coach, lane, voice]) {
+    for (const skill of [coach, lane]) {
       expect(skill.instructions).toContain(table.trim());
     }
   });

@@ -96,22 +96,6 @@ describe('cta_text_click — every sms: CTA is one event with a placement', () =
     });
   });
 
-  it('stamps whatsapp on the other pipe', () => {
-    capture.mockClear();
-    click(
-      LandingCta({
-        event: 'cta_whatsapp_click',
-        placement: 'text_entry',
-        channel: 'whatsapp',
-        href: 'https://wa.me/16475551234?text=Hi',
-        children: 'Continue on WhatsApp',
-      }),
-    );
-    expect(capture).toHaveBeenCalledWith('cta_whatsapp_click', {
-      cta_placement: 'text_entry',
-      channel: 'whatsapp',
-    });
-  });
 });
 
 describe('cta_message_click — a chooser navigation is not a composer open', () => {

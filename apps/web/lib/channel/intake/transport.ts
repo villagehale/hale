@@ -19,19 +19,18 @@ import type { IntakeKeyword } from './keywords';
 export interface InboundMessage {
   /** The sender's number as the provider gave it — normalized by the caller, never
    * stored raw (rule #1: it is hashed + encrypted the moment it is used). Always the
-   * BARE address: the webhook strips any `whatsapp:` prefix before building this
-   * (lib/channel/transport-address.ts), so one number is one person on either pipe. */
+   * BARE address. A `whatsapp:` prefix never reaches this object: the inbound
+   * webhook counts `whatsapp_dropped` first. */
   from: string;
   body: string;
   /** The provider's own id for this inbound. The idempotency key: a carrier retry
    * carries the SAME id, which is how a duplicate is told from a real second text. */
   providerId: string;
   receivedAt: Date;
-  /** The pipe the message arrived on. Absent means 'sms' — the historical transport
-   * every pre-WhatsApp caller and fixture assumes; the webhook always sets it. */
+  /** The pipe the message arrived on. Absent means 'sms'. The webhook always sets it. */
   transport?: MessageTransport;
   /** Linq chat id when `transport` is `imessage`. The within-request reply (a STOP
-   * ack, the media line) sends back into this chat. Absent on SMS and WhatsApp. */
+   * ack, the media line) sends back into this chat. Absent on SMS. */
   chatId?: string;
   /** True when this text arrived in a Linq group. The contact-card share is
    * 1:1 only and does not fire into a group. */
@@ -80,11 +79,10 @@ export type LocationRequestResult =
   | { status: 'refused'; code: string };
 
 export interface ChannelTransport {
-  /** `transport` in the result names which pipe actually carried the send, for the
-   * one implementation that chooses per message (the reply-routing transport,
-   * lib/channel/reply-transport.ts) — the caller's ledger row must record the pipe
-   * that was used, not the one it assumed. Absent means the implementation has only
-   * one pipe (the plain SMS transport, every Fake). */
+  /** `transport` in the result names which pipe actually carried the send, when
+   * an implementation has more than one. Absent means the implementation has only
+   * one pipe (the plain SMS transport, every Fake). The caller's ledger row
+   * records the pipe that was used. */
   send(input: OutboundMessage): Promise<{
     providerMessageId: string;
     transport?: MessageTransport;

@@ -11,14 +11,11 @@ import { TextEntry } from './text-entry.js';
 /**
  * The /text entry surface (VIL-240 · M5, designer lock 566).
  *
- * WhatsApp sender is not approved. Production is one tap, not a picker:
+ * Production is one tap:
  *
- *   SMS live, WhatsApp dark  → PR 566: one "Message Hale" button, locked headline,
- *                              Maya/Theo/L3R prefill. No channel names, no
- *                              empty iMessage/WhatsApp chooser. Where sms: is a
- *                              dead click (qrLeads) the QR card leads, no button.
- *   both live                → the chooser (a real choice exists).
- *   SMS unset                → email only, never a dead sms: link.
+ *   SMS live   → one "Text Hale" button. Where sms: is a dead click (qrLeads)
+ *                the QR card leads and there is no button.
+ *   SMS unset  → email only, never a dead sms: link.
  *
  * Rendered to static markup — TextEntry is a pure server component.
  */
@@ -78,17 +75,16 @@ function bubbleText(html: string, dir: 'out' | 'in'): string | null {
 }
 
 /** The composer body after HTML-attribute decoding and percent-decoding.
- * iOS hrefs have no `?` (`sms:<number>&body=`); Android and wa.me do. */
-function composerBody(html: string, kind: 'sms' | 'wa'): string {
-  const pattern = kind === 'sms' ? /href="(sms:[^"]+)"/ : /href="(https:\/\/wa\.me\/[^"]+)"/;
-  const raw = pattern.exec(html)?.[1];
-  if (raw === undefined) throw new Error(`missing ${kind} href`);
+ * iOS hrefs have no `?` (`sms:<number>&body=`); Android does. */
+function composerBody(html: string): string {
+  const raw = /href="(sms:[^"]+)"/.exec(html)?.[1];
+  if (raw === undefined) throw new Error('missing sms href');
   const href = decodeHtml(raw);
   const query = href.includes('?')
     ? href.slice(href.indexOf('?') + 1).replace(/^&/, '')
     : href.slice(href.indexOf('&') + 1);
-  const value = new URLSearchParams(query).get(kind === 'sms' ? 'body' : 'text');
-  if (value === null) throw new Error(`missing ${kind} body in ${href}`);
+  const value = new URLSearchParams(query).get('body');
+  if (value === null) throw new Error(`missing sms body in ${href}`);
   return value;
 }
 
@@ -338,7 +334,7 @@ describe('TextEntry — the exchange is the hero', () => {
     expect(messages('fr').Text.sentGloss).toBe(frHello);
     expect(bubbleText(fr, 'out')).toBe(frHello);
     expect(fr).not.toContain('text-thread-gloss');
-    expect(composerBody(fr, 'sms')).toBe(frHello);
+    expect(composerBody(fr)).toBe(frHello);
     const zh = render({ source: null, locale: 'zh' });
     expect(bubbleText(zh, 'out')).toBe(INTAKE_PREFILL);
     expect(zh).toContain('text-thread-gloss');
@@ -357,9 +353,7 @@ describe('TextEntry — the exchange is the hero', () => {
 });
 
 describe('TextEntry — the channel matrix, rendered', () => {
-  const WA = { whatsappNumber: LIVE_NUMBER };
-
-  it('apple WhatsApp dark: one Text Hale sms: CTA carrying the pre-filled body and venue token', () => {
+  it('apple: one Text Hale sms: CTA carrying the pre-filled body and venue token', () => {
     // React escapes the `&` of the iOS `sms:<number>&body=` form into `&amp;`.
     expect(liveHtml).toContain(
       'href="sms:+16475551234&amp;body=Hey%20Hale%2C%20what%27s%20going%20on%3F%20(via%20earlyon-richmondhill)"',
@@ -370,31 +364,10 @@ describe('TextEntry — the channel matrix, rendered', () => {
     expect(primary).toContain('data-cta="cta_text_click"');
     expect(primary).toContain('data-cta-placement="text_entry"');
     expect(primary).toContain('data-cta-channel="sms"');
+    expect(liveHtml).not.toContain('wa.me');
   });
 
-  it('apple with WhatsApp live: WhatsApp is the secondary, wired whatsapp', () => {
-    const html = render(WA);
-    expect(html).toContain('Welcome. Pick where we talk.');
-    expect(html).toContain('Continue in Messages');
-    expect(html).toContain('Or use WhatsApp');
-    const wa = anchors(html).find((a) => a.includes('wa.me')) ?? '';
-    expect(wa).toContain('btn-secondary');
-    expect(wa).toContain('data-cta="cta_whatsapp_click"');
-    expect(wa).toContain('data-cta-channel="whatsapp"');
-    // Ordered: the sms anchor renders before the wa.me one.
-    expect(html.indexOf('href="sms:')).toBeLessThan(html.indexOf('wa.me'));
-  });
-
-  it('android with WhatsApp live: WhatsApp primary, Messages still one tap away — the hint never gates', () => {
-    const html = render({ platform: 'android', ...WA });
-    expect(html).toContain('Continue on WhatsApp');
-    expect(html).toContain('Or use Messages');
-    expect(html.indexOf('wa.me')).toBeLessThan(html.indexOf('href="sms:'));
-    const wa = anchors(html).find((a) => a.includes('wa.me')) ?? '';
-    expect(wa).toContain('btn-primary');
-  });
-
-  it('android with WhatsApp dark: one Text Hale button, and no dead WhatsApp button anywhere', () => {
+  it('android: one Text Hale button, and no WhatsApp button', () => {
     const html = render({ platform: 'android' });
     expect(html).toContain('>Text Hale</a>');
     expect(html).not.toContain('Continue in Messages');
@@ -407,19 +380,12 @@ describe('TextEntry — the channel matrix, rendered', () => {
     expect(html).not.toContain('&amp;body=');
   });
 
-  it('desktop-other: WhatsApp live withholds sms: (dead on Windows/Linux) and the QR card leads', () => {
-    const html = render({ platform: 'desktop-other', ...WA });
+  it('desktop-other: no sms: button (dead on Windows/Linux) and the QR card leads', () => {
+    const html = render({ platform: 'desktop-other' });
     expect(anchors(html).filter((a) => a.includes('href="sms:'))).toEqual([]);
-    // WhatsApp Web is offered iff live…
-    expect(html).toContain('Continue on WhatsApp');
-    // …and the QR card renders BEFORE any channel button.
-    expect(html.indexOf('QR code')).toBeLessThan(html.indexOf('wa.me'));
-    // WhatsApp dark: sms: is dead here too — no button, the QR card leads alone.
-    const dark = render({ platform: 'desktop-other' });
-    expect(anchors(dark).filter((a) => a.includes('href="sms:'))).toEqual([]);
-    expect(dark).not.toContain('wa.me');
-    expect(dark).toContain('QR code');
-    expect(dark).not.toContain('Pick where we talk');
+    expect(html).not.toContain('wa.me');
+    expect(html).toContain('QR code');
+    expect(html).not.toContain('Pick where we talk');
   });
 
   it('unknown platform (no UA): WhatsApp dark leads with the QR — no dead sms: button', () => {
@@ -429,17 +395,11 @@ describe('TextEntry — the channel matrix, rendered', () => {
     expect(html).not.toContain('Pick where we talk');
   });
 
-  it('threads the venue token into EVERY channel link — poster attribution is sacred', () => {
-    const html = render({ platform: 'android', ...WA });
-    const channelAnchors = anchors(html).filter(
-      (a) => a.includes('href="sms:') || a.includes('wa.me'),
-    );
-    expect(channelAnchors).toHaveLength(2);
-    for (const anchor of channelAnchors) {
-      expect(anchor, 'the (via <code>) token must ride in this channel’s body').toContain(
-        '(via%20earlyon-richmondhill)',
-      );
-    }
+  it('threads the venue token into the composer link — poster attribution is sacred', () => {
+    const html = render({ platform: 'android' });
+    const channelAnchors = anchors(html).filter((a) => a.includes('href="sms:'));
+    expect(channelAnchors).toHaveLength(1);
+    expect(channelAnchors[0]).toContain('(via%20earlyon-richmondhill)');
   });
 
   it('pre-fills the locked hello when no venue sent them', () => {
@@ -448,7 +408,7 @@ describe('TextEntry — the channel matrix, rendered', () => {
     );
   });
 
-  it('decodes the displayed prefill and the sms:/wa.me bodies to the same locked bytes', () => {
+  it('decodes the displayed prefill and the sms: body to the same locked bytes', () => {
     const locked = "Hey Hale, what's going on?";
     expect(INTAKE_PREFILL).toBe(locked);
     // The text node is entity-escaped; a browser shows the apostrophe.
@@ -460,53 +420,19 @@ describe('TextEntry — the channel matrix, rendered', () => {
     expect(smsAnchor).toContain('%27');
     expect(smsAnchor).not.toContain('&#x27;');
     expect(smsAnchor).not.toContain("what's");
-    expect(composerBody(liveNoSourceHtml, 'sms')).toBe(locked);
-    expect(composerBody(liveHtml, 'sms')).toBe(`${locked} (via earlyon-richmondhill)`);
-    const wa = render({ source: null, whatsappNumber: LIVE_NUMBER });
-    const waAnchor = anchors(wa).find((a) => a.includes('wa.me')) ?? '';
-    expect(waAnchor).toContain('%27');
-    expect(waAnchor).not.toContain('&#x27;');
-    expect(composerBody(wa, 'wa')).toBe(locked);
-    const waVenue = render({ whatsappNumber: LIVE_NUMBER });
-    expect(composerBody(waVenue, 'wa')).toBe(`${locked} (via earlyon-richmondhill)`);
+    expect(composerBody(liveNoSourceHtml)).toBe(locked);
+    expect(composerBody(liveHtml)).toBe(`${locked} (via earlyon-richmondhill)`);
+    expect(liveHtml).not.toContain('wa.me');
     expect(liveHtml).not.toContain('What is worth doing with the kids near us?');
     expect(liveHtml).not.toContain('What%20is%20worth%20doing');
     expect(liveHtml).toContain('Find what’s on. Hear how it went.');
     expect(liveHtml).toContain('What’s worth doing with the kids.');
   });
 
-  it('keeps the dark page dark: no channel buttons on the email-fallback state even if the WhatsApp env leaks in', () => {
-    const darkWithWhatsApp = render({ source: null, smsNumber: '', ...WA });
-    expect(darkWithWhatsApp).not.toContain('wa.me');
-    expect(darkWithWhatsApp).not.toContain('sms:');
-  });
-});
-
-describe('TextEntry — the handoff visual (chooser only — WhatsApp live)', () => {
-  it('is absent while WhatsApp is dark — Stanley is one tap, not a picker', () => {
-    expect(liveHtml).not.toContain('var(--color-sky-tint)');
-    expect(unsetHtml).not.toContain('var(--color-sky-tint)');
-  });
-
-  it('draws the neutral speech bubble in site tokens when Messages leads — never Apple’s green icon', () => {
-    const html = render({ whatsappNumber: LIVE_NUMBER });
-    expect(html).toContain('var(--color-sky-tint)');
-    expect(html).not.toContain('#25D366');
-  });
-
-  it('shows the official WhatsApp glyph only when WhatsApp is the primary', () => {
-    const waLeads = render({ platform: 'android', whatsappNumber: LIVE_NUMBER });
-    expect(waLeads).toContain('#25D366');
-    // Secondary WhatsApp does not put the glyph in the handoff tile.
-    const waSecond = render({ whatsappNumber: LIVE_NUMBER });
-    expect(waSecond).not.toContain('#25D366');
-  });
-
-  it('is decorative, and absent from the email-fallback state', () => {
-    const html = render({ whatsappNumber: LIVE_NUMBER });
-    const tile = /<div[^>]*aria-hidden="true"[^>]*>[\s\S]*?var\(--color-sky-tint\)/.exec(html);
-    expect(tile, 'the handoff row must be aria-hidden').not.toBeNull();
-    expect(unsetHtml).not.toContain('var(--color-sky-tint)');
+  it('keeps the dark page dark: no composer on the email-fallback state', () => {
+    const dark = render({ source: null, smsNumber: '' });
+    expect(dark).not.toContain('wa.me');
+    expect(dark).not.toContain('sms:');
   });
 });
 
@@ -600,17 +526,6 @@ describe('TextEntry (the other two locales)', () => {
     expect(bubbleText(zh, 'out')).toBe(INTAKE_PREFILL);
   });
 
-  it('speaks the chooser in French and Chinese — no key paths, no English fallback', () => {
-    const fr = render({ source: null, locale: 'fr', whatsappNumber: LIVE_NUMBER });
-    const zh = render({ source: null, locale: 'zh', whatsappNumber: LIVE_NUMBER });
-    expect(fr).toContain('Continuer dans Messages');
-    expect(zh).toContain('继续用「信息」聊');
-    for (const html of [fr, zh]) {
-      expect(html).not.toContain('Text.chooserHeadline');
-      expect(html).not.toContain('Text.continueMessages');
-    }
-  });
-
   it('previews Hale’s real first reply per locale — FR gets the French twin, ZH shows the English under a translated label', () => {
     const locked =
       'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.';
@@ -628,20 +543,7 @@ describe('TextEntry (the other two locales)', () => {
   });
 });
 
-describe('TextEntry — the chooser arm keeps the five-second frame (WhatsApp live)', () => {
-  it('adds the what-is line and the preview bubble above the channel buttons', () => {
-    const html = render({ whatsappNumber: LIVE_NUMBER });
-    expect(html).toContain('What’s worth doing with the kids.');
-    expect(html).toContain('The text you’ll get back:');
-    // The bubble sits above the first channel door.
-    expect(html.indexOf('I help plan your kids')).toBeLessThan(html.indexOf('href="sms:'));
-    // Structure kept: still the chooser headline, no numbered steps row.
-    expect(html).toContain('Welcome. Pick where we talk.');
-    expect(html).not.toContain('<ol');
-  });
-});
-
-describe('TextEntry (number not provisioned — the pre-chooser state, verbatim)', () => {
+describe('TextEntry (number not provisioned — the email state, verbatim)', () => {
   it('offers email only, and never a broken sms: link', () => {
     expect(unsetHtml).not.toContain('sms:');
     expect(unsetHtml).toContain('href="mailto:aloha@villagehale.com"');

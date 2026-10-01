@@ -1,5 +1,5 @@
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { linqApiKey } from './config';
+import { linqApiKey, linqFromE164 } from './config';
 
 /**
  * VIL-335 — the outbound Linq leg. Raw `fetch`, no SDK, matching the Twilio
@@ -472,10 +472,14 @@ export function readLinqChatHandles(payload: unknown): string[] {
 }
 
 /**
- * Open a chat. Two or more `to` handles make it a group. The first message
- * cannot contain a link — Linq rejects `link` parts and text that contains a
- * URL on this endpoint. Effects and `reply_to` are likewise refused here.
+ * Open a chat. One `to` handle is a 1:1. Two or more make a group. The
+ * request does not set `preferred_service`, so Linq's chain applies to either
+ * shape: iMessage, then RCS, then SMS (MMS for a group that cannot stay on
+ * iMessage or RCS). The first message cannot contain a link — Linq rejects
+ * `link` parts and text that contains a URL on this endpoint. Effects and
+ * `reply_to` are likewise refused here.
  *
+ * https://docs.linqapp.com/guides/messaging/protocol-selection/
  * https://docs.linqapp.com/guides/chats/group-chats/
  */
 export async function createLinqChat(input: {
@@ -825,6 +829,107 @@ export async function sendLinqEffect(input: {
   const providerMessageId = readLinqMessageId(result.payload);
   if (!providerMessageId) throw new LinqSendError('missing_message_id', result.status, false);
   return { providerMessageId };
+}
+
+const URL_IN_TEXT = /https?:\/\//i;
+
+/** First non-group chat on a list payload. Null when the list has none. */
+export function readListedDirectChatId(payload: unknown): string | null {
+  if (!isRecord(payload) || !Array.isArray(payload.chats)) return null;
+  for (const chat of payload.chats) {
+    if (!isRecord(chat) || chat.is_group === true) continue;
+    if (typeof chat.id === 'string' && chat.id) return chat.id;
+  }
+  return null;
+}
+
+async function findLinqDirectChat(input: {
+  from: string;
+  to: string;
+  fetch?: typeof fetch;
+}): Promise<string | null> {
+  const params = new URLSearchParams({ from: input.from, to: input.to });
+  const result = await linqRequest({
+    method: 'GET',
+    path: `/chats?${params.toString()}`,
+    fetch: input.fetch,
+  });
+  if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
+  return readListedDirectChatId(result.payload);
+}
+
+/**
+ * Phone-addressed outbound, the same `ChannelTransport` contract the Twilio
+ * SMS transport implements: `to` is a bare E.164.
+ *
+ * This door is a 1:1 on the Hale line. `preferred_service` is omitted, so
+ * Linq selects the protocol
+ * (https://docs.linqapp.com/guides/messaging/protocol-selection/):
+ *
+ * - iMessage when the handset can take it
+ * - otherwise RCS
+ * - otherwise SMS
+ *
+ * `preferred_service: "iMessage"` would fail a handset that is not on
+ * iMessage. `"SMS"` and `"RCS"` both skip iMessage (RCS if the handset has
+ * it, otherwise SMS). Hale leaves the choice to Linq. Which of the three
+ * carried a given bubble is the webhook `service` field, not this request.
+ *
+ * A co-parent group is a different Linq chat: two or more handles on
+ * `POST /v3/chats`, then sends into `linq_group_chat_id`. Opening that chat
+ * also omits `preferred_service`, so the same chain applies. A group that
+ * falls through to SMS is MMS. Adding or removing a participant is
+ * iMessage-only; a mixed household is a new chat
+ * (https://docs.linqapp.com/channel/imessage/guides/chats/group-chats/).
+ *
+ * Linq keys the 1:1 on the Hale line plus `to`. Plain text with no URL goes
+ * through POST /chats, which sends into the existing chat instead of opening
+ * a second thread.
+ *
+ * A URL or a file needs a chat that already exists. The first message of a
+ * new chat cannot contain a link (Linq 1005), and this door does not invent
+ * a second bubble to carry one. That refusal is permanent:
+ * `link_on_new_chat` or `media_on_new_chat`.
+ *
+ * https://docs.linqapp.com/api/resources/chats/methods/create/
+ */
+export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): ChannelTransport {
+  return {
+    async send({ to, body, mediaUrls }) {
+      if (mediaUrls && mediaUrls.length === 0) {
+        throw new LinqSendError('invalid_parts', 400, true);
+      }
+      if (!to.trim() || !body.trim()) {
+        throw new LinqSendError('invalid_parts', 400, true);
+      }
+      const from = linqFromE164();
+      if (!from) throw new LinqSendError('not_configured', 0, true);
+
+      const media = mediaUrls ?? [];
+      const hasUrl = URL_IN_TEXT.test(body);
+      if (!hasUrl && media.length === 0) {
+        const created = await createLinqChat({
+          from,
+          to: [to],
+          text: body,
+          fetch: deps.fetch,
+        });
+        return {
+          providerMessageId: created.providerMessageId,
+          chatId: created.chatId,
+        };
+      }
+
+      const chatId = await findLinqDirectChat({ from, to, fetch: deps.fetch });
+      if (!chatId) {
+        throw new LinqSendError(hasUrl ? 'link_on_new_chat' : 'media_on_new_chat', 400, true);
+      }
+      const parts: LinqOutboundPart[] = [{ type: 'text', value: body }];
+      for (const url of media) parts.push({ type: 'media', url });
+      const sent = await sendLinqParts({ chatId, parts, fetch: deps.fetch });
+      return { providerMessageId: sent.providerMessageId, chatId };
+    },
+  };
 }
 
 /**

@@ -16,8 +16,8 @@ import { useAnalytics } from '~/lib/analytics/posthog-provider';
  *   `device_hint`    — the server's Platform ordering hint (lib/chooser.ts). Named
  *                      device_hint, not platform_hint: buildEvent's forbidden-fragment
  *                      gate drops any key containing 'lat', and "platform" does.
- *   `channels_live`  — which pipes the page could offer: 'sms' | 'sms+whatsapp' |
- *                      'none' (the email-fallback state).
+ *   `channels_live`  — which pipes the page could offer: 'sms' | 'none'
+ *                      (the email-fallback state).
  *
  * `capture` is in the dependency list because its identity changes exactly once — when
  * the deferred PostHog client resolves — so the view lands on that pass rather than

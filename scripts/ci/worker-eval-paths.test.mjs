@@ -261,7 +261,6 @@ describe('ci.yml wiring', () => {
       'eval:nudge',
       'eval:rsvp',
       'eval:coach-channel',
-      'eval:voice-turn',
       'eval:coach-plan',
       'eval:civic-hours',
       'eval:registration-verify',

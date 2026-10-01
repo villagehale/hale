@@ -195,7 +195,7 @@ describe('webhookFailureAlert', () => {
     const { calls, fetch } = recorder();
 
     const outcome = await webhookFailureAlert(
-      { route: 'twilio_voice', error: new Error('boom') },
+      { route: 'twilio_status', error: new Error('boom') },
       { fetch },
     );
 

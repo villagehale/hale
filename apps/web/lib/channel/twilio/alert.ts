@@ -38,7 +38,6 @@ import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
  * without it (audit P1-5a; webhook-boundary.test.ts holds the inventory). */
 export type WebhookRoute =
   | 'twilio_inbound'
-  | 'twilio_voice'
   | 'twilio_status'
   | 'email_inbound'
   | 'linq_inbound';

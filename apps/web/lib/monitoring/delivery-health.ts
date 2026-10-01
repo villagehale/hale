@@ -81,7 +81,7 @@ export function evaluateDeliveryHealth(stats: DeliveryStats): DeliveryIncident |
 }
 
 /** The channels the sweep confirms delivery for — the only rows the rate may read. */
-const RECEIPT_CHANNELS = ['sms', 'whatsapp'] as const;
+const RECEIPT_CHANNELS = ['sms'] as const;
 
 /** The denominator is sends that REACHED the provider (queued/sent/delivered/failed).
  * Suppressions never enter it, and neither does email (terminal at accept, no

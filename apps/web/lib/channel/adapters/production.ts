@@ -28,7 +28,8 @@ export function productionChannels(database: Database): Partial<Record<ChannelKi
     }),
     // The ONE send-side reader (VIL-262): it carries the verified + non-revoked
     // predicate itself, so the SMS leg fails closed on its own rather than on the
-    // dispatch having run the consent check first.
+    // dispatch having run the consent check first. The leg's default transport
+    // is Linq; this construction does not pass a Twilio sender.
     sms: createTwilioSmsChannel({
       resolveTarget: (userId: string) => resolveSendablePhone(database, userId),
       familyTarget: (userId: string) => familyOutboundTargetForUser(database, userId),

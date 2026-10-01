@@ -117,10 +117,11 @@ describe('delivery-truth sweep', () => {
   }
 
   describe('what the sweep may select', () => {
-    it('selects stale pre-terminal outbound sms/whatsapp rows and nothing else', async () => {
+    it('selects stale pre-terminal outbound sms rows and nothing else', async () => {
       const staleQueued = await seedOutbound({ status: 'queued', createdAt: STALE, providerMessageId: 'SM1' });
       const staleSent = await seedOutbound({ status: 'sent', createdAt: STALE, providerMessageId: 'SM2' });
-      const staleWhatsApp = await seedOutbound({
+      // A historical whatsapp row is not a Twilio receipt the sweep still polls.
+      await seedOutbound({
         status: 'queued',
         createdAt: STALE,
         providerMessageId: 'SM3',
@@ -138,7 +139,7 @@ describe('delivery-truth sweep', () => {
 
       const rows = await selectUnconfirmedOutbound(db.database, NOW);
 
-      expect(new Set(rows.map((r) => r.id))).toEqual(new Set([staleQueued, staleSent, staleWhatsApp]));
+      expect(new Set(rows.map((r) => r.id))).toEqual(new Set([staleQueued, staleSent]));
     });
 
     it("leaves a 'sent' row alone once it is past the force age — the carrier-without-receipts rest state", async () => {

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetWebhookAlertWindowForTests } from '~/lib/channel/twilio/alert';
 
 /**
- * VIL-331 — what the three Twilio route shells do when the thing under them throws.
+ * VIL-331 — what the Twilio route shells do when the thing under them throws.
  *
  * On 2026-08-28 the FIRST database call behind the inbound webhook threw for six hours.
  * The shell had no catch, so Next answered an anonymous 500, Twilio logged error 11200,
@@ -18,22 +18,17 @@ import { resetWebhookAlertWindowForTests } from '~/lib/channel/twilio/alert';
  */
 
 const handleInbound = vi.fn();
-const handleVoice = vi.fn();
 const handleStatus = vi.fn();
 const inboundDeps = vi.fn();
 
 vi.mock('~/lib/channel/twilio/inbound', () => ({
   handleTwilioInboundRequest: (...args: unknown[]) => handleInbound(...args),
 }));
-vi.mock('~/lib/channel/twilio/voice', () => ({
-  handleTwilioVoiceRequest: (...args: unknown[]) => handleVoice(...args),
-}));
 vi.mock('~/lib/channel/twilio/status', () => ({
   handleTwilioStatusRequest: (...args: unknown[]) => handleStatus(...args),
 }));
 vi.mock('~/lib/channel/twilio/deps', () => ({
   twilioInboundDeps: () => inboundDeps(),
-  twilioVoiceDeps: () => ({}),
 }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
 vi.mock('~/lib/cron/kick-drain', () => ({ kickDrain: async () => {} }));
@@ -80,7 +75,6 @@ beforeEach(() => {
   calls.length = 0;
   resetWebhookAlertWindowForTests();
   handleInbound.mockReset();
-  handleVoice.mockReset();
   handleStatus.mockReset();
   inboundDeps.mockReset().mockReturnValue({ enqueue: async () => {} });
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -163,20 +157,6 @@ describe('POST /api/channels/twilio/inbound', () => {
     expect(await response.text()).toBe('<Response/>');
     expect(calls).toHaveLength(0);
     expect(console.error).not.toHaveBeenCalled();
-  });
-});
-
-describe('POST /api/channels/twilio/voice', () => {
-  it('answers 500 and names its own route in the alert', async () => {
-    const { POST } = await import('./voice/route');
-    handleVoice.mockRejectedValue(new Error('connection terminated unexpectedly'));
-
-    const response = await POST(request());
-
-    expect(response.status).toBe(500);
-    expect(pageText()).toContain('twilio_voice');
-    expect(twilioCalls()).toHaveLength(0);
-    expect(captured().properties.route).toBe('twilio_voice');
   });
 });
 

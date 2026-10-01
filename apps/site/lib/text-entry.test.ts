@@ -6,11 +6,9 @@ import {
   buildSmsBody,
   buildSmsHref,
   buildSmsHrefForBody,
-  buildWaHref,
   displaySmsNumber,
   parseSourceCode,
   readSmsNumber,
-  readWhatsAppNumber,
   smsUriFormForPlatform,
 } from './text-entry.js';
 
@@ -155,39 +153,6 @@ describe('readSmsNumber (NEXT_PUBLIC_HALE_SMS_NUMBER)', () => {
     for (const bad of ['647-555-1234', '16475551234', 'coming-soon', '+1', '+0123456789']) {
       expect(readSmsNumber(bad), `${bad} must not be treated as a live number`).toBe('');
     }
-  });
-});
-
-describe('readWhatsAppNumber (NEXT_PUBLIC_HALE_WHATSAPP_NUMBER)', () => {
-  it('is empty until the WhatsApp sender is provisioned — never a dead wa.me button', () => {
-    expect(readWhatsAppNumber(undefined)).toBe('');
-    expect(readWhatsAppNumber('')).toBe('');
-    expect(readWhatsAppNumber('coming-soon')).toBe('');
-  });
-
-  it('survives the trailing-newline env trap, like its SMS twin', () => {
-    expect(readWhatsAppNumber('+16475551234\n')).toBe('+16475551234');
-  });
-});
-
-describe('buildWaHref (the wa.me deep link)', () => {
-  it('carries the SAME pre-filled body as the sms: link, digits without the plus', () => {
-    expect(buildWaHref('+16475551234', 'earlyon-richmondhill')).toBe(
-      'https://wa.me/16475551234?text=Hey%20Hale%2C%20what%27s%20going%20on%3F%20(via%20earlyon-richmondhill)',
-    );
-  });
-
-  it('pre-fills the locked hello with no source', () => {
-    expect(buildWaHref('+16475551234', null)).toBe(
-      'https://wa.me/16475551234?text=Hey%20Hale%2C%20what%27s%20going%20on%3F',
-    );
-  });
-
-  it('percent-encodes the apostrophe so the decoded wa.me body is the locked prefill', () => {
-    const href = buildWaHref('+16475551234', null);
-    expect(href).toContain('%27');
-    expect(href).not.toContain("'");
-    expect(hrefQueryBody(href, 'text')).toBe(LOCKED_PREFILL);
   });
 });
 

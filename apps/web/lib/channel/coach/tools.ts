@@ -662,7 +662,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
  *
  * `now` is the turn's clock, not the reader's: the age gate has to be deterministic, and
  * a reader that read `new Date()` would decide a birthday differently from the draft
- * that quotes it. Both call sites already hold it (runtime.ts, twilio/relay-deps.ts).
+ * that quotes it. The call site already holds it (runtime.ts).
  */
 export function channelScheduleReader(database: Database, now: Date): ChannelScheduleReader {
   return {

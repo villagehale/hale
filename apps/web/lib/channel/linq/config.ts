@@ -48,6 +48,14 @@ export function linqFromE164(): string | null {
 }
 
 /**
+ * A phone-addressed outbound send needs both the partner key and the Hale
+ * line. Either one missing is the same dark leg: there is no half-send.
+ */
+export function linqPhoneOutboundConfigured(): boolean {
+  return linqApiKey() !== null && linqFromE164() !== null;
+}
+
+/**
  * Polls ship only when this is exactly `on`. Anything else, including unset, is off.
  * This tree does not set the flag. Ops turns LINQ_POLLS on after the poll PR ships.
  */

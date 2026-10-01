@@ -23,7 +23,6 @@ const WEB_ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/,
 /** Every provider-facing webhook door, and the route token it must alert under. */
 const WEBHOOK_DOORS: ReadonlyArray<{ file: string; route: string }> = [
   { file: 'app/api/channels/twilio/inbound/route.ts', route: 'twilio_inbound' },
-  { file: 'app/api/channels/twilio/voice/route.ts', route: 'twilio_voice' },
   { file: 'app/api/channels/twilio/status/route.ts', route: 'twilio_status' },
   { file: 'app/api/channels/email/inbound/route.ts', route: 'email_inbound' },
   { file: 'app/api/channels/linq/inbound/route.ts', route: 'linq_inbound' },

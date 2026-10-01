@@ -225,7 +225,7 @@ export type FamilyOutboundDelivery =
   | {
       status: 'sent';
       providerMessageId: string;
-      channel: 'sms' | 'imessage' | 'whatsapp';
+      channel: 'sms' | 'imessage';
       chatId: string | null;
     }
   | { status: 'held'; reason: 'group_cap' | 'quiet_hours' | 'coparent_ask' };
@@ -324,8 +324,7 @@ export async function deliverFamilyOutbound(
     body: input.body,
     mediaUrls: input.mediaUrls,
   });
-  const channel =
-    sent.transport === 'imessage' ? 'imessage' : sent.transport === 'whatsapp' ? 'whatsapp' : 'sms';
+  const channel = sent.transport === 'imessage' ? 'imessage' : 'sms';
   return {
     status: 'sent',
     providerMessageId: sent.providerMessageId,
