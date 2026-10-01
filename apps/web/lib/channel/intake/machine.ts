@@ -44,18 +44,19 @@ import {
   namesAMentalCrisis,
   namesAnEmergency,
 } from '~/lib/channel/off-domain/copy';
-import type { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   plainTextWithoutLinks,
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
 import { projectCivicCandidates } from '~/lib/civic/project';
 import { recordCommitment } from '~/lib/commitments/ledger';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { recordCheckpointTold } from '~/lib/health/told';
+import { writeFact } from '~/lib/memory/facts';
 import { type DiscoveryTrigger, defaultDiscoveryTrigger } from '~/lib/onboarding/trigger-discovery';
 import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
@@ -63,6 +64,25 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { type LatLng, geocodeArea } from '~/lib/village/geocode';
 import type { IntakeAnswerComposer } from './answer';
 import { findReenrollableChannelOwner, reenrolOnStart } from './channel-state';
+import { SHARED_STOP_ASKING_KEY } from './cold-start/budget';
+import {
+  DISCOVERY_NEXT_STEP,
+  KNOWN_VENUE_HELLO,
+  discoveryBubble,
+  logisticsBubble,
+  notedAfterLogistics,
+  stopAskingReply,
+} from './cold-start/copy';
+import { coldStartLadderEnabled } from './cold-start/flags';
+import { judgeColdStartIntent } from './cold-start/intent';
+import {
+  activityFromFind,
+  ageCorrectionFact,
+  ageCorrectionMonths,
+  kidFirstName,
+} from './cold-start/ladder';
+import { declineOptionalAsk, gateOptionalAsk, recordOptionalAsk } from './cold-start/ledger';
+import { planPull } from './cold-start/pull';
 import { type ConnectorOfferLabel, sendYearConnectorCards } from './connector-offer';
 import {
   AMBIGUOUS_CLARIFY_BY_LANGUAGE,
@@ -96,7 +116,7 @@ import { parseCanadianPostal, summarizeChildren } from './derive';
 import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract';
 import { findThisWeek, renderWeekFind } from './first-touch-find';
 import { firstTouchLadderEnabled } from './first-touch-flag';
-import { type FirstTouchPlace, placeFromMessage } from './first-touch-place';
+import { type FirstTouchPlace, placeFromMessage, placeFromVenue } from './first-touch-place';
 import { identityChallengeReply } from './identity-challenge';
 import type { IntakeAckComposer } from './intake-voice';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
@@ -473,6 +493,12 @@ export async function handleInboundSms(
   if (session.state === 'awaiting_place' || session.state === 'awaiting_ages') {
     return claimedTurn(database, inbound, now, () =>
       continueFirstTouch(database, { session, phoneE164, inbound, now }, deps),
+    );
+  }
+
+  if (session.state === 'awaiting_cold_start') {
+    return claimedTurn(database, inbound, now, () =>
+      continueColdStart(database, { session, phoneE164, inbound, now }, deps),
     );
   }
 
@@ -1039,6 +1065,25 @@ async function openFirstTouch(
     locationRequest: null,
   };
   if (!place) {
+    const venue = venueForCode(session.sourceCode);
+    const venuePlace = venue ? placeFromVenue(venue) : null;
+    if (venuePlace) {
+      const hello = await sendAndRecord(
+        database,
+        ctx,
+        KNOWN_VENUE_HELLO[language],
+        deps,
+        recorded.transcript,
+      );
+      return sendWeekFindThenAgesOrProvision(database, args, deps, ctx, {
+        language,
+        place: venuePlace,
+        collected,
+        transcript: hello.transcript,
+        locationRequest: null,
+        started: true,
+      });
+    }
     const asked = await sendPlaceAsk(database, ctx, deps, language, recorded.transcript);
     await saveSession(
       database,
@@ -1285,6 +1330,230 @@ async function answerAges(
     location,
     transcript,
   });
+}
+
+const STOP_ASKING_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * VIL-392. The turn after the discovery find. A number is the pick. Anything
+ * else closes the session and hands the text to C1, except a pull phrase and
+ * a high-confidence stop-asking.
+ */
+async function continueColdStart(
+  database: Database,
+  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
+  deps: IntakeDeps,
+): Promise<IntakeOutcome> {
+  const { session, inbound, now } = args;
+  const progress = session.firstTouch?.coldStart;
+  const familyId = session.familyId;
+  const userId = session.userId;
+  if (!progress || !familyId || !userId) {
+    await saveSession(
+      database,
+      session,
+      { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
+      now,
+    );
+    return { status: 'ignored', reason: 'no_open_conversation' };
+  }
+  const language =
+    session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
+  const ctx = sendContext(args);
+  const judged = await judgeColdStartIntent({ text: inbound.body });
+
+  if (judged.intent === 'stop_asking' && judged.confidence === 'high') {
+    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+    await writeFact(database, {
+      familyId,
+      childId: null,
+      factType: 'logistic',
+      factKey: SHARED_STOP_ASKING_KEY,
+      factValue: {
+        kind: 'duty_stop_asking',
+        until: new Date(now.getTime() + STOP_ASKING_MS).toISOString(),
+      },
+      confidence: 1,
+      inferredBy: 'cold_start_stop_asking',
+      validFrom: now,
+      memoryKind: 'lasting',
+      memorySource: 'parent_message',
+      sourcedAt: now,
+    });
+    await sendAndRecord(database, ctx, stopAskingReply(language), deps, recorded.transcript);
+    await saveSession(
+      database,
+      session,
+      { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
+      now,
+    );
+    return { status: 'first_touch', step: 'place_waiting' };
+  }
+
+  if (judged.intent === 'set_me_up' || judged.intent === 'what_can_you_do') {
+    const place = session.firstTouch?.place;
+    const plan = planPull({
+      intent: judged.intent,
+      language,
+      hasPlace: place != null,
+      hasAges: session.collected.children.length > 0,
+      channel: ctx.pipe.channel,
+      group: ctx.pipe.isGroup,
+      count: 0,
+      place: place?.city || place?.areaCoarse || '',
+      ages: '',
+    });
+    if (!plan.mayLeave) {
+      console.info(
+        { skipped: plan.skipped ?? 'copy_unlocked', intent: judged.intent },
+        'cold-start pull: not sent',
+      );
+      await saveSession(
+        database,
+        session,
+        { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
+        now,
+      );
+      return { status: 'ignored', reason: 'no_open_conversation' };
+    }
+    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+    await sendAndRecord(database, ctx, plan.body, deps, recorded.transcript);
+    await saveSession(
+      database,
+      session,
+      { transcript: recorded.transcript, lastProviderId: inbound.providerId },
+      now,
+    );
+    return { status: 'first_touch', step: 'place_waiting' };
+  }
+
+  const corrected = ageCorrectionMonths(inbound.body);
+  if (corrected != null) {
+    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+    await writeFact(
+      database,
+      ageCorrectionFact({ familyId, childId: null, ageMonths: corrected, now }),
+    );
+    await sendAndRecord(database, ctx, DISCOVERY_NEXT_STEP[language], deps, recorded.transcript);
+    await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
+    return { status: 'first_touch', step: 'ages_waiting' };
+  }
+
+  if (progress.step === 'pick') {
+    if (judged.intent === 'decline') {
+      const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+      await sendAndRecord(
+        database,
+        ctx,
+        notedAfterLogistics(progress.group, language),
+        deps,
+        recorded.transcript,
+      );
+      await saveSession(
+        database,
+        session,
+        { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
+        now,
+      );
+      return { status: 'first_touch', step: 'place_waiting' };
+    }
+    const pick = activityFromFind(progress.findBody, inbound.body);
+    if (!pick) {
+      await saveSession(
+        database,
+        session,
+        { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
+        now,
+      );
+      return { status: 'ignored', reason: 'no_open_conversation' };
+    }
+    const bubble = logisticsBubble({
+      language,
+      day: pick.day,
+      activity: pick.activity,
+      group: progress.group,
+      forwardLink: null,
+    });
+    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+    const askKey = `logistics:${pick.activity}:${pick.day}`;
+    const gate = bubble.body
+      ? await gateOptionalAsk(database, {
+          familyId,
+          now,
+          sendClass: 'logistics',
+          askKey,
+        })
+      : { allow: false as const, reason: 'ask_budget' as const };
+    const body =
+      bubble.body && gate.allow ? bubble.body : notedAfterLogistics(progress.group, language);
+    if (bubble.body && !gate.allow) {
+      console.info(
+        { reason: 'reason' in gate ? gate.reason : 'copy_unlocked' },
+        'cold-start logistics: held',
+      );
+    }
+    if (!bubble.body) {
+      console.info({ skipped: 'copy_unlocked' }, 'cold-start logistics: not sent');
+    } else if (bubble.forwardLink === 'not_offered') {
+      console.info(
+        { forwardLink: 'not_offered' },
+        'cold-start logistics: co-parent link not offered',
+      );
+    }
+    await sendAndRecord(database, ctx, body, deps, recorded.transcript);
+    if (bubble.body && gate.allow) {
+      await recordOptionalAsk(database, { familyId, now, sendClass: 'logistics', askKey });
+    }
+    await saveSession(
+      database,
+      session,
+      {
+        lastProviderId: inbound.providerId,
+        firstTouch: {
+          ...(session.firstTouch ?? {
+            language,
+            place: null,
+            locationRequest: null,
+          }),
+          coldStart: {
+            ...progress,
+            step: bubble.body && gate.allow ? 'logistics' : progress.step,
+            activity: pick.activity,
+            day: pick.day,
+          },
+        },
+        ...(bubble.body && gate.allow
+          ? {}
+          : { state: 'complete' as const, closedAt: now, ladderNext: null }),
+      },
+      now,
+    );
+    return { status: 'first_touch', step: 'find_sent' };
+  }
+
+  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+  console.info({ skipped: 'copy_unlocked', ask: 'names' }, 'cold-start names: not sent');
+  const askKey = `logistics:${progress.activity ?? 'that one'}:${progress.day ?? 'then'}`;
+  if (judged.intent === 'decline') {
+    const declined = await declineOptionalAsk(database, { familyId, askKey });
+    if (!declined.updated) {
+      console.info({ skipped: declined.skipped }, 'cold-start logistics: decline not stored');
+    }
+  }
+  await sendAndRecord(
+    database,
+    ctx,
+    notedAfterLogistics(progress.group, language),
+    deps,
+    recorded.transcript,
+  );
+  await saveSession(
+    database,
+    session,
+    { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
+    now,
+  );
+  return { status: 'first_touch', step: 'find_sent' };
 }
 
 function persistPlace(place: FirstTouchPlace): NonNullable<FirstTouchPersisted['place']> {
@@ -1632,10 +1901,14 @@ async function provision(
   const firstInbound = gathered.transcript.find((e) => e.direction === 'in');
 
   const language = session.ladderLanguage ?? replyLanguage(inbound.body);
+  const discoveryOn = coldStartLadderEnabled() && session.firstTouch != null;
+  const children = discoveryOn
+    ? gathered.children.map((child) => ({ ...child, name: kidFirstName(child.name) }))
+    : gathered.children;
   const { familyId, userId } = await provisionFromIntake(database, {
     phoneE164,
     phoneHash: session.phoneHash,
-    children: gathered.children,
+    children,
     location: gathered.location,
     sourceCode: session.sourceCode,
     firstMessage: firstInbound?.body ?? inbound.body,
@@ -1673,10 +1946,22 @@ async function provision(
     areaCoarse: gathered.location.areaCoarse,
     language,
   });
+  const placeLabel =
+    session.firstTouch?.place?.city ||
+    session.firstTouch?.place?.areaCoarse ||
+    gathered.location.areaCoarse;
+  const discovery = discoveryOn
+    ? discoveryBubble({
+        language,
+        agesMonths: children.map((child) => child.ageMonths),
+        placeLabel,
+        findBody: radar.message,
+      })
+    : null;
   const sent = await sendAndRecord(
     database,
     ctx,
-    radar.message,
+    discovery?.body ?? radar.message,
     deps,
     [],
     // VIL-360 · the D23 anchor. Stamped ONLY when this text carried a weekend pick,
@@ -1691,43 +1976,50 @@ async function provision(
   // (French) waits for the next inbound. Fewer than two titles, a flag that
   // is not exactly on, SMS, or a send that never asked — the ladder ask goes
   // out now, as before. The Linq card is not an ask.
-  await shareFreshLinqContactCard(database, {
-    familyId,
-    parentUserId: userId,
-    now,
-    inbound,
-  });
-  const titles = radar.titles ?? [];
-  const poll =
-    ctx.pipe.channel === 'imessage'
-      ? await offerYearFindPoll(database, {
-          channel: 'imessage',
-          chatId: ctx.pipe.chatId,
-          titles,
-          language,
-          familyId,
-          parentUserId: userId,
-          now,
-        })
-      : null;
-  const ladderNext =
-    poll?.status === 'sent' || poll?.status === 'prompted'
-      ? language === 'fr'
-        ? 'calendar'
-        : 'name'
-      : await sendPostYearFindLadder(
-          database,
-          {
+  //
+  // VIL-392 discovery session one stops here: receipt plus the find, then
+  // silence. No name, calendar, gmail, co-parent, poll, or contact card.
+  let ladderNext: IntakeLadderStep | null = null;
+  if (!discoveryOn) {
+    await shareFreshLinqContactCard(database, {
+      familyId,
+      parentUserId: userId,
+      now,
+      inbound,
+    });
+    const titles = radar.titles ?? [];
+    const poll =
+      ctx.pipe.channel === 'imessage'
+        ? await offerYearFindPoll(database, {
+            channel: 'imessage',
+            chatId: ctx.pipe.chatId,
+            titles,
+            language,
             familyId,
             parentUserId: userId,
-            phoneE164,
-            language,
             now,
-            inbound,
-            send: (body, templateKey) => sendAndRecord(database, ctx, body, deps, [], templateKey),
-          },
-          deps,
-        );
+          })
+        : null;
+    ladderNext =
+      poll?.status === 'sent' || poll?.status === 'prompted'
+        ? language === 'fr'
+          ? 'calendar'
+          : 'name'
+        : await sendPostYearFindLadder(
+            database,
+            {
+              familyId,
+              parentUserId: userId,
+              phoneE164,
+              language,
+              now,
+              inbound,
+              send: (body, templateKey) =>
+                sendAndRecord(database, ctx, body, deps, [], templateKey),
+            },
+            deps,
+          );
+  }
 
   // The find is the watch. There is no separate yes. The parent's own kids-and-postal
   // text is the verbatim. Consent is written before the stage flip (watch-consent.ts).
@@ -1804,13 +2096,27 @@ async function provision(
     {
       collected: gathered.collected,
       transcript: gathered.transcript,
-      state: 'awaiting_ladder',
+      state: discoveryOn ? 'awaiting_cold_start' : 'awaiting_ladder',
       familyId,
       userId,
       lastProviderId: inbound.providerId,
       findWon: radar.findWon,
-      ladderNext,
+      ladderNext: discoveryOn ? null : ladderNext,
       ladderLanguage: language,
+      ...(discoveryOn && session.firstTouch
+        ? {
+            firstTouch: {
+              ...session.firstTouch,
+              coldStart: {
+                step: 'pick',
+                group: ctx.pipe.isGroup,
+                findBody: radar.message,
+                activity: null,
+                day: null,
+              },
+            },
+          }
+        : {}),
     },
     now,
   );

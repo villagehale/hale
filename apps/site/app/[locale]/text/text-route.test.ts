@@ -133,7 +133,7 @@ describe('/text (unlisted entry surface)', () => {
     );
     expect(html).toContain('Hey Hale, what&#x27;s going on?');
     expect(html).toContain(
-      'Hey, it&#x27;s Hale. I find what&#x27;s on for kids across the GTA. What&#x27;s your postal code? I&#x27;ll show you what&#x27;s on this week.',
+      'Hey, it&#x27;s Hale. I find what&#x27;s on for kids. What&#x27;s your postal code? I&#x27;ll show you what&#x27;s on this week.',
     );
     expect(html).not.toContain(LOCKED_PREVIEW_EN);
     vi.unstubAllEnvs();

@@ -1,6 +1,6 @@
 # Hidden-social watchlist (VIL-378)
 
-Hale watches professional accounts that post kids' activities across the GTA:
+Hale watches professional accounts that post kids' activities in the GTA:
 Toronto, Peel, York, Halton, and Durham, plus a day-trip fringe. The product
 is a year planner. This module finds what is on. It does not text a parent,
 and it does not write the words a parent would see. Design owns that copy.

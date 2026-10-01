@@ -1,5 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNull } from 'drizzle-orm';
+import { coldStartLadderEnabled } from '~/lib/channel/intake/cold-start/flags';
+import { gateOptionalAsk, recordOptionalAsk } from '~/lib/channel/intake/cold-start/ledger';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   type FamilyOutboundTarget,
@@ -112,7 +114,13 @@ export type DutyDelivery =
     }
   | {
       status: 'held';
-      reason: 'quiet_hours' | 'frequency_cap' | 'not_enrolled' | 'no_watch_consent' | 'group_cap';
+      reason:
+        | 'quiet_hours'
+        | 'frequency_cap'
+        | 'not_enrolled'
+        | 'no_watch_consent'
+        | 'group_cap'
+        | 'ask_budget';
     }
   | { status: 'not_sent'; reason: string };
 
@@ -895,6 +903,15 @@ export async function deliverDutyGroupLine(
     return { status: 'skipped', reason: 'deduped' };
   const body = withOptOut(input.text, verdict.optOut);
   if (body.includes('TODO-Design')) return { status: 'skipped', reason: 'placeholder' };
+  if (coldStartLadderEnabled()) {
+    const budget = await gateOptionalAsk(database, {
+      familyId: input.familyId,
+      now: input.now,
+      sendClass: 'duty_ask',
+      askKey: input.dedupeKey,
+    });
+    if (!budget.allow) return { status: 'held', reason: 'ask_budget' };
+  }
   const [claimed] = await database
     .insert(schema.channelMessages)
     .values({
@@ -918,6 +935,14 @@ export async function deliverDutyGroupLine(
       .update(schema.channelMessages)
       .set({ providerMessageId: sent.providerMessageId })
       .where(eq(schema.channelMessages.id, claimed.id));
+    if (coldStartLadderEnabled()) {
+      await recordOptionalAsk(database, {
+        familyId: input.familyId,
+        now: input.now,
+        sendClass: 'duty_ask',
+        askKey: input.dedupeKey,
+      });
+    }
     return { status: 'sent', chatId: target.chatId };
   } catch (err) {
     const code = err instanceof LinqSendError ? err.code : 'unknown';

@@ -531,14 +531,14 @@ export const HALE_GREETING_EN =
  * alone. Byte-stable. ASCII apostrophes. French is ASCII, tu.
  */
 export const FIRST_TOUCH_IMESSAGE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: "Hey, it's Hale. I find what's on for kids across the GTA. Tap to share where you are and I'll show you what's on this week.",
-  fr: 'Salut, c\'est Hale. Je trouve ce qui se passe pour les enfants dans le GTA. Partage ta position et je te montre ce qui est au programme cette semaine.',
+  en: "Hey, it's Hale. I find what's on for kids. Tap to share where you are and I'll show you what's on this week.",
+  fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants. Partage ta position et je te montre ce qui est au programme cette semaine.",
 };
 
 /** VIL-385 · Sloane lock. SMS has no location card, so this is the whole first message. */
 export const FIRST_TOUCH_SMS_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: "Hey, it's Hale. I find what's on for kids across the GTA. What's your postal code? I'll show you what's on this week.",
-  fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants dans le GTA. Quel est ton code postal? Je te montre ce qui est au programme cette semaine.",
+  en: "Hey, it's Hale. I find what's on for kids. What's your postal code? I'll show you what's on this week.",
+  fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants. Quel est ton code postal? Je te montre ce qui est au programme cette semaine.",
 };
 
 /** VIL-385 · Sloane lock. The week find when the live lookup has nothing. No CTA. */
@@ -908,20 +908,20 @@ export const HELP_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
  * The unparseable-intake door, split off {@link HELP_REPLY} (doctrine G7/L2). An
  * unreadable reply during intake used to get the frozen CASL capability line, which
  * dragged compliance copy into a conversational moment. This one owns the moment
- * instead: what could not be read, the reply shape in a parent's own words, and the
- * STOP line an intake-stage message still owes. The HELP keyword keeps the frozen
- * {@link HELP_REPLY} untouched.
+ * instead: what could not be read, and the reply shape in a parent's own words,
+ * which is the next step. The HELP keyword keeps the frozen {@link HELP_REPLY}
+ * untouched. This conversational reply does not name STOP or unsubscribe.
  *
  * FOUNDER REVIEW: these words are new (SMS style doctrine v1). The French example
  * postal is H2X so the sample reads the way that parent's own would, and the keyword
  * tokens named are honoured ones only — the copy.test.ts scan reads them off the line.
  */
 export const UNREADABLE_INTAKE_REPLY =
-  "I couldn't read that one. I keep the family week and kids' rec sign-ups - text me like 'Maya is 4, Theo is 1, M5V 2T6' and I'll take it from there. Reply STOP to unsubscribe.";
+  "I couldn't read that one. I keep the family week and kids' rec sign-ups - text me like 'Maya is 4, Theo is 1, M5V 2T6' and I'll take it from there.";
 
 export const UNREADABLE_INTAKE_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: UNREADABLE_INTAKE_REPLY,
-  fr: "Je n'ai pas compris ce message. Je garde la semaine et les inscriptions rec - écrivez par exemple 'Maya a 4 ans, Theo a 1 an, H2X 1Y6' et je m'occupe du reste. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
+  fr: "Je n'ai pas compris ce message. Je garde la semaine et les inscriptions rec - écrivez par exemple 'Maya a 4 ans, Theo a 1 an, H2X 1Y6' et je m'occupe du reste.",
 };
 
 /**

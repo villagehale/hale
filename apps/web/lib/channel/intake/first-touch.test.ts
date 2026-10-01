@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { KNOWN_VENUE_HELLO, receiptLine } from './cold-start/copy';
 import {
   FIRST_TOUCH_AGES_BY_LANGUAGE,
   FIRST_TOUCH_EMPTY_BY_LANGUAGE,
@@ -268,5 +269,47 @@ describe('first touch ladder', () => {
     expect(
       waiting.transport.bodies().filter((body) => body === FIRST_TOUCH_AGES_BY_LANGUAGE.en),
     ).toHaveLength(1);
+  });
+
+  it('skips the place ask for a known venue code', async () => {
+    const { fake, transport, deps } = harness();
+    const result = await handleInboundSms(fake.db, inbound(transport, 'Hi (via markham)'), deps);
+    expect(result).toEqual({ status: 'first_touch', step: 'find_sent' });
+    expect(transport.bodies()[0]).toBe(KNOWN_VENUE_HELLO.en);
+    expect(transport.bodies()[1]).toBe(FIRST_TOUCH_EMPTY_BY_LANGUAGE.en);
+    expect(transport.bodies()[2]).toBe(FIRST_TOUCH_AGES_BY_LANGUAGE.en);
+    expect(transport.locationRequests).toEqual([]);
+    expect(transport.bodies().join('\n')).not.toMatch(/postal code/i);
+  });
+});
+
+describe('cold-start discovery session', () => {
+  beforeEach(() => {
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+  });
+
+  it('sends the receipt and the find, and does not ask for a name', async () => {
+    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA] });
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
+    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
+    const done = await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), deps);
+    expect(done.status).toBe('provisioned');
+    const receipt = receiptLine([48, 12], 'M5V');
+    expect(transport.bodies().at(-1)).toBe(`${receipt}\nRADAR\nReply with the number you want.`);
+    expect(transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
+    expect(transport.bodies().join('\n')).not.toMatch(/stop|unsubscribe/i);
+  });
+
+  it('asks who is taking them after a numbered pick, in one bubble', async () => {
+    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA, EMPTY] });
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
+    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
+    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), deps);
+    const pick = await handleInboundSms(fake.db, inbound(transport, '1'), deps);
+    expect(pick.status).toBe('first_touch');
+    expect(transport.bodies().at(-1)).toBe("Who's taking them then to that one? I'll note it.");
+    expect(transport.bodies().at(-1)?.match(/\?/g)).toHaveLength(1);
+    expect(transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
   });
 });

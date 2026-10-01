@@ -379,13 +379,12 @@ describe('the identity-challenge accountability line (VIL-333)', () => {
 describe('the unparseable-intake door (doctrine G7/L2)', () => {
   it('owns its own words instead of the frozen CASL capability line', () => {
     expect(UNREADABLE_INTAKE_REPLY).toBe(
-      "I couldn't read that one. I keep the family week and kids' rec sign-ups - text me like 'Maya is 4, Theo is 1, M5V 2T6' and I'll take it from there. Reply STOP to unsubscribe.",
+      "I couldn't read that one. I keep the family week and kids' rec sign-ups - text me like 'Maya is 4, Theo is 1, M5V 2T6' and I'll take it from there.",
     );
     // The whole point of the seam split: the compliance reply and the conversational
     // moment no longer share a string, so restyling one can never touch the other.
     expect(UNREADABLE_INTAKE_REPLY).not.toBe(HELP_REPLY);
-    // CASL: an intake-stage message still names the way out.
-    expect(UNREADABLE_INTAKE_REPLY).toContain('STOP');
+    expect(UNREADABLE_INTAKE_REPLY).not.toMatch(/stop|unsubscribe/i);
     expect(UNREADABLE_INTAKE_REPLY).not.toContain('!');
   });
 });
@@ -580,7 +579,7 @@ describe('the French script', () => {
 
   it('answers an unreadable intake reply in French with its own door, not the HELP line', () => {
     expect(UNREADABLE_INTAKE_REPLY_BY_LANGUAGE.fr).toBe(
-      "Je n'ai pas compris ce message. Je garde la semaine et les inscriptions rec - écrivez par exemple 'Maya a 4 ans, Theo a 1 an, H2X 1Y6' et je m'occupe du reste. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
+      "Je n'ai pas compris ce message. Je garde la semaine et les inscriptions rec - écrivez par exemple 'Maya a 4 ans, Theo a 1 an, H2X 1Y6' et je m'occupe du reste.",
     );
     expect(UNREADABLE_INTAKE_REPLY_BY_LANGUAGE.fr).not.toBe(HELP_REPLY_BY_LANGUAGE.fr);
   });
@@ -695,12 +694,12 @@ describe('VIL-385 first-touch ladder copy', () => {
 
   it('keeps Sloane’s sentences byte for byte', () => {
     expect(FIRST_TOUCH_IMESSAGE_BY_LANGUAGE).toEqual({
-      en: "Hey, it's Hale. I find what's on for kids across the GTA. Tap to share where you are and I'll show you what's on this week.",
-      fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants dans le GTA. Partage ta position et je te montre ce qui est au programme cette semaine.",
+      en: "Hey, it's Hale. I find what's on for kids. Tap to share where you are and I'll show you what's on this week.",
+      fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants. Partage ta position et je te montre ce qui est au programme cette semaine.",
     });
     expect(FIRST_TOUCH_SMS_BY_LANGUAGE).toEqual({
-      en: "Hey, it's Hale. I find what's on for kids across the GTA. What's your postal code? I'll show you what's on this week.",
-      fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants dans le GTA. Quel est ton code postal? Je te montre ce qui est au programme cette semaine.",
+      en: "Hey, it's Hale. I find what's on for kids. What's your postal code? I'll show you what's on this week.",
+      fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants. Quel est ton code postal? Je te montre ce qui est au programme cette semaine.",
     });
     expect(FIRST_TOUCH_EMPTY_BY_LANGUAGE).toEqual({
       en: "Nothing on near you this week yet. I'll text you the first good one in a day or two.",

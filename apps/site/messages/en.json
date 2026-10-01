@@ -776,8 +776,8 @@
     "sentGloss": "Hey Hale, what's going on?",
     "previewLabel": "The text you’ll get back:",
     "greeting": "Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.",
-    "greetingLadderSms": "Hey, it's Hale. I find what's on for kids across the GTA. What's your postal code? I'll show you what's on this week.",
-    "greetingLadderImessage": "Hey, it's Hale. I find what's on for kids across the GTA. Tap to share where you are and I'll show you what's on this week.",
+    "greetingLadderSms": "Hey, it's Hale. I find what's on for kids. What's your postal code? I'll show you what's on this week.",
+    "greetingLadderImessage": "Hey, it's Hale. I find what's on for kids. Tap to share where you are and I'll show you what's on this week.",
     "afterSend": "Your first watch comes back the same minute.",
     "trustLine": "Free · No app · No account · Reply STOP anytime",
     "saveContact": "Save Hale to your contacts",
@@ -824,6 +824,6 @@
   },
   "Jsonld": {
     "orgDescription": "Hale is a planner for your kids’ year — it finds what’s on near your kids, watches city registration windows, and comes back to ask how it went. Every family’s data stays in Canada.",
-    "appDescription": "Find what’s on. Hear how it went. A planner for your kids’ year: Hale finds what’s on near your kids, watches registration dates across the GTA, and comes back to ask how it went. Receipts for everything, and your family’s data never leaves Canada."
+    "appDescription": "Find what’s on. Hear how it went. A planner for your kids’ year: Hale finds what’s on near your kids, watches registration dates, and comes back to ask how it went. Receipts for everything, and your family’s data never leaves Canada."
   }
 }

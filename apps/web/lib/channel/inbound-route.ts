@@ -1,18 +1,23 @@
 import { type Database, schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
 import { isCanaryInbound } from '~/lib/channel/canary/config';
+import { mediaUnsupportedReply } from '~/lib/channel/inbound-copy';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
+import { coldStartLadderEnabled } from '~/lib/channel/intake/cold-start/flags';
+import { judgeColdStartIntent } from '~/lib/channel/intake/cold-start/intent';
+import { planPull } from '~/lib/channel/intake/cold-start/pull';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type IntakeDeps, type KeywordAck, handleInboundSms } from '~/lib/channel/intake/machine';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
+import { replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { isParentRole } from '~/lib/channel/role-scope';
 import type { MessageTransport } from '~/lib/channel/transport-address';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
-import { mediaUnsupportedReply } from '~/lib/channel/inbound-copy';
 
 /**
  * The shared inbound router: one authenticated text, the intake machine, then C1.
@@ -163,6 +168,8 @@ export async function routeInboundText(
 
   const outcome = await handleInboundSms(deps.database, inbound, intake);
   if (outcome.status === 'ignored' && outcome.reason === 'no_open_conversation') {
+    const pulled = await maybeColdStartPull(deps, inbound);
+    if (pulled === 'sent') return 'intake';
     return handOffToConversation(deps, inbound);
   }
   if (outcome.status === 'ignored') return 'ignored';
@@ -315,6 +322,64 @@ async function replyMediaUnsupported(
  * Nothing re-drives it inside the request: a retry arriving seconds later cannot tell a
  * dead attempt from one still in flight, and the reconciler can, because it uses age.
  */
+/**
+ * VIL-392 pull. Flag off does not read. A placeholder does not leave: the
+ * text falls through to C1 and the skip is logged.
+ */
+async function maybeColdStartPull(
+  deps: InboundRouteDeps,
+  inbound: InboundMessage,
+): Promise<'sent' | 'skip'> {
+  if (!coldStartLadderEnabled()) return 'skip';
+  const judged = await judgeColdStartIntent({ text: inbound.body });
+  if (judged.intent !== 'set_me_up' && judged.intent !== 'what_can_you_do') return 'skip';
+  const phoneE164 = normalizePhoneE164(inbound.from);
+  if (!phoneE164) return 'skip';
+  const owner = await resolveVerifiedChannelByPhone(deps.database, phoneE164);
+  if (!owner) return 'skip';
+  const language = replyLanguage(inbound.body);
+  const plan = planPull({
+    intent: judged.intent,
+    language,
+    hasPlace: true,
+    hasAges: true,
+    channel: inbound.transport === 'imessage' ? 'imessage' : 'sms',
+    group: inbound.isGroup === true,
+    count: 0,
+    place: '',
+    ages: '',
+  });
+  if (!plan.mayLeave) {
+    deps.log.info(
+      { skipped: plan.skipped ?? 'copy_unlocked', intent: judged.intent },
+      'cold-start pull: not sent',
+    );
+    return 'skip';
+  }
+  const intake = deps.intake(
+    inbound.transport ?? 'sms',
+    inbound.chatId ? { chatId: inbound.chatId, replyToMessageId: inbound.providerId } : undefined,
+  );
+  try {
+    await sendResolvingNewChat(intake.transport, { to: phoneE164, body: plan.body });
+  } catch (err) {
+    deps.log.error(
+      { err: err instanceof Error ? err.name : 'unknown', intent: judged.intent },
+      'cold-start pull: send failed',
+    );
+    return 'skip';
+  }
+  await deps.database.insert(schema.auditLog).values({
+    familyId: owner.familyId,
+    actor: owner.userId,
+    actionTaken: 'cold_start_pull',
+    targetTable: 'families',
+    targetId: owner.familyId,
+    after: { intent: judged.intent },
+  });
+  return 'sent';
+}
+
 async function handOffToConversation(
   deps: InboundRouteDeps,
   inbound: InboundMessage,

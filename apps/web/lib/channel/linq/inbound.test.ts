@@ -1121,7 +1121,7 @@ describe('location sharing', () => {
     await expect(opened.json()).resolves.toEqual({ outcome: 'intake' });
     expect(h.transport.locationRequests).toEqual([CHAT_ID]);
     expect(h.transport.bodies()[0]).toBe(
-      "Hey, it's Hale. I find what's on for kids across the GTA. Tap to share where you are and I'll show you what's on this week.",
+      "Hey, it's Hale. I find what's on for kids. Tap to share where you are and I'll show you what's on this week.",
     );
 
     const shared = await handleLinqInboundRequest(
