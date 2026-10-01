@@ -13,6 +13,7 @@ import {
   type DutyOccasion,
   PROACTIVE_BUBBLES_PER_DAY,
   dutyExtractorMayRun,
+  dutyModeCountsAgainstAskBudget,
   dutySendHeldByCaps,
   inNightBeforeWindow,
   matchParentDutyAsk,
@@ -235,6 +236,30 @@ describe('one open question', () => {
     expect(questions[0]?.eventKey).toBe('swim');
   });
 
+  it('lets the silent line repeat the open question and never open a second one', () => {
+    const plan = planDutyCadence(
+      ctx({
+        bubbleLeaving: true,
+        open: {
+          eventKey: 'swim',
+          role: 'pickup',
+          unanswered: 1,
+          silentNamed: false,
+          status: 'open',
+        },
+        occasions: [
+          occasion({ eventKey: 'swim', startsAt: MONDAY }),
+          occasion({ eventKey: 'piano', startsAt: TUESDAY }),
+        ],
+      }),
+    );
+    const questions = [...plan.foldLines, ...plan.sendLines].filter((row) => row.opensQuestion);
+    expect(questions).toHaveLength(1);
+    const silent = plan.foldLines.find((row) => row.mode === 'silent_parent');
+    expect(silent?.opensQuestion).toBe(false);
+    expect(silent?.namesSilentParent).toBe(true);
+  });
+
   it('does not open a second question while one is unanswered', () => {
     const plan = planDutyCadence(
       ctx({
@@ -303,6 +328,59 @@ describe('parent-initiated asks', () => {
     );
     expect(plan.held).toBe('open_question');
     expect(plan.sendLines).toEqual([]);
+  });
+});
+
+describe('ask budget and stop asking', () => {
+  it('counts which-kid, both-claimed, re-ask, and night-before, and not the other three', () => {
+    for (const mode of ['which_kid', 'both_claimed', 'reask_48h', 'night_before'] as const) {
+      expect(dutyModeCountsAgainstAskBudget(mode)).toBe(true);
+    }
+    for (const mode of ['week_overview', 'parent_initiated', 'silent_parent'] as const) {
+      expect(dutyModeCountsAgainstAskBudget(mode)).toBe(false);
+    }
+    const evening = planDutyCadence(
+      ctx({
+        now: SUNDAY_EVENING,
+        localMinutes: 18 * 60,
+        occasions: [occasion({ eventKey: 'swim', hasOwner: true, hasDutyRecord: true })],
+      }),
+    );
+    expect(evening.sendLines[0]).toMatchObject({ mode: 'night_before', discretionary: true });
+    const overview = planDutyCadence(ctx({ bubbleLeaving: true }));
+    expect(overview.foldLines[0]).toMatchObject({ mode: 'week_overview', discretionary: false });
+  });
+
+  it('holds items 3 to 7 for a parent who said stop asking, and still answers', () => {
+    const owned = occasion({ eventKey: 'swim', hasOwner: true, hasDutyRecord: true });
+    const held = planDutyCadence(
+      ctx({
+        now: SUNDAY_EVENING,
+        localMinutes: 18 * 60,
+        bubbleLeaving: true,
+        stopAsking: true,
+        open: {
+          eventKey: 'swim',
+          role: 'pickup',
+          unanswered: 1,
+          silentNamed: false,
+          status: 'open',
+        },
+        occasions: [owned, occasion({ eventKey: 'piano', needsWhichKid: true, startsAt: TUESDAY })],
+      }),
+    );
+    const modes = [...held.foldLines, ...held.sendLines].map((row) => row.mode);
+    expect(modes).toEqual(['week_overview']);
+    expect(held.sendLines).toEqual([]);
+    const answered = planDutyCadence(
+      ctx({
+        stopAsking: true,
+        parentAsk: { role: 'pickup', weekday: null },
+        occasions: [occasion({ eventKey: 'swim', role: 'pickup', hasOwner: true })],
+      }),
+    );
+    expect(answered.sendLines.map((row) => row.mode)).toEqual(['parent_initiated']);
+    expect(answered.sendLines[0]?.discretionary).toBe(false);
   });
 });
 

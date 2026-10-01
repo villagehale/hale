@@ -11,9 +11,13 @@ import {
 } from '~/lib/testing/pglite';
 import {
   DUTY_OPEN_FACT_KEY,
+  DUTY_STOP_ASKING_KEY,
+  DUTY_STOP_ASKING_MS,
   type DutySendPorts,
+  answerParentDutyAsk,
   deliverDutyGroupLine,
   dutyOpenValue,
+  dutyStopAskingActive,
   emailDutyInGroup,
   planFamilyDutyAsks,
   sweepDutyAsks,
@@ -514,6 +518,140 @@ describe('duty ask sweep', () => {
     expect(body?.chatId).toBe('chat-send');
     expect(body?.text).not.toContain('TODO-Design');
     expect(JSON.stringify(body)).not.toMatch(/\+\d{10}/);
+  });
+
+  it('sends the locked night-before sentence and nothing with a booking claim', async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
+    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
+    const family = await seedFamily(db.database, 'Locked night');
+    await secondParent(family.familyId, 'Sam');
+    await claimGroup(family.familyId, 'chat-locked');
+    await seedChild(db.database, family.familyId, 'Maya', 36, undefined, SUNDAY_EVENING);
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-locked',
+      title: 'Maya swim',
+      start: MONDAY,
+    });
+    await commitDutyUpdate(db.database, {
+      mode: 'write',
+      familyId: family.familyId,
+      actorUserId: family.parentUserId,
+      parentCount: 2,
+      subjectKey: 'evt-locked',
+      eventTitle: 'Maya swim',
+      childNames: ['Maya'],
+      slot: {
+        role: 'pickup',
+        claim: 'self',
+        name: null,
+        userId: family.parentUserId,
+        confidence: 1,
+      },
+      prior: null,
+      source: 'text',
+      now: SUNDAY_EVENING,
+      childId: null,
+      question: false,
+      askWhichKid: false,
+    });
+    const send = vi.fn(async (input: { text: string }) => ({
+      providerMessageId: `linq-${input.text.length}`,
+    }));
+    const result = await sweepDutyAsks(db.database, {
+      now: SUNDAY_EVENING,
+      ports: sendPorts(send),
+    });
+    expect(result.sent).toBe(1);
+    const body = send.mock.calls[0]?.[0]?.text as string;
+    expect(body.split('\n')[0]).toBe(
+      "Tomorrow: Test has Maya's swim at 3:00pm. Say so here if that changes.",
+    );
+    expect(body).not.toMatch(/\b(booked|enrolled|signed up)\b/i);
+    expect(body).not.toMatch(/\{[a-zA-Z]+\}/);
+  });
+
+  it('suppresses asks 3 to 7 for 30 days after stop asking, and still answers', async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
+    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
+    const family = await seedFamily(db.database, 'Stop asking');
+    await secondParent(family.familyId, 'Sam');
+    await claimGroup(family.familyId, 'chat-stop');
+    await seedChild(db.database, family.familyId, 'Maya', 36, undefined, SUNDAY_EVENING);
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-stop',
+      title: 'Maya swim',
+      start: MONDAY,
+    });
+    await commitDutyUpdate(db.database, {
+      mode: 'write',
+      familyId: family.familyId,
+      actorUserId: family.parentUserId,
+      parentCount: 2,
+      subjectKey: 'evt-stop',
+      eventTitle: 'Maya swim',
+      childNames: ['Maya'],
+      slot: {
+        role: 'pickup',
+        claim: 'self',
+        name: null,
+        userId: family.parentUserId,
+        confidence: 1,
+      },
+      prior: null,
+      source: 'text',
+      now: SUNDAY_EVENING,
+      childId: null,
+      question: false,
+      askWhichKid: false,
+    });
+    const noted = await answerParentDutyAsk(db.database, {
+      familyId: family.familyId,
+      actorUserId: family.parentUserId,
+      text: 'stop asking',
+      now: SUNDAY_EVENING,
+    });
+    expect(noted).toEqual({ skipped: 'stop_asking' });
+    const [fact] = await db.database
+      .select({ factValue: schema.familyMemoryFacts.factValue })
+      .from(schema.familyMemoryFacts)
+      .where(
+        and(
+          eq(schema.familyMemoryFacts.familyId, family.familyId),
+          eq(schema.familyMemoryFacts.factKey, DUTY_STOP_ASKING_KEY),
+        ),
+      );
+    expect(dutyStopAskingActive(fact?.factValue, SUNDAY_EVENING)).toBe(true);
+    const until = new Date((fact?.factValue as { until: string }).until).getTime();
+    expect(until - SUNDAY_EVENING.getTime()).toBe(DUTY_STOP_ASKING_MS);
+    expect(dutyStopAskingActive(fact?.factValue, new Date(until))).toBe(false);
+    const view = await planFamilyDutyAsks(db.database, {
+      familyId: family.familyId,
+      now: SUNDAY_EVENING,
+      bubbleLeaving: true,
+    });
+    if (!('plan' in view)) throw new Error('expected a plan');
+    const modes = [...view.plan.foldLines, ...view.plan.sendLines].map((row) => row.mode);
+    expect(modes).toContain('week_overview');
+    expect(modes).not.toContain('night_before');
+    expect(modes).not.toContain('which_kid');
+    expect(modes).not.toContain('both_claimed');
+    expect(modes).not.toContain('reask_48h');
+    expect(modes).not.toContain('silent_parent');
+    const send = vi.fn();
+    await sweepDutyAsks(db.database, { now: SUNDAY_EVENING, ports: sendPorts(send) });
+    expect(send).not.toHaveBeenCalled();
+    const answer = await answerParentDutyAsk(db.database, {
+      familyId: family.familyId,
+      actorUserId: family.parentUserId,
+      text: "who's got pickup?",
+      now: SUNDAY_EVENING,
+      ports: sendPorts(async () => ({ providerMessageId: 'linq-answer' })),
+    });
+    expect(answer).toMatchObject({ delivery: { status: 'sent' } });
   });
 
   it('does not enable a single-parent household', async () => {
