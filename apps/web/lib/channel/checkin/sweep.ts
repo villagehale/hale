@@ -13,6 +13,7 @@ import {
   deliverFamilyOutbound,
   familyOutboundTarget,
   familySpeech,
+  notePermanentSkip,
 } from '~/lib/channel/linq/family-outbound';
 import { groupAddressedLine } from '~/lib/channel/linq/group-coparent-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -24,7 +25,7 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { nightlyOccasion } from '~/lib/channel/variant';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { dayKeyIn } from '~/lib/plan/spine';
@@ -462,6 +463,24 @@ async function runForFamily(
     console.warn({ familyId: family.familyId }, 'evening check-in: group cap reached');
     return;
   }
+  if (delivered.status === 'skipped') {
+    console.warn(
+      { familyId: family.familyId, code: delivered.reason },
+      'evening check-in: outbound skipped',
+    );
+    if (delivered.reason !== 'not_configured') {
+      await notePermanentSkip(database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        category: 'evening_check_in',
+        templateKey: templateKeyFor(decision),
+        dedupeKey,
+        reason: delivered.reason,
+        now,
+      });
+    }
+    return;
+  }
   const channel = delivered.channel === 'imessage' ? 'imessage' : 'sms';
   const channelMessageId = await deps.recordSend(database, {
     familyId: family.familyId,
@@ -706,7 +725,7 @@ export function defaultEveningCheckInDeps(): EveningCheckInDeps {
     readinessStanding: readinessQuestion,
     dedupeActive: (dedupeKey, database) => dedupeActive(dedupeKey, database),
     resolveSendablePhone,
-    transport: createTwilioTransport(),
+    transport: createOutboundTransport(),
     recordSend: async (database, write) => {
       const [row] = await database
         .insert(schema.channelMessages)

@@ -24,6 +24,7 @@ import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
 import type { WelcomeCardPorts } from '~/lib/channel/intake/welcome-card';
 import { createLinqTextTransport } from '~/lib/channel/linq/transport';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { MessageTransport } from '~/lib/channel/transport-address';
@@ -34,7 +35,6 @@ import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import type { ChannelMessageReceivedJob, TwilioInboundDeps } from './inbound';
-import { createTwilioTransport } from './transport';
 
 /**
  * VIL-214 · A3 — the production wiring for the inbound webhook. The one place the
@@ -53,9 +53,9 @@ function anthropicClient(): AgentClient {
  * so a forged request never constructs a model client.
  *
  * `inboundTransport` is the pipe THIS turn arrived on. An iMessage turn answers
- * inside the Linq chat. Everything else is the phone transport (Linq's iMessage →
- * RCS → SMS chain on the loop door; this intake reply still uses the Twilio SMS
- * sender until that slice moves). A WhatsApp inbound never reaches here: the
+ * inside the Linq chat. Everything else is the shared phone transport
+ * (`createOutboundTransport`: Linq iMessage → RCS → SMS, Twilio only when
+ * `OUTBOUND_TRANSPORT` is exactly `twilio`). A WhatsApp inbound never reaches here: the
  * webhook counts `whatsapp_dropped` and returns empty TwiML. Defaults to 'sms'
  * for the cron callers that compose intake sends outside a webhook turn. */
 export function buildIntakeDeps(
@@ -72,7 +72,7 @@ export function buildIntakeDeps(
           chatId: linq?.chatId ?? null,
           replyToMessageId: linq?.replyToMessageId ?? null,
         })
-      : createTwilioTransport();
+      : createOutboundTransport();
   return {
     transport,
     threadMessage: threadProactiveMessage,
@@ -98,13 +98,13 @@ export function buildIntakeDeps(
 /**
  * The two ports the 08:00 contact-card re-drive needs, and nothing else.
  *
- * Built here rather than by the sweep so the Twilio construction stays inside the one
+ * Built here rather than by the sweep so the outbound construction stays inside the one
  * wiring module that already owns it (twilio/one-door.test.ts), and narrow rather than
  * `buildIntakeDeps()` because that one constructs a model client: a leg whose whole job
  * is re-sending a vCard must not warm an Anthropic client on every hourly tick.
  */
 export function welcomeCardRedrivePorts(): WelcomeCardPorts {
-  return { transport: createTwilioTransport(), threadMessage: threadProactiveMessage };
+  return { transport: createOutboundTransport(), threadMessage: threadProactiveMessage };
 }
 
 /**
@@ -116,7 +116,7 @@ export function welcomeCardRedrivePorts(): WelcomeCardPorts {
 export function departureNoticePorts(database: Database): DepartureNoticePorts {
   return {
     ...departureNoticeReaders(database),
-    transport: createTwilioTransport(),
+    transport: createOutboundTransport(),
     threadMessage: threadProactiveMessage,
   };
 }

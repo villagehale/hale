@@ -5,6 +5,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
@@ -207,7 +208,7 @@ async function offerConnector(
   try {
     ({ providerMessageId } = await ports.transport.send({ to: args.phoneE164, body }));
   } catch (err) {
-    const code = err instanceof TwilioSendError ? err.code : 'unknown';
+    const code = readSendRefusal(err)?.code ?? 'unknown';
     // The key STAYS consumed (ledger.ts CONSUMED_SEND_STATUSES): a failed delivery must
     // never un-consume idempotency, and a minted token is already loose in the world.
     await failClaim(database, claimed.id, code);

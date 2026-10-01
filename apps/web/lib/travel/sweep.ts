@@ -21,7 +21,11 @@ import {
   holdStatus,
 } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
+import {
+  createOutboundTransport,
+  failedSendPatch,
+  readSendRefusal,
+} from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { activityClient } from '~/lib/pipeline/client';
 import { TRAVEL_BRIEF_TEMPLATE_KEY, type TravelBriefRender, renderTravelBrief } from './copy';
@@ -459,14 +463,22 @@ async function briefOne(
       console.warn({ tripId: trip.id }, 'travel brief: group cap reached');
       return;
     }
+    if (delivered.status === 'skipped') {
+      await database
+        .update(schema.channelMessages)
+        .set(failedSendPatch(delivered.reason))
+        .where(eq(schema.channelMessages.id, claimed.id));
+      console.warn({ tripId: trip.id, code: delivered.reason }, 'travel brief: outbound skipped');
+      return;
+    }
     providerMessageId = delivered.providerMessageId;
     carried = delivered.channel === 'imessage' ? 'imessage' : 'sms';
     chatId = delivered.chatId;
   } catch (err) {
-    const code = err instanceof TwilioSendError ? err.code : 'unknown';
+    const code = readSendRefusal(err)?.code ?? 'unknown';
     await database
       .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: code })
+      .set(failedSendPatch(code))
       .where(eq(schema.channelMessages.id, claimed.id));
     result.failed += 1;
     console.error({ tripId: trip.id, code }, 'travel brief: the provider refused the text');
@@ -567,7 +579,7 @@ export function defaultTravelBriefDeps(): TravelBriefDeps {
     parentTimeZone: (database, parentUserId) =>
       buildOutboundGatePorts(database).parentTimeZone(parentUserId),
     resolvePhone: resolveSendablePhone,
-    transport: createTwilioTransport(),
+    transport: createOutboundTransport(),
     threadMessage: threadProactiveMessage,
     dedupeActive,
   };

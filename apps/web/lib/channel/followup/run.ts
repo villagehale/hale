@@ -19,6 +19,7 @@ import {
   deliverFamilyOutbound,
   familyOutboundTarget,
   familySpeech,
+  notePermanentSkip,
 } from '~/lib/channel/linq/family-outbound';
 import { groupActivityHowItWent } from '~/lib/channel/linq/group-coparent-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -30,7 +31,7 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { type SendRefusalReason, refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { readDueBookings } from '~/lib/integrations/booking';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
@@ -504,6 +505,24 @@ async function sendFollowup(
     bubbleKind: 'discretionary',
   });
   if (delivered.status === 'held') return { status: 'held', reason: 'frequency_cap' };
+  if (delivered.status === 'skipped') {
+    console.warn(
+      { familyId: input.familyId, code: delivered.reason },
+      'followup: outbound skipped',
+    );
+    if (delivered.reason !== 'not_configured') {
+      await notePermanentSkip(database, {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        category: 'followup',
+        templateKey: input.templateKey,
+        dedupeKey: input.dedupeKey,
+        reason: delivered.reason,
+        now: input.now,
+      });
+    }
+    return { status: 'already_claimed' };
+  }
   await deps.recordSend(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
@@ -1125,7 +1144,7 @@ export function defaultFollowupSweepDeps(): FollowupSweepDeps {
     audit: async (database, row) => {
       await database.insert(schema.auditLog).values(row);
     },
-    transport: createTwilioTransport(),
+    transport: createOutboundTransport(),
     voice: createFollowupVoice(followupVoiceClient),
     threadMessage: threadProactiveMessage,
   };

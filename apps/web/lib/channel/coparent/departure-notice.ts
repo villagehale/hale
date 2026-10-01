@@ -20,7 +20,7 @@ import {
   holdStatus,
 } from '~/lib/channel/outbound-gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
-import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import { failedSendPatch, readSendRefusal } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE } from './copy';
 
@@ -241,14 +241,25 @@ export async function tellStayingParent(
         .where(eq(schema.channelMessages.id, claimed.id));
       return 'send_failed';
     }
+    if (delivered.status === 'skipped') {
+      await database
+        .update(schema.channelMessages)
+        .set(failedSendPatch(delivered.reason))
+        .where(eq(schema.channelMessages.id, claimed.id));
+      console.warn(
+        { familyId, code: delivered.reason },
+        'co-parent departure notice: outbound skipped',
+      );
+      return 'send_failed';
+    }
     providerMessageId = delivered.providerMessageId;
     carried = delivered.channel === 'imessage' ? 'imessage' : 'sms';
     chatId = delivered.chatId;
   } catch (err) {
-    const code = err instanceof TwilioSendError ? err.code : 'unknown';
+    const code = readSendRefusal(err)?.code ?? 'unknown';
     await database
       .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: code })
+      .set(failedSendPatch(code))
       .where(eq(schema.channelMessages.id, claimed.id));
     console.error({ familyId, code }, 'co-parent departure notice: the provider refused the text');
     return 'send_failed';

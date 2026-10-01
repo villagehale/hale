@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { cancelCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { readSendRefusal, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { familyHasSyntheticProbeChannel } from '~/lib/channels/sms-consent-core';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -166,14 +167,22 @@ export async function offerFounderWelcome(
 
   const body = founderPing(location);
   let providerMessageId: string;
+  let carried: 'sms' | 'imessage' = 'sms';
+  let chatId: string | null = null;
   try {
-    ({ providerMessageId } = await ports.transport.send({
+    const sent = await sendResolvingNewChat(ports.transport, {
       to: founder.phoneE164,
       body,
-    }));
+    });
+    providerMessageId = sent.providerMessageId;
+    if (sent.transport === 'imessage') {
+      carried = 'imessage';
+      chatId = sent.chatId ?? null;
+    }
   } catch (err) {
+    const refusal = readSendRefusal(err);
     console.error(
-      { err, newFamilyId: input.newFamilyId },
+      { code: refusal?.code ?? 'unknown', newFamilyId: input.newFamilyId },
       'founder welcome: the ping did not reach the provider - no offer stands, this family gets no note',
     );
     return { status: 'not_pinged', reason: 'send_failed' };
@@ -181,7 +190,16 @@ export async function offerFounderWelcome(
 
   const outcome = await registerOffer(
     database,
-    { ...input, sourceCode, location, founder, providerMessageId, dedupeKey },
+    {
+      ...input,
+      sourceCode,
+      location,
+      founder,
+      providerMessageId,
+      dedupeKey,
+      channel: carried,
+      providerChatId: chatId,
+    },
     ports,
   );
   // THE THREAD, which is where his YES will be read. AFTER the registration and on
@@ -215,6 +233,8 @@ async function registerOffer(
     founder: FounderChannel;
     providerMessageId: string;
     dedupeKey: string;
+    channel?: 'sms' | 'imessage';
+    providerChatId?: string | null;
     now: Date;
   },
   ports: FounderPingPorts,
@@ -222,18 +242,20 @@ async function registerOffer(
   const { founder, location } = input;
   let channelMessageId: string;
   try {
+    const channel = input.channel === 'imessage' ? 'imessage' : 'sms';
     const [row] = await database
       .insert(schema.channelMessages)
       .values({
         familyId: founder.familyId,
         parentUserId: founder.userId,
-        channel: 'sms',
+        channel,
         direction: 'out',
         category: 'founder',
         templateKey: FOUNDER_PING_TEMPLATE_KEY,
         dedupeKey: input.dedupeKey,
         providerMessageId: input.providerMessageId,
-        status: acceptedStatus('sms'),
+        providerChatId: channel === 'imessage' ? (input.providerChatId ?? null) : null,
+        status: acceptedStatus(channel),
         sentAt: input.now,
       })
       .returning({ id: schema.channelMessages.id });

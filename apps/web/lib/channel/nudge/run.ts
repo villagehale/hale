@@ -31,6 +31,7 @@ import {
   familyOutboundTarget,
   familySpeech,
   householdCopies,
+  notePermanentSkip,
 } from '~/lib/channel/linq/family-outbound';
 import {
   absorbHowItWentLines,
@@ -45,7 +46,7 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { weekdayFinderDedupeKey, weekdayFinderTemplateKey } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
@@ -743,6 +744,27 @@ async function runForFamily(
       });
       return emptyTally({ held });
     }
+    if (delivered.status === 'skipped') {
+      console.warn(
+        { familyId: family.familyId, code: delivered.reason },
+        'nudge: outbound skipped',
+      );
+      if (delivered.reason !== 'not_configured') {
+        await notePermanentSkip(database, {
+          familyId: family.familyId,
+          parentUserId: recipient.parentUserId,
+          category: 'nudge',
+          templateKey:
+            nudge.kind === 'weekday_care'
+              ? weekdayFinderTemplateKey(nudge.ask)
+              : proactiveNudgeTemplateKey(nudge.kind),
+          dedupeKey,
+          reason: delivered.reason,
+          now,
+        });
+      }
+      continue;
+    }
     const { providerMessageId } = delivered;
 
     const messageId = await deps.recordSend(database, {
@@ -1038,7 +1060,7 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     audit: async (database, row) => {
       await database.insert(schema.auditLog).values(row);
     },
-    transport: createTwilioTransport(),
+    transport: createOutboundTransport(),
     outboundTarget: familyOutboundTarget,
     client: voiceClient(),
     fulfillCommitment,

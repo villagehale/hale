@@ -45,7 +45,11 @@ import {
   namesAnEmergency,
 } from '~/lib/channel/off-domain/copy';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
-import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import {
+  plainTextWithoutLinks,
+  readSendRefusal,
+  sendResolvingNewChat,
+} from '~/lib/channel/outbound-transport';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
 import { projectCivicCandidates } from '~/lib/civic/project';
@@ -649,15 +653,18 @@ async function sendAndRecord(
    * asks for the parent's name carries a key the name capture can query for. */
   templateKey?: string,
 ): Promise<{ transcript: TranscriptEntry[]; channelMessageId: string | null }> {
-  const { providerMessageId } = await deps.transport.send({ to: ctx.phoneE164, body });
+  const sent = await sendResolvingNewChat(deps.transport, { to: ctx.phoneE164, body });
+  const wireBody = sent.linkOmitted ? plainTextWithoutLinks(body) : body;
+  const channel = sent.transport === 'imessage' ? 'imessage' : ctx.pipe.channel;
+  const chatId = sent.transport === 'imessage' ? (sent.chatId ?? ctx.pipe.chatId) : ctx.pipe.chatId;
   await shareLinqCardAfterFirstOutbound(database, ctx, transcript);
   const entry: TranscriptEntry = {
     direction: 'out',
-    body,
-    providerId: providerMessageId,
+    body: wireBody,
+    providerId: sent.providerMessageId,
     at: ctx.now.toISOString(),
-    channel: ctx.pipe.channel,
-    chatId: ctx.pipe.chatId,
+    channel,
+    chatId,
   };
   if (ctx.session.familyId && ctx.session.userId) {
     const id = await writeChannelMessage(
@@ -672,14 +679,14 @@ async function sendAndRecord(
     await deps.threadMessage(database, {
       familyId: ctx.session.familyId,
       parentUserId: ctx.session.userId,
-      body,
+      body: wireBody,
     });
-    if (ctx.pipe.channel === 'imessage' && ctx.pipe.chatId) {
-      const preview = linkPreviewUrl(body);
+    if (channel === 'imessage' && chatId && !sent.linkOmitted) {
+      const preview = linkPreviewUrl(wireBody);
       if (preview) {
         await sendLinqLinkPreview({
           channel: 'imessage',
-          chatId: ctx.pipe.chatId,
+          chatId,
           url: preview,
           database,
           familyId: ctx.session.familyId,
@@ -2294,10 +2301,12 @@ async function handleKeyword(
     await reenrolOnStart(database, { ...owner, phoneE164, verbatimReply: inbound.body }, now);
     if (providerAnswered) return { status: 'restarted', ack: 'provider_answered' };
     try {
-      const { providerMessageId } = await deps.transport.send({
+      const sent = await sendResolvingNewChat(deps.transport, {
         to: phoneE164,
         body: START_ACK_BY_LANGUAGE[language],
       });
+      const pipe = messagingPipe(inbound);
+      const channel = sent.transport === 'imessage' ? 'imessage' : pipe.channel;
       // The re-enrolment ack is a real outbound to a known family: ledger it (rule #6).
       // Inside the try with its own send, so a refused ack writes no row claiming one.
       await writeChannelMessage(
@@ -2306,9 +2315,10 @@ async function handleKeyword(
         {
           direction: 'out',
           body: START_ACK_BY_LANGUAGE[language],
-          providerId: providerMessageId,
+          providerId: sent.providerMessageId,
           at: now.toISOString(),
-          ...messagingPipe(inbound),
+          channel,
+          chatId: channel === 'imessage' ? (sent.chatId ?? pipe.chatId) : pipe.chatId,
         },
         now,
       );
@@ -2323,7 +2333,8 @@ async function handleKeyword(
       // the remedy is that the provider's keyword set has to hold every word Hale prints
       // (keywords.ts) — but a re-enrolment nobody can be told about must not read the
       // same as one that landed. A TRANSIENT failure still throws and is still retried.
-      if (!(error instanceof TwilioSendError && error.permanent)) throw error;
+      const refusal = readSendRefusal(error);
+      if (!refusal?.permanent) throw error;
       return { status: 'restarted', ack: 'provider_refused' };
     }
     return { status: 'restarted', ack: 'sent' };
@@ -2392,7 +2403,7 @@ async function handleStop(
   if (providerAnswered) return { status: 'stopped', ack: 'provider_answered' };
 
   try {
-    const { providerMessageId } = await deps.transport.send({
+    const sent = await sendResolvingNewChat(deps.transport, {
       to: phoneE164,
       body: STOP_ACK_BY_LANGUAGE[language],
     });
@@ -2401,15 +2412,18 @@ async function handleStop(
     // STOP has no family row to ledger against (channel_messages.family_id NOT NULL),
     // and their consent lives on the RSVP/invite rows handled above.
     if (owner) {
+      const pipe = messagingPipe(inbound);
+      const channel = sent.transport === 'imessage' ? 'imessage' : pipe.channel;
       await writeChannelMessage(
         database,
         { familyId: owner.familyId, parentUserId: owner.userId },
         {
           direction: 'out',
           body: STOP_ACK_BY_LANGUAGE[language],
-          providerId: providerMessageId,
+          providerId: sent.providerMessageId,
           at: now.toISOString(),
-          ...messagingPipe(inbound),
+          channel,
+          chatId: channel === 'imessage' ? (sent.chatId ?? pipe.chatId) : pipe.chatId,
         },
         now,
       );
@@ -2423,7 +2437,8 @@ async function handleStop(
     // would fail the one message we are legally required to get right. A TRANSIENT
     // failure is still a failure: it throws, and the retry finds the session closed and
     // sends the ack again.
-    if (!(error instanceof TwilioSendError && error.permanent)) throw error;
+    const refusal = readSendRefusal(error);
+    if (!refusal?.permanent) throw error;
   }
   return { status: 'stopped', ack: 'sent' };
 }

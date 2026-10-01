@@ -12,7 +12,11 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
-import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import {
+  failedSendPatch,
+  readSendRefusal,
+  sendResolvingNewChat,
+} from '~/lib/channel/outbound-transport';
 import { formatDayHeading } from '~/lib/format/datetime';
 import type {
   CorrelatedEventRef,
@@ -433,16 +437,23 @@ export async function alertParentForEmail(
   }
 
   let providerMessageId: string;
+  let carried: 'sms' | 'imessage' = 'sms';
+  let chatId: string | null = null;
   try {
-    ({ providerMessageId } = await ports.transport.send({
+    const sent = await sendResolvingNewChat(ports.transport, {
       to,
       body: withOptOut(message, verdict.optOut),
-    }));
+    });
+    providerMessageId = sent.providerMessageId;
+    if (sent.transport === 'imessage') {
+      carried = 'imessage';
+      chatId = sent.chatId ?? null;
+    }
   } catch (err) {
-    const code = err instanceof TwilioSendError ? err.code : 'unknown';
+    const code = readSendRefusal(err)?.code ?? 'unknown';
     await database
       .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: code })
+      .set(failedSendPatch(code))
       .where(eq(schema.channelMessages.id, claimed.id));
     console.error({ familyId, code }, 'email alert: the provider refused the text');
     return { alert: 'send_failed', booking: null, going: null };
@@ -450,7 +461,16 @@ export async function alertParentForEmail(
 
   await database
     .update(schema.channelMessages)
-    .set({ providerMessageId })
+    .set(
+      carried === 'imessage'
+        ? {
+            providerMessageId,
+            channel: 'imessage',
+            providerChatId: chatId,
+            status: acceptedStatus('imessage'),
+          }
+        : { providerMessageId },
+    )
     .where(eq(schema.channelMessages.id, claimed.id));
 
   // AFTER THE SEND, and that order is the rule rather than convenience: an offer nobody

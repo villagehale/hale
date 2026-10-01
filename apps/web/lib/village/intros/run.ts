@@ -3,7 +3,7 @@ import type { FamilyStage } from '@hale/types';
 import { and, asc, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { MIN_SURFACE_CONFIDENCE } from '~/lib/civic/parse-hours';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
-import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
+import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
@@ -19,7 +19,7 @@ import {
   productionIdentityAskVoice,
 } from '~/lib/channel/identity/ask-voice';
 import { INTRO_IDENTITY_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import {
   familyHasSyntheticProbeChannel,
   resolveSendablePhone,
@@ -453,6 +453,24 @@ async function sendIntroSms(
     legacy: deps.transport,
   });
   if (delivered.status === 'held') return { sent: false, held: 'frequency_cap' };
+  if (delivered.status === 'skipped') {
+    console.warn(
+      { familyId: input.familyId, code: delivered.reason },
+      'village intros: outbound skipped',
+    );
+    if (delivered.reason !== 'not_configured') {
+      await notePermanentSkip(database, {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        category: 'village_intro',
+        templateKey: input.templateKey,
+        dedupeKey: input.dedupeKey,
+        reason: delivered.reason,
+        now: input.now,
+      });
+    }
+    return { sent: false };
+  }
   await deps.recordSend(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
@@ -1421,7 +1439,7 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
     audit: async (database, row) => {
       await database.insert(schema.auditLog).values(row);
     },
-    transport: createTwilioTransport(),
+    transport: createOutboundTransport(),
     email: createIntroEmailSender(),
     identityAsk: productionIdentityAskVoice(),
     introVoice: productionIntroVoice(),

@@ -1,6 +1,6 @@
 import type { Database } from '@hale/db';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
+import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import type { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -218,7 +218,8 @@ export type FollowUpDeliveryOutcome =
       watchRecorded: boolean | null;
     }
   | { status: 'deferred'; reason: FollowUpFallback }
-  | { status: 'refused_at_send'; reasons: readonly string[] };
+  | { status: 'refused_at_send'; reasons: readonly string[] }
+  | { status: 'skipped'; reason: string };
 
 /**
  * Compose the message, gate it, send it, and close the promise against the row that
@@ -330,6 +331,24 @@ export async function deliverFollowUp(
   if (delivered.status === 'held') {
     console.warn({ familyId: input.familyId }, 'activity follow-up: group cap reached');
     return { status: 'deferred', reason: 'group_cap' };
+  }
+  if (delivered.status === 'skipped') {
+    console.warn(
+      { familyId: input.familyId, code: delivered.reason },
+      'activity follow-up: outbound skipped',
+    );
+    if (delivered.reason !== 'not_configured') {
+      await notePermanentSkip(database, {
+        familyId: input.familyId,
+        parentUserId: input.recipient.parentUserId,
+        category: 'activity_followup',
+        templateKey: 'activity_followup:kept',
+        dedupeKey: input.dedupeKey,
+        reason: delivered.reason,
+        now,
+      });
+    }
+    return { status: 'skipped', reason: delivered.reason };
   }
   const channelMessageId = await deps.recordSend(database, {
     familyId: input.familyId,

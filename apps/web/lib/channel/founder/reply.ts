@@ -4,7 +4,11 @@ import { readAffirmative } from '~/lib/channel/affirmative';
 import { CONSUMED_SEND_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { posterLocation } from '~/lib/channel/intake/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import {
+  createOutboundTransport,
+  readSendRefusal,
+  sendResolvingNewChat,
+} from '~/lib/channel/outbound-transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { cancelCommitment, fulfillCommitment, loadOpenCommitment } from '~/lib/commitments/ledger';
@@ -90,10 +94,7 @@ export interface FounderReplyDeps {
    * The arriving family's primary parent and their LIVE sendable number, or null when
    * there is no longer one to send to.
    */
-  resolveRecipient(
-    database: Database,
-    familyId: string,
-  ): Promise<FounderNoteRecipient | null>;
+  resolveRecipient(database: Database, familyId: string): Promise<FounderNoteRecipient | null>;
   /** REQUIRED (rule #11). A lane that can decide to send a personal note and then hold no
    * way to send it would close the offer, tell the founder it went, and text nobody. */
   transport: ChannelTransport;
@@ -177,14 +178,22 @@ export async function handleFounderWelcomeReply(
 
   const body = founderNote(location);
   let providerMessageId: string;
+  let carried: 'sms' | 'imessage' = 'sms';
+  let chatId: string | null = null;
   try {
-    ({ providerMessageId } = await deps.transport.send({
+    const sent = await sendResolvingNewChat(deps.transport, {
       to: recipient.phoneE164,
       body,
-    }));
+    });
+    providerMessageId = sent.providerMessageId;
+    if (sent.transport === 'imessage') {
+      carried = 'imessage';
+      chatId = sent.chatId ?? null;
+    }
   } catch (err) {
+    const refusal = readSendRefusal(err);
     console.error(
-      { err, founderFamilyId: input.familyId },
+      { code: refusal?.code ?? 'unknown', founderFamilyId: input.familyId },
       'founder welcome: the note did not reach the provider - offer left open, a second YES retries',
     );
     return { status: 'not_sent', reason: 'send_failed', reply: FOUNDER_NOTE_FAILED_ACK };
@@ -195,6 +204,8 @@ export async function handleFounderWelcomeReply(
     parentUserId: recipient.parentUserId,
     dedupeKey,
     providerMessageId,
+    channel: carried,
+    providerChatId: chatId,
     now: input.now,
   });
   // THE THREAD, on the receiving side. AFTER the send and unconditional: a note that
@@ -256,21 +267,25 @@ async function recordNote(
     parentUserId: string;
     dedupeKey: string;
     providerMessageId: string;
+    channel?: 'sms' | 'imessage';
+    providerChatId?: string | null;
     now: Date;
   },
 ): Promise<string> {
+  const channel = input.channel === 'imessage' ? 'imessage' : 'sms';
   const [row] = await database
     .insert(schema.channelMessages)
     .values({
       familyId: input.familyId,
       parentUserId: input.parentUserId,
-      channel: 'sms',
+      channel,
       direction: 'out',
       category: 'founder',
       templateKey: FOUNDER_NOTE_TEMPLATE_KEY,
       dedupeKey: input.dedupeKey,
       providerMessageId: input.providerMessageId,
-      status: acceptedStatus('sms'),
+      providerChatId: channel === 'imessage' ? (input.providerChatId ?? null) : null,
+      status: acceptedStatus(channel),
       sentAt: input.now,
     })
     .returning({ id: schema.channelMessages.id });
@@ -317,7 +332,7 @@ export function defaultFounderReplyDeps(): FounderReplyDeps {
   return {
     loadOpenOffer: loadOpenCommitment,
     resolveRecipient: resolveFounderNoteRecipient,
-    transport: createTwilioTransport(),
+    transport: createOutboundTransport(),
     threadMessage: threadProactiveMessage,
     fulfillCommitment,
     cancelCommitment,

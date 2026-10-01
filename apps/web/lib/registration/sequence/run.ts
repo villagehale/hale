@@ -4,12 +4,13 @@ import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { readWindows as readRegistrationWindows } from '~/lib/channel/intake/radar';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type SpotPortal, portalForMunicipality } from '~/lib/channel/spots/url';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   deliverFamilyOutbound,
   familyOutboundTarget,
   householdCopies,
+  notePermanentSkip,
 } from '~/lib/channel/linq/family-outbound';
 import {
   type FamilyTextRecipient,
@@ -892,6 +893,25 @@ async function runLegForSequence(
       refused += 1;
       continue;
     }
+    if (delivered.status === 'skipped') {
+      refused += 1;
+      console.warn(
+        { sequenceId: sequence.sequenceId, code: delivered.reason },
+        'registration sequence: outbound skipped',
+      );
+      if (delivered.reason !== 'not_configured') {
+        await notePermanentSkip(database, {
+          familyId: sequence.familyId,
+          parentUserId: recipient.parentUserId,
+          category: 'registration_sequence',
+          templateKey: `registration_sequence:${leg}`,
+          dedupeKey,
+          reason: delivered.reason,
+          now,
+        });
+      }
+      continue;
+    }
     const messageId = await deps.recordSend(database, {
       familyId: sequence.familyId,
       parentUserId: recipient.parentUserId,
@@ -1386,7 +1406,7 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
     audit: async (database, row) => {
       await database.insert(schema.auditLog).values(row);
     },
-    transport: createTwilioTransport(),
+    transport: createOutboundTransport(),
     recordCommitment,
     fulfillCommitment,
     threadMessage: threadProactiveMessage,

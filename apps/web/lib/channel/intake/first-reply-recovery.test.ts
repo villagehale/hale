@@ -217,11 +217,13 @@ describe('runFirstReplyRecoveryCron', () => {
     });
   });
 
-  it('wires the real Twilio outbound leg into the default deps', async () => {
+  it('wires the shared outbound leg into the default deps', async () => {
     const { transport } = defaultFirstReplyRecoveryDeps();
-    vi.stubEnv('TWILIO_ACCOUNT_SID', '');
+    vi.stubEnv('OUTBOUND_TRANSPORT', '');
+    vi.stubEnv('LINQ_API_KEY', '');
+    vi.stubEnv('LINQ_FROM_E164', '');
     await expect(transport.send({ to: PHONE, body: greeting(null, 'en') })).rejects.toThrow(
-      /twilio not configured/,
+      /not_configured/,
     );
   });
 });

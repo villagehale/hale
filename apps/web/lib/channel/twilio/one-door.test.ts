@@ -52,6 +52,8 @@ const PROVIDER_TOKENS = [
 const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/twilio/transport.ts':
     'the door itself — the one module that speaks Twilio REST',
+  'apps/web/lib/channel/outbound-transport.ts':
+    'the only production caller of createTwilioTransport; Linq by default (createLinqPhoneTransport), Twilio only when OUTBOUND_TRANSPORT is exactly twilio. Callers ledger beside the send. Exception: claim-code-sender is the pre-existing unledgered sign-in-code residue — the OTP seam returns no provider id and channel_message_category has no honest value for an auth code',
   'apps/web/lib/channel/linq/transport.ts':
     'the iMessage door — the one module that speaks the Linq partner API',
   'apps/web/lib/channel/linq/location-share.ts':
@@ -82,36 +84,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'iMessage arm of the router reply transport; every send ledgered in router route.ts sendReply',
   'apps/web/lib/channel/twilio/delivery-sweep.ts':
     'read-only status poller (P0-1): fetches Message status by SID, sends nothing — its writes are ledger status updates, never provider sends',
-  'apps/web/lib/channel/twilio/deps.ts':
-    'intake wiring; intake sends record via machine.ts writeChannelMessage or the session transcript',
-  'apps/web/lib/channel/router/wiring.ts':
-    'coach reply transport; every send ledgered in router route.ts sendReply',
-  'apps/web/lib/channel/adapters/twilio-sms.ts':
-    'loop dispatch adapter; the default sender is the Linq phone transport, and every leg is ledgered by dispatch.ts writeLedgerRow',
-  'apps/web/lib/registration/sequence/run.ts': 'records its own rows (recordSend port)',
-  'apps/web/lib/party/reminders.ts': 'records its own rows (rsvp category)',
-  'apps/web/lib/village/intros/run.ts': 'records its own rows (village_intro category)',
-  'apps/web/lib/channel/founder/reply.ts': 'records its own rows (founder category)',
-  'apps/web/lib/channel/followup/run.ts': 'records its own rows (followup category)',
-  'apps/web/lib/channel/plan/check-in.ts': 'records its own rows (plan_check_in category)',
-  'apps/web/lib/channel/checkin/sweep.ts':
-    'records its own rows (evening_check_in category) — both the nightly question and the step-down notice, each with its own dedupe key',
-  'apps/web/lib/channel/activity/sweep.ts':
-    'records via deliverFollowUp recordSend port (activity_followup category)',
-  'apps/web/lib/channel/nudge/run.ts': 'records its own rows (nudge category)',
-  'apps/web/lib/travel/sweep.ts':
-    'records its own rows (travel_brief category) — the claim-first insert keyed travel_brief:<tripId> is written BEFORE the transport, and a hold writes its own keyed suppression row (travel_brief_hold:<tripId>:<reason>) instead',
-  'apps/web/lib/channel/spots/sweep.ts': 'records its own rows (spot_open category)',
-  'apps/web/lib/cron/connector-sync.ts':
-    'the connector sweep wires both alert paths off one proactiveSendPorts(); every send is claimed and recorded before it reaches the transport — alertParentForEmail (email_alert category) and alertParentForCalendarChanges (calendar_alert category)',
   'apps/web/lib/channel/connect/connected-notice.ts':
     'records its own row BEFORE the send and claims the dedupe key with it (reply category, connector:connected) — the connect callback awaits this inside the redirect Google hands back',
-  'apps/web/lib/channel/intake/first-reply-recovery.ts':
-    'pre-family by eligibility (family_id IS NULL); session transcript, replayed at provisioning',
-  'apps/web/lib/channel/intake/sitting-reminder.ts':
-    'pre-family by eligibility (family_id IS NULL); session transcript, replayed at provisioning',
-  'apps/web/lib/auth/claim-code-sender.ts':
-    'RESIDUE: sign-in codes are unledgered. The claim flow resolves userId+familyId before sending, but the OTP seam returns no provider id and channel_message_category has no honest value for an auth code. Closing this needs an additive category migration + provider-id plumbing — its own change, not a quiet edit here.',
   'apps/web/lib/channels/otp-sender.ts':
     'RESIDUE (latent): env-driven CPaaS sender, unconfigured in every environment — claim-code-sender deliberately routes around it. Bound + ledger it before A3 provisions it.',
 };

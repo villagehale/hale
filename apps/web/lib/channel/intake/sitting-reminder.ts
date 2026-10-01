@@ -5,7 +5,12 @@ import { SITTING_SESSION_REMINDER } from '~/lib/channel/intake/copy';
 import { appendTranscript, loadOpenSession, saveSession } from '~/lib/channel/intake/session';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { PROACTIVE_QUIET_HOURS } from '~/lib/channel/outbound-gate';
-import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
+import {
+  createOutboundTransport,
+  readSendRefusal,
+  refusalStopsRetry,
+  sendResolvingNewChat,
+} from '~/lib/channel/outbound-transport';
 import { decryptString } from '~/lib/crypto/string-cipher';
 import { localParts } from '~/lib/loop/prefs';
 import { dayKeyIn } from '~/lib/plan/spine';
@@ -106,7 +111,7 @@ export function sittingSessionEligible(row: SittingSessionRow, now: Date): boole
 }
 
 export function defaultSittingReminderDeps(): SittingReminderDeps {
-  return { transport: createTwilioTransport() };
+  return { transport: createOutboundTransport() };
 }
 
 export async function runSittingReminderCron(
@@ -140,20 +145,27 @@ export async function runSittingReminderCron(
         result.skipped += 1;
         continue;
       }
-      const { providerMessageId } = await deps.transport.send({
+      const { providerMessageId } = await sendResolvingNewChat(deps.transport, {
         to: phoneE164,
         body: SITTING_SESSION_REMINDER,
       });
       await recordSittingReminderOutbound(database, phoneE164, providerMessageId, now);
       result.sent += 1;
     } catch (err) {
-      if (err instanceof TwilioSendError && err.permanent) {
+      const refusal = readSendRefusal(err);
+      if (refusalStopsRetry(err)) {
         result.skipped += 1;
+        console.error({ code: refusal?.code }, 'sitting reminder send refused');
         continue;
       }
       await releaseSittingReminder(database, row.id);
+      if (refusal?.code === 'not_configured') {
+        result.skipped += 1;
+        console.error({ code: refusal.code }, 'sitting reminder send skipped');
+        continue;
+      }
       result.failed += 1;
-      console.error('sitting reminder send failed', err instanceof Error ? err.message : 'unknown');
+      console.error({ code: refusal?.code ?? 'unknown' }, 'sitting reminder send failed');
     }
   }
   return result;

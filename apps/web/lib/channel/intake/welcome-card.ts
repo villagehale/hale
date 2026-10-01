@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { failedSendPatch } from '~/lib/channel/outbound-transport';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
@@ -152,20 +153,27 @@ export async function sendWelcomeContactCard(
   });
 
   let providerMessageId: string;
+  let reportedImessage = false;
+  let reportedChatId: string | null = null;
   try {
-    ({ providerMessageId } = await ports.transport.send({
+    const sent = await ports.transport.send({
       to: args.phoneE164,
       body: WELCOME_CARD_BODY,
       mediaUrls: [CONTACT_CARD_URL],
-    }));
+    });
+    providerMessageId = sent.providerMessageId;
+    if (sent.transport === 'imessage') {
+      reportedImessage = true;
+      reportedChatId = sent.chatId ?? null;
+    }
   } catch (err) {
     const { code, permanent } = providerRefusal(err);
     // The claimed row says what happened, so a family with no card is a query rather
-    // than a guess. The key STAYS consumed either way (ledger.ts:
-    // CONSUMED_SEND_STATUSES) — a failed delivery must never un-consume idempotency.
+    // than a guess. `not_configured` frees the dedupe key for the re-drive. Every
+    // other refusal, including `media_on_new_chat`, keeps it.
     await database
       .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: code })
+      .set(failedSendPatch(code))
       .where(eq(schema.channelMessages.id, claimed.id));
     console.error(
       { familyId, code, permanent },
@@ -176,7 +184,16 @@ export async function sendWelcomeContactCard(
 
   await database
     .update(schema.channelMessages)
-    .set({ providerMessageId })
+    .set(
+      reportedImessage
+        ? {
+            providerMessageId,
+            channel: 'imessage',
+            providerChatId: reportedChatId,
+            status: acceptedStatus('imessage'),
+          }
+        : { providerMessageId },
+    )
     .where(eq(schema.channelMessages.id, claimed.id));
 
   // The sentence Hale said, where the coach reads it back (channel/thread.ts). The card

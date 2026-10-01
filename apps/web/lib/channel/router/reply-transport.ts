@@ -1,5 +1,6 @@
 import { type EmailReplyDeps, sendEmailReply } from '~/lib/channel/email/reply-send';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import type { ReplySent, ReplyTransport } from './reply-route';
 
@@ -20,7 +21,7 @@ import type { ReplySent, ReplyTransport } from './reply-route';
  * was answered by a send that never happened.
  */
 export function createReplyTransport(deps: {
-  /** The SMS door. Production is the Twilio sender. */
+  /** The phone door. Production is `createOutboundTransport` (Linq unless the kill switch is on). */
   phone: ChannelTransport;
   /** Null when the inbound-email leg is not provisioned — see the module note. */
   email: EmailReplyDeps | null;
@@ -48,8 +49,13 @@ export function createReplyTransport(deps: {
     async send({ route, body }): Promise<ReplySent> {
       switch (route.channel) {
         case 'sms': {
-          const sent = await deps.phone.send({ to: route.to, body });
-          return { providerMessageId: sent.providerMessageId, channel: 'sms' };
+          const sent = await sendResolvingNewChat(deps.phone, { to: route.to, body });
+          const channel = sent.transport === 'imessage' ? 'imessage' : 'sms';
+          return {
+            providerMessageId: sent.providerMessageId,
+            channel,
+            ...(sent.chatId ? { chatId: sent.chatId } : {}),
+          };
         }
         case 'imessage': {
           const sent = await sendImessage({

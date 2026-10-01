@@ -8,7 +8,9 @@ import {
   familySpeech,
 } from '~/lib/channel/linq/family-outbound';
 import { groupBothReaderFrench } from '~/lib/channel/linq/group-coparent-copy';
-import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
+import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
+import { twilioConfig } from '~/lib/channel/twilio/config';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import type { Channel } from '../types';
 
@@ -21,12 +23,12 @@ import type { Channel } from '../types';
  * shape: it is handed a `userId`. `resolveSendablePhone` (sms-consent-core) is
  * that reader, so the adapter composes the two rather than growing a third.
  *
- * The default transport is Linq (`createLinqPhoneTransport`). A family with a
- * claimed group still goes to that group; a family without one is a Linq 1:1
- * on the Hale line, which falls through iMessage → RCS → SMS. Twilio is not
- * constructed here. An injected transport may still be the Twilio one — the
- * dispatch tests classify a 21610 that way — and that refusal stays a
- * non-transient error so a retry cannot re-earn it.
+ * The default transport is `createOutboundTransport` (Linq, unless
+ * `OUTBOUND_TRANSPORT` is exactly `twilio`). A family with a claimed group
+ * still goes to that group; a family without one is a Linq 1:1 on the Hale
+ * line, which falls through iMessage → RCS → SMS. An injected transport may
+ * still be the Twilio one — the dispatch tests classify a 21610 that way —
+ * and that refusal stays a non-transient error so a retry cannot re-earn it.
  *
  * Config is the Linq outbound pair (`LINQ_API_KEY` and `LINQ_FROM_E164`). A
  * deploy holding one of them skips cleanly rather than half-sending, and the
@@ -39,7 +41,7 @@ export interface TwilioSmsChannelDeps {
   /** Resolve an internal user id to a sendable E.164, or null when this parent has no
    * active verified SMS channel (prod: `resolveSendablePhone`). */
   resolveTarget(userId: string): Promise<string | null>;
-  /** The shared outbound leg; defaults to the Linq phone transport. */
+  /** The shared outbound leg; defaults to `createOutboundTransport`. */
   transport?: ChannelTransport;
   /** Whether the outbound leg is provisioned; defaults to the Linq key and line. */
   configured?: boolean;
@@ -52,8 +54,13 @@ export interface TwilioSmsChannelDeps {
   database?: Database;
 }
 
+function defaultOutboundConfigured(): boolean {
+  if (process.env.OUTBOUND_TRANSPORT === 'twilio') return twilioConfig() !== null;
+  return linqPhoneOutboundConfigured();
+}
+
 export function createTwilioSmsChannel(deps: TwilioSmsChannelDeps): Channel {
-  const transport = deps.transport ?? createLinqPhoneTransport();
+  const transport = deps.transport ?? createOutboundTransport();
   return {
     kind: 'sms',
     async send({ userId, rendered }) {
@@ -61,7 +68,7 @@ export function createTwilioSmsChannel(deps: TwilioSmsChannelDeps): Channel {
         throw new Error(`twilio sms adapter received ${rendered.kind} content`);
       }
 
-      if (!(deps.configured ?? linqPhoneOutboundConfigured())) {
+      if (!(deps.configured ?? defaultOutboundConfigured())) {
         return { status: 'skipped', reason: 'not_configured' };
       }
 
@@ -94,13 +101,24 @@ export function createTwilioSmsChannel(deps: TwilioSmsChannelDeps): Channel {
               reason: 'disabled',
             };
           }
+          if (delivered.status === 'skipped') {
+            if (delivered.reason === 'not_configured') {
+              return { status: 'skipped', reason: 'not_configured' };
+            }
+            return {
+              status: 'error',
+              transient: false,
+              code: delivered.reason,
+              message: 'linq refused the send',
+            };
+          }
           return {
             status: 'sent',
             providerMessageId: delivered.providerMessageId,
             providerChatId: delivered.chatId,
           };
         }
-        const sent = await transport.send({ to, body: rendered.text });
+        const sent = await sendResolvingNewChat(transport, { to, body: rendered.text });
         return {
           status: 'sent',
           providerMessageId: sent.providerMessageId,
