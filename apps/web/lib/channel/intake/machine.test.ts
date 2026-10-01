@@ -2293,6 +2293,10 @@ function shareCardCalls(fetchMock: { mock: { calls: unknown[][] } }) {
  * The Linq Name and Photo share is silent and happens on the first outbound.
  */
 describe('intake · one ladder job per reply', () => {
+  beforeEach(() => {
+    vi.stubEnv('LINQ_CONTACT_CARD_SHARE', 'off');
+  });
+
   it('sends the name with the year find, then one later job per reply', async () => {
     const h = harness({});
     await text(h.fake, h.transport, h.deps, 'hi');

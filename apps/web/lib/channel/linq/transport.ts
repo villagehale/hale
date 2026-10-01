@@ -1,5 +1,6 @@
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { linqApiKey, linqFromE164 } from './config';
+import { type ContactCardShareStore, resolveContactCardShareStore } from './contact-card-share';
+import { linqApiKey, linqContactCardShareEnabled, linqFromE164 } from './config';
 
 /**
  * VIL-335 — the outbound Linq leg. Raw `fetch`, no SDK, matching the Twilio
@@ -10,7 +11,9 @@ import { linqApiKey, linqFromE164 } from './config';
  * threaded under the inbound bubble when we have its message id. Mark-as-read
  * is the same client. Tapbacks, link parts, the contact card, groups, polls,
  * and effects are the same client; product moments call them from the sibling
- * modules, not from a door that has not decided to.
+ * modules, not from a door that has not decided to. A successful send also
+ * shares the configured Name and Photo card once per chat, on the first share
+ * Linq accepts. That call is best-effort and does not fail the message.
  *
  * https://docs.linqapp.com/guides/messaging/sending-messages/
  *
@@ -262,6 +265,7 @@ export async function sendLinqParts(input: {
   if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
   const providerMessageId = readLinqMessageId(result.payload);
   if (!providerMessageId) throw new LinqSendError('missing_message_id', result.status, false);
+  await shareContactCardAfterSend({ chatId: input.chatId, fetch: input.fetch });
   return { providerMessageId };
 }
 
@@ -420,6 +424,108 @@ export async function shareLinqContactCard(input: {
   return { accepted: true };
 }
 
+/**
+ * Push the Name and Photo card already configured on the sending line into
+ * this chat. No request body. A miss is a named result, never a throw.
+ * Error 2012 means no card is set up yet.
+ *
+ * https://docs.linqapp.com/channel/imessage/guides/chats/share-contact-card/
+ */
+export async function shareLinqContactCardResult(input: {
+  chatId: string;
+  fetch?: typeof fetch;
+}): Promise<LinqEffectResult> {
+  if (!input.chatId) {
+    return { status: 'refused', code: 'missing_chat_id', httpStatus: 400, permanent: true };
+  }
+  try {
+    const result = await linqRequest({
+      method: 'POST',
+      path: `/chats/${encodeURIComponent(input.chatId)}/share_contact_card`,
+      fetch: input.fetch,
+    });
+    // A 2xx body that says the share did not happen is the same refusal as a
+    // 4xx. An empty 2xx is the documented success.
+    const noop = isRecord(result.payload) && result.payload.success === false;
+    if (!result.ok || noop) {
+      return {
+        status: 'refused',
+        code: result.code,
+        httpStatus: result.status,
+        permanent: result.permanent,
+      };
+    }
+    return { status: 'accepted' };
+  } catch (err) {
+    if (err instanceof LinqSendError && err.code === 'not_configured') {
+      return { status: 'not_configured' };
+    }
+    if (err instanceof LinqSendError && (err.code === 'timeout' || err.code === 'network')) {
+      return { status: 'unreachable', reason: err.code };
+    }
+    throw err;
+  }
+}
+
+/**
+ * After a send that already landed: share the card once per chat, on the first
+ * share Linq accepts, and remember that chat so a restart does not share again.
+ * `LINQ_CONTACT_CARD_SHARE=off` skips the call. Error 2012 is a quiet skip and
+ * does not mark the chat, so a later send can try again. Nothing here is logged
+ * with a phone number, a chat id, or a body.
+ */
+export async function maybeShareLinqContactCard(input: {
+  chatId: string;
+  fetch?: typeof fetch;
+  now?: Date;
+  store?: ContactCardShareStore;
+}): Promise<void> {
+  if (!linqContactCardShareEnabled() || !input.chatId) return;
+  const at = input.now ?? new Date();
+  let store: ContactCardShareStore;
+  try {
+    store = resolveContactCardShareStore(input.store);
+    if (await store.has(input.chatId)) return;
+  } catch {
+    console.warn(
+      { outcome: 'store_unavailable' },
+      'linq contact card: could not read whether this chat was already shared',
+    );
+    return;
+  }
+  const result = await shareLinqContactCardResult({ chatId: input.chatId, fetch: input.fetch });
+  if (result.status === 'accepted') {
+    try {
+      await store.mark(input.chatId, at);
+    } catch {
+      console.warn(
+        { outcome: 'not_marked' },
+        'linq contact card: share landed but this chat was not remembered',
+      );
+    }
+    return;
+  }
+  if (result.status === 'not_configured' || result.status === 'unreachable') return;
+  if (result.code === '2012') return;
+  console.warn(
+    { code: result.code, httpStatus: result.httpStatus },
+    'linq contact card: share did not land',
+  );
+}
+
+/** The message is already accepted. A share miss must not change that. */
+async function shareContactCardAfterSend(input: {
+  chatId: string;
+  fetch?: typeof fetch;
+}): Promise<void> {
+  try {
+    await maybeShareLinqContactCard(input);
+  } catch (err) {
+    const code = err instanceof LinqSendError ? err.code : 'unknown';
+    console.warn({ code }, 'linq contact card: share after send did not finish');
+  }
+}
+
 /** The chat id on a create-chat body (`chat.id`). Null when the body has none. */
 export function readLinqChatId(payload: unknown): string | null {
   if (!isRecord(payload) || !isRecord(payload.chat)) return null;
@@ -508,6 +614,7 @@ export async function createLinqChat(input: {
   if (!chatId || !providerMessageId) {
     throw new LinqSendError('missing_chat_id', result.status, false);
   }
+  await shareContactCardAfterSend({ chatId, fetch: input.fetch });
   return { chatId, providerMessageId };
 }
 
@@ -776,6 +883,7 @@ export async function sendLinqPoll(input: {
   if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
   const envelope = readLinqPollEnvelope(result.payload);
   if (!envelope) throw new LinqSendError('missing_message_id', result.status, false);
+  await shareContactCardAfterSend({ chatId: input.chatId, fetch: input.fetch });
   return envelope;
 }
 
@@ -828,6 +936,7 @@ export async function sendLinqEffect(input: {
   if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
   const providerMessageId = readLinqMessageId(result.payload);
   if (!providerMessageId) throw new LinqSendError('missing_message_id', result.status, false);
+  await shareContactCardAfterSend({ chatId: input.chatId, fetch: input.fetch });
   return { providerMessageId };
 }
 
