@@ -1,0 +1,22 @@
+# Capability registry (VIL-389)
+
+One page for five capabilities. Flags below were read from this tree unless the row says pending or unverified. Nothing here changes a flag value. The shadow harness named in [VIL-376](https://linear.app/villagehale/issue/VIL-376/upgrade-backend-llm-routing-haikusonnet-current-frontier-shadow-before) is `apps/worker/evals/shadow/run-shadow-eval.mjs`. It compares two prompt versions on synthetic fixtures. No capability below has a scenario wired into that harness.
+
+Owner is unverified for every row. This tree has no CODEOWNERS entry that assigns these capabilities.
+
+| Capability | Flag | Allowlist | Shadow mode / log | Eval scenario | Owner |
+| --- | --- | --- | --- | --- | --- |
+| Find-activity | None on `createActivityFinder`. Unverified that another name exists. | None on the lane. Proactive callers of the finder are covered by `F14_ENABLED` / `F14_FAMILY_ALLOWLIST` (`apps/web/lib/channel/f14.ts`; the activity sweep test imports those). That pair is the F14 gate, not a find-activity flag. | None found in `apps/web/lib/channel/activity/lane.ts`. | `apps/worker/evals/run-activity-finder-eval.mjs` (skill `packages/agent/skills/activity-finder.md`). Deeper pass: `run-activity-deep-eval.mjs`. | unverified |
+| Booked detection | `BOOKED_DETECTION_ENABLED` — exact `true` (`apps/web/lib/integrations/booked.ts`) | `BOOKED_DETECTION_FAMILY_ALLOWLIST` — comma-separated family ids. A listed family is on while the global flag is off (`bookedDetectionEnabledFor`). | No shadow log. Flag off keeps `booking_confirmation` in the extractor's kinds and writes no `activity_bookings` row; the alert frame stays the `new_event` twins (`booked.ts` header). | Extraction: `apps/worker/evals/run-sentinel-eval.mjs` with `booking_confirmation` fixtures in `apps/worker/evals/sentinel-fixtures.mjs`. Write path: `apps/web/lib/integrations/booking.pglite.test.ts`. | unverified |
+| Co-parent duty | Pending, not on main. Draft [PR #724](https://github.com/villagehale/hale/pull/724) defines `COPARENT_DUTY_ASKS_ENABLED` (exact `true`) in `apps/web/lib/channel/coparent/duty/flag.ts` on that branch. | Pending, same file: `COPARENT_DUTY_ASKS_FAMILY_ALLOWLIST`. | Pending. The PR describes an `info` line `coparent duty shadow` with `shadow: 'coparent_duty'`, `mode: 'shadow'`, `wrote: false`, `sent: false`. That file is not in this tree. | Pending. The PR describes duty fixtures and `DUTY_SLOT_ACCURACY_FLOOR`. Not on main. Skill `extract-coparent-duty` is not in `packages/agent/skills/` here. | unverified |
+| First reply | `FIRST_REPLY_ACTION_LINE` — exact `true` (`apps/web/lib/channel/intake/action-line.ts`, `FIRST_REPLY_ACTION_LINE_ENV`). `FIRST_TOUCH_LADDER_ENABLED` was not found in this tree. That name is unverified. | None in `action-line.ts`. | Named hold, not a shadow log. `composeRadarMessage` sets `actionHeld: 'flag_off'` and drops the URL tail when the flag is off (`apps/web/lib/channel/intake/radar-voice.ts`). | `apps/web/lib/__journey__/first-reply-action-line.test.ts` and `apps/web/lib/channel/intake/radar-voice.test.ts`. No worker shadow scenario. | unverified |
+| Authorized signup | `AUTHORIZED_SIGNUP_ENABLED` — exact `on` after trim. `true`, `1`, and `ON` stay off (`apps/web/lib/signup/flag.ts`). | None in `flag.ts`. | None. Flag off returns `outcome: 'flag_off'` and does not open the browser (`apps/web/lib/signup/run.ts`). | `apps/web/lib/signup/run.pglite.test.ts`, `sandbox.e2e.test.ts`, `sandbox-boundary.pglite.test.ts`. No worker shadow scenario. | unverified |
+
+## Gaps
+
+- Find-activity has an offline eval and no own flag, no family allowlist, and no shadow log. The lane runs when a parent asks (`createActivityFinder` in `lane.ts`, used from the coach and the intake radar).
+- Booked detection has a flag, an allowlist, and an extraction eval. It has no shadow log of the booking row that would have been written while the flag is off.
+- Co-parent duty is not on main. Flag, allowlist, shadow log, and eval exist only as the open PR above.
+- First reply has a flag and a named `flag_off` hold. It has no allowlist and no scenario in `apps/worker/evals/shadow/`. `FIRST_TOUCH_LADDER_ENABLED` is not a flag in this checkout.
+- Authorized signup has a flag and runner tests. It has no allowlist and no shadow log.
+- `apps/worker/evals/shadow/run-shadow-eval.mjs` is not pointed at any of these five. Its README says `loadPromptVersions` and `sampleInputs` are still seams.
