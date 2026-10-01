@@ -1,5 +1,5 @@
-import type { AgentClient, AgentUsage, ModelId } from '@hale/agent';
-import { pickLane } from '@hale/agent';
+import type { AgentClient, AgentUsage, LaneConfig, ModelId } from '@hale/agent';
+import { SONNET55_MODEL, pickLane } from '@hale/agent';
 import type { ClassifierSuggestion, EventType } from '@hale/types';
 import { redactEventPayload } from '@hale/worker/redaction';
 import { z } from 'zod';
@@ -15,6 +15,11 @@ import { forceToolJson } from './structured';
  */
 
 const MAX_TOKENS = 1024;
+const CANDIDATE_LANE: LaneConfig = {
+  model: SONNET55_MODEL,
+  thinking: 'adaptive',
+  effort: 'high',
+};
 
 const eventTypeSchema = z.enum([
   'pediatric_appointment_reminder',
@@ -72,7 +77,10 @@ const classifyOutputJsonSchema = {
     suggested_action: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['autonomous_action', 'surface_only', 'ignore', 'needs_human'] },
+        kind: {
+          type: 'string',
+          enum: ['autonomous_action', 'surface_only', 'ignore', 'needs_human'],
+        },
         actionType: { type: 'string' },
       },
       required: ['kind'],
@@ -119,9 +127,21 @@ export interface ClassifyResult {
   model: ModelId;
 }
 
+interface ClassifyDeps {
+  modelMode?: 'current' | 'candidate';
+}
+
+function modelMode(raw: string | undefined): 'current' | 'candidate' {
+  const mode = raw?.trim() || 'candidate';
+  if (mode === 'current' || mode === 'candidate') return mode;
+  console.error({ mode }, 'classify event: invalid model mode; using current');
+  return 'current';
+}
+
 export async function classifyEvent(
   input: ClassifyInput,
   client: AgentClient,
+  deps: ClassifyDeps = {},
 ): Promise<ClassifyResult> {
   const skill = await loadClassifyEventSkill();
   const redacted = JSON.stringify(redactEventPayload(input.payload, input.childNames));
@@ -130,18 +150,33 @@ export async function classifyEvent(
     family_context_slice: input.familyContextSlice ?? null,
   });
 
-  const lane = pickLane(skill.meta.task);
-  const { value, usage } = await forceToolJson({
-    client,
-    lane,
-    system: skill.instructions,
-    userMessage,
-    toolName: 'classification',
-    toolDescription: 'Return the structured classification of the inbound signal.',
-    inputJsonSchema: classifyOutputJsonSchema,
-    schema: classifyOutputSchema,
-    maxTokens: MAX_TOKENS,
-  });
+  const currentLane = pickLane(skill.meta.task);
+  const run = (lane: LaneConfig) =>
+    forceToolJson({
+      client,
+      lane,
+      system: skill.instructions,
+      userMessage,
+      toolName: 'classification',
+      toolDescription: 'Return the structured classification of the inbound signal.',
+      inputJsonSchema: classifyOutputJsonSchema,
+      schema: classifyOutputSchema,
+      maxTokens: MAX_TOKENS,
+    });
+
+  let lane = currentLane;
+  let call: Awaited<ReturnType<typeof run>> | undefined;
+  if ((deps.modelMode ?? modelMode(process.env.HALE_CLASSIFY_EVENT_MODEL_MODE)) === 'candidate') {
+    try {
+      lane = CANDIDATE_LANE;
+      call = await run(lane);
+    } catch {
+      console.warn('classify event candidate failed; using current model');
+      lane = currentLane;
+    }
+  }
+  call ??= await run(lane);
+  const { value, usage } = call;
 
   return {
     eventType: value.event_type,

@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { agentRunCostUsd, estimateCostUsd } from './cost.js';
-import { HAIKU_MODEL, OPUS_MODEL, SONNET_MODEL } from './model.js';
+import {
+  DEEPSEEK_MODEL,
+  HAIKU_MODEL,
+  OPUS_MODEL,
+  SONNET5_MODEL,
+  SONNET55_MODEL,
+  SONNET_MODEL,
+} from './model.js';
 
 /**
  * Expected values are derived from the published per-MTok rates and the cache
  * multipliers, never copied from what the code emits:
- *   Sonnet 4.6 $3 in / $15 out · Haiku 4.5 $1 / $5 · Opus 4.8 $5 / $25
+ *   Sonnet 4.6 $3 in / $15 out · Sonnet 5 $2 / $10 · Haiku 4.5 $1 / $5 · Opus 5 $5 / $25
  *   cache read = 0.1x input · cache write (5m) = 1.25x input
  */
 
@@ -21,11 +28,14 @@ function tiers(over: Partial<Parameters<typeof estimateCostUsd>[1]> = {}) {
 
 describe('estimateCostUsd', () => {
   it('prices each tier at its published base rate', () => {
-    // 1M in + 1M out: Sonnet $3 + $15 = $18; Haiku $1 + $5 = $6; Opus $5 + $25 = $30.
+    // 1M in + 1M out: Sonnet 4.6 = $18; Sonnet 5 = $12; Haiku = $6; Opus = $30.
     const million = tiers({ inputTokens: 1_000_000, outputTokens: 1_000_000 });
     expect(estimateCostUsd(SONNET_MODEL, million)).toBeCloseTo(18, 6);
+    expect(estimateCostUsd(SONNET5_MODEL, million)).toBeCloseTo(12, 6);
+    expect(estimateCostUsd(SONNET55_MODEL, million)).toBeCloseTo(12, 6);
     expect(estimateCostUsd(HAIKU_MODEL, million)).toBeCloseTo(6, 6);
     expect(estimateCostUsd(OPUS_MODEL, million)).toBeCloseTo(30, 6);
+    expect(estimateCostUsd(DEEPSEEK_MODEL, million)).toBeCloseTo(0.75, 6);
   });
 
   it('bills cache writes at 1.25x the input rate', () => {
@@ -39,6 +49,13 @@ describe('estimateCostUsd', () => {
   it('bills cache reads at 0.1x the input rate', () => {
     // 1M cache-read on Haiku = $1 * 0.1 = $0.10.
     expect(estimateCostUsd(HAIKU_MODEL, tiers({ cacheReadTokens: 1_000_000 }))).toBeCloseTo(0.1, 6);
+  });
+
+  it('uses the Gateway cached-input rate for DeepSeek', () => {
+    expect(estimateCostUsd(DEEPSEEK_MODEL, tiers({ cacheReadTokens: 1_000_000 }))).toBeCloseTo(
+      0.003,
+      6,
+    );
   });
 
   it('sums all four tiers for a cached turn', () => {

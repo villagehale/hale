@@ -1,5 +1,13 @@
 import type { AgentUsage } from './agent.js';
-import { HAIKU_MODEL, type ModelId, OPUS_MODEL, SONNET5_MODEL, SONNET_MODEL } from './model.js';
+import {
+  DEEPSEEK_MODEL,
+  HAIKU_MODEL,
+  type ModelId,
+  OPUS_MODEL,
+  SONNET5_MODEL,
+  SONNET55_MODEL,
+  SONNET_MODEL,
+} from './model.js';
 
 /**
  * The one place a token becomes a dollar. Both processes price through here —
@@ -10,12 +18,13 @@ import { HAIKU_MODEL, type ModelId, OPUS_MODEL, SONNET5_MODEL, SONNET_MODEL } fr
  *
  * Per-model token rates, USD per million tokens.
  * Source: Anthropic pricing (platform.claude.com/docs models overview):
- * Sonnet 4.6 $3 in / $15 out; Sonnet 5 $3 in / $15 out list ($2/$10 intro
- * through 2026-08-31); Haiku 4.5 $1 in / $5 out; Opus 5 $5 in / $25 out —
+ * Sonnet 4.6 $3 in / $15 out; Sonnet 5 $2 in / $10 out; Haiku 4.5 $1 in / $5 out;
+ * Opus 5 $5 in / $25 out —
  * unchanged from the Opus 4.8 it replaced, so the re-tier moved the id under
- * this key without moving the rate. Sonnet 5 is booked at LIST, not the intro
- * price: an estimate that silently halves when a promotion lapses is worse than
- * one that is consistently conservative.
+ * this key without moving the rate. Anthropic made Sonnet 5's introductory
+ * $2/$10 pricing permanent on 2026-08-10.
+ * DeepSeek V4.1 Flash is priced from its Vercel AI Gateway model page at
+ * $0.15 input / $0.60 output / $0.003 cached input per MTok.
  * Hardcoded by design — billing accuracy is a point-in-time estimate, not a
  * live lookup; rotate these constants when public pricing changes. Keyed by
  * ModelId so a new tier in model.ts cannot ship without its rate.
@@ -23,13 +32,22 @@ import { HAIKU_MODEL, type ModelId, OPUS_MODEL, SONNET5_MODEL, SONNET_MODEL } fr
 interface ModelRate {
   inputPerMTok: number;
   outputPerMTok: number;
+  cacheReadPerMTok?: number;
+  cacheWritePerMTok?: number;
 }
 
 const RATES: Record<ModelId, ModelRate> = {
   [SONNET_MODEL]: { inputPerMTok: 3, outputPerMTok: 15 },
-  [SONNET5_MODEL]: { inputPerMTok: 3, outputPerMTok: 15 },
+  [SONNET5_MODEL]: { inputPerMTok: 2, outputPerMTok: 10 },
+  [SONNET55_MODEL]: { inputPerMTok: 2, outputPerMTok: 10 },
   [HAIKU_MODEL]: { inputPerMTok: 1, outputPerMTok: 5 },
   [OPUS_MODEL]: { inputPerMTok: 5, outputPerMTok: 25 },
+  [DEEPSEEK_MODEL]: {
+    inputPerMTok: 0.15,
+    outputPerMTok: 0.6,
+    cacheReadPerMTok: 0.003,
+    cacheWritePerMTok: 0.15,
+  },
 };
 
 const PER_MTOK = 1_000_000;
@@ -58,10 +76,13 @@ export function estimateCostUsd(model: string, usage: TokenUsage): number {
   if (!rate) {
     throw new Error(`estimateCostUsd: no rate configured for model '${model}'`);
   }
+  const cacheReadPerMTok = rate.cacheReadPerMTok ?? rate.inputPerMTok * CACHE_READ_RATE_MULTIPLIER;
+  const cacheWritePerMTok =
+    rate.cacheWritePerMTok ?? rate.inputPerMTok * CACHE_WRITE_RATE_MULTIPLIER;
   return (
     (usage.inputTokens * rate.inputPerMTok) / PER_MTOK +
-    (usage.cacheCreationTokens * rate.inputPerMTok * CACHE_WRITE_RATE_MULTIPLIER) / PER_MTOK +
-    (usage.cacheReadTokens * rate.inputPerMTok * CACHE_READ_RATE_MULTIPLIER) / PER_MTOK +
+    (usage.cacheCreationTokens * cacheWritePerMTok) / PER_MTOK +
+    (usage.cacheReadTokens * cacheReadPerMTok) / PER_MTOK +
     (usage.outputTokens * rate.outputPerMTok) / PER_MTOK
   );
 }

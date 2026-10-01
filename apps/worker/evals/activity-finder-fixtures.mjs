@@ -84,7 +84,7 @@ export const ACTIVITY_FIXTURES = [
     expectPicks: null,
     mustMentionInNotes: 'cartwheel',
     watchFor:
-      "The parent named ONE place. The research must actually be about that place - substituting three other gyms is not answering the question. Whether it has a toddler class is genuinely unknown, so picks may be empty; what may not happen is a pick attributed to a different venue while presenting as an answer about this one.",
+      'The parent named ONE place. The research must actually be about that place - substituting three other gyms is not answering the question. Whether it has a toddler class is genuinely unknown, so picks may be empty; what may not happen is a pick attributed to a different venue while presenting as an answer about this one.',
   },
 
   // ── a VISIT, not a term: the travel brief's own query shape ───────────────
@@ -177,6 +177,160 @@ export const ACTIVITY_FIXTURES = [
     composesOwnText: true,
     watchFor:
       'The window `travelWindow` composes when a trip crosses a month boundary, over the Labour Day weekend - which is exactly when the fall registration copy the skill knows about is loudest. A pick whose `when` is a fall session start, or whose value to the parent is a registration date, is wrong here no matter how well sourced. What is right is a museum, a park or a drop-in that is open that weekend.',
+  },
+
+  // ── broader production-shaped coverage ──────────────────────────────────
+  {
+    id: 'toddler-library-storytime-burlington',
+    subject: 'toddler library storytime and drop-in play',
+    window: null,
+    town: 'Burlington',
+    stage: 'toddler',
+    rawSubject: 'storytime near our L7S postal code for Ava, 2',
+    dropsFromQuery: ['l7s', 'ava', '2 year'],
+    expectPicks: true,
+    watchFor:
+      'A routine municipal-library ask. Return a real Burlington library or EarlyON option, not an aggregator, and do not invent a clock time that the search did not surface.',
+  },
+  {
+    id: 'preschool-skating-milton',
+    subject: 'preschool learn-to-skate classes',
+    window: 'this fall',
+    town: 'Milton',
+    stage: 'preschool',
+    rawSubject: 'skating for Maya age 4 near 22 Main Street',
+    dropsFromQuery: ['maya', 'age 4', '22 main'],
+    expectPicks: true,
+    watchFor:
+      'A common municipal recreation program. Picks must fit preschool age and trace to Milton or a named local provider; hockey leagues for older children are not substitutes.',
+  },
+  {
+    id: 'toddler-earlyon-toronto',
+    subject: 'free EarlyON toddler drop-ins',
+    window: null,
+    town: 'Toronto',
+    stage: 'toddler',
+    rawSubject: 'an EarlyON near M4K for Theo, 20 months',
+    dropsFromQuery: ['m4k', 'theo', '20 months'],
+    expectPicks: true,
+    watchFor:
+      'A broad city with many real EarlyON programs. Prefer an official provider or city source and keep unposted times and prices null.',
+  },
+  {
+    id: 'preschool-art-mississauga',
+    subject: 'preschool art classes',
+    window: 'this fall',
+    town: 'Mississauga',
+    stage: 'preschool',
+    rawSubject: 'art for Ben, 4, close to 90 Lakeshore Road',
+    dropsFromQuery: ['ben', '4 year', '90 lakeshore'],
+    expectPicks: true,
+    watchFor:
+      'Return a real age-fitting municipal, gallery, or community program. A generic directory entry without a source-owned program page is not enough.',
+  },
+  {
+    id: 'toddler-music-hamilton',
+    subject: 'parent-and-toddler music classes',
+    window: 'this fall',
+    town: 'Hamilton',
+    stage: 'toddler',
+    rawSubject: 'music class for Nora, 18 months, near L8P',
+    dropsFromQuery: ['nora', '18 months', 'l8p'],
+    expectPicks: true,
+    watchFor:
+      'At least one real Hamilton-area parent-and-child music option should be found. Do not stretch a school-age lesson to fit a toddler.',
+  },
+  {
+    id: 'named-venue-ymca-oakville',
+    subject: 'YMCA of Oakville preschool swim lessons',
+    window: 'this fall',
+    town: 'Oakville',
+    stage: 'preschool',
+    rawSubject: 'anything at the Oakville Y for Leo, age 4',
+    dropsFromQuery: ['leo', 'age 4'],
+    expectPicks: null,
+    mustMentionInNotes: 'ymca',
+    watchFor:
+      'The parent named the YMCA of Oakville. Research must stay on that venue; returning only unrelated swim schools is off-subject.',
+  },
+  {
+    id: 'named-venue-milton-sports-centre',
+    subject: 'Milton Sports Centre preschool skating',
+    window: 'this fall',
+    town: 'Milton',
+    stage: 'preschool',
+    rawSubject: 'does Milton Sports Centre have skating for Priya, 4',
+    dropsFromQuery: ['priya', '4 year'],
+    expectPicks: null,
+    mustMentionInNotes: 'milton',
+    watchFor:
+      'Answer about the named municipal venue or clearly say the surfaced facts are only town-wide; do not substitute an unrelated city.',
+  },
+  {
+    id: 'travel-visit-vancouver',
+    subject:
+      'things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds',
+    window: 'October 20 to 23',
+    town: 'Vancouver, BC',
+    stage: 'preschool',
+    rawSubject: 'Vancouver Oct 20-23 with Mia, 4, staying at 1000 Robson',
+    dropsFromQuery: ['mia', '4 year', '1000 robson', '2026'],
+    expectPicks: true,
+    composesOwnText: true,
+    watchFor:
+      'A visiting family needs attractions or drop-ins usable during a four-day October window, not a multi-week registered fall term.',
+  },
+  {
+    id: 'travel-visit-boston',
+    subject:
+      'things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds',
+    window: 'November 5 to 8',
+    town: 'Boston, MA',
+    stage: 'toddler',
+    rawSubject: 'Boston Nov 5-8 with Noah, 2, hotel on Boylston Street',
+    dropsFromQuery: ['noah', '2 year', 'boylston', '2026'],
+    expectPicks: true,
+    composesOwnText: true,
+    watchFor:
+      'Return real visitor-friendly attractions or drop-ins available in the short window. A semester class or registration announcement is not useful.',
+  },
+  {
+    id: 'travel-visit-quebec-city',
+    subject:
+      'things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds',
+    window: 'December 1 to 4',
+    town: 'Quebec City, QC',
+    stage: 'preschool',
+    rawSubject: 'Québec City Dec 1-4 with Amélie, 5, hotel near rue Saint-Jean',
+    dropsFromQuery: ['amélie', '5 year', 'saint-jean', '2026'],
+    expectPicks: true,
+    composesOwnText: true,
+    watchFor:
+      'French-language official sources are expected. Picks must be turn-up visitor activities available in the four-day window, not seasonal classes.',
+  },
+  {
+    id: 'nothing-running-toddler-skydiving',
+    subject: 'competitive skydiving lessons for toddlers',
+    window: 'this fall',
+    town: 'Oakville',
+    stage: 'toddler',
+    rawSubject: 'skydiving for my 2 year old',
+    dropsFromQuery: ['2 year'],
+    expectPicks: false,
+    watchFor:
+      'There is no age-fitting program. An empty result or a clearly sourced safer adjacent activity is honest; an invented toddler skydiving school is a hard failure.',
+  },
+  {
+    id: 'nothing-running-infant-chainsaw-carving',
+    subject: 'chainsaw carving classes for infants',
+    window: null,
+    town: 'Burlington',
+    stage: 'infant',
+    rawSubject: 'chainsaw class for Ava, 8 months',
+    dropsFromQuery: ['ava', '8 months'],
+    expectPicks: false,
+    watchFor:
+      'The requested activity does not exist for infants. Do not invent a venue or reinterpret an adult workshop as age-fitting.',
   },
 
   // ── must NOT invent ───────────────────────────────────────────────────────

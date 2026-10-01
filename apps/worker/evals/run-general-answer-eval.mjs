@@ -18,6 +18,7 @@
 //   node --env-file=../../.env evals/run-general-answer-eval.mjs            # live, then caches
 //   node --env-file=../../.env evals/run-general-answer-eval.mjs --broken   # calibration: must FAIL
 //   node evals/run-general-answer-eval.mjs --cached-only                    # CI: replay only
+//   ... --min-samples=50                                                    # expanded synthetic corpus
 //
 // THE HARD ZEROS:
 //   · unsendable answers — an answer that fails the composer's own sendable() gates
@@ -37,8 +38,8 @@ import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import { ANSWER_FIXTURES } from './general-answer-fixtures.mjs';
 import {
-  cachedToolCall,
   JUDGE_MIN,
+  cachedToolCall,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -46,6 +47,7 @@ import {
   recall,
   totalUsd,
 } from './lib/harness.mjs';
+import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 import { skillSampleSentences, variationGate, variationLines } from './lib/variation.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -217,6 +219,11 @@ const BROKEN_ANSWER =
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const minSamplesArg = process.argv.find((arg) => arg.startsWith('--min-samples='))?.split('=')[1];
+  const minSamples = minSamplesArg === undefined ? null : Number(minSamplesArg);
+  if (minSamples !== null && (!Number.isInteger(minSamples) || minSamples < 1)) {
+    throw new Error('--min-samples must be a positive integer');
+  }
   const getClient = lazyAnthropic();
   const cost = makeCost();
 
@@ -227,14 +234,23 @@ async function main() {
   const model = agent.pickModel(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'general-answer', cachedOnly, getClient, cost);
+  const fixtures =
+    minSamples === null
+      ? ANSWER_FIXTURES
+      : expandSyntheticFixtures('general-answer', ANSWER_FIXTURES, minSamples, {
+          vary: (fixture, { reference }) => {
+            fixture.text += `\n[message ${reference}]`;
+          },
+          visibleInput: (fixture) => generalAnswerUserMessage(fixture.text),
+        });
 
   console.log(
     `general-answer eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
   );
-  console.log(`corpus: ${ANSWER_FIXTURES.length} questions\n`);
+  console.log(`corpus: ${fixtures.length} questions\n`);
 
   const results = [];
-  for (const fixture of ANSWER_FIXTURES) {
+  for (const fixture of fixtures) {
     const raw = broken
       ? BROKEN_ANSWER
       : (
@@ -270,11 +286,13 @@ async function main() {
       failures.push('unhedged_officeholder');
     }
 
-    const verdict = await judge(fixture.id, {
-      question: fixture.text,
-      answer: flattened,
-      watchFor: fixture.watchFor ?? 'none',
-    });
+    const verdict = broken
+      ? { score: 1, reason: 'calibration stand-in' }
+      : await judge(fixture.id, {
+          question: fixture.text,
+          answer: flattened,
+          watchFor: fixture.watchFor ?? 'none',
+        });
     if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
 
     results.push({ fixture, flattened, failures });
@@ -286,7 +304,9 @@ async function main() {
   // skill's own sample. The answered fixtures are excluded because their bodies are
   // pinned by their subjects — Lima and x = 5 are supposed to be the same every time, and
   // gating them for similarity would measure the questions rather than the voice.
-  const deflects = results.filter((r) => LIVE_DATA_FIXTURES.has(r.fixture.id));
+  const deflects = results.filter((r) =>
+    LIVE_DATA_FIXTURES.has(r.fixture.baseScenarioId ?? r.fixture.id),
+  );
   const variation = variationGate({
     items: deflects.map((r) => ({ id: r.fixture.id, text: r.flattened })),
     samples,
@@ -318,15 +338,21 @@ async function main() {
   const judgeFails = results.filter((r) => r.failures.some((f) => f.startsWith('judge:')));
 
   console.log('\n--- corpus metrics ---');
-  console.log(`UNSENDABLE ANSWERS:      ${unsendable.length}  (0 required - the parent got the deflect line instead)`);
+  console.log(
+    `UNSENDABLE ANSWERS:      ${unsendable.length}  (0 required - the parent got the deflect line instead)`,
+  );
   console.log(`trailing questions:      ${trailingQuestions.length}  (0 required)`);
-  console.log(`redirect errands:        ${redirects.length}  (0 required - "check ESPN" is the work handed back)`);
+  console.log(
+    `redirect errands:        ${redirects.length}  (0 required - "check ESPN" is the work handed back)`,
+  );
   console.log(
     `app pointers:            ${appPointers.length}  (0 required - the destination half of the same errand)`,
   );
   console.log(`live-data fabrications:  ${fabrications.length}  (0 required)`);
   console.log(`recall misses:           ${recallMisses.length}  (0 required)`);
-  console.log(`answered wrong language: ${wrongLanguage.length}  (0 required - a ZH question answered not-in-Chinese)`);
+  console.log(
+    `answered wrong language: ${wrongLanguage.length}  (0 required - a ZH question answered not-in-Chinese)`,
+  );
   console.log(
     `unhedged officeholders:  ${staleOffice.length}  (0 required - the judge shares the cutoff, so this one is mechanical)`,
   );

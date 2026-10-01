@@ -21,13 +21,17 @@ export const HAIKU_MODEL = 'claude-haiku-4-5';
  */
 export const SONNET_MODEL = 'claude-sonnet-4-6';
 export const SONNET5_MODEL = 'claude-sonnet-5';
+export const SONNET55_MODEL = 'claude-sonnet-5-5';
 export const OPUS_MODEL = 'claude-opus-5';
+export const DEEPSEEK_MODEL = 'deepseek/deepseek-v4.1-flash';
 
 export type ModelId =
   | typeof HAIKU_MODEL
   | typeof SONNET_MODEL
   | typeof SONNET5_MODEL
-  | typeof OPUS_MODEL;
+  | typeof SONNET55_MODEL
+  | typeof OPUS_MODEL
+  | typeof DEEPSEEK_MODEL;
 
 /**
  * A skill declares the KIND of work it does, not a model id. The harness picks
@@ -108,11 +112,20 @@ export type Effort = 'low' | 'medium' | 'high' | 'xhigh';
  */
 export type LaneConfig =
   | { model: typeof HAIKU_MODEL }
+  | { model: typeof DEEPSEEK_MODEL; thinking: 'disabled' }
   | { model: ReasoningModelId; thinking: 'adaptive'; effort: Effort }
-  | { model: ReasoningModelId; thinking: 'disabled'; effort: Exclude<Effort, 'xhigh'> };
+  | {
+      model: ReasoningModelId;
+      thinking: 'disabled';
+      effort: Exclude<Effort, 'xhigh'>;
+    };
 
 /** The tiers that accept the reasoning knobs — everything except Haiku. */
-export type ReasoningModelId = typeof SONNET_MODEL | typeof SONNET5_MODEL | typeof OPUS_MODEL;
+export type ReasoningModelId =
+  | typeof SONNET_MODEL
+  | typeof SONNET5_MODEL
+  | typeof SONNET55_MODEL
+  | typeof OPUS_MODEL;
 
 /**
  * The lane matrix.
@@ -165,7 +178,11 @@ const TASK_LANE: Record<AgentTask, LaneConfig> = {
   infer: { model: SONNET_MODEL, thinking: 'disabled', effort: 'high' },
 
   // Run-rarely and judgment-dense: the one lane worth `xhigh`.
-  'high-stakes-judgment': { model: OPUS_MODEL, thinking: 'adaptive', effort: 'xhigh' },
+  'high-stakes-judgment': {
+    model: OPUS_MODEL,
+    thinking: 'adaptive',
+    effort: 'xhigh',
+  },
 
   // Haiku lanes — no knob exists on this tier (see LaneConfig).
   'simple-lookup': { model: HAIKU_MODEL },
@@ -196,21 +213,29 @@ export function pickModel(task: AgentTask): ModelId {
 /**
  * The lane, as the wire wants it.
  *
- * The pinned SDK (0.41.0) types neither `thinking` nor `output_config`; both are
- * plain top-level body fields needing no beta header, so this widens the request
- * rather than waiting on a version bump — the same tactic as `WireTool` in
- * agent.ts. A Haiku lane spreads to `{ model }` alone, which is the only shape
- * that tier accepts.
+ * The pinned SDK (0.41.0) types neither `thinking`, `output_config`, nor Gateway
+ * `providerOptions`; they are plain top-level body fields needing no beta header,
+ * so this widens the request rather than waiting on a version bump — the same
+ * tactic as `WireTool` in agent.ts. A Haiku lane spreads to `{ model }` alone,
+ * which is the only shape that tier accepts.
  */
 export interface LaneRequestFields {
   model: ModelId;
   thinking?: { type: 'adaptive' | 'disabled' };
   output_config?: { effort: Effort };
+  providerOptions?: { gateway: { zeroDataRetention: true } };
 }
 
 export function laneRequestFields(lane: LaneConfig): LaneRequestFields {
   if (!('thinking' in lane)) {
     return { model: lane.model };
+  }
+  if (lane.model === DEEPSEEK_MODEL) {
+    return {
+      model: lane.model,
+      thinking: { type: 'disabled' },
+      providerOptions: { gateway: { zeroDataRetention: true } },
+    };
   }
   return {
     model: lane.model,

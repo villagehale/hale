@@ -32,6 +32,7 @@ import { tsImport } from 'tsx/esm/api';
 import {
   JUDGE_MIN,
   cachedTextCall,
+  evalRunTag,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -184,15 +185,7 @@ const ALLOWED_CAPS = new Set(['Hale', 'I', 'A', 'An', 'The', 'And', 'But', 'So',
  * this nudge turns on. Days are a closed set, so they can be checked exhaustively
  * wherever they appear.
  */
-const DAY_NAMES = [
-  'monday',
-  'tuesday',
-  'wednesday',
-  'thursday',
-  'friday',
-  'saturday',
-  'sunday',
-];
+const DAY_NAMES = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
 function fabrications(message, context) {
   const hay = JSON.stringify(context).toLowerCase();
@@ -314,27 +307,40 @@ const BROKEN_MESSAGE = [
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const candidateModel = process.argv
+    .find((arg) => arg.startsWith('--anthropic-model='))
+    ?.slice('--anthropic-model='.length);
+  const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const getClient = lazyAnthropic();
   const cost = makeCost();
 
   const skill = await agent.loadSkill(NUDGE_SKILL_PATH);
-  const model = agent.pickModel(skill.meta.task);
+  const model = candidateModel ?? agent.pickModel(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'nudge', cachedOnly, getClient, cost);
 
   console.log(
     `nudge-eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
   );
-  console.log(`corpus: ${NUDGE_FIXTURES.length} nudge fixtures\n`);
+  const fixtures = only ? NUDGE_FIXTURES.filter((fixture) => fixture.id === only) : NUDGE_FIXTURES;
+  if (fixtures.length !== (only ? 1 : NUDGE_FIXTURES.length)) {
+    throw new Error(`fixture did not match --only=${only}`);
+  }
+  console.log(`corpus: ${fixtures.length} nudge fixtures\n`);
 
   const results = [];
-  for (const fixture of NUDGE_FIXTURES) {
+  for (const fixture of fixtures) {
     // The gate and the selector run BEFORE the model. A fixture they rule out never
     // reaches a compose call at all — that is the assertion, and it costs nothing.
     if (!shouldCompose(fixture)) {
-      results.push({ fixture, message: null, score: null, failures: checkMessage(fixture, null, null) });
+      results.push({
+        fixture,
+        message: null,
+        score: null,
+        failures: checkMessage(fixture, null, null),
+      });
       continue;
     }
 
@@ -348,7 +354,7 @@ async function main() {
       // serialized context (packages/agent/src/agent.ts buildSystemPrompt /
       // initialUserContent).
       const { text } = await cachedTextCall({
-        tag: `nudge:compose:${fixture.id}`,
+        tag: evalRunTag(`nudge:compose:${fixture.id}`),
         model,
         system: `${skill.instructions}\n\n## Context\n\n${JSON.stringify(context)}`,
         userMessage: JSON.stringify(context),
@@ -373,7 +379,8 @@ async function main() {
       `${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${result.score === null ? '' : `  voice=${result.score}`}`,
     );
     for (const failure of result.failures) console.log(`        - ${failure}`);
-    if (process.argv.includes('--show') && result.message) console.log(`        > ${result.message}`);
+    if (process.argv.includes('--show') && result.message)
+      console.log(`        > ${result.message}`);
   }
 
   const composed = results.filter((r) => r.message);

@@ -81,6 +81,8 @@
 //   ... --show                                                           # print each reply
 //   ... --only=<id,id>                                                   # one fixture, or a few
 //   ... --nonce=<tag>                                                    # draw a FRESH sample
+//   ... --min-samples=50                                                 # expanded synthetic corpus
+//   EVAL_GATEWAY_MODEL=deepseek/deepseek-v4.1-flash ... --only=<id>      # candidate smoke
 //
 // `--nonce` exists because "did my change break this fixture, or was the corpus green on a
 // lucky sample?" is otherwise unanswerable: the cache is content-addressed, so the only way
@@ -109,7 +111,6 @@ import { tsImport } from 'tsx/esm/api';
 import { z } from 'zod';
 import {
   COACH_CHANNEL_FIXTURES,
-  REFUSAL_MARKERS,
   FIXTURE_CHILDREN,
   FIXTURE_COURSE_ID,
   FIXTURE_EVENTS,
@@ -118,6 +119,7 @@ import {
   FIXTURE_VILLAGE,
   FIXTURE_WEEK_START,
   FIXTURE_WEEK_SUMMARY,
+  REFUSAL_MARKERS,
 } from './coach-channel-fixtures.mjs';
 import { menuShape } from './coach-channel-menu-gate.mjs';
 import { inventedName } from './coach-channel-name-gate.mjs';
@@ -128,6 +130,10 @@ import {
   cacheGet,
   cacheKey,
   cachePut,
+  evalAnthropicRequest,
+  evalRunTag,
+  evalSubjectClient,
+  evalSubjectRequest,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -135,6 +141,7 @@ import {
   readModelIds,
   totalUsd,
 } from './lib/harness.mjs';
+import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -343,7 +350,11 @@ function redactTeenNames(text, children, now) {
 }
 
 function sentences(body) {
-  return body.split(/(?<=[.!?])\s+/).filter((p) => p.trim().length > 0);
+  return body
+    .replace(/\b([ap])\.m\./gi, '$1·m·')
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.replaceAll('·', '.'))
+    .filter((part) => part.trim().length > 0);
 }
 
 function fitToBudget(body, max, suffix = '') {
@@ -378,7 +389,8 @@ function offerViolations(sentence) {
     violations.push(`The offer is ${text.length} characters; it must be at most 160.`);
   }
   const questions = (text.match(/\?/g) ?? []).length;
-  if (questions !== 1) violations.push(`The offer asks ${questions} questions; it must ask exactly one.`);
+  if (questions !== 1)
+    violations.push(`The offer asks ${questions} questions; it must ask exactly one.`);
   if (!/\byes\b/i.test(text)) violations.push('The offer never says YES.');
   if (smsEncoding(text) !== 'gsm7') violations.push('The offer is not plain ASCII.');
   if (smsSegments(text) > 1) violations.push('The offer is longer than one SMS segment.');
@@ -423,7 +435,8 @@ function forwardViolations(forward) {
       'The line points at an app, a website or an account. Hale is a number their friend texts; there is nothing for them to open, download or sign up for.',
     );
   }
-  if (smsEncoding(text) !== 'gsm7') violations.push('The line contains a character that doubles the cost to send.');
+  if (smsEncoding(text) !== 'gsm7')
+    violations.push('The line contains a character that doubles the cost to send.');
   if (smsSegments(text) > 1) violations.push('The line is longer than one SMS segment.');
   return violations;
 }
@@ -480,7 +493,10 @@ function toSmsReply(raw, children, planOffer, referral, nearby) {
   // The protected tail, mirroring reply.ts: both halves are appended after the fit, and
   // the referral block is redacted with the answer because a parent forwards it OUT.
   const suffix = redactTeenNames(
-    [planOffer, referral].map((part) => part?.trim() ?? '').filter((part) => part !== '').join(' '),
+    [planOffer, referral]
+      .map((part) => part?.trim() ?? '')
+      .filter((part) => part !== '')
+      .join(' '),
     children,
     NOW,
   );
@@ -598,7 +614,9 @@ const WEEKDAY_FULL = {
 
 function refuseMismatchedWeekday(input, timeZone, tool) {
   if (!input.weekday) {
-    throw new Error(`${tool} needs a weekday: which day of the week ${input.date} is. Call it again with one.`);
+    throw new Error(
+      `${tool} needs a weekday: which day of the week ${input.date} is. Call it again with one.`,
+    );
   }
   // THE ENUM PROD DECLARES AND THIS HARNESS ERASES (VIL-295). `weekday` is `z.enum(WEEKDAYS)`
   // in tools.ts, so production shows the model the seven allowed tokens in the schema and
@@ -621,7 +639,11 @@ function refuseMismatchedWeekday(input, timeZone, tool) {
   if (actual === input.weekday) return;
   const parts = input.date.split('-').map(Number);
   const shifted = new Date(
-    Date.UTC(parts[0], parts[1] - 1, parts[2] + (WEEKDAYS.indexOf(input.weekday) - WEEKDAYS.indexOf(actual))),
+    Date.UTC(
+      parts[0],
+      parts[1] - 1,
+      parts[2] + (WEEKDAYS.indexOf(input.weekday) - WEEKDAYS.indexOf(actual)),
+    ),
   );
   throw new Error(
     `${input.date} is a ${WEEKDAY_FULL[actual]}, not a ${WEEKDAY_FULL[input.weekday]}. The ${WEEKDAY_FULL[input.weekday]} of that week is ${shifted.toISOString().slice(0, 10)}. Work out which one the parent meant and call ${tool} again with a date and a weekday that agree — and say the same day back to them.`,
@@ -743,7 +765,6 @@ function buildFixtureTools(agent, calls, village, spots) {
     },
   });
 
-
   // Replicated from apps/web/lib/channel/activity/tools.ts `findActivitiesTool` — behind
   // the `~/` alias (it imports the lane + ledger), so it cannot be imported here. The
   // description is copied verbatim, because it IS what the model reads. The fixture
@@ -768,7 +789,6 @@ function buildFixtureTools(agent, calls, village, spots) {
     },
   });
 
-
   // Replicated from apps/web/lib/channel/activity/tools.ts `promiseActivityFollowupTool`
   // — same alias barrier. The fixture just acknowledges: the ledger row it writes in
   // production is exactly what this eval must NOT depend on.
@@ -780,9 +800,7 @@ function buildFixtureTools(agent, calls, village, spots) {
       subject: z.string().min(1),
       childId: z.string().min(1).optional(),
     }),
-    inputExamples: [
-      { subject: 'toddler gymnastics this fall' },
-    ],
+    inputExamples: [{ subject: 'toddler gymnastics this fall' }],
     handler: async (input) => {
       record('promise_activity_followup');
       return { registered: true, subject: input.subject, dueWithinHours: 24 };
@@ -820,7 +838,7 @@ function buildFixtureTools(agent, calls, village, spots) {
     monetary: false,
     touchesChildContent: true,
     description:
-      "Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters, and it must say YES, because that is the word the parent replies with. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.",
+      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters, and it must say YES, because that is the word the parent replies with. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
     handler: async (input) => {
       // The gate IS the recompose loop: a refused offer throws a sentence the model
       // reads mid-turn and answers by calling again. Replicated from
@@ -845,7 +863,10 @@ function buildFixtureTools(agent, calls, village, spots) {
     name: 'share_referral_link',
     inputSchema: z.object({ forward: z.string() }),
     inputExamples: [
-      { forward: "It's a text line that keeps track of the family week - registrations, plans, the stuff that slips." },
+      {
+        forward:
+          "It's a text line that keeps track of the family week - registrations, plans, the stuff that slips.",
+      },
     ],
     monetary: false,
     touchesChildContent: false,
@@ -992,9 +1013,7 @@ function channelContext(fixture, compact, severed = false) {
   // digest to reason about either way. Only a fixture whose thread ACTUALLY compacts
   // re-keys, which is the one re-key this change is entitled to.
   const thread =
-    compacted.transcriptSummary === null
-      ? { transcript: compacted.transcript }
-      : compacted;
+    compacted.transcriptSummary === null ? { transcript: compacted.transcript } : compacted;
   return {
     parentName: CONTEXT_PARENT_NAME,
     location: { city: cityFor(fixture), province: 'ON', country: 'CA' },
@@ -1039,29 +1058,40 @@ function channelContext(fixture, compact, severed = false) {
  * change (thinking off at the same max_tokens), so the report has to be able to show
  * which shape each call actually went out in.
  */
-function makeCachedAgentClient(tag, model, cachedOnly, getClient, cost, legs = []) {
+function makeCachedAgentClient(
+  tag,
+  cachedOnly,
+  getClient,
+  cost,
+  legs,
+  anthropicModel,
+  subjectLatencies,
+) {
   return {
     messages: {
       async create(params) {
+        const request = anthropicModel
+          ? evalAnthropicRequest(params, anthropicModel)
+          : evalSubjectRequest(params);
         // `thinking` and `output_config` are IN the key. Without them the thinking-off
         // re-ask canonicalizes to the same string as the ask that was swallowed — same
         // model, system, tools, messages, max_tokens — so cacheGet hands the retry the
         // truncated response it is retrying, and the recovery is 100% invisible under
         // --cached-only. JSON.stringify drops undefined, so Haiku-lane keys are unchanged.
         const canonical = JSON.stringify({
-          model: params.model,
-          system: params.system,
-          tools: params.tools,
-          messages: params.messages,
-          max_tokens: params.max_tokens,
-          thinking: params.thinking,
-          output_config: params.output_config,
+          model: request.model,
+          system: request.system,
+          tools: request.tools,
+          messages: request.messages,
+          max_tokens: request.max_tokens,
+          thinking: request.thinking,
+          output_config: request.output_config,
         });
-        const key = cacheKey(`${tag}:agent`, canonical);
+        const key = cacheKey(evalRunTag(`${tag}:agent`), canonical);
         const note = (response) => {
           legs.push({
-            max_tokens: params.max_tokens,
-            thinking: params.thinking?.type ?? 'none',
+            max_tokens: request.max_tokens,
+            thinking: request.thinking?.type ?? 'none',
             stop_reason: response.stop_reason,
             output_tokens: response.usage?.output_tokens ?? 0,
             thinking_tokens: response.usage?.output_tokens_details?.thinking_tokens ?? null,
@@ -1071,15 +1101,21 @@ function makeCachedAgentClient(tag, model, cachedOnly, getClient, cost, legs = [
           return response;
         };
         const cached = await cacheGet(key);
-        if (cached) return note(cached.response);
+        if (cached) {
+          if (Number.isFinite(cached.latencyMs)) subjectLatencies.push(cached.latencyMs);
+          return note(cached.response);
+        }
         if (cachedOnly) {
           console.error(
             `agent cache miss in --cached-only mode (${tag}, key ${key}). Re-run live to populate, then commit the cache.`,
           );
           process.exit(1);
         }
-        const response = await getClient().messages.create(params);
-        noteUsage(cost, model, response.usage);
+        const startedAt = performance.now();
+        const response = await getClient().messages.create(request);
+        const latencyMs = Math.round(performance.now() - startedAt);
+        subjectLatencies.push(latencyMs);
+        noteUsage(cost, request.model, response.usage);
         const stored = {
           id: response.id,
           type: response.type,
@@ -1090,7 +1126,7 @@ function makeCachedAgentClient(tag, model, cachedOnly, getClient, cost, legs = [
           content: response.content,
           usage: response.usage,
         };
-        await cachePut(key, { response: stored });
+        await cachePut(key, { response: stored, latencyMs });
         return note(stored);
       },
     },
@@ -1132,8 +1168,20 @@ const DAY_NAMES = [
 /** `Sep` -> `September`, and anything else through unchanged. The registration context
  * renders the short month (format/datetime.ts) and a reply may say either. */
 const LONG_MONTHS = new Map(
-  ['January','February','March','April','May','June','July','August','September','October','November','December']
-    .map((name) => [name.slice(0, 3), name]),
+  [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ].map((name) => [name.slice(0, 3), name]),
 );
 function longMonth(abbr) {
   return LONG_MONTHS.get(abbr) ?? abbr;
@@ -1329,6 +1377,7 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   const watchedWindow = (fixture.registrationWindows ?? []).some((w) => w.watching);
   if (
     /\bi'?ll (be back|come back|keep an eye|text you|let you know|check back)\b/.test(lower) &&
+    !expect.connectorLinkReply &&
     !toolNames.has('promise_activity_followup') &&
     !toolNames.has('watch_for_opening') &&
     !watchedWindow
@@ -1353,7 +1402,10 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
 
   // A draft that happened must be described as PENDING. "Moved" / "cancelled" /
   // "done" would tell a parent something happened that has not (rule #4).
-  if (drafts.length > 0 && /\b(i (?:have )?(?:moved|cancelled|canceled)|all set|done)\b/i.test(reply)) {
+  if (
+    drafts.length > 0 &&
+    /\b(i (?:have )?(?:moved|cancelled|canceled)|all set|done)\b/i.test(reply)
+  ) {
     failures.push('describes a held draft as though it already happened (rule #4)');
   }
 
@@ -1553,7 +1605,7 @@ const JUDGE_SYSTEM = [
   'room the parent never needs, so "check the app" is the job handed back to the person',
   'who texted to be rid of it. Score any reply that does it a 2 at most.',
   'A PRIVATE ITEM IS NOT A CANDIDATE MATCH. `week` shows some rows as "A private calendar',
-  "item\" — a teenager's or a sensitive appointment (rule #1). Hale cannot see what they",
+  'item" — a teenager\'s or a sensitive appointment (rule #1). Hale cannot see what they',
   'are either, so it must never guess that one of them MIGHT be the thing the parent',
   'named, and never hedge a denial with them. When nothing visible matches, "I do not see',
   'X on this week" is the complete and correct answer; do not mark it down for failing to',
@@ -1561,7 +1613,7 @@ const JUDGE_SYSTEM = [
   'when the parent asked ABOUT one.',
   "AND THE TEENAGER'S NAME IS REDACTED FROM YOU TOO. A `knows.children` entry reading",
   '`{stage: "teenager", name: null}` is a real child of this family whose name rule #1',
-  'withholds from Hale AND from this rubric. So a name in the parent\'s text that matches',
+  "withholds from Hale AND from this rubric. So a name in the parent's text that matches",
   'none of the listed names is very often HER, not an invention — and the correct reply',
   'is exactly what Hale gave: the shape of the item and a refusal to say what it is.',
   'Do not score that as answering about a child who does not exist. You cannot tell the',
@@ -1579,7 +1631,7 @@ const JUDGE_SYSTEM = [
   'in words that branch did not catch, the correct reply says the link is a text away and',
   'hands the parent the plain words that send it — that is recall of a real feature, not',
   'internal machinery and not an unbacked promise, and quoting the short ask verbatim is',
-  'what makes the parent\'s next text land. Do not score that shape down. What is still',
+  "what makes the parent's next text land. Do not score that shape down. What is still",
   'wrong: writing out a URL, or refusing connecting as beyond Hale — score either a 2 at',
   'most.',
   'ACTIVITIES. `search_village` returns OFFERABLE candidates — each with a checked venue',
@@ -1598,7 +1650,7 @@ const JUDGE_SYSTEM = [
   'still wrong here is dressing a web find up as checked ("confirmed", "I verified"), or',
   'going quiet about one because it is unverified. The find-with-doubt rule above is',
   'about the nameless `stillBeingChecked` count, which Hale is given no names for at all.',
-  'REGISTRATION WINDOWS ARE HALE\'S OWN VERIFIED FACTS. `knows.registrationWindows` is a',
+  "REGISTRATION WINDOWS ARE HALE'S OWN VERIFIED FACTS. `knows.registrationWindows` is a",
   'hand-checked municipal open date for THIS family: `opensFor` is the instant they can',
   'first register, `generalOpens` the later one everyone else waits for. Stating either',
   'flat is RECALL, not invention, and hedging one with "their site says" is wrong — no',
@@ -1607,7 +1659,7 @@ const JUDGE_SYSTEM = [
   'it opens, so "I am already on it, and I will text you before" is TRUE and is the whole',
   'point of the feature — do not score it as an overclaim, and score a 2 at most for a',
   'reply that says Hale cannot watch a registration date. When `watching` is FALSE',
-  'nothing is watching: the date is still Hale\'s to state, and a reply claiming it has',
+  "nothing is watching: the date is still Hale's to state, and a reply claiming it has",
   'the morning is a promise nobody is holding — score that a 1. On a false window the',
   'DATE IS THE WHOLE ANSWER and saying it is not watching that one is honest, not a',
   'denial: Hale has no verb that starts a watch, so do not mark the reply down for',
@@ -1712,8 +1764,23 @@ async function main() {
   // measuring nothing, and it would go on passing through a regression that put the
   // window back to twenty turns.
   const severed = process.argv.includes('--severed');
+  const preflight = process.argv.includes('--preflight');
+  const anthropicModel = process.argv
+    .find((arg) => arg.startsWith('--anthropic-model='))
+    ?.split('=')[1];
+  if (anthropicModel && anthropicModel !== 'claude-sonnet-5-5') {
+    throw new Error('--anthropic-model currently supports only claude-sonnet-5-5');
+  }
+  if (anthropicModel && process.env.EVAL_GATEWAY_MODEL) {
+    throw new Error('use either --anthropic-model or EVAL_GATEWAY_MODEL, not both');
+  }
   const nonce = (process.argv.find((a) => a.startsWith('--nonce=')) ?? '').split('=')[1] ?? '';
   const only = (process.argv.find((a) => a.startsWith('--only=')) ?? '').split('=')[1] ?? '';
+  const minSamplesArg = process.argv.find((a) => a.startsWith('--min-samples='))?.split('=')[1];
+  const minSamples = minSamplesArg === undefined ? null : Number(minSamplesArg);
+  if (minSamples !== null && (!Number.isInteger(minSamples) || minSamples < 1)) {
+    throw new Error('--min-samples must be a positive integer');
+  }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const { frameworkGuidanceTool } = await tsImport(FRAMEWORK_TOOL_SRC, import.meta.url);
@@ -1727,11 +1794,15 @@ async function main() {
     notFoundPage: spotPage('markham-course-not-found'),
   };
   const compact = contextInternal.compactTranscript;
-  const getClient = lazyAnthropic();
+  const getJudgeClient = lazyAnthropic();
+  const getCurrentClient = lazyAnthropic();
+  const getSubjectClient = () => evalSubjectClient(getCurrentClient);
   const cost = makeCost();
+  const subjectLatencies = [];
 
   const skill = await agent.loadSkill(SKILL_PATH);
-  const model = agent.pickModel(skill.meta.task);
+  const model =
+    process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? agent.pickModel(skill.meta.task);
   // Sonnet, not the Haiku the other evals judge with. Scoring a two-sentence text
   // against a contract ("is `YES to confirm` the required shape or a robotic one?") is
   // judgment-dense work run rarely, and Haiku flapped between 2 and 5 on replies that
@@ -1746,23 +1817,53 @@ async function main() {
   // committed stays valid and only the two extra draws are new. JUDGE_MIN and the floor are
   // untouched: a reply that is really a 2 still fails, because two draws below the floor is
   // a median below it.
-  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'coach-channel', cachedOnly, getClient, cost, {
-    samples: JUDGE_SAMPLES_MEDIAN,
-  });
+  const judge = makeJudge(
+    judgeModel,
+    JUDGE_SYSTEM,
+    'coach-channel',
+    cachedOnly,
+    getJudgeClient,
+    cost,
+    { samples: JUDGE_SAMPLES_MEDIAN },
+  );
 
   const mode = broken ? 'broken' : severed ? 'severed' : 'real';
   console.log(
     `coach-channel-eval | mode=${mode}${cachedOnly ? ' (cached-only)' : ''} | agent=${model} judge=${judgeModel} | verbatim window=${contextInternal.TRANSCRIPT_VERBATIM_TURNS} turns`,
   );
-  let corpus = severed
-    ? COACH_CHANNEL_FIXTURES.filter((f) => f.continuity)
-    : COACH_CHANNEL_FIXTURES;
+  const fixtures =
+    minSamples === null
+      ? COACH_CHANNEL_FIXTURES
+      : expandSyntheticFixtures('coach-channel', COACH_CHANNEL_FIXTURES, minSamples, {
+          applyProfileReplacements: false,
+          vary: (fixture, { reference }) => {
+            fixture.text += `\n[message ${reference}]`;
+          },
+          visibleInput: (fixture) => ({
+            text: fixture.text,
+            village: fixture.village,
+            city: fixture.city,
+            children: fixture.children,
+            transcript: fixture.transcript,
+            standingQuestions: fixture.standingQuestions,
+            capability: fixture.capability,
+            registrationWindows: fixture.registrationWindows,
+            nearby: fixture.nearby,
+          }),
+        });
+  let corpus = severed ? fixtures.filter((f) => f.continuity) : fixtures;
   if (only) corpus = corpus.filter((f) => only.split(',').includes(f.id));
   console.log(
     severed
       ? `corpus: ${corpus.length} continuity texts, each run with its thread deleted\n`
       : `corpus: ${corpus.length} texts over one fixture week\n`,
   );
+  if (preflight) {
+    console.log(
+      `preflight: max subject calls=${corpus.length * MAX_STEPS}; judge calls=${corpus.length * JUDGE_SAMPLES_MEDIAN}`,
+    );
+    return;
+  }
 
   const results = [];
   for (const fixture of corpus) {
@@ -1802,11 +1903,12 @@ async function main() {
       ];
       const client = makeCachedAgentClient(
         `coach-channel:${fixture.id}${nonce}`,
-        model,
         cachedOnly,
-        getClient,
+        getSubjectClient,
         cost,
         legs,
+        anthropicModel,
+        subjectLatencies,
       );
       const run = await agent.runAgent({
         skill,
@@ -1878,117 +1980,115 @@ async function main() {
     const verdict =
       broken || reply === null
         ? null
-        : await (
-            await judge(fixture.id, {
-              text: fixture.text,
-              // The judge gets the SAME context the agent had. Handing it only a one-line
-              // week summary was the eval's own bug, and its cached reasons say so out
-              // loud: it marked a reply down for "inventing" the parent's own name, and
-              // it could not tell whether "two swims" was recall or invention. A judge
-              // scoring half-blind does not produce a noisy signal, it produces a
-              // confident wrong one.
-              knows: {
-                parent: CONTEXT_PARENT_NAME,
-                city: cityFor(fixture),
-                // Ages included: a coaching answer is graded on whether it fits THIS
-                // child, and a judge that cannot see how old they are would be scoring
-                // the prose instead of the fit.
-                children: children.map((child) =>
-                  teenChildren([child], NOW).length > 0
-                    ? { stage: 'teenager', name: null }
-                    : {
-                        stage: deriveStage(child.dateOfBirth, NOW),
-                        name: child.name,
-                        ageMonths: ageInMonths(child.dateOfBirth, NOW),
-                      },
-                ),
-                // No appLink: Hale is handed no URL, so the judge must not treat a link
-                // as recall — except the referral link, which the runtime appends and
-                // which is named below when this turn shared one.
-                referralLinkAppended: calls.some((call) => call.tool === 'share_referral_link')
-                  ? FIXTURE_REFERRAL_LINK
-                  : null,
-                // What the LIVE WEB handed back this turn, on the same terms as the
-                // link above. Without it the judge sees an empty `offerable` and scores
-                // a correctly-attributed web pick as an invented activity — which it
-                // did, at 2/5, on a reply that was doing exactly what the skill asks.
-                // Half-blind is not a noisy judge, it is a confidently wrong one.
-                webFind: calls.some((call) => call.tool === 'find_activities')
-                  ? `${FIXTURE_WEB_PICK.name} (${FIXTURE_WEB_PICK.ageFit}), ${FIXTURE_WEB_PICK.when}, per ${FIXTURE_WEB_PICK.sourceName} - source: web, NOT verified by Hale`
-                  : null,
-                // THE NEARBY COUNT, on the same terms as the referral link and the web
-                // pick: Hale composes it from what other households already answered and
-                // the runtime appends it AFTER the trim, so the model neither wrote it
-                // nor saw it. Without this line the judge cannot source the number and
-                // reads it as invented social proof — on this pair's first live run it
-                // scored the reply a 1 and called the count a fabrication, while the
-                // same body without the clause drew a 5. The value carries its own
-                // provenance for the reason `webFind`'s does: the rubric is a cache key,
-                // so a sentence of context costs nothing here and re-mints 42 fixtures
-                // there.
-                //
-                // `undefined`, not `null`, on every turn without one — JSON.stringify
-                // drops undefined, so every judge verdict already committed stays valid.
-                nearbyCountAppended:
-                  fixture.nearby && reply !== null && reply.endsWith(fixture.nearby.clause)
-                    ? `${fixture.nearby.clause} - composed by Hale from what other households answered and appended by the runtime; the model neither wrote this sentence nor saw it`
-                    : undefined,
-                // What THIS text's Village read returned, split the way the
-                // tool splits it — a judge shown only titles cannot tell an offer Hale
-                // could stand behind from one it could not.
-                // The SUMMARY belongs here with the rest. search_village returns it to
-                // the model (lib/coach/tools.ts), so "Free outdoor farm, open daily" is
-                // recall — and a judge handed only the title, venue and day scored those
-                // same four words an invented detail and put a correct reply below the
-                // floor. Same half-blindness as `webFind` and `standingPlace` above, same
-                // fix: show the judge what the tool showed the model.
-                offerable: villageFor(fixture).candidates.map(
-                  (c) => `${c.title} at ${c.venue}, ${c.when} — ${c.summary}`,
-                ),
-                stillBeingChecked: villageFor(fixture).inVerification,
-                // The standing place, when the tool handed one over. Without it a judge
-                // reads a named venue with no date attached as the invention it would
-                // otherwise be — and it is the one thing on this turn Hale is SUPPOSED
-                // to name. Null on every fixture that had a real candidate.
-                standingPlace: villageFor(fixture).standingOption ?? null,
-                // The radar's own municipal open dates, exactly as the runtime hands
-                // them to the model (channel/coach/registration-context.ts). Without
-                // them the judge grades a verified Sep 1 opening as an invention and
-                // "I'm on it" as a capability Hale does not have — which is precisely
-                // what it did on the first run of these two fixtures.
-                registrationWindows: fixture.registrationWindows ?? [],
-                // What Hale is holding an answer for, as the model was told it. Empty
-                // means Hale is waiting on nothing, which is what makes a bare "yes"
-                // unplaceable from state alone.
-                standingQuestions: fixture.standingQuestions ?? [],
-                // What Hale is ABLE to do. Without it the judge grades against its own
-                // guess at the product: its cached reasons faulted a reply for offering
-                // to check next week (Hale can — lookup_week takes a week offset) and
-                // for not drafting a third change (Hale may not — the cap is two).
-                can: [
-                  'read this week or next week of the family schedule',
-                  'draft a move, a cancel, or a new calendar item for the parent to approve',
-                  'search what is on nearby',
-                  'coach a parenting question from curated child-development guidance',
-                  "hand the parent their own link for telling a friend about Hale — the parent forwards it themselves; Hale never texts the friend",
-                  'WATCH a municipal registration window listed in `knows.registrationWindows` with `watching: true` — the sweep already claims it and already texts a week out, the evening before, and fifteen minutes before it opens. There is NO verb that starts a MUNICIPAL watch: `watching` is a fact about this family, not a switch Hale can flip mid-reply, so on a `watching: false` window Hale genuinely cannot begin one',
-                  'watch ONE FULL CLASS for a spot, with `watch_for_opening`, and only on a course-page link the parent pasted in their own message — Hale re-reads that page itself and texts them within about ten minutes of a spot showing. With no link there is nothing to watch, and asking for the link is the right answer rather than a stall',
-                ],
-                draftCapPerMessage: MAX_DRAFTS_PER_TURN,
-              },
-              week: { summary: FIXTURE_WEEK_SUMMARY, events: redactedWeek() },
-              // The thread the model was handed, on the same terms as everything else in
-              // `knows`: a judge that cannot see the message a "Yes, please" is answering
-              // is scoring the reply half-blind, and this harness has already paid for
-              // that once (see the `knows` comment above).
-              thread: turnContext.transcript,
-              // The digest of what compaction dropped, when there is one — a judge that
-              // cannot see it grades a recalled fact as an invention.
-              threadDigest: turnContext.transcriptSummary,
-              drafted: calls.filter((c) => c.actionType).map((c) => c.actionType),
-              reply,
-            })
-          );
+        : await await judge(fixture.id, {
+            text: fixture.text,
+            // The judge gets the SAME context the agent had. Handing it only a one-line
+            // week summary was the eval's own bug, and its cached reasons say so out
+            // loud: it marked a reply down for "inventing" the parent's own name, and
+            // it could not tell whether "two swims" was recall or invention. A judge
+            // scoring half-blind does not produce a noisy signal, it produces a
+            // confident wrong one.
+            knows: {
+              parent: CONTEXT_PARENT_NAME,
+              city: cityFor(fixture),
+              // Ages included: a coaching answer is graded on whether it fits THIS
+              // child, and a judge that cannot see how old they are would be scoring
+              // the prose instead of the fit.
+              children: children.map((child) =>
+                teenChildren([child], NOW).length > 0
+                  ? { stage: 'teenager', name: null }
+                  : {
+                      stage: deriveStage(child.dateOfBirth, NOW),
+                      name: child.name,
+                      ageMonths: ageInMonths(child.dateOfBirth, NOW),
+                    },
+              ),
+              // No appLink: Hale is handed no URL, so the judge must not treat a link
+              // as recall — except the referral link, which the runtime appends and
+              // which is named below when this turn shared one.
+              referralLinkAppended: calls.some((call) => call.tool === 'share_referral_link')
+                ? FIXTURE_REFERRAL_LINK
+                : null,
+              // What the LIVE WEB handed back this turn, on the same terms as the
+              // link above. Without it the judge sees an empty `offerable` and scores
+              // a correctly-attributed web pick as an invented activity — which it
+              // did, at 2/5, on a reply that was doing exactly what the skill asks.
+              // Half-blind is not a noisy judge, it is a confidently wrong one.
+              webFind: calls.some((call) => call.tool === 'find_activities')
+                ? `${FIXTURE_WEB_PICK.name} (${FIXTURE_WEB_PICK.ageFit}), ${FIXTURE_WEB_PICK.when}, per ${FIXTURE_WEB_PICK.sourceName} - source: web, NOT verified by Hale`
+                : null,
+              // THE NEARBY COUNT, on the same terms as the referral link and the web
+              // pick: Hale composes it from what other households already answered and
+              // the runtime appends it AFTER the trim, so the model neither wrote it
+              // nor saw it. Without this line the judge cannot source the number and
+              // reads it as invented social proof — on this pair's first live run it
+              // scored the reply a 1 and called the count a fabrication, while the
+              // same body without the clause drew a 5. The value carries its own
+              // provenance for the reason `webFind`'s does: the rubric is a cache key,
+              // so a sentence of context costs nothing here and re-mints 42 fixtures
+              // there.
+              //
+              // `undefined`, not `null`, on every turn without one — JSON.stringify
+              // drops undefined, so every judge verdict already committed stays valid.
+              nearbyCountAppended:
+                fixture.nearby && reply !== null && reply.endsWith(fixture.nearby.clause)
+                  ? `${fixture.nearby.clause} - composed by Hale from what other households answered and appended by the runtime; the model neither wrote this sentence nor saw it`
+                  : undefined,
+              // What THIS text's Village read returned, split the way the
+              // tool splits it — a judge shown only titles cannot tell an offer Hale
+              // could stand behind from one it could not.
+              // The SUMMARY belongs here with the rest. search_village returns it to
+              // the model (lib/coach/tools.ts), so "Free outdoor farm, open daily" is
+              // recall — and a judge handed only the title, venue and day scored those
+              // same four words an invented detail and put a correct reply below the
+              // floor. Same half-blindness as `webFind` and `standingPlace` above, same
+              // fix: show the judge what the tool showed the model.
+              offerable: villageFor(fixture).candidates.map(
+                (c) => `${c.title} at ${c.venue}, ${c.when} — ${c.summary}`,
+              ),
+              stillBeingChecked: villageFor(fixture).inVerification,
+              // The standing place, when the tool handed one over. Without it a judge
+              // reads a named venue with no date attached as the invention it would
+              // otherwise be — and it is the one thing on this turn Hale is SUPPOSED
+              // to name. Null on every fixture that had a real candidate.
+              standingPlace: villageFor(fixture).standingOption ?? null,
+              // The radar's own municipal open dates, exactly as the runtime hands
+              // them to the model (channel/coach/registration-context.ts). Without
+              // them the judge grades a verified Sep 1 opening as an invention and
+              // "I'm on it" as a capability Hale does not have — which is precisely
+              // what it did on the first run of these two fixtures.
+              registrationWindows: fixture.registrationWindows ?? [],
+              // What Hale is holding an answer for, as the model was told it. Empty
+              // means Hale is waiting on nothing, which is what makes a bare "yes"
+              // unplaceable from state alone.
+              standingQuestions: fixture.standingQuestions ?? [],
+              // What Hale is ABLE to do. Without it the judge grades against its own
+              // guess at the product: its cached reasons faulted a reply for offering
+              // to check next week (Hale can — lookup_week takes a week offset) and
+              // for not drafting a third change (Hale may not — the cap is two).
+              can: [
+                'read this week or next week of the family schedule',
+                'draft a move, a cancel, or a new calendar item for the parent to approve',
+                'search what is on nearby',
+                'coach a parenting question from curated child-development guidance',
+                'hand the parent their own link for telling a friend about Hale — the parent forwards it themselves; Hale never texts the friend',
+                'WATCH a municipal registration window listed in `knows.registrationWindows` with `watching: true` — the sweep already claims it and already texts a week out, the evening before, and fifteen minutes before it opens. There is NO verb that starts a MUNICIPAL watch: `watching` is a fact about this family, not a switch Hale can flip mid-reply, so on a `watching: false` window Hale genuinely cannot begin one',
+                'watch ONE FULL CLASS for a spot, with `watch_for_opening`, and only on a course-page link the parent pasted in their own message — Hale re-reads that page itself and texts them within about ten minutes of a spot showing. With no link there is nothing to watch, and asking for the link is the right answer rather than a stall',
+              ],
+              draftCapPerMessage: MAX_DRAFTS_PER_TURN,
+            },
+            week: { summary: FIXTURE_WEEK_SUMMARY, events: redactedWeek() },
+            // The thread the model was handed, on the same terms as everything else in
+            // `knows`: a judge that cannot see the message a "Yes, please" is answering
+            // is scoring the reply half-blind, and this harness has already paid for
+            // that once (see the `knows` comment above).
+            thread: turnContext.transcript,
+            // The digest of what compaction dropped, when there is one — a judge that
+            // cannot see it grades a recalled fact as an invention.
+            threadDigest: turnContext.transcriptSummary,
+            drafted: calls.filter((c) => c.actionType).map((c) => c.actionType),
+            reply,
+          });
     const score = verdict === null ? null : verdict.score;
 
     results.push({
@@ -2125,6 +2225,11 @@ async function main() {
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost this run: $${totalUsd(cost).toFixed(4)} USD`,
   );
+  if (subjectLatencies.length > 0) {
+    const sorted = [...subjectLatencies].sort((a, b) => a - b);
+    const percentile = (q) => sorted[Math.ceil(q * sorted.length) - 1];
+    console.log(`subject turn latency: p50=${percentile(0.5)}ms p95=${percentile(0.95)}ms`);
+  }
 
   const allPass =
     accuracy === 1 &&

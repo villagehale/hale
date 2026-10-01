@@ -1,5 +1,5 @@
-import { type AgentClient, pickLane } from '@hale/agent';
-import { describe, expect, it } from 'vitest';
+import { type AgentClient, SONNET55_MODEL, pickLane } from '@hale/agent';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { forceToolJson } from './structured';
 
@@ -14,10 +14,16 @@ import { forceToolJson } from './structured';
  * into a distinct, truthful signal so a truncated read is never mislabelled.
  */
 
-function clientReturning(payload: { content: unknown[]; stop_reason: string }): AgentClient {
+function clientReturning(payload: {
+  content: unknown[];
+  stop_reason: string;
+}): AgentClient {
   return {
     messages: {
-      create: async () => ({ ...payload, usage: { input_tokens: 10, output_tokens: 10 } }),
+      create: async () => ({
+        ...payload,
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }),
     },
   } as unknown as AgentClient;
 }
@@ -64,10 +70,49 @@ describe('forceToolJson — truncation is not a schema failure', () => {
 
   it('parses a complete answer through the same path (positive control)', async () => {
     const client = clientReturning({
-      content: [{ type: 'tool_use', name: 'answer', input: { found: true, confidence: 0.9 } }],
+      content: [
+        {
+          type: 'tool_use',
+          name: 'answer',
+          input: { found: true, confidence: 0.9 },
+        },
+      ],
       stop_reason: 'tool_use',
     });
     const { value } = await call(client);
     expect(value).toEqual({ found: true, confidence: 0.9 });
+  });
+
+  it('uses the tool-choice shape supported by Sonnet 5.5', async () => {
+    const create = vi.fn(async () => ({
+      content: [
+        {
+          type: 'tool_use',
+          name: 'answer',
+          input: { found: true, confidence: 0.9 },
+        },
+      ],
+      stop_reason: 'tool_use',
+      usage: { input_tokens: 10, output_tokens: 10 },
+    }));
+
+    await forceToolJson({
+      client: { messages: { create } } as unknown as AgentClient,
+      lane: { model: SONNET55_MODEL, thinking: 'adaptive', effort: 'high' },
+      system: 'sys',
+      userMessage: 'msg',
+      toolName: 'answer',
+      toolDescription: 'desc',
+      inputJsonSchema: JSON_SCHEMA,
+      schema: SCHEMA,
+      maxTokens: 20,
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: SONNET55_MODEL,
+        tool_choice: { type: 'auto' },
+      }),
+    );
   });
 });
