@@ -5,10 +5,12 @@ import { runDepartureNoticeRedrive } from '~/lib/channel/coparent/departure-redr
 import { sweepDutyAsks } from '~/lib/channel/coparent/duty/asks';
 import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import { runFollowupSweep } from '~/lib/channel/followup/run';
+import { departureNoticePorts, welcomeCardRedrivePorts } from '~/lib/channel/inbound-deps';
 import { runWelcomeCardRedrive } from '~/lib/channel/intake/welcome-card-redrive';
+import { runMidActivityAnswerPass } from '~/lib/channel/mid-activity/answer';
+import { runMidActivityAskSweep } from '~/lib/channel/mid-activity/sweep';
 import { runNudgeCron } from '~/lib/channel/nudge/run';
 import { runPlanCheckInSweep } from '~/lib/channel/plan/check-in';
-import { departureNoticePorts, welcomeCardRedrivePorts } from '~/lib/channel/inbound-deps';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { reviewVerdictClient, runReviewCapture } from '~/lib/reviews/capture';
@@ -87,6 +89,14 @@ export const maxDuration = 300;
  * one whose deferral costs a family nothing — and running after the others means a
  * household that has just been handed a nudge or an intro card is not also asked how
  * last week went. It carries its own dark-launch flag (FOLLOWUP_ASKS_ENABLED).
+ *
+ * THE MID-ACTIVITY ASK (VIL-393) rides after review capture. It is a different
+ * question from the follow-up: once, during a series, gated on how often the
+ * activity runs and how often the parent wants to be asked. Its flag
+ * (MID_ACTIVITY_ASK_ENABLED) is strict `true` and default off. While the line is
+ * a design placeholder it holds the send. An answer that does come back is stored
+ * on the same activity_reviews row VIL-366 already uses to reorder this household's
+ * next find. It does not send an acknowledgment, and it does not read a price.
  */
 export const GET = cronRoute('nudge', async () => {
   try {
@@ -110,6 +120,15 @@ export const GET = cronRoute('nudge', async () => {
       verdict: createVerdictReader(reviewVerdictClient),
       now: new Date(),
     });
+    // VIL-393. Its own flag, default off. The ask is held while the line is a
+    // design placeholder, and a stored answer reuses the VIL-366 household bias.
+    // Neither leg sends, and neither reads a price or a spend cap.
+    const answeredAt = new Date();
+    const midActivityAsks = await runMidActivityAskSweep(db(), answeredAt);
+    const midActivityAnswers = await runMidActivityAnswerPass(db(), {
+      verdict: createVerdictReader(reviewVerdictClient),
+      now: answeredAt,
+    });
     return NextResponse.json(
       {
         ok: true,
@@ -124,6 +143,8 @@ export const GET = cronRoute('nudge', async () => {
         welcomeCards,
         departureNotices,
         reviewCapture,
+        midActivityAsks,
+        midActivityAnswers,
       },
       { status: 200 },
     );
