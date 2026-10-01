@@ -96,7 +96,6 @@ describe('createSmsChannel().send', () => {
   it('sends a family with no group through Linq, and does not call Twilio', async () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     vi.stubEnv('LINQ_FROM_E164', '+16462352164');
-    vi.stubEnv('LINQ_CONTACT_CARD_SHARE', 'off');
     const fetchMock = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {
       if (String(url).includes('api.twilio.com')) {
         return Response.json({ message: 'twilio must not be called' }, { status: 500 });

@@ -52,7 +52,6 @@ beforeEach(() => {
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
   vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
-  vi.stubEnv('LINQ_CONTACT_CARD_SHARE', 'off');
 });
 
 afterEach(async () => {
