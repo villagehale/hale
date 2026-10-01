@@ -259,9 +259,9 @@ export interface PreparedCopyContext {
   printed: readonly string[];
   /** The tokens THIS tick's read proved. `printed` must be a subset. */
   backed: readonly string[];
-  /** The CASL form this body will ship under, or null for a solicited reply that never
-   * carries one. A budget measured against a footer the message cannot have is a
-   * budget about a different message. */
+  /** Retained so callers can still name a form. The footer is no longer appended
+   * (founder decision, 2026-10-01), so a proactive body and a solicited reply are
+   * measured as the same string. */
   optOut: OptOutForm | null;
 }
 

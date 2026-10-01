@@ -397,6 +397,7 @@ export async function alertParentForEmail(
     teenContent: extraction.teenContent,
     matchedEventRef: extraction.matchedEventRef,
     booked,
+    from: input.envelope.from,
     now,
   });
 
@@ -510,8 +511,8 @@ export async function alertParentForEmail(
     message,
   });
 
-  // The composed sentence, not the wire body — the CASL line belongs on the wire, and
-  // the coach re-reads this row next turn (channel/thread.ts).
+  // The composed sentence. The opt-out line is not appended, so this is also the wire
+  // body. The coach re-reads this row next turn (channel/thread.ts).
   await ports.threadMessage(database, { familyId, parentUserId, body: message });
 
   await database.insert(schema.auditLog).values({
@@ -950,7 +951,7 @@ const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
  * hold. That row is `email_alert_offers` (lib/integrations/email-alert-offer.ts), and
  * this function is the single decision both it and the sentence are derived from.
  *
- * FIVE CONDITIONS, and each one is a way the sentence would otherwise be untrue:
+ * SIX CONDITIONS, and each one is a way the sentence would otherwise be untrue:
  *   · A 13+ child's mail is genericised by the time this sees it, so there is no occasion
  *     left to add and nothing that could be added without re-disclosing what the teen
  *     gate just removed (rule #1). No row, and — since the teen text is category-only —
@@ -967,6 +968,10 @@ const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
  *     from a text that promised to tidy it. This is also what stops a REGISTRATION
  *     RECEIPT for a class the family already has being offered a second time, and it is
  *     reachable for a booking only because `correlate.ts` maps the kind to a time.
+ *   · The mail must not already BE the parent's calendar. A Google Calendar notification
+ *     is the week speaking about an event that is on it; "Reply YES and it goes on your
+ *     week" asks them to add what they already have. The text is a plain notice instead
+ *     ({@link calendarNotice}).
  *
  * Everything else ends with today's sentence, and that is still the common case.
  */
@@ -976,9 +981,13 @@ export function emailAlertOfferDraft(input: {
   teenContent: boolean;
   matchedEventRef: CorrelatedEventRef | null;
   booked: boolean;
+  /** The envelope's From. A Google Calendar notification is not an offer. */
+  from: string;
   now: Date;
 }): EmailAlertOfferDraft | null {
-  if (input.teenContent || input.matchedEventRef !== null) return null;
+  if (input.teenContent || input.matchedEventRef !== null || fromParentsCalendar(input.from)) {
+    return null;
+  }
   const kind = effectiveKind(input.kind, input.booked);
   const startsAt = instant(OFFERED_TIME[kind](input.event));
   if (startsAt === null || startsAt.getTime() <= input.now.getTime()) return null;
@@ -1097,6 +1106,14 @@ export function renderEmailAlert(input: EmailAlertRenderInput): EmailAlertRender
     return { body: `${title}. ${TEEN_CLOSER}`, going: input.going };
   }
 
+  // Already on the parent's calendar. A reminder or a newly extracted date from that
+  // mailbox is the event itself, so the text names it and stops. A cancellation or a
+  // move still uses its own frame below — the news is the change — and the offer stays
+  // off either way, because {@link emailAlertOfferDraft} refuses this From.
+  if (fromParentsCalendar(input.from) && (kind === 'new_event' || kind === 'reminder_only')) {
+    return { body: calendarNotice(input, kind, title), going: input.going };
+  }
+
   const sender = clamp(gsm7(senderLabel(input.from)), SENDER_MAX).replace(TRAILING_PUNCTUATION, '');
   // The offer, decided by the one function that also decides whether the row gets
   // written. Appended AFTER `compose`, never inside it: every frame in there ends through
@@ -1113,10 +1130,9 @@ export function renderEmailAlert(input: EmailAlertRenderInput): EmailAlertRender
   if (clause === '') return { body: assemble(''), going: input.going };
   const spoken = assemble(clause);
   // THE MEASURED FOLD (R2), and it is measured rather than argued. At the clamp maxima the
-  // worst case is 287 septets of 306 - sender 40, title 60, the longest `longWhen`
+  // worst case is inside two segments - sender 40, title 60, the longest `longWhen`
   // ("Wednesday, Sep 30, 2027 at 12:00 p.m.", 37), a 30-character place, the longest count
-  // word, the CTA and the FULL opt-out - which is nineteen of headroom, thin enough that it
-  // has to be a test and not a paragraph.
+  // word and the CTA. The opt-out line is not part of the measurement: it is not appended.
   //
   // THE COUNT IS THE FIRST THING DROPPED AND IT IS DROPPED WHOLE. Never a cut inside the
   // clause ("with two other Hale fam"), and never a third segment: this text is billed per
@@ -1138,6 +1154,33 @@ export function renderEmailAlert(input: EmailAlertRenderInput): EmailAlertRender
  */
 function sanitizedTitle(raw: string): string {
   return clamp(gsm7(raw).replace(VENDOR_LABEL, ''), TITLE_MAX).replace(TRAILING_PUNCTUATION, '');
+}
+
+/**
+ * A Google Calendar notification, named by the address Google sends it from or by the
+ * display name the parent's phone already showed. Either one means the event is on
+ * their calendar. A school that merely mentions a calendar does not match: the address
+ * is exact, and the display name is the whole label.
+ */
+function fromParentsCalendar(from: string): boolean {
+  const display = /^\s*"?([^"<]*?)"?\s*<[^>]*>\s*$/.exec(from)?.[1]?.trim() ?? '';
+  if (/^google calendar$/i.test(display)) return true;
+  const address = (/<([^>]*)>/.exec(from)?.[1] ?? from).trim();
+  return /^calendar-notification@google\.com$/i.test(address);
+}
+
+/**
+ * `Gymnastics on Thursday, Oct 1 at 4:15 p.m.`
+ *
+ * Name and time, and nothing else. No sender ("Google Calendar has…"), no place, and no
+ * "Reply YES" — the event is already on the week this mail came from. A title that
+ * sanitises to Hale's generic phrase still reads as the notice, and a time the model
+ * did not write as a date is dropped rather than printed as "Invalid Date".
+ */
+function calendarNotice(input: EmailAlertRenderInput, kind: ExtractionKind, title: string): string {
+  const iso = kind === 'new_event' ? input.event.newTime : input.event.originalTime;
+  const on = longWhen(iso, input.timeZone, input.now);
+  return end(on === null ? title : `${title} on ${on}`);
 }
 
 /** One sentence per kind, and they are all the same sentence: who, what, when. */

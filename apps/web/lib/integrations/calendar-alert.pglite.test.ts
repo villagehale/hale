@@ -204,7 +204,9 @@ describe('alertParentForCalendarChanges', () => {
     });
     expect(h.threaded).toHaveLength(1);
     expect(h.threaded[0]?.body).not.toContain(OPT_OUT_LINE);
-    expect(h.transport.sent[0]?.body).toContain(OPT_OUT_LINE);
+    expect(h.transport.sent[0]?.body).not.toContain(OPT_OUT_LINE);
+    expect(h.transport.sent[0]?.body).not.toContain('STOP to opt out.');
+    expect(h.transport.sent[0]?.body).toBe(h.threaded[0]?.body);
   });
 
   it('is dark behind F14 — no text and no receipt', async () => {

@@ -261,8 +261,8 @@ describe('what the parent actually gets', () => {
     expect(body).toContain('American Museum of Natural History');
     expect(body).toContain('Central Park Zoo');
     expect(body).toContain('Mia');
-    // The CASL line is on the wire.
-    expect(body).toContain('Reply STOP');
+    expect(body).not.toContain('Reply STOP');
+    expect(body).not.toContain('STOP to opt out.');
 
     // The query that crossed the border carried a place, a coarse window with no year and
     // a stage band — and no name.
@@ -286,8 +286,8 @@ describe('what the parent actually gets', () => {
     expect(audit?.after).toEqual({ picks: 2, merged: 0 });
     expect(JSON.stringify(audit?.after)).not.toContain('New York');
 
-    // The composed sentence is threaded for the coach to re-read, WITHOUT the CASL line:
-    // the opt-out belongs on the wire, and the coach re-reads this row next turn.
+    // The composed sentence is threaded for the coach to re-read. The opt-out line is
+    // not on the wire either.
     const [threaded] = await database
       .select({ content: schema.messages.content })
       .from(schema.messages);

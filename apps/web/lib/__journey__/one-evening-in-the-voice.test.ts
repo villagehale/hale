@@ -181,16 +181,16 @@ describe('two evenings in the voice', () => {
     expect(sent).toHaveLength(2);
     const [nightOne, nightTwo] = sent.map((message) => message.body);
 
-    // VIL-366. Same class both nights, so the same locked sentence both nights. The gate
-    // stub reports no earlier proactive send, so both carry the full opt-out.
+    // VIL-366. Same class both nights, so the same locked sentence both nights. Neither
+    // night ends with an opt-out line.
     const locked = withOptOut('How did swim go? One line is plenty.', 'full');
     expect(nightOne).toBe(locked);
     expect(nightTwo).toBe(locked);
 
     for (const body of [nightOne, nightTwo] as string[]) {
-      // One GSM-7 segment WITH the CASL line on it — measured on what went out, because
-      // the opt-out is part of the message and not a footnote to it.
-      expect(body, body).toContain(OPT_OUT_LINE);
+      // One GSM-7 segment, measured on what went out. The opt-out line is not part of it.
+      expect(body, body).not.toContain(OPT_OUT_LINE);
+      expect(body, body).not.toContain('STOP to opt out.');
       expect(isGsm7(body), body).toBe(true);
       expect(smsSegments(body), body).toBe(1);
       // Her own class, named. The positive control for every absence below: a lane that

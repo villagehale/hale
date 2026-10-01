@@ -1,12 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import {
-  GUEST_SOFT_CTA,
-  GUEST_SOFT_LINE,
-  guestCancellation,
-  guestReminder,
-} from './guest-copy';
+import { GUEST_SOFT_CTA, GUEST_SOFT_LINE, guestCancellation, guestReminder } from './guest-copy';
 import {
   GUEST_SEND_HOUR_LOCAL,
   type PartyReminderDeps,
@@ -98,11 +93,13 @@ describe('guestsEligibleForSend — no unsolicited guest sends', () => {
 });
 
 describe('guest-facing copy', () => {
-  it('carries the way out on every message', () => {
-    expect(guestReminder("Max's 5th birthday", 'Saturday at 2:00 PM', '14 Elm St')).toContain(
-      'Reply STOP',
+  it('does not end either message with an opt-out line', () => {
+    expect(guestReminder("Max's 5th birthday", 'Saturday at 2:00 PM', '14 Elm St')).toBe(
+      "Reminder from Hale: Max's 5th birthday is tomorrow - Saturday at 2:00 PM at 14 Elm St. You asked me to remind you.",
     );
-    expect(guestCancellation("Max's 5th birthday")).toContain('Reply STOP');
+    expect(guestCancellation("Max's 5th birthday")).toBe(
+      "From Hale: Max's 5th birthday has been cancelled by the host. Sorry for the change.",
+    );
   });
 
   it('names Hale as the sender, so a text from an unknown number is not a mystery', () => {

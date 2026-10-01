@@ -249,7 +249,7 @@ function checkMessage(fixture, message, judgeScore) {
   failures.push(...fabrications(message, context));
 
   if (message.includes(NUDGE_OPT_OUT)) {
-    failures.push('writes the opt-out line the sender appends — the parent is told twice');
+    failures.push('writes an opt-out line — outbound texts do not carry one');
   }
   if (message.includes('?')) {
     failures.push('asks a question in an unprompted text (nothing here needs an answer)');
@@ -398,7 +398,7 @@ async function main() {
   console.log(`composed behind a closed gate:${leaked.length}  (0 required — the CASL gate)`);
   console.log(`over the segment budget:      ${overBudget.length}  (0 required)`);
   console.log(`messages asking a question:   ${asking.length}  (0 required)`);
-  console.log(`messages writing the opt-out: ${optingOut.length}  (0 required — the shell appends it)`);
+  console.log(`messages writing the opt-out: ${optingOut.length}  (0 required — outbound texts do not carry one)`);
   console.log(`mean voice score:             ${meanScore.toFixed(2)}  (each >= ${JUDGE_MIN})`);
   if (segments.length) {
     console.log(

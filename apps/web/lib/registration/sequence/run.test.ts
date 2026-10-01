@@ -427,7 +427,7 @@ describe('the shortlist proposal', () => {
 });
 
 describe('the legs', () => {
-  it('sends the heads-up with the opt-out appended exactly once', async () => {
+  it('sends the heads-up without an opt-out line', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({ sequences: [live({ optIn: 'pending' })] });
     const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
@@ -436,8 +436,8 @@ describe('the legs', () => {
     const body = h.transport.bodies()[0] as string;
     expect(body).toContain('Richmond Hill');
     expect(body).toContain('Maya');
-    expect(body.endsWith(NUDGE_OPT_OUT)).toBe(true);
-    expect(body.split(NUDGE_OPT_OUT)).toHaveLength(2);
+    expect(body).not.toContain(NUDGE_OPT_OUT);
+    expect(body).not.toContain('STOP to opt out.');
   });
 
   it("puts the leg in the parent's own text thread, so their reply has an antecedent", async () => {
@@ -454,15 +454,13 @@ describe('the legs', () => {
     expect(h.transport.bodies()[0]).toContain(h.threaded[0]?.body ?? ' ');
   });
 
-  it('threads the composed leg, never the CASL footer on the wire', async () => {
+  it('threads the composed leg, and the wire does not add an opt-out line', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
-    // The opt-out line belongs on the wire and nowhere else, or the coach re-reads
-    // "Reply STOP to opt out" as a sentence Hale addressed to this parent.
     const h = harness({ sequences: [live({ optIn: 'pending' })] });
     await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
 
     const wire = h.transport.bodies()[0] ?? '';
-    expect(wire.endsWith(NUDGE_OPT_OUT)).toBe(true);
+    expect(wire).not.toContain(NUDGE_OPT_OUT);
     expect(h.threaded[0]?.body).not.toContain(NUDGE_OPT_OUT);
     expect(wire).toContain(h.threaded[0]?.body ?? ' ');
   });

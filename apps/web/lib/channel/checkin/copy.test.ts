@@ -101,19 +101,23 @@ describe('the evening asks', () => {
 
   it('drop the names rather than the segment when they will not fit', () => {
     const long = ['Alexandrina', 'Bartholomew', 'Constantina'];
-    // The names fit the short asks and not the first one, so the SAME family gets named on
-    // an ordinary evening and unnamed on their first — measured, never guessed.
+    // These three used to lose the first ask to the opt-out line. The line is no longer
+    // appended, so the first evening names them, and it is still one segment.
+    const first = ask({ first: true, childNames: long }).body;
+    expect(first).toContain('Alexandrina');
+    expect(smsSegments(first)).toBe(1);
     for (const body of laterAsks(long)) {
       expect(body, body).toContain('Alexandrina');
     }
-    expect(ask({ first: true, childNames: long }).body).toContain(GENERIC_CHILD_PHRASE);
+    const tooLong = ['Alexandrina', 'Bartholomew', 'Constantina', 'Maximilian'];
+    expect(ask({ first: true, childNames: tooLong }).body).toContain(GENERIC_CHILD_PHRASE);
   });
 
   it('refuse a name Hale cannot spell on the wire', () => {
     expect(childPhrase(['Zoë'])).toBe(GENERIC_CHILD_PHRASE);
   });
 
-  it('fit one GSM-7 segment with the full opt-out line on them', () => {
+  it('fit one GSM-7 segment on the wire', () => {
     const bodies = [
       ask({ first: true }).body,
       ask({ first: true, childNames: [] }).body,
@@ -336,10 +340,9 @@ describe('the noted-ack pool', () => {
     }
   });
 
-  it('fits one GSM-7 segment in both languages, measured with the full opt-out on it', () => {
-    // The ack rides a REPLY, which carries no CASL line — so this is the conservative
-    // bound rather than the real one, and it stays that way so a member can never be
-    // moved onto a proactive path and split in two.
+  it('fits one GSM-7 segment in both languages', () => {
+    // An ack rides a reply. Measuring it at one segment keeps a member from splitting
+    // if it is ever moved onto a proactive path.
     for (const body of [...notedAcks('en'), ...notedAcks('fr')]) {
       const wire = withOptOut(body, 'full');
       expect(isGsm7(wire), body).toBe(true);

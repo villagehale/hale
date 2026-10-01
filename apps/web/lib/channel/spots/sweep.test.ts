@@ -1444,9 +1444,7 @@ describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
     expect((await readWatch(spotId)).pendingKind).toBe('seat_opened');
   });
 
-  it('threads the COMPOSED sentence and puts the CASL line only on the wire', async () => {
-    // Kills threading the wire body: the parent would read the unsubscribe line back in
-    // the app, and the coach would re-read it as something Hale said.
+  it('threads the composed sentence, and the wire does not add an opt-out line', async () => {
     const family = await seedFamily(db.database);
     const test = harness();
     test.pages.set(SOURCE_URL, OPEN_PAGE);
@@ -1456,8 +1454,8 @@ describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
 
     expect(test.threaded).toHaveLength(1);
     expect(test.threaded[0]).not.toContain('STOP');
-    expect(test.sent[0]?.body).toContain('STOP');
-    expect(test.sent[0]?.body.startsWith(test.threaded[0] ?? 'x')).toBe(true);
+    expect(test.sent[0]?.body).not.toContain('STOP');
+    expect(test.sent[0]?.body).toBe(test.threaded[0]);
   });
 
   it('records the send on the trail as provenance, never as content', async () => {

@@ -139,7 +139,12 @@ afterEach(async () => {
 async function seed(): Promise<void> {
   const [family] = await db.database
     .insert(schema.families)
-    .values({ displayName: 'Chen', provinceOrState: 'ON', areaCoarse: 'M4K', onboardingStage: 'sms_active' })
+    .values({
+      displayName: 'Chen',
+      provinceOrState: 'ON',
+      areaCoarse: 'M4K',
+      onboardingStage: 'sms_active',
+    })
     .returning({ id: schema.families.id });
   familyId = family?.id as string;
 
@@ -497,7 +502,8 @@ describe('a booking email becomes one text a week before the trip', () => {
     // It claims nothing about anyone having been, and it asks nothing.
     expect(body).toContain("not from anyone who's been");
     expect(body).not.toContain('?');
-    expect(body).toContain('Reply STOP');
+    expect(body).not.toContain('Reply STOP');
+    expect(body).not.toContain('STOP to opt out.');
 
     // The trip closed exactly once, carried by the message the parent got.
     const [closed] = await db.database.select().from(schema.familyTrips);

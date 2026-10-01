@@ -22,10 +22,10 @@ import { channelSmsNoteKey } from '~/lib/coach/note-key';
  * thread is derivable from (familyId, parentUserId) alone — the same note anchor C1
  * resolves on an inbound — so there is nothing to be absent, and no absence to handle.
  *
- * THE COMPOSED SENTENCE, NOT THE WIRE BODY. Callers pass what they wrote, before
- * `withOptOut` and before any share link: the CASL footer belongs on the wire and
- * nowhere else, and this row is both what the parent reads back in the app and what the
- * coach re-reads next turn (the rule sweep.ts and plan/check-in.ts already keep).
+ * THE COMPOSED SENTENCE. Callers pass what they wrote, before any share link. The
+ * opt-out line is not appended to the wire (founder decision, 2026-10-01), so this row
+ * and the text match except where a share link was added after. This row is both what
+ * the parent reads back in the app and what the coach re-reads next turn.
  *
  * Recorded as `assistant` because that is who said it. Redaction is the caller's, and
  * already done: every body reaching here has been through its own composer's gates, and

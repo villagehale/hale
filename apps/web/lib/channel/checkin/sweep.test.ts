@@ -234,14 +234,15 @@ describe('an hour with more households in it than one run may carry', () => {
 });
 
 describe('what goes out', () => {
-  it('asks the long way the first time, with the opt-out on the wire and not in the thread', async () => {
+  it('asks the long way the first time, with no opt-out line on the wire or in the thread', async () => {
     process.env[F14_ENABLED_ENV] = 'true';
     const { deps, sent, ledger, threaded, audits, asks } = harness();
     await runEveningCheckInSweep(database, deps, EVENING);
 
     expect(sent[0]?.body).toBe(
-      `Quick one before the day's gone: how did today go with Mia and Leo? One line is plenty. Reply LESS for weekly, or NO to skip these.\n\n${OPT_OUT_LINE}`,
+      "Quick one before the day's gone: how did today go with Mia and Leo? One line is plenty. Reply LESS for weekly, or NO to skip these.",
     );
+    expect(sent[0]?.body).not.toContain(OPT_OUT_LINE);
     expect(threaded[0]).not.toContain(OPT_OUT_LINE);
     expect(ledger[0]).toEqual({
       dedupeKey: 'evening_check_in:fam-1:2026-07-05',
@@ -538,7 +539,8 @@ describe('the activity anchor', () => {
     const result = await runEveningCheckInSweep(database, deps, EVENING);
     expect(result.steppedDownToWeekly).toBe(1);
     expect(Object.values(result.anchor).reduce((a, b) => a + b, 0)).toBe(0);
-    expect(sent[0]?.body).toBe(`${CHECK_IN_STEP_DOWN}\n\n${OPT_OUT_LINE}`);
+    expect(sent[0]?.body).toBe(CHECK_IN_STEP_DOWN);
+    expect(sent[0]?.body).not.toContain(OPT_OUT_LINE);
   });
 
   it('never reads the calendar for a household it is not going to ask', async () => {

@@ -27,10 +27,9 @@ import { renderWeekdayFinderAsk } from './weekday-care-copy';
  * one is discarded and the DETERMINISTIC render goes out in its place.
  *
  * The one addition over M3's shape, and it is the reason this file is not just a copy:
- * this message is UNSOLICITED. So {@link NUDGE_OPT_OUT} is part of the shell, appended
- * by the sender exactly once, and a composed message that writes its own opt-out line
- * is rejected — a parent must never see the instruction twice, and must never see a
- * version of it the model paraphrased into something that isn't the keyword.
+ * this message is UNSOLICITED. {@link NUDGE_OPT_OUT} is not the model's to write — a
+ * composed message that includes it is rejected. The sender no longer appends it
+ * (founder decision, 2026-10-01).
  */
 
 const VOICE_MAX_TOKENS = 300;
@@ -154,8 +153,9 @@ export function parseNudgeVoiceAnswer(answer: string | null): NudgeVoice | null 
   return parsed.data;
 }
 
-/** Whether a composed message may be sent as-is: grounded, free of the shell's own
- * opt-out line, and inside the segment budget once that line is appended. */
+/** Whether a composed message may be sent as-is: grounded, free of the opt-out line,
+ * and inside the segment budget. The budget still reserves the old line so a message
+ * that used to fit still fits; the line itself is not appended. */
 export function usableNudgeMessage(message: string, nudge: VoicedNudge): boolean {
   if (findInventedFacts(message, nudgeFactSlots(nudge)).length > 0) return false;
   if (message.includes(NUDGE_OPT_OUT)) return false;

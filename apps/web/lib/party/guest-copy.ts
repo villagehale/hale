@@ -10,27 +10,24 @@
  *     are not customers. Keeping them in one dependency-free file means the whole set
  *     can be read at once and reviewed as one promise.
  *
- * Nothing here is model-composed.
+ * Nothing here is model-composed. Neither text ends with an opt-out line (founder
+ * decision, 2026-10-01). A guest who texts STOP is still opted out on the inbound path.
  */
-
-/** Appended to every guest-facing text. The guest opted in on a web form and may never
- * have texted Hale, so the way out must travel with the message. */
-export const GUEST_OPT_OUT = 'Reply STOP to opt out.';
 
 /**
  * The day-before reminder — the ONLY unprompted message a guest ever receives, and only
  * because they ticked a box asking for it. It says who it is from, what it is about,
- * why they are getting it, and how to stop, in that order.
+ * and why they are getting it, in that order.
  */
 export function guestReminder(title: string, when: string, location: string | null): string {
   const where = location === null ? '' : ` at ${location}`;
-  return `Reminder from Hale: ${title} is tomorrow - ${when}${where}. You asked me to remind you. ${GUEST_OPT_OUT}`;
+  return `Reminder from Hale: ${title} is tomorrow - ${when}${where}. You asked me to remind you.`;
 }
 
 /** Sent when a host cancels. A guest who asked to be reminded about a party has asked,
  * by any reasonable reading, to be told when it is off. */
 export function guestCancellation(title: string): string {
-  return `From Hale: ${title} has been cancelled by the host. Sorry for the change. ${GUEST_OPT_OUT}`;
+  return `From Hale: ${title} has been cancelled by the host. Sorry for the change.`;
 }
 
 /**

@@ -595,8 +595,8 @@ async function sendOffer(
     )
     .where(eq(schema.channelMessages.id, claimed.id));
 
-  // The composed sentence, not the wire body — the CASL line belongs on the wire, and
-  // the coach re-reads this row next turn (channel/thread.ts).
+  // The composed sentence. The opt-out line is not appended, so this is also the wire
+  // body. The coach re-reads this row next turn (channel/thread.ts).
   await ports.threadMessage(database, { familyId, parentUserId, body: message });
 
   await database.insert(schema.auditLog).values({
