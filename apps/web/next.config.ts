@@ -49,6 +49,9 @@ const config: NextConfig = {
     '@playwright/test',
     'playwright',
     'playwright-core',
+    // Remote hands. Loaded only when SIGNUP_SANDBOX_RUNTIME_ENABLED is exactly
+    // `true` and the runtime id is vercel_sandbox. Never bundled into the function.
+    '@vercel/sandbox',
   ],
   // The coach (and any web-side agent) reads the worker's single-source prompt +
   // model files off disk at runtime, plus the agent harness reads its skill files
