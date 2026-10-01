@@ -9,7 +9,7 @@ import {
   familyOutboundTarget,
   readGroupBubbleSpend,
 } from '~/lib/channel/linq/family-outbound';
-import { splitKidEvent } from '~/lib/channel/linq/household-calendar';
+import { splitKidEvent } from '~/lib/channel/linq/kid-event';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {

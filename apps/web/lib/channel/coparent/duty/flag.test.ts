@@ -2,11 +2,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   COPARENT_DUTY_ASKS_ALLOWLIST_ENV,
   COPARENT_DUTY_ASKS_ENABLED_ENV,
+  COPARENT_DUTY_BURDEN_SURFACE_ENABLED_ENV,
+  COPARENT_DUTY_LOPSIDED_ENABLED_ENV,
+  COPARENT_DUTY_MEMORY_ENABLED_ENV,
   COPARENT_DUTY_SENDS_ALLOWLIST_ENV,
   COPARENT_DUTY_SENDS_ENABLED_ENV,
   coparentDutyAsksActive,
   coparentDutyAsksArmed,
   coparentDutyAsksEnabled,
+  coparentDutyBurdenSurfaceEnabled,
+  coparentDutyLopsidedEnabled,
+  coparentDutyMemoryEnabled,
   coparentDutySendsActive,
   coparentDutySendsArmed,
   coparentDutySendsEnabled,
@@ -61,5 +67,24 @@ describe('coparent duty sends flag', () => {
     expect(coparentDutySendsArmed()).toBe(true);
     expect(coparentDutySendsActive('fam-a')).toBe(true);
     expect(coparentDutySendsActive('fam-c')).toBe(false);
+  });
+});
+
+describe('coparent duty memory flags', () => {
+  it('stay off unless the value is exactly true', () => {
+    for (const [env, read] of [
+      [COPARENT_DUTY_MEMORY_ENABLED_ENV, coparentDutyMemoryEnabled],
+      [COPARENT_DUTY_LOPSIDED_ENABLED_ENV, coparentDutyLopsidedEnabled],
+      [COPARENT_DUTY_BURDEN_SURFACE_ENABLED_ENV, coparentDutyBurdenSurfaceEnabled],
+    ] as const) {
+      vi.stubEnv(env, '');
+      expect(read()).toBe(false);
+      vi.stubEnv(env, 'true\n');
+      expect(read()).toBe(false);
+      vi.stubEnv(env, 'TRUE');
+      expect(read()).toBe(false);
+      vi.stubEnv(env, 'true');
+      expect(read()).toBe(true);
+    }
   });
 });

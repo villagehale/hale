@@ -4,6 +4,7 @@ import { CO_PARENT_ASK_BY_LANGUAGE } from '~/lib/channel/intake/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
+import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { linqApiKey, linqGroupCoparentEnabled } from './config';
 import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
@@ -343,7 +344,7 @@ export function householdCopies<T>(
 }
 
 export interface GroupActivityDecision {
-  decision: 'picked' | 'passed';
+  decision: 'picked' | 'passed' | 'duty';
   activity: string;
   kid: string;
   day?: string;
@@ -393,14 +394,14 @@ export async function queueGroupActivityDecision(
   if (input.originChatId !== null && input.originChatId === target.chatId) return 'skipped';
   const { decision } = input;
   if (!decision.activity.trim() || !decision.kid.trim()) return 'skipped';
-  if (decision.decision === 'picked' && (!decision.day?.trim() || !decision.time?.trim())) {
-    return 'skipped';
-  }
+  const timed = decision.decision === 'picked' || decision.decision === 'duty';
+  if (timed && (!decision.day?.trim() || !decision.time?.trim())) return 'skipped';
   if (decision.decision === 'passed' && (decision.day || decision.time)) return 'skipped';
+  if (decision.decision === 'duty' && !dutyTitleMayBeSpoken(decision.activity)) return 'skipped';
   const activity = decision.activity.trim();
   const kid = decision.kid.trim();
-  const day = decision.decision === 'picked' ? (decision.day?.trim() ?? null) : null;
-  const time = decision.decision === 'picked' ? (decision.time?.trim() ?? null) : null;
+  const day = timed ? (decision.day?.trim() ?? null) : null;
+  const time = timed ? (decision.time?.trim() ?? null) : null;
   const flushAfter = new Date(input.now.getTime() + SETTLE_MS);
   const prior = await database
     .select({
@@ -573,6 +574,15 @@ export async function flushGroupDecisionSyncs(
             kid: row.kid,
           }),
         );
+      } else if (row.decision === 'duty' && row.day && row.time) {
+        const line = dutySyncLine(speech.language, {
+          name: speech.name,
+          activity: row.activity,
+          kid: row.kid,
+          day: row.day,
+          time: row.time,
+        });
+        if (line && line.split('\n').length <= 1) lines.push(line);
       }
     }
     if (lines.length === 0) continue;

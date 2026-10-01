@@ -236,6 +236,14 @@ const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
     'lib/channel/nudge/saturday-plans.ts',
     'empty-Saturday occupancy — child id and start time only, never a title or a location, so a teen row can mark that child busy and cannot put their words on the wire',
   ],
+  [
+    'lib/channel/coparent/duty/calendar.ts',
+    'duty projection — reads a title only to refuse a non-kid row, writes owner columns, and never sends the title',
+  ],
+  [
+    'lib/channel/coparent/duty/metrics.ts',
+    'duty metrics — start time and owner columns only, never a title or a location',
+  ],
 ];
 
 /** Any reference to the table by any Drizzle API, including a bare destructured one. */

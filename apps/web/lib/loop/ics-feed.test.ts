@@ -1,5 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { COPARENT_DUTY_COPY_LOCKED_ENV } from '~/lib/channel/coparent/duty/copy';
+import { COPARENT_DUTY_MEMORY_ENABLED_ENV } from '~/lib/channel/coparent/duty/flag';
 import { loadIcsFeed, mintIcsToken, revokeIcsToken } from './ics-feed.js';
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const TOKEN = 'existing_ics_token_value';
@@ -42,6 +48,9 @@ interface EventRow {
   endsAt: Date | null;
   location: string | null;
   childDob: string | null;
+  childName?: string | null;
+  dutyOwnerLabel?: string | null;
+  dutyOwnerKind?: string | null;
 }
 
 /**
@@ -184,5 +193,71 @@ describe('loadIcsFeed — token resolution + teen gate (rule #1)', () => {
     // A surname is NEVER queried (only `title` is selected), so it can never appear —
     // assert the structural guarantee holds for a surname that is not in any title.
     expect(feed).not.toContain('Kowalski');
+    expect(feed).not.toContain('DESCRIPTION:');
+  });
+
+  it('puts a kid-event owner in DESCRIPTION only when memory and copy are locked on', async () => {
+    vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
+    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
+    const { db } = fakeLoadDb(
+      [{ id: FAMILY_ID }],
+      [
+        {
+          id: 'cccccccc-3333-4333-8333-333333333333',
+          title: 'Maya swim',
+          startsAt: new Date('2026-07-23T09:00:00.000Z'),
+          endsAt: null,
+          location: null,
+          childDob: '2020-01-01',
+          childName: 'Maya',
+          dutyOwnerLabel: 'Barton',
+          dutyOwnerKind: 'parent',
+        },
+      ],
+    );
+    const feed = (await loadIcsFeed(db, TOKEN, NOW)) as string;
+    const unfolded = feed.replace(/\r\n[ \t]/g, '');
+    expect(unfolded).toContain('DESCRIPTION:');
+    expect(unfolded).toContain("Barton has Maya's swim");
+    expect(unfolded).toContain('Say so here if that changes.');
+    expect(unfolded).not.toContain('Reply STOP');
+    expect(feed).not.toContain('ATTENDEE');
+  });
+
+  it('does not speak a non-kid title or a teen owner in the duty field', async () => {
+    vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
+    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
+    const { db } = fakeLoadDb(
+      [{ id: FAMILY_ID }],
+      [
+        {
+          id: 'dddddddd-4444-4444-8444-444444444444',
+          title: 'Quarterly board review',
+          startsAt: new Date('2026-07-23T15:00:00.000Z'),
+          endsAt: null,
+          location: 'Office',
+          childDob: '2020-01-01',
+          childName: 'Maya',
+          dutyOwnerLabel: 'Barton',
+          dutyOwnerKind: 'parent',
+        },
+        {
+          id: 'eeeeeeee-5555-4555-8555-555555555555',
+          title: 'Maya swim',
+          startsAt: new Date('2026-07-24T15:00:00.000Z'),
+          endsAt: null,
+          location: 'Pool',
+          childDob: '2010-01-01',
+          childName: 'Maya',
+          dutyOwnerLabel: 'Barton',
+          dutyOwnerKind: 'parent',
+        },
+      ],
+    );
+    const feed = (await loadIcsFeed(db, TOKEN, NOW)) as string;
+    expect(feed).not.toContain('DESCRIPTION:');
+    expect(feed).not.toContain('Barton');
+    expect(feed).not.toContain('Maya swim');
+    expect(feed).toContain('SUMMARY:A private calendar item');
   });
 });

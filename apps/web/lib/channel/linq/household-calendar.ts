@@ -7,6 +7,9 @@ import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channe
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
 import { linqGroupCoparentEnabled, linqPollsEnabled } from './config';
 import { groupProactiveCapReached } from './family-outbound';
+import { classifyKidCalendarItem, splitKidEvent, titleForStorage } from './kid-event';
+
+export { classifyKidCalendarItem, splitKidEvent, titleForStorage };
 import {
   groupBothFreeText,
   groupConflictText,
@@ -62,34 +65,6 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * path sends SMS, and a failed group send is not retried on Twilio.
  */
 
-const KID_WORDS = [
-  'gymnastics',
-  'swim',
-  'swimming',
-  'soccer',
-  'daycare',
-  'school',
-  'pickup',
-  'pick-up',
-  'registration',
-  'appointment',
-  'class',
-  'lesson',
-  'practice',
-  'recital',
-  'camp',
-  'storytime',
-  'earlyon',
-  'preschool',
-  'nursery',
-  'pediatric',
-  'ballet',
-  'karate',
-  'hockey',
-  'piano',
-  'tutor',
-] as const;
-
 const LOOKAHEAD_MS = 14 * 24 * 60 * 60 * 1000;
 const FOLLOWUP_MS = 36 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -102,40 +77,6 @@ const HANDOFF_HOUR_END = 21;
 /** A parent said who takes it. Not a guess from two calendars. */
 const HANDOFF_CLAIM =
   /\b(?:i(?:['’]ll| will) take|i(?:['’]ve| have) got|je m(?:['’]en|en) occupe|c(?:['’]est|est) moi)\b/i;
-
-export function classifyKidCalendarItem(input: {
-  title: string | null | undefined;
-  childNames: readonly string[];
-}): boolean {
-  const title = input.title?.trim() ?? '';
-  if (title.length === 0) return false;
-  for (const name of input.childNames) {
-    const token = name.trim();
-    if (token.length < 2) continue;
-    if (hasWord(title, token)) return true;
-  }
-  return KID_WORDS.some((word) => hasWord(title, word));
-}
-
-/** Title column value. Null unless the row is kid-related. */
-export function titleForStorage(
-  kidRelated: boolean,
-  title: string | null | undefined,
-): string | null {
-  if (!kidRelated) return null;
-  const trimmed = title?.replace(/\s+/g, ' ').trim() ?? '';
-  if (trimmed.length === 0) return null;
-  return trimmed.slice(0, 80);
-}
-
-function wordPattern(word: string): RegExp {
-  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}(?:$|[^\\p{L}\\p{N}])`, 'iu');
-}
-
-function hasWord(title: string, word: string): boolean {
-  return wordPattern(word).test(` ${title} `);
-}
 
 export interface BusyBlock {
   integrationId: string;
@@ -534,28 +475,6 @@ function soleCalendarOwner(block: BusyBlock, blocks: readonly BusyBlock[]): stri
   );
   if (holders.size !== 1) return null;
   return holders.values().next().value ?? null;
-}
-
-export function splitKidEvent(
-  title: string,
-  childNames: readonly string[],
-): { kid: string; event: string } | null {
-  const names = childNames
-    .map((name) => name.trim())
-    .filter((name) => name.length >= 2)
-    .sort((a, b) => b.length - a.length);
-  for (const name of names) {
-    if (!hasWord(title, name)) continue;
-    const event = title
-      .replace(wordPattern(name), ' ')
-      .replace(/^['’]?s\b/i, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (!event) return null;
-    return { kid: name, event };
-  }
-  if (names.length === 1) return { kid: names[0] as string, event: title.trim() };
-  return null;
 }
 
 function normalizeTitle(title: string): string {

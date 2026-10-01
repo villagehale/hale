@@ -170,6 +170,10 @@ export const AUDIT_VERBS = [
   // "We'll figure it out" / "On verra". The open ask is closed and no taker
   // is written. The evening handoff does not read a name from this row.
   'logistics_decision_withheld',
+  'duty_calendar_projected',
+  'duty_calendar_cleared',
+  'duty_memory_recorded',
+  'duty_memory_undone',
   'voice_call_received',
   // v0's callback text. No new row carries it — an enrolled caller now has a spoken
   // conversation instead — but months of rows in production do, and a verb the trail
@@ -613,6 +617,16 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale did not store who is taking it',
     family: 'note',
   },
+  duty_calendar_projected: {
+    sentence: 'Hale noted who has a kid event on the family calendar',
+    family: 'note',
+  },
+  duty_calendar_cleared: {
+    sentence: 'Hale cleared who has a kid event on the family calendar',
+    family: 'note',
+  },
+  duty_memory_recorded: { sentence: 'Hale noted a duty answer', family: 'note' },
+  duty_memory_undone: { sentence: 'Hale updated a duty note', family: 'note' },
   voice_call_received: {
     // Hale keeps no audio and no transcript — only that a call arrived.
     sentence: 'a call came in to Hale’s number',
