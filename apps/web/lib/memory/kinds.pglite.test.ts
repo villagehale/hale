@@ -225,8 +225,9 @@ describe('family memory kinds', () => {
   it('syncs a locked correction to the group chat and not the 1:1', async () => {
     const { familyId, parentUserId } = await seedSwim('one_off');
     const groupChatId = `group-${familyId}`;
-    const sendGroup = vi.fn(async (chatId: string) => {
+    const sendGroup = vi.fn(async (chatId: string, body: string) => {
       expect(chatId).toBe(groupChatId);
+      expect(body).toBe('Test corrected something.');
       return 'sent' as const;
     });
     await db.database
