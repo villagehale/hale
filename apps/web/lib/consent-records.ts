@@ -55,5 +55,9 @@ export async function listConsentRecordsForViewer(
       revokedAt: row.revokedAt ?? null,
       expiresAt: row.expiresAt ?? null,
     }))
-    .sort((a, b) => (b.grantedAt?.getTime() ?? 0) - (a.grantedAt?.getTime() ?? 0));
+    .sort((a, b) => {
+      const at = (b.grantedAt?.getTime() ?? 0) - (a.grantedAt?.getTime() ?? 0);
+      if (at !== 0) return at;
+      return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+    });
 }

@@ -1,5 +1,5 @@
 import { schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { CoParentInvite } from '~/lib/channel/caregiver/invites';
 import { SMS_CONSENT_SCOPE, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
@@ -191,7 +191,7 @@ function consentsOf(userId: string) {
     })
     .from(schema.consentRecords)
     .where(eq(schema.consentRecords.userId, userId))
-    .orderBy(schema.consentRecords.grantedAt);
+    .orderBy(asc(schema.consentRecords.grantedAt), asc(schema.consentRecords.id));
 }
 
 function threads(familyId: string) {

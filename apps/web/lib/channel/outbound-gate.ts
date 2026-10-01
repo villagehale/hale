@@ -592,7 +592,7 @@ async function readWatchConsent(database: Database, parentUserId: string): Promi
         eq(schema.consentRecords.consentScope, WATCH_CONSENT_SCOPE),
       ),
     )
-    .orderBy(desc(schema.consentRecords.grantedAt))
+    .orderBy(desc(schema.consentRecords.grantedAt), desc(schema.consentRecords.id))
     .limit(1);
   if (latest) return latest.granted === true && latest.revokedAt === null;
   return readCoParentSeatingConsent(database, parentUserId);
@@ -636,7 +636,7 @@ async function readCoParentSeatingConsent(
         inArray(schema.consentRecords.consentScope, [...CO_PARENT_SEATING_SCOPES]),
       ),
     )
-    .orderBy(desc(schema.consentRecords.grantedAt))
+    .orderBy(desc(schema.consentRecords.grantedAt), desc(schema.consentRecords.id))
     .limit(1);
   if (!(latest?.granted === true && latest.revokedAt === null)) return false;
   // `consent_records.family_id` is nullable in general; BOTH seating writers stamp it
@@ -659,7 +659,7 @@ async function readCoParentSeatingConsent(
         eq(schema.consentRecords.consentType, 'proactive_watch'),
       ),
     )
-    .orderBy(desc(schema.consentRecords.grantedAt))
+    .orderBy(desc(schema.consentRecords.grantedAt), desc(schema.consentRecords.id))
     .limit(1);
   return household?.granted === true && household.revokedAt === null;
 }

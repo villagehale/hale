@@ -324,10 +324,13 @@ describe('the orphan-user sweep', () => {
     await seedUser(familyId, { role: 'primary_parent' });
     const leaving = await seedUser(familyId, { role: 'co_parent' });
 
+    // The grant above is stamped `NOW`. A withdrawal only supersedes it by being
+    // newer — the same instant is a tie, and id order is not insertion order.
+    const departedAt = new Date(NOW.getTime() + 1);
     const departure = await departCoParent(db.database, {
       familyId,
       actorUserId: leaving.userId,
-      now: NOW,
+      now: departedAt,
     });
     expect(departure).toMatchObject({ outcome: 'departed', identityRetained: true });
     // Before the sweep, the thing depart.ts names as the gap: the row is still theirs.

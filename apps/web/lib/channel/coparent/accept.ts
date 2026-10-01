@@ -118,6 +118,10 @@ export async function acceptCoParentInvite(
         granted: true,
         consentScope: CO_PARENT_INVITE_CONSENT_SCOPE,
         policyVersion: POLICY_VERSION,
+        // The departure reader picks the latest row by granted_at. The column
+        // default is the database clock, which is not `now`: a withdrawal stamped
+        // with this same clock then sorts BEFORE the grant it is meant to end.
+        grantedAt: now,
         evidence: {
           verbatimReply: input.verbatimReply,
           interpretation:

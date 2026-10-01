@@ -11,10 +11,9 @@ import type { FieldSlot, PageControl, PageSnapshot, SignupBrowser, SignupPage } 
  * and the stop rules run in the backend. The browser receives a URL and then
  * control-name / value pairs.
  *
- * A durable slot grant (draft PR #725, authorized_signup_consents) is not on
- * main. The closed FieldSlot set is the list this runner may type. When that
- * grant lands, also assert the typed values are a subset of the stored slot
- * names and that a missing grant never calls fill.
+ * The closed FieldSlot set is the list this runner may type. A yes with a
+ * message id writes authorized_signup_consents first; the names typed into the
+ * browser are a subset of that row. A yes with no message id never fills.
  */
 
 const NOW = new Date('2026-09-29T15:00:00.000Z');
@@ -202,7 +201,7 @@ describe('sandbox boundary — browser input is consented slots only', () => {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
         body: 'Yes, sign us up',
-        inboundChannelMessageId: null,
+        inboundChannelMessageId: 'msg-boundary',
         existingThread: true,
         now: NOW,
       },
@@ -216,6 +215,14 @@ describe('sandbox boundary — browser input is consented slots only', () => {
       .map((call) => call.args[0]);
     expect(names).not.toContain('api_token');
     expect(names).not.toContain('csrf_token');
+    const [grant] = await db.database
+      .select({ fieldsAllowed: schema.authorizedSignupConsents.fieldsAllowed })
+      .from(schema.authorizedSignupConsents)
+      .where(eq(schema.authorizedSignupConsents.familyId, seeded.familyId));
+    const allowed = new Set(grant?.fieldsAllowed ?? []);
+    for (const name of names) {
+      expect(allowed.has(String(name))).toBe(true);
+    }
   });
 
   it('does not fill a password field', async () => {
@@ -228,7 +235,7 @@ describe('sandbox boundary — browser input is consented slots only', () => {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
         body: 'Yes, sign us up',
-        inboundChannelMessageId: null,
+        inboundChannelMessageId: 'msg-boundary-password',
         existingThread: true,
         now: NOW,
       },
@@ -244,5 +251,29 @@ describe('sandbox boundary — browser input is consented slots only', () => {
     expect(dumped).not.toContain(SECRET_LAST_NAME);
     expect(dumped).not.toContain(dob);
     expect(dumped).not.toContain('password');
+  });
+
+  it('does not fill when the yes has no message id', async () => {
+    const { seeded } = await familyWithOffer();
+    const { browser, calls } = recordingBrowser(classForm([]), {
+      ...classForm([]),
+      confirmed: true,
+    });
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: null,
+        existingThread: true,
+        now: NOW,
+      },
+      { browser },
+    );
+
+    expect(result.outcome).toBe('consent_missing');
+    expect(calls.filter((call) => call.method === 'fill' || call.method === 'select')).toEqual([]);
+    expect(calls.filter((call) => call.method === 'open')).toEqual([]);
   });
 });
