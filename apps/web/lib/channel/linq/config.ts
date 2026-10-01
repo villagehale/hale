@@ -71,3 +71,11 @@ export function linqPollsEnabled(): boolean {
 export function linqGroupCoparentEnabled(): boolean {
   return trimmed('LINQ_GROUP_COPARENT') !== 'off';
 }
+
+/**
+ * Share Hale's Name and Photo card after an outbound Linq send.
+ * On unless `LINQ_CONTACT_CARD_SHARE` is exactly `off`.
+ */
+export function linqContactCardShareEnabled(): boolean {
+  return trimmed('LINQ_CONTACT_CARD_SHARE') !== 'off';
+}

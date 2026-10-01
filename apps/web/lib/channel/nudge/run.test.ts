@@ -1,6 +1,6 @@
 import { schema } from '@hale/db';
 import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
 import {
@@ -359,6 +359,10 @@ describe('the local send slot', () => {
 });
 
 describe('runNudgeCron — sending', () => {
+  beforeEach(() => {
+    vi.stubEnv('LINQ_CONTACT_CARD_SHARE', 'off');
+  });
+
   it('sends a family with a group its nudge in the group, not 1:1 and not SMS', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');

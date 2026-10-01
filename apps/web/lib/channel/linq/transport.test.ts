@@ -7,6 +7,7 @@ import {
   createLinqTextTransport,
   localityFromLocationPayload,
   markLinqChatRead,
+  maybeShareLinqContactCard,
   reactToLinqMessage,
   readListedDirectChatId,
   removeLinqParticipant,
@@ -18,6 +19,7 @@ import {
   sendLinqPoll,
   setupLinqContactCard,
   shareLinqContactCard,
+  shareLinqContactCardResult,
   startLinqTyping,
   stopLinqTyping,
   updateLinqGroupChat,
@@ -57,7 +59,7 @@ describe('sendLinqChatMessage', () => {
     });
 
     expect(sent).toEqual({ providerMessageId: 'msg-out-1' });
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     if (!init) throw new Error('expected a fetch init');
     expect(url).toBe(`https://api.linqapp.com/api/partner/v3/chats/${CHAT}/messages`);
@@ -66,6 +68,12 @@ describe('sendLinqChatMessage', () => {
     expect(JSON.parse(String(init.body))).toEqual({
       message: { parts: [{ type: 'text', value: 'Thursday works' }] },
     });
+    const [shareUrl, shareInit] = fetchMock.mock.calls[1] ?? [];
+    expect(shareUrl).toBe(
+      `https://api.linqapp.com/api/partner/v3/chats/${CHAT}/share_contact_card`,
+    );
+    expect(shareInit?.method).toBe('POST');
+    expect(shareInit?.body).toBeUndefined();
   });
 
   it('classifies a 4xx as permanent and a 5xx as retryable, without echoing the body', async () => {
@@ -497,7 +505,10 @@ describe('Linq group, card, poll, and effect helpers', () => {
       fetch: fetchMock,
     });
     expect(effect.providerMessageId).toBe('effect-1');
-    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+    const effectCall = fetchMock.mock.calls.find((call) =>
+      String(call[1]?.body).includes('"effect"'),
+    );
+    expect(JSON.parse(String(effectCall?.[1]?.body))).toEqual({
       message: {
         parts: [{ type: 'text', value: 'nice' }],
         effect: { type: 'screen', name: 'confetti' },
@@ -733,5 +744,155 @@ describe('createLinqPhoneTransport', () => {
     ).toBe(CHAT);
     expect(readListedDirectChatId({ chats: [] })).toBeNull();
     expect(readListedDirectChatId(null)).toBeNull();
+  });
+});
+
+describe('Linq contact card share', () => {
+  const DAY = new Date('2026-10-01T15:00:00.000Z');
+  const LATER = new Date(DAY.getTime() + 24 * 60 * 60 * 1000);
+
+  function recordingFetch(status: number, body: unknown) {
+    const calls: Array<{ url: string; method: string; body: string | undefined }> = [];
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({
+        url: String(url),
+        method: init?.method ?? 'GET',
+        body: init?.body === undefined ? undefined : String(init.body),
+      });
+      return Response.json(body, { status });
+    });
+    return { fetchMock, calls };
+  }
+
+  it('posts share_contact_card with no body and names a missing key', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const { fetchMock, calls } = recordingFetch(200, null);
+    await expect(shareLinqContactCardResult({ chatId: CHAT, fetch: fetchMock })).resolves.toEqual({
+      status: 'accepted',
+    });
+    expect(calls).toEqual([
+      {
+        url: `https://api.linqapp.com/api/partner/v3/chats/${CHAT}/share_contact_card`,
+        method: 'POST',
+        body: undefined,
+      },
+    ]);
+
+    vi.stubEnv('LINQ_API_KEY', '');
+    const skipped = vi.fn();
+    await expect(shareLinqContactCardResult({ chatId: CHAT, fetch: skipped })).resolves.toEqual({
+      status: 'not_configured',
+    });
+    expect(skipped).not.toHaveBeenCalled();
+  });
+
+  it('treats Linq 2012 as a quiet skip and does not try again the same day', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const refused = vi.fn(async () =>
+      Response.json(
+        { error: { status: 409, code: 2012, message: 'no card for +15555550100' } },
+        { status: 409 },
+      ),
+    );
+    await maybeShareLinqContactCard({ chatId: CHAT, fetch: refused, now: DAY });
+    await maybeShareLinqContactCard({ chatId: CHAT, fetch: refused, now: DAY });
+    expect(refused).toHaveBeenCalledOnce();
+    expect(warn).not.toHaveBeenCalled();
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('15555550100');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(CHAT);
+    warn.mockRestore();
+  });
+
+  it('treats a 2xx body with success false and code 2012 as the same quiet skip', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = vi.fn(async () => Response.json({ success: false, error: { code: 2012 } }));
+    await expect(
+      shareLinqContactCardResult({ chatId: CHAT, fetch: fetchMock }),
+    ).resolves.toMatchObject({ status: 'refused', code: '2012' });
+    await maybeShareLinqContactCard({ chatId: CHAT, fetch: fetchMock, now: DAY });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('shares once per chat per day and again after the window', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const { fetchMock, calls } = recordingFetch(200, null);
+    await maybeShareLinqContactCard({ chatId: CHAT, fetch: fetchMock, now: DAY });
+    await maybeShareLinqContactCard({ chatId: CHAT, fetch: fetchMock, now: DAY });
+    await maybeShareLinqContactCard({ chatId: 'other-chat', fetch: fetchMock, now: DAY });
+    await maybeShareLinqContactCard({ chatId: CHAT, fetch: fetchMock, now: LATER });
+    expect(calls.map((call) => call.url)).toEqual([
+      `https://api.linqapp.com/api/partner/v3/chats/${CHAT}/share_contact_card`,
+      'https://api.linqapp.com/api/partner/v3/chats/other-chat/share_contact_card',
+      `https://api.linqapp.com/api/partner/v3/chats/${CHAT}/share_contact_card`,
+    ]);
+    expect(calls.every((call) => call.body === undefined && call.method === 'POST')).toBe(true);
+  });
+
+  it('stays off when LINQ_CONTACT_CARD_SHARE is off, including after a send', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    vi.stubEnv('LINQ_CONTACT_CARD_SHARE', 'off');
+    const fetchMock = jsonFetch(201, { message: { id: 'msg-out-1' } });
+    const sent = await sendLinqChatMessage({
+      chatId: CHAT,
+      text: 'Thursday works',
+      fetch: fetchMock,
+    });
+    expect(sent).toEqual({ providerMessageId: 'msg-out-1' });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/messages');
+  });
+
+  it('does not fail the message when the share is refused, and does not log the body', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {
+      if (String(url).includes('share_contact_card')) {
+        return Response.json(
+          { error: { status: 400, code: 1001, message: 'Thursday works +15555550199' } },
+          { status: 400 },
+        );
+      }
+      return Response.json({ message: { id: 'msg-out-1' } }, { status: 201 });
+    });
+    const sent = await sendLinqChatMessage({
+      chatId: CHAT,
+      text: 'Thursday works',
+      fetch: fetchMock,
+    });
+    expect(sent).toEqual({ providerMessageId: 'msg-out-1' });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      message: { parts: [{ type: 'text', value: 'Thursday works' }] },
+    });
+    expect(warn).toHaveBeenCalledOnce();
+    const logged = JSON.stringify(warn.mock.calls);
+    expect(logged).toContain('1001');
+    expect(logged).not.toContain('Thursday');
+    expect(logged).not.toContain('15555550199');
+    expect(logged).not.toContain(CHAT);
+    warn.mockRestore();
+  });
+
+  it('does not share when the send itself is refused', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = vi.fn(async () => Response.json({ error: { code: 2001 } }, { status: 404 }));
+    await expect(
+      sendLinqChatMessage({ chatId: CHAT, text: 'Thursday works', fetch: fetchMock }),
+    ).rejects.toMatchObject({ code: '2001' });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('retries the share later the same day when the call does not reach Linq', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const down = vi.fn(async () => {
+      throw new Error('socket');
+    });
+    await maybeShareLinqContactCard({ chatId: CHAT, fetch: down, now: DAY });
+    const { fetchMock, calls } = recordingFetch(200, null);
+    await maybeShareLinqContactCard({ chatId: CHAT, fetch: fetchMock, now: DAY });
+    expect(down).toHaveBeenCalledOnce();
+    expect(calls).toHaveLength(1);
   });
 });
