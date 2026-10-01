@@ -1,9 +1,10 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { isConnectorProvider } from '~/lib/integrations/google-oauth';
+import { stopGooglePushOnDisconnect } from '~/lib/integrations/google-push-runtime';
 import { revokeConnection } from '~/lib/integrations/store';
 
 export const runtime = 'nodejs';
@@ -34,6 +35,11 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ provider:
   if (!familyId || !userId) {
     return NextResponse.json({ error: 'no_family' }, { status: 403 });
   }
+  // Flag off returns before any read, so a disconnect with the flag dark is the
+  // revoke it was before push channels existed. A Google stop that fails is logged
+  // and does not block the revoke — the tokens are what "connected" means.
+  const stop = await stopGooglePushOnDisconnect(database, familyId, userId, provider);
+  console.info({ provider, push: stop.outcome }, 'google push: disconnect');
   const revokedCount = await revokeConnection(database, familyId, userId, provider, 'settings');
   if (revokedCount === 0) {
     // Nothing was the caller's to disconnect (e.g. a co-parent's connection) —

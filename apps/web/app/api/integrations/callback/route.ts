@@ -22,6 +22,7 @@ import {
   exchangeCodeForTokens,
 } from '~/lib/integrations/google-oauth';
 import { readGoogleAccountSub, readGoogleGivenName } from '~/lib/integrations/google-profile';
+import { ensurePushWatchAfterConnect } from '~/lib/integrations/google-push-runtime';
 import { otherParentHoldsGoogleAccount, saveConnection } from '~/lib/integrations/store';
 
 // Node runtime: node:crypto (state verify), fetch (token exchange), Drizzle.
@@ -201,6 +202,26 @@ export async function GET(req: NextRequest) {
       scopes,
       accessToken: tokens.accessToken,
     });
+    // Flag off returns before any read. A failure here must not undo a connect
+    // that already stored its tokens — the poll still syncs, and the next sweep
+    // retries the watch.
+    try {
+      const watch = await ensurePushWatchAfterConnect(database, {
+        familyId: bound.familyId,
+        userId: bound.userId,
+        provider: bound.provider,
+        tokens,
+      });
+      console.info(
+        { familyId: bound.familyId, provider: bound.provider, push: watch.outcome },
+        'google push: connect',
+      );
+    } catch (err) {
+      console.info(
+        { familyId: bound.familyId, code: err instanceof Error ? err.name : 'unknown' },
+        'google push: connect watch failed',
+      );
+    }
   } catch {
     return back('error', surface, bound.provider);
   }

@@ -1,11 +1,15 @@
-import { NextResponse, type NextRequest, after } from 'next/server';
-import { getQueue } from '~/lib/queue';
+import { type NextRequest, NextResponse, after } from 'next/server';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { kickDrain } from '~/lib/cron/kick-drain';
+import { db } from '~/lib/db';
+import { googlePushSyncEnabled } from '~/lib/integrations/google-push-flag';
+import { handleGooglePushNotification } from '~/lib/integrations/google-push-handle';
+import { pushWebhookDeps } from '~/lib/integrations/google-push-runtime';
+import { getQueue } from '~/lib/queue';
 import { getAdapter } from '~/lib/webhooks/registry';
 import { resolveFamilyFromWebhook } from '~/lib/webhooks/resolve-family';
-import { applyStripeBillingEvent } from '~/lib/webhooks/stripe-billing-apply';
 import { verifyStripeBillingSignature } from '~/lib/webhooks/stripe-billing';
+import { applyStripeBillingEvent } from '~/lib/webhooks/stripe-billing-apply';
 
 interface RouteContext {
   params: Promise<{ provider: string }>;
@@ -53,6 +57,25 @@ export async function POST(req: NextRequest, context: RouteContext) {
     }
     const applied = await applyStripeBillingEvent(billingEvent);
     return NextResponse.json({ status: applied.status }, { status: 200 });
+  }
+
+  // ── Gmail / Calendar push (VIL-401) ───────────────────────────────────────
+  // Flag off keeps the registry path below, which refuses every request (501)
+  // and never ingests. Flag on verifies the push and runs the existing connector
+  // sync for that connection. The notification body is NOT an events.ingested
+  // payload — a channel ping is not an email and not a calendar item.
+  if ((provider === 'gmail' || provider === 'gcal') && googlePushSyncEnabled()) {
+    const result = await handleGooglePushNotification({
+      provider,
+      headers: req.headers,
+      rawBody,
+      deps: pushWebhookDeps(db(), getQueue),
+    });
+    if (result.body.status === 'synced') {
+      const origin = process.env.APP_URL ?? new URL(req.url).origin;
+      after(() => kickDrain(origin));
+    }
+    return NextResponse.json(result.body, { status: result.status });
   }
 
   // ── Signal providers dispatch through the registry ────────────────────────
