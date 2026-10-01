@@ -43,6 +43,11 @@ export interface LinqSignal {
   senderHandle: string | null;
   /** The person Linq added or removed. Never logged. Null on every other signal. */
   participantHandle: string | null;
+  /**
+   * Who added or removed them, when Linq named someone. Null when the payload
+   * names no actor. Never logged.
+   */
+  actorHandle: string | null;
   /** True when Linq says the event is ours. Our own tapback echo is not a parent. */
   isFromMe: boolean;
 }
@@ -250,6 +255,14 @@ function parseSignal(payload: Record<string, unknown>, event: LinqSignalEvent): 
     (typeof data.from === 'string' ? data.from : '');
   const participantHandle =
     stringField(participant?.handle) || (typeof data.handle === 'string' ? data.handle : '');
+  const addedBy = isRecord(data.added_by) ? data.added_by : null;
+  const actor = isRecord(data.actor) ? data.actor : null;
+  const actorHandle =
+    stringField(addedBy?.handle) ||
+    stringField(actor?.handle) ||
+    (typeof data.added_by === 'string' ? data.added_by : '') ||
+    stringField(fromHandle?.handle) ||
+    senderHandle;
   return {
     kind: 'signal',
     signal: {
@@ -260,6 +273,7 @@ function parseSignal(payload: Record<string, unknown>, event: LinqSignalEvent): 
       optionId,
       senderHandle: senderHandle || null,
       participantHandle: participantHandle || null,
+      actorHandle: actorHandle || null,
       isFromMe,
     },
   };

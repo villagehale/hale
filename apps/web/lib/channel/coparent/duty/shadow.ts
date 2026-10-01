@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq, inArray } from 'drizzle-orm';
+import { dutyAssigneeIds } from '~/lib/channel/linq/group-members';
 import { loadRememberedLogistics } from '~/lib/channel/linq/logistics-poll';
 import { coparentDutyAsksActive, coparentDutyAsksArmed } from './flag';
 import type { DutyExtractor } from './interpret';
@@ -61,26 +62,7 @@ async function household(
   database: Database,
   familyId: string,
 ): Promise<{ parents: DutyParent[]; childNames: string[]; parentCount: number }> {
-  const members = await database
-    .select({
-      userId: schema.familyMembers.userId,
-      role: schema.familyMembers.role,
-      familyId: schema.familyMembers.familyId,
-    })
-    .from(schema.familyMembers)
-    .where(eq(schema.familyMembers.familyId, familyId));
-  const parentIds = [
-    ...new Set(
-      members
-        .filter(
-          (row) =>
-            row.familyId === familyId &&
-            (row.role === 'primary_parent' || row.role === 'co_parent') &&
-            row.userId,
-        )
-        .map((row) => row.userId as string),
-    ),
-  ];
+  const parentIds = await dutyAssigneeIds(database, familyId);
   const people =
     parentIds.length === 0
       ? []

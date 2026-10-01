@@ -71,3 +71,11 @@ export function linqPollsEnabled(): boolean {
 export function linqGroupCoparentEnabled(): boolean {
   return trimmed('LINQ_GROUP_COPARENT') !== 'off';
 }
+
+/**
+ * Unlimited household-group seats (VIL-398). Exactly `true` enables it.
+ * Unset, empty, `on`, and `false` stay dark. Default off.
+ */
+export function linqGroupMembersEnabled(): boolean {
+  return trimmed('LINQ_GROUP_MEMBERS_ENABLED') === 'true';
+}

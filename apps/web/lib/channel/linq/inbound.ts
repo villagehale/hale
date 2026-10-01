@@ -20,10 +20,17 @@ import { considerSocialForward } from '~/lib/social/forward';
 import {
   linqFromE164,
   linqGroupCoparentEnabled,
+  linqGroupMembersEnabled,
   linqInboundConfigured,
   linqMissingInboundEnv,
   linqWebhookSecret,
 } from './config';
+import {
+  holdTrueStrangerOnce,
+  seatParticipantAdded,
+  shouldHoldGroupStranger,
+  unseatParticipantRemoved,
+} from './group-members';
 import {
   LINQ_GROUP_CLAIMED_TEMPLATE_KEY,
   LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY,
@@ -395,6 +402,26 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     deps.log.info({ outcome: coparent.outcome }, 'linq inbound: group coparent');
     await deps.countOutcome(coparent.count);
     return json(coparent.body);
+  }
+
+  if (await shouldHoldGroupStranger(deps.database, message)) {
+    const keyword = matchKeyword(message.text);
+    if (keyword?.keyword === 'stop') {
+      deps.log.info({ outcome: 'group_opt_out' }, 'linq inbound: group opt-out, no reply');
+      await deps.countOutcome('ignored');
+      return json({ outcome: 'group_opt_out' });
+    }
+    const held = await holdTrueStrangerOnce(deps.database, {
+      chatId: message.chatId,
+      senderHandle: message.senderHandle,
+      now: deps.now?.() ?? new Date(),
+      send: deps.sendGroupText,
+    });
+    if (held !== 'no_family') {
+      deps.log.info({ outcome: 'group_unknown_sender', hold: held }, 'linq inbound: group held');
+      await deps.countOutcome('ignored');
+      return json({ outcome: 'group_unknown_sender', hold: held });
+    }
   }
 
   const others = message.otherHandles.filter((handle) => handle !== message.senderHandle);
@@ -806,6 +833,33 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     }
     await deps.countOutcome(outcome);
     return json({ outcome });
+  }
+  if (
+    (signal.event === 'participant.added' || signal.event === 'participant.removed') &&
+    signal.chatId &&
+    signal.participantHandle &&
+    linqGroupMembersEnabled()
+  ) {
+    const now = deps.now?.() ?? new Date();
+    if (signal.event === 'participant.added') {
+      const seated = await seatParticipantAdded(deps.database, {
+        chatId: signal.chatId,
+        participantHandle: signal.participantHandle,
+        actorHandle: signal.actorHandle,
+        isFromMe: signal.isFromMe,
+        now,
+        send: deps.sendGroupText,
+      });
+      await deps.countOutcome(seated.outcome === 'group_member_seated' ? 'intake' : 'ignored');
+      return json({ outcome: seated.outcome, ...(seated.outcome === 'group_member_seated' ? { notice: seated.notice, role: seated.role } : {}) });
+    }
+    const unseated = await unseatParticipantRemoved(deps.database, {
+      chatId: signal.chatId,
+      participantHandle: signal.participantHandle,
+      now,
+    });
+    await deps.countOutcome('ignored');
+    return json({ outcome: unseated.outcome });
   }
   if (
     signal.event === 'participant.added' &&

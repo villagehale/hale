@@ -1,11 +1,12 @@
 import type { Database } from '@hale/db';
 import { sendClaimedGroupLine } from '~/lib/channel/linq/family-outbound';
+import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import type {
   DeterministicHandler,
   HandlerContext,
   HandlerVerdict,
 } from '~/lib/channel/router/route';
-import { type MemoryKindEnv, familyMemoryKindsEnabled } from './kinds';
+import { type MemoryKindEnv, familyMemoryKindsEnabled, parseMemoryParentIntent } from './kinds';
 import { handleParentMemory } from './store';
 
 /**
@@ -22,6 +23,16 @@ export function familyMemoryKindsHandler(env?: MemoryKindEnv): DeterministicHand
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const flags = env ?? process.env;
       if (!familyMemoryKindsEnabled(flags)) return { claimed: false };
+      if (
+        parseMemoryParentIntent(ctx.body) &&
+        (await declinePrivilegedGroupSeat(database, {
+          familyId: ctx.familyId,
+          userId: ctx.parentUserId,
+          capability: 'family_memory',
+        }))
+      ) {
+        return { claimed: true, outcome: 'group_member_not_authorized', reply: null };
+      }
       const result = await handleParentMemory(database, {
         familyId: ctx.familyId,
         parentUserId: ctx.parentUserId,

@@ -12,7 +12,8 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { linqFromE164, linqGroupCoparentEnabled } from './config';
+import { linqFromE164, linqGroupCoparentEnabled, linqGroupMembersEnabled } from './config';
+import { liveSeatBlocksPrivileged, nonParentWithoutLiveSeat } from './group-members';
 import {
   LINQ_GROUP_LINE_MISSING_TEXT,
   formatLinqLineForParent,
@@ -98,6 +99,18 @@ export async function considerGroupCoparent(
   const language = replyLanguage(message.text);
 
   if (sender && owner && sender.familyId === owner.familyId) {
+    if (
+      await nonParentWithoutLiveSeat(database, {
+        familyId: owner.familyId,
+        userId: sender.userId,
+        chatId: message.chatId,
+      })
+    ) {
+      return { type: 'none' };
+    }
+    if (await liveSeatBlocksPrivileged(database, sender.userId)) {
+      return { type: 'route_member' };
+    }
     const stepped = await advanceSeatedCoparent(database, message, sender, language, ports);
     if (stepped) return stepped;
     return { type: 'route_member' };
@@ -122,6 +135,8 @@ export async function considerGroupCoparent(
     if (!noted) return { type: 'none' };
     return sayUnclaimed(database, message, noted, language, ports);
   }
+
+  if (linqGroupMembersEnabled()) return { type: 'none' };
 
   const seated = await seatAppearingCoparent(database, {
     familyId: owner.familyId,

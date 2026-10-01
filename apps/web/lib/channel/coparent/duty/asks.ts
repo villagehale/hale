@@ -12,6 +12,7 @@ import {
   readGroupBubbleSpend,
 } from '~/lib/channel/linq/family-outbound';
 import { splitKidEvent } from '~/lib/channel/linq/kid-event';
+import { dutyAssigneeIds } from '~/lib/channel/linq/group-members';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -259,18 +260,9 @@ async function loadHousehold(database: Database, familyId: string): Promise<Hous
     })
     .from(schema.familyMembers)
     .where(eq(schema.familyMembers.familyId, familyId));
-  const parentIds = [
-    ...new Set(
-      members
-        .filter(
-          (row) =>
-            row.familyId === familyId &&
-            (row.role === 'primary_parent' || row.role === 'co_parent') &&
-            row.userId,
-        )
-        .map((row) => row.userId as string),
-    ),
-  ];
+  // Flag off: the two parents. Flag on: any live group member as well.
+  // The ask budget stays on the household chat (readGroupBubbleSpend below).
+  const parentIds = await dutyAssigneeIds(database, familyId);
   const primary =
     members.find((row) => row.familyId === familyId && row.role === 'primary_parent')?.userId ??
     parentIds[0] ??
