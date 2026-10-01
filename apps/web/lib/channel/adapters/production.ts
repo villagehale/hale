@@ -4,7 +4,7 @@ import { familyOutboundTargetForUser } from '~/lib/channel/linq/family-outbound'
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import type { Channel, ChannelKind } from '../types';
 import { createResendEmailChannel } from './resend-email';
-import { createTwilioSmsChannel } from './twilio-sms';
+import { createSmsChannel } from './phone-sms';
 
 /**
  * The seam's real adapters, in ONE construction.
@@ -30,7 +30,7 @@ export function productionChannels(database: Database): Partial<Record<ChannelKi
     // predicate itself, so the SMS leg fails closed on its own rather than on the
     // dispatch having run the consent check first. The leg's default transport
     // is Linq; this construction does not pass a Twilio sender.
-    sms: createTwilioSmsChannel({
+    sms: createSmsChannel({
       resolveTarget: (userId: string) => resolveSendablePhone(database, userId),
       familyTarget: (userId: string) => familyOutboundTargetForUser(database, userId),
       database,

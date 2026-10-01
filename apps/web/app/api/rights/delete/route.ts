@@ -5,7 +5,7 @@ import { authConfigured } from '~/lib/auth-config';
 import { db } from '~/lib/db';
 import { listSeatsForUser, resolveUserIdForUser } from '~/lib/family';
 import { tellStayingParent } from '~/lib/channel/coparent/departure-notice';
-import { departureNoticePorts } from '~/lib/channel/twilio/deps';
+import { departureNoticePorts } from '~/lib/channel/inbound-deps';
 import { requestErasure } from '~/lib/rights/delete';
 
 // Node runtime: the scheduler uses the Drizzle client and writes the audit row.

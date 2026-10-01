@@ -29,8 +29,8 @@ import { dayKeyIn } from '~/lib/plan/spine';
  * rows are still intakes and have no family timezone. The hourly cron matches
  * the whole morning hour so a tick a minute late still lands.
  *
- * Send path is the existing intake Twilio transport (Hale's number / Messaging
- * Service). No second SMS stack. No family is minted. No family metrics.
+ * Send path is createOutboundTransport (Linq). No second text stack. No family
+ * is minted. No family metrics.
  */
 
 function localHourFromHm(hm: string): number {
@@ -58,7 +58,7 @@ export const FOUNDER_PAIR_SESSION_IDS: ReadonlySet<string> = new Set([
 const MAX_SITTING_REMINDERS_PER_RUN = 50;
 
 export interface SittingReminderDeps {
-  /** The outbound SMS leg — REQUIRED (rule #11). The real adapter is Hale's Twilio number. */
+  /** The outbound text leg — REQUIRED (rule #11). The real adapter is Linq. */
   transport: ChannelTransport;
 }
 

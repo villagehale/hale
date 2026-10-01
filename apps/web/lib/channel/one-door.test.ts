@@ -22,7 +22,7 @@ import { describe, expect, it } from 'vitest';
  * residue, which wants pushback first).
  */
 
-const REPO_ROOT = fileURLToPath(new URL('../../../../../', import.meta.url)).replace(/\/$/, '');
+const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url)).replace(/\/$/, '');
 
 /** How a file can reach the provider: constructing a transport, or raw REST. The
  * construction tokens carry the open paren so prose mentions in comments (keywords.ts,
@@ -50,10 +50,8 @@ const PROVIDER_TOKENS = [
  * pre-family row cannot legally exist earlier). RESIDUE entries are sends with no
  * ledger row today, kept deliberately visible here rather than scattered. */
 const ONE_DOOR_ALLOWLIST: Record<string, string> = {
-  'apps/web/lib/channel/twilio/transport.ts':
-    'the door itself — the one module that speaks Twilio REST',
   'apps/web/lib/channel/outbound-transport.ts':
-    'the only production caller of createTwilioTransport; Linq by default (createLinqPhoneTransport), Twilio only when OUTBOUND_TRANSPORT is exactly twilio. Callers ledger beside the send. Exception: claim-code-sender is the pre-existing unledgered sign-in-code residue — the OTP seam returns no provider id and channel_message_category has no honest value for an auth code',
+    'the only production caller of createLinqPhoneTransport. Callers ledger beside the send. Exception: claim-code-sender is the pre-existing unledgered sign-in-code residue — the OTP seam returns no provider id and channel_message_category has no honest value for an auth code',
   'apps/web/lib/channel/linq/transport.ts':
     'the iMessage door — the one module that speaks the Linq partner API',
   'apps/web/lib/channel/linq/location-share.ts':
@@ -82,12 +80,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'sends the placeholder question and the poll, then writes linq:poll and linq_poll_sent',
   'apps/web/lib/channel/router/reply-transport.ts':
     'iMessage arm of the router reply transport; every send ledgered in router route.ts sendReply',
-  'apps/web/lib/channel/twilio/delivery-sweep.ts':
-    'read-only status poller (P0-1): fetches Message status by SID, sends nothing — its writes are ledger status updates, never provider sends',
   'apps/web/lib/channel/connect/connected-notice.ts':
     'records its own row BEFORE the send and claims the dedupe key with it (reply category, connector:connected) — the connect callback awaits this inside the redirect Google hands back',
-  'apps/web/lib/channels/otp-sender.ts':
-    'RESIDUE (latent): env-driven CPaaS sender, unconfigured in every environment — claim-code-sender deliberately routes around it. Bound + ledger it before A3 provisions it.',
 };
 
 /** The trees a send could hide in. Worker is scanned even though it has no Twilio
@@ -142,8 +136,6 @@ describe('one door to the provider (rule #6)', () => {
   it('positive control: the scanner sees the door itself', () => {
     // A scan that cannot find transport.ts is a broken scanner, not a clean repo —
     // every assertion below would pass vacuously ("a refusal is not evidence").
-    expect(found).toContain('apps/web/lib/channel/twilio/transport.ts');
-    expect(found).toContain('apps/web/lib/channel/twilio/delivery-sweep.ts');
     expect(found).toContain('apps/web/lib/channel/linq/transport.ts');
   });
 
@@ -151,7 +143,7 @@ describe('one door to the provider (rule #6)', () => {
     const strangers = found.filter((file) => !(file in ONE_DOOR_ALLOWLIST));
     expect(
       strangers,
-      `These files reach a phone provider (Twilio or Linq) but are not in ONE_DOOR_ALLOWLIST.
+      `These files reach a phone provider (Linq) but are not in ONE_DOOR_ALLOWLIST.
 Every send must write a channel_messages row (rule #6). Route the send through an existing ledgered path, or add the file here WITH the justification that names where its ledger row is written:
   ${strangers.join('\n  ')}`,
     ).toEqual([]);

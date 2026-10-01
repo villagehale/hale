@@ -1,7 +1,6 @@
 import { type ComponentProps, createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { TWILIO_ERROR_LOGS_URL } from '~/lib/admin/links';
 import { Panel } from './panel';
 import { PanelBoundary } from './panel-boundary';
 
@@ -12,11 +11,12 @@ import { PanelBoundary } from './panel-boundary';
  * steps React uses — the body really throws, and that thrown error becomes
  * state through the real getDerivedStateFromError before the boundary renders.
  */
-const EYEBROW = 'Errors — Twilio + sends + agent runs';
-const LINKS = [{ label: 'Open in Twilio', href: TWILIO_ERROR_LOGS_URL }];
+const EYEBROW = 'Errors — sends + agent runs';
+const CONSOLE_URL = 'https://supabase.com/dashboard';
+const LINKS = [{ label: 'Open in Supabase', href: CONSOLE_URL }];
 
 function DeadLoader(): never {
-  throw new Error('twilio unreachable');
+  throw new Error('loader unreachable');
 }
 
 // The props-helper indirection settings-card.test.ts uses for components whose
@@ -28,7 +28,7 @@ const boundary = (props: ComponentProps<typeof PanelBoundary>) =>
 
 function renderFailedPanel(): string {
   const body = createElement(DeadLoader);
-  expect(() => renderToStaticMarkup(body)).toThrow('twilio unreachable');
+  expect(() => renderToStaticMarkup(body)).toThrow('loader unreachable');
 
   const failed = new PanelBoundary({ label: EYEBROW, children: body });
   failed.state = PanelBoundary.getDerivedStateFromError();
@@ -48,8 +48,8 @@ describe('PanelBoundary — a failed loader names itself', () => {
 
   it('keeps the external console link the panel was mounted with', () => {
     const html = renderFailedPanel();
-    expect(html).toContain(`href="${TWILIO_ERROR_LOGS_URL}"`);
-    expect(html).toContain('Open in Twilio');
+    expect(html).toContain(`href="${CONSOLE_URL}"`);
+    expect(html).toContain('Open in Supabase');
   });
 
   it('renders the body untouched while the loader is healthy (positive control)', () => {
@@ -63,6 +63,6 @@ describe('PanelBoundary — a failed loader names itself', () => {
     });
     expect(html).toContain('3 failures in the last 30 days.');
     expect(html).not.toContain('didn’t load');
-    expect(html).toContain(`href="${TWILIO_ERROR_LOGS_URL}"`);
+    expect(html).toContain(`href="${CONSOLE_URL}"`);
   });
 });

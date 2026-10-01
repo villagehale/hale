@@ -6,11 +6,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { schedulePeriodSeconds } from '~/lib/cron/deadman';
 import { createTestDb, seedFamily, type SeededFamily, type TestDb } from '~/lib/testing/pglite';
 import vercelConfig from '~/vercel.json';
-import {
-  isValidTwilioSignature,
-  parseTwilioParams,
-  twilioWebhookUrl,
-} from '../twilio/signature';
+import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from '~/lib/channel/linq/signature';
 import { CANARY_ANSWERED_ACTION, CANARY_PHONE_E164, canaryChannel } from './config';
 import { CANARY_SID_PREFIX, runInboundCanary, VERIFY_NOT_BEFORE_MS } from './run';
 
@@ -26,7 +22,8 @@ import { CANARY_SID_PREFIX, runInboundCanary, VERIFY_NOT_BEFORE_MS } from './run
  */
 
 const KEY = Buffer.alloc(32, 11).toString('base64');
-const AUTH_TOKEN = 'twilio_auth_token_value';
+const LINQ_KEY_BYTES = Buffer.alloc(32, 9);
+const LINQ_SECRET = `whsec_${LINQ_KEY_BYTES.toString('base64')}`;
 const APP_URL = 'https://app.villagehale.com';
 const NOW = new Date('2026-09-09T12:04:30.000Z');
 const CANARY_CRON_PATH = '/api/cron/inbound-canary';
@@ -38,13 +35,15 @@ interface Capture {
   url: string;
   body: string;
   signature: string | null;
+  webhookId: string | null;
+  timestamp: string | null;
 }
 
 /**
  * A fake door that answers `status`, records what crossed the wire, and — on a
  * 2xx — does the one thing the real door does that this cron can see: writes the
  * inbound `channel_messages` row, stamped `sentAt = its own clock`
- * (inbound.ts:412 + :288).
+ * the Linq door records.
  *
  * That clock belongs to the WEBHOOK instance, not to the cron's. `skewMs` is the
  * difference, and NEGATIVE skew — the webhook running behind — is the only case
@@ -60,26 +59,29 @@ function fakeDoor(options: { status?: number; skewMs?: number } = {}): {
   const calls: Capture[] = [];
   const fetchImpl = (async (url: string, init: RequestInit) => {
     const body = String(init.body);
+    const headers = new Headers(init.headers);
     calls.push({
       url,
       body,
-      signature: new Headers(init.headers).get('x-twilio-signature'),
+      signature: headers.get('webhook-signature'),
+      webhookId: headers.get('webhook-id'),
+      timestamp: headers.get('webhook-timestamp'),
     });
     if (status < 300) {
-      const params = parseTwilioParams(body);
+      const payload = JSON.parse(body) as { data: { id: string } };
       await db.database.insert(schema.channelMessages).values({
         familyId: canary.familyId,
         parentUserId: canary.parentUserId,
-        channel: 'sms',
+        channel: 'imessage',
         direction: 'in',
         category: 'reply',
-        providerMessageId: params.MessageSid,
+        providerMessageId: payload.data.id,
         status: 'delivered',
-        body: params.Body,
+        body: 'CANARY',
         sentAt: new Date(NOW.getTime() + skewMs),
       });
     }
-    return new Response('<Response/>', { status });
+    return new Response('{}', { status });
   }) as unknown as typeof globalThis.fetch;
   return { fetch: fetchImpl, calls };
 }
@@ -135,11 +137,9 @@ afterAll(async () => {
 beforeEach(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   vi.stubEnv('APP_URL', APP_URL);
-  vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC00000000000000000000000000000000');
-  vi.stubEnv('TWILIO_AUTH_TOKEN', AUTH_TOKEN);
-  vi.stubEnv('TWILIO_API_KEY_SID', 'SK11111111111111111111111111111111');
-  vi.stubEnv('TWILIO_API_KEY_SECRET', 'api_key_secret_value');
-  vi.stubEnv('TWILIO_FROM_NUMBER', '+14165550000');
+  vi.stubEnv('LINQ_API_KEY', 'linq_test_key');
+  vi.stubEnv('LINQ_WEBHOOK_SECRET', LINQ_SECRET);
+  vi.stubEnv('LINQ_FROM_E164', '+16462352164');
 
   await db.database.delete(schema.auditLog);
   await db.database.delete(schema.channelMessages);
@@ -160,7 +160,7 @@ afterEach(() => {
 });
 
 describe('runInboundCanary · the injection', () => {
-  it('signs the canonical origin, exactly as the door verifies it', async () => {
+  it('signs the body exactly as the Linq door verifies it', async () => {
     const door = fakeDoor();
     const prior = await seedPriorInjection(db.database, new Date(NOW.getTime() - 10 * 60_000));
     await seedAnswer(db.database, prior, NOW);
@@ -169,31 +169,32 @@ describe('runInboundCanary · the injection', () => {
 
     const [call] = door.calls;
     if (!call) throw new Error('the canary never posted');
-    expect(call.url).toBe(`${APP_URL}/api/channels/twilio/inbound`);
+    expect(call.url).toBe(
+      `${APP_URL}/api/channels/linq/inbound?version=${LINQ_WEBHOOK_VERSION}`,
+    );
 
-    // The REAL verifier, over the URL the route rebuilds — appBaseUrl() plus
-    // the path, never the request Host (signature.ts). If this passes, a
-    // genuine Twilio POST and this one are indistinguishable at the gate.
     expect(
-      isValidTwilioSignature({
-        authToken: AUTH_TOKEN,
-        url: twilioWebhookUrl(new Request(call.url)),
-        params: parseTwilioParams(call.body),
+      verifyLinqWebhookSignature({
+        secret: LINQ_SECRET,
+        rawBody: call.body,
+        webhookId: call.webhookId,
+        timestamp: call.timestamp,
         signature: call.signature,
+        now: NOW,
       }),
     ).toBe(true);
 
-    const params = parseTwilioParams(call.body);
-    expect(params.From).toBe('+14375550100');
-    expect(params.To).toBe('+14165550000');
-    expect(params.Body).toBe('CANARY');
+    const payload = JSON.parse(call.body) as {
+      data: { id: string; sender_handle: { handle: string }; parts: Array<{ value: string }> };
+    };
+    expect(payload.data.sender_handle.handle).toBe('+14375550100');
+    expect(payload.data.parts[0]?.value).toBe('CANARY');
     // Minute-truncated: a double invocation inside one minute lands on the
     // partial unique index as a 'duplicate' rather than as a second turn.
-    expect(params.MessageSid).toBe(`${CANARY_SID_PREFIX}2026-09-09T12:04:00.000Z`);
+    expect(payload.data.id).toBe(`${CANARY_SID_PREFIX}2026-09-09T12:04:00.000Z`);
   });
 
-  it('a signature computed over another origin is refused by that same verifier', async () => {
-    // POSITIVE CONTROL for the assertion above: it is not vacuously true.
+  it('a signature over a different body is refused by that same verifier', async () => {
     const door = fakeDoor();
     const prior = await seedPriorInjection(db.database, new Date(NOW.getTime() - 10 * 60_000));
     await seedAnswer(db.database, prior, NOW);
@@ -203,19 +204,21 @@ describe('runInboundCanary · the injection', () => {
     if (!call) throw new Error('the canary never posted');
 
     expect(
-      isValidTwilioSignature({
-        authToken: AUTH_TOKEN,
-        url: 'https://forged.example.com/api/channels/twilio/inbound',
-        params: parseTwilioParams(call.body),
+      verifyLinqWebhookSignature({
+        secret: LINQ_SECRET,
+        rawBody: '{"event_type":"message.received"}',
+        webhookId: call.webhookId,
+        timestamp: call.timestamp,
         signature: call.signature,
+        now: NOW,
       }),
     ).toBe(false);
   });
 });
 
 describe('runInboundCanary · fail-closed ordering', () => {
-  it('refuses before posting anything when Twilio is not configured', async () => {
-    vi.stubEnv('TWILIO_AUTH_TOKEN', '');
+  it('refuses before posting anything when Linq is not configured', async () => {
+    vi.stubEnv('LINQ_API_KEY', '');
     const door = fakeDoor();
 
     await expect(run(door.fetch)).rejects.toThrow(/not configured/);
@@ -251,7 +254,7 @@ describe('runInboundCanary · fail-closed ordering', () => {
   it('names the door when the door refuses the injection', async () => {
     const door = fakeDoor({ status: 403 });
 
-    // 403 is signature/APP_URL drift, 503 is twilio_not_configured — either way
+    // 403 is a bad signature, 503 is linq_not_configured — either way
     // the webhook itself is the thing to look at, and the throw says so.
     await expect(run(door.fetch)).rejects.toThrow(/door refused the injection \(403\)/);
   });

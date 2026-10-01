@@ -21,12 +21,12 @@ import { resolveEmailSender } from './identity';
 import { type InboundEmailEvent, parseInboundEmailEvent } from './payload';
 import { extractReply } from './reply-extract';
 import { isValidResendSignature } from './signature';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { assessSenderTrust } from './trust';
 
 /**
  * The inbound-email webhook: the OTHER door a parent can reach Hale through, and the
- * sibling of twilio/inbound.ts. It answers the same questions in the same order, for the
+ * sibling of inbound-route.ts. It answers the same questions in the same order, for the
  * same reasons — the differences below are the ones email genuinely forces, and each one
  * is named rather than absorbed.
  *

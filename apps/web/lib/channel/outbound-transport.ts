@@ -2,21 +2,17 @@ import type { ChannelTransport, OutboundMessage } from '~/lib/channel/intake/tra
 import { linqPhoneOutboundConfigured } from '~/lib/channel/linq/config';
 import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
 import type { MessageTransport } from '~/lib/channel/transport-address';
-import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
 
 /**
  * The one place a Hale-initiated text chooses its phone door.
  *
- * Default is Linq on `LINQ_FROM_E164` (iMessage, then RCS, then SMS). Twilio is
- * constructed only when `OUTBOUND_TRANSPORT` is exactly `twilio`. Anything else,
- * including unset, is Linq. A deploy with no Linq key and no Linq line does not
- * fall through to Twilio: the send throws `LinqSendError` `not_configured`, and
- * the caller records that skip.
+ * Linq on `LINQ_FROM_E164` (iMessage, then RCS, then SMS). A deploy with no Linq
+ * key and no Linq line throws `LinqSendError` `not_configured`, and the caller
+ * records that skip.
  *
  * Callers ledger beside the send. This module does not.
  */
 export function createOutboundTransport(deps: { fetch?: typeof fetch } = {}): ChannelTransport {
-  if (process.env.OUTBOUND_TRANSPORT === 'twilio') return createTwilioTransport(deps);
   if (!linqPhoneOutboundConfigured()) {
     return {
       async send() {
@@ -28,13 +24,13 @@ export function createOutboundTransport(deps: { fetch?: typeof fetch } = {}): Ch
 }
 
 /** The pipe a failed attempt is recorded on, when the send never reported one. */
-export function configuredOutboundChannel(): 'sms' | 'imessage' {
-  return process.env.OUTBOUND_TRANSPORT === 'twilio' ? 'sms' : 'imessage';
+export function configuredOutboundChannel(): 'imessage' {
+  return 'imessage';
 }
 
-/** A typed provider refusal, or null when the throw is not one of the two doors. */
+/** A typed Linq refusal, or null when the throw is not one. */
 export function readSendRefusal(err: unknown): { code: string; permanent: boolean } | null {
-  if (err instanceof LinqSendError || err instanceof TwilioSendError) {
+  if (err instanceof LinqSendError) {
     return { code: err.code, permanent: err.permanent };
   }
   return null;

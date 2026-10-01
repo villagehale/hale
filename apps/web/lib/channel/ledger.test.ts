@@ -29,7 +29,7 @@ describe('CONSUMED_SEND_STATUSES — a provider attempt consumes idempotency for
  * carrier handoff nobody had observed. It also hid the one thing worth watching during
  * a burst: with every row born 'sent', a queue of messages waiting for airtime looks
  * exactly like a queue that already went out. 'queued' is what we actually know, and
- * the delivery receipt advances it (channel/twilio/status.ts).
+ * the delivery receipt advances it (delivery-status.ts).
  *
  * Channels with no delivery receipt wired stay terminal on accept — a row that could
  * never leave 'queued' would be a permanent lie in the other direction.

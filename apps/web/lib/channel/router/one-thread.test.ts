@@ -2,7 +2,7 @@ import { schema } from '@hale/db';
 import { asc, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';

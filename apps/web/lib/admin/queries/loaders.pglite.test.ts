@@ -408,7 +408,7 @@ describe('the founder dashboards count FAMILY traffic, not the inbound canary', 
 
     // The same seven turns in the audit trail. A canary tick leaves TWO rows —
     // the door's and the handler's — both actored by the household's own parent
-    // (twilio/inbound.ts, canary/handler.ts), which is the column the mix joins on.
+    // (inbound-route.ts, canary/handler.ts), which is the column the mix joins on.
     const acting = (fam: { familyId: string; parentUserId: string }, action: string) => ({
       familyId: fam.familyId,
       actor: fam.parentUserId,

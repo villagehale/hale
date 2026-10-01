@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import type { RenderedContent } from '../types';
-import { createTwilioSmsChannel } from './twilio-sms';
+import { createSmsChannel } from './phone-sms';
 
 // The LOOP's SMS leg adapter (VIL-213 · A2, lit up by VIL-260): resolve the parent's
 // number, gate on the Linq outbound pair, and hand the rendered text to the phone
@@ -28,11 +28,11 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe('createTwilioSmsChannel().send', () => {
+describe('createSmsChannel().send', () => {
   it('sends the rendered text to the resolved number and returns Twilio’s id', async () => {
     const transport = new FakeTransport();
 
-    const outcome = await createTwilioSmsChannel({
+    const outcome = await createSmsChannel({
       transport,
       resolveTarget: async () => PHONE,
       configured: true,
@@ -45,7 +45,7 @@ describe('createTwilioSmsChannel().send', () => {
   it('skips no_address (never sends) for a parent with no live SMS channel', async () => {
     const transport = new FakeTransport();
 
-    const outcome = await createTwilioSmsChannel({
+    const outcome = await createSmsChannel({
       transport,
       resolveTarget: async () => null,
       configured: true,
@@ -59,7 +59,7 @@ describe('createTwilioSmsChannel().send', () => {
     const transport = new FakeTransport();
     const resolveTarget = vi.fn(async () => PHONE);
 
-    const outcome = await createTwilioSmsChannel({
+    const outcome = await createSmsChannel({
       transport,
       resolveTarget,
       configured: false,
@@ -76,7 +76,7 @@ describe('createTwilioSmsChannel().send', () => {
     vi.stubEnv('LINQ_FROM_E164', '');
     const transport = new FakeTransport();
 
-    const outcome = await createTwilioSmsChannel({
+    const outcome = await createSmsChannel({
       transport,
       resolveTarget: async () => PHONE,
     }).send({ userId: USER_ID, rendered: SMS });
@@ -85,7 +85,7 @@ describe('createTwilioSmsChannel().send', () => {
     expect(transport.sent).toEqual([]);
 
     vi.stubEnv('LINQ_FROM_E164', '+16462352164');
-    const sent = await createTwilioSmsChannel({
+    const sent = await createSmsChannel({
       transport,
       resolveTarget: async () => PHONE,
     }).send({ userId: USER_ID, rendered: SMS });
@@ -104,7 +104,7 @@ describe('createTwilioSmsChannel().send', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const outcome = await createTwilioSmsChannel({
+    const outcome = await createSmsChannel({
       resolveTarget: async () => PHONE,
     }).send({ userId: USER_ID, rendered: SMS });
 
@@ -126,8 +126,8 @@ describe('createTwilioSmsChannel().send', () => {
   });
 
   it('maps a permanent Twilio refusal (21610 — this parent opted out) to a NON-transient error outcome', async () => {
-    const outcome = await createTwilioSmsChannel({
-      transport: refusingTransport(new TwilioSendError('21610', 400)),
+    const outcome = await createSmsChannel({
+      transport: refusingTransport(new LinqSendError('21610', 400, true)),
       resolveTarget: async () => PHONE,
       configured: true,
     }).send({ userId: USER_ID, rendered: SMS });
@@ -138,13 +138,13 @@ describe('createTwilioSmsChannel().send', () => {
       status: 'error',
       transient: false,
       code: '21610',
-      message: 'twilio send failed: HTTP 400, twilio code 21610',
+      message: 'linq refused the send',
     });
   });
 
   it('maps a provider outage to a TRANSIENT error outcome, which the dispatch turns back into a retry', async () => {
-    const outcome = await createTwilioSmsChannel({
-      transport: refusingTransport(new TwilioSendError('20500', 503)),
+    const outcome = await createSmsChannel({
+      transport: refusingTransport(new LinqSendError('20500', 503, false)),
       resolveTarget: async () => PHONE,
       configured: true,
     }).send({ userId: USER_ID, rendered: SMS });
@@ -153,13 +153,13 @@ describe('createTwilioSmsChannel().send', () => {
       status: 'error',
       transient: true,
       code: '20500',
-      message: 'twilio send failed: HTTP 503, twilio code 20500',
+      message: 'linq refused the send',
     });
   });
 
   it('lets anything that is not a Twilio refusal escape — a bug here is not a delivery outcome', async () => {
     await expect(
-      createTwilioSmsChannel({
+      createSmsChannel({
         transport: refusingTransport(new TypeError('fetch is not a function')),
         resolveTarget: async () => PHONE,
         configured: true,
@@ -169,7 +169,7 @@ describe('createTwilioSmsChannel().send', () => {
 
   it('refuses content that is not SMS — a wiring bug, not a runtime condition', async () => {
     await expect(
-      createTwilioSmsChannel({ resolveTarget: async () => PHONE, configured: true }).send({
+      createSmsChannel({ resolveTarget: async () => PHONE, configured: true }).send({
         userId: USER_ID,
         rendered: { kind: 'email', subject: 'x', html: '<p>y</p>', text: 'y' },
       }),

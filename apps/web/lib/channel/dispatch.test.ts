@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createTwilioSmsChannel } from '~/lib/channel/adapters/twilio-sms';
-import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import { createSmsChannel } from '~/lib/channel/adapters/phone-sms';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
 import { CAREGIVER_WEEKLY_PLAN_TEMPLATE_KEY } from '~/lib/loop/templates/caregiver/keys';
 import { SEND_RETRIES_EXHAUSTED } from './config';
@@ -290,10 +290,10 @@ describe('provider outcomes', () => {
     const { ports, ledger, captures } = makePorts({
       prefs: { loopChannel: 'sms' },
       channels: {
-        sms: createTwilioSmsChannel({
+        sms: createSmsChannel({
           transport: {
             async send(): Promise<{ providerMessageId: string }> {
-              throw new TwilioSendError('21610', 400);
+              throw new LinqSendError('21610', 400, true);
             },
           },
           resolveTarget: async () => '+14165550100',

@@ -8,11 +8,11 @@ import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { loadOpenSession } from '~/lib/channel/intake/session';
 import {
-  type TwilioInboundDeps,
-  type TwilioInboundOutcome,
-  routeTwilioInbound,
-} from '~/lib/channel/twilio/inbound';
-import { applyTwilioStatus } from '~/lib/channel/twilio/status';
+  type InboundRouteDeps,
+  type InboundRouteOutcome,
+  routeInboundText,
+} from '~/lib/channel/inbound-route';
+import { applyDeliveryStatus } from '~/lib/channel/delivery-status';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { socialWatchlistEnabled } from '~/lib/social/flag';
@@ -65,7 +65,7 @@ import { type LinqEffectResult, markLinqChatRead } from './transport';
  * VIL-335 — POST /api/channels/linq/inbound.
  *
  * The same conversation the SMS door already runs. Signature first, then the
- * pinned payload version, then `routeTwilioInbound`: normalize the sender
+ * pinned payload version, then `routeInboundText`: normalize the sender
  * handle, resolve it on the phone blind index, and hand a finished intake off
  * to C1. The person is not forked. The pipe is recorded as `imessage`, with the
  * Linq chat id on the row, so the router's reply goes back into that chat.
@@ -106,7 +106,7 @@ function json(body: Record<string, unknown>, status = 200): Response {
 
 export async function handleLinqInboundRequest(
   req: Request,
-  deps: TwilioInboundDeps & {
+  deps: InboundRouteDeps & {
     /** Test seam. Production calls Linq. A miss is logged and never fails the turn. */
     markRead?: (input: { chatId: string }) => Promise<LinqEffectResult>;
     /** Test seam for the unknown-sender hold. Production texts the group. */
@@ -171,7 +171,7 @@ export async function handleLinqInboundRequest(
   const parsed = parseLinqWebhook(payload, deps.now?.() ?? new Date());
   if (parsed.kind === 'receipt') {
     const { receipt } = parsed;
-    const apply = await applyTwilioStatus(deps.database, {
+    const apply = await applyDeliveryStatus(deps.database, {
       providerMessageId: receipt.messageId,
       rawStatus: receipt.rawStatus,
       errorCode: receipt.errorCode,
@@ -205,7 +205,7 @@ export async function handleLinqInboundRequest(
   // the promise is awaited below, and every result but `accepted` is a log line.
   const markRead = deps.markRead ?? markLinqChatRead;
   const readPromise = markRead({ chatId: message.chatId });
-  let outcome: TwilioInboundOutcome;
+  let outcome: InboundRouteOutcome;
   let answered: Record<string, unknown> | null = null;
   try {
     const steered = await steerNotedCoparentOneToOne(deps.database, message, coparentPorts(deps));
@@ -313,7 +313,7 @@ async function handleLinqLocation(
   }
   const providerId =
     location.eventId ?? `location:${location.chatId}:${location.beganAt ?? 'open'}`;
-  const outcome = await routeTwilioInbound(
+  const outcome = await routeInboundText(
     deps,
     {
       from: phone,
@@ -334,7 +334,7 @@ async function handleLinqLocation(
 async function routeOneToOne(
   deps: LinqDoorDeps,
   message: LinqInboundText,
-): Promise<TwilioInboundOutcome> {
+): Promise<InboundRouteOutcome> {
   // A forwarded link is queued for extraction. The reply the parent was already
   // going to get does not change, and a failure here is named rather than fatal.
   if (socialWatchlistEnabled()) {
@@ -353,7 +353,7 @@ async function routeOneToOne(
       );
     }
   }
-  return routeTwilioInbound(
+  return routeInboundText(
     deps,
     {
       from: message.senderHandle,
@@ -499,7 +499,7 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
       );
     }
   }
-  const outcome = await routeTwilioInbound(
+  const outcome = await routeInboundText(
     deps,
     {
       from: message.senderHandle,
@@ -602,7 +602,7 @@ async function answerGroupTriggerInOneToOne(
   message: LinqInboundText,
   mapped: { familyId: string; userId: string },
   language: 'en' | 'fr',
-): Promise<{ count: TwilioInboundOutcome; body: Record<string, unknown> }> {
+): Promise<{ count: InboundRouteOutcome; body: Record<string, unknown> }> {
   const recorded = await recordHandledInbound(deps, message, mapped);
   if (!recorded) return { count: 'duplicate', body: { outcome: 'duplicate' } };
 
@@ -708,7 +708,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     const markRead = deps.markRead ?? markLinqChatRead;
     const readPromise = markRead({ chatId: signal.chatId });
     const providerId = `poll:${signal.messageId ?? 'vote'}:${signal.optionId}:${phoneBlindIndex(signal.senderHandle)}`;
-    let outcome: TwilioInboundOutcome;
+    let outcome: InboundRouteOutcome;
     try {
       if (isLogisticsPollKind(option.pollKind) && option.subjectKey) {
         const recorded = await recordHandledInbound(
@@ -768,7 +768,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         );
         outcome = recorded ? 'poll_none' : 'duplicate';
       } else {
-        outcome = await routeTwilioInbound(
+        outcome = await routeInboundText(
           deps,
           {
             from: signal.senderHandle,
@@ -907,6 +907,6 @@ const IGNORE_OUTCOME = {
 
 /** The counter's vocabulary is the SMS door's. Group / outbound / other events
  * are `ignored`; a body we cannot read is `malformed`. */
-function ignoreCount(reason: keyof typeof IGNORE_OUTCOME): TwilioInboundOutcome {
+function ignoreCount(reason: keyof typeof IGNORE_OUTCOME): InboundRouteOutcome {
   return reason === 'malformed' || reason === 'unsupported_version' ? 'malformed' : 'ignored';
 }

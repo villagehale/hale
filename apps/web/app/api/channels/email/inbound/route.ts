@@ -1,7 +1,7 @@
 import { after } from 'next/server';
 import { emailInboundDeps } from '~/lib/channel/email/deps';
 import { handleEmailInboundRequest } from '~/lib/channel/email/inbound';
-import { withWebhookFailureAlert } from '~/lib/channel/twilio/alert';
+import { withWebhookFailureAlert } from '~/lib/channel/webhook-alert';
 import { INBOUND_TURN_QUEUES } from '~/lib/channel/config';
 import { kickDrain } from '~/lib/cron/kick-drain';
 

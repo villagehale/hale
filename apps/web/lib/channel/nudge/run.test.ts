@@ -685,7 +685,6 @@ describe('runNudgeCron — the prod send path (VIL-260)', () => {
     // And WHICH threader: a port declared but wired to a stub is the same silent
     // no-op the port exists to forbid (rule #11).
     expect(threadMessage).toBe(threadProactiveMessage);
-    vi.stubEnv('OUTBOUND_TRANSPORT', '');
     vi.stubEnv('LINQ_API_KEY', '');
     vi.stubEnv('LINQ_FROM_E164', '');
     await expect(

@@ -664,7 +664,7 @@ export async function readinessAskedLastAt(
  * SENT_STATUSES rather than the dedupe key's own CONSUMED set: a 'failed' send consumed
  * the key but never reached the phone, and a question nobody was asked is not open. The
  * newer read is OUTBOUND ONLY — in production the parent's own reply is always a newer
- * row (twilio/inbound.ts writes it before the turn is enqueued), so a read that forgets
+ * row (inbound-route.ts writes it before the turn is enqueued), so a read that forgets
  * the direction closes every question on every real turn.
  */
 async function lastWordAt(

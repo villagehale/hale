@@ -174,8 +174,8 @@ async function sendReceipt(
   }
 
   // The door they are standing in. iMessage returns to the stored Linq chat.
-  // SMS stays on Twilio. A blue-bubble family with no chat id is named and
-  // not texted on the other app.
+  // Anything else goes out through the shared Linq phone transport. A
+  // blue-bubble family with no chat id is named and not texted on the other app.
   const door = await resolveMessagingDoor(database, parentUserId);
   const receiptChatId =
     door.channel === 'imessage' && door.chatId

@@ -2,7 +2,7 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import type { ChannelMessageReceivedJob } from './inbound';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import {
   HANDOFF_CEILING_MS,
   HANDOFF_GRACE_MS,
@@ -11,7 +11,7 @@ import {
   reconcileUnhandedInbound,
   reconcileWindow,
   selectUnhandedInbound,
-} from './reconcile';
+} from '~/lib/channel/reconcile/unhanded';
 
 /**
  * The reconciler exists because `handed_off_at` is written only once C1's job really

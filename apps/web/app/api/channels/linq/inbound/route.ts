@@ -2,7 +2,7 @@ import { after } from 'next/server';
 import { INBOUND_TURN_QUEUES } from '~/lib/channel/config';
 import { linqInboundDeps } from '~/lib/channel/linq/deps';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
-import { withWebhookFailureAlert } from '~/lib/channel/twilio/alert';
+import { withWebhookFailureAlert } from '~/lib/channel/webhook-alert';
 import { kickDrain } from '~/lib/cron/kick-drain';
 
 // Node runtime: signature verification is node:crypto HMAC, and the handler

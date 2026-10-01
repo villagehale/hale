@@ -9,7 +9,7 @@ import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/l
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -637,7 +637,7 @@ describe('threading', () => {
    * segment per second from one long code — so 'sent' at accept time asserted a carrier
    * handoff nobody observed, and made a backlog of texts waiting for airtime
    * indistinguishable from texts already delivered. The status callback is what moves
-   * this row on (channel/twilio/status.ts).
+   * this row on (delivery-status.ts).
    */
   it('records the outbound reply as queued, not as sent', async () => {
     const h = harness();

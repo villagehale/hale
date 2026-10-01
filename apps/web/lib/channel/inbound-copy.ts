@@ -5,10 +5,10 @@
  */
 
 /**
- * MMS, v1. Hale does not fetch Twilio media URLs — that would pull a family's photos
- * (often OF their children) into our infrastructure, which needs its own privacy review
- * and retention story before a single byte moves (rule #1). Until then the honest
- * answer is that we cannot read it.
+ * A photo or file on a text. Hale does not fetch media URLs — that would pull a
+ * family's photos (often of their children) into our infrastructure, which needs its
+ * own privacy review and retention story before a single byte moves (rule #1). Until
+ * then the honest answer is that we cannot read it.
  *
  * And the ask stays in the thread. "Send it in the app" (skill audit P0 #4) made a
  * parent who photographed a permission form at the door go and re-upload it somewhere

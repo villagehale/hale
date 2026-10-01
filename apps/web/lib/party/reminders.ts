@@ -226,7 +226,7 @@ export async function notifyGuestsOfCancellation(
  * would drop N identical turns into the window the coach re-reads every turn. The
  * guest's own reply cannot reach the host's thread either: an unknown number opens its
  * own intake session, and the C1 handoff requires a verified channel and a parent role
- * (twilio/inbound.ts). Nothing is missing here — there is no parent conversation this
+ * (inbound-route.ts). Nothing is missing here — there is no parent conversation this
  * message belongs to.
  */
 async function sendToGuest(

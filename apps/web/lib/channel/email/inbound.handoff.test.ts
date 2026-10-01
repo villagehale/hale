@@ -1,7 +1,7 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { FakeContentReader } from './content';

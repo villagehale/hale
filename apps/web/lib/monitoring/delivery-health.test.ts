@@ -1,6 +1,5 @@
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { gsm7SingleSegment } from '~/lib/channel/twilio/triage';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   DELIVERY_RATE_MIN_ATTEMPTED,
@@ -23,6 +22,13 @@ import {
  */
 
 const NOW = new Date('2026-09-03T12:00:00.000Z');
+
+/** GSM-7 basic set, one 160-septet segment. Ops alert copy stays inside it. */
+const GSM7_BASIC_SAFE = /^[A-Za-z0-9 @$_!"#%&'()*+,\-./:;<=>?\n]*$/;
+
+function gsm7SingleSegment(body: string): boolean {
+  return GSM7_BASIC_SAFE.test(body) && body.length <= 160;
+}
 
 function stats(over: Partial<DeliveryStats> = {}): DeliveryStats {
   return { attempted: 20, failed: 0, codes: [], ...over };

@@ -19,7 +19,7 @@ import type { ChannelKind, LoopCategory } from './types';
  * API answered asserted a carrier handoff nobody had observed — and it hid the only
  * thing worth watching during a burst, because a pile of messages waiting for airtime
  * looked exactly like a pile already delivered. The delivery receipt is what advances
- * the row from here (channel/twilio/status.ts, which already treats 'queued' as
+ * the row from here (delivery-status.ts, which already treats 'queued' as
  * overwritable by sent/delivered/failed alike). The intake replay has recorded its
  * outbound rows this way since #413 for exactly these reasons; this is every other SMS
  * writer catching up.

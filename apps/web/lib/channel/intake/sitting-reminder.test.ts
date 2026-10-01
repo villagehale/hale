@@ -328,7 +328,6 @@ describe('runSittingReminderCron', () => {
 
   it('wires the shared outbound leg into the default deps', async () => {
     const { transport } = defaultSittingReminderDeps();
-    vi.stubEnv('OUTBOUND_TRANSPORT', '');
     vi.stubEnv('LINQ_API_KEY', '');
     vi.stubEnv('LINQ_FROM_E164', '');
     await expect(transport.send({ to: PHONE, body: SITTING_SESSION_REMINDER })).rejects.toThrow(

@@ -2,22 +2,21 @@ import { type Database, schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
 import { isCanaryInbound } from '~/lib/channel/canary/config';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
-import { type IntakeKeyword, matchKeyword } from '~/lib/channel/intake/keywords';
+import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type IntakeDeps, type KeywordAck, handleInboundSms } from '~/lib/channel/intake/machine';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { isParentRole } from '~/lib/channel/role-scope';
-import { type MessageTransport, parseTransportAddress } from '~/lib/channel/transport-address';
+import type { MessageTransport } from '~/lib/channel/transport-address';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
-import { twilioConfig } from './config';
-import { mediaUnsupportedReply } from './copy';
-import { isValidTwilioSignature, parseTwilioParams, twilioWebhookUrl } from './signature';
+import { mediaUnsupportedReply } from '~/lib/channel/inbound-copy';
 
 /**
- * VIL-214 · A3 — the inbound webhook: the ONE door a text from a parent comes through.
+ * The shared inbound router: one authenticated text, the intake machine, then C1.
+ * Linq is the only door that calls this. Signature checks live on that door.
  *
  * M2 already built the hard part. `handleInboundSms` owns the order everything rests on
  * (normalize → read the keyword → rate limit → duplicate → act on the keyword → stored
@@ -54,11 +53,11 @@ export interface ChannelMessageReceivedJob {
   received_at: string;
 }
 
-export interface TwilioInboundDeps {
+export interface InboundRouteDeps {
   database: Database;
   /**
    * Built LAZILY. Constructing the intake deps reaches for an Anthropic client and a
-   * Twilio transport; a forged request must never cause either, so nothing is built
+   * Linq transport; a forged request must never cause either, so nothing is built
    * until the signature has passed. Told which pipe the message arrived on so an
    * iMessage turn can answer inside that Linq chat. A WhatsApp address never
    * reaches the machine.
@@ -77,11 +76,11 @@ export interface TwilioInboundDeps {
    * ignored, not_a_parent, malformed — are only distinguishable from "nobody texts
    * us" if every one of them is written down as a rate. Wired to a counter that
    * never throws; a refused count must not take the webhook down. */
-  countOutcome: (outcome: TwilioInboundOutcome) => Promise<void>;
+  countOutcome: (outcome: InboundRouteOutcome) => Promise<void>;
   now?: () => Date;
 }
 
-export type TwilioInboundOutcome =
+export type InboundRouteOutcome =
   /** Authentic, but carrying no sender or no message id — nothing to act on. */
   | 'malformed'
   | 'invalid_number'
@@ -143,61 +142,15 @@ export type TwilioInboundOutcome =
    * webhook is counted and dropped: no ledger row, no keyword, no SMS answer. */
   | 'whatsapp_dropped';
 
-/** Twilio's count of attached media parts. Absent/garbage reads as none. */
-function mediaCount(params: Record<string, string>): number {
-  const parsed = Number.parseInt(params.NumMedia ?? '0', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-}
-
-/** Twilio's own name for each keyword it answered, as `OptOutType` carries it. */
-const OPT_OUT_TYPES: Record<string, IntakeKeyword> = {
-  STOP: 'stop',
-  START: 'start',
-  HELP: 'help',
-};
-
-/**
- * VIL-348 — whether the provider already answered this message itself.
- *
- * Twilio's Advanced Opt-Out, when it is configured on the Messaging Service, matches its
- * own keyword list, sends its own reply, and tags the forwarded inbound `OptOutType`.
- * Reading it here is the ONLY way that fact enters Hale: nothing else in the system can
- * see the account's configuration, which is precisely how the comment this ticket
- * deleted managed to be wrong for four weeks.
- *
- * ABSENT IS A NAMED ANSWER, not an unknown (rule #11): the provider answered nothing.
- * That is also what an unrecognised value resolves to — Hale suppressing its own CASL
- * reply on the strength of a token it does not understand is the worse failure of the
- * two. The value itself is never logged, only the fact that one arrived: it rides beside
- * a phone number and a message body on this request (rule #1).
- */
-function providerAnsweredKeyword(
-  params: Record<string, string>,
-  log: Pick<Console, 'warn'>,
-): IntakeKeyword | null {
-  const raw = params.OptOutType;
-  if (!raw) return null;
-  const known = OPT_OUT_TYPES[raw.trim().toUpperCase()];
-  if (!known) {
-    log.warn(
-      { length: raw.length },
-      'twilio inbound: unrecognised OptOutType — answering the keyword ourselves',
-    );
-    return null;
-  }
-  return known;
-}
-
 /**
  * Route one authenticated inbound text. Exported so the routing decisions are testable
- * without building an HTTP request; the request shell is
- * {@link handleTwilioInboundRequest}.
+ * without building an HTTP request. Linq's webhook is the request shell.
  */
-export async function routeTwilioInbound(
-  deps: TwilioInboundDeps,
+export async function routeInboundText(
+  deps: InboundRouteDeps,
   inbound: InboundMessage,
   media: number,
-): Promise<TwilioInboundOutcome> {
+): Promise<InboundRouteOutcome> {
   const intake = deps.intake(
     inbound.transport ?? 'sms',
     inbound.chatId ? { chatId: inbound.chatId, replyToMessageId: inbound.providerId } : undefined,
@@ -239,15 +192,15 @@ export async function routeTwilioInbound(
  * other outcome that means a parent is owed something Hale has not delivered.
  */
 function keywordOutcome(
-  deps: TwilioInboundDeps,
+  deps: InboundRouteDeps,
   inbound: InboundMessage,
   ack: KeywordAck,
-): TwilioInboundOutcome {
+): InboundRouteOutcome {
   if (ack === 'provider_answered') return 'keyword_provider_answered';
   if (ack === 'sent') return 'intake';
   deps.log.error(
     { providerMessageId: inbound.providerId },
-    'twilio inbound: re-enrolled this number and the provider permanently refused the acknowledgment — its opt-out list still holds a number our ledger now says is reachable',
+    'inbound: re-enrolled this number and the provider permanently refused the acknowledgment — its opt-out list still holds a number our ledger now says is reachable',
   );
   return 'keyword_ack_refused';
 }
@@ -269,7 +222,7 @@ async function replyMediaUnsupported(
   database: Database,
   inbound: InboundMessage,
   intake: IntakeDeps,
-): Promise<TwilioInboundOutcome> {
+): Promise<InboundRouteOutcome> {
   const phoneE164 = normalizePhoneE164(inbound.from);
   if (!phoneE164) return 'invalid_number';
 
@@ -317,7 +270,7 @@ async function replyMediaUnsupported(
       .returning({ id: schema.channelMessages.id });
     const channelMessageId = row?.id;
     if (!channelMessageId) {
-      throw new Error('twilio inbound: channel_messages insert returned no row');
+      throw new Error('inbound: channel_messages insert returned no row');
     }
     await database.insert(schema.auditLog).values({
       familyId: owner.familyId,
@@ -363,9 +316,9 @@ async function replyMediaUnsupported(
  * dead attempt from one still in flight, and the reconciler can, because it uses age.
  */
 async function handOffToConversation(
-  deps: TwilioInboundDeps,
+  deps: InboundRouteDeps,
   inbound: InboundMessage,
-): Promise<TwilioInboundOutcome> {
+): Promise<InboundRouteOutcome> {
   const phoneE164 = normalizePhoneE164(inbound.from);
   if (!phoneE164) return 'invalid_number';
 
@@ -439,7 +392,7 @@ async function handOffToConversation(
         providerMessageId: inbound.providerId,
         err: err instanceof Error ? err.message : String(err),
       },
-      'twilio inbound: recorded the text but could not queue it for C1 — left unmarked for the reconciler',
+      'inbound: recorded the text but could not queue it for C1 — left unmarked for the reconciler',
     );
     return 'enqueue_failed';
   }
@@ -456,102 +409,4 @@ async function handOffToConversation(
   // after the row, the audit and the enqueue have committed must not be able to
   // fail the hand-off it is labelling.
   return isCanaryInbound(phoneE164) ? 'handed_off_canary' : 'handed_off';
-}
-
-/**
- * Twilio's documented "no reply from this webhook" answer is an empty TwiML
- * `<Response/>` (error 14110's own guidance). Hale's replies go out asynchronously
- * through the REST API, never as TwiML in this response — the webhook must return
- * inside Twilio's 15s budget, and an intake turn can involve a model call.
- */
-function emptyTwiml(): Response {
-  return new Response('<Response/>', {
-    status: 200,
-    headers: { 'content-type': 'text/xml; charset=utf-8' },
-  });
-}
-
-/**
- * `POST /api/channels/twilio/inbound`.
- *
- * Two refusals, in this order and before anything else happens:
- *   503 — the leg is not provisioned. Nothing is parsed, nothing is written, no model
- *         and no provider is touched. Dark by construction rather than by a flag.
- *   403 — the signature does not match. Same: zero side effects.
- * Everything authentic answers 200 with an empty TwiML document, whatever the outcome —
- * a 4xx/5xx would make Twilio retry a message we have already handled.
- */
-export async function handleTwilioInboundRequest(
-  req: Request,
-  deps: TwilioInboundDeps,
-): Promise<Response> {
-  const config = twilioConfig();
-  if (!config) {
-    return Response.json({ error: 'twilio_not_configured' }, { status: 503 });
-  }
-
-  const params = parseTwilioParams(await req.text());
-  const valid = isValidTwilioSignature({
-    authToken: config.authToken,
-    url: twilioWebhookUrl(req),
-    params,
-    signature: req.headers.get('x-twilio-signature'),
-  });
-  if (!valid) {
-    return Response.json({ error: 'invalid_signature' }, { status: 403 });
-  }
-
-  // `From=whatsapp:+E.164` is still parsed so the retired pipe can be named.
-  // It is not stripped into the SMS spine: answering it, or moving the reply
-  // onto SMS, would keep a door that has been dropped.
-  const { transport, address } = parseTransportAddress(params.From ?? '');
-  const providerId = params.MessageSid ?? params.SmsSid ?? '';
-  if (!address || !providerId) {
-    // Signature-valid but carrying no sender or no message id: if this ever fires, a
-    // real message just vanished — so it is the one outcome logged at error level.
-    // Field PRESENCE only, never the values (From is a phone number, rule #1).
-    deps.log.error(
-      { hasFrom: Boolean(address), hasProviderId: Boolean(providerId) },
-      'twilio inbound: malformed — authentic POST with no sender or no message id, nothing to act on',
-    );
-    await deps.countOutcome('malformed');
-    return emptyTwiml();
-  }
-
-  if (transport === 'whatsapp') {
-    deps.log.info(
-      { outcome: 'whatsapp_dropped', providerMessageId: providerId },
-      'twilio inbound: whatsapp dropped',
-    );
-    await deps.countOutcome('whatsapp_dropped');
-    return emptyTwiml();
-  }
-
-  const outcome = await routeTwilioInbound(
-    deps,
-    {
-      from: address,
-      transport,
-      body: params.Body ?? '',
-      providerId,
-      receivedAt: deps.now?.() ?? new Date(),
-      providerAnsweredKeyword: providerAnsweredKeyword(params, deps.log),
-    },
-    mediaCount(params),
-  );
-  // The one line every authentic text ends with, and its counter twin. The provider
-  // message id is Twilio's envelope handle, already the id every other log line here
-  // carries — never the number, never the body (rule #1).
-  //
-  // `optOutTypePresent` is the fact that no code can otherwise establish (VIL-348):
-  // whether the provider's own keyword handling tagged this request at all. PRESENCE,
-  // including a value Hale did not recognise — the outcome above says what was DONE with
-  // it, and the two together are what the live probe reads back to learn which
-  // configuration is really running.
-  deps.log.info(
-    { outcome, providerMessageId: providerId, optOutTypePresent: Boolean(params.OptOutType) },
-    'twilio inbound: routed',
-  );
-  await deps.countOutcome(outcome);
-  return emptyTwiml();
 }

@@ -6,7 +6,6 @@ import type { Database } from '@hale/db';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { LinqSendError } from '~/lib/channel/linq/transport';
-import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import {
   createOutboundTransport,
   plainTextWithoutLinks,
@@ -16,10 +15,21 @@ import {
 } from './outbound-transport';
 
 const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url)).replace(/\/$/, '');
-const ALLOWED_TWILIO_CONSTRUCTORS = new Set([
-  'apps/web/lib/channel/outbound-transport.ts',
-  'apps/web/lib/channel/twilio/transport.ts',
-]);
+
+/** A transport use, not a historical ledger word. The integration_provider enum
+ * value `twilio` may remain in comments and schema; these tokens may not. */
+const TWILIO_TRANSPORT_TOKENS = [
+  'createTwilioTransport(',
+  'TwilioSendError',
+  "from 'twilio'",
+  'from "twilio"',
+  'api.twilio.com',
+  'monitor.twilio.com',
+  'console.twilio.com',
+  'x-twilio-signature',
+  'OUTBOUND_TRANSPORT',
+  'channel/twilio',
+] as const;
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
@@ -37,17 +47,25 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
-describe('createTwilioTransport stays behind the one factory', () => {
-  it('no non-test file under apps/web constructs it except the factory and the definition', () => {
+describe('Twilio is not a transport', () => {
+  it('no non-test file under apps/web imports or calls Twilio', () => {
     const root = join(REPO_ROOT, 'apps/web');
     expect(existsSync(root)).toBe(true);
-    const strangers = sourceFiles(root)
-      .map((file) => file.slice(REPO_ROOT.length + 1))
-      .filter((file) =>
-        readFileSync(join(REPO_ROOT, file), 'utf8').includes('createTwilioTransport('),
-      )
-      .filter((file) => !ALLOWED_TWILIO_CONSTRUCTORS.has(file));
-    expect(strangers).toEqual([]);
+    const hits: string[] = [];
+    for (const file of sourceFiles(root)) {
+      const rel = file.slice(REPO_ROOT.length + 1);
+      const text = readFileSync(file, 'utf8');
+      // Historical enum / ledger names are comments or string literals of the
+      // integration provider. Env vars and the transport itself are not.
+      const stripped = text
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/.*$/gm, '');
+      for (const token of TWILIO_TRANSPORT_TOKENS) {
+        if (stripped.includes(token)) hits.push(`${rel}: ${token}`);
+      }
+      if (/\bTWILIO_[A-Z0-9_]+/.test(stripped)) hits.push(`${rel}: TWILIO_*`);
+    }
+    expect(hits).toEqual([]);
   });
 });
 
@@ -73,11 +91,11 @@ describe('readSendRefusal', () => {
       code: 'media_on_new_chat',
       permanent: true,
     });
-    expect(readSendRefusal(new TwilioSendError('21610', 400))).toEqual({
+    expect(readSendRefusal(new LinqSendError('21610', 400, true))).toEqual({
       code: '21610',
       permanent: true,
     });
-    expect(readSendRefusal(new TwilioSendError('20500', 503))).toEqual({
+    expect(readSendRefusal(new LinqSendError('20500', 503, false))).toEqual({
       code: '20500',
       permanent: false,
     });
@@ -86,7 +104,7 @@ describe('readSendRefusal', () => {
 
   it('stops retry on a permanent refusal and not on not_configured or a transient one', () => {
     expect(refusalStopsRetry(new LinqSendError('link_on_new_chat', 400, true))).toBe(true);
-    expect(refusalStopsRetry(new TwilioSendError('21610', 400))).toBe(true);
+    expect(refusalStopsRetry(new LinqSendError('21610', 400, true))).toBe(true);
     expect(refusalStopsRetry(new LinqSendError('not_configured', 0, true))).toBe(false);
     expect(refusalStopsRetry(new LinqSendError('timeout', 0, false))).toBe(false);
     expect(refusalStopsRetry(new Error('nope'))).toBe(false);
@@ -98,31 +116,15 @@ describe('createOutboundTransport', () => {
     vi.unstubAllEnvs();
   });
 
-  it('uses Twilio only when OUTBOUND_TRANSPORT is exactly twilio', async () => {
-    vi.stubEnv('OUTBOUND_TRANSPORT', 'twilio');
+  it('names a dark Linq door and does not fetch', async () => {
     vi.stubEnv('LINQ_API_KEY', '');
     vi.stubEnv('LINQ_FROM_E164', '');
     const fetchMock = vi.fn();
     const transport = createOutboundTransport({ fetch: fetchMock });
-    await expect(transport.send({ to: '+14165550100', body: 'hi' })).rejects.toThrow(
-      /twilio not configured/,
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('does not treat a near-miss kill switch as Twilio, and names a dark Linq door', async () => {
-    const fetchMock = vi.fn();
-    for (const value of [undefined, 'Twilio', 'twilio '] as const) {
-      if (value === undefined) vi.stubEnv('OUTBOUND_TRANSPORT', '');
-      else vi.stubEnv('OUTBOUND_TRANSPORT', value);
-      vi.stubEnv('LINQ_API_KEY', '');
-      vi.stubEnv('LINQ_FROM_E164', '');
-      const transport = createOutboundTransport({ fetch: fetchMock });
-      await expect(transport.send({ to: '+14165550100', body: 'hi' })).rejects.toMatchObject({
-        code: 'not_configured',
-        permanent: true,
-      });
-    }
+    await expect(transport.send({ to: '+14165550100', body: 'hi' })).rejects.toMatchObject({
+      code: 'not_configured',
+      permanent: true,
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

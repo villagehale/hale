@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
@@ -181,7 +181,7 @@ describe('sendConnectorConnectedText', () => {
     ports = {
       ...ports,
       transport: {
-        send: () => Promise.reject(new TwilioSendError('21610', 400)),
+        send: () => Promise.reject(new LinqSendError('21610', 400, true)),
       },
     };
 

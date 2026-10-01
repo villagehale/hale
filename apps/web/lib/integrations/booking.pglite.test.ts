@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
-import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import type {
   ExtractedEvent,
   ExtractionKind,
@@ -132,7 +132,7 @@ interface Harness {
 function harness(
   over: {
     classification?: SentinelClassification;
-    sendThrows?: TwilioSendError;
+    sendThrows?: LinqSendError;
     /** The REAL correlation, over the REAL candidate loader, when the test is about
      * whether a class the family already holds is offered again. */
     correlate?: boolean;
@@ -855,7 +855,7 @@ describe('the booking write', () => {
   });
 
   it('is written AFTER the send: a refused transport leaves no booking and no offer', async () => {
-    const h = harness({ sendThrows: new TwilioSendError('21610', 400) });
+    const h = harness({ sendThrows: new LinqSendError('21610', 400, true) });
     await expect(alert(h)).resolves.toEqual({ alert: 'send_failed', booking: null, going: null });
 
     // MUTATION: move the write above `ports.transport.send` and both of these go red.

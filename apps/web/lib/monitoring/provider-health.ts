@@ -130,7 +130,7 @@ export async function probeProviderHealth(client: AgentClient): Promise<Provider
 
 /** The founder digests whose SEND can fail — each one a surface whose silence would
  * otherwise read as a clean week ("a refusal is not evidence", in ledger form). */
-export type FounderDigest = 'papercut' | 'loop_health' | 'twilio_triage';
+export type FounderDigest = 'papercut' | 'loop_health';
 
 export type ProviderIncident =
   | { kind: 'preflight'; window: SendWindow; failure: ProviderFailureClass; detail: string }
@@ -259,7 +259,6 @@ const FAILURE_REMEDY: Record<ProviderFailureClass, string> = {
 const DIGEST_LABEL: Record<FounderDigest, string> = {
   papercut: 'weekly papercut',
   loop_health: 'weekly loop-health',
-  twilio_triage: 'Twilio triage',
 };
 
 /** The alert body. Pure, so the wording is tested directly. Quiet-operator order: what
@@ -270,9 +269,7 @@ export function formatProviderAlert(
 ): { subject: string; text: string } {
   if (incident.kind === 'digest_send_failed') {
     const remedy =
-      incident.digest === 'twilio_triage'
-        ? 'check OPS_SLACK_WEBHOOK_URL (Slack #ops) and re-run /api/cron/twilio-triage.'
-        : 'check RESEND_API_KEY / FOUNDER_ALERT_EMAIL and the Resend dashboard, then re-run the digest cron.';
+      'check RESEND_API_KEY / FOUNDER_ALERT_EMAIL and the Resend dashboard, then re-run the digest cron.';
     return {
       subject: `Hale ops: the ${DIGEST_LABEL[incident.digest]} digest failed to send`,
       text: [

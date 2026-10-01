@@ -35,7 +35,7 @@ import { FOUNDER_PAIR_SESSION_IDS } from './sitting-reminder';
  * (family_id is NOT NULL on the ledger). "No outbound" means no transcript
  * `out` row. A session Hale already spoke on is skipped.
  *
- * Send path is the existing intake Twilio transport. Claim BEFORE send so
+ * Send path is createOutboundTransport (Linq). Claim BEFORE send so
  * two hourly ticks cannot double. Cap 1. Founder-pair skip list is the same
  * two ids VIL-324 already refuses.
  */
@@ -43,7 +43,7 @@ import { FOUNDER_PAIR_SESSION_IDS } from './sitting-reminder';
 const MAX_FIRST_REPLY_RECOVERIES_PER_RUN = 50;
 
 export interface FirstReplyRecoveryDeps {
-  /** The outbound SMS leg — REQUIRED (rule #11). The real adapter is Hale's Twilio number. */
+  /** The outbound text leg — REQUIRED (rule #11). The real adapter is Linq. */
   transport: ChannelTransport;
 }
 

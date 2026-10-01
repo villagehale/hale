@@ -632,7 +632,7 @@ export async function drainHotQueues(
   });
   // The one queue with a POLICY. It is a property of the queue rather than of this
   // loop: pg-boss only enforces a singleton key where the policy says to. Declared here
-  // as well as by the producer (channel/twilio/deps.ts) so a cold start in either order
+  // as well as by the producer (inbound-deps.ts) so a cold start in either order
   // lands the same queue.
   await createQueueWithPolicy(deps.boss, CHANNEL_MESSAGE_RECEIVED_QUEUE, {
     expireInSeconds: CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,

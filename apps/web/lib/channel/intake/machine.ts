@@ -308,7 +308,7 @@ export type IntakeOutcome =
   | LapsedInviteOutcome
   // The co-parent join link's two ends. Kept OUT of `ignored` deliberately: that
   // outcome's `no_open_conversation` reason is what hands the turn to C1
-  // (twilio/inbound.ts), and a redemption has already been answered.
+  // (inbound-route.ts), and a redemption has already been answered.
   | JoinOutcome;
 
 interface Inbound {

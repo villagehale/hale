@@ -1,6 +1,6 @@
 /**
  * The inbound-email leg's credentials and identities, read in ONE place and never
- * logged — the email twin of twilio/config.ts, including its all-or-nothing stance.
+ * logged — the email twin of linq/config.ts, including its all-or-nothing stance.
  *
  * Four values, and the leg genuinely needs all four:
  *   - RESEND_API_KEY — not for sending. The `email.received` webhook carries METADATA

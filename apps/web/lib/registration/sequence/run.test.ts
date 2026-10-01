@@ -744,7 +744,6 @@ describe('the legs', () => {
     // And WHICH threader: a port declared but wired to a stub is the same silent
     // no-op the non-nullable type was meant to make unexpressible.
     expect(threadMessage).toBe(threadProactiveMessage);
-    vi.stubEnv('OUTBOUND_TRANSPORT', '');
     vi.stubEnv('LINQ_API_KEY', '');
     vi.stubEnv('LINQ_FROM_E164', '');
     await expect(

@@ -38,15 +38,15 @@ console.log(await adapter.send({
 // with RESEND_API_KEY unset it must instead be { status: 'skipped', reason: 'not_configured' }
 ```
 
-## 3. Loop SMS — `createTwilioSmsChannel`
+## 3. Loop SMS — `createSmsChannel`
 
 The default sender is Linq (`LINQ_API_KEY` and `LINQ_FROM_E164`). Twilio is not
 constructed. The config gate:
 
 ```ts
-import { createTwilioSmsChannel } from './twilio-sms';
+import { createSmsChannel } from './phone-sms';
 
-const adapter = createTwilioSmsChannel({ resolveTarget: async () => '+15555550100' });
+const adapter = createSmsChannel({ resolveTarget: async () => '+15555550100' });
 console.log(await adapter.send({ userId: 'smoke', rendered: { kind: 'sms', text: 'sms leg' } }));
 // Linq key or line unset → { status: 'skipped', reason: 'not_configured' }
 // both set → posts to Linq POST /v3/chats (iMessage, then RCS, then SMS)

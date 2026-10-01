@@ -1,9 +1,8 @@
 import nextDynamic from 'next/dynamic';
 import { PanelGrid, type PanelSpec } from '~/components/admin/panel-grid';
-import { cachedDbErrors, cachedErrorClasses, cachedTextingTrends, cachedTwilioAlerts } from '~/lib/admin/cached';
-import { groupTwilioClasses } from '~/lib/admin/queries/error-classes';
-import { supabaseTableUrl, TWILIO_ERROR_LOGS_URL } from '~/lib/admin/links';
-import { EMPTY_WINDOW_LINE, serviceStateLine } from '~/lib/admin/panel-state';
+import { cachedDbErrors, cachedErrorClasses, cachedTextingTrends } from '~/lib/admin/cached';
+import { supabaseTableUrl } from '~/lib/admin/links';
+import { EMPTY_WINDOW_LINE } from '~/lib/admin/panel-state';
 
 const ErrorClassList = nextDynamic(() =>
   import('~/components/admin/error-class-list').then((m) => m.ErrorClassList),
@@ -16,19 +15,11 @@ const DeliveryHealthChart = nextDynamic(() =>
  * landing; the raw rows are the drill-down. */
 
 async function ClassesBody() {
-  const [classes, dbErrors, twilio] = await Promise.all([
-    cachedErrorClasses(),
-    cachedDbErrors(),
-    cachedTwilioAlerts(),
-  ]);
-  const twilioClasses = twilio.ok ? groupTwilioClasses(twilio.data) : [];
-  const rawRows = [...dbErrors, ...(twilio.ok ? twilio.data : [])].sort((a, b) =>
-    a.at < b.at ? 1 : -1,
-  );
+  const [classes, dbErrors] = await Promise.all([cachedErrorClasses(), cachedDbErrors()]);
+  const rawRows = [...dbErrors].sort((a, b) => (a.at < b.at ? 1 : -1));
   return (
     <div>
-      {!twilio.ok ? <p className="adm-state">{serviceStateLine('Twilio', twilio)}</p> : null}
-      <ErrorClassList classes={[...classes, ...twilioClasses]} rawRows={rawRows} />
+      <ErrorClassList classes={classes} rawRows={rawRows} />
     </div>
   );
 }
@@ -43,10 +34,7 @@ export default function AdminOperationsPage() {
   const panels: PanelSpec[] = [
     {
       eyebrow: 'Failure classes',
-      links: [
-        { label: 'Open in Twilio', href: TWILIO_ERROR_LOGS_URL },
-        { label: 'Open in Supabase', href: supabaseTableUrl('channel_messages') },
-      ],
+      links: [{ label: 'Open in Supabase', href: supabaseTableUrl('channel_messages') }],
       body: <ClassesBody />,
       span2: true,
     },

@@ -65,7 +65,7 @@ export type WelcomeCardOutcome =
   | { status: 'not_sent'; reason: 'send_failed'; code: string; permanent: boolean };
 
 /** A provider refusal that names itself (`code` + `permanent`), or an unnamed throw.
- * TwilioSendError and LinqSendError both carry those fields; reading them here keeps
+ * LinqSendError carries those fields; reading them here keeps
  * an iMessage card the Linq leg cannot carry (`media_unsupported`) out of the
  * `unknown` bucket without this module importing either transport. */
 function providerRefusal(err: unknown): { code: string; permanent: boolean } {

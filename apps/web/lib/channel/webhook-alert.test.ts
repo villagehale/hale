@@ -4,13 +4,13 @@ import {
   resetWebhookAlertWindowForTests,
   webhookFailureAlert,
   withWebhookFailureAlert,
-} from './alert';
+} from '~/lib/channel/webhook-alert';
 
 /**
  * VIL-331 — the alert that exists for the moment nothing else works.
  *
  * Every assertion here is about a request that leaves the instance WITHOUT a database:
- * the 2026-08-28 incident made the first query in routeTwilioInbound throw for six
+ * the 2026-08-28 incident made the first query in routeInboundText throw for six
  * hours, and an alert that needed a row to be written would have been just as silent as
  * the 500s were. The fetch is injected, so what Slack and PostHog would have received
  * is asserted directly — including what is NOT in it (rule #1). Founder SMS is not a
@@ -96,7 +96,7 @@ describe('webhookFailureAlert', () => {
     const { calls, fetch } = recorder();
 
     const outcome = await webhookFailureAlert(
-      { route: 'twilio_inbound', error: new TypeError('fetch failed: db.supabase.co') },
+      { route: 'linq_inbound', error: new TypeError('fetch failed: db.supabase.co') },
       { fetch },
     );
 
@@ -106,7 +106,7 @@ describe('webhookFailureAlert', () => {
     const slack = only(slackCall(calls), 'slack');
     expect(slack.headers['content-type']).toBe('application/json');
     const text = pageText(calls);
-    expect(text).toContain('twilio_inbound');
+    expect(text).toContain('linq_inbound');
     expect(text).toContain('TypeError');
     expect(text).not.toContain('fetch failed');
     expect(text).not.toContain(FOUNDER_PHONE);
@@ -116,8 +116,8 @@ describe('webhookFailureAlert', () => {
     expect(JSON.parse(captured.body)).toEqual({
       api_key: POSTHOG_KEY,
       event: 'webhook_route_failed',
-      distinct_id: 'route:twilio_inbound',
-      properties: { route: 'twilio_inbound', error_class: 'TypeError' },
+      distinct_id: 'route:linq_inbound',
+      properties: { route: 'linq_inbound', error_class: 'TypeError' },
     });
   });
 
@@ -148,7 +148,7 @@ describe('webhookFailureAlert', () => {
 
     await webhookFailureAlert(
       {
-        route: 'twilio_inbound',
+        route: 'linq_inbound',
         // Parent text AND a separator-formatted number a digit-run scrub would miss —
         // the error MESSAGE must simply never reach a leg.
         error: new Error(
@@ -163,14 +163,14 @@ describe('webhookFailureAlert', () => {
     expect(body).not.toContain('Nora');
     expect(body).not.toContain('416-555');
     expect(body).not.toContain('insert into channel_messages');
-    expect(body).toContain('twilio_inbound');
+    expect(body).toContain('linq_inbound');
     expect(body).toContain('Error');
 
     const properties = JSON.parse(only(posthogCall(calls), 'posthog').body).properties as Record<
       string,
       unknown
     >;
-    expect(properties).toEqual({ route: 'twilio_inbound', error_class: 'Error' });
+    expect(properties).toEqual({ route: 'linq_inbound', error_class: 'Error' });
     expect(JSON.stringify(properties)).not.toContain('Nora');
   });
 
@@ -179,7 +179,7 @@ describe('webhookFailureAlert', () => {
     const { calls, fetch } = recorder();
 
     await webhookFailureAlert(
-      { route: 'twilio_status', error: new Error('x'.repeat(500)) },
+      { route: 'email_inbound', error: new Error('x'.repeat(500)) },
       { fetch },
     );
 
@@ -195,7 +195,7 @@ describe('webhookFailureAlert', () => {
     const { calls, fetch } = recorder();
 
     const outcome = await webhookFailureAlert(
-      { route: 'twilio_status', error: new Error('boom') },
+      { route: 'email_inbound', error: new Error('boom') },
       { fetch },
     );
 
@@ -214,12 +214,12 @@ describe('webhookFailureAlert', () => {
     const { calls, fetch } = recorder();
 
     const outcome = await webhookFailureAlert(
-      { route: 'twilio_inbound', error: new Error('boom') },
+      { route: 'linq_inbound', error: new Error('boom') },
       { fetch },
     );
 
     expect(outcome.page).toBe('sent');
-    expect(pageText(calls)).toContain('twilio_inbound');
+    expect(pageText(calls)).toContain('linq_inbound');
     expect(twilioCall(calls)).toHaveLength(0);
   });
 
@@ -229,7 +229,7 @@ describe('webhookFailureAlert', () => {
     const { calls, fetch } = recorder();
 
     const outcome = await webhookFailureAlert(
-      { route: 'twilio_inbound', error: new Error('boom') },
+      { route: 'linq_inbound', error: new Error('boom') },
       { fetch },
     );
 
@@ -243,7 +243,7 @@ describe('webhookFailureAlert', () => {
     const { calls, fetch } = recorder(async () => new Response('nope', { status: 401 }));
 
     const outcome = await webhookFailureAlert(
-      { route: 'twilio_inbound', error: new Error('boom') },
+      { route: 'linq_inbound', error: new Error('boom') },
       { fetch },
     );
 
@@ -260,7 +260,7 @@ describe('webhookFailureAlert', () => {
     };
 
     await expect(
-      webhookFailureAlert({ route: 'twilio_inbound', error: new Error('boom') }, { fetch }),
+      webhookFailureAlert({ route: 'linq_inbound', error: new Error('boom') }, { fetch }),
     ).resolves.toEqual({ page: 'failed', analytics: 'failed' });
   });
 
@@ -271,12 +271,12 @@ describe('webhookFailureAlert', () => {
     const { calls, fetch } = recorder();
 
     const first = await webhookFailureAlert(
-      { route: 'twilio_inbound', error: new Error('boom') },
+      { route: 'linq_inbound', error: new Error('boom') },
       { fetch },
     );
     vi.setSystemTime(new Date('2026-08-28T09:14:59.000Z'));
     const second = await webhookFailureAlert(
-      { route: 'twilio_inbound', error: new Error('boom again') },
+      { route: 'linq_inbound', error: new Error('boom again') },
       { fetch },
     );
 
@@ -293,10 +293,10 @@ describe('webhookFailureAlert', () => {
     vi.setSystemTime(new Date('2026-08-28T09:00:00.000Z'));
     const { calls, fetch } = recorder();
 
-    await webhookFailureAlert({ route: 'twilio_inbound', error: new Error('boom') }, { fetch });
+    await webhookFailureAlert({ route: 'linq_inbound', error: new Error('boom') }, { fetch });
     vi.setSystemTime(new Date('2026-08-28T09:15:01.000Z'));
     const later = await webhookFailureAlert(
-      { route: 'twilio_inbound', error: new Error('still boom') },
+      { route: 'linq_inbound', error: new Error('still boom') },
       { fetch },
     );
 
@@ -309,11 +309,11 @@ describe('webhookFailureAlert', () => {
     const { calls, fetch } = recorder(async () => new Response('nope', { status: 500 }));
 
     const first = await webhookFailureAlert(
-      { route: 'twilio_inbound', error: new Error('boom') },
+      { route: 'linq_inbound', error: new Error('boom') },
       { fetch },
     );
     const second = await webhookFailureAlert(
-      { route: 'twilio_inbound', error: new Error('boom') },
+      { route: 'linq_inbound', error: new Error('boom') },
       { fetch },
     );
 
@@ -329,7 +329,7 @@ describe('withWebhookFailureAlert', () => {
     const { calls, fetch } = recorder();
 
     const response = await withWebhookFailureAlert(
-      'twilio_inbound',
+      'linq_inbound',
       async () => {
         throw new Error('sorry, too many clients already');
       },
@@ -350,7 +350,7 @@ describe('withWebhookFailureAlert', () => {
     const { calls, fetch } = recorder();
 
     const response = await withWebhookFailureAlert(
-      'twilio_inbound',
+      'linq_inbound',
       async () => new Response('<Response/>', { status: 200 }),
       { fetch },
     );

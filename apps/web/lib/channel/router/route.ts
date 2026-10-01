@@ -63,7 +63,7 @@ import {
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots/store';
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
@@ -2151,7 +2151,7 @@ async function sendReply(
       // opening a second one, or falling through to SMS.
       providerChatId: sent.chatId ?? (args.route.channel === 'imessage' ? args.route.chatId : null),
       // Accepted by Twilio, not yet on a phone — the receipt advances it
-      // (channel/ledger.ts acceptedStatus, channel/twilio/status.ts).
+      // (channel/ledger.ts acceptedStatus, delivery-status.ts).
       status: acceptedStatus(carriedBy),
       body: null,
       medicalReplySource: args.medicalSource ?? null,

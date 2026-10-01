@@ -475,9 +475,8 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             States).
           </li>
           <li>
-            <strong>Twilio</strong> — delivery of text messages, where you choose to use Hale over
-            SMS. The content of those messages passes through Twilio and is processed in the United
-            States; see{' '}
+            <strong>Linq</strong> — delivery of text messages. The content of those messages passes
+            through Linq; see{' '}
             <a href="#sms" className="link">
               Text messages
             </a>
@@ -504,9 +503,9 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           If you use Hale by text message, that conversation travels over the ordinary mobile
           network, and you should know exactly what that means.{' '}
           <strong>Text messages are not end-to-end encrypted.</strong> Every message passes through
-          your mobile carrier and through our messaging provider, Twilio, which processes it in the
-          United States, and anyone holding the phone can read the thread. That is how SMS works
-          everywhere; we cannot change it, so we tell you plainly and we write to it.
+          your mobile carrier and through our messaging provider, Linq, and anyone holding the phone
+          can read the thread. That is how SMS works everywhere; we cannot change it, so we tell you
+          plainly and we write to it.
         </p>
         <p>
           Because the channel is open, the strictest limits we apply anywhere apply to what we put

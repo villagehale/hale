@@ -186,10 +186,10 @@ describe('privacy (migrated verbatim, plus the SMS-transit disclosure)', () => {
     expect(privacyHtml).not.toContain('not yet available');
   });
 
-  it('discloses that SMS is not end-to-end encrypted and transits carriers and Twilio', () => {
+  it('discloses that SMS is not end-to-end encrypted and transits carriers and Linq', () => {
     expect(privacyHtml).toContain('not end-to-end encrypted');
-    expect(privacyHtml).toContain('Twilio');
-    expect(privacyHtml).toContain('United States');
+    expect(privacyHtml).toContain('Linq');
+    expect(privacyHtml).not.toContain('Twilio');
   });
 
   it('names what is held back from a text message by design', () => {

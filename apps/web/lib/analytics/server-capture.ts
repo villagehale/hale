@@ -126,11 +126,11 @@ const EVENT_BY_LANE: Record<AgentErrorLane, AnalyticsEvent> = {
 const ENUM_TOKEN = /^[a-z][a-z0-9_]{0,39}$/;
 
 /**
- * A Twilio numeric code, or Twilio's own `'unknown'` when the payload carried none.
- * Nothing else: the provider's `message` field echoes the recipient's number and the
- * body back, and it never leaves lib/channel/twilio/transport.ts.
+ * A provider error code: digits, or the provider's own `'unknown'` when the payload
+ * carried none. Nothing else: a provider `message` field can echo the recipient's
+ * number and the body, and neither leaves the transport.
  */
-const TWILIO_CODE = /^(\d{1,6}|unknown)$/;
+const PROVIDER_ERROR_CODE = /^(\d{1,6}|unknown)$/;
 
 function classOf(error: AgentError): string {
   switch (error.lane) {
@@ -142,7 +142,7 @@ function classOf(error: AgentError): string {
     case 'commitments':
       return ENUM_TOKEN.test(error.kind) ? error.kind : 'unclassified';
     case 'transport':
-      return TWILIO_CODE.test(error.code) ? error.code : 'unclassified';
+      return PROVIDER_ERROR_CODE.test(error.code) ? error.code : 'unclassified';
     case 'reply_budget':
       return 'budget_overflow';
   }
@@ -186,9 +186,9 @@ export function buildAgentErrorPayload(error: AgentError): {
 /** The two doors a parent's message can arrive through. */
 export type InboundDoor = 'sms' | 'email' | 'imessage';
 
-/** Inside the Twilio webhook's 15s budget, so a hung PostHog endpoint must fail fast
+/** Inside the inbound webhook's budget, so a hung PostHog endpoint must fail fast
  * — the same bound the webhook boundary alert puts on its own capture leg
- * (lib/channel/twilio/alert.ts). captureServerEvent's unbounded fetch is fine on a
+ * (lib/channel/webhook-alert.ts). captureServerEvent's unbounded fetch is fine on a
  * server action; it is not fine here. */
 const INBOUND_CAPTURE_TIMEOUT_MS = 4_000;
 

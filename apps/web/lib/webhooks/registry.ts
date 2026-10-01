@@ -168,25 +168,15 @@ const outlookAdapter = unimplementedSignalAdapter(
   (payload) => readString(payload.subscriptionId),
 );
 
-// ── TWILIO: removed (VIL-214 · A3) ────────────────────────────────────────────
-// There was a `twilioAdapter` here whose verify() returned `verified` for ANY
-// non-empty signature header once TWILIO_AUTH_TOKEN existed — a placeholder that
-// was harmless only because the env var was never set (so it answered 501). A3
-// provisions TWILIO_AUTH_TOKEN, which would have ARMED it: forged JSON → this
-// registry → events.ingested, i.e. attacker-controlled text into a family's
-// agent pipeline.
+// Text ingress is not on this registry. A previous placeholder accepted any
+// non-empty signature and would have written attacker-controlled text into
+// events.ingested. The provider enum value stays in the database (rule #9);
+// getAdapter for that name is null, and POST /api/webhooks/twilio is an unknown
+// provider (404). Parents' texts arrive at POST /api/channels/linq/inbound.
 //
-// It is deleted rather than fixed because this interface cannot express Twilio's
-// scheme at all: `verify(signature, rawBody)` never sees the request URL, and
-// Twilio signs URL + sorted params. The correct implementation needs the URL, so
-// it lives with the endpoint that has one — apps/web/lib/channel/twilio/signature.ts,
-// behind POST /api/channels/twilio/{inbound,status}, which now owns all Twilio
-// ingress. `POST /api/webhooks/twilio` is consequently an unknown provider (404).
-// The 'twilio' integration_provider enum value is untouched (rule #9: data stays).
-//
-// Linq iMessage (VIL-335) is the same kind of exception: Standard Webhooks signs
-// `webhook-id.webhook-timestamp.body`, and this verify(signature, rawBody) interface
-// is not given the id or the timestamp. The door is POST /api/channels/linq/inbound.
+// Linq iMessage (VIL-335) signs `webhook-id.webhook-timestamp.body`, and this
+// verify(signature, rawBody) interface is not given the id or the timestamp.
+// The door is POST /api/channels/linq/inbound.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Stripe (Connect signal leg).

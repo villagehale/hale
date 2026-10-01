@@ -874,7 +874,7 @@ export const START_ACK = "You're back - I'll keep an eye on your week again.";
  * the intended audience", and requires that texting AIDE or ARRET "must return a French
  * response" while a French-only program must still answer English STOP and HELP. That
  * document governs SHORT CODES and Hale sends from a Canadian long code
- * (twilio/config.ts), so it does not bind this program: Hale adopts it VOLUNTARILY,
+ * (linq/config.ts), so it does not bind this program: Hale adopts it VOLUNTARILY,
  * because a francophone parent typing ARRET at a Canadian number means it whatever the
  * sender's numbering plan is. CASL itself is silent on the language of the unsubscribe
  * mechanism, so neither the statute nor the policy compels these words — the product

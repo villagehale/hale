@@ -75,7 +75,7 @@ export async function approveDraftedAction(
   });
 
   // The job ID is the action id — one action is one execution is one job, the identity
-  // the inbound leg already rides (channel/twilio/deps.ts sendOptions): pg-boss's
+  // the inbound leg already rides (inbound-deps.ts sendOptions): pg-boss's
   // insert ends in ON CONFLICT DO NOTHING, so a double-tapped Approve, or the SMS
   // "YES" arc racing the web button, creates ONE job instead of two deliveries that
   // both pass the executor's gate (audit P1-4). expireInSeconds is set per-job so it

@@ -14,7 +14,7 @@ import {
 } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import type { ChannelMessageReceivedJob, TwilioInboundDeps } from '~/lib/channel/twilio/inbound';
+import type { ChannelMessageReceivedJob, InboundRouteDeps } from '~/lib/channel/inbound-route';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
@@ -135,7 +135,7 @@ function harness(): {
     limiter: new FakeRateLimiter(() => NOW.getTime()),
     now: NOW,
   };
-  const deps: TwilioInboundDeps = {
+  const deps: InboundRouteDeps = {
     database: fake.db,
     intake: () => intake,
     enqueue: async (job) => {

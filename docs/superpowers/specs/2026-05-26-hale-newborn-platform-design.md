@@ -122,7 +122,7 @@ The product brand is comprehensive newborn support; the build sequence is platfo
                   │  CRA / ESDC (where APIs exist;        │
                   │   else browser automation + OCR)      │
                   │  Pediatric portals (browser auto.)    │
-                  │  Twilio (SMS, scheduled reminders)    │
+                  │  Linq (iMessage / text)               │
                   │  PDF form-fill engines (deterministic)│
                   └───────────────────────────────────────┘
 ```
@@ -538,7 +538,7 @@ Computer Use is the only LLM-touching part of the Executor.
 | Photos (Google Photos) | Library API + scheduled poll | 1 hour poll | Medium |
 | Photos (iCloud) | No direct API — user-driven uploads via PWA | User-driven | User-dependent |
 | Stripe | Webhooks (HMAC-signed) | Seconds | High |
-| Twilio (SMS) | Webhooks | Seconds | High |
+| Linq (text) | Webhooks | Seconds | High |
 | CRA / ESDC | No public webhooks. Browser automation + user uploads | Hours | User+automation |
 | Pediatric clinic portals | No APIs in ~95% of CA clinics. Browser automation per-portal | Hours | Per-portal |
 
@@ -841,10 +841,10 @@ MICROSOFT_OAUTH_CLIENT_SECRET=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 
-# Twilio
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_PHONE_NUMBER=
+# Text (Linq). Historical Twilio credentials are not read.
+LINQ_API_KEY=
+LINQ_FROM_E164=
+LINQ_WEBHOOK_SECRET=
 
 # Email
 POSTMARK_API_KEY=

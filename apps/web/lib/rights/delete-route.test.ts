@@ -34,7 +34,7 @@ vi.mock('./delete', () => ({
 vi.mock('~/lib/channel/coparent/departure-notice', () => ({
   tellStayingParent: (...a: unknown[]) => tellStayingParentMock(...a),
 }));
-vi.mock('~/lib/channel/twilio/deps', () => ({
+vi.mock('~/lib/channel/inbound-deps', () => ({
   departureNoticePorts: (...a: unknown[]) => departureNoticePortsMock(...a),
 }));
 

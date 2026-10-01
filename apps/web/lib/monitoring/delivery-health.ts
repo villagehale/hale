@@ -2,13 +2,14 @@ import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 
 /**
- * The `delivery` incident kind — the pageable half of the delivery-truth invariant
- * (the sweep in channel/twilio/delivery-sweep.ts is the truth-writing half).
+ * The `delivery` incident kind — the pageable half of the delivery-truth invariant.
+ * Linq receipts write the ledger (channel/delivery-status.ts); this check reads that
+ * ledger from the queue-maintenance cron and pages Slack #ops.
  *
- * Prod motivation (2026-09-03 audit): 42 of 177 outbound SMS failed at Twilio over
- * 30 days — 8 of them 30034, an A2P/registration refusal that fails EVERY send to
- * its destination class — and nothing paged, because delivery failures only ever
- * landed (when they landed at all) in a table read by pull-based admin pages.
+ * Prod motivation (2026-09-03 audit): 42 of 177 outbound texts failed over 30 days
+ * — 8 of them 30034, a registration refusal that fails EVERY send to its destination
+ * class — and nothing paged, because delivery failures only ever landed (when they
+ * landed at all) in a table read by pull-based admin pages.
  *
  * Two shapes of incident, in strict order of severity:
  *   - `registration_error` — any 30034-class failure at all. One is already proof

@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { emailBlindIndex } from '~/lib/crypto/blind-index';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { EmailInboundConfig } from './config';
 import { FakeContentReader } from './content';

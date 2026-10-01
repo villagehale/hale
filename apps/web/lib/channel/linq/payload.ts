@@ -57,7 +57,7 @@ export type LinqReceiptEvent = 'message.delivered' | 'message.read' | 'message.f
 export interface LinqDeliveryReceipt {
   event: LinqReceiptEvent;
   messageId: string;
-  /** What `applyTwilioStatus` already maps. `read` advances the row to delivered. */
+  /** What `applyDeliveryStatus` already maps. `read` advances the row to delivered. */
   rawStatus: 'delivered' | 'read' | 'failed';
   errorCode: string | null;
 }
