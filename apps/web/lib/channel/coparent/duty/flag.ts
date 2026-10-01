@@ -69,3 +69,35 @@ export function coparentDutySendsActive(familyId: string): boolean {
   if (coparentDutySendsEnabled()) return true;
   return coparentDutySendsAllowlist().has(familyId);
 }
+
+/**
+ * VIL-383 — write duty onto family_events / ICS, undo, the 1:1 sync echo,
+ * internal burden counts, and the ack. Strict `true`. Unset is off.
+ * Does not change any other flag.
+ */
+export const COPARENT_DUTY_MEMORY_ENABLED_ENV = 'COPARENT_DUTY_MEMORY_ENABLED';
+
+export function coparentDutyMemoryEnabled(): boolean {
+  return process.env[COPARENT_DUTY_MEMORY_ENABLED_ENV] === 'true';
+}
+
+/**
+ * The lopsided nudge. Separate from memory, and off unless this is exactly
+ * `true`. Consent, the monthly cap, and "no numbers" are checked as well.
+ */
+export const COPARENT_DUTY_LOPSIDED_ENABLED_ENV = 'COPARENT_DUTY_LOPSIDED_ENABLED';
+
+export function coparentDutyLopsidedEnabled(): boolean {
+  return process.env[COPARENT_DUTY_LOPSIDED_ENABLED_ENV] === 'true';
+}
+
+/**
+ * A parent asked who has been doing more. Off unless exactly `true`.
+ * The answer string is still a design placeholder, so it does not leave
+ * even when this is on.
+ */
+export const COPARENT_DUTY_BURDEN_SURFACE_ENABLED_ENV = 'COPARENT_DUTY_BURDEN_SURFACE_ENABLED';
+
+export function coparentDutyBurdenSurfaceEnabled(): boolean {
+  return process.env[COPARENT_DUTY_BURDEN_SURFACE_ENABLED_ENV] === 'true';
+}

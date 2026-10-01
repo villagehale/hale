@@ -10,6 +10,8 @@ import { users } from './users.js';
  * that sitting flushed, including lines past the third. A row that is not
  * due yet stays queued. Nothing here is a
  * mailbox subject or a non-kid title: the columns are the template slots.
+ * `decision` is `picked`, `passed`, or (VIL-383) `duty`. Duty uses the same
+ * day and time slots as a pick. The check lives in migration 0143.
  */
 export const groupDecisionSync = pgTable(
   'group_decision_sync',

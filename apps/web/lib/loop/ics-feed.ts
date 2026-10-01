@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, asc, eq, gte, isNotNull, isNull, lte } from 'drizzle-orm';
+import { dutyFeedDescription } from '~/lib/channel/coparent/duty/calendar';
 import { generateFamilyIcs } from './ics.js';
 
 /**
@@ -124,7 +125,7 @@ export async function loadIcsFeed(
   now: Date,
 ): Promise<string | null> {
   const familyRows = await db
-    .select({ id: schema.families.id })
+    .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
     .from(schema.families)
     .where(eq(schema.families.icsShareToken, token))
     .limit(1);
@@ -145,6 +146,9 @@ export async function loadIcsFeed(
       endsAt: schema.familyEvents.endsAt,
       location: schema.familyEvents.location,
       childDob: schema.children.dateOfBirth,
+      childName: schema.children.name,
+      dutyOwnerLabel: schema.familyEvents.dutyOwnerLabel,
+      dutyOwnerKind: schema.familyEvents.dutyOwnerKind,
     })
     .from(schema.familyEvents)
     .leftJoin(schema.children, eq(schema.familyEvents.childId, schema.children.id))
@@ -158,14 +162,26 @@ export async function loadIcsFeed(
     )
     .orderBy(asc(schema.familyEvents.startsAt));
 
+  const language = family.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
   const events = rows.map((row) => {
     const isTeen = row.childDob !== null && deriveStage(row.childDob, now) === 'teenager';
+    const description = dutyFeedDescription({
+      title: row.title,
+      startsAt: row.startsAt,
+      ownerLabel: row.dutyOwnerLabel,
+      ownerKind: row.dutyOwnerKind,
+      childName: row.childName,
+      teen: isTeen,
+      timeZone: 'America/Toronto',
+      language,
+    });
     return {
       id: row.id,
       title: isTeen ? TEEN_REDACTED_TITLE : row.title,
       startsAt: row.startsAt,
       endsAt: row.endsAt,
       location: isTeen ? null : row.location,
+      description,
     };
   });
 

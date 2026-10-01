@@ -1,3 +1,5 @@
+import { classifyKidCalendarItem } from '~/lib/channel/linq/kid-event';
+
 /**
  * Parent-facing lines for duty asks. Sloane locked these strings (VIL-382).
  *
@@ -303,4 +305,66 @@ export function absorbDutyLine(weekly: string, line: string | null | undefined):
   if (!line || line.trim().length === 0) return weekly;
   if (!dutyCopyMayLeave(line)) return weekly;
   return `${weekly.trimEnd()}\n${line.trim()}`;
+}
+
+/**
+ * The second sentence of the locked night-before line. Appended so a duty
+ * echo ends on one next step. Not a new sentence: both night-before
+ * templates already end with these words.
+ */
+export const DUTY_CHANGE_NEXT_EN = 'Say so here if that changes.';
+export const DUTY_CHANGE_NEXT_FR = 'Dites-le ici si ca change.';
+
+/**
+ * TODO-Design — not locked. These must not leave. The memory flag does not
+ * unlock them. `dutyCopyMayLeave` rejects the marker. Listed for Design in
+ * the VIL-383 PR. No counts, no event titles, no STOP wording.
+ */
+export const DUTY_UNDO_TEXT_TODO = 'TODO-Design: Done. Say so here if that is wrong.';
+export const DUTY_BURDEN_ANSWER_TODO =
+  'TODO-Design: I can answer that in words once this line is locked. Want me to keep the counts internal?';
+export const DUTY_DEFAULT_OWNER_TODO =
+  'TODO-Design: Want this as the usual plan? Say yes or no.';
+export const DUTY_LOPSIDED_CONSENT_TODO =
+  'TODO-Design: Want me to keep an eye on keeping things balanced? Say yes or no.';
+export const DUTY_LOPSIDED_NUDGE_TODO = 'TODO-Design: Want the open one? Say yes or no.';
+
+export const DUTY_PLACEHOLDER_COPY = [
+  DUTY_UNDO_TEXT_TODO,
+  DUTY_BURDEN_ANSWER_TODO,
+  DUTY_DEFAULT_OWNER_TODO,
+  DUTY_LOPSIDED_CONSENT_TODO,
+  DUTY_LOPSIDED_NUDGE_TODO,
+] as const;
+
+/** Kid-word title only. A child's name alone does not make an adult title speakable. */
+export function dutyTitleMayBeSpoken(title: string | null | undefined): boolean {
+  const trimmed = title?.trim() ?? '';
+  if (!trimmed) return false;
+  return classifyKidCalendarItem({ title: trimmed, childNames: [] });
+}
+
+/**
+ * One line: the locked owner sentence, then the locked "say so if that
+ * changes" next step. Null when copy is unlocked, a token is missing, or
+ * the event title is not a kid event (that title is not returned).
+ */
+export function dutyOwnerEcho(
+  language: DutyCopyLanguage,
+  params: DutyCopyParams,
+): string | null {
+  if (!dutyTitleMayBeSpoken(params.event)) return null;
+  if (!DUTY_NIGHT_BEFORE_COPY_EN.endsWith(DUTY_CHANGE_NEXT_EN)) return null;
+  if (!DUTY_NIGHT_BEFORE_COPY_FR.endsWith(DUTY_CHANGE_NEXT_FR)) return null;
+  let owner: string;
+  try {
+    owner = dutyCopy('parent_initiated', language, params);
+  } catch {
+    return null;
+  }
+  if (!filled(params.name)) return null;
+  const next = language === 'fr' ? DUTY_CHANGE_NEXT_FR : DUTY_CHANGE_NEXT_EN;
+  const line = `${owner} ${next}`;
+  if (line.includes('\n') || !dutyCopyMayLeave(line)) return null;
+  return line;
 }

@@ -5,9 +5,10 @@ import {
   classifyKidCalendarItem,
   splitKidEvent,
   titleForStorage,
-} from '~/lib/channel/linq/household-calendar';
+} from '~/lib/channel/linq/kid-event';
 import { CONFIDENCE_FLOOR, writeFact } from '~/lib/memory/facts';
 import { DUTY_BOTH_CLAIMED_COPY, DUTY_WHICH_KID_COPY } from './copy';
+import { rememberDutyEffects } from './memory';
 
 /**
  * VIL-381 — one live duty per (event, role).
@@ -573,6 +574,15 @@ export async function commitDutyUpdate(
     await database.insert(schema.auditLog).values(audit);
     await writeFact(database, write);
   }
+  await afterDutyWrite(database, {
+    familyId: input.familyId,
+    actorUserId: input.actorUserId,
+    factKey: stored.factKey,
+    subjectKey: input.subjectKey,
+    state,
+    source: input.source,
+    now: input.now,
+  });
   return { written: true, sent, reason: 'recorded', state, ask, factKey: stored.factKey };
 }
 
@@ -631,7 +641,38 @@ export async function commitDutyRemoval(
     await database.insert(schema.auditLog).values(audit);
     await writeFact(database, write);
   }
+  await afterDutyWrite(database, {
+    familyId: input.familyId,
+    actorUserId: input.actorUserId,
+    factKey: input.factKey,
+    subjectKey: input.factKey,
+    state,
+    source: 'poll',
+    now: input.now,
+  });
   return { written: true, sent, reason: 'recorded', state, ask: null, factKey: input.factKey };
+}
+
+async function afterDutyWrite(
+  database: Database,
+  input: {
+    familyId: string;
+    actorUserId: string;
+    factKey: string;
+    subjectKey: string;
+    state: DutyState;
+    source: string;
+    now: Date;
+  },
+): Promise<void> {
+  try {
+    await rememberDutyEffects(database, input);
+  } catch (err) {
+    console.warn(
+      { code: err instanceof Error ? err.name : 'unknown' },
+      'duty memory: effects did not land',
+    );
+  }
 }
 
 export async function loadLiveDutyFacts(

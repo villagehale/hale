@@ -57,6 +57,17 @@ describe('generateFamilyIcs — RFC 5545 validity', () => {
     expect(ics).toContain('DTSTAMP:20260721T000000Z');
   });
 
+  it('round-trips DESCRIPTION and omits it when unset', () => {
+    const description = "Barton has Maya's swim, Saturday at 3:00pm. Say so here if that changes.";
+    const withOwner = generateFamilyIcs([event({ description })], { now: DTSTAMP });
+    expect(parseSingleEvent(withOwner).description).toBe(description);
+    expect(withOwner).not.toContain('ATTENDEE');
+
+    const without = generateFamilyIcs([event()], { now: DTSTAMP });
+    expect(without).not.toContain('DESCRIPTION:');
+    expect(parseSingleEvent(without).description).toBeUndefined();
+  });
+
   it('omits DTEND when the event has no end instant', () => {
     const ics = generateFamilyIcs([event({ endsAt: null })], { now: DTSTAMP });
     expect(ics).not.toContain('DTEND:');

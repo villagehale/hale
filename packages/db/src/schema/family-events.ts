@@ -63,6 +63,23 @@ export const familyEvents = pgTable(
      * (migration 0106; the outbound_sends idiom on this table). Deliberately no FK:
      * the stamp is a claim key, and both tables already cascade on family deletion. */
     placedByActionId: uuid('placed_by_action_id'),
+    /**
+     * VIL-383. Who currently owns this kid occasion. Overwritten in place;
+     * the previous owner stays in `audit_log` and in the superseded duty
+     * fact. Null until a duty is confirmed. Not a Google Calendar write.
+     */
+    dutyOwnerUserId: uuid('duty_owner_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    /** Spoken first name, or a named non-parent ("Grandma"). Null for "both". */
+    dutyOwnerLabel: text('duty_owner_label'),
+    /** parent | named | both. Null when no duty is attached. */
+    dutyOwnerKind: text('duty_owner_kind'),
+    /** dropoff | pickup | attend. */
+    dutyRole: text('duty_role'),
+    /** Live `duty/…` fact key this projection came from. */
+    dutyFactKey: text('duty_fact_key'),
+    dutySetAt: timestamp('duty_set_at', { withTimezone: true }),
   },
   (table) => ({
     // The composer's read is WHERE family_id = ? AND starts_at IN [window] — index
@@ -72,6 +89,9 @@ export const familyEvents = pgTable(
     placedByActionUniq: uniqueIndex('family_events_placed_by_action_uniq')
       .on(table.placedByActionId)
       .where(sql`${table.placedByActionId} IS NOT NULL`),
+    dutyFactIdx: index('family_events_duty_fact_idx')
+      .on(table.familyId, table.dutyFactKey)
+      .where(sql`${table.dutyFactKey} IS NOT NULL`),
   }),
 );
 

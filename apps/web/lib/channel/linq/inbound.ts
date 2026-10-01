@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
 import { answerParentDutyAsk } from '~/lib/channel/coparent/duty/asks';
 import { coparentDutyAsksArmed } from '~/lib/channel/coparent/duty/flag';
+import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
 import { shadowTapbackIfDuty, shadowWhenArmed } from '~/lib/channel/coparent/duty/shadow';
 import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
@@ -454,6 +455,22 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
         subjectKey: null,
         now: deps.now?.() ?? new Date(),
       });
+      try {
+        await settleDutyMemory(deps.database, {
+          familyId: mapped.familyId,
+          actorUserId: mapped.userId,
+          text: message.text,
+          now: deps.now?.() ?? new Date(),
+          inboundChatId: message.chatId,
+          inboundMessageId: message.messageId,
+          surface: 'group',
+        });
+      } catch (err) {
+        deps.log.warn(
+          { code: err instanceof Error ? err.name : 'unknown' },
+          'linq inbound: duty memory was not recorded',
+        );
+      }
       try {
         await answerParentDutyAsk(deps.database, {
           familyId: mapped.familyId,

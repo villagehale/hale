@@ -1,4 +1,5 @@
 import { type Database, type UnmetIntentLane, schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import type { DeepResearchPayload } from '@hale/tools-contracts';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import { maybeOfferYearRetention } from '~/lib/billing/upgrade-ask';
@@ -28,6 +29,8 @@ import {
 } from '~/lib/channel/intake/identity-challenge';
 import { replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
+import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
@@ -2241,6 +2244,24 @@ async function mirrorActivityDecision(
       body: args.inboundBody,
       now: deps.now(),
     });
+    if (coparentDutyMemoryEnabled()) {
+      const [family] = await deps.database
+        .select({ linqGroupChatId: schema.families.linqGroupChatId })
+        .from(schema.families)
+        .where(eq(schema.families.id, args.job.family_id))
+        .limit(1);
+      if (!(family?.linqGroupChatId && family.linqGroupChatId === originChatId)) {
+        await settleDutyMemory(deps.database, {
+          familyId: args.job.family_id,
+          actorUserId: args.job.parent_user_id,
+          text: args.inboundBody,
+          now: deps.now(),
+          inboundChatId: originChatId,
+          inboundMessageId: null,
+          surface: 'reply',
+        });
+      }
+    }
   } catch (err) {
     deps.log.warn(
       { code: err instanceof Error ? err.name : 'unknown' },

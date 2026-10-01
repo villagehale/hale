@@ -19,6 +19,13 @@ export interface IcsEvent {
   startsAt: Date;
   endsAt: Date | null;
   location: string | null;
+  /**
+   * RFC 5545 §3.8.1.5 DESCRIPTION. The feed is not an iTIP REQUEST, so this
+   * is where a kid-event owner is spoken. ATTENDEE would claim an invitee;
+   * ORGANIZER on invites is already Hale. Omit (null/absent) to leave the
+   * property off the VEVENT.
+   */
+  description?: string | null;
 }
 
 export interface GenerateIcsOptions {
@@ -114,6 +121,9 @@ export function generateFamilyIcs(events: IcsEvent[], options: GenerateIcsOption
     lines.push(`SUMMARY:${escapeText(event.title)}`);
     if (event.location !== null) {
       lines.push(`LOCATION:${escapeText(event.location)}`);
+    }
+    if (event.description) {
+      lines.push(`DESCRIPTION:${escapeText(event.description)}`);
     }
     lines.push('END:VEVENT');
   }
