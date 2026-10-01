@@ -11,6 +11,8 @@ import {
   type ScheduleEvent,
   type ScheduleEventRow,
   buildChannelCoachTools,
+  calendarBlockForCoach,
+  mergeWeekSchedule,
   toScheduleEvent,
 } from './tools';
 
@@ -76,6 +78,17 @@ function fakeReader(events: ScheduleEvent[]): ChannelScheduleReader {
     },
     async resolveEvent(_familyId, eventId) {
       return events.find((e) => e.eventId === eventId) ?? null;
+    },
+    async connectedWeek() {
+      return {
+        calendarSync: 'not_connected',
+        blocks: [],
+        mailSync: 'not_connected',
+        processedCount: 0,
+        since: null,
+        activities: [],
+        trips: [],
+      };
     },
   };
 }
@@ -158,10 +171,19 @@ describe('lookup_week', () => {
 
     const result = (await h.call('lookup_week', {})) as {
       summary: string | null;
+      calendarSync: string;
+      mail: { sync: string; note: string | null; processedCount: number; items: unknown[] };
       events: Array<{ eventId: string; what: string; when: string }>;
     };
 
     expect(result.summary).toBe('A quiet week with two swims.');
+    expect(result.calendarSync).toBe('not_connected');
+    expect(result.mail).toMatchObject({
+      sync: 'not_connected',
+      note: null,
+      processedCount: 0,
+      items: [],
+    });
     expect(result.events.map((e) => e.eventId)).toEqual([MON_SWIM, THU_SWIM]);
     // Family-local wall clock, not UTC: 20:30Z in Toronto (EDT) is 4:30pm Monday.
     expect(result.events[0]?.when).toBe('Mon 4:30pm');
@@ -184,6 +206,64 @@ describe('lookup_week', () => {
     await h.call('lookup_week', {});
 
     expect(h.audit).toHaveLength(1);
+  });
+});
+
+describe('calendar blocks the coach may see', () => {
+  const start = new Date('2026-07-28T13:00:00.000Z');
+
+  it('returns a non-kid block as busy time with no title', () => {
+    const view = calendarBlockForCoach(
+      {
+        startAt: start,
+        endAt: null,
+        allDay: false,
+        kidRelated: false,
+        title: 'Quarterly budget review',
+      },
+      [],
+    );
+
+    expect(view?.title).toBeNull();
+    expect(JSON.stringify(view)).not.toContain('Quarterly');
+  });
+
+  it('replaces a title that names a teenager with the private label', () => {
+    const view = calendarBlockForCoach(
+      {
+        startAt: start,
+        endAt: null,
+        allDay: false,
+        kidRelated: true,
+        title: 'Nadia therapy',
+      },
+      ['Nadia'],
+    );
+
+    expect(view?.title).toBe(PRIVATE_EVENT_WHAT);
+    expect(JSON.stringify(view)).not.toContain('Nadia');
+    expect(JSON.stringify(view)).not.toContain('therapy');
+  });
+
+  it('keeps one copy of a shared swim and drops a block the family event already names', () => {
+    const swim = new Date('2026-07-30T20:30:00.000Z');
+    const dentist = scheduleEvent({
+      id: MON_SWIM,
+      title: 'Dentist',
+      startsAt: start,
+    });
+    const merged = mergeWeekSchedule(
+      [dentist],
+      [
+        { startsAt: swim, endsAt: null, allDay: false, title: 'Maya gymnastics' },
+        { startsAt: swim, endsAt: null, allDay: false, title: 'Maya gymnastics' },
+        { startsAt: start, endsAt: null, allDay: false, title: 'Dentist' },
+        { startsAt: start, endsAt: null, allDay: false, title: null },
+      ],
+    );
+
+    expect(merged.map((entry) => entry.kind)).toEqual(['event', 'busy', 'calendar']);
+    expect(merged.filter((entry) => entry.kind === 'calendar')).toHaveLength(1);
   });
 });
 
