@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
 import type Anthropic from '@anthropic-ai/sdk';
-import type { DraftedAction, ToolResult } from '@hale/types';
+import { HAIKU_MODEL, SONNET5_MODEL } from '@hale/agent';
 import { REQUIRED_CHECKS, REVIEWER_TOOLS, type ReviewerToolName } from '@hale/tools-contracts';
-import { runReviewer, type ReviewerAnthropicClient } from './reviewer.js';
+import type { DraftedAction, ToolResult } from '@hale/types';
+import { describe, expect, it, vi } from 'vitest';
+import { type ReviewerAnthropicClient, runReviewer } from './reviewer.js';
 
 /**
  * These tests script the Anthropic SDK transport (messages.create), NOT the
@@ -158,6 +159,32 @@ describe('runReviewer — hard rule #3 coverage guard', () => {
     expect(verdict.toolResults).toHaveLength(1);
   });
 
+  it('replays signed thinking blocks unchanged on the next tool turn', async () => {
+    const first = assistantMessage([{ name: 'check_pii_leak', input: {} }]);
+    first.content.unshift({
+      type: 'thinking',
+      thinking: 'I should verify PII before deciding.',
+      signature: 'signed-thinking-block',
+    });
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce(
+        assistantMessage([
+          { name: VERDICT_TOOL, input: { verdict: 'reject', rationale: 'PII risk' } },
+        ]),
+      );
+    const client = { messages: { create } } as unknown as ReviewerAnthropicClient;
+
+    await runReviewer(
+      { familyId, draft: draft('send_email') },
+      { client, invokeTool: okExecutor(), loadChildNames: noChildNames },
+    );
+
+    const secondRequest = create.mock.calls[1]?.[0] as Anthropic.MessageCreateParamsNonStreaming;
+    expect(secondRequest.messages[1]).toEqual({ role: 'assistant', content: first.content });
+  });
+
   it('flags for human when the turn cap is exhausted without a verdict', async () => {
     // Every turn the model only calls a check, never submit_verdict → cap hit.
     const turns: ScriptedTurn[] = Array.from({ length: 12 }, () => [
@@ -172,7 +199,7 @@ describe('runReviewer — hard rule #3 coverage guard', () => {
 
     expect(verdict.kind).toBe('flag_for_human');
     expect(verdict.rationale).toContain('turn cap');
-    expect((client.messages.create as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(8);
+    expect(client.messages.create as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(8);
   });
 
   it('DOWNGRADES approve when every required check ran but one returned ok:false (cap exceeded)', async () => {
@@ -199,8 +226,8 @@ describe('runReviewer — hard rule #3 coverage guard', () => {
   });
 
   it('marks the reviewer system prefix cacheable, with the draft outside it', async () => {
-    const create = vi.fn(
-      async (_req: Anthropic.MessageCreateParamsNonStreaming) => assistantMessage([]),
+    const create = vi.fn(async (_req: Anthropic.MessageCreateParamsNonStreaming) =>
+      assistantMessage([]),
     );
     const client = { messages: { create } } as unknown as ReviewerAnthropicClient;
 
@@ -236,6 +263,40 @@ describe('runReviewer — hard rule #3 coverage guard', () => {
   });
 });
 
+describe('runReviewer — role rollout mode', () => {
+  it('uses Haiku only when candidate mode is explicit', async () => {
+    const client = scriptedClient([
+      [{ name: VERDICT_TOOL, input: { verdict: 'reject', rationale: 'candidate result' } }],
+    ]);
+
+    const result = await runReviewer(
+      { familyId, draft: draft('send_email') },
+      { client, modelMode: 'candidate' },
+    );
+
+    const create = client.messages.create as ReturnType<typeof vi.fn>;
+    expect(create.mock.calls[0]?.[0].model).toBe(HAIKU_MODEL);
+    expect(result.runMetrics.modelUsed).toBe(HAIKU_MODEL);
+  });
+
+  it('falls back to Sonnet when the candidate request fails', async () => {
+    const client = scriptedClient([
+      [{ name: VERDICT_TOOL, input: { verdict: 'reject', rationale: 'fallback result' } }],
+    ]);
+    const create = client.messages.create as ReturnType<typeof vi.fn>;
+    create.mockRejectedValueOnce(new Error('candidate unavailable'));
+
+    const result = await runReviewer(
+      { familyId, draft: draft('send_email') },
+      { client, modelMode: 'candidate' },
+    );
+
+    expect(create.mock.calls[0]?.[0].model).toBe(HAIKU_MODEL);
+    expect(create.mock.calls[1]?.[0].model).toBe(SONNET5_MODEL);
+    expect(result.runMetrics.modelUsed).toBe(SONNET5_MODEL);
+  });
+});
+
 describe('runReviewer — calendar_conflict args are injected server-side (rule #3)', () => {
   function calendarDraft(): DraftedAction {
     return {
@@ -263,7 +324,10 @@ describe('runReviewer — calendar_conflict args are injected server-side (rule 
       [
         { name: 'check_action_time_window', input: { familyId } },
         { name: 'check_action_idempotency', input: { familyId } },
-        { name: 'check_calendar_conflict', input: { familyId: 'SPOOFED', startsAt: 'whenever', durationMinutes: 1 } },
+        {
+          name: 'check_calendar_conflict',
+          input: { familyId: 'SPOOFED', startsAt: 'whenever', durationMinutes: 1 },
+        },
       ],
       [{ name: VERDICT_TOOL, input: { verdict: 'approve', rationale: 'slot clear' } }],
     ]);
@@ -287,7 +351,7 @@ describe('runReviewer — calendar_conflict args are injected server-side (rule 
       durationMinutes: 45,
     });
   });
-})
+});
 
 describe('runReviewer — time_window args are injected server-side (rule #3)', () => {
   function timeWindowDraft(
@@ -410,13 +474,16 @@ describe('runReviewer — time_window args are injected server-side (rule #3)', 
     // Kills: restoring the permissive `additionalProperties:true` fallback schema —
     // the model would resume authoring familyId/proposedExecutionAt itself, and a
     // check whose inputs the model chooses is not a check (rule #3).
-    const create = vi.fn(
-      async (_req: Anthropic.MessageCreateParamsNonStreaming) => assistantMessage([]),
+    const create = vi.fn(async (_req: Anthropic.MessageCreateParamsNonStreaming) =>
+      assistantMessage([]),
     );
     const client = { messages: { create } } as unknown as ReviewerAnthropicClient;
 
     await runReviewer(
-      { familyId, draft: timeWindowDraft('calendar_add', { startsAt: '2026-07-10T14:00:00.000Z' }) },
+      {
+        familyId,
+        draft: timeWindowDraft('calendar_add', { startsAt: '2026-07-10T14:00:00.000Z' }),
+      },
       { client, loadChildNames: noChildNames },
     );
 

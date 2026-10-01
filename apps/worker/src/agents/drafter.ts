@@ -1,10 +1,12 @@
-import { z } from 'zod';
+import type Anthropic from '@anthropic-ai/sdk';
+import { DEEPSEEK_MODEL, type LaneConfig, pickLane } from '@hale/agent';
 import type { ActionType, DraftedAction } from '@hale/types';
-import { pickLane } from '@hale/agent';
-import { anthropicClient } from '../anthropic/client.js';
-import { forceToolJson } from './structured.js';
-import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
+import { z } from 'zod';
+import { aiGatewayClient, anthropicClient } from '../anthropic/client.js';
+import { logger } from '../logger.js';
 import { loadPrompt } from '../prompts/loader.js';
+import { type AgentRunMetrics, metricsFromUsage } from './run-metrics.js';
+import { forceToolJson } from './structured.js';
 
 const drafterOutputSchema = z.object({
   payload: z.record(z.string(), z.unknown()),
@@ -45,7 +47,21 @@ interface DrafterRunOutput {
   runMetrics: AgentRunMetrics;
 }
 
-export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutput> {
+type DrafterClient = Pick<Anthropic, 'messages'>;
+
+interface DrafterDeps {
+  currentClient?: DrafterClient;
+  candidateClient?: DrafterClient;
+  modelMode?: 'current' | 'candidate';
+}
+
+const CANDIDATE_LANE: LaneConfig = { model: DEEPSEEK_MODEL, thinking: 'disabled' };
+
+async function runDrafterWithLane(
+  input: DrafterRunInput,
+  client: DrafterClient,
+  lane: LaneConfig,
+): Promise<DrafterRunOutput> {
   const instructions = await loadPrompt('drafter');
 
   const userMessage = JSON.stringify({
@@ -56,10 +72,9 @@ export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutp
     action_template_hint: input.actionTemplateHint ?? null,
   });
 
-  const lane = pickLane('draft');
   const startedAt = Date.now();
   const { value: parsed, usage } = await forceToolJson({
-    client: anthropicClient(),
+    client,
     lane,
     system: instructions,
     userMessage,
@@ -83,4 +98,28 @@ export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutp
     },
     runMetrics: metricsFromUsage('drafter', lane.model, usage, Date.now() - startedAt),
   };
+}
+
+export async function runDrafter(
+  input: DrafterRunInput,
+  deps: DrafterDeps = {},
+): Promise<DrafterRunOutput> {
+  const mode = deps.modelMode ?? 'current';
+  if (mode === 'candidate') {
+    try {
+      return await runDrafterWithLane(
+        input,
+        deps.candidateClient ?? aiGatewayClient(),
+        CANDIDATE_LANE,
+      );
+    } catch {
+      logger.warn(
+        { candidateModel: DEEPSEEK_MODEL, fallbackModel: pickLane('draft').model },
+        'action drafter candidate failed; using current model',
+      );
+      return runDrafterWithLane(input, deps.currentClient ?? anthropicClient(), pickLane('draft'));
+    }
+  }
+
+  return runDrafterWithLane(input, deps.currentClient ?? anthropicClient(), pickLane('draft'));
 }

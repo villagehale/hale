@@ -17,6 +17,8 @@
 //
 // Usage (from apps/worker):
 //   node --env-file=../../.env evals/run-village-search-eval.mjs            # live, then caches
+//   ... --anthropic-model=claude-sonnet-5-5                                 # eval-only candidate
+//   ... --min-samples=50                                                     # expanded synthetic corpus
 //   node --env-file=../../.env evals/run-village-search-eval.mjs --broken   # calibration: must FAIL
 //   node evals/run-village-search-eval.mjs --cached-only                    # CI: replay only, never calls the API
 //
@@ -30,29 +32,21 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
+import { cachedGatewayTextCall, evalRunTag, makeCost, totalUsd } from './lib/harness.mjs';
+import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
 const REPO_ROOT = join(WORKER_ROOT, '..', '..');
-const MODEL_TS_PATH = join(REPO_ROOT, 'packages', 'agent', 'src', 'model.ts');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'parse-village-search.md');
 const CACHE_DIR = join(HERE, 'cache');
 
-const PRICE = { sonnet: { input: 3.0, output: 15.0 } };
+const PRICE = { sonnet: { input: 2.0, output: 10.0 } };
 
 // The teen boundary (STAGE_BOUNDARIES_MONTHS[2]) — a resolved age at/above this must
 // never appear (rule #1). Hard-coded here so the eval has no ~/ import.
 const TEEN_MONTHS = 156;
-
-// --- single sources of truth -----------------------------------------------
-
-async function readSonnetModel() {
-  const src = await readFile(MODEL_TS_PATH, 'utf8');
-  const m = src.match(/SONNET_MODEL\s*=\s*'([^']+)'/);
-  if (!m) throw new Error(`could not parse SONNET_MODEL from ${MODEL_TS_PATH}`);
-  return m[1];
-}
 
 // --- content-addressed cache ------------------------------------------------
 
@@ -79,18 +73,54 @@ function lazyAnthropic() {
 
 // A cache around client.messages.create so a deterministic, fixture-driven loop
 // replays exactly; a miss in --cached-only mode fails loudly rather than call live.
-function makeCachedAgentClient(tag, cachedOnly, getClient, cost) {
+function makeCachedAgentClient(tag, cachedOnly, getClient, cost, anthropicModel) {
   return {
     messages: {
       async create(params) {
+        if (process.env.EVAL_GATEWAY_MODEL) {
+          const system = Array.isArray(params.system)
+            ? params.system.map((block) => block.text).join('\n')
+            : params.system;
+          const userMessage = params.messages
+            .map((message) =>
+              typeof message.content === 'string'
+                ? message.content
+                : message.content
+                    .filter((block) => block.type === 'text')
+                    .map((block) => block.text)
+                    .join('\n'),
+            )
+            .join('\n');
+          const result = await cachedGatewayTextCall({
+            tag: evalRunTag(`gateway:${tag}:agent`),
+            model: process.env.EVAL_GATEWAY_MODEL,
+            system,
+            userMessage,
+            maxTokens: params.max_tokens,
+            cachedOnly,
+            cost,
+          });
+          return {
+            id: 'gateway-eval',
+            type: 'message',
+            role: 'assistant',
+            model: process.env.EVAL_GATEWAY_MODEL,
+            stop_reason: 'end_turn',
+            stop_sequence: null,
+            content: [{ type: 'text', text: result.text }],
+            usage: { input_tokens: 0, output_tokens: 0 },
+          };
+        }
+        const request = anthropicModel ? { ...params, model: anthropicModel } : params;
         const canonical = JSON.stringify({
-          model: params.model,
-          system: params.system,
-          tools: params.tools,
-          messages: params.messages,
-          max_tokens: params.max_tokens,
+          model: request.model,
+          system: request.system,
+          tools: request.tools,
+          messages: request.messages,
+          max_tokens: request.max_tokens,
         });
-        const key = cacheKey(`${tag}:agent`, canonical);
+        const runSuffix = process.env.EVAL_RUN_ID ? `:${process.env.EVAL_RUN_ID}` : '';
+        const key = cacheKey(`${tag}:agent${runSuffix}`, canonical);
         const cached = await cacheGet(key);
         if (cached) return cached.response;
         if (cachedOnly) {
@@ -99,9 +129,12 @@ function makeCachedAgentClient(tag, cachedOnly, getClient, cost) {
           );
           process.exit(1);
         }
-        const response = await getClient().messages.create(params);
+        const startedAt = performance.now();
+        const response = await getClient().messages.create(request);
+        cost.latencies.push(Math.round(performance.now() - startedAt));
         cost.liveCalls += 1;
-        cost.sonnetIn += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
+        cost.sonnetIn +=
+          response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
         cost.sonnetOut += response.usage.output_tokens;
         const stored = {
           id: response.id,
@@ -253,26 +286,55 @@ const BROKEN_ANSWER = JSON.stringify({
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const preflight = process.argv.includes('--preflight');
+  const candidateModel = process.argv
+    .find((arg) => arg.startsWith('--anthropic-model='))
+    ?.slice('--anthropic-model='.length);
+  const minSamplesArg = process.argv.find((arg) => arg.startsWith('--min-samples='))?.split('=')[1];
+  const minSamples = minSamplesArg === undefined ? null : Number(minSamplesArg);
+  if (minSamples !== null && (!Number.isInteger(minSamples) || minSamples < 1)) {
+    throw new Error('--min-samples must be a positive integer');
+  }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const model = await readSonnetModel();
   const getClient = lazyAnthropic();
-  const cost = { liveCalls: 0, sonnetIn: 0, sonnetOut: 0 };
+  const cost = { ...makeCost(), sonnetIn: 0, sonnetOut: 0, latencies: [] };
 
   const skill = await agent.loadSkill(SKILL_PATH);
+  const model =
+    process.env.EVAL_GATEWAY_MODEL ?? candidateModel ?? agent.pickModel(skill.meta.task);
+  const fixtures =
+    minSamples === null
+      ? FIXTURES
+      : expandSyntheticFixtures('village-search', FIXTURES, minSamples, {
+          vary: (fixture, { reference }) => {
+            fixture.prompt += ` (request ${reference})`;
+          },
+          visibleInput: (fixture) => ({ prompt: fixture.prompt, context: fixture.context }),
+        });
 
   console.log(
     `village-search-eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | model=${model}`,
   );
   console.log('');
+  if (preflight) {
+    console.log(`fixtures: ${fixtures.length} | max subject calls: ${fixtures.length}`);
+    return;
+  }
 
   const failing = [];
-  for (const fixture of FIXTURES) {
+  for (const fixture of fixtures) {
     let answer;
     if (broken) {
       answer = BROKEN_ANSWER;
     } else {
-      const client = makeCachedAgentClient(`village-search:${fixture.id}`, cachedOnly, getClient, cost);
+      const client = makeCachedAgentClient(
+        `village-search:${fixture.id}`,
+        cachedOnly,
+        getClient,
+        cost,
+        candidateModel,
+      );
       const run = await agent.runAgent({
         skill,
         context: {
@@ -301,12 +363,21 @@ async function main() {
     }
   }
 
-  const estUsd = (cost.sonnetIn / 1e6) * PRICE.sonnet.input + (cost.sonnetOut / 1e6) * PRICE.sonnet.output;
+  const estUsd = process.env.EVAL_GATEWAY_MODEL
+    ? totalUsd(cost)
+    : (cost.sonnetIn / 1e6) * PRICE.sonnet.input + (cost.sonnetOut / 1e6) * PRICE.sonnet.output;
   console.log('');
-  console.log(`live API calls this run: ${cost.liveCalls} | estimated cost: $${estUsd.toFixed(4)} USD`);
+  console.log(
+    `live API calls this run: ${cost.liveCalls} | estimated cost: $${estUsd.toFixed(4)} USD`,
+  );
+  if (cost.latencies.length > 0) {
+    const sorted = [...cost.latencies].sort((a, b) => a - b);
+    const percentile = (q) => sorted[Math.ceil(q * sorted.length) - 1];
+    console.log(`latency: p50=${percentile(0.5)}ms p95=${percentile(0.95)}ms`);
+  }
   console.log('');
   console.log('--- gate ---');
-  console.log(`fixtures failing checks: ${failing.length}/${FIXTURES.length}`);
+  console.log(`fixtures failing checks: ${failing.length}/${fixtures.length}`);
 
   const allPass = failing.length === 0;
   if (!broken) {
@@ -314,7 +385,9 @@ async function main() {
     process.exit(allPass ? 0 : 1);
   }
   const calibrated = !allPass;
-  console.log(`broken-mode calibration (must fail at least one): ${calibrated ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
+  console.log(
+    `broken-mode calibration (must fail at least one): ${calibrated ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
+  );
   process.exit(calibrated ? 0 : 1);
 }
 

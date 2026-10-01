@@ -43,6 +43,7 @@ import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
   cachedTextCall,
+  evalRunTag,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -405,7 +406,7 @@ function checkMessage(fixture, message, judgeScore, attributionScore) {
 
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring the FIRST useful text message Hale sends a parent,',
-  'sixty seconds after they texted their kids\' names to a number on a poster. You are',
+  "sixty seconds after they texted their kids' names to a number on a poster. You are",
   'given the FACTS Hale decided on and the message written from them.',
   'Score VOICE & FAITHFULNESS on a 1-5 integer scale. A 5 sounds like a competent',
   'neighbour who already looked something up: quiet, plain-spoken, specific, short,',
@@ -419,7 +420,7 @@ const JUDGE_SYSTEM = [
   'the facts object before you call anything invented: a town, a cycle name, a date, a',
   'time, an activity title, an age range or a name that appears there is GIVEN, however',
   'specific it looks, and naming it is the message doing its job.',
-  '`registrationAbsence` is this town\'s LAST cycle - its name and the morning it opened.',
+  "`registrationAbsence` is this town's LAST cycle - its name and the morning it opened.",
   'It is not a claim that anything is shut and it is not a request for the next cycle.',
   'When it carries `stillOpenPage: true` that cycle is the CURRENT one, still the one to',
   'act on: a message that says it opened on `lastOpenedAtLocal` and stops is exactly',
@@ -473,7 +474,7 @@ const ATTRIBUTION_JUDGE_SYSTEM = [
   'indistinguishable from a piece of trivia a stranger sent.',
   'Score 1 ALSO for the opposite failure - a look with specifics in it THE FACTS DO NOT',
   'CARRY. The test is the facts object in front of you, not your sense of what Hale could',
-  'plausibly know: a town, a cycle name, a date, a time, an activity title or a child\'s',
+  "plausibly know: a town, a cycle name, a date, a time, an activity title or a child's",
   'name that appears in those facts is GIVEN, and naming it inside the look is the message',
   'reporting back, never an invented scope. A postal code, an area swept, a count of',
   'places checked, a time the check ran or a schedule it runs on appears in no payload, so',
@@ -509,13 +510,22 @@ const BROKEN_MESSAGE = [
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const candidateModel = process.argv
+    .find((arg) => arg.startsWith('--anthropic-model='))
+    ?.slice('--anthropic-model='.length);
+  const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
+  const maxTokensArg = process.argv.find((arg) => arg.startsWith('--max-tokens='))?.split('=')[1];
+  const maxTokens = maxTokensArg === undefined ? MAX_TOKENS : Number(maxTokensArg);
+  if (!Number.isInteger(maxTokens) || maxTokens < 1) {
+    throw new Error('--max-tokens must be a positive integer');
+  }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const getClient = lazyAnthropic();
   const cost = makeCost();
 
   const skill = await agent.loadSkill(RADAR_SKILL_PATH);
-  const model = agent.pickModel(skill.meta.task);
+  const model = candidateModel ?? agent.pickModel(skill.meta.task);
   const judgeModel = await readJudgeModel();
   // MEDIAN OF THREE for voice, and it is this rubric that needs it. The two judges pull
   // against each other on the SAME sentence by construction: attribution wants the few
@@ -547,10 +557,14 @@ async function main() {
   console.log(
     `radar-eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
   );
-  console.log(`corpus: ${RADAR_FIXTURES.length} decision fixtures\n`);
+  const fixtures = only ? RADAR_FIXTURES.filter((fixture) => fixture.id === only) : RADAR_FIXTURES;
+  if (fixtures.length !== (only ? 1 : RADAR_FIXTURES.length)) {
+    throw new Error(`fixture did not match --only=${only}`);
+  }
+  console.log(`corpus: ${fixtures.length} decision fixtures\n`);
 
   const results = [];
-  for (const fixture of RADAR_FIXTURES) {
+  for (const fixture of fixtures) {
     const context = radarVoiceContext(fixture.decision);
     let message;
     if (broken) {
@@ -561,11 +575,11 @@ async function main() {
       // same serialized context (packages/agent/src/agent.ts buildSystemPrompt /
       // initialUserContent).
       const { text } = await cachedTextCall({
-        tag: `radar:compose:${fixture.id}`,
+        tag: evalRunTag(`radar:compose:${fixture.id}`),
         model,
         system: `${skill.instructions}\n\n## Context\n\n${JSON.stringify(context)}`,
         userMessage: JSON.stringify(context),
-        maxTokens: MAX_TOKENS,
+        maxTokens,
         cachedOnly,
         getClient,
         cost,
@@ -603,14 +617,19 @@ async function main() {
     ]
       .filter(Boolean)
       .join(' ');
-    console.log(`${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${scoreLabel ? `  ${scoreLabel}` : ''}`);
+    console.log(
+      `${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${scoreLabel ? `  ${scoreLabel}` : ''}`,
+    );
     for (const failure of result.failures) console.log(`        - ${failure}`);
   }
 
   const passes = results.filter((r) => r.failures.length === 0);
-  const fabricating = results.filter((r) => r.message && fabrications(r.message, radarVoiceContext(r.fixture.decision)).length > 0);
+  const fabricating = results.filter(
+    (r) => r.message && fabrications(r.message, radarVoiceContext(r.fixture.decision)).length > 0,
+  );
   const overBudget = results.filter(
-    (r) => r.message && smsSegments(payloadOf(r.fixture.decision, r.message)) > MAX_PAYLOAD_SEGMENTS,
+    (r) =>
+      r.message && smsSegments(payloadOf(r.fixture.decision, r.message)) > MAX_PAYLOAD_SEGMENTS,
   );
   const asking = results.filter((r) => r.message?.includes('?'));
   const scores = results.map((r) => r.score).filter((s) => typeof s === 'number');

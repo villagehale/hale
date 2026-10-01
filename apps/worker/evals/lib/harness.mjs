@@ -30,15 +30,26 @@ const CONTEXT_TS = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'context.ts');
 export const PRICE = {
   'claude-haiku-4-5': { input: 1.0, output: 5.0 },
   'claude-sonnet-4-6': { input: 3.0, output: 15.0 },
-  // Sonnet 5 list price; intro pricing ($2/$10) applies through 2026-08-31, so
-  // the entry stays correct once list pricing resumes.
-  'claude-sonnet-5': { input: 3.0, output: 15.0 },
+  // Anthropic made Sonnet 5's introductory $2/$10 pricing permanent on 2026-08-10.
+  'claude-sonnet-5': { input: 2.0, output: 10.0 },
+  'claude-sonnet-5.5': { input: 2.0, output: 10.0 },
+  'claude-sonnet-5-5': { input: 2.0, output: 10.0 },
   'claude-opus-4-8': { input: 15.0, output: 75.0 },
   // Opus 5, matching packages/agent/src/cost.ts (the runtime's own LIST table). It was
   // MISSING while the deep synthesis lane was already spending on it, and `totalUsd`
   // skipped what it could not price — so a live eval run reported $0.0000 and looked
   // free. An unpriced model is now loud (see below) rather than costless.
   'claude-opus-5': { input: 5.0, output: 25.0 },
+  'claude-opus-5.5': { input: 4.0, output: 20.0 },
+  'claude-opus-5-5': { input: 4.0, output: 20.0 },
+  'deepseek/deepseek-v4.1-flash': { input: 0.15, output: 0.6 },
+  'google/gemini-3.5-flash-lite': { input: 0.3, output: 2.5 },
+  'google/gemini-3.8-flash': { input: 0.75, output: 3.75 },
+  'openai/gpt-5.4-nano': { input: 0.2, output: 1.25 },
+  'openai/gpt-5.6-luna': { input: 0.2, output: 1.2 },
+  'openai/gpt-6-luna': { input: 0.1, output: 0.5 },
+  'openai/gpt-6-sol': { input: 2.0, output: 10.0 },
+  'openai/gpt-6.1-sol': { input: 2.0, output: 10.0 },
 };
 
 // --- single sources of truth ------------------------------------------------
@@ -158,6 +169,27 @@ export function totalUsd(cost) {
   return usd;
 }
 
+const EVAL_LATENCIES = new Map();
+
+export function noteLatency(model, latencyMs) {
+  if (!process.env.EVAL_PRINT_TELEMETRY || !Number.isFinite(latencyMs)) return;
+  const values = EVAL_LATENCIES.get(model) ?? [];
+  values.push(latencyMs);
+  EVAL_LATENCIES.set(model, values);
+}
+
+if (process.env.EVAL_PRINT_TELEMETRY) {
+  process.on('exit', () => {
+    for (const [model, values] of EVAL_LATENCIES) {
+      const sorted = [...values].sort((a, b) => a - b);
+      const percentile = (q) => sorted[Math.ceil(q * sorted.length) - 1];
+      console.info(
+        `eval latency | model=${model} calls=${values.length} p50=${percentile(0.5)}ms p95=${percentile(0.95)}ms`,
+      );
+    }
+  });
+}
+
 // --- lazy client (never built in --cached-only) -----------------------------
 
 export function lazyAnthropic() {
@@ -166,6 +198,63 @@ export function lazyAnthropic() {
     client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     return client;
   };
+}
+
+let gatewayAnthropic;
+
+/** Anthropic-compatible Gateway client for eval subjects only. Judges keep their
+ * normal Anthropic client so a candidate never grades itself. */
+export function evalSubjectClient(getCurrentClient) {
+  if (!process.env.EVAL_GATEWAY_MODEL) return getCurrentClient();
+  const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_KEY ?? process.env.JEV_KEY;
+  if (!apiKey) throw new Error('Set AI_GATEWAY_API_KEY, VERCEL_KEY, or JEV_KEY');
+  gatewayAnthropic ??= new Anthropic({
+    apiKey,
+    baseURL: 'https://ai-gateway.vercel.sh',
+  });
+  return gatewayAnthropic;
+}
+
+/** Replace only the subject model. The Gateway's Anthropic-compatible API maps
+ * `thinking: disabled`; without it DeepSeek can spend the whole short-copy budget
+ * reasoning and return no text. `output_config` remains Claude-specific. */
+export function evalSubjectRequest(params) {
+  if (!process.env.EVAL_GATEWAY_MODEL) return params;
+  const { output_config: _outputConfig, ...request } = params;
+  return {
+    ...request,
+    model: process.env.EVAL_GATEWAY_MODEL,
+    thinking: { type: 'disabled' },
+  };
+}
+
+const SONNET_55_IDS = new Set(['claude-sonnet-5-5', 'claude-sonnet-5.5']);
+const OPUS_55_IDS = new Set(['claude-opus-5-5', 'claude-opus-5.5']);
+
+/** Normalize only the breaking request-shape changes of the current Claude 5.5
+ * candidates. This is eval-only: production lane routing remains untouched. */
+export function evalAnthropicRequest(params, model = params.model) {
+  if (!SONNET_55_IDS.has(model) && !OPUS_55_IDS.has(model)) {
+    return model === params.model ? params : { ...params, model };
+  }
+
+  if (OPUS_55_IDS.has(model) && params.thinking?.type === 'disabled') {
+    throw new Error('Claude Opus 5.5 requires adaptive thinking; disabled is not supported');
+  }
+
+  const forcedTool = ['tool', 'any'].includes(params.tool_choice?.type);
+  return {
+    ...params,
+    model,
+    ...(SONNET_55_IDS.has(model) && params.thinking?.type === 'disabled'
+      ? { thinking: { type: 'between_tools' } }
+      : {}),
+    ...(forcedTool ? { tool_choice: { type: 'auto' } } : {}),
+  };
+}
+
+export function evalRunTag(tag) {
+  return process.env.EVAL_RUN_ID ? `${tag}:run:${process.env.EVAL_RUN_ID}` : tag;
 }
 
 function failCachedMiss(tag, key) {
@@ -181,18 +270,18 @@ function failCachedMiss(tag, key) {
 // input plus measured latency. Replays exactly from cache on a hit.
 
 export async function cachedToolCall(opts) {
+  const gatewayModel = opts.gatewayModel ?? process.env.EVAL_GATEWAY_MODEL;
+  if (gatewayModel) {
+    const runSuffix = process.env.EVAL_RUN_ID ? `:${process.env.EVAL_RUN_ID}` : '';
+    return cachedGatewayToolCall({
+      ...opts,
+      tag: `gateway:${opts.tag}${runSuffix}`,
+      model: gatewayModel,
+    });
+  }
   const { tag, model, system, userMessage, toolName, toolSchema, cachedOnly, getClient, cost } =
     opts;
-  const canonical = JSON.stringify({ model, system, userMessage, toolName, toolSchema });
-  const key = cacheKey(tag, canonical);
-
-  const cached = await cacheGet(key);
-  if (cached) return { value: cached.value, latencyMs: cached.latencyMs, cached: true };
-
-  if (cachedOnly) failCachedMiss(tag, key);
-
-  const startedAt = Date.now();
-  const response = await getClient().messages.create({
+  const request = evalAnthropicRequest({
     model,
     max_tokens: opts.maxTokens ?? 1024,
     system,
@@ -201,11 +290,28 @@ export async function cachedToolCall(opts) {
         name: toolName,
         description: opts.toolDescription ?? 'Return the result.',
         input_schema: toolSchema,
+        ...(opts.strictTool ? { strict: true } : {}),
       },
     ],
-    tool_choice: { type: 'tool', name: toolName },
+    tool_choice: opts.toolChoice ?? { type: 'tool', name: toolName },
+    ...(opts.thinking ? { thinking: opts.thinking } : {}),
+    ...(opts.effort ? { output_config: { effort: opts.effort } } : {}),
     messages: [{ role: 'user', content: userMessage }],
   });
+  const canonical = JSON.stringify(request);
+  const key = cacheKey(tag, canonical);
+
+  const cached = await cacheGet(key);
+  if (cached) {
+    noteLatency(model, cached.latencyMs);
+    if (Array.isArray(cost.latencies)) cost.latencies.push(cached.latencyMs);
+    return { value: cached.value, latencyMs: cached.latencyMs, cached: true };
+  }
+
+  if (cachedOnly) failCachedMiss(tag, key);
+
+  const startedAt = Date.now();
+  const response = await getClient().messages.create(request);
   const latencyMs = Date.now() - startedAt;
   // TRUNCATION IS NOT AN ANSWER, and it must never be CACHED as one. A response cut at
   // max_tokens leaves the forced tool call incomplete — usually `input: {}` — which reads
@@ -222,18 +328,39 @@ export async function cachedToolCall(opts) {
   if (!toolUse) throw new Error(`${tag}: model returned no ${toolName} tool call`);
   noteUsage(cost, model, response.usage);
   await cachePut(key, { value: toolUse.input, latencyMs });
+  noteLatency(model, latencyMs);
+  if (Array.isArray(cost.latencies)) cost.latencies.push(latencyMs);
   return { value: toolUse.input, latencyMs, cached: false };
 }
 
 // --- cached free-text call (for the coach answer arm) -----------------------
 
 export async function cachedTextCall(opts) {
+  const gatewayModel = opts.gatewayModel ?? process.env.EVAL_GATEWAY_MODEL;
+  if (gatewayModel) {
+    const runSuffix = process.env.EVAL_RUN_ID ? `:${process.env.EVAL_RUN_ID}` : '';
+    return cachedGatewayTextCall({
+      ...opts,
+      tag: `gateway:${opts.tag}${runSuffix}`,
+      model: gatewayModel,
+    });
+  }
   const { tag, model, system, userMessage, cachedOnly, getClient, cost } = opts;
-  const canonical = JSON.stringify({ model, system, userMessage });
+  const request = evalAnthropicRequest({
+    model,
+    max_tokens: opts.maxTokens ?? 1024,
+    system,
+    ...(opts.thinking ? { thinking: opts.thinking } : {}),
+    ...(opts.effort ? { output_config: { effort: opts.effort } } : {}),
+    messages: [{ role: 'user', content: userMessage }],
+  });
+  const canonical = JSON.stringify(request);
   const key = cacheKey(tag, canonical);
 
   const cached = await cacheGet(key);
   if (cached) {
+    noteLatency(model, cached.latencyMs);
+    if (Array.isArray(cost.latencies)) cost.latencies.push(cached.latencyMs);
     return {
       text: cached.text,
       latencyMs: cached.latencyMs,
@@ -245,12 +372,7 @@ export async function cachedTextCall(opts) {
   if (cachedOnly) failCachedMiss(tag, key);
 
   const startedAt = Date.now();
-  const response = await getClient().messages.create({
-    model,
-    max_tokens: opts.maxTokens ?? 1024,
-    system,
-    messages: [{ role: 'user', content: userMessage }],
-  });
+  const response = await getClient().messages.create(request);
   const latencyMs = Date.now() - startedAt;
   const text = response.content
     .filter((b) => b.type === 'text')
@@ -273,7 +395,106 @@ export async function cachedTextCall(opts) {
   const inputTokens =
     response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
   await cachePut(key, { text, latencyMs, inputTokens });
+  noteLatency(model, latencyMs);
+  if (Array.isArray(cost.latencies)) cost.latencies.push(latencyMs);
   return { text, latencyMs, inputTokens, cached: false };
+}
+
+const GATEWAY_ENDPOINT = 'https://ai-gateway.vercel.sh/v1/chat/completions';
+
+function gatewayKey() {
+  const key = process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_KEY ?? process.env.JEV_KEY;
+  if (!key) throw new Error('Set AI_GATEWAY_API_KEY, VERCEL_KEY, or JEV_KEY');
+  return key;
+}
+
+async function gatewayCall(opts, tool) {
+  const request = {
+    model: opts.model,
+    max_tokens: opts.maxTokens ?? 1024,
+    reasoning: { effort: 'none' },
+    providerOptions: { gateway: { sort: 'ttft' } },
+    messages: [
+      { role: 'system', content: opts.system },
+      { role: 'user', content: opts.userMessage },
+    ],
+    ...(tool
+      ? {
+          tools: [
+            {
+              type: 'function',
+              function: {
+                name: opts.toolName,
+                description: opts.toolDescription ?? 'Return the result.',
+                parameters: opts.toolSchema,
+              },
+            },
+          ],
+          tool_choice: { type: 'function', function: { name: opts.toolName } },
+        }
+      : {}),
+  };
+  const key = cacheKey(opts.tag, JSON.stringify(request));
+  const cached = await cacheGet(key);
+  if (cached) {
+    noteLatency(opts.model, cached.latencyMs);
+    if (Array.isArray(opts.cost.latencies)) opts.cost.latencies.push(cached.latencyMs);
+    return { ...cached, cached: true };
+  }
+  if (opts.cachedOnly) failCachedMiss(opts.tag, key);
+
+  const startedAt = performance.now();
+  const response = await fetch(GATEWAY_ENDPOINT, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${gatewayKey()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`${opts.tag}: Gateway request failed (${response.status})`);
+  if (body.choices?.[0]?.finish_reason === 'length') {
+    throw new Error(`${opts.tag}: Gateway response truncated at max_tokens`);
+  }
+  const message = body.choices?.[0]?.message;
+  const usage = {
+    input_tokens: body.usage?.prompt_tokens ?? body.usage?.input_tokens ?? 0,
+    output_tokens: body.usage?.completion_tokens ?? body.usage?.output_tokens ?? 0,
+  };
+  noteUsage(opts.cost, opts.model, usage);
+  const latencyMs = Math.round(performance.now() - startedAt);
+  noteLatency(opts.model, latencyMs);
+  if (Array.isArray(opts.cost.latencies)) opts.cost.latencies.push(latencyMs);
+
+  if (!tool) {
+    const text = message?.content?.trim();
+    if (!text) throw new Error(`${opts.tag}: Gateway returned no text`);
+    const record = { text, latencyMs };
+    await cachePut(key, record);
+    return { ...record, cached: false };
+  }
+
+  const call = message?.tool_calls?.find((item) => item.function?.name === opts.toolName);
+  const raw = call?.function?.arguments ?? message?.content;
+  let value;
+  try {
+    value = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  } catch {
+    throw new Error(`${opts.tag}: Gateway returned invalid JSON`);
+  }
+  if (!value || typeof value !== 'object') {
+    throw new Error(`${opts.tag}: Gateway returned no ${opts.toolName} result`);
+  }
+  const record = { value, latencyMs };
+  await cachePut(key, record);
+  return { ...record, cached: false };
+}
+
+export function cachedGatewayToolCall(opts) {
+  return gatewayCall(opts, true);
+}
+
+export function cachedGatewayTextCall(opts) {
+  return gatewayCall(opts, false);
 }
 
 // --- LLM-as-judge (cached, real haiku) --------------------------------------
@@ -360,7 +581,8 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
   const samples = options?.samples ?? 1;
 
   async function draw(tag, userMessage, index) {
-    const sampleTag = index === 0 ? `${tagPrefix}:judge:${tag}` : `${tagPrefix}:judge:${tag}#${index}`;
+    const sampleTag =
+      index === 0 ? `${tagPrefix}:judge:${tag}` : `${tagPrefix}:judge:${tag}#${index}`;
     const key = cacheKey(sampleTag, `${model}\n${judgeSystem}\n${userMessage}`);
     const cached = await cacheGet(key);
     if (cached && isVerdict(cached.parsed)) return cached.parsed;

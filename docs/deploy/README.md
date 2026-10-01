@@ -43,18 +43,18 @@ PIPEDA + Quebec Law 25 + CASL).
 ```
 
 **The web/worker split is a process boundary, not a folder split.** `apps/web`
-*enqueues* and *reads*; the long-running agent compute (LLM calls over newborn
+_enqueues_ and _reads_; the long-running agent compute (LLM calls over newborn
 data) runs only on the Fly worker. The async contract between them is the
 pg-boss `events.ingested` / `actions.approved` queues in Postgres.
 
 ### Data-residency rationale
 
-| Concern | Placement | Why |
-|---|---|---|
-| Newborn data at rest | Supabase **ca-central-1 (Toronto)** | PIPEDA / Law 25 — data must not leave Canada. |
-| Agent compute over that data | Fly **yyz (Toronto)** | The worker reads families/children/events and calls the LLM; it runs in-region so sensitive payloads are processed in Canada. |
-| Web layer (Vercel) | **Global edge**, functions pinned `yyz1` | Vercel functions are best-effort region-pinned, and the CDN/edge is global. This is acceptable **because the web layer only enqueues + reads** — it is not where agent reasoning over newborn data happens. `regions: ["yyz1"]` keeps the serverless functions in Toronto where the plan allows; the residency guarantee rests on Supabase + Fly, not Vercel. |
-| Object storage | Supabase Storage ca-central-1 | Same residency rule as Postgres. |
+| Concern                      | Placement                                | Why                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Newborn data at rest         | Supabase **ca-central-1 (Toronto)**      | PIPEDA / Law 25 — data must not leave Canada.                                                                                                                                                                                                                                                                                                                 |
+| Agent compute over that data | Fly **yyz (Toronto)**                    | The worker reads families/children/events and calls the LLM; it runs in-region so sensitive payloads are processed in Canada.                                                                                                                                                                                                                                 |
+| Web layer (Vercel)           | **Global edge**, functions pinned `yyz1` | Vercel functions are best-effort region-pinned, and the CDN/edge is global. This is acceptable **because the web layer only enqueues + reads** — it is not where agent reasoning over newborn data happens. `regions: ["yyz1"]` keeps the serverless functions in Toronto where the plan allows; the residency guarantee rests on Supabase + Fly, not Vercel. |
+| Object storage               | Supabase Storage ca-central-1            | Same residency rule as Postgres.                                                                                                                                                                                                                                                                                                                              |
 
 ---
 
@@ -65,31 +65,32 @@ full app env; the table below is the **deploy-time** subset per platform.
 
 ### Fly.io — worker (`fly secrets set <NAME>=...`)
 
-| Secret | Purpose | Required? |
-|---|---|---|
-| `DATABASE_URL` | Postgres connection (pooled) — pg-boss + Drizzle | **Yes** (worker won't boot without it — `config.ts` zod `.url()`). |
-| `ANTHROPIC_API_KEY` | Claude API for the agent pipeline | Yes (prod). |
-| `LANGFUSE_PUBLIC_KEY` | Prompt fetch + tracing (prompts live in Langfuse — rule #2) | Yes (prod). |
-| `LANGFUSE_SECRET_KEY` | Langfuse server auth | Yes (prod). |
-| `LANGFUSE_HOST` | Langfuse instance URL | Yes (prod). |
-| `RESEND_API_KEY` | Outbound email sends (executor) | Yes (any email action). |
-| `RESEND_FROM` | Verified sender (default `hello@villagehale.com`) | Yes (any email action). |
-| `INTERNAL_API_SHARED_SECRET` | web↔worker internal auth | If used. |
+| Secret                       | Purpose                                                     | Required?                                                          |
+| ---------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------ |
+| `DATABASE_URL`               | Postgres connection (pooled) — pg-boss + Drizzle            | **Yes** (worker won't boot without it — `config.ts` zod `.url()`). |
+| `ANTHROPIC_API_KEY`          | Claude API for the agent pipeline                           | Yes (prod).                                                        |
+| `LANGFUSE_PUBLIC_KEY`        | Prompt fetch + tracing (prompts live in Langfuse — rule #2) | Yes (prod).                                                        |
+| `LANGFUSE_SECRET_KEY`        | Langfuse server auth                                        | Yes (prod).                                                        |
+| `LANGFUSE_HOST`              | Langfuse instance URL                                       | Yes (prod).                                                        |
+| `RESEND_API_KEY`             | Outbound email sends (executor)                             | Yes (any email action).                                            |
+| `RESEND_FROM`                | Verified sender (default `hello@villagehale.com`)           | Yes (any email action).                                            |
+| `INTERNAL_API_SHARED_SECRET` | web↔worker internal auth                                    | If used.                                                           |
 
 ### Vercel — web + site (Project → Settings → Environment Variables, Production)
 
-| Secret | web | site | Purpose |
-|---|:--:|:--:|---|
-| `DATABASE_URL` | ✓ | — | Reads + enqueue |
-| `DATABASE_DIRECT_URL` | ✓ | — | Build-time / non-pooled |
-| `ANTHROPIC_API_KEY` | ✓ | — | Web agent pipeline + scheduled cron agents (digest / inference) |
-| `RESEND_API_KEY` | ✓ | — | Daily-digest email send (from `hello@villagehale.com`; `RESEND_FROM` optional override) |
-| `CRON_SECRET` | ✓ | — | **Required for the scheduled agents.** Vercel sends it as `Authorization: Bearer <CRON_SECRET>`; the cron routes 401 (do no work, no spend) without a match. See [Scheduled agents (cron)](#scheduled-agents-cron). |
-| `CLERK_SECRET_KEY` | ✓ | — | Auth |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | ✓ | — | Auth (public) |
-| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` | ✓ | — | Tracing |
-| `APP_URL` / `WORKER_URL` | ✓ | — | Cross-service URLs |
-| (none app-specific) | — | ✓ | site is static marketing |
+| Secret                                                          | web | site | Purpose                                                                                                                                                                                                             |
+| --------------------------------------------------------------- | :-: | :--: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                                  |  ✓  |  —   | Reads + enqueue                                                                                                                                                                                                     |
+| `DATABASE_DIRECT_URL`                                           |  ✓  |  —   | Build-time / non-pooled                                                                                                                                                                                             |
+| `ANTHROPIC_API_KEY`                                             |  ✓  |  —   | Web agent pipeline + scheduled cron agents (digest / inference)                                                                                                                                                     |
+| `AI_GATEWAY_API_KEY`                                            |  ✓  |  —   | Only when a VIL-376 JEV candidate is enabled.                                                                                                                                                                       |
+| `RESEND_API_KEY`                                                |  ✓  |  —   | Daily-digest email send (from `hello@villagehale.com`; `RESEND_FROM` optional override)                                                                                                                             |
+| `CRON_SECRET`                                                   |  ✓  |  —   | **Required for the scheduled agents.** Vercel sends it as `Authorization: Bearer <CRON_SECRET>`; the cron routes 401 (do no work, no spend) without a match. See [Scheduled agents (cron)](#scheduled-agents-cron). |
+| `CLERK_SECRET_KEY`                                              |  ✓  |  —   | Auth                                                                                                                                                                                                                |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`                             |  ✓  |  —   | Auth (public)                                                                                                                                                                                                       |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` |  ✓  |  —   | Tracing                                                                                                                                                                                                             |
+| `APP_URL` / `WORKER_URL`                                        |  ✓  |  —   | Cross-service URLs                                                                                                                                                                                                  |
+| (none app-specific)                                             |  —  |  ✓   | site is static marketing                                                                                                                                                                                            |
 
 ### GitHub Actions — CI/CD deploy (`Settings → Secrets → Actions`)
 
@@ -98,10 +99,38 @@ These drive `.github/workflows/deploy.yml` (which has exactly two legs —
 **A leg whose secret is absent is skipped with a notice; the pipeline stays
 green. A leg that runs without its required secret fails loud.**
 
-| Secret | Gates leg | Notes |
-|---|---|---|
+| Secret                | Gates leg                | Notes                                                                                                                                                                    |
+| --------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `DATABASE_DIRECT_URL` | `migrate` (+ drift gate) | **Required for prod migrations to apply at all** — see [Migration drift guard](#migration-drift-guard). Direct (non-pooled) URL — drizzle-kit runs DDL in a transaction. |
-| `FLY_API_TOKEN` | `fly` | `fly auth token`. |
+| `FLY_API_TOKEN`       | `fly`                    | `fly auth token`.                                                                                                                                                        |
+
+---
+
+## VIL-376 model rollout and kill switches
+
+Every switch defaults to `candidate`. Set an individual switch to `current` to roll back only
+that decision slice.
+
+| Decision slice           | Environment                                    | `current` | `candidate` |
+| ------------------------ | ---------------------------------------------- | --------- | ----------- |
+| Intake reply intent      | `HALE_REPLY_INTENT_MODEL_MODE` on Vercel web   | Sonnet 5  | JEV         |
+| Sentinel envelope triage | `HALE_TRIAGE_MODEL_MODE` on Vercel web         | Haiku 4.5 | JEV         |
+| Event classification     | `HALE_CLASSIFY_EVENT_MODEL_MODE` on Vercel web | Sonnet 5  | Sonnet 5.5  |
+| Intake extraction        | `HALE_INTAKE_EXTRACT_MODEL_MODE` on Vercel web | Sonnet 5  | Sonnet 5.5  |
+
+These switches affect structured internal decisions only. Parent-facing `converse`,
+`draft`, `answer`, `acknowledge`, and `speak` output remains on its current Sonnet/Haiku
+routing.
+
+Release and rollback:
+
+1. Deploying this code enables the four evaluated candidates unless an environment override says
+   `current`.
+2. Kill switch: set the affected slice to `current`, then redeploy/restart the affected
+   service. No code rollback or database migration is required.
+
+JEV slices require `AI_GATEWAY_API_KEY`. Candidate request failures fall back to the
+current model for that call.
 
 ---
 
@@ -148,11 +177,11 @@ the `@hale/agent` harness — no separate worker needed in prod (the pg-boss wor
 stays for local/durable). The schedule lives in `apps/web/vercel.json` under
 `crons`; the handlers are Node-runtime routes under `apps/web/app/api/cron/*`.
 
-| Route | Schedule (UTC) | Toronto local | Cadence | Does |
-|---|---|---|---|---|
-| `/api/cron/digest` | `0 12 * * *` | ~07:00 EST / 08:00 EDT | daily, morning | Composes each family's daily brief on the harness (companion health/milestones + this-week village), stores it in `daily_digests`, and emails it via Resend from `hello@villagehale.com`. |
-| `/api/cron/inference` | `0 6 * * *` | ~01:00 EST / 02:00 EDT | daily, overnight | Memory inference over each family's recent activity; saves ≥0.7-confidence facts through the guarded `save_memory` tool. |
-| `/api/cron/discovery` | `0 13 * * 1` | ~08:00 EST / 09:00 EDT, Mondays | weekly | Village discovery for families whose candidates are stale/empty (reuses `discoverForFamily`). |
+| Route                 | Schedule (UTC) | Toronto local                   | Cadence          | Does                                                                                                                                                                                      |
+| --------------------- | -------------- | ------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/cron/digest`    | `0 12 * * *`   | ~07:00 EST / 08:00 EDT          | daily, morning   | Composes each family's daily brief on the harness (companion health/milestones + this-week village), stores it in `daily_digests`, and emails it via Resend from `hello@villagehale.com`. |
+| `/api/cron/inference` | `0 6 * * *`    | ~01:00 EST / 02:00 EDT          | daily, overnight | Memory inference over each family's recent activity; saves ≥0.7-confidence facts through the guarded `save_memory` tool.                                                                  |
+| `/api/cron/discovery` | `0 13 * * 1`   | ~08:00 EST / 09:00 EDT, Mondays | weekly           | Village discovery for families whose candidates are stale/empty (reuses `discoverForFamily`).                                                                                             |
 
 **Timezone note:** Vercel cron expressions are **UTC** (no per-cron timezone).
 The UTC times above are chosen to land in the Toronto morning/overnight
@@ -265,7 +294,7 @@ DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hale/db drift-check   # gate: ex
 DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hale/db status        # applied-vs-pending at a glance
 ```
 
-> **Residual blind spot (by design):** if `DATABASE_DIRECT_URL` is *absent*, both
+> **Residual blind spot (by design):** if `DATABASE_DIRECT_URL` is _absent_, both
 > the migrate leg **and** the drift-check skip — a green pipeline then only means
 > "nothing was checked." That is why setting the secret is a hard prerequisite,
 > documented here rather than guarded in code (CI can't invent a secret it was
@@ -276,22 +305,27 @@ DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hale/db status        # applied-
 ## Rollback
 
 ### Vercel
+
 ```bash
 vercel ls <project> --token=$VERCEL_TOKEN          # list deployments, find last-good prod URL
 vercel promote <previous-prod-url> --token=$VERCEL_TOKEN
 ```
+
 `promote` re-points the production domain to a prior deployment (no rebuild).
 
 ### Fly (worker)
+
 ```bash
 fly releases --app hale-worker                     # list versions
 fly releases rollback <version> --app hale-worker  # roll to a prior release image
 # or: fly deploy --image <previous-image-ref> --app hale-worker
 ```
+
 The worker is stateless (state lives in Postgres), so rollback is just swapping
 the image; in-flight jobs are retried by pg-boss.
 
 ### Database
+
 Migrations are **additive only** (CLAUDE.md #9) — there is no automated
 down-migration. To recover from a bad migration, restore via **Supabase
 Point-in-Time Recovery** (Toronto region) to just before the migration.
@@ -323,11 +357,11 @@ pointed at the compiled `dist/schema/index.js`; that fix is in place and
 `generate`/`migrate` both work once `@hale/db` is built.)
 
 > **The migrate leg is correct; the gap was purely operational.** Prod fell
-> behind not because `migrate` was broken, but because it was never *run* — its
+> behind not because `migrate` was broken, but because it was never _run_ — its
 > `DATABASE_DIRECT_URL` secret was unset (see
 > [Migration drift guard](#migration-drift-guard)).
 
-### B2 — Workspace packages are not runtime-resolvable  ⛔
+### B2 — Workspace packages are not runtime-resolvable ⛔
 
 **Status:** confirmed by test (both in Docker and locally). The worker crashes
 on boot:
@@ -357,13 +391,13 @@ crash is purely the package-entrypoint defect.
 
 ## Verification status
 
-| Item | Verifiable now (no secrets) | Credential-gated |
-|---|---|---|
-| `infra/fly.toml` | TOML parses; correct non-HTTP poller shape (no `http_service`, `restart=always`, `yyz`) | `fly config validate` (needs `fly auth login`) |
-| Worker Docker image | **Builds** end-to-end from repo root; fails loud without `DATABASE_URL` | Runtime needs B2 fixed + secrets |
-| `apps/web/vercel.json` | Valid JSON; `yul1` pinned; crons defined | `vercel deploy --prod` (needs token + linked project) |
-| Migration provisioning | `drizzle-kit migrate` applies all 37 migrations to a fresh DB and `drift-check` reports in sync (verified on the local Supabase DB) | Real prod run needs `DATABASE_DIRECT_URL` set (see guard) |
-| Migration drift guard | `pnpm --filter @hale/db drift-check` / `status` — unit tests + run against local DB (behind, 12-behind incident shape, and in-sync all exercised) | Prod gate needs `DATABASE_DIRECT_URL` set |
-| `.github/workflows/deploy.yml` | YAML valid; **actionlint clean (0 findings)**; secret-gating logic; drift verify wired into the `migrate` leg | Real run needs the GitHub secrets above |
+| Item                           | Verifiable now (no secrets)                                                                                                                       | Credential-gated                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `infra/fly.toml`               | TOML parses; correct non-HTTP poller shape (no `http_service`, `restart=always`, `yyz`)                                                           | `fly config validate` (needs `fly auth login`)            |
+| Worker Docker image            | **Builds** end-to-end from repo root; fails loud without `DATABASE_URL`                                                                           | Runtime needs B2 fixed + secrets                          |
+| `apps/web/vercel.json`         | Valid JSON; `yul1` pinned; crons defined                                                                                                          | `vercel deploy --prod` (needs token + linked project)     |
+| Migration provisioning         | `drizzle-kit migrate` applies all 37 migrations to a fresh DB and `drift-check` reports in sync (verified on the local Supabase DB)               | Real prod run needs `DATABASE_DIRECT_URL` set (see guard) |
+| Migration drift guard          | `pnpm --filter @hale/db drift-check` / `status` — unit tests + run against local DB (behind, 12-behind incident shape, and in-sync all exercised) | Prod gate needs `DATABASE_DIRECT_URL` set                 |
+| `.github/workflows/deploy.yml` | YAML valid; **actionlint clean (0 findings)**; secret-gating logic; drift verify wired into the `migrate` leg                                     | Real run needs the GitHub secrets above                   |
 
 Full command transcript: `.loop/evidence/deploy-setup.log`.

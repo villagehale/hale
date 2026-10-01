@@ -37,7 +37,8 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
-import { cachedToolCall, lazyAnthropic, makeCost, totalUsd } from './lib/harness.mjs';
+import { cachedToolCall, evalRunTag, lazyAnthropic, makeCost, totalUsd } from './lib/harness.mjs';
+import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 import { FAMILY_TIMEZONE, PARTY_FIXTURES, RECEIVED_AT } from './rsvp-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -156,7 +157,10 @@ function scoreFixture(fixture, value) {
   if (want.isParty === false) return failures;
 
   for (const token of want.titleIncludes ?? []) {
-    if (typeof value.title !== 'string' || !value.title.toLowerCase().includes(token.toLowerCase())) {
+    if (
+      typeof value.title !== 'string' ||
+      !value.title.toLowerCase().includes(token.toLowerCase())
+    ) {
       failures.push(`title ${JSON.stringify(value.title)} is missing "${token}"`);
     }
   }
@@ -176,7 +180,9 @@ function scoreFixture(fixture, value) {
     const got = typeof value.location === 'string' ? value.location.trim().toLowerCase() : null;
     const expected = want.location === null ? null : want.location.toLowerCase();
     if (got !== expected) {
-      failures.push(`location ${JSON.stringify(value.location)} != ${JSON.stringify(want.location)}`);
+      failures.push(
+        `location ${JSON.stringify(value.location)} != ${JSON.stringify(want.location)}`,
+      );
     }
   }
 
@@ -193,26 +199,50 @@ function scoreFixture(fixture, value) {
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const preflight = process.argv.includes('--preflight');
+  const candidateModel = process.argv
+    .find((arg) => arg.startsWith('--anthropic-model='))
+    ?.slice('--anthropic-model='.length);
+  const minSamplesArg = process.argv.find((arg) => arg.startsWith('--min-samples='))?.split('=')[1];
+  const minSamples = minSamplesArg === undefined ? null : Number(minSamplesArg);
+  if (minSamples !== null && (!Number.isInteger(minSamples) || minSamples < 1)) {
+    throw new Error('--min-samples must be a positive integer');
+  }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const getClient = lazyAnthropic();
   const cost = makeCost();
 
   const skill = await agent.loadSkill(SKILL_PATH);
-  const model = agent.pickModel(skill.meta.task);
+  const model = candidateModel ?? agent.pickModel(skill.meta.task);
+  const fixtures =
+    minSamples === null
+      ? PARTY_FIXTURES
+      : expandSyntheticFixtures('party-extraction', PARTY_FIXTURES, minSamples, {
+          vary: (fixture, { profile }) => {
+            fixture.message = `${profile.prefix}${fixture.message}`;
+          },
+          visibleInput: partyUserMessage,
+        });
+
+  if (preflight) {
+    console.log(`rsvp preflight | fixtures=${fixtures.length} extract=${model}`);
+    console.log(`max API calls: subject=${fixtures.length}`);
+    return;
+  }
 
   console.log(
     `rsvp-eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | extract=${model}`,
   );
-  console.log(`corpus: ${PARTY_FIXTURES.length} party fixtures | received_at=${RECEIVED_AT}\n`);
+  console.log(`corpus: ${fixtures.length} party fixtures | received_at=${RECEIVED_AT}\n`);
 
   const results = [];
-  for (const fixture of PARTY_FIXTURES) {
+  for (const fixture of fixtures) {
     const value = broken
       ? BROKEN_PARTY
       : (
           await cachedToolCall({
-            tag: `rsvp:extract:${fixture.id}`,
+            tag: evalRunTag(`rsvp:extract:${fixture.id}`),
             model,
             system: skill.instructions,
             userMessage: partyUserMessage(fixture),
@@ -267,10 +297,16 @@ async function main() {
 
   console.log('\n--- corpus metrics ---');
   console.log(`field accuracy:              ${(accuracy * 100).toFixed(1)}%  (>= 85% required)`);
-  console.log(`content fabrications:        ${fabricationCount}  (0 required — an invented venue/name)`);
+  console.log(
+    `content fabrications:        ${fabricationCount}  (0 required — an invented venue/name)`,
+  );
   console.log(`datetime hallucinations:     ${datetimeCount}  (0 required — a date nobody wrote)`);
-  console.log(`hosting FALSE POSITIVES:     ${hostingFalsePositives.length}  (0 required — publishing someone else's party)`);
-  console.log(`hosting recall:              ${(hostingRecall * 100).toFixed(1)}%  (>= 85% required)`);
+  console.log(
+    `hosting FALSE POSITIVES:     ${hostingFalsePositives.length}  (0 required — publishing someone else's party)`,
+  );
+  console.log(
+    `hosting recall:              ${(hostingRecall * 100).toFixed(1)}%  (>= 85% required)`,
+  );
   console.log(`date-refusal recall:         ${(refusalRecall * 100).toFixed(1)}%  (100% required)`);
 
   console.log('\n--- cost telemetry ---');

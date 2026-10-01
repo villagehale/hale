@@ -27,12 +27,16 @@
 //   node --env-file=../../.env evals/run-model-matrix-eval.mjs            # live pass, then caches
 //   node evals/run-model-matrix-eval.mjs --cached-only                    # CI: replay only, never calls the API
 //   node evals/run-model-matrix-eval.mjs --role=classify                  # one role
+//   node ... --role=classify --min-samples=50                             # expanded synthetic corpus
+//   node --env-file=../../.env evals/run-model-matrix-eval.mjs --role=coach --gateway-model=deepseek/deepseek-v4.1-flash --pair
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
-  WORKER_ROOT,
   REPO_ROOT,
+  WORKER_ROOT,
+  cachedGatewayTextCall,
+  cachedGatewayToolCall,
   cachedTextCall,
   cachedToolCall,
   lazyAnthropic,
@@ -42,6 +46,7 @@ import {
   recall,
   totalUsd,
 } from './lib/harness.mjs';
+import { expandMatrixCases } from './lib/model-matrix-fixtures.mjs';
 
 const PROMPTS = join(WORKER_ROOT, 'prompts');
 const SKILLS = join(REPO_ROOT, 'packages', 'agent', 'skills');
@@ -160,25 +165,44 @@ const COACH_JUDGE = [
 
 const MODEL_KEYS = ['haiku', 'sonnet', 'sonnet5', 'opus'];
 
+function modelToolCall(modelKey, options) {
+  if (modelKey === 'gateway') return cachedGatewayToolCall(options);
+  // Claude 5.5 rejects forced `tool_choice: tool`; auto is its closest supported
+  // production candidate shape. Returning text instead of the named tool still fails.
+  return cachedToolCall(
+    modelKey === 'candidate' ? { ...options, toolChoice: { type: 'auto' } } : options,
+  );
+}
+
+function modelTextCall(modelKey, options) {
+  return modelKey === 'gateway' ? cachedGatewayTextCall(options) : cachedTextCall(options);
+}
+
+function matrixTag(tag, runId) {
+  return runId ? `${tag}:run:${runId}` : tag;
+}
+
 // --- per-role runners -------------------------------------------------------
 
 async function runClassify(models, fx, ctx) {
   const basePrompt = await readFile(join(PROMPTS, 'classifier.md'), 'utf8');
   const out = [];
-  for (const mk of MODEL_KEYS) {
+  for (const mk of ctx.modelKeys) {
     const model = models[mk];
     let correct = 0;
     let teenCorrect = 0;
     let teenTotal = 0;
     let latency = 0;
     let judgeSum = 0;
+    const wrongIds = [];
+    const teenWrongIds = [];
     for (const c of fx.cases) {
       const userMessage = JSON.stringify({
         signal: { source: c.input.source, raw_content: c.input.rawContent },
         family_context_slice: c.input.familyContextSlice ?? null,
       });
-      const { value, latencyMs } = await cachedToolCall({
-        tag: `matrix:classify:${mk}:${c.id}`,
+      const { value, latencyMs } = await modelToolCall(mk, {
+        tag: matrixTag(`matrix:classify:${mk}:${c.id}`, ctx.runId),
         model,
         system: basePrompt,
         userMessage,
@@ -189,12 +213,16 @@ async function runClassify(models, fx, ctx) {
         getClient: ctx.getClient,
         cost: ctx.cost,
         maxTokens: 1024,
+        thinking: ['sonnet5', 'candidate'].includes(mk) ? { type: 'adaptive' } : undefined,
+        effort: ['sonnet5', 'candidate'].includes(mk) ? 'high' : undefined,
       });
       latency += latencyMs;
       if (value.event_type === c.expect.eventType) correct += 1;
+      else wrongIds.push(c.id);
       if (typeof c.expect.teenContent === 'boolean') {
         teenTotal += 1;
         if (Boolean(value.teen_content) === c.expect.teenContent) teenCorrect += 1;
+        else teenWrongIds.push(c.id);
       }
       const j = await ctx.judge.classify(`${mk}:${c.id}`, {
         signal: c.input.rawContent,
@@ -211,6 +239,8 @@ async function runClassify(models, fx, ctx) {
       avgLatencyMs: Math.round(latency / n),
       avgJudge: judgeSum / n,
       quality: correct / n, // primary quality metric for this role = exact-match accuracy
+      wrongIds,
+      teenWrongIds,
     });
   }
   return out;
@@ -256,7 +286,7 @@ function ungroundedSpecifics(text, inputSerialized) {
 async function runDraft(models, fx, ctx) {
   const basePrompt = await readFile(join(PROMPTS, 'drafter.md'), 'utf8');
   const out = [];
-  for (const mk of MODEL_KEYS) {
+  for (const mk of ctx.modelKeys) {
     const model = models[mk];
     let passed = 0;
     let latency = 0;
@@ -271,8 +301,8 @@ async function runDraft(models, fx, ctx) {
         voice_profile: null,
         action_template_hint: null,
       });
-      const { value, latencyMs } = await cachedToolCall({
-        tag: `matrix:draft:${mk}:${c.id}`,
+      const { value, latencyMs } = await modelToolCall(mk, {
+        tag: matrixTag(`matrix:draft:${mk}:${c.id}`, ctx.runId),
         model,
         system: basePrompt,
         userMessage,
@@ -283,6 +313,8 @@ async function runDraft(models, fx, ctx) {
         getClient: ctx.getClient,
         cost: ctx.cost,
         maxTokens: 1024,
+        thinking: ['sonnet', 'candidate'].includes(mk) ? { type: 'disabled' } : undefined,
+        effort: ['sonnet', 'candidate'].includes(mk) ? 'high' : undefined,
       });
       latency += latencyMs;
       const payload = value.payload ?? {};
@@ -329,7 +361,7 @@ async function runDraft(models, fx, ctx) {
 async function runReview(models, fx, ctx) {
   const basePrompt = await readFile(join(PROMPTS, 'reviewer.md'), 'utf8');
   const out = [];
-  for (const mk of MODEL_KEYS) {
+  for (const mk of ctx.modelKeys) {
     const model = models[mk];
     let correct = 0;
     let latency = 0;
@@ -341,8 +373,8 @@ async function runReview(models, fx, ctx) {
         draft_action: c.input.draft_action,
         verification_results: c.input.verification_results,
       });
-      const { value, latencyMs } = await cachedToolCall({
-        tag: `matrix:review:${mk}:${c.id}`,
+      const { value, latencyMs } = await modelToolCall(mk, {
+        tag: matrixTag(`matrix:review:${mk}:${c.id}`, ctx.runId),
         model,
         system: basePrompt,
         userMessage,
@@ -354,6 +386,8 @@ async function runReview(models, fx, ctx) {
         getClient: ctx.getClient,
         cost: ctx.cost,
         maxTokens: 512,
+        thinking: ['sonnet5', 'candidate'].includes(mk) ? { type: 'adaptive' } : undefined,
+        effort: ['sonnet5', 'candidate'].includes(mk) ? 'high' : undefined,
       });
       latency += latencyMs;
       const acceptable = [c.expect.verdict, ...(c.expect.alsoAcceptable ?? [])];
@@ -381,7 +415,7 @@ async function runCoach(models, fx, ctx) {
   const skillBody = await readFile(join(SKILLS, 'ask-hale.md'), 'utf8');
   const instructions = skillBody.replace(/^---[\s\S]*?---\n/, ''); // strip frontmatter
   const out = [];
-  for (const mk of MODEL_KEYS) {
+  for (const mk of ctx.modelKeys) {
     const model = models[mk];
     let recallSum = 0;
     let judgeSum = 0;
@@ -396,8 +430,8 @@ async function runCoach(models, fx, ctx) {
         question: c.question,
       };
       const system = `${instructions}\n\n## Context\n\n${JSON.stringify(context)}`;
-      const { text, latencyMs } = await cachedTextCall({
-        tag: `matrix:coach:${mk}:${c.id}`,
+      const { text, latencyMs } = await modelTextCall(mk, {
+        tag: matrixTag(`matrix:coach:${mk}:${c.id}`, ctx.runId),
         model,
         system,
         userMessage: c.question,
@@ -450,7 +484,7 @@ const RUNNERS = { classify: runClassify, draft: runDraft, review: runReview, coa
 // Pick the cheapest model whose quality is within a small epsilon of the best
 // quality for the role — i.e. don't pay for Opus if Sonnet (or Haiku) ties it.
 // "Cheaper" is ranked haiku < sonnet < opus by input list price.
-const TIER_RANK = { haiku: 0, sonnet: 1, sonnet5: 2, opus: 3 };
+const TIER_RANK = { gateway: -1, haiku: 0, sonnet: 1, sonnet5: 2, opus: 3, candidate: 4 };
 const QUALITY_EPS = 0.03;
 
 function recommend(rows) {
@@ -470,8 +504,8 @@ function fmtPct(x) {
 // Calibration stand-in: every model "fails" (quality 0). Deterministic, makes NO
 // API call and reads NO cache (same discipline as the other evals' broken
 // generators), so the competence floor's teeth are proven without spend.
-function brokenRows() {
-  return MODEL_KEYS.map((mk) => ({
+function brokenRows(modelKeys) {
+  return modelKeys.map((mk) => ({
     model: mk,
     quality: 0,
     avgLatencyMs: 0,
@@ -481,18 +515,65 @@ function brokenRows() {
     recall: 0,
     safetyPass: 0,
     teenAccuracy: 0,
+    wrongIds: [],
+    teenWrongIds: [],
   }));
 }
 
 async function main() {
   const cachedOnly = process.argv.includes('--cached-only');
+  const preflight = process.argv.includes('--preflight');
   // Calibration: --broken substitutes a uniformly-failing matrix so the competence
   // floor must REJECT it — proving the gate reads quality, not noise. No spend.
   const broken = process.argv.includes('--broken');
   const roleArg = process.argv.find((a) => a.startsWith('--role='))?.split('=')[1];
   const roles = roleArg ? [roleArg] : ROLES;
+  const gatewayModel = process.argv.find((a) => a.startsWith('--gateway-model='))?.split('=')[1];
+  const anthropicModel = process.argv
+    .find((a) => a.startsWith('--anthropic-model='))
+    ?.split('=')[1];
+  const runId = process.argv.find((a) => a.startsWith('--run-id='))?.split('=')[1];
+  const only = process.argv.find((a) => a.startsWith('--only='))?.split('=')[1];
+  const minSamplesArg = process.argv.find((a) => a.startsWith('--min-samples='))?.split('=')[1];
+  const minSamples = minSamplesArg === undefined ? null : Number(minSamplesArg);
+  if (minSamples !== null && (!Number.isInteger(minSamples) || minSamples < 1)) {
+    throw new Error('--min-samples must be a positive integer');
+  }
+  const requestedModelKeys = process.argv
+    .find((a) => a.startsWith('--models='))
+    ?.split('=')[1]
+    .split(',');
 
   const models = await readModelIds();
+  if (gatewayModel) models.gateway = gatewayModel;
+  if (anthropicModel) models.candidate = anthropicModel;
+  if (gatewayModel && anthropicModel) {
+    throw new Error('use only one of --gateway-model or --anthropic-model');
+  }
+  const pair = process.argv.includes('--pair');
+  const unknownModelKeys = requestedModelKeys?.filter(
+    (key) => ![...MODEL_KEYS, 'gateway', 'candidate'].includes(key),
+  );
+  if (unknownModelKeys?.length) {
+    throw new Error(`unknown matrix model key(s): ${unknownModelKeys.join(', ')}`);
+  }
+  if (requestedModelKeys?.includes('gateway') && !gatewayModel) {
+    throw new Error('--models=gateway requires --gateway-model');
+  }
+  if (requestedModelKeys?.includes('candidate') && !anthropicModel) {
+    throw new Error('--models=candidate requires --anthropic-model');
+  }
+  if (pair && (!roleArg || !gatewayModel)) {
+    throw new Error('--pair requires --role and --gateway-model');
+  }
+  if (only && !roleArg) throw new Error('--only requires --role');
+  const modelKeys = requestedModelKeys
+    ? requestedModelKeys
+    : pair
+      ? [CURRENT_TIER[roleArg], 'gateway']
+      : gatewayModel
+        ? [...MODEL_KEYS, 'gateway']
+        : MODEL_KEYS;
   const judgeModel = models.haiku; // the judge tier the other evals use
   const getClient = lazyAnthropic();
   const cost = makeCost();
@@ -501,17 +582,40 @@ async function main() {
     draft: makeJudge(judgeModel, DRAFT_JUDGE, 'matrix-draft', cachedOnly, getClient, cost),
     coach: makeJudge(judgeModel, COACH_JUDGE, 'matrix-coach', cachedOnly, getClient, cost),
   };
-  const ctx = { cachedOnly, getClient, cost, judge };
+  const ctx = { cachedOnly, getClient, cost, judge, modelKeys, runId };
 
   console.log(
-    `model-matrix-eval | ${broken ? 'BROKEN (calibration)' : cachedOnly ? 'cached-only' : 'live'} | haiku=${models.haiku} sonnet=${models.sonnet} sonnet5=${models.sonnet5} opus=${models.opus} | judge=${judgeModel}`,
+    `model-matrix-eval | ${broken ? 'BROKEN (calibration)' : cachedOnly ? 'cached-only' : 'live'}${runId ? ` | run=${runId}` : ''} | haiku=${models.haiku} sonnet=${models.sonnet} sonnet5=${models.sonnet5} opus=${models.opus}${gatewayModel ? ` gateway=${gatewayModel}` : ''}${anthropicModel ? ` candidate=${anthropicModel}` : ''} | judge=${judgeModel}`,
   );
   console.log('');
 
   const byRole = {};
+  let preflightSubjects = 0;
+  let preflightJudges = 0;
   for (const role of roles) {
     const fx = JSON.parse(await readFile(join(FIXTURES, `${role}.json`), 'utf8'));
-    const rows = broken ? brokenRows() : await RUNNERS[role](models, fx, ctx);
+    if (minSamples !== null) fx.cases = expandMatrixCases(role, fx.cases, minSamples);
+    if (only) {
+      const selectedIds = new Set(only.split(',').filter(Boolean));
+      fx.cases = fx.cases.filter((item) => selectedIds.has(item.id));
+      if (fx.cases.length !== selectedIds.size) {
+        throw new Error(`one or more fixtures did not match --only=${only}`);
+      }
+    }
+    if (preflight) {
+      const subjects = fx.cases.length * modelKeys.length;
+      const judges =
+        role === 'review'
+          ? 0
+          : role === 'draft'
+            ? fx.cases.filter((item) => item.expect.judgeTone !== false).length * modelKeys.length
+            : subjects;
+      preflightSubjects += subjects;
+      preflightJudges += judges;
+      console.log(`${role}: fixtures=${fx.cases.length} subject=${subjects} judges=${judges}`);
+      continue;
+    }
+    const rows = broken ? brokenRows(modelKeys) : await RUNNERS[role](models, fx, ctx);
     byRole[role] = rows;
 
     console.log(`=== ${role} (${fx.cases.length} cases) ===`);
@@ -529,8 +633,17 @@ async function main() {
       console.log(
         `${pad(r.model, 6)}  ${pad(fmtPct(r.quality), 7)}  ${pad(`${r.avgLatencyMs}ms`, 7)}  ${pad(r.avgJudge === null ? '-' : r.avgJudge.toFixed(1), 6)}  ${extra}`,
       );
+      if (role === 'classify' && (r.wrongIds.length || r.teenWrongIds.length)) {
+        console.log(
+          `        misses: event=[${r.wrongIds.join(', ')}] teen=[${r.teenWrongIds.join(', ')}]`,
+        );
+      }
     }
     console.log('');
+  }
+  if (preflight) {
+    console.log(`max API calls: subject=${preflightSubjects}, judges=${preflightJudges}`);
+    return;
   }
 
   // --- recommendation table --------------------------------------------------
@@ -546,7 +659,7 @@ async function main() {
     const why =
       rec.model === best.model
         ? `top quality ${fmtPct(rec.quality)} @ ${rec.avgLatencyMs}ms`
-        : `ties best (${fmtPct(best.quality)} ${best.model}) within ${QUALITY_EPS * 100}% but cheaper/faster (${rec.avgLatencyMs}ms)`;
+        : `ties best (${fmtPct(best.quality)} ${best.model}) within ${QUALITY_EPS * 100}% at lower cost; latency ${rec.avgLatencyMs}ms`;
     const flag = rec.model !== cur ? '  <- differs from current' : '';
     if (rec.model !== cur) changes.push(`${role}: ${cur} -> ${rec.model}`);
     console.log(`${pad(role, 8)}  ${pad(cur, 8)}  ${pad(rec.model, 9)}  ${why}${flag}`);
@@ -575,7 +688,17 @@ async function main() {
     const rows = byRole[role];
     const cur = rows.find((r) => r.model === CURRENT_TIER[role]);
     if (!cur) {
-      failures.push(`${role}: current tier ${CURRENT_TIER[role]} not in results`);
+      if (modelKeys.includes(CURRENT_TIER[role])) {
+        failures.push(`${role}: current tier ${CURRENT_TIER[role]} not in results`);
+      } else {
+        for (const row of rows) {
+          if (row.quality < QUALITY_FLOOR) {
+            failures.push(
+              `${role}: selected ${row.model} quality ${fmtPct(row.quality)} < ${QUALITY_FLOOR * 100}% floor`,
+            );
+          }
+        }
+      }
     } else if (cur.quality < QUALITY_FLOOR) {
       failures.push(
         `${role}: current ${CURRENT_TIER[role]} quality ${fmtPct(cur.quality)} < ${QUALITY_FLOOR * 100}% floor — not competent`,
@@ -586,7 +709,7 @@ async function main() {
   const allPass = failures.length === 0;
   console.log('');
   console.log(
-    `--- gate (current routing must be competent: quality >= ${QUALITY_FLOOR * 100}%/role) ---`,
+    `--- gate (evaluated routing must be competent: quality >= ${QUALITY_FLOOR * 100}%/role) ---`,
   );
   if (changes.length) console.log(`note (recommendation, not a fail): ${changes.join('; ')}`);
   if (broken) {
@@ -600,7 +723,7 @@ async function main() {
     process.exit(0);
   }
   if (allPass) {
-    console.log("PASS (exit 0): every role's current tier clears the competence floor");
+    console.log('PASS (exit 0): every evaluated role clears the competence floor');
     process.exit(0);
   }
   for (const f of failures) console.log(`  FAIL - ${f}`);

@@ -43,7 +43,6 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
-import { REMINDER_VOICE_FIXTURES } from './reminder-voice-fixtures.mjs';
 import {
   JUDGE_MIN,
   lazyAnthropic,
@@ -54,6 +53,7 @@ import {
 } from './lib/harness.mjs';
 import { skillSampleSentences, variationGate, variationLines } from './lib/variation.mjs';
 import { cachedAgentAnswer } from './lib/voice-agent.mjs';
+import { REMINDER_VOICE_FIXTURES } from './reminder-voice-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -154,6 +154,10 @@ const BROKEN_LINE =
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const candidateModel = process.argv
+    .find((arg) => arg.startsWith('--anthropic-model='))
+    ?.slice('--anthropic-model='.length);
+  const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
   const getClient = lazyAnthropic();
   const cost = makeCost();
 
@@ -161,17 +165,23 @@ async function main() {
   const { findInventedFacts } = await tsImport(FACTS_LINT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const samples = await skillSampleSentences(SKILL_PATH);
-  const model = agent.pickModel(skill.meta.task);
+  const model = candidateModel ?? agent.pickModel(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'reminder-voice', cachedOnly, getClient, cost);
 
   console.log(
     `reminder-voice eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
   );
-  console.log(`corpus: ${REMINDER_VOICE_FIXTURES.length} reminders\n`);
+  const fixtures = only
+    ? REMINDER_VOICE_FIXTURES.filter((fixture) => fixture.id === only)
+    : REMINDER_VOICE_FIXTURES;
+  if (fixtures.length !== (only ? 1 : REMINDER_VOICE_FIXTURES.length)) {
+    throw new Error(`fixture did not match --only=${only}`);
+  }
+  console.log(`corpus: ${fixtures.length} reminders\n`);
 
   const results = [];
-  for (const fixture of REMINDER_VOICE_FIXTURES) {
+  for (const fixture of fixtures) {
     const slots = factSlots(fixture.context);
     let line;
     if (broken) {
@@ -186,6 +196,7 @@ async function main() {
         cachedOnly,
         getClient,
         cost,
+        model: candidateModel,
       });
       line = parseReminderVoiceAnswer(answer);
     }
