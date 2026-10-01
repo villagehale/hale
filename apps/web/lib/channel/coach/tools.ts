@@ -1,7 +1,7 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import type { CalendarPlacementPayload } from '@hale/types';
-import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
+import { and, asc, count, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
@@ -100,12 +100,72 @@ export interface ScheduleEvent {
   sensitive: boolean;
 }
 
+/**
+ * Whether a connected account can be read right now.
+ *
+ * `connected` is an active integration. `paused` is one in `error` and none
+ * active — the mailbox or calendar was linked, and sync is not running.
+ * `not_connected` is every other case, including no row at all.
+ */
+export type ConnectorSyncState = 'connected' | 'paused' | 'not_connected';
+
+/**
+ * One Google Calendar block as the coach may see it. `title` is set only for a
+ * kid-related block that does not name a teenager. A non-kid block, and a
+ * kid-related block whose title was withheld, both carry `title: null`.
+ */
+export interface CalendarBlockView {
+  startsAt: Date;
+  endsAt: Date | null;
+  allDay: boolean;
+  title: string | null;
+}
+
+/** A confirmation the mail ingest already turned into an activity row. */
+export interface ExtractedActivity {
+  title: string;
+  startsAt: Date;
+  location: string | null;
+  /** The family_events row this confirmation was placed on, when one exists. */
+  eventId: string | null;
+}
+
+/** A trip the mail ingest already stored. Dates are local calendar days. */
+export interface ExtractedTrip {
+  city: string;
+  startsOn: string;
+  endsOn: string;
+}
+
+/** The connected-account read for one week. No email body, no attendees. */
+export interface ConnectedWeekRead {
+  calendarSync: ConnectorSyncState;
+  blocks: CalendarBlockView[];
+  mailSync: ConnectorSyncState;
+  processedCount: number;
+  since: string | null;
+  activities: ExtractedActivity[];
+  trips: ExtractedTrip[];
+}
+
 /** The reads behind the verbs, injected so the tool RULES are testable without a db. */
 export interface ChannelScheduleReader {
   timeZone(familyId: string): Promise<string>;
   weekPlanSummary(familyId: string, weekStart: string): Promise<string | null>;
   eventsInWeek(familyId: string, start: Date, end: Date): Promise<ScheduleEvent[]>;
   resolveEvent(familyId: string, eventId: string): Promise<ScheduleEvent | null>;
+  /**
+   * Google Calendar occupancy and the Gmail-derived rows the ingest already
+   * wrote, for the same window `eventsInWeek` was asked for. `dayKeys` are the
+   * family's local dates in that window, which is how a trip stored as calendar
+   * days is included.
+   */
+  connectedWeek(
+    familyId: string,
+    start: Date,
+    end: Date,
+    dayKeys: readonly string[],
+  ): Promise<ConnectedWeekRead>;
 }
 
 export interface ChannelCoachToolArgs {
@@ -323,14 +383,13 @@ export type OfferMatch =
   | { outcome: 'not_offered_this_turn' }
   | { outcome: 'title_not_matched' };
 
-export function matchOfferedTitle(
-  offers: readonly OfferedCandidate[],
-  title: string,
-): OfferMatch {
+export function matchOfferedTitle(offers: readonly OfferedCandidate[], title: string): OfferMatch {
   if (offers.length === 0) return { outcome: 'not_offered_this_turn' };
   const wanted = title.trim().toLowerCase();
   const hit = offers.find((offer) => offer.title.trim().toLowerCase() === wanted);
-  return hit ? { outcome: 'offered_this_turn', candidateId: hit.candidateId } : { outcome: 'title_not_matched' };
+  return hit
+    ? { outcome: 'offered_this_turn', candidateId: hit.candidateId }
+    : { outcome: 'title_not_matched' };
 }
 
 export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTool[] {
@@ -373,7 +432,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const lookupWeek = defineTool({
     name: 'lookup_week',
     description:
-      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
+      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and the week's items merged from Hale's calendar and the connected Google Calendar, de-duplicated and sorted. A family event has an `eventId` — the ONLY handle the propose_* tools accept. A kid-related Google block has a title and no `eventId` (you cannot move or cancel it). Any other Google block is `kind: \"busy\"` with no title: never invent a name, and never mention attendees or notes. `calendarSync` and `mail.sync` are `connected`, `paused`, or `not_connected`. When one is `connected`, you HAVE that access — an empty list is an empty week, not a missing connection, and you must not say you cannot see the calendar or email. When `mail.sync` is `paused`, say that mail sync is currently paused (`mail.note`). `mail.items` are activities and trips already extracted from mail; `mail.processedCount` and `mail.since` are how many Gmail messages have been processed. Name only what this result contains. weekOffset 0 is the current week, 1 is next week.",
     inputSchema: z.object({ weekOffset }),
     inputExamples: [{}, { weekOffset: 1 }],
     monetary: false,
@@ -384,9 +443,10 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
       const start = zonedLocalInstant(window.startKey, '00:00', timeZone);
       const end = zonedLocalInstant(window.dayKeys[6] as string, '23:59', timeZone);
 
-      const [summary, events] = await Promise.all([
+      const [summary, events, connected] = await Promise.all([
         reader.weekPlanSummary(familyId, window.startKey),
         reader.eventsInWeek(familyId, start, end),
+        reader.connectedWeek(familyId, start, end, window.dayKeys),
       ]);
 
       return {
@@ -401,14 +461,35 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         // arguments of a draft can be READ OFF this rather than worked out.
         days: window.dayKeys.map((date) => ({ weekday: weekdayOf(date, timeZone), date })),
         summary,
-        // No redaction here: the reader already projected a private row (VIL-270), so
-        // this renders whatever the channel is allowed to hold.
-        events: events.map((event) => ({
-          eventId: event.eventId,
-          what: event.title,
-          when: localWhen(event.startsAt, timeZone),
-          where: event.location,
-        })),
+        calendarSync: connected.calendarSync,
+        // No redaction here: the reader already projected a private row (VIL-270) and
+        // stripped non-kid calendar titles, so this renders whatever the channel may hold.
+        events: mergeWeekSchedule(events, connected.blocks).map((entry) =>
+          renderScheduleEntry(entry, timeZone),
+        ),
+        mail: {
+          sync: connected.mailSync,
+          note: connected.mailSync === 'paused' ? 'Mail sync is currently paused.' : null,
+          processedCount: connected.processedCount,
+          since: connected.since,
+          items: [
+            ...visibleActivities(connected.activities, events).map((activity) => ({
+              kind: 'activity' as const,
+              what: activity.title,
+              when: localWhen(activity.startsAt, timeZone),
+              where: activity.location,
+            })),
+            ...connected.trips.map((trip) => ({
+              kind: 'trip' as const,
+              what: trip.city,
+              when:
+                trip.startsOn === trip.endsOn
+                  ? trip.startsOn
+                  : `${trip.startsOn} to ${trip.endsOn}`,
+              where: null,
+            })),
+          ],
+        },
       };
     },
   });
@@ -708,6 +789,9 @@ export function channelScheduleReader(database: Database, now: Date): ChannelSch
       const row = rows[0];
       return row ? toScheduleEvent(row, now) : null;
     },
+
+    connectedWeek: (familyId, start, end, dayKeys) =>
+      readConnectedWeek(database, familyId, start, end, dayKeys, now),
   };
 }
 
@@ -759,5 +843,279 @@ export function toScheduleEvent(row: ScheduleEventRow, now: Date): ScheduleEvent
     source: row.source,
     teen: row.childDob !== null && isTeenChild({ dateOfBirth: row.childDob }, now),
     sensitive: row.sensitive,
+  };
+}
+
+/** A row of `parent_calendar_blocks` as the coach read selects it. */
+export interface CalendarBlockRow {
+  startAt: Date | null;
+  endAt: Date | null;
+  allDay: boolean;
+  kidRelated: boolean;
+  title: string | null;
+}
+
+/**
+ * The block the model may see.
+ *
+ * A non-kid row is busy/free only: the title is dropped even when a row somehow
+ * still holds one (the table CHECK is the other half of that rule). A title that
+ * names a teenager is replaced with the same private label family events use, so
+ * the name never reaches the tool result.
+ */
+export function calendarBlockForCoach(
+  row: CalendarBlockRow,
+  teenNames: readonly string[],
+): CalendarBlockView | null {
+  if (row.startAt === null) return null;
+  let title: string | null = null;
+  if (row.kidRelated && row.title !== null && row.title.trim().length > 0) {
+    title = mentionsAnyName(row.title, teenNames) ? PRIVATE_EVENT_WHAT : row.title;
+  }
+  return { startsAt: row.startAt, endsAt: row.endAt, allDay: row.allDay, title };
+}
+
+export type WeekScheduleEntry =
+  | { kind: 'event'; at: Date; event: ScheduleEvent }
+  | { kind: 'calendar'; at: Date; block: CalendarBlockView }
+  | { kind: 'busy'; at: Date; block: CalendarBlockView };
+
+/**
+ * Family events and calendar blocks, one list. A block whose title and start
+ * match a family event is dropped — the family event is the one with an
+ * `eventId`. A titled block at the same instant as a private family event is
+ * dropped too, so the redacted row is not restated under its real name. Busy
+ * blocks stay: an unnamed hour is not that event. Identical blocks (two parents,
+ * one swim) collapse to one.
+ */
+export function mergeWeekSchedule(
+  events: readonly ScheduleEvent[],
+  blocks: readonly CalendarBlockView[],
+): WeekScheduleEntry[] {
+  const kept = dedupeBlocks(blocks).filter((block) => !familyEventCovers(block, events));
+  const entries: WeekScheduleEntry[] = [
+    ...events.map((event) => ({ kind: 'event' as const, at: event.startsAt, event })),
+    ...kept.map((block) =>
+      block.title === null
+        ? { kind: 'busy' as const, at: block.startsAt, block }
+        : { kind: 'calendar' as const, at: block.startsAt, block },
+    ),
+  ];
+  entries.sort((a, b) => a.at.getTime() - b.at.getTime() || entryRank(a.kind) - entryRank(b.kind));
+  return entries;
+}
+
+/** Activities already represented by a family event, or sitting on a private one. */
+export function visibleActivities(
+  activities: readonly ExtractedActivity[],
+  events: readonly ScheduleEvent[],
+): ExtractedActivity[] {
+  return activities.filter((activity) => {
+    if (activity.eventId !== null && events.some((event) => event.eventId === activity.eventId)) {
+      return false;
+    }
+    return !events.some((event) => {
+      if (event.startsAt.getTime() !== activity.startsAt.getTime()) return false;
+      if (event.teen || event.sensitive) return true;
+      return foldTitle(event.title) === foldTitle(activity.title);
+    });
+  });
+}
+
+function entryRank(kind: WeekScheduleEntry['kind']): number {
+  return kind === 'event' ? 0 : 1;
+}
+
+function foldTitle(title: string): string {
+  return title.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function mentionsAnyName(title: string, names: readonly string[]): boolean {
+  return names.some((name) => {
+    const token = name.trim();
+    if (token.length < 2) return false;
+    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}(?:$|[^\\p{L}\\p{N}])`, 'iu').test(
+      ` ${title} `,
+    );
+  });
+}
+
+function dedupeBlocks(blocks: readonly CalendarBlockView[]): CalendarBlockView[] {
+  const seen = new Set<string>();
+  const kept: CalendarBlockView[] = [];
+  for (const block of blocks) {
+    const key =
+      block.title === null
+        ? `busy:${block.startsAt.getTime()}:${block.endsAt?.getTime() ?? ''}:${block.allDay}`
+        : `named:${block.startsAt.getTime()}:${foldTitle(block.title)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    kept.push(block);
+  }
+  return kept;
+}
+
+function familyEventCovers(block: CalendarBlockView, events: readonly ScheduleEvent[]): boolean {
+  return events.some((event) => {
+    if (event.startsAt.getTime() !== block.startsAt.getTime()) return false;
+    if ((event.teen || event.sensitive) && block.title !== null) return true;
+    if (block.title === null) return false;
+    return foldTitle(block.title) === foldTitle(event.title);
+  });
+}
+
+function connectorSync(rows: readonly { status: string }[]): ConnectorSyncState {
+  if (rows.some((row) => row.status === 'active')) return 'connected';
+  if (rows.some((row) => row.status === 'error')) return 'paused';
+  return 'not_connected';
+}
+
+function isoOf(value: unknown): string | null {
+  if (value == null) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function dayLabel(at: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone,
+  }).format(at);
+}
+
+function renderScheduleEntry(entry: WeekScheduleEntry, timeZone: string) {
+  if (entry.kind === 'event') {
+    return {
+      kind: 'event' as const,
+      eventId: entry.event.eventId,
+      what: entry.event.title,
+      when: localWhen(entry.event.startsAt, timeZone),
+      where: entry.event.location,
+      source: entry.event.source,
+    };
+  }
+  const when = entry.block.allDay
+    ? dayLabel(entry.block.startsAt, timeZone)
+    : localWhen(entry.block.startsAt, timeZone);
+  const until =
+    !entry.block.allDay && entry.block.endsAt ? localWhen(entry.block.endsAt, timeZone) : null;
+  if (entry.block.title === null) {
+    return { kind: 'busy' as const, when, until, allDay: entry.block.allDay };
+  }
+  return {
+    kind: 'calendar' as const,
+    what: entry.block.title,
+    when,
+    until,
+    allDay: entry.block.allDay,
+  };
+}
+
+async function readConnectedWeek(
+  database: Database,
+  familyId: string,
+  start: Date,
+  end: Date,
+  dayKeys: readonly string[],
+  now: Date,
+): Promise<ConnectedWeekRead> {
+  const firstDay = dayKeys[0];
+  const lastDay = dayKeys[dayKeys.length - 1];
+
+  const [connections, children, blockRows, countRows, activityRows, tripRows] = await Promise.all([
+    database
+      .select({
+        provider: schema.integrations.provider,
+        status: schema.integrations.status,
+      })
+      .from(schema.integrations)
+      .where(eq(schema.integrations.familyId, familyId)),
+    database
+      .select({ name: schema.children.name, dateOfBirth: schema.children.dateOfBirth })
+      .from(schema.children)
+      .where(eq(schema.children.familyId, familyId)),
+    database
+      .select({
+        startAt: schema.parentCalendarBlocks.startAt,
+        endAt: schema.parentCalendarBlocks.endAt,
+        allDay: schema.parentCalendarBlocks.allDay,
+        kidRelated: schema.parentCalendarBlocks.kidRelated,
+        title: schema.parentCalendarBlocks.title,
+      })
+      .from(schema.parentCalendarBlocks)
+      .where(
+        and(
+          eq(schema.parentCalendarBlocks.familyId, familyId),
+          eq(schema.parentCalendarBlocks.status, 'confirmed'),
+          gte(schema.parentCalendarBlocks.startAt, start),
+          lte(schema.parentCalendarBlocks.startAt, end),
+        ),
+      )
+      .orderBy(asc(schema.parentCalendarBlocks.startAt)),
+    database
+      .select({
+        n: count(),
+        since: sql<Date | string | null>`min(${schema.events.receivedAt})`,
+      })
+      .from(schema.events)
+      .where(and(eq(schema.events.familyId, familyId), eq(schema.events.source, 'gmail'))),
+    database
+      .select({
+        title: schema.activityBookings.title,
+        startsAt: schema.activityBookings.firstSessionAt,
+        location: schema.activityBookings.location,
+        eventId: schema.activityBookings.eventId,
+      })
+      .from(schema.activityBookings)
+      .where(
+        and(
+          eq(schema.activityBookings.familyId, familyId),
+          isNull(schema.activityBookings.cancelledAt),
+          gte(schema.activityBookings.firstSessionAt, start),
+          lte(schema.activityBookings.firstSessionAt, end),
+        ),
+      )
+      .orderBy(asc(schema.activityBookings.firstSessionAt)),
+    firstDay !== undefined && lastDay !== undefined
+      ? database
+          .select({
+            city: schema.familyTrips.destinationCity,
+            startsOn: schema.familyTrips.startsOn,
+            endsOn: schema.familyTrips.endsOn,
+          })
+          .from(schema.familyTrips)
+          .where(
+            and(
+              eq(schema.familyTrips.familyId, familyId),
+              lte(schema.familyTrips.startsOn, lastDay),
+              gte(schema.familyTrips.endsOn, firstDay),
+            ),
+          )
+          .orderBy(asc(schema.familyTrips.startsOn))
+      : Promise.resolve([]),
+  ]);
+
+  const teenNames = children
+    .filter((child) => isTeenChild({ dateOfBirth: child.dateOfBirth }, now))
+    .map((child) => child.name);
+
+  const blocks: CalendarBlockView[] = [];
+  for (const row of blockRows) {
+    const view = calendarBlockForCoach(row, teenNames);
+    if (view) blocks.push(view);
+  }
+
+  const countRow = countRows[0];
+  return {
+    calendarSync: connectorSync(connections.filter((row) => row.provider === 'gcal')),
+    blocks,
+    mailSync: connectorSync(connections.filter((row) => row.provider === 'gmail')),
+    processedCount: Number(countRow?.n ?? 0),
+    since: isoOf(countRow?.since),
+    activities: activityRows.filter((row) => !mentionsAnyName(row.title, teenNames)),
+    trips: tripRows,
   };
 }
