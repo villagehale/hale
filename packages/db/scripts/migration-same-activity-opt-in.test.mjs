@@ -6,7 +6,7 @@ import { readJournal } from './migration-drift.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const drizzleDir = path.resolve(scriptDir, '..', 'drizzle');
-const TAG = '0145_same_activity_opt_ins';
+const TAG = '0147_same_activity_opt_ins';
 
 function statementsOf(sql) {
   return sql
@@ -21,13 +21,21 @@ function statementsOf(sql) {
     .filter((stmt) => stmt.length > 0);
 }
 
-describe('0145_same_activity_opt_ins', () => {
+describe('0147_same_activity_opt_ins', () => {
   const sql = fs.readFileSync(path.join(drizzleDir, `${TAG}.sql`), 'utf8');
 
-  it('is journaled immediately after 0144_family_trips_no_picks_backoff', () => {
-    const tags = readJournal(drizzleDir).map((entry) => entry.tag);
-    expect(tags.indexOf(TAG)).toBe(tags.indexOf('0144_family_trips_no_picks_backoff') + 1);
-    expect(tags.filter((tag) => tag.startsWith('0145_'))).toEqual([TAG]);
+  it('is journaled after 0146_linq_group_members', () => {
+    const journal = readJournal(drizzleDir);
+    const tags = journal.map((entry) => entry.tag);
+    const entry = journal.find((row) => row.tag === TAG);
+    expect(tags.indexOf('0146_linq_group_members')).toBe(
+      tags.indexOf('0145_optional_ask_ledger') + 1,
+    );
+    expect(tags.indexOf(TAG)).toBe(tags.indexOf('0146_linq_group_members') + 1);
+    expect(tags.filter((tag) => tag.startsWith('0145_'))).toEqual(['0145_optional_ask_ledger']);
+    expect(tags.filter((tag) => tag.startsWith('0146_'))).toEqual(['0146_linq_group_members']);
+    expect(tags.filter((tag) => tag.startsWith('0147_'))).toEqual([TAG]);
+    expect(entry?.when).toBe(1781469641000);
   });
 
   it('stores a household opt-in and not another household, a child, or a place', () => {

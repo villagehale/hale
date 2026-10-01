@@ -115,11 +115,11 @@ describe('matchSameActivity', () => {
     expect(JSON.stringify(stranger)).not.toContain(A);
   });
 
-  it('keeps the kind list in step with migration 0145', () => {
+  it('keeps the kind list in step with migration 0147', () => {
     const sql = readFileSync(
       fileURLToPath(
         new URL(
-          '../../../../../packages/db/drizzle/0145_same_activity_opt_ins.sql',
+          '../../../../../packages/db/drizzle/0147_same_activity_opt_ins.sql',
           import.meta.url,
         ),
       ),
