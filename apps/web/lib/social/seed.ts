@@ -1294,7 +1294,7 @@ export const SOCIAL_SEED: readonly SocialSeedSource[] = [
     fsa: null,
     sourceUrl: 'https://trca.ca/',
     active: true,
-    note: 'Homepage linked this handle. Page names a Toronto address and watershed sites across the GTA. Primary region is the Toronto HQ.',
+    note: 'Homepage linked this handle. Page names a Toronto address and watershed sites in the GTA. Primary region is the Toronto HQ.',
   },
   {
     platform: 'facebook_page',
@@ -1438,7 +1438,7 @@ export const SOCIAL_SEED: readonly SocialSeedSource[] = [
     fsa: null,
     sourceUrl: 'https://www.ymcagta.org/',
     active: true,
-    note: 'Homepage linked this handle. Page lists Toronto first and centres across the GTA. Primary region is the Toronto HQ.',
+    note: 'Homepage linked this handle. Page lists Toronto first and centres in the GTA. Primary region is the Toronto HQ.',
   },
   {
     platform: 'facebook_page',

@@ -154,6 +154,10 @@ export const AUDIT_VERBS = [
   'sms_intake_inbound',
   'sms_intake_outbound',
   'first_touch_location_requested',
+  // Written only after a cold-start pull reply actually left: the parent asked
+  // to get set up (place or ages) or asked what Hale can do. A placeholder
+  // that does not send writes no row.
+  'cold_start_pull',
   'sms_intake_provisioned',
   'sms_intake_contact_card',
   'linq_contact_card_shared',
@@ -582,6 +586,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   sms_intake_outbound: { sentence: 'Hale texted you while getting set up', family: 'note' },
   first_touch_location_requested: {
     sentence: 'Hale recorded the place ask from your first text',
+    family: 'note',
+  },
+  cold_start_pull: {
+    sentence: 'Hale answered when you asked it to get set up or show what it can do',
     family: 'note',
   },
   sms_intake_provisioned: { sentence: 'your family was set up from your texts', family: 'done' },

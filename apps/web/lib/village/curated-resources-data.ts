@@ -1,7 +1,7 @@
 /**
  * The hand-VERIFIED curated resources seed — public local family programs
  * (EarlyON centres, public-library kids' programs, splash pads, public-health
- * lines) across the GTA/Halton regions Hale serves. Every entry was verified by a
+ * lines) in the GTA and Halton regions Hale serves. Every entry was verified by a
  * human against the live source; nothing here is LLM-generated (honesty-first).
  * This list is the single source of truth for the seed — do NOT extend or invent
  * entries. `sortOrder` is the index so the rail's order is stable.

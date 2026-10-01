@@ -40,6 +40,12 @@ export type IntakeState =
    * this state needs no migration.
    */
   | 'awaiting_ladder'
+  /**
+   * VIL-392. The age-fit find already went out and Hale is waiting for a pick,
+   * then one logistics answer. The column is text, so this state needs no
+   * migration.
+   */
+  | 'awaiting_cold_start'
   /** The flow finished (watch-offer answered, or the region gate refused). */
   | 'complete'
   /** The parent sent STOP. Terminal. */
@@ -116,6 +122,19 @@ export interface FirstTouchPersisted {
       | 'not_a_moment';
     code?: string;
   } | null;
+  /**
+   * VIL-392. Absent until the discovery find has been sent. `pick` waits for
+   * a number. `logistics` waits for who is taking them.
+   */
+  coldStart?: ColdStartProgress | null;
+}
+
+export interface ColdStartProgress {
+  step: 'pick' | 'logistics';
+  group: boolean;
+  findBody: string;
+  activity: string | null;
+  day: string | null;
 }
 
 /** Held when the share was attempted. Setup that never reached the chat stays null. */
@@ -222,6 +241,7 @@ function decodeFirstTouch(value: unknown): FirstTouchPersisted | null {
     language?: unknown;
     place?: unknown;
     locationRequest?: unknown;
+    coldStart?: unknown;
   };
   const language = row.language === 'fr' ? 'fr' : row.language === 'en' ? 'en' : null;
   if (!language) return null;
@@ -229,6 +249,27 @@ function decodeFirstTouch(value: unknown): FirstTouchPersisted | null {
     language,
     place: decodeFirstTouchPlace(row.place),
     locationRequest: decodeLocationRequest(row.locationRequest),
+    coldStart: decodeColdStart(row.coldStart),
+  };
+}
+
+function decodeColdStart(value: unknown): ColdStartProgress | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as {
+    step?: unknown;
+    group?: unknown;
+    findBody?: unknown;
+    activity?: unknown;
+    day?: unknown;
+  };
+  if (row.step !== 'pick' && row.step !== 'logistics') return null;
+  if (typeof row.findBody !== 'string') return null;
+  return {
+    step: row.step,
+    group: row.group === true,
+    findBody: row.findBody,
+    activity: typeof row.activity === 'string' ? row.activity : null,
+    day: typeof row.day === 'string' ? row.day : null,
   };
 }
 

@@ -63,6 +63,21 @@ const FREE_TEXT_CITIES = [
 const POSTAL_IN_TEXT =
   /(?:^|[^A-Za-z0-9])([ABCEGHJKLMNPRSTVXY]\d[A-Za-z])(?:[ -]?(\d[A-Za-z]\d))?(?![A-Za-z0-9])/i;
 
+/**
+ * A SOURCE_VENUES code. The poster's city is the place we say back. The FSA
+ * is the venue's own coarse area, not a street.
+ */
+export function placeFromVenue(venue: {
+  areaCoarse: string;
+  poster?: string;
+}): FirstTouchPlace | null {
+  const postal = parseCanadianPostal(venue.areaCoarse);
+  if (!postal) return null;
+  const place = fromPostal(postal);
+  const city = venue.poster?.trim();
+  return city ? { ...place, city } : place;
+}
+
 export function placeFromMessage(body: string): FirstTouchPlace | null {
   const postal = postalIn(body);
   if (postal) return fromPostal(postal);
@@ -97,7 +112,10 @@ function postalIn(body: string): PostalContext | null {
 }
 
 function cityIn(body: string): { label: string; municipality: Municipality } | null {
-  const trimmed = body.trim().replace(/[.!?]+$/g, '').trim();
+  const trimmed = body
+    .trim()
+    .replace(/[.!?]+$/g, '')
+    .trim();
   const whole = municipalityForCity(trimmed);
   if (whole && trimmed.length > 0) {
     return { label: titleCity(trimmed), municipality: whole };
