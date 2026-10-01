@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ActivityFindResult, ActivityPick } from '~/lib/channel/activity/lane';
 import type { ActivityQuery } from '~/lib/channel/activity/deidentify';
+import type { ActivityFindResult, ActivityPick } from '~/lib/channel/activity/lane';
 import { dedupeActive } from '~/lib/channel/ledger';
 import {
   PROACTIVE_CAP,
@@ -382,6 +382,128 @@ describe('the searches that never run', () => {
     expect(h.sent).toEqual([]);
     // A search that found nothing is not a brief the parent received.
     expect((await tripRow(trip))?.closedAt).toBeNull();
+  });
+});
+
+/** A day, then double. The first gap is what "tomorrow's search may differ" already
+ * promised; hourly would be the live web search ~168 times across the lead week. */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function instant(value: unknown): number {
+  const at = value instanceof Date ? value : typeof value === 'string' ? new Date(value) : null;
+  expect(at, 'attempt time was recorded').toBeInstanceOf(Date);
+  return (at as Date).getTime();
+}
+
+describe('a no-picks trip waits, and the wait grows', () => {
+  it('skips the trip before the next attempt, and does not search again', async () => {
+    const family = await seedFamily();
+    const trip = await seedTrip({ ...family, startsOn: '2026-09-12', endsOn: '2026-09-15' });
+    const h = harness({ find: { found: false, reason: 'no_picks' } });
+
+    const first = await run(h, MORNING);
+    expect(first.noPicks).toBe(1);
+    expect(h.queries).toHaveLength(1);
+
+    const recorded = await tripRow(trip);
+    const last = instant(recorded?.lastAttemptAt);
+    const next = instant(recorded?.nextAttemptAt);
+    expect(last).toBe(MORNING.getTime());
+    expect(next - last).toBe(DAY_MS);
+    expect(recorded?.closedAt).toBeNull();
+
+    const early = new Date(next - 60 * 60 * 1000);
+    const skipped = await run(h, early);
+    expect(skipped.due).toBe(0);
+    expect(skipped.noPicks).toBe(0);
+    expect(h.queries).toHaveLength(1);
+    expect(h.sent).toEqual([]);
+
+    const still = await tripRow(trip);
+    expect(instant(still?.lastAttemptAt)).toBe(last);
+    expect(instant(still?.nextAttemptAt)).toBe(next);
+    expect(still?.closedAt).toBeNull();
+  });
+
+  it('searches again once that next attempt is due', async () => {
+    const family = await seedFamily();
+    const trip = await seedTrip({ ...family, startsOn: '2026-09-12', endsOn: '2026-09-15' });
+    const h = harness({ find: { found: false, reason: 'no_picks' } });
+
+    await run(h, MORNING);
+    const next = instant((await tripRow(trip))?.nextAttemptAt);
+
+    const again = await run(h, new Date(next));
+    expect(again.due).toBe(1);
+    expect(again.noPicks).toBe(1);
+    expect(h.queries).toHaveLength(2);
+    expect(h.sent).toEqual([]);
+    expect((await tripRow(trip))?.closedAt).toBeNull();
+  });
+
+  it('grows the delay after a repeated no-picks', async () => {
+    const family = await seedFamily();
+    const trip = await seedTrip({ ...family, startsOn: '2026-09-12', endsOn: '2026-09-15' });
+    const h = harness({ find: { found: false, reason: 'no_picks' } });
+
+    await run(h, MORNING);
+    const first = await tripRow(trip);
+    const firstGap = instant(first?.nextAttemptAt) - instant(first?.lastAttemptAt);
+
+    await run(h, new Date(instant(first?.nextAttemptAt)));
+    const second = await tripRow(trip);
+    const secondGap = instant(second?.nextAttemptAt) - instant(second?.lastAttemptAt);
+
+    expect(firstGap).toBe(DAY_MS);
+    expect(secondGap).toBe(firstGap * 2);
+    expect(instant(second?.lastAttemptAt)).toBe(instant(first?.nextAttemptAt));
+
+    // An hour past the OLD gap is still inside the grown one, so the third search waits.
+    const tooSoon = new Date(instant(second?.lastAttemptAt) + firstGap);
+    expect(tooSoon.getTime()).toBeLessThan(instant(second?.nextAttemptAt));
+    const held = await run(h, tooSoon);
+    expect(held.due).toBe(0);
+    expect(held.noPicks).toBe(0);
+    expect(h.queries).toHaveLength(2);
+  });
+
+  it('does not brief a later trip while an earlier one is still waiting', async () => {
+    const family = await seedFamily();
+    await seedTrip({ ...family, startsOn: '2026-09-10', endsOn: '2026-09-11' });
+    const later = await seedTrip({ ...family, startsOn: '2026-09-12', endsOn: '2026-09-14' });
+    const h = harness({ find: { found: false, reason: 'no_picks' } });
+
+    await run(h, MORNING);
+    expect(h.queries).toHaveLength(1);
+
+    const skipped = await run(h, new Date(MORNING.getTime() + 60 * 60 * 1000));
+    expect(skipped.due).toBe(0);
+    expect(skipped.sent).toBe(0);
+    expect(h.queries).toHaveLength(1);
+    expect((await tripRow(later))?.closedAt).toBeNull();
+  });
+
+  it('still closes overtaken once the start has passed, even if the next attempt is later', async () => {
+    const family = await seedFamily();
+    const trip = await seedTrip({ ...family, startsOn: '2026-09-12', endsOn: '2026-09-15' });
+    const h = harness({ find: { found: false, reason: 'no_picks' } });
+
+    await run(h, MORNING);
+    expect(h.queries).toHaveLength(1);
+
+    // A doubled gap can land after the trip has started. It must not keep the row open,
+    // and it must not buy another search.
+    await database
+      .update(schema.familyTrips)
+      .set({ nextAttemptAt: new Date('2026-09-20T13:00:00.000Z') })
+      .where(eq(schema.familyTrips.id, trip));
+
+    const afterStart = new Date('2026-09-13T13:00:00.000Z');
+    const closed = await run(h, afterStart);
+    expect(closed.overtaken).toBe(1);
+    expect(closed.noPicks).toBe(0);
+    expect(h.queries).toHaveLength(1);
+    expect((await tripRow(trip))?.closedReason).toBe('overtaken');
   });
 });
 
