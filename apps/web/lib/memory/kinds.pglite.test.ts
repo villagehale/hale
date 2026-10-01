@@ -1,10 +1,9 @@
 import { schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { writeFact } from './facts';
 import { familyMemoryKindsHandler } from './handler';
-import { MEMORY_KIND_COPY } from './kinds';
 import {
   handleParentMemory,
   loadRecommendationMemory,
@@ -195,7 +194,12 @@ describe('family memory kinds', () => {
       sendGroup,
     });
 
-    expect(result).toMatchObject({ claimed: true, outcome: 'forgotten', forgotten: 1, reply: null });
+    expect(result).toMatchObject({
+      claimed: true,
+      outcome: 'forgotten',
+      forgotten: 1,
+      reply: null,
+    });
     expect(sendGroup).not.toHaveBeenCalled();
     expect(JSON.stringify(result)).not.toContain('TODO-Design');
 
@@ -253,8 +257,10 @@ describe('family memory kinds', () => {
     });
 
     expect(result.corrected).toBe(1);
-    expect(result.reply).toBe(MEMORY_KIND_COPY.en.corrected);
+    expect(result.reply).toBe('Got it. swimming is now not for us.');
     expect(sendGroup).toHaveBeenCalledTimes(1);
+    expect(sendGroup.mock.calls[0]?.[1]).toBe('Test corrected something.');
+    expect(String(sendGroup.mock.calls[0]?.[1])).not.toContain('not for us');
     expect(sendGroup.mock.calls.map((call) => call[0])).toEqual([groupChatId]);
 
     const rows = await db.database
@@ -347,6 +353,87 @@ describe('family memory kinds', () => {
     });
     expect(second.memoryKind).toBe('lasting');
     expect(second.signalCount).toBe(1);
+  });
+
+  it('answers what do you know with the locked list and leaves teens and receipts out', async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database);
+    const teen = await seedChild(db.database, familyId, 'Noa', 170, undefined, NOW);
+    await writeFact(db.database, {
+      familyId,
+      childId: null,
+      factType: 'logistic',
+      factKey: 'district',
+      factValue: 'midtown',
+      confidence: 1,
+      inferredBy: 'ask-hale',
+      validFrom: new Date(NOW.getTime() - 2000),
+      memoryKind: 'lasting',
+      memorySource: 'parent_message',
+      sourcedAt: new Date(NOW.getTime() - 2000),
+      signalCount: 0,
+    });
+    await writeFact(db.database, {
+      familyId,
+      childId: null,
+      factType: 'preference',
+      factKey: 'swimming',
+      factValue: 'saturday',
+      confidence: 0.9,
+      inferredBy: 'memory_inferencer',
+      validFrom: NOW,
+      memoryKind: 'one_off',
+      memorySource: 'inferred',
+      sourcedAt: NOW,
+      signalCount: 0,
+    });
+    await writeFact(db.database, {
+      familyId,
+      childId: teen,
+      factType: 'preference',
+      factKey: 'teen_secret',
+      factValue: 'SECRET_TEEN',
+      confidence: 1,
+      inferredBy: 'ask-hale',
+      validFrom: NOW,
+      memoryKind: 'lasting',
+      memorySource: 'parent_message',
+      sourcedAt: NOW,
+      signalCount: 0,
+    });
+    await writeFact(db.database, {
+      familyId,
+      childId: null,
+      factType: 'logistic',
+      factKey: 'health_checkpoint:week',
+      factValue: 'done',
+      confidence: 1,
+      inferredBy: 'ask-hale',
+      validFrom: NOW,
+      memoryKind: 'lasting',
+      memorySource: 'receipt',
+      sourcedAt: NOW,
+      signalCount: 0,
+    });
+    const result = await handleParentMemory(db.database, {
+      familyId,
+      parentUserId,
+      body: 'what do you know',
+      now: NOW,
+      inboundChannelMessageId: null,
+      env: LOCKED,
+    });
+    expect(result.reply).toBe(
+      [
+        "Here's what I have for your family:",
+        '- swimming: I think saturday (for now)',
+        '- district: midtown (lasting, you told me)',
+        'Wrong or old? Text "correct <key>: <value>" or "forget <key>".',
+      ].join('\n'),
+    );
+    expect(result.reply).not.toContain('SECRET_TEEN');
+    expect(result.reply).not.toContain('Noa');
+    expect(result.reply).not.toContain('health_checkpoint');
+    expect(result.reply).not.toMatch(/reply stop|unsubscribe/i);
   });
 
   it('lists one-offs in recall and hides an expired temporary', async () => {

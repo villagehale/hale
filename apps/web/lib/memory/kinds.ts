@@ -3,9 +3,9 @@
  *
  * The flag is off unless FAMILY_MEMORY_KINDS_ENABLED is exactly `true`. `TRUE`
  * and `true\n` stay off: a piped env write stores a trailing newline, and a
- * truthiness check would arm this. Parent-facing sentences are TODO-Design
- * placeholders for Sloane. They leave this module only when the flag is on
- * AND FAMILY_MEMORY_KINDS_COPY_LOCKED is exactly `true`.
+ * truthiness check would arm this. Parent-facing sentences are Sloane's locked
+ * copy (VIL-381). They leave this module only when the flag is on AND
+ * FAMILY_MEMORY_KINDS_COPY_LOCKED is exactly `true`. Both stay default off.
  *
  * VIL-388 (exportable family memory) has no snapshot builder in this repo.
  * {@link toFamilyMemoryExportFact} is the hook that snapshot should call so
@@ -41,27 +41,56 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const TERM_MS = 120 * 24 * 60 * 60 * 1000;
 
 /**
- * Placeholder copy for Sloane. ASCII only, EN and FR. Never a sentence a
- * parent should read. The transport gate below is what keeps them unsent.
+ * Locked parent-facing copy. ASCII only. `{token}` is filled before a send.
+ * French is tu/vous-neutral except where the sentence itself is fixed.
  */
 export const MEMORY_KIND_COPY = {
   en: {
-    recall: 'TODO-Design: what Hale knows (EN)',
-    forgotten: 'TODO-Design: forgot a memory (EN)',
-    corrected: 'TODO-Design: corrected a memory (EN)',
-    nothing: 'TODO-Design: nothing to forget (EN)',
-    refused: 'TODO-Design: that memory stays (EN)',
-    groupSync: 'TODO-Design: group heard a memory change (EN)',
+    recall:
+      'Here\'s what I have for your family:\n{list}\nWrong or old? Text "correct <key>: <value>" or "forget <key>".',
+    forgotten: 'Done, I forgot {key}.',
+    corrected: 'Got it. {key} is now {value}.',
+    nothing:
+      'I didn\'t find anything to forget there. Text "what do you know" to see what I have, then "forget <key>".',
+    refused: 'I keep that one, it\'s a record. Text "what do you know" to see what can be changed.',
+    groupSync: '{who} asked me to forget something.',
   },
   fr: {
-    recall: 'TODO-Design: what Hale knows (FR)',
-    forgotten: 'TODO-Design: forgot a memory (FR)',
-    corrected: 'TODO-Design: corrected a memory (FR)',
-    nothing: 'TODO-Design: nothing to forget (FR)',
-    refused: 'TODO-Design: that memory stays (FR)',
-    groupSync: 'TODO-Design: group heard a memory change (FR)',
+    recall:
+      'Voici ce que j\'ai sur la famille :\n{list}\nPour changer : "corrige <cle> : <valeur>" ou "oublie <cle>".',
+    forgotten: "C'est oublie : {key}.",
+    corrected: "C'est corrige : {key} est maintenant {value}.",
+    nothing: 'Rien a oublier de ce cote. "que sais-tu" montre ce que j\'ai, puis "oublie <cle>".',
+    refused: 'Celle-la reste, c\'est un dossier. "que sais-tu" montre ce qui peut changer.',
+    groupSync: "{who} m'a demande d'oublier quelque chose.",
   },
 } as const;
+
+/** Lines and variants the six keys above do not hold on their own. */
+export const MEMORY_KIND_LINES = {
+  en: {
+    recallEmpty: "I don't have anything saved about your family yet.",
+    parent: '- {key}: {value} ({term}, you told me)',
+    calendar: '- {key}: {value} ({term}, from your calendar)',
+    inferred: '- {key}: I think {value} (for now)',
+    termLasting: 'lasting',
+    termTemporary: 'for now',
+    forgottenMany: 'Done, I forgot {n} things.',
+    groupSyncCorrect: '{who} corrected something.',
+  },
+  fr: {
+    recallEmpty: "Je n'ai encore rien note sur la famille.",
+    parent: '- {key} : {value} ({term}, dit par un parent)',
+    calendar: '- {key} : {value} ({term}, vu dans le calendrier)',
+    inferred: "- {key} : je crois que {value} (pour l'instant)",
+    termLasting: 'durable',
+    termTemporary: "pour l'instant",
+    forgottenMany: "C'est oublie : {n} elements.",
+    groupSyncCorrect: '{who} a corrige quelque chose.',
+  },
+} as const;
+
+export const MEMORY_RECALL_LINES_PER_BUBBLE = 10;
 
 export type MemoryKindCopyKey = keyof (typeof MEMORY_KIND_COPY)['en'];
 
@@ -79,8 +108,164 @@ export function memoryKindBodies(): string[] {
     for (const key of Object.keys(MEMORY_KIND_COPY.en) as MemoryKindCopyKey[]) {
       bodies.push(MEMORY_KIND_COPY[language][key]);
     }
+    for (const key of Object.keys(
+      MEMORY_KIND_LINES.en,
+    ) as (keyof (typeof MEMORY_KIND_LINES)['en'])[]) {
+      bodies.push(MEMORY_KIND_LINES[language][key]);
+    }
   }
   return bodies;
+}
+
+const MEMORY_TOKEN = /\{[a-zA-Z]+\}/;
+const MEMORY_BANNED = /reply stop|unsubscribe|\b(booked|enrolled|signed up)\b/i;
+
+export class MemoryKindCopyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MemoryKindCopyError';
+  }
+}
+
+function fillMemory(
+  template: string,
+  params: Record<string, string | null | undefined>,
+  required: readonly string[],
+  language: MemoryKindLanguage,
+): string {
+  const bag = new Map<string, string>();
+  for (const key of required) {
+    const value = params[key]?.trim();
+    if (!value || /[{}]/.test(value)) throw new MemoryKindCopyError(`missing ${key}`);
+    bag.set(key, value);
+  }
+  const rendered = template.replace(/\{([a-zA-Z]+)\}/g, (_match, key: string) => {
+    const value = bag.get(key);
+    if (!value) throw new MemoryKindCopyError(`missing ${key}`);
+    return value;
+  });
+  if (MEMORY_TOKEN.test(rendered)) throw new MemoryKindCopyError('unrendered');
+  if (language === 'fr' && [...rendered].some((char) => char.charCodeAt(0) > 0x7f)) {
+    throw new MemoryKindCopyError('fr_not_ascii');
+  }
+  if (MEMORY_BANNED.test(rendered)) throw new MemoryKindCopyError('banned');
+  return rendered;
+}
+
+export interface MemoryRecallItem {
+  key: string;
+  value: string;
+  source: MemorySource;
+  kind: MemoryKind;
+}
+
+function recallParts(language: MemoryKindLanguage): { header: string; footer: string } {
+  const [header, footer] = MEMORY_KIND_COPY[language].recall.split('\n{list}\n');
+  if (!header || !footer) throw new MemoryKindCopyError('recall');
+  return { header, footer };
+}
+
+function recallTerm(language: MemoryKindLanguage, kind: MemoryKind): string {
+  return kind === 'lasting'
+    ? MEMORY_KIND_LINES[language].termLasting
+    : MEMORY_KIND_LINES[language].termTemporary;
+}
+
+function recallLine(language: MemoryKindLanguage, item: MemoryRecallItem): string {
+  const key = item.key.trim();
+  const value = item.value.replace(/\s+/g, ' ').trim();
+  if (item.source === 'inferred') {
+    return fillMemory(
+      MEMORY_KIND_LINES[language].inferred,
+      { key, value },
+      ['key', 'value'],
+      language,
+    );
+  }
+  const template =
+    item.source === 'calendar'
+      ? MEMORY_KIND_LINES[language].calendar
+      : MEMORY_KIND_LINES[language].parent;
+  return fillMemory(
+    template,
+    { key, value, term: recallTerm(language, item.kind) },
+    ['key', 'value', 'term'],
+    language,
+  );
+}
+
+/**
+ * Newest first. At most ten lines a bubble. The header is only on the first
+ * bubble and the "wrong or old" line only on the last. An empty list is its
+ * own sentence. Receipts are dropped. Inferred rows always say "I think".
+ */
+export function renderMemoryRecall(
+  language: MemoryKindLanguage,
+  items: readonly MemoryRecallItem[],
+): string[] {
+  const visible = items.filter(
+    (item) =>
+      item.source !== 'receipt' && item.key.trim().length > 0 && item.value.trim().length > 0,
+  );
+  if (visible.length === 0) return [MEMORY_KIND_LINES[language].recallEmpty];
+  const lines = visible.map((item) => recallLine(language, item));
+  const { header, footer } = recallParts(language);
+  const bubbles: string[] = [];
+  for (let index = 0; index < lines.length; index += MEMORY_RECALL_LINES_PER_BUBBLE) {
+    const page = lines.slice(index, index + MEMORY_RECALL_LINES_PER_BUBBLE);
+    const parts: string[] = [];
+    if (index === 0) parts.push(header);
+    parts.push(...page);
+    if (index + MEMORY_RECALL_LINES_PER_BUBBLE >= lines.length) parts.push(footer);
+    bubbles.push(parts.join('\n'));
+  }
+  return bubbles;
+}
+
+export function renderMemoryForgotten(
+  language: MemoryKindLanguage,
+  keys: readonly string[],
+): string {
+  if (keys.length === 1 && keys[0]) {
+    return fillMemory(MEMORY_KIND_COPY[language].forgotten, { key: keys[0] }, ['key'], language);
+  }
+  if (keys.length > 1) {
+    return fillMemory(
+      MEMORY_KIND_LINES[language].forgottenMany,
+      { n: String(keys.length) },
+      ['n'],
+      language,
+    );
+  }
+  throw new MemoryKindCopyError('missing key');
+}
+
+export function renderMemoryCorrected(
+  language: MemoryKindLanguage,
+  key: string,
+  value: string,
+): string {
+  return fillMemory(
+    MEMORY_KIND_COPY[language].corrected,
+    { key, value },
+    ['key', 'value'],
+    language,
+  );
+}
+
+/** A statement. No value, no question. */
+export function renderMemoryGroupSync(
+  language: MemoryKindLanguage,
+  change: 'forget' | 'correct',
+  who: string,
+): string {
+  const template =
+    change === 'correct'
+      ? MEMORY_KIND_LINES[language].groupSyncCorrect
+      : MEMORY_KIND_COPY[language].groupSync;
+  const text = fillMemory(template, { who }, ['who'], language);
+  if (text.includes('?') || text.includes(who) === false) throw new MemoryKindCopyError('group');
+  return text;
 }
 
 export function memoryKindCopy(language: MemoryKindLanguage, key: MemoryKindCopyKey): string {
@@ -100,9 +285,12 @@ export function deliverMemoryKindCopy(
   env: MemoryKindEnv = process.env,
 ):
   | { deliver: true; body: string }
-  | { deliver: false; skipped: 'flag_off' | 'copy_not_locked' } {
+  | { deliver: false; skipped: 'flag_off' | 'copy_not_locked' | 'unrendered' } {
   if (!familyMemoryKindsEnabled(env)) return { deliver: false, skipped: 'flag_off' };
   if (!familyMemoryKindsCopyLocked(env)) return { deliver: false, skipped: 'copy_not_locked' };
+  if (MEMORY_TOKEN.test(body) || body.includes('TODO-Design') || MEMORY_BANNED.test(body)) {
+    return { deliver: false, skipped: 'unrendered' };
+  }
   return { deliver: true, body };
 }
 
@@ -110,7 +298,7 @@ export async function sendMemoryKindReply(
   send: (body: string) => Promise<unknown>,
   body: string,
   env: MemoryKindEnv = process.env,
-): Promise<{ sent: boolean; skipped: 'flag_off' | 'copy_not_locked' | null }> {
+): Promise<{ sent: boolean; skipped: 'flag_off' | 'copy_not_locked' | 'unrendered' | null }> {
   const gated = deliverMemoryKindCopy(body, env);
   if (!gated.deliver) return { sent: false, skipped: gated.skipped };
   await send(gated.body);
@@ -180,8 +368,7 @@ export function classifyMemoryWrite(input: ClassifyMemoryInput): ClassifiedMemor
   }
   if (source === 'inferred' && (input.factType === 'preference' || input.factType === 'routine')) {
     const prior = input.existing?.source === 'inferred' ? input.existing.signalCount : 0;
-    const repeat =
-      input.existing?.kind === 'one_off' && input.existing.source === 'inferred';
+    const repeat = input.existing?.kind === 'one_off' && input.existing.source === 'inferred';
     const thisIsSignal = Boolean(input.signal) || repeat;
     const signalCount = prior + (thisIsSignal ? 1 : 0);
     if (thisIsSignal && signalCount >= 1) {
