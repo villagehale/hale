@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, gte, isNull } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull } from 'drizzle-orm';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   type FamilyOutboundTarget,
@@ -9,6 +9,7 @@ import {
   familyOutboundTarget,
   readGroupBubbleSpend,
 } from '~/lib/channel/linq/family-outbound';
+import { splitKidEvent } from '~/lib/channel/linq/household-calendar';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -27,12 +28,23 @@ import {
   DUTY_LLM_DAY_MAX,
   type DutyOccasion,
   type OpenDutyQuestion,
+  addCalendarDays,
   dutyExtractorMayRun,
   localYmd,
   matchParentDutyAsk,
   planDutyCadence,
 } from './cadence';
-import { type DutyCopyId, dutyCopy, dutyCopyMayLeave } from './copy';
+import {
+  type DutyCopyParams,
+  type DutyWeekEntry,
+  dutyClockLabel,
+  dutyCopy,
+  dutyCopyMayLeave,
+  dutyWeekList,
+  dutyWeekdayName,
+  formatDutyKids,
+  spokenFirstName,
+} from './copy';
 import { coparentDutySendsActive, coparentDutySendsArmed } from './flag';
 import type { DutyExtractor } from './interpret';
 import { type DutyRole, type DutyState, dutyStateFromFact, needsWhichKid } from './model';
@@ -42,7 +54,7 @@ import { type DutyRole, type DutyState, dutyStateFromFact, needsWhichKid } from 
  *
  * Flag off is a no-op before any read. A send goes to `families.linq_group_chat_id`
  * and nowhere else: no 1:1, no SMS, no email, no push. Copy leaves only when it
- * is locked and no longer a TODO-Design placeholder. Every fact write is an
+ * is locked and no longer a design placeholder. Every fact write is an
  * audit row with `logistics_decision_recorded`. Nothing is deleted.
  *
  * Email stays out. This module does not read a mailbox. An occasion marked
@@ -51,8 +63,23 @@ import { type DutyRole, type DutyState, dutyStateFromFact, needsWhichKid } from 
 
 export const DUTY_OPEN_FACT_KEY = 'duty-ask/open';
 export const DUTY_REASK_PREFIX = 'duty-ask/reask/';
+export const DUTY_STOP_ASKING_KEY = 'duty-ask/stop-asking';
+export const DUTY_STOP_ASKING_MS = 30 * 24 * 60 * 60 * 1000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** A parent said "stop asking". Not a bare STOP, which is the CASL keyword. */
+export function matchDutyStopAsking(text: string): boolean {
+  return /\bstop asking\b/i.test(text.trim().replace(/[’]/g, "'"));
+}
+
+export function dutyStopAskingActive(value: unknown, now: Date): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as { kind?: string; until?: string };
+  if (row.kind !== 'duty_stop_asking' || typeof row.until !== 'string') return false;
+  const until = new Date(row.until).getTime();
+  return Number.isFinite(until) && until > now.getTime();
+}
 
 export interface DutySendPorts {
   target: (database: Database, familyId: string) => Promise<FamilyOutboundTarget>;
@@ -206,8 +233,10 @@ function quietStartMinutes(): number {
 
 interface Household {
   parentIds: string[];
+  parentNames: Record<string, string>;
   primaryUserId: string | null;
   childNames: string[];
+  childFirstNames: string[];
   timeZone: string;
   language: 'en' | 'fr';
   chatId: string | null;
@@ -259,16 +288,69 @@ async function loadHousehold(database: Database, familyId: string): Promise<Hous
     .select({ name: schema.children.name, familyId: schema.children.familyId })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
+  const childNames = children
+    .filter((row) => row.familyId === familyId && row.name)
+    .map((row) => row.name);
+  const named =
+    parentIds.length === 0
+      ? []
+      : await database
+          .select({ id: schema.users.id, name: schema.users.name })
+          .from(schema.users)
+          .where(inArray(schema.users.id, parentIds));
+  const parentNames: Record<string, string> = {};
+  for (const row of named) {
+    const first = spokenFirstName(row.name);
+    if (first) parentNames[row.id] = first;
+  }
   return {
     parentIds,
+    parentNames,
     primaryUserId: primary,
-    childNames: children
-      .filter((row) => row.familyId === familyId && row.name)
-      .map((row) => row.name),
+    childNames,
+    childFirstNames: childNames
+      .map((name) => spokenFirstName(name))
+      .filter((name): name is string => name !== null),
     timeZone,
     language: family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en',
     chatId: family?.linqGroupChatId ?? null,
   };
+}
+
+function yesNames(
+  state: DutyState | null,
+  parentNames: Readonly<Record<string, string>>,
+): string[] {
+  if (!state) return [];
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const claim of state.claims) {
+    if (claim.claim !== 'yes' || seen.has(claim.userId)) continue;
+    seen.add(claim.userId);
+    const name = parentNames[claim.userId];
+    if (name) names.push(name);
+  }
+  return names;
+}
+
+function spokenOwnerName(
+  state: DutyState | null,
+  parentNames: Readonly<Record<string, string>>,
+  language: 'en' | 'fr',
+): string | null {
+  if (!state || state.status !== 'confirmed' || !state.owner) return null;
+  if (state.owner.kind === 'named') {
+    const said = state.owner.name.trim();
+    if (!said || (said.match(/\d/g) ?? []).length >= 7) return null;
+    return said;
+  }
+  if (state.owner.kind === 'parent') return parentNames[state.owner.userId] ?? null;
+  if (state.owner.kind === 'both_parents') {
+    const names = yesNames(state, parentNames);
+    const join = language === 'fr' ? 'et' : 'and';
+    if (names.length >= 2 && names[0] && names[1]) return `${names[0]} ${join} ${names[1]}`;
+  }
+  return null;
 }
 
 function occasionFor(input: {
@@ -279,9 +361,15 @@ function occasionFor(input: {
   cancelled: boolean;
   state: DutyState | null;
   childNames: readonly string[];
+  childFirstNames: readonly string[];
+  parentNames: Readonly<Record<string, string>>;
+  soloCalendarName: string | null;
+  language: 'en' | 'fr';
   reasked: boolean;
 }): DutyOccasion {
   const state = input.state;
+  const split = input.title ? splitKidEvent(input.title, input.childNames) : null;
+  const onlyKid = input.childFirstNames.length === 1 ? input.childFirstNames[0] : null;
   return {
     eventKey: input.eventKey,
     role: input.role,
@@ -293,16 +381,31 @@ function occasionFor(input: {
     hasDutyRecord: state !== null,
     reasked: input.reasked,
     source: 'calendar',
+    spokenName: spokenOwnerName(state, input.parentNames, input.language),
+    soloCalendarName: input.soloCalendarName,
+    kid: split?.kid ?? onlyKid ?? null,
+    eventLabel: split?.event ?? input.title?.trim() ?? null,
+    claimantNames: yesNames(state, input.parentNames),
+    spokenUserIds: state ? [...new Set(state.claims.map((row) => row.userId))] : [],
+    childFirstNames: input.childFirstNames,
   };
 }
 
 async function buildOccasions(
   database: Database,
   familyId: string,
-  childNames: readonly string[],
-): Promise<{ occasions: DutyOccasion[]; open: OpenDutyQuestion | null; facts: AskFact[] }> {
+  home: Pick<Household, 'childNames' | 'childFirstNames' | 'parentNames' | 'language'>,
+  now: Date,
+): Promise<{
+  occasions: DutyOccasion[];
+  open: OpenDutyQuestion | null;
+  facts: AskFact[];
+  stopAsking: boolean;
+}> {
   const facts = await loadLogisticFacts(database, familyId);
   const openFact = facts.find((row) => row.factKey === DUTY_OPEN_FACT_KEY);
+  const stopFact = facts.find((row) => row.factKey === DUTY_STOP_ASKING_KEY);
+  const stopAsking = dutyStopAskingActive(stopFact?.factValue, now);
   const reasked = new Set(
     facts.filter((row) => row.factKey.startsWith(DUTY_REASK_PREFIX)).map((row) => row.factKey),
   );
@@ -313,6 +416,7 @@ async function buildOccasions(
   const blocks = await database
     .select({
       eventId: schema.parentCalendarBlocks.eventId,
+      userId: schema.parentCalendarBlocks.userId,
       startAt: schema.parentCalendarBlocks.startAt,
       title: schema.parentCalendarBlocks.title,
       status: schema.parentCalendarBlocks.status,
@@ -336,18 +440,30 @@ async function buildOccasions(
     const sample = active[0] ?? rows[0];
     if (!sample?.startAt) continue;
     const title = sample.title;
+    const calendarUsers = [
+      ...new Set(active.map((row) => row.userId).filter((id): id is string => Boolean(id))),
+    ];
+    const soloCalendarName =
+      calendarUsers.length === 1 ? (home.parentNames[calendarUsers[0] as string] ?? null) : null;
     const matching = duties.filter((row) => row.state.eventKey === eventKey);
+    const shared = {
+      eventKey,
+      startsAt: sample.startAt,
+      title,
+      cancelled,
+      childNames: home.childNames,
+      childFirstNames: home.childFirstNames,
+      parentNames: home.parentNames,
+      soloCalendarName,
+      language: home.language,
+    };
     if (matching.length === 0) {
       const role = roleFromTitle(title);
       occasions.push(
         occasionFor({
-          eventKey,
+          ...shared,
           role,
-          startsAt: sample.startAt,
-          title,
-          cancelled,
           state: null,
-          childNames,
           reasked: reasked.has(reaskKey(eventKey, role)),
         }),
       );
@@ -356,19 +472,20 @@ async function buildOccasions(
     for (const duty of matching) {
       occasions.push(
         occasionFor({
-          eventKey,
+          ...shared,
           role: duty.state.role,
-          startsAt: sample.startAt,
-          title,
-          cancelled,
           state: duty.state,
-          childNames,
           reasked: reasked.has(reaskKey(eventKey, duty.state.role)),
         }),
       );
     }
   }
-  return { occasions, open: openFact ? readOpen(openFact.factValue) : null, facts };
+  return {
+    occasions,
+    open: openFact ? readOpen(openFact.factValue) : null,
+    facts,
+    stopAsking,
+  };
 }
 
 export type FamilyDutyView =
@@ -380,6 +497,7 @@ export type FamilyDutyView =
       language: 'en' | 'fr';
       timeZone: string;
       open: OpenDutyQuestion | null;
+      render: DutyRenderInput;
     };
 
 export async function planFamilyDutyAsks(
@@ -389,13 +507,14 @@ export async function planFamilyDutyAsks(
     now: Date;
     bubbleLeaving: boolean;
     parentAsk?: { role: DutyRole | null; weekday: number | null } | null;
+    speakerUserId?: string | null;
     ports?: Pick<DutySendPorts, 'spend'>;
   },
 ): Promise<FamilyDutyView> {
   if (!coparentDutySendsActive(input.familyId)) return { skipped: 'flag_off' };
   const home = await loadHousehold(database, input.familyId);
   if (home.parentIds.length < 2 || !home.primaryUserId) return { skipped: 'single_parent' };
-  const built = await buildOccasions(database, input.familyId, home.childNames);
+  const built = await buildOccasions(database, input.familyId, home, input.now);
   const local = localParts(input.now, home.timeZone);
   let proactiveToday = 0;
   let discretionaryToday = 0;
@@ -429,6 +548,7 @@ export async function planFamilyDutyAsks(
     ),
     quietStartMin: quietStartMinutes(),
     timeZone: home.timeZone,
+    stopAsking: built.stopAsking,
   });
   return {
     plan,
@@ -437,21 +557,130 @@ export async function planFamilyDutyAsks(
     language: home.language,
     timeZone: home.timeZone,
     open: built.open,
+    render: {
+      now: input.now,
+      timeZone: home.timeZone,
+      language: home.language,
+      occasions: built.occasions,
+      parentIds: home.parentIds,
+      parentNames: home.parentNames,
+      childFirstNames: home.childFirstNames,
+      speakerName: input.speakerUserId ? (home.parentNames[input.speakerUserId] ?? null) : null,
+      open: built.open,
+    },
   };
 }
 
-function lineText(line: CadenceLine, language: 'en' | 'fr'): string {
-  return dutyCopy(line.mode as DutyCopyId, language);
+export interface DutyRenderInput {
+  now: Date;
+  timeZone: string;
+  language: 'en' | 'fr';
+  occasions: readonly DutyOccasion[];
+  parentIds: readonly string[];
+  parentNames: Readonly<Record<string, string>>;
+  childFirstNames: readonly string[];
+  speakerName: string | null;
+  open: OpenDutyQuestion | null;
 }
 
-/** Joined copy for a bubble. Null when any line is still a placeholder or unlocked. */
+function thisWeek(now: Date, startsAt: Date, timeZone: string): boolean {
+  const start = localYmd(now, timeZone);
+  const event = localYmd(startsAt, timeZone);
+  return event >= start && event < addCalendarDays(start, 7);
+}
+
+function occasionForLine(line: CadenceLine, ctx: DutyRenderInput): DutyOccasion | undefined {
+  if (!line.eventKey) return undefined;
+  return ctx.occasions.find((row) => row.eventKey === line.eventKey && row.role === line.role);
+}
+
+function silentParentName(ctx: DutyRenderInput, occasion: DutyOccasion | undefined): string | null {
+  if (!occasion) return null;
+  const spoken = new Set(occasion.spokenUserIds ?? []);
+  const quiet = ctx.parentIds.filter((id) => !spoken.has(id));
+  if (quiet.length !== 1) return null;
+  const only = quiet[0];
+  return only ? (ctx.parentNames[only] ?? null) : null;
+}
+
+function paramsFor(line: CadenceLine, ctx: DutyRenderInput): DutyCopyParams | null {
+  if (line.mode === 'week_overview') {
+    const entries: DutyWeekEntry[] = ctx.occasions
+      .filter((row) => row.source !== 'email' && !row.cancelled)
+      .filter((row) => thisWeek(ctx.now, row.startsAt, ctx.timeZone))
+      .slice()
+      .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())
+      .flatMap((row) => {
+        const day = dutyWeekdayName(row.startsAt, ctx.timeZone, ctx.language);
+        const event = row.eventLabel?.trim();
+        if (!event) return [];
+        return [{ day, event, name: row.spokenName ?? null }];
+      });
+    if (entries.length === 0) return null;
+    return { list: dutyWeekList(ctx.language, entries) };
+  }
+  const occasion = occasionForLine(line, ctx);
+  if (!occasion) return null;
+  const day = dutyWeekdayName(occasion.startsAt, ctx.timeZone, ctx.language);
+  const time = dutyClockLabel(occasion.startsAt, ctx.timeZone, ctx.language);
+  const kid = occasion.kid ?? null;
+  const event = occasion.eventLabel ?? null;
+  if (line.mode === 'which_kid') {
+    const name = ctx.speakerName ?? occasion.soloCalendarName ?? null;
+    const kids = formatDutyKids(occasion.childFirstNames ?? ctx.childFirstNames, ctx.language);
+    if (!name || !kids) return null;
+    return { name, kids };
+  }
+  if (line.mode === 'both_claimed') {
+    const parentA = occasion.claimantNames?.[0];
+    const parentB = occasion.claimantNames?.[1];
+    if (!event || !parentA || !parentB) return null;
+    return { event, day, parentA, parentB };
+  }
+  if (line.mode === 'silent_parent') {
+    const name = silentParentName(ctx, occasion);
+    if (!name || !event) return null;
+    return { name, event, day };
+  }
+  if (line.mode === 'night_before') {
+    if (!occasion.spokenName || !kid || !event) return null;
+    return { name: occasion.spokenName, kid, event, time };
+  }
+  if (line.mode === 'reask_48h') {
+    if (!kid || !event) return null;
+    return { kid, event, day, time };
+  }
+  if (line.mode === 'parent_initiated') {
+    if (!kid || !event) return null;
+    return occasion.spokenName
+      ? { name: occasion.spokenName, kid, event, day, time }
+      : { kid, event, day, time };
+  }
+  return null;
+}
+
+function renderOne(line: CadenceLine, ctx: DutyRenderInput): string | null {
+  const params = paramsFor(line, ctx);
+  if (!params) return null;
+  try {
+    const text = dutyCopy(line.mode, ctx.language, params);
+    if (!dutyCopyMayLeave(text)) return null;
+    return text;
+  } catch {
+    return null;
+  }
+}
+
+/** Joined copy for a bubble. Null when nothing finished may leave. */
 export function renderDutyLines(
   lines: readonly CadenceLine[],
-  language: 'en' | 'fr',
+  ctx: DutyRenderInput,
 ): string | null {
   if (lines.length === 0) return null;
-  const parts = lines.map((line) => lineText(line, language));
-  if (parts.some((part) => !dutyCopyMayLeave(part))) return null;
+  const parts = lines
+    .map((line) => renderOne(line, ctx))
+    .filter((part): part is string => part !== null);
+  if (parts.length === 0) return null;
   return parts.join('\n');
 }
 
@@ -712,7 +941,7 @@ async function applyPlan(
     ports?: DutySendPorts;
   },
 ): Promise<DutyDelivery> {
-  const text = renderDutyLines(input.lines, input.view.language);
+  const text = renderDutyLines(input.lines, input.view.render);
   if (!text) return { status: 'skipped', reason: 'placeholder' };
   const first = input.lines[0];
   const ymd = localYmd(input.now, input.view.timeZone);
@@ -815,7 +1044,7 @@ export async function dutyOverviewForWeeklyBubble(
     bubbleLeaving: true,
   });
   if ('skipped' in view) return null;
-  const text = renderDutyLines(view.plan.foldLines, view.language);
+  const text = renderDutyLines(view.plan.foldLines, view.render);
   if (!text) return null;
   return {
     text,
@@ -867,11 +1096,40 @@ export async function answerParentDutyAsk(
   },
 ): Promise<
   | {
-      skipped: 'flag_off' | 'no_match' | 'llm_cap' | 'single_parent' | 'no_event' | 'open_question';
+      skipped:
+        | 'flag_off'
+        | 'no_match'
+        | 'llm_cap'
+        | 'single_parent'
+        | 'no_event'
+        | 'open_question'
+        | 'stop_asking';
     }
   | { delivery: DutyDelivery }
 > {
   if (!coparentDutySendsActive(input.familyId)) return { skipped: 'flag_off' };
+  if (matchDutyStopAsking(input.text)) {
+    await writeFact(database, {
+      familyId: input.familyId,
+      childId: null,
+      factType: 'logistic',
+      factKey: DUTY_STOP_ASKING_KEY,
+      factValue: {
+        schemaVersion: 1,
+        kind: 'duty_stop_asking',
+        until: new Date(input.now.getTime() + DUTY_STOP_ASKING_MS).toISOString(),
+        byUserId: input.actorUserId,
+      },
+      confidence: 1,
+      inferredBy: 'coparent_duty_ask',
+      validFrom: input.now,
+    });
+    await auditDuty(database, {
+      familyId: input.familyId,
+      after: { kind: 'duty_stop_asking', days: 30 },
+    });
+    return { skipped: 'stop_asking' };
+  }
   let ask = matchParentDutyAsk(input.text);
   if (!ask && input.extract) {
     const calls = await llmCallsToday(database, input.familyId, input.now);
@@ -897,6 +1155,7 @@ export async function answerParentDutyAsk(
     now: input.now,
     bubbleLeaving: false,
     parentAsk: ask,
+    speakerUserId: input.actorUserId,
     ports: input.ports,
   });
   if ('skipped' in view) return { skipped: view.skipped };

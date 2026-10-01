@@ -4,7 +4,7 @@ Hale keeps family memory in Postgres in the Canadian region. This note is the pr
 
 ## What is stored
 
-- **Facts** stay on `family_memory_facts` (bi-temporal, with confidence, writer, source event, and supersede links). No new fact types. VIL-391 adds `memory_kind`, `memory_source`, `sourced_at`, `expires_at`, and `signal_count`. Existing rows are `lasting` / `legacy`. The columns are ignored unless `FAMILY_MEMORY_KINDS_ENABLED` is exactly `true`. Parent-facing sentences for that path are placeholders until `FAMILY_MEMORY_KINDS_COPY_LOCKED` is exactly `true`.
+- **Facts** stay on `family_memory_facts` (bi-temporal, with confidence, writer, source event, and supersede links). No new fact types. VIL-391 adds `memory_kind`, `memory_source`, `sourced_at`, `expires_at`, and `signal_count`. Existing rows are `lasting` / `legacy`. The columns are ignored unless `FAMILY_MEMORY_KINDS_ENABLED` is exactly `true`. Parent-facing sentences for that path are locked copy and still do not send unless `FAMILY_MEMORY_KINDS_COPY_LOCKED` is exactly `true`.
 - **Aliases** (`family_memory_aliases`) are normalized tokens from a fact's key plus a fixed synonym list in the repo (`daycare` / `childcare`, relationship words, and similar). Message text cannot add an alias.
 - **Digests** (`family_memory_digests`) are one row per family, grain (`day` or `week`), and local period start. The JSON is counts and closed labels (channel category, conversation topic, commitment kind). It does not store a message body.
 - **Workstreams** are the existing `agent_commitments` rows. The brief shows kind, topic, and due time, not the commitment sentence.

@@ -5,9 +5,9 @@ import { linqGroupCoparentEnabled } from '~/lib/channel/linq/config';
 import { writeFact } from './facts';
 import { forgetFamilyFact } from './forget';
 import {
-  type MemoryKindCopyKey,
   type MemoryKindEnv,
   type MemoryKindLanguage,
+  type MemoryRecallItem,
   type MemorySource,
   type PromotionSignal,
   applyPromotionSignal,
@@ -20,6 +20,10 @@ import {
   memoryKindLanguage,
   memoryTextOverlaps,
   parseMemoryParentIntent,
+  renderMemoryCorrected,
+  renderMemoryForgotten,
+  renderMemoryGroupSync,
+  renderMemoryRecall,
   toFamilyMemoryExportFact,
 } from './kinds';
 import { isReceiptKey } from './lexicon';
@@ -223,6 +227,7 @@ export interface RecallFact {
   id: string;
   factType: string;
   factKey: string;
+  factValue: unknown;
   kind: string;
   source: string;
   sourcedAt: string;
@@ -261,6 +266,7 @@ export async function recallFamilyMemory(
       childId: schema.familyMemoryFacts.childId,
       factType: schema.familyMemoryFacts.factType,
       factKey: schema.familyMemoryFacts.factKey,
+      factValue: schema.familyMemoryFacts.factValue,
       inferredBy: schema.familyMemoryFacts.inferredBy,
       memoryKind: schema.familyMemoryFacts.memoryKind,
       memorySource: schema.familyMemoryFacts.memorySource,
@@ -281,15 +287,14 @@ export async function recallFamilyMemory(
   return rows
     .filter((row) => !row.childId || !teens.has(row.childId))
     .filter((row) => beliefRow(row))
-    .filter((row) =>
-      includeInRecommendations(row, input.now, true) || row.memoryKind === 'one_off',
-    )
+    .filter((row) => includeInRecommendations(row, input.now, true) || row.memoryKind === 'one_off')
     .map((row) => {
       const exported = toFamilyMemoryExportFact(row);
       return {
         id: exported.id,
         factType: exported.factType,
         factKey: exported.factKey,
+        factValue: row.factValue,
         kind: exported.kind,
         source: exported.source,
         sourcedAt: exported.sourcedAt,
@@ -342,6 +347,8 @@ export async function syncMemoryDecisionToGroup(
     familyId: string;
     originChatId: string | null;
     language: MemoryKindLanguage;
+    actorUserId: string;
+    change: 'forget' | 'correct';
     env?: MemoryKindEnv;
     sendGroup?: (chatId: string, body: string) => Promise<unknown>;
   },
@@ -354,7 +361,14 @@ export async function syncMemoryDecisionToGroup(
   if (input.originChatId && input.originChatId === groupChatId) {
     return { synced: false, skipped: 'already_home' };
   }
-  const body = memoryKindCopy(input.language, 'groupSync');
+  const who = await parentSpokenName(database, input.actorUserId);
+  if (!who) return { synced: false, skipped: 'unnamed' };
+  let body: string;
+  try {
+    body = renderMemoryGroupSync(input.language, input.change, who);
+  } catch {
+    return { synced: false, skipped: 'unrendered' };
+  }
   const gated = deliverMemoryKindCopy(body, env);
   if (!gated.deliver) return { synced: false, skipped: gated.skipped };
   if (!input.sendGroup) return { synced: false, skipped: 'sender_absent' };
@@ -365,13 +379,47 @@ export async function syncMemoryDecisionToGroup(
   return { synced: true, skipped: 'sent' };
 }
 
-function gatedReply(
-  language: MemoryKindLanguage,
-  key: MemoryKindCopyKey,
-  env: MemoryKindEnv,
-): string | null {
-  const gated = deliverMemoryKindCopy(memoryKindCopy(language, key), env);
+function gatedReply(body: string, env: MemoryKindEnv): string | null {
+  const gated = deliverMemoryKindCopy(body, env);
   return gated.deliver ? gated.body : null;
+}
+
+function displayFactValue(value: unknown): string | null {
+  if (typeof value === 'string') return value.trim() || null;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  for (const key of ['value', 'note', 'summary', 'text', 'name']) {
+    const found = record[key];
+    if (typeof found === 'string' && found.trim()) return found.trim();
+  }
+  return null;
+}
+
+function recallItems(facts: readonly RecallFact[]): MemoryRecallItem[] {
+  const items: MemoryRecallItem[] = [];
+  for (const fact of facts) {
+    if (fact.source === 'receipt') continue;
+    const value = displayFactValue(fact.factValue);
+    if (!value) continue;
+    const source = fact.source as MemoryRecallItem['source'];
+    const kind = fact.kind as MemoryRecallItem['kind'];
+    items.push({ key: fact.factKey, value, source, kind });
+  }
+  return items;
+}
+
+async function parentSpokenName(database: Database, userId: string): Promise<string | null> {
+  const [row] = await database
+    .select({ name: schema.users.name })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .limit(1);
+  const trimmed = row?.name?.trim() ?? '';
+  if (!trimmed || (trimmed.match(/\d/g) ?? []).length >= 7) return null;
+  const first = trimmed.split(/\s+/)[0] ?? '';
+  if (!/^[A-Za-z][A-Za-z'.-]*$/.test(first)) return null;
+  return first;
 }
 
 /**
@@ -410,11 +458,17 @@ export async function handleParentMemory(
   const origin = await originChatId(database, input.inboundChannelMessageId);
 
   if (intent.kind === 'recall') {
-    await recallFamilyMemory(database, { familyId: input.familyId, now: input.now });
+    const facts = await recallFamilyMemory(database, { familyId: input.familyId, now: input.now });
+    let reply: string | null = null;
+    try {
+      reply = gatedReply(renderMemoryRecall(door.language, recallItems(facts)).join('\n\n'), env);
+    } catch {
+      reply = null;
+    }
     return {
       claimed: true,
       outcome: 'recalled',
-      reply: gatedReply(door.language, 'recall', env),
+      reply,
       forgotten: 0,
       corrected: 0,
       groupSync: { synced: false, skipped: 'not_a_decision' },
@@ -428,22 +482,27 @@ export async function handleParentMemory(
       now: input.now,
       needle: intent.needle,
     });
-    const key: MemoryKindCopyKey =
-      forgotten.forgotten > 0 ? 'forgotten' : forgotten.refused > 0 ? 'refused' : 'nothing';
+    const body =
+      forgotten.forgotten > 0
+        ? renderMemoryForgotten(door.language, forgotten.keys)
+        : memoryKindCopy(door.language, forgotten.refused > 0 ? 'refused' : 'nothing');
     const groupSync =
       forgotten.forgotten > 0
         ? await syncMemoryDecisionToGroup(database, {
             familyId: input.familyId,
             originChatId: origin,
             language: door.language,
+            actorUserId: input.parentUserId,
+            change: 'forget',
             env,
             sendGroup: input.sendGroup,
           })
         : { synced: false, skipped: 'nothing_to_sync' };
     return {
       claimed: true,
-      outcome: forgotten.forgotten > 0 ? 'forgotten' : forgotten.refused > 0 ? 'refused' : 'nothing',
-      reply: gatedReply(door.language, key, env),
+      outcome:
+        forgotten.forgotten > 0 ? 'forgotten' : forgotten.refused > 0 ? 'refused' : 'nothing',
+      reply: gatedReply(body, env),
       forgotten: forgotten.forgotten,
       corrected: 0,
       groupSync,
@@ -462,14 +521,19 @@ export async function handleParentMemory(
         familyId: input.familyId,
         originChatId: origin,
         language: door.language,
+        actorUserId: input.parentUserId,
+        change: 'correct',
         env,
         sendGroup: input.sendGroup,
       })
     : { synced: false, skipped: 'nothing_to_sync' };
+  const correctedBody = corrected.corrected
+    ? renderMemoryCorrected(door.language, intent.factKey ?? '', intent.value ?? '')
+    : memoryKindCopy(door.language, 'refused');
   return {
     claimed: true,
     outcome: corrected.corrected ? 'corrected' : 'refused',
-    reply: gatedReply(door.language, corrected.corrected ? 'corrected' : 'refused', env),
+    reply: gatedReply(correctedBody, env),
     forgotten: 0,
     corrected: corrected.corrected ? 1 : 0,
     groupSync,
@@ -479,7 +543,7 @@ export async function handleParentMemory(
 async function forgetMatchingFacts(
   database: Database,
   input: { familyId: string; actor: string; now: Date; needle: string | null },
-): Promise<{ forgotten: number; refused: number }> {
+): Promise<{ forgotten: number; refused: number; keys: string[] }> {
   const teens = await teenIds(database, input.familyId, input.now);
   const rows = await database
     .select({
@@ -499,9 +563,7 @@ async function forgetMatchingFacts(
     )
     .orderBy(desc(schema.familyMemoryFacts.sourcedAt));
 
-  const beliefs = rows.filter(
-    (row) => (!row.childId || !teens.has(row.childId)) && beliefRow(row),
-  );
+  const beliefs = rows.filter((row) => (!row.childId || !teens.has(row.childId)) && beliefRow(row));
   const targets =
     input.needle === null
       ? beliefs.slice(0, 1)
@@ -509,6 +571,7 @@ async function forgetMatchingFacts(
 
   let forgotten = 0;
   let refused = 0;
+  const keys: string[] = [];
   for (const row of targets) {
     const result = await forgetFamilyFact(database, {
       familyId: input.familyId,
@@ -517,13 +580,14 @@ async function forgetMatchingFacts(
       now: input.now,
     });
     forgotten += result.forgotten;
+    if (result.forgotten > 0) keys.push(row.factKey);
     refused += result.refusedControlPlane + result.refusedWriter;
   }
   if (targets.length === 0 && input.needle === null) {
     const receipts = rows.filter((row) => isReceiptKey(row.factKey));
     if (receipts.length > 0) refused += 1;
   }
-  return { forgotten, refused };
+  return { forgotten, refused, keys };
 }
 
 async function correctFamilyFact(

@@ -50,7 +50,10 @@ describe('duty plan', () => {
     });
     expect(second.status).toBe('conflict');
     expect(second.owner).toBeNull();
-    expect(DUTY_BOTH_CLAIMED_COPY).toContain('TODO-Design');
+    expect(DUTY_BOTH_CLAIMED_COPY).toBe(
+      "You both said you've got {event}, {day}. Who's taking it, {parentA} or {parentB}?",
+    );
+    expect(DUTY_BOTH_CLAIMED_COPY).not.toContain('TODO-Design');
   });
 
   it('overwrites a changed claim and does not keep the old one', () => {
@@ -147,7 +150,8 @@ describe('duty plan', () => {
     expect(needsWhichKid('swim class', ['Maya', 'Leo'])).toBe(true);
     expect(needsWhichKid('Maya swim', ['Maya', 'Leo'])).toBe(false);
     expect(needsWhichKid('swim class', ['Maya'])).toBe(false);
-    expect(DUTY_WHICH_KID_COPY).toContain('TODO-Design');
+    expect(DUTY_WHICH_KID_COPY).toBe('{name}, got it. Which kid is that for: {kids}?');
+    expect(DUTY_WHICH_KID_COPY).not.toContain('TODO-Design');
     const stored = dutyStorage({
       subjectKey: 'who-takes/2026-09-25T19:00:00.000Z/team%20offsite',
       role: 'attend',

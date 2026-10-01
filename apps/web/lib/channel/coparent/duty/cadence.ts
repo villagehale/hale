@@ -47,6 +47,17 @@ export interface DutyOccasion {
   /** The one re-ask for this event and role has already gone out. */
   reasked: boolean;
   source: 'calendar' | 'email';
+  /** Name a parent said. Null unless someone claimed a single owner. */
+  spokenName?: string | null;
+  /** First name of the only parent whose calendar holds this event. */
+  soloCalendarName?: string | null;
+  kid?: string | null;
+  eventLabel?: string | null;
+  /** First names of parents who each said they have it, in claim order. */
+  claimantNames?: readonly string[];
+  /** User ids that have already answered this duty. */
+  spokenUserIds?: readonly string[];
+  childFirstNames?: readonly string[];
 }
 
 export interface OpenDutyQuestion {
@@ -74,6 +85,12 @@ export interface CadenceContext {
   quiet: boolean;
   /** Quiet hours begin at this minute. The night-before window ends there. */
   quietStartMin: number;
+  /**
+   * A parent said "stop asking" inside the last 30 days. Items that ask
+   * (which kid, both claimed, the 48-hour re-ask, night-before, silent parent)
+   * stay quiet. The Sunday overview and a direct answer still leave.
+   */
+  stopAsking?: boolean;
   timeZone: string;
 }
 
@@ -198,10 +215,30 @@ function byStart(a: DutyOccasion, b: DutyOccasion): number {
   return a.startsAt.getTime() - b.startsAt.getTime();
 }
 
+/** which_kid, both_claimed, reask_48h, night_before. Overview, a direct answer, and the silent nudge do not. */
+const ASK_BUDGET = new Set<DutyAskMode>(['which_kid', 'both_claimed', 'reask_48h', 'night_before']);
+
+/** Suppressed for 30 days after "stop asking". Overview and parent_initiated stay. */
+const STOP_ASKING_HOLDS = new Set<DutyAskMode>([
+  'which_kid',
+  'both_claimed',
+  'reask_48h',
+  'night_before',
+  'silent_parent',
+]);
+
+export function dutyModeCountsAgainstAskBudget(mode: DutyAskMode): boolean {
+  return ASK_BUDGET.has(mode);
+}
+
+function heldByStopAsking(ctx: CadenceContext, mode: DutyAskMode): boolean {
+  return ctx.stopAsking === true && STOP_ASKING_HOLDS.has(mode);
+}
+
 function line(
   mode: DutyAskMode,
   occasion: DutyOccasion | null,
-  extra: { opensQuestion: boolean; discretionary: boolean; namesSilentParent?: boolean },
+  extra: { opensQuestion: boolean; namesSilentParent?: boolean },
 ): CadenceLine {
   return {
     mode,
@@ -209,23 +246,24 @@ function line(
     role: occasion?.role ?? null,
     opensQuestion: extra.opensQuestion,
     namesSilentParent: extra.namesSilentParent === true,
-    discretionary: extra.discretionary,
+    discretionary: ASK_BUDGET.has(mode),
   };
 }
 
 function questionLine(occasion: DutyOccasion, ctx: CadenceContext): CadenceLine | null {
-  if (occasion.needsWhichKid) {
-    return line('which_kid', occasion, { opensQuestion: true, discretionary: true });
+  if (occasion.needsWhichKid && !heldByStopAsking(ctx, 'which_kid')) {
+    return line('which_kid', occasion, { opensQuestion: true });
   }
-  if (occasion.conflict) {
-    return line('both_claimed', occasion, { opensQuestion: true, discretionary: true });
+  if (occasion.conflict && !heldByStopAsking(ctx, 'both_claimed')) {
+    return line('both_claimed', occasion, { opensQuestion: true });
   }
   if (
     !occasion.hasOwner &&
     !occasion.reasked &&
+    !heldByStopAsking(ctx, 'reask_48h') &&
     eventWithinMs(ctx.now, occasion.startsAt, REASK_WITHIN_MS)
   ) {
-    return line('reask_48h', occasion, { opensQuestion: true, discretionary: true });
+    return line('reask_48h', occasion, { opensQuestion: true });
   }
   // Quiet hours still name the confirmation so the caller can hold it.
   // 21:00 is the end of the window and the start of quiet; a 21:30 tick must
@@ -233,9 +271,10 @@ function questionLine(occasion: DutyOccasion, ctx: CadenceContext): CadenceLine 
   if (
     occasion.hasOwner &&
     isLocalTomorrow(ctx.now, occasion.startsAt, ctx.timeZone) &&
+    !heldByStopAsking(ctx, 'night_before') &&
     (inNightBeforeWindow(ctx.localMinutes, ctx.quietStartMin) || ctx.quiet)
   ) {
-    return line('night_before', occasion, { opensQuestion: false, discretionary: true });
+    return line('night_before', occasion, { opensQuestion: false });
   }
   return null;
 }
@@ -282,12 +321,15 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
       const opens = !match.hasOwner || match.needsWhichKid || match.conflict;
       if (opens && open && !stepped && !sameSlot(open, match)) {
         held = 'open_question';
-      } else if (specific?.mode === 'which_kid' || specific?.mode === 'both_claimed') {
+      } else if (
+        (specific?.mode === 'which_kid' || specific?.mode === 'both_claimed') &&
+        !heldByStopAsking(ctx, specific.mode)
+      ) {
         question = specific;
       } else if (match.hasOwner) {
-        question = line('parent_initiated', match, { opensQuestion: false, discretionary: false });
+        question = line('parent_initiated', match, { opensQuestion: false });
       } else if (!stepDown) {
-        question = line('parent_initiated', match, { opensQuestion: true, discretionary: false });
+        question = line('parent_initiated', match, { opensQuestion: true });
       }
     }
   } else if (!stepDown && !stepped) {
@@ -309,7 +351,7 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
 
   const sundayOverview =
     ctx.weekday === 0 && ctx.bubbleLeaving && !ctx.quiet
-      ? line('week_overview', null, { opensQuestion: false, discretionary: false })
+      ? line('week_overview', null, { opensQuestion: false })
       : null;
 
   const foldLines: CadenceLine[] = [];
@@ -356,8 +398,12 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
       if (row.hasOwner || row.reasked || row.needsWhichKid || row.conflict) return false;
       return eventWithinMs(ctx.now, row.startsAt, REASK_WITHIN_MS);
     });
-    if (reask && !sendLines.some((row) => row.opensQuestion)) {
-      sendLines.push(line('reask_48h', reask, { opensQuestion: true, discretionary: true }));
+    if (
+      reask &&
+      !heldByStopAsking(ctx, 'reask_48h') &&
+      !sendLines.some((row) => row.opensQuestion)
+    ) {
+      sendLines.push(line('reask_48h', reask, { opensQuestion: true }));
     }
   }
 
@@ -366,6 +412,7 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
     open &&
     !stepped &&
     !open.silentNamed &&
+    !heldByStopAsking(ctx, 'silent_parent') &&
     open.unanswered >= 1 &&
     namingBubble &&
     !foldLines.some((row) => row.namesSilentParent) &&
@@ -373,7 +420,6 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
   ) {
     const silent = line('silent_parent', null, {
       opensQuestion: false,
-      discretionary: false,
       namesSilentParent: true,
     });
     silent.eventKey = open.eventKey;
