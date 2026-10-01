@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { triageEmail } from './triage';
 
 function client(childRelated: boolean): AgentClient {
@@ -37,7 +37,10 @@ const envelope = {
 };
 
 describe('triageEmail rollout', () => {
-  it('uses JEV by default', async () => {
+  beforeEach(() => vi.stubEnv('HALE_TRIAGE_MODEL_MODE', ''));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('keeps Haiku by default', async () => {
     const currentClient = client(false);
     const evaluateChoice = vi.fn(async () => ({
       choice: 'yes' as const,
@@ -50,9 +53,9 @@ describe('triageEmail rollout', () => {
       evaluateChoice,
     });
 
-    expect(result.childRelated).toBe(true);
-    expect(result.confidence).toBe(0.9);
-    expect(currentClient.messages.create).not.toHaveBeenCalled();
+    expect(result.childRelated).toBe(false);
+    expect(evaluateChoice).not.toHaveBeenCalled();
+    expect(currentClient.messages.create).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to Haiku when JEV fails', async () => {
@@ -66,6 +69,38 @@ describe('triageEmail rollout', () => {
 
     expect(result.childRelated).toBe(false);
     expect(currentClient.messages.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to Haiku before dropping a low-confidence no', async () => {
+    const currentClient = client(true);
+    const result = await triageEmail(envelope, ['Mia'], currentClient, {
+      modelMode: 'candidate',
+      evaluateChoice: vi.fn(async () => ({
+        choice: 'no' as const,
+        probabilities: { yes: 0.35, no: 0.65 },
+        confidence: 0.65,
+        usage: { inputTokens: 20, outputTokens: 1 },
+      })),
+    });
+
+    expect(result.childRelated).toBe(true);
+    expect(currentClient.messages.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts a high-confidence no without calling Haiku', async () => {
+    const currentClient = client(true);
+    const result = await triageEmail(envelope, ['Mia'], currentClient, {
+      modelMode: 'candidate',
+      evaluateChoice: vi.fn(async () => ({
+        choice: 'no' as const,
+        probabilities: { yes: 0.02, no: 0.98 },
+        confidence: 0.98,
+        usage: { inputTokens: 20, outputTokens: 1 },
+      })),
+    });
+
+    expect(result.childRelated).toBe(false);
+    expect(currentClient.messages.create).not.toHaveBeenCalled();
   });
 
   it('uses Haiku when current mode is explicit', async () => {

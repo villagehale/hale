@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import type { AgentClient } from '@hale/agent';
+import { type AgentClient, DEEPSEEK_MODEL } from '@hale/agent';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { parseVillageSearchIntent } from './ai-search-parse';
@@ -58,7 +58,13 @@ describe('parseVillageSearchIntent', () => {
       familyScoped: false,
     });
     const { intent, degraded } = await parseVillageSearchIntent(
-      { prompt: 'a good montessori start in fall', familyId: FAMILY_ID, childrenAgesMonths: [40], hasTeen: false, areaCoarse: 'M4K' },
+      {
+        prompt: 'a good montessori start in fall',
+        familyId: FAMILY_ID,
+        childrenAgesMonths: [40],
+        hasTeen: false,
+        areaCoarse: 'M4K',
+      },
       fakeDb(capture),
       fakeClient(answer),
     );
@@ -73,7 +79,13 @@ describe('parseVillageSearchIntent', () => {
   it('degrades to a keyword intent (flagged, recorded failed) when the answer has no JSON', async () => {
     const capture = { agentRuns: [] as Record<string, unknown>[] };
     const { intent, degraded } = await parseVillageSearchIntent(
-      { prompt: 'swim lessons this winter', familyId: FAMILY_ID, childrenAgesMonths: [], hasTeen: false, areaCoarse: null },
+      {
+        prompt: 'swim lessons this winter',
+        familyId: FAMILY_ID,
+        childrenAgesMonths: [],
+        hasTeen: false,
+        areaCoarse: null,
+      },
       fakeDb(capture),
       fakeClient('I cannot help with that.'),
     );
@@ -86,7 +98,13 @@ describe('parseVillageSearchIntent', () => {
   it('degrades to a keyword intent when the model call throws, never surfacing the error (rule #8)', async () => {
     const capture = { agentRuns: [] as Record<string, unknown>[] };
     const { intent, degraded } = await parseVillageSearchIntent(
-      { prompt: 'french immersion preschool', familyId: FAMILY_ID, childrenAgesMonths: [], hasTeen: false, areaCoarse: null },
+      {
+        prompt: 'french immersion preschool',
+        familyId: FAMILY_ID,
+        childrenAgesMonths: [],
+        hasTeen: false,
+        areaCoarse: null,
+      },
       fakeDb(capture),
       fakeClient({ throws: true }),
     );
@@ -97,7 +115,13 @@ describe('parseVillageSearchIntent', () => {
   it('sends only the coarse area + non-teen ages to the model, never a teen age (rule #1)', async () => {
     const client = fakeClient(JSON.stringify({ keywords: ['soccer'] }));
     await parseVillageSearchIntent(
-      { prompt: 'soccer for my kids', familyId: FAMILY_ID, childrenAgesMonths: [40], hasTeen: true, areaCoarse: 'M4K' },
+      {
+        prompt: 'soccer for my kids',
+        familyId: FAMILY_ID,
+        childrenAgesMonths: [40],
+        hasTeen: true,
+        areaCoarse: 'M4K',
+      },
       fakeDb({ agentRuns: [] }),
       client,
     );
@@ -112,5 +136,50 @@ describe('parseVillageSearchIntent', () => {
     // the request — system blocks included.
     const wholeRequest = JSON.stringify(call);
     expect(wholeRequest).not.toMatch(/ageMonths\\?":\s*1[5-9]\d/);
+  });
+
+  it('uses DeepSeek only when candidate mode is explicit', async () => {
+    const candidateClient = fakeClient(JSON.stringify({ keywords: ['soccer'] }));
+    const capture = { agentRuns: [] as Record<string, unknown>[] };
+
+    await parseVillageSearchIntent(
+      {
+        prompt: 'soccer',
+        familyId: FAMILY_ID,
+        childrenAgesMonths: [],
+        hasTeen: false,
+        areaCoarse: null,
+      },
+      fakeDb(capture),
+      undefined,
+      { modelMode: 'candidate', candidateClient },
+    );
+
+    expect(candidateClient.messages.create).toHaveBeenCalledWith(
+      expect.objectContaining({ model: DEEPSEEK_MODEL, thinking: { type: 'disabled' } }),
+    );
+    expect(capture.agentRuns[0]?.modelUsed).toBe(DEEPSEEK_MODEL);
+  });
+
+  it('falls back to the current parser when DeepSeek fails', async () => {
+    const currentClient = fakeClient(JSON.stringify({ keywords: ['swim'] }));
+    const candidateClient = fakeClient({ throws: true });
+
+    const result = await parseVillageSearchIntent(
+      {
+        prompt: 'swim',
+        familyId: FAMILY_ID,
+        childrenAgesMonths: [],
+        hasTeen: false,
+        areaCoarse: null,
+      },
+      fakeDb({ agentRuns: [] }),
+      currentClient,
+      { modelMode: 'candidate', candidateClient },
+    );
+
+    expect(result.degraded).toBe(false);
+    expect(result.intent.keywords).toEqual(['swim']);
+    expect(currentClient.messages.create).toHaveBeenCalledTimes(1);
   });
 });

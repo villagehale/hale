@@ -1,0 +1,13 @@
+{
+  "choice": "ambiguous",
+  "verbatimCorrect": true,
+  "latencyMs": 1778,
+  "usage": {
+    "inputTokens": 1834,
+    "cacheCreationTokens": 0,
+    "cacheReadTokens": 0,
+    "outputTokens": 155
+  },
+  "costUsd": 0.007827,
+  "confidence": 0.95
+}

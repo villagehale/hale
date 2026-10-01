@@ -114,11 +114,7 @@ export type LaneConfig =
   | { model: typeof HAIKU_MODEL }
   | { model: typeof DEEPSEEK_MODEL; thinking: 'disabled' }
   | { model: ReasoningModelId; thinking: 'adaptive'; effort: Effort }
-  | {
-      model: ReasoningModelId;
-      thinking: 'disabled';
-      effort: Exclude<Effort, 'xhigh'>;
-    };
+  | { model: ReasoningModelId; thinking: 'disabled'; effort: Exclude<Effort, 'xhigh'> };
 
 /** The tiers that accept the reasoning knobs — everything except Haiku. */
 export type ReasoningModelId =
@@ -178,11 +174,7 @@ const TASK_LANE: Record<AgentTask, LaneConfig> = {
   infer: { model: SONNET_MODEL, thinking: 'disabled', effort: 'high' },
 
   // Run-rarely and judgment-dense: the one lane worth `xhigh`.
-  'high-stakes-judgment': {
-    model: OPUS_MODEL,
-    thinking: 'adaptive',
-    effort: 'xhigh',
-  },
+  'high-stakes-judgment': { model: OPUS_MODEL, thinking: 'adaptive', effort: 'xhigh' },
 
   // Haiku lanes — no knob exists on this tier (see LaneConfig).
   'simple-lookup': { model: HAIKU_MODEL },

@@ -1,0 +1,13 @@
+{
+  "choice": "assent",
+  "verbatimCorrect": true,
+  "latencyMs": 1843,
+  "usage": {
+    "inputTokens": 1831,
+    "cacheCreationTokens": 0,
+    "cacheReadTokens": 0,
+    "outputTokens": 156
+  },
+  "costUsd": 0.007833,
+  "confidence": 0.9
+}

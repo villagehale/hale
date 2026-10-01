@@ -1,7 +1,13 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { compileToolSchema } from './json-schema.js';
-import { type AgentTask, laneRequestFields, pickLane, withoutThinking } from './model.js';
+import {
+  type AgentTask,
+  type LaneConfig,
+  laneRequestFields,
+  pickLane,
+  withoutThinking,
+} from './model.js';
 import type { Skill } from './skill.js';
 import {
   type GuardDeps,
@@ -42,6 +48,8 @@ export interface RunAgentArgs {
   /** Tools the loop may dispatch. The skill's `tools` allowlist must be a subset of these names. */
   tools: RegisteredTool[];
   client: AgentClient;
+  /** Explicit eval/rollout lane. Omitted in normal routing, which uses the skill task. */
+  lane?: LaneConfig;
   /** Hard cap on Anthropic round-trips. The loop returns hitMaxSteps:true if reached. */
   maxSteps: number;
   /** Family scope + acting actor, threaded into every guarded tool invocation. */
@@ -369,8 +377,8 @@ function toAnthropicTools(
  */
 type WireLaneFields = Pick<Anthropic.MessageCreateParams, 'model'>;
 
-function wireLane(task: AgentTask): WireLaneFields {
-  return laneRequestFields(pickLane(task)) as WireLaneFields;
+function wireLane(task: AgentTask, lane?: LaneConfig): WireLaneFields {
+  return laneRequestFields(lane ?? pickLane(task)) as WireLaneFields;
 }
 
 /**
@@ -536,7 +544,7 @@ async function handleToolUses(
 }
 
 export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
-  const laneConfig = pickLane(args.skill.meta.task);
+  const laneConfig = args.lane ?? pickLane(args.skill.meta.task);
   const lane = laneRequestFields(laneConfig) as WireLaneFields;
   const reaskLane = withoutThinking(laneConfig);
   const system = buildSystem(args.skill);
@@ -705,7 +713,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
  * logic is the same shape as the non-streaming `messages.create` response.
  */
 export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<RunAgentResult> {
-  const lane = wireLane(args.skill.meta.task);
+  const lane = wireLane(args.skill.meta.task, args.lane);
   const system = buildSystem(args.skill);
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));

@@ -12,7 +12,7 @@ import {
 /**
  * Expected values are derived from the published per-MTok rates and the cache
  * multipliers, never copied from what the code emits:
- *   Sonnet 4.6 $3 in / $15 out · Sonnet 5 $2 / $10 · Haiku 4.5 $1 / $5 · Opus 5 $5 / $25
+ *   Sonnet 4.6/5 $3 in / $15 out · Sonnet 5.5 $2 / $10 · Haiku 4.5 $1 / $5 · Opus 5 $5 / $25
  *   cache read = 0.1x input · cache write (5m) = 1.25x input
  */
 
@@ -28,10 +28,10 @@ function tiers(over: Partial<Parameters<typeof estimateCostUsd>[1]> = {}) {
 
 describe('estimateCostUsd', () => {
   it('prices each tier at its published base rate', () => {
-    // 1M in + 1M out: Sonnet 4.6 = $18; Sonnet 5 = $12; Haiku = $6; Opus = $30.
+    // 1M in + 1M out: Sonnet 4.6/5 = $18; Sonnet 5.5 = $12; Haiku = $6; Opus = $30.
     const million = tiers({ inputTokens: 1_000_000, outputTokens: 1_000_000 });
     expect(estimateCostUsd(SONNET_MODEL, million)).toBeCloseTo(18, 6);
-    expect(estimateCostUsd(SONNET5_MODEL, million)).toBeCloseTo(12, 6);
+    expect(estimateCostUsd(SONNET5_MODEL, million)).toBeCloseTo(18, 6);
     expect(estimateCostUsd(SONNET55_MODEL, million)).toBeCloseTo(12, 6);
     expect(estimateCostUsd(HAIKU_MODEL, million)).toBeCloseTo(6, 6);
     expect(estimateCostUsd(OPUS_MODEL, million)).toBeCloseTo(30, 6);

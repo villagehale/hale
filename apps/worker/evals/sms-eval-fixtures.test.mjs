@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { INTENT_FIXTURES } from './intake-fixtures.mjs';
+import { REPLY_INTENT_HELD_OUT_FIXTURES } from './reply-intent-held-out-fixtures.mjs';
 import { SMS_CALENDAR_REVIEWER_FIXTURES } from './sms-calendar-reviewer-fixtures.mjs';
 
 describe('SMS candidate eval fixtures', () => {
@@ -13,6 +15,34 @@ describe('SMS candidate eval fixtures', () => {
     expect(counts.assent).toHaveLength(16);
     expect(counts.decline).toHaveLength(17);
     expect(counts.ambiguous).toHaveLength(17);
+  });
+
+  it('has 50 independent held-out replies with French ambiguity and action requests', () => {
+    expect(REPLY_INTENT_HELD_OUT_FIXTURES).toHaveLength(50);
+    expect(new Set(REPLY_INTENT_HELD_OUT_FIXTURES.map((fixture) => fixture.reply)).size).toBe(50);
+    expect(
+      REPLY_INTENT_HELD_OUT_FIXTURES.filter((fixture) => fixture.expect !== 'assent'),
+    ).toHaveLength(38);
+    expect(
+      REPLY_INTENT_HELD_OUT_FIXTURES.filter(
+        (fixture) => fixture.expect === 'ambiguous' && /[àâçéèêëîïôûùüÿœ’]/i.test(fixture.reply),
+      ).length,
+    ).toBeGreaterThanOrEqual(8);
+    expect(
+      REPLY_INTENT_HELD_OUT_FIXTURES.filter(
+        (fixture) =>
+          fixture.expect === 'ambiguous' &&
+          /book|reserve|calendar|réserv|inscriv/i.test(fixture.reply),
+      ).length,
+    ).toBeGreaterThanOrEqual(6);
+
+    const skill = readFileSync(
+      new URL('../../../packages/agent/skills/reply-intent.md', import.meta.url),
+      'utf8',
+    );
+    for (const fixture of REPLY_INTENT_HELD_OUT_FIXTURES) {
+      expect(skill).not.toContain(fixture.reply);
+    }
   });
 
   it('has 50 production-shaped SMS calendar reviewer samples', () => {

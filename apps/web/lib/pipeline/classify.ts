@@ -3,6 +3,7 @@ import { SONNET55_MODEL, pickLane } from '@hale/agent';
 import type { ClassifierSuggestion, EventType } from '@hale/types';
 import { redactEventPayload } from '@hale/worker/redaction';
 import { z } from 'zod';
+import { recordModelFallback } from './model-fallback';
 import { loadClassifyEventSkill } from './skill';
 import { forceToolJson } from './structured';
 
@@ -132,7 +133,7 @@ interface ClassifyDeps {
 }
 
 function modelMode(raw: string | undefined): 'current' | 'candidate' {
-  const mode = raw?.trim() || 'candidate';
+  const mode = raw?.trim() || 'current';
   if (mode === 'current' || mode === 'candidate') return mode;
   console.error({ mode }, 'classify event: invalid model mode; using current');
   return 'current';
@@ -170,8 +171,8 @@ export async function classifyEvent(
     try {
       lane = CANDIDATE_LANE;
       call = await run(lane);
-    } catch {
-      console.warn('classify event candidate failed; using current model');
+    } catch (error) {
+      recordModelFallback('classify event candidate', error);
       lane = currentLane;
     }
   }

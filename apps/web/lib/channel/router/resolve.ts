@@ -50,7 +50,7 @@ import {
  * batch of indexed SELECTs.
  */
 
-const MAX_TOKENS = 256;
+const MAX_TOKENS = 128;
 
 /** One SMS body cannot exceed this by the time it reaches us, and a reply that needs more
  * than this to be read as a yes is not a yes. */
@@ -156,17 +156,18 @@ export const readingSchema = z.object({
    * of this stage, 2026-08-13).
    *
    * It was required. It is emitted LAST, after the three fields that are the decision,
-   * and a target that names a real question spends ~30 of the original 128 output tokens on a
+   * and a target that names a real question spends ~30 of the 128 output tokens on a
    * uuid — so 4 responses in 8 hit the ceiling mid-`reason`. Anthropic does not hard
    * enforce a tool's input schema, so what arrived was a perfectly good decision with the
    * last field missing, zod threw on it, and the catch below turned the parent's "yeah go
    * ahead" into `model_failed`. The feature failed on exactly the inputs it exists for:
    * every path where it names a question.
    *
-   * Making the field optional prevents a missing trailing field from invalidating the
-   * decision. The model may still write it, so the request also uses the measured
-   * 256-token ceiling (0/24 truncations). NOTHING READS the reason — `toReading` never
-   * sees it — but it remains useful in provider traces.
+   * Raising the budget would have made that rarer. Making the field optional makes it
+   * impossible, at any budget, because NOTHING READS IT — `toReading` never sees it, and
+   * being last it cannot even function as scratchpad the way a judge's reason-before-score
+   * does. It is kept in the schema at all because a model that has to name its reason
+   * picks better, and because it is worth having in a provider trace.
    */
   reason: z.string().optional(),
 });
@@ -183,11 +184,14 @@ const readingJsonSchema = {
     confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
     reason: { type: 'string' },
   },
-  required: ['target', 'polarity', 'confidence'],
+  required: ['target', 'polarity', 'confidence', 'reason'],
 } as const;
 
 /** The user-turn payload. Shared with the eval, which REPLICATES this request shape. */
-export function replyResolverUserMessage(text: string, questions: readonly OpenQuestion[]): string {
+export function replyResolverUserMessage(
+  text: string,
+  questions: readonly OpenQuestion[],
+): string {
   return JSON.stringify({
     text,
     questions: questions.map((q) => ({ id: q.id, kind: q.kind, question: q.description })),

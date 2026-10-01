@@ -30,8 +30,7 @@ const CONTEXT_TS = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'context.ts');
 export const PRICE = {
   'claude-haiku-4-5': { input: 1.0, output: 5.0 },
   'claude-sonnet-4-6': { input: 3.0, output: 15.0 },
-  // Anthropic made Sonnet 5's introductory $2/$10 pricing permanent on 2026-08-10.
-  'claude-sonnet-5': { input: 2.0, output: 10.0 },
+  'claude-sonnet-5': { input: 3.0, output: 15.0 },
   'claude-sonnet-5.5': { input: 2.0, output: 10.0 },
   'claude-sonnet-5-5': { input: 2.0, output: 10.0 },
   'claude-opus-4-8': { input: 15.0, output: 75.0 },
@@ -298,7 +297,7 @@ export async function cachedToolCall(opts) {
     ...(opts.effort ? { output_config: { effort: opts.effort } } : {}),
     messages: [{ role: 'user', content: userMessage }],
   });
-  const canonical = JSON.stringify(request);
+  const canonical = JSON.stringify({ model, system, userMessage, toolName, toolSchema });
   const key = cacheKey(tag, canonical);
 
   const cached = await cacheGet(key);
@@ -354,7 +353,7 @@ export async function cachedTextCall(opts) {
     ...(opts.effort ? { output_config: { effort: opts.effort } } : {}),
     messages: [{ role: 'user', content: userMessage }],
   });
-  const canonical = JSON.stringify(request);
+  const canonical = JSON.stringify({ model, system, userMessage });
   const key = cacheKey(tag, canonical);
 
   const cached = await cacheGet(key);

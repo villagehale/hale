@@ -20,7 +20,6 @@ export const ANTHROPIC_TIMEOUT_MS = 60_000;
 export const ANTHROPIC_MAX_RETRIES = 1;
 
 let client: Anthropic | undefined;
-let gatewayClient: Anthropic | undefined;
 
 export function anthropicClient(): Anthropic {
   if (!config.ANTHROPIC_API_KEY) {
@@ -34,13 +33,4 @@ export function anthropicClient(): Anthropic {
     maxRetries: ANTHROPIC_MAX_RETRIES,
   });
   return client;
-}
-
-export function aiGatewayClient(): Anthropic {
-  const apiKey = config.AI_GATEWAY_API_KEY ?? config.VERCEL_KEY ?? config.JEV_KEY;
-  if (!apiKey) {
-    throw new Error('AI_GATEWAY_API_KEY is not set. Configure it to enable candidate models.');
-  }
-  gatewayClient ??= new Anthropic({ apiKey, baseURL: 'https://ai-gateway.vercel.sh' });
-  return gatewayClient;
 }

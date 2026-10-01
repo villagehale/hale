@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import { INTENT_FIXTURES, INTENT_QUESTION } from './intake-fixtures.mjs';
 import { cacheGet, cacheKey, cachePut, evalRunTag, lazyAnthropic } from './lib/harness.mjs';
+import { REPLY_INTENT_HELD_OUT_FIXTURES } from './reply-intent-held-out-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -102,6 +103,7 @@ async function evaluateFixture({ fixture, instructions, cachedOnly }) {
 
   const record = {
     choice,
+    probabilities: result.answers.intent.probabilities ?? {},
     latencyMs,
     usage: result.usage ?? null,
     costUsd: numberOrNull(result.providerMetadata?.gateway?.cost),
@@ -219,16 +221,16 @@ async function main() {
   const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
   const preflight = process.argv.includes('--preflight');
   const broken = process.argv.includes('--broken');
+  const heldOut = process.argv.includes('--held-out');
   if (broken && (cachedOnly || compareSonnet)) {
     throw new Error(
       '--broken is offline; do not combine it with --cached-only or --compare-sonnet',
     );
   }
+  const corpus = heldOut ? REPLY_INTENT_HELD_OUT_FIXTURES : INTENT_FIXTURES;
   const selectedIds = new Set(only?.split(',').filter(Boolean) ?? []);
-  const fixtures = only
-    ? INTENT_FIXTURES.filter((fixture) => selectedIds.has(fixture.id))
-    : INTENT_FIXTURES;
-  if (fixtures.length !== (only ? selectedIds.size : INTENT_FIXTURES.length)) {
+  const fixtures = only ? corpus.filter((fixture) => selectedIds.has(fixture.id)) : corpus;
+  if (fixtures.length !== (only ? selectedIds.size : corpus.length)) {
     throw new Error(`one or more fixtures did not match --only=${only}`);
   }
   const agent = await tsImport(AGENT_SRC, import.meta.url);
@@ -236,7 +238,7 @@ async function main() {
   const instructions = `${skill.instructions}\n\nClassify the reply in state using exactly one of the three criteria.`;
 
   console.info(
-    `jev-intent-eval | ${broken ? 'broken' : cachedOnly ? 'cached-only' : 'live'} | ${fixtures.length} fixtures | sonnet=${compareSonnet ? 'compare' : 'skip'}`,
+    `jev-intent-eval | ${broken ? 'broken' : cachedOnly ? 'cached-only' : 'live'} | corpus=${heldOut ? 'held-out' : 'development'} | ${fixtures.length} fixtures | sonnet=${compareSonnet ? 'compare' : 'skip'}`,
   );
   if (preflight) {
     console.info(

@@ -1,11 +1,15 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
-import { type AgentClient, agentRunCostUsd, pickModel, runAgent } from '@hale/agent';
+import { type AgentClient, DEEPSEEK_MODEL, agentRunCostUsd, pickLane, runAgent } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { recordAgentRun } from '~/lib/agent-run';
-import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
-import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { type SynthesisCronResult, runMemorySynthesis } from '~/lib/memory/synthesis';
+import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
+import {
+  CRON_SWEEP_CLIENT_OPTIONS,
+  budgetedAiGateway,
+  budgetedAnthropic,
+} from '~/lib/pipeline/client';
+import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { MAX_FAMILIES_PER_RUN, selectFamiliesForRun } from './families';
 import { buildCronGuardDeps } from './guards';
 import { buildDistillTools, buildInferenceTools } from './inference-tools';
@@ -31,6 +35,7 @@ const MAX_TOKENS = 1024;
 /** What ONE family's agent leg needs. */
 export interface InferenceDeps {
   client: AgentClient;
+  modelMode?: 'current' | 'candidate';
 }
 
 /**
@@ -50,12 +55,25 @@ export interface InferenceResult {
 }
 
 let anthropicClient: Anthropic | undefined;
+let gatewayClient: Anthropic | undefined;
+
+function inferenceModelMode(raw: string | undefined): 'current' | 'candidate' {
+  const mode = raw?.trim() || 'current';
+  if (mode === 'current' || mode === 'candidate') return mode;
+  console.error({ mode }, 'memory inference: invalid model mode; using current');
+  return 'current';
+}
 
 export function defaultInferenceDeps(): InferenceDeps {
   // Daily inference cron, maxDuration 300, multi-step loop per family: the sweep
   // budget bounds each request so one stall cannot eat the window (audit P1-7).
+  const modelMode = inferenceModelMode(process.env.HALE_MEMORY_INFER_MODEL_MODE);
+  if (modelMode === 'candidate') {
+    gatewayClient ??= budgetedAiGateway(CRON_SWEEP_CLIENT_OPTIONS);
+    return { client: gatewayClient, modelMode };
+  }
   anthropicClient ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
-  return { client: anthropicClient };
+  return { client: anthropicClient, modelMode };
 }
 
 export function defaultInferenceCronDeps(): InferenceCronDeps {
@@ -74,7 +92,11 @@ export async function runInferenceForFamily(
   // in read_recent_conversations (rule #1).
   const tools = [...buildInferenceTools(database, now), ...buildDistillTools(database, now)];
   const guardDeps = buildCronGuardDeps(database);
-  const modelUsed = pickModel(skill.meta.task);
+  const lane =
+    deps.modelMode === 'candidate'
+      ? ({ model: DEEPSEEK_MODEL, thinking: 'disabled' } as const)
+      : pickLane(skill.meta.task);
+  const modelUsed = lane.model;
 
   // Trace the inference run: a scheduled run (userId 'system'), familyId is
   // correlating metadata. The mask keeps teen/PII out of the trace (rule #1).
@@ -94,6 +116,7 @@ export async function runInferenceForFamily(
           context: { familyId },
           tools,
           client: deps.client,
+          lane,
           maxSteps: MAX_STEPS,
           maxTokens: MAX_TOKENS,
           toolContext: { familyId, actor: 'system' },
@@ -137,8 +160,7 @@ export async function runInferenceForFamily(
 export interface InferenceCronResult {
   processed: number;
   results: Array<
-    | { familyId: string; result: InferenceResult }
-    | { familyId: string; error: string }
+    { familyId: string; result: InferenceResult } | { familyId: string; error: string }
   >;
   /** The memory-integrity pass, which runs whether or not the agent leg does. */
   synthesis: SynthesisCronResult;

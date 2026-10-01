@@ -1,0 +1,13 @@
+{
+  "choice": "decline",
+  "verbatimCorrect": true,
+  "latencyMs": 1728,
+  "usage": {
+    "inputTokens": 1832,
+    "cacheCreationTokens": 0,
+    "cacheReadTokens": 0,
+    "outputTokens": 147
+  },
+  "costUsd": 0.0077009999999999995,
+  "confidence": 0.85
+}

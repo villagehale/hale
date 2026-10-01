@@ -18,11 +18,12 @@ import {
  *
  * Per-model token rates, USD per million tokens.
  * Source: Anthropic pricing (platform.claude.com/docs models overview):
- * Sonnet 4.6 $3 in / $15 out; Sonnet 5 $2 in / $10 out; Haiku 4.5 $1 in / $5 out;
- * Opus 5 $5 in / $25 out —
+ * Sonnet 4.6 $3 in / $15 out; Sonnet 5 $3 in / $15 out list ($2/$10 intro
+ * through 2026-08-31); Haiku 4.5 $1 in / $5 out; Opus 5 $5 in / $25 out —
  * unchanged from the Opus 4.8 it replaced, so the re-tier moved the id under
- * this key without moving the rate. Anthropic made Sonnet 5's introductory
- * $2/$10 pricing permanent on 2026-08-10.
+ * this key without moving the rate. Sonnet 5 is booked at LIST, not the intro
+ * price: an estimate that silently halves when a promotion lapses is worse than
+ * one that is consistently conservative.
  * DeepSeek V4.1 Flash is priced from its Vercel AI Gateway model page at
  * $0.15 input / $0.60 output / $0.003 cached input per MTok.
  * Hardcoded by design — billing accuracy is a point-in-time estimate, not a
@@ -38,7 +39,7 @@ interface ModelRate {
 
 const RATES: Record<ModelId, ModelRate> = {
   [SONNET_MODEL]: { inputPerMTok: 3, outputPerMTok: 15 },
-  [SONNET5_MODEL]: { inputPerMTok: 2, outputPerMTok: 10 },
+  [SONNET5_MODEL]: { inputPerMTok: 3, outputPerMTok: 15 },
   [SONNET55_MODEL]: { inputPerMTok: 2, outputPerMTok: 10 },
   [HAIKU_MODEL]: { inputPerMTok: 1, outputPerMTok: 5 },
   [OPUS_MODEL]: { inputPerMTok: 5, outputPerMTok: 25 },

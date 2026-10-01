@@ -2,7 +2,8 @@ import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { type JevChoiceEvaluator, evaluateJevChoice } from '~/lib/pipeline/jev';
+import { type JevChoiceEvaluator, evaluateJevChoice, meetsJevConfidence } from '~/lib/pipeline/jev';
+import { recordModelFallback } from '~/lib/pipeline/model-fallback';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -89,7 +90,7 @@ interface ReplyIntentReaderDeps {
 }
 
 function modelMode(raw: string | undefined): 'current' | 'candidate' {
-  const mode = raw?.trim() || 'candidate';
+  const mode = raw?.trim() || 'current';
   if (mode === 'current' || mode === 'candidate') return mode;
   console.error({ mode }, 'reply intent: invalid model mode; using current');
   return 'current';
@@ -111,13 +112,16 @@ export function createReplyIntentReader(
             instructions: `${skill.instructions}\n\nClassify the reply in state using exactly one of the three criteria.`,
             criteria: JEV_CRITERIA,
           });
-          return {
-            intent: result.choice,
-            verbatim: input.reply,
-            interpretation: `JEV choice: ${result.choice}`,
-          };
-        } catch {
-          console.warn('reply intent candidate failed; using current model');
+          if (result.choice !== 'assent' && meetsJevConfidence(result)) {
+            return {
+              intent: result.choice,
+              verbatim: input.reply,
+              interpretation: `JEV choice: ${result.choice}`,
+            };
+          }
+          recordModelFallback('reply intent candidate', 'low_confidence');
+        } catch (error) {
+          recordModelFallback('reply intent candidate', error);
         }
       }
 

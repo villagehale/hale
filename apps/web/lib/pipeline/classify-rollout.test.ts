@@ -1,5 +1,5 @@
-import { type AgentClient, SONNET5_MODEL, SONNET55_MODEL } from '@hale/agent';
-import { describe, expect, it, vi } from 'vitest';
+import { type AgentClient, SONNET5_MODEL } from '@hale/agent';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { classifyEvent } from './classify';
 
 const OUTPUT = {
@@ -26,7 +26,10 @@ function response() {
 }
 
 describe('classifyEvent rollout', () => {
-  it('uses Sonnet 5.5 by default', async () => {
+  beforeEach(() => vi.stubEnv('HALE_CLASSIFY_EVENT_MODEL_MODE', ''));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('keeps Sonnet 5 by default', async () => {
     const create = vi.fn(async () => response());
     const result = await classifyEvent(
       {
@@ -37,11 +40,10 @@ describe('classifyEvent rollout', () => {
       { messages: { create } } as unknown as AgentClient,
     );
 
-    expect(result.model).toBe(SONNET55_MODEL);
+    expect(result.model).toBe(SONNET5_MODEL);
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: SONNET55_MODEL,
-        tool_choice: { type: 'auto' },
+        model: SONNET5_MODEL,
       }),
     );
   });

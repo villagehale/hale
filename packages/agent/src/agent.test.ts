@@ -8,6 +8,7 @@ import {
   runAgent,
   runAgentStreaming,
 } from './agent.js';
+import { DEEPSEEK_MODEL } from './model.js';
 import type { Skill } from './skill.js';
 import { type AuditEntry, type GuardDeps, defineTool } from './tool.js';
 
@@ -128,6 +129,30 @@ function guardDeps(): { deps: GuardDeps; audits: AuditEntry[] } {
 }
 
 describe('runAgent loop mechanics', () => {
+  it('uses an explicit rollout lane instead of the skill task lane', async () => {
+    const client = fakeClient([textMessage('done', usage(10, 2))]);
+    const { deps } = guardDeps();
+
+    await runAgent({
+      skill,
+      context: {},
+      tools: [profileTool],
+      client,
+      lane: { model: DEEPSEEK_MODEL, thinking: 'disabled' },
+      maxSteps: 1,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+    });
+
+    expect(client.messages.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: DEEPSEEK_MODEL,
+        thinking: { type: 'disabled' },
+        providerOptions: { gateway: { zeroDataRetention: true } },
+      }),
+    );
+  });
+
   it('dispatches a tool call, feeds the result back, then returns the final answer', async () => {
     const client = fakeClient([
       toolUseMessage('tu-1', 'get_child_profile', { childId: 'kid-1' }, usage(100, 20)),

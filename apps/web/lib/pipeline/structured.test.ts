@@ -14,16 +14,10 @@ import { forceToolJson } from './structured';
  * into a distinct, truthful signal so a truncated read is never mislabelled.
  */
 
-function clientReturning(payload: {
-  content: unknown[];
-  stop_reason: string;
-}): AgentClient {
+function clientReturning(payload: { content: unknown[]; stop_reason: string }): AgentClient {
   return {
     messages: {
-      create: async () => ({
-        ...payload,
-        usage: { input_tokens: 10, output_tokens: 10 },
-      }),
+      create: async () => ({ ...payload, usage: { input_tokens: 10, output_tokens: 10 } }),
     },
   } as unknown as AgentClient;
 }
@@ -70,13 +64,7 @@ describe('forceToolJson — truncation is not a schema failure', () => {
 
   it('parses a complete answer through the same path (positive control)', async () => {
     const client = clientReturning({
-      content: [
-        {
-          type: 'tool_use',
-          name: 'answer',
-          input: { found: true, confidence: 0.9 },
-        },
-      ],
+      content: [{ type: 'tool_use', name: 'answer', input: { found: true, confidence: 0.9 } }],
       stop_reason: 'tool_use',
     });
     const { value } = await call(client);

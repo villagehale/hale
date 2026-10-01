@@ -33,7 +33,6 @@ import { tsImport } from 'tsx/esm/api';
 import {
   PRICE,
   evalAnthropicRequest,
-  evalRunTag,
   evalSubjectClient,
   evalSubjectRequest,
 } from './lib/harness.mjs';
@@ -80,28 +79,36 @@ const cost = {
   latencies: [],
 };
 let lazyClient;
-let lastCallError = null;
 function getClient() {
   lazyClient ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   return lazyClient;
 }
 
-function makeCachedClient(tag, anthropicModel) {
+function makeCachedClient(tag, { anthropicModel, directModel, maxTokens }) {
   return {
     messages: {
       async create(params) {
+        const baseRequest = { ...params, max_tokens: maxTokens };
         const request = anthropicModel
           ? evalAnthropicRequest(
               {
-                ...params,
+                ...baseRequest,
                 thinking: { type: 'adaptive' },
                 output_config: { effort: 'high' },
               },
               anthropicModel,
             )
-          : evalSubjectRequest(params);
-        const canonical = JSON.stringify(request);
-        const key = cacheKey(evalRunTag(`${tag}:reviewer`), canonical);
+          : directModel
+            ? evalAnthropicRequest(baseRequest, directModel)
+            : evalSubjectRequest(baseRequest);
+        const canonical = JSON.stringify({
+          model: params.model,
+          system: params.system,
+          tools: params.tools,
+          messages: params.messages,
+          max_tokens: params.max_tokens,
+        });
+        const key = cacheKey(`${tag}:reviewer`, canonical);
         const cached = await cacheGet(key);
         if (cached) {
           if (Number.isFinite(cached.latencyMs)) cost.latencies.push(cached.latencyMs);
@@ -113,18 +120,8 @@ function makeCachedClient(tag, anthropicModel) {
           );
           process.exit(1);
         }
-        let response;
         const startedAt = Date.now();
-        try {
-          response = await evalSubjectClient(getClient).messages.create(request);
-        } catch (err) {
-          lastCallError = {
-            name: err instanceof Error ? err.name : 'Error',
-            status: typeof err?.status === 'number' ? err.status : null,
-            message: err instanceof Error ? err.message.slice(0, 200) : 'unknown error',
-          };
-          throw err;
-        }
+        const response = await evalSubjectClient(getClient).messages.create(request);
         const latencyMs = Date.now() - startedAt;
         if (response.stop_reason === 'max_tokens') {
           throw new Error(`${tag}: reviewer response truncated at max_tokens`);
@@ -259,7 +256,6 @@ async function main() {
     import.meta.url,
   );
   const model = modelArg === 'haiku' ? models.HAIKU_MODEL : models.SONNET5_MODEL;
-  const modelMode = modelArg === 'haiku' ? 'candidate' : 'current';
   const subjectModel = process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? model;
   console.log(
     `reviewer-eval | mode=${broken ? 'broken' : cachedOnly ? 'cached-only' : 'real'} | suite=${suite} | review model=${subjectModel}`,
@@ -283,7 +279,6 @@ async function main() {
 
   const results = [];
   for (const fx of fixtures) {
-    lastCallError = null;
     // Stamp a deterministic action_hash onto the draft payload, exactly as the
     // orchestrator now does, so the model has a real key to pass to the check.
     const identity =
@@ -305,22 +300,24 @@ async function main() {
     let verdictKind = 'ERROR';
     let missingChecks = [];
     try {
-      const { verdict, runMetrics } = await runReviewer(
+      const { verdict } = await runReviewer(
         { familyId: fx.familyId, draft },
         {
-          client: broken ? brokenClient : makeCachedClient(fx.id, anthropicModel),
+          client: broken
+            ? brokenClient
+            : makeCachedClient(
+                subjectModel === models.SONNET5_MODEL ? fx.id : `${fx.id}:${subjectModel}`,
+                {
+                  anthropicModel,
+                  directModel: modelArg === 'haiku' ? subjectModel : null,
+                  maxTokens,
+                },
+              ),
           invokeTool: makeInvokeTool(fx.checkPolicy ?? {}),
           loadChildNames: async () => [],
-          modelMode,
-          maxTokens,
         },
       );
-      verdictKind =
-        process.env.EVAL_GATEWAY_MODEL || anthropicModel
-          ? verdict.kind
-          : runMetrics.modelUsed === model
-            ? verdict.kind
-            : `ERROR:candidate fell back to ${runMetrics.modelUsed} (${lastCallError?.name ?? 'unknown'}${lastCallError?.status ? ` ${lastCallError.status}` : ''}: ${lastCallError?.message ?? 'no error detail'})`;
+      verdictKind = verdict.kind;
       const called = new Set(verdict.toolResults.map((result) => result.tool));
       missingChecks = contracts.REQUIRED_CHECKS[fx.draft.actionType].filter(
         (check) => !called.has(check),

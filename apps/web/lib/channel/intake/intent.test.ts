@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyVerbatimGuard, createReplyIntentReader } from './intent';
 
 function currentClient(): AgentClient {
@@ -58,7 +58,10 @@ describe('applyVerbatimGuard', () => {
 });
 
 describe('createReplyIntentReader rollout', () => {
-  it('uses JEV by default', async () => {
+  beforeEach(() => vi.stubEnv('HALE_REPLY_INTENT_MODEL_MODE', ''));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('keeps Sonnet 5 by default', async () => {
     const client = currentClient();
     const evaluateChoice = vi.fn(async () => ({
       choice: 'assent' as const,
@@ -69,14 +72,11 @@ describe('createReplyIntentReader rollout', () => {
 
     const result = await createReplyIntentReader(client, {
       evaluateChoice,
-    }).read({ question: 'Want me to watch this?', reply: 'yes please' });
+    }).read({ question: 'Want me to watch this?', reply: 'no thanks' });
 
-    expect(result).toEqual({
-      intent: 'assent',
-      verbatim: 'yes please',
-      interpretation: 'JEV choice: assent',
-    });
-    expect(client.messages.create).not.toHaveBeenCalled();
+    expect(result.intent).toBe('decline');
+    expect(evaluateChoice).not.toHaveBeenCalled();
+    expect(client.messages.create).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to the current model when JEV fails', async () => {
@@ -89,6 +89,52 @@ describe('createReplyIntentReader rollout', () => {
     }).read({ question: 'Want me to watch this?', reply: 'no thanks' });
 
     expect(result.intent).toBe('decline');
+    expect(client.messages.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses a confident JEV decline without calling Sonnet', async () => {
+    const client = currentClient();
+    const result = await createReplyIntentReader(client, {
+      modelMode: 'candidate',
+      evaluateChoice: vi.fn(async () => ({
+        choice: 'decline' as const,
+        probabilities: { assent: 0.02, decline: 0.95, ambiguous: 0.03 },
+        confidence: 0.95,
+        usage: { inputTokens: 10, outputTokens: 1 },
+      })),
+    }).read({ question: 'Want me to watch this?', reply: 'no thanks' });
+
+    expect(result.intent).toBe('decline');
+    expect(client.messages.create).not.toHaveBeenCalled();
+  });
+
+  it('sends assent and low-confidence choices through the guarded Sonnet path', async () => {
+    const client = currentClient();
+    await createReplyIntentReader(client, {
+      modelMode: 'candidate',
+      evaluateChoice: vi.fn(async () => ({
+        choice: 'assent' as const,
+        probabilities: { assent: 0.98, decline: 0.01, ambiguous: 0.01 },
+        confidence: 0.98,
+        usage: { inputTokens: 10, outputTokens: 1 },
+      })),
+    }).read({ question: 'Want me to watch this?', reply: 'yes please' });
+
+    expect(client.messages.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to Sonnet for a low-confidence ambiguous choice', async () => {
+    const client = currentClient();
+    await createReplyIntentReader(client, {
+      modelMode: 'candidate',
+      evaluateChoice: vi.fn(async () => ({
+        choice: 'ambiguous' as const,
+        probabilities: { assent: 0.25, decline: 0.2, ambiguous: 0.55 },
+        confidence: 0.55,
+        usage: { inputTokens: 10, outputTokens: 1 },
+      })),
+    }).read({ question: 'Want me to watch this?', reply: 'what does that include?' });
+
     expect(client.messages.create).toHaveBeenCalledTimes(1);
   });
 

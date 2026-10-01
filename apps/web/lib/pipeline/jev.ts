@@ -46,6 +46,21 @@ export type JevChoiceEvaluator<TChoice extends string> = (
   args: JevChoiceArgs<TChoice>,
 ) => Promise<JevChoiceResult<TChoice>>;
 
+export function meetsJevConfidence<TChoice extends string>(
+  result: JevChoiceResult<TChoice>,
+  minimumProbability = 0.8,
+  minimumMargin = 0.5,
+): boolean {
+  const selected = result.probabilities[result.choice] ?? 0;
+  const runnerUp = Math.max(
+    0,
+    ...Object.entries(result.probabilities)
+      .filter(([choice]) => choice !== result.choice)
+      .map(([, probability]) => probability),
+  );
+  return selected >= minimumProbability && selected - runnerUp >= minimumMargin;
+}
+
 interface JevDependencies {
   apiKey?: string;
   fetch?: typeof fetch;

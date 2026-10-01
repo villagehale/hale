@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { HAIKU_MODEL, type ModelId, pickModel } from '@hale/agent';
+import { pickModel } from '@hale/agent';
 import {
   REQUIRED_CHECKS,
   type ReviewerToolName,
@@ -40,9 +40,6 @@ interface ReviewerDeps {
   /** Family children's names, injected into check_pii_leak so child_full_name
    * leaks can be matched. Injectable for tests; defaults to the DB lookup. */
   loadChildNames?: (familyId: string) => Promise<string[]>;
-  modelMode?: 'current' | 'candidate';
-  /** Eval-only budget override. Production keeps the 4096-token default. */
-  maxTokens?: number;
 }
 
 const verdictTool: Anthropic.Tool = {
@@ -127,10 +124,9 @@ function checkTools(actionType: ActionType): Anthropic.Tool[] {
   }));
 }
 
-async function runReviewerWithModel(
+export async function runReviewer(
   input: ReviewerRunInput,
-  deps: ReviewerDeps,
-  model: ModelId,
+  deps: ReviewerDeps = {},
 ): Promise<ReviewerRunResult> {
   const client = deps.client ?? anthropicClient();
   const invokeTool = deps.invokeTool ?? invokeReviewerTool;
@@ -139,6 +135,7 @@ async function runReviewerWithModel(
   // loop; caching the system block once lets each turn read the stable
   // tools+system prefix instead of reprocessing it.
   const system = cachedSystem(await loadPrompt('reviewer'));
+  const model = pickModel('review');
   const collected: ToolResult[] = [];
 
   // The model cannot know the family's child names; check_pii_leak needs them to
@@ -189,7 +186,7 @@ async function runReviewerWithModel(
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
     const response = await client.messages.create({
       model,
-      max_tokens: deps.maxTokens ?? 4096,
+      max_tokens: 4096,
       system,
       tools,
       messages,
@@ -302,25 +299,4 @@ async function runReviewerWithModel(
     toolResults: collected,
     rationale: 'reviewer reached turn cap without producing a verdict',
   });
-}
-
-export async function runReviewer(
-  input: ReviewerRunInput,
-  deps: ReviewerDeps = {},
-): Promise<ReviewerRunResult> {
-  const mode = deps.modelMode ?? 'current';
-  const baselineModel = pickModel('review');
-  if (mode === 'candidate') {
-    try {
-      return await runReviewerWithModel(input, deps, HAIKU_MODEL);
-    } catch {
-      logger.warn(
-        { candidateModel: HAIKU_MODEL, fallbackModel: baselineModel },
-        'review candidate failed; using current model',
-      );
-      return runReviewerWithModel(input, deps, baselineModel);
-    }
-  }
-
-  return runReviewerWithModel(input, deps, baselineModel);
 }

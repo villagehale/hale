@@ -1,12 +1,14 @@
+import { type AgentClient, pickLane } from '@hale/agent';
 import {
   UNMET_INTENT_CATEGORIES,
   UNMET_INTENT_LANES,
   type UnmetIntentCategory,
   type UnmetIntentLane,
 } from '@hale/db';
-import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { type JevChoiceEvaluator, evaluateJevChoice, meetsJevConfidence } from '~/lib/pipeline/jev';
+import { recordModelFallback } from '~/lib/pipeline/model-fallback';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -60,6 +62,45 @@ const LANES: ReadonlySet<string> = new Set<InboundLane>(['in_domain', ...UNMET_I
  */
 const CATEGORIES: ReadonlySet<string> = new Set<UnmetIntentCategory>(UNMET_INTENT_CATEGORIES);
 
+const JEV_CHOICES = {
+  in_domain__none: { lane: 'in_domain', category: 'none' },
+  off_domain_general__weather: { lane: 'off_domain_general', category: 'weather' },
+  off_domain_general__news_or_politics: {
+    lane: 'off_domain_general',
+    category: 'news-or-politics',
+  },
+  off_domain_general__general_knowledge: {
+    lane: 'off_domain_general',
+    category: 'general-knowledge',
+  },
+  off_domain_general__nearby_places: { lane: 'off_domain_general', category: 'nearby-places' },
+  off_domain_general__traffic_or_transit: {
+    lane: 'off_domain_general',
+    category: 'traffic-or-transit',
+  },
+  off_domain_general__shopping_or_deals: {
+    lane: 'off_domain_general',
+    category: 'shopping-or-deals',
+  },
+  off_domain_general__other: { lane: 'off_domain_general', category: 'other' },
+  safety_critical__medical_symptom: { lane: 'safety_critical', category: 'medical-symptom' },
+  safety_critical__mental_health: { lane: 'safety_critical', category: 'mental-health' },
+  safety_critical__child_safety: { lane: 'safety_critical', category: 'child-safety' },
+  safety_critical__emergency: { lane: 'safety_critical', category: 'emergency' },
+  provider_access__doctor_access: { lane: 'provider_access', category: 'doctor-access' },
+  provider_access__specialist_access: {
+    lane: 'provider_access',
+    category: 'specialist-access',
+  },
+} as const;
+type JevLaneChoice = keyof typeof JEV_CHOICES;
+const JEV_CRITERIA = Object.fromEntries(
+  Object.entries(JEV_CHOICES).map(([choice, reading]) => [
+    choice,
+    `Return lane "${reading.lane}" and category "${reading.category}" under the full policy.`,
+  ]),
+) as Record<JevLaneChoice, string>;
+
 /**
  * Why a turn went to the coach without being screened. Four different operational
  * stories, deliberately not folded into one: `client_unavailable` is configuration,
@@ -82,6 +123,18 @@ export interface LaneReading {
 
 export interface InboundLaneScreen {
   read(text: string): Promise<LaneReading>;
+}
+
+interface InboundLaneScreenDeps {
+  modelMode?: 'current' | 'candidate';
+  evaluateChoice?: JevChoiceEvaluator<JevLaneChoice>;
+}
+
+function modelMode(raw: string | undefined): 'current' | 'candidate' {
+  const mode = raw?.trim() || 'current';
+  if (mode === 'current' || mode === 'candidate') return mode;
+  console.error({ mode }, 'off-domain screen: invalid model mode; using current');
+  return 'current';
 }
 
 /**
@@ -163,7 +216,10 @@ export function toReading(raw: { lane: string; category: string }): LaneReading 
  * `client_unavailable` outcome — the one degraded path that is configuration rather
  * than weather.
  */
-export function createInboundLaneScreen(client: () => AgentClient): InboundLaneScreen {
+export function createInboundLaneScreen(
+  client: () => AgentClient,
+  deps: InboundLaneScreenDeps = {},
+): InboundLaneScreen {
   return {
     async read(text) {
       let resolved: AgentClient;
@@ -184,6 +240,23 @@ export function createInboundLaneScreen(client: () => AgentClient): InboundLaneS
       } catch (err) {
         console.error({ err: message(err) }, 'off-domain screen: skill load failed');
         return openTheGate('skill_unavailable');
+      }
+
+      if (
+        (deps.modelMode ?? modelMode(process.env.HALE_INBOUND_SCREEN_MODEL_MODE)) === 'candidate'
+      ) {
+        try {
+          const result = await (deps.evaluateChoice ?? evaluateJevChoice)({
+            state: { text },
+            question: 'reading',
+            instructions: skill.instructions,
+            criteria: JEV_CRITERIA,
+          });
+          if (meetsJevConfidence(result, 0.4, 0.1)) return toReading(JEV_CHOICES[result.choice]);
+          recordModelFallback('off-domain screen candidate', 'low_confidence');
+        } catch (error) {
+          recordModelFallback('off-domain screen candidate', error);
+        }
       }
 
       try {
