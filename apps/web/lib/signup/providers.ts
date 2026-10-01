@@ -1,7 +1,7 @@
-import type { SignupIdentity, SignupStopReason } from './types';
+import type { FieldSlot, SignupStopReason } from './types';
 
 /**
- * How an authorized booking is carried out (VIL-375).
+ * How an authorized booking is carried out (VIL-375, VIL-397).
  *
  * Scope is anything a parent needs help booking or signing up for. The
  * exclusion is narrow: the named city sites plus ActiveNet, Xplor,
@@ -10,31 +10,46 @@ import type { SignupIdentity, SignupStopReason } from './types';
  * page shows a rush signal: waiting room or queue, captcha, resident or
  * identity verification, or a timed open-at.
  *
- * A registered connector or API runs first. The sandboxed browser is the
- * fallback and opens that provider's own page only. Form adapters name
- * fields they already know; they are not a category allowlist. No connector
- * is registered yet. Local mock forms are ordinary loopback pages, so they
- * take the browser path.
+ * A registered connector runs first. The sandboxed browser is the fallback
+ * and opens that provider's own page only. Form adapters name fields they
+ * already know; they are not a category allowlist. `BOOKING_CONNECTORS` stays
+ * empty. The live list is `bookingConnectors()` and is empty unless
+ * BOOKING_REFERENCE_CONNECTOR_ENABLED is exactly `on`. That connector is a
+ * sandbox partnership shape, not a real partner. Local mock forms are
+ * ordinary loopback pages, so they take the browser path.
  */
 
-/** A partnership or official API. Empty until one is actually agreed. */
+/** A partnership API. The municipal denylist is applied before `matches`. */
 export interface BookingConnector {
   readonly id: string;
   matches(url: URL): boolean;
   book(input: ConnectorBookingInput): Promise<ConnectorBookingResult>;
 }
 
+/** One closed slot. The value is sent only when the consent grant lists the slot. */
+export interface ConnectorBookingSlot {
+  readonly slot: FieldSlot;
+  readonly value: string;
+}
+
+/**
+ * What a connector may receive. Slots are the closed field list already
+ * covered by the consent grant. The family record itself is not passed.
+ */
 export interface ConnectorBookingInput {
   url: string;
   activityKey: string;
   sessionId: string;
   approvedPriceCents: number | null;
-  identity: SignupIdentity;
+  slots: readonly ConnectorBookingSlot[];
 }
 
 export type ConnectorBookingResult = { ok: true } | { ok: false; reason: SignupStopReason };
 
-/** None. A connector is added here when a provider has an API Hale may call. */
+/**
+ * Unconditionally registered connectors. Stays empty. The flag-gated sandbox
+ * partnership connector is added by `bookingConnectors()`, not by this list.
+ */
 export const BOOKING_CONNECTORS: readonly BookingConnector[] = [];
 
 /**

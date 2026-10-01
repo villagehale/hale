@@ -2,7 +2,7 @@
 
 The authorized-signup runner on main is hands-only at the browser. Decisions, the consent check, parent confirmation, and stop rules stay in the backend. The browser receives a URL and then field name/value pairs. It does not receive credentials, tokens, or the family record.
 
-This note describes `apps/web/lib/signup/` as it is on main after [PR #720](https://github.com/villagehale/hale/pull/720). [PR #725](https://github.com/villagehale/hale/pull/725) (durable slot grant, still a draft) is not merged. No flag default changes here. `AUTHORIZED_SIGNUP_ENABLED` stays off unless it is exactly `on` after trim (`apps/web/lib/signup/flag.ts`).
+This note describes `apps/web/lib/signup/` as it is on main after [PR #720](https://github.com/villagehale/hale/pull/720) and the consent grant in [PR #725](https://github.com/villagehale/hale/pull/725). No flag default changes here. `AUTHORIZED_SIGNUP_ENABLED` stays off unless it is exactly `on` after trim (`apps/web/lib/signup/flag.ts`). `BOOKING_REFERENCE_CONNECTOR_ENABLED` stays off on the same rule (`apps/web/lib/signup/connectors/flag.ts`).
 
 ## Where the loop lives
 
@@ -15,7 +15,7 @@ This note describes `apps/web/lib/signup/` as it is on main after [PR #720](http
 5. `authorizeSignup` picks one session and checks the approved price against the family's busy intervals (`parent_calendar_blocks`, start and end only).
 6. `loadSignupIdentity` reads the child, the parent, and the postal code. A teenager (`deriveStage` === `teenager`) stops with `teen_privacy` before any browser or handoff pack.
 7. `registrationUrlAllowed` (`apps/web/lib/signup/url.ts`) refuses a URL that is not public https or loopback http.
-8. `bookingRoute` (`apps/web/lib/signup/providers.ts`) sends a denylisted host to assisted handoff. `BOOKING_CONNECTORS` is empty, so every other allowed host takes the browser.
+8. `bookingRoute` (`apps/web/lib/signup/providers.ts`) sends a denylisted host to assisted handoff. A connector cannot opt that host back into automation. `bookingConnectors()` is empty unless `BOOKING_REFERENCE_CONNECTOR_ENABLED` is exactly `on`. When it is on, the sandbox partnership connector runs before the browser for `book.sandbox-partner.test` only. Any other allowed host takes the browser. A connector failure returns `connector_failed` and does not open the browser.
 9. The backend calls `inspectRegistrationPage` (`apps/web/lib/signup/inspect.ts`), which calls `planBookingStep` (`apps/web/lib/signup/forms/plan.ts`). That function decides fill, continue, submit, or stop.
 10. Only then does the backend call `page.fill` / `page.select` / `page.continue` / `page.submit`. At most three steps, same origin. The backend reads the next snapshot and decides again.
 11. Every step writes `audit_log` with `action_taken = authorized_signup_step`. `redactSignupAudit` (`apps/web/lib/signup/audit.ts`) drops name, email, phone, postal, and value keys.
@@ -51,7 +51,7 @@ Chromium is launched with `--no-sandbox` and `--disable-dev-shm-usage` (`browser
 
 ## Consent, confirmation, and stop rules
 
-On main, parent confirmation is the explicit phrase plus one session plus an approved price, recorded as `authorizingMessageId` on `authorized_signup_offers` when the offer leaves `pending` (`packages/db/src/schema/authorized-signup-offers.ts`, `markOffer` in `store.ts`). There is no `authorized_signup_consents` table in this tree. Draft PR #725 would write a row of slot names (no values) before the browser opens. Until that lands, the closed `FieldSlot` set is the list the runner is willing to type.
+On main, parent confirmation is the explicit phrase plus one session plus an approved price, recorded as `authorizingMessageId` on `authorized_signup_offers` when the offer leaves `pending` (`packages/db/src/schema/authorized-signup-offers.ts`, `markOffer` in `store.ts`). `authorized_signup_consents` (migration `0139`) stores the slot names from that yes, never the values. A missing or short grant returns `consent_short` or `consent_missing` before a browser or a connector runs. The closed `FieldSlot` set is the list the runner is willing to type or send.
 
 Stop reasons are `SignupStopReason` in `types.ts`. The ones enforced before a submit include: no offer, bare yes, ambiguous or full or unknown session, unapproved or changed price, payment, captcha, login or one-time-code, waiver, medical, allergy, waiting room, resident or identity verification, timed open-at, unexpected required field, missing detail, teen, URL refusal, browser missing, unconfirmed submit, a second attempt, and a result that would start a new 1:1. Payment and login classification live in `apps/web/lib/signup/forms/safety.ts`. A password control, or a control whose hay matches password / 2FA / OTP, returns `login_wall` before any fill.
 
@@ -59,7 +59,11 @@ Stop reasons are `SignupStopReason` in `types.ts`. The ones enforced before a su
 
 ## Connector path
 
-`ConnectorBookingInput` in `providers.ts` includes the whole `SignupIdentity` (names, exact date of birth, email, postal code). That is an API call, not the browser. `BOOKING_CONNECTORS` is empty, so this path does not run. A future connector has to be narrowed to the same slot list before it is registered. This document does not add one.
+`ConnectorBookingInput` carries the registration URL, the activity key, the session id, the approved price, and the closed slot list. It does not carry the family record. `connectorBookingSlots` builds that list from slots the consent grant already covers. A seating note that reads as medical, allergy, or waiver content stops the call.
+
+`BOOKING_CONNECTORS` stays empty. The live registry is `bookingConnectors()` (`apps/web/lib/signup/connectors/registry.ts`). It adds one reference connector, `sandbox-partnership`, only when `BOOKING_REFERENCE_CONNECTOR_ENABLED` is exactly `on` after trim. The connector speaks a sandbox booking shape (`POST /v1/bookings` on a `.test` or loopback host). The request has no partner secret, no auth header, and no payment instrument. A base URL that is not a sandbox host is refused. The call does not spend money. Flag off leaves the registry empty, and the browser path is unchanged.
+
+The municipal denylist is checked before `matches`. The reference connector also refuses a denylisted host if `book` is called directly. A thrown client or a non-booked sandbox response becomes `connector_failed`. The runner does not fall through to the browser. Parent-facing sentences that are still unlocked live in `apps/web/lib/signup/connectors/copy.ts` as TODO-Design placeholders and are not sent. The completed line and the connector_failed line stay the locked copy.
 
 ## Test
 
@@ -68,4 +72,4 @@ Stop reasons are `SignupStopReason` in `types.ts`. The ones enforced before a su
 - A class form with the four known slots, plus an optional `api_token` field and a hidden `csrf_token`, completes. `open` receives only the registration URL. `fill` and `select` receive two strings each. The control name is one of the `FieldSlot` names. The value is the child given name, the parent email, the postal code, or the session id. The child last name `tok_sandbox_secret`, the date of birth, and the parent display name `Test Parent` are absent from every browser argument.
 - The same form with `type="password"` returns `login_wall`. `fill` and `select` are not called.
 
-The assertion to add when PR #725 merges: the values typed are a subset of the slot names stored on `authorized_signup_consents` for that message, activity, and host, and a grant that is missing or short returns `consent_short` without calling `fill`.
+A grant that is missing or short returns before `fill`. The values typed are a subset of the slot names stored on `authorized_signup_consents` for that message, activity, and host.

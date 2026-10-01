@@ -2,6 +2,8 @@ import { type Database, schema } from '@hale/db';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup, isExplicitSignupUtterance } from './authorize';
+import { bookingConnectors } from './connectors/registry';
+import { connectorBookingSlots } from './connectors/slots';
 import {
   ensureSignupConsent,
   fieldsPreparedToType,
@@ -14,7 +16,7 @@ import { authorizedSignupEnabled } from './flag';
 import { assistedHandoffLine, collapseSignupFact } from './handoff';
 import { inspectRegistrationPage } from './inspect';
 import { signupInfoPack } from './pack';
-import { BOOKING_CONNECTORS, type BookingConnector, bookingRoute } from './providers';
+import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
 import { loadBusy, loadPendingOffer, loadSignupIdentity, markOffer } from './store';
@@ -34,7 +36,10 @@ export interface SignupRunInput {
 export interface SignupRunDeps {
   /** Undefined loads Playwright. Null means the browser is absent. */
   browser?: SignupBrowser | null;
-  /** Defaults to none. A denylisted host never reaches a connector. */
+  /**
+   * Defaults to `bookingConnectors()`. A denylisted host never reaches a
+   * connector. A connector failure does not fall through to the browser.
+   */
   connectors?: readonly BookingConnector[];
   deliverGroup?: (input: GroupSignupDelivery) => Promise<'sent' | 'failed' | 'already_sent'>;
 }
@@ -55,7 +60,8 @@ const UNCLAIMED: SignupRunResult = {
 
 /**
  * Parent-authorized booking for anything a parent needs signed up. A connector
- * runs first when one is registered for the host. Otherwise the sandbox
+ * from the registry runs first when one matches the host. A connector failure
+ * returns connector_failed and does not open the browser. Otherwise the sandbox
  * browser opens that provider's own page and follows at most three steps.
  * A denylisted municipal host is an assisted handoff. A rush signal (queue,
  * captcha, resident or identity check, timed open-at) hands back with no
@@ -157,7 +163,7 @@ export async function runAuthorizedSignup(
     });
   }
 
-  const route = bookingRoute(allowed.href, deps.connectors ?? BOOKING_CONNECTORS);
+  const route = bookingRoute(allowed.href, deps.connectors ?? bookingConnectors());
   const session = offer.sessions.find((item) => item.id === decision.sessionId);
   if (!session) {
     await markFromPending(database, input, offer.id, decision.sessionId);
@@ -242,13 +248,29 @@ export async function runAuthorizedSignup(
   });
 
   if (route.kind === 'connector') {
+    const slots = connectorBookingSlots({
+      identity,
+      session,
+      fieldsAllowed: consent.fieldsAllowed,
+    });
+    if (!slots.ok) {
+      await finish(database, input, offer.id, 'handed_back');
+      return replyFor(database, input, deps, door, {
+        offerId: offer.id,
+        outcome: slots.reason,
+        reason: slots.reason,
+        link: offer.registrationUrl,
+        prefilled: [],
+        host,
+      });
+    }
     try {
       const booked = await route.connector.book({
         url: allowed.href,
         activityKey: decision.activityKey,
         sessionId: decision.sessionId,
         approvedPriceCents: offer.approvedPriceCents,
-        identity,
+        slots: slots.slots,
       });
       if (!booked.ok) {
         await finish(database, input, offer.id, 'handed_back');

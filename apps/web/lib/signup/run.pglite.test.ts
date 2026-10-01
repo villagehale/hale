@@ -77,6 +77,13 @@ function browserFor(first: PageSnapshot, afterSubmit?: PageSnapshot) {
   return { browser, calls };
 }
 
+function postedCall(fetchImpl: { mock: { calls: readonly unknown[] } }): [unknown, RequestInit] {
+  const calls = fetchImpl.mock.calls as unknown as unknown[][];
+  const call = calls[0];
+  if (!call || call.length < 2) throw new Error('expected a sandbox fetch call');
+  return [call[0], call[1] as RequestInit];
+}
+
 describe('authorized signup runner', () => {
   let db: TestDb;
 
@@ -90,6 +97,8 @@ describe('authorized signup runner', () => {
 
   beforeEach(() => {
     vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_ENABLED', '');
+    vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_BASE_URL', '');
   });
 
   async function familyWithOffer(input: {
@@ -456,6 +465,42 @@ describe('authorized signup runner', () => {
     expect(result.outcome).toBe('assisted_handoff');
     expect(called).toBe(false);
     expect(calls.opened).toBe(0);
+  });
+
+  it('returns connector_failed and does not fall through to the browser', async () => {
+    const href = 'https://book.example-swim.test/lessons';
+    const seeded = await familyWithOffer({ ageMonths: 36, url: href });
+    const { browser, calls } = browserFor({ ...SAFE, href }, { ...SAFE, href, confirmed: true });
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: 'msg-connector-failed',
+        existingThread: true,
+        now: NOW,
+      },
+      {
+        browser,
+        connectors: [
+          {
+            id: 'example-swim-api',
+            matches: (url) => url.hostname === 'book.example-swim.test',
+            book: async () => {
+              throw new Error('partner down');
+            },
+          },
+        ],
+      },
+    );
+    expect(result.outcome).toBe('connector_failed');
+    expect(result.reply).toContain(`I couldn't get through on my end.`);
+    expect(result.reply).not.toMatch(/\bSTOP\b/);
+    expect(result.reply).not.toContain('TODO-Design');
+    expect(calls.opened).toBe(0);
+    expect(calls.submitted).toBe(0);
+    expect(await audits(seeded.familyId)).not.toContain('Ada');
   });
 
   it('does not open a browser when the session price was not approved', async () => {
@@ -875,5 +920,147 @@ describe('authorized signup runner', () => {
     );
     expect(result.outcome).toBe('completed');
     expect(result.reply).toBe(`You're signed up for Tue 4:30.`);
+  });
+
+  it('uses the sandbox partnership connector before the browser when the flag is on', async () => {
+    vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_ENABLED', 'on');
+    vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_BASE_URL', 'https://api.sandbox-partner.test');
+    const href = 'https://book.sandbox-partner.test/lessons';
+    const seeded = await familyWithOffer({ ageMonths: 36, url: href });
+    const { browser, calls } = browserFor({ ...SAFE, href }, { ...SAFE, href, confirmed: true });
+    const fetchMock = vi.fn(async () => Response.json({ status: 'booked', id: 'sb_1' }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const result = await runAuthorizedSignup(
+        db.database,
+        {
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+          body: 'Yes, sign us up',
+          inboundChannelMessageId: 'msg-sandbox-booked',
+          existingThread: true,
+          now: NOW,
+        },
+        { browser },
+      );
+      expect(result.outcome).toBe('completed');
+      expect(result.reply).toBe(`You're signed up for Tue 4:30.`);
+      expect(result.reply).not.toMatch(/\bSTOP\b/);
+      expect(result.reply).not.toContain('TODO-Design');
+      expect(calls.opened).toBe(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = postedCall(fetchMock);
+      expect(String(url)).toBe('https://api.sandbox-partner.test/v1/bookings');
+      const headers = init.headers as Record<string, string>;
+      expect(headers).not.toHaveProperty('authorization');
+      const body = JSON.parse(String(init.body)) as {
+        slots: { slot: string; value: string }[];
+      };
+      expect(body.slots.map((slot) => slot.slot)).toContain('child_first_name');
+      expect(body.slots.map((slot) => slot.slot)).toContain('session');
+      expect(body.slots.map((slot) => slot.slot)).not.toContain('phone');
+      expect(JSON.stringify(body)).not.toMatch(/card|cvv|payment/i);
+      const trail = await audits(seeded.familyId);
+      expect(trail).toContain('sandbox-partnership');
+      expect(trail).not.toContain('Ada');
+      expect(trail).not.toContain('@');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('returns connector_failed from the sandbox connector and does not open the browser', async () => {
+    vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_ENABLED', 'on');
+    vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_BASE_URL', 'https://api.sandbox-partner.test');
+    const href = 'https://book.sandbox-partner.test/lessons';
+    const seeded = await familyWithOffer({ ageMonths: 36, url: href });
+    const { browser, calls } = browserFor({ ...SAFE, href }, { ...SAFE, href, confirmed: true });
+    const fetchMock = vi.fn(async () => new Response('no', { status: 503 }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const result = await runAuthorizedSignup(
+        db.database,
+        {
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+          body: 'Yes, sign us up',
+          inboundChannelMessageId: 'msg-sandbox-failed',
+          existingThread: true,
+          now: NOW,
+        },
+        { browser },
+      );
+      expect(result.outcome).toBe('connector_failed');
+      expect(result.reply).toContain(`I couldn't get through on my end.`);
+      expect(result.reply).toContain(href);
+      expect(result.reply).not.toMatch(/\bSTOP\b/);
+      expect(result.reply).not.toContain('TODO-Design');
+      expect(calls.opened).toBe(0);
+      expect(calls.submitted).toBe(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('does not call the sandbox connector for a denylisted host', async () => {
+    vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_ENABLED', 'on');
+    vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_BASE_URL', 'https://api.sandbox-partner.test');
+    const href = 'https://www.toronto.ca/explore-enjoy/recreation/registrations';
+    const seeded = await familyWithOffer({ ageMonths: 36, url: href });
+    const { browser, calls } = browserFor(SAFE);
+    const fetchMock = vi.fn(async () => Response.json({ status: 'booked' }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const result = await runAuthorizedSignup(
+        db.database,
+        {
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+          body: 'Yes, sign us up',
+          inboundChannelMessageId: 'msg-sandbox-deny',
+          existingThread: true,
+          now: NOW,
+        },
+        { browser },
+      );
+      expect(result.outcome).toBe('assisted_handoff');
+      expect(calls.opened).toBe(0);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result.reply).not.toMatch(/\bSTOP\b/);
+      expect(result.reply).not.toContain('TODO-Design');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps the sandbox host on the browser when the reference flag is off', async () => {
+    const href = 'https://book.sandbox-partner.test/lessons';
+    const seeded = await familyWithOffer({ ageMonths: 36, url: href });
+    const page = { ...SAFE, href };
+    const { browser, calls } = browserFor(page, { ...page, confirmed: true });
+    const fetchMock = vi.fn(async () => {
+      throw new Error('fetch must not run');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const result = await runAuthorizedSignup(
+        db.database,
+        {
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+          body: 'Yes, sign us up',
+          inboundChannelMessageId: 'msg-sandbox-off',
+          existingThread: true,
+          now: NOW,
+        },
+        { browser },
+      );
+      expect(result.outcome).toBe('completed');
+      expect(calls.opened).toBe(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
