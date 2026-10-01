@@ -988,13 +988,6 @@
       "when": 1781469637000,
       "tag": "0143_duty_calendar_sync",
       "breakpoints": true
-    },
-    {
-      "idx": 143,
-      "version": "7",
-      "when": 1781469638000,
-      "tag": "0144_linq_contact_card_shares",
-      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { schema } from '@hale/db';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeFakeDb } from '~/lib/channel/intake/fakes';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -37,10 +37,6 @@ const FAMILY_B = '00000000-0000-4000-8000-0000000000f2';
 const PARENT = '+14165550101';
 const COPARENT = '+14165550102';
 const CHAT = '8f392755-6865-4b18-880a-227f9d8b458f';
-
-beforeEach(() => {
-  vi.stubEnv('LINQ_CONTACT_CARD_SHARE', 'off');
-});
 
 function enrol(
   fake: ReturnType<typeof makeFakeDb>,
