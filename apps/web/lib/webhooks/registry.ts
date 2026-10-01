@@ -102,22 +102,19 @@ function defaultToIngestedEvent(
 //
 // Implementing these for real is more than a verify() body, which is why it is
 // not done here rather than half-done:
-//   gmail / gcal   Google Pub/Sub push authenticates with an OIDC JWT in the
-//                  `Authorization: Bearer` header — NOT a signature header this
-//                  interface is even given. Real verification = fetch Google's
-//                  JWKS (https://www.googleapis.com/oauth2/v3/certs, cached),
-//                  verify RS256, then check `iss` (accounts.google.com), `aud`
-//                  (the audience configured on the push subscription), `exp`,
-//                  and the service-account `email` claim. Needs the route to
-//                  pass the Authorization header through, plus a live push
-//                  subscription to verify against — neither exists yet.
+//   gmail / gcal   The live push path is VIL-401, and it does NOT come through
+//                  this adapter. Calendar verifies channel id + token; Gmail
+//                  verifies a Pub/Sub OIDC JWT. Both then run the existing
+//                  connector sync. This verify() stays a refusal so a push body
+//                  can never become an events.ingested payload. The route
+//                  short-circuits only when GOOGLE_PUSH_SYNC_ENABLED === 'true'.
 //   outlook        Microsoft Graph uses a two-step scheme: a `validationToken`
 //                  query-param echo at subscription time, then a per-message
 //                  `clientState` secret compared against the value stored when
 //                  the subscription was created. Needs subscription storage
 //                  that does not exist yet.
-// Both are gated on the connectors build (Gmail/Cal read-only sync), which is
-// poll-based today — so no legitimate push traffic exists to break.
+// Outlook stays poll-only. Gmail and Calendar stay a refusal here even while
+// their push sync is armed — the two doors are not the same contract.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**

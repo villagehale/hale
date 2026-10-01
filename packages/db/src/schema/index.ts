@@ -15,6 +15,7 @@ export * from './join-invites.js';
 export * from './children.js';
 export * from './plans.js';
 export * from './integrations.js';
+export * from './google-push-subscriptions.js';
 export * from './calendar-event-snapshots.js';
 export * from './consent.js';
 export * from './teen-access-grants.js';

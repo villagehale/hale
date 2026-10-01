@@ -282,6 +282,43 @@ export async function listActiveConnectorConnections(
   }));
 }
 
+/** One sweepable gmail/gcal row by id. A push syncs that connection only — it does
+ * not load every other family's token blob to find it. */
+export async function getSweepableConnectorConnection(
+  database: Database,
+  id: string,
+): Promise<SweepableConnectorConnection | null> {
+  const rows = await database
+    .select({
+      id: schema.integrations.id,
+      familyId: schema.integrations.familyId,
+      userId: schema.integrations.userId,
+      provider: schema.integrations.provider,
+      providerMetadata: schema.integrations.providerMetadata,
+      enc: schema.integrations.oauthTokensEncrypted,
+    })
+    .from(schema.integrations)
+    .where(
+      and(
+        eq(schema.integrations.id, id),
+        inArray(schema.integrations.status, SWEEPABLE_STATUSES),
+        inArray(schema.integrations.provider, ['gcal', 'gmail']),
+        isNotNull(schema.integrations.oauthTokensEncrypted),
+      ),
+    )
+    .limit(1);
+  const row = rows[0];
+  if (!row?.enc) return null;
+  return {
+    id: row.id,
+    familyId: row.familyId,
+    userId: row.userId,
+    provider: row.provider as ConnectorProvider,
+    providerMetadata: row.providerMetadata,
+    enc: row.enc,
+  };
+}
+
 /** Advance a connection's sync cursor after a SUCCESSFUL sync: persist the new
  * providerMetadata and stamp lastSyncAt. Only ever called once the batch's events
  * are enqueued, so the cursor can't move past un-emitted items. */
