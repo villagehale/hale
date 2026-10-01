@@ -3,6 +3,8 @@ import { type Database, schema } from '@hale/db';
 import { type FamilyStage, deriveStage } from '@hale/types';
 import { and, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
+import { distillFactNeedsEvidence, guardChatDistilledFact } from '~/lib/memory/distill-guard';
+import type { DistillGuardDecision } from '~/lib/memory/distill-guard';
 import { CONFIDENCE_FLOOR, resolveValidFrom, writeFact } from '~/lib/memory/facts';
 import { memoryTypingForWrite } from '~/lib/memory/store';
 
@@ -44,7 +46,12 @@ const memoryFactType = z.enum([
 const TEEN_MEMORY_PLACEHOLDER = '[teen content — withheld from inferencer (rule #1)]';
 
 interface MemorySnapshot {
-  recentEvents: { childId: string | null; eventType: string; payload: unknown; receivedAt: string }[];
+  recentEvents: {
+    childId: string | null;
+    eventType: string;
+    payload: unknown;
+    receivedAt: string;
+  }[];
   recentEpisodes: {
     childId: string | null;
     episodeType: string;
@@ -77,7 +84,12 @@ function redactMemorySnapshotForTeens(
   return {
     recentEvents: snapshot.recentEvents.map((e) =>
       isTeen(e.childId)
-        ? { childId: null, eventType: e.eventType, payload: TEEN_MEMORY_PLACEHOLDER, receivedAt: e.receivedAt }
+        ? {
+            childId: null,
+            eventType: e.eventType,
+            payload: TEEN_MEMORY_PLACEHOLDER,
+            receivedAt: e.receivedAt,
+          }
         : e,
     ),
     recentEpisodes: snapshot.recentEpisodes.map((e) =>
@@ -104,10 +116,7 @@ function redactMemorySnapshotForTeens(
   };
 }
 
-export function buildInferenceTools(
-  database: Database,
-  now: Date = new Date(),
-): RegisteredTool[] {
+export function buildInferenceTools(database: Database, now: Date = new Date()): RegisteredTool[] {
   const readRecentMemory = defineTool({
     name: 'read_recent_memory',
     description:
@@ -134,12 +143,7 @@ export function buildInferenceTools(
           receivedAt: schema.events.receivedAt,
         })
         .from(schema.events)
-        .where(
-          and(
-            eq(schema.events.familyId, ctx.familyId),
-            gte(schema.events.receivedAt, since),
-          ),
-        )
+        .where(and(eq(schema.events.familyId, ctx.familyId), gte(schema.events.receivedAt, since)))
         .orderBy(desc(schema.events.receivedAt))
         .limit(RECENT_LIMIT);
 
@@ -194,7 +198,7 @@ export function buildInferenceTools(
   const saveMemory = defineTool({
     name: 'save_memory',
     description:
-      "Persist ONE high-precision fact inferred about THIS family, with a confidence in [0,1]. Facts below 0.7 confidence are REFUSED — do not call this for a hunch. Upserts on (factType, factKey): a new value supersedes the old one. Pass `observedAt` (ISO-8601) with the timestamp of the event or episode this came from — WHEN it became true, not when you read it. Omit it if the source carries no time; never guess.",
+      "Persist ONE high-precision fact inferred about THIS family, with a confidence in [0,1]. Facts below 0.7 confidence are REFUSED — do not call this for a hunch. Upserts on (factType, factKey): a new value supersedes the old one. Pass `observedAt` (ISO-8601) with the timestamp of the event or episode this came from — WHEN it became true, not when you read it. Omit it if the source carries no time; never guess. Save only what the parent said or confirmed. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not write enrolled, enrollment, signed up, booked, or registered unless a booking or family event already records that activity.",
     inputSchema: z.object({
       factType: memoryFactType,
       factKey: z.string().min(1),
@@ -209,6 +213,18 @@ export function buildInferenceTools(
       // below it is dropped here, never written (mirrors the worker inferencer).
       if (input.confidence < CONFIDENCE_FLOOR) {
         return { saved: false as const, reason: 'below_confidence_floor' };
+      }
+
+      const decision = await decideDistilledFact(
+        database,
+        ctx.familyId,
+        now,
+        input.factKey,
+        flattenFactValue(input.factValue),
+      );
+      if (decision.action !== 'keep') {
+        logDistillRefusal(ctx.familyId, input.factKey, decision);
+        return { saved: false as const, reason: decision.reason };
       }
 
       const typing = await memoryTypingForWrite(database, {
@@ -256,24 +272,20 @@ const CONVERSATION_WINDOW_DAYS = 14;
 const CONVERSATION_TURN_LIMIT = 60;
 
 /** The parent-facing distillation categories (the prompt + UI vocabulary). */
-const distillCategory = z.enum([
-  'health',
-  'development',
-  'routines',
-  'preferences',
-  'concerns',
-]);
+const distillCategory = z.enum(['health', 'development', 'routines', 'preferences', 'concerns']);
 type DistillCategory = z.infer<typeof distillCategory>;
 
 /** Maps a distillation category onto the coarse DB fact-type enum (no migration). */
-const CATEGORY_TO_FACT_TYPE: Record<DistillCategory, 'medical' | 'routine' | 'preference' | 'relationship'> =
-  {
-    health: 'medical',
-    development: 'relationship',
-    routines: 'routine',
-    preferences: 'preference',
-    concerns: 'relationship',
-  };
+const CATEGORY_TO_FACT_TYPE: Record<
+  DistillCategory,
+  'medical' | 'routine' | 'preference' | 'relationship'
+> = {
+  health: 'medical',
+  development: 'relationship',
+  routines: 'routine',
+  preferences: 'preference',
+  concerns: 'relationship',
+};
 
 interface RawTimelineTurn {
   childId: string | null;
@@ -293,6 +305,124 @@ interface DistillTurn {
 }
 
 const TEEN_DISTILL_PLACEHOLDER = '[teen content — category only, raw text withheld (rule #1)]';
+
+/**
+ * The turns `read_recent_conversations` shows the model. The save guard reads
+ * the same window, so a fact is judged against the text the distiller saw.
+ */
+async function loadDistillTurns(
+  database: Database,
+  familyId: string,
+  now: Date,
+): Promise<DistillTurn[]> {
+  const since = new Date(now.getTime() - CONVERSATION_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+  const childRows = await database
+    .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  const stageByChild = new Map<string, FamilyStage>(
+    childRows.map((c) => [c.id, deriveStage(c.dateOfBirth, now)]),
+  );
+
+  const familyConversations = await database
+    .select({ id: schema.conversations.id })
+    .from(schema.conversations)
+    .where(eq(schema.conversations.familyId, familyId));
+  const conversationIds = familyConversations.map((c) => c.id);
+  if (conversationIds.length === 0) return [];
+
+  const turnRows = await database
+    .select({
+      childId: schema.messages.childId,
+      role: schema.messages.role,
+      content: schema.messages.content,
+      topic: schema.messages.topic,
+    })
+    .from(schema.messages)
+    .where(
+      and(
+        inArray(schema.messages.conversationId, conversationIds),
+        gte(schema.messages.createdAt, since),
+      ),
+    )
+    .orderBy(desc(schema.messages.createdAt))
+    .limit(CONVERSATION_TURN_LIMIT);
+
+  return redactTimelineForDistill(
+    turnRows.map((row) => ({
+      childId: row.childId,
+      role: row.role,
+      content: row.content,
+      topic: row.topic,
+    })),
+    stageByChild,
+  );
+}
+
+const RECEIPT_LIMIT = 100;
+
+/** Live bookings and family events. A cancelled booking or a deleted event does not
+ *  back an enrollment sentence. */
+async function loadDistillReceipts(
+  database: Database,
+  familyId: string,
+): Promise<{ title: string }[]> {
+  const [bookings, events] = await Promise.all([
+    database
+      .select({ title: schema.activityBookings.title })
+      .from(schema.activityBookings)
+      .where(
+        and(
+          eq(schema.activityBookings.familyId, familyId),
+          isNull(schema.activityBookings.cancelledAt),
+        ),
+      )
+      .limit(RECEIPT_LIMIT),
+    database
+      .select({ title: schema.familyEvents.title })
+      .from(schema.familyEvents)
+      .where(and(eq(schema.familyEvents.familyId, familyId), isNull(schema.familyEvents.deletedAt)))
+      .limit(RECEIPT_LIMIT),
+  ]);
+  return [...bookings, ...events];
+}
+
+function flattenFactValue(factValue: unknown): string {
+  if (typeof factValue === 'string') return factValue;
+  return JSON.stringify(factValue) ?? '';
+}
+
+function logDistillRefusal(
+  familyId: string,
+  factKey: string,
+  decision: Exclude<DistillGuardDecision, { action: 'keep' }>,
+): void {
+  console.warn(
+    { familyId, factKey, decision: decision.action, reason: decision.reason },
+    'chat distiller: suggestion was not stored as enrollment',
+  );
+}
+
+async function decideDistilledFact(
+  database: Database,
+  familyId: string,
+  now: Date,
+  factKey: string,
+  summary: string,
+): Promise<DistillGuardDecision> {
+  if (!distillFactNeedsEvidence(factKey, summary)) return { action: 'keep' };
+  const [turns, receipts] = await Promise.all([
+    loadDistillTurns(database, familyId, now),
+    loadDistillReceipts(database, familyId),
+  ]);
+  return guardChatDistilledFact({
+    factKey,
+    summary,
+    turns: turns.map((turn) => ({ role: turn.role, content: turn.content })),
+    receipts,
+  });
+}
 
 /**
  * Reduce a conversation timeline to what the distiller may see. A turn focused on
@@ -333,58 +463,15 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
     inputSchema: z.object({}),
     monetary: false,
     touchesChildContent: false,
-    handler: async (_input, ctx) => {
-      const since = new Date(now.getTime() - CONVERSATION_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-
-      const childRows = await database
-        .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
-        .from(schema.children)
-        .where(eq(schema.children.familyId, ctx.familyId));
-      const stageByChild = new Map<string, FamilyStage>(
-        childRows.map((c) => [c.id, deriveStage(c.dateOfBirth, now)]),
-      );
-
-      const familyConversations = await database
-        .select({ id: schema.conversations.id })
-        .from(schema.conversations)
-        .where(eq(schema.conversations.familyId, ctx.familyId));
-      const conversationIds = familyConversations.map((c) => c.id);
-      if (conversationIds.length === 0) {
-        return { turns: [] };
-      }
-
-      const turnRows = await database
-        .select({
-          childId: schema.messages.childId,
-          role: schema.messages.role,
-          content: schema.messages.content,
-          topic: schema.messages.topic,
-        })
-        .from(schema.messages)
-        .where(
-          and(
-            inArray(schema.messages.conversationId, conversationIds),
-            gte(schema.messages.createdAt, since),
-          ),
-        )
-        .orderBy(desc(schema.messages.createdAt))
-        .limit(CONVERSATION_TURN_LIMIT);
-
-      const raw: RawTimelineTurn[] = turnRows.map((r) => ({
-        childId: r.childId,
-        role: r.role,
-        content: r.content,
-        topic: r.topic,
-      }));
-
-      return { turns: redactTimelineForDistill(raw, stageByChild) };
-    },
+    handler: async (_input, ctx) => ({
+      turns: await loadDistillTurns(database, ctx.familyId, now),
+    }),
   });
 
   const saveChildFact = defineTool({
     name: 'save_child_fact',
     description:
-      "Persist ONE durable, categorized fact distilled from conversation about a specific child (or family-wide with childId omitted), confidence in [0,1]. Categories: health, development, routines, preferences, concerns. Facts below 0.7 confidence are REFUSED. NEVER pass raw teen content — only a category/summary.",
+      "Persist ONE durable, categorized fact distilled from what the PARENT said or confirmed about a specific child (or family-wide with childId omitted), confidence in [0,1]. Categories: health, development, routines, preferences, concerns. Facts below 0.7 confidence are REFUSED. NEVER pass raw teen content — only a category/summary. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not put enrolled, enrollment, signed up, booked, or registered in the summary unless a booking or family event already records that activity.",
     inputSchema: z.object({
       childId: z.string().uuid().nullish(),
       category: distillCategory,
@@ -405,6 +492,22 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
         return { saved: false as const, reason: 'below_confidence_floor' };
       }
 
+      const decision = await decideDistilledFact(
+        database,
+        ctx.familyId,
+        now,
+        input.factKey,
+        input.summary,
+      );
+      if (decision.action === 'drop') {
+        logDistillRefusal(ctx.familyId, input.factKey, decision);
+        return { saved: false as const, reason: decision.reason };
+      }
+      const summary = decision.action === 'rewrite' ? decision.summary : input.summary;
+      if (decision.action === 'rewrite') {
+        logDistillRefusal(ctx.familyId, input.factKey, decision);
+      }
+
       const childId = input.childId ?? null;
       const factType = CATEGORY_TO_FACT_TYPE[input.category];
       const typing = await memoryTypingForWrite(database, {
@@ -420,7 +523,7 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
         childId,
         factType,
         factKey: input.factKey,
-        factValue: { category: input.category, summary: input.summary },
+        factValue: { category: input.category, summary },
         confidence: input.confidence,
         inferredBy: 'chat_distiller',
         validFrom: now,

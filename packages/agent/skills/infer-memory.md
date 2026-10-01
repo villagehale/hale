@@ -38,10 +38,28 @@ pattern than record a wrong one.
 From `read_recent_conversations`, capture durable, per-child facts in one of five
 categories: **health, development, routines, preferences, concerns**. Save the
 child id when the turn is about a specific child; omit it for a family-wide fact.
+A fact is saved only from what the parent said or confirmed. A `user` turn is
+the parent. An `assistant` turn is Hale.
 
 - "Mara naps twice a day" → routines, childId = Mara.
 - "We're going dairy-free for the baby" → health, childId = the baby.
 - "They love swimming" → preferences.
+
+## Whose words count
+
+Do not save enrollment, registration, signup, or a "your pick" from any of these:
+
+- a list of suggested activities
+- anything Hale said it found
+- anything Hale proposed, offered, or listed
+
+Those are candidates Hale surfaced. They are not classes the family joined, and
+they are not an age range the family stated.
+
+A summary must not contain "enrolled", "enrollment", "enrolment", "signed up",
+"booked", "registered", or "registration" unless a real activity booking or
+family event already records that activity. "Your pick" is never a fact. If the
+parent did not say it, save nothing. If you are unsure, save nothing.
 
 A 13+ child's turns arrive already reduced to category only — the raw text is
 withheld (rule #1). For those, you may record at most a non-identifying
@@ -60,6 +78,8 @@ fact. Never reconstruct or guess a teen's raw content.
 - Anything about a child's health from photos or off-hand mentions.
 - Anything that was not directly observed (don't extrapolate moods).
 - Sweeping personality traits ("the family is anxious") — never.
+- That the family enrolled, registered, signed up, booked, or picked an activity
+  Hale suggested or found. A suggestion list is not a signup.
 
 ## Confidence calibration
 
