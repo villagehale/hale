@@ -73,8 +73,9 @@ export function linqGroupCoparentEnabled(): boolean {
 }
 
 /**
- * Share Hale's Name and Photo card after an outbound Linq send.
- * On unless `LINQ_CONTACT_CARD_SHARE` is exactly `off`.
+ * Share Hale's Name and Photo card once per chat, after the first outbound
+ * Linq send whose share Linq accepts. On unless `LINQ_CONTACT_CARD_SHARE`
+ * is exactly `off`.
  */
 export function linqContactCardShareEnabled(): boolean {
   return trimmed('LINQ_CONTACT_CARD_SHARE') !== 'off';

@@ -1,4 +1,5 @@
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { type ContactCardShareStore, resolveContactCardShareStore } from './contact-card-share';
 import { linqApiKey, linqContactCardShareEnabled, linqFromE164 } from './config';
 
 /**
@@ -11,8 +12,8 @@ import { linqApiKey, linqContactCardShareEnabled, linqFromE164 } from './config'
  * is the same client. Tapbacks, link parts, the contact card, groups, polls,
  * and effects are the same client; product moments call them from the sibling
  * modules, not from a door that has not decided to. A successful send also
- * shares the configured Name and Photo card, at most once per chat per day.
- * That call is best-effort and does not fail the message.
+ * shares the configured Name and Photo card once per chat, on the first share
+ * Linq accepts. That call is best-effort and does not fail the message.
  *
  * https://docs.linqapp.com/guides/messaging/sending-messages/
  *
@@ -423,27 +424,6 @@ export async function shareLinqContactCard(input: {
   return { accepted: true };
 }
 
-/** Linq's own window: another share inside 24h does not show the card again. */
-const CONTACT_CARD_SHARE_WINDOW_MS = 24 * 60 * 60 * 1000;
-const contactCardSharedAt = new Map<string, number>();
-
-/** Test isolation. The window is process memory, so a suite must clear it. */
-export function resetLinqContactCardShareMemory(): void {
-  contactCardSharedAt.clear();
-}
-
-function claimContactCardShare(chatId: string, nowMs: number): boolean {
-  const previous = contactCardSharedAt.get(chatId);
-  if (previous !== undefined && nowMs - previous < CONTACT_CARD_SHARE_WINDOW_MS) return false;
-  contactCardSharedAt.set(chatId, nowMs);
-  if (contactCardSharedAt.size > 200) {
-    for (const [id, at] of contactCardSharedAt) {
-      if (nowMs - at >= CONTACT_CARD_SHARE_WINDOW_MS) contactCardSharedAt.delete(id);
-    }
-  }
-  return true;
-}
-
 /**
  * Push the Name and Photo card already configured on the sending line into
  * this chat. No request body. A miss is a named result, never a throw.
@@ -488,24 +468,44 @@ export async function shareLinqContactCardResult(input: {
 }
 
 /**
- * After a send that already landed: share the card at most once per chat per
- * day. `LINQ_CONTACT_CARD_SHARE=off` skips the call. Error 2012 is a quiet
- * skip. Nothing here is logged with a phone number, a chat id, or a body.
+ * After a send that already landed: share the card once per chat, on the first
+ * share Linq accepts, and remember that chat so a restart does not share again.
+ * `LINQ_CONTACT_CARD_SHARE=off` skips the call. Error 2012 is a quiet skip and
+ * does not mark the chat, so a later send can try again. Nothing here is logged
+ * with a phone number, a chat id, or a body.
  */
 export async function maybeShareLinqContactCard(input: {
   chatId: string;
   fetch?: typeof fetch;
   now?: Date;
+  store?: ContactCardShareStore;
 }): Promise<void> {
   if (!linqContactCardShareEnabled() || !input.chatId) return;
-  const nowMs = (input.now ?? new Date()).getTime();
-  if (!claimContactCardShare(input.chatId, nowMs)) return;
-  const result = await shareLinqContactCardResult({ chatId: input.chatId, fetch: input.fetch });
-  if (result.status === 'accepted') return;
-  if (result.status === 'not_configured' || result.status === 'unreachable') {
-    contactCardSharedAt.delete(input.chatId);
+  const at = input.now ?? new Date();
+  let store: ContactCardShareStore;
+  try {
+    store = resolveContactCardShareStore(input.store);
+    if (await store.has(input.chatId)) return;
+  } catch {
+    console.warn(
+      { outcome: 'store_unavailable' },
+      'linq contact card: could not read whether this chat was already shared',
+    );
     return;
   }
+  const result = await shareLinqContactCardResult({ chatId: input.chatId, fetch: input.fetch });
+  if (result.status === 'accepted') {
+    try {
+      await store.mark(input.chatId, at);
+    } catch {
+      console.warn(
+        { outcome: 'not_marked' },
+        'linq contact card: share landed but this chat was not remembered',
+      );
+    }
+    return;
+  }
+  if (result.status === 'not_configured' || result.status === 'unreachable') return;
   if (result.code === '2012') return;
   console.warn(
     { code: result.code, httpStatus: result.httpStatus },
