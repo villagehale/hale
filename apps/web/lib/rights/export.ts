@@ -134,6 +134,18 @@ export interface FamilyExportDocument {
     createdAt: string;
   }[];
   /**
+   * VIL-394 — this household's own meet / join-group yes. The opaque activity
+   * key, the kind, and whether they took it back. No other household, no
+   * child, and no message body: those are not columns, and the read is
+   * scoped to this family so another household's yes cannot appear here.
+   */
+  sameActivityOptIns: {
+    kind: string;
+    activityKey: string;
+    createdAt: string;
+    revokedAt: string | null;
+  }[];
+  /**
    * VIL-353 · the evening check-in: how often this household is asked how the day went,
    * and what THIS parent wrote back.
    *
@@ -577,6 +589,23 @@ export async function assembleFamilyExport(
     createdAt: row.createdAt.toISOString(),
   }));
 
+  const optInRows = await database
+    .select({
+      kind: schema.sameActivityOptIns.kind,
+      activityKey: schema.sameActivityOptIns.activityKey,
+      createdAt: schema.sameActivityOptIns.createdAt,
+      revokedAt: schema.sameActivityOptIns.revokedAt,
+    })
+    .from(schema.sameActivityOptIns)
+    .where(eq(schema.sameActivityOptIns.familyId, familyId))
+    .orderBy(schema.sameActivityOptIns.createdAt);
+  const sameActivityOptIns = optInRows.map((row) => ({
+    kind: row.kind,
+    activityKey: row.activityKey,
+    createdAt: row.createdAt.toISOString(),
+    revokedAt: row.revokedAt?.toISOString() ?? null,
+  }));
+
   const memoryDigests = digestRows.flatMap((row) => {
     const grain = digestGrain(row.grain);
     if (grain === null) return [];
@@ -626,6 +655,7 @@ export async function assembleFamilyExport(
     activityBookings,
     authorizedSignups,
     signupFieldConsents,
+    sameActivityOptIns,
     eveningCheckIn,
     activityReviews,
     trips,

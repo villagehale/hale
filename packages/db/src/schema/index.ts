@@ -29,6 +29,7 @@ export * from './stripe-billing-events.js';
 export * from './family-upgrade-offers.js';
 export * from './authorized-signup-offers.js';
 export * from './authorized-signup-consents.js';
+export * from './same-activity-opt-ins.js';
 export * from './channel-turn-answer-claims.js';
 export * from './sms-intake-sessions.js';
 export * from './sms-intake-turn-claims.js';
