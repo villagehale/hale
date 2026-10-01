@@ -1012,7 +1012,7 @@ describe('the readiness question is open only while the ask is Hale’s last wor
 
   /**
    * THE POSITIVE CONTROL on `direction = 'out'`. In production the parent's own reply is
-   * ALWAYS a newer row than the ask — twilio/inbound.ts inserts it (direction 'in',
+   * ALWAYS a newer row than the ask — inbound-route.ts inserts it (direction 'in',
    * parentUserId) before the turn is enqueued — so a newer-message read that forgets to
    * ask which way the message went closes the question on every real turn, and the
    * suite's other cases, whose only inbound predates the ask, would never notice.

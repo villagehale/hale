@@ -916,6 +916,7 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
         });
         return {
           providerMessageId: created.providerMessageId,
+          transport: 'imessage' as const,
           chatId: created.chatId,
         };
       }
@@ -927,7 +928,11 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
       const parts: LinqOutboundPart[] = [{ type: 'text', value: body }];
       for (const url of media) parts.push({ type: 'media', url });
       const sent = await sendLinqParts({ chatId, parts, fetch: deps.fetch });
-      return { providerMessageId: sent.providerMessageId, chatId };
+      return {
+        providerMessageId: sent.providerMessageId,
+        transport: 'imessage' as const,
+        chatId,
+      };
     },
   };
 }

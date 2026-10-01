@@ -90,11 +90,10 @@ export type AnalyticsEvent =
   // exist and could not be made to (lib/channel/reconcile). The class is the refusal
   // reason, so the rate says WHICH claim the model keeps inventing.
   | 'agent_claim_refused'
-  // A Twilio webhook that threw before it could answer — the anonymous 500 Twilio logs
-  // as error 11200 and a parent experiences as silence (VIL-331). Carries the route and
-  // the error class only, and is fired from a leg that never touches the database,
-  // because the failure it exists to report is usually the database being gone
-  // (lib/channel/twilio/alert.ts).
+  // An inbound webhook that threw before it could answer — a parent experiences that
+  // as silence (VIL-331). Carries the route and the error class only, and is fired
+  // from a leg that never touches the database, because the failure it exists to
+  // report is usually the database being gone (lib/channel/webhook-alert.ts).
   | 'webhook_route_failed'
   // One per authentic inbound message, whatever became of it — the counter that makes
   // the SILENCE outcomes (rate_limited, unknown_sender, not_a_parent, ignored,

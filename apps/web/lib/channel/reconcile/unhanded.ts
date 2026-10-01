@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt } from 'drizzle-orm';
-import type { ChannelMessageReceivedJob } from './inbound';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 
 /**
  * The reader of `handed_off_at` — the half that makes the column mean something.
@@ -12,10 +12,8 @@ import type { ChannelMessageReceivedJob } from './inbound';
  * index and answers 'duplicate' — so something has to come back later and finish the
  * job. This is that something.
  *
- * ALL INBOUND DOORS, one reconciler. It lives in twilio/ because SMS was the first leg
- * to have one, but the column it reads is not the SMS leg's: the WhatsApp turn arrives
- * through the same Twilio webhook and stamps its real transport, and the email webhook
- * writes and stamps `handed_off_at` identically (email/inbound.ts), so a message whose
+ * ALL INBOUND DOORS, one reconciler. The column it reads is not one pipe's: an
+ * iMessage and an email both stamp `handed_off_at` the same way, so a message whose
  * enqueue failed is owed exactly what a text is. Email was excluded here until it was —
  * #443 narrowed this sweep to sms while inbound email was still recorded-and-dropped,
  * and that exclusion expires with the phase that justified it.
@@ -23,7 +21,7 @@ import type { ChannelMessageReceivedJob } from './inbound';
  * It is safe to re-drive blindly for two reasons that live elsewhere, and neither is
  * re-implemented here:
  *
- *   IDENTITY. The job id is the channel message id (channel/twilio/deps), so a message
+ *   IDENTITY. The job id is the channel message id (channel/inbound-deps), so a message
  *   whose enqueue actually succeeded and whose mark failed cannot become a second job —
  *   pg-boss's insert conflicts and creates nothing. Without that, this module would be
  *   a machine for answering people twice.
@@ -41,8 +39,8 @@ import type { ChannelMessageReceivedJob } from './inbound';
 
 /**
  * How long a row must sit unmarked before it counts as abandoned rather than in flight.
- * A request still running holds an unmarked row for its whole life, and Twilio's own
- * budget for the webhook is 15s — two minutes is far past any live attempt while still
+ * A request still running holds an unmarked row for its whole life, and the webhook
+ * budget is 15s — two minutes is far past any live attempt while still
  * being a delay a parent experiences as slow, not as ignored.
  */
 export const HANDOFF_GRACE_MS = 2 * 60 * 1000;

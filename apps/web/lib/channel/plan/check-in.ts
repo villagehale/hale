@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
-import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
+import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
@@ -13,9 +13,13 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { type DueCommitment, fulfillCommitment, loadDueCommitments } from '~/lib/commitments/ledger';
+import {
+  type DueCommitment,
+  fulfillCommitment,
+  loadDueCommitments,
+} from '~/lib/commitments/ledger';
 import { type NoteComposer, createNoteComposer } from './note';
 import { isPlanTopic, weekdayIn } from './topics';
 import { playbookFor } from '@hale/types';
@@ -253,6 +257,24 @@ async function sendOne(
     console.warn({ familyId: commitment.familyId }, 'coach plan check-in: group cap reached');
     return;
   }
+  if (delivered.status === 'skipped') {
+    console.warn(
+      { familyId: commitment.familyId, code: delivered.reason },
+      'coach plan check-in: outbound skipped',
+    );
+    if (delivered.reason !== 'not_configured') {
+      await notePermanentSkip(database, {
+        familyId: commitment.familyId,
+        parentUserId: recipient.parentUserId,
+        category: 'plan_check_in',
+        templateKey: `coach_plan:check_in:${commitment.topic}`,
+        dedupeKey,
+        reason: delivered.reason,
+        now,
+      });
+    }
+    return;
+  }
   const channelMessageId = await deps.recordSend(database, {
     familyId: commitment.familyId,
     parentUserId: recipient.parentUserId,
@@ -324,7 +346,7 @@ export function defaultPlanCheckInDeps(): PlanCheckInDeps {
     buildGate: buildOutboundGatePorts,
     dedupeActive,
     resolveSendablePhone,
-    transport: createTwilioTransport(),
+    transport: createOutboundTransport(),
     recordSend: async (database, write) => {
       const [row] = await database
         .insert(schema.channelMessages)

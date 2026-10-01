@@ -22,8 +22,8 @@ export interface VisibleClass {
   windowCount: number;
 }
 
-/** Pure: a class's count inside the dial window. Twilio classes have no
- * day-complete history — their page total stands as-is. */
+/** Pure: a class's count inside the dial window. A class with no day history
+ * uses its total. */
 export function windowCount(cls: ErrorClass, days: number): number {
   if (!cls.sparkline) return cls.total;
   const inWindow = new Set(lastDays(days));
@@ -146,7 +146,7 @@ export function ErrorClassList({
                     />
                   ) : (
                     <span className="adm-class-nospark">
-                      spark unavailable — Twilio returns latest page only
+                      spark unavailable
                     </span>
                   )}
                 </span>

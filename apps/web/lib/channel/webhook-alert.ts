@@ -4,21 +4,20 @@ import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
 /**
  * VIL-331 — the alarm on the webhook itself.
  *
- * On 2026-08-28 a Supabase host incident made the FIRST database call in
- * routeTwilioInbound throw for every real inbound text for roughly six hours. The
- * uncaught throw became an anonymous fast 500, Twilio logged error 11200, and four
- * parents' messages were dropped. Nothing alerted anybody, because everything Hale can
+ * On 2026-08-28 a Supabase host incident made the FIRST database call in the
+ * inbound router throw for every real inbound text for roughly six hours. The
+ * uncaught throw became an anonymous fast 500 and four parents' messages were
+ * dropped. Nothing alerted anybody, because everything Hale can
  * normally use to tell you something — the ledger, the queue, the trail — is written to
  * the database that was down.
  *
  * So both legs here are DATABASE-INDEPENDENT BY CONSTRUCTION: two `fetch` calls to
  * outside services, configured from env alone. No Drizzle import, no pg-boss, no
  * `~/lib/db` — that is the whole point of the module, and the reason it does not reuse
- * `createTwilioTransport` (which resolves config through the all-or-nothing send path)
- * or `captureServerEvent` (whose fetch is not injectable).
+ * the outbound transport or `captureServerEvent` (whose fetch is not injectable).
  *
  * The page goes to Slack #ops (`postOpsSlack`). It does not text a founder phone.
- * Parent-facing Twilio and Linq sends are a different door and are not this module.
+ * Parent-facing Linq sends are a different door and are not this module.
  *
  * Privacy (rule #1). The Slack page carries a route name and an error class only.
  * The PostHog event carries a route name and an error class and NOTHING ELSE — a
@@ -31,16 +30,12 @@ import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
  */
 
 /** The webhooks that can 500 anonymously. One token per route, snake_case so it reads
- * the same in an SMS, a log line and a PostHog property. The union is EVERY inbound
- * provider door, not just Twilio's: the boundary belongs to the seam type (a webhook
+ * the same in a log line and a PostHog property. The union is EVERY inbound
+ * provider door: the boundary belongs to the seam type (a webhook
  * that can throw before its first ledger write), and a door this type cannot name is
  * a door the invariant cannot cover — which is exactly how the email route shipped
  * without it (audit P1-5a; webhook-boundary.test.ts holds the inventory). */
-export type WebhookRoute =
-  | 'twilio_inbound'
-  | 'twilio_status'
-  | 'email_inbound'
-  | 'linq_inbound';
+export type WebhookRoute = 'email_inbound' | 'linq_inbound';
 
 export type AnalyticsAlertOutcome = 'sent' | 'skipped_not_configured' | 'failed';
 
@@ -56,8 +51,8 @@ export interface WebhookAlertDeps {
 
 const DEFAULT_POSTHOG_HOST = 'https://us.i.posthog.com';
 
-/** The alert sits on the failure path of a webhook Twilio gives 15s, and the caller
- * still owes Twilio a 500 afterwards — so a hung provider must lose seconds, not the
+/** The alert sits on the failure path of a webhook the provider retries, and the
+ * caller still owes a 500 afterwards — so a hung provider must lose seconds, not the
  * response. */
 const ALERT_TIMEOUT_MS = 4_000;
 
@@ -176,8 +171,8 @@ export async function webhookFailureAlert(
  * catch (rule #8), and the reason it lives here rather than being copied into the
  * route shells.
  *
- * The answer STAYS a 500. Twilio's SmsFallbackUrl retries on a 5xx and on nothing else,
- * and svix (the email door) retries on any non-2xx — so softening this into a 200 would
+ * The answer STAYS a 500. Linq retries a 5xx, and svix (the email door) retries on
+ * any non-2xx — so softening this into a 200 would
  * trade a visible failure for a permanently lost message on either door, exactly the
  * leads the incident cost. The alert is AWAITED rather than deferred to after(): the
  * response is already a failure, and a serverless instance that freezes the moment it

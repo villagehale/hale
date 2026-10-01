@@ -98,7 +98,7 @@ export function isCaregiverRole(role: FamilyRole): role is CaregiverRole {
  *
  * Callers ask this when the question is not "how much may they see" but "may this
  * person act AS the household" — answering an inbound as the parent of record
- * (twilio/inbound.ts), or claiming the account by proving they hold its number
+ * (inbound-route.ts), or claiming the account by proving they hold its number
  * (lib/auth/claim-by-phone.ts). One list, because two copies of it is how one gets a
  * fix the other doesn't.
  */

@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 /**
  * Request authentication for the inbound-email webhook — the email twin of
- * twilio/signature.ts, and the same gate for the same reason: anyone who can POST to a
+ * linq/signature.ts, and the same gate for the same reason: anyone who can POST to a
  * public URL can claim to be the provider and claim to be any `From` address. Without
  * this an attacker could forge a parent's unsubscribe (a CASL event), forge a reply the
  * router will act on, or push arbitrary text into a family's ledger. It runs before the

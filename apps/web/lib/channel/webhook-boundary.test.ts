@@ -22,8 +22,6 @@ const WEB_ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/,
 
 /** Every provider-facing webhook door, and the route token it must alert under. */
 const WEBHOOK_DOORS: ReadonlyArray<{ file: string; route: string }> = [
-  { file: 'app/api/channels/twilio/inbound/route.ts', route: 'twilio_inbound' },
-  { file: 'app/api/channels/twilio/status/route.ts', route: 'twilio_status' },
   { file: 'app/api/channels/email/inbound/route.ts', route: 'email_inbound' },
   { file: 'app/api/channels/linq/inbound/route.ts', route: 'linq_inbound' },
 ];
@@ -32,7 +30,7 @@ describe('inbound webhook doors sit inside the failure boundary', () => {
   for (const door of WEBHOOK_DOORS) {
     it(`${door.route} wraps its handler in withWebhookFailureAlert`, () => {
       const source = readFileSync(`${WEB_ROOT}/${door.file}`, 'utf8');
-      expect(source).toMatch(/from '~\/lib\/channel\/twilio\/alert'/);
+      expect(source).toMatch(/from '~\/lib\/channel\/webhook-alert'/);
       // The wrapper call itself, under this door's own route token — `return
       // withWebhookFailureAlert('<route>', ...)` — so unwrapping the handler or
       // renaming its token both fail here.

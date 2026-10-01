@@ -245,6 +245,12 @@ export async function runDeepResearchJob(
   if (outcome.status === 'refused_at_send') {
     return { status: 'left_open', reason: 'refused_at_send' };
   }
+  if (outcome.status === 'skipped') {
+    return {
+      status: 'left_open',
+      reason: outcome.reason === 'not_configured' ? 'deferred' : 'unsendable',
+    };
+  }
   return { status: 'sent', watch: outcome.watch, shared: outcome.shared };
 }
 

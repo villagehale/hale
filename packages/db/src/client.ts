@@ -13,8 +13,8 @@ interface CreateDbOptions {
   /**
    * TCP+TLS connect bound in seconds; default 5. Client-enforced by postgres.js,
    * so it holds through the transaction pooler too. The tightest consumer of the
-   * shared web pool is the Twilio inbound webhook (15s total budget — see
-   * channel/twilio/transport.ts): the driver's 30s default could legally spend
+   * shared web pool is the Linq inbound webhook (15s total budget — see
+   * linq/transport.ts): the driver's 30s default could legally spend
    * twice that budget on a connect that a healthy same-region pooler does in
    * milliseconds. A 5s-stuck connect is a brown-out; failing fast is what lets
    * the failure boundary 5xx while Twilio still retries (2026-09-03 audit P1-9).

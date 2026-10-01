@@ -5,7 +5,7 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { PROACTIVE_CAP, PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
-import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import {
   CALENDAR_ALERT_MAX_PER_SWEEP,
@@ -76,7 +76,7 @@ function harness(
   over: {
     verdict?: Awaited<ReturnType<CalendarAlertPorts['gate']>>;
     phone?: string | null;
-    sendThrows?: TwilioSendError;
+    sendThrows?: LinqSendError;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -522,7 +522,7 @@ describe('alertParentForCalendarChanges', () => {
   });
 
   it('a provider refusal fails the claimed row in place and keeps the key spent', async () => {
-    const h = harness({ sendThrows: new TwilioSendError('21610', 400) });
+    const h = harness({ sendThrows: new LinqSendError('21610', 400, true) });
     await expect(sweep(h)).resolves.toEqual(['send_failed']);
 
     const rows = await ledgerRows();

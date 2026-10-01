@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
-import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { MARKETING_SITE_URL } from '~/lib/legal-links';
 import { type FakeDb, makeFakeDb } from './fakes';
 import { type ChannelTransport, FakeTransport } from './transport';
@@ -39,7 +39,7 @@ function ports(transport: ChannelTransport): { ports: WelcomeCardPorts; threaded
 function refusing(code: string): ChannelTransport {
   return {
     async send() {
-      throw new TwilioSendError(code, 400);
+      throw new LinqSendError(code, 400, true);
     },
   };
 }

@@ -72,7 +72,7 @@ import {
   partialFailureReply,
   whichOneReply,
 } from '~/lib/channel/router/copy';
-import { mediaUnsupportedReply } from '~/lib/channel/twilio/copy';
+import { mediaUnsupportedReply } from '~/lib/channel/inbound-copy';
 import { emailAlertOfferReplies } from '~/lib/integrations/email-alert-offer';
 import { PRIVACY_URL } from '~/lib/legal-links';
 import { smsEncoding, smsSegments } from './sms-segments';
@@ -133,7 +133,7 @@ const SMS_COPY_SOURCES = [
   'lib/channel/join/copy.ts',
   'lib/channel/connect/copy.ts',
   'lib/channel/connect/text-connect.ts',
-  'lib/channel/twilio/copy.ts',
+  'lib/channel/inbound-copy.ts',
   'lib/channel/founder/copy.ts',
   // VIL-360's one sentence. It is measured to two characters of headroom on its generic
   // path, so a curly apostrophe here would not merely cost a segment - it would double

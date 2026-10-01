@@ -55,6 +55,8 @@ export type ReplyRoute =
 export interface ReplySent {
   providerMessageId: string;
   channel: ReplyRoute['channel'];
+  /** The Linq chat a phone send landed in, when the door reported one. */
+  chatId?: string | null;
 }
 
 /**

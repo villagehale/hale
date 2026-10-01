@@ -3,7 +3,6 @@ import { sql } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { TREND_DAYS } from '../window';
 import { torontoDay } from './day';
-import type { AdminErrorRow } from './errors';
 
 /**
  * Failure CLASSES, not rows — the Operations landing. Day-grain over the full
@@ -19,17 +18,17 @@ export interface ErrorClassDay {
 }
 
 export interface ErrorClass {
+  /** `twilio` remains so a historical admin row still types. Nothing live writes it. */
   source: 'message' | 'agent' | 'twilio';
   code: string;
   label: string;
-  /** 365d total for DB classes; latest-page total for Twilio (see sparkline). */
+  /** Count over the trend window. */
   total: number;
   /** Last seen, ISO UTC. */
   lastAt: string;
-  /** Per-day counts, sparse, oldest first. Empty for Twilio classes. */
+  /** Per-day counts, sparse, oldest first. */
   days: ErrorClassDay[];
-  /** False for Twilio: its alert log is a single API page, not day-complete —
-   * a sparkline built from it would be a fabricated flat line. */
+  /** False when the class has no day-complete history — a sparkline would be a lie. */
   sparkline: boolean;
 }
 
@@ -107,33 +106,4 @@ export async function loadErrorClasses(database: Database = defaultDb()): Promis
     })),
   );
   return [...messageClasses, ...agentClasses];
-}
-
-/**
- * Pure: the Twilio alert page grouped into classes. The rows are already
- * scrubbed (digits → [digits]) by the service client; the class label is the
- * first summary seen for the code. sparkline: false — one API page is not
- * day-complete, and a flat line built from it would be a lie.
- */
-export function groupTwilioClasses(rows: readonly AdminErrorRow[]): ErrorClass[] {
-  const byCode = new Map<string, ErrorClass>();
-  for (const row of rows) {
-    if (row.source !== 'twilio') continue;
-    let cls = byCode.get(row.code);
-    if (!cls) {
-      cls = {
-        source: 'twilio',
-        code: row.code,
-        label: row.summary,
-        total: 0,
-        lastAt: row.at,
-        days: [],
-        sparkline: false,
-      };
-      byCode.set(row.code, cls);
-    }
-    cls.total += 1;
-    if (row.at > cls.lastAt) cls.lastAt = row.at;
-  }
-  return [...byCode.values()];
 }

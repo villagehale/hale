@@ -7,7 +7,7 @@ import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { PROACTIVE_CAP, PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
-import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
@@ -118,7 +118,7 @@ function harness(
     classifyThrows?: boolean;
     verdict?: Awaited<ReturnType<EmailAlertPorts['gate']>>;
     phone?: string | null;
-    sendThrows?: TwilioSendError;
+    sendThrows?: LinqSendError;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -353,7 +353,7 @@ describe('alertParentForEmail', () => {
   });
 
   it('a provider refusal fails the claimed row in place and keeps the key spent', async () => {
-    const h = harness({ sendThrows: new TwilioSendError('21610', 400) });
+    const h = harness({ sendThrows: new LinqSendError('21610', 400, true) });
     await expect(alert(h)).resolves.toBe('send_failed');
 
     const rows = await ledgerRows();

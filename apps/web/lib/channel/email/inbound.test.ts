@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { emailInboundConfig } from './config';
 import { FakeContentReader, type InboundContentReader } from './content';
 import { fakeEmailReply } from './reply-send';

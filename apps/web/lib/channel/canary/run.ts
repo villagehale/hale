@@ -1,8 +1,9 @@
+import { createHmac } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, isNotNull, like, lte } from 'drizzle-orm';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
-import { type TwilioConfig, twilioConfig } from '../twilio/config';
-import { computeTwilioSignature } from '../twilio/signature';
+import { linqInboundConfigured, linqWebhookSecret } from '~/lib/channel/linq/config';
+import { LINQ_WEBHOOK_VERSION } from '~/lib/channel/linq/signature';
 import {
   CANARY_ANSWERED_ACTION,
   CANARY_BODY,
@@ -17,7 +18,7 @@ import { seedCanaryHousehold } from './seed';
  *
  * The read-side lane (deadman.ts) watches REAL turns, and the night the drain
  * handler threw for six hours had ninety-eight minutes with nobody texting. So
- * this posts a Twilio-signed inbound to the REAL webhook — the route shell,
+ * this posts a Linq-signed inbound to the REAL webhook — the route shell,
  * its failure boundary, the signature contract, the ledger insert, the
  * enqueue, the after() drain kick, the whole router graph — and then asserts
  * the FAR-SIDE ARTIFACT of the previous tick. Never this tick's HTTP status:
@@ -65,30 +66,49 @@ function canarySid(now: Date): string {
   return `${CANARY_SID_PREFIX}${minute.toISOString()}`;
 }
 
-async function inject(deps: InboundCanaryDeps, twilio: TwilioConfig, now: Date): Promise<void> {
-  const url = `${appBaseUrl()}/api/channels/twilio/inbound`;
-  const params = {
-    Body: CANARY_BODY,
-    From: CANARY_PHONE_E164,
-    MessageSid: canarySid(now),
-    To: twilio.fromNumber,
-  };
+/** Same bytes `verifyLinqWebhookSignature` checks. The secret is `whsec_` plus base64. */
+function signLinqBody(secret: string, webhookId: string, timestamp: string, rawBody: string): string {
+  const secretStr = secret.startsWith('whsec_') ? secret.slice('whsec_'.length) : secret;
+  const key = Buffer.from(secretStr, 'base64');
+  const mac = createHmac('sha256', key).update(`${webhookId}.${timestamp}.${rawBody}`).digest('base64');
+  return `v1,${mac}`;
+}
+
+async function inject(deps: InboundCanaryDeps, now: Date): Promise<void> {
+  const secret = linqWebhookSecret();
+  if (!secret) throw new Error('inbound canary: not configured');
+  const url = `${appBaseUrl()}/api/channels/linq/inbound?version=${LINQ_WEBHOOK_VERSION}`;
+  const messageId = canarySid(now);
+  const rawBody = JSON.stringify({
+    webhook_version: LINQ_WEBHOOK_VERSION,
+    event_type: 'message.received',
+    data: {
+      id: messageId,
+      direction: 'inbound',
+      sent_at: now.toISOString(),
+      sender_handle: { handle: CANARY_PHONE_E164, is_me: false },
+      chat: { id: `canary-${messageId}`, is_group: false },
+      parts: [{ type: 'text', value: CANARY_BODY }],
+    },
+  });
+  const webhookId = `evt_${messageId}`;
+  const timestamp = String(Math.floor(now.getTime() / 1000));
 
   const response = await deps.fetch(url, {
     method: 'POST',
     headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      // Over the CANONICAL origin, which is what twilioWebhookUrl rebuilds and
-      // verifies against — never the request Host.
-      'x-twilio-signature': computeTwilioSignature(twilio.authToken, url, params),
+      'content-type': 'application/json',
+      'webhook-id': webhookId,
+      'webhook-timestamp': timestamp,
+      'webhook-signature': signLinqBody(secret, webhookId, timestamp, rawBody),
     },
-    body: new URLSearchParams(params).toString(),
+    body: rawBody,
     signal: AbortSignal.timeout(INJECTION_TIMEOUT_MS),
   });
 
   if (!response.ok) {
-    // 503 is twilio_not_configured, 403 is APP_URL/auth-token drift — either
-    // way the webhook is the thing to look at, and the status says which.
+    // 503 is linq_not_configured, 403 is a signature the door will not accept —
+    // either way the webhook is the thing to look at, and the status says which.
     throw new Error(`inbound canary: the door refused the injection (${response.status})`);
   }
 }
@@ -145,7 +165,7 @@ async function verifyPreviousTick(
 /**
  * Order matters, and every step of it is a fail-closed decision:
  *
- *   1. Twilio config, or the signature cannot be computed at all.
+ *   1. Linq inbound config, or the signature cannot be computed at all.
  *   2. THE HOUSEHOLD, before anything is posted. Missing → seed (idempotent).
  *      Inactive/revoked → throw (never auto-reactivate). An unknown `From`
  *      reaches intake and would text +1 437-555-0100 every tick; refusing
@@ -155,8 +175,7 @@ async function verifyPreviousTick(
  *      probed and the alarm clears itself on the tick after a fix lands.
  */
 export async function runInboundCanary(deps: InboundCanaryDeps): Promise<void> {
-  const twilio = twilioConfig();
-  if (!twilio) throw new Error('inbound canary: not configured');
+  if (!linqInboundConfigured()) throw new Error('inbound canary: not configured');
 
   // Self-heal after a roster wipe: the canary household is data, not schema, and
   // a hard-delete of test families can take it with them. Seed is idempotent and
@@ -174,6 +193,6 @@ export async function runInboundCanary(deps: InboundCanaryDeps): Promise<void> {
   }
 
   const now = deps.now();
-  await inject(deps, twilio, now);
+  await inject(deps, now);
   await verifyPreviousTick(deps.database, household.familyId, now);
 }

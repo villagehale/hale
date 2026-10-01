@@ -133,8 +133,8 @@ describe('ErrorClassList render', () => {
     expect(html).toContain('tpl_x');
   });
 
-  it('gives a Twilio class the honest no-spark caption instead of a fabricated line', () => {
-    expect(html).toContain('spark unavailable — Twilio returns latest page only');
+  it('gives a class with no day history the honest no-spark caption', () => {
+    expect(html).toContain('spark unavailable');
   });
 
   it('demotes the full raw table into a collapsed details section', () => {

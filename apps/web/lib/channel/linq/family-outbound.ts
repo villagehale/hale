@@ -6,6 +6,11 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
+import {
+  configuredOutboundChannel,
+  readSendRefusal,
+  sendResolvingNewChat,
+} from '~/lib/channel/outbound-transport';
 import { linqApiKey, linqGroupCoparentEnabled } from './config';
 import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
 import { groupPassedSyncLine, groupPickedSyncLine } from './group-coparent-copy';
@@ -228,8 +233,18 @@ export type FamilyOutboundDelivery =
       providerMessageId: string;
       channel: 'sms' | 'imessage';
       chatId: string | null;
+      linkOmitted?: 'link_on_new_chat';
     }
-  | { status: 'held'; reason: 'group_cap' | 'quiet_hours' | 'coparent_ask' };
+  | { status: 'held'; reason: 'group_cap' | 'quiet_hours' | 'coparent_ask' }
+  | { status: 'skipped'; reason: string };
+
+function skippedRefusal(familyId: string, err: unknown): FamilyOutboundDelivery | null {
+  const refusal = readSendRefusal(err);
+  if (!refusal) return null;
+  if (refusal.code !== 'not_configured' && !refusal.permanent) return null;
+  console.warn({ familyId, code: refusal.code }, 'family outbound: provider refused — not sent');
+  return { status: 'skipped', reason: refusal.code };
+}
 
 function isCoparentAsk(body: string): boolean {
   return (
@@ -308,30 +323,79 @@ export async function deliverFamilyOutbound(
         'family outbound: ceiling already met — rec-morning still sent',
       );
     }
-    const sent = await sendLinqChatMessage({
-      chatId: target.chatId,
-      text: input.body,
-      fetch: input.fetch,
+    try {
+      const sent = await sendLinqChatMessage({
+        chatId: target.chatId,
+        text: input.body,
+        fetch: input.fetch,
+      });
+      return {
+        status: 'sent',
+        providerMessageId: sent.providerMessageId,
+        channel: 'imessage',
+        chatId: target.chatId,
+      };
+    } catch (err) {
+      const skipped = skippedRefusal(input.familyId, err);
+      if (skipped) return skipped;
+      throw err;
+    }
+  }
+  try {
+    const sent = await sendResolvingNewChat(input.legacy, {
+      to: input.to,
+      body: input.body,
+      mediaUrls: input.mediaUrls,
     });
+    const channel = sent.transport === 'imessage' ? 'imessage' : 'sms';
     return {
       status: 'sent',
       providerMessageId: sent.providerMessageId,
-      channel: 'imessage',
-      chatId: target.chatId,
+      channel,
+      chatId: sent.chatId ?? null,
+      ...(sent.linkOmitted ? { linkOmitted: sent.linkOmitted } : {}),
     };
+  } catch (err) {
+    const skipped = skippedRefusal(input.familyId, err);
+    if (skipped) return skipped;
+    throw err;
   }
-  const sent = await input.legacy.send({
-    to: input.to,
-    body: input.body,
-    mediaUrls: input.mediaUrls,
-  });
-  const channel = sent.transport === 'imessage' ? 'imessage' : 'sms';
-  return {
-    status: 'sent',
-    providerMessageId: sent.providerMessageId,
-    channel,
-    chatId: sent.chatId ?? null,
-  };
+}
+
+/**
+ * A permanent provider refusal, on the ledger, so the next tick does not send
+ * it again. `not_configured` writes nothing: the door may exist on a later tick.
+ * A database double with no insert is a unit test; production always inserts.
+ */
+export async function notePermanentSkip(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    category: (typeof schema.channelMessages.$inferInsert)['category'];
+    templateKey: string;
+    dedupeKey: string;
+    reason: string;
+    now: Date;
+  },
+): Promise<void> {
+  if (input.reason === 'not_configured') return;
+  if (typeof database.insert !== 'function') return;
+  await database
+    .insert(schema.channelMessages)
+    .values({
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      channel: configuredOutboundChannel(),
+      direction: 'out',
+      category: input.category,
+      templateKey: input.templateKey,
+      dedupeKey: input.dedupeKey,
+      status: 'failed',
+      errorCode: input.reason,
+      sentAt: input.now,
+    })
+    .onConflictDoNothing();
 }
 
 /** One wire copy when the household shares a group. Every recipient otherwise. */

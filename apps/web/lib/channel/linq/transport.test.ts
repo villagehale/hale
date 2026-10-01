@@ -618,7 +618,11 @@ describe('createLinqPhoneTransport', () => {
 
     const sent = await transport.send({ to: TO, body: 'Thursday works' });
 
-    expect(sent).toEqual({ providerMessageId: 'msg-phone-1', chatId: CHAT });
+    expect(sent).toEqual({
+      providerMessageId: 'msg-phone-1',
+      transport: 'imessage',
+      chatId: CHAT,
+    });
     const init = fetchMock.mock.calls[0]?.[1];
     expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.linqapp.com/api/partner/v3/chats');
     expect(JSON.parse(String(init?.body))).toEqual({
@@ -660,7 +664,11 @@ describe('createLinqPhoneTransport', () => {
 
     const sent = await transport.send({ to: TO, body });
 
-    expect(sent).toEqual({ providerMessageId: 'msg-link', chatId: CHAT });
+    expect(sent).toEqual({
+      providerMessageId: 'msg-link',
+      transport: 'imessage',
+      chatId: CHAT,
+    });
     expect(String(listed.mock.calls[0]?.[0])).toContain('/chats?');
     expect(String(listed.mock.calls[0]?.[0])).toContain(encodeURIComponent(FROM));
     expect(String(listed.mock.calls[0]?.[0])).toContain(encodeURIComponent(TO));

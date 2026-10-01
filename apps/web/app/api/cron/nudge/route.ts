@@ -8,7 +8,7 @@ import { runFollowupSweep } from '~/lib/channel/followup/run';
 import { runWelcomeCardRedrive } from '~/lib/channel/intake/welcome-card-redrive';
 import { runNudgeCron } from '~/lib/channel/nudge/run';
 import { runPlanCheckInSweep } from '~/lib/channel/plan/check-in';
-import { departureNoticePorts, welcomeCardRedrivePorts } from '~/lib/channel/twilio/deps';
+import { departureNoticePorts, welcomeCardRedrivePorts } from '~/lib/channel/inbound-deps';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { reviewVerdictClient, runReviewCapture } from '~/lib/reviews/capture';

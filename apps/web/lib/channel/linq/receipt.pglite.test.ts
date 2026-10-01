@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TwilioInboundDeps } from '~/lib/channel/twilio/inbound';
+import type { InboundRouteDeps } from '~/lib/channel/inbound-route';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { handleLinqInboundRequest } from './inbound';
 
@@ -78,7 +78,7 @@ describe('linq delivery receipts', () => {
     });
   }
 
-  function deps(): TwilioInboundDeps {
+  function deps(): InboundRouteDeps {
     return {
       database: db.database,
       intake: () => {

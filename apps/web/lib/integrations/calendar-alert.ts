@@ -13,7 +13,11 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
-import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import {
+  failedSendPatch,
+  readSendRefusal,
+  sendResolvingNewChat,
+} from '~/lib/channel/outbound-transport';
 import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
 
 /**
@@ -555,16 +559,23 @@ async function sendOffer(
   }
 
   let providerMessageId: string;
+  let carried: 'sms' | 'imessage' = 'sms';
+  let chatId: string | null = null;
   try {
-    ({ providerMessageId } = await ports.transport.send({
+    const sent = await sendResolvingNewChat(ports.transport, {
       to,
       body: withOptOut(message, verdict.optOut),
-    }));
+    });
+    providerMessageId = sent.providerMessageId;
+    if (sent.transport === 'imessage') {
+      carried = 'imessage';
+      chatId = sent.chatId ?? null;
+    }
   } catch (err) {
-    const code = err instanceof TwilioSendError ? err.code : 'unknown';
+    const code = readSendRefusal(err)?.code ?? 'unknown';
     await database
       .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: code })
+      .set(failedSendPatch(code))
       .where(eq(schema.channelMessages.id, claimed.id));
     console.error({ familyId, code }, 'calendar alert: the provider refused the text');
     return 'send_failed';
@@ -572,7 +583,16 @@ async function sendOffer(
 
   await database
     .update(schema.channelMessages)
-    .set({ providerMessageId })
+    .set(
+      carried === 'imessage'
+        ? {
+            providerMessageId,
+            channel: 'imessage',
+            providerChatId: chatId,
+            status: acceptedStatus('imessage'),
+          }
+        : { providerMessageId },
+    )
     .where(eq(schema.channelMessages.id, claimed.id));
 
   // The composed sentence, not the wire body — the CASL line belongs on the wire, and

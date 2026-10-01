@@ -1,9 +1,9 @@
 import { type Database, type WatchedSpotReleaseReason, schema } from '@hale/db';
-import { and, eq, lt } from 'drizzle-orm';
+import { and, eq, lt, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type AcceptedStatus, SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
-import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
+import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -13,7 +13,7 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { type FetchPage, createFetchBody } from '~/lib/registration/verify-sweep';
 import { STATE_TOLD, type SpotReading, readSpot, transitionKind } from './availability';
@@ -277,7 +277,7 @@ export function defaultWatchedSpotsSweepDeps(): WatchedSpotsSweepDeps {
     buildGate: buildOutboundGatePorts,
     refuseUnbackedSend,
     resolveSendablePhone,
-    transport: createTwilioTransport(),
+    transport: createOutboundTransport(),
     recordSend: async (database, write) => {
       const [row] = await database
         .insert(schema.channelMessages)
@@ -905,6 +905,29 @@ async function sendSpotOpen(
     shareGroupCap: false,
   });
   if (delivered.status === 'held') return { kind: 'held', reason: 'frequency_cap' };
+  if (delivered.status === 'skipped') {
+    console.warn({ spotId: spot.id, code: delivered.reason }, 'watched spots: outbound skipped');
+    if (delivered.reason === 'not_configured') {
+      await database
+        .update(schema.watchedSpots)
+        .set({
+          sendAttempts: sql`${schema.watchedSpots.sendAttempts} - 1`,
+          updatedAt: now,
+        })
+        .where(eq(schema.watchedSpots.id, spot.id));
+      return { kind: 'failed' };
+    }
+    await notePermanentSkip(database, {
+      familyId: spot.familyId,
+      parentUserId: spot.parentUserId,
+      category: 'spot_open',
+      templateKey: `spot_open:${kind}`,
+      dedupeKey,
+      reason: delivered.reason,
+      now,
+    });
+    return { kind: 'failed' };
+  }
   const messageId = await deps.recordSend(database, {
     familyId: spot.familyId,
     parentUserId: spot.parentUserId,

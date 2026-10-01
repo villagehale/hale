@@ -676,7 +676,7 @@ describe('runNudgeCron — silence', () => {
 });
 
 describe('runNudgeCron — the prod send path (VIL-260)', () => {
-  it('wires the real Twilio transport into the default deps', async () => {
+  it('wires the shared outbound transport into the default deps', async () => {
     // VIL-262 made the dep non-nullable, so "a transport is wired" is now a type-level
     // fact. What is still worth asserting is WHICH one: the REAL outbound leg, which
     // refuses by naming its missing credentials rather than silently reporting a send
@@ -685,10 +685,11 @@ describe('runNudgeCron — the prod send path (VIL-260)', () => {
     // And WHICH threader: a port declared but wired to a stub is the same silent
     // no-op the port exists to forbid (rule #11).
     expect(threadMessage).toBe(threadProactiveMessage);
-    vi.stubEnv('TWILIO_ACCOUNT_SID', '');
+    vi.stubEnv('LINQ_API_KEY', '');
+    vi.stubEnv('LINQ_FROM_E164', '');
     await expect(
       transport.send({ to: '+14165550100', body: 'never leaves: no credentials' }),
-    ).rejects.toThrow(/twilio not configured/);
+    ).rejects.toThrow(/not_configured/);
   });
 
   it('writes the ledger row and the audit row for the nudge it sent', async () => {

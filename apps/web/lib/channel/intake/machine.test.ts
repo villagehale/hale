@@ -3,7 +3,7 @@ import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatLinqLineForParent, linqCoParentAsk } from '~/lib/channel/linq/group';
 import { YEAR_FIND_POLL_NONE, YEAR_FIND_POLL_PROMPT } from '~/lib/channel/linq/poll';
-import { createLinqTextTransport } from '~/lib/channel/linq/transport';
+import { LinqSendError, createLinqTextTransport } from '~/lib/channel/linq/transport';
 import {
   EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
@@ -11,7 +11,6 @@ import {
   SAFETY_REPLY_BY_LANGUAGE,
 } from '~/lib/channel/off-domain/copy';
 import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
-import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import { matchHealthCheckpoints } from '~/lib/health/match';
@@ -336,7 +335,7 @@ describe('intake · happy path', () => {
    * The consent turn ends on a real question - the co-parent ask - and then CLOSES
    * the session, so the answer to it always lands after intake is over. That is
    * deliberate, not a gap: the reply belongs to the coach, and the machine's job is
-   * to decline it cleanly so A3 can record it and queue it (twilio/inbound.ts
+   * to decline it cleanly so A3 can record it and queue it (inbound-route.ts
    * handOffToConversation). The bug this guards against is the machine answering it
    * itself with a canned intake line, which would teach a parent that the question was
    * rhetorical. The consent tail does not ask for a name.
@@ -574,7 +573,7 @@ describe('intake · the contact card', () => {
     const { fake, transport, deps } = harness({});
     const mediaRefusing: IntakeDeps['transport'] = {
       async send(input) {
-        if (input.mediaUrls) throw new TwilioSendError('21620', 400);
+        if (input.mediaUrls) throw new LinqSendError('21620', 400, true);
         return transport.send(input);
       },
     };
@@ -1498,7 +1497,7 @@ describe('intake · CASL keywords', () => {
 
     const result = await text(fake, transport, deps, 'STOP', {
       ...deps,
-      transport: refusingTransport(new TwilioSendError('21610', 400)),
+      transport: refusingTransport(new LinqSendError('21610', 400, true)),
     });
 
     // The unsubscribe is the thing that must survive: an undeliverable courtesy line is
@@ -1520,9 +1519,9 @@ describe('intake · CASL keywords', () => {
     await expect(
       text(fake, transport, deps, 'STOP', {
         ...deps,
-        transport: refusingTransport(new TwilioSendError('20500', 503)),
+        transport: refusingTransport(new LinqSendError('20500', 503, false)),
       }),
-    ).rejects.toBeInstanceOf(TwilioSendError);
+    ).rejects.toBeInstanceOf(LinqSendError);
     // The channel revoke is written before the ack. A closed intake session is not
     // what makes the unsubscribe durable.
     expect(
@@ -3061,7 +3060,7 @@ describe('intake · the calendar card and the Gmail card', () => {
     const inner = h.transport;
     const refusesTheOffer: IntakeDeps['transport'] = {
       async send(input) {
-        if (input.body.includes('/connect?t=')) throw new TwilioSendError('21610', 400);
+        if (input.body.includes('/connect?t=')) throw new LinqSendError('21610', 400, true);
         return inner.send(input);
       },
     };
@@ -3275,7 +3274,7 @@ describe('intake · the provider answered the keyword first (VIL-348)', () => {
 
     const result = await handleInboundSms(fake.db, transport.inbound(PHONE, 'DEBUT'), {
       ...deps,
-      transport: refusingTransport(new TwilioSendError('21610', 400)),
+      transport: refusingTransport(new LinqSendError('21610', 400, true)),
     });
 
     expect(result).toEqual({ status: 'restarted', ack: 'provider_refused' });
@@ -3290,9 +3289,9 @@ describe('intake · the provider answered the keyword first (VIL-348)', () => {
     await expect(
       handleInboundSms(fake.db, transport.inbound(PHONE, 'DEBUT'), {
         ...deps,
-        transport: refusingTransport(new TwilioSendError('20500', 503)),
+        transport: refusingTransport(new LinqSendError('20500', 503, false)),
       }),
-    ).rejects.toBeInstanceOf(TwilioSendError);
+    ).rejects.toBeInstanceOf(LinqSendError);
   });
 });
 

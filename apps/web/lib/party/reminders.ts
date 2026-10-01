@@ -3,7 +3,12 @@ import { and, eq, gte, isNotNull, isNull, lt } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { f14EnabledFor } from '~/lib/channel/nudge/run';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import {
+  createOutboundTransport,
+  readSendRefusal,
+  refusalStopsRetry,
+  sendResolvingNewChat,
+} from '~/lib/channel/outbound-transport';
 import { decryptString } from '~/lib/crypto/string-cipher';
 import { localParts } from '~/lib/loop/prefs';
 import { dayKeyIn } from '~/lib/plan/spine';
@@ -60,6 +65,8 @@ export interface GuestSendLedger {
   dedupeKey: string;
   providerMessageId: string;
   sentAt: Date;
+  channel?: 'sms' | 'imessage';
+  providerChatId?: string | null;
 }
 
 export interface PartyReminderDeps {
@@ -219,7 +226,7 @@ export async function notifyGuestsOfCancellation(
  * would drop N identical turns into the window the coach re-reads every turn. The
  * guest's own reply cannot reach the host's thread either: an unknown number opens its
  * own intake session, and the C1 handoff requires a verified channel and a parent role
- * (twilio/inbound.ts). Nothing is missing here — there is no parent conversation this
+ * (inbound-route.ts). Nothing is missing here — there is no parent conversation this
  * message belongs to.
  */
 async function sendToGuest(
@@ -240,7 +247,7 @@ async function sendToGuest(
   }
 
   try {
-    const { providerMessageId } = await deps.transport.send({
+    const sent = await sendResolvingNewChat(deps.transport, {
       to: decryptString(args.guest.phoneE164Encrypted),
       body: args.body,
     });
@@ -248,15 +255,21 @@ async function sendToGuest(
       familyId: args.party.familyId,
       hostUserId: args.party.hostUserId,
       dedupeKey: args.dedupeKey,
-      providerMessageId,
+      providerMessageId: sent.providerMessageId,
       sentAt: args.now,
+      channel: sent.transport === 'imessage' ? 'imessage' : 'sms',
+      providerChatId: sent.chatId ?? null,
     });
     return 'sent';
   } catch (err) {
+    const refusal = readSendRefusal(err);
+    if (refusalStopsRetry(err)) {
+      console.error({ code: refusal?.code }, 'guest send refused');
+      return 'failed';
+    }
     if (claimReminder) await deps.release(database, args.guest.rsvpId);
-    // The number and the body are never in the log line — Twilio echoes both back
-    // inside its error message, so only the shape of the failure is recorded.
-    console.error('guest send failed', err instanceof Error ? err.message : 'unknown');
+    // The number and the body are never in the log line. Only the refusal code is.
+    console.error({ code: refusal?.code ?? 'unknown' }, 'guest send failed');
     return 'failed';
   }
 }
@@ -404,17 +417,19 @@ export function guestsEligibleForSend(
  * received (0074's migration note).
  */
 async function recordGuestSend(database: Database, write: GuestSendLedger): Promise<void> {
+  const channel = write.channel === 'imessage' ? 'imessage' : 'sms';
   await database.transaction(async (tx) => {
     await tx.insert(schema.channelMessages).values({
       familyId: write.familyId,
       parentUserId: write.hostUserId,
-      channel: 'sms',
+      channel,
       direction: 'out',
       category: 'rsvp',
       templateKey: 'party_guest_message',
       dedupeKey: write.dedupeKey,
       providerMessageId: write.providerMessageId,
-      status: acceptedStatus('sms'),
+      providerChatId: channel === 'imessage' ? (write.providerChatId ?? null) : null,
+      status: acceptedStatus(channel),
       sentAt: write.sentAt,
     });
     await tx.insert(schema.auditLog).values({
@@ -430,7 +445,7 @@ async function recordGuestSend(database: Database, write: GuestSendLedger): Prom
 
 export function defaultPartyReminderDeps(): PartyReminderDeps {
   return {
-    transport: createTwilioTransport(),
+    transport: createOutboundTransport(),
     claim: claimGuestReminder,
     release: releaseGuestReminder,
     loadTeenNames: loadTeenFirstNames,

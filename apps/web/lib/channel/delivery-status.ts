@@ -1,15 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
-import { twilioConfig } from './config';
-import { isValidTwilioSignature, parseTwilioParams, twilioWebhookUrl } from './signature';
-
 /**
- * VIL-214 · A3 — delivery receipts, the only thing that turns "we called the API" into
- * "it reached the phone". Twilio POSTs one callback per status transition, keyed by the
- * MessageSid the send returned, and `channel_messages.provider_message_id` is indexed
- * for exactly this lookup (A2 left the index for A3).
+ * Delivery receipts, the only thing that turns "we called the API" into "it reached
+ * the phone". Linq posts one receipt per status transition, keyed by the provider
+ * message id the send returned, and `channel_messages.provider_message_id` is indexed
+ * for exactly this lookup.
  *
- * Callbacks are NOT ordered. Twilio fires each transition as its own HTTP request, so
+ * Receipts are NOT ordered. Each transition arrives as its own event, so
  * `sent` and `delivered` can arrive in either order, and a retry can redeliver an old
  * one at any time. Applying whatever arrives last would let a stale `sent` un-deliver a
  * delivered message. So the write is MONOTONIC: each target status names the states it
@@ -19,9 +16,9 @@ import { isValidTwilioSignature, parseTwilioParams, twilioWebhookUrl } from './s
 
 type ChannelMessageStatus = (typeof schema.channelMessageStatusEnum.enumValues)[number];
 
-/** The ledger state a Twilio `MessageStatus` means, or null when it means nothing we
- * record (inbound-only values, and anything Twilio adds later — we refuse to guess). */
-export function mapTwilioStatus(raw: string): ChannelMessageStatus | null {
+/** The ledger state a provider status string means, or null when it means nothing we
+ * record (inbound-only values, and anything a provider adds later — we refuse to guess). */
+export function mapDeliveryStatus(raw: string): ChannelMessageStatus | null {
   switch (raw.trim().toLowerCase()) {
     case 'accepted':
     case 'scheduled':
@@ -75,11 +72,11 @@ export type StatusApplyResult = 'updated' | 'ignored' | 'unknown_message';
  * that provider id (a send from another environment sharing the number, or a callback
  * for a message this deployment never wrote).
  */
-export async function applyTwilioStatus(
+export async function applyDeliveryStatus(
   database: Database,
   input: { providerMessageId: string; rawStatus: string; errorCode: string | null },
 ): Promise<StatusApplyResult> {
-  const next = mapTwilioStatus(input.rawStatus);
+  const next = mapDeliveryStatus(input.rawStatus);
   if (!next) return 'ignored';
 
   const from = overwritableFrom(next);
@@ -110,64 +107,3 @@ export async function applyTwilioStatus(
   return existing.length > 0 ? 'ignored' : 'unknown_message';
 }
 
-/**
- * `POST /api/channels/twilio/status`.
- *
- * Signed exactly like the inbound webhook, and gated the same way — 503 while the leg
- * is unprovisioned, 403 on a bad signature, both with zero side effects. The signature
- * matters as much here as on inbound: an unauthenticated status endpoint would let
- * anyone mark any message delivered (hiding a real failure) or failed (triggering
- * whatever retry logic later hangs off it).
- *
- * Every authentic callback answers 204 — Twilio ignores the body of a status callback,
- * and a 4xx/5xx would only make it retry a receipt we have already applied.
- *
- * `unknown_message` is LOGGED, never discarded (rule #11). It is not an exotic case: the
- * intake greeting is sent before any family row exists, so a receipt for the very first
- * message Hale ever sends a parent has nothing to land on. Dropping those silently meant
- * a carrier filtering every first message looked exactly like a carrier delivering them,
- * and the module's own promised operator signal ("the callback URL is pointed at the
- * wrong deployment") was never actually delivered anywhere. The line carries the
- * provider's identifiers ONLY — never the phone number Twilio put in the same callback
- * (rule #1).
- */
-export async function handleTwilioStatusRequest(
-  req: Request,
-  deps: { database: Database; log: Pick<Console, 'warn'> },
-): Promise<Response> {
-  const config = twilioConfig();
-  if (!config) {
-    return Response.json({ error: 'twilio_not_configured' }, { status: 503 });
-  }
-
-  const params = parseTwilioParams(await req.text());
-  const valid = isValidTwilioSignature({
-    authToken: config.authToken,
-    url: twilioWebhookUrl(req),
-    params,
-    signature: req.headers.get('x-twilio-signature'),
-  });
-  if (!valid) {
-    return Response.json({ error: 'invalid_signature' }, { status: 403 });
-  }
-
-  const providerMessageId = params.MessageSid ?? params.SmsSid ?? '';
-  const rawStatus = params.MessageStatus ?? params.SmsStatus ?? '';
-  if (providerMessageId && rawStatus) {
-    // Present only on a failure; stored so a support question has an answer that
-    // isn't "it just didn't arrive".
-    const errorCode = params.ErrorCode || null;
-    const result = await applyTwilioStatus(deps.database, {
-      providerMessageId,
-      rawStatus,
-      errorCode,
-    });
-    if (result === 'unknown_message') {
-      deps.log.warn(
-        { providerMessageId, rawStatus, errorCode },
-        'twilio status: receipt for a message with no ledger row — pre-provisioning send, another deployment sharing the number, or a misrouted callback URL',
-      );
-    }
-  }
-  return new Response(null, { status: 204 });
-}

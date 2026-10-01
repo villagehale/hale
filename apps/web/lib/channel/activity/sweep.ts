@@ -11,7 +11,7 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
   type DueCommitment,
@@ -435,6 +435,7 @@ async function keepOne(
     result.refusedAtSend += 1;
     return;
   }
+  if (outcome.status === 'skipped') return;
   result.sent += 1;
   if (outcome.emptyHanded) result.sentEmptyHanded += 1;
   if (outcome.shared) result.shared += 1;
@@ -477,7 +478,7 @@ export function defaultActivityFollowUpDeps(): ActivityFollowUpDeps {
     buildGate: buildOutboundGatePorts,
     dedupeActive,
     resolveSendablePhone,
-    transport: createTwilioTransport(),
+    transport: createOutboundTransport(),
     recordSend: async (database, write) => {
       const [row] = await database
         .insert(schema.channelMessages)

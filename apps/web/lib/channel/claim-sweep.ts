@@ -2,9 +2,8 @@ import { type Database, schema } from '@hale/db';
 import { and, asc, eq, isNull, lt } from 'drizzle-orm';
 
 /**
- * The claim sweep — delivery truth for the EXECUTOR's sends, riding the same cron
- * tick as the Twilio delivery-truth sweep (delivery-sweep.ts) rather than minting a
- * third sweep system.
+ * The claim sweep — delivery truth for the EXECUTOR's sends, riding the
+ * queue-maintenance cron rather than minting its own sweep.
  *
  * An `outbound_sends` row is the executor's claim-before-send idempotency gate:
  * inserted BEFORE the provider send, confirmed (sent_at) only after the provider

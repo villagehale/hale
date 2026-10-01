@@ -304,7 +304,7 @@ async function reply(
  *
  * A parent who has finished intake has no open session, so every ordinary text they
  * write arrives here first and falls through to C1 the moment this route has nothing to
- * say (twilio/inbound.ts). That makes this module the last thing that spoke before a
+ * say (inbound-route.ts). That makes this module the last thing that spoke before a
  * coach turn, and `scopeConfirm` is an open question — "Reply YES and I'll text them".
  * Unthreaded, the coach reads the answer with nothing above it, which is the state
  * lib/channel/thread.ts exists to end.

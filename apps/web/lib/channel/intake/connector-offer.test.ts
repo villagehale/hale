@@ -1,7 +1,7 @@
 import { inspect } from 'node:util';
 import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import {
   type ConnectorOfferPorts,
@@ -48,7 +48,7 @@ function ports(transport: ChannelTransport): { ports: ConnectorOfferPorts; threa
 function refusing(code: string): ChannelTransport {
   return {
     async send() {
-      throw new TwilioSendError(code, 400);
+      throw new LinqSendError(code, 400, true);
     },
   };
 }
@@ -367,7 +367,7 @@ describe('the year-open connector cards', () => {
     const transport: ChannelTransport = {
       async send(input) {
         calls += 1;
-        if (calls === 1) throw new TwilioSendError('21610', 400);
+        if (calls === 1) throw new LinqSendError('21610', 400, true);
         return real.send(input);
       },
     };

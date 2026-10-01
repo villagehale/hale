@@ -419,7 +419,7 @@ export async function deliverParentCallNameLine(
     legacy: deps.transport,
     shareGroupCap: false,
   });
-  if (delivered.status === 'held') return;
+  if (delivered.status !== 'sent') return;
   const channel = delivered.channel === 'imessage' ? 'imessage' : 'sms';
   const [row] = await database
     .insert(schema.channelMessages)

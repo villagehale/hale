@@ -74,7 +74,7 @@ export interface PolicyQueueCreator {
  *     every queue this invariant retrofits) create alone would leave pg-boss's defaults
  *     in place forever. Update is a no-op when the row is absent, so the pair is
  *     correct from either starting state. (The landmine the inbound queue already
- *     stepped on once — channel/twilio/deps.ts.)
+ *     stepped on once — inbound-deps.ts.)
  *
  * Idempotent; run it on every producer/consumer boot rather than remembering deploys.
  */

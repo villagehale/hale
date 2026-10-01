@@ -185,14 +185,8 @@ describe('providerIncidentKey', () => {
       digest: 'loop_health',
       reason: 'provider_error',
     });
-    const triage = providerIncidentKey({
-      kind: 'digest_send_failed',
-      digest: 'twilio_triage',
-      reason: 'provider_error',
-    });
-
     expect(papercut).toBe('provider_health:digest_send_failed:papercut');
-    expect(new Set([papercut, loopHealth, triage]).size).toBe(3);
+    expect(new Set([papercut, loopHealth]).size).toBe(2);
   });
 });
 
@@ -249,14 +243,7 @@ describe('formatProviderAlert', () => {
     expect(text).toContain('provider_error');
     expect(text).toContain('never as a');
     expect(text).toContain('RESEND_API_KEY');
-
-    const triage = formatProviderAlert(
-      { kind: 'digest_send_failed', digest: 'twilio_triage', reason: 'provider_error' },
-      AT,
-    );
-    // The triage digest pages Slack #ops, so its remedy points at that webhook.
-    expect(triage.text).toContain('OPS_SLACK_WEBHOOK_URL');
-    expect(triage.text).not.toContain('FOUNDER_ALERT_PHONE');
+    expect(text).not.toContain('FOUNDER_ALERT_PHONE');
   });
 });
 

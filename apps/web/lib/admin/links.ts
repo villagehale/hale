@@ -45,8 +45,6 @@ export function posthogReplayUrl(recordingId: string): string {
   return posthogProjectUrl(`/replay/${encodeURIComponent(recordingId)}`);
 }
 
-export const TWILIO_ERROR_LOGS_URL = 'https://console.twilio.com/us1/monitor/logs/errors';
-
 export function langfuseHomeUrl(): string {
   return process.env.LANGFUSE_HOST || 'https://cloud.langfuse.com';
 }

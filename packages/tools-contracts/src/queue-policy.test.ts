@@ -11,7 +11,7 @@ import {
  *  - the retry policy and dead letter ride the SAME options object on create AND update
  *    (`create_queue` ends in ON CONFLICT DO NOTHING, so update is what converges a
  *    queue that already exists on production with pg-boss defaults — the landmine the
- *    inbound turn queue already stepped on once, channel/twilio/deps.ts);
+ *    inbound turn queue already stepped on once, inbound-deps.ts);
  *  - nothing optional about any of it: the spec type requires retry + deadLetter, so a
  *    caller cannot express a bare queue at all.
  */

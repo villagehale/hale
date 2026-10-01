@@ -7,7 +7,12 @@ import { groupCalendarReceipt, groupGmailReceipt } from '~/lib/channel/linq/grou
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
+import {
+  createOutboundTransport,
+  failedSendPatch,
+  readSendRefusal,
+  sendResolvingNewChat,
+} from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { connectorConnectedText, type TextConnectProvider } from './text-connect';
@@ -94,7 +99,7 @@ export function connectedNoticeLabel(outcome: ConnectedNoticeOutcome): Connected
  * still leaves one path that proves the real transport is reachable. */
 export function defaultConnectedNoticePorts(): ConnectedNoticePorts {
   return {
-    transport: createTwilioTransport(),
+    transport: createOutboundTransport(),
     imessage: (input) => sendLinqChatMessage({ chatId: input.chatId, text: input.body }),
     threadMessage: threadProactiveMessage,
   };
@@ -169,8 +174,8 @@ async function sendReceipt(
   }
 
   // The door they are standing in. iMessage returns to the stored Linq chat.
-  // SMS stays on Twilio. A blue-bubble family with no chat id is named and
-  // not texted on the other app.
+  // Anything else goes out through the shared Linq phone transport. A
+  // blue-bubble family with no chat id is named and not texted on the other app.
   const door = await resolveMessagingDoor(database, parentUserId);
   const receiptChatId =
     door.channel === 'imessage' && door.chatId
@@ -218,6 +223,8 @@ async function sendReceipt(
   // The receipt is the whole turn. No ladder ask is composed here.
   const body = connectorConnectedText(await familyReceiptLanguage(database, familyId), provider);
   let providerMessageId: string;
+  let reportedImessage = false;
+  let reportedChatId: string | null = null;
   try {
     if (door.channel === 'imessage') {
       // ports.imessage is present: the guard above returned otherwise.
@@ -227,16 +234,20 @@ async function sendReceipt(
       }
       ({ providerMessageId } = await send({ chatId: receiptChatId, body }));
     } else {
-      ({ providerMessageId } = await ports.transport.send({ to: phone, body }));
+      const sent = await sendResolvingNewChat(ports.transport, { to: phone, body });
+      providerMessageId = sent.providerMessageId;
+      if (sent.transport === 'imessage') {
+        reportedImessage = true;
+        reportedChatId = sent.chatId ?? null;
+      }
     }
   } catch (err) {
-    const code =
-      err instanceof TwilioSendError || err instanceof LinqSendError ? err.code : 'unknown';
-    // The key STAYS consumed (ledger.ts CONSUMED_SEND_STATUSES): a failed delivery must
-    // never un-consume idempotency.
+    const code = readSendRefusal(err)?.code ?? 'unknown';
+    // `not_configured` frees the dedupe key so a later tick can tell them.
+    // Every other refusal keeps it (ledger.ts CONSUMED_SEND_STATUSES).
     await database
       .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: code })
+      .set(failedSendPatch(code))
       .where(eq(schema.channelMessages.id, claimed.id));
     console.error(
       { familyId, provider, code },
@@ -247,7 +258,16 @@ async function sendReceipt(
 
   await database
     .update(schema.channelMessages)
-    .set({ providerMessageId })
+    .set(
+      reportedImessage
+        ? {
+            providerMessageId,
+            channel: 'imessage',
+            providerChatId: reportedChatId,
+            status: acceptedStatus('imessage'),
+          }
+        : { providerMessageId },
+    )
     .where(eq(schema.channelMessages.id, claimed.id));
 
   // The sentence Hale said, where the coach reads it back: a parent answering "what did
@@ -258,10 +278,7 @@ async function sendReceipt(
 }
 
 /** Intake stamps this when the kids-and-postal text was French. Anything else is English. */
-async function familyReceiptLanguage(
-  database: Database,
-  familyId: string,
-): Promise<ReplyLanguage> {
+async function familyReceiptLanguage(database: Database, familyId: string): Promise<ReplyLanguage> {
   const rows = await database
     .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
     .from(schema.families)
@@ -317,10 +334,10 @@ async function sendGroupHomeReceipt(
   try {
     ({ providerMessageId } = await ports.imessage({ chatId, body }));
   } catch (err) {
-    const code = err instanceof LinqSendError ? err.code : 'unknown';
+    const code = readSendRefusal(err)?.code ?? 'unknown';
     await database
       .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: code })
+      .set(failedSendPatch(code))
       .where(eq(schema.channelMessages.id, claimed.id));
     console.error(
       { familyId, provider, code },

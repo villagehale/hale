@@ -11,7 +11,13 @@ import {
 } from '~/lib/channel/intake/session';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
-import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
+import {
+  createOutboundTransport,
+  plainTextWithoutLinks,
+  readSendRefusal,
+  refusalStopsRetry,
+  sendResolvingNewChat,
+} from '~/lib/channel/outbound-transport';
 import { decryptString } from '~/lib/crypto/string-cipher';
 import { FOUNDER_PAIR_SESSION_IDS } from './sitting-reminder';
 
@@ -29,7 +35,7 @@ import { FOUNDER_PAIR_SESSION_IDS } from './sitting-reminder';
  * (family_id is NOT NULL on the ledger). "No outbound" means no transcript
  * `out` row. A session Hale already spoke on is skipped.
  *
- * Send path is the existing intake Twilio transport. Claim BEFORE send so
+ * Send path is createOutboundTransport (Linq). Claim BEFORE send so
  * two hourly ticks cannot double. Cap 1. Founder-pair skip list is the same
  * two ids VIL-324 already refuses.
  */
@@ -37,7 +43,7 @@ import { FOUNDER_PAIR_SESSION_IDS } from './sitting-reminder';
 const MAX_FIRST_REPLY_RECOVERIES_PER_RUN = 50;
 
 export interface FirstReplyRecoveryDeps {
-  /** The outbound SMS leg — REQUIRED (rule #11). The real adapter is Hale's Twilio number. */
+  /** The outbound text leg — REQUIRED (rule #11). The real adapter is Linq. */
   transport: ChannelTransport;
 }
 
@@ -68,7 +74,7 @@ export function firstReplyRecoveryEligible(row: FirstReplyRecoveryRow): boolean 
 }
 
 export function defaultFirstReplyRecoveryDeps(): FirstReplyRecoveryDeps {
-  return { transport: createTwilioTransport() };
+  return { transport: createOutboundTransport() };
 }
 
 export async function runFirstReplyRecoveryCron(
@@ -113,20 +119,25 @@ export async function runFirstReplyRecoveryCron(
       }
       const language = languageFromTranscript(transcript);
       const body = greeting(venueForCode(row.sourceCode)?.name ?? null, language);
-      const { providerMessageId } = await deps.transport.send({ to: phoneE164, body });
-      await recordFirstReplyOutbound(database, phoneE164, body, providerMessageId, now);
+      const sent = await sendResolvingNewChat(deps.transport, { to: phoneE164, body });
+      const wireBody = sent.linkOmitted ? plainTextWithoutLinks(body) : body;
+      await recordFirstReplyOutbound(database, phoneE164, wireBody, sent.providerMessageId, now);
       result.sent += 1;
     } catch (err) {
-      if (err instanceof TwilioSendError && err.permanent) {
+      const refusal = readSendRefusal(err);
+      if (refusalStopsRetry(err)) {
         result.skipped += 1;
+        console.error({ code: refusal?.code }, 'first-reply recovery send refused');
         continue;
       }
       await releaseFirstReplyRecovery(database, row.id);
+      if (refusal?.code === 'not_configured') {
+        result.skipped += 1;
+        console.error({ code: refusal.code }, 'first-reply recovery send skipped');
+        continue;
+      }
       result.failed += 1;
-      console.error(
-        'first-reply recovery send failed',
-        err instanceof Error ? err.message : 'unknown',
-      );
+      console.error({ code: refusal?.code ?? 'unknown' }, 'first-reply recovery send failed');
     }
   }
   return result;

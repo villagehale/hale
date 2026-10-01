@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchLangfuseDaily } from './langfuse';
 import { fetchReplays, fetchSiteFunnel } from './posthog';
-import { fetchTwilioAlerts, scrubDigits } from './twilio';
 
 /**
  * Rule #11 across all three service clients: a missing credential and a dead
@@ -10,10 +9,6 @@ import { fetchTwilioAlerts, scrubDigits } from './twilio';
  */
 
 const ENV_KEYS = [
-  'TWILIO_ACCOUNT_SID',
-  'TWILIO_AUTH_TOKEN',
-  'TWILIO_API_KEY_SID',
-  'TWILIO_API_KEY_SECRET',
   'POSTHOG_PERSONAL_API_KEY',
   'POSTHOG_PROJECT_ID',
   'LANGFUSE_PUBLIC_KEY',
@@ -46,67 +41,6 @@ function jsonResponse(body: unknown): Response {
 const neverFetch = vi.fn(async () => {
   throw new Error('fetch must not run without credentials');
 }) as unknown as typeof fetch;
-
-describe('fetchTwilioAlerts', () => {
-  it('names the missing credential without touching the network', async () => {
-    expect(await fetchTwilioAlerts(neverFetch)).toEqual({
-      ok: false,
-      status: 'not_configured',
-      detail: expect.stringContaining('TWILIO'),
-    });
-    expect(neverFetch).not.toHaveBeenCalled();
-  });
-
-  it('parses alerts and SCRUBS digit runs from the summary', async () => {
-    process.env.TWILIO_ACCOUNT_SID = 'AC123';
-    process.env.TWILIO_AUTH_TOKEN = 'token';
-    const fetchImpl = vi.fn(async () =>
-      jsonResponse({
-        alerts: [
-          {
-            date_created: '2026-08-29T12:00:00Z',
-            error_code: 11200,
-            alert_text: 'HTTP retrieval failure for +14165551234',
-          },
-        ],
-      }),
-    ) as unknown as typeof fetch;
-    const out = await fetchTwilioAlerts(fetchImpl);
-    expect(out).toEqual({
-      ok: true,
-      data: [
-        {
-          at: '2026-08-29T12:00:00Z',
-          source: 'twilio',
-          code: '11200',
-          summary: 'HTTP retrieval failure for +[digits]',
-        },
-      ],
-    });
-  });
-
-  it('names a refusing provider as unreachable, never a throw', async () => {
-    process.env.TWILIO_ACCOUNT_SID = 'AC123';
-    process.env.TWILIO_AUTH_TOKEN = 'token';
-    const refusing = vi.fn(async () => new Response('nope', { status: 503 })) as unknown as typeof fetch;
-    expect(await fetchTwilioAlerts(refusing)).toEqual({
-      ok: false,
-      status: 'unreachable',
-      detail: 'Twilio answered 503',
-    });
-
-    const dead = vi.fn(async () => {
-      throw new TypeError('fetch failed');
-    }) as unknown as typeof fetch;
-    expect(await fetchTwilioAlerts(dead)).toMatchObject({ ok: false, status: 'unreachable' });
-  });
-});
-
-describe('scrubDigits', () => {
-  it('replaces 7+ digit runs and leaves short counts alone', () => {
-    expect(scrubDigits('code 11200 for 4165551234')).toBe('code 11200 for [digits]');
-  });
-});
 
 describe('fetchSiteFunnel / fetchReplays', () => {
   it('name the missing key without touching the network', async () => {

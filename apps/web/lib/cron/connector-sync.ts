@@ -11,7 +11,7 @@ import {
 } from '~/lib/channel/linq/household-calendar';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
   type CalendarAlertCounts,
@@ -357,7 +357,7 @@ function proactiveSendPorts(database: Database): CalendarAlertPorts {
   return {
     gate: (request) => assertProactiveSendAllowed(request, buildOutboundGatePorts(database)),
     resolvePhone: resolveSendablePhone,
-    transport: createTwilioTransport(),
+    transport: createOutboundTransport(),
     threadMessage: threadProactiveMessage,
     // The SAME reader the gate judges quiet hours with, so the hour in the text and the
     // hour the gate refused at can never disagree.

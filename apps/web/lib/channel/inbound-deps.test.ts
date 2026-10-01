@@ -7,8 +7,8 @@ import {
   CHANNEL_MESSAGE_RECEIVED_RETRY,
 } from '~/lib/channel/config';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
-import { type MessageQueue, type QueueOptions, sendChannelMessageReceived } from './deps';
-import type { ChannelMessageReceivedJob } from './inbound';
+import { type MessageQueue, type QueueOptions, sendChannelMessageReceived } from '~/lib/channel/inbound-deps';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 
 /**
  * VIL-220 · C1 — the producer half of per-conversation FIFO.

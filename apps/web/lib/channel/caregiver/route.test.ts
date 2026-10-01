@@ -536,7 +536,7 @@ describe('caregiver invite · the ways it does not happen', () => {
    *
    * A parent who has finished intake has no open session, so EVERY ordinary text they
    * send arrives here first and falls through to C1 when this route has nothing to say
-   * (twilio/inbound.ts handOffToConversation). That makes this module the last thing
+   * (inbound-route.ts handOffToConversation). That makes this module the last thing
    * that spoke before a coach turn — and `scopeConfirm` ("Reply YES and I'll text
    * them") is an open question. Unthreaded, the coach reads whatever comes back with
    * nothing above it.

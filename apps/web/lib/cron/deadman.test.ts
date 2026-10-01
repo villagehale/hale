@@ -65,7 +65,7 @@ describe('schedulePeriodSeconds', () => {
     expect(schedulePeriodSeconds('* * * * *')).toBe(60); // drain
     expect(schedulePeriodSeconds('*/5 * * * *')).toBe(300); // registration-sequence
     expect(schedulePeriodSeconds('*/10 * * * *')).toBe(600); // queue-maintenance
-    expect(schedulePeriodSeconds('4-59/10 * * * *')).toBe(600); // twilio-triage
+    expect(schedulePeriodSeconds('4-59/10 * * * *')).toBe(600); // stepped range
     expect(schedulePeriodSeconds('*/15 * * * *')).toBe(900); // connector-sync
     expect(schedulePeriodSeconds('2 * * * *')).toBe(3_600); // week-plan (hourly)
     expect(schedulePeriodSeconds('42 6 * * *')).toBe(86_400); // inference (daily)

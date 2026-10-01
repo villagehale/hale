@@ -12,11 +12,10 @@ import { loadTextingByHour } from './queries/texting-hours';
 import { loadWatchedSpots } from './queries/watched-spots';
 import { fetchLangfuseDaily } from './services/langfuse';
 import { fetchReplays, fetchSiteFunnel } from './services/posthog';
-import { fetchTwilioAlerts } from './services/twilio';
 
 /**
  * Every panel load behind a 300s server cache — a reload (or a bot) can never
- * hammer the DB with 365-day aggregates or Twilio/PostHog/Langfuse with a
+ * hammer the DB with 365-day aggregates or PostHog/Langfuse with a
  * request per render. Keys are static: the data is global (one founder, one
  * line), never per-user.
  */
@@ -39,7 +38,6 @@ export const cachedAuditMix = cached('admin-audit-mix', () => loadAuditMix());
 export const cachedAgentSpend = cached('admin-agent-spend', () => loadAgentSpend());
 export const cachedDbErrors = cached('admin-db-errors', () => loadDbErrors());
 export const cachedErrorClasses = cached('admin-error-classes', () => loadErrorClasses());
-export const cachedTwilioAlerts = cached('admin-twilio-alerts', () => fetchTwilioAlerts());
 export const cachedSiteFunnel = cached('admin-site-funnel', () => fetchSiteFunnel());
 export const cachedReplays = cached('admin-replays', () => fetchReplays());
 export const cachedLangfuseDaily = cached('admin-langfuse-daily', () => fetchLangfuseDaily());

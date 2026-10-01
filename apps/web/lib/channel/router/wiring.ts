@@ -36,7 +36,7 @@ import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { FamilyRole } from '~/lib/channel/role-scope';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
 import { recordStatedState } from '~/lib/channel/stated-state';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
 import { searchWeekdaysForFamily } from '~/lib/channel/weekday-care/search';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -384,7 +384,7 @@ export function defaultHandlers(): DeterministicHandler[] {
     // acknowledge an invite it did not send. Linq replies with group instructions.
     coParentNumberHandler({
       sendSms: async (sms) => {
-        const sent = await createTwilioTransport().send(sms);
+        const sent = await sendResolvingNewChat(createOutboundTransport(), sms);
         return { providerMessageId: sent.providerMessageId };
       },
     }),
@@ -636,9 +636,8 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     database,
     loadContext: loadInboundContext,
     transport: createReplyTransport({
-      // SMS answers still leave through Twilio. The loop's proactive phone door is
-      // Linq (iMessage, then RCS, then SMS); this slice does not move the router.
-      phone: createTwilioTransport(),
+      // SMS-shaped answers leave through the shared phone door (Linq by default).
+      phone: createOutboundTransport(),
       // Null until the inbound-email leg is provisioned, which is the same condition
       // that makes an email route impossible to reach — dark by construction, and named
       // rather than silent if it is ever reached anyway (reply-transport.ts).

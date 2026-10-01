@@ -1,7 +1,7 @@
 # CRON DEAD-MAN SWITCH (audit P1-8).
 #
-# WHY GITHUB: every watchdog Hale has — the drain, the Twilio triage, the
-# delivery sweep, the spend alert, the digests — runs on the same Vercel cron
+# WHY GITHUB: every watchdog Hale has — the drain, the spend alert, the
+# digests — runs on the same Vercel cron
 # substrate it monitors. If Vercel crons stop, the alarm that would say so
 # stops with them. This workflow is the one check that lives in a DIFFERENT
 # failure domain: GitHub Actions' scheduler, GitHub's runners, GitHub's

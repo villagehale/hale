@@ -22,7 +22,7 @@ import { describe, expect, it } from 'vitest';
  * residue, which wants pushback first).
  */
 
-const REPO_ROOT = fileURLToPath(new URL('../../../../../', import.meta.url)).replace(/\/$/, '');
+const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url)).replace(/\/$/, '');
 
 /** How a file can reach the provider: constructing a transport, or raw REST. The
  * construction tokens carry the open paren so prose mentions in comments (keywords.ts,
@@ -50,8 +50,8 @@ const PROVIDER_TOKENS = [
  * pre-family row cannot legally exist earlier). RESIDUE entries are sends with no
  * ledger row today, kept deliberately visible here rather than scattered. */
 const ONE_DOOR_ALLOWLIST: Record<string, string> = {
-  'apps/web/lib/channel/twilio/transport.ts':
-    'the door itself — the one module that speaks Twilio REST',
+  'apps/web/lib/channel/outbound-transport.ts':
+    'the only production caller of createLinqPhoneTransport. Callers ledger beside the send. Exception: claim-code-sender is the pre-existing unledgered sign-in-code residue — the OTP seam returns no provider id and channel_message_category has no honest value for an auth code',
   'apps/web/lib/channel/linq/transport.ts':
     'the iMessage door — the one module that speaks the Linq partner API',
   'apps/web/lib/channel/linq/location-share.ts':
@@ -80,40 +80,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'sends the placeholder question and the poll, then writes linq:poll and linq_poll_sent',
   'apps/web/lib/channel/router/reply-transport.ts':
     'iMessage arm of the router reply transport; every send ledgered in router route.ts sendReply',
-  'apps/web/lib/channel/twilio/delivery-sweep.ts':
-    'read-only status poller (P0-1): fetches Message status by SID, sends nothing — its writes are ledger status updates, never provider sends',
-  'apps/web/lib/channel/twilio/deps.ts':
-    'intake wiring; intake sends record via machine.ts writeChannelMessage or the session transcript',
-  'apps/web/lib/channel/router/wiring.ts':
-    'coach reply transport; every send ledgered in router route.ts sendReply',
-  'apps/web/lib/channel/adapters/twilio-sms.ts':
-    'loop dispatch adapter; the default sender is the Linq phone transport, and every leg is ledgered by dispatch.ts writeLedgerRow',
-  'apps/web/lib/registration/sequence/run.ts': 'records its own rows (recordSend port)',
-  'apps/web/lib/party/reminders.ts': 'records its own rows (rsvp category)',
-  'apps/web/lib/village/intros/run.ts': 'records its own rows (village_intro category)',
-  'apps/web/lib/channel/founder/reply.ts': 'records its own rows (founder category)',
-  'apps/web/lib/channel/followup/run.ts': 'records its own rows (followup category)',
-  'apps/web/lib/channel/plan/check-in.ts': 'records its own rows (plan_check_in category)',
-  'apps/web/lib/channel/checkin/sweep.ts':
-    'records its own rows (evening_check_in category) — both the nightly question and the step-down notice, each with its own dedupe key',
-  'apps/web/lib/channel/activity/sweep.ts':
-    'records via deliverFollowUp recordSend port (activity_followup category)',
-  'apps/web/lib/channel/nudge/run.ts': 'records its own rows (nudge category)',
-  'apps/web/lib/travel/sweep.ts':
-    'records its own rows (travel_brief category) — the claim-first insert keyed travel_brief:<tripId> is written BEFORE the transport, and a hold writes its own keyed suppression row (travel_brief_hold:<tripId>:<reason>) instead',
-  'apps/web/lib/channel/spots/sweep.ts': 'records its own rows (spot_open category)',
-  'apps/web/lib/cron/connector-sync.ts':
-    'the connector sweep wires both alert paths off one proactiveSendPorts(); every send is claimed and recorded before it reaches the transport — alertParentForEmail (email_alert category) and alertParentForCalendarChanges (calendar_alert category)',
   'apps/web/lib/channel/connect/connected-notice.ts':
     'records its own row BEFORE the send and claims the dedupe key with it (reply category, connector:connected) — the connect callback awaits this inside the redirect Google hands back',
-  'apps/web/lib/channel/intake/first-reply-recovery.ts':
-    'pre-family by eligibility (family_id IS NULL); session transcript, replayed at provisioning',
-  'apps/web/lib/channel/intake/sitting-reminder.ts':
-    'pre-family by eligibility (family_id IS NULL); session transcript, replayed at provisioning',
-  'apps/web/lib/auth/claim-code-sender.ts':
-    'RESIDUE: sign-in codes are unledgered. The claim flow resolves userId+familyId before sending, but the OTP seam returns no provider id and channel_message_category has no honest value for an auth code. Closing this needs an additive category migration + provider-id plumbing — its own change, not a quiet edit here.',
-  'apps/web/lib/channels/otp-sender.ts':
-    'RESIDUE (latent): env-driven CPaaS sender, unconfigured in every environment — claim-code-sender deliberately routes around it. Bound + ledger it before A3 provisions it.',
 };
 
 /** The trees a send could hide in. Worker is scanned even though it has no Twilio
@@ -168,8 +136,6 @@ describe('one door to the provider (rule #6)', () => {
   it('positive control: the scanner sees the door itself', () => {
     // A scan that cannot find transport.ts is a broken scanner, not a clean repo —
     // every assertion below would pass vacuously ("a refusal is not evidence").
-    expect(found).toContain('apps/web/lib/channel/twilio/transport.ts');
-    expect(found).toContain('apps/web/lib/channel/twilio/delivery-sweep.ts');
     expect(found).toContain('apps/web/lib/channel/linq/transport.ts');
   });
 
@@ -177,7 +143,7 @@ describe('one door to the provider (rule #6)', () => {
     const strangers = found.filter((file) => !(file in ONE_DOOR_ALLOWLIST));
     expect(
       strangers,
-      `These files reach a phone provider (Twilio or Linq) but are not in ONE_DOOR_ALLOWLIST.
+      `These files reach a phone provider (Linq) but are not in ONE_DOOR_ALLOWLIST.
 Every send must write a channel_messages row (rule #6). Route the send through an existing ledgered path, or add the file here WITH the justification that names where its ledger row is written:
   ${strangers.join('\n  ')}`,
     ).toEqual([]);

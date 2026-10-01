@@ -15,8 +15,7 @@ const PER_SOURCE_LIMIT = 50;
 
 /**
  * The DB half of the errors table: failed sends + failed agent runs, newest
- * first. Twilio's own alert log merges in from the service client. No bodies,
- * no phone numbers — codes and template keys only (rule #1).
+ * first. No bodies, no phone numbers — codes and template keys only (rule #1).
  */
 export async function loadDbErrors(database: Database = defaultDb()): Promise<AdminErrorRow[]> {
   const m = schema.channelMessages;

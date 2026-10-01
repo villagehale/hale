@@ -9,7 +9,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
  *
  * The lane in /api/health/crons watches REAL turns, and on the night the drain
  * handler threw for six hours there were ninety-eight minutes with no text at
- * all. So a second half exists: every ten minutes a Twilio-signed synthetic
+ * all. So a second half exists: every ten minutes a Linq-signed synthetic
  * inbound is posted to the real webhook and its far-side artifact is verified
  * on the following tick (see run.ts). This module is the identity both halves
  * join on.

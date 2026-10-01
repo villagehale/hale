@@ -56,9 +56,9 @@ export const INBOUND_TURN_QUEUES: readonly string[] = [CHANNEL_MESSAGE_RECEIVED_
  * per-conversation key that is per-conversation FIFO.
  *
  * It lives here beside the queue name, in the module with no runtime imports, because
- * the producer (channel/twilio/deps) and the consumer (cron/drain) both need it and
+ * the producer (inbound-deps) and the consumer (cron/drain) both need it and
  * neither should reach through the other to get it. cron/drain is imported for its
- * expiry constant by every route that approves an action, and channel/twilio/deps pulls
+ * expiry constant by every route that approves an action, and inbound-deps pulls
  * a db handle and a queue client — an import edge between them would put both on that
  * path for the sake of one string.
  */
@@ -87,7 +87,7 @@ export const CHANNEL_MESSAGE_RECEIVED_POLICY = 'singleton';
  * abandoned turn is a row you can count (see {@link CHANNEL_MESSAGE_RECEIVED_DLQ}).
  *
  * These sit on the QUEUE rather than on each send, which is how the policy converges on
- * an environment where the queue already exists — see channel/twilio/deps.ts, where
+ * an environment where the queue already exists — see inbound-deps.ts, where
  * createQueue + updateQueue are run as a pair for exactly that reason.
  */
 export const CHANNEL_MESSAGE_RECEIVED_RETRY = {

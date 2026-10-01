@@ -1,7 +1,7 @@
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { captureInboundRouted } from '~/lib/analytics/server-capture';
 import { db as defaultDb } from '~/lib/db';
-import { enqueueChannelMessageReceived } from '~/lib/channel/twilio/deps';
+import { enqueueChannelMessageReceived } from '~/lib/channel/inbound-deps';
 import { requireEmailInboundConfig } from './config';
 import { createResendContentReader } from './content';
 import { productionEmailReply } from './reply-send';
@@ -15,7 +15,7 @@ import type { EmailInboundDeps } from './inbound';
  * The content reader is a THUNK, and that is the point: constructing it reaches for a
  * Resend client, and a forged request must never cause one. The route builds these deps
  * eagerly but the reader is not touched until the signature has passed — the same lazy
- * shape twilio/deps.ts uses for its intake deps, for the same reason.
+ * shape inbound-deps.ts uses for its intake deps, for the same reason.
  *
  * The ENQUEUE is A3's, imported rather than reimplemented. One text and one email are
  * both one job on one queue, and the identity that makes the hand-off idempotent — the

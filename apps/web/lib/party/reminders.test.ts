@@ -278,10 +278,11 @@ describe('a guest message that cannot leave (VIL-267)', () => {
     // still worth asserting is WHICH one: the leg that refuses by naming its missing
     // credentials rather than reporting a send nobody made.
     const { transport } = defaultPartyReminderDeps();
-    vi.stubEnv('TWILIO_ACCOUNT_SID', '');
+    vi.stubEnv('LINQ_API_KEY', '');
+    vi.stubEnv('LINQ_FROM_E164', '');
 
     await expect(transport.send({ to: '+14165550123', body: 'never leaves' })).rejects.toThrow(
-      /twilio not configured/,
+      /not_configured/,
     );
   });
 });

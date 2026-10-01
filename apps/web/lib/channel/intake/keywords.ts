@@ -18,7 +18,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
  * January 2026, §3.1) make five keywords mandatory for every program — STOP, ARRET,
  * HELP, AIDE, INFO — "regardless of the intended audience", and texting ARRET or AIDE
  * "must return a French response". That document is SHORT-CODE policy and Hale sends
- * from a Canadian long code (twilio/config.ts), so it does not bind this program; Hale
+ * from a Canadian long code (linq/config.ts), so it does not bind this program; Hale
  * adopts its standard voluntarily, because a francophone parent typing ARRET at a
  * Canadian number means it whatever the sender's numbering plan is. DEBUT is here for
  * the same reason and not even by that standard: START is the word the STOP
