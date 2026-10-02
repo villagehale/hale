@@ -180,6 +180,7 @@ type SendGroup = (notice: { chatId: string; text: string }) => Promise<{
 }>;
 
 type NoticeResult = 'sent' | 'already_sent' | 'not_sent' | 'refused_text' | 'no_parent';
+type SendNotice = NoticeResult | 'family_send_cap' | 'group_send_cap';
 
 function haleLine(phone: string): boolean {
   const from = linqFromE164();
@@ -373,7 +374,7 @@ async function cappedSend(
     now: Date;
     send?: SendGroup;
   },
-): Promise<NoticeResult | 'family_send_cap' | 'group_send_cap'> {
+): Promise<SendNotice> {
   const cap = judgeFamilySendCap(
     { now: input.now, rows: await ledgerStamps(database, input.chatId) },
     input.familyId,
@@ -494,7 +495,7 @@ export async function joinFamilyToSharedGroup(
   | { outcome: 'flag_off' }
   | { outcome: 'not_a_parent' }
   | { outcome: 'already_joined' }
-  | { outcome: 'joined'; notice: NoticeResult }
+  | { outcome: 'joined'; notice: SendNotice }
 > {
   if (!linqMultiFamilyGroupsEnabled()) return { outcome: 'flag_off' };
   const role = await familyRoleOf(database, input.familyId, input.userId);
@@ -592,7 +593,7 @@ export async function leaveFamilyFromSharedGroup(
   | { outcome: 'flag_off' }
   | { outcome: 'not_a_parent' }
   | { outcome: 'not_joined' }
-  | { outcome: 'left'; notice: NoticeResult }
+  | { outcome: 'left'; notice: SendNotice }
 > {
   if (!linqMultiFamilyGroupsEnabled()) return { outcome: 'flag_off' };
   const role = await familyRoleOf(database, input.familyId, input.userId);

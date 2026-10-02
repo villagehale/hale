@@ -40,6 +40,22 @@ const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages
  * like a direct literal.
  */
 const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
+  // VIL-399 — one helper writes the shared-group verbs. The literals in the
+  // join and leave transactions are scanned directly as well.
+  'apps/web/lib/channel/linq/multi-family.ts': [
+    'sms_reply_received',
+    'sms_reply_sent',
+    'linq_multi_family_joined',
+    'linq_multi_family_left',
+    'linq_multi_family_unseated',
+    'linq_multi_family_refused',
+    'linq_multi_family_reply_sent',
+    'linq_multi_family_ask_sent',
+    'linq_multi_family_ask_capped',
+    'linq_multi_family_send_capped',
+    'linq_multi_family_private_withheld',
+    'linq_multi_family_data_refused',
+  ],
   // The loop dispatch names its send by WHO received it: a caregiver leg is a disclosure
   // to a third party, everything else is the generic channel send.
   'apps/web/lib/channel/dispatch.ts': ['caregiver_schedule_sent', 'channel_sent'],

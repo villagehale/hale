@@ -90,11 +90,18 @@ describe('per-family ask budget and send caps', () => {
     expect(judgeFamilySendCap({ now, rows: familyFull }, familyA).allow).toBe(false);
     expect(judgeFamilySendCap({ now, rows: familyFull }, familyB)).toEqual({ allow: true });
 
-    const groupFull = Array.from({ length: MULTI_FAMILY_GROUP_SEND_DAILY_MAX }, (_, index) => ({
-      familyId: index % 2 === 0 ? familyA : familyB,
-      kind: 'send' as const,
-      createdAt: now,
-    }));
+    const groupFull = [
+      ...Array.from({ length: 4 }, () => ({
+        familyId: familyA,
+        kind: 'send' as const,
+        createdAt: now,
+      })),
+      ...Array.from({ length: MULTI_FAMILY_GROUP_SEND_DAILY_MAX - 4 }, () => ({
+        familyId: familyB,
+        kind: 'send' as const,
+        createdAt: now,
+      })),
+    ];
     expect(judgeFamilySendCap({ now, rows: groupFull }, familyB)).toEqual({
       allow: false,
       reason: 'group_send_cap',
