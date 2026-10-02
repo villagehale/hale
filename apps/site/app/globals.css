@@ -1844,8 +1844,10 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     padding-top: var(--nav-h);
     overflow: visible;
     background: none;
+    min-height: 0;
   }
-  /* The photograph is full strength. No page-wide wash, no brightness filter. */
+  /* The photograph is full strength. No page-wide wash, no brightness filter.
+   * sizes on the Image asks for the 2200-wide source so cover does not upscale. */
   .v4-hero-top .v4-hero-art { filter: none; }
   .v4-hero-art {
     position: absolute;
@@ -1955,16 +1957,33 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   }
 
   /* ── Floating glass nav pill ──────────────────────────────────────────── */
+  .v4-nav-slot { padding-top: 16px; }
   .v4-nav {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    max-width: 64rem;
-    margin: 1.25rem auto 0;
+    max-width: none;
+    width: 100%;
+    margin: 0;
     padding: 0.6rem 0.7rem 0.6rem 1.15rem;
     border-radius: var(--r-full);
   }
+  /* The pill stays glass, but opaque enough that the shore cannot ghost through. */
+  .v4-nav.v4-glass {
+    overflow: visible;
+    background: light-dark(rgb(251 247 239 / 0.92), rgb(12 26 54 / 0.92));
+    backdrop-filter: blur(18px) saturate(1.4);
+    -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  }
+  .v4-nav .v4-btn-solid {
+    background: var(--color-apricot-tint);
+    color: var(--color-navy);
+    box-shadow: inset 0 0 0 1px var(--color-apricot-deep);
+    padding: 8px 16px;
+    font-size: 0.85rem;
+  }
+  .v4-nav .v4-btn-solid:hover { background: #fde7a8; }
   .v4-navlinks { display: none; }
   @media (min-width: 768px) {
     .v4-navlinks { display: flex; align-items: center; gap: 1.75rem; }
@@ -2064,11 +2083,12 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * amber, which clears AA on the night shore. */
   .v4-hero-top .v4-pronounce { color: light-dark(rgb(23 41 74 / 0.86), #f2c489); }
   .v4-hero-h1 {
-    font-size: clamp(2.9rem, 8.5vw, 6.5rem);
+    font-size: clamp(40px, 5vw, 68px);
     color: var(--color-ink);
     max-width: 15ch;
     font-weight: 550;
-    line-height: 1.02;
+    line-height: 1.04;
+    letter-spacing: -0.025em;
     /* The hero carried `text-shadow: light-dark(<shadow>, <shadow>)` here and on
      * .v4-hero-sub. light-dark() is a <color> function — wrapping a whole shadow
      * LIST in it is invalid, so all three declarations computed to `none` and the
@@ -2122,18 +2142,18 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * y=902 — two pixels past the viewport — and on a phone `100svh` is the
    * viewport with the URL bar SHOWING, which is the height this has to fit. So
    * the rhythm is tuned against a measured fold at both sizes rather than eyeballed. */
-  .v4-hero-top .v4-hero-body { gap: 0.85rem; padding-top: 2.25rem; padding-bottom: 2.5rem; text-align: center; align-items: stretch; }
+  .v4-hero-top .v4-hero-body { gap: 24px; padding: 24px 0 48px; text-align: left; align-items: stretch; }
   .v4-hero-top .v4-hero-h1 {
-    max-width: 12em;
-    font-size: 2.5rem;
-    font-weight: 560;
+    max-width: 16ch;
+    font-size: clamp(40px, 5vw, 68px);
     letter-spacing: -0.025em;
     line-height: 1.04;
+    font-weight: 500;
   }
   .v4-hero-offer {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.6rem;
   }
   .v4-hero-channel {
@@ -2286,7 +2306,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     color: var(--color-spruce);
   }
   .v4-lede {
-    margin-top: 1.4rem;
+    margin-top: 16px;
     max-width: 46ch;
     font-size: clamp(1.02rem, 1.5vw, 1.18rem);
     line-height: 1.6;
@@ -2361,6 +2381,9 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   html[lang='en'] .v4-hero-h1,
   html[lang='fr'] .v4-hero-h1 {
     font-family: var(--font-display);
+    /* The founder's poster values. Stated in px rather than rem because they are
+     * a drawing decision at one specific pair of sizes, not a step on the type
+     * scale — and because the ceiling is what the display cut was chosen for. */
     font-size: clamp(40px, 5vw, 68px);
     font-weight: 500;
     font-optical-sizing: auto;
@@ -2516,22 +2539,21 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-hero-stage {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    width: min(100%, 72rem);
-    gap: 1.25rem;
+    align-items: stretch;
+    width: 100%;
+    gap: 24px;
   }
   .v4-hero-copy {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: 0.85rem;
-    max-width: 36rem;
-    /* Local scrim, only behind the type. 0.86 cream over a white sky is
-     * still ~13:1 for navy body text. The picture around it is untouched. */
-    padding: 1.05rem 1.2rem 1.15rem;
-    border-radius: 1.35rem;
-    background: light-dark(rgb(253 252 250 / 0.86), rgb(12 26 54 / 0.8));
+    align-items: flex-start;
+    text-align: left;
+    gap: 16px;
+    width: 100%;
+    max-width: none;
+    padding: 24px;
+    border-radius: 16px;
+    background: light-dark(#fbf7ef, #0c1a36);
   }
   .v4-hero-copy .v4-hero-sub { opacity: 1; }
   .v4-phone-slot {
@@ -2546,20 +2568,26 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * overlaps a corner: the door, not the star. Chips settle once. */
   .v4-board-slot {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 24px;
     width: 100%;
-    max-width: 34rem;
-    margin-inline: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0;
   }
   .v4-board {
     position: relative;
-    padding: 0.9rem 0.85rem 2.6rem;
-    border-radius: 0.35rem;
+    width: 100%;
+    padding: 16px;
+    border-radius: 8px;
     background: #fbf7ef;
     color: #17294a;
     box-shadow:
-      0 1.15rem 2rem rgb(23 41 74 / 0.16),
-      0 0.12rem 0.25rem rgb(23 41 74 / 0.08);
-    transform: rotate(-1deg);
+      0 16px 32px rgb(23 41 74 / 0.12),
+      0 2px 4px rgb(23 41 74 / 0.08);
+    transform: none;
   }
   .v4-board-head {
     display: flex;
@@ -2579,7 +2607,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-board-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: 0.18rem;
+    gap: 4px;
   }
   .v4-board-dows {
     margin-bottom: 0.28rem;
@@ -2591,10 +2619,13 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   }
   .v4-board-day {
     position: relative;
-    min-height: 2.15rem;
-    border-radius: 0.28rem;
+    display: flex;
+    flex-direction: column;
+    min-height: 40px;
+    border-radius: 4px;
     background: rgb(23 41 74 / 0.045);
-    overflow: visible;
+    overflow: hidden;
+    padding-bottom: 4px;
   }
   .v4-board-day.is-empty { background: transparent; }
   .v4-board-day.is-weekend { background: rgb(178 107 31 / 0.14); }
@@ -2606,38 +2637,37 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     color: #17294a;
   }
   .v4-board-chip {
-    position: absolute;
-    left: 0.05rem;
-    top: 0.85rem;
+    position: static;
     z-index: 1;
-    width: max-content;
-    max-width: 7.4rem;
-    padding: 0.16rem 0.38rem;
-    border-radius: 0.4rem;
+    width: auto;
+    max-width: calc(100% - 4px);
+    margin: 0 2px;
+    padding: 2px 4px;
+    border-radius: 4px;
     background: #fef0c7;
     color: #17294a;
-    font-size: 0.58rem;
+    font-size: 0.62rem;
     font-weight: 600;
     line-height: 1.2;
-    box-shadow: 0 0.18rem 0.35rem rgb(23 41 74 / 0.12);
-    --chip-rot: -2deg;
+    overflow-wrap: anywhere;
+    box-shadow: none;
+    --chip-rot: 0deg;
     animation: v4-chip-settle 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
-  .v4-board-chip-1 { animation-delay: 0.2s; --chip-rot: -2.2deg; }
-  .v4-board-chip-2 { animation-delay: 0.95s; --chip-rot: 1.6deg; top: 0.7rem; }
-  .v4-board-chip-3 { animation-delay: 1.7s; --chip-rot: -1deg; }
+  .v4-board-chip-1 { animation-delay: 0.2s; }
+  .v4-board-chip-2 { animation-delay: 0.95s; }
+  .v4-board-chip-3 { animation-delay: 1.7s; }
   @keyframes v4-chip-settle {
-    from { opacity: 0; transform: translateY(-0.7rem) rotate(var(--chip-rot)); }
-    to { opacity: 1; transform: translateY(0) rotate(var(--chip-rot)); }
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: none; }
   }
   .v4-phone-overlap {
-    position: absolute;
-    right: -0.15rem;
-    bottom: -1.6rem;
-    width: 12.2rem;
-    z-index: 2;
+    position: static;
+    width: 14rem;
+    max-width: 100%;
+    z-index: 1;
   }
-  .v4-phone-overlap .v4-phone { width: 12.2rem; aspect-ratio: auto; height: auto; }
+  .v4-phone-overlap .v4-phone { width: 14rem; aspect-ratio: auto; height: auto; }
   .v4-phone-overlap .v4-phone-screen { height: auto; }
   .v4-phone-overlap .v4-phone .v4-hero-thread { flex: none; }
   .v4-phone-overlap .v4-ios-status { height: 1.85rem; padding-top: 0.4rem; }
@@ -2648,7 +2678,6 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-phone-overlap .v4-phone .v4-bubble { font-size: 0.68rem; padding: 0.28rem 0.48rem; }
   .v4-phone-overlap .v4-ios-field { height: 1.3rem; font-size: 0.65rem; }
   .v4-phone-overlap .v4-ios-home { margin: 0.15rem 0 0.22rem; }
-  .v4-board-slot { padding-bottom: 2.2rem; }
   /* iPhone 16-class frame: warm titanium, thin bezel, sitting on the shore. */
   .v4-phone {
     width: 15.6rem;
@@ -2756,8 +2785,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     width: 0.48rem;
     height: 0.48rem;
     margin-left: 0.35rem;
-    border-left: 2px solid #0b84fe;
-    border-bottom: 2px solid #0b84fe;
+    border-left: 2px solid #007aff;
+    border-bottom: 2px solid #007aff;
     transform: rotate(45deg);
   }
   .v4-ios-who {
@@ -2796,8 +2825,6 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   }
   .v4-ios-msg { display: contents; }
   .v4-phone .v4-hero-thread {
-    display: flex;
-    flex-direction: column;
     flex: 1;
     justify-content: flex-end;
     gap: 0.18rem;
@@ -2872,42 +2899,6 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     height: 0.32rem;
     background: #8e8e93;
   }
-  .v4-phone .v4-typing span[aria-hidden='true']:nth-child(2) { animation-delay: 0.15s; }
-  .v4-phone .v4-typing span[aria-hidden='true']:nth-child(3) { animation-delay: 0.3s; }
-  /* One play, then hold. Sent, Delivered, typing for 1.4s, then Hale 0.9s apart. */
-  @keyframes v4-pop {
-    from { opacity: 0; transform: translateY(8px) scale(0.92); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-  }
-  @keyframes v4-typing-window {
-    0%, 99% { opacity: 1; }
-    100% { opacity: 0; }
-  }
-  .v4-phone .v4-bubble,
-  .v4-phone .v4-ios-delivered {
-    opacity: 0;
-    animation: v4-pop 280ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
-  }
-  .v4-phone .v4-bubble-out { transform-origin: bottom right; }
-  .v4-phone .v4-bubble-in { transform-origin: bottom left; }
-  .v4-phone .v4-beat-out-1 .v4-bubble { animation-delay: 0.4s; }
-  .v4-phone .v4-ios-delivered { animation-delay: 1.2s; }
-  .v4-phone .v4-beat-in-1 .v4-bubble { animation-delay: 3.2s; }
-  .v4-phone .v4-beat-in-2 .v4-bubble { animation-delay: 4.1s; }
-  .v4-phone .v4-typing {
-    opacity: 0;
-    animation: v4-typing-window 1.4s linear 1.8s forwards;
-  }
-  .v4-ios-swap {
-    display: grid;
-    align-self: flex-start;
-    justify-items: start;
-  }
-  .v4-ios-swap > .v4-typing,
-  .v4-ios-swap > .v4-bubble {
-    grid-area: 1 / 1;
-    align-self: end;
-  }
   .v4-ios-composer {
     display: flex;
     align-items: center;
@@ -2978,10 +2969,11 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-home-rest {
     display: flex;
     flex-direction: column;
-    gap: 3.5rem;
-    padding-top: 0.75rem;
-    padding-bottom: 2rem;
+    gap: 64px;
+    padding-top: 64px;
+    padding-bottom: 0;
   }
+  .v4-band { margin-top: 64px; }
   .v4-find,
   .v4-loop,
   .v4-family {
@@ -3038,31 +3030,41 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-family-row article { padding: 1rem 1.1rem; }
   .v4-pair {
     display: grid;
-    gap: 1.1rem;
-    align-items: center;
+    gap: 24px;
+    align-items: start;
   }
   .v4-result,
   .v4-remind,
-  .v4-season {
+  .v4-season,
+  .v4-memory,
+  .v4-trust-card {
     background: #fbf7ef;
     color: #17294a;
-    box-shadow: 0 0.55rem 1.3rem rgb(23 41 74 / 0.08);
+    box-shadow: 0 8px 24px rgb(23 41 74 / 0.08);
   }
   .v4-result,
-  .v4-remind {
-    border-radius: 1rem;
-    padding: 1.05rem 1.15rem 1.15rem;
+  .v4-remind,
+  .v4-memory,
+  .v4-trust-card {
+    border-radius: 16px;
+    padding: 24px;
   }
   .v4-result h3,
   .v4-remind h3,
-  .v4-season h3 {
-    margin: 0.25rem 0 0;
+  .v4-season h3,
+  .v4-memory h3 {
+    margin: 8px 0 0;
+    font-family: var(--font-display);
     font-size: 1.2rem;
     font-weight: 600;
   }
+  .v4-memory h3 + h3 { margin-top: 16px; }
   .v4-result p,
   .v4-remind p,
-  .v4-season p { margin: 0.3rem 0 0; line-height: 1.4; }
+  .v4-season p,
+  .v4-memory p { margin: 8px 0 0; line-height: 1.4; }
+  .v4-trust-card { width: 100%; text-align: left; }
+  .v4-trust-card .v4-lede { margin-top: 16px; max-width: 46ch; }
   .v4-remind-when {
     margin: 0;
     font-family: var(--font-display);
@@ -3074,59 +3076,17 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-seasons {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
+    gap: 8px;
   }
   .v4-season {
-    border-radius: 0.7rem;
-    padding: 0.7rem 0.75rem 0.8rem;
-    min-height: 4.6rem;
+    border-radius: 16px;
+    padding: 16px;
+    min-height: 0;
   }
   .v4-season h3 { font-family: var(--font-display); font-size: 1.05rem; font-weight: 520; }
-  .v4-steps ol,
-  .v4-memory ul {
-    display: grid;
-    gap: 0.75rem;
-    margin: 1.25rem 0 0;
-    padding: 0;
-    list-style: none;
-  }
-  .v4-steps li,
-  .v4-memory li {
-    padding: 1rem 1.1rem 1.1rem;
-    border-radius: 1rem;
-    background: #fbf7ef;
-    color: #17294a;
-  }
-  .v4-step-n {
-    font-family: var(--font-display);
-    font-size: 1.35rem;
-    font-weight: 520;
-    letter-spacing: -0.02em;
-    color: #8d5a16;
-  }
-  .v4-steps h3,
-  .v4-memory li { font-size: 1.05rem; font-weight: 600; }
-  .v4-steps h3 { margin: 0.2rem 0 0; }
-  .v4-steps p { margin: 0.35rem 0 0; line-height: 1.45; }
-  .v4-sample {
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
-    width: min(100%, 28rem);
-    margin-top: 1.1rem;
-    padding: 1rem 1rem 1.1rem;
-    border-radius: 1.1rem;
-    background: #fff;
-    text-align: left;
-  }
-  .v4-sample .v4-bubble-out { background: #007aff; color: #fff; }
-  .v4-sample .v4-bubble-in { background: #e9e9eb; color: #000; }
-  .v4-trust { max-width: 36rem; margin-inline: auto; text-align: center; }
-  .v4-trust .v4-lede { margin-inline: auto; }
+  .v4-faq { margin-top: 64px; padding-bottom: 64px; }
   @media (min-width: 640px) {
     .v4-family-row { grid-template-columns: 1fr 1fr; }
-    .v4-steps ol,
-    .v4-memory ul { grid-template-columns: repeat(3, 1fr); }
   }
   @media (min-width: 800px) {
     .v4-inbox {
@@ -3161,7 +3121,6 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     border-radius: var(--r-xl);
     text-align: left;
   }
-  .v4-faq { padding-bottom: 4rem; }
   @media (min-width: 800px) {
     .v4-beat {
       grid-template-columns: 1fr 1fr;
@@ -3169,27 +3128,22 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     }
     .v4-beat-flip > :first-child { order: 2; }
     .v4-beat-pair { grid-template-columns: 1fr 1fr; }
-    .v4-pair { grid-template-columns: 1.1fr 0.9fr; gap: 2.5rem; }
+    .v4-pair { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 32px; align-items: start; }
     .v4-pair-flip > :first-child { order: 2; }
   }
   @media (min-width: 960px) {
     .v4-hero-top .v4-hero-body {
-      justify-content: center;
-      padding-bottom: 3rem;
+      justify-content: flex-start;
+      padding-bottom: 48px;
     }
     .v4-hero-stage {
-      flex-direction: row;
-      align-items: center;
-      justify-content: space-between;
-      gap: 3rem;
-      text-align: left;
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.2fr) 14rem;
+      align-items: start;
+      gap: 32px;
     }
-    .v4-hero-top .v4-hero-h1 { font-size: 4.25rem; }
-    .v4-hero-top .v4-hero-body { text-align: left; }
-    .v4-hero-copy { align-items: flex-start; text-align: left; flex: 1; }
-    .v4-hero-offer { align-items: flex-start; }
-    .v4-phone-slot { width: 18.75rem; margin-inline: 0; flex-shrink: 0; }
-    .v4-phone-slot .v4-phone { width: 100%; }
+    .v4-hero-copy { align-items: flex-start; }
+    .v4-board-slot { display: contents; }
   }
 
   /* The /text door's exchange — the same thread on a page with no photo under
@@ -3319,9 +3273,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
      * it is measured against is `100svh` — 390×844 MINUS the URL bar, ~750 —
      * because a CTA that clears only the headless viewport is a CTA no parent
      * ever sees without scrolling. */
-    .v4-hero-top .v4-hero-body { gap: 0.5rem; padding: 1rem 1.25rem 1.5rem; }
-    .v4-hero-top .v4-phone-slot,
-    .v4-hero-top .v4-phone { width: 12.5rem; }
+    .v4-hero-top .v4-hero-body { gap: 16px; padding: 16px 0 32px; }
+    .v4-lede { margin-top: 16px; }
     .v4-hero-offer { gap: 0.45rem; }
     .v4-hero-founding { font-size: 0.9rem; line-height: 1.35; }
 
@@ -3340,7 +3293,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     .v4-contrast h3 { font-size: 1.05rem; }
     .v4-contrast p { margin-top: 0.4rem; font-size: 0.95rem; line-height: 1.55; }
     .v4-contrast > * + * { padding-top: 0.9rem; }
-    .v4-lede { margin-top: 0.9rem; }
+    .v4-lede { margin-top: 16px; }
     .v4-pills { gap: 0.4rem; }
     .v4-pill { padding: 0.34rem 0.72rem; font-size: 0.8rem; }
   }
@@ -3357,10 +3310,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     .v4-chip { transition: none; }
     /* Dots stay visible and still. The sr-only label does not depend on motion. */
     .v4-typing span[aria-hidden='true'] { animation: none; opacity: 1; }
-    .v4-phone .v4-bubble,
-    .v4-phone .v4-ios-delivered { animation: none; opacity: 1; transform: none; }
-    .v4-phone .v4-typing { animation: none; opacity: 0; }
-    .v4-board-chip { animation: none; opacity: 1; transform: rotate(var(--chip-rot)); }
+    .v4-board-chip { animation: none; opacity: 1; transform: none; }
   }
 
   /* /about founder lines. 48px circle over a 96px face-centered asset (2×).
@@ -3374,5 +3324,14 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     object-position: center;
     flex-shrink: 0;
     display: block;
+  }
+
+  footer h2,
+  #pricing h2,
+  #pricing h3,
+  .v4-faq h2,
+  .v4-home-rest h2,
+  .v4-home-rest h3 {
+    font-family: var(--font-display);
   }
 }

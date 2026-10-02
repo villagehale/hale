@@ -3,7 +3,7 @@ import heroShore from '~/assets/hale-shore-hero.webp';
 import { ChooserLink } from '~/components/chooser-link';
 import { CtaBand } from '~/components/cta-band';
 import { LandingScrollAnalytics } from '~/components/landing-scroll-analytics';
-import { FadeInUp } from '~/components/landing/fade-in-up';
+import { LogoMark } from '~/components/logo-mark';
 import { PricingSection } from '~/components/pricing-section';
 import { ProductFaqAccordion } from '~/components/product-faq-accordion';
 import { SiteFooter } from '~/components/site-footer';
@@ -17,12 +17,12 @@ import { siteJsonLd } from '~/lib/site/structured-data';
 import { CONTACT_EMAIL } from '~/lib/text-entry';
 
 /**
- * The homepage. Two columns on a full-strength shore: the promise on the left,
- * a realistic iPhone on the right. The thread plays once, then holds.
- * Text is the door. Hale finds and reminds. It does not book or sign anyone up.
+ * The homepage. The shore stays full strength. The hero is a paper calendar
+ * on the fridge — hale is home — filling itself with what Hale found. A small
+ * iPhone sits beside the calendar: text is the door, the filled year is the outcome.
  *
- * With no number provisioned the door is email, and the privacy line is
- * withheld because the live door is not there.
+ * No city, no booking. With no number provisioned the door is email, and the
+ * iMessage line is withheld because it would not be true.
  */
 
 interface ThreadRow {
@@ -30,10 +30,13 @@ interface ThreadRow {
   text: string;
 }
 
-interface Step {
-  title: string;
-  line: string;
+interface SeasonCard {
+  name: string;
+  note: string;
 }
+
+/** April has 30 days. Three empty cells lead, because the first falls on Wednesday. */
+const APRIL_DAYS = 30;
 
 /** Latin needs a word space before the accent; Chinese sets solid. */
 function accentSeparator(locale: Locale): string {
@@ -47,15 +50,15 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
   const live = smsNumber.length > 0;
 
   const heroBubbles = t.raw('heroThread') as ThreadRow[];
-  const steps = t.raw('steps') as Step[];
-  const example = t.raw('exampleThread') as ThreadRow[];
-  const memory = t.raw('memoryItems') as string[];
+  const dows = t.raw('boardDow') as string[];
+  const seasons = t.raw('seasons') as SeasonCard[];
   const faq = t.raw('faq') as FaqItem[];
   const speaker = (dir: ThreadRow['dir']) => (dir === 'in' ? t('bubbleHale') : t('bubbleYou'));
-
-  const firstIn = heroBubbles.findIndex((row) => row.dir === 'in');
-  let outSeen = 0;
-  let inSeen = 0;
+  const chips: Record<number, { label: string; n: number }> = {
+    4: { label: t('chipSwim'), n: 1 },
+    6: { label: t('chipSkate'), n: 2 },
+    9: { label: t('chipCamp'), n: 3 },
+  };
 
   const door = live ? (
     <ChooserLink
@@ -106,11 +109,11 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           aria-hidden="true"
           fill
           priority
-          sizes="100vw"
+          sizes="(max-width: 768px) 1200px, 2200px"
           className="v4-hero-art"
         />
         <div className="v4-hero-body">
-          <div className="v4-hero-stage">
+          <div className="v4-hero-stage shell">
             <div className="v4-hero-copy">
               <h1 className="v4-display v4-hero-h1">
                 {t('heroH1a')}
@@ -123,87 +126,101 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
               <div className="v4-hero-offer">
                 {door}
                 {live && (
-                  <p className="v4-hero-terms">
-                    {t('heroTerms')}{' '}
-                    <a
-                      href={localeHref(locale, '/privacy')}
-                      className="underline underline-offset-2"
-                    >
-                      {t('heroTermsLink')}
-                    </a>
-                    .
-                  </p>
+                  <>
+                    <p className="v4-hero-channel">{t('heroChannel')}</p>
+                    <p className="v4-hero-terms">
+                      {t('heroTerms')}{' '}
+                      <a
+                        href={localeHref(locale, '/privacy')}
+                        className="underline underline-offset-2"
+                      >
+                        {t('heroTermsLink')}
+                      </a>
+                      .
+                    </p>
+                  </>
                 )}
               </div>
             </div>
 
-            <div className="v4-phone-slot">
-              <div className="v4-phone">
-                <div className="v4-phone-screen">
-                  <div className="v4-ios-status" aria-hidden="true">
-                    <span className="v4-ios-time">9:41</span>
-                    <span className="v4-ios-island" />
-                    <span className="v4-ios-sys">
-                      <span className="v4-ios-signal" />
-                      <span className="v4-ios-wifi" />
-                      <span className="v4-ios-battery" />
-                    </span>
-                  </div>
-                  <div className="v4-ios-header" aria-hidden="true">
-                    <span className="v4-ios-back" />
-                    <span className="v4-ios-who">
-                      <span className="v4-ios-avatar">H</span>
-                      <p className="v4-ios-name">Hale</p>
-                    </span>
-                    <span />
-                  </div>
-                  <div className="v4-hero-thread">
-                    <p className="sr-only">{t('heroThreadCap')}</p>
-                    <p className="v4-ios-stamp" aria-hidden="true">
-                      {t('imessageStamp')}
-                    </p>
-                    {heroBubbles.map((row) => {
-                      const beat =
-                        row.dir === 'out' ? `v4-beat-out-${++outSeen}` : `v4-beat-in-${++inSeen}`;
-                      const bubble = (
-                        <p className={`v4-bubble v4-bubble-${row.dir}`}>
-                          <span className="sr-only">{speaker(row.dir)} </span>
-                          {row.text}
-                        </p>
-                      );
-                      if (heroBubbles.indexOf(row) === firstIn) {
-                        return (
-                          <span key={`${row.dir}-${row.text}`} className={`v4-ios-swap ${beat}`}>
-                            <p className="v4-typing" aria-hidden="true">
-                              <span aria-hidden="true" />
-                              <span aria-hidden="true" />
-                              <span aria-hidden="true" />
-                            </p>
-                            {bubble}
+            <div className="v4-board-slot">
+              <p className="sr-only">{t('boardCap')}</p>
+              <div className="v4-board" aria-hidden="true">
+                <div className="v4-board-head">
+                  <LogoMark size={26} />
+                  <p className="v4-board-month">{t('boardMonth')}</p>
+                </div>
+                <div className="v4-board-dows">
+                  <span>{dows[0]}</span>
+                  <span>{dows[1]}</span>
+                  <span>{dows[2]}</span>
+                  <span>{dows[3]}</span>
+                  <span>{dows[4]}</span>
+                  <span>{dows[5]}</span>
+                  <span>{dows[6]}</span>
+                </div>
+                <div className="v4-board-grid">
+                  <span className="v4-board-day is-empty" />
+                  <span className="v4-board-day is-empty" />
+                  <span className="v4-board-day is-empty" />
+                  {Array.from({ length: APRIL_DAYS }, (_, i) => {
+                    const day = i + 1;
+                    const weekday = (day + 2) % 7;
+                    const weekend = weekday === 0 || weekday === 6;
+                    const chip = chips[day];
+                    return (
+                      <span
+                        key={day}
+                        className={weekend ? 'v4-board-day is-weekend' : 'v4-board-day'}
+                      >
+                        <span className="v4-board-num">{day}</span>
+                        {chip ? (
+                          <span className={`v4-board-chip v4-board-chip-${chip.n}`}>
+                            {chip.label}
                           </span>
-                        );
-                      }
-                      return (
-                        <span key={`${row.dir}-${row.text}`} className={`v4-ios-msg ${beat}`}>
-                          {row.dir === 'out' ? (
-                            <>
-                              {bubble}
-                              <p className="v4-ios-delivered" aria-hidden="true">
-                                {t('imessageDelivered')}
-                              </p>
-                            </>
-                          ) : (
-                            bubble
-                          )}
+                        ) : null}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="v4-phone-overlap">
+                <div className="v4-phone">
+                  <div className="v4-phone-screen">
+                    <div className="v4-ios-status" aria-hidden="true">
+                      <span className="v4-ios-time">9:41</span>
+                      <span className="v4-ios-island" />
+                      <span className="v4-ios-sys">
+                        <span className="v4-ios-signal" />
+                        <span className="v4-ios-wifi" />
+                        <span className="v4-ios-battery" />
+                      </span>
+                    </div>
+                    <div className="v4-ios-header" aria-hidden="true">
+                      <span className="v4-ios-back" />
+                      <span className="v4-ios-who">
+                        <span className="v4-ios-avatar">H</span>
+                        <p className="v4-ios-name">Hale</p>
+                      </span>
+                      <span />
+                    </div>
+                    <div className="v4-hero-thread">
+                      <p className="sr-only">{t('heroThreadCap')}</p>
+                      {heroBubbles.map((row) => (
+                        <span key={`${row.dir}-${row.text}`} className="v4-ios-msg">
+                          <p className={`v4-bubble v4-bubble-${row.dir}`}>
+                            <span className="sr-only">{speaker(row.dir)} </span>
+                            {row.text}
+                          </p>
                         </span>
-                      );
-                    })}
+                      ))}
+                    </div>
+                    <div className="v4-ios-composer" aria-hidden="true">
+                      <span className="v4-ios-plus" />
+                      <span className="v4-ios-field">{t('imessageField')}</span>
+                    </div>
+                    <span className="v4-ios-home" aria-hidden="true" />
                   </div>
-                  <div className="v4-ios-composer" aria-hidden="true">
-                    <span className="v4-ios-plus" />
-                    <span className="v4-ios-field">{t('imessageField')}</span>
-                  </div>
-                  <span className="v4-ios-home" aria-hidden="true" />
                 </div>
               </div>
             </div>
@@ -212,54 +229,64 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       </section>
 
       <div className="v4-home-rest">
-        <FadeInUp>
-          <section className="shell v4-steps">
-            <h2 className="v4-display v4-h2">{t('stepsH2')}</h2>
-            <ol>
-              {steps.map((step, index) => (
-                <li key={step.title}>
-                  <span className="v4-step-n">{index + 1}</span>
-                  <h3>{step.title}</h3>
-                  <p>{step.line}</p>
-                </li>
-              ))}
-            </ol>
-          </section>
-        </FadeInUp>
+        <section className="shell v4-pair">
+          <div>
+            <h2 className="v4-display v4-h2">{t('findH2')}</h2>
+            <p className="v4-lede">{t('findLine')}</p>
+          </div>
+          <article className="v4-result">
+            <p className="v4-beat-kicker">{t('findKicker')}</p>
+            <h3>{t('findTitle')}</h3>
+            <p>{t('findMeta')}</p>
+          </article>
+        </section>
 
-        <FadeInUp delayMs={60}>
-          <section className="shell v4-example">
-            <h2 className="v4-display v4-h2">{t('exampleH2')}</h2>
-            <p className="v4-lede">{t('exampleLine')}</p>
-            <div className="v4-sample">
-              {example.map((row) => (
-                <p key={`${row.dir}-${row.text}`} className={`v4-bubble v4-bubble-${row.dir}`}>
-                  <span className="sr-only">{speaker(row.dir)} </span>
-                  {row.text}
-                </p>
-              ))}
-            </div>
-          </section>
-        </FadeInUp>
+        <section className="shell v4-pair v4-pair-flip">
+          <div>
+            <h2 className="v4-display v4-h2">{t('remindH2')}</h2>
+            <p className="v4-lede">{t('remindLine')}</p>
+          </div>
+          <article className="v4-remind">
+            <p className="v4-remind-when">{t('remindWhen')}</p>
+            <h3>{t('remindTitle')}</h3>
+            <p>{t('remindWhere')}</p>
+          </article>
+        </section>
 
-        <FadeInUp delayMs={60}>
-          <section className="shell v4-memory">
+        <section className="shell v4-pair">
+          <div>
+            <h2 className="v4-display v4-h2">{t('yearH2')}</h2>
+            <p className="v4-lede">{t('yearLine')}</p>
+          </div>
+          <div className="v4-seasons">
+            {seasons.map((season) => (
+              <article key={season.name} className="v4-season">
+                <h3>{season.name}</h3>
+                <p>{season.note}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="shell v4-pair v4-pair-flip">
+          <div>
             <h2 className="v4-display v4-h2">{t('memoryH2')}</h2>
             <p className="v4-lede">{t('memoryLine')}</p>
-            <ul>
-              {memory.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </section>
-        </FadeInUp>
+          </div>
+          <article className="v4-memory">
+            <h3>{t('memoryName')}</h3>
+            <p>{t('memoryNote')}</p>
+            <h3>{t('memoryName2')}</h3>
+            <p>{t('memoryNote2')}</p>
+          </article>
+        </section>
 
-        <FadeInUp delayMs={60}>
-          <section className="shell v4-trust">
+        <section className="shell">
+          <article className="v4-trust-card">
             <h2 className="v4-display v4-h2">{t('trustH2')}</h2>
             <p className="v4-lede">{t('trustLine')}</p>
-          </section>
-        </FadeInUp>
+          </article>
+        </section>
       </div>
 
       <PricingSection locale={locale} />

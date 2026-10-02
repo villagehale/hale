@@ -62,9 +62,7 @@ export function SiteFooter({
   ];
 
   const legal = [
-    ...(omitPrivacyLink
-      ? []
-      : [{ label: t('linkPrivacy'), href: localeHref(locale, '/privacy') }]),
+    ...(omitPrivacyLink ? [] : [{ label: t('linkPrivacy'), href: localeHref(locale, '/privacy') }]),
     { label: t('linkTerms'), href: localeHref(locale, '/terms') },
     // The app is the receipts surface, not the daily one — sign-in lives in the
     // quietest spot the site has, beside the legal pair, for the parent who
@@ -111,7 +109,9 @@ export function SiteFooter({
           <nav aria-label="Footer" className="grid grid-cols-2 gap-8 md:gap-12 lg:w-[38%]">
             {columns.map((column) => (
               <div key={column.heading}>
-                <h2 className="mb-5 text-[14px] font-semibold text-spruce">{column.heading}</h2>
+                <h2 className="mb-5 font-display text-[14px] font-semibold text-spruce">
+                  {column.heading}
+                </h2>
                 <ul className="flex flex-col gap-3.5">
                   {column.links.map((item) => (
                     <li key={item.label}>

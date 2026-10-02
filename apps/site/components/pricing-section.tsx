@@ -18,8 +18,8 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
   const names = t.raw('tierNames') as Record<(typeof TIERS)[number], string>;
   const cta = chromeCta(locale);
   return (
-    <section id="pricing" className="shell pb-20 lg:pb-28">
-      <div className="max-w-2xl mb-10 lg:mb-12">
+    <section id="pricing" className="shell v4-band">
+      <div className="max-w-2xl mb-8">
         <span className="eyebrow">{t('eyebrow')}</span>
         <h2 className="v4-display mt-3">{t('headline')}</h2>
         <p className="mt-5 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
@@ -44,7 +44,7 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
                 <span className="numbered-card-num">0{i + 1}</span>
               </div>
               <h3
-                className="mt-5"
+                className="mt-5 font-display"
                 style={{ fontSize: 'clamp(1.5rem, 2.6vw, 1.9rem)', lineHeight: 1.1 }}
               >
                 {isFree ? t('freeLine') : t('comingSoon')}

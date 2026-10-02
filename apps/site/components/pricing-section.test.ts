@@ -27,7 +27,7 @@ describe('PricingSection (landing pricing)', () => {
     expect(en.PricingSection.freeFeatures).toEqual([
       'Unlimited chat',
       'Live find',
-      'A text when a place opens',
+      'A text with what it found',
       'iMessage',
     ]);
     expect(html).toContain('Free, with unlimited chat.');
@@ -62,7 +62,7 @@ describe('PricingSection (landing pricing)', () => {
     expect(fr.PricingSection.freeFeatures).toEqual([
       'Clavardage illimité',
       'Recherche en direct',
-      "Un texto quand une place s'ouvre",
+      'Un texto avec ce qui a été trouvé',
       'iMessage',
     ]);
   });

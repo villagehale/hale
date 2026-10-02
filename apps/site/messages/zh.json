@@ -5,10 +5,10 @@
     "skipToContent": "跳至正文"
   },
   "HomeMeta": {
-    "title": "Hale · 周末，发短信就好",
-    "description": "周末，发短信就好。这周六，你家附近有什么。现在免费，聊天不限次数。数据留在加拿大。",
-    "ogDescription": "周末，发短信就好。这周六，你家附近有什么。现在免费，聊天不限次数。数据留在加拿大。",
-    "twitterDescription": "周末，发短信就好。这周六，你家附近有什么。数据留在加拿大。"
+    "title": "Hale · 孩子这一年，安排好了",
+    "description": "孩子这一年，安排好了。Hale 按孩子的年龄找到合适的活动，放进日历，并在结束前提醒你。现在免费，聊天不限次数。iMessage。不用装应用。数据留在加拿大。",
+    "ogDescription": "孩子这一年，安排好了。Hale 找到合适的活动，放进日历，并在结束前提醒你。现在免费，聊天不限次数。数据留在加拿大。",
+    "twitterDescription": "孩子这一年，安排好了。Hale 按孩子的年龄找到合适的活动，放进日历，并在结束前提醒你。数据留在加拿大。"
   },
   "Header": {
     "navPricing": "价格",
@@ -56,10 +56,10 @@
     "copied": "已复制 ✓"
   },
   "Landing": {
-    "heroH1a": "周末，",
-    "heroH1b": "发短信",
-    "heroH1Accent": "就好。",
-    "heroSub": "这周六，你家附近有什么。",
+    "heroH1a": "孩子这一年，",
+    "heroH1b": "",
+    "heroH1Accent": "安排好了。",
+    "heroSub": "Hale 按孩子的年龄找到合适的活动，放进日历，并在结束前提醒你。",
     "heroThreadCap": "一个例子：家长问，Hale 说出找到的活动",
     "bubbleYou": "你：",
     "bubbleHale": "Hale：",
@@ -70,53 +70,66 @@
     "heroThread": [
       {
         "dir": "out",
-        "text": "这周六，5 岁和 8 岁有什么好玩的？"
+        "text": "她 4 岁。这周六，附近有什么。"
       },
       {
         "dir": "in",
-        "text": "亲子游泳，周六上午。"
-      },
-      {
-        "dir": "in",
-        "text": "下午滑冰玩耍。我可以在前一天提醒你。"
+        "text": "亲子游泳，周六上午，就在附近。"
       }
     ],
+    "heroChannel": "iMessage。不用装应用。",
     "heroTerms": "数据留在加拿大 —",
     "heroTermsLink": "隐私政策",
-    "stepsH2": "发条短信就好。",
-    "steps": [
-      {
-        "title": "发一条短信",
-        "line": "一个年龄，一个周六。"
-      },
-      {
-        "title": "Hale 找到有什么",
-        "line": "附近的几个选择。"
-      },
-      {
-        "title": "你来选",
-        "line": "不订位置，也不替任何人报名。"
-      }
+    "boardMonth": "四月",
+    "boardCap": "一张四月的纸质日历。找到的活动落在日子上：亲子游泳、滑冰玩耍，还有春令营。",
+    "boardDow": [
+      "日",
+      "一",
+      "二",
+      "三",
+      "四",
+      "五",
+      "六"
     ],
-    "exampleH2": "一个周六",
-    "exampleLine": "家长问。Hale 说出找到的活动。",
-    "exampleThread": [
+    "chipSwim": "游泳",
+    "chipSkate": "滑冰",
+    "chipCamp": "春令营",
+    "findH2": "找到",
+    "findLine": "适合这个年龄、就在附近的活动。",
+    "findKicker": "已找到",
+    "findTitle": "亲子游泳",
+    "findMeta": "周六上午 · 2–4 岁",
+    "remindH2": "不会错过",
+    "remindLine": "日子到来之前，已经在日历上。",
+    "remindWhen": "周六 · 上午 9:15",
+    "remindTitle": "亲子游泳",
+    "remindWhere": "在你的日历上",
+    "yearH2": "孩子的这一年",
+    "yearLine": "四个季节，已经有了样子。",
+    "seasons": [
       {
-        "dir": "out",
-        "text": "下雨。她 4 岁。这周六想在室内。"
+        "name": "春",
+        "note": "游泳、营"
       },
       {
-        "dir": "in",
-        "text": "室内玩耍，周六下午，就在附近。"
+        "name": "夏",
+        "note": "日间营"
+      },
+      {
+        "name": "秋",
+        "note": "滑冰"
+      },
+      {
+        "name": "冬",
+        "note": "室内玩"
       }
     ],
     "memoryH2": "Hale 记得的",
-    "memoryLine": "这个家。年龄、喜欢过什么，还有会报满的日期。",
-    "memoryItems": [
-      "年龄",
-      "喜欢过什么",
-      "会报满的日期"
-    ],
+    "memoryLine": "记住孩子的几件事，下一次找得更合适。",
+    "memoryName": "Maya，4 岁",
+    "memoryNote": "喜欢游泳，上午",
+    "memoryName2": "Leo，7 岁",
+    "memoryNote2": "喜欢滑冰，放学后",
     "trustH2": "你来决定。",
     "trustLine": "Hale 负责找和提醒。它不订位置，也不替任何人报名。",
     "faqH2": "问题",
@@ -124,7 +137,7 @@
     "faq": [
       {
         "question": "Hale 做什么？",
-        "answer": "Hale 按孩子的年龄、在附近找到活动，并在日历上加提醒。Hale 不订位置，也不替你报名。"
+        "answer": "Hale 按孩子的年龄、在附近找到活动，放进日历，并安排这一年。Hale 不订位置，也不替你报名。"
       },
       {
         "question": "Hale 免费吗？",
@@ -135,7 +148,7 @@
         "answer": "不用。没有要装的应用，也不用注册账号。"
       }
     ],
-    "ctaLine": "这个周六，安排好。"
+    "ctaLine": "孩子这一年，安排好了。"
   },
   "About": {
     "metaTitle": "关于 · Hale",
@@ -228,9 +241,9 @@
   "PricingSection": {
     "eyebrow": "价格",
     "headline": "免费，聊天不限次数。",
-    "lede": "你说出年龄、地点和想要的位置。Hale 去找，继续盯着，有位置时发一条短信。家庭群在同一个对话里。",
+    "lede": "你说出年龄和想要的活动。Hale 去找，并把找到的内容发给你。家庭群在同一个对话里。",
     "freeLine": "免费",
-    "freeBody": "聊天不限次数。Hale 按年龄、地点和位置去找，有位置时发一条短信。",
+    "freeBody": "聊天不限次数。Hale 按你说的去找，并把找到的内容发给你。",
     "footnote": "现在只有免费档可用。",
     "comingSoon": "即将推出",
     "comingBody": "还不能用。",
@@ -242,7 +255,7 @@
     "freeFeatures": [
       "聊天不限次数",
       "当场查找",
-      "有位置时发一条短信",
+      "一条写着找到了什么的短信",
       "iMessage"
     ]
   },
@@ -612,6 +625,6 @@
   },
   "Jsonld": {
     "orgDescription": "Hale 是孩子这一年的规划——它帮你找到孩子附近有什么、盯着城市的报名窗口，并回头问问进展如何。每个家庭的数据都留在加拿大。",
-    "appDescription": "周末，发短信就好。孩子这一年的规划：按年龄在附近找到活动，放进日历，不订位置也不替你报名。现在免费，聊天不限次数。数据留在加拿大。"
+    "appDescription": "孩子这一年，安排好了。孩子这一年的规划：按年龄在附近找到活动，放进日历，不订位置也不替你报名。现在免费，聊天不限次数。数据留在加拿大。"
   }
 }

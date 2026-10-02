@@ -5,10 +5,10 @@
     "skipToContent": "Aller au contenu"
   },
   "HomeMeta": {
-    "title": "Hale · le week-end, par texto",
-    "description": "Le week-end, par texto. Ce qu'il y a près de vous, samedi. Gratuit, avec un clavardage illimité. Vos données restent au Canada.",
-    "ogDescription": "Le week-end, par texto. Ce qu'il y a près de vous, samedi. Gratuit, avec un clavardage illimité. Vos données restent au Canada.",
-    "twitterDescription": "Le week-end, par texto. Ce qu'il y a près de vous, samedi. Vos données restent au Canada."
+    "title": "Hale · l'année de vos enfants, en main",
+    "description": "L'année de vos enfants, en main. Hale trouve les bonnes activités pour votre enfant, les met sur votre calendrier, et vous rappelle avant qu'elles ne passent. Gratuit, avec un clavardage illimité. iMessage. Pas d'appli. Vos données restent au Canada.",
+    "ogDescription": "L'année de vos enfants, en main. Hale trouve les bonnes activités, les met sur votre calendrier, et vous rappelle avant qu'elles ne passent. Gratuit, avec un clavardage illimité. Vos données restent au Canada.",
+    "twitterDescription": "L'année de vos enfants, en main. Hale trouve les bonnes activités pour votre enfant, les met sur votre calendrier, et vous rappelle avant qu'elles ne passent. Vos données restent au Canada."
   },
   "Header": {
     "navPricing": "Tarifs",
@@ -56,10 +56,10 @@
     "copied": "Copié ✓"
   },
   "Landing": {
-    "heroH1a": "Le week-end,",
-    "heroH1b": "par",
-    "heroH1Accent": "texto.",
-    "heroSub": "Ce qu'il y a près de vous, samedi.",
+    "heroH1a": "L'année de vos",
+    "heroH1b": "enfants,",
+    "heroH1Accent": "en main.",
+    "heroSub": "Hale trouve les bonnes activités pour votre enfant, les met sur votre calendrier, et vous rappelle avant qu'elles ne passent.",
     "heroThreadCap": "Un exemple : un parent demande, et Hale nomme ce qu'il a trouvé",
     "bubbleYou": "Vous :",
     "bubbleHale": "Hale :",
@@ -70,53 +70,66 @@
     "heroThread": [
       {
         "dir": "out",
-        "text": "Des idées pour un enfant de 5 ans et un de 8 ans, samedi ?"
+        "text": "Elle a 4 ans. Quelque chose ce samedi, près de chez nous."
       },
       {
         "dir": "in",
-        "text": "Natation parent-enfant, samedi matin."
-      },
-      {
-        "dir": "in",
-        "text": "Patin et jeu l'après-midi. Je peux vous le rappeler la veille."
+        "text": "Natation parent-enfant, samedi matin, tout près."
       }
     ],
+    "heroChannel": "iMessage. Pas d'appli.",
     "heroTerms": "Vos données restent au Canada —",
     "heroTermsLink": "politique de confidentialité",
-    "stepsH2": "Un texto suffit.",
-    "steps": [
-      {
-        "title": "Envoyer un texto",
-        "line": "Un âge, et un samedi."
-      },
-      {
-        "title": "Hale trouve ce qu'il y a",
-        "line": "Quelques idées, tout près."
-      },
-      {
-        "title": "Vous choisissez",
-        "line": "Rien n'est réservé, et personne n'est inscrit."
-      }
+    "boardMonth": "Avril",
+    "boardCap": "Un calendrier en papier pour avril. Les activités trouvées se posent sur les jours : natation parent-enfant, patin et jeu, et le camp de printemps.",
+    "boardDow": [
+      "D",
+      "L",
+      "M",
+      "M",
+      "J",
+      "V",
+      "S"
     ],
-    "exampleH2": "Un samedi",
-    "exampleLine": "Un parent demande. Hale nomme ce qu'il a trouvé.",
-    "exampleThread": [
+    "chipSwim": "Bain",
+    "chipSkate": "Patin",
+    "chipCamp": "Camp",
+    "findH2": "Trouve",
+    "findLine": "La bonne activité, pour son âge, près de vous.",
+    "findKicker": "Trouvé",
+    "findTitle": "Natation parent-enfant",
+    "findMeta": "Samedi matin · 2 à 4 ans",
+    "remindH2": "Ne ratez rien",
+    "remindLine": "Sur votre calendrier, avant le jour.",
+    "remindWhen": "Samedi · 9 h 15",
+    "remindTitle": "Natation parent-enfant",
+    "remindWhere": "Sur votre calendrier",
+    "yearH2": "L'année des enfants",
+    "yearLine": "Quatre saisons, déjà en train de prendre forme.",
+    "seasons": [
       {
-        "dir": "out",
-        "text": "Il pleut. Elle a 4 ans. Quelque chose à l'intérieur, samedi."
+        "name": "Printemps",
+        "note": "Natation, camp"
       },
       {
-        "dir": "in",
-        "text": "Jeu à l'intérieur, samedi après-midi, tout près."
+        "name": "Été",
+        "note": "Camps de jour"
+      },
+      {
+        "name": "Automne",
+        "note": "Patin"
+      },
+      {
+        "name": "Hiver",
+        "note": "Jeu à l'intérieur"
       }
     ],
     "memoryH2": "Ce que Hale retient",
-    "memoryLine": "La famille. Les âges, ce qu'ils ont aimé, et les dates qui se remplissent.",
-    "memoryItems": [
-      "Les âges",
-      "Ce qu'ils ont aimé",
-      "Les dates qui se remplissent"
-    ],
+    "memoryLine": "Quelques faits sur votre enfant, pour que la prochaine trouvaille convienne.",
+    "memoryName": "Maya, 4 ans",
+    "memoryNote": "Aime la nage, le matin",
+    "memoryName2": "Léo, 7 ans",
+    "memoryNote2": "Aime le patin, après l’école",
     "trustH2": "Vous restez aux commandes.",
     "trustLine": "Hale trouve et rappelle. Il ne réserve pas une place et n'inscrit personne.",
     "faqH2": "Questions",
@@ -124,7 +137,7 @@
     "faq": [
       {
         "question": "Que fait Hale ?",
-        "answer": "Hale trouve des activités pour l'âge de votre enfant, près de vous, et met un rappel sur votre calendrier. Hale ne réserve pas une place et n'inscrit personne."
+        "answer": "Hale trouve des activités pour l'âge de votre enfant, près de vous, les met sur votre calendrier, et planifie l'année. Hale ne réserve pas une place et n'inscrit personne."
       },
       {
         "question": "Hale est-il gratuit ?",
@@ -135,7 +148,7 @@
         "answer": "Non. Il n'y a pas d'appli à installer et pas de compte à créer."
       }
     ],
-    "ctaLine": "Ce samedi, en ordre."
+    "ctaLine": "L'année de vos enfants, en main."
   },
   "About": {
     "metaTitle": "À propos · Hale",
@@ -231,9 +244,9 @@
   "PricingSection": {
     "eyebrow": "Tarif",
     "headline": "Gratuit, avec un clavardage illimité.",
-    "lede": "Tu demandes un âge, un endroit et une place. Hale cherche, surveille, et texte quand une place s'ouvre. Le groupe familial est dans le même clavardage.",
+    "lede": "Vous indiquez un âge et ce que vous cherchez. Hale le trouve, et vous envoie ce qu’il a trouvé. Le groupe familial est dans le même clavardage.",
     "freeLine": "Gratuit",
-    "freeBody": "Clavardage illimité. Hale cherche selon l'âge, l'endroit et la place, et texte quand une place s'ouvre.",
+    "freeBody": "Clavardage illimité. Hale cherche ce que vous avez demandé, et vous envoie ce qu’il a trouvé.",
     "footnote": "Seul Gratuit est disponible aujourd'hui.",
     "comingSoon": "Bientôt",
     "comingBody": "Pas encore disponible.",
@@ -245,7 +258,7 @@
     "freeFeatures": [
       "Clavardage illimité",
       "Recherche en direct",
-      "Un texto quand une place s'ouvre",
+      "Un texto avec ce qui a été trouvé",
       "iMessage"
     ]
   },
@@ -615,6 +628,6 @@
   },
   "Jsonld": {
     "orgDescription": "Hale est un planificateur pour l'année de vos enfants. Il cherche selon un âge, un endroit et une place, surveille les places en loisirs, et texte quand une place s'ouvre. Gratuit, avec un clavardage illimité. Les données de chaque famille restent au Canada.",
-    "appDescription": "Le week-end, par texto. Un planificateur pour l'année de vos enfants : Hale trouve des activités pour leur âge, près de vous, les met sur votre calendrier, et ne réserve pas une place et n'inscrit personne. Gratuit, avec un clavardage illimité. Les données de votre famille ne quittent pas le Canada."
+    "appDescription": "L'année de vos enfants, en main. Un planificateur pour l'année de vos enfants : Hale trouve des activités pour leur âge, près de vous, les met sur votre calendrier, et ne réserve pas une place et n'inscrit personne. Gratuit, avec un clavardage illimité. Les données de votre famille ne quittent pas le Canada."
   }
 }

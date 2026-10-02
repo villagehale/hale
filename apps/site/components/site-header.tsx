@@ -54,32 +54,34 @@ export function SiteHeader({ locale = routing.defaultLocale }: { locale?: Locale
   );
 
   return (
-    <header className="sticky top-0 z-50 px-4 sm:px-6">
-      <nav className="v4-nav v4-glass" aria-label="Primary">
-        <a
-          href={localeHref(locale, '/')}
-          className="flex items-center gap-2.5"
-          aria-label="Hale, home"
-        >
-          <LogoMark size={28} />
-          <Wordmark className="text-navy" />
-        </a>
-        <div className="flex items-center gap-6">
-          <div className="v4-navlinks">
-            {nav.map((item) => (
-              <a key={item.label} href={item.href} className="v4-navlink">
-                {item.label}
-              </a>
-            ))}
-            {/* Collapses with the nav links on a phone; the footer's sign-in
+    <header className="sticky top-0 z-50">
+      <div className="shell v4-nav-slot">
+        <nav className="v4-nav v4-glass" aria-label="Primary">
+          <a
+            href={localeHref(locale, '/')}
+            className="flex items-center gap-2.5"
+            aria-label="Hale, home"
+          >
+            <LogoMark size={28} />
+            <Wordmark className="text-navy" />
+          </a>
+          <div className="flex items-center gap-6">
+            <div className="v4-navlinks">
+              {nav.map((item) => (
+                <a key={item.label} href={item.href} className="v4-navlink">
+                  {item.label}
+                </a>
+              ))}
+              {/* Collapses with the nav links on a phone; the footer's sign-in
                 covers small screens. */}
-            <a href={`${APP_URL}/sign-in`} className="v4-navlink">
-              {t('signIn')}
-            </a>
+              <a href={`${APP_URL}/sign-in`} className="v4-navlink">
+                {t('signIn')}
+              </a>
+            </div>
+            {cta}
           </div>
-          {cta}
-        </div>
-      </nav>
+        </nav>
+      </div>
     </header>
   );
 }

@@ -12,10 +12,8 @@ import { FadeInUp } from '~/components/landing/fade-in-up';
 export function CtaBand({ children }: { children: ReactNode }) {
   return (
     <FadeInUp>
-      <section className="px-4 pb-16 sm:px-6 lg:pb-24">
-        <div className="cta-band mx-auto max-w-[1100px] rounded-[28px] px-6 py-14 text-center sm:px-12 md:py-20">
-          {children}
-        </div>
+      <section className="shell pb-16">
+        <div className="cta-band w-full rounded-[28px] px-8 py-16 text-center">{children}</div>
       </section>
     </FadeInUp>
   );
