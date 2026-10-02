@@ -16,9 +16,8 @@ export interface SocialCardCopy {
 
 const HOME_CARD: SocialCardCopy = {
   alt: 'Hale — a planner for your kids’ year',
-  headline: 'Your kids’ year, handled.',
-  subline:
-    'Hale finds the right activities for your kid, puts them on your calendar, and reminds you before they’re gone.',
+  headline: 'Weekends, sorted by text.',
+  subline: "What's on near you, this Saturday.",
 };
 
 export function socialCardCopy(): SocialCardCopy {

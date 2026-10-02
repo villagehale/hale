@@ -323,16 +323,16 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
     expect(bundles.en.About.cta).not.toMatch(/no form/i);
   });
 
-  it('keeps HomeMeta, page meta, and Jsonld on the kids-year lines', () => {
+  it('keeps HomeMeta, page meta, and Jsonld on the homepage lines', () => {
     const h1 = {
-      en: 'Your kids’ year, handled.',
-      fr: "L'année de vos enfants, en main.",
-      zh: '孩子这一年，安排好了。',
+      en: 'Weekends, sorted by text.',
+      fr: 'Le week-end, par texto.',
+      zh: '周末，发短信就好。',
     } as const;
     const sub = {
-      en: 'Hale finds the right activities for your kid, puts them on your calendar, and reminds you before they’re gone.',
-      fr: "Hale trouve les bonnes activités pour votre enfant, les met sur votre calendrier, et vous rappelle avant qu'elles ne passent.",
-      zh: 'Hale 按孩子的年龄找到合适的活动，放进日历，并在结束前提醒你。',
+      en: "What's on near you, this Saturday.",
+      fr: "Ce qu'il y a près de vous, samedi.",
+      zh: '这周六，你家附近有什么。',
     } as const;
     const textMeta = {
       en: 'Find what’s on. Hear how it went. What’s worth doing with the kids.',

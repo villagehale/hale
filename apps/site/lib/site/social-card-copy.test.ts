@@ -11,8 +11,8 @@ import { socialCardCopy } from './social-card-copy';
 describe('homepage share card copy', () => {
   it('sells the same hero the page opens on', () => {
     const copy = socialCardCopy();
-    expect(copy.headline).toBe('Your kids’ year, handled.');
-    expect(copy.subline).toContain('puts them on your calendar');
+    expect(copy.headline).toBe('Weekends, sorted by text.');
+    expect(copy.subline).toBe("What's on near you, this Saturday.");
     expect(copy.alt).toContain('a planner for your kids’ year');
     const blob = `${copy.headline} ${copy.subline} ${copy.alt}`;
     expect(blob).not.toContain('assistant');

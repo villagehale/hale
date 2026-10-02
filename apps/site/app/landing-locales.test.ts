@@ -91,11 +91,11 @@ describe('homepage copy in every locale', () => {
     const landing = landingBundle(locale) as {
       heroThread: Array<{ dir: string; text: string }>;
     };
-    expect(landing.heroThread.map((row) => row.dir)).toEqual(['out', 'in']);
+    expect(landing.heroThread.map((row) => row.dir)).toEqual(['out', 'in', 'in']);
     const exchange = heroExchange(HTML[locale]);
     expect(exchange, 'the phone thread must render').toContain('v4-bubble');
     expect([...exchange.matchAll(/class="v4-bubble v4-bubble-out"/g)]).toHaveLength(1);
-    expect([...exchange.matchAll(/class="v4-bubble v4-bubble-in"/g)]).toHaveLength(1);
+    expect([...exchange.matchAll(/class="v4-bubble v4-bubble-in"/g)]).toHaveLength(2);
     expect(exchange).not.toMatch(/\b20\d\d\b/);
     const text = visibleText(exchange);
     for (const town of [...MUNICIPALITIES, 'Georgetown', '斯托夫维尔', '多伦多', '乔治敦']) {
@@ -118,17 +118,18 @@ describe('homepage copy in every locale', () => {
   });
 
   it.each(routing.locales)('%s says who is speaking in every bubble', (locale) => {
-    const bubbles = [...HTML[locale].matchAll(/<p class="v4-bubble[^"]*">([\s\S]*?)<\/p>/g)].map(
+    const exchange = heroExchange(HTML[locale]);
+    const bubbles = [...exchange.matchAll(/<p class="v4-bubble[^"]*">([\s\S]*?)<\/p>/g)].map(
       (m) => m[1] ?? '',
     );
-    // The hero exchange: the ask, then the find.
-    expect(bubbles).toHaveLength(2);
+    // The hero exchange: the ask, then two finds.
+    expect(bubbles).toHaveLength(3);
     for (const bubble of bubbles) expect(bubble).toMatch(/^<span class="sr-only">[^<]+ <\/span>/);
   });
 
   it.each(routing.locales)('%s renders the four lines, pricing, and the FAQ', (locale) => {
     const text = visibleText(HTML[locale]);
-    for (const key of ['findH2', 'remindH2', 'yearH2', 'trustH2', 'faqH2']) {
+    for (const key of ['stepsH2', 'exampleH2', 'memoryH2', 'trustH2', 'faqH2']) {
       expect(text, key).toContain(landingString(locale, key));
     }
     expect(HTML[locale]).toContain('id="pricing"');
@@ -152,7 +153,8 @@ describe('homepage copy in every locale', () => {
       expect(flat, ascii).not.toContain(ascii);
     }
     const landing = landingBundle('fr');
-    expect(String(landing.heroH1a)).toContain('vos');
+    expect(String(landing.heroH1a)).toBe('Le week-end,');
+    expect(String(landing.heroSub)).toContain('vous');
     expect(String(landing.heroTerms)).toMatch(/^Vos /);
   });
 

@@ -51,10 +51,8 @@ export function FadeInUp({
       className={className}
       style={{
         opacity: shown ? 1 : 0,
-        transform: shown ? 'none' : 'translateY(2.5rem)',
-        transition: instant
-          ? 'none'
-          : 'opacity 1000ms var(--ease-breathe), transform 1000ms var(--ease-breathe)',
+        transform: shown ? 'none' : 'translateY(12px)',
+        transition: instant ? 'none' : 'opacity 480ms ease-out, transform 480ms ease-out',
         transitionDelay: instant ? undefined : `${delayMs}ms`,
         willChange: 'opacity, transform',
       }}
