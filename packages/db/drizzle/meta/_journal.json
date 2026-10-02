@@ -1009,6 +1009,13 @@
       "when": 1781469640000,
       "tag": "0146_linq_group_members",
       "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1781469641000,
+      "tag": "0147_same_activity_opt_ins",
+      "breakpoints": true
     }
   ]
 }

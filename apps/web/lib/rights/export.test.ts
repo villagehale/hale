@@ -100,6 +100,12 @@ function fakeDb(args: {
     generatedAt: Date;
     summary: Record<string, unknown>;
   }[];
+  sameActivityOptIns?: {
+    kind: string;
+    activityKey: string;
+    createdAt: Date;
+    revokedAt: Date | null;
+  }[];
 }) {
   const whereFamilyIds: unknown[] = [];
 
@@ -181,6 +187,11 @@ function fakeDb(args: {
     return { orderBy: vi.fn().mockResolvedValue([]) };
   });
 
+  const optInsWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue(args.sameActivityOptIns ?? []) };
+  });
+
   // Route each select to the right terminal by call order: family, children,
   // members, the village-saves join, this parent's assistant grants, the registration
   // preparation join, the watched spots, the activity bookings, the evening check-in
@@ -203,6 +214,7 @@ function fakeDb(args: {
     if (which === 12) return { from: () => ({ where: digestsWhere }) };
     if (which === 13) return { from: () => ({ where: signupsWhere }) };
     if (which === 14) return { from: () => ({ where: consentsWhere }) };
+    if (which === 15) return { from: () => ({ where: optInsWhere }) };
     throw new Error(`assembleFamilyExport fake: unexpected select #${which}`);
   });
 
@@ -274,6 +286,38 @@ describe('assembleFamilyExport', () => {
     expect(doc.watchedSpots).toEqual([]);
     expect(doc.authorizedSignups).toEqual([]);
     expect(doc.signupFieldConsents).toEqual([]);
+    expect(doc.sameActivityOptIns).toEqual([]);
+  });
+
+  it('exports this household same-activity yes and not another household', async () => {
+    const { db } = fakeDb({
+      family: FAMILY,
+      children: [],
+      members: [],
+      sameActivityOptIns: [
+        {
+          kind: 'meet',
+          activityKey: 'pool.example|saturday-swim|2026-10-01T15:00:00.000Z',
+          createdAt: new Date('2026-10-01T12:00:00.000Z'),
+          revokedAt: null,
+        },
+      ],
+    });
+
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+    });
+
+    expect(doc.sameActivityOptIns).toEqual([
+      {
+        kind: 'meet',
+        activityKey: 'pool.example|saturday-swim|2026-10-01T15:00:00.000Z',
+        createdAt: '2026-10-01T12:00:00.000Z',
+        revokedAt: null,
+      },
+    ]);
+    expect(JSON.stringify(doc.sameActivityOptIns)).not.toContain(OTHER_FAMILY_ID);
   });
 
   it('exports an unconfirmed Google given name apart from the confirmed call name', async () => {
@@ -580,14 +624,14 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Fifteen scoped selects (family, children, members, village saves, this parent's
+    // Sixteen scoped selects (family, children, members, village saves, this parent's
     // assistant grants, the registration preparations, the watched spots, the activity
     // bookings, the evening check-in prefs and notes, the activity verdicts, this
-    // parent's trips, the memory digests, the authorized signup offers, and the
-    // signup field consents) each recorded a where-condition; none was left unscoped.
-    // (The condition objects are opaque Drizzle SQL, so we assert on arity — every
-    // select passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(15);
+    // parent's trips, the memory digests, the authorized signup offers, the signup
+    // field consents, and this household's same-activity opt-ins) each recorded a
+    // where-condition; none was left unscoped. (The condition objects are opaque
+    // Drizzle SQL, so we assert on arity — every select passed through a where.)
+    expect(spies.whereFamilyIds).toHaveLength(16);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 

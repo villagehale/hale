@@ -415,6 +415,10 @@ export const AUDIT_VERBS = [
   'memory_digest_planned',
   'memory_ephemeral_retired',
   'memory_aliases_indexed',
+  // ── same-activity meet / join-group (VIL-394) ───────────────────────────
+  // This household's own yes. The trail sentence names no other household.
+  'same_activity_opt_in_recorded',
+  'same_activity_opt_in_revoked',
 ] as const;
 
 export type AuditVerb = (typeof AUDIT_VERBS)[number];
@@ -1370,6 +1374,16 @@ const VERBS: Record<AuditVerb, Verb> = {
   // wrote it, because that is the only thing about this message that matters.
   founder_welcome_sent: {
     sentence: 'the person who built Hale sent you a note',
+    family: 'done',
+  },
+  // One verb covers both kinds (meet and join-group), so the sentence names
+  // neither a particular activity nor anyone outside this household.
+  same_activity_opt_in_recorded: {
+    sentence: 'you said yes to a meet or a group for an activity',
+    family: 'done',
+  },
+  same_activity_opt_in_revoked: {
+    sentence: 'you took back a yes to a meet or a group',
     family: 'done',
   },
 };
