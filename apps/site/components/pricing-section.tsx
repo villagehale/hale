@@ -4,14 +4,17 @@ import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { chromeCta } from '~/lib/site/chrome-cta';
 
+const TIERS = ['free', 'plus', 'family'] as const;
+
 /**
- * Pricing is one fact: Hale is free, with unlimited chat. Paid tiers are not
- * live, so this section does not render a Free/Plus/Family table, a price, or
- * an upgrade. The only action is the same text door as the rest of the site.
+ * Three cards. Only Free is live: unlimited chat, and the same text door as
+ * the rest of the site. Plus and Family say they are coming soon. No price,
+ * no founding rate, and no upgrade button on a tier that is not available.
  */
 export function PricingSection({ locale = routing.defaultLocale }: { locale?: Locale }) {
   const t = getTranslator(locale, 'PricingSection');
   const features = t.raw('freeFeatures') as string[];
+  const names = t.raw('tierNames') as Record<(typeof TIERS)[number], string>;
   const cta = chromeCta(locale);
   return (
     <section id="pricing" className="shell pb-20 lg:pb-28">
@@ -23,31 +26,51 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
         </p>
       </div>
 
-      <div className="glass-panel max-w-xl">
-        <h3 style={{ fontSize: 'clamp(1.5rem, 2.6vw, 1.9rem)', lineHeight: 1.1 }}>{t('freeLine')}</h3>
-        <p className="mt-5" style={{ color: 'var(--color-spruce)', lineHeight: 1.6 }}>
-          {t('freeBody')}
-        </p>
-        <ul className="numbered-card-list">
-          {features.map((feature) => (
-            <li key={feature}>
-              <Check size={16} strokeWidth={2.5} aria-hidden="true" />
-              <span>{feature}</span>
+      <ol className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+        {TIERS.map((tier, i) => {
+          const isFree = tier === 'free';
+          return (
+            <li key={tier} className="glass-panel numbered-card">
+              <div className="numbered-card-head">
+                <span className="eyebrow">{names[tier]}</span>
+                <span className="numbered-card-num">0{i + 1}</span>
+              </div>
+              <h3
+                className="mt-5"
+                style={{ fontSize: 'clamp(1.5rem, 2.6vw, 1.9rem)', lineHeight: 1.1 }}
+              >
+                {isFree ? t('freeLine') : t('comingSoon')}
+              </h3>
+              <p className="mt-5" style={{ color: 'var(--color-spruce)', lineHeight: 1.6 }}>
+                {isFree ? t('freeBody') : t('comingBody')}
+              </p>
+              {isFree ? (
+                <>
+                  <ul className="numbered-card-list">
+                    {features.map((feature) => (
+                      <li key={feature}>
+                        <Check size={16} strokeWidth={2.5} aria-hidden="true" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-auto pt-8">
+                    <LandingCta
+                      event="cta_text_click"
+                      channel="sms"
+                      placement="pricing_tier"
+                      href={cta.href}
+                      className="btn-primary"
+                    >
+                      {cta.label}
+                    </LandingCta>
+                  </div>
+                </>
+              ) : null}
             </li>
-          ))}
-        </ul>
-        <div className="mt-8">
-          <LandingCta
-            event="cta_text_click"
-            channel="sms"
-            placement="pricing_tier"
-            href={cta.href}
-            className="btn-primary"
-          >
-            {cta.label}
-          </LandingCta>
-        </div>
-      </div>
+          );
+        })}
+      </ol>
       <p className="meta mt-6">{t('footnote')}</p>
     </section>
   );

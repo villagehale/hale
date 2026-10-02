@@ -64,11 +64,11 @@
     "heroThread": [
       {
         "dir": "out",
-        "text": "Natation pour tout-petit pres de Georgetown, samedi?"
+        "text": "Bonjour — Mia a 4 ans, on est à Stouffville, L4A. La natation et les programmes d’automne."
       },
       {
         "dir": "in",
-        "text": "Un exemple de ce qu'une recherche peut donner, pas un resultat promis.\n1. Natation parent et tout-petit, samedi matin, sur la page de Georgetown.\n2. Un libre-acces a la bibliotheque, le meme matin.\n3. Un cours communautaire dont l'heure du samedi n'est pas encore affichee."
+        "text": "Voici ce qu’il y a pour vos enfants cette année :\n1. Natation parent-enfant (2 à 4 ans) — les samedis à 9 h 15, d’après le guide des loisirs de Stouffville.\n2. Jeu libre préscolaire (18 mois à 4 ans) — sans inscription, d’après la page de la bibliothèque.\n3. Petits bougeurs (2 à 5 ans) — le centre communautaire l’annonce, mais les horaires d’hiver ne sont pas encore affichés."
       }
     ],
     "heroFounding": "Gratuit, avec un clavardage illimite.",
@@ -232,11 +232,11 @@
         "rows": [
           {
             "dir": "out",
-            "text": "Natation pour tout-petit pres de Georgetown, samedi?"
+            "text": "Mia a 3 ans, on est à Vaughan. La natation, et ce qu’il y a autour."
           },
           {
             "dir": "in",
-            "text": "Un exemple de ce qu'une recherche peut donner, pas un resultat promis.\n1. Natation parent et tout-petit, samedi matin, sur la page de Georgetown.\n2. Un libre-acces a la bibliotheque, le meme matin.\n3. Un cours communautaire dont l'heure du samedi n'est pas encore affichee."
+            "text": "Voici ce qu’il y a pour vos enfants cette année :\n1. Natation parent-enfant (2 à 4 ans) — les samedis à 9 h 15, d’après le guide des loisirs de la ville.\n2. Jeu libre préscolaire (18 mois à 4 ans) — sans inscription, d’après la page de la bibliothèque.\n3. Petits bougeurs (2 à 5 ans) — le centre communautaire l’annonce, mais les horaires d’hiver ne sont pas encore affichés."
           }
         ]
       },
@@ -386,7 +386,7 @@
   },
   "Pricing": {
     "metaTitle": "Tarifs · Hale",
-    "metaDescription": "Hale est gratuit, avec un clavardage illimite. Il n'y a pas de forfait payant. Vos donnees restent au Canada.",
+    "metaDescription": "Hale est gratuit, avec un clavardage illimite. Plus et Famille arrivent bientot. Pas de prix. Vos donnees restent au Canada.",
     "eyebrow": "Tarifs",
     "headline": [
       {
@@ -397,7 +397,7 @@
         "accent": true
       }
     ],
-    "lede": "Clavardage illimite. Il n'y a pas de forfait payant, et rien a mettre a niveau.",
+    "lede": "Le clavardage illimite est gratuit aujourd'hui. Plus et Famille arrivent bientot. Pas de prix.",
     "cta": "Textez un age, un endroit et une place."
   },
   "PricingSection": {
@@ -406,7 +406,14 @@
     "lede": "Vous demandez un age, un endroit et une place. Hale cherche, surveille, et texte quand une place s'ouvre. Le groupe familial est dans le meme clavardage.",
     "freeLine": "Gratuit",
     "freeBody": "Clavardage illimite. Hale cherche selon l'age, l'endroit et la place, et texte quand une place s'ouvre.",
-    "footnote": "Il n'y a pas de forfait payant. Vos donnees restent au Canada.",
+    "footnote": "Seul Gratuit est disponible aujourd'hui. Pas de prix. Vos donnees restent au Canada.",
+    "comingSoon": "Bientot",
+    "comingBody": "Pas encore disponible.",
+    "tierNames": {
+      "free": "Gratuit",
+      "plus": "Plus",
+      "family": "Famille"
+    },
     "freeFeatures": [
       "Clavardage illimite",
       "Recherche en direct",

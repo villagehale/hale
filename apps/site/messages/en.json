@@ -64,11 +64,11 @@
     "heroThread": [
       {
         "dir": "out",
-        "text": "Toddler swim near Georgetown on Saturday?"
+        "text": "Hi — Mia is 4, we’re in Stouffville, L4A. Swim and the fall programs."
       },
       {
         "dir": "in",
-        "text": "An example of what a find can look like, not a result I am promising.\n1. Parent and tot swim, Saturday morning, off the Georgetown page.\n2. A library drop-in the same morning.\n3. A community class whose Saturday time is not posted yet."
+        "text": "Here’s what’s on for your kids this year:\n1. Parent & tot swim (ages 2 - 4) - Saturdays 9:15 a.m., off Stouffville’s rec guide.\n2. Preschool playtime (ages 18 months - 4 years) - drop-in, off the library’s page.\n3. Little movers (ages 2 - 5) - the community centre lists it, but the winter times aren’t posted yet."
       }
     ],
     "heroFounding": "Free, with unlimited chat.",
@@ -232,11 +232,11 @@
         "rows": [
           {
             "dir": "out",
-            "text": "Toddler swim near Georgetown on Saturday?"
+            "text": "Mia’s 3, we’re in Vaughan. Swim, and anything nearby."
           },
           {
             "dir": "in",
-            "text": "An example of what a find can look like, not a result I am promising.\n1. Parent and tot swim, Saturday morning, off the Georgetown page.\n2. A library drop-in the same morning.\n3. A community class whose Saturday time is not posted yet."
+            "text": "Here’s what’s on for your kids this year:\n1. Parent & tot swim (ages 2 - 4) - Saturdays 9:15 a.m., off the town’s rec guide.\n2. Preschool playtime (ages 18 months - 4 years) - drop-in, off the library’s page.\n3. Little movers (ages 2 - 5) - the community centre lists it, but the winter times aren’t posted yet."
           }
         ]
       },
@@ -386,7 +386,7 @@
   },
   "Pricing": {
     "metaTitle": "Pricing · Hale",
-    "metaDescription": "Hale is free, with unlimited chat. There is no paid plan. Your data stays in Canada.",
+    "metaDescription": "Hale is free, with unlimited chat. Plus and Family are coming soon. There is no price. Your data stays in Canada.",
     "eyebrow": "Pricing",
     "headline": [
       {
@@ -397,7 +397,7 @@
         "accent": true
       }
     ],
-    "lede": "Unlimited chat. There is no paid plan, and nothing to upgrade.",
+    "lede": "Unlimited chat is free today. Plus and Family are coming soon. There is no price.",
     "cta": "Text an age, a place, and a spot."
   },
   "PricingSection": {
@@ -406,7 +406,14 @@
     "lede": "You ask with an age, a place, and a spot. Hale looks it up, keeps watch, and texts when a place opens. The family group is in the same chat.",
     "freeLine": "Free",
     "freeBody": "Unlimited chat. Hale looks up an age, a place, and a spot, and texts when a place opens.",
-    "footnote": "There is no paid plan. Your data stays in Canada.",
+    "footnote": "Only Free is available today. There is no price. Your data stays in Canada.",
+    "comingSoon": "Coming soon",
+    "comingBody": "Not available yet.",
+    "tierNames": {
+      "free": "Free",
+      "plus": "Plus",
+      "family": "Family"
+    },
     "freeFeatures": [
       "Unlimited chat",
       "Live find",

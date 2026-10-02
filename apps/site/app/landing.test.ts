@@ -129,7 +129,7 @@ describe('landing — the v4 hero', () => {
     const seen = visibleText(html.replace(/<script[\s\S]*?<\/script>/g, ''));
     const order = [
       "Find what’s on. Hear how it went.",
-      'Toddler swim near Georgetown on Saturday?',
+      'Stouffville, L4A',
       'Free, with unlimited chat.',
       'Texting Hale looks like this',
     ].map((marker) => seen.indexOf(marker));

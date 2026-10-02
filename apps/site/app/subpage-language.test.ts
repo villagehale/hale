@@ -340,14 +340,15 @@ describe('/about — the locked page', () => {
   });
 });
 
-describe('/pricing — one free card, no tier table', () => {
+describe('/pricing — Free is live, Plus and Family say coming soon', () => {
   const html = pages['/pricing'];
 
-  it('renders one free card and no paid tier', () => {
+  it('renders three cards, a price on none of them, and one live feature list', () => {
     expect(html).toContain('Free, with unlimited chat.');
     expect(html).toContain('Unlimited chat');
-    expect(html).not.toContain('Plus');
-    expect(html).not.toContain('Family');
+    expect(html).toContain('Plus');
+    expect(html).toContain('Family');
+    expect(html.match(/Coming soon/g)).toHaveLength(2);
     expect(html).not.toContain('$');
     expect(html).not.toContain('Founding');
     expect(html).not.toContain('Your village feed');
@@ -356,10 +357,10 @@ describe('/pricing — one free card, no tier table', () => {
     expect(html.match(/lucide-check/g)).toHaveLength(4);
   });
 
-  it('says Hale is free today, with nothing to upgrade', () => {
+  it('says Hale is free today, and the other two tiers are not available', () => {
     const text = rawText(html).replace(/\s+/g, ' ');
-    expect(text).toContain('Unlimited chat. There is no paid plan, and nothing to upgrade.');
-    expect(text).toContain('There is no paid plan. Your data stays in Canada.');
+    expect(text).toContain('Unlimited chat is free today. Plus and Family are coming soon. There is no price.');
+    expect(text).toContain('Only Free is available today. There is no price. Your data stays in Canada.');
     expect(text).not.toContain('Founding families join free.');
   });
 

@@ -8,9 +8,8 @@ import zh from '../messages/zh.json';
 import { PricingSection } from './pricing-section.js';
 
 /**
- * Pricing is one fact: Hale is free, with unlimited chat. Paid tiers are not
- * live, so the section must not render a Free/Plus/Family table, a price, or
- * an upgrade. One card, one text door.
+ * Three cards. Free is the only live tier and the only text door. Plus and
+ * Family say they are coming soon. No price, no founding rate, no upgrade.
  */
 const html = renderToStaticMarkup(createElement(PricingSection));
 
@@ -22,8 +21,9 @@ afterEach(() => {
 });
 
 describe('PricingSection (landing pricing)', () => {
-  it('states the free chat in one card, with no tier table and no price', () => {
+  it('states free chat as the live card, and paid tiers as coming soon, with no price', () => {
     expect(en.PricingSection.freeLine).toBe('Free');
+    expect(en.PricingSection.comingSoon).toBe('Coming soon');
     expect(en.PricingSection.freeFeatures).toEqual([
       'Unlimited chat',
       'Live find',
@@ -32,40 +32,42 @@ describe('PricingSection (landing pricing)', () => {
     ]);
     expect(html).toContain('Free, with unlimited chat.');
     expect(html).toContain('Unlimited chat');
-    expect(html).not.toContain('Plus');
-    expect(html).not.toContain('Family');
+    expect(html).toContain('Plus');
+    expect(html).toContain('Family');
+    expect([...html.matchAll(/Coming soon/g)]).toHaveLength(2);
     expect(html).not.toContain('$');
     expect(html).not.toContain('Founding');
-    expect(html).not.toContain('Coming soon');
     expect(html).not.toContain('Subscribe');
     expect([...html.matchAll(/numbered-card-list/g)]).toHaveLength(1);
     expect([...html.matchAll(/lucide-check/g)]).toHaveLength(en.PricingSection.freeFeatures.length);
   });
 
-  it('renders the French free card, not a paid-tier list', () => {
+  it('renders the French cards: Gratuit is live, Plus and Famille are coming soon', () => {
     const french = renderToStaticMarkup(createElement(PricingSection, { locale: 'fr' }));
     expect(french).toContain('Gratuit, avec un clavardage illimite.');
     expect(french).toContain('Clavardage illimite');
     expect(french).toContain('Recherche en direct');
-    expect(french).not.toContain('Plus');
-    expect(french).not.toContain('Famille');
+    expect(french).toContain('Plus');
+    expect(french).toContain('Famille');
+    expect([...french.matchAll(/Bientot/g)]).toHaveLength(2);
     expect(french).not.toContain('$');
     expect(french).not.toContain('Founding rate');
     expect(fr.PricingSection.freeLine).toBe('Gratuit');
     expect(fr.PricingSection.freeFeatures).toEqual([
       'Clavardage illimite',
       'Recherche en direct',
-      'Un texto quand une place s\'ouvre',
+      "Un texto quand une place s'ouvre",
       'iMessage',
     ]);
   });
 
-  it('renders the Chinese free card, not Plus or Family', () => {
+  it('renders the Chinese cards: free is live, Plus and Family are coming soon', () => {
     const chinese = renderToStaticMarkup(createElement(PricingSection, { locale: 'zh' }));
     expect(chinese).toContain('免费，聊天不限次数。');
     expect(chinese).toContain('聊天不限次数');
-    expect(chinese).not.toContain('Plus');
-    expect(chinese).not.toContain('Family');
+    expect(chinese).toContain('Plus');
+    expect(chinese).toContain('Family');
+    expect([...chinese.matchAll(/即将推出/g)]).toHaveLength(2);
     expect(chinese).not.toContain('$');
     expect(chinese).not.toContain('创始价');
     expect(zh.PricingSection.freeLine).toBe('免费');
@@ -75,7 +77,7 @@ describe('PricingSection (landing pricing)', () => {
     const argument = html
       .replace(/<ul class="numbered-card-list">[\s\S]*?<\/ul>/g, '')
       .replace(/<[^>]+>/g, ' ');
-    expect(argument).toContain('There is no paid plan');
+    expect(argument).toContain('There is no price');
     expect(argument).not.toContain('village');
   });
 

@@ -64,8 +64,8 @@ const H1_COLUMN_EM: Record<(typeof routing.locales)[number], number> = {
 
 /** The town Hale's hero reply names back, per locale — zh transliterates it. */
 const HERO_TOWN: Record<(typeof routing.locales)[number], string> = {
-  en: 'Georgetown',
-  fr: 'Georgetown',
+  en: 'Stouffville',
+  fr: 'Stouffville',
   zh: '斯托夫维尔',
 };
 
@@ -272,8 +272,8 @@ describe('the registration loop renders in every locale', () => {
     expect(landing.heroThread.map((row) => row.dir)).toEqual(['out', 'in']);
     expect(landing.heroLoop[0]?.rows.map((row) => row.dir)).toEqual(['out', 'in']);
     const lead = {
-      en: 'An example of what a find can look like, not a result I am promising.',
-      fr: "Un exemple de ce qu'une recherche peut donner, pas un resultat promis.",
+      en: 'Here’s what’s on for your kids this year:',
+      fr: 'Voici ce qu’il y a pour vos enfants cette année :',
       zh: '孩子这一年，现在有这些：',
     }[locale];
     expect(landing.heroThread[1]?.text.startsWith(lead)).toBe(true);
