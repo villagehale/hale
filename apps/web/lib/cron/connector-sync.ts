@@ -26,6 +26,7 @@ import {
   alertParentForGmailSweep,
   emptyBookingCounts,
   emptyEmailAlertCounts,
+  gmailAlertSweepInput,
 } from '~/lib/integrations/email-alert';
 import { type GoingCounts, emptyGoingCounts } from '~/lib/integrations/going';
 import { refreshAccessToken } from '~/lib/integrations/google-oauth';
@@ -230,17 +231,10 @@ export function connectorSyncDeps(database: Database, queue: PgBoss): RunConnect
 async function alertGmailSweep(database: Database, batch: GmailAlertBatch) {
   const result = await alertParentForGmailSweep(
     database,
-    {
-      familyId: batch.connection.familyId,
-      parentUserId: batch.connection.userId,
-      integrationId: batch.connection.id,
-      seeding: batch.seeding,
-      envelopes: batch.envelopes,
-      now: new Date(),
-    },
+    gmailAlertSweepInput(batch, new Date()),
     emailAlertPorts(database, batch.connection.familyId, batch.accessToken),
   );
-  if (batch.connection.userId) {
+  if (batch.pass !== 'backfill' && batch.connection.userId) {
     try {
       await narrateHouseholdMailbox(database, {
         familyId: batch.connection.familyId,

@@ -128,13 +128,17 @@ export const activityBookings = pgTable(
      */
     eventId: uuid('event_id'),
     /**
-     * The outbound row that told the parent. NOT NULL, because the booking is written
-     * AFTER the transport accepted the text: a booking from a text that never went is a
-     * fact Hale would act on a week later with nobody having been told.
+     * The outbound row that told the parent, when a text went out.
+     *
+     * Live detection writes this AFTER the transport accepted the text. NULL is the
+     * booked-detection backfill (`0151_activity_bookings_backfill_channel`): mail that
+     * arrived before Gmail was connected is recorded without a text, an offer, or an
+     * `email_alert_sent` audit. The later follow-up ask is what the parent hears. A
+     * live alert still passes a real id.
      */
-    channelMessageId: uuid('channel_message_id')
-      .notNull()
-      .references(() => channelMessages.id, { onDelete: 'cascade' }),
+    channelMessageId: uuid('channel_message_id').references(() => channelMessages.id, {
+      onDelete: 'cascade',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

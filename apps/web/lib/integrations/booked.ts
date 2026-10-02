@@ -51,3 +51,19 @@ export function bookedDetectionAllowlist(): Set<string> {
 export function bookedDetectionEnabledFor(familyId: string): boolean {
   return bookedDetectionEnabled() || bookedDetectionAllowlist().has(familyId);
 }
+
+/**
+ * ONE-TIME backfill of booking-shaped mail that arrived before the Gmail cursor
+ * existed. The live sweep is incremental, so that mail is otherwise never read.
+ *
+ * STRICT equality on the literal 'true', same as {@link bookedDetectionEnabled}:
+ * a trailing newline from `vercel env add` must stay off. Default off.
+ *
+ * It does not replace the booked-detection flag. While that flag is off for the
+ * family, the backfill does not start and does not stamp completion.
+ */
+export const BOOKED_DETECTION_BACKFILL_ENABLED_ENV = 'BOOKED_DETECTION_BACKFILL_ENABLED';
+
+export function bookedDetectionBackfillEnabled(): boolean {
+  return process.env[BOOKED_DETECTION_BACKFILL_ENABLED_ENV] === 'true';
+}

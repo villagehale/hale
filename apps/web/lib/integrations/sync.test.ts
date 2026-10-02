@@ -1,8 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarChange } from './calendar-alert';
 import type { GmailAlertEnvelope } from './email-alert';
 import type { ActiveConnectorConnection } from './store';
 import {
+  BOOKED_BACKFILL_MAX_PER_SWEEP,
+  BOOKED_BACKFILL_QUERY,
   type CalendarAlertBatch,
   type GmailAlertBatch,
   type GoogleFetch,
@@ -1128,5 +1130,155 @@ describe('syncConnection — cursor never advances past a failed enqueue', () =>
     expect(cap.errored).toBe(true);
     // The cursor must NOT move: unemitted items would be lost forever.
     expect(cap.cursor).toBeUndefined();
+  });
+});
+
+describe('syncConnection — booked-detection backfill', () => {
+  const RECEIPT = {
+    id: 'old-receipt',
+    snippet: 'Payment received for swim.',
+    internalDate: '1780000000000',
+    payload: {
+      headers: [
+        { name: 'Subject', value: 'Invoice #00061460' },
+        { name: 'From', value: 'Cartwheels <hello@uplifterinc.com>' },
+      ],
+    },
+  };
+
+  function backfillFetch(pages: Array<{ messages: Array<{ id: string }>; nextPageToken?: string }>): {
+    fetchImpl: GoogleFetch;
+    urls: string[];
+  } {
+    const urls: string[] = [];
+    let page = 0;
+    const fetchImpl: GoogleFetch = async (url) => {
+      urls.push(url);
+      if (url.includes('/history')) {
+        return { ok: true, status: 200, json: async () => ({ history: [], historyId: '9100' }) };
+      }
+      if (url.includes('/messages?')) {
+        const body = pages[Math.min(page, pages.length - 1)] ?? { messages: [] };
+        page += 1;
+        return { ok: true, status: 200, json: async () => body };
+      }
+      if (url.includes('/messages/')) {
+        return { ok: true, status: 200, json: async () => RECEIPT };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    };
+    return { fetchImpl, urls };
+  }
+
+  function backfillQueries(urls: string[]): string[] {
+    return urls
+      .filter((url) => url.includes('/messages?'))
+      .map((url) => new URL(url).searchParams.get('q') ?? '');
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('stays off unless BOOKED_DETECTION_BACKFILL_ENABLED is exactly true', async () => {
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+    vi.stubEnv('BOOKED_DETECTION_BACKFILL_ENABLED', 'true\n');
+    const { fetchImpl, urls } = backfillFetch([{ messages: [{ id: 'old-receipt' }] }]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    expect(backfillQueries(urls).filter((q) => q.length > 0)).toEqual([]);
+    expect(cap.cursor).toEqual({ historyId: '9100' });
+    expect(cap.alerted.every((batch) => batch.pass !== 'backfill')).toBe(true);
+  });
+
+  it('lists one capped page of booking-shaped mail from the last 90 days and records completion', async () => {
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+    vi.stubEnv('BOOKED_DETECTION_BACKFILL_ENABLED', 'true');
+    const { fetchImpl, urls } = backfillFetch([{ messages: [{ id: 'old-receipt' }] }]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    const listed = urls.filter((url) => url.includes('/messages?'));
+    expect(listed).toHaveLength(1);
+    const params = new URL(listed[0] ?? '').searchParams;
+    expect(params.get('q')).toBe(BOOKED_BACKFILL_QUERY);
+    expect(params.get('maxResults')).toBe(String(BOOKED_BACKFILL_MAX_PER_SWEEP));
+    expect(params.get('q')).toContain('newer_than:90d');
+    expect(cap.enqueued).toEqual([]);
+    const backfill = cap.alerted.filter((batch) => batch.pass === 'backfill');
+    expect(backfill).toHaveLength(1);
+    expect(backfill[0]?.seeding).toBe(false);
+    expect(backfill[0]?.envelopes).toEqual([
+      {
+        messageId: 'old-receipt',
+        subject: 'Invoice #00061460',
+        from: 'Cartwheels <hello@uplifterinc.com>',
+        snippet: 'Payment received for swim.',
+        receivedAt: new Date(1780000000000).toISOString(),
+      },
+    ]);
+    expect(cap.cursor).toMatchObject({ historyId: '9100' });
+    expect(cap.cursor?.bookedBackfill).toEqual({ backfilledAt: expect.any(String) });
+    expect(cap.errored).toBe(false);
+  });
+
+  it('spreads a long mailbox across sweeps and does not list again once backfilled', async () => {
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+    vi.stubEnv('BOOKED_DETECTION_BACKFILL_ENABLED', 'true');
+    const { fetchImpl, urls } = backfillFetch([
+      { messages: [{ id: 'old-receipt' }], nextPageToken: 'PAGE2' },
+      { messages: [{ id: 'old-receipt' }] },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    expect(cap.cursor?.bookedBackfill).toEqual({ pageToken: 'PAGE2' });
+    expect(backfillQueries(urls)).toEqual([BOOKED_BACKFILL_QUERY]);
+    const continued = cap.cursor;
+    if (!continued) throw new Error('cursor missing');
+
+    await syncConnection(connection('gmail', continued), deps);
+    const queries = backfillQueries(urls);
+    expect(queries).toEqual([BOOKED_BACKFILL_QUERY, BOOKED_BACKFILL_QUERY]);
+    expect(urls.filter((url) => url.includes('pageToken=PAGE2'))).toHaveLength(1);
+    expect(cap.cursor?.bookedBackfill).toEqual({ backfilledAt: expect.any(String) });
+    expect(cap.cursor?.historyId).toBe('9100');
+
+    const before = urls.length;
+    await syncConnection(connection('gmail', cap.cursor ?? {}), deps);
+    expect(backfillQueries(urls.slice(before))).toEqual([]);
+    expect(cap.cursor?.bookedBackfill).toEqual({ backfilledAt: expect.any(String) });
+  });
+
+  it('does not start, and does not stamp completion, while booked detection is off', async () => {
+    vi.stubEnv('BOOKED_DETECTION_BACKFILL_ENABLED', 'true');
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'false');
+    const { fetchImpl, urls } = backfillFetch([{ messages: [{ id: 'old-receipt' }] }]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    expect(backfillQueries(urls).filter((q) => q.length > 0)).toEqual([]);
+    expect(cap.cursor).toEqual({ historyId: '9100' });
+  });
+
+  it('a backfill failure leaves the mailbox healthy and the page unadvanced', async () => {
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+    vi.stubEnv('BOOKED_DETECTION_BACKFILL_ENABLED', 'true');
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fetchImpl } = backfillFetch([{ messages: [{ id: 'old-receipt' }], nextPageToken: 'PAGE2' }]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    deps.alertGmailEnvelopes = async (batch) => {
+      cap.alerted.push(batch);
+      if (batch.pass === 'backfill') throw new Error('classifier down');
+      return batch.envelopes.map(() => ({ alert: 'dark' as const, booking: null, going: null }));
+    };
+
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    expect(cap.errored).toBe(false);
+    expect(cap.cursor).toEqual({ historyId: '9100' });
+    expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
   });
 });

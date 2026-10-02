@@ -244,7 +244,9 @@ function isUniqueViolation(err: unknown): boolean {
  *
  * AFTER THE SEND, never before — the MEM-10 send-time discipline the offer row keeps for
  * the same reason: a booking minted for a text the transport refused is a fact Hale acts
- * on a week later with nobody having been told.
+ * on a week later with nobody having been told. The booked-detection backfill is the
+ * exception, and it passes a null channel message: that mail predates the connection,
+ * so there is no text to have sent.
  *
  * TWO IDENTITIES. (connection, message) is one email, forever: a re-fired sweep returns
  * `already_recorded` and does not touch the row, because that pair is how the calendar
@@ -261,7 +263,9 @@ export async function recordActivityBooking(
     parentUserId: string;
     integrationId: string;
     messageId: string;
-    channelMessageId: string;
+    /** Null when the row is a backfill and no text was sent. Live detection passes the
+     * outbound row. */
+    channelMessageId: string | null;
     draft: BookingDraft;
   },
 ): Promise<{ outcome: 'recorded' | 'already_recorded' | 'refreshed'; bookingId: string | null }> {
