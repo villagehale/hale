@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { KNOWN_VENUE_HELLO, receiptLine } from './cold-start/copy';
+import {
+  EMAIL_ASK_BY_LANGUAGE,
+  KNOWN_VENUE_HELLO,
+  NAMES_ASK_BY_LANGUAGE,
+  receiptLine,
+} from './cold-start/copy';
 import {
   FIRST_TOUCH_AGES_BY_LANGUAGE,
   FIRST_TOUCH_EMPTY_BY_LANGUAGE,
@@ -311,5 +316,38 @@ describe('cold-start discovery session', () => {
     expect(transport.bodies().at(-1)).toBe("Who's taking them then to that one? I'll note it.");
     expect(transport.bodies().at(-1)?.match(/\?/g)).toHaveLength(1);
     expect(transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
+  });
+
+  it('sends the locked names line, then calendar, then email on later days', async () => {
+    vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
+    const { fake, transport, deps } = harness({
+      extractions: [EMPTY, EMPTY, MAYA, EMPTY, EMPTY, EMPTY, EMPTY],
+    });
+    const clock = { now: NOW };
+    const timed: IntakeDeps = { ...deps, now: NOW };
+    Object.defineProperty(timed, 'now', { get: () => clock.now });
+    const day = 24 * 60 * 60 * 1000;
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), timed);
+    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), timed);
+    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), timed);
+    await handleInboundSms(fake.db, inbound(transport, '1'), timed);
+    clock.now = new Date(NOW.getTime() + day);
+    const names = await handleInboundSms(fake.db, inbound(transport, "I'll take them"), timed);
+    expect(names.status).toBe('first_touch');
+    expect(transport.bodies().at(-1)).toBe(NAMES_ASK_BY_LANGUAGE.en);
+    clock.now = new Date(NOW.getTime() + 2 * day);
+    const calendar = await handleInboundSms(
+      fake.db,
+      inbound(transport, 'she starts daycare in September'),
+      timed,
+    );
+    expect(calendar.status).toBe('first_touch');
+    expect(transport.bodies().at(-1)).toBe(
+      'Want me to check that one against your calendar? This link is just for you. I can see your events and never change them.',
+    );
+    clock.now = new Date(NOW.getTime() + 3 * day);
+    const email = await handleInboundSms(fake.db, inbound(transport, 'sounds good'), timed);
+    expect(email.status).toBe('first_touch');
+    expect(transport.bodies().at(-1)).toBe(EMAIL_ASK_BY_LANGUAGE.en);
   });
 });

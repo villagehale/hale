@@ -1,10 +1,10 @@
 /**
  * VIL-392 — cold-start copy.
  *
- * The voice handbook is not in the repo, so the names ask, the sign-up
- * offer, and the later calendar and email step stay TODO-Design and must
- * not leave, even when the copy-lock flag is exactly `true`. Ticket-quoted
- * shapes and the VIL-385 first-touch lines may leave.
+ * Names, the sign-up offer, and the calendar and email asks are Design-locked.
+ * They leave only when `COLD_START_LADDER_COPY_LOCKED` is exactly `true`.
+ * An unfilled `{token}` never leaves. Ticket-quoted shapes and the VIL-385
+ * first-touch lines may leave.
  */
 
 import type { ReplyLanguage } from '~/lib/channel/language';
@@ -23,24 +23,46 @@ export const KNOWN_VENUE_HELLO: Record<ReplyLanguage, string> = {
 };
 
 export const NAMES_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: 'TODO-Design',
-  fr: 'TODO-Design',
+  en: "What should I call you? And the kids' first names, if you'd like me to use them. Skip any you'd rather not share.",
+  fr: "Je t'appelle comment? Et les prenoms des enfants, si tu veux que je m'en serve. Passe ceux que tu preferes garder pour toi.",
 };
 
-export const SIGNUP_OFFER_BY_KIND = {
-  date_known: 'TODO-Design',
-  no_date: 'TODO-Design',
-} as const;
+/** Google already confirmed the parent name, so the ask is the kids only. */
+export const KIDS_NAMES_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: "What are the kids' first names, if you'd like me to use them? Skip any you'd rather not share.",
+  fr: "Et les prenoms des enfants, si tu veux que je m'en serve? Passe ceux que tu preferes garder pour toi.",
+};
+
+export const SIGNUP_OFFER_DATE_KNOWN_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: 'Want me to text you the morning sign-ups open for {activity}?',
+  fr: "Tu veux que je t'ecrive le matin ou les inscriptions ouvrent pour {activity}?",
+};
+
+export const SIGNUP_OFFER_NO_DATE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: 'Want me to text you after {day} and ask how it went?',
+  fr: "Tu veux que je t'ecrive apres {day} pour savoir comment ca s'est passe?",
+};
+
+export const CALENDAR_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: 'Want me to check {activity} against your calendar? This link is just for you. I can see your events and never change them.',
+  fr: 'Tu veux que je regarde {activity} par rapport a ton calendrier? Ce lien est juste pour toi. Je peux voir tes evenements et je ne change rien.',
+};
+
+export const EMAIL_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: 'Want me to look in your email for camp, school and daycare notes, for dates and sign-up times? This link is just for you. I never send or change anything.',
+  fr: "Tu veux que je cherche dans ton courriel les messages de camp, d'ecole et de garderie, pour les dates et les ouvertures d'inscription? Ce lien est juste pour toi. Je n'envoie ni ne change rien.",
+};
 
 const BANNED_OUT =
   /stop to unsubscribe|reply stop|répondez arret|repondez arret|désabonner|desabonner/i;
 
-/** A placeholder never leaves, locked flag or not. */
+/** A placeholder or an unfilled token never leaves, locked flag or not. */
 export function placeholderMayLeave(
   body: string,
   env?: Record<string, string | undefined>,
 ): boolean {
   if (body.includes('TODO-Design')) return false;
+  if (body.includes('{')) return false;
   if (BANNED_OUT.test(body)) return false;
   return coldStartCopyLocked(env);
 }
@@ -108,16 +130,54 @@ export function notedAfterLogistics(group: boolean, language: ReplyLanguage): st
 export function namesAsk(
   language: ReplyLanguage,
   env?: Record<string, string | undefined>,
+  options?: { googleConfirmedParentName?: boolean },
 ): {
   body: string;
   mayLeave: boolean;
 } {
-  const body = NAMES_ASK_BY_LANGUAGE[language];
+  const body = options?.googleConfirmedParentName
+    ? KIDS_NAMES_ASK_BY_LANGUAGE[language]
+    : NAMES_ASK_BY_LANGUAGE[language];
   return { body, mayLeave: placeholderMayLeave(body, env) };
 }
 
-export function signupOffer(kind: 'date_known' | 'no_date'): { body: string; mayLeave: false } {
-  return { body: SIGNUP_OFFER_BY_KIND[kind], mayLeave: false };
+export function signupOffer(
+  kind: 'date_known' | 'no_date',
+  input: {
+    language?: ReplyLanguage;
+    activity?: string;
+    day?: string;
+    env?: Record<string, string | undefined>;
+  } = {},
+): { body: string; mayLeave: boolean } {
+  const language = input.language ?? 'en';
+  const pattern =
+    kind === 'date_known'
+      ? SIGNUP_OFFER_DATE_KNOWN_BY_LANGUAGE[language]
+      : SIGNUP_OFFER_NO_DATE_BY_LANGUAGE[language];
+  const token = kind === 'date_known' ? '{activity}' : '{day}';
+  const slot = (kind === 'date_known' ? input.activity : input.day)?.trim() ?? '';
+  const body = slot ? pattern.replaceAll(token, slot) : pattern;
+  return { body, mayLeave: placeholderMayLeave(body, input.env) };
+}
+
+export function calendarAsk(
+  language: ReplyLanguage,
+  activity: string | null | undefined,
+  env?: Record<string, string | undefined>,
+): { body: string; mayLeave: boolean } {
+  const slot = activity?.trim() ?? '';
+  const pattern = CALENDAR_ASK_BY_LANGUAGE[language];
+  const body = slot ? pattern.replaceAll('{activity}', slot) : pattern;
+  return { body, mayLeave: placeholderMayLeave(body, env) };
+}
+
+export function emailAsk(
+  language: ReplyLanguage,
+  env?: Record<string, string | undefined>,
+): { body: string; mayLeave: boolean } {
+  const body = EMAIL_ASK_BY_LANGUAGE[language];
+  return { body, mayLeave: placeholderMayLeave(body, env) };
 }
 
 export function whatCanYouDo(input: {

@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
@@ -70,19 +71,21 @@ import {
   KNOWN_VENUE_HELLO,
   discoveryBubble,
   logisticsBubble,
+  namesAsk,
   notedAfterLogistics,
   stopAskingReply,
 } from './cold-start/copy';
 import { coldStartLadderEnabled } from './cold-start/flags';
-import { judgeColdStartIntent } from './cold-start/intent';
+import { type ColdStartJudgement, judgeColdStartIntent } from './cold-start/intent';
 import {
   activityFromFind,
   ageCorrectionFact,
   ageCorrectionMonths,
   kidFirstName,
+  mentionsSchoolOrCamp,
 } from './cold-start/ladder';
 import { declineOptionalAsk, gateOptionalAsk, recordOptionalAsk } from './cold-start/ledger';
-import { planPull } from './cold-start/pull';
+import { planFollowAsk, planPull } from './cold-start/pull';
 import { type ConnectorOfferLabel, sendYearConnectorCards } from './connector-offer';
 import {
   AMBIGUOUS_CLARIFY_BY_LANGUAGE,
@@ -132,6 +135,7 @@ import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from '.
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, type RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
 import {
+  type ColdStartProgress,
   type FirstTouchPersisted,
   type IntakeLadderStep,
   type IntakeSession,
@@ -1334,6 +1338,231 @@ async function answerAges(
 
 const STOP_ASKING_MS = 30 * 24 * 60 * 60 * 1000;
 
+interface ColdStartTurn {
+  database: Database;
+  session: IntakeSession;
+  inbound: Inbound;
+  now: Date;
+  deps: IntakeDeps;
+  language: ReplyLanguage;
+  familyId: string;
+  userId: string;
+  progress: ColdStartProgress;
+  judged: ColdStartJudgement;
+}
+
+async function googleConfirmedParentName(database: Database, userId: string): Promise<boolean> {
+  const rows = await database
+    .select({
+      targetId: schema.auditLog.targetId,
+      actionTaken: schema.auditLog.actionTaken,
+      after: schema.auditLog.after,
+    })
+    .from(schema.auditLog)
+    .where(eq(schema.auditLog.targetId, userId));
+  return rows.some((row) => {
+    if (row.targetId !== userId || row.actionTaken !== 'parent_name_captured') return false;
+    const after = row.after;
+    return (
+      !!after &&
+      typeof after === 'object' &&
+      (after as { source?: unknown }).source === 'google_confirm'
+    );
+  });
+}
+
+async function loadFamilyStartedAt(database: Database, familyId: string, now: Date): Promise<Date> {
+  const rows = await database
+    .select({ id: schema.families.id, createdAt: schema.families.createdAt })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  const family = rows.find((row) => row.id === familyId);
+  return family?.createdAt instanceof Date ? family.createdAt : now;
+}
+
+function withColdStart(
+  session: IntakeSession,
+  language: ReplyLanguage,
+  progress: ColdStartProgress,
+): FirstTouchPersisted {
+  return {
+    ...(session.firstTouch ?? { language, place: null, locationRequest: null }),
+    coldStart: progress,
+  };
+}
+
+/** Names on the reply after logistics, or the next reply when that day is already spent. */
+async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> {
+  const { database, session, inbound, now, deps, language, familyId, progress, judged } = turn;
+  const ctx = sendContext({ session, phoneE164: session.phoneE164, inbound, now });
+  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+  if (progress.step === 'logistics' && judged.intent === 'decline') {
+    const askKey = `logistics:${progress.activity ?? 'that one'}:${progress.day ?? 'then'}`;
+    const declined = await declineOptionalAsk(database, { familyId, askKey });
+    if (!declined.updated) {
+      console.info({ skipped: declined.skipped }, 'cold-start logistics: decline not stored');
+    }
+  }
+  const schoolMentioned = progress.schoolMentioned || mentionsSchoolOrCamp(inbound.body);
+  const googleConfirmed = await googleConfirmedParentName(database, turn.userId);
+  const names = namesAsk(language, process.env, { googleConfirmedParentName: googleConfirmed });
+  const held: ColdStartProgress = { ...progress, schoolMentioned, step: 'names' };
+  if (!names.mayLeave) {
+    console.info({ skipped: 'copy_unlocked', ask: 'names' }, 'cold-start names: not sent');
+    await sendAndRecord(
+      database,
+      ctx,
+      notedAfterLogistics(progress.group, language),
+      deps,
+      recorded.transcript,
+    );
+    await saveSession(
+      database,
+      session,
+      {
+        state: 'complete',
+        closedAt: now,
+        lastProviderId: inbound.providerId,
+        ladderNext: null,
+        transcript: recorded.transcript,
+      },
+      now,
+    );
+    return { status: 'first_touch', step: 'find_sent' };
+  }
+  const gate = await gateOptionalAsk(database, {
+    familyId,
+    now,
+    sendClass: 'names',
+    askKey: 'names',
+  });
+  if (!gate.allow) {
+    console.info({ reason: gate.reason, ask: 'names' }, 'cold-start names: held');
+    await sendAndRecord(
+      database,
+      ctx,
+      notedAfterLogistics(progress.group, language),
+      deps,
+      recorded.transcript,
+    );
+    await saveSession(
+      database,
+      session,
+      {
+        lastProviderId: inbound.providerId,
+        transcript: recorded.transcript,
+        firstTouch: withColdStart(session, language, { ...held, nameLineSent: false }),
+      },
+      now,
+    );
+    return { status: 'first_touch', step: 'find_sent' };
+  }
+  await sendAndRecord(database, ctx, names.body, deps, recorded.transcript);
+  await recordOptionalAsk(database, { familyId, now, sendClass: 'names', askKey: 'names' });
+  await saveSession(
+    database,
+    session,
+    {
+      lastProviderId: inbound.providerId,
+      transcript: recorded.transcript,
+      firstTouch: withColdStart(session, language, { ...held, nameLineSent: true }),
+    },
+    now,
+  );
+  return { status: 'first_touch', step: 'find_sent' };
+}
+
+/** Calendar on the next eligible reply after the name line. Email only after a mention. */
+async function offerColdStartFollow(turn: ColdStartTurn): Promise<IntakeOutcome> {
+  const { database, session, inbound, now, deps, language, familyId, progress } = turn;
+  const ctx = sendContext({ session, phoneE164: session.phoneE164, inbound, now });
+  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+  const schoolMentioned = progress.schoolMentioned || mentionsSchoolOrCamp(inbound.body);
+  const familyStartedAt = await loadFamilyStartedAt(database, familyId, now);
+  const follow = planFollowAsk({
+    language,
+    now,
+    familyStartedAt,
+    nameLineSent: true,
+    calendarAlreadyAsked: progress.calendarAsked,
+    emailAlreadyAsked: progress.emailAsked,
+    parentText: inbound.body,
+    schoolMentioned,
+    activity: progress.activity,
+    env: process.env,
+  });
+  const base: ColdStartProgress = {
+    ...progress,
+    step: 'follow',
+    nameLineSent: true,
+    schoolMentioned,
+  };
+  const note = notedAfterLogistics(progress.group, language);
+  if (follow.kind === 'none' || !follow.mayLeave) {
+    console.info(
+      { skipped: follow.skipped ?? 'not_due', ask: follow.kind },
+      'cold-start follow: not sent',
+    );
+    await sendAndRecord(database, ctx, note, deps, recorded.transcript);
+    await saveSession(
+      database,
+      session,
+      {
+        state: 'complete',
+        closedAt: now,
+        lastProviderId: inbound.providerId,
+        ladderNext: null,
+        transcript: recorded.transcript,
+      },
+      now,
+    );
+    return { status: 'first_touch', step: 'find_sent' };
+  }
+  const gate = await gateOptionalAsk(database, {
+    familyId,
+    now,
+    sendClass: follow.kind,
+    askKey: follow.kind,
+  });
+  if (!gate.allow) {
+    console.info({ reason: gate.reason, ask: follow.kind }, 'cold-start follow: held');
+    await sendAndRecord(database, ctx, note, deps, recorded.transcript);
+    await saveSession(
+      database,
+      session,
+      {
+        lastProviderId: inbound.providerId,
+        transcript: recorded.transcript,
+        firstTouch: withColdStart(session, language, base),
+      },
+      now,
+    );
+    return { status: 'first_touch', step: 'find_sent' };
+  }
+  await sendAndRecord(database, ctx, follow.body, deps, recorded.transcript);
+  await recordOptionalAsk(database, {
+    familyId,
+    now,
+    sendClass: follow.kind,
+    askKey: follow.kind,
+  });
+  const calendarAsked = progress.calendarAsked || follow.kind === 'calendar';
+  const emailAsked = progress.emailAsked || follow.kind === 'email';
+  const stayOpen = (schoolMentioned && !emailAsked) || !calendarAsked;
+  await saveSession(
+    database,
+    session,
+    {
+      lastProviderId: inbound.providerId,
+      transcript: recorded.transcript,
+      firstTouch: withColdStart(session, language, { ...base, calendarAsked, emailAsked }),
+      ...(stayOpen ? {} : { state: 'complete' as const, closedAt: now, ladderNext: null }),
+    },
+    now,
+  );
+  return { status: 'first_touch', step: 'find_sent' };
+}
+
 /**
  * VIL-392. The turn after the discovery find. A number is the pick. Anything
  * else closes the session and hands the text to C1, except a pull phrase and
@@ -1439,6 +1668,23 @@ async function continueColdStart(
     return { status: 'first_touch', step: 'ages_waiting' };
   }
 
+  const turn: ColdStartTurn = {
+    database,
+    session,
+    inbound,
+    now,
+    deps,
+    language,
+    familyId,
+    userId,
+    progress,
+    judged,
+  };
+  if (progress.step === 'names' || progress.step === 'follow') {
+    if (!progress.nameLineSent) return offerColdStartNames(turn);
+    return offerColdStartFollow(turn);
+  }
+
   if (progress.step === 'pick') {
     if (judged.intent === 'decline') {
       const recorded = await recordInbound(database, ctx, inbound, session.transcript);
@@ -1531,29 +1777,7 @@ async function continueColdStart(
     return { status: 'first_touch', step: 'find_sent' };
   }
 
-  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-  console.info({ skipped: 'copy_unlocked', ask: 'names' }, 'cold-start names: not sent');
-  const askKey = `logistics:${progress.activity ?? 'that one'}:${progress.day ?? 'then'}`;
-  if (judged.intent === 'decline') {
-    const declined = await declineOptionalAsk(database, { familyId, askKey });
-    if (!declined.updated) {
-      console.info({ skipped: declined.skipped }, 'cold-start logistics: decline not stored');
-    }
-  }
-  await sendAndRecord(
-    database,
-    ctx,
-    notedAfterLogistics(progress.group, language),
-    deps,
-    recorded.transcript,
-  );
-  await saveSession(
-    database,
-    session,
-    { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
-    now,
-  );
-  return { status: 'first_touch', step: 'find_sent' };
+  return offerColdStartNames(turn);
 }
 
 function persistPlace(place: FirstTouchPlace): NonNullable<FirstTouchPersisted['place']> {
@@ -2113,6 +2337,10 @@ async function provision(
                 findBody: radar.message,
                 activity: null,
                 day: null,
+                nameLineSent: false,
+                calendarAsked: false,
+                emailAsked: false,
+                schoolMentioned: false,
               },
             },
           }
