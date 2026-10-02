@@ -1,3 +1,4 @@
+import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNull } from 'drizzle-orm';
 import { coldStartLadderEnabled } from '~/lib/channel/intake/cold-start/flags';
@@ -23,6 +24,8 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { replyProse } from '~/lib/channel/reply-copy/apply';
+import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { isWithinQuietHours, localParts } from '~/lib/loop/prefs';
 import { closeFacts, writeFact } from '~/lib/memory/facts';
 import {
@@ -42,6 +45,7 @@ import {
   type DutyWeekEntry,
   dutyClockLabel,
   dutyCopy,
+  dutyCopyLocked,
   dutyCopyMayLeave,
   dutyWeekList,
   dutyWeekdayName,
@@ -671,6 +675,48 @@ function renderOne(line: CadenceLine, ctx: DutyRenderInput): string | null {
   }
 }
 
+function dutyFacts(lines: readonly CadenceLine[], ctx: DutyRenderInput): string[] {
+  const facts: string[] = [];
+  for (const line of lines) {
+    const params = paramsFor(line, ctx);
+    if (!params) continue;
+    for (const value of Object.values(params)) {
+      if (typeof value === 'string' && value.trim()) facts.push(value.trim());
+    }
+  }
+  return facts;
+}
+
+/**
+ * Rewrite one already-budgeted duty bubble. The model may not add a question
+ * the locked line did not already ask. A failed check, or a line that may not
+ * leave, keeps the locked sentence.
+ */
+async function voiceDuty(
+  database: Database,
+  input: {
+    familyId: string;
+    language: 'en' | 'fr';
+    locked: string;
+    facts: readonly string[];
+    replyClient?: AgentClient | null;
+  },
+): Promise<string> {
+  const voiced = await replyProse(
+    {
+      client: await resolveReplyClient(input.replyClient),
+      database,
+      familyId: input.familyId,
+      language: input.language,
+      audience: 'group',
+      flagOn: dutyCopyLocked(),
+      surface: 'duty',
+    },
+    { fallback: input.locked, facts: input.facts },
+  );
+  return dutyCopyMayLeave(voiced) ? voiced : input.locked;
+}
+
 /** Joined copy for a bubble. Null when nothing finished may leave. */
 export function renderDutyLines(
   lines: readonly CadenceLine[],
@@ -956,10 +1002,18 @@ async function applyPlan(
     bubbleKind: 'discretionary' | 'ceiling';
     templateKey: string;
     ports?: DutySendPorts;
+    replyClient?: AgentClient | null;
   },
 ): Promise<DutyDelivery> {
-  const text = renderDutyLines(input.lines, input.view.render);
-  if (!text) return { status: 'skipped', reason: 'placeholder' };
+  const locked = renderDutyLines(input.lines, input.view.render);
+  if (!locked) return { status: 'skipped', reason: 'placeholder' };
+  const text = await voiceDuty(database, {
+    familyId: input.familyId,
+    language: input.view.render.language,
+    locked,
+    facts: dutyFacts(input.lines, input.view.render),
+    replyClient: input.replyClient,
+  });
   const first = input.lines[0];
   const ymd = localYmd(input.now, input.view.timeZone);
   const delivered = await deliverDutyGroupLine(
@@ -989,7 +1043,7 @@ async function applyPlan(
 
 export async function sweepDutyAsks(
   database: Database,
-  input: { now?: Date; ports?: DutySendPorts } = {},
+  input: { now?: Date; ports?: DutySendPorts; replyClient?: AgentClient | null } = {},
 ): Promise<DutySweepResult> {
   if (!coparentDutySendsArmed()) return emptyDutySweep(false);
   const now = input.now ?? new Date();
@@ -1039,6 +1093,7 @@ export async function sweepDutyAsks(
         ? 'linq:group_duty_parent'
         : 'linq:group_duty_night_before',
       ports: input.ports,
+      replyClient: input.replyClient,
     });
     if (delivered.status === 'sent') result.sent += 1;
     else if (delivered.status === 'held') result.held += 1;
@@ -1049,7 +1104,12 @@ export async function sweepDutyAsks(
 
 export async function dutyOverviewForWeeklyBubble(
   database: Database,
-  input: { familyId: string; parentUserId: string; now: Date },
+  input: {
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+    replyClient?: AgentClient | null;
+  },
 ): Promise<{ text: string; commit: () => Promise<void> } | null> {
   // The weekly bubble is already addressed to this parent. The fold does not
   // open a second recipient.
@@ -1061,8 +1121,15 @@ export async function dutyOverviewForWeeklyBubble(
     bubbleLeaving: true,
   });
   if ('skipped' in view) return null;
-  const text = renderDutyLines(view.plan.foldLines, view.render);
-  if (!text) return null;
+  const locked = renderDutyLines(view.plan.foldLines, view.render);
+  if (!locked) return null;
+  const text = await voiceDuty(database, {
+    familyId: input.familyId,
+    language: view.render.language,
+    locked,
+    facts: dutyFacts(view.plan.foldLines, view.render),
+    replyClient: input.replyClient,
+  });
   return {
     text,
     commit: async () => {
@@ -1110,6 +1177,7 @@ export async function answerParentDutyAsk(
     now: Date;
     extract?: DutyExtractor;
     ports?: DutySendPorts;
+    replyClient?: AgentClient | null;
   },
 ): Promise<
   | {
@@ -1192,6 +1260,7 @@ export async function answerParentDutyAsk(
     bubbleKind: 'ceiling',
     templateKey: 'linq:group_duty_parent',
     ports: input.ports,
+    replyClient: input.replyClient,
   });
   return { delivery };
 }

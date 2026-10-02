@@ -44,6 +44,10 @@ export function loadNudgeVoiceSkill(): Promise<Skill> {
   return loadCronSkill('nudge-voice');
 }
 
+export function loadReplyCopySkill(): Promise<Skill> {
+  return loadCronSkill('reply-copy');
+}
+
 export function loadIntakeVoiceSkill(): Promise<Skill> {
   return loadCronSkill('intake-voice');
 }

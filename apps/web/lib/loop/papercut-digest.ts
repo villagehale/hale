@@ -2,8 +2,8 @@ import { type Database, type ReplySourceValue, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import type { Resend } from 'resend';
 import { founderAddress } from '~/lib/auth/founder-signal';
-import { TURN_FAILED_ACTION } from '~/lib/channel/router/wiring';
 import { createResendTransport } from '~/lib/channel/resend-transport';
+import { TURN_FAILED_ACTION } from '~/lib/channel/router/wiring';
 import { escalateDigestSendFailure } from '~/lib/monitoring/provider-health';
 
 /**
@@ -72,6 +72,7 @@ const VOICE_FAILURE_AGENTS = [
   'reminder-voice',
   'radar-voice',
   'nudge-voice',
+  'reply-copy',
 ] as const;
 
 /** The reply_source values that are papercuts: the composer could not run and the fixed
@@ -222,7 +223,8 @@ const MAX_IDS_SHOWN = 10;
  * refusal shapes, never anything a parent said. */
 const SOURCE_HEADINGS: Record<PapercutSource, string> = {
   unmet_intent: 'Unmet intents (inbound channel_messages ids - Hale said no)',
-  medical_fallback: "Medical answers that fell back to the fixed 811/911 line (outbound channel_messages ids)",
+  medical_fallback:
+    'Medical answers that fell back to the fixed 811/911 line (outbound channel_messages ids)',
   reply_fallback:
     'General answers that could not be composed - the fixed unavailable line went out (outbound channel_messages ids)',
   voice_failure: 'Loop voices sent on deterministic copy (agent_runs ids)',

@@ -1,7 +1,10 @@
+import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { linqGroupCoparentEnabled } from '~/lib/channel/linq/config';
+import { replyFrame, replyProse } from '~/lib/channel/reply-copy/apply';
+import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { writeFact } from './facts';
 import { forgetFamilyFact } from './forget';
 import {
@@ -13,17 +16,19 @@ import {
   applyPromotionSignal,
   classifyMemoryWrite,
   deliverMemoryKindCopy,
+  familyMemoryKindsCopyLocked,
   familyMemoryKindsEnabled,
   includeInRecommendations,
   isLastingFactKey,
   memoryKindCopy,
   memoryKindLanguage,
+  memoryRecallParts,
   memoryTextOverlaps,
+  paginateMemoryRecall,
   parseMemoryParentIntent,
   renderMemoryCorrected,
   renderMemoryForgotten,
   renderMemoryGroupSync,
-  renderMemoryRecall,
   toFamilyMemoryExportFact,
 } from './kinds';
 import { isReceiptKey } from './lexicon';
@@ -438,6 +443,8 @@ export async function handleParentMemory(
     inboundChannelMessageId: string | null;
     env?: MemoryKindEnv;
     sendGroup?: (chatId: string, body: string) => Promise<unknown>;
+    /** Injected model. Absent: the locked sentence, and the model is not called. */
+    replyClient?: AgentClient | null;
   },
 ): Promise<ParentMemoryResult> {
   const env = input.env ?? process.env;
@@ -457,11 +464,33 @@ export async function handleParentMemory(
   const door = await familyDoor(database, input.familyId);
   const origin = await originChatId(database, input.inboundChannelMessageId);
 
+  const layer = {
+    client: await resolveReplyClient(input.replyClient),
+    database,
+    familyId: input.familyId,
+    language: door.language,
+    audience: 'direct' as const,
+    flagOn: familyMemoryKindsCopyLocked(env),
+    surface: 'memory' as const,
+  };
+
   if (intent.kind === 'recall') {
     const facts = await recallFamilyMemory(database, { familyId: input.familyId, now: input.now });
     let reply: string | null = null;
     try {
-      reply = gatedReply(renderMemoryRecall(door.language, recallItems(facts)).join('\n\n'), env);
+      const parts = memoryRecallParts(door.language, recallItems(facts));
+      let body: string;
+      if (parts.empty) {
+        body = await replyProse(layer, { fallback: parts.empty, facts: [] });
+      } else {
+        const frame = await replyFrame(layer, {
+          header: parts.header,
+          footer: parts.footer,
+          facts: parts.lines,
+        });
+        body = paginateMemoryRecall(frame.header, parts.lines, frame.footer).join('\n\n');
+      }
+      reply = gatedReply(body, env);
     } catch {
       reply = null;
     }
@@ -482,10 +511,14 @@ export async function handleParentMemory(
       now: input.now,
       needle: intent.needle,
     });
-    const body =
+    const refusedOnly = forgotten.forgotten === 0 && forgotten.refused > 0;
+    const lockedForget =
       forgotten.forgotten > 0
         ? renderMemoryForgotten(door.language, forgotten.keys)
-        : memoryKindCopy(door.language, forgotten.refused > 0 ? 'refused' : 'nothing');
+        : memoryKindCopy(door.language, refusedOnly ? 'refused' : 'nothing');
+    const body = refusedOnly
+      ? lockedForget
+      : await replyProse(layer, { fallback: lockedForget, facts: forgotten.keys });
     const groupSync =
       forgotten.forgotten > 0
         ? await syncMemoryDecisionToGroup(database, {
@@ -527,9 +560,15 @@ export async function handleParentMemory(
         sendGroup: input.sendGroup,
       })
     : { synced: false, skipped: 'nothing_to_sync' };
-  const correctedBody = corrected.corrected
+  const lockedCorrect = corrected.corrected
     ? renderMemoryCorrected(door.language, intent.factKey ?? '', intent.value ?? '')
     : memoryKindCopy(door.language, 'refused');
+  const correctedBody = corrected.corrected
+    ? await replyProse(layer, {
+        fallback: lockedCorrect,
+        facts: [intent.factKey ?? '', intent.value ?? ''],
+      })
+    : lockedCorrect;
   return {
     claimed: true,
     outcome: corrected.corrected ? 'corrected' : 'refused',

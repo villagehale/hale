@@ -114,6 +114,7 @@ export const agentNameEnum = pgEnum('agent_name', [
   'reminder-voice',
   'radar-voice',
   'nudge-voice',
+  'reply-copy',
   'coach-channel-sms',
   // Historical. The spoken-turn agent is retired; the enum value stays so old
   // agent_runs rows still type-check. Nothing writes it.
