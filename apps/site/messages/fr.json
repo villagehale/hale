@@ -5,10 +5,10 @@
     "skipToContent": "Aller au contenu"
   },
   "HomeMeta": {
-    "title": "Hale · un planificateur pour l’année de vos enfants",
-    "description": "Trouvez ce qu’il y a. Écoutez comment ça va. Hale cherche selon un age, un endroit et une place, surveille les places en loisirs, en TEE et en natation dans {count} municipalites de la RGT, et texte quand une place s'ouvre. Gratuit, avec un clavardage illimite. Pas d'appli, pas de compte. Hale ne reserve pas et n'inscrit personne. Vos donnees restent au Canada.",
-    "ogDescription": "Trouvez ce qu’il y a. Écoutez comment ça va. Ce qui vaut la peine avec les enfants. Hale cherche et texte quand une place s'ouvre. Gratuit, avec un clavardage illimite. Pas d'appli, pas de compte. Vos donnees restent au Canada.",
-    "twitterDescription": "Trouvez ce qu’il y a. Écoutez comment ça va. Ce qui vaut la peine avec les enfants. Gratuit, avec un clavardage illimite. Vos donnees restent au Canada."
+    "title": "Hale · le week-end, par texto",
+    "description": "Le week-end, par texto. Ce qu'il y a pres de toi, samedi. Hale cherche selon un age, un endroit et une place, et texte quand une place s'ouvre. Gratuit, avec un clavardage illimite. Tu textes en premier, sur iMessage. Tes donnees restent au Canada.",
+    "ogDescription": "Le week-end, par texto. Ce qu'il y a pres de toi, samedi. Hale cherche et texte quand une place s'ouvre. Gratuit, avec un clavardage illimite. Tes donnees restent au Canada.",
+    "twitterDescription": "Le week-end, par texto. Ce qu'il y a pres de toi, samedi. Gratuit, avec un clavardage illimite. Tes donnees restent au Canada."
   },
   "Header": {
     "navPricing": "Tarifs",
@@ -56,258 +56,72 @@
     "copied": "Copié ✓"
   },
   "Landing": {
-    "eyebrow": "Hale · /HAH-leh/ · hawaïen pour « maison »",
-    "heroH1a": "Trouvez ce qu’il y a.",
-    "heroH1b": "Écoutez comment",
-    "heroH1Accent": "ça va.",
-    "heroSub": "Ce qui vaut la peine avec les enfants.",
+    "heroH1a": "Le week-end,",
+    "heroH1b": "par",
+    "heroH1Accent": "texto.",
+    "heroSub": "Ce qu'il y a pres de toi, samedi.",
+    "heroThreadCap": "Un exemple de texto a Hale, et la reponse",
+    "bubbleYou": "Toi :",
+    "bubbleHale": "Hale :",
+    "typingLabel": "Hale est en train d'ecrire",
     "heroThread": [
       {
         "dir": "out",
-        "text": "Bonjour — Mia a 4 ans, on est à Stouffville, L4A. La natation et les programmes d’automne."
+        "text": "Natation samedi, pres de chez nous. Elle a 4 ans."
       },
       {
         "dir": "in",
-        "text": "Voici ce qu’il y a pour vos enfants cette année :\n1. Natation parent-enfant (2 à 4 ans) — les samedis à 9 h 15, d’après le guide des loisirs de Stouffville.\n2. Jeu libre préscolaire (18 mois à 4 ans) — sans inscription, d’après la page de la bibliothèque.\n3. Petits bougeurs (2 à 5 ans) — le centre communautaire l’annonce, mais les horaires d’hiver ne sont pas encore affichés."
+        "text": "Samedi matin, natation parent-enfant, et un jeu libre tout pres. Je surveille si une place se libere."
       }
     ],
-    "heroFounding": "Gratuit, avec un clavardage illimite.",
-    "heroThreadCap": "Exemple : un premier texto à Hale, et la réponse",
-    "bubbleYou": "Vous :",
-    "bubbleHale": "Hale :",
-    "threadEyebrow": "Texter Hale, ça ressemble à ça",
-    "threadH2a": "Textez-moi comme vous textez",
-    "threadH2Accent": "un ami.",
-    "threadLede": "Pas d'appli, pas de menus, et rien n'est reserve.",
-    "threadCap": "Votre fil avec Hale",
-    "threadBubbles": [
-      {
-        "dir": "time",
-        "text": "Apres ton choix"
-      },
+    "heroTerms": "Tu textes en premier, sur iMessage. Tes donnees restent au Canada -",
+    "heroTermsLink": "politique de confidentialite",
+    "findH2": "Un age, un endroit, une place.",
+    "findLine": "Je cherche, je surveille, et je texte quand une place s'ouvre.",
+    "findCardTitle": "En surveillance",
+    "findCardBody": "Une classe pleine reste surveillee. Je texte quand une place s'ouvre.",
+    "inboxH2": "Une ligne, depuis ta boite.",
+    "inboxLine": "Connecte Gmail ou Google Calendar, et je texte l'activite et l'heure.",
+    "inboxCardMeta": "Depuis ton agenda",
+    "inboxCard": "Natation - samedi, 9 h 15",
+    "loopH2": "Une question, puis la suite.",
+    "loopLine": "Au milieu, je demande comment ca se passe. Ce que tu dis oriente la prochaine recherche.",
+    "loopThread": [
       {
         "dir": "in",
-        "text": "Parent et tout-petit, c'est celui-la. L'heure et le lien viennent apres ce choix."
+        "text": "Comment ca se passe?"
       },
       {
         "dir": "out",
-        "text": "Celui-la."
-      },
-      {
-        "dir": "time",
-        "text": "Pendant qu'un cours est plein"
+        "text": "On a adore. La salle etait froide."
       },
       {
         "dir": "in",
-        "text": "Les places en loisirs, TEE et natation restent surveillees. Un texto part quand une place s'ouvre."
-      },
-      {
-        "dir": "time",
-        "text": "En cours de route"
-      },
-      {
-        "dir": "in",
-        "text": "Comment ca se passe? Une ligne suffit, et elle oriente la prochaine recherche."
-      },
-      {
-        "dir": "time",
-        "text": "Depuis une boite connectee"
-      },
-      {
-        "dir": "in",
-        "text": "Natation a 9 h 15."
-      },
-      {
-        "dir": "out",
-        "text": "L'eau etait super. La salle etait froide."
-      },
-      {
-        "dir": "in",
-        "text": "La prochaine recherche penche vers plus chaud, et reste pres de chez toi."
+        "text": "La prochaine fois, je cherche un endroit plus chaud."
       }
     ],
-    "howEyebrow": "Comment Hale fonctionne",
-    "howH2a": "Un plan pour l’année,",
-    "howH2Accent": "dans un seul fil.",
-    "steps": [
+    "familyH2": "Ta famille, un seul fil.",
+    "familyLine": "Le groupe rassemble parents et aidants. Ce que tu me dis reste avec toi.",
+    "familyCardGroup": "Groupe familial",
+    "familyCardGroupBody": "Le premier parent le reclame. Les aidants rejoignent le meme fil.",
+    "familyCardMemory": "Memoire",
+    "familyCardMemoryBody": "Ce que tu dis reste dans la famille, et oriente la prochaine recherche.",
+    "faqH2": "Questions",
+    "faqMore": "D'autres questions",
+    "faq": [
       {
-        "when": "Tout de suite",
-        "step": "Vous envoyez un age, un endroit et une place",
-        "body": "Un texto. Pas d'appli, pas de compte. Vous envoyez les noms, les ages et un code postal quand Hale le demande."
+        "question": "Que fait Hale?",
+        "answer": "Je cherche ce qu'il y a pour un age, un endroit et une place, et je texte quand une place s'ouvre. Je ne reserve pas et je n'inscris personne."
       },
       {
-        "when": "Dans le meme fil",
-        "step": "Je renvoie ce que j'ai trouve",
-        "body": "La premiere seance, c'est la recherche. Les noms, les ages et un code postal viennent quand Hale le demande."
+        "question": "Hale est-il gratuit?",
+        "answer": "Gratuit, avec un clavardage illimite, est en ligne aujourd'hui. Plus et Famille arrivent bientot. Pas de prix."
       },
       {
-        "when": "Ensuite, au fil des choses",
-        "step": "Je continue de surveiller",
-        "body": "Un cours plein reste surveille. Je texte quand une place s'ouvre."
+        "question": "Ou restent nos donnees?",
+        "answer": "Au Canada. Tu textes en premier, sur iMessage."
       }
-    ],
-    "howRail": "Comment Hale fonctionne, en trois étapes",
-    "consentLine": "Je cherche et je demande. Rien n'est reserve. Un recu pour chaque chose, et rien ne se fait sans votre oui.",
-    "watchEyebrow": "La partie qui compte",
-    "watchH2Accent": "je cherche deja.",
-    "watchLede": "{count} municipalites dans la RGT. Un texto part quand une place s'ouvre.",
-    "contrast": [
-      {
-        "title": "Sans moi",
-        "body": "Vous gardez la recherche. Chaque age, chaque endroit, et chaque cours deja plein."
-      },
-      {
-        "title": "Avec moi",
-        "body": "Je cherche. Les places en loisirs, TEE et natation restent surveillees, et je texte quand une place s'ouvre."
-      }
-    ],
-    "coverageLine": "Dans {count} municipalités du Grand Toronto.",
-    "watched": [
-      {
-        "title": "Recherche en direct",
-        "body": "L'age, l'endroit et le genre de place. Vous demandez; Hale cherche."
-      },
-      {
-        "title": "Places en loisirs",
-        "body": "Les programmes de loisirs restent surveilles. Un texto part quand une place s'ouvre."
-      },
-      {
-        "title": "Natation et TEE",
-        "body": "Les places en natation et en TEE restent surveillees de la meme facon."
-      },
-      {
-        "title": "Recus de la boite",
-        "body": "Une boite connectee peut montrer un cours que vous avez deja inscrit. Hale reconnait le recu. Il ne vous a pas inscrit."
-      }
-    ],
-    "watchRail": "Ce que je surveille",
-    "coachingEyebrow": "Apres votre choix",
-    "coachingH2a": "Une question,",
-    "coachingH2Accent": "puis la prochaine recherche.",
-    "coachingLede": "Vous choisissez quelque chose. Hale pose une question en cours de route. La reponse oriente la prochaine recherche.",
-    "coaching": [
-      {
-        "step": "Vous choisissez",
-        "body": "Vous choisissez quoi essayer. Hale ne le reserve pas et ne vous inscrit pas."
-      },
-      {
-        "step": "Hale demande",
-        "body": "Une question, en cours de route. Une ligne suffit."
-      },
-      {
-        "step": "La prochaine recherche",
-        "body": "Ce que vous dites oriente ce que Hale cherche ensuite."
-      }
-    ],
-    "coachingStopTitle": "La ou je m'arrete",
-    "coachingStopBody": "Hale ne pose pas de diagnostic et ne nomme jamais une dose. Pour la sante de votre enfant, parlez a votre medecin.",
-    "helpersEyebrow": "Vos aidants",
-    "helpersH2a": "Vos aidants,",
-    "helpersH2Accent": "seulement ce qu’il leur faut.",
-    "caregivers": [
-      {
-        "title": "Le groupe familial",
-        "body": "Parents, grands-parents et gardiens. Le premier parent reclame le groupe. Autant de membres que vous voulez."
-      },
-      {
-        "title": "Votre coparent",
-        "body": "La deuxieme vraie personne devient coparent. Les questions de tour de role restent dans le fil: qui s'occupe de quoi, un ajout au calendrier, et annuler. Deux familles se rencontrent seulement si les deux disent oui."
-      }
-    ],
-    "helpersRail": "Vos aidants",
-    "privacyEyebrow": "Confidentialité",
-    "privacyH2a": "La confidentialité,",
-    "privacyH2Accent": "à la canadienne.",
-    "privacyBody1": "Les données de votre famille restent au Canada, et l’information d’un enfant est sensible par défaut. Chaque permission s’accorde par texto et se retire par texto.",
-    "privacyLink": "Comment je traite vos données",
-    "closingH2a": "Hale est",
-    "closingH2Accent": "gratuit.",
-    "closingSub": "Clavardage illimite. C'est vous qui textez en premier. Pas de compte a rebours, juste le numero.",
-    "heroTerms": "C'est vous qui textez en premier, par iMessage. Vos donnees restent au Canada —",
-    "heroTermsLink": "politique de confidentialité",
-    "heroLoopCap": "Le fil d’une famille avec Hale, du début à la fin",
-    "heroLoop": [
-      {
-        "elapsed": "Le premier texto",
-        "rows": [
-          {
-            "dir": "out",
-            "text": "Mia a 3 ans, on est à Vaughan. La natation, et ce qu’il y a autour."
-          },
-          {
-            "dir": "in",
-            "text": "Voici ce qu’il y a pour vos enfants cette année :\n1. Natation parent-enfant (2 à 4 ans) — les samedis à 9 h 15, d’après le guide des loisirs de la ville.\n2. Jeu libre préscolaire (18 mois à 4 ans) — sans inscription, d’après la page de la bibliothèque.\n3. Petits bougeurs (2 à 5 ans) — le centre communautaire l’annonce, mais les horaires d’hiver ne sont pas encore affichés."
-          }
-        ]
-      },
-      {
-        "elapsed": "Apres le choix",
-        "rows": [
-          {
-            "dir": "in",
-            "text": "L'heure et le lien viennent apres ce choix."
-          }
-        ]
-      },
-      {
-        "elapsed": "En cours de route",
-        "rows": [
-          {
-            "dir": "in",
-            "text": "Comment ca se passe? Une ligne suffit."
-          },
-          {
-            "dir": "out",
-            "text": "La salle etait froide."
-          },
-          {
-            "dir": "in",
-            "text": "La prochaine recherche penche vers plus chaud, et reste pres de chez toi."
-          }
-        ]
-      }
-    ],
-    "findEyebrow": "Ce que je vous enverrais ce soir",
-    "findH2a": "Trois choses,",
-    "findH2Accent": "pas trente.",
-    "findLede": "Vous nommez un age, un endroit et la place. Hale cherche ce qui se passe vraiment, et revient avec quelques pistes, pas une liste. Une natation pour tout-petit pres de Georgetown un samedi, c'est le genre de demande, pas une promesse de resultat.",
-    "findCap": "Un exemple de ce qui revient",
-    "finds": [
-      {
-        "name": "Natation parent-enfant",
-        "ageFit": "2 à 4 ans",
-        "when": "Les samedis, 9 h 15",
-        "sourceName": "le guide des loisirs de la ville"
-      },
-      {
-        "name": "Jeu libre préscolaire",
-        "ageFit": "18 mois à 4 ans",
-        "when": "Sans inscription, les mardis et jeudis matin",
-        "sourceName": "la bibliothèque"
-      },
-      {
-        "name": "Petits bougeurs",
-        "ageFit": "2 à 5 ans",
-        "when": null,
-        "sourceName": "le centre communautaire"
-      }
-    ],
-    "findNoTime": "Horaires d’hiver pas encore affichés",
-    "findHonesty": "Si une page n'a pas encore affiche d'heure, Hale le dit au lieu d'en inventer une.",
-    "watchH2a": "La place que vous avez demandee,",
-    "watchSpots": "Quand le cours que vous vouliez est deja plein, je continue de le surveiller et je texte quand une place s'ouvre.",
-    "seeH2a": "Puis je reviens",
-    "seeH2Accent": "vous demander.",
-    "seeBody": "En cours de route, Hale pose une question. Une ligne suffit, et elle oriente la prochaine recherche. Ce que vous dites reste dans votre famille.",
-    "howLines": [
-      "Vous textez en premier, pas de menus, et je ne texte jamais un numero qui ne m'a pas ecrit.",
-      "Vous envoyez les noms, les ages et un code postal quand Hale le demande. Un texto. Pas d'appli, pas de compte.",
-      "La deuxieme vraie personne du groupe familial est coparent, sur son propre numero, dans le meme clavardage gratuit.",
-      "Parents, grands-parents et gardiens peuvent etre dans le groupe. Le premier parent le reclame."
-    ],
-    "howConnectors": "Si vous connectez Gmail ou Google Calendar, Hale lit le nouveau courriel et les evenements et envoie une courte ligne, l'activite et l'heure. Hale ne renvoie rien vers Google.",
-    "centresLine": "Vous dirigez un centre ON y va, une succursale de bibliothèque ou un centre? Voici quoi dire à un parent au sujet de Hale.",
-    "centresLink": "Pour les centres"
+    ]
   },
   "About": {
     "metaTitle": "À propos · Hale",
@@ -795,6 +609,6 @@
   },
   "Jsonld": {
     "orgDescription": "Hale est un planificateur pour l'annee de vos enfants. Il cherche selon un age, un endroit et une place, surveille les places en loisirs, et texte quand une place s'ouvre. Gratuit, avec un clavardage illimite. Les donnees de chaque famille restent au Canada.",
-    "appDescription": "Trouvez ce qu’il y a. Écoutez comment ça va. Un planificateur pour l'annee de vos enfants: Hale cherche selon un age, un endroit et une place, texte quand une place s'ouvre, et ne reserve pas un cours et n'inscrit personne. Gratuit, avec un clavardage illimite. Les donnees de votre famille ne quittent pas le Canada."
+    "appDescription": "Le week-end, par texto. Un planificateur pour l'annee de vos enfants : Hale cherche selon un age, un endroit et une place, texte quand une place s'ouvre, et ne reserve pas un cours et n'inscrit personne. Gratuit, avec un clavardage illimite. Les donnees de votre famille ne quittent pas le Canada."
   }
 }

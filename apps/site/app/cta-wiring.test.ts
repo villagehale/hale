@@ -279,16 +279,17 @@ describe('the chooser doors are wired the same way', () => {
     }
   });
 
-  it('really is reading chooser links — the header pill is on every chromed page, the landing adds hero and closing', () => {
+  it('really is reading chooser links — the header pill is on every chromed page, the landing adds the hero', () => {
     expect(chooserAnchors.length).toBeGreaterThanOrEqual(12);
     const chooserPlacements = new Set(
       chooserAnchors.map((anchor) => /data-cta-placement="([^"]*)"/.exec(anchor.tag)?.[1] ?? ''),
     );
-    for (const placement of ['header', 'hero', 'closing']) {
+    for (const placement of ['header', 'hero']) {
       expect(chooserPlacements, `the walk must reach the ${placement} chooser door`).toContain(
         placement,
       );
     }
+    expect(chooserPlacements).not.toContain('closing');
   });
 });
 

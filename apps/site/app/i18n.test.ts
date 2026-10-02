@@ -285,19 +285,17 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
    * on where the sentence sat would have made a layout change look like a
    * founder decision being overturned.
    */
-  const LOCKED: Record<string, string[]> = {
-    en: ['You text names, ages, and a postal code', 'No app, no account.', 'no menus'],
-    fr: ['les noms, les ages et un code postal', "Pas d'appli, pas de compte.", 'pas de menus'],
-    zh: ['名字、年龄和一个邮编', '不用装应用，不用注册账号。', '没有菜单'],
-  };
-
-  it('keeps the locked words in the Landing namespace of every locale', () => {
+  it('keeps the intake script in the greeting, not on the trimmed homepage', () => {
+    // The first text is still names, ages, and a postal code. That sentence
+    // lives in the greeting a parent actually receives. The homepage no longer
+    // repeats it.
+    expect(bundles.en.Text.greeting).toContain('Names, ages, and postal code');
+    expect(bundles.fr.Text.greeting.length).toBeGreaterThan(20);
     for (const locale of ['en', 'fr', 'zh'] as const) {
       const landing = JSON.stringify(bundles[locale].Landing);
-      for (const phrase of LOCKED[locale] ?? []) {
-        expect(landing, `${locale}.Landing must still say "${phrase}"`).toContain(phrase);
-      }
-      expect(landing, `${locale} must not reopen "you say hi"`).not.toMatch(/You say hi|dites bonjour/i);
+      expect(landing, `${locale} must not reopen "you say hi"`).not.toMatch(
+        /You say hi|dites bonjour/i,
+      );
     }
     expect(JSON.stringify(bundles.en.Landing)).not.toMatch(/no forms/i);
   });
@@ -315,14 +313,19 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
 
   it('keeps HomeMeta, page meta, and Jsonld on the kids-year lines', () => {
     const h1 = {
-      en: 'Find what’s on. Hear how it went.',
-      fr: 'Trouvez ce qu’il y a. Écoutez comment ça va.',
-      zh: '看看有什么。听听怎么样。',
+      en: 'Weekends, sorted by text.',
+      fr: 'Le week-end, par texto.',
+      zh: '周末，发短信就好。',
     } as const;
     const sub = {
-      en: 'What’s worth doing with the kids.',
-      fr: 'Ce qui vaut la peine avec les enfants.',
-      zh: '值得和孩子一起做的事。',
+      en: 'What’s on near you, this Saturday.',
+      fr: "Ce qu'il y a pres de toi, samedi.",
+      zh: '这周六，你家附近有什么。',
+    } as const;
+    const textMeta = {
+      en: 'Find what’s on. Hear how it went. What’s worth doing with the kids.',
+      fr: 'Trouvez ce qu’il y a. Écoutez comment ça va. Ce qui vaut la peine avec les enfants.',
+      zh: '看看有什么。听听怎么样。值得和孩子一起做的事。',
     } as const;
     const banned = [
       'village your family lost',
@@ -369,10 +372,8 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
       }
       expect(bundle.HomeMeta.description.startsWith(h1[locale])).toBe(true);
       expect(bundle.HomeMeta.twitterDescription).toContain(sub[locale]);
-      // zh sets the two locked sentences solid; en and fr take a word space.
-      const textMeta =
-        locale === 'zh' ? `${h1[locale]}${sub[locale]}` : `${h1[locale]} ${sub[locale]}`;
-      expect(bundle.Text.metaDescription).toBe(textMeta);
+      // /text keeps the kids-year lines. The homepage metadata is the new hero.
+      expect(bundle.Text.metaDescription).toBe(textMeta[locale]);
       expect(bundle.Jsonld.appDescription.startsWith(h1[locale])).toBe(true);
     }
   });

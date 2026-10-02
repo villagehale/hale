@@ -1755,6 +1755,13 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   to { transform: translate3d(1100px, 0, 0); }
 }
 
+/* Typing dots in the hero phone. Opacity only, so reduced motion can freeze
+ * them in place without a jump. The static fallback is in the v4 reduce block. */
+@keyframes v4-type {
+  0%, 80%, 100% { opacity: 0.35; }
+  40% { opacity: 1; }
+}
+
 @layer components {
   /* Section headings use --font-display (system Helvetica Neue stack). The
    * weight still rises as the size falls: <2.5rem takes 620, 2.5–4rem 580–600.
@@ -1887,9 +1894,9 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     z-index: -1;
     pointer-events: none;
     background: radial-gradient(
-      ellipse 78% 68% at 50% 46%,
-      light-dark(rgb(253 252 250 / 0.66), rgb(12 26 54 / 0.72)) 0%,
-      light-dark(rgb(253 252 250 / 0.66), rgb(12 26 54 / 0.72)) 46%,
+      ellipse 120% 85% at 38% 42%,
+      light-dark(rgb(253 252 250 / 0.82), rgb(12 26 54 / 0.82)) 0%,
+      light-dark(rgb(253 252 250 / 0.72), rgb(12 26 54 / 0.74)) 58%,
       transparent 100%
     );
   }
@@ -1992,6 +1999,14 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-btn:hover,
   .v4-btn-solid:hover { transform: translateY(-1px); }
   .v4-btn-solid:hover { background: var(--color-navy-deep); }
+  .v4-btn:focus-visible,
+  .v4-btn-solid:focus-visible,
+  .v4-navlink:focus-visible,
+  .v4-hero-terms a:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+  }
+  .v4-hero-offer .v4-btn-solid { min-height: 44px; }
 
   /* ── Hero content ─────────────────────────────────────────────────────── */
   .v4-hero-body {
@@ -2474,6 +2489,145 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     text-align: left;
   }
 
+  /* The hero is a stage: the words, then a phone rising from the bottom.
+   * Desktop puts the phone beside the words. Slot height is fixed so the
+   * thread cannot shift the headline when it paints. */
+  .v4-hero-top .v4-hero-body {
+    justify-content: flex-end;
+    width: 100%;
+    padding-bottom: 0;
+  }
+  .v4-hero-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: min(100%, 72rem);
+    gap: 1.25rem;
+  }
+  .v4-hero-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.85rem;
+  }
+  .v4-phone-slot {
+    width: min(17.5rem, 78vw);
+    height: 16.5rem;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .v4-phone {
+    display: flex;
+    flex-direction: column;
+    height: 32rem;
+    padding: 0.55rem 0.55rem 0;
+    border-radius: 2rem 2rem 0 0;
+    background: var(--color-navy);
+    box-shadow: 0 1.5rem 3rem light-dark(rgb(23 41 74 / 0.18), rgb(12 26 54 / 0.5));
+  }
+  .v4-phone-island {
+    align-self: center;
+    width: 4.5rem;
+    height: 0.35rem;
+    margin: 0.35rem 0 0.45rem;
+    border-radius: var(--r-full);
+    background: light-dark(rgb(253 252 250 / 0.55), rgb(246 241 231 / 0.45));
+  }
+  .v4-phone-screen {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    flex: 1;
+    padding: 0.85rem 0.75rem 1.5rem;
+    border-radius: 1.45rem 1.45rem 0 0;
+    background: var(--color-linen);
+  }
+  .v4-typing {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-height: 2.25rem;
+    padding: 0.7rem 0.9rem;
+    border-radius: 1.25rem;
+    border-bottom-left-radius: 0.4rem;
+    background: light-dark(rgb(255 255 255 / 0.74), rgb(255 255 255 / 0.09));
+  }
+  .v4-typing span[aria-hidden='true'] {
+    width: 0.38rem;
+    height: 0.38rem;
+    border-radius: var(--r-full);
+    background: var(--color-slate-green);
+    animation: v4-type 1.2s var(--ease-breathe) infinite;
+  }
+  .v4-typing span[aria-hidden='true']:nth-child(3) { animation-delay: 0.15s; }
+  .v4-typing span[aria-hidden='true']:nth-child(4) { animation-delay: 0.3s; }
+
+  .v4-home-rest {
+    display: flex;
+    flex-direction: column;
+    gap: 4rem;
+    padding-top: 4rem;
+    padding-bottom: 2rem;
+  }
+  .v4-beat {
+    display: grid;
+    align-items: center;
+    gap: 1.5rem;
+  }
+  .v4-beat-card h3 { margin-top: 0.35rem; }
+  .v4-beat-kicker {
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--color-slate-green);
+  }
+  .v4-beat-pair {
+    display: grid;
+    gap: 1rem;
+  }
+  .v4-mini {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    padding: 1.25rem;
+    border-radius: var(--r-xl);
+    text-align: left;
+  }
+  .v4-faq { padding-bottom: 4rem; }
+  @media (min-width: 800px) {
+    .v4-beat {
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+    }
+    .v4-beat-flip > :first-child { order: 2; }
+    .v4-beat-pair { grid-template-columns: 1fr 1fr; }
+  }
+  @media (min-width: 960px) {
+    .v4-hero-top .v4-hero-body {
+      justify-content: center;
+      padding-bottom: 3rem;
+    }
+    .v4-hero-stage {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: 3rem;
+      text-align: left;
+    }
+    .v4-hero-copy { align-items: flex-start; }
+    .v4-phone-slot {
+      height: 34rem;
+      overflow: visible;
+    }
+    .v4-phone {
+      height: 34rem;
+      padding: 0.55rem;
+      border-radius: 2rem;
+    }
+    .v4-phone-screen { border-radius: 1.45rem; }
+  }
+
   /* The /text door's exchange — the same thread on a page with no photo under
    * it. The landing's version sits on `.v4-glass` over the shore; /text is a
    * flat warm page, so the plate is the subpage card surface instead, and the
@@ -2635,6 +2789,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     .v4-btn,
     .v4-btn-solid,
     .v4-chip { transition: none; }
+    /* Dots stay visible and still. The sr-only label does not depend on motion. */
+    .v4-typing span[aria-hidden='true'] { animation: none; opacity: 1; }
   }
 
   /* /about founder lines. 48px circle over a 96px face-centered asset (2×).

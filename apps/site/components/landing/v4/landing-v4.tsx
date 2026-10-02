@@ -2,63 +2,35 @@ import Image from 'next/image';
 import heroShore from '~/assets/hale-shore-hero.webp';
 import { ChooserLink } from '~/components/chooser-link';
 import { LandingScrollAnalytics } from '~/components/landing-scroll-analytics';
-import { LogoMark } from '~/components/logo-mark';
-import { QrCode } from '~/components/qr-code';
+import { PricingSection } from '~/components/pricing-section';
+import { ProductFaqAccordion } from '~/components/product-faq-accordion';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
-import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
+import type { FaqItem } from '~/lib/faq';
 import { intakePrefill } from '~/lib/intake-prefill';
-import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
 import { siteJsonLd } from '~/lib/site/structured-data';
-import { CONTACT_EMAIL, buildSmsHref } from '~/lib/text-entry';
-import { ScrollRail } from './scroll-rail';
+import { CONTACT_EMAIL } from '~/lib/text-entry';
 
 /**
- * v4 — the liquid-glass shore. The live landing, and the design the whole
- * marketing site now wears: the shared chrome (SiteHeader/SiteFooter) and every
- * subpage speak this idiom, so a visitor never crosses from here into the old look.
+ * The homepage. Shore, glass, and the shared header and footer stay; the
+ * page itself is a short 2026 hero (one headline, one subhead, one door, a
+ * phone thread) and four product lines, then the live pricing cards and a
+ * short FAQ.
  *
- * The thesis: the name is Hawaiian for home, so the page opens on the shoreline
- * the name comes from — navy-scrimmed behind frosted glass — with the display in
- * Instrument Serif. The Asme aesthetic (glass pills, a serif hero, a dark-first
- * calm) rendered entirely in our own tokens: never black, always the Prussian
- * navy + warm cream + amber, and the whole page — hero included — flips on the
- * footer switch. No third-party video (the reference's CloudFront clips are not
- * ours to ship); the shore still and the glass do the work.
- *
- * All copy is keyed by locale (`Landing` namespace). The home radar states
- * how many GTA municipalities Hale covers; it does not list them, and a city
- * name is not a link to /text.
+ * Hale finds. The bubbles do not book, register, or name a town. Copy is the
+ * Landing namespace. With no number provisioned the door is email, and the
+ * iMessage trust line is withheld because it would not be true.
  */
 
-interface Card {
-  title: string;
-  body: string;
-}
-interface Step {
-  step: string;
-  body: string;
-}
-/** A step that also says WHEN it happens — the how-it-works trio only. */
-interface TimedStep extends Step {
-  when: string;
-}
-/** A thread row: a message from either side, or the timestamp that separates two
- * legs of the registration sequence. */
 interface ThreadRow {
-  dir: 'in' | 'out' | 'time';
+  dir: 'in' | 'out';
   text: string;
 }
 
-/**
- * The word space in front of a headline's accent span. Latin needs it between
- * two words; Chinese sets solid, and several leads already end in a full-width
- * comma, so a literal JSX space prints a gap mid-phrase. The kids-year hero
- * strings were locked against this rule.
- */
+/** Latin needs a word space before the accent; Chinese sets solid. */
 function accentSeparator(locale: Locale): string {
   return locale === 'zh' ? '' : ' ';
 }
@@ -66,48 +38,24 @@ function accentSeparator(locale: Locale): string {
 export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: string }) {
   const t = getTranslator(locale, 'Landing');
   const common = getTranslator(locale, 'Common');
-  const textNs = getTranslator(locale, 'Text');
   const prefill = intakePrefill(locale);
-  // The closing QR is scanned by a phone whose OS we do not know, so it keeps
-  // the cross-platform `?&body=` form. The buttons below retarget themselves
-  // to the OS-specific form after hydration.
-  const smsHref = smsNumber ? buildSmsHref(smsNumber, null, prefill) : null;
+  const live = smsNumber.length > 0;
 
   const heroBubbles = t.raw('heroThread') as ThreadRow[];
-  const bubbles = t.raw('threadBubbles') as ThreadRow[];
-  const steps = t.raw('steps') as TimedStep[];
-  const contrast = t.raw('contrast') as Card[];
-  const watched = t.raw('watched') as Card[];
-  const coaching = t.raw('coaching') as Step[];
-  const caregivers = t.raw('caregivers') as Card[];
-
-  /**
-   * Who said it. A bubble's side is drawn with `align-self` and a fill, and in
-   * dark the out-bubble's navy sits on a near-identical glass ground — so
-   * direction is a visual cue only, and a reader who cannot see the alignment
-   * gets a bare "YES" with no idea whose turn it was. The prefix is sr-only: the
-   * same sentence, said to the reader the layout does not reach.
-   */
+  const loopBubbles = t.raw('loopThread') as ThreadRow[];
+  const faq = t.raw('faq') as FaqItem[];
   const speaker = (dir: ThreadRow['dir']) => (dir === 'in' ? t('bubbleHale') : t('bubbleYou'));
 
   return (
     <main id="main" tabIndex={-1}>
-      {/* Renders nothing — how far down this long page a reader actually got, which is
-          the only signal it has about whether the scroll earns the closing CTA. */}
       <LandingScrollAnalytics />
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd(locale)) }}
       />
-      {/* The landing wears the SHARED sticky bar, byte-identical to every subpage
-          (site-chrome.test.ts pins it) rather than a second copy of the same pill
-          inline in the hero. It keeps the over-hero look because the hero below
-          runs UNDER it: .v4-hero-top pulls the section up by the bar's height and
-          pads it back, so the shore still fills the viewport from y=0. */}
       <SiteHeader locale={locale} />
 
-      {/* ── Hero — the shore behind glass ─────────────────────────────────── */}
       <section className="v4-hero v4-hero-top">
         <Image
           src={heroShore}
@@ -118,325 +66,143 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           sizes="100vw"
           className="v4-hero-art"
         />
-        {/* Ambient drift: two gradient sheets between the art and the scrim —
-            cloud-light over the sky, a glint band on the water. CSS-only; gone
-            (not frozen) under prefers-reduced-motion. The closing band reuses
-            .v4-hero without them: one breathing shore per page. */}
         <span className="v4-hero-drift v4-hero-drift-sky" aria-hidden="true" />
         <span className="v4-hero-drift v4-hero-drift-sea" aria-hidden="true" />
         <span className="v4-hero-scrim" aria-hidden="true" />
 
         <div className="v4-hero-body">
-          <p className="v4-eyebrow v4-pronounce">{t('eyebrow')}</p>
-          <h1 className="v4-display v4-hero-h1 text-balance">
-            {t('heroH1a')}
-            <br />
-            {t('heroH1b')}
-            {accentSeparator(locale)}
-            <span className="v4-accent">{t('heroH1Accent')}</span>
-          </h1>
-          <p className="v4-hero-sub">{t('heroSub')}</p>
+          <div className="v4-hero-stage">
+            <div className="v4-hero-copy">
+              <h1 className="v4-display v4-hero-h1 text-balance">
+                {t('heroH1a')}
+                <br />
+                {t('heroH1b')}
+                {accentSeparator(locale)}
+                <span className="v4-accent">{t('heroH1Accent')}</span>
+              </h1>
+              <p className="v4-hero-sub">{t('heroSub')}</p>
+              <div className="v4-hero-offer">
+                {live ? (
+                  <ChooserLink
+                    locale={locale}
+                    placement="hero"
+                    className="v4-btn-solid v4-glass"
+                    smsNumber={smsNumber}
+                    prefill={prefill}
+                  >
+                    {common('textHale')} <span aria-hidden="true">→</span>
+                  </ChooserLink>
+                ) : (
+                  <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid v4-glass">
+                    {common('emailHale')}
+                  </a>
+                )}
+                {live && (
+                  <p className="v4-hero-terms">
+                    {t('heroTerms')}{' '}
+                    <a href={localeHref(locale, '/privacy')} className="underline underline-offset-2">
+                      {t('heroTermsLink')}
+                    </a>
+                    .
+                  </p>
+                )}
+              </div>
+            </div>
 
-          {/* The ten-second proof. Not the transcript below in miniature: that
-              one runs the four scheduled legs of a registration already set up,
-              and this is the moment BEFORE it — a parent's first text, and the
-              live find that comes back. No watch ask. Same bubbles, same tokens;
-              the wrapper is what scopes the sizing, and what keeps the
-              transcript's own scans (which key on a leading `v4-thread`) about
-              the transcript. */}
-          <div className="v4-hero-thread v4-thread v4-glass">
-            {/* The transcript below opens on a visible `v4-thread-cap` saying
-                whose thread this is. The hero says the same thing to the same
-                reader and spends no fold height on it: the exchange is a demo,
-                and a reader who can see it already knows that from the bubbles.
-                (A `role="group"` + aria-label was the other way, and lints as a
-                fieldset — which this is not.) */}
-            <p className="sr-only">{t('heroThreadCap')}</p>
-            {heroBubbles.map((row, i) => (
-              <p key={`${i}-${row.dir}`} className={`v4-bubble v4-bubble-${row.dir}`}>
+            <div className="v4-phone-slot">
+              <div className="v4-phone">
+                <span className="v4-phone-island" aria-hidden="true" />
+                <div className="v4-phone-screen v4-hero-thread">
+                  <p className="sr-only">{t('heroThreadCap')}</p>
+                  {heroBubbles.map((row) => (
+                    <p key={`${row.dir}-${row.text}`} className={`v4-bubble v4-bubble-${row.dir}`}>
+                      <span className="sr-only">{speaker(row.dir)} </span>
+                      {row.text}
+                    </p>
+                  ))}
+                  <p className="v4-typing">
+                    <span className="sr-only">{t('typingLabel')}</span>
+                    <span aria-hidden="true" />
+                    <span aria-hidden="true" />
+                    <span aria-hidden="true" />
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="v4-home-rest">
+        <section className="shell v4-beat">
+          <div>
+            <h2 className="v4-display v4-h2">{t('findH2')}</h2>
+            <p className="v4-lede">{t('findLine')}</p>
+          </div>
+          <article className="v4-card v4-glass v4-beat-card">
+            <h3 className="text-spruce">{t('findCardTitle')}</h3>
+            <p>{t('findCardBody')}</p>
+          </article>
+        </section>
+
+        <section className="shell v4-beat v4-beat-flip">
+          <div>
+            <h2 className="v4-display v4-h2">{t('inboxH2')}</h2>
+            <p className="v4-lede">{t('inboxLine')}</p>
+          </div>
+          <article className="v4-card v4-glass v4-beat-card">
+            <p className="v4-beat-kicker">{t('inboxCardMeta')}</p>
+            <h3 className="text-spruce">{t('inboxCard')}</h3>
+          </article>
+        </section>
+
+        <section className="shell v4-beat">
+          <div>
+            <h2 className="v4-display v4-h2">{t('loopH2')}</h2>
+            <p className="v4-lede">{t('loopLine')}</p>
+          </div>
+          <div className="v4-mini v4-glass">
+            {loopBubbles.map((row) => (
+              <p key={`${row.dir}-${row.text}`} className={`v4-bubble v4-bubble-${row.dir}`}>
                 <span className="sr-only">{speaker(row.dir)} </span>
                 {row.text}
               </p>
             ))}
           </div>
+        </section>
 
-          {/* Stanley beat: ONE big CTA. A phone opens the composer; a laptop
-              keeps /text, where the QR and the number live. The founding line
-              rides with it rather than waiting for the closing band: a visitor
-              who is already convinced should not have to scroll a whole page
-              to act on it. */}
-          <div className="v4-hero-offer">
-            <p className="v4-hero-founding">{t('heroFounding')}</p>
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              {smsHref ? (
-                <ChooserLink
-                  locale={locale}
-                  placement="hero"
-                  className="v4-btn-solid v4-glass"
-                  smsNumber={smsNumber}
-                  prefill={prefill}
-                >
-                  {common('textHale')} <span aria-hidden="true">→</span>
-                </ChooserLink>
-              ) : (
-                <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid v4-glass">
-                  {common('emailHale')}
-                </a>
-              )}
-            </div>
-            {smsHref && (
-              <p className="v4-hero-terms">
-                {t('heroTerms')}{' '}
-                <a href={localeHref(locale, '/privacy')} className="underline underline-offset-2">
-                  {t('heroTermsLink')}
-                </a>
-                .
-              </p>
-            )}
+        <section className="shell v4-beat v4-beat-flip">
+          <div>
+            <h2 className="v4-display v4-h2">{t('familyH2')}</h2>
+            <p className="v4-lede">{t('familyLine')}</p>
           </div>
-        </div>
-      </section>
-
-      {/*
-        ── The thread — one find, then what follows ─────────────────────────
-        An example of a live find (age, place, and a spot), not a result Hale
-        is promising and not the registration-morning sequence. The bubbles
-        are marketing copy: Hale does not book or register anyone, logistics
-        come after the pick, a full class stays watched, and one question
-        partway through shapes the next find. Do not quote flag-gated message
-        strings here. The hero exchange above is the ask; this is what the
-        thread looks like after.
-      */}
-      <section className="shell pt-12 sm:pt-20 lg:pt-28">
-        <p className="v4-eyebrow text-center">{t('threadEyebrow')}</p>
-        <h2 className="v4-display mx-auto mt-4 max-w-[18ch] text-center text-[clamp(1.9rem,4.4vw,3rem)] text-ink">
-          {t('threadH2a')}
-          {accentSeparator(locale)}
-          <span className="v4-accent">{t('threadH2Accent')}</span>
-        </h2>
-        <p className="v4-lede mx-auto text-center">{t('threadLede')}</p>
-
-        <div className="v4-thread v4-glass mt-6 sm:mt-10">
-          <p className="v4-thread-cap">{t('threadCap')}</p>
-          {bubbles.map((row, i) => (
-            <p
-              key={`${i}-${row.dir}`}
-              className={row.dir === 'time' ? 'v4-thread-time' : `v4-bubble v4-bubble-${row.dir}`}
-            >
-              {row.dir !== 'time' && <span className="sr-only">{speaker(row.dir)} </span>}
-              {row.text}
-            </p>
-          ))}
-        </div>
-      </section>
-
-      {/* ── How it works — three glass cards ──────────────────────────────── */}
-      <section className="shell py-12 sm:py-20 lg:py-28">
-        <p className="v4-eyebrow text-center">{t('howEyebrow')}</p>
-        {/* "Three texts, then quiet." is the hero's line now; this H2 says what
-            the three steps below actually are rather than repeating it. */}
-        <h2 className="v4-display v4-h2-wide mx-auto mt-4 max-w-[16ch] text-center">
-          {t('howH2a')}
-          {accentSeparator(locale)}
-          <span className="v4-accent">{t('howH2Accent')}</span>
-        </h2>
-        <ScrollRail className="v4-cardgrid mt-7 sm:mt-12" label={t('howRail')}>
-          {steps.map((s, i) => (
-            <article key={s.step} className="v4-card v4-glass">
-              {/* The numeral already carries the order, so the empty half of its
-               * line carries the first-week contract instead: when each step
-               * actually happens. Step three is "then every week" rather than a
-               * named day — the body names Sunday, the day weekly_plan ships
-               * (VIL-218 / F11). */}
-              <p className="v4-card-n">
-                0{i + 1}
-                <span className="v4-when">{s.when}</span>
-              </p>
-              <h3 className="text-spruce">{s.step}</h3>
-              <p>{s.body}</p>
+          <div className="v4-beat-pair">
+            <article className="v4-card v4-glass v4-beat-card">
+              <h3 className="text-spruce">{t('familyCardGroup')}</h3>
+              <p>{t('familyCardGroupBody')}</p>
             </article>
-          ))}
-        </ScrollRail>
+            <article className="v4-card v4-glass v4-beat-card">
+              <h3 className="text-spruce">{t('familyCardMemory')}</h3>
+              <p>{t('familyCardMemoryBody')}</p>
+            </article>
+          </div>
+        </section>
+      </div>
 
-        {/* The consent ladder, in one breath — the full three rungs live on /about. */}
-        <div className="v4-panel v4-glass mt-8 sm:mt-14">
-          <p className="text-[1.05rem] leading-[1.6] text-spruce">{t('consentLine')}</p>
-        </div>
-      </section>
+      <PricingSection locale={locale} />
 
-      {/* ── What I watch — the radar ─────────────────────────────────────── */}
-      <section className="shell py-12 sm:py-20 lg:py-28">
-        <p className="v4-eyebrow">{t('watchEyebrow')}</p>
-        <h2 className="v4-display v4-h2 mt-4">
-          {t('watchH2a')}
-          {accentSeparator(locale)}
-          <span className="v4-accent">{t('watchH2Accent')}</span>
-        </h2>
-        <p className="v4-lede">{t('watchLede', { count: MUNICIPALITY_COUNT })}</p>
-        {/* Calm watch truth, in the kids-year frame: the parent keeps the year,
-         * or Hale keeps the watch. No sell-out clock, no YES-once execute. */}
-        <div className="v4-contrast v4-panel v4-glass mt-5 sm:mt-8">
-          {contrast.map((cell) => (
-            <div key={cell.title}>
-              <h3 className="text-spruce">{cell.title}</h3>
-              <p>{cell.body}</p>
-            </div>
-          ))}
+      <section className="shell v4-faq">
+        <h2 className="v4-display v4-h2">{t('faqH2')}</h2>
+        <div className="mt-6 max-w-2xl">
+          <ProductFaqAccordion items={faq} />
         </div>
-        {/* One counted line. City names are not doors — nothing here links to /text. */}
-        <p className="v4-coverage mt-5 sm:mt-8">
-          {t('coverageLine', { count: MUNICIPALITY_COUNT })}
+        <p className="mt-6">
+          <a href={localeHref(locale, '/faq')} className="link">
+            {t('faqMore')}
+          </a>
         </p>
-        <ScrollRail className="v4-cardgrid-4 mt-7 sm:mt-12" label={t('watchRail')}>
-          {watched.map((item) => (
-            <article key={item.title} className="v4-card v4-glass">
-              <h3 className="text-spruce">{item.title}</h3>
-              <p>{item.body}</p>
-            </article>
-          ))}
-        </ScrollRail>
       </section>
 
-      {/* ── The caregivers, scoped ────────────────────────────────────────── */}
-      <section className="shell py-12 sm:py-20 lg:py-28">
-        <p className="v4-eyebrow">{t('helpersEyebrow')}</p>
-        <h2 className="v4-display v4-h2 mt-4">
-          {t('helpersH2a')}
-          {accentSeparator(locale)}
-          <span className="v4-accent">{t('helpersH2Accent')}</span>
-        </h2>
-        <ScrollRail className="v4-cardgrid-2 mt-6 sm:mt-10" label={t('helpersRail')}>
-          {caregivers.map((item) => (
-            <article key={item.title} className="v4-card v4-glass">
-              <h3 className="text-spruce">{item.title}</h3>
-              <p>{item.body}</p>
-            </article>
-          ))}
-        </ScrollRail>
-      </section>
-
-      {/*
-        ── Coaching — under the planner spine, not a second product ─────────
-        The words stay. The heading does not: it is not an H2, not the display
-        face, and not the amber accent the planner headline wears. A subhead
-        under "A planner for the year".
-      */}
-      <section className="shell py-8 sm:py-12">
-        <p className="v4-eyebrow">{t('coachingEyebrow')}</p>
-        <h3 className="v4-subhead mt-3">
-          {t('coachingH2a')}
-          {accentSeparator(locale)}
-          {t('coachingH2Accent')}
-        </h3>
-        <p className="v4-lede">{t('coachingLede')}</p>
-        <div className="v4-panel v4-glass mt-5 sm:mt-8">
-          <ol className="grid gap-5 sm:grid-cols-3 sm:gap-8">
-            {coaching.map((item) => (
-              <li key={item.step}>
-                <h3 className="text-[1.05rem] leading-[1.25] text-spruce">{item.step}</h3>
-                <p className="meta mt-2 text-[0.95rem] leading-[1.55]">{item.body}</p>
-              </li>
-            ))}
-          </ol>
-          {/* The medical boundary stays in the band — the topic list is in the FAQ. */}
-          <p className="meta mt-6 text-[0.95rem] leading-[1.55]">
-            <span className="font-semibold text-spruce">{t('coachingStopTitle')}</span> —{' '}
-            {t('coachingStopBody')}
-          </p>
-        </div>
-      </section>
-
-      {/* ── Privacy, the Canadian way ─────────────────────────────────────── */}
-      <section className="shell py-12 sm:py-20 lg:py-28">
-        <p className="v4-eyebrow">{t('privacyEyebrow')}</p>
-        <h2 className="v4-display v4-h2 mt-4">
-          {t('privacyH2a')}
-          {accentSeparator(locale)}
-          <span className="v4-accent">{t('privacyH2Accent')}</span>
-        </h2>
-        <div className="v4-lede">
-          <p>{t('privacyBody1')}</p>
-          <p className="mt-5">
-            <a href={localeHref(locale, '/privacy')} className="link">
-              {t('privacyLink')}
-            </a>
-          </p>
-        </div>
-      </section>
-
-      {/* ── Closing — the shore, and the founding invitation ──────────────── */}
-      <section className="shell pb-14 sm:pb-24">
-        <div className="v4-hero" style={{ minHeight: 'auto', borderRadius: 'var(--r-xl)' }}>
-          <Image
-            src={heroShore}
-            alt=""
-            aria-hidden="true"
-            fill
-            sizes="(max-width: 1100px) 100vw, 1100px"
-            className="v4-hero-art"
-            style={{ borderRadius: 'var(--r-xl)' }}
-          />
-          <span
-            className="v4-hero-scrim"
-            aria-hidden="true"
-            style={{ borderRadius: 'var(--r-xl)' }}
-          />
-          <div className="v4-hero-body v4-closing-body">
-            <span className="inline-flex items-center gap-3">
-              <LogoMark size={40} />
-              <Wordmark className="h-[1.6rem] text-navy" />
-            </span>
-            <h2 className="v4-display mt-4 text-[clamp(1.9rem,4vw,2.8rem)] text-ink">
-              {t('closingH2a')}
-              {accentSeparator(locale)}
-              <span className="v4-accent">{t('closingH2Accent')}</span>
-            </h2>
-            <p className="v4-hero-sub">{t('closingSub')}</p>
-            {/* One CTA here too (Stanley grammar) — the chip moved to the
-                chooser; the QR below keeps the zero-hop desktop path. */}
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              {smsHref ? (
-                <ChooserLink
-                  locale={locale}
-                  placement="closing"
-                  className="v4-btn-solid v4-glass"
-                  smsNumber={smsNumber}
-                  prefill={prefill}
-                >
-                  {common('textHale')} <span aria-hidden="true">→</span>
-                </ChooserLink>
-              ) : (
-                <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid v4-glass">
-                  {common('emailHale')}
-                </a>
-              )}
-            </div>
-            {/* The desktop path made visible: `sms:` is a silent no-op on a laptop
-                (rule #11 applied to the funnel), so the close also offers the same
-                URI as a scannable code. Hidden on phones, where the button IS the
-                path. */}
-            {/* On glass, not straight on the shore. This is the one block of
-                small secondary text the page sets over the artwork, and over the
-                bright water `.meta` measured 4.09:1 on rendered pixels — under
-                the 4.5:1 floor. The same glass the hero's exchange sits on puts
-                the page's own canvas back under it (5.0:1) without inventing a
-                panel treatment the page does not already use. */}
-            {smsHref && (
-              <div className="v4-glass mt-8 hidden items-center gap-6 rounded-[var(--r-lg)] p-5 text-left sm:flex">
-                <QrCode value={smsHref} label={textNs('qrAria')} />
-                <div className="max-w-sm">
-                  <p className="font-semibold">{textNs('onLaptop')}</p>
-                  <p className="meta mt-2 text-sm" style={{ lineHeight: 1.6 }}>
-                    {textNs('scanHint')}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Footer — shared with every subpage; the theme switch lives here ── */}
       <SiteFooter locale={locale} />
     </main>
   );

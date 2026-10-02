@@ -704,9 +704,9 @@ describe('the wordmark is drawn art, not set type', () => {
       'landing/v4/landing-v4',
     ].map((name) => readFileSync(fileURLToPath(new URL(`../components/${name}.tsx`, import.meta.url)), 'utf8'));
     const drawn = components.flatMap((source) => [...source.matchAll(/<Wordmark\b/g)]);
-    // /text no longer draws its own mark. The shared header (site-header) is
-    // the lockup on that page, same turtle tile and wordmark as the landing.
-    expect(drawn).toHaveLength(4);
+    // /text no longer draws its own mark, and the homepage closing band is gone.
+    // The shared header and footer carry the lockup; legal pages draw their own.
+    expect(drawn).toHaveLength(3);
     for (const source of components) {
       expect([...source.matchAll(/<span[^>]*>\s*Hale\s*<\/span>/g)], 'a typed mark survives').toEqual([]);
     }
@@ -809,8 +809,10 @@ describe('the pronunciation line is quieter than the labels that share its style
       fileURLToPath(new URL('../components/landing/v4/landing-v4.tsx', import.meta.url)),
       'utf8',
     );
-    expect([...landing.matchAll(/v4-pronounce/g)]).toHaveLength(1);
-    expect([...landing.matchAll(/className="v4-eyebrow/g)].length).toBeGreaterThanOrEqual(5);
+    // The homepage no longer spends a kicker on the pronunciation. The footer
+    // says the name, and the class stays in the stylesheet for that size rule.
+    expect(landing).not.toContain('v4-pronounce');
+    expect(landing).not.toContain('className="v4-eyebrow');
   });
 });
 
@@ -834,7 +836,7 @@ describe('type set over the shore art carries its own veil, in both bands', () =
       fileURLToPath(new URL('../components/landing/v4/landing-v4.tsx', import.meta.url)),
       'utf8',
     );
-    expect([...landing.matchAll(/className="v4-hero-body/g)]).toHaveLength(2);
+    expect([...landing.matchAll(/className="v4-hero-body/g)]).toHaveLength(1);
   });
 
   it('fades the trailing edge of every phone card rail, so the cut reads as a carousel', () => {

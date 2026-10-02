@@ -36,9 +36,9 @@ describe('siteJsonLd', () => {
     const org = nodes.find((n) => n['@type'] === 'Organization');
     const app = nodes.find((n) => n['@type'] === 'SoftwareApplication');
     const h1 = {
-      en: 'Find what’s on. Hear how it went.',
-      fr: 'Trouvez ce qu’il y a. Écoutez comment ça va.',
-      zh: '看看有什么。听听怎么样。',
+      en: 'Weekends, sorted by text.',
+      fr: 'Le week-end, par texto.',
+      zh: '周末，发短信就好。',
     }[locale];
     const planner = {
       en: 'planner for your kids’ year',
