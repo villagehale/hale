@@ -3,9 +3,8 @@ import type { Locale } from '~/i18n/routing';
 import { readSmsNumber } from '~/lib/text-entry';
 
 /**
- * villagehale.com. One landing, unconditionally — the liquid-glass shore (v4).
- * The conversational landing it replaced is retired as the live page; the flag
- * matrix that carried the pivot is long gone.
+ * villagehale.com. One landing: a short hero on the shore, four product lines,
+ * the live pricing cards, and a short FAQ.
  *
  * With no number provisioned the page degrades to email rather than rendering a
  * dead `sms:` link, so the read has to happen here and be handed down. The
