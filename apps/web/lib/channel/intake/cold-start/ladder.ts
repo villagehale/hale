@@ -12,6 +12,7 @@ import type { FactWrite } from '~/lib/memory/facts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SCHOOL = /\b(school|daycare|day care|camp|ecole|garderie)\b/i;
+const SIGNUP_OPEN = /\b(sign-?ups? open|registration opens|inscriptions ouvrent)\b/i;
 
 export function kidFirstName(name: string | null | undefined): string | null {
   if (!name) return null;
@@ -49,6 +50,15 @@ export function calendarAskDue(input: {
 
 export function asksGender(text: string): boolean {
   return /\b(gender|boy or girl|girl or boy|sexe)\b/i.test(text);
+}
+
+/** The picked line names when sign-ups open. Otherwise the offer uses the activity day. */
+export function signupDateKnownForPick(findBody: string, pick: string): boolean {
+  const trimmed = pick.trim();
+  if (!/^\d+$/.test(trimmed)) return false;
+  const line = findBody.split('\n').find((row) => row.startsWith(`${trimmed}. `));
+  if (!line) return false;
+  return SIGNUP_OPEN.test(line);
 }
 
 export function activityFromFind(

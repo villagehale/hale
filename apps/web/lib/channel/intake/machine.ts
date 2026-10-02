@@ -83,6 +83,7 @@ import {
   ageCorrectionMonths,
   kidFirstName,
   mentionsSchoolOrCamp,
+  signupDateKnownForPick,
 } from './cold-start/ladder';
 import { declineOptionalAsk, gateOptionalAsk, recordOptionalAsk } from './cold-start/ledger';
 import { planFollowAsk, planPull } from './cold-start/pull';
@@ -1472,7 +1473,7 @@ async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> 
   return { status: 'first_touch', step: 'find_sent' };
 }
 
-/** Calendar on the next eligible reply after the name line. Email only after a mention. */
+/** Sign-up offer first, then calendar. Email only after a mention, on its own reply. */
 async function offerColdStartFollow(turn: ColdStartTurn): Promise<IntakeOutcome> {
   const { database, session, inbound, now, deps, language, familyId, progress } = turn;
   const ctx = sendContext({ session, phoneE164: session.phoneE164, inbound, now });
@@ -1486,9 +1487,12 @@ async function offerColdStartFollow(turn: ColdStartTurn): Promise<IntakeOutcome>
     nameLineSent: true,
     calendarAlreadyAsked: progress.calendarAsked,
     emailAlreadyAsked: progress.emailAsked,
+    signupAsked: progress.signupAsked,
+    signupDateKnown: progress.signupDateKnown,
     parentText: inbound.body,
     schoolMentioned,
     activity: progress.activity,
+    day: progress.day,
     env: process.env,
   });
   const base: ColdStartProgress = {
@@ -1546,16 +1550,22 @@ async function offerColdStartFollow(turn: ColdStartTurn): Promise<IntakeOutcome>
     sendClass: follow.kind,
     askKey: follow.kind,
   });
+  const signupAsked = progress.signupAsked || follow.kind === 'signup';
   const calendarAsked = progress.calendarAsked || follow.kind === 'calendar';
   const emailAsked = progress.emailAsked || follow.kind === 'email';
-  const stayOpen = (schoolMentioned && !emailAsked) || !calendarAsked;
+  const stayOpen = !signupAsked || !calendarAsked || (schoolMentioned && !emailAsked);
   await saveSession(
     database,
     session,
     {
       lastProviderId: inbound.providerId,
       transcript: recorded.transcript,
-      firstTouch: withColdStart(session, language, { ...base, calendarAsked, emailAsked }),
+      firstTouch: withColdStart(session, language, {
+        ...base,
+        signupAsked,
+        calendarAsked,
+        emailAsked,
+      }),
       ...(stayOpen ? {} : { state: 'complete' as const, closedAt: now, ladderNext: null }),
     },
     now,
@@ -1631,6 +1641,18 @@ async function continueColdStart(
       count: 0,
       place: place?.city || place?.areaCoarse || '',
       ages: '',
+      now,
+      familyStartedAt: await loadFamilyStartedAt(database, familyId, now),
+      nameLineSent: progress.nameLineSent,
+      calendarAlreadyAsked: progress.calendarAsked,
+      emailAlreadyAsked: progress.emailAsked,
+      signupAsked: progress.signupAsked,
+      signupDateKnown: progress.signupDateKnown,
+      parentText: inbound.body,
+      schoolMentioned: progress.schoolMentioned || mentionsSchoolOrCamp(inbound.body),
+      activity: progress.activity,
+      day: progress.day,
+      env: process.env,
     });
     if (!plan.mayLeave) {
       console.info(
@@ -1645,12 +1667,69 @@ async function continueColdStart(
       );
       return { status: 'ignored', reason: 'no_open_conversation' };
     }
+    const askKind =
+      plan.kind === 'signup' || plan.kind === 'calendar' || plan.kind === 'email'
+        ? plan.kind
+        : null;
+    const schoolMentioned = progress.schoolMentioned || mentionsSchoolOrCamp(inbound.body);
+    if (askKind) {
+      const gate = await gateOptionalAsk(database, {
+        familyId,
+        now,
+        sendClass: askKind,
+        askKey: askKind,
+      });
+      if (!gate.allow) {
+        console.info({ reason: gate.reason, ask: askKind }, 'cold-start pull: held');
+        const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+        await sendAndRecord(
+          database,
+          ctx,
+          notedAfterLogistics(progress.group, language),
+          deps,
+          recorded.transcript,
+        );
+        await saveSession(
+          database,
+          session,
+          {
+            lastProviderId: inbound.providerId,
+            transcript: recorded.transcript,
+            firstTouch: withColdStart(session, language, { ...progress, schoolMentioned }),
+          },
+          now,
+        );
+        return { status: 'first_touch', step: 'find_sent' };
+      }
+    }
     const recorded = await recordInbound(database, ctx, inbound, session.transcript);
     await sendAndRecord(database, ctx, plan.body, deps, recorded.transcript);
+    if (askKind) {
+      await recordOptionalAsk(database, {
+        familyId,
+        now,
+        sendClass: askKind,
+        askKey: askKind,
+      });
+    }
     await saveSession(
       database,
       session,
-      { transcript: recorded.transcript, lastProviderId: inbound.providerId },
+      {
+        transcript: recorded.transcript,
+        lastProviderId: inbound.providerId,
+        ...(askKind
+          ? {
+              firstTouch: withColdStart(session, language, {
+                ...progress,
+                schoolMentioned,
+                signupAsked: progress.signupAsked || askKind === 'signup',
+                calendarAsked: progress.calendarAsked || askKind === 'calendar',
+                emailAsked: progress.emailAsked || askKind === 'email',
+              }),
+            }
+          : {}),
+      },
       now,
     );
     return { status: 'first_touch', step: 'place_waiting' };
@@ -1766,6 +1845,7 @@ async function continueColdStart(
             step: bubble.body && gate.allow ? 'logistics' : progress.step,
             activity: pick.activity,
             day: pick.day,
+            signupDateKnown: signupDateKnownForPick(progress.findBody, inbound.body),
           },
         },
         ...(bubble.body && gate.allow
@@ -2338,6 +2418,8 @@ async function provision(
                 activity: null,
                 day: null,
                 nameLineSent: false,
+                signupDateKnown: false,
+                signupAsked: false,
                 calendarAsked: false,
                 emailAsked: false,
                 schoolMentioned: false,

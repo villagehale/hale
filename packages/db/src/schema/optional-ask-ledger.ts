@@ -15,7 +15,7 @@ export const optionalAskLedger = pgTable(
     familyId: uuid('family_id')
       .notNull()
       .references(() => families.id, { onDelete: 'cascade' }),
-    /** duty_ask | logistics | names | calendar | email */
+    /** duty_ask | logistics | names | signup | calendar | email */
     sendClass: text('send_class').notNull(),
     askKey: text('ask_key').notNull(),
     /** sent | declined. Silence past 24h is read as unanswered, not stored. */
