@@ -10,6 +10,7 @@
 import type { ReplyLanguage } from '~/lib/channel/language';
 import {
   FIRST_TOUCH_AGES_BY_LANGUAGE,
+  FIRST_TOUCH_GROUP_FR,
   FIRST_TOUCH_IMESSAGE_BY_LANGUAGE,
   FIRST_TOUCH_SMS_BY_LANGUAGE,
 } from '../copy';
@@ -45,7 +46,9 @@ export function planPull(input: {
     const card = input.channel === 'imessage' && !input.group;
     const body = card
       ? FIRST_TOUCH_IMESSAGE_BY_LANGUAGE[input.language]
-      : FIRST_TOUCH_SMS_BY_LANGUAGE[input.language];
+      : input.group && input.language === 'fr'
+        ? FIRST_TOUCH_GROUP_FR
+        : FIRST_TOUCH_SMS_BY_LANGUAGE[input.language];
     return { kind: 'place', body, mayLeave: true };
   }
   if (!input.hasAges) {

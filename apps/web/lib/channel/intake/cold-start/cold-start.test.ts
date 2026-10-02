@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DUTY_STOP_ASKING_KEY } from '~/lib/channel/coparent/duty/asks';
+import { FIRST_TOUCH_GROUP_FR, FIRST_TOUCH_SMS_BY_LANGUAGE } from '../copy';
 import {
   ASK_UNANSWERED_MS,
   ASK_WINDOW_MS,
@@ -356,6 +357,32 @@ describe('cold-start copy and ladder', () => {
     });
     expect(later.mayLeave).toBe(false);
     expect(later.skipped).toBe('copy_unlocked');
+    expect(later.body).toBe('TODO-Design');
+    const groupFr = planPull({
+      intent: 'set_me_up',
+      language: 'fr',
+      hasPlace: false,
+      hasAges: false,
+      channel: 'imessage',
+      group: true,
+      count: 0,
+      place: '',
+      ages: '',
+    });
+    expect(groupFr.body).toBe(FIRST_TOUCH_GROUP_FR);
+    expect(groupFr.mayLeave).toBe(true);
+    const groupEn = planPull({
+      intent: 'set_me_up',
+      language: 'en',
+      hasPlace: false,
+      hasAges: false,
+      channel: 'sms',
+      group: true,
+      count: 0,
+      place: '',
+      ages: '',
+    });
+    expect(groupEn.body).toBe(FIRST_TOUCH_SMS_BY_LANGUAGE.en);
     expect(stopAskingReply('en')).not.toContain('?');
     expect(KNOWN_VENUE_HELLO.en).not.toMatch(/across the GTA|postal code/i);
     const fact = ageCorrectionFact({

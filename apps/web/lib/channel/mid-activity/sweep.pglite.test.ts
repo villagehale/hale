@@ -163,15 +163,15 @@ describe('runMidActivityAskSweep', () => {
     expect(await db.database.select().from(schema.channelMessages)).toEqual([]);
   });
 
-  it('holds one due ask as a placeholder and does not text or charge', async () => {
+  it('holds one due ask as unwired and does not text or charge', async () => {
     await seed({ sessions: weeklySessions(8, 2500) });
     arm();
 
     const result = await runMidActivityAskSweep(db.database, NOW);
 
     expect(result.skipped).toBeNull();
-    expect(result.placeholder).toBe(1);
-    expect(result.unwired).toBe(0);
+    expect(result.placeholder).toBe(0);
+    expect(result.unwired).toBe(1);
     expect(result.examined).toBe(1);
     const messages = await db.database.select().from(schema.channelMessages);
     expect(messages).toEqual([]);
@@ -229,9 +229,9 @@ describe('runMidActivityAskSweep', () => {
     });
 
     const result = await runMidActivityAskSweep(db.database, NOW);
-    expect(result.placeholder).toBe(1);
+    expect(result.placeholder).toBe(0);
     expect(result.oneAtATime).toBe(1);
-    expect(result.unwired).toBe(0);
+    expect(result.unwired).toBe(1);
   });
 
   it('treats a sent ask as already asked, so the next tick does not hold another', async () => {

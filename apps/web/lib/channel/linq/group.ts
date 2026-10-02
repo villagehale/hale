@@ -43,11 +43,9 @@ export const LINQ_GROUP_UNREACHABLE_TEXT =
   "I couldn't open the group yet. Ask them to text this number once, then tell me to try again.";
 
 /**
- * DESIGN LOCK PENDING (Sloane). Hold for a number in the group that is not an
- * enrolled parent of this household. Does not start an intake.
+ * An unclaimed group has no parent to name. Hale sends nothing about the
+ * family into that thread. The claimed-group hold lives on group members.
  */
-export const LINQ_GROUP_UNKNOWN_HOLD =
-  "I only keep this household's year with parents already on Hale. Text me one to one if that's you.";
 
 /**
  * Design locked (2026-09-24, #706). The whole message a parent sends in the
@@ -449,24 +447,19 @@ async function tellParentTheGroupDidNotOpen(
   }
 }
 
-/** Best-effort hold into a group Hale will not enroll a stranger from. */
+/**
+ * Best-effort hold into a group Hale has not claimed. There is no parent to
+ * address, so nothing is sent and nothing about a family is written.
+ */
 export async function holdUnknownGroupSender(input: {
   chatId: string;
   fetch?: typeof fetch;
 }): Promise<'sent' | 'not_sent'> {
-  try {
-    await sendLinqChatMessage({
-      chatId: input.chatId,
-      text: LINQ_GROUP_UNKNOWN_HOLD,
-      fetch: input.fetch,
-    });
-    return 'sent';
-  } catch (err) {
-    const code = err instanceof LinqSendError ? err.code : 'unknown';
-    const httpStatus = err instanceof LinqSendError ? err.httpStatus : 0;
-    console.warn({ code, httpStatus }, 'linq group: unknown-sender hold did not land');
-    return 'not_sent';
-  }
+  console.warn(
+    { chatId: input.chatId, outcome: 'not_sent', reason: 'parent_unresolved' },
+    'linq group: stranger hold sends nothing about the family until a parent approves',
+  );
+  return 'not_sent';
 }
 
 /** Re-export so the co-parent flow and tests share one remove helper. */

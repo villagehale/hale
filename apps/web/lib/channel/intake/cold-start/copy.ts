@@ -1,9 +1,10 @@
 /**
  * VIL-392 — cold-start copy.
  *
- * Locked handbook lines were not in the repo. Ticket-quoted shapes and the
- * VIL-385 first-touch lines may leave. Everything else is TODO-Design and
- * must not leave, even when the copy-lock flag is exactly `true`.
+ * The voice handbook is not in the repo, so the names ask, the sign-up
+ * offer, and the later calendar and email step stay TODO-Design and must
+ * not leave, even when the copy-lock flag is exactly `true`. Ticket-quoted
+ * shapes and the VIL-385 first-touch lines may leave.
  */
 
 import type { ReplyLanguage } from '~/lib/channel/language';
