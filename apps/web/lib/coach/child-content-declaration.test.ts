@@ -58,6 +58,7 @@ function channelTools(): RegisteredTool[] {
         activities: [],
         trips: [],
       }),
+      heldOnCalendar: async () => false,
     },
     draftPort: { draft: async () => ({ actionId: 'action-1' }) },
     villageTool: searchVillageTool(NO_DB),

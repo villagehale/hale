@@ -35,6 +35,7 @@ import {
   familyHoldsLiveBooking,
   recordActivityBooking,
 } from './booking';
+import { calendarHoldsEvent } from './calendar-hold';
 import {
   type EmailAlertOfferDraft,
   recordEmailAlertOffer,
@@ -386,6 +387,24 @@ export async function alertParentForEmail(
   // dark-booked family's sweep must never read other families' bookings for a sentence
   // that cannot exist.
   const counted = await readGoingFor(database, familyId, draft);
+  // One look at the connected calendar, shared by the sentence and the row. A school
+  // mail about an occasion already on Google Calendar is not an offer.
+  const candidate = emailAlertOfferDraft({
+    kind: extraction.kind,
+    event: extraction.event,
+    teenContent: extraction.teenContent,
+    matchedEventRef: extraction.matchedEventRef,
+    booked,
+    from: input.envelope.from,
+    now,
+  });
+  const onConnectedCalendar =
+    candidate !== null &&
+    (await calendarHoldsEvent(database, {
+      familyId,
+      title: candidate.title,
+      startsAt: candidate.startsAt,
+    }));
   const { body: message, going } = renderEmailAlert({
     from: input.envelope.from,
     kind: extraction.kind,
@@ -396,9 +415,9 @@ export async function alertParentForEmail(
     going: counted,
     timeZone: input.timeZone,
     now,
+    onConnectedCalendar,
   });
-  // The same pure decision the sentence above just made. Two calls of one function rather
-  // than a flag threaded between them: the CTA and the row it promises cannot disagree.
+  // The same decision the sentence above just made, including the calendar hold.
   const offer = emailAlertOfferDraft({
     kind: extraction.kind,
     event: extraction.event,
@@ -407,6 +426,7 @@ export async function alertParentForEmail(
     booked,
     from: input.envelope.from,
     now,
+    onConnectedCalendar,
   });
 
   // CLAIM FIRST, by the insert rather than by a read a concurrent sweep can race. The
@@ -1123,6 +1143,12 @@ export interface EmailAlertRenderInput {
   going: GoingCount | null;
   timeZone: string;
   now: Date;
+  /**
+   * A confirmed kid event on the connected calendar already holds this occasion.
+   * Decided once by the caller, so the sentence and the offer row cannot disagree.
+   * Absent is the same as false: a pure render has not looked at a calendar.
+   */
+  onConnectedCalendar?: boolean;
 }
 
 /** The sentence, and what the count ACTUALLY did — which is not always what it was handed,
@@ -1182,7 +1208,7 @@ const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
  * hold. That row is `email_alert_offers` (lib/integrations/email-alert-offer.ts), and
  * this function is the single decision both it and the sentence are derived from.
  *
- * SIX CONDITIONS, and each one is a way the sentence would otherwise be untrue:
+ * SEVEN CONDITIONS, and each one is a way the sentence would otherwise be untrue:
  *   · A 13+ child's mail is genericised by the time this sees it, so there is no occasion
  *     left to add and nothing that could be added without re-disclosing what the teen
  *     gate just removed (rule #1). No row, and — since the teen text is category-only —
@@ -1203,6 +1229,9 @@ const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
  *     is the week speaking about an event that is on it; "Reply YES and it goes on your
  *     week" asks them to add what they already have. The text is a plain notice instead
  *     ({@link calendarNotice}).
+ *   · The same title and start must not already sit on a connected Google Calendar,
+ *     even when the mail came from a school. The calendar is the week. Offers are for
+ *     email occasions that are not on it.
  *
  * Everything else ends with today's sentence, and that is still the common case.
  */
@@ -1215,8 +1244,15 @@ export function emailAlertOfferDraft(input: {
   /** The envelope's From. A Google Calendar notification is not an offer. */
   from: string;
   now: Date;
+  /** True when a confirmed kid block already holds this title and start. */
+  onConnectedCalendar?: boolean;
 }): EmailAlertOfferDraft | null {
-  if (input.teenContent || input.matchedEventRef !== null || fromParentsCalendar(input.from)) {
+  if (
+    input.teenContent ||
+    input.matchedEventRef !== null ||
+    fromParentsCalendar(input.from) ||
+    input.onConnectedCalendar === true
+  ) {
     return null;
   }
   const kind = effectiveKind(input.kind, input.booked);

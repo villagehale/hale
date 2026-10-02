@@ -6,8 +6,13 @@ import { emailAlertAddHandler } from '~/lib/channel/router/handlers';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import type { HandlerContext, HandlerVerdict, ResolvedAnswer } from '~/lib/channel/router/route';
 import { defaultReminderRunDeps, runReminderCron } from '~/lib/loop/reminders/run';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { EMAIL_ALERT_EVENT_DURATION_MS, EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
+import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
+import {
+  EMAIL_ALERT_EVENT_DURATION_MS,
+  EMAIL_ALERT_OFFER_TTL_MS,
+  prepareCoachCalendarReply,
+  recordCoachEventOffer,
+} from './email-alert-offer';
 
 /**
  * THE YES AT THE END OF AN EMAIL ALERT, against the real DDL.
@@ -663,5 +668,198 @@ describe('what the week does with it', () => {
       new Date(NOW.getTime() + 8 * 86_400_000),
     );
     expect(inWindow.map((row) => row.title)).toEqual([TITLE]);
+  });
+});
+
+describe('a past offer is not a yes', () => {
+  const PAST = new Date('2026-09-16T20:15:00.000Z');
+
+  async function seedPast(): Promise<void> {
+    await seedOffer({
+      title: 'Gymnastics',
+      startsAt: PAST,
+      // The old bug: a flat 24h expiry still standing after the event began.
+      expiresAt: new Date(NOW.getTime() + EMAIL_ALERT_OFFER_TTL_MS),
+    });
+  }
+
+  it('places nothing when the only open-looking offer has already started', async () => {
+    await seedPast();
+
+    const verdict = await reply('yes');
+
+    expect(verdict).toEqual({ claimed: false });
+    await expect(events()).resolves.toHaveLength(0);
+  });
+
+  it('places nothing for "Yes, add it" against that same past offer', async () => {
+    await seedPast();
+
+    const verdict = await reply('Yes, add it');
+
+    expect(verdict).toEqual({ claimed: false });
+    await expect(events()).resolves.toHaveLength(0);
+  });
+});
+
+describe('a correction declines the one open offer', () => {
+  it.each(['it\'s yesterday', 'not that one', 'no'])(
+    '%s expires the offer and adds nothing',
+    async (body) => {
+      const offerId = await seedOffer();
+
+      const verdict = await reply(body);
+
+      expect(verdict).toMatchObject({ claimed: true, outcome: 'declined' });
+      if (!verdict.claimed) throw new Error('unreachable');
+      expect(verdict.reply).toBe('Okay - left it off.');
+      await expect(events()).resolves.toHaveLength(0);
+      const [row] = await offers();
+      expect(row?.id).toBe(offerId);
+      expect(row?.expiresAt.getTime()).toBeLessThanOrEqual(NOW.getTime());
+      expect(row?.resolvedAt).toBeNull();
+    },
+  );
+
+  it('asks which one when two offers are open, including for "Yes, add it"', async () => {
+    await seedOffer({ title: 'Swim class', createdAt: new Date(NOW.getTime() - 60 * 60 * 1000) });
+    await seedOffer();
+
+    expect(await reply('yes')).toEqual({ claimed: false });
+    expect(await reply('Yes, add it')).toEqual({ claimed: false });
+    await expect(events()).resolves.toHaveLength(0);
+    const rows = await offers();
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.expiresAt.getTime() > NOW.getTime())).toBe(true);
+  });
+});
+
+describe('a coach free-text offer replaces the older one', () => {
+  const SUNDAY = new Date('2026-10-04T13:00:00.000Z');
+  const COACH =
+    'That one passed. Gymnastics is on Sunday, Oct 4 at 9:00 a.m. Want me to add it?';
+
+  it('a later bare yes places the event most recently offered, and the receipt names that row', async () => {
+    await seedOffer({ title: 'Gymnastics', startsAt: new Date('2026-10-01T20:15:00.000Z') });
+    const prepared = await prepareCoachCalendarReply(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: COACH,
+      now: NOW,
+    });
+    expect(prepared.outcome).toBe('offer');
+    if (prepared.outcome !== 'offer') throw new Error('unreachable');
+    expect(prepared.body).toBe(COACH);
+
+    const channelMessageId = await sentOut(NOW);
+    const recorded = await recordCoachEventOffer(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channelMessageId,
+      draft: prepared.offer,
+      now: NOW,
+    });
+    expect(recorded).toBe('recorded');
+
+    const verdict = await reply('Yes, add it');
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
+    if (!verdict.claimed) throw new Error('unreachable');
+    const rows = await events();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.title).toBe('Gymnastics');
+    expect(rows[0]?.startsAt.toISOString()).toBe(SUNDAY.toISOString());
+    expect(verdict.reply).toBe(
+      "Added - Gymnastics on Sunday, Oct 4 at 9:00 a.m. It's on your week; say remove it anytime.",
+    );
+    expect(verdict.reply).toContain(rows[0]?.title);
+    expect(verdict.reply).toContain('Sunday, Oct 4 at 9:00 a.m.');
+    expect(verdict.reply).not.toContain('Oct 1');
+  });
+
+  it('a second record of the same text does not expire the offer it just wrote', async () => {
+    const older = await seedOffer();
+    const channelMessageId = await sentOut(NOW);
+    const draft = {
+      kind: 'new_event' as const,
+      title: 'Gymnastics',
+      startsAt: SUNDAY,
+      location: null,
+    };
+    expect(
+      await recordCoachEventOffer(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        channelMessageId,
+        draft,
+        now: NOW,
+      }),
+    ).toBe('recorded');
+    expect(
+      await recordCoachEventOffer(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        channelMessageId,
+        draft,
+        now: NOW,
+      }),
+    ).toBe('already_recorded');
+
+    const rows = await offers();
+    const fresh = rows.find((row) => row.channelMessageId === channelMessageId);
+    expect(fresh?.expiresAt.getTime()).toBeGreaterThan(NOW.getTime());
+    expect(fresh?.title).toBe('Gymnastics');
+    expect(rows.find((row) => row.id === older)?.expiresAt.getTime()).toBeLessThanOrEqual(
+      NOW.getTime(),
+    );
+  });
+
+  it('rewrites a past add-ask and a calendar-held add-ask, and leaves a move alone', async () => {
+    const past = await prepareCoachCalendarReply(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: 'Want me to add Gymnastics on Wednesday, Sep 16 at 4:15 p.m.? YES to confirm.',
+      now: NOW,
+    });
+    expect(past.outcome).toBe('past');
+    expect(past.body).toBe(
+      'Gymnastics on Wednesday, Sep 16 at 4:15 p.m. already passed. What time is the next one?',
+    );
+    expect(past.body).not.toMatch(/YES|add/i);
+    expect(past.offer).toBeNull();
+
+    const gcal = await seedIntegration(db.database, family.familyId, family.parentUserId, 'gcal');
+    await db.database.insert(schema.parentCalendarBlocks).values({
+      integrationId: gcal,
+      eventId: 'sunday-gym',
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      startAt: SUNDAY,
+      kidRelated: true,
+      title: 'Gymnastics',
+      status: 'confirmed',
+      updatedStamp: 'stamp-sunday-gym',
+    });
+    const held = await prepareCoachCalendarReply(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: 'Want me to add Gymnastics on Sunday, Oct 4 at 9:00 a.m.?',
+      now: NOW,
+    });
+    expect(held.outcome).toBe('already_on_calendar');
+    expect(held.body).toBe(
+      'Gymnastics is on your calendar Sunday, Oct 4 at 9:00 a.m. Say if you want it moved.',
+    );
+    expect(held.body).not.toMatch(/YES|\badd\b/i);
+    expect(held.offer).toBeNull();
+
+    const move = 'Move swim to Tue 4:30? YES to confirm.';
+    const left = await prepareCoachCalendarReply(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: move,
+      now: NOW,
+    });
+    expect(left).toEqual({ outcome: 'not_an_offer', body: move, offer: null });
   });
 });

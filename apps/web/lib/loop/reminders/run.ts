@@ -24,6 +24,7 @@ import type {
 } from '~/lib/loop/templates/reminder/payload';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { composeReminderVoice } from '~/lib/loop/voice/reminder-voice';
+import { mirrorFutureCalendarHolds } from '~/lib/integrations/calendar-hold';
 import { getQueue } from '~/lib/queue';
 import {
   type EventSnapshot,
@@ -210,6 +211,15 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
     },
     loadHorizonEvents: async (db, familyId, now) => {
       const horizonEnd = new Date(now.getTime() + REMINDER_HORIZON_MS);
+      // A future kid event already on Google Calendar is on the week. Copy it
+      // onto family_events before this read so a reminder can fire for it
+      // without anyone being asked to add it.
+      await mirrorFutureCalendarHolds(db, {
+        familyId,
+        start: now,
+        end: horizonEnd,
+        now,
+      });
       return db
         .select({
           id: schema.familyEvents.id,
