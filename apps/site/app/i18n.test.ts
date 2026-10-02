@@ -319,7 +319,7 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
     } as const;
     const sub = {
       en: 'What’s on near you, this Saturday.',
-      fr: "Ce qu'il y a pres de toi, samedi.",
+      fr: "Ce qu'il y a près de toi, samedi.",
       zh: '这周六，你家附近有什么。',
     } as const;
     const textMeta = {

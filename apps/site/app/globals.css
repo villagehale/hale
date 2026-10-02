@@ -1842,6 +1842,15 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-hero-top {
     margin-top: calc(-1 * var(--nav-h));
     padding-top: var(--nav-h);
+    /* A warm ground from the shore tokens, not a photograph. Cream to linen,
+     * with a soft apricot wash that names no place. Navy on these three
+     * stops clears WCAG AA for body text even at the nav's 0.78 opacity
+     * (worst light stop, apricot #fef0c7: nav 6.65:1, trust line at 0.9
+     * would be 9.63:1; the trust line is full ink). Dark inverts onto
+     * #0c1a36 and stays above 8:1. */
+    background:
+      radial-gradient(80% 55% at 88% 8%, var(--color-apricot-tint) 0%, transparent 70%),
+      linear-gradient(180deg, var(--color-cream) 0%, var(--color-linen) 78%);
   }
   .v4-hero-art {
     position: absolute;
@@ -1887,6 +1896,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * column and deepening the dark pour takes those two to 8.18:1 and 9.33:1, and
    * carries the hero's own dark worst cases up with it (eyebrow 3.29 → 5.59,
    * sub 4.11 → 6.71). Light was already clear and moves 5.67 → 8.21. */
+  .v4-hero-top .v4-hero-body::before { display: none; }
   .v4-hero-body::before {
     content: '';
     position: absolute;
@@ -2094,7 +2104,6 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     font-size: 0.85rem;
     line-height: 1.5;
     color: var(--color-navy);
-    opacity: 0.9;
   }
 
   /* ── The founding line and the act, in the hero ───────────────────────────
@@ -2512,9 +2521,18 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   }
   .v4-phone-slot {
     width: min(17.5rem, 78vw);
-    height: 16.5rem;
+    height: 19rem;
     overflow: hidden;
     flex-shrink: 0;
+    /* The phone rises and then dissolves into the next section, instead of
+     * ending on a hard clip. The fade starts below the typing indicator. */
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      #000 0,
+      #000 calc(100% - 3.25rem),
+      transparent 100%
+    );
+    mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 3.25rem), transparent 100%);
   }
   .v4-phone {
     display: flex;
@@ -2566,9 +2584,107 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-home-rest {
     display: flex;
     flex-direction: column;
-    gap: 4rem;
-    padding-top: 4rem;
+    gap: 3.5rem;
+    padding-top: 0.75rem;
     padding-bottom: 2rem;
+  }
+  .v4-find,
+  .v4-loop,
+  .v4-family {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  .v4-find { max-width: 40rem; }
+  .v4-find-note {
+    margin: 0.25rem 0 0;
+    max-width: 38rem;
+    color: var(--color-spruce);
+    line-height: 1.5;
+  }
+  .v4-find-note .v4-beat-kicker { display: block; margin-bottom: 0.3rem; }
+  .v4-inbox {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  .v4-cal-line {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin: 0;
+    padding: 0.8rem 1rem;
+    border-radius: var(--r-lg);
+    background: var(--color-oat);
+    border: 1px solid var(--color-line);
+  }
+  .v4-cal-line strong {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--color-spruce);
+  }
+  .v4-thread-wide {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    width: min(100%, 36rem);
+    margin-top: 0.35rem;
+    padding: 1.15rem 1.2rem;
+    border-radius: var(--r-xl);
+    text-align: left;
+  }
+  .v4-family-row {
+    display: grid;
+    gap: 0.75rem;
+    width: 100%;
+    margin-top: 0.35rem;
+  }
+  .v4-family-row article { padding: 1rem 1.1rem; }
+  .v4-pricing { padding-bottom: 3.5rem; }
+  .v4-tiers {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .v4-tier {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 1.05rem 1.1rem 1.1rem;
+    border-radius: var(--r-xl);
+    background: var(--color-oat);
+    border: 1px solid var(--color-line);
+  }
+  .v4-tier-name {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 620;
+    letter-spacing: -0.01em;
+    color: var(--color-ink);
+  }
+  .v4-tier-status {
+    margin: 0;
+    color: var(--color-slate-green);
+    line-height: 1.45;
+  }
+  .v4-tier-act { margin-top: auto; padding-top: 0.85rem; }
+  @media (min-width: 640px) {
+    .v4-family-row { grid-template-columns: 1fr 1fr; }
+  }
+  @media (min-width: 800px) {
+    .v4-inbox {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: 2rem;
+      width: 100%;
+    }
+    .v4-tiers { grid-template-columns: repeat(3, 1fr); align-items: start; }
   }
   .v4-beat {
     display: grid;
@@ -2619,6 +2735,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     .v4-phone-slot {
       height: 34rem;
       overflow: visible;
+      -webkit-mask-image: none;
+      mask-image: none;
     }
     .v4-phone {
       height: 34rem;

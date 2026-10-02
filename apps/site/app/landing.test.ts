@@ -55,10 +55,10 @@ describe('landing — the hero', () => {
   const html = render();
   const heroHtml = hero(html);
 
-  it('opens on the shore, with one serif headline and one subhead', () => {
+  it('opens on a warm ground, with one serif headline and one subhead', () => {
     expect(html).toContain('class="v4-hero v4-hero-top"');
-    expect(html).toContain('class="v4-hero-art"');
-    expect(html).toContain('class="v4-hero-scrim"');
+    expect(html).not.toContain('hale-shore-hero');
+    expect(html).not.toContain('v4-hero-art');
     expect([...html.matchAll(/<h1[\s>]/g)]).toHaveLength(1);
     const h1 = html.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
     expect(h1).toContain('v4-display');
@@ -138,20 +138,19 @@ describe('landing — the number is reachable and never readable', () => {
   });
 });
 
-describe('landing — the brand tile and the shore', () => {
+describe('landing — the brand tile', () => {
   const html = render();
 
-  it('allows only decorative images, from the logo and the day shore', () => {
+  it('allows only the decorative logo, not a place photograph', () => {
     const imgs = html.match(/<img[^>]*>/g) ?? [];
-    // Header logo, footer logo, hero shore.
-    expect(imgs).toHaveLength(3);
+    // Header logo and footer logo. The hero is a token gradient.
+    expect(imgs).toHaveLength(2);
     for (const img of imgs) {
       expect(img).toContain('alt=""');
       expect(img).toContain('aria-hidden="true"');
-      expect(img).toMatch(/hale-logo|hale-shore-hero/);
+      expect(img).toContain('hale-logo');
     }
-    expect(imgs.filter((img) => img.includes('hale-shore-hero'))).toHaveLength(1);
-    expect(html).not.toContain('hale-shore-night');
+    expect(html).not.toContain('hale-shore');
     expect(html).not.toContain('hale-turtle');
   });
 
@@ -213,6 +212,15 @@ describe('landing — the short page under the hero', () => {
     expect(text).toContain('What you say shapes what I look for next.');
     expect(text).toContain('Coming soon');
     expect([...html.matchAll(/Coming soon/g)]).toHaveLength(2);
+    expect(text).not.toContain('There is no price');
+    const faq = html.match(/<section class="shell v4-faq"[\s\S]*?<\/section>/)?.[0] ?? '';
+    const pricing = html.match(/<section id="pricing"[\s\S]*?<\/section>/)?.[0] ?? '';
+    expect(visibleText(faq)).not.toContain('Canada');
+    expect(visibleText(pricing)).not.toContain('Canada');
+    expect(visibleText(hero(html))).toContain('Your data stays in Canada');
+    expect(visibleText(html.match(/<footer[\s\S]*?<\/footer>/)?.[0] ?? '')).toContain(
+      'Your data stays in Canada',
+    );
     expect(html).toContain('href="/faq"');
     expect(text).not.toMatch(/\$\d/);
     expect(text).not.toContain('Buy');
@@ -268,5 +276,38 @@ describe('landing — motion and focus', () => {
     expect(css).toContain(
       'box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep)',
     );
+    expect(css).toContain('mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 3.25rem), transparent 100%)');
+  });
+
+  it('clears WCAG AA for the headline, the trust line, and the nav on the warm ground', () => {
+    const rel = (channel: number) => {
+      const c = channel / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    const lum = (rgb: number[]) => 0.2126 * rel(rgb[0]) + 0.7152 * rel(rgb[1]) + 0.0722 * rel(rgb[2]);
+    const ratio = (fg: number[], bg: number[]) => {
+      const hi = Math.max(lum(fg), lum(bg));
+      const lo = Math.min(lum(fg), lum(bg));
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    const blend = (fg: number[], alpha: number, bg: number[]) =>
+      fg.map((channel, i) => channel * alpha + bg[i] * (1 - alpha));
+    const navy = [23, 41, 74];
+    const creamInk = [247, 244, 236];
+    const lightGrounds = [
+      [253, 252, 250],
+      [247, 244, 236],
+      [254, 240, 199],
+    ];
+    const darkGround = [12, 26, 54];
+    const navOpacity = Number(css.match(/\.v4-navlink \{[\s\S]*?opacity: ([0-9.]+)/)?.[1]);
+    expect(navOpacity).toBeGreaterThan(0);
+    for (const ground of lightGrounds) {
+      expect(ratio(navy, ground)).toBeGreaterThanOrEqual(3);
+      expect(ratio(blend(navy, 1, ground), ground)).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(blend(navy, navOpacity, ground), ground)).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(ratio(creamInk, darkGround)).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(blend(creamInk, navOpacity, darkGround), darkGround)).toBeGreaterThanOrEqual(4.5);
   });
 });

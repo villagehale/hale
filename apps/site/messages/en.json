@@ -115,11 +115,11 @@
       },
       {
         "question": "Is Hale free?",
-        "answer": "Free, with unlimited chat, is live today. Plus and Family are coming soon. There is no price."
+        "answer": "Free, with unlimited chat, is live today. Plus and Family are coming soon."
       },
       {
-        "question": "Where does our data stay?",
-        "answer": "In Canada. You text first, on iMessage."
+        "question": "Do I need an app?",
+        "answer": "No. You text Hale. There is no account to make."
       }
     ]
   },
@@ -200,7 +200,7 @@
   },
   "Pricing": {
     "metaTitle": "Pricing · Hale",
-    "metaDescription": "Hale is free, with unlimited chat. Plus and Family are coming soon. There is no price. Your data stays in Canada.",
+    "metaDescription": "Hale is free, with unlimited chat. Plus and Family are coming soon.",
     "eyebrow": "Pricing",
     "headline": [
       {
@@ -211,7 +211,7 @@
         "accent": true
       }
     ],
-    "lede": "Unlimited chat is free today. Plus and Family are coming soon. There is no price.",
+    "lede": "Unlimited chat is free today. Plus and Family are coming soon.",
     "cta": "Text an age, a place, and a spot."
   },
   "PricingSection": {
@@ -220,7 +220,7 @@
     "lede": "You ask with an age, a place, and a spot. Hale looks it up, keeps watch, and texts when a place opens. The family group is in the same chat.",
     "freeLine": "Free",
     "freeBody": "Unlimited chat. Hale looks up an age, a place, and a spot, and texts when a place opens.",
-    "footnote": "Only Free is available today. There is no price. Your data stays in Canada.",
+    "footnote": "Only Free is available today.",
     "comingSoon": "Coming soon",
     "comingBody": "Not available yet.",
     "tierNames": {

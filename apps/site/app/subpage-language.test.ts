@@ -353,14 +353,15 @@ describe('/pricing — Free is live, Plus and Family say coming soon', () => {
     expect(html).not.toContain('Founding');
     expect(html).not.toContain('Your village feed');
     expect(html).not.toContain('Companion:');
-    expect(html.match(/numbered-card-list/g)).toHaveLength(1);
-    expect(html.match(/lucide-check/g)).toHaveLength(4);
+    expect(html).not.toContain('There is no price');
+    expect((html.match(/class="v4-tier"/g) ?? []).length).toBe(3);
   });
 
   it('says Hale is free today, and the other two tiers are not available', () => {
     const text = rawText(html).replace(/\s+/g, ' ');
-    expect(text).toContain('Unlimited chat is free today. Plus and Family are coming soon. There is no price.');
-    expect(text).toContain('Only Free is available today. There is no price. Your data stays in Canada.');
+    expect(text).toContain('Unlimited chat is free today. Plus and Family are coming soon.');
+    expect(text).toContain('Only Free is available today.');
+    expect(text).not.toContain('There is no price');
     expect(text).not.toContain('Founding families join free.');
   });
 

@@ -8,7 +8,7 @@ import LandingPage from './[locale]/page.js';
 
 /**
  * The homepage copy is a per-locale bundle. A translator who drops a row, puts
- * a town back in the hero, or accents the French twin should fail here.
+ * a town back in the hero, or strips the accents off French site copy should fail here.
  */
 
 vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
@@ -28,14 +28,6 @@ function landingBundle(locale: string): Record<string, unknown> {
       readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
     ) as { Landing: Record<string, unknown> }
   ).Landing;
-}
-
-function homeMeta(locale: string): Record<string, string> {
-  return (
-    JSON.parse(
-      readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
-    ) as { HomeMeta: Record<string, string> }
-  ).HomeMeta;
 }
 
 function visibleText(html: string): string {
@@ -144,18 +136,26 @@ describe('homepage copy in every locale', () => {
     expect([...HTML[locale].matchAll(/<details\b/g)]).toHaveLength(3);
   });
 
-  it('writes the French twin in ASCII, and addresses one parent as tu', () => {
+  it('writes French site copy with accents, and addresses one parent as tu', () => {
+    const fr = JSON.parse(
+      readFileSync(fileURLToPath(new URL('../messages/fr.json', import.meta.url)), 'utf8'),
+    ) as Record<string, unknown>;
     const pieces: string[] = [];
-    walkStrings(landingBundle('fr'), (text) => pieces.push(text));
-    walkStrings(homeMeta('fr'), (text) => pieces.push(text));
-    const blob = pieces.join('\n').replaceAll('·', '');
-    for (const ch of blob) {
-      expect(ch.charCodeAt(0), JSON.stringify(ch)).toBeLessThanOrEqual(127);
+    for (const key of ['Landing', 'HomeMeta', 'Pricing', 'PricingSection', 'Jsonld']) {
+      walkStrings(fr[key], (text) => pieces.push(text));
+    }
+    const blob = pieces.join('\n');
+    for (const word of ['près', 'données', 'confidentialité', "d'écrire", 'Mémoire', 'bientôt', 'âge']) {
+      expect(blob, word).toContain(word);
+    }
+    const flat = blob.toLowerCase();
+    for (const ascii of ['donnees', 'bientot', 'confidentialite', 'pres de', 'ecrire', 'memoire']) {
+      expect(flat, ascii).not.toContain(ascii);
     }
     const landing = landingBundle('fr');
     expect(String(landing.heroSub)).toContain('toi');
     expect(String(landing.heroTerms)).toMatch(/^Tu /);
-    expect(blob.toLowerCase()).not.toContain('vous');
+    expect(flat).not.toContain('vous');
   });
 
   it.each(routing.locales)('%s hero headline and subhead stay inside the word caps', (locale) => {

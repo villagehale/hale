@@ -38,23 +38,27 @@ describe('PricingSection (landing pricing)', () => {
     expect(html).not.toContain('$');
     expect(html).not.toContain('Founding');
     expect(html).not.toContain('Subscribe');
-    expect([...html.matchAll(/numbered-card-list/g)]).toHaveLength(1);
-    expect([...html.matchAll(/lucide-check/g)]).toHaveLength(en.PricingSection.freeFeatures.length);
+    expect(html).not.toContain('There is no price');
+    expect(html).not.toContain('Your data stays in Canada');
+    expect([...html.matchAll(/class="v4-tier"/g)]).toHaveLength(3);
+    expect(html).not.toContain('numbered-card-list');
   });
 
   it('renders the French cards: Gratuit is live, Plus and Famille are coming soon', () => {
     const french = renderToStaticMarkup(createElement(PricingSection, { locale: 'fr' }));
-    expect(french).toContain('Gratuit, avec un clavardage illimite.');
-    expect(french).toContain('Clavardage illimite');
+    expect(french).toContain('Gratuit, avec un clavardage illimité.');
+    expect(french).toContain('Clavardage illimité');
     expect(french).toContain('Recherche en direct');
     expect(french).toContain('Plus');
     expect(french).toContain('Famille');
-    expect([...french.matchAll(/Bientot/g)]).toHaveLength(2);
+    expect([...french.matchAll(/Bientôt/g)]).toHaveLength(2);
     expect(french).not.toContain('$');
     expect(french).not.toContain('Founding rate');
+    expect(french).not.toContain('Pas de prix');
     expect(fr.PricingSection.freeLine).toBe('Gratuit');
+    expect(fr.PricingSection.comingSoon).toBe('Bientôt');
     expect(fr.PricingSection.freeFeatures).toEqual([
-      'Clavardage illimite',
+      'Clavardage illimité',
       'Recherche en direct',
       "Un texto quand une place s'ouvre",
       'iMessage',
@@ -73,11 +77,10 @@ describe('PricingSection (landing pricing)', () => {
     expect(zh.PricingSection.freeLine).toBe('免费');
   });
 
-  it('argues the price without a metaphor to decode', () => {
-    const argument = html
-      .replace(/<ul class="numbered-card-list">[\s\S]*?<\/ul>/g, '')
-      .replace(/<[^>]+>/g, ' ');
-    expect(argument).toContain('There is no price');
+  it('names the live tier without a price and without a metaphor', () => {
+    const argument = html.replace(/<[^>]+>/g, ' ');
+    expect(argument).toContain('Only Free is available today.');
+    expect(argument).not.toContain('There is no price');
     expect(argument).not.toContain('village');
   });
 

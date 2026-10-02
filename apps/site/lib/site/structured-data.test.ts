@@ -36,7 +36,7 @@ describe('siteJsonLd', () => {
     }[locale];
     const planner = {
       en: 'planner for your kids’ year',
-      fr: "planificateur pour l'annee de vos enfants",
+      fr: "planificateur pour l'année de vos enfants",
       zh: '孩子这一年的规划',
     }[locale];
     expect(String(app?.description).startsWith(h1)).toBe(true);

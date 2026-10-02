@@ -6,9 +6,9 @@
   },
   "HomeMeta": {
     "title": "Hale · le week-end, par texto",
-    "description": "Le week-end, par texto. Ce qu'il y a pres de toi, samedi. Hale cherche selon un age, un endroit et une place, et texte quand une place s'ouvre. Gratuit, avec un clavardage illimite. Tu textes en premier, sur iMessage. Tes donnees restent au Canada.",
-    "ogDescription": "Le week-end, par texto. Ce qu'il y a pres de toi, samedi. Hale cherche et texte quand une place s'ouvre. Gratuit, avec un clavardage illimite. Tes donnees restent au Canada.",
-    "twitterDescription": "Le week-end, par texto. Ce qu'il y a pres de toi, samedi. Gratuit, avec un clavardage illimite. Tes donnees restent au Canada."
+    "description": "Le week-end, par texto. Ce qu'il y a près de toi, samedi. Hale cherche selon un âge, un endroit et une place, et texte quand une place s'ouvre. Gratuit, avec un clavardage illimité. Tu textes en premier, sur iMessage. Tes données restent au Canada.",
+    "ogDescription": "Le week-end, par texto. Ce qu'il y a près de toi, samedi. Hale cherche et texte quand une place s'ouvre. Gratuit, avec un clavardage illimité. Tes données restent au Canada.",
+    "twitterDescription": "Le week-end, par texto. Ce qu'il y a près de toi, samedi. Gratuit, avec un clavardage illimité. Tes données restent au Canada."
   },
   "Header": {
     "navPricing": "Tarifs",
@@ -59,41 +59,41 @@
     "heroH1a": "Le week-end,",
     "heroH1b": "par",
     "heroH1Accent": "texto.",
-    "heroSub": "Ce qu'il y a pres de toi, samedi.",
-    "heroThreadCap": "Un exemple de texto a Hale, et la reponse",
+    "heroSub": "Ce qu'il y a près de toi, samedi.",
+    "heroThreadCap": "Un exemple de texto à Hale, et la réponse",
     "bubbleYou": "Toi :",
     "bubbleHale": "Hale :",
-    "typingLabel": "Hale est en train d'ecrire",
+    "typingLabel": "Hale est en train d'écrire",
     "heroThread": [
       {
         "dir": "out",
-        "text": "Natation samedi, pres de chez nous. Elle a 4 ans."
+        "text": "Natation samedi, près de chez nous. Elle a 4 ans."
       },
       {
         "dir": "in",
-        "text": "Samedi matin, natation parent-enfant, et un jeu libre tout pres. Je surveille si une place se libere."
+        "text": "Samedi matin, natation parent-enfant, et un jeu libre tout près. Je surveille si une place se libère."
       }
     ],
-    "heroTerms": "Tu textes en premier, sur iMessage. Tes donnees restent au Canada -",
-    "heroTermsLink": "politique de confidentialite",
-    "findH2": "Un age, un endroit, une place.",
+    "heroTerms": "Tu textes en premier, sur iMessage. Tes données restent au Canada —",
+    "heroTermsLink": "politique de confidentialité",
+    "findH2": "Un âge, un endroit, une place.",
     "findLine": "Je cherche, je surveille, et je texte quand une place s'ouvre.",
     "findCardTitle": "En surveillance",
-    "findCardBody": "Une classe pleine reste surveillee. Je texte quand une place s'ouvre.",
-    "inboxH2": "Une ligne, depuis ta boite.",
-    "inboxLine": "Connecte Gmail ou Google Calendar, et je texte l'activite et l'heure.",
+    "findCardBody": "Une classe pleine reste surveillée. Je texte quand une place s'ouvre.",
+    "inboxH2": "Une ligne, depuis ta boîte.",
+    "inboxLine": "Connecte Gmail ou Google Calendar, et je texte l'activité et l'heure.",
     "inboxCardMeta": "Depuis ton agenda",
-    "inboxCard": "Natation - samedi, 9 h 15",
+    "inboxCard": "Natation · samedi, 9 h 15",
     "loopH2": "Une question, puis la suite.",
-    "loopLine": "Au milieu, je demande comment ca se passe. Ce que tu dis oriente la prochaine recherche.",
+    "loopLine": "Au milieu, je demande comment ça se passe. Ce que tu dis oriente la prochaine recherche.",
     "loopThread": [
       {
         "dir": "in",
-        "text": "Comment ca se passe?"
+        "text": "Comment ça se passe?"
       },
       {
         "dir": "out",
-        "text": "On a adore. La salle etait froide."
+        "text": "On a adoré. La salle était froide."
       },
       {
         "dir": "in",
@@ -103,23 +103,23 @@
     "familyH2": "Ta famille, un seul fil.",
     "familyLine": "Le groupe rassemble parents et aidants. Ce que tu me dis reste avec toi.",
     "familyCardGroup": "Groupe familial",
-    "familyCardGroupBody": "Le premier parent le reclame. Les aidants rejoignent le meme fil.",
-    "familyCardMemory": "Memoire",
+    "familyCardGroupBody": "Le premier parent le réclame. Les aidants rejoignent le même fil.",
+    "familyCardMemory": "Mémoire",
     "familyCardMemoryBody": "Ce que tu dis reste dans la famille, et oriente la prochaine recherche.",
     "faqH2": "Questions",
     "faqMore": "D'autres questions",
     "faq": [
       {
         "question": "Que fait Hale?",
-        "answer": "Je cherche ce qu'il y a pour un age, un endroit et une place, et je texte quand une place s'ouvre. Je ne reserve pas et je n'inscris personne."
+        "answer": "Je cherche ce qu'il y a pour un âge, un endroit et une place, et je texte quand une place s'ouvre. Je ne réserve pas et je n'inscris personne."
       },
       {
         "question": "Hale est-il gratuit?",
-        "answer": "Gratuit, avec un clavardage illimite, est en ligne aujourd'hui. Plus et Famille arrivent bientot. Pas de prix."
+        "answer": "Gratuit, avec un clavardage illimité, est en ligne aujourd'hui. Plus et Famille arrivent bientôt."
       },
       {
-        "question": "Ou restent nos donnees?",
-        "answer": "Au Canada. Tu textes en premier, sur iMessage."
+        "question": "Faut-il une appli?",
+        "answer": "Non. Tu textes Hale. Pas de compte à créer."
       }
     ]
   },
@@ -200,7 +200,7 @@
   },
   "Pricing": {
     "metaTitle": "Tarifs · Hale",
-    "metaDescription": "Hale est gratuit, avec un clavardage illimite. Plus et Famille arrivent bientot. Pas de prix. Vos donnees restent au Canada.",
+    "metaDescription": "Hale est gratuit, avec un clavardage illimité. Plus et Famille arrivent bientôt.",
     "eyebrow": "Tarifs",
     "headline": [
       {
@@ -211,17 +211,17 @@
         "accent": true
       }
     ],
-    "lede": "Le clavardage illimite est gratuit aujourd'hui. Plus et Famille arrivent bientot. Pas de prix.",
-    "cta": "Textez un age, un endroit et une place."
+    "lede": "Le clavardage illimité est gratuit aujourd'hui. Plus et Famille arrivent bientôt.",
+    "cta": "Textez un âge, un endroit et une place."
   },
   "PricingSection": {
     "eyebrow": "Tarif",
-    "headline": "Gratuit, avec un clavardage illimite.",
-    "lede": "Vous demandez un age, un endroit et une place. Hale cherche, surveille, et texte quand une place s'ouvre. Le groupe familial est dans le meme clavardage.",
+    "headline": "Gratuit, avec un clavardage illimité.",
+    "lede": "Tu demandes un âge, un endroit et une place. Hale cherche, surveille, et texte quand une place s'ouvre. Le groupe familial est dans le même clavardage.",
     "freeLine": "Gratuit",
-    "freeBody": "Clavardage illimite. Hale cherche selon l'age, l'endroit et la place, et texte quand une place s'ouvre.",
-    "footnote": "Seul Gratuit est disponible aujourd'hui. Pas de prix. Vos donnees restent au Canada.",
-    "comingSoon": "Bientot",
+    "freeBody": "Clavardage illimité. Hale cherche selon l'âge, l'endroit et la place, et texte quand une place s'ouvre.",
+    "footnote": "Seul Gratuit est disponible aujourd'hui.",
+    "comingSoon": "Bientôt",
     "comingBody": "Pas encore disponible.",
     "tierNames": {
       "free": "Gratuit",
@@ -229,7 +229,7 @@
       "family": "Famille"
     },
     "freeFeatures": [
-      "Clavardage illimite",
+      "Clavardage illimité",
       "Recherche en direct",
       "Un texto quand une place s'ouvre",
       "iMessage"
@@ -600,7 +600,7 @@
     ]
   },
   "Jsonld": {
-    "orgDescription": "Hale est un planificateur pour l'annee de vos enfants. Il cherche selon un age, un endroit et une place, surveille les places en loisirs, et texte quand une place s'ouvre. Gratuit, avec un clavardage illimite. Les donnees de chaque famille restent au Canada.",
-    "appDescription": "Le week-end, par texto. Un planificateur pour l'annee de vos enfants : Hale cherche selon un age, un endroit et une place, texte quand une place s'ouvre, et ne reserve pas un cours et n'inscrit personne. Gratuit, avec un clavardage illimite. Les donnees de votre famille ne quittent pas le Canada."
+    "orgDescription": "Hale est un planificateur pour l'année de vos enfants. Il cherche selon un âge, un endroit et une place, surveille les places en loisirs, et texte quand une place s'ouvre. Gratuit, avec un clavardage illimité. Les données de chaque famille restent au Canada.",
+    "appDescription": "Le week-end, par texto. Un planificateur pour l'année de vos enfants : Hale cherche selon un âge, un endroit et une place, texte quand une place s'ouvre, et ne réserve pas un cours et n'inscrit personne. Gratuit, avec un clavardage illimité. Les données de votre famille ne quittent pas le Canada."
   }
 }
