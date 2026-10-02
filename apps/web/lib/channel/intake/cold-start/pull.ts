@@ -101,11 +101,11 @@ function signupOfferForResult(input: {
   );
 }
 
-function finishConnector(
-  kind: 'signup' | 'calendar' | 'email',
+function finishConnector<K extends 'signup' | 'calendar' | 'email'>(
+  kind: K,
   line: { body: string; mayLeave: boolean },
 ): {
-  kind: 'signup' | 'calendar' | 'email';
+  kind: K;
   body: string;
   mayLeave: boolean;
   skipped?: 'copy_unlocked' | 'unfilled';
