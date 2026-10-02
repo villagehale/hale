@@ -1842,16 +1842,11 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-hero-top {
     margin-top: calc(-1 * var(--nav-h));
     padding-top: var(--nav-h);
-    /* A warm ground from the shore tokens, not a photograph. Cream to linen,
-     * with a soft apricot wash that names no place. Navy on these three
-     * stops clears WCAG AA for body text even at the nav's 0.78 opacity
-     * (worst light stop, apricot #fef0c7: nav 6.65:1, trust line at 0.9
-     * would be 9.63:1; the trust line is full ink). Dark inverts onto
-     * #0c1a36 and stays above 8:1. */
-    background:
-      radial-gradient(80% 55% at 88% 8%, var(--color-apricot-tint) 0%, transparent 70%),
-      linear-gradient(180deg, var(--color-cream) 0%, var(--color-linen) 78%);
+    overflow: visible;
+    background: none;
   }
+  /* The photograph is full strength. No page-wide wash, no brightness filter. */
+  .v4-hero-top .v4-hero-art { filter: none; }
   .v4-hero-art {
     position: absolute;
     inset: 0;
@@ -2518,47 +2513,287 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     flex-direction: column;
     align-items: center;
     gap: 0.85rem;
+    /* Local scrim, only behind the type. 0.86 cream over a white sky is
+     * still ~13:1 for navy body text. The picture around it is untouched. */
+    padding: 1.05rem 1.2rem 1.15rem;
+    border-radius: 1.35rem;
+    background: light-dark(rgb(253 252 250 / 0.86), rgb(12 26 54 / 0.8));
   }
+  .v4-hero-copy .v4-hero-sub { opacity: 1; }
   .v4-phone-slot {
-    width: min(17.5rem, 78vw);
-    height: 19rem;
-    overflow: hidden;
+    width: 15.6rem;
+    height: auto;
+    overflow: visible;
     flex-shrink: 0;
-    /* The phone rises and then dissolves into the next section, instead of
-     * ending on a hard clip. The fade starts below the typing indicator. */
-    -webkit-mask-image: linear-gradient(
-      to bottom,
-      #000 0,
-      #000 calc(100% - 3.25rem),
-      transparent 100%
-    );
-    mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 3.25rem), transparent 100%);
+    -webkit-mask-image: none;
+    mask-image: none;
   }
+  /* iPhone 16-class frame: warm titanium, thin bezel, sitting on the shore. */
   .v4-phone {
-    display: flex;
-    flex-direction: column;
-    height: 32rem;
-    padding: 0.55rem 0.55rem 0;
-    border-radius: 2rem 2rem 0 0;
-    background: var(--color-navy);
-    box-shadow: 0 1.5rem 3rem light-dark(rgb(23 41 74 / 0.18), rgb(12 26 54 / 0.5));
-  }
-  .v4-phone-island {
-    align-self: center;
-    width: 4.5rem;
-    height: 0.35rem;
-    margin: 0.35rem 0 0.45rem;
-    border-radius: var(--r-full);
-    background: light-dark(rgb(253 252 250 / 0.55), rgb(246 241 231 / 0.45));
+    width: 15.6rem;
+    aspect-ratio: 402 / 874;
+    padding: 0.22rem;
+    border-radius: 2.35rem;
+    background: linear-gradient(145deg, #efe4d4 0%, #b7a48e 22%, #e7d9c6 48%, #8d7b68 74%, #d9cbb8 100%);
+    box-shadow:
+      0 1.4rem 2.4rem rgb(12 26 54 / 0.28),
+      0 0.15rem 0.15rem rgb(12 26 54 / 0.12),
+      inset 0 1px 0 rgb(255 255 255 / 0.72),
+      inset 0 -1px 0 rgb(40 42 48 / 0.45);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   }
   .v4-phone-screen {
     display: flex;
     flex-direction: column;
-    gap: 0.55rem;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 2.12rem;
+    background: #fff;
+    color: #000;
+  }
+  .v4-ios-status {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 2.55rem;
+    padding: 0.7rem 0.85rem 0;
+    flex-shrink: 0;
+  }
+  .v4-ios-time {
+    font-size: 0.78rem;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    width: 3.2rem;
+  }
+  .v4-ios-island {
+    position: absolute;
+    top: 0.48rem;
+    left: 50%;
+    width: 4.7rem;
+    height: 1.35rem;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: #0b0b0c;
+  }
+  .v4-ios-sys {
+    display: flex;
+    align-items: center;
+    gap: 0.28rem;
+    width: 3.2rem;
+    justify-content: flex-end;
+  }
+  .v4-ios-signal {
+    width: 0.85rem;
+    height: 0.55rem;
+    background:
+      linear-gradient(#000, #000) 0 100% / 18% 40% no-repeat,
+      linear-gradient(#000, #000) 33% 100% / 18% 65% no-repeat,
+      linear-gradient(#000, #000) 66% 100% / 18% 85% no-repeat,
+      linear-gradient(#000, #000) 100% 100% / 18% 100% no-repeat;
+  }
+  .v4-ios-wifi {
+    width: 0.7rem;
+    height: 0.5rem;
+    border: 1.5px solid #000;
+    border-bottom: 0;
+    border-radius: 0.7rem 0.7rem 0 0;
+  }
+  .v4-ios-battery {
+    width: 1.15rem;
+    height: 0.52rem;
+    border: 1px solid #000;
+    border-radius: 2px;
+    position: relative;
+  }
+  .v4-ios-battery::before {
+    content: "";
+    position: absolute;
+    inset: 1px 3px 1px 1px;
+    background: #000;
+    border-radius: 1px;
+  }
+  .v4-ios-battery::after {
+    content: "";
+    position: absolute;
+    right: -2px;
+    top: 2px;
+    width: 1px;
+    height: 3px;
+    background: #000;
+    border-radius: 0 1px 1px 0;
+  }
+  .v4-ios-header {
+    display: grid;
+    grid-template-columns: 1.4rem 1fr 1.4rem;
+    align-items: center;
+    padding: 0 0.35rem 0.35rem;
+    border-bottom: 0.5px solid rgb(60 60 67 / 0.12);
+    flex-shrink: 0;
+  }
+  .v4-ios-back {
+    width: 0.48rem;
+    height: 0.48rem;
+    margin-left: 0.35rem;
+    border-left: 2px solid #0b84fe;
+    border-bottom: 2px solid #0b84fe;
+    transform: rotate(45deg);
+  }
+  .v4-ios-who {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.08rem;
+  }
+  .v4-ios-avatar {
+    display: grid;
+    place-items: center;
+    width: 1.55rem;
+    height: 1.55rem;
+    border-radius: 50%;
+    background: #17294a;
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 600;
+  }
+  .v4-ios-name {
+    margin: 0;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1;
+  }
+  .v4-ios-name::after {
+    content: "";
+    display: inline-block;
+    width: 0.28rem;
+    height: 0.28rem;
+    margin-left: 0.12rem;
+    border-right: 1.5px solid #8e8e93;
+    border-bottom: 1.5px solid #8e8e93;
+    transform: rotate(-45deg) translateY(-1px);
+  }
+  .v4-ios-msg { display: contents; }
+  .v4-phone .v4-hero-thread {
     flex: 1;
-    padding: 0.85rem 0.75rem 1.5rem;
-    border-radius: 1.45rem 1.45rem 0 0;
-    background: var(--color-linen);
+    justify-content: flex-end;
+    gap: 0.18rem;
+    padding: 0.35rem 0.5rem 0.25rem;
+    background: #fff;
+    overflow: hidden;
+  }
+  .v4-ios-stamp,
+  .v4-ios-delivered {
+    margin: 0;
+    font-size: 0.62rem;
+    line-height: 1.2;
+    color: #8e8e93;
+    font-weight: 400;
+  }
+  .v4-ios-stamp { align-self: center; margin-bottom: 0.2rem; }
+  .v4-ios-delivered { align-self: flex-end; margin: 0.05rem 0.45rem 0.15rem 0; }
+  .v4-phone .v4-bubble {
+    position: relative;
+    font-family: inherit;
+    font-weight: 400;
+    font-size: 0.78rem;
+    line-height: 1.28;
+    padding: 0.38rem 0.62rem;
+    border-radius: 1rem;
+    max-width: 86%;
+  }
+  .v4-phone .v4-bubble-out {
+    background: #0b84fe;
+    color: #fff;
+    border-bottom-right-radius: 0.28rem;
+  }
+  .v4-phone .v4-bubble-out::after {
+    content: "";
+    position: absolute;
+    right: -0.28rem;
+    bottom: 0;
+    width: 0.55rem;
+    height: 0.7rem;
+    background: #0b84fe;
+    border-bottom-left-radius: 0.55rem 0.45rem;
+    clip-path: polygon(0 0, 0 100%, 100% 100%);
+  }
+  .v4-phone .v4-bubble-in {
+    background: #e9e9eb;
+    color: #000;
+    border-bottom-left-radius: 0.28rem;
+  }
+  .v4-phone .v4-bubble-in::after,
+  .v4-phone .v4-typing::after {
+    content: "";
+    position: absolute;
+    left: -0.28rem;
+    bottom: 0;
+    width: 0.55rem;
+    height: 0.7rem;
+    background: #e9e9eb;
+    border-bottom-right-radius: 0.55rem 0.45rem;
+    clip-path: polygon(100% 0, 0 100%, 100% 100%);
+  }
+  .v4-phone .v4-typing {
+    position: relative;
+    background: #e9e9eb;
+    min-height: 0;
+    padding: 0.48rem 0.55rem;
+    border-radius: 1rem;
+    border-bottom-left-radius: 0.28rem;
+    gap: 0.18rem;
+  }
+  .v4-phone .v4-typing span[aria-hidden='true'] {
+    width: 0.32rem;
+    height: 0.32rem;
+    background: #8e8e93;
+  }
+  .v4-ios-composer {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.28rem 0.4rem 0.15rem;
+    flex-shrink: 0;
+  }
+  .v4-ios-plus {
+    position: relative;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 50%;
+    background: #e9e9eb;
+    flex-shrink: 0;
+  }
+  .v4-ios-plus::before,
+  .v4-ios-plus::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    background: #636366;
+    transform: translate(-50%, -50%);
+  }
+  .v4-ios-plus::before { width: 0.55rem; height: 1.5px; }
+  .v4-ios-plus::after { width: 1.5px; height: 0.55rem; }
+  .v4-ios-field {
+    flex: 1;
+    height: 1.65rem;
+    display: flex;
+    align-items: center;
+    padding: 0 0.65rem;
+    border: 1px solid #d1d1d6;
+    border-radius: 999px;
+    color: #8e8e93;
+    font-size: 0.78rem;
+  }
+  .v4-ios-home {
+    align-self: center;
+    width: 5.2rem;
+    height: 0.22rem;
+    margin: 0.28rem 0 0.35rem;
+    border-radius: 999px;
+    background: #000;
+    flex-shrink: 0;
   }
   .v4-typing {
     align-self: flex-start;
@@ -2642,37 +2877,6 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     margin-top: 0.35rem;
   }
   .v4-family-row article { padding: 1rem 1.1rem; }
-  .v4-pricing { padding-bottom: 3.5rem; }
-  .v4-tiers {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0.75rem;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-  .v4-tier {
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-    padding: 1.05rem 1.1rem 1.1rem;
-    border-radius: var(--r-xl);
-    background: var(--color-oat);
-    border: 1px solid var(--color-line);
-  }
-  .v4-tier-name {
-    margin: 0;
-    font-size: 1.15rem;
-    font-weight: 620;
-    letter-spacing: -0.01em;
-    color: var(--color-ink);
-  }
-  .v4-tier-status {
-    margin: 0;
-    color: var(--color-slate-green);
-    line-height: 1.45;
-  }
-  .v4-tier-act { margin-top: auto; padding-top: 0.85rem; }
   @media (min-width: 640px) {
     .v4-family-row { grid-template-columns: 1fr 1fr; }
   }
@@ -2684,7 +2888,6 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
       gap: 2rem;
       width: 100%;
     }
-    .v4-tiers { grid-template-columns: repeat(3, 1fr); align-items: start; }
   }
   .v4-beat {
     display: grid;
@@ -2732,18 +2935,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
       text-align: left;
     }
     .v4-hero-copy { align-items: flex-start; }
-    .v4-phone-slot {
-      height: 34rem;
-      overflow: visible;
-      -webkit-mask-image: none;
-      mask-image: none;
-    }
-    .v4-phone {
-      height: 34rem;
-      padding: 0.55rem;
-      border-radius: 2rem;
-    }
-    .v4-phone-screen { border-radius: 1.45rem; }
+    .v4-phone-slot,
+    .v4-phone { width: 17.6rem; }
   }
 
   /* The /text door's exchange — the same thread on a page with no photo under

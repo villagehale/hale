@@ -1,3 +1,4 @@
+import { Check } from 'lucide-react';
 import { LandingCta } from '~/components/landing-cta';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
@@ -6,9 +7,10 @@ import { chromeCta } from '~/lib/site/chrome-cta';
 const TIERS = ['free', 'plus', 'family'] as const;
 
 /**
- * Three compact cards of the same weight. Free is the live tier and the only
- * text door. Plus and Family are the name and "Coming soon". No price, no
- * founding rate, and no upgrade button on a tier that is not available.
+ * Main's three numbered cards, same styling, spacing, type, and order.
+ * Only Free is live: unlimited chat, and the same text door as the rest of
+ * the site. Plus and Family say they are coming soon. No price, no founding
+ * rate, and no upgrade button on a tier that is not available.
  */
 export function PricingSection({ locale = routing.defaultLocale }: { locale?: Locale }) {
   const t = getTranslator(locale, 'PricingSection');
@@ -16,25 +18,51 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
   const names = t.raw('tierNames') as Record<(typeof TIERS)[number], string>;
   const cta = chromeCta(locale);
   return (
-    <section id="pricing" className="shell v4-pricing">
-      <div className="max-w-2xl mb-6">
+    <section id="pricing" className="shell pb-20 lg:pb-28">
+      <div className="max-w-2xl mb-10 lg:mb-12">
         <span className="eyebrow">{t('eyebrow')}</span>
         <h2 className="v4-display mt-3">{t('headline')}</h2>
-        <p className="mt-4 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
+        <p className="mt-5 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
           {t('lede')}
         </p>
       </div>
 
-      <ol className="v4-tiers">
-        {TIERS.map((tier) => {
+      <ol className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+        {TIERS.map((tier, i) => {
           const isFree = tier === 'free';
           return (
-            <li key={tier} className="v4-tier">
-              <h3 className="v4-tier-name">{names[tier]}</h3>
+            <li
+              key={tier}
+              className={
+                tier === 'plus'
+                  ? 'glass-panel numbered-card numbered-card-marked'
+                  : 'glass-panel numbered-card'
+              }
+            >
+              <div className="numbered-card-head">
+                <span className="eyebrow">{names[tier]}</span>
+                <span className="numbered-card-num">0{i + 1}</span>
+              </div>
+              <h3
+                className="mt-5"
+                style={{ fontSize: 'clamp(1.5rem, 2.6vw, 1.9rem)', lineHeight: 1.1 }}
+              >
+                {isFree ? t('freeLine') : t('comingSoon')}
+              </h3>
+              <p className="mt-5" style={{ color: 'var(--color-spruce)', lineHeight: 1.6 }}>
+                {isFree ? t('freeBody') : t('comingBody')}
+              </p>
               {isFree ? (
                 <>
-                  <p className="v4-tier-status">{features.join(' · ')}</p>
-                  <div className="v4-tier-act">
+                  <ul className="numbered-card-list">
+                    {features.map((feature) => (
+                      <li key={feature}>
+                        <Check size={16} strokeWidth={2.5} aria-hidden="true" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-auto pt-8">
                     <LandingCta
                       event="cta_text_click"
                       channel="sms"
@@ -46,14 +74,12 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
                     </LandingCta>
                   </div>
                 </>
-              ) : (
-                <p className="v4-tier-status">{t('comingSoon')}</p>
-              )}
+              ) : null}
             </li>
           );
         })}
       </ol>
-      <p className="meta mt-4">{t('footnote')}</p>
+      <p className="meta mt-6">{t('footnote')}</p>
     </section>
   );
 }

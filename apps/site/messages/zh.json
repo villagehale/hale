@@ -64,6 +64,9 @@
     "bubbleYou": "你：",
     "bubbleHale": "Hale：",
     "typingLabel": "Hale 正在输入",
+    "imessageStamp": "今天 9:41",
+    "imessageDelivered": "已送达",
+    "imessageField": "iMessage",
     "heroThread": [
       {
         "dir": "out",

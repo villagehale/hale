@@ -354,7 +354,8 @@ describe('/pricing — Free is live, Plus and Family say coming soon', () => {
     expect(html).not.toContain('Your village feed');
     expect(html).not.toContain('Companion:');
     expect(html).not.toContain('There is no price');
-    expect((html.match(/class="v4-tier"/g) ?? []).length).toBe(3);
+    expect((html.match(/numbered-card-head/g) ?? []).length).toBe(3);
+    expect(html).toContain('numbered-card-marked');
   });
 
   it('says Hale is free today, and the other two tiers are not available', () => {

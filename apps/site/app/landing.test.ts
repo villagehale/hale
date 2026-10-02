@@ -55,10 +55,11 @@ describe('landing — the hero', () => {
   const html = render();
   const heroHtml = hero(html);
 
-  it('opens on a warm ground, with one serif headline and one subhead', () => {
+  it('opens on the shore photograph, with one serif headline and one subhead', () => {
     expect(html).toContain('class="v4-hero v4-hero-top"');
-    expect(html).not.toContain('hale-shore-hero');
-    expect(html).not.toContain('v4-hero-art');
+    expect(html).toContain('hale-shore-hero');
+    expect(html).toContain('class="v4-hero-art"');
+    expect(html).not.toContain('v4-hero-scrim');
     expect([...html.matchAll(/<h1[\s>]/g)]).toHaveLength(1);
     const h1 = html.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
     expect(h1).toContain('v4-display');
@@ -141,16 +142,17 @@ describe('landing — the number is reachable and never readable', () => {
 describe('landing — the brand tile', () => {
   const html = render();
 
-  it('allows only the decorative logo, not a place photograph', () => {
+  it('allows only decorative images, the logo and the shore', () => {
     const imgs = html.match(/<img[^>]*>/g) ?? [];
-    // Header logo and footer logo. The hero is a token gradient.
-    expect(imgs).toHaveLength(2);
+    // Header logo, footer logo, hero shore. No night plate, no turtle drawing.
+    expect(imgs).toHaveLength(3);
     for (const img of imgs) {
       expect(img).toContain('alt=""');
       expect(img).toContain('aria-hidden="true"');
-      expect(img).toContain('hale-logo');
+      expect(img).toMatch(/hale-logo|hale-shore-hero/);
     }
-    expect(html).not.toContain('hale-shore');
+    expect(imgs.filter((img) => img.includes('hale-shore-hero'))).toHaveLength(1);
+    expect(html).not.toContain('hale-shore-night');
     expect(html).not.toContain('hale-turtle');
   });
 
@@ -272,19 +274,25 @@ describe('landing — motion and focus', () => {
   it('freezes the typing dots under reduced motion and keeps a focus ring on the door', () => {
     expect(css).toContain('@keyframes v4-type');
     const reduce = css.slice(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
-    expect(reduce).toContain('.v4-typing span[aria-hidden=\'true\'] { animation: none; opacity: 1; }');
+    expect(reduce).toContain(
+      ".v4-typing span[aria-hidden='true'] { animation: none; opacity: 1; }",
+    );
     expect(css).toContain(
       'box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep)',
     );
-    expect(css).toContain('mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 3.25rem), transparent 100%)');
+    expect(css).toContain(
+      '.v4-phone-slot {\n    width: 15.6rem;\n    height: auto;\n    overflow: visible;',
+    );
+    expect(css).not.toContain('calc(100% - 3.25rem)');
   });
 
-  it('clears WCAG AA for the headline, the trust line, and the nav on the warm ground', () => {
+  it('keeps headline contrast on a local scrim, not a wash over the photograph', () => {
     const rel = (channel: number) => {
       const c = channel / 255;
       return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
     };
-    const lum = (rgb: number[]) => 0.2126 * rel(rgb[0]) + 0.7152 * rel(rgb[1]) + 0.0722 * rel(rgb[2]);
+    const lum = (rgb: number[]) =>
+      0.2126 * rel(rgb[0]) + 0.7152 * rel(rgb[1]) + 0.0722 * rel(rgb[2]);
     const ratio = (fg: number[], bg: number[]) => {
       const hi = Math.max(lum(fg), lum(bg));
       const lo = Math.min(lum(fg), lum(bg));
@@ -293,21 +301,12 @@ describe('landing — motion and focus', () => {
     const blend = (fg: number[], alpha: number, bg: number[]) =>
       fg.map((channel, i) => channel * alpha + bg[i] * (1 - alpha));
     const navy = [23, 41, 74];
-    const creamInk = [247, 244, 236];
-    const lightGrounds = [
-      [253, 252, 250],
-      [247, 244, 236],
-      [254, 240, 199],
-    ];
-    const darkGround = [12, 26, 54];
-    const navOpacity = Number(css.match(/\.v4-navlink \{[\s\S]*?opacity: ([0-9.]+)/)?.[1]);
-    expect(navOpacity).toBeGreaterThan(0);
-    for (const ground of lightGrounds) {
-      expect(ratio(navy, ground)).toBeGreaterThanOrEqual(3);
-      expect(ratio(blend(navy, 1, ground), ground)).toBeGreaterThanOrEqual(4.5);
-      expect(ratio(blend(navy, navOpacity, ground), ground)).toBeGreaterThanOrEqual(4.5);
-    }
-    expect(ratio(creamInk, darkGround)).toBeGreaterThanOrEqual(4.5);
-    expect(ratio(blend(creamInk, navOpacity, darkGround), darkGround)).toBeGreaterThanOrEqual(4.5);
+    const cream = [253, 252, 250];
+    const sky = [255, 255, 255];
+    const scrim = blend(cream, 0.86, sky);
+    expect(css).toContain('rgb(253 252 250 / 0.86)');
+    expect(css).toContain('.v4-hero-top .v4-hero-art { filter: none; }');
+    // Large headline and the 13.6px trust line, worst case: cream scrim over white sky.
+    expect(ratio(navy, scrim)).toBeGreaterThanOrEqual(4.5);
   });
 });

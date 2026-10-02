@@ -64,6 +64,9 @@
     "bubbleYou": "You:",
     "bubbleHale": "Hale:",
     "typingLabel": "Hale is typing",
+    "imessageStamp": "Today 9:41 AM",
+    "imessageDelivered": "Delivered",
+    "imessageField": "iMessage",
     "heroThread": [
       {
         "dir": "out",

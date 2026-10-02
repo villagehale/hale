@@ -40,8 +40,10 @@ describe('PricingSection (landing pricing)', () => {
     expect(html).not.toContain('Subscribe');
     expect(html).not.toContain('There is no price');
     expect(html).not.toContain('Your data stays in Canada');
-    expect([...html.matchAll(/class="v4-tier"/g)]).toHaveLength(3);
-    expect(html).not.toContain('numbered-card-list');
+    expect([...html.matchAll(/numbered-card-head/g)]).toHaveLength(3);
+    expect(html).toContain('glass-panel numbered-card numbered-card-marked');
+    expect(html).toContain('numbered-card-list');
+    expect(html).toContain('numbered-card-num');
   });
 
   it('renders the French cards: Gratuit is live, Plus and Famille are coming soon', () => {
@@ -88,7 +90,9 @@ describe('PricingSection (landing pricing)', () => {
     expect(html.toLowerCase()).not.toContain('checkout');
     expect(html).not.toContain('#waitlist');
     const { href, label } = chromeCta();
-    expect([...html.matchAll(new RegExp(escapeRe(href.replace(/&/g, '&amp;')), 'g'))]).toHaveLength(1);
+    expect([...html.matchAll(new RegExp(escapeRe(href.replace(/&/g, '&amp;')), 'g'))]).toHaveLength(
+      1,
+    );
     expect([...html.matchAll(new RegExp(escapeRe(label), 'g'))]).toHaveLength(1);
   });
 

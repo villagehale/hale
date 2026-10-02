@@ -41,7 +41,7 @@ function visibleText(html: string): string {
 }
 
 function heroExchange(html: string): string {
-  return html.match(/<div class="v4-phone-screen v4-hero-thread[\s\S]*?<\/div>/)?.[0] ?? '';
+  return html.match(/<div class="v4-hero-thread[\s\S]*?<\/div>/)?.[0] ?? '';
 }
 
 /** Mirrors `accentSeparator` in the landing: Latin takes a word space, zh sets solid. */
@@ -119,9 +119,9 @@ describe('homepage copy in every locale', () => {
   });
 
   it.each(routing.locales)('%s says who is speaking in every bubble', (locale) => {
-    const bubbles = [
-      ...HTML[locale].matchAll(/<p class="v4-bubble[^"]*">([\s\S]*?)<\/p>/g),
-    ].map((m) => m[1] ?? '');
+    const bubbles = [...HTML[locale].matchAll(/<p class="v4-bubble[^"]*">([\s\S]*?)<\/p>/g)].map(
+      (m) => m[1] ?? '',
+    );
     // Hero ask + reply, and the three-bubble loop under it.
     expect(bubbles).toHaveLength(5);
     for (const bubble of bubbles) expect(bubble).toMatch(/^<span class="sr-only">[^<]+ <\/span>/);
@@ -145,7 +145,15 @@ describe('homepage copy in every locale', () => {
       walkStrings(fr[key], (text) => pieces.push(text));
     }
     const blob = pieces.join('\n');
-    for (const word of ['près', 'données', 'confidentialité', "d'écrire", 'Mémoire', 'bientôt', 'âge']) {
+    for (const word of [
+      'près',
+      'données',
+      'confidentialité',
+      "d'écrire",
+      'Mémoire',
+      'bientôt',
+      'âge',
+    ]) {
       expect(blob, word).toContain(word);
     }
     const flat = blob.toLowerCase();

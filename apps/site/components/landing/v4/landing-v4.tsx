@@ -1,3 +1,5 @@
+import Image from 'next/image';
+import heroShore from '~/assets/hale-shore-hero.webp';
 import { ChooserLink } from '~/components/chooser-link';
 import { LandingScrollAnalytics } from '~/components/landing-scroll-analytics';
 import { PricingSection } from '~/components/pricing-section';
@@ -13,10 +15,9 @@ import { siteJsonLd } from '~/lib/site/structured-data';
 import { CONTACT_EMAIL } from '~/lib/text-entry';
 
 /**
- * The homepage. A warm token gradient, glass, and the shared header and
- * footer stay; the page itself is a short hero (one headline, one subhead,
- * one door, a phone thread) and four product lines in different shapes,
- * then the live pricing cards and a short FAQ.
+ * The homepage. The shore photograph is full strength, with a light scrim
+ * only behind the type. A real iPhone frame carries the thread. Shared
+ * header and footer stay. Four product lines, then pricing and a short FAQ.
  *
  * Hale finds. The bubbles do not book, register, or name a town. Copy is the
  * Landing namespace. With no number provisioned the door is email, and the
@@ -55,6 +56,15 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       <SiteHeader locale={locale} />
 
       <section className="v4-hero v4-hero-top">
+        <Image
+          src={heroShore}
+          alt=""
+          aria-hidden="true"
+          fill
+          priority
+          sizes="100vw"
+          className="v4-hero-art"
+        />
         <div className="v4-hero-body">
           <div className="v4-hero-stage">
             <div className="v4-hero-copy">
@@ -85,7 +95,10 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
                 {live && (
                   <p className="v4-hero-terms">
                     {t('heroTerms')}{' '}
-                    <a href={localeHref(locale, '/privacy')} className="underline underline-offset-2">
+                    <a
+                      href={localeHref(locale, '/privacy')}
+                      className="underline underline-offset-2"
+                    >
                       {t('heroTermsLink')}
                     </a>
                     .
@@ -96,21 +109,54 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
 
             <div className="v4-phone-slot">
               <div className="v4-phone">
-                <span className="v4-phone-island" aria-hidden="true" />
-                <div className="v4-phone-screen v4-hero-thread">
-                  <p className="sr-only">{t('heroThreadCap')}</p>
-                  {heroBubbles.map((row) => (
-                    <p key={`${row.dir}-${row.text}`} className={`v4-bubble v4-bubble-${row.dir}`}>
-                      <span className="sr-only">{speaker(row.dir)} </span>
-                      {row.text}
+                <div className="v4-phone-screen">
+                  <div className="v4-ios-status" aria-hidden="true">
+                    <span className="v4-ios-time">9:41</span>
+                    <span className="v4-ios-island" />
+                    <span className="v4-ios-sys">
+                      <span className="v4-ios-signal" />
+                      <span className="v4-ios-wifi" />
+                      <span className="v4-ios-battery" />
+                    </span>
+                  </div>
+                  <div className="v4-ios-header" aria-hidden="true">
+                    <span className="v4-ios-back" />
+                    <span className="v4-ios-who">
+                      <span className="v4-ios-avatar">H</span>
+                      <p className="v4-ios-name">Hale</p>
+                    </span>
+                    <span />
+                  </div>
+                  <div className="v4-hero-thread">
+                    <p className="sr-only">{t('heroThreadCap')}</p>
+                    <p className="v4-ios-stamp" aria-hidden="true">
+                      {t('imessageStamp')}
                     </p>
-                  ))}
-                  <p className="v4-typing">
-                    <span className="sr-only">{t('typingLabel')}</span>
-                    <span aria-hidden="true" />
-                    <span aria-hidden="true" />
-                    <span aria-hidden="true" />
-                  </p>
+                    {heroBubbles.map((row) => (
+                      <span key={`${row.dir}-${row.text}`} className="v4-ios-msg">
+                        <p className={`v4-bubble v4-bubble-${row.dir}`}>
+                          <span className="sr-only">{speaker(row.dir)} </span>
+                          {row.text}
+                        </p>
+                        {row.dir === 'out' ? (
+                          <p className="v4-ios-delivered" aria-hidden="true">
+                            {t('imessageDelivered')}
+                          </p>
+                        ) : null}
+                      </span>
+                    ))}
+                    <p className="v4-typing">
+                      <span className="sr-only">{t('typingLabel')}</span>
+                      <span aria-hidden="true" />
+                      <span aria-hidden="true" />
+                      <span aria-hidden="true" />
+                    </p>
+                  </div>
+                  <div className="v4-ios-composer" aria-hidden="true">
+                    <span className="v4-ios-plus" />
+                    <span className="v4-ios-field">{t('imessageField')}</span>
+                  </div>
+                  <span className="v4-ios-home" aria-hidden="true" />
                 </div>
               </div>
             </div>
