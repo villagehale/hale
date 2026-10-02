@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "yes",
+    "confidence": "low",
+    "reason": "Text is in French; cannot read confidently in English per instructions"
+  },
+  "latencyMs": 1092
+}

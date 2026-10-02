@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "yes",
+    "confidence": "high",
+    "reason": "This is a question, not an answer. The parent is asking when storytime is on Saturday. Neither open question is about storytime timing."
+  },
+  "latencyMs": 1287
+}

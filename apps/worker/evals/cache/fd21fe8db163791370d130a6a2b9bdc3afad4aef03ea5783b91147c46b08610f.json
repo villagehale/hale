@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "ambiguous",
+    "polarity": "yes",
+    "confidence": "high",
+    "reason": "Clear yes, but two similar calendar approvals open—cannot tell which one the parent answered"
+  },
+  "latencyMs": 1189
+}

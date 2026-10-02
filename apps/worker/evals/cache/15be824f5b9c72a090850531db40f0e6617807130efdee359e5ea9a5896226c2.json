@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "yes",
+    "confidence": "high",
+    "reason": "Says yes but changes the thing—coach handles the full sentence"
+  },
+  "latencyMs": 1164
+}
