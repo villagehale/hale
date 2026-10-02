@@ -12,7 +12,17 @@
 // suite is not a second one — and it charges usage against the ACTUAL model rather than
 // assuming Sonnet, which that copy does.
 
-import { cacheGet, cacheKey, cachePut, noteUsage } from './harness.mjs';
+import {
+  cacheGet,
+  cacheKey,
+  cachePut,
+  evalAnthropicRequest,
+  evalRunTag,
+  evalSubjectClient,
+  evalSubjectRequest,
+  noteLatency,
+  noteUsage,
+} from './harness.mjs';
 
 /** Guard deps that satisfy the signature and never fire: a no-tools skill dispatches no
  * tool, so there is nothing to audit and no child content to check. Anything that DID
@@ -44,18 +54,21 @@ export async function cachedAgentAnswer({
   getClient,
   cost,
   familyId = 'fixture-family',
+  model,
 }) {
   const auditLog = [];
   const client = {
     messages: {
       async create(params) {
+        const request = evalSubjectRequest(model ? evalAnthropicRequest(params, model) : params);
         const canonical = JSON.stringify({
-          model: params.model,
-          system: params.system,
-          messages: params.messages,
-          max_tokens: params.max_tokens,
+          model: request.model,
+          system: request.system,
+          messages: request.messages,
+          max_tokens: request.max_tokens,
+          ...(process.env.EVAL_GATEWAY_MODEL ? { thinking: request.thinking } : {}),
         });
-        const key = cacheKey(`${tag}:voice`, canonical);
+        const key = cacheKey(evalRunTag(`${tag}:voice`), canonical);
 
         const cached = await cacheGet(key);
         if (cached) return cached.response;
@@ -67,8 +80,11 @@ export async function cachedAgentAnswer({
           process.exit(1);
         }
 
-        const response = await getClient().messages.create(params);
-        noteUsage(cost, params.model, response.usage);
+        const startedAt = performance.now();
+        const response = await evalSubjectClient(getClient).messages.create(request);
+        const latencyMs = Math.round(performance.now() - startedAt);
+        noteLatency(request.model, latencyMs);
+        noteUsage(cost, request.model, response.usage);
         // The raw SDK message shape runAgent consumes, as a plain object so JSON
         // round-trips losslessly.
         const stored = {

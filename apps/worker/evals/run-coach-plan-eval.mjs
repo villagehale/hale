@@ -17,6 +17,11 @@
 //
 // Usage (from apps/worker):
 //   node --env-file=../../.env evals/run-coach-plan-eval.mjs            # live, then caches
+//   ... --anthropic-model=claude-opus-5-5                               # eval-only plan candidate
+//   ... --plan-max-tokens=4096                                           # candidate token calibration
+//   ... --only=sleep-3am-18mo,cosleep-2yo,potty-2point5                  # selected calibration cases
+//   ... --min-samples=50                                                 # expanded synthetic corpus
+//   ... --min-samples=50 --preflight                                     # print scope, make no API calls
 //   node --env-file=../../.env evals/run-coach-plan-eval.mjs --broken   # calibration: must FAIL
 //   node evals/run-coach-plan-eval.mjs --cached-only                    # CI: replay only
 //   ... --show                                                          # print each output
@@ -46,6 +51,7 @@ import {
   readModelIds,
   totalUsd,
 } from './lib/harness.mjs';
+import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -238,7 +244,10 @@ function sanctionsTheHealthLine(playbook) {
 }
 
 function firstNameToken(name) {
-  const bare = name.replace(/\s*\(.*\)\s*$/, '').trim().toLowerCase();
+  const bare = name
+    .replace(/\s*\(.*\)\s*$/, '')
+    .trim()
+    .toLowerCase();
   return bare.startsWith('the ') ? bare.slice(4) : bare;
 }
 
@@ -299,7 +308,9 @@ function runtimeViolations(flat, playbook, checkInDays, smsSegments, isPlan) {
   const sirenAllowed = sanctionsTheHealthLine(playbook);
 
   if (isPlan && (flat.length < MIN_PLAN_MESSAGES || flat.length > MAX_PLAN_MESSAGES)) {
-    violations.push(`The plan came back as ${flat.length} usable message(s); it must be exactly 2 or 3.`);
+    violations.push(
+      `The plan came back as ${flat.length} usable message(s); it must be exactly 2 or 3.`,
+    );
   }
   flat.forEach((body, index) => {
     const label = isPlan ? `Message ${index + 1}` : 'The message';
@@ -348,7 +359,7 @@ const PLAN_JUDGE_SYSTEM = [
   'it was source-verified and an improvisation was not. Contradicting the playbook',
   'scores 1.',
   'A 5 is a plan a parent could start TONIGHT: the method NAMED, one line of why it is',
-  'worth doing, then the sequence in labelled stages with the playbook\'s own specifics,',
+  "worth doing, then the sequence in labelled stages with the playbook's own specifics,",
   'what to EXPECT including the point where it looks like it is failing, how to tell it',
   'is working, and the day Hale will check back. It recommends ONE method plainly and',
   'names the alternative in a clause rather than presenting both evenly.',
@@ -396,6 +407,26 @@ async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const show = process.argv.includes('--show');
+  const preflight = process.argv.includes('--preflight');
+  const candidateModel = process.argv
+    .find((arg) => arg.startsWith('--anthropic-model='))
+    ?.slice('--anthropic-model='.length);
+  if (candidateModel && candidateModel !== 'claude-opus-5-5') {
+    throw new Error('--anthropic-model only supports claude-opus-5-5');
+  }
+  const planMaxTokensArg = process.argv
+    .find((arg) => arg.startsWith('--plan-max-tokens='))
+    ?.split('=')[1];
+  const planMaxTokens = planMaxTokensArg === undefined ? PLAN_MAX_TOKENS : Number(planMaxTokensArg);
+  if (!Number.isInteger(planMaxTokens) || planMaxTokens < 1) {
+    throw new Error('--plan-max-tokens must be a positive integer');
+  }
+  const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
+  const minSamplesArg = process.argv.find((arg) => arg.startsWith('--min-samples='))?.split('=')[1];
+  const minSamples = minSamplesArg === undefined ? null : Number(minSamplesArg);
+  if (minSamples !== null && (!Number.isInteger(minSamples) || minSamples < 1)) {
+    throw new Error('--min-samples must be a positive integer');
+  }
   const getClient = lazyAnthropic();
   const cost = makeCost();
 
@@ -404,23 +435,73 @@ async function main() {
 
   const planSkill = await agent.loadSkill(PLAN_SKILL);
   const noteSkill = await agent.loadSkill(NOTE_SKILL);
-  const planModel = agent.pickModel(planSkill.meta.task);
+  const allFixtures =
+    minSamples === null
+      ? COACH_PLAN_FIXTURES
+      : expandSyntheticFixtures('coach-plan', COACH_PLAN_FIXTURES, minSamples, {
+          vary: (fixture, { profile, round, reference }) => {
+            if (fixture.kind === 'check_in') {
+              const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+              fixture.promise.promisedDay =
+                weekdays[(profile.slug.length + round) % weekdays.length];
+              fixture.promise.summary += ` Progress sample ${reference}.`;
+            } else {
+              fixture.question = `${profile.prefix}${fixture.question} (${reference})`;
+            }
+          },
+          visibleInput: (fixture) =>
+            fixture.kind === 'plan'
+              ? planUserMessage(fixture, playbookFor(fixture.topic))
+              : noteUserMessage(fixture, playbookFor(fixture.topic)),
+        });
+  const selectedIds = new Set(only?.split(',').filter(Boolean) ?? []);
+  const fixtures = only
+    ? allFixtures.filter((fixture) => selectedIds.has(fixture.id))
+    : allFixtures;
+  if (only && fixtures.length !== selectedIds.size) {
+    throw new Error(`one or more fixtures did not match --only=${only}`);
+  }
+  const planModel = candidateModel ?? agent.pickModel(planSkill.meta.task);
   const noteModel = agent.pickModel(noteSkill.meta.task);
   // A Sonnet judge, not the harness default: these are three-paragraph plans whose
   // failure mode is a shade of generality, and Haiku flapped on exactly that class in
   // the coach-channel corpus. The run is cached, so the tier costs once.
   const judgeModel = (await readModelIds()).sonnet;
-  const planJudge = makeJudge(judgeModel, PLAN_JUDGE_SYSTEM, 'coach-plan', cachedOnly, getClient, cost);
-  const noteJudge = makeJudge(judgeModel, NOTE_JUDGE_SYSTEM, 'coach-note', cachedOnly, getClient, cost);
+  if (preflight) {
+    const plans = fixtures.filter((fixture) => fixture.kind === 'plan').length;
+    console.log(
+      `coach-plan preflight | fixtures=${fixtures.length} plans=${plans} notes=${fixtures.length - plans} plan=${planModel} planMaxTokens=${planMaxTokens}`,
+    );
+    console.log(
+      `max API calls: plan subject=${plans * MAX_ATTEMPTS}, note subject=${(fixtures.length - plans) * MAX_ATTEMPTS}, judges=${fixtures.length}`,
+    );
+    return;
+  }
+  const planJudge = makeJudge(
+    judgeModel,
+    PLAN_JUDGE_SYSTEM,
+    'coach-plan',
+    cachedOnly,
+    getClient,
+    cost,
+  );
+  const noteJudge = makeJudge(
+    judgeModel,
+    NOTE_JUDGE_SYSTEM,
+    'coach-note',
+    cachedOnly,
+    getClient,
+    cost,
+  );
 
   console.log(
     `coach-plan eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | plan=${planModel} note=${noteModel} judge=${judgeModel}`,
   );
-  console.log(`corpus: ${COACH_PLAN_FIXTURES.length} fixtures\n`);
+  console.log(`corpus: ${fixtures.length} fixtures\n`);
 
   const results = [];
   const markdownSeen = new Set();
-  for (const fixture of COACH_PLAN_FIXTURES) {
+  for (const fixture of fixtures) {
     const playbook = playbookFor(fixture.topic);
     const isPlan = fixture.kind === 'plan';
 
@@ -449,7 +530,10 @@ async function main() {
               toolDescription: isPlan
                 ? 'Return the plan as two or three text messages in order, plus how many days from today to check back.'
                 : 'Return the one message to send.',
-              maxTokens: isPlan ? PLAN_MAX_TOKENS : NOTE_MAX_TOKENS,
+              maxTokens: isPlan ? planMaxTokens : NOTE_MAX_TOKENS,
+              toolChoice: isPlan && candidateModel ? { type: 'auto' } : undefined,
+              thinking: isPlan && candidateModel ? { type: 'adaptive' } : undefined,
+              effort: isPlan && candidateModel ? 'xhigh' : undefined,
               cachedOnly,
               getClient,
               cost,
@@ -467,10 +551,15 @@ async function main() {
       if (violations.length === 0) break;
     }
     const whole = flat.join(' ');
-    const failures = sendFailures(flat, smsSegments, isPlan ? MAX_PLAN_SEGMENTS : MAX_NOTE_SEGMENTS, {
-      allowMany: isPlan,
-      playbook,
-    });
+    const failures = sendFailures(
+      flat,
+      smsSegments,
+      isPlan ? MAX_PLAN_SEGMENTS : MAX_NOTE_SEGMENTS,
+      {
+        allowMany: isPlan,
+        playbook,
+      },
+    );
     if (markdownSeen.has(fixture.id)) failures.push('markdown');
     failures.push(...citationFailures(whole, playbook));
 
@@ -483,7 +572,10 @@ async function main() {
       if (labels < MIN_LABELLED_STAGES) {
         failures.push(`not_sequenced (${labels} stage labels in the whole plan)`);
       }
-      const vague = flat.slice(0, -1).map((body, i) => (hasSpecific(body) ? null : i)).filter((i) => i !== null);
+      const vague = flat
+        .slice(0, -1)
+        .map((body, i) => (hasSpecific(body) ? null : i))
+        .filter((i) => i !== null);
       if (vague.length > 0) failures.push(`not_concrete (stages ${vague.join(', ')})`);
       if (!namesTheMethod(whole, playbook)) {
         failures.push(`UNNAMED METHOD (never says "${playbook.primaryMethod.name}")`);
@@ -515,7 +607,8 @@ async function main() {
     }
 
     for (const token of fixture.expect.mustMention ?? []) {
-      if (!whole.toLowerCase().includes(token.toLowerCase())) failures.push(`never says "${token}"`);
+      if (!whole.toLowerCase().includes(token.toLowerCase()))
+        failures.push(`never says "${token}"`);
     }
     for (const token of fixture.expect.forbidden ?? []) {
       if (whole.toLowerCase().includes(token.toLowerCase())) failures.push(`says "${token}"`);
@@ -577,7 +670,9 @@ async function main() {
   const mean = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
 
   console.log('\n--- corpus metrics ---');
-  console.log(`UNSENDABLE:              ${unsendable.length}  (0 required - no fallback body exists)`);
+  console.log(
+    `UNSENDABLE:              ${unsendable.length}  (0 required - no fallback body exists)`,
+  );
   console.log(`UNGROUNDED / fabricated: ${ungrounded.length}  (0 required - the hard gate)`);
   console.log(`method never named:      ${unnamed.length}  (0 required)`);
   console.log(`promised-day mismatch:   ${brokenPromise.length}  (0 required)`);

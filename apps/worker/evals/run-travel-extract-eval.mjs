@@ -21,6 +21,8 @@
 // rather than silently grading a schema production does not send.
 //
 //   node --env-file=../../.env evals/run-travel-extract-eval.mjs             # live (populates cache)
+//   ... --anthropic-model=claude-sonnet-5-5                                  # eval-only candidate
+//   ... --min-samples=50                                                      # expanded synthetic corpus
 //   node --env-file=../../.env evals/run-travel-extract-eval.mjs --no-skill  # calibration: must FAIL
 //   node evals/run-travel-extract-eval.mjs --cached-only                     # CI: replay, zero API calls
 //
@@ -30,7 +32,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tsImport } from 'tsx/esm/api';
-import { TRAVEL_EXTRACT_FIXTURES } from './travel-extract-fixtures.mjs';
 import {
   REPO_ROOT,
   cacheGet,
@@ -42,6 +43,8 @@ import {
   readModelIds,
   totalUsd,
 } from './lib/harness.mjs';
+import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
+import { TRAVEL_EXTRACT_FIXTURES } from './travel-extract-fixtures.mjs';
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'extract-travel-booking.md');
@@ -111,7 +114,18 @@ function userMessage(fixture) {
  * `thinking` / `output_config`, and leaving them off would replay a model production does
  * not run — so this is the lane-faithful version, keyed on the same fields it sends.
  */
-async function cachedTravelCall({ tag, model, system, message, schema, maxTokens, cachedOnly, getClient, cost }) {
+async function cachedTravelCall({
+  tag,
+  model,
+  system,
+  message,
+  schema,
+  maxTokens,
+  toolChoice,
+  cachedOnly,
+  getClient,
+  cost,
+}) {
   const thinking = { type: 'adaptive' };
   const outputConfig = { effort: 'high' };
   const canonical = JSON.stringify({
@@ -122,6 +136,7 @@ async function cachedTravelCall({ tag, model, system, message, schema, maxTokens
     thinking,
     outputConfig,
     maxTokens,
+    ...(toolChoice ? { toolChoice } : {}),
   });
   const key = cacheKey(tag, canonical);
 
@@ -146,7 +161,7 @@ async function cachedTravelCall({ tag, model, system, message, schema, maxTokens
         input_schema: schema,
       },
     ],
-    tool_choice: { type: 'tool', name: TOOL_NAME },
+    tool_choice: toolChoice ?? { type: 'tool', name: TOOL_NAME },
     messages: [{ role: 'user', content: message }],
   });
   // A truncated forced tool call is not an answer and must never be cached as one: it
@@ -205,7 +220,8 @@ function check(fixture, value) {
       ['end', 'end_date'],
     ]) {
       const got = value?.[key] ?? null;
-      if (got !== want[field]) problems.push(`${key.toUpperCase()} want=${want[field]} got=${String(got)}`);
+      if (got !== want[field])
+        problems.push(`${key.toUpperCase()} want=${want[field]} got=${String(got)}`);
     }
   }
 
@@ -240,14 +256,31 @@ function check(fixture, value) {
 async function main() {
   const noSkill = process.argv.includes('--no-skill');
   const cachedOnly = process.argv.includes('--cached-only');
+  const candidateModel = process.argv
+    .find((arg) => arg.startsWith('--anthropic-model='))
+    ?.slice('--anthropic-model='.length);
+  const minSamplesArg = process.argv.find((arg) => arg.startsWith('--min-samples='))?.split('=')[1];
+  const minSamples = minSamplesArg === undefined ? null : Number(minSamplesArg);
+  if (minSamples !== null && (!Number.isInteger(minSamples) || minSamples < 1)) {
+    throw new Error('--min-samples must be a positive integer');
+  }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const models = await readModelIds();
   // The skill declares task: extract → Sonnet 5. Read from model.ts, never hardcoded.
-  const model = models.sonnet5;
+  const model = candidateModel ?? models.sonnet5;
   const { maxTokens, childEvidence, properties } = await readRuntimeContract();
   const schema = toolSchema(childEvidence);
+  const fixtures =
+    minSamples === null
+      ? TRAVEL_EXTRACT_FIXTURES
+      : expandSyntheticFixtures('travel-extract', TRAVEL_EXTRACT_FIXTURES, minSamples, {
+          vary: (fixture, { reference }) => {
+            fixture.body += `\n\nBooking message reference: ${reference}.`;
+          },
+          visibleInput: userMessage,
+        });
 
   // The runtime's schema and this one must declare the same fields, or the corpus is
   // grading a shape production does not send.
@@ -269,7 +302,7 @@ async function main() {
     `travel-extract-eval | mode=${noSkill ? 'no-skill' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | model=${model}`,
   );
   console.log(
-    `skill=${skill.meta.name} task=${skill.meta.task} max_tokens=${maxTokens} | corpus: ${TRAVEL_EXTRACT_FIXTURES.length} bookings\n`,
+    `skill=${skill.meta.name} task=${skill.meta.task} max_tokens=${maxTokens} | corpus: ${fixtures.length} bookings\n`,
   );
 
   const getClient = lazyAnthropic();
@@ -277,7 +310,7 @@ async function main() {
   let failed = 0;
   let live = 0;
 
-  for (const fixture of TRAVEL_EXTRACT_FIXTURES) {
+  for (const fixture of fixtures) {
     const result = await cachedTravelCall({
       tag: `travel-extract:${noSkill ? 'no-skill:' : ''}${fixture.id}`,
       model,
@@ -285,6 +318,7 @@ async function main() {
       message: userMessage(fixture),
       schema,
       maxTokens,
+      toolChoice: candidateModel ? { type: 'auto' } : undefined,
       cachedOnly,
       getClient,
       cost,
@@ -304,13 +338,13 @@ async function main() {
 
   console.log(`\nlive calls: ${live} | est. cost: $${totalUsd(cost).toFixed(4)}`);
   console.log('--- gate ---');
-  console.log(
-    `${TRAVEL_EXTRACT_FIXTURES.length - failed}/${TRAVEL_EXTRACT_FIXTURES.length} bookings read exactly`,
-  );
+  console.log(`${fixtures.length - failed}/${fixtures.length} bookings read exactly`);
 
   if (!noSkill) {
     const ok = failed === 0;
-    console.log(`real-mode gate (all fixtures must pass): ${ok ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
+    console.log(
+      `real-mode gate (all fixtures must pass): ${ok ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
+    );
     process.exit(ok ? 0 : 1);
   }
 

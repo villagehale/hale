@@ -83,6 +83,7 @@ full app env; the table below is the **deploy-time** subset per platform.
 | `DATABASE_URL` | ✓ | — | Reads + enqueue |
 | `DATABASE_DIRECT_URL` | ✓ | — | Build-time / non-pooled |
 | `ANTHROPIC_API_KEY` | ✓ | — | Web agent pipeline + scheduled cron agents (digest / inference) |
+| `AI_GATEWAY_API_KEY` | ✓ | — | Only when a VIL-376 JEV or DeepSeek candidate is enabled. |
 | `RESEND_API_KEY` | ✓ | — | Daily-digest email send (from `hello@villagehale.com`; `RESEND_FROM` optional override) |
 | `CRON_SECRET` | ✓ | — | **Required for the scheduled agents.** Vercel sends it as `Authorization: Bearer <CRON_SECRET>`; the cron routes 401 (do no work, no spend) without a match. See [Scheduled agents (cron)](#scheduled-agents-cron). |
 | `CLERK_SECRET_KEY` | ✓ | — | Auth |
@@ -102,6 +103,31 @@ green. A leg that runs without its required secret fails loud.**
 |---|---|---|
 | `DATABASE_DIRECT_URL` | `migrate` (+ drift gate) | **Required for prod migrations to apply at all** — see [Migration drift guard](#migration-drift-guard). Direct (non-pooled) URL — drizzle-kit runs DDL in a transaction. |
 | `FLY_API_TOKEN` | `fly` | `fly auth token`. |
+
+---
+
+## VIL-376 model rollout and kill switches
+
+Every switch defaults to `current`; an empty value also means `current`. Set one switch to
+`candidate` only after that slice is approved.
+
+| Decision slice | Environment | `current` | `candidate` |
+|---|---|---|---|
+| Intake reply intent | `HALE_REPLY_INTENT_MODEL_MODE` on Vercel web | Sonnet 5 | JEV |
+| Sentinel envelope triage | `HALE_TRIAGE_MODEL_MODE` on Vercel web | Haiku 4.5 | JEV |
+| Event classification | `HALE_CLASSIFY_EVENT_MODEL_MODE` on Vercel web | Sonnet 5 | Sonnet 5.5 |
+| Intake extraction | `HALE_INTAKE_EXTRACT_MODEL_MODE` on Vercel web | Sonnet 5 | Sonnet 5.5 |
+| Inbound screen | `HALE_INBOUND_SCREEN_MODEL_MODE` on Vercel web | Haiku 4.5 | JEV |
+| Memory inference | `HALE_MEMORY_INFER_MODEL_MODE` on Vercel web | Sonnet 4.6 | DeepSeek V4.1 Flash |
+| Village search parsing | `HALE_VILLAGE_SEARCH_PARSE_MODEL_MODE` on Vercel web | Sonnet 5 | DeepSeek V4.1 Flash |
+
+These switches affect internal decisions only. Parent-facing `converse`, `draft`, `answer`,
+`acknowledge`, and `speak` output remains on its current Sonnet/Haiku routing.
+
+Deploying this code keeps every current model unless a flag explicitly says `candidate`.
+Rollback is setting the affected flag to `current` and redeploying/restarting the web service.
+JEV and DeepSeek require `AI_GATEWAY_API_KEY`. Candidate failures retry the current model
+except memory inference, whose tool loop is not retried because that could duplicate writes.
 
 ---
 

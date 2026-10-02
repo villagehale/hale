@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "assent",
+    "verbatim": "sure thing",
+    "rationale": "\"sure thing\" is a plain affirmative response to the yes/no question",
+    "confidence": 0.95
+  },
+  "latencyMs": 1521
+}

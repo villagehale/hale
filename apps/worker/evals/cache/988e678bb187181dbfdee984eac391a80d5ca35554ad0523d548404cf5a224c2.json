@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "no, but thanks for asking",
+    "rationale": "Explicit \"no\" directly answers the question",
+    "confidence": 0.97
+  },
+  "latencyMs": 1444
+}

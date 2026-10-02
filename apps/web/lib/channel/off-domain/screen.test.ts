@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInboundLaneScreen, laneUserMessage, toReading } from './screen';
 
 /**
@@ -108,6 +108,9 @@ describe('toReading', () => {
 describe('createInboundLaneScreen · every failure hands the turn to the coach', () => {
   const READ = 'is there a good park nearby';
 
+  beforeEach(() => vi.stubEnv('HALE_INBOUND_SCREEN_MODEL_MODE', ''));
+  afterEach(() => vi.unstubAllEnvs());
+
   it('reads a lane when the model answers', async () => {
     const screen = createInboundLaneScreen(
       clientReturning({ lane: 'off_domain_general', category: 'weather', reason: 'forecast' }),
@@ -118,6 +121,57 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
       category: 'weather',
       fallback: null,
     });
+  });
+
+  it('keeps Haiku by default', async () => {
+    const evaluateChoice = vi.fn();
+    const screen = createInboundLaneScreen(
+      clientReturning({ lane: 'in_domain', category: 'none', reason: 'family request' }),
+      { evaluateChoice },
+    );
+
+    expect((await screen.read(READ)).lane).toBe('in_domain');
+    expect(evaluateChoice).not.toHaveBeenCalled();
+  });
+
+  it('uses a confident JEV reading when explicitly enabled', async () => {
+    const currentClient = clientReturning({
+      lane: 'in_domain',
+      category: 'none',
+      reason: 'fallback',
+    });
+    const screen = createInboundLaneScreen(currentClient, {
+      modelMode: 'candidate',
+      evaluateChoice: vi.fn(async () => ({
+        choice: 'off_domain_general__weather' as const,
+        probabilities: { off_domain_general__weather: 0.7, in_domain__none: 0.3 },
+        confidence: 0.7,
+        usage: { inputTokens: 5, outputTokens: 1 },
+      })),
+    });
+
+    expect(await screen.read(READ)).toEqual({
+      lane: 'off_domain_general',
+      category: 'weather',
+      fallback: null,
+    });
+  });
+
+  it('falls back to Haiku on a low-confidence JEV reading', async () => {
+    const screen = createInboundLaneScreen(
+      clientReturning({ lane: 'in_domain', category: 'none', reason: 'fallback' }),
+      {
+        modelMode: 'candidate',
+        evaluateChoice: vi.fn(async () => ({
+          choice: 'off_domain_general__weather' as const,
+          probabilities: { off_domain_general__weather: 0.4, in_domain__none: 0.35 },
+          confidence: 0.4,
+          usage: { inputTokens: 5, outputTokens: 1 },
+        })),
+      },
+    );
+
+    expect((await screen.read(READ)).lane).toBe('in_domain');
   });
 
   it('names a missing client rather than throwing', async () => {

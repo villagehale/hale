@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "hi",
+    "rationale": "Just a greeting, not an answer to the yes/no question",
+    "confidence": 0.97
+  },
+  "latencyMs": 1542
+}

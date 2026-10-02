@@ -1,9 +1,10 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { budgetedAnthropic } from '~/lib/pipeline/client';
-import { type AgentClient, agentRunCostUsd, pickModel, runAgent } from '@hale/agent';
+import { type AgentClient, DEEPSEEK_MODEL, agentRunCostUsd, pickLane, runAgent } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { recordAgentRun } from '~/lib/agent-run';
 import { buildGuardDeps } from '~/lib/coach/guards';
+import { budgetedAiGateway, budgetedAnthropic } from '~/lib/pipeline/client';
+import { modelErrorCategory, recordModelFallback } from '~/lib/pipeline/model-fallback';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import {
   type VillageSearchIntent,
@@ -45,6 +46,7 @@ const MAX_STEPS = 1;
 const MAX_TOKENS = 512;
 
 let defaultClient: Anthropic | undefined;
+let defaultGatewayClient: Anthropic | undefined;
 
 /** A parent is at the search bar and this is one small JSON round trip (MAX_TOKENS
  * 512, no tools): 10s is generous for it, and one retry still lands inside the
@@ -55,6 +57,23 @@ const PARSE_CLIENT_OPTIONS = { timeout: 10_000, maxRetries: 1 } as const;
 function anthropicClient(): AgentClient {
   defaultClient ??= budgetedAnthropic(PARSE_CLIENT_OPTIONS);
   return defaultClient;
+}
+
+function gatewayClient(): AgentClient {
+  defaultGatewayClient ??= budgetedAiGateway(PARSE_CLIENT_OPTIONS);
+  return defaultGatewayClient;
+}
+
+interface ParseIntentDeps {
+  modelMode?: 'current' | 'candidate';
+  candidateClient?: AgentClient;
+}
+
+function parseModelMode(raw: string | undefined): 'current' | 'candidate' {
+  const mode = raw?.trim() || 'current';
+  if (mode === 'current' || mode === 'candidate') return mode;
+  console.error({ mode }, 'village search parse: invalid model mode; using current');
+  return 'current';
 }
 
 export interface ParseIntentInput {
@@ -79,13 +98,23 @@ export interface ParsedIntent {
 export async function parseVillageSearchIntent(
   input: ParseIntentInput,
   database: Database,
-  client: AgentClient = anthropicClient(),
+  client?: AgentClient,
+  deps: ParseIntentDeps = {},
 ): Promise<ParsedIntent> {
   // Loaded OUTSIDE the fallback boundary: a missing/broken skill file is a deploy
   // bug that must surface, not degrade to keywords (rule #8).
   const skill = await loadParseVillageSearchSkill();
   const guardDeps = buildGuardDeps(database);
-  const modelUsed = pickModel(skill.meta.task);
+  const mode = deps.modelMode ?? parseModelMode(process.env.HALE_VILLAGE_SEARCH_PARSE_MODEL_MODE);
+  const lane =
+    mode === 'candidate'
+      ? ({ model: DEEPSEEK_MODEL, thinking: 'disabled' } as const)
+      : pickLane(skill.meta.task);
+  const selectedClient =
+    mode === 'candidate'
+      ? (deps.candidateClient ?? gatewayClient())
+      : (client ?? anthropicClient());
+  const modelUsed = lane.model;
 
   const context = {
     prompt: input.prompt,
@@ -108,14 +137,18 @@ export async function parseVillageSearchIntent(
           skill,
           context,
           tools: [],
-          client,
+          client: selectedClient,
+          lane,
           maxSteps: MAX_STEPS,
           maxTokens: MAX_TOKENS,
           toolContext: { familyId: input.familyId, actor: 'system' },
           guardDeps,
         });
 
-        trace.recordGeneration('village-search-intent-parse', { model: modelUsed, usage: result.usage });
+        trace.recordGeneration('village-search-intent-parse', {
+          model: modelUsed,
+          usage: result.usage,
+        });
 
         const intent = parseIntentAnswer(result.answer);
         await recordAgentRun(database, {
@@ -131,6 +164,7 @@ export async function parseVillageSearchIntent(
         });
 
         if (!intent) {
+          if (mode === 'candidate') throw new Error('candidate returned no usable JSON');
           // The model answered, but with no usable JSON — degrade visibly (rule #8).
           console.error(
             { familyId: input.familyId },
@@ -142,10 +176,14 @@ export async function parseVillageSearchIntent(
       },
     );
   } catch (err) {
+    if (mode === 'candidate') {
+      recordModelFallback('village search parse candidate', err);
+      return parseVillageSearchIntent(input, database, client, { modelMode: 'current' });
+    }
     // The model call itself failed (network/API/timeout) — the search must still run
     // on the prompt's own words rather than error out (rule #8: log, don't swallow).
     console.error(
-      { err, familyId: input.familyId },
+      { errorCategory: modelErrorCategory(err), familyId: input.familyId },
       'village-search: intent parse call failed — falling back to keyword search',
     );
     return { intent: keywordFallbackIntent(input.prompt), degraded: true };

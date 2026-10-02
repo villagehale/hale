@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "no need, I will handle it",
+    "rationale": "\"no need\" is a clear refusal of the offer",
+    "confidence": 0.95
+  },
+  "latencyMs": 1458
+}

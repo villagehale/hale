@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, type LaneConfig, laneRequestFields } from '@hale/agent';
+import { type AgentClient, type LaneConfig, SONNET55_MODEL, laneRequestFields } from '@hale/agent';
 import type { z } from 'zod';
 
 /**
@@ -57,6 +57,7 @@ export interface ForceToolJsonResult<TValue> {
 export async function forceToolJson<TSchema extends z.ZodTypeAny>(
   args: ForceToolJsonArgs<TSchema>,
 ): Promise<ForceToolJsonResult<z.infer<TSchema>>> {
+  const usesAutoToolChoice = args.lane.model === SONNET55_MODEL;
   const params = {
     // The pinned SDK (0.41.0) types neither `thinking`'s adaptive shape nor
     // `output_config`; both are plain body fields the SDK serialises as given.
@@ -71,7 +72,9 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
         input_schema: args.inputJsonSchema,
       },
     ],
-    tool_choice: { type: 'tool' as const, name: args.toolName },
+    tool_choice: usesAutoToolChoice
+      ? ({ type: 'auto' } as const)
+      : ({ type: 'tool', name: args.toolName } as const),
     messages: [{ role: 'user' as const, content: args.userMessage }],
   };
   const response =

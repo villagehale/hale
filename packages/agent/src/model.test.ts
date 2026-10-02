@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AGENT_TASKS,
   type AgentTask,
+  DEEPSEEK_MODEL,
   HAIKU_MODEL,
   OPUS_MODEL,
   SONNET5_MODEL,
+  SONNET55_MODEL,
   SONNET_MODEL,
-  AGENT_TASKS,
   isAgentTask,
   laneRequestFields,
   pickLane,
@@ -36,7 +38,9 @@ describe('pickModel', () => {
   it('pins the model ids', () => {
     expect(HAIKU_MODEL).toBe('claude-haiku-4-5');
     expect(SONNET5_MODEL).toBe('claude-sonnet-5');
+    expect(SONNET55_MODEL).toBe('claude-sonnet-5-5');
     expect(OPUS_MODEL).toBe('claude-opus-5');
+    expect(DEEPSEEK_MODEL).toBe('deepseek/deepseek-v4.1-flash');
   });
 
   it('pins the 4.6 tier and the lanes still held on it', () => {
@@ -79,6 +83,13 @@ const HAIKU_TASKS: AgentTask[] = [
 ];
 
 describe('laneRequestFields', () => {
+  it('disables Gateway reasoning, requires ZDR, and omits Claude effort', () => {
+    expect(laneRequestFields({ model: DEEPSEEK_MODEL, thinking: 'disabled' })).toEqual({
+      model: DEEPSEEK_MODEL,
+      thinking: { type: 'disabled' },
+      providerOptions: { gateway: { zeroDataRetention: true } },
+    });
+  });
 
   it.each(HAIKU_TASKS)('sends %s with no reasoning knobs at all', (task) => {
     // Verified against the live API 2026-08-21: Haiku 4.5 rejects BOTH knobs with
@@ -129,7 +140,7 @@ describe('laneRequestFields', () => {
     for (const task of AGENT_TASKS) {
       const lane = pickLane(task);
       if ('thinking' in lane && lane.thinking === 'disabled') {
-        expect(lane.effort).not.toBe('xhigh');
+        expect('effort' in lane ? lane.effort : undefined).not.toBe('xhigh');
       }
     }
   });

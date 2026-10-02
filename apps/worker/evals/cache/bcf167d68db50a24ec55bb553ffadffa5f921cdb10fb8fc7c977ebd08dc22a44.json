@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "assent",
+    "verbatim": "absolutely, please do",
+    "rationale": "Clear affirmative response directly agreeing to the request",
+    "confidence": 0.98
+  },
+  "latencyMs": 1621
+}

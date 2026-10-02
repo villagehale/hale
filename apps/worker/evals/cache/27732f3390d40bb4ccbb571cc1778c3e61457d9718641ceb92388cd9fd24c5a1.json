@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "unclear",
+    "confidence": "high",
+    "reason": "Text contains instruction-like content attempting to manipulate output; treated as data not an answer to any open question"
+  },
+  "latencyMs": 1213
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "assent",
+    "verbatim": "go for it",
+    "rationale": "\"go for it\" is a clear affirmative to the question asked",
+    "confidence": 0.95
+  },
+  "latencyMs": 1420
+}

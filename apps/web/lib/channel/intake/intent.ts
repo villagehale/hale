@@ -2,6 +2,8 @@ import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { type JevChoiceEvaluator, evaluateJevChoice, meetsJevConfidence } from '~/lib/pipeline/jev';
+import { recordModelFallback } from '~/lib/pipeline/model-fallback';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -36,6 +38,11 @@ export interface ReplyIntentReader {
 
 const INTENTS = ['assent', 'decline', 'ambiguous'] as const satisfies readonly ReplyIntent[];
 const intentSchema = z.enum(INTENTS);
+const JEV_CRITERIA: Record<ReplyIntent, string> = {
+  assent: 'The assent category defined in the instructions.',
+  decline: 'The decline category defined in the instructions.',
+  ambiguous: 'The ambiguous category defined in the instructions.',
+};
 
 const intentOutputSchema = z.object({
   intent: intentSchema,
@@ -56,7 +63,10 @@ const intentOutputJsonSchema = {
 } as const;
 
 /** The user-turn payload. Shared with the eval, which REPLICATES this request shape. */
-export function intentUserMessage(input: { question: string; reply: string }): string {
+export function intentUserMessage(input: {
+  question: string;
+  reply: string;
+}): string {
   return JSON.stringify({ question: input.question, reply: input.reply });
 }
 
@@ -74,10 +84,47 @@ export function applyVerbatimGuard(reading: IntentReading, reply: string): Inten
   };
 }
 
-export function createReplyIntentReader(client: AgentClient): ReplyIntentReader {
+interface ReplyIntentReaderDeps {
+  modelMode?: 'current' | 'candidate';
+  evaluateChoice?: JevChoiceEvaluator<ReplyIntent>;
+}
+
+function modelMode(raw: string | undefined): 'current' | 'candidate' {
+  const mode = raw?.trim() || 'current';
+  if (mode === 'current' || mode === 'candidate') return mode;
+  console.error({ mode }, 'reply intent: invalid model mode; using current');
+  return 'current';
+}
+
+export function createReplyIntentReader(
+  client: AgentClient,
+  deps: ReplyIntentReaderDeps = {},
+): ReplyIntentReader {
   return {
     async read(input) {
       const skill = await loadCronSkill('reply-intent');
+      const mode = deps.modelMode ?? modelMode(process.env.HALE_REPLY_INTENT_MODEL_MODE);
+      if (mode === 'candidate') {
+        try {
+          const result = await (deps.evaluateChoice ?? evaluateJevChoice)({
+            state: { question: input.question, reply: input.reply },
+            question: 'intent',
+            instructions: `${skill.instructions}\n\nClassify the reply in state using exactly one of the three criteria.`,
+            criteria: JEV_CRITERIA,
+          });
+          if (result.choice !== 'assent' && meetsJevConfidence(result)) {
+            return {
+              intent: result.choice,
+              verbatim: input.reply,
+              interpretation: `JEV choice: ${result.choice}`,
+            };
+          }
+          recordModelFallback('reply intent candidate', 'low_confidence');
+        } catch (error) {
+          recordModelFallback('reply intent candidate', error);
+        }
+      }
+
       const { value } = await forceToolJson({
         client,
         lane: pickLane(skill.meta.task),
@@ -91,7 +138,11 @@ export function createReplyIntentReader(client: AgentClient): ReplyIntentReader 
       });
 
       return applyVerbatimGuard(
-        { intent: value.intent, verbatim: value.verbatim, interpretation: value.rationale },
+        {
+          intent: value.intent,
+          verbatim: value.verbatim,
+          interpretation: value.rationale,
+        },
         input.reply,
       );
     },

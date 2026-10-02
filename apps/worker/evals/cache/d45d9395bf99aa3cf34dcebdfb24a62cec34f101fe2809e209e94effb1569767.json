@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "assent",
+    "verbatim": "I'd like that, thanks",
+    "rationale": "\"I'd like that\" is a clear affirmative response to the question asked",
+    "confidence": 0.92
+  },
+  "latencyMs": 1531
+}

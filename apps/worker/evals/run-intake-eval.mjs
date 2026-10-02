@@ -27,8 +27,9 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
-import { cachedToolCall, lazyAnthropic, makeCost, totalUsd } from './lib/harness.mjs';
 import { EXTRACTION_FIXTURES, INTENT_FIXTURES, INTENT_QUESTION } from './intake-fixtures.mjs';
+import { cachedToolCall, evalRunTag, lazyAnthropic, makeCost, totalUsd } from './lib/harness.mjs';
+import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -162,7 +163,9 @@ function scoreExtraction(fixture, value) {
 
   const gotPostal = normalizePostal(value.postal_code);
   if (gotPostal !== fixture.expect.postalCode) {
-    failures.push(`postal ${JSON.stringify(gotPostal)} != ${JSON.stringify(fixture.expect.postalCode)}`);
+    failures.push(
+      `postal ${JSON.stringify(gotPostal)} != ${JSON.stringify(fixture.expect.postalCode)}`,
+    );
   }
 
   return failures;
@@ -171,6 +174,16 @@ function scoreExtraction(fixture, value) {
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const extractOnly = process.argv.includes('--extract-only');
+  const preflight = process.argv.includes('--preflight');
+  const candidateModel = process.argv
+    .find((arg) => arg.startsWith('--anthropic-model='))
+    ?.slice('--anthropic-model='.length);
+  const minSamplesArg = process.argv.find((arg) => arg.startsWith('--min-samples='))?.split('=')[1];
+  const minSamples = minSamplesArg === undefined ? null : Number(minSamplesArg);
+  if (minSamples !== null && (!Number.isInteger(minSamples) || minSamples < 1)) {
+    throw new Error('--min-samples must be a positive integer');
+  }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const getClient = lazyAnthropic();
@@ -178,24 +191,43 @@ async function main() {
 
   const extractSkill = await agent.loadSkill(EXTRACT_SKILL_PATH);
   const intentSkill = await agent.loadSkill(INTENT_SKILL_PATH);
-  const extractModel = agent.pickModel(extractSkill.meta.task);
+  const extractModel = candidateModel ?? agent.pickModel(extractSkill.meta.task);
   const intentModel = agent.pickModel(intentSkill.meta.task);
+  const extractionFixtures =
+    minSamples === null
+      ? EXTRACTION_FIXTURES
+      : expandSyntheticFixtures('intake-extraction', EXTRACTION_FIXTURES, minSamples, {
+          vary: (fixture, { reference }) => {
+            fixture.message = `Intake update ${reference}: ${fixture.message}`;
+          },
+          visibleInput: extractionUserMessage,
+        });
+
+  if (preflight) {
+    console.log(
+      `intake preflight | extraction=${extractionFixtures.length} intent=${extractOnly ? 0 : INTENT_FIXTURES.length} extract=${extractModel}`,
+    );
+    console.log(
+      `max API calls: extraction=${extractionFixtures.length}, intent=${extractOnly ? 0 : INTENT_FIXTURES.length}`,
+    );
+    return;
+  }
 
   console.log(
     `intake-eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | extract=${extractModel} intent=${intentModel}`,
   );
   console.log(
-    `corpus: ${EXTRACTION_FIXTURES.length} extraction + ${INTENT_FIXTURES.length} intent fixtures\n`,
+    `corpus: ${extractionFixtures.length} extraction + ${extractOnly ? 0 : INTENT_FIXTURES.length} intent fixtures\n`,
   );
 
   // ── extraction suite ───────────────────────────────────────────────────────
   const extractionResults = [];
-  for (const fixture of EXTRACTION_FIXTURES) {
+  for (const fixture of extractionFixtures) {
     const value = broken
       ? BROKEN_EXTRACTION
       : (
           await cachedToolCall({
-            tag: `intake:extract:${fixture.id}`,
+            tag: evalRunTag(`intake:extract:${fixture.id}`),
             model: extractModel,
             system: extractSkill.instructions,
             userMessage: extractionUserMessage(fixture),
@@ -218,7 +250,7 @@ async function main() {
 
   // ── intent suite ───────────────────────────────────────────────────────────
   const intentResults = [];
-  for (const fixture of INTENT_FIXTURES) {
+  for (const fixture of extractOnly ? [] : INTENT_FIXTURES) {
     const value = broken
       ? BROKEN_INTENT
       : (
@@ -247,7 +279,7 @@ async function main() {
   const fabricationCount = extractionResults.filter((r) => r.fabrications.length > 0).length;
 
   const intentHits = intentResults.filter((r) => r.value.intent === r.fixture.expect);
-  const intentAccuracy = intentHits.length / intentResults.length;
+  const intentAccuracy = intentResults.length === 0 ? 1 : intentHits.length / intentResults.length;
 
   // The gate that matters most: nothing in the false-positive battery may read as
   // assent. One is a consent record for a family who never agreed.
@@ -256,8 +288,10 @@ async function main() {
   );
   // The other direction: a plain yes read as anything else costs a clarifying question.
   const assentFixtures = intentResults.filter((r) => r.fixture.expect === 'assent');
-  const assentRecall = assentFixtures.filter((r) => r.value.intent === 'assent').length /
-    (assentFixtures.length || 1);
+  const assentRecall =
+    assentFixtures.length === 0
+      ? 1
+      : assentFixtures.filter((r) => r.value.intent === 'assent').length / assentFixtures.length;
   // A decline must never read as assent either — that is the same manufactured consent.
   const declineFixtures = intentResults.filter((r) => r.fixture.expect === 'decline');
   const declineAsAssent = declineFixtures.filter((r) => r.value.intent === 'assent');
@@ -270,7 +304,9 @@ async function main() {
   console.log('--- extraction ---');
   for (const r of extractionResults) {
     const ok = r.failures.length === 0 && r.fabrications.length === 0;
-    console.log(`${ok ? 'PASS' : 'FAIL'}  ${r.fixture.id}${ok ? '' : `  ${[...r.failures, ...r.fabrications].join('; ')}`}`);
+    console.log(
+      `${ok ? 'PASS' : 'FAIL'}  ${r.fixture.id}${ok ? '' : `  ${[...r.failures, ...r.fabrications].join('; ')}`}`,
+    );
   }
 
   console.log('\n--- intent ---');
@@ -282,11 +318,19 @@ async function main() {
   }
 
   console.log('\n--- corpus metrics ---');
-  console.log(`extraction field accuracy:   ${(extractionAccuracy * 100).toFixed(1)}%  (>= 85% required)`);
+  console.log(
+    `extraction field accuracy:   ${(extractionAccuracy * 100).toFixed(1)}%  (>= 85% required)`,
+  );
   console.log(`extraction fabrications:     ${fabricationCount}  (0 required)`);
-  console.log(`intent accuracy:             ${(intentAccuracy * 100).toFixed(1)}%  (>= 85% required)`);
-  console.log(`assent recall:               ${(assentRecall * 100).toFixed(1)}%  (>= 80% required)`);
-  console.log(`consent FALSE POSITIVES:     ${consentFalsePositives.length}  (0 required — a manufactured consent)`);
+  console.log(
+    `intent accuracy:             ${(intentAccuracy * 100).toFixed(1)}%  (>= 85% required)`,
+  );
+  console.log(
+    `assent recall:               ${(assentRecall * 100).toFixed(1)}%  (>= 80% required)`,
+  );
+  console.log(
+    `consent FALSE POSITIVES:     ${consentFalsePositives.length}  (0 required — a manufactured consent)`,
+  );
   console.log(`declines read as assent:     ${declineAsAssent.length}  (0 required)`);
   console.log(`verbatim echo mismatches:    ${verbatimMismatches.length}  (0 required)`);
 

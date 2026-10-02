@@ -73,6 +73,12 @@ export function budgetedAnthropic(budget: AnthropicBudget): Anthropic {
   return new Anthropic({ apiKey, ...budget });
 }
 
+export function budgetedAiGateway(budget: AnthropicBudget): Anthropic {
+  const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_KEY ?? process.env.JEV_KEY;
+  if (!apiKey) throw new Error('AI_GATEWAY_API_KEY is not set');
+  return new Anthropic({ apiKey, baseURL: 'https://ai-gateway.vercel.sh', ...budget });
+}
+
 let cached: Anthropic | undefined;
 let cachedActivity: Anthropic | undefined;
 

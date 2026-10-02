@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "pas maintenant, merci",
+    "rationale": "\"pas maintenant\" means \"not now\" - a polite refusal to this question",
+    "confidence": 0.95
+  },
+  "latencyMs": 1394
+}

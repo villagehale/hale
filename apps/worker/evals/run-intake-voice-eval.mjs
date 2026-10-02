@@ -18,6 +18,7 @@
 //   node --env-file=../../.env evals/run-intake-voice-eval.mjs            # live, then caches
 //   node --env-file=../../.env evals/run-intake-voice-eval.mjs --broken   # calibration: must FAIL
 //   node evals/run-intake-voice-eval.mjs --cached-only                    # CI: replay only
+//   ... --min-samples=50                                                  # expanded synthetic corpus
 //
 // Calibrated BOTH directions: the real cached model clears every gate; the --broken
 // stand-in (an ack that invents a venue and an age for a child who has neither, asks its
@@ -27,6 +28,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { INTAKE_VOICE_FIXTURES, MAX_ACK_CHARS } from './intake-voice-fixtures.mjs';
 import {
   cachedToolCall,
   lazyAnthropic,
@@ -35,8 +37,8 @@ import {
   readModelIds,
   totalUsd,
 } from './lib/harness.mjs';
+import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 import { skillSampleSentences, variationGate, variationLines } from './lib/variation.mjs';
-import { INTAKE_VOICE_FIXTURES, MAX_ACK_CHARS } from './intake-voice-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -235,7 +237,7 @@ function qualityFailures(fixture, ack) {
 
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring the acknowledgment half of a text message Hale sends',
-  'a parent who has just texted their kids\' names to a number they found on a poster.',
+  "a parent who has just texted their kids' names to a number they found on a poster.",
   'You are given the FACTS Hale extracted and the acknowledgment written from them. A',
   'separate question is appended after it by the system; the acknowledgment itself must',
   'not ask anything.',
@@ -253,18 +255,23 @@ const JUDGE_SYSTEM = [
   'enthusiasm, or for not offering help. Length should track what the parent supplied.',
   'A LOW score is hype or exclamation marks, brand/corporate voice ("We are excited to"),',
   'reciting the facts back like a database row, padding to sound friendly, promising',
-  'anything Hale has not done, commenting on a child\'s development or health, or any',
+  "anything Hale has not done, commenting on a child's development or health, or any",
   'detail not present in the facts. Reply with ONLY the score tool.',
 ].join(' ');
 
 // Deterministic broken stand-in: invents a venue and an age, asks its own question, and
 // rambles past the ceiling. Every gate must reject it — no API call, no cache read.
 const BROKEN_ACK =
-  "Wonderful news, Priya! I have already found three swimming programs at the Sunnyside Community Centre for your 18 month old, and honestly there is so much more going on around you this season that I could barely fit it into one message. Shall I tell you about them?";
+  'Wonderful news, Priya! I have already found three swimming programs at the Sunnyside Community Centre for your 18 month old, and honestly there is so much more going on around you this season that I could barely fit it into one message. Shall I tell you about them?';
 
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const minSamplesArg = process.argv.find((arg) => arg.startsWith('--min-samples='))?.split('=')[1];
+  const minSamples = minSamplesArg === undefined ? null : Number(minSamplesArg);
+  if (minSamples !== null && (!Number.isInteger(minSamples) || minSamples < 1)) {
+    throw new Error('--min-samples must be a positive integer');
+  }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const getClient = lazyAnthropic();
@@ -281,14 +288,23 @@ async function main() {
   // this eval's cost lives.
   const judgeModel = (await readModelIds()).sonnet;
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'intake-voice', cachedOnly, getClient, cost);
+  const fixtures =
+    minSamples === null
+      ? INTAKE_VOICE_FIXTURES
+      : expandSyntheticFixtures('intake-voice', INTAKE_VOICE_FIXTURES, minSamples, {
+          vary: (fixture, { reference }) => {
+            fixture.context.sampleReference = reference;
+          },
+          visibleInput: (fixture) => fixture.context,
+        });
 
   console.log(
     `intake-voice-eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
   );
-  console.log(`corpus: ${INTAKE_VOICE_FIXTURES.length} ack fixtures\n`);
+  console.log(`corpus: ${fixtures.length} ack fixtures\n`);
 
   const results = [];
-  for (const fixture of INTAKE_VOICE_FIXTURES) {
+  for (const fixture of fixtures) {
     let ack;
     if (broken) {
       ack = BROKEN_ACK;
@@ -381,7 +397,9 @@ async function main() {
   console.log(`  of which: outside GSM-7      ${nonGsm7.length}`);
   console.log(`shipped acks failing recall:   ${qualityFails.length}  (0 required)`);
   for (const line of variationLines(variation)) console.log(line);
-  console.log(`mean voice score (shipped):    ${meanScore.toFixed(2)}  (mean >= ${VOICE_MIN} required)`);
+  console.log(
+    `mean voice score (shipped):    ${meanScore.toFixed(2)}  (mean >= ${VOICE_MIN} required)`,
+  );
   if (lengths.length) {
     console.log(
       `ack length:                    min ${Math.min(...lengths)} / max ${Math.max(...lengths)} chars`,

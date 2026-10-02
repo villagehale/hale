@@ -39,6 +39,10 @@
 //   node --env-file=../../.env evals/run-activity-synthesis-eval.mjs           # live, then caches
 //   node --env-file=../../.env evals/run-activity-synthesis-eval.mjs --broken  # calibration: must FAIL
 //   node evals/run-activity-synthesis-eval.mjs --cached-only                   # CI: replay only
+//   ... --anthropic-model=claude-opus-5-5 --synthesis-max-tokens=8192          # eval-only candidate
+//   ... --only=cross-page-merge,registration-leg-refused,truncated-page        # calibration cases
+//   ... --min-samples=50                                                       # expanded synthetic corpus
+//   ... --min-samples=50 --preflight                                           # print scope, make no API calls
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,11 +52,14 @@ import {
   cacheGet,
   cacheKey,
   cachePut,
+  evalAnthropicRequest,
+  evalRunTag,
   lazyAnthropic,
   makeCost,
   noteUsage,
   totalUsd,
 } from './lib/harness.mjs';
+import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 import { normaliseForMatch, preparePage, quoteIsBackedBy } from './lib/quote-match.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -320,14 +327,22 @@ function brokenSynthesis(fixture) {
  * client gives up (activity/synthesis.ts, and deep.ts on the un-streamed research turn).
  */
 async function cachedSynthesis(opts) {
-  const { tag, lane, system, userMessage, cachedOnly, getClient, cost } = opts;
-  const canonical = JSON.stringify({
-    lane,
+  const { tag, lane, system, userMessage, maxTokens, cachedOnly, getClient, cost } = opts;
+  const request = evalAnthropicRequest({
+    ...lane,
+    max_tokens: maxTokens,
     system,
-    userMessage,
-    toolName: 'activity_synthesis',
-    toolSchema: SYNTHESIS_TOOL_SCHEMA,
+    tools: [
+      {
+        name: 'activity_synthesis',
+        description: 'Return the merged slots, each fact beside the span it was read off.',
+        input_schema: SYNTHESIS_TOOL_SCHEMA,
+      },
+    ],
+    tool_choice: { type: 'tool', name: 'activity_synthesis' },
+    messages: [{ role: 'user', content: userMessage }],
   });
+  const canonical = JSON.stringify(request);
   const key = cacheKey(tag, canonical);
   const cached = await cacheGet(key);
   if (cached) return { value: cached.value, latencyMs: cached.latencyMs, cached: true };
@@ -339,25 +354,10 @@ async function cachedSynthesis(opts) {
   }
 
   const startedAt = Date.now();
-  const response = await getClient()
-    .messages.stream({
-      ...lane,
-      max_tokens: SYNTHESIS_MAX_TOKENS,
-      system,
-      tools: [
-        {
-          name: 'activity_synthesis',
-          description: 'Return the merged slots, each fact beside the span it was read off.',
-          input_schema: SYNTHESIS_TOOL_SCHEMA,
-        },
-      ],
-      tool_choice: { type: 'tool', name: 'activity_synthesis' },
-      messages: [{ role: 'user', content: userMessage }],
-    })
-    .finalMessage();
+  const response = await getClient().messages.stream(request).finalMessage();
   const latencyMs = Date.now() - startedAt;
   if (response.stop_reason === 'max_tokens') {
-    throw new Error(`${tag}: tool call truncated at max_tokens (${SYNTHESIS_MAX_TOKENS})`);
+    throw new Error(`${tag}: tool call truncated at max_tokens (${maxTokens})`);
   }
   const toolUse = response.content.find(
     (block) => block.type === 'tool_use' && block.name === 'activity_synthesis',
@@ -434,20 +434,68 @@ function score(fixture, rows) {
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const preflight = process.argv.includes('--preflight');
+  const candidateModel = process.argv
+    .find((arg) => arg.startsWith('--anthropic-model='))
+    ?.slice('--anthropic-model='.length);
+  if (candidateModel && candidateModel !== 'claude-opus-5-5') {
+    throw new Error('--anthropic-model only supports claude-opus-5-5');
+  }
+  const maxTokensArg = process.argv
+    .find((arg) => arg.startsWith('--synthesis-max-tokens='))
+    ?.split('=')[1];
+  const maxTokens = maxTokensArg === undefined ? SYNTHESIS_MAX_TOKENS : Number(maxTokensArg);
+  if (!Number.isInteger(maxTokens) || maxTokens < 1) {
+    throw new Error('--synthesis-max-tokens must be a positive integer');
+  }
+  const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
+  const minSamplesArg = process.argv.find((arg) => arg.startsWith('--min-samples='))?.split('=')[1];
+  const minSamples = minSamplesArg === undefined ? null : Number(minSamplesArg);
+  if (minSamples !== null && (!Number.isInteger(minSamples) || minSamples < 1)) {
+    throw new Error('--min-samples must be a positive integer');
+  }
   const getClient = lazyAnthropic();
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SYNTHESIS_SKILL);
-  const lane = agent.laneRequestFields(agent.pickLane(skill.meta.task));
+  const lane = candidateModel
+    ? { model: candidateModel, thinking: { type: 'adaptive' }, output_config: { effort: 'xhigh' } }
+    : agent.laneRequestFields(agent.pickLane(skill.meta.task));
+  const allFixtures =
+    minSamples === null
+      ? SYNTHESIS_FIXTURES
+      : expandSyntheticFixtures('activity-synthesis', SYNTHESIS_FIXTURES, minSamples, {
+          vary: (fixture, { reference }) => {
+            for (const leg of fixture.legs) {
+              if (leg.notes) leg.notes += `\nEvaluation edition: ${reference}.`;
+            }
+          },
+          visibleInput: synthesisUserMessage,
+        });
+  const selectedIds = new Set(only?.split(',').filter(Boolean) ?? []);
+  const fixtures = only
+    ? allFixtures.filter((fixture) => selectedIds.has(fixture.id))
+    : allFixtures;
+  if (only && fixtures.length !== selectedIds.size) {
+    throw new Error(`one or more fixtures did not match --only=${only}`);
+  }
+
+  if (preflight) {
+    console.log(
+      `activity-synthesis preflight | fixtures=${fixtures.length} model=${lane.model} maxTokens=${maxTokens}`,
+    );
+    console.log(`max API calls: subject=${fixtures.length}, judges=0`);
+    return;
+  }
 
   console.log(
     `activity-synthesis eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | lane=${JSON.stringify(lane)}`,
   );
-  console.log(`corpus: ${SYNTHESIS_FIXTURES.length} merges\n`);
+  console.log(`corpus: ${fixtures.length} merges\n`);
 
   const results = [];
-  for (const fixture of SYNTHESIS_FIXTURES) {
+  for (const fixture of fixtures) {
     let rows;
     let latencyMs = 0;
     let cachedHit = false;
@@ -455,10 +503,11 @@ async function main() {
       rows = brokenSynthesis(fixture).slots;
     } else {
       const call = await cachedSynthesis({
-        tag: `activity-synthesis:${fixture.id}`,
+        tag: evalRunTag(`activity-synthesis:${fixture.id}`),
         lane,
         system: skill.instructions,
         userMessage: synthesisUserMessage(fixture),
+        maxTokens,
         cachedOnly,
         getClient,
         cost,

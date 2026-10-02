@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "c92f5a13-8d47-4b60-a1e8-59d3b7c04f28",
+    "polarity": "yes",
+    "confidence": "high",
+    "reason": "Parent explicitly says \"yes, go ahead\" with clear reference to \"the swim one\", which matches the open question about adding to calendar"
+  },
+  "latencyMs": 1332
+}

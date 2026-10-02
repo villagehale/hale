@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "let's stop here, no monitoring",
+    "rationale": "explicit \"no monitoring\" directly refuses the offer",
+    "confidence": 0.97
+  },
+  "latencyMs": 1573
+}

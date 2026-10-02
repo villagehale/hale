@@ -1,7 +1,8 @@
-import type { AgentClient } from '@hale/agent';
-import { pickLane } from '@hale/agent';
+import type { AgentClient, LaneConfig } from '@hale/agent';
+import { SONNET55_MODEL, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { recordModelFallback } from '~/lib/pipeline/model-fallback';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -17,6 +18,11 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  */
 
 const MAX_TOKENS = 512;
+const CANDIDATE_LANE: LaneConfig = {
+  model: SONNET55_MODEL,
+  thinking: 'adaptive',
+  effort: 'high',
+};
 /** A child at the top of Hale's range (18) is 216 months; the bound rejects a
  * mis-parsed year ("2019" as an age) rather than persisting a nonsense DOB. */
 const MAX_AGE_MONTHS = 216;
@@ -50,7 +56,10 @@ export interface IntakeCollected {
 
 export interface IntakeExtractor {
   /** Returns the FULL merged picture: `alreadyKnown` updated by `message`. */
-  extract(input: { message: string; alreadyKnown: IntakeCollected }): Promise<IntakeCollected>;
+  extract(input: {
+    message: string;
+    alreadyKnown: IntakeCollected;
+  }): Promise<IntakeCollected>;
 }
 
 /**
@@ -87,8 +96,15 @@ const extractOutputJsonSchema = {
         type: 'object',
         properties: {
           name: { type: ['string', 'null'] },
-          age_months: { type: ['number', 'null'], minimum: 0, maximum: MAX_AGE_MONTHS },
-          age_precision: { type: ['string', 'null'], enum: ['years', 'months', null] },
+          age_months: {
+            type: ['number', 'null'],
+            minimum: 0,
+            maximum: MAX_AGE_MONTHS,
+          },
+          age_precision: {
+            type: ['string', 'null'],
+            enum: ['years', 'months', null],
+          },
         },
       },
     },
@@ -116,21 +132,50 @@ export function extractionUserMessage(input: {
   });
 }
 
-export function createIntakeExtractor(client: AgentClient): IntakeExtractor {
+interface IntakeExtractorDeps {
+  modelMode?: 'current' | 'candidate';
+}
+
+function modelMode(raw: string | undefined): 'current' | 'candidate' {
+  const mode = raw?.trim() || 'current';
+  if (mode === 'current' || mode === 'candidate') return mode;
+  console.error({ mode }, 'intake extraction: invalid model mode; using current');
+  return 'current';
+}
+
+export function createIntakeExtractor(
+  client: AgentClient,
+  deps: IntakeExtractorDeps = {},
+): IntakeExtractor {
   return {
     async extract(input) {
       const skill = await loadCronSkill('intake-extraction');
-      const { value } = await forceToolJson({
-        client,
-        lane: pickLane(skill.meta.task),
-        system: skill.instructions,
-        userMessage: extractionUserMessage(input),
-        toolName: 'intake',
-        toolDescription: "Return the merged picture of the family's kids and postal code.",
-        inputJsonSchema: extractOutputJsonSchema,
-        schema: extractOutputSchema,
-        maxTokens: MAX_TOKENS,
-      });
+      const currentLane = pickLane(skill.meta.task);
+      const run = (lane: LaneConfig) =>
+        forceToolJson({
+          client,
+          lane,
+          system: skill.instructions,
+          userMessage: extractionUserMessage(input),
+          toolName: 'intake',
+          toolDescription: "Return the merged picture of the family's kids and postal code.",
+          inputJsonSchema: extractOutputJsonSchema,
+          schema: extractOutputSchema,
+          maxTokens: MAX_TOKENS,
+        });
+
+      let call: Awaited<ReturnType<typeof run>> | undefined;
+      if (
+        (deps.modelMode ?? modelMode(process.env.HALE_INTAKE_EXTRACT_MODEL_MODE)) === 'candidate'
+      ) {
+        try {
+          call = await run(CANDIDATE_LANE);
+        } catch (error) {
+          recordModelFallback('intake extraction candidate', error);
+        }
+      }
+      call ??= await run(currentLane);
+      const { value } = call;
 
       return {
         // A child with neither a name nor an age is not a child — it is a failed read,
@@ -141,8 +186,7 @@ export function createIntakeExtractor(client: AgentClient): IntakeExtractor {
             name: c.name,
             ageMonths: c.age_months,
             // An unstated age has no granularity to carry, whatever the model said.
-            agePrecision:
-              c.age_months === null ? null : (c.age_precision ?? DEFAULT_AGE_PRECISION),
+            agePrecision: c.age_months === null ? null : (c.age_precision ?? DEFAULT_AGE_PRECISION),
           })),
         postalCode: value.postal_code,
       };

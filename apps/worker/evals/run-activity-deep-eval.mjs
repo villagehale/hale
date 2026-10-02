@@ -42,6 +42,8 @@
 //   node --env-file=../../.env evals/run-activity-deep-eval.mjs           # live, then caches
 //   node --env-file=../../.env evals/run-activity-deep-eval.mjs --broken  # calibration: must FAIL
 //   node evals/run-activity-deep-eval.mjs --cached-only                   # CI: replay only
+//   node --env-file=../../launch.env evals/run-activity-deep-eval.mjs \
+//     --anthropic-model=claude-sonnet-5-5 --only=<id,id>
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,6 +56,7 @@ import {
   cacheKey,
   cachePut,
   cachedToolCall,
+  evalRunTag,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -114,6 +117,29 @@ const DEEP_TOOL_SCHEMA = {
     },
   },
   required: ['slots'],
+};
+
+const STRICT_DEEP_TOOL_SCHEMA = {
+  ...DEEP_TOOL_SCHEMA,
+  additionalProperties: false,
+  properties: {
+    ...DEEP_TOOL_SCHEMA.properties,
+    slots: {
+      ...DEEP_TOOL_SCHEMA.properties.slots,
+      items: {
+        ...DEEP_TOOL_SCHEMA.properties.slots.items,
+        additionalProperties: false,
+        properties: {
+          ...DEEP_TOOL_SCHEMA.properties.slots.items.properties,
+          when: { type: ['string', 'null'] },
+          price: { type: ['string', 'null'] },
+          registration: { type: ['string', 'null'] },
+        },
+        required: ['name', 'age_fit', 'when', 'price', 'registration', 'source_name', 'source_url'],
+      },
+    },
+  },
+  required: ['pages_read', 'slots'],
 };
 
 const FOLLOWUP_TOOL_SCHEMA = {
@@ -369,9 +395,27 @@ function claimsVerification(body) {
 }
 
 const GENERIC_WORDS = new Set([
-  'gymnastics', 'program', 'programs', 'programme', 'lessons', 'class', 'classes', 'centre',
-  'center', 'community', 'parent', 'toddler', 'preschool', 'swimming', 'library',
-  'recreation', 'session', 'fall', 'winter', 'spring', 'summer',
+  'gymnastics',
+  'program',
+  'programs',
+  'programme',
+  'lessons',
+  'class',
+  'classes',
+  'centre',
+  'center',
+  'community',
+  'parent',
+  'toddler',
+  'preschool',
+  'swimming',
+  'library',
+  'recreation',
+  'session',
+  'fall',
+  'winter',
+  'spring',
+  'summer',
 ]);
 
 /**
@@ -499,7 +543,7 @@ function waitsOnAPageItCouldNotRead(body) {
  * so what may NOT go is named beside what may. */
 function keepUnderTrim(watch) {
   return watch
-    ? "never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes"
+    ? 'never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes'
     : 'never the facts of the find you led with';
 }
 
@@ -824,6 +868,10 @@ async function cachedResearch(opts) {
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
+  const candidateModel = process.argv
+    .find((arg) => arg.startsWith('--anthropic-model='))
+    ?.slice('--anthropic-model='.length);
   const getClient = lazyAnthropic();
   const cost = makeCost();
 
@@ -831,7 +879,7 @@ async function main() {
   const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   const deepSkill = await agent.loadSkill(DEEP_SKILL);
   const finderSkill = await agent.loadSkill(FINDER_SKILL);
-  const model = agent.pickModel(deepSkill.meta.task);
+  const model = candidateModel ?? agent.pickModel(deepSkill.meta.task);
   const composerModel = agent.pickModel(finderSkill.meta.task);
   // SONNET, NOT HAIKU: this rubric is ~4k characters and Haiku was marking down two
   // behaviours the rubric states in so many words are correct (harness.mjs readJudgeModel).
@@ -845,10 +893,17 @@ async function main() {
   console.log(
     `activity-deep eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | deep=${model} composer=${composerModel} judge=${judgeModel}`,
   );
-  console.log(`corpus: ${DEEP_FIXTURES.length} passes\n`);
+  const selectedIds = new Set(only?.split(',').filter(Boolean) ?? []);
+  const fixtures = only
+    ? DEEP_FIXTURES.filter((fixture) => selectedIds.has(fixture.id))
+    : DEEP_FIXTURES;
+  if (fixtures.length !== (only ? selectedIds.size : DEEP_FIXTURES.length)) {
+    throw new Error(`one or more fixtures did not match --only=${only}`);
+  }
+  console.log(`corpus: ${fixtures.length} passes\n`);
 
   const results = [];
-  for (const fixture of DEEP_FIXTURES) {
+  for (const fixture of fixtures) {
     const failures = [];
     const query = {
       subject: fixture.subject,
@@ -886,7 +941,7 @@ async function main() {
         : broken
           ? { searchResults: 0, pagesRead: 0, pagesStale: 0, pagesRefused: 0, pages: [], notes: '' }
           : await cachedResearch({
-              tag: `activity-deep-research:${fixture.id}`,
+              tag: evalRunTag(`activity-deep-research:${fixture.id}`),
               model,
               system: deepSkill.instructions,
               userMessage: deepUserMessage(query),
@@ -906,14 +961,16 @@ async function main() {
       ? brokenExtract(fixture)
       : (
           await cachedToolCall({
-            tag: `activity-deep-extract:${fixture.id}`,
+            tag: evalRunTag(`activity-deep-extract:${fixture.id}`),
             model,
             system: deepSkill.instructions,
             userMessage: deepExtractMessage(query, evidence.notes),
             toolName: 'activity_deep',
-            toolSchema: DEEP_TOOL_SCHEMA,
+            toolSchema: candidateModel ? STRICT_DEEP_TOOL_SCHEMA : DEEP_TOOL_SCHEMA,
             toolDescription: 'Return the concrete slots the pages actually printed.',
             maxTokens: EXTRACT_MAX_TOKENS,
+            toolChoice: candidateModel ? { type: 'auto' } : undefined,
+            strictTool: Boolean(candidateModel),
             cachedOnly,
             getClient,
             cost,
@@ -952,7 +1009,8 @@ async function main() {
     // the shrug this arc exists to end, and a page with nothing on it answered with
     // something is a parent driving somewhere for a class that does not take their child.
     if (fixture.expectSlots === true && kept.length === 0) failures.push('no_slots');
-    if (fixture.expectSlots === false && kept.length > 0) failures.push(`invented_slots:${kept.length}`);
+    if (fixture.expectSlots === false && kept.length > 0)
+      failures.push(`invented_slots:${kept.length}`);
 
     // THE FACT THE PAGE-OPEN WAS FOR.
     const saysRegistration = (text) =>
@@ -986,7 +1044,7 @@ async function main() {
         ? brokenFollowUp(watch)
         : (
             await cachedToolCall({
-              tag: `activity-deep-followup:${fixture.id}:${attempt}`,
+              tag: evalRunTag(`activity-deep-followup:${fixture.id}:${attempt}`),
               model: composerModel,
               system: finderSkill.instructions,
               userMessage: retryFollowUpMessage(
@@ -1012,7 +1070,10 @@ async function main() {
     // The last hop, and the one that was broken in production: the slot carried the
     // registration date and the composer's projection did not list the field, so the fact
     // died between the page and the phone.
-    if (fixture.registrationMustSay && inText.some((slot) => saysRegistration(slot.registration ?? ''))) {
+    if (
+      fixture.registrationMustSay &&
+      inText.some((slot) => saysRegistration(slot.registration ?? ''))
+    ) {
       if (!saysRegistration(body)) {
         failures.push(`registration_not_in_text:${fixture.registrationMustSay[0]}`);
       }
@@ -1066,15 +1127,31 @@ async function main() {
   console.log('\n--- corpus metrics (0 required each) ---');
   console.log(`identity leaks:            ${count('identity_leak')}`);
   console.log(`ungrounded:                ${count('not_grounded')}`);
-  console.log(`fabricated figures:        ${count('fabricated_figure')}  (a price or a date on no page)`);
-  console.log(`borrowed figures:          ${count('borrowed_figure')}  (a real number off the wrong page)`);
-  console.log(`fabricated pages:          ${count('fabricated_page')}  (a URL the turn never opened)`);
-  console.log(`claimed read on refusal:   ${count('claimed_read_on_refusal')}  (the benchmark defect, one layer down)`);
+  console.log(
+    `fabricated figures:        ${count('fabricated_figure')}  (a price or a date on no page)`,
+  );
+  console.log(
+    `borrowed figures:          ${count('borrowed_figure')}  (a real number off the wrong page)`,
+  );
+  console.log(
+    `fabricated pages:          ${count('fabricated_page')}  (a URL the turn never opened)`,
+  );
+  console.log(
+    `claimed read on refusal:   ${count('claimed_read_on_refusal')}  (the benchmark defect, one layer down)`,
+  );
   console.log(`uncited or half slots:     ${count('uncited_or_half_slot')}`);
-  console.log(`found nothing:             ${count('no_slots')}  (a real page answered with a shrug)`);
-  console.log(`invented slots:            ${count('invented_slots')}  (stretched to fit an age the page does not serve)`);
-  console.log(`dropped registration:      ${count('dropped_registration')}  (the fact the page-open paid for)`);
-  console.log(`registration not in text:  ${count('registration_not_in_text')}  (it reached the slot and died in the projection)`);
+  console.log(
+    `found nothing:             ${count('no_slots')}  (a real page answered with a shrug)`,
+  );
+  console.log(
+    `invented slots:            ${count('invented_slots')}  (stretched to fit an age the page does not serve)`,
+  );
+  console.log(
+    `dropped registration:      ${count('dropped_registration')}  (the fact the page-open paid for)`,
+  );
+  console.log(
+    `registration not in text:  ${count('registration_not_in_text')}  (it reached the slot and died in the projection)`,
+  );
   console.log(`claims verification:       ${count('claims_verification')}`);
   console.log(
     `asks for permission:       ${count('asks_for_permission')}  (an offer is a proposal, and this lane can write no row)`,

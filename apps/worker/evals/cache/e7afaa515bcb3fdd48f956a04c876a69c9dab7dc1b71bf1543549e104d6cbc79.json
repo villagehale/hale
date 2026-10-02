@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "b8e4d1f7-6a29-4c05-9d31-3f7c2e08a45b",
+    "polarity": "yes",
+    "confidence": "high",
+    "reason": "Parent says \"Add it to my week\" in direct response to offer to add booking to their week. Language directly echoes the question."
+  },
+  "latencyMs": 1442
+}

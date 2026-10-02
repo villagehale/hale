@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "cool",
+    "rationale": "\"cool\" is an acknowledgement/pleasantry, not a clear yes to the specific question",
+    "confidence": 0.9
+  },
+  "latencyMs": 1527
+}

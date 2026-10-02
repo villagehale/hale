@@ -446,6 +446,14 @@ node evals/run-model-matrix-eval.mjs --cached-only            # CI replay
 node evals/run-model-matrix-eval.mjs --broken                 # calibration: a uniformly-failing matrix must be REJECTED
 ```
 
+For VIL-376 model comparisons, pass `--min-samples=50` to the active role runner. The
+core matrix and the travel-extract, memory, village-search, coach-plan,
+activity-synthesis, sentinel, general-answer, intake-voice, and coach-channel runners
+all support the flag; inbound-lane already has 61 fixtures. Expansion keeps every base
+scenario and adds deterministic surface variants with unique IDs and model-visible
+inputs. These are 50 execution samples, not 50 independent failure-mode archetypes.
+The default remains the committed corpus so cached-only CI never creates cache misses.
+
 ## 1. Cost + accuracy as memory grows (`run-memory-cost-eval.mjs`)
 
 The architecture's bet is the BOUNDED `memory_slice` (`apps/web/lib/coach/context.ts`: currently-valid facts capped at

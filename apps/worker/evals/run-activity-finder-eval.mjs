@@ -34,6 +34,8 @@
 //   node --env-file=../../.env evals/run-activity-finder-eval.mjs           # live, then caches
 //   node --env-file=../../.env evals/run-activity-finder-eval.mjs --broken  # calibration: must FAIL
 //   node evals/run-activity-finder-eval.mjs --cached-only                   # CI: replay only
+//   node --env-file=../../launch.env evals/run-activity-finder-eval.mjs \
+//     --anthropic-model=claude-sonnet-5-5 --only=<id,id>
 //
 // THE HARD ZEROS (a single one fails the gate):
 //   · identity leak - a name, an exact age, an address or a postal code reached the search
@@ -76,6 +78,7 @@ import {
   cacheKey,
   cachePut,
   cachedToolCall,
+  evalRunTag,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -134,6 +137,19 @@ const FOLLOWUP_TOOL_SCHEMA = {
   properties: { message: { type: 'string' } },
   required: ['message'],
 };
+
+const STRICT_PICKS_TOOL_SCHEMA = {
+  ...PICKS_TOOL_SCHEMA,
+  additionalProperties: false,
+  properties: {
+    picks: {
+      ...PICKS_TOOL_SCHEMA.properties.picks,
+      maxItems: undefined,
+      items: { ...PICKS_TOOL_SCHEMA.properties.picks.items, additionalProperties: false },
+    },
+  },
+};
+const STRICT_FOLLOWUP_TOOL_SCHEMA = { ...FOLLOWUP_TOOL_SCHEMA, additionalProperties: false };
 
 function groundUserMessage(q) {
   return JSON.stringify({
@@ -195,11 +211,44 @@ function followUpUserMessage(subject, picks, pageEvidence, watch) {
  * a new tool now shows up as a miss, which is a re-record, which is a human looking at it.
  */
 const PROGRAMME_WORDS = new Set([
-  'gym', 'gymnastics', 'swim', 'swimming', 'lessons', 'lesson', 'class', 'classes',
-  'program', 'programs', 'programme', 'toddler', 'preschool', 'baby', 'kids', 'parent',
-  'tot', 'drop', 'schedule', 'registration', 'indoor', 'outdoor', 'fall', 'winter',
-  'spring', 'summer', 'session', 'camp', 'music', 'dance', 'soccer', 'skating', 'library',
-  'recreation', 'community', 'centre', 'center', 'club',
+  'gym',
+  'gymnastics',
+  'swim',
+  'swimming',
+  'lessons',
+  'lesson',
+  'class',
+  'classes',
+  'program',
+  'programs',
+  'programme',
+  'toddler',
+  'preschool',
+  'baby',
+  'kids',
+  'parent',
+  'tot',
+  'drop',
+  'schedule',
+  'registration',
+  'indoor',
+  'outdoor',
+  'fall',
+  'winter',
+  'spring',
+  'summer',
+  'session',
+  'camp',
+  'music',
+  'dance',
+  'soccer',
+  'skating',
+  'library',
+  'recreation',
+  'community',
+  'centre',
+  'center',
+  'club',
 ]);
 
 function namesAVenue(subject) {
@@ -557,7 +606,7 @@ function waitsOnAPageItCouldNotRead(body) {
  * so what may NOT go is named beside what may. */
 function keepUnderTrim(watch) {
   return watch
-    ? "never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes"
+    ? 'never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes'
     : 'never the facts of the find you led with';
 }
 
@@ -839,7 +888,7 @@ const TRAVEL_JUDGE_SYSTEM = [
   'that appears in the pick but nowhere in what a source would have published.',
   'A LOW score is also: a venue that looks invented or generic ("a local playground"); a',
   'pick in a different city; a directory-style list; a pick whose source is an aggregator or',
-  'a travel-blog listicle rather than the place\'s own site or its municipality.',
+  "a travel-blog listicle rather than the place's own site or its municipality.",
   'Seasonal reality is not a fault: a city in late December where much is closed should come',
   'back with the things that are OPEN, and three of them is better than a longer list.',
   'Reply with ONLY the score tool.',
@@ -871,8 +920,19 @@ function brokenPicks(fixture) {
       // gate nobody had ever seen bite. A whole top pick puts the two watch gates on
       // opposite sides of the corpus: `watch: false` here, `watch: true` on the three
       // `expectPicks` fixtures above, which are handed nothing at all.
-      { name: 'Riverbend Play Barn', age_fit: '1-4', when: 'Saturdays 10am', price: '$99', source_name: 'Riverbend' },
-      { name: 'Sunnyside Tumbling Academy', age_fit: 'toddlers', when: 'ongoing', source_name: 'Sunnyside' },
+      {
+        name: 'Riverbend Play Barn',
+        age_fit: '1-4',
+        when: 'Saturdays 10am',
+        price: '$99',
+        source_name: 'Riverbend',
+      },
+      {
+        name: 'Sunnyside Tumbling Academy',
+        age_fit: 'toddlers',
+        when: 'ongoing',
+        source_name: 'Sunnyside',
+      },
       { name: 'Maple Grove Movement', age_fit: '2-5', when: 'weekly', source_name: 'Maple Grove' },
       { name: 'Hilltop Kinder Gym', age_fit: '1-3', when: 'mornings', source_name: 'Hilltop' },
       { name: 'Brookvale Tots', when: 'Mondays 10am', source_name: 'Brookvale' },
@@ -945,6 +1005,25 @@ async function cachedGround(opts) {
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
+  const candidateModel = process.argv
+    .find((arg) => arg.startsWith('--anthropic-model='))
+    ?.slice('--anthropic-model='.length);
+  const preflight = process.argv.includes('--preflight');
+  const picksMaxTokensArg = process.argv
+    .find((arg) => arg.startsWith('--picks-max-tokens='))
+    ?.split('=')[1];
+  const followupMaxTokensArg = process.argv
+    .find((arg) => arg.startsWith('--followup-max-tokens='))
+    ?.split('=')[1];
+  const picksMaxTokens = picksMaxTokensArg === undefined ? 1024 : Number(picksMaxTokensArg);
+  const followupMaxTokens = followupMaxTokensArg === undefined ? 400 : Number(followupMaxTokensArg);
+  if (!Number.isInteger(picksMaxTokens) || picksMaxTokens < 1) {
+    throw new Error('--picks-max-tokens must be a positive integer');
+  }
+  if (!Number.isInteger(followupMaxTokens) || followupMaxTokens < 1) {
+    throw new Error('--followup-max-tokens must be a positive integer');
+  }
   const getClient = lazyAnthropic();
   const cost = makeCost();
 
@@ -970,15 +1049,23 @@ async function main() {
     }
   }
   const skill = await agent.loadSkill(ACTIVITY_SKILL);
-  const model = agent.pickModel(skill.meta.task);
+  const model = candidateModel ?? agent.pickModel(skill.meta.task);
   // SONNET, NOT HAIKU: this rubric is ~4k characters and Haiku was marking down two
   // behaviours the rubric states in so many words are correct (harness.mjs readJudgeModel).
   const judgeModel = await readJudgeModel('sonnet');
   // MEDIAN OF THREE, not one draw: this suite failed on a tail sample of a message every
   // other draw passed (harness.mjs `JUDGE_SAMPLES_MEDIAN`). JUDGE_MIN is untouched.
-  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'activity-finder', cachedOnly, getClient, cost, {
-    samples: JUDGE_SAMPLES_MEDIAN,
-  });
+  const judge = makeJudge(
+    judgeModel,
+    JUDGE_SYSTEM,
+    'activity-finder',
+    cachedOnly,
+    getClient,
+    cost,
+    {
+      samples: JUDGE_SAMPLES_MEDIAN,
+    },
+  );
   const travelJudge = makeJudge(
     judgeModel,
     TRAVEL_JUDGE_SYSTEM,
@@ -992,10 +1079,24 @@ async function main() {
   console.log(
     `activity-finder eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | lane=${model} judge=${judgeModel}`,
   );
-  console.log(`corpus: ${ACTIVITY_FIXTURES.length} searches\n`);
+  const selectedIds = new Set(only?.split(',').filter(Boolean) ?? []);
+  const fixtures = only
+    ? ACTIVITY_FIXTURES.filter((fixture) => selectedIds.has(fixture.id))
+    : ACTIVITY_FIXTURES;
+  if (fixtures.length !== (only ? selectedIds.size : ACTIVITY_FIXTURES.length)) {
+    throw new Error(`one or more fixtures did not match --only=${only}`);
+  }
+  if (preflight) {
+    console.log(
+      `activity-finder preflight | fixtures=${fixtures.length} lane=${model} picksMaxTokens=${picksMaxTokens} followupMaxTokens=${followupMaxTokens}`,
+    );
+    console.log(`max API calls: subject=${fixtures.length * 5}, judges=${fixtures.length * 3}`);
+    return;
+  }
+  console.log(`corpus: ${fixtures.length} searches\n`);
 
   const results = [];
-  for (const fixture of ACTIVITY_FIXTURES) {
+  for (const fixture of fixtures) {
     const failures = [];
     const query = {
       subject: fixture.subject,
@@ -1017,7 +1118,7 @@ async function main() {
     const ground = broken
       ? { searchCount: 0, pagesRead: 0, pagesStale: 0, pagesRefused: 0, notes: '', evidence: '' }
       : await cachedGround({
-          tag: `activity-ground:${fixture.id}`,
+          tag: evalRunTag(`activity-ground:${fixture.id}`),
           model,
           system: skill.instructions,
           userMessage: groundUserMessage(query),
@@ -1046,14 +1147,16 @@ async function main() {
       ? brokenPicks(fixture)
       : (
           await cachedToolCall({
-            tag: `activity-picks:${fixture.id}`,
+            tag: evalRunTag(`activity-picks:${fixture.id}`),
             model,
             system: skill.instructions,
             userMessage: composeUserMessage(query, ground.notes),
             toolName: 'activity_picks',
-            toolSchema: PICKS_TOOL_SCHEMA,
+            toolSchema: candidateModel ? STRICT_PICKS_TOOL_SCHEMA : PICKS_TOOL_SCHEMA,
             toolDescription: 'Return the concrete programs the search actually found.',
-            maxTokens: 1024,
+            maxTokens: picksMaxTokens,
+            toolChoice: candidateModel ? { type: 'auto' } : undefined,
+            strictTool: Boolean(candidateModel),
             cachedOnly,
             getClient,
             cost,
@@ -1107,7 +1210,9 @@ async function main() {
           watchFor: fixture.watchFor,
         });
         if (verdict.score < JUDGE_MIN) {
-          failures.push(`judge:${verdict.score} of ${verdict.samples.join('/')} (${verdict.reason})`);
+          failures.push(
+            `judge:${verdict.score} of ${verdict.samples.join('/')} (${verdict.reason})`,
+          );
         }
       }
       results.push({
@@ -1143,7 +1248,7 @@ async function main() {
         ? brokenFollowUp(watch)
         : (
             await cachedToolCall({
-              tag: `activity-followup:${fixture.id}:${attempt}`,
+              tag: evalRunTag(`activity-followup:${fixture.id}:${attempt}`),
               model,
               system: skill.instructions,
               userMessage: retryFollowUpMessage(
@@ -1151,9 +1256,11 @@ async function main() {
                 violations,
               ),
               toolName: 'followup_text',
-              toolSchema: FOLLOWUP_TOOL_SCHEMA,
+              toolSchema: candidateModel ? STRICT_FOLLOWUP_TOOL_SCHEMA : FOLLOWUP_TOOL_SCHEMA,
               toolDescription: 'Return the one message to send this parent.',
-              maxTokens: 400,
+              maxTokens: followupMaxTokens,
+              toolChoice: candidateModel ? { type: 'auto' } : undefined,
+              strictTool: Boolean(candidateModel),
               cachedOnly,
               getClient,
               cost,
@@ -1212,17 +1319,27 @@ async function main() {
 
   const count = (name) => results.filter((r) => r.failures.some((f) => f.startsWith(name))).length;
   console.log('\n--- corpus metrics (0 required each) ---');
-  console.log(`identity leaks:          ${count('identity_leak')}  (a name or an exact age never crosses the border)`);
+  console.log(
+    `identity leaks:          ${count('identity_leak')}  (a name or an exact age never crosses the border)`,
+  );
   console.log(
     `ungrounded:              ${count('not_grounded')}  (no results, or results the turn never wrote up)`,
   );
-  console.log(`fabricated picks:        ${count('fabricated_pick')}  (a venue the search never returned)`);
+  console.log(
+    `fabricated picks:        ${count('fabricated_pick')}  (a venue the search never returned)`,
+  );
   console.log(`invented picks:          ${count('invented_picks')}`);
-  console.log(`found nothing:           ${count('no_picks')}  (a real question answered with a shrug)`);
+  console.log(
+    `found nothing:           ${count('no_picks')}  (a real question answered with a shrug)`,
+  );
   console.log(`half finds:              ${count('half_find')}`);
   console.log(`directory:               ${count('directory')}`);
-  console.log(`off subject:             ${count('off_subject')}  (a named place must be what was researched)`);
-  console.log(`claims verification:     ${count('claims_verification')}  (web-read is not confirmed)`);
+  console.log(
+    `off subject:             ${count('off_subject')}  (a named place must be what was researched)`,
+  );
+  console.log(
+    `claims verification:     ${count('claims_verification')}  (web-read is not confirmed)`,
+  );
   console.log(`buried top pick:         ${count('buried_top_pick')}  (the trim cuts from the end)`);
   console.log(`links a URL:             ${count('links_a_url')}`);
   console.log(

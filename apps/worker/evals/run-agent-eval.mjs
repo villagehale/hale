@@ -71,6 +71,7 @@ import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
 import { z } from 'zod';
+import { evalRunTag, evalSubjectClient, evalSubjectRequest, noteLatency } from './lib/harness.mjs';
 import { skillSampleSentences, variationGate, variationLines } from './lib/variation.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -87,6 +88,7 @@ const CACHE_DIR = join(HERE, 'cache');
 const PRICE = {
   sonnet: { input: 3.0, output: 15.0 },
   haiku: { input: 1.0, output: 5.0 },
+  gateway: { input: 0.15, output: 0.6 },
 };
 
 const JUDGE_MIN = 4; // 1-5 integer scale, the same bar the other agent evals use
@@ -148,9 +150,12 @@ function noteUsage(cost, tier, usage) {
   if (tier === 'sonnet') {
     cost.sonnetIn += usage.input_tokens + (usage.cache_creation_input_tokens ?? 0);
     cost.sonnetOut += usage.output_tokens;
-  } else {
+  } else if (tier === 'haiku') {
     cost.haikuIn += usage.input_tokens + (usage.cache_creation_input_tokens ?? 0);
     cost.haikuOut += usage.output_tokens;
+  } else {
+    cost.gatewayIn += usage.input_tokens + (usage.cache_creation_input_tokens ?? 0);
+    cost.gatewayOut += usage.output_tokens;
   }
 }
 
@@ -164,14 +169,16 @@ function makeCachedAgentClient(tag, cachedOnly, getClient, cost) {
   return {
     messages: {
       async create(params) {
+        const request = evalSubjectRequest(params);
         const canonical = JSON.stringify({
-          model: params.model,
-          system: params.system,
-          tools: params.tools,
-          messages: params.messages,
-          max_tokens: params.max_tokens,
+          model: request.model,
+          system: request.system,
+          tools: request.tools,
+          messages: request.messages,
+          max_tokens: request.max_tokens,
+          ...(process.env.EVAL_GATEWAY_MODEL ? { thinking: request.thinking } : {}),
         });
-        const key = cacheKey(`${tag}:agent`, canonical);
+        const key = cacheKey(evalRunTag(`${tag}:agent`), canonical);
 
         const cached = await cacheGet(key);
         if (cached) return cached.response;
@@ -183,8 +190,10 @@ function makeCachedAgentClient(tag, cachedOnly, getClient, cost) {
           process.exit(1);
         }
 
-        const response = await getClient().messages.create(params);
-        noteUsage(cost, 'sonnet', response.usage);
+        const startedAt = performance.now();
+        const response = await evalSubjectClient(getClient).messages.create(request);
+        noteLatency(request.model, Math.round(performance.now() - startedAt));
+        noteUsage(cost, process.env.EVAL_GATEWAY_MODEL ? 'gateway' : 'sonnet', response.usage);
         // Store the raw SDK message shape runAgent consumes (content + usage +
         // stop_reason). We persist a plain object so JSON round-trips losslessly.
         const stored = {
@@ -256,7 +265,9 @@ function makeJudge(model, judgeSystem, tag, cachedOnly, getClient, cost) {
       model,
       max_tokens: 256,
       system: judgeSystem,
-      tools: [{ name: JUDGE_TOOL, description: 'Return the score.', input_schema: JUDGE_JSON_SCHEMA }],
+      tools: [
+        { name: JUDGE_TOOL, description: 'Return the score.', input_schema: JUDGE_JSON_SCHEMA },
+      ],
       tool_choice: { type: 'tool', name: JUDGE_TOOL },
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -704,7 +715,7 @@ const weekVoiceSchema = z
 
 const WEEK_SUMMARY_JUDGE_SYSTEM = [
   'You are a strict reviewer scoring the VOICE object (greeting, weekFraming,',
-  'itemLines, signOff) Hale wrote to sit atop a family\'s already-composed upcoming-',
+  "itemLines, signOff) Hale wrote to sit atop a family's already-composed upcoming-",
   'week plan. Score CALM & FAITHFULNESS on a 1-5 integer scale. A 5 is warm, calm,',
   'written in ordinary SENTENCE CASE (every sentence starting with a capital, the',
   'greeting and sign-off included — a lowercase dialect is a different voice from the',
@@ -762,7 +773,9 @@ function checkWeekVoice(fixture, voice, judgeScore) {
 
   // Length bound on the narrative sentence: one/two calm sentences, never a wall of text.
   if (typeof e.maxChars === 'number' && weekFraming.length > e.maxChars) {
-    failures.push(`weekFraming ${weekFraming.length} chars > maxChars ${e.maxChars} (not one/two sentences)`);
+    failures.push(
+      `weekFraming ${weekFraming.length} chars > maxChars ${e.maxChars} (not one/two sentences)`,
+    );
   }
 
   const allText = [greeting, weekFraming, signOff, ...Object.values(itemLines ?? {})].join(' ');
@@ -774,7 +787,10 @@ function checkWeekVoice(fixture, voice, judgeScore) {
   }
 
   // Calm voice: never open with a hype phrase.
-  if (e.mustStayCalm && (BANNED_SUMMARY_OPENER.test(greeting) || BANNED_SUMMARY_OPENER.test(weekFraming))) {
+  if (
+    e.mustStayCalm &&
+    (BANNED_SUMMARY_OPENER.test(greeting) || BANNED_SUMMARY_OPENER.test(weekFraming))
+  ) {
     failures.push(`banned hype opener: ${JSON.stringify((greeting || weekFraming).slice(0, 24))}`);
   }
 
@@ -803,7 +819,8 @@ function checkWeekVoice(fixture, voice, judgeScore) {
   // The facts-lint every voice string carries in prod (composeVoice/findInventedFacts):
   // a clock time or URL not present in a grounded slot is a fabrication.
   const invented = inventedTimesUrls(allText, grounded);
-  if (invented.length) failures.push(`invented time/url not grounded in any item: ${invented.join(', ')}`);
+  if (invented.length)
+    failures.push(`invented time/url not grounded in any item: ${invented.join(', ')}`);
 
   // itemLines is keyed by the item's index (the id the composer hands the model) — a
   // key outside that range means the model invented an item.
@@ -836,7 +853,12 @@ async function runWeekSummarySuite(opts) {
     if (broken) {
       voice = brokenWeekVoiceAnswer();
     } else {
-      const client = makeCachedAgentClient(`week-summary:${fixture.id}`, cachedOnly, getClient, cost);
+      const client = makeCachedAgentClient(
+        `week-summary:${fixture.id}`,
+        cachedOnly,
+        getClient,
+        cost,
+      );
       const guardDeps = makeGuardDeps(auditLog, new Set());
       const run = await agent.runAgent({
         skill,
@@ -858,7 +880,8 @@ async function runWeekSummarySuite(opts) {
       voice = parsed?.success ? parsed.data : null;
     }
 
-    const score = broken || !voice ? null : (await judge(weekSummaryJudgePayload(fixture, voice))).score;
+    const score =
+      broken || !voice ? null : (await judge(weekSummaryJudgePayload(fixture, voice))).score;
     const failures = checkWeekVoice(fixture, voice, score);
     record(results, fixture, failures, score);
   }
@@ -884,7 +907,7 @@ const welcomeVoiceSchema = z
 
 const WELCOME_VOICE_JUDGE_SYSTEM = [
   'You are a strict reviewer scoring a VOICE object (greeting, villageLine,',
-  'closingNote) Hale wrote for a family\'s first email, right after onboarding.',
+  "closingNote) Hale wrote for a family's first email, right after onboarding.",
   'Score WARMTH & FAITHFULNESS on a 1-5 integer scale. A 5 is warm, genuine, plain-',
   'spoken (not a brand voice), greets using the supplied firstName, and — only if',
   'given — naturally weaves in the supplied place and/or stage phrase without',
@@ -988,7 +1011,9 @@ function checkWelcomeVoice(fixture, voice, judgeScore) {
 
   // The greeting must use the supplied firstName token verbatim.
   if (fixture.context.firstName && !allText.includes(fixture.context.firstName)) {
-    failures.push(`greeting never uses the supplied firstName ${JSON.stringify(fixture.context.firstName)}`);
+    failures.push(
+      `greeting never uses the supplied firstName ${JSON.stringify(fixture.context.firstName)}`,
+    );
   }
 
   // This skill is NEVER handed a time or a link — any appearing in the voice is a
@@ -997,10 +1022,13 @@ function checkWelcomeVoice(fixture, voice, judgeScore) {
     ...(allText.match(/\b\d{1,2}:\d{2}\b/g) ?? []),
     ...(allText.match(/https?:\/\/\S+/g) ?? []),
   ];
-  if (timesAndUrls.length) failures.push(`invented time/url (never supplied to this skill): ${timesAndUrls.join(', ')}`);
+  if (timesAndUrls.length)
+    failures.push(`invented time/url (never supplied to this skill): ${timesAndUrls.join(', ')}`);
 
   // No fabricated specifics beyond the coarse firstName/place/stage it was handed.
-  const grounded = [fixture.context.firstName, fixture.context.place, fixture.context.stage].filter(Boolean);
+  const grounded = [fixture.context.firstName, fixture.context.place, fixture.context.stage].filter(
+    Boolean,
+  );
   const ungrounded = ungroundedSpecifics(allText, grounded);
   if (ungrounded.length) failures.push(`ungrounded specifics: ${ungrounded.join(', ')}`);
 
@@ -1037,7 +1065,12 @@ async function runWelcomeVoiceSuite(opts) {
     if (broken) {
       voice = brokenWelcomeVoiceAnswer();
     } else {
-      const client = makeCachedAgentClient(`welcome-voice:${fixture.id}`, cachedOnly, getClient, cost);
+      const client = makeCachedAgentClient(
+        `welcome-voice:${fixture.id}`,
+        cachedOnly,
+        getClient,
+        cost,
+      );
       const guardDeps = makeGuardDeps(auditLog, new Set());
       const run = await agent.runAgent({
         skill,
@@ -1059,7 +1092,8 @@ async function runWelcomeVoiceSuite(opts) {
       voice = parsed?.success ? parsed.data : null;
     }
 
-    const score = broken || !voice ? null : (await judge(welcomeVoiceJudgePayload(fixture, voice))).score;
+    const score =
+      broken || !voice ? null : (await judge(welcomeVoiceJudgePayload(fixture, voice))).score;
     const failures = checkWelcomeVoice(fixture, voice, score);
     if (voice) composed.push({ id: fixture.id, voice });
     record(results, fixture, failures, score);
@@ -1237,7 +1271,9 @@ function checkDiscovery(fixture, parsed, judgeScore) {
   // Privacy (rule #1): no precise-location leak. A street address, a 5/6-char
   // Canadian full postal code (vs the coarse FSA prefix), or any forbidden
   // location token fabricates/pinpoints a finer location than the coarse area.
-  const streetAddr = blob.match(/\b\d{1,5}\s+[A-Z][A-Za-z]+\s+(St|Street|Ave|Avenue|Rd|Road|Blvd|Dr|Drive|Way|Cres|Crescent)\b/);
+  const streetAddr = blob.match(
+    /\b\d{1,5}\s+[A-Z][A-Za-z]+\s+(St|Street|Ave|Avenue|Rd|Road|Blvd|Dr|Drive|Way|Cres|Crescent)\b/,
+  );
   if (streetAddr) failures.push(`precise street address leaked (rule #1): ${streetAddr[0]}`);
   const fullPostal = blob.match(/\b[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d\b/);
   if (fullPostal) failures.push(`full postal code leaked (rule #1): ${fullPostal[0]}`);
@@ -1327,12 +1363,48 @@ async function main() {
 
   const { discovery: discoveryModel, judge: judgeModel } = await readModelIds();
   const getClient = lazyAnthropic();
-  const cost = { liveCalls: 0, sonnetIn: 0, sonnetOut: 0, haikuIn: 0, haikuOut: 0 };
+  const cost = {
+    liveCalls: 0,
+    sonnetIn: 0,
+    sonnetOut: 0,
+    haikuIn: 0,
+    haikuOut: 0,
+    gatewayIn: 0,
+    gatewayOut: 0,
+  };
 
-  const askHaleJudge = makeJudge(judgeModel, ASK_HALE_JUDGE_SYSTEM, 'ask-hale', cachedOnly, getClient, cost);
-  const weekSummaryJudge = makeJudge(judgeModel, WEEK_SUMMARY_JUDGE_SYSTEM, 'week-summary', cachedOnly, getClient, cost);
-  const welcomeVoiceJudge = makeJudge(judgeModel, WELCOME_VOICE_JUDGE_SYSTEM, 'welcome-voice', cachedOnly, getClient, cost);
-  const discoveryJudge = makeJudge(judgeModel, DISCOVERY_JUDGE_SYSTEM, 'discovery', cachedOnly, getClient, cost);
+  const askHaleJudge = makeJudge(
+    judgeModel,
+    ASK_HALE_JUDGE_SYSTEM,
+    'ask-hale',
+    cachedOnly,
+    getClient,
+    cost,
+  );
+  const weekSummaryJudge = makeJudge(
+    judgeModel,
+    WEEK_SUMMARY_JUDGE_SYSTEM,
+    'week-summary',
+    cachedOnly,
+    getClient,
+    cost,
+  );
+  const welcomeVoiceJudge = makeJudge(
+    judgeModel,
+    WELCOME_VOICE_JUDGE_SYSTEM,
+    'welcome-voice',
+    cachedOnly,
+    getClient,
+    cost,
+  );
+  const discoveryJudge = makeJudge(
+    judgeModel,
+    DISCOVERY_JUDGE_SYSTEM,
+    'discovery',
+    cachedOnly,
+    getClient,
+    cost,
+  );
 
   console.log(
     `agent-eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | discovery=${discoveryModel} | judge=${judgeModel}`,
@@ -1342,10 +1414,46 @@ async function main() {
 
   const all = [];
   const suites = [
-    ['ask-hale', () => runAskHaleSuite({ agent, broken, cachedOnly, getClient, cost, judge: askHaleJudge })],
-    ['week-summary', () => runWeekSummarySuite({ agent, broken, cachedOnly, getClient, cost, judge: weekSummaryJudge })],
-    ['welcome-voice', () => runWelcomeVoiceSuite({ agent, broken, cachedOnly, getClient, cost, judge: welcomeVoiceJudge })],
-    ['discovery', () => runDiscoverySuite({ broken, cachedOnly, getClient, cost, judge: discoveryJudge, discoveryModel })],
+    [
+      'ask-hale',
+      () => runAskHaleSuite({ agent, broken, cachedOnly, getClient, cost, judge: askHaleJudge }),
+    ],
+    [
+      'week-summary',
+      () =>
+        runWeekSummarySuite({
+          agent,
+          broken,
+          cachedOnly,
+          getClient,
+          cost,
+          judge: weekSummaryJudge,
+        }),
+    ],
+    [
+      'welcome-voice',
+      () =>
+        runWelcomeVoiceSuite({
+          agent,
+          broken,
+          cachedOnly,
+          getClient,
+          cost,
+          judge: welcomeVoiceJudge,
+        }),
+    ],
+    [
+      'discovery',
+      () =>
+        runDiscoverySuite({
+          broken,
+          cachedOnly,
+          getClient,
+          cost,
+          judge: discoveryJudge,
+          discoveryModel,
+        }),
+    ],
   ];
 
   let total = 0;
@@ -1361,12 +1469,14 @@ async function main() {
     (cost.sonnetIn / 1e6) * PRICE.sonnet.input +
     (cost.sonnetOut / 1e6) * PRICE.sonnet.output +
     (cost.haikuIn / 1e6) * PRICE.haiku.input +
-    (cost.haikuOut / 1e6) * PRICE.haiku.output;
+    (cost.haikuOut / 1e6) * PRICE.haiku.output +
+    (cost.gatewayIn / 1e6) * PRICE.gateway.input +
+    (cost.gatewayOut / 1e6) * PRICE.gateway.output;
 
   console.log('--- cost ---');
   console.log(`live API calls this run: ${cost.liveCalls}`);
   console.log(
-    `tokens: sonnet in=${cost.sonnetIn} out=${cost.sonnetOut} | haiku in=${cost.haikuIn} out=${cost.haikuOut}`,
+    `tokens: sonnet in=${cost.sonnetIn} out=${cost.sonnetOut} | haiku in=${cost.haikuIn} out=${cost.haikuOut} | gateway in=${cost.gatewayIn} out=${cost.gatewayOut}`,
   );
   console.log(`estimated cost this run: $${estUsd.toFixed(4)} USD`);
 

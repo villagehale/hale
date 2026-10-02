@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "okay?",
+    "rationale": "Hedged/questioning 'okay?' reads as uncertain acknowledgement, not a clear yes",
+    "confidence": 0.75
+  },
+  "latencyMs": 1701
+}
