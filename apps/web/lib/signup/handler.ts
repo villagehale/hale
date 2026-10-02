@@ -1,9 +1,11 @@
 import type { Database } from '@hale/db';
+import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import type {
   DeterministicHandler,
   HandlerContext,
   HandlerVerdict,
 } from '~/lib/channel/router/route';
+import { isExplicitSignupUtterance } from './authorize';
 import { AUTHORIZED_SIGNUP_TEMPLATE_KEY } from './copy';
 import type { GroupSignupDelivery } from './report';
 import { runAuthorizedSignup } from './run';
@@ -27,6 +29,16 @@ export function authorizedSignupHandler(
   return {
     name: 'authorized_signup',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      if (
+        isExplicitSignupUtterance(ctx.body) &&
+        (await declinePrivilegedGroupSeat(database, {
+          familyId: ctx.familyId,
+          userId: ctx.parentUserId,
+          capability: 'signup',
+        }))
+      ) {
+        return { claimed: true, outcome: 'group_member_not_authorized', reply: null };
+      }
       const result = await runAuthorizedSignup(
         database,
         {

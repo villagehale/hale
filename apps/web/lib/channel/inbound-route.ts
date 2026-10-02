@@ -11,6 +11,7 @@ import { type IntakeDeps, type KeywordAck, handleInboundSms } from '~/lib/channe
 import type { InboundMessage } from '~/lib/channel/intake/transport';
 import { replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { liveMemberMayTalk } from '~/lib/channel/linq/group-members';
 import { sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { isParentRole } from '~/lib/channel/role-scope';
 import type { MessageTransport } from '~/lib/channel/transport-address';
@@ -401,7 +402,11 @@ async function handOffToConversation(
   const member = members.find(
     (row) => row.userId === owner.userId && row.familyId === owner.familyId,
   );
-  if (!member || !isParentRole(member.role)) {
+  const groupTalk =
+    inbound.isGroup === true &&
+    Boolean(inbound.chatId) &&
+    (await liveMemberMayTalk(deps.database, owner.familyId, owner.userId, inbound.chatId ?? ''));
+  if ((!member || !isParentRole(member.role)) && !groupTalk) {
     return 'not_a_parent';
   }
 

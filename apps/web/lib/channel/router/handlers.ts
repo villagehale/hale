@@ -48,6 +48,7 @@ import {
   type CoParentNumberDeps,
   deliverCoParentNumberInvite,
 } from '~/lib/channel/linq/coparent-invite';
+import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
@@ -218,6 +219,15 @@ export function approvalHandler(spine: ApprovalSpine): DeterministicHandler {
       if (!resolved && !(await mayClaimBareWord(ctx, command, 'approval'))) {
         return { claimed: false };
       }
+      if (
+        await declinePrivilegedGroupSeat(database, {
+          familyId: ctx.familyId,
+          userId: ctx.parentUserId,
+          capability: 'spend',
+        })
+      ) {
+        return { claimed: true, outcome: 'group_member_not_authorized', reply: null };
+      }
 
       const outcome = await resolveApproval(
         database,
@@ -298,6 +308,15 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const provider = matchConnectorRequest(ctx.body);
       if (!provider) return { claimed: false };
+      if (
+        await declinePrivilegedGroupSeat(database, {
+          familyId: ctx.familyId,
+          userId: ctx.parentUserId,
+          capability: 'calendar_email',
+        })
+      ) {
+        return { claimed: true, outcome: 'group_member_not_authorized', reply: null };
+      }
 
       const outcome = await offerConnectorLink(database, {
         familyId: ctx.familyId,
@@ -359,6 +378,15 @@ export function connectorDisconnectHandler(
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const provider = matchConnectorDisconnectRequest(ctx.body);
       if (!provider) return { claimed: false };
+      if (
+        await declinePrivilegedGroupSeat(database, {
+          familyId: ctx.familyId,
+          userId: ctx.parentUserId,
+          capability: 'calendar_email',
+        })
+      ) {
+        return { claimed: true, outcome: 'group_member_not_authorized', reply: null };
+      }
 
       const outcome = await revokeConnectorByText(database, {
         familyId: ctx.familyId,

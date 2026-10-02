@@ -149,6 +149,7 @@ describe('parseLinqWebhook', () => {
         optionId: null,
         senderHandle: null,
         participantHandle: null,
+        actorHandle: null,
         isFromMe: false,
       },
     });

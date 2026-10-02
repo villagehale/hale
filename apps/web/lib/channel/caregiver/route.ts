@@ -20,11 +20,12 @@ import { JOIN_ACCEPTED_ACK } from '~/lib/channel/join/copy';
 import { looksLikeJoinRequest } from '~/lib/channel/join/parse';
 import { type JoinOutcome, handleJoinRequest } from '~/lib/channel/join/route';
 import { replyLanguage } from '~/lib/channel/language';
-import { openHouseholdLinqGroup } from '~/lib/channel/linq/group';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { openHouseholdLinqGroup } from '~/lib/channel/linq/group';
+import { liveMemberMayTalk } from '~/lib/channel/linq/group-members';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
-import { type OpenQuestion, soleOpenKind } from '~/lib/channel/router/open-questions';
 import { type FamilyRole, isCaregiverRole, isParentRole } from '~/lib/channel/role-scope';
+import { type OpenQuestion, soleOpenKind } from '~/lib/channel/router/open-questions';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
@@ -52,8 +53,8 @@ import {
   declineInvite,
   loadPendingAssent,
   recordCoParentAssent,
-  recordLapsedInviteAnswered,
   recordInviteRefusal,
+  recordLapsedInviteAnswered,
   recordParentAssent,
   startCaregiverInvite,
   startCoParentInvite,
@@ -682,6 +683,13 @@ export async function handleKnownNumberInbound(
   const role = await memberRole(database, owner.familyId, owner.userId);
 
   if (role && isCaregiverRole(role)) {
+    if (
+      args.inbound.isGroup === true &&
+      args.inbound.chatId &&
+      (await liveMemberMayTalk(database, owner.familyId, owner.userId, args.inbound.chatId))
+    ) {
+      return null;
+    }
     await record(database, {
       familyId: owner.familyId,
       parentUserId: owner.userId,
@@ -1030,6 +1038,8 @@ async function startFromCommand(
 ): Promise<CaregiverOutcome | CoParentOutcome | null> {
   const { owner, inbound, now } = args;
   if (!looksLikeAddCommand(inbound.body)) return null;
+  const role = await memberRole(database, owner.familyId, owner.userId);
+  if (!role || !isParentRole(role)) return null;
 
   // Read before the ledger row so the row lands in the right LANE. Parsing acts on
   // nothing and sends nothing; what must not happen before the row exists is a decision,

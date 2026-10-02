@@ -166,6 +166,10 @@ export const AUDIT_VERBS = [
   'linq_group_opened',
   'linq_group_claimed',
   'linq_group_held',
+  'linq_group_member_seated',
+  'linq_group_member_unseated',
+  'linq_group_member_refused',
+  'linq_group_stranger_held',
   'linq_poll_sent',
   // A live logistics fact: an open ask, a named taker, a chosen time, or
   // "none of these" ending the both-free ask. One verb, because every one of
@@ -611,6 +615,22 @@ const VERBS: Record<AuditVerb, Verb> = {
   linq_group_held: {
     sentence: 'Hale could not open the household thread yet',
     family: 'problem',
+  },
+  linq_group_member_seated: {
+    sentence: 'Hale seated someone in the household thread',
+    family: 'done',
+  },
+  linq_group_member_unseated: {
+    sentence: 'Hale unseated someone from the household thread',
+    family: 'note',
+  },
+  linq_group_member_refused: {
+    sentence: 'Hale did not seat that number in this household',
+    family: 'problem',
+  },
+  linq_group_stranger_held: {
+    sentence: 'Hale answered a number that is not in this household',
+    family: 'note',
   },
   linq_poll_sent: { sentence: 'Hale sent you a short choice', family: 'note' },
   // True for an open ask, a named taker, a chosen time, and a both-free
