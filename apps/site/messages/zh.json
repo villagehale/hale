@@ -80,8 +80,7 @@
     "heroChannel": "iMessage。不用装应用。",
     "heroTerms": "数据留在加拿大 —",
     "heroTermsLink": "隐私政策",
-    "boardMonth": "四月",
-    "boardCap": "一张四月的纸质日历。找到的活动落在日子上：亲子游泳、滑冰玩耍，还有春令营。",
+    "boardCap": "{month}的纸质日历。找到的活动落在日子上：亲子游泳、滑冰玩耍，还有秋季市集。",
     "boardDow": [
       "日",
       "一",
@@ -93,7 +92,7 @@
     ],
     "chipSwim": "游泳",
     "chipSkate": "滑冰",
-    "chipCamp": "春令营",
+    "chipCamp": "秋市",
     "findH2": "找到",
     "findLine": "适合这个年龄、就在附近的活动。",
     "findKicker": "已找到",
@@ -246,7 +245,8 @@
     "freeBody": "聊天不限次数。Hale 按你说的去找，并把找到的内容发给你。",
     "footnote": "现在只有免费档可用。",
     "comingSoon": "即将推出",
-    "comingBody": "还不能用。",
+    "comingBody": "Plus 和 Family 还不能用。",
+    "comingMore": "还有更多。",
     "tierNames": {
       "free": "免费",
       "plus": "Plus",

@@ -378,9 +378,7 @@ describe('headings use the system display stack, not a loaded display webfont', 
     const localeQualified = [...CSS.matchAll(/html\[lang='(\w+)'\]/g)].map((m) => m[1]);
     expect([...new Set(localeQualified)].sort()).toEqual(['en', 'fr']);
     expect(only('.v4-display', 'font-family')).toBe('var(--font-display)');
-    expect(CSS).toMatch(
-      /--font-display:\s*"Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;/,
-    );
+    expect(CSS).toMatch(/--font-display:\s*var\(--font-sans\);/);
   });
 
   it('asks opsz to follow the rendered size, on every surface that names the face', () => {
@@ -576,9 +574,9 @@ describe('headings use the system display stack, not a loaded display webfont', 
 });
 
 /**
- * Ship-now pairing. Headings are the system grotesque on --font-display. Body is
- * Source Serif 4 on --font-body (the self-hosted --font-serif). Figtree stays the
- * UI face on --font-sans — nav, buttons, bubbles — and is not H1 or body.
+ * Ship-now pairing. Headings, nav, and buttons share the loaded Figtree on
+ * --font-sans, which --font-display follows, so the grotesque is not an OS
+ * Helvetica. Body is Source Serif 4 on --font-body (the self-hosted --font-serif).
  *
  * The hero deck inherits --font-body and declares no family of its own, so the
  * description reads as a different voice from the headline.
@@ -594,14 +592,12 @@ describe('headings, body, and UI use three different faces', () => {
     expect(LAYOUT).toContain('sourceSerif.variable');
   });
 
-  it('locks the display and body tokens, and keeps Figtree off both', () => {
-    expect(CSS).toMatch(
-      /--font-display:\s*"Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;/,
-    );
+  it('locks headings to the loaded Figtree and body to Source Serif', () => {
+    expect(CSS).toMatch(/--font-display:\s*var\(--font-sans\);/);
     expect(CSS).toMatch(/--font-body:\s*var\(--font-serif\);/);
     expect(CSS).toMatch(/--font-serif:\s*"Source Serif 4"/);
     expect(CSS).toMatch(/--font-sans:\s*"Figtree"/);
-    expect(CSS).not.toMatch(/--font-display:\s*var\(--font-sans\)/);
+    expect(CSS).not.toMatch(/--font-display:\s*"Helvetica Neue"/);
     expect(CSS).not.toMatch(/--font-body:\s*var\(--font-sans\)/);
     expect(only('h1', 'font-family')).toBe('var(--font-display)');
     expect(only('.v4-navlink', 'font-family')).toBe('var(--font-sans)');

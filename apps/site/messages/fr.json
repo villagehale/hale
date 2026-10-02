@@ -80,8 +80,7 @@
     "heroChannel": "iMessage. Pas d'appli.",
     "heroTerms": "Vos données restent au Canada —",
     "heroTermsLink": "politique de confidentialité",
-    "boardMonth": "Avril",
-    "boardCap": "Un calendrier en papier pour avril. Les activités trouvées se posent sur les jours : natation parent-enfant, patin et jeu, et le camp de printemps.",
+    "boardCap": "Un calendrier en papier pour {month}. Les activités trouvées se posent sur les jours : natation parent-enfant, patin et jeu, et la foire d'automne.",
     "boardDow": [
       "D",
       "L",
@@ -93,7 +92,7 @@
     ],
     "chipSwim": "Bain",
     "chipSkate": "Patin",
-    "chipCamp": "Camp",
+    "chipCamp": "Foire",
     "findH2": "Trouve",
     "findLine": "La bonne activité, pour son âge, près de vous.",
     "findKicker": "Trouvé",
@@ -249,7 +248,8 @@
     "freeBody": "Clavardage illimité. Hale cherche ce que vous avez demandé, et vous envoie ce qu’il a trouvé.",
     "footnote": "Seul Gratuit est disponible aujourd'hui.",
     "comingSoon": "Bientôt",
-    "comingBody": "Pas encore disponible.",
+    "comingBody": "Plus et Famille ne sont pas encore disponibles.",
+    "comingMore": "Plus à venir.",
     "tierNames": {
       "free": "Gratuit",
       "plus": "Plus",

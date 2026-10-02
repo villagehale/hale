@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * Scroll-reveal wrapper: content settles up and fades in the first time it
- * enters the viewport. Content is always in the DOM (SEO + no-JS text is
- * present); only its opacity/transform is animated. prefers-reduced-motion
- * shows it immediately with no transition.
+ * Scroll-reveal wrapper. The band is painted (opacity 1) unless a browser can
+ * drive a view timeline, in which case it fades in as it enters and finishes
+ * at opacity 1. prefers-reduced-motion shows it immediately. Content stays in
+ * the DOM either way.
  */
 export function FadeInUp({
   children,
@@ -19,27 +19,22 @@ export function FadeInUp({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [shown, setShown] = useState(false);
-  const [instant, setInstant] = useState(false);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setInstant(true);
       setShown(true);
       return;
     }
     const io = new IntersectionObserver(
       (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setShown(true);
-            io.disconnect();
-            break;
-          }
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShown(true);
+          io.disconnect();
         }
       },
-      { threshold: 0.15, rootMargin: '0px 0px -8% 0px' },
+      { threshold: 0, rootMargin: '0px' },
     );
     io.observe(el);
     return () => io.disconnect();
@@ -48,14 +43,9 @@ export function FadeInUp({
   return (
     <div
       ref={ref}
-      className={className}
-      style={{
-        opacity: shown ? 1 : 0,
-        transform: shown ? 'none' : 'translateY(12px)',
-        transition: instant ? 'none' : 'opacity 480ms ease-out, transform 480ms ease-out',
-        transitionDelay: instant ? undefined : `${delayMs}ms`,
-        willChange: 'opacity, transform',
-      }}
+      className={className ? `${className} v4-reveal` : 'v4-reveal'}
+      data-shown={shown ? 'true' : 'false'}
+      style={delayMs > 0 ? { animationDelay: `${delayMs}ms` } : undefined}
     >
       {children}
     </div>

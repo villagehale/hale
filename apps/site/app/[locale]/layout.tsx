@@ -21,11 +21,11 @@ import '../globals.css';
 // self-hosts are subset from the upstream google/fonts variable TTFs rather than
 // taken from Fontsource: latin + latin-ext, uprights only.
 
-// Figtree (SIL OFL) is the UI face — nav, buttons, fields, bubbles. It is not
-// the body and not the headings. Variable 300–900 and registered across the
-// whole range, so the 500–600 the buttons, the nav and the chat bubbles ask for
-// all come off one master rather than off a synthesizer. Latin + latin-ext, so
-// French keeps its diacritics and a European place name keeps its.
+// Figtree (SIL OFL) is the loaded grotesque — headings, nav, buttons, fields,
+// bubbles — via --font-sans, which --font-display follows. It is not the body.
+// Variable 300–900 and registered across the whole range, so the 500–600 the
+// buttons, the nav and the chat bubbles ask for all come off one master rather
+// than off a synthesizer. Latin + latin-ext, so French keeps its diacritics.
 const figtree = localFont({
   src: [{ path: '../fonts/figtree-latin-wght-normal.woff2', weight: '300 900', style: 'normal' }],
   variable: '--font-sans',
@@ -54,8 +54,8 @@ const instrumentSerif = localFont({
 });
 
 // Fraunces stays on disk (app/fonts/, OFL) and is not registered. Headings use
-// the system stack on --font-display, so preloading the variable master would
-// ship a face the page does not paint.
+// the loaded Figtree on --font-display, so preloading Fraunces would ship a
+// face the page does not paint.
 
 const jetbrainsMono = localFont({
   // Only the 400 weight renders (the footer pronunciation); the site's other

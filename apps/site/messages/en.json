@@ -80,8 +80,7 @@
     "heroChannel": "iMessage. No app.",
     "heroTerms": "Your data stays in Canada —",
     "heroTermsLink": "privacy policy",
-    "boardMonth": "April",
-    "boardCap": "A paper calendar for April. Found activities settle on the days: parent-and-tot swim, skate and play, and spring camp.",
+    "boardCap": "A paper calendar for {month}. Found activities settle on the days: parent-and-tot swim, skate and play, and the fall fair.",
     "boardDow": [
       "S",
       "M",
@@ -93,7 +92,7 @@
     ],
     "chipSwim": "Swim",
     "chipSkate": "Skate",
-    "chipCamp": "Camp",
+    "chipCamp": "Fair",
     "findH2": "Finds",
     "findLine": "The right activity, for their age, near you.",
     "findKicker": "Found",
@@ -249,7 +248,8 @@
     "freeBody": "Unlimited chat. Hale looks up what you asked for and texts what it found.",
     "footnote": "Only Free is available today.",
     "comingSoon": "Coming soon",
-    "comingBody": "Not available yet.",
+    "comingBody": "Plus and Family are not available yet.",
+    "comingMore": "More to come.",
     "tierNames": {
       "free": "Free",
       "plus": "Plus",

@@ -27,7 +27,7 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
         </p>
       </div>
 
-      <ol className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+      <ol className="grid grid-cols-1 items-start md:grid-cols-3 gap-6 lg:gap-8">
         {TIERS.map((tier, i) => {
           const isFree = tier === 'free';
           return (
@@ -52,28 +52,33 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
               <p className="mt-5" style={{ color: 'var(--color-spruce)', lineHeight: 1.6 }}>
                 {isFree ? t('freeBody') : t('comingBody')}
               </p>
+              <ul className="numbered-card-list">
+                {isFree ? (
+                  features.map((feature) => (
+                    <li key={feature}>
+                      <Check size={16} strokeWidth={2.5} aria-hidden="true" />
+                      <span>{feature}</span>
+                    </li>
+                  ))
+                ) : (
+                  <li>
+                    <Check size={16} strokeWidth={2.5} aria-hidden="true" />
+                    <span>{t('comingMore')}</span>
+                  </li>
+                )}
+              </ul>
               {isFree ? (
-                <>
-                  <ul className="numbered-card-list">
-                    {features.map((feature) => (
-                      <li key={feature}>
-                        <Check size={16} strokeWidth={2.5} aria-hidden="true" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="mt-auto pt-8">
-                    <LandingCta
-                      event="cta_text_click"
-                      channel="sms"
-                      placement="pricing_tier"
-                      href={cta.href}
-                      className="btn-primary"
-                    >
-                      {cta.label}
-                    </LandingCta>
-                  </div>
-                </>
+                <div className="mt-auto pt-8">
+                  <LandingCta
+                    event="cta_text_click"
+                    channel="sms"
+                    placement="pricing_tier"
+                    href={cta.href}
+                    className="btn-primary"
+                  >
+                    {cta.label}
+                  </LandingCta>
+                </div>
               ) : null}
             </li>
           );

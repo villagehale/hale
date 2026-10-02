@@ -111,15 +111,15 @@
   --color-cobalt: #3b5bdb;      /* blue accent text */
   --color-cobalt-bg: #edf0fa;
 
-  /* ── Type — ship-now stack. Headings are a system grotesque (Helvetica Neue
-   * and its substitutes). Body is Source Serif 4, already self-hosted: next/font
-   * overwrites --font-serif on <html> with the hashed family, and --font-body
-   * follows it. Figtree stays on --font-sans for UI chrome only — not H1, not
-   * body. Helvetica Now and ABC Marist are not loaded; nothing here is hotlinked. */
+  /* ── Type — loaded faces only. next/font overwrites --font-sans and
+   * --font-serif on <html> with the self-hosted families (Figtree, Source Serif 4).
+   * Headings, nav, and buttons share Figtree via --font-display so the grotesque
+   * is the file we ship, not an OS Helvetica. Body stays Source Serif 4.
+   * Nothing here is hotlinked. */
   --font-sans: "Figtree", -apple-system, "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
-  --font-display: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --font-display: var(--font-sans);
   --font-body: var(--font-serif);
 
   --tracking-display: -0.02em;
@@ -1856,8 +1856,20 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     width: 100%;
     height: 100%;
     object-fit: cover;
-    object-position: center 32%;
+    object-position: center;
     filter: light-dark(saturate(1.03) brightness(1.02), saturate(0.92) brightness(0.66));
+  }
+  /* Shore-to-cream only in the last 80px, under the copy (body is z-index 1). */
+  .v4-hero-top::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 80px;
+    z-index: 0;
+    pointer-events: none;
+    background: linear-gradient(to bottom, transparent, var(--color-linen));
   }
   .v4-hero-scrim {
     position: absolute;
@@ -1969,19 +1981,27 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     padding: 0.6rem 0.7rem 0.6rem 1.15rem;
     border-radius: var(--r-full);
   }
-  /* The pill stays glass, but opaque enough that the shore cannot ghost through. */
+  /* ~90% cream plus a real blur. overflow hidden is what lets Chromium
+   * composite the backdrop; visible drops the filter. */
   .v4-nav.v4-glass {
-    overflow: visible;
-    background: light-dark(#fbf7ef, #0c1a36);
-    backdrop-filter: blur(18px) saturate(1.4);
+    overflow: hidden;
+    background: light-dark(rgb(251 247 239 / 0.9), rgb(12 26 54 / 0.9));
+    /* WebKit prefix first. Lightning CSS drops the unprefixed property when it
+     * follows inside this layer, and this Chrome then computes the blur as none. */
     -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    backdrop-filter: blur(18px) saturate(1.4);
   }
   .v4-nav .v4-btn-solid {
     background: var(--color-apricot-tint);
     color: var(--color-navy);
     box-shadow: inset 0 0 0 1px var(--color-apricot-deep);
-    padding: 8px 16px;
+    /* Same 1:2 padding ratio as the hero door (0.7rem 1.4rem), one step down. */
+    padding: 0.5rem 1rem;
     font-size: 0.85rem;
+  }
+  .v4-nav .v4-btn-solid::after,
+  .v4-hero-offer .v4-btn-solid::after {
+    content: '→';
   }
   .v4-nav .v4-btn-solid:hover { background: #fde7a8; }
   .v4-navlinks { display: none; }
@@ -2554,6 +2574,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     padding: 24px;
     border-radius: 16px;
     background: light-dark(#fbf7ef, #0c1a36);
+    border: 1px solid light-dark(rgb(23 41 74 / 0.14), rgb(251 247 239 / 0.18));
+    box-shadow: 0 12px 32px rgb(23 41 74 / 0.14);
   }
   .v4-hero-copy .v4-hero-sub { opacity: 1; }
   .v4-phone-slot {
@@ -2648,8 +2670,9 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     color: #17294a;
     font-size: 0.62rem;
     font-weight: 600;
-    line-height: 1.2;
-    overflow-wrap: anywhere;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow-wrap: normal;
     box-shadow: none;
     --chip-rot: 0deg;
     animation: v4-chip-settle 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
@@ -3139,7 +3162,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     .v4-hero-stage {
       display: grid;
       grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.2fr) 14rem;
-      align-items: start;
+      align-items: center;
       gap: 32px;
     }
     .v4-hero-copy { align-items: flex-start; }
@@ -3273,7 +3296,12 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
      * it is measured against is `100svh` — 390×844 MINUS the URL bar, ~750 —
      * because a CTA that clears only the headless viewport is a CTA no parent
      * ever sees without scrolling. */
-    .v4-hero-top .v4-hero-body { gap: 16px; padding: 16px 0 32px; }
+    .v4-hero-top .v4-hero-body { gap: 16px; padding: 16px 0 24px; }
+    .v4-hero-copy { padding: 16px; gap: 12px; }
+    .v4-board-chip { font-size: 0.56rem; padding: 1px 3px; }
+    /* Taller day cells keep the chip on one line and carry the calendar
+     * through the fold, so the phone starts on the next beat. */
+    .v4-board-day { min-height: 64px; }
     .v4-lede { margin-top: 16px; }
     .v4-hero-offer { gap: 0.45rem; }
     .v4-hero-founding { font-size: 0.9rem; line-height: 1.35; }
@@ -3298,6 +3326,25 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     .v4-pill { padding: 0.34rem 0.72rem; font-size: 0.8rem; }
   }
 
+  /* The closer fades in as it enters and ends painted. The base opacity is 1
+   * so a browser without scroll timelines still shows the band. The reduced-
+   * motion block below wins over the view timeline. */
+  .v4-reveal { opacity: 1; transform: none; }
+  @supports (animation-timeline: view()) {
+    .v4-reveal[data-shown='false'] {
+      animation-name: v4-reveal-in;
+      animation-duration: auto;
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 30%;
+    }
+  }
+  @keyframes v4-reveal-in {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: none; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .v4-hero-art { filter: light-dark(none, brightness(0.66)); }
     /* Not paused — removed. The drift sheets are additive light, so a frozen
@@ -3311,6 +3358,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     /* Dots stay visible and still. The sr-only label does not depend on motion. */
     .v4-typing span[aria-hidden='true'] { animation: none; opacity: 1; }
     .v4-board-chip { animation: none; opacity: 1; transform: none; }
+    .v4-reveal,
+    .v4-reveal[data-shown='false'] { animation: none; opacity: 1; transform: none; }
   }
 
   /* /about founder lines. 48px circle over a 96px face-centered asset (2×).

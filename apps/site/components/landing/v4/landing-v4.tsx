@@ -35,8 +35,28 @@ interface SeasonCard {
   note: string;
 }
 
-/** April has 30 days. Three empty cells lead, because the first falls on Wednesday. */
-const APRIL_DAYS = 30;
+/** Sunday-first pads. Sliced to the weekday the month opens on — not index keys. */
+const PAD_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri'] as const;
+
+/** The month on the fridge is the one a parent is in, in Toronto. */
+function fridgeMonth(locale: Locale): { name: string; firstWeekday: number; days: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Toronto',
+    year: 'numeric',
+    month: 'numeric',
+  }).formatToParts(new Date());
+  const year = Number(parts.find((part) => part.type === 'year')?.value);
+  const month = Number(parts.find((part) => part.type === 'month')?.value);
+  // Noon-free UTC anchors: the month number already came from Toronto, and a
+  // local midnight on the 1st would fall on the previous evening there.
+  const anchor = new Date(Date.UTC(year, month - 1, 1));
+  const firstWeekday = anchor.getUTCDay();
+  const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const tag = locale === 'fr' ? 'fr-CA' : locale === 'zh' ? 'zh-CN' : 'en-CA';
+  const raw = new Intl.DateTimeFormat(tag, { month: 'long', timeZone: 'UTC' }).format(anchor);
+  const name = locale === 'zh' ? raw : raw.charAt(0).toLocaleUpperCase(tag) + raw.slice(1);
+  return { name, firstWeekday, days };
+}
 
 /** Latin needs a word space before the accent; Chinese sets solid. */
 function accentSeparator(locale: Locale): string {
@@ -54,11 +74,17 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
   const seasons = t.raw('seasons') as SeasonCard[];
   const faq = t.raw('faq') as FaqItem[];
   const speaker = (dir: ThreadRow['dir']) => (dir === 'in' ? t('bubbleHale') : t('bubbleYou'));
-  const chips: Record<number, { label: string; n: number }> = {
-    4: { label: t('chipSwim'), n: 1 },
-    6: { label: t('chipSkate'), n: 2 },
-    9: { label: t('chipCamp'), n: 3 },
-  };
+  const fridge = fridgeMonth(locale);
+  const chipLabels = [t('chipSwim'), t('chipSkate'), t('chipCamp')];
+  const chips = new Map<number, { label: string; n: number }>();
+  let placed = 0;
+  for (let day = 1; day <= fridge.days && placed < chipLabels.length; day++) {
+    if ((fridge.firstWeekday + day - 1) % 7 !== 6) continue;
+    const label = chipLabels[placed];
+    if (!label) break;
+    placed += 1;
+    chips.set(day, { label, n: placed });
+  }
 
   const door = live ? (
     <ChooserLink
@@ -68,7 +94,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       smsNumber={smsNumber}
       prefill={prefill}
     >
-      {common('textHale')} <span aria-hidden="true">→</span>
+      {common('textHale')}
     </ChooserLink>
   ) : (
     <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid v4-btn-apricot">
@@ -114,13 +140,11 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           className="v4-hero-art"
           style={{
             position: 'absolute',
-            top: 0,
-            left: 0,
+            inset: 0,
             width: '100%',
-            height: 'auto',
-            right: 'auto',
-            bottom: 'auto',
+            height: '100%',
             objectFit: 'cover',
+            objectPosition: 'center',
           }}
         />
         <div className="v4-hero-body">
@@ -155,11 +179,11 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             </div>
 
             <div className="v4-board-slot">
-              <p className="sr-only">{t('boardCap')}</p>
+              <p className="sr-only">{t('boardCap', { month: fridge.name })}</p>
               <div className="v4-board" aria-hidden="true">
                 <div className="v4-board-head">
                   <LogoMark size={26} />
-                  <p className="v4-board-month">{t('boardMonth')}</p>
+                  <p className="v4-board-month">{fridge.name}</p>
                 </div>
                 <div className="v4-board-dows">
                   <span>{dows[0]}</span>
@@ -171,14 +195,14 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
                   <span>{dows[6]}</span>
                 </div>
                 <div className="v4-board-grid">
-                  <span className="v4-board-day is-empty" />
-                  <span className="v4-board-day is-empty" />
-                  <span className="v4-board-day is-empty" />
-                  {Array.from({ length: APRIL_DAYS }, (_, i) => {
+                  {PAD_KEYS.slice(0, fridge.firstWeekday).map((key) => (
+                    <span key={key} className="v4-board-day is-empty" />
+                  ))}
+                  {Array.from({ length: fridge.days }, (_, i) => {
                     const day = i + 1;
-                    const weekday = (day + 2) % 7;
+                    const weekday = (fridge.firstWeekday + day - 1) % 7;
                     const weekend = weekday === 0 || weekday === 6;
-                    const chip = chips[day];
+                    const chip = chips.get(day);
                     return (
                       <span
                         key={day}
