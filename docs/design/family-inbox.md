@@ -1,98 +1,61 @@
 # Per-family Hale inbox (VIL-390)
 
-Proposal only. No route, no flag, and no schema change. Parents would forward a booking receipt to the Hale address the family already has. Hale would read that message and no other mail in the parent's mailbox.
+Proposal only. No route, no schema change, no migration, and no flag default change. A parent forwards a booking receipt to a Hale address. Hale reads that message and does not read the rest of the mailbox.
 
-Booked detection today reads Gmail through a connected integration (`alertParentForGmailSweep` in `apps/web/lib/integrations/email-alert.ts`). This design is the forward path into the same `bookingDraft` decision (`apps/web/lib/integrations/booking.ts`). `BOOKED_DETECTION_ENABLED` and `BOOKED_DETECTION_FAMILY_ALLOWLIST` stay as they are (`apps/web/lib/integrations/booked.ts`).
+Booked detection today reads connected Gmail (`syncGmail` in `apps/web/lib/integrations/sync.ts`, then `alertParentForGmailSweep` in `apps/web/lib/integrations/email-alert.ts`) and decides with `bookingDraft` (`apps/web/lib/integrations/booking.ts`). `BOOKED_DETECTION_ENABLED` and `BOOKED_DETECTION_FAMILY_ALLOWLIST` stay as they are (`apps/web/lib/integrations/booked.ts`). Signup is a different door: `BOOKING_CONNECTORS` is empty (`apps/web/lib/signup/providers.ts`), `bookingConnectors()` adds the sandbox connector only when `BOOKING_REFERENCE_CONNECTOR_ENABLED` is exactly `on` (`apps/web/lib/signup/connectors/registry.ts`), and a failure is `connector_failed` with no browser (`apps/web/lib/signup/run.ts`). A forwarded receipt does not call a connector.
 
 ## Address scheme
 
-The address already exists. `apps/web/lib/channel/email/forward-address.ts` mints `hale+<token>@<inbound domain>` and stores the token on `families.inbound_forward_token` (unique, lowercase hex, 30 characters, 120 bits). The domain is `HALE_INBOUND_EMAIL_DOMAIN` (`apps/web/lib/channel/email/config.ts`). Nulling the column revokes the address.
+`forwardAddress` (`apps/web/lib/channel/email/forward-address.ts`) builds `hale+<token>@<inbound domain>`. The token is 15 bytes, 30 lowercase hex characters, 120 bits, on `families.inbound_forward_token` (unique; `packages/db/src/schema/families.ts`). The domain is `HALE_INBOUND_EMAIL_DOMAIN` (`apps/web/lib/channel/email/config.ts`), a second secret beside `ics_share_token`.
 
-Two local-part shapes are already parsed:
-
-- `hale+<token>` — a forwarded document. The token is the family. Envelope `From` is not the family id.
-- `hale+<token>.<ref>` — an answer about one pending sender. `<ref>` is 8 hex characters on `family_forward_senders.ref`.
-
-This proposal uses the document form as the family inbox. It does not add a second token. A raw family id in the local part would be a write handle; the existing comment in `forward-address.ts` is why the token is a secret.
-
-The reply door (a parent writing Hale, `From` is the identity) stays on the same webhook and the same domain. `forwardRecipient` returns `reply`, `forward`, or `malformed` so a broken `hale+` tag cannot fall through and be treated as a reply.
+`mintForwardToken` returns an existing token unchanged, so rotation is not built. `revokeForwardToken` nulls the column; `familyForForwardToken` then resolves nothing. A later ticket writes a new 120-bit value over the same column. Lookup is equality on the current value, so the previous address no longer resolves (`forward_unknown_token`) and the old token is not kept. `forwardRecipient` reads `hale+<token>` (the document; the token is the family) and `hale+<token>.<ref>` (an answer; `<ref>` is 8 hex). A malformed tag is refused at the forward door and does not fall through to the reply door. This proposal uses the document form only.
 
 ## Sender verification
 
-Two different sends arrive at this address today (`apps/web/lib/channel/email/forward.ts` and `forward-parse.ts`).
+Two sends already arrive (`apps/web/lib/channel/email/forward.ts`, `apps/web/lib/channel/email/forward-parse.ts`). A filter auto-forward has no banner: envelope `From` is the school, the family is the token, and the school domain is `pending`, `allowed`, or `blocked` on `family_forward_senders` (`packages/db/src/schema/email-forwards.ts`). Allowed ends at `forward_ready` and stores nothing. DKIM (`assessSenderTrust` in `apps/web/lib/channel/email/trust.ts`) runs on the answer branch only. A manual forward has a banner; `parseForwardedMessage` reads the original `From` and subject, and the envelope `From` is the parent. The receipt inbox is this second case only.
 
-A Gmail filter auto-forward has no banner. Envelope `From` is the school. DKIM, when it passes, attests the school. The family is the token. The school domain is allowlisted per family on `family_forward_senders` (`pending` / `allowed` / `blocked`), with a matching `consent_records` row when the parent says yes. An allowed sender currently ends at `forward_ready`: the comment says no summariser is wired, and nothing is stored.
+Before any extraction:
 
-A manual forward has a banner (`---------- Forwarded message ----------`, `Begin forwarded message:`, or `---------- Original message ----------`). `parseForwardedMessage` reads the original `From` and subject from that banner. The envelope `From` is the parent's mailbox.
+1. Resolve the token. Unknown or revoked stays `forward_unknown_token`, with no row and no fallthrough to the reply door.
+2. Envelope `From` must pass `assessSenderTrust`: our MTA's `Authentication-Results` (`HALE_INBOUND_AUTHSERV_ID`) and DKIM aligned with the `From` domain. SPF is parsed and does not decide.
+3. That address must match `users.email` for a `primary_parent` or `co_parent` of that family (`resolveEmailSender` in `apps/web/lib/channel/email/identity.ts`; `PARENT_ROLES` in `apps/web/lib/channel/email/forward.ts`). Any other `From` is refused, stored nowhere, and not answered. A school auto-forward fails here on purpose and stays on the allowlist door.
+4. `parseForwardedMessage` must return `originalFrom`. Today's document branch fills a missing banner from the envelope (`parsed.originalFrom ?? input.sender.address` in `apps/web/lib/channel/email/forward.ts`). The receipt path must not. A missing banner is `original_sender_unread`. The parent address verifies the sender. The provider domain is the document.
 
-The receipt inbox uses the manual-forward case only.
+## Parsing and dedupe
 
-Proposed check, before any extraction:
+`classifyChildEventEmail` (`apps/web/lib/sentinel/pipeline.ts`) classifies the Gmail envelope. The body is `fetchGmailMessageBody` (`apps/web/lib/sentinel/fetch-body.ts`), passed in from `apps/web/lib/cron/connector-sync.ts`. `guardBookingConfirmation` (`apps/web/lib/sentinel/booking-guard.ts`) rewrites a waitlist, a registration-opens notice, or a reminder-only subject to `reminder_only`. `bookingDraft` then requires kind `booking_confirmation`, confidence at least `BOOKING_CONFIDENCE_FLOOR` (0.7), a title, a future first session, and neither teen-content nor teen-attributed. The inbox calls that same pair on the parsed original subject and body, the original sender, and the family id. The parent id is the verified user.
 
-1. Resolve the token to a family. Unknown token stays `forward_unknown_token` and does not fall through to the reply door.
-2. Require an envelope `From` that `assessSenderTrust` (`apps/web/lib/channel/email/trust.ts`) accepts: our MTA's `Authentication-Results` (`HALE_INBOUND_AUTHSERV_ID`), DKIM aligned with the `From` domain. SPF is parsed and does not decide, because forwarding breaks SPF.
-3. That address must equal `users.email` for a `primary_parent` or `co_parent` of the token's family. Any other `From` is refused and stored nowhere. A school auto-forward fails this check on purpose. It keeps the existing sender-allowlist door and does not become a booking.
-4. `parseForwardedMessage` must return an `originalFrom`. That domain is the provider host passed to booked detection. A missing banner is refused on this path (`original_sender_unread`), not filled in with the parent's address.
+A forward cannot insert yet. `integration_id`, `message_id`, and `channel_message_id` are `NOT NULL`, and `(integration_id, message_id)` is unique (`packages/db/src/schema/activity-bookings.ts`). A forward has no `integrations` row, and `recordActivityBooking` runs after a send (`apps/web/lib/integrations/booking.ts`). Gmail ids and Resend Message-IDs differ, so that pair does not collapse them. Until a later migration names a source, compute a draft and do not insert. `forward_ready` stays the outcome for an allowed sender.
 
-The parent's own address is the verification. The provider's address is the document.
+The class key from [PR #723](https://github.com/villagehale/hale/pull/723) is on main. `bookingDedupeKey` is `host|canonical title|UTC date`. `activity_bookings_dedupe_uniq` is one live row per `(family_id, dedupe_key)`. A match refreshes the oldest row; `recordBooking` writes `activity_booking_recorded` only on insert (`apps/web/lib/integrations/email-alert.ts`). `sessionKey` (`apps/web/lib/integrations/going.ts`) is the full instant, not that constraint. A Gmail receipt and a later forward match on the banner's domain, `canonicalBookingTitle`, and the UTC date. Refresh leaves `parent_user_id` with the first writer. `bookedDetectionEnabledFor` still gates the write; off is `booked_dark`.
 
-## How it feeds booked detection
+The webhook is `apps/web/lib/channel/email/inbound.ts`. `email.received` is metadata; the body is fetched with `RESEND_API_KEY` (`apps/web/lib/channel/email/content.ts`) after the Svix check (`apps/web/lib/channel/email/signature.ts`). A missing inbound env var is a 503 (`apps/web/lib/channel/email/config.ts`). Idempotency is `(family, Message-ID)` via `forwardClaimKey` (`apps/web/lib/channel/email/forward-address.ts`).
 
-The Gmail sweep classifies an envelope with `classifyChildEventEmail` and then `bookingDraft` (`email-alert.ts` → `booking.ts`). A draft requires kind `booking_confirmation`, confidence at least `BOOKING_CONFIDENCE_FLOOR` (0.7), a title, a future first session, and neither teen-content nor teen-attributed. The row is `activity_bookings`.
+## Spam, size, attachments, retention
 
-The inbox path, once built, calls that same pure function and no second classifier. The input is the parsed original subject and body, the original sender's domain, and the family id from the token. The parent id is the verified `users` row, which is who a follow-up may text (`activity_bookings.parent_user_id`).
+Already enforced (`apps/web/lib/channel/email/inbound.ts`, `apps/web/lib/channel/email/forward.ts`): a bad signature is a 403 with no fetch; `forward_family_dark`; `self` and `bounce` are `forward_machine` (bulk stays on the document branch); `forward_sender_blocked` stores nothing. `email-forward` is 20/hour per family, on top of `email-inbound` at 30/hour per sender (`apps/web/lib/rate-limit/config.ts`). Pending bodies in `email_forwards_pending` drop after 72 hours (`PENDING_FORWARD_TTL_MS` in `apps/web/lib/channel/email/forward-purge.ts`, cron `/api/cron/attachment-sweep`). Allowed and blocked rows stay. Logs carry outcomes and ids, not bodies (`apps/web/lib/channel/email/forward.ts`).
 
-What blocks a write today, so this proposal does not pretend a forward can insert a row:
+`parseInboundEmailEvent` counts attachments and does not fetch them (`apps/web/lib/channel/email/payload.ts`). `createResendContentReader` fetches text, html, and headers (`apps/web/lib/channel/email/content.ts`). No byte cap exists under `apps/web/lib/channel/email/`. Proposed: cap plain text at 100 KB (`forward_too_large`, no store, no model call) and do not fetch attachment bytes. `revokeForwardToken` kills the address. `runDeletionSweep` (`apps/web/lib/rights/delete.ts`) deletes the family; `activity_bookings`, `email_forwards_pending`, and `family_forward_senders` cascade.
 
-- `activity_bookings.integration_id` is `NOT NULL` and is the Gmail connection id. A forward has no `integrations` row. The unique key is `(integration_id, message_id)` (`packages/db/src/schema/activity-bookings.ts`).
-- `channel_message_id` is also `NOT NULL`, and the booking is written after a send (`booking.ts`).
+## Gmail and VIL-371
 
-Until a later migration gives a forward a source key, the inbox path may compute a draft and must not insert `activity_bookings`. That migration is out of scope here. `forward_ready` remains the live outcome for an allowed sender: nothing is summarised and nothing is stored (`forward.ts`).
+VIL-371 lights `BOOKED_DETECTION_ENABLED` after a live mailbox probe. That probe is Gmail: `CONNECTOR_SCOPES.gmail` is `https://www.googleapis.com/auth/gmail.readonly` (`apps/web/lib/integrations/google-oauth.ts`), and `syncGmail` lists `users/me/messages` and history. The inbox does not ask for that scope, so a family that only forwards never grants `gmail.readonly`. The connector stays for a parent who wants it. This note does not flip the flag.
 
-`BOOKED_DETECTION_ENABLED` still gates the write. A forward that arrives while the flag is off for that family produces no booking row, the same as a Gmail receipt.
+## Copy for Sloane
 
-## Dedupe with the VIL-371 hardening
+Placeholder only. Not sent. Not a template key. `apps/web/lib/channel/email/forward-copy.ts` still sends the allowlist questions. These lines are not among them.
 
-[PR #723](https://github.com/villagehale/hale/pull/723) is open and not merged. It is the dedupe this inbox has to share. On main, two emails with different message ids insert two bookings. The session string in `sessionKey` (`apps/web/lib/integrations/going.ts`) is `host|folded title|instant` and is not a unique constraint.
+- TODO-Design: the line that gives a parent their Hale address and says a booking receipt can be forwarded there.
+- TODO-Design: the line that says Hale reads that forwarded receipt and does not read the rest of the mailbox.
+- TODO-Design: the line when a forward could not be read as a booking.
+- TODO-Design: the line after the address is replaced, saying the previous address no longer accepts mail.
 
-The PR's class key, as its description states it, is one live row per `(family, sender domain, canonical title, UTC date of the first session)`. A later receipt updates the oldest live row and does not write a second `activity_booking_recorded` audit. It also rewrites a waitlist, a "registration opens" notice, or a reminder-only subject to `reminder_only` after extraction, so those do not become "you're in".
+## Open questions and tickets
 
-When that key exists, a Gmail receipt and a later forward of the same class must hash to the same key. The forward uses the original sender domain from the banner, the same title fold, and the UTC date of the first session. The inbox path calls the same post-extraction guard before `bookingDraft`. A forward must not invent a second `message_id` identity that bypasses the class key.
+Nothing here changes a flag. Each ticket defaults off. Still open: the follow-up staying on the first writer's `parent_user_id`; a PDF-only receipt; whether 100 KB is the right cap; the receipt check as a branch beside `document()` in `apps/web/lib/channel/email/forward.ts`, so the school allowlist stays.
 
-Until #723 is merged, those names (`dedupe_key`, `guardBookingConfirmation`) are not in this tree. The inbox does not ship a private dedupe beside them.
-
-## Resend inbound
-
-The webhook is the one in `apps/web/lib/channel/email/inbound.ts`. Resend `email.received` carries metadata only. The body and headers are fetched with `RESEND_API_KEY` (`apps/web/lib/channel/email/content.ts`). Signature is Svix (`svix-id`, `svix-timestamp`, `svix-signature`) checked in `apps/web/lib/channel/email/signature.ts` against `RESEND_INBOUND_WEBHOOK_SECRET` before parse or fetch.
-
-The leg is all-or-nothing. Missing any of `RESEND_API_KEY`, `RESEND_INBOUND_WEBHOOK_SECRET`, `HALE_INBOUND_EMAIL_DOMAIN`, or `HALE_INBOUND_AUTHSERV_ID` yields a 503 and the leg stays dark (`config.ts`). A transient content fetch returns 5xx so Svix retries. A permanent failure does not.
-
-Idempotency for a forward is `(family, Message-ID)` via `forwardClaimKey`, because the school's Message-ID is shared across households. A Resend redelivery of one household's forward must not extract twice.
-
-Outbound Resend (verification mail, health digest, calendar invite) uses `createResendTransport` and is a different key use. This design does not send from the inbound address except the existing sender-allowlist questions (`forward-copy.ts`).
-
-## Spam and abuse
-
-Already on the forward door:
-
-- Signature failure costs no fetch and no write (`inbound.ts`).
-- Unknown or revoked token: `forward_unknown_token`.
-- Malformed `hale+` tag: stops at the forward door.
-- Family not on F14: `forward_family_dark`.
-- `self` and `bounce` machine mail: `forward_machine` (`forward.ts`). Bulk mail is kept for the document branch, because a camp receipt is bulk. The receipt inbox still requires the parent-`From` check above, so a school's bulk send does not enter it.
-- Rate limit `email-forward`: 20 per hour (`apps/web/lib/rate-limit/config.ts`).
-- Blocked sender domain: `forward_sender_blocked`, nothing stored.
-- Pending raw bodies live in `email_forwards_pending` and are deleted after 72 hours (`PENDING_FORWARD_TTL_MS` in `apps/web/lib/channel/email/forward-purge.ts`), along with a pending question nobody answered. Allowed and blocked decisions are kept.
-- Logs carry outcome names and ids. Bodies, subjects, and addresses are not logged (`forward.ts`).
-
-Proposed, not built:
-
-- Reject the receipt path when envelope `From` is not a verified parent of that family.
-- Cap the fetched body. No byte cap was found under `apps/web/lib/channel/email/`. A cap of 100 KB, with outcome `forward_too_large` and no store, is the proposal.
-- A parent who forwards mail that is not a booking gets the same handback as any other non-confirmation: `bookingDraft` returns `not_a_booking` and no row is written.
-
-## Parent-facing line
-
-Placeholder only. Not sent. Not wired to a template key.
-
-TODO-Design for Sloane: the sentence that tells a parent they can forward a booking receipt to their Hale address, and that Hale will not read the rest of their mailbox.
+1. `FAMILY_INBOX_BOOKING_ENABLED`, exact `true`, unset means off (the same read as `bookedDetectionEnabled`). Parent check, banner required, `classifyChildEventEmail` and `bookingDraft`, no insert. Off leaves `forward_ready` and the allowlist unchanged.
+2. An additive source key so a forward can call `recordActivityBooking`. The write still needs booked detection for that family and this flag.
+3. The size cap and the attachment refusal, behind the same flag.
+4. Token rotation: one update of `inbound_forward_token` and one audit row, only when a parent asks.
+5. Sloane's lines, still unsent until a later ticket wires a template.
