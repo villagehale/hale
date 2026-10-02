@@ -2,8 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gt, inArray, isNull, ne } from 'drizzle-orm';
 import { normalizeReply } from '~/lib/channel/affirmative';
-import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
+import { SENT_STATUSES } from '~/lib/channel/ledger';
+import { familySpeech } from '~/lib/channel/linq/family-outbound';
+import { groupAddressedLine } from '~/lib/channel/linq/group-coparent-copy';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 import type { ExtractionKind } from '~/lib/sentinel';
@@ -283,7 +285,10 @@ export async function handleEmailAlertOfferReply(
     const timeZone = await parentTimeZone(database, input.parentUserId);
     return {
       status: 'already_added',
-      reply: ALREADY_ADDED[input.language](repeat.title, when(repeat.startsAt, timeZone, input.now)),
+      reply: ALREADY_ADDED[input.language](
+        repeat.title,
+        when(repeat.startsAt, timeZone, input.now),
+      ),
     };
   }
 
@@ -601,7 +606,8 @@ function when(startsAt: Date, timeZone: string, now: Date): string {
  * constraint rather than a gap.
  */
 const ADDED: Record<ReplyLanguage, (title: string, at: string) => string> = {
-  en: (title, at) => `${end(`Added - ${title} on ${at}`)} It's on your week; say remove it anytime.`,
+  en: (title, at) =>
+    `${end(`Added - ${title} on ${at}`)} It's on your week; say remove it anytime.`,
   fr: (title, at) =>
     `${end(`Ajouté - ${title}, ${at}`)} C'est sur votre semaine; dites-le-moi pour l'enlever.`,
 };
@@ -620,38 +626,79 @@ function end(sentence: string): string {
 
 const DECLINED: Record<ReplyLanguage, () => string> = {
   en: () => 'Okay - left it off.',
-  fr: () => 'Entendu - je ne l\'ai pas ajouté.',
+  fr: () => "Entendu - je ne l'ai pas ajouté.",
 };
 
 /**
- * Spoken only when a coach reply would have asked to ADD an event that has
- * already passed. Placeholder until copy is locked. One next step, no "add".
+ * Design-locked. Spoken when a coach reply would have asked to ADD an event
+ * that has already passed. 1:1, and a named parent in the group (tu).
+ * `{when}` keeps its own trailing period (`a.m.` / `p.m.`).
  */
-export const CALENDAR_PASSED_NEXT_TODO =
-  '{title} on {when} already passed. What time is the next one?';
-export const CALENDAR_PASSED_NEXT_FR_TODO =
-  '{title} le {when} est deja passe. Quelle est la prochaine heure?';
+export const CALENDAR_PASSED_NEXT =
+  "{title} on {when} already went by. Got the next date? Send it and I'll add that one.";
+export const CALENDAR_PASSED_NEXT_FR =
+  "{title} le {when}, c'est deja passe. Tu as la prochaine date? Envoie-la-moi et je l'ajoute.";
+/** Unnamed group. The question is vous; the clause before it stays. */
+export const CALENDAR_PASSED_NEXT_FR_GROUP =
+  "{title} le {when}, c'est deja passe. Vous avez la prochaine date? Envoyez-la-moi et je l'ajoute.";
 
 /**
- * Spoken only when a coach reply would have asked to ADD an event that is
- * already on the connected Google Calendar. Placeholder until copy is locked.
+ * Design-locked. Spoken when a coach reply would have asked to ADD an event
+ * that is already on the connected Google Calendar. 1:1, and a named parent
+ * in the group (tu). The period after `{when}` is omitted when `{when}`
+ * already ends in punctuation.
  */
-export const CALENDAR_HELD_NEXT_TODO =
-  '{title} is on your calendar {when} Say if you want it moved.';
-export const CALENDAR_HELD_NEXT_FR_TODO =
-  '{title} est deja sur votre calendrier {when} Dites-le si vous voulez le deplacer.';
+export const CALENDAR_HELD_NEXT =
+  '{title} is already on your calendar {when}. Want it moved? Tell me the new time.';
+export const CALENDAR_HELD_NEXT_FR =
+  '{title} est deja sur ton calendrier {when}. Tu veux le deplacer? Dis-moi la nouvelle heure.';
+/** Unnamed group. The question is vous; "ton calendrier" stays as locked. */
+export const CALENDAR_HELD_NEXT_FR_GROUP =
+  '{title} est deja sur ton calendrier {when}. Vous voulez le deplacer? Dites-moi la nouvelle heure.';
 
-const CALENDAR_PASSED_NEXT: Record<ReplyLanguage, string> = {
-  en: CALENDAR_PASSED_NEXT_TODO,
-  fr: CALENDAR_PASSED_NEXT_FR_TODO,
-};
-const CALENDAR_HELD_NEXT: Record<ReplyLanguage, string> = {
-  en: CALENDAR_HELD_NEXT_TODO,
-  fr: CALENDAR_HELD_NEXT_FR_TODO,
-};
-
+/** `{when}` is `9:00 a.m.` A template period on that slot would read `a.m..`. */
 function fillCopy(pattern: string, slots: Record<string, string>): string {
-  return pattern.replace(/\{(\w+)\}/g, (_, key: string) => slots[key] ?? '');
+  return pattern.replace(/\{(\w+)\}(\.)?/g, (_, key: string, period: string | undefined) => {
+    const value = slots[key] ?? '';
+    if (period && key === 'when' && /[.!?]$/.test(value)) return value;
+    return `${value}${period ?? ''}`;
+  });
+}
+
+export interface CalendarReplyAudience {
+  /** True when this reply returns to the household Linq group. */
+  group: boolean;
+  /** The parent to name. A group with a name uses tu and a lowercase first letter. */
+  name: string | null;
+}
+
+const DIRECT: CalendarReplyAudience = { group: false, name: null };
+
+function nextPattern(
+  kind: 'passed' | 'held',
+  language: ReplyLanguage,
+  audience: CalendarReplyAudience,
+): string {
+  const namedGroup = audience.group && audience.name !== null;
+  const vous = audience.group && !namedGroup && language === 'fr';
+  if (kind === 'passed') {
+    if (language === 'en') return CALENDAR_PASSED_NEXT;
+    return vous ? CALENDAR_PASSED_NEXT_FR_GROUP : CALENDAR_PASSED_NEXT_FR;
+  }
+  if (language === 'en') return CALENDAR_HELD_NEXT;
+  return vous ? CALENDAR_HELD_NEXT_FR_GROUP : CALENDAR_HELD_NEXT_FR;
+}
+
+/** The locked next-step line. A named group reply is `{name}, ` plus tu, first letter lower. */
+export function calendarNextCopy(
+  kind: 'passed' | 'held',
+  language: ReplyLanguage,
+  slots: { title: string; when: string },
+  audience: CalendarReplyAudience = DIRECT,
+): string {
+  const line = fillCopy(nextPattern(kind, language, audience), slots);
+  if (audience.group && audience.name) return groupAddressedLine(audience.name, line);
+  return line;
 }
 
 /** The fixed lines, exported for the encoding guard (sms-copy-encoding.test.ts). */
@@ -661,8 +708,48 @@ export function emailAlertOfferReplies(language: ReplyLanguage): string[] {
     ADDED[language]('Swim class', at),
     ALREADY_ADDED[language]('Swim class', at),
     DECLINED[language](),
-    fillCopy(CALENDAR_PASSED_NEXT[language], { title: 'Swim class', when: at }),
-    fillCopy(CALENDAR_HELD_NEXT[language], { title: 'Swim class', when: at }),
+    calendarNextCopy('passed', language, { title: 'Swim class', when: at }),
+    calendarNextCopy('held', language, { title: 'Swim class', when: at }),
+    ...(language === 'fr'
+      ? [
+          calendarNextCopy(
+            'passed',
+            language,
+            { title: 'Swim class', when: at },
+            {
+              group: true,
+              name: null,
+            },
+          ),
+          calendarNextCopy(
+            'held',
+            language,
+            { title: 'Swim class', when: at },
+            {
+              group: true,
+              name: null,
+            },
+          ),
+        ]
+      : []),
+    calendarNextCopy(
+      'passed',
+      language,
+      { title: 'Swim class', when: at },
+      {
+        group: true,
+        name: 'Sam',
+      },
+    ),
+    calendarNextCopy(
+      'held',
+      language,
+      { title: 'Swim class', when: at },
+      {
+        group: true,
+        name: 'Sam',
+      },
+    ),
   ];
 }
 
@@ -780,10 +867,7 @@ export function parseCoachEventOffer(
   // A month named without a year that is long past is next year's, not last
   // year's. A start a day or two ago stays in this year so a past offer is
   // refused rather than rolled forward.
-  if (
-    explicitYear === null &&
-    startsAt.getTime() < now.getTime() - 30 * 24 * 60 * 60 * 1000
-  ) {
+  if (explicitYear === null && startsAt.getTime() < now.getTime() - 30 * 24 * 60 * 60 * 1000) {
     year += 1;
     startsAt = zonedLocalInstant(dayKey(year, month, day), clock, timeZone);
   }
@@ -825,16 +909,46 @@ export type CoachCalendarReply =
   | { outcome: 'offer'; body: string; offer: EmailAlertOfferDraft };
 
 /**
+ * The chat this reply returns to is the household group when it equals
+ * `families.linq_group_chat_id`. SMS, email, and a 1:1 iMessage are not.
+ * Read for this family only.
+ */
+async function calendarReplyAudience(
+  database: Database,
+  input: { familyId: string; parentUserId: string; chatId: string | null },
+): Promise<CalendarReplyAudience> {
+  if (!input.chatId) return DIRECT;
+  const rows = await database
+    .select({ id: schema.families.id, linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, input.familyId));
+  const family = rows.find((row) => row.id === input.familyId);
+  if (!family?.linqGroupChatId || family.linqGroupChatId !== input.chatId) return DIRECT;
+  const speech = await familySpeech(database, input.familyId, input.parentUserId);
+  return { group: true, name: speech.name };
+}
+
+/**
  * What to send, and whether a later bare yes has a row to land on.
  *
  * An add-ask whose event is already on Google Calendar, or whose start has
- * passed, is replaced with the short placeholder line. Hale does not ask the
- * parent to add either one. A future event that is not on the calendar keeps
+ * passed, is replaced with the design-locked line. Neither replacement writes
+ * an offer or a calendar row. A future event that is not on the calendar keeps
  * the coach's own sentence; the caller writes the offer row after the send.
+ *
+ * French in a group with no parent name uses vous. A name prefixes the tu
+ * line and lowercases its first letter, the same way a group check-in does.
  */
 export async function prepareCoachCalendarReply(
   database: Database,
-  input: { familyId: string; parentUserId: string; body: string; now: Date },
+  input: {
+    familyId: string;
+    parentUserId: string;
+    body: string;
+    now: Date;
+    /** Linq chat the reply returns to. Null on SMS and email. */
+    chatId?: string | null;
+  },
 ): Promise<CoachCalendarReply> {
   const timeZone = await parentTimeZone(database, input.parentUserId);
   const parsed = parseCoachEventOffer(input.body, input.now, timeZone);
@@ -843,10 +957,16 @@ export async function prepareCoachCalendarReply(
   if (!parsed) return { outcome: 'unparsed', body: input.body, offer: null };
   const language = replyLanguage(input.body);
   const at = when(parsed.startsAt, timeZone, input.now);
+  const slots = { title: parsed.title, when: at };
   if (parsed.startsAt.getTime() <= input.now.getTime()) {
+    const audience = await calendarReplyAudience(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      chatId: input.chatId ?? null,
+    });
     return {
       outcome: 'past',
-      body: fillCopy(CALENDAR_PASSED_NEXT[language], { title: parsed.title, when: at }),
+      body: calendarNextCopy('passed', language, slots, audience),
       offer: null,
     };
   }
@@ -857,9 +977,14 @@ export async function prepareCoachCalendarReply(
       startsAt: parsed.startsAt,
     })
   ) {
+    const audience = await calendarReplyAudience(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      chatId: input.chatId ?? null,
+    });
     return {
       outcome: 'already_on_calendar',
-      body: fillCopy(CALENDAR_HELD_NEXT[language], { title: parsed.title, when: at }),
+      body: calendarNextCopy('held', language, slots, audience),
       offer: null,
     };
   }

@@ -3,13 +3,14 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emailAlertAddHandler } from '~/lib/channel/router/handlers';
-import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import type { HandlerContext, HandlerVerdict, ResolvedAnswer } from '~/lib/channel/router/route';
+import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { defaultReminderRunDeps, runReminderCron } from '~/lib/loop/reminders/run';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import {
   EMAIL_ALERT_EVENT_DURATION_MS,
   EMAIL_ALERT_OFFER_TTL_MS,
+  calendarNextCopy,
   prepareCoachCalendarReply,
   recordCoachEventOffer,
 } from './email-alert-offer';
@@ -392,7 +393,9 @@ describe('a YES puts the occasion on the family week', () => {
 
     expect(repeat).toMatchObject({ claimed: true, outcome: 'already_added' });
     if (!repeat.claimed) throw new Error('unreachable');
-    expect(repeat.reply).toBe('Already on your week - Picture day on Saturday, Sep 19 at 9:00 a.m.');
+    expect(repeat.reply).toBe(
+      'Already on your week - Picture day on Saturday, Sep 19 at 9:00 a.m.',
+    );
     await expect(events()).resolves.toHaveLength(1);
     expect(offerId).toBeTruthy();
   });
@@ -703,7 +706,7 @@ describe('a past offer is not a yes', () => {
 });
 
 describe('a correction declines the one open offer', () => {
-  it.each(['it\'s yesterday', 'not that one', 'no'])(
+  it.each(["it's yesterday", 'not that one', 'no'])(
     '%s expires the offer and adds nothing',
     async (body) => {
       const offerId = await seedOffer();
@@ -736,8 +739,7 @@ describe('a correction declines the one open offer', () => {
 
 describe('a coach free-text offer replaces the older one', () => {
   const SUNDAY = new Date('2026-10-04T13:00:00.000Z');
-  const COACH =
-    'That one passed. Gymnastics is on Sunday, Oct 4 at 9:00 a.m. Want me to add it?';
+  const COACH = 'That one passed. Gymnastics is on Sunday, Oct 4 at 9:00 a.m. Want me to add it?';
 
   it('a later bare yes places the event most recently offered, and the receipt names that row', async () => {
     await seedOffer({ title: 'Gymnastics', startsAt: new Date('2026-10-01T20:15:00.000Z') });
@@ -823,10 +825,11 @@ describe('a coach free-text offer replaces the older one', () => {
     });
     expect(past.outcome).toBe('past');
     expect(past.body).toBe(
-      'Gymnastics on Wednesday, Sep 16 at 4:15 p.m. already passed. What time is the next one?',
+      "Gymnastics on Wednesday, Sep 16 at 4:15 p.m. already went by. Got the next date? Send it and I'll add that one.",
     );
-    expect(past.body).not.toMatch(/YES|add/i);
     expect(past.offer).toBeNull();
+    await expect(events()).resolves.toHaveLength(0);
+    await expect(offers()).resolves.toHaveLength(0);
 
     const gcal = await seedIntegration(db.database, family.familyId, family.parentUserId, 'gcal');
     await db.database.insert(schema.parentCalendarBlocks).values({
@@ -848,10 +851,11 @@ describe('a coach free-text offer replaces the older one', () => {
     });
     expect(held.outcome).toBe('already_on_calendar');
     expect(held.body).toBe(
-      'Gymnastics is on your calendar Sunday, Oct 4 at 9:00 a.m. Say if you want it moved.',
+      'Gymnastics is already on your calendar Sunday, Oct 4 at 9:00 a.m. Want it moved? Tell me the new time.',
     );
-    expect(held.body).not.toMatch(/YES|\badd\b/i);
     expect(held.offer).toBeNull();
+    await expect(events()).resolves.toHaveLength(0);
+    await expect(offers()).resolves.toHaveLength(0);
 
     const move = 'Move swim to Tue 4:30? YES to confirm.';
     const left = await prepareCoachCalendarReply(db.database, {
@@ -861,5 +865,132 @@ describe('a coach free-text offer replaces the older one', () => {
       now: NOW,
     });
     expect(left).toEqual({ outcome: 'not_an_offer', body: move, offer: null });
+  });
+
+  it('does not add a period after {when} when a.m. or p.m. already ends in one', () => {
+    const passedAm = calendarNextCopy('passed', 'en', {
+      title: 'Swim class',
+      when: 'Saturday, Sep 19 at 9:00 a.m.',
+    });
+    const heldAm = calendarNextCopy('held', 'en', {
+      title: 'Swim class',
+      when: 'Saturday, Sep 19 at 9:00 a.m.',
+    });
+    const passedPm = calendarNextCopy('passed', 'en', {
+      title: 'Swim class',
+      when: 'Wednesday, Sep 16 at 4:15 p.m.',
+    });
+    const heldPm = calendarNextCopy('held', 'en', {
+      title: 'Swim class',
+      when: 'Wednesday, Sep 16 at 4:15 p.m.',
+    });
+    expect(passedAm).toBe(
+      "Swim class on Saturday, Sep 19 at 9:00 a.m. already went by. Got the next date? Send it and I'll add that one.",
+    );
+    expect(heldAm).toBe(
+      'Swim class is already on your calendar Saturday, Sep 19 at 9:00 a.m. Want it moved? Tell me the new time.',
+    );
+    expect(passedPm).toContain('4:15 p.m. already went by.');
+    expect(heldPm).toContain('4:15 p.m. Want it moved?');
+    for (const body of [passedAm, heldAm, passedPm, heldPm]) {
+      expect(body).not.toContain('..');
+    }
+    // A clock with no trailing punctuation still takes the template period on line 3.
+    expect(calendarNextCopy('held', 'en', { title: 'Swim class', when: 'Saturday at 9:00' })).toBe(
+      'Swim class is already on your calendar Saturday at 9:00. Want it moved? Tell me the new time.',
+    );
+  });
+
+  it('uses vous in an unnamed group, tu after a name, and writes nothing either way', async () => {
+    const GROUP = 'chat-group-home';
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, family.familyId));
+    await db.database
+      .update(schema.users)
+      .set({ name: null })
+      .where(eq(schema.users.id, family.parentUserId));
+
+    const pastBody = 'Want me to add Gymnastics on Wednesday, Sep 16 at 4:15 p.m.? Tu veux.';
+    const heldBody = 'Want me to add Gymnastics on Sunday, Oct 4 at 9:00 a.m.? Tu veux.';
+    const gcal = await seedIntegration(db.database, family.familyId, family.parentUserId, 'gcal');
+    await db.database.insert(schema.parentCalendarBlocks).values({
+      integrationId: gcal,
+      eventId: 'sunday-gym-fr',
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      startAt: SUNDAY,
+      kidRelated: true,
+      title: 'Gymnastics',
+      status: 'confirmed',
+      updatedStamp: 'stamp-sunday-gym-fr',
+    });
+
+    const pastVous = await prepareCoachCalendarReply(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: pastBody,
+      now: NOW,
+      chatId: GROUP,
+    });
+    expect(pastVous.outcome).toBe('past');
+    expect(pastVous.offer).toBeNull();
+    expect(pastVous.body).toBe(
+      "Gymnastics le Wednesday, Sep 16 at 4:15 p.m., c'est deja passe. Vous avez la prochaine date? Envoyez-la-moi et je l'ajoute.",
+    );
+
+    const heldVous = await prepareCoachCalendarReply(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: heldBody,
+      now: NOW,
+      chatId: GROUP,
+    });
+    expect(heldVous.outcome).toBe('already_on_calendar');
+    expect(heldVous.offer).toBeNull();
+    expect(heldVous.body).toBe(
+      'Gymnastics est deja sur ton calendrier Sunday, Oct 4 at 9:00 a.m. Vous voulez le deplacer? Dites-moi la nouvelle heure.',
+    );
+    expect(heldVous.body).not.toContain('..');
+
+    await db.database
+      .update(schema.users)
+      .set({ name: 'Sam' })
+      .where(eq(schema.users.id, family.parentUserId));
+    const pastTu = await prepareCoachCalendarReply(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: pastBody,
+      now: NOW,
+      chatId: GROUP,
+    });
+    expect(pastTu.body).toBe(
+      "Sam, gymnastics le Wednesday, Sep 16 at 4:15 p.m., c'est deja passe. Tu as la prochaine date? Envoie-la-moi et je l'ajoute.",
+    );
+    const heldTu = await prepareCoachCalendarReply(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: heldBody,
+      now: NOW,
+      chatId: GROUP,
+    });
+    expect(heldTu.body).toBe(
+      'Sam, gymnastics est deja sur ton calendrier Sunday, Oct 4 at 9:00 a.m. Tu veux le deplacer? Dis-moi la nouvelle heure.',
+    );
+
+    const oneToOne = await prepareCoachCalendarReply(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: pastBody,
+      now: NOW,
+      chatId: 'chat-one-to-one',
+    });
+    expect(oneToOne.body).toBe(
+      "Gymnastics le Wednesday, Sep 16 at 4:15 p.m., c'est deja passe. Tu as la prochaine date? Envoie-la-moi et je l'ajoute.",
+    );
+
+    await expect(events()).resolves.toHaveLength(0);
+    await expect(offers()).resolves.toHaveLength(0);
   });
 });

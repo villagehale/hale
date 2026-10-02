@@ -1,6 +1,6 @@
 import { type Database, type UnmetIntentLane, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
 import type { DeepResearchPayload } from '@hale/tools-contracts';
+import { eq } from 'drizzle-orm';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import { maybeOfferYearRetention } from '~/lib/billing/upgrade-ask';
 import type { WeekdayCare, WeekdayCareWriteOutcome } from '~/lib/care/weekday';
@@ -23,14 +23,15 @@ import {
   TURN_TIMEOUT,
   TURN_UNREACHABLE,
 } from '~/lib/channel/config';
+import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
+import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import {
   IDENTITY_CHALLENGE_TEMPLATE_KEY,
   identityChallengeReply,
 } from '~/lib/channel/intake/identity-challenge';
 import { replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
-import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
@@ -63,15 +64,14 @@ import {
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots/store';
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
+import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
+import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
+import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import {
   type EmailAlertOfferDraft,
   prepareCoachCalendarReply,
   recordCoachEventOffer,
 } from '~/lib/integrations/email-alert-offer';
-import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
-import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
-import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ApologyFallback, TurnApology } from './apology';
 import {
@@ -1129,6 +1129,7 @@ async function routeChannelMessageInner(
     return await runAgentTurn(deps, {
       job,
       turn,
+      route,
       answer,
       hasAnswered: () => answered,
       conversationId,
@@ -1509,6 +1510,8 @@ async function runAgentTurn(
      * because a promise is minted against the message that CARRIED it (the MEM-10
      * send-time discipline) and this is the only place that knows which row that was.
      */
+    /** Where this reply returns. A Linq chat id equal to the family's group is a group. */
+    route: ReplyRoute;
     answer: (body: string) => Promise<string>;
     /** Whether the transport has already accepted this turn's answer. */
     hasAnswered: () => boolean;
@@ -1557,6 +1560,7 @@ async function runAgentTurn(
         parentUserId: args.turn.parentUserId,
         body: reply,
         now: args.turn.now,
+        chatId: args.route.channel === 'imessage' ? args.route.chatId : null,
       });
       outbound = prepared.body;
       if (prepared.outcome === 'offer') coachOffer = prepared.offer;
