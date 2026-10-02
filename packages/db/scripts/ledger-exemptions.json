@@ -1,0 +1,24 @@
+{
+  "entries": [
+    {
+      "tag": "0055_family_events",
+      "reason": "Edited in place after it was applied (family_event_source enum, PR 320). The ledger holds the original file hash; the slot's created_at is that migration's when."
+    },
+    {
+      "tag": "0063_event_reminders",
+      "reason": "Edited in place after it was applied (RLS on event_reminders, PR 340). The ledger holds the original file hash."
+    },
+    {
+      "tag": "0098_coparent_join_link",
+      "reason": "Edited in place after it was applied so the Deploy migrate leg could re-run it (PRs 609 and 610). The ledger holds the original file hash."
+    },
+    {
+      "tag": "0105_channel_signin_token",
+      "reason": "Edited in place after it was applied so the Deploy migrate leg could re-run it (PRs 609 and 610). The ledger holds the original file hash."
+    },
+    {
+      "tag": "0144_family_trips_no_picks_backoff",
+      "reason": "Reused when 1781469638000, which production recorded for the reverted 0144_linq_contact_card_shares migration. drizzle migrate will not run this file. The travel-brief columns ship in 0150_family_trips_attempt_columns."
+    }
+  ]
+}

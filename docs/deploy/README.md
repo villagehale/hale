@@ -95,14 +95,15 @@ full app env; the table below is the **deploy-time** subset per platform.
 ### GitHub Actions — CI/CD deploy (`Settings → Secrets → Actions`)
 
 These drive `.github/workflows/deploy.yml` (which has exactly two legs —
-`migrate` and `fly`; Vercel deploys via its own native integration, not here).
-**A leg whose secret is absent is skipped with a notice; the pipeline stays
-green. A leg that runs without its required secret fails loud.**
+`migrate` and `fly`; Vercel deploys via its own native integration, and the
+hale-web production build migrates before alias).
+**`DATABASE_DIRECT_URL` absent fails the workflow. `FLY_API_TOKEN` absent skips
+the worker leg. A leg that runs without its required secret fails loud.**
 
 | Secret | Gates leg | Notes |
 |---|---|---|
-| `DATABASE_DIRECT_URL` | `migrate` (+ drift gate) | **Required for prod migrations to apply at all** — see [Migration drift guard](#migration-drift-guard). Direct (non-pooled) URL — drizzle-kit runs DDL in a transaction. |
-| `FLY_API_TOKEN` | `fly` | `fly auth token`. |
+| `DATABASE_DIRECT_URL` | `migrate` (and the hale-web production build) | Supabase direct (port 5432) URL. Unset fails Deploy preflight and fails the Vercel production build. See [Migration drift guard](#migration-drift-guard). |
+| `FLY_API_TOKEN` | `fly` | `fly auth token`. Absent skips the worker leg. |
 
 ---
 
@@ -146,8 +147,9 @@ except memory inference, whose tool loop is not retried because that could dupli
    DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hale/db migrate      # applies 0000_baseline … latest
    DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hale/db drift-check  # asserts in sync
    ```
-   In production this runs automatically in the `migrate` leg once
-   `DATABASE_DIRECT_URL` is set as a GitHub secret
+   In production the hale-web build applies this before the deployment is
+   aliased, and the Deploy `migrate` leg applies it again before the worker
+   ships, once `DATABASE_DIRECT_URL` is set
    ([Migration drift guard](#migration-drift-guard)).
 
 ### 2. Vercel (web + site = two projects)
@@ -224,50 +226,57 @@ always drained.
 There are **two independent delivery paths** — this is the crucial topology to
 understand:
 
-1. **Web + marketing site → Vercel, via the native GitHub integration.** `hale-web`
-   and `site` are GitHub-connected Vercel projects; `vercel[bot]` builds and
-   promotes a Production deployment on every `main` merge. **This path does NOT
-   run database migrations** — Vercel only builds and serves the Next.js app.
+1. **Web → Vercel, via the native GitHub integration.** `hale-web` and `site`
+   are GitHub-connected Vercel projects; `vercel[bot]` builds a Production
+   deployment on every `main` merge. The hale-web **production build applies
+   migrations before the deployment can be aliased**
+   (`packages/db/scripts/vercel-production-migrate.mjs`). A failed migrate or a
+   failed hash check fails the build, and the previous production deployment
+   keeps serving. Preview builds do not connect. `site` has no schema.
 2. **DB migrations + worker → `.github/workflows/deploy.yml`**, triggered on **CI
    success on `main`** (`workflow_run`):
-   - **preflight** — gates on CI success; resolves which legs have secrets.
-   - **migrate** — `drizzle-kit migrate` against Supabase, then a **drift
-     verification** (`pnpm --filter @hale/db drift-check`) that asserts the DB is
-     now in sync. Runs first; a failure blocks the worker deploy.
-   - **fly** (worker) — runs after a clean/skipped migrate.
+   - **preflight** — gates on CI success. `DATABASE_DIRECT_URL` **absent fails
+     the workflow** (it used to skip, and the pipeline stayed green).
+     `FLY_API_TOKEN` absent still skips the worker leg.
+   - **migrate** — `pnpm --filter @hale/db migrate:guard` (advisory lock, drizzle
+     migrate, hash check) against Supabase, then `pnpm db:check-migrations`.
+     Runs first; a failure blocks the worker deploy.
+   - **fly** (worker) — runs after a successful migrate.
 
-   Each leg self-asserts its required secret and `exit 1`s loud if invoked
-   without it. A leg whose secret is **absent** is SKIPPED (pipeline stays green).
+   This workflow is not the web promotion gate. Vercel does not wait for CI, and
+   a cancelled CI run skips the workflow. The production build is what stops a
+   new hale-web deployment from taking traffic while migrations are unapplied.
 
-> ⚠️ **The two paths are coupled by the schema, not by CI.** Vercel ships new app
-> code that expects new columns; only the `migrate` leg creates them. If the
-> `migrate` leg is skipped (its secret is unset) while Vercel keeps deploying,
-> **prod code runs against a stale schema and breaks** — exactly the 2026-06-14
-> incident (see [Migration drift guard](#migration-drift-guard)). Setting
-> `DATABASE_DIRECT_URL` (below) is what closes this gap.
+> The web build and this workflow both use `DATABASE_DIRECT_URL` (Supabase
+> direct, port 5432). See [Migration drift guard](#migration-drift-guard).
 
 ---
 
 ## Migration drift guard
 
-**The one manual step that makes migrations reach prod:** set
-`DATABASE_DIRECT_URL` as a **GitHub Actions secret**
-(`Settings → Secrets and variables → Actions → New repository secret`), to the
-Supabase **direct** (port 5432, non-pooled) connection string. This is a
-**repo-admin action** — it cannot be done from a PR or by CI. Until it is set,
-the `migrate` leg is skipped on every deploy and **no pending migration ever
-reaches prod**.
+**The secret both gates already use:** `DATABASE_DIRECT_URL`, the Supabase
+**direct** (port 5432, non-pooled) connection string.
 
-Once set, that single secret enables **both**:
+- **GitHub Actions** — repository secret (or the `production` environment).
+  Preflight fails the Deploy workflow if it is unset.
+- **Vercel hale-web** — Production environment variable, available at **build**
+  time (an encrypted variable is; a Sensitive variable is not). The production
+  build fails before alias if it is unset.
 
-- **Auto-migrate** — `drizzle-kit migrate` applies pending migrations on every
-  main deploy.
-- **The drift gate** — after applying, `pnpm --filter @hale/db drift-check`
-  compares the drizzle journal (`drizzle/meta/_journal.json`) to what the DB has
-  actually recorded in `drizzle.__drizzle_migrations` and **fails the deploy
-  loudly, listing every un-applied migration, if the DB is behind**. It is
-  strictly read-only (a single `SELECT`; it never applies anything) and skips
-  with a notice (exit 0) when no DB URL is present.
+No second secret name. If either copy is removed, that side fails closed and
+the log names `DATABASE_DIRECT_URL`.
+
+Once set, both paths:
+
+- **Apply** — drizzle's migrator applies every journal entry whose `when` is
+  greater than `max(created_at)` in `drizzle.__drizzle_migrations`.
+- **Check** — `pnpm db:check-migrations` compares each journal file's sha256 to
+  `__drizzle_migrations.hash` and **exits non-zero, listing every unrecorded
+  file**. A watermark-only "in sync" is not success: drizzle will not apply a
+  file whose `when` is already covered, so the hash check fails the build
+  instead of shipping the code. Historical files whose bytes changed after
+  apply are listed in `packages/db/scripts/ledger-exemptions.json`; an exemption
+  counts only when that `when` is already a `created_at` in the ledger.
 
 ### The incident this prevents
 
@@ -276,26 +285,26 @@ and nobody noticed. The Village cadence feature was broken in prod because the
 `cadence` / `superseded_at` columns (migration `0027_village_cadence`) never
 existed there.
 
-**Root cause:** migrations were never auto-applied. The web deploys via Vercel's
-native integration (which does not run migrations), and the `deploy.yml` `migrate`
+**Root cause:** migrations were never auto-applied. The web deployed via Vercel's
+native integration, which did not run migrations, and the `deploy.yml` `migrate`
 leg was **skipped on every run** because `DATABASE_DIRECT_URL` had never been set
 as a GitHub secret. So there was no path that applied pending migrations to prod,
 and nothing that alarmed when prod fell behind.
 
-**How the guard prevents recurrence:** the drift-check runs after `migrate` on
-every deploy and turns "silently behind" into a **red, blocking deploy** that
-names the missing migrations. A human can run the same check locally at any time:
+**How the guard prevents recurrence:** the hale-web production build applies
+migrations and runs the hash check before Vercel can alias the deployment, so a
+cancelled CI run (which skips this workflow — what left `0150` unapplied on
+2026-10-02) no longer promotes code first. A missing `DATABASE_DIRECT_URL`
+fails that build and fails this workflow instead of skipping. A human can run
+the same check locally at any time:
 
 ```bash
-DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hale/db drift-check   # gate: exit 1 if behind
-DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hale/db status        # applied-vs-pending at a glance
+DATABASE_DIRECT_URL=<direct-url> pnpm db:check-migrations   # exit 1 if any journal hash is missing
+DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hale/db status
 ```
 
-> **Residual blind spot (by design):** if `DATABASE_DIRECT_URL` is *absent*, both
-> the migrate leg **and** the drift-check skip — a green pipeline then only means
-> "nothing was checked." That is why setting the secret is a hard prerequisite,
-> documented here rather than guarded in code (CI can't invent a secret it was
-> never given).
+`pnpm db:check-migrations` with neither URL set exits 1 and names
+`DATABASE_DIRECT_URL`. It does not print the connection string.
 
 ---
 
@@ -389,7 +398,7 @@ crash is purely the package-entrypoint defect.
 | Worker Docker image | **Builds** end-to-end from repo root; fails loud without `DATABASE_URL` | Runtime needs B2 fixed + secrets |
 | `apps/web/vercel.json` | Valid JSON; `yul1` pinned; crons defined | `vercel deploy --prod` (needs token + linked project) |
 | Migration provisioning | `drizzle-kit migrate` applies all 37 migrations to a fresh DB and `drift-check` reports in sync (verified on the local Supabase DB) | Real prod run needs `DATABASE_DIRECT_URL` set (see guard) |
-| Migration drift guard | `pnpm --filter @hale/db drift-check` / `status` — unit tests + run against local DB (behind, 12-behind incident shape, and in-sync all exercised) | Prod gate needs `DATABASE_DIRECT_URL` set |
+| Migration ledger guard | `pnpm db:check-migrations` — hash comparison; unit tests cover a missing table, a watermark-skipped file, and the historical exemptions | Prod gate needs `DATABASE_DIRECT_URL` set on Vercel Production and in GitHub Actions |
 | `.github/workflows/deploy.yml` | YAML valid; **actionlint clean (0 findings)**; secret-gating logic; drift verify wired into the `migrate` leg | Real run needs the GitHub secrets above |
 
 Full command transcript: `.loop/evidence/deploy-setup.log`.
