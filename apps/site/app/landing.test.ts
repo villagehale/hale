@@ -9,10 +9,10 @@ import LandingPage from './[locale]/page.js';
 /**
  * villagehale.com — a short hero on the shore.
  *
- * The page is one headline, one subhead, one Text Hale door, and a phone
- * thread. Below that: four product lines, the live pricing cards, a short
- * FAQ, and the shared footer. No city in the hero, no booking claim in a
- * bubble, no price, no signup funnel.
+ * The page is one headline, one subhead, one Text Hale door, and a paper
+ * calendar the year fills itself onto. A small phone overlaps the corner.
+ * Below: finds, a reminder, the year, trust, pricing, a short FAQ, and a
+ * closer. No city in the hero, no booking claim, no price, no signup funnel.
  */
 
 const LIVE_NUMBER = '+16475551234';
@@ -64,8 +64,10 @@ describe('landing — the hero', () => {
     const h1 = html.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
     expect(h1).toContain('v4-display');
     expect(h1).toContain('class="v4-accent"');
-    expect(visibleText(h1)).toBe('Weekends, sorted by text.');
-    expect(visibleText(heroHtml)).toContain('What’s on near you, this Saturday.');
+    expect(visibleText(h1)).toBe('Your kids’ year, handled.');
+    expect(visibleText(heroHtml)).toContain(
+      'Hale finds the right activities for your kid, puts them on your calendar, and reminds you before they’re gone.',
+    );
     expect(visibleText(heroHtml)).not.toContain('!');
   });
 
@@ -83,11 +85,12 @@ describe('landing — the hero', () => {
     expect(heroHtml).toContain('v4-hero-thread');
     expect([...heroHtml.matchAll(/class="v4-bubble v4-bubble-out"/g)]).toHaveLength(1);
     expect([...heroHtml.matchAll(/class="v4-bubble v4-bubble-in"/g)]).toHaveLength(1);
-    expect(heroHtml).toContain('class="v4-typing"');
-    expect(heroHtml).toContain('Hale is typing');
+    expect(heroHtml).toContain('v4-board');
+    expect(heroHtml).toContain('v4-board-chip-1');
+    expect(heroHtml).toContain('v4-phone-overlap');
     const text = visibleText(heroHtml);
-    expect(text).toContain('Swim this Saturday, near us.');
-    expect(text).toContain('I’ll watch if one fills up.');
+    expect(text).toContain('She’s 4. Something this Saturday, near us.');
+    expect(text).toContain('Parent-and-tot swim, Saturday morning, close by.');
   });
 
   it('names no city and makes no booking claim inside the hero', () => {
@@ -112,9 +115,8 @@ describe('landing — the hero', () => {
 
   it('shows the iMessage trust line under the hero door, with the privacy link', () => {
     expect(heroHtml).toContain('class="v4-hero-terms"');
-    expect(visibleText(heroHtml)).toContain(
-      'You text first, on iMessage. Your data stays in Canada — privacy policy',
-    );
+    expect(visibleText(heroHtml)).toContain('iMessage. No app.');
+    expect(visibleText(heroHtml)).toContain('Your data stays in Canada — privacy policy');
     expect(heroHtml).toContain('href="/privacy"');
   });
 });
@@ -145,7 +147,7 @@ describe('landing — the brand tile', () => {
   it('allows only decorative images, the logo and the shore', () => {
     const imgs = html.match(/<img[^>]*>/g) ?? [];
     // Header logo, footer logo, hero shore. No night plate, no turtle drawing.
-    expect(imgs).toHaveLength(3);
+    expect(imgs).toHaveLength(4);
     for (const img of imgs) {
       expect(img).toContain('alt=""');
       expect(img).toContain('aria-hidden="true"');
@@ -200,18 +202,20 @@ describe('landing — the short page under the hero', () => {
 
   it('keeps four product lines, then pricing, then a short FAQ', () => {
     const order = [
-      'Weekends, sorted by text.',
-      'Age, place, and a spot.',
-      'One line from your inbox.',
-      'One question, then the next find.',
-      'Your family, one thread.',
+      'Your kids’ year, handled.',
+      'Finds',
+      'Never miss it',
+      'The kids’ year',
+      'You stay in charge.',
       'Free, with unlimited chat.',
       'Questions',
+      'The year, on the fridge.',
     ].map((marker) => text.indexOf(marker));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    expect(text).toContain('Connect Gmail or Google Calendar');
-    expect(text).toContain('What you say shapes what I look for next.');
+    expect(text).toContain('The right activity, for their age, near you.');
+    expect(text).toContain('On your calendar before the day arrives.');
+    expect(text).not.toContain('Connect Gmail');
     expect(text).toContain('Coming soon');
     expect([...html.matchAll(/Coming soon/g)]).toHaveLength(2);
     expect(text).not.toContain('There is no price');
@@ -246,7 +250,7 @@ describe('landing — structured data and honesty', () => {
   it('describes the page a visitor sees, and invents no metrics', () => {
     const html = render();
     expect(html).toContain('application/ld+json');
-    expect(html).toContain('Weekends, sorted by text');
+    expect(html).toContain('Your kids’ year, handled');
     expect(html).toContain('A planner for your kids’ year');
     expect(html).not.toContain('A number your family texts');
     expect(impactNumbers()).toBeNull();
@@ -264,7 +268,7 @@ describe('landing — number not provisioned', () => {
     expect(html).toContain('href="mailto:aloha@villagehale.com"');
     expect(html).not.toContain('class="v4-hero-terms"');
     expect(html).toContain('v4-hero-thread');
-    expect(html).toContain('Hale is typing');
+    expect(html).toContain('v4-board');
   });
 });
 

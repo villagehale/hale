@@ -87,7 +87,7 @@ describe('homepage copy in every locale', () => {
     for (const locale of routing.locales) expect(keys(locale), locale).toEqual(en);
   });
 
-  it.each(routing.locales)('%s hero is two bubbles, then typing, with no town', (locale) => {
+  it.each(routing.locales)('%s hero is the ask and the find, with no town', (locale) => {
     const landing = landingBundle(locale) as {
       heroThread: Array<{ dir: string; text: string }>;
     };
@@ -96,7 +96,6 @@ describe('homepage copy in every locale', () => {
     expect(exchange, 'the phone thread must render').toContain('v4-bubble');
     expect([...exchange.matchAll(/class="v4-bubble v4-bubble-out"/g)]).toHaveLength(1);
     expect([...exchange.matchAll(/class="v4-bubble v4-bubble-in"/g)]).toHaveLength(1);
-    expect(exchange).toContain('v4-typing');
     expect(exchange).not.toMatch(/\b20\d\d\b/);
     const text = visibleText(exchange);
     for (const town of [...MUNICIPALITIES, 'Georgetown', '斯托夫维尔', '多伦多', '乔治敦']) {
@@ -122,21 +121,21 @@ describe('homepage copy in every locale', () => {
     const bubbles = [...HTML[locale].matchAll(/<p class="v4-bubble[^"]*">([\s\S]*?)<\/p>/g)].map(
       (m) => m[1] ?? '',
     );
-    // Hero ask + reply, and the three-bubble loop under it.
-    expect(bubbles).toHaveLength(5);
+    // The hero exchange: the ask, then the find.
+    expect(bubbles).toHaveLength(2);
     for (const bubble of bubbles) expect(bubble).toMatch(/^<span class="sr-only">[^<]+ <\/span>/);
   });
 
   it.each(routing.locales)('%s renders the four lines, pricing, and the FAQ', (locale) => {
     const text = visibleText(HTML[locale]);
-    for (const key of ['findH2', 'inboxH2', 'loopH2', 'familyH2', 'faqH2']) {
+    for (const key of ['findH2', 'remindH2', 'yearH2', 'trustH2', 'faqH2']) {
       expect(text, key).toContain(landingString(locale, key));
     }
     expect(HTML[locale]).toContain('id="pricing"');
     expect([...HTML[locale].matchAll(/<details\b/g)]).toHaveLength(3);
   });
 
-  it('writes French site copy with accents, and addresses one parent as tu', () => {
+  it('writes French site copy with accents, in the vous register the rest of the site uses', () => {
     const fr = JSON.parse(
       readFileSync(fileURLToPath(new URL('../messages/fr.json', import.meta.url)), 'utf8'),
     ) as Record<string, unknown>;
@@ -145,25 +144,16 @@ describe('homepage copy in every locale', () => {
       walkStrings(fr[key], (text) => pieces.push(text));
     }
     const blob = pieces.join('\n');
-    for (const word of [
-      'près',
-      'données',
-      'confidentialité',
-      "d'écrire",
-      'Mémoire',
-      'bientôt',
-      'âge',
-    ]) {
+    for (const word of ['près', 'données', 'confidentialité', 'bientôt', 'âge', 'activités']) {
       expect(blob, word).toContain(word);
     }
     const flat = blob.toLowerCase();
-    for (const ascii of ['donnees', 'bientot', 'confidentialite', 'pres de', 'ecrire', 'memoire']) {
+    for (const ascii of ['donnees', 'bientot', 'confidentialite', 'pres de']) {
       expect(flat, ascii).not.toContain(ascii);
     }
     const landing = landingBundle('fr');
-    expect(String(landing.heroSub)).toContain('toi');
-    expect(String(landing.heroTerms)).toMatch(/^Tu /);
-    expect(flat).not.toContain('vous');
+    expect(String(landing.heroH1a)).toContain('vos');
+    expect(String(landing.heroTerms)).toMatch(/^Vos /);
   });
 
   it.each(routing.locales)('%s hero headline and subhead stay inside the word caps', (locale) => {
@@ -172,7 +162,7 @@ describe('homepage copy in every locale', () => {
     if (locale === 'zh') return;
     const words = (s: string) => s.split(/[^A-Za-z0-9']+/).filter(Boolean);
     expect(words(headline).length).toBeLessThanOrEqual(8);
-    expect(words(sub).length).toBeLessThanOrEqual(10);
+    expect(words(sub).length).toBeLessThanOrEqual(22);
     expect(words(sub).length).toBeGreaterThan(0);
   });
 });

@@ -154,7 +154,10 @@ describe('the phone number is never literal text — messages included (hard rul
 describe('no bundle promises quiet, in any locale', () => {
   const files = (['en', 'fr', 'zh'] as const).map((locale) => ({
     locale,
-    raw: readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
+    raw: readFileSync(
+      fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)),
+      'utf8',
+    ),
   }));
 
   /**
@@ -201,7 +204,9 @@ describe('no bundle promises quiet, in any locale', () => {
     };
     for (const { locale, raw } of files) {
       for (const phrase of SUNDAY[locale] ?? []) {
-        expect(raw.toLowerCase(), `${locale}.json must not claim "${phrase}"`).not.toContain(phrase);
+        expect(raw.toLowerCase(), `${locale}.json must not claim "${phrase}"`).not.toContain(
+          phrase,
+        );
       }
     }
   });
@@ -219,7 +224,10 @@ describe('no bundle promises quiet, in any locale', () => {
 describe('the positioning noun is gone from every bundle', () => {
   const files = (['en', 'fr', 'zh'] as const).map((locale) => ({
     locale,
-    raw: readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
+    raw: readFileSync(
+      fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)),
+      'utf8',
+    ),
   }));
 
   /**
@@ -251,7 +259,9 @@ describe('the positioning noun is gone from every bundle', () => {
 
   it('positive control: the anti-scam line the ban must not erase is still there', () => {
     const en = files.find((f) => f.locale === 'en')?.raw ?? '';
-    expect(en).toContain('Hale is a planner for your kids’ year, and it never pretends to be a person.');
+    expect(en).toContain(
+      'Hale is a planner for your kids’ year, and it never pretends to be a person.',
+    );
   });
 });
 
@@ -260,7 +270,9 @@ describe('the FAQ translation source mirrors the canonical English list', () => 
     const en = JSON.parse(
       readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'),
     );
-    expect(en.Faq.items).toEqual(FAQ.map((item) => ({ question: item.question, answer: item.answer })));
+    expect(en.Faq.items).toEqual(
+      FAQ.map((item) => ({ question: item.question, answer: item.answer })),
+    );
   });
 });
 
@@ -313,14 +325,14 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
 
   it('keeps HomeMeta, page meta, and Jsonld on the kids-year lines', () => {
     const h1 = {
-      en: 'Weekends, sorted by text.',
-      fr: 'Le week-end, par texto.',
-      zh: '周末，发短信就好。',
+      en: 'Your kids’ year, handled.',
+      fr: "L'année de vos enfants, en main.",
+      zh: '孩子这一年，安排好了。',
     } as const;
     const sub = {
-      en: 'What’s on near you, this Saturday.',
-      fr: "Ce qu'il y a près de toi, samedi.",
-      zh: '这周六，你家附近有什么。',
+      en: 'Hale finds the right activities for your kid, puts them on your calendar, and reminds you before they’re gone.',
+      fr: "Hale trouve les bonnes activités pour votre enfant, les met sur votre calendrier, et vous rappelle avant qu'elles ne passent.",
+      zh: 'Hale 按孩子的年龄找到合适的活动，放进日历，并在结束前提醒你。',
     } as const;
     const textMeta = {
       en: 'Find what’s on. Hear how it went. What’s worth doing with the kids.',

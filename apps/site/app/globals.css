@@ -2004,6 +2004,14 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-btn:hover,
   .v4-btn-solid:hover { transform: translateY(-1px); }
   .v4-btn-solid:hover { background: var(--color-navy-deep); }
+  /* Apricot paper pill — the hero door. Navy ink on the tint clears AA;
+   * amber stays a fill, not small type. */
+  .v4-btn-apricot {
+    background: var(--color-apricot-tint);
+    color: var(--color-navy);
+    box-shadow: inset 0 0 0 1px var(--color-apricot-deep);
+  }
+  .v4-btn-apricot:hover { background: #fde7a8; }
   .v4-btn:focus-visible,
   .v4-btn-solid:focus-visible,
   .v4-navlink:focus-visible,
@@ -2114,12 +2122,19 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * y=902 — two pixels past the viewport — and on a phone `100svh` is the
    * viewport with the URL bar SHOWING, which is the height this has to fit. So
    * the rhythm is tuned against a measured fold at both sizes rather than eyeballed. */
-  .v4-hero-top .v4-hero-body { gap: 0.85rem; padding-top: 2.25rem; padding-bottom: 2.5rem; }
+  .v4-hero-top .v4-hero-body { gap: 0.85rem; padding-top: 2.25rem; padding-bottom: 2.5rem; text-align: left; align-items: stretch; }
+  .v4-hero-top .v4-hero-h1 { max-width: 20ch; font-size: clamp(2.15rem, 3.6vw, 3.8rem); }
   .v4-hero-offer {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.6rem;
+  }
+  .v4-hero-channel {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: var(--color-navy);
   }
   .v4-hero-offer .v4-hero-terms { margin-top: 0; }
   .v4-hero-founding {
@@ -2511,8 +2526,10 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-hero-copy {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
+    text-align: left;
     gap: 0.85rem;
+    max-width: 36rem;
     /* Local scrim, only behind the type. 0.86 cream over a white sky is
      * still ~13:1 for navy body text. The picture around it is untouched. */
     padding: 1.05rem 1.2rem 1.15rem;
@@ -2528,6 +2545,113 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     -webkit-mask-image: none;
     mask-image: none;
   }
+  /* The fridge calendar. Cream paper, shore ink, a small turtle. The phone
+   * overlaps a corner: the door, not the star. Chips settle once. */
+  .v4-board-slot {
+    position: relative;
+    width: 100%;
+    max-width: 34rem;
+    margin-inline: auto;
+  }
+  .v4-board {
+    position: relative;
+    padding: 0.9rem 0.85rem 2.6rem;
+    border-radius: 0.35rem;
+    background: #fbf7ef;
+    color: #17294a;
+    box-shadow:
+      0 1.15rem 2rem rgb(23 41 74 / 0.16),
+      0 0.12rem 0.25rem rgb(23 41 74 / 0.08);
+    transform: rotate(-1deg);
+  }
+  .v4-board-head {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin-bottom: 0.55rem;
+  }
+  .v4-board-month {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.55rem;
+    font-weight: 520;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .v4-board-dows,
+  .v4-board-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.18rem;
+  }
+  .v4-board-dows {
+    margin-bottom: 0.28rem;
+    font-size: 0.62rem;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    color: #8d7b68;
+    text-align: center;
+  }
+  .v4-board-day {
+    position: relative;
+    min-height: 2.15rem;
+    border-radius: 0.28rem;
+    background: rgb(23 41 74 / 0.045);
+    overflow: visible;
+  }
+  .v4-board-day.is-empty { background: transparent; }
+  .v4-board-day.is-weekend { background: rgb(178 107 31 / 0.14); }
+  .v4-board-num {
+    display: block;
+    padding: 0.12rem 0.2rem;
+    font-size: 0.58rem;
+    font-variant-numeric: tabular-nums;
+    color: #17294a;
+  }
+  .v4-board-chip {
+    position: absolute;
+    left: 0.05rem;
+    top: 0.85rem;
+    z-index: 1;
+    width: max-content;
+    max-width: 7.4rem;
+    padding: 0.16rem 0.38rem;
+    border-radius: 0.4rem;
+    background: #fef0c7;
+    color: #17294a;
+    font-size: 0.58rem;
+    font-weight: 600;
+    line-height: 1.2;
+    box-shadow: 0 0.18rem 0.35rem rgb(23 41 74 / 0.12);
+    --chip-rot: -2deg;
+    animation: v4-chip-settle 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .v4-board-chip-1 { animation-delay: 0.2s; --chip-rot: -2.2deg; }
+  .v4-board-chip-2 { animation-delay: 0.95s; --chip-rot: 1.6deg; top: 0.7rem; }
+  .v4-board-chip-3 { animation-delay: 1.7s; --chip-rot: -1deg; }
+  @keyframes v4-chip-settle {
+    from { opacity: 0; transform: translateY(-0.7rem) rotate(var(--chip-rot)); }
+    to { opacity: 1; transform: translateY(0) rotate(var(--chip-rot)); }
+  }
+  .v4-phone-overlap {
+    position: absolute;
+    right: -0.15rem;
+    bottom: -1.6rem;
+    width: 12.2rem;
+    z-index: 2;
+  }
+  .v4-phone-overlap .v4-phone { width: 12.2rem; aspect-ratio: auto; height: auto; }
+  .v4-phone-overlap .v4-phone-screen { height: auto; }
+  .v4-phone-overlap .v4-phone .v4-hero-thread { flex: none; }
+  .v4-phone-overlap .v4-ios-status { height: 1.85rem; padding-top: 0.4rem; }
+  .v4-phone-overlap .v4-ios-island { width: 3.6rem; height: 1rem; top: 0.35rem; }
+  .v4-phone-overlap .v4-ios-time { font-size: 0.68rem; }
+  .v4-phone-overlap .v4-ios-avatar { width: 1.2rem; height: 1.2rem; font-size: 0.55rem; }
+  .v4-phone-overlap .v4-ios-name { font-size: 0.55rem; }
+  .v4-phone-overlap .v4-phone .v4-bubble { font-size: 0.68rem; padding: 0.28rem 0.48rem; }
+  .v4-phone-overlap .v4-ios-field { height: 1.3rem; font-size: 0.65rem; }
+  .v4-phone-overlap .v4-ios-home { margin: 0.15rem 0 0.22rem; }
+  .v4-board-slot { padding-bottom: 2.2rem; }
   /* iPhone 16-class frame: warm titanium, thin bezel, sitting on the shore. */
   .v4-phone {
     width: 15.6rem;
@@ -2877,6 +3001,54 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     margin-top: 0.35rem;
   }
   .v4-family-row article { padding: 1rem 1.1rem; }
+  .v4-pair {
+    display: grid;
+    gap: 1.1rem;
+    align-items: center;
+  }
+  .v4-result,
+  .v4-remind,
+  .v4-season {
+    background: #fbf7ef;
+    color: #17294a;
+    box-shadow: 0 0.55rem 1.3rem rgb(23 41 74 / 0.08);
+  }
+  .v4-result,
+  .v4-remind {
+    border-radius: 1rem;
+    padding: 1.05rem 1.15rem 1.15rem;
+  }
+  .v4-result h3,
+  .v4-remind h3,
+  .v4-season h3 {
+    margin: 0.25rem 0 0;
+    font-size: 1.2rem;
+    font-weight: 600;
+  }
+  .v4-result p,
+  .v4-remind p,
+  .v4-season p { margin: 0.3rem 0 0; line-height: 1.4; }
+  .v4-remind-when {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 520;
+    letter-spacing: -0.02em;
+    color: #8d5a16;
+  }
+  .v4-seasons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+  .v4-season {
+    border-radius: 0.7rem;
+    padding: 0.7rem 0.75rem 0.8rem;
+    min-height: 4.6rem;
+  }
+  .v4-season h3 { font-family: var(--font-display); font-size: 1.05rem; font-weight: 520; }
+  .v4-trust { max-width: 36rem; margin-inline: auto; text-align: center; }
+  .v4-trust .v4-lede { margin-inline: auto; }
   @media (min-width: 640px) {
     .v4-family-row { grid-template-columns: 1fr 1fr; }
   }
@@ -2921,6 +3093,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     }
     .v4-beat-flip > :first-child { order: 2; }
     .v4-beat-pair { grid-template-columns: 1fr 1fr; }
+    .v4-pair { grid-template-columns: 1.1fr 0.9fr; gap: 2.5rem; }
+    .v4-pair-flip > :first-child { order: 2; }
   }
   @media (min-width: 960px) {
     .v4-hero-top .v4-hero-body {
@@ -2934,9 +3108,10 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
       gap: 3rem;
       text-align: left;
     }
-    .v4-hero-copy { align-items: flex-start; }
-    .v4-phone-slot,
-    .v4-phone { width: 17.6rem; }
+    .v4-hero-copy { align-items: flex-start; flex: 1; }
+    .v4-board-slot { width: min(34rem, 50%); margin-inline: 0; flex-shrink: 0; }
+    .v4-phone-overlap,
+    .v4-phone-overlap .v4-phone { width: 13.4rem; }
   }
 
   /* The /text door's exchange — the same thread on a page with no photo under
@@ -3102,6 +3277,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     .v4-chip { transition: none; }
     /* Dots stay visible and still. The sr-only label does not depend on motion. */
     .v4-typing span[aria-hidden='true'] { animation: none; opacity: 1; }
+    .v4-board-chip { animation: none; opacity: 1; transform: rotate(var(--chip-rot)); }
   }
 
   /* /about founder lines. 48px circle over a 96px face-centered asset (2×).
