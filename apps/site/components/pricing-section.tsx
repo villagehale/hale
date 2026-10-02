@@ -10,7 +10,7 @@ type PaidTier = 'plus' | 'family';
 /**
  * Three cards. Only Free is live: unlimited chat, free today, and the same
  * text door as the rest of the site. Plus and Family are labelled coming soon.
- * Their lines describe a later tier in plain words. No price, no date, no
+ * Their only line is that more may come later. No price, no date, no
  * buy or waitlist control, and no link on a tier that is not available.
  */
 export function PricingSection({ locale = routing.defaultLocale }: { locale?: Locale }) {

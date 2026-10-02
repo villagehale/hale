@@ -32,12 +32,8 @@ describe('PricingSection (landing pricing)', () => {
       'iMessage',
     ]);
     expect(en.PricingSection.paidFeatures).toEqual({
-      plus: [
-        'Everything in Free',
-        'Reminders and drafts, as they roll out',
-        'More of the year watched with you',
-      ],
-      family: ['Everything in Plus', 'A household view of the year, as it rolls out'],
+      plus: ['More to come.'],
+      family: ['More to come.'],
     });
     expect(en.Pricing.metaDescription).toContain('0 CAD');
     expect(en.Pricing.metaDescription).not.toMatch(/\$|\bPlus at\b|\bFamily at\b|\/mo/i);
@@ -46,8 +42,9 @@ describe('PricingSection (landing pricing)', () => {
     expect(html).toContain('Free today');
     expect(html).toContain('Plus');
     expect(html).toContain('Family');
-    expect(html).toContain('Everything in Free');
-    expect(html).toContain('A household view of the year, as it rolls out');
+    expect([...html.matchAll(/More to come\./g)]).toHaveLength(2);
+    expect(html).not.toContain('Reminders and drafts');
+    expect(html).not.toContain('household view');
     expect([...html.matchAll(/Coming soon/g)]).toHaveLength(2);
     expect(html).not.toContain('$');
     expect(html).not.toContain('0 CAD');
@@ -92,8 +89,9 @@ describe('PricingSection (landing pricing)', () => {
     expect(french).not.toContain('$');
     expect(french).not.toContain('Founding rate');
     expect(french).toContain("Gratuit aujourd'hui");
-    expect(french).toContain("Tout ce qu'il y a dans Gratuit");
-    expect(french).toContain("Une vue du foyer sur l'annee, a mesure qu'elle arrive");
+    expect([...french.matchAll(/D'autres choses a venir\./g)]).toHaveLength(2);
+    expect(french).not.toContain('brouillons');
+    expect(french).not.toContain('foyer');
     expect(fr.Pricing.metaDescription).toContain('0 CAD');
     expect(fr.PricingSection.freeLine).toBe("Gratuit aujourd'hui");
     expect(fr.PricingSection.freeFeatures).toEqual([
@@ -102,11 +100,10 @@ describe('PricingSection (landing pricing)', () => {
       "Un texto quand une place s'ouvre",
       'iMessage',
     ]);
-    expect(fr.PricingSection.paidFeatures.plus).toEqual([
-      "Tout ce qu'il y a dans Gratuit",
-      "Rappels et brouillons, a mesure qu'ils arrivent",
-      "Davantage de l'annee suivie avec vous",
-    ]);
+    expect(fr.PricingSection.paidFeatures).toEqual({
+      plus: ["D'autres choses a venir."],
+      family: ["D'autres choses a venir."],
+    });
     const rewritten = JSON.stringify(fr.PricingSection);
     expect(rewritten).toBe(
       [...rewritten].map((ch) => (ch.charCodeAt(0) < 128 ? ch : '?')).join(''),
@@ -123,12 +120,12 @@ describe('PricingSection (landing pricing)', () => {
     expect(chinese).not.toContain('$');
     expect(chinese).not.toContain('创始价');
     expect(chinese).toContain('今天免费');
-    expect(chinese).toContain('免费档里的全部');
+    expect(chinese).toContain('还有更多。');
     expect(zh.PricingSection.freeLine).toBe('今天免费');
-    expect(zh.PricingSection.paidFeatures.family).toEqual([
-      'Plus 里的全部',
-      '家里这一年的总览，还没开放',
-    ]);
+    expect(zh.PricingSection.paidFeatures).toEqual({
+      plus: ['还有更多。'],
+      family: ['还有更多。'],
+    });
   });
 
   it('argues the price without a metaphor to decode', () => {

@@ -349,8 +349,9 @@ describe('/pricing — Free is live, Plus and Family say coming soon', () => {
     expect(html).toContain('Free today');
     expect(html).toContain('Plus');
     expect(html).toContain('Family');
-    expect(html).toContain('Everything in Free');
-    expect(html).toContain('A household view of the year, as it rolls out');
+    expect(html.match(/More to come\./g)).toHaveLength(2);
+    expect(html).not.toContain('Reminders and drafts');
+    expect(html).not.toContain('household view');
     expect(html.match(/Coming soon/g)).toHaveLength(2);
     expect(html).not.toContain('$');
     expect(html).not.toContain('0 CAD');
@@ -359,7 +360,7 @@ describe('/pricing — Free is live, Plus and Family say coming soon', () => {
     expect(html).not.toContain('Your village feed');
     expect(html).not.toContain('Companion:');
     expect(html.match(/numbered-card-list/g)).toHaveLength(3);
-    expect(html.match(/lucide-check/g)).toHaveLength(9);
+    expect(html.match(/lucide-check/g)).toHaveLength(6);
     expect(html.match(/pricing_tier/g)).toHaveLength(1);
   });
 
