@@ -2361,21 +2361,12 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   html[lang='en'] .v4-hero-h1,
   html[lang='fr'] .v4-hero-h1 {
     font-family: var(--font-display);
-    /* The founder's poster values. Stated in px rather than rem because they are
-     * a drawing decision at one specific pair of sizes, not a step on the type
-     * scale — and because the ceiling is what the display cut was chosen for. */
-    font-size: clamp(54px, 8vw, 84px);
-    font-weight: 450;
+    font-size: clamp(40px, 5vw, 68px);
+    font-weight: 500;
     font-optical-sizing: auto;
     font-synthesis-weight: none;
-    letter-spacing: -0.035em;
-    /* UNDER the face's worst lowercase extent, by 0.0339em — 2.84px at the 84px
-     * ceiling — and the one rung allowed to be. Only reachable where a descender
-     * sits over a TALL ascender, which the real stacks are nowhere near: 'y' over
-     * 't' in "The family assistant / you text." clears by 13.5px, because 't' is
-     * 0.55em where 'b' is 0.74em. A poster headline leads tighter than a page of
-     * them. */
-    line-height: 0.95;
+    letter-spacing: -0.025em;
+    line-height: 1.04;
   }
 
   /* One counted coverage line on the home radar. Not a link. */
@@ -2805,6 +2796,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   }
   .v4-ios-msg { display: contents; }
   .v4-phone .v4-hero-thread {
+    display: flex;
+    flex-direction: column;
     flex: 1;
     justify-content: flex-end;
     gap: 0.18rem;
@@ -3327,6 +3320,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
      * because a CTA that clears only the headless viewport is a CTA no parent
      * ever sees without scrolling. */
     .v4-hero-top .v4-hero-body { gap: 0.5rem; padding: 1rem 1.25rem 1.5rem; }
+    .v4-hero-top .v4-phone-slot,
+    .v4-hero-top .v4-phone { width: 12.5rem; }
     .v4-hero-offer { gap: 0.45rem; }
     .v4-hero-founding { font-size: 0.9rem; line-height: 1.35; }
 
