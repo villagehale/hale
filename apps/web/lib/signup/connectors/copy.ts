@@ -31,7 +31,8 @@ export function partnershipBookedLine(input: {
   ref: string;
   confirmed: boolean;
 }): { body: string; mayLeave: boolean } {
-  const pattern = input.language === 'fr' ? PARTNERSHIP_BOOKED_LINE_FR : PARTNERSHIP_BOOKED_LINE_TODO;
+  const pattern =
+    input.language === 'fr' ? PARTNERSHIP_BOOKED_LINE_FR : PARTNERSHIP_BOOKED_LINE_TODO;
   const body = fill(pattern, {
     session: input.session,
     provider: input.provider,
@@ -52,7 +53,8 @@ export function partnershipFailedLine(input: {
   provider: string;
   link: string;
 }): { body: string; mayLeave: boolean } {
-  const pattern = input.language === 'fr' ? PARTNERSHIP_FAILED_LINE_FR : PARTNERSHIP_FAILED_LINE_TODO;
+  const pattern =
+    input.language === 'fr' ? PARTNERSHIP_FAILED_LINE_FR : PARTNERSHIP_FAILED_LINE_TODO;
   const body = fill(pattern, {
     session: input.session,
     provider: input.provider,

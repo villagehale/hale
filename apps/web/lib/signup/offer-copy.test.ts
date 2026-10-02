@@ -8,7 +8,7 @@ const DIR = fileURLToPath(new URL('.', import.meta.url));
 describe('signup offer sentence', () => {
   it('is the locked offer and leaves only with a parent-approved price', () => {
     expect(SIGNUP_OFFER_SENTENCE_TODO).toBe(
-      'It\'s {price}. Want me to try signing you up? I\'ll stop and hand it back if it asks for payment or a login.',
+      "It's {price}. Want me to try signing you up? I'll stop and hand it back if it asks for payment or a login.",
     );
     expect(SIGNUP_OFFER_SENTENCE_FR).toBe(
       "C'est {price}. Tu veux que j'essaie de t'inscrire? Je m'arrete et je te le remets si on demande un paiement ou une connexion.",
@@ -16,7 +16,7 @@ describe('signup offer sentence', () => {
     expect(SIGNUP_OFFER_SENTENCE_TODO).toMatch(/^[\x20-\x7E]+$/);
     expect(SIGNUP_OFFER_SENTENCE_FR).toMatch(/^[\x20-\x7E]+$/);
     expect(signupTryOffer({ language: 'en', price: '$40', priceApproved: false })).toEqual({
-      body: 'It\'s $40. Want me to try signing you up? I\'ll stop and hand it back if it asks for payment or a login.',
+      body: "It's $40. Want me to try signing you up? I'll stop and hand it back if it asks for payment or a login.",
       mayLeave: false,
     });
     expect(signupTryOffer({ language: 'en', price: '$40', priceApproved: true }).mayLeave).toBe(

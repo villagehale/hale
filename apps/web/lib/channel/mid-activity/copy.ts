@@ -8,12 +8,10 @@
 
 import type { ReplyLanguage } from '~/lib/channel/language';
 
-export const MID_ACTIVITY_ASK_EN =
-  "How's {activity} going so far? Just a line back is plenty.";
+export const MID_ACTIVITY_ASK_EN = "How's {activity} going so far? Just a line back is plenty.";
 export const MID_ACTIVITY_ASK_FR =
   'Comment ca se passe pour {activity}? Une phrase en reponse suffit.';
-export const MID_ACTIVITY_ASK_NO_ACTIVITY_EN =
-  "How's it going so far? Just a line back is plenty.";
+export const MID_ACTIVITY_ASK_NO_ACTIVITY_EN = "How's it going so far? Just a line back is plenty.";
 export const MID_ACTIVITY_ASK_NO_ACTIVITY_FR =
   "Comment ca se passe jusqu'ici? Une phrase en reponse suffit.";
 export const MID_ACTIVITY_ACK_EN =

@@ -6,7 +6,7 @@
  */
 
 export const SIGNUP_OFFER_SENTENCE_TODO =
-  'It\'s {price}. Want me to try signing you up? I\'ll stop and hand it back if it asks for payment or a login.';
+  "It's {price}. Want me to try signing you up? I'll stop and hand it back if it asks for payment or a login.";
 
 export const SIGNUP_OFFER_SENTENCE_FR =
   "C'est {price}. Tu veux que j'essaie de t'inscrire? Je m'arrete et je te le remets si on demande un paiement ou une connexion.";

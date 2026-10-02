@@ -1,5 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { dutyMayInitiateOneToOne } from './ack';
+import {
+  burdenAnswerText,
+  burdenMayLeave,
+  decideLopsidedNudge,
+  lopsidedConsentCopy,
+} from './burden';
 import {
   COPARENT_DUTY_COPY_LOCKED_ENV,
   DUTY_CHANGE_NEXT_EN,
@@ -10,6 +17,7 @@ import {
   dutyOwnerEcho,
   dutyTitleMayBeSpoken,
 } from './copy';
+import { COPARENT_DUTY_MEMORY_ENABLED_ENV } from './flag';
 import {
   DUTY_BURDEN_ANSWER_FR,
   DUTY_BURDEN_ANSWER_TODO,
@@ -28,9 +36,6 @@ import {
   dutyLopsidedNudgeText,
   dutyUndoText,
 } from './placeholders';
-import { COPARENT_DUTY_MEMORY_ENABLED_ENV } from './flag';
-import { dutyMayInitiateOneToOne } from './ack';
-import { burdenAnswerText, burdenMayLeave, decideLopsidedNudge, lopsidedConsentCopy } from './burden';
 import { readDutySyncDecision } from './sync-line';
 
 afterEach(() => {
@@ -109,13 +114,15 @@ describe('duty guardrails', () => {
     expect(DUTY_NIGHT_BEFORE_COPY_FR.endsWith(DUTY_CHANGE_NEXT_FR)).toBe(true);
     expect(dutyTitleMayBeSpoken('Quarterly board review')).toBe(false);
     expect(dutyTitleMayBeSpoken('swim')).toBe(true);
-    expect(dutyOwnerEcho('en', {
-      name: 'Barton',
-      kid: 'Maya',
-      event: 'Quarterly board review',
-      day: 'Saturday',
-      time: '3:00pm',
-    })).toBeNull();
+    expect(
+      dutyOwnerEcho('en', {
+        name: 'Barton',
+        kid: 'Maya',
+        event: 'Quarterly board review',
+        day: 'Saturday',
+        time: '3:00pm',
+      }),
+    ).toBeNull();
     expect(
       dutyOwnerEcho('en', {
         name: 'Barton',
@@ -134,9 +141,7 @@ describe('duty guardrails', () => {
       day: 'Saturday',
       time: '3:00pm',
     });
-    expect(line).toBe(
-      "Barton has Maya's swim, Saturday at 3:00pm. Say so here if that changes.",
-    );
+    expect(line).toBe("Barton has Maya's swim, Saturday at 3:00pm. Say so here if that changes.");
     expect(line?.endsWith(DUTY_CHANGE_NEXT_EN)).toBe(true);
     expect(line).not.toMatch(BANNED_SEND);
     expect(line).not.toContain('\n');

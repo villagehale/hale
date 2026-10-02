@@ -23,9 +23,7 @@ const LOCKED = [
 
 describe('mid-activity copy', () => {
   it('keeps each locked line byte for byte, ASCII, and one next step', () => {
-    expect(MID_ACTIVITY_ASK_EN).toBe(
-      "How's {activity} going so far? Just a line back is plenty.",
-    );
+    expect(MID_ACTIVITY_ASK_EN).toBe("How's {activity} going so far? Just a line back is plenty.");
     expect(MID_ACTIVITY_ASK_FR).toBe(
       'Comment ca se passe pour {activity}? Une phrase en reponse suffit.',
     );
