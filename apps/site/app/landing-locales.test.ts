@@ -64,8 +64,8 @@ const H1_COLUMN_EM: Record<(typeof routing.locales)[number], number> = {
 
 /** The town Hale's hero reply names back, per locale — zh transliterates it. */
 const HERO_TOWN: Record<(typeof routing.locales)[number], string> = {
-  en: 'Stouffville',
-  fr: 'Stouffville',
+  en: 'Georgetown',
+  fr: 'Georgetown',
   zh: '斯托夫维尔',
 };
 
@@ -118,10 +118,11 @@ describe('the registration loop renders in every locale', () => {
     ]);
   });
 
-  it.each(routing.locales)('%s carries the municipal link Hale really sends', (locale) => {
-    // Not translated: it is a URL. A locale that "translates" it points a parent
-    // at a page that does not exist.
-    expect(HTML[locale]).toContain('haltonhills.ca/Play/Recreation/Programs');
+  it('en and fr transcripts are a find, not a municipal registration link', () => {
+    // The registration-morning URL was the old product shot. zh still carries
+    // that leftover thread and is flagged for a later pass.
+    expect(transcript(HTML.en)).not.toContain('haltonhills.ca');
+    expect(transcript(HTML.fr)).not.toContain('haltonhills.ca');
   });
 
   it.each(routing.locales)('%s marks all three steps and both contrast cells', (locale) => {
@@ -135,6 +136,8 @@ describe('the registration loop renders in every locale', () => {
       const html = HTML[locale];
       const text = html
         .replace(/<[^>]+>/g, ' ')
+        .replace(/&#x27;/g, "'")
+        .replace(/&amp;/g, '&')
         .replace(/\s+/g, ' ')
         .trim();
       const cells = landingBundle(locale).contrast as Array<{ title: string; body: string }>;
@@ -150,11 +153,14 @@ describe('the registration loop renders in every locale', () => {
         '{count}',
         String(MUNICIPALITY_COUNT),
       );
-      const noun = { en: 'municipalities', fr: 'municipalités', zh: '市镇' }[locale];
+      // The coverage line is frozen and still spells the accented FR noun.
+      // The watch lede was rewritten ASCII, so the two nouns are checked apart.
+      const coverageNoun = { en: 'municipalities', fr: 'municipalités', zh: '市镇' }[locale];
+      const ledeNoun = { en: 'municipalities', fr: 'municipalites', zh: '市镇' }[locale];
       expect(text).toContain(coverage);
       expect(text).toContain(lede);
-      expect(coverage).toContain(noun);
-      expect(lede).toContain(noun);
+      expect(coverage).toContain(coverageNoun);
+      expect(lede).toContain(ledeNoun);
       expect(coverage).not.toMatch(/cities|villes|城市/);
       expect(html).not.toContain('{count}');
       // The sell-out pitch and the one-YES execute line stay off every locale.
@@ -266,8 +272,8 @@ describe('the registration loop renders in every locale', () => {
     expect(landing.heroThread.map((row) => row.dir)).toEqual(['out', 'in']);
     expect(landing.heroLoop[0]?.rows.map((row) => row.dir)).toEqual(['out', 'in']);
     const lead = {
-      en: 'Here’s what’s on for your kids this year:',
-      fr: 'Voici ce qu’il y a pour vos enfants cette année :',
+      en: 'An example of what a find can look like, not a result I am promising.',
+      fr: "Un exemple de ce qu'une recherche peut donner, pas un resultat promis.",
       zh: '孩子这一年，现在有这些：',
     }[locale];
     expect(landing.heroThread[1]?.text.startsWith(lead)).toBe(true);

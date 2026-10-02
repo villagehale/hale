@@ -23,7 +23,7 @@ const UNOFFICIAL =
   'Hale is unofficial. Confirm every date on the official link in this block — if the city page has moved, the city page wins.';
 
 const FOOTER =
-  'Hale is a planner for your kids’ year, not an app. Founding families keep their rate. Your data stays in Canada.';
+  'Hale is a planner for your kids’ year, not an app. Hale is free, with unlimited chat. Your data stays in Canada.';
 
 export const TORONTO_FALL: RegistrationGuide = {
   slug: 'toronto-fall-recreation-registration',
@@ -36,7 +36,7 @@ export const TORONTO_FALL: RegistrationGuide = {
     { text: 'Toronto fall recreation registration 2026:' },
     { text: 'the mornings, and what is left', accent: true },
   ],
-  lede: 'The morning that mattered was the district of the centre you were booking, not the street you live on — and those mornings have gone: Sept 9, Sept 15, Sept 16. If you live outside Toronto, yours is still ahead: Friday, Sept 25 at 7 a.m., ten days after registration starts for the activity you want. I’m Barton, Sebastian’s dad. Hale is a planner for your kids’ year — no app — and founding families are free at villagehale.com.',
+  lede: 'The morning that mattered was the district of the centre you were booking, not the street you live on — and those mornings have gone: Sept 9, Sept 15, Sept 16. If you live outside Toronto, yours is still ahead: Friday, Sept 25 at 7 a.m., ten days after registration starts for the activity you want. I’m Barton, Sebastian’s dad. Hale is a planner for your kids’ year — no app — and Hale is free, with unlimited chat, at villagehale.com.',
   updated: '2026-09-18',
   placement: 'toronto_fall_rec',
   datesEyebrow: 'Fall 2026',
@@ -181,7 +181,7 @@ export const TORONTO_FALL: RegistrationGuide = {
       headline: [{ text: 'Winter is not posted —' }, { text: 'Hale will text you', accent: true }],
       paragraphs: [
         'Winter 2027 is not posted yet. The city’s look-ahead says winter activities should be available to browse around Nov 17, with registration anticipated between Dec 1 and 9 and programs starting the week of Jan 4, 2027. Those are look-ahead dates, not a printed clock. Do not set an alarm on them until the city page is specific.',
-        'Hale knows which morning each centre keeps and watches for the winter clock to be printed. Text Hale — founding families free. Start at villagehale.com.',
+        'Hale knows which morning each centre keeps and watches for the winter clock to be printed. Text Hale — free, with unlimited chat. Start at villagehale.com.',
       ],
     },
   ],
@@ -214,7 +214,7 @@ export const TORONTO_FALL: RegistrationGuide = {
   ],
   ctaHeading: 'Non-residents register Sept 25. Winter is not posted yet.',
   ctaSub:
-    'Text Hale — founding families free. Start at villagehale.com. I’m Barton, Sebastian’s dad; Hale is a planner for your kids’ year, not an app.',
+    'Text Hale — free, with unlimited chat. Start at villagehale.com. I’m Barton, Sebastian’s dad; Hale is a planner for your kids’ year, not an app.',
   footerNote: FOOTER,
 };
 
@@ -229,7 +229,7 @@ export const TORONTO_SWIM: RegistrationGuide = {
     { text: 'Toronto swim registration 2026:' },
     { text: 'it is not a separate day', accent: true },
   ],
-  lede: 'There was never a swim-only date, and the district mornings have gone. What is left: non-residents open Friday, Sept 25 at 7 a.m., ten days after registration starts for the lesson, and the city lets you register up to the start of the third class, space permitting. Tell Hale the pool and the Ultra level. Founding families free — villagehale.com.',
+  lede: 'There was never a swim-only date, and the district mornings have gone. What is left: non-residents open Friday, Sept 25 at 7 a.m., ten days after registration starts for the lesson, and the city lets you register up to the start of the third class, space permitting. Tell Hale the pool and the Ultra level. Hale is free, with unlimited chat — villagehale.com.',
   updated: '2026-09-18',
   placement: 'toronto_swim',
   datesEyebrow: 'What is left',
@@ -390,7 +390,7 @@ export const TORONTO_SWIM: RegistrationGuide = {
   ],
   ctaHeading: 'Tell Hale the pool and the Ultra level.',
   ctaSub:
-    'Hale texts the night before a morning that matters, and again when a lane opens up. Founding families free — villagehale.com.',
+    'Hale watches for a place to open and texts when one does. Hale is free, with unlimited chat — villagehale.com.',
   footerNote: FOOTER,
 };
 
@@ -405,7 +405,7 @@ export const BRAMPTON_SWIM: RegistrationGuide = {
     { text: 'Brampton swim registration:' },
     { text: 'non-residents open Monday, Sept 21', accent: true },
   ],
-  lede: "Residents’ morning has gone — Learn to Swim and Learn to Skate opened Wednesday, Sept 9 at 7 a.m. Non-residents open Monday, Sept 21 at 7 a.m., and that is the morning still ahead. Hale watches kids' swim for parents. Adult lessons stay on the city page. Text your kids' names, ages, and postal and I'll watch Sept 21. Founding families free.",
+  lede: "Residents’ morning has gone — Learn to Swim and Learn to Skate opened Wednesday, Sept 9 at 7 a.m. Non-residents open Monday, Sept 21 at 7 a.m., and that is the morning still ahead. Hale watches kids' swim for parents. Adult lessons stay on the city page. Text your kids' names, ages, and postal and I'll watch Sept 21. Hale is free, with unlimited chat.",
   updated: '2026-09-18',
   placement: 'brampton_swim',
   datesEyebrow: 'Split calendar',
@@ -542,7 +542,7 @@ export const BRAMPTON_SWIM: RegistrationGuide = {
   ],
   ctaHeading: 'Monday, Sept 21 at 7 a.m. is the morning still ahead.',
   ctaSub:
-    "Hale watches kids' swim for parents. Adult lessons stay on the city page. Text your kids' names, ages, and postal and I'll watch Sept 21. Founding families free.",
+    "Hale watches kids' swim for parents. Adult lessons stay on the city page. Text your kids' names, ages, and postal and I'll watch Sept 21. Hale is free, with unlimited chat.",
   footerNote: FOOTER,
   smsPrefill: INTAKE_PREFILL,
 };
@@ -558,7 +558,7 @@ export const YMCA_GTA: RegistrationGuide = {
     { text: 'YMCA Greater Toronto swim:' },
     { text: 'listings still take spots to Oct 10', accent: true },
   ],
-  lede: 'The 9:00 a.m. open on Thursday, Aug 27 has gone. What is left is leftovers: the listings Hale read run registration to Oct 10, classes started mid-September, and membership is still required to take many group Learn to Swim classes. The portal is My Y — not eFun, not PerfectMind, not Active Mississauga. Founding families free — villagehale.com.',
+  lede: 'The 9:00 a.m. open on Thursday, Aug 27 has gone. What is left is leftovers: the listings Hale read run registration to Oct 10, classes started mid-September, and membership is still required to take many group Learn to Swim classes. The portal is My Y — not eFun, not PerfectMind, not Active Mississauga. Hale is free, with unlimited chat — villagehale.com.',
   updated: '2026-09-18',
   placement: 'ymca_gta_swim',
   datesEyebrow: 'After the open',
@@ -636,7 +636,7 @@ export const YMCA_GTA: RegistrationGuide = {
       id: 'confirm-my-y',
       headline: [{ text: 'Confirm the timestamp' }, { text: 'on My Y', accent: true }],
       paragraphs: [
-        'If an activity page has moved its clock, My Y wins. Hale is unofficial. The opening morning has gone; what is left sits on the listing until Oct 10, membership first. Tell Hale the branch and the level and Hale watches for the next open. Founding families free — villagehale.com.',
+        'If an activity page has moved its clock, My Y wins. Hale is unofficial. The opening morning has gone; what is left sits on the listing until Oct 10, membership first. Tell Hale the branch and the level and Hale watches for the next open. Hale is free, with unlimited chat — villagehale.com.',
       ],
       links: [
         { href: YMCA_PORTAL, label: 'Open My Y' },
@@ -680,7 +680,7 @@ export const YMCA_GTA: RegistrationGuide = {
   ],
   ctaHeading: 'Membership first, then what is left on My Y.',
   ctaSub:
-    'Tell Hale the branch and the level — Hale watches for the next open. Founding families free — villagehale.com.',
+    'Tell Hale the branch and the level — Hale watches for the next open. Hale is free, with unlimited chat — villagehale.com.',
   footerNote: FOOTER,
 };
 

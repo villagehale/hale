@@ -27,69 +27,70 @@ export const FAQ: readonly FaqItem[] = [
   {
     question: 'What is Hale?',
     answer:
-      'A planner for your kids’ year. It finds what is actually running near your kids — swim, camps, drop-ins, the EarlyON down the road — watches the sign-up mornings where you live, hands you the town’s own link the night before, and comes back to ask how it went. It answers the parenting questions too. There is no app to install and no account to create.',
+      'A planner for your kids’ year, on iMessage. You ask with an age, a place, and the kind of spot — toddler swim near Georgetown on Saturday is the kind of thing you can ask, not a promise of what comes back. Hale looks it up, watches recreation, TEE, and swim drops, and texts when a place opens. There is no app to install and no account to create. Hale does not book a class or register you.',
   },
   {
     question: 'How do I start?',
     answer:
-      'You text the number and ask what’s worth doing with the kids near you. Hale asks for your kids’ names and ages and your postal code, and that is the whole setup — everything else it asks for later, only when it needs it. Hale never texts a number that hasn’t texted it first.',
+      'You text the number and ask. An age, a place, and the spot is enough to start. The first session is the find; the time and the link come after you pick. Hale never texts a number that hasn’t texted it first.',
   },
   {
     question: 'Does Hale do anything without asking?',
     answer:
-      'No. Hale finds what’s on and asks how it went — it does not book a class or register you. Every message names what it found, and Hale keeps the full record of who asked, what was sent and when.',
+      'No. Hale finds what’s on and asks one question after you pick — it does not book a class or register you. Every message names what it found, and Hale keeps the full record of who asked, what was sent and when.',
   },
   {
     question: 'Is my family’s data private?',
     answer:
-      'Your data is stored in Canada and never leaves it, in line with PIPEDA and Quebec’s Law 25, and Hale never sells it. Every permission is granular and revocable in a text. Text messaging itself is not sealed the way an app is — a message crosses your carrier and Hale’s messaging provider — so Hale writes to that reality and names the task, never the diagnosis. A teenager’s content is redacted from parents by default.',
+      'Your data is stored in Canada and never leaves it, in line with PIPEDA and Quebec’s Law 25, and Hale never sells it. Every permission is granular and revocable in a text. iMessage through Linq is not sealed the way an app is — a message crosses your carrier and Linq — so Hale writes to that reality and names the activity and the time, never a diagnosis. A teenager’s content is redacted from parents by default.',
   },
   {
     question: 'Is this a bot? Who actually reads my texts?',
     answer:
-      'Hale is a planner for your kids’ year, and it never pretends to be a person. It is built and run by Village Hale Technologies Inc., a small parent-founded company in Georgetown, Ontario — and a real person reads anything you send to aloha@villagehale.com. Hale never texts a number that hasn’t texted it first, never asks you to text back a password, a card number or a code, and STOP ends the conversation at any time.',
+      'Hale is a planner for your kids’ year, and it never pretends to be a person. It is built and run by Village Hale Technologies Inc., a small parent-founded company in Georgetown, Ontario — and a real person reads anything you send to aloha@villagehale.com. Hale never texts a number that hasn’t texted it first, and never asks you to text back a password, a card number or a code.',
   },
   {
     question: 'What does Hale actually watch?',
-    answer: `Municipal registration across ${MUNICIPALITY_COUNT} GTA municipalities — recreation programs, swim lessons, camps and after-school care — including the resident head start, the towns that register swimming on their own date, and the winter-break camps that open back in August. It also watches the waitlist clock, which is a day in some towns and two in others. And when the class you wanted is already full, Hale keeps watching it and texts you the minute a place opens.`,
+    answer: `A live find by age, place, and the kind of spot you asked for, plus recreation, TEE, and swim drops across ${MUNICIPALITY_COUNT} GTA municipalities. When a class you wanted is already full, Hale keeps watching it and texts you when a place opens. If you connect Gmail or Google Calendar, Hale reads new mail and events and texts one short line — the activity and the time. It does not push changes back to Google.`,
   },
   {
     question: 'How often will Hale text me?',
     answer:
-      'A heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. In the evening Hale asks one line about how the day went — reply LESS and that becomes weekly, NO and it stops. STOP works at any time.',
+      'When you ask, with what it found. When a watched class has a place open. One short line from a connected inbox or calendar — the activity and the time. And one question partway through something you picked, so the answer can shape the next find.',
   },
   {
     question: 'Can Hale answer parenting questions, or only scheduling ones?',
     answer:
-      'Both. Ask about sleep, starting solids, potty training, picky eating, tantrums, screen time or routines and you get an answer pitched at your child’s age, plus the offer of the whole plan — two or three texts you can start tonight. A few days later Hale asks how it went. It never diagnoses and never names a dose.',
+      'You can ask what’s on, and you can ask a parenting question in the same thread. Hale never diagnoses and never names a dose. For anything about your child’s health, talk to your provider.',
   },
   {
     question: 'Is Hale free?',
     answer:
-      'Hale is free while it is new, and families who start now keep their founding rate. A co-parent is always free — the same dates and nudges on their own number, never a second household to pay for.',
+      'Yes. Hale is free, with unlimited chat. There is no paid plan. A second parent in the family group is a co-parent, on their own number, in the same free chat.',
   },
   {
     question: 'Do I need to use the website?',
     answer:
-      'No. The finding and the check-ins happen in the text thread. The full record of what Hale has sent is yours whenever you want it — ask for it in the thread, or sign in with your phone number and read it there.',
+      'No. The finding and the questions happen in the iMessage thread. The full record of what Hale has sent is yours whenever you want it — ask for it in the thread, or sign in with your phone number and read it there.',
   },
   {
     question: 'Will you tell me whether a class is any good?',
     answer:
-      'Not yet. Today Hale asks how it went. Telling the next parent what other families thought is what Hale wants to build next, and when it does it will be a count and a verdict — never anyone’s words.',
+      'Not yet. Today Hale asks one question partway through something you picked. Telling the next parent what other families thought is not live, and if it ever is it will be a count and a verdict — never anyone’s words.',
   },
   {
     question: 'Can you help when we travel?',
-    answer: 'Not yet. Today I watch registration and what’s on where you live, in the GTA.',
+    answer: 'Not yet. Today Hale looks things up where you ask, and watches recreation drops in the GTA.',
   },
   {
     question: 'Can you tell me who else is going?',
-    answer: 'Not yet. Today I only tell you about your own family, never anyone else’s.',
+    answer:
+      'Only with a yes from both families. Hale introduces two families on the same activity only when each has said yes. It does not share one family’s words with another.',
   },
   {
     question: 'Is Hale available outside Canada?',
     answer:
-      'Not yet. Hale is Canada-first because keeping your family’s data on Canadian soil is a core promise rather than a setting, and the registration data it watches is GTA municipal data. Other regions are on the roadmap.',
+      'Not yet. Hale is Canada-first because keeping your family’s data on Canadian soil is a core promise rather than a setting, and the recreation data it watches is GTA municipal data. Other regions are on the roadmap.',
   },
 ] as const;
 

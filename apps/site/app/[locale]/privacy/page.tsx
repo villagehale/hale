@@ -79,7 +79,7 @@ const SECTIONS: LegalSection[] = [
   { id: 'ai-processing', title: 'AI and automated processing' },
   { id: 'how-we-share', title: 'Who your family’s data is shared with' },
   { id: 'sub-processors', title: 'Sub-processors and cross-border processing' },
-  { id: 'sms', title: 'Text messages (SMS)' },
+  { id: 'sms', title: 'Text messages (iMessage via Linq)' },
   { id: 'residency-retention', title: 'Data residency, retention, and security' },
   { id: 'your-rights', title: 'Your rights' },
   { id: 'your-choices', title: 'Your choices' },
@@ -112,11 +112,16 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
     >
       <LegalSectionBlock id="who-we-are" title="Who we are">
         <p>
-          Hale is a planner for your kids&rsquo; year, reached by text message. You (a
-          parent or legal guardian) text the number and tell Hale about your children; there is no account to
-          create, though you may sign in to the web app, and you may optionally connect tools you
-          already use. Hale finds what&rsquo;s on near your kids, watches registration dates, and
-          asks how it went. It does not book a class or register you. Hale is operated by Village Hale Technologies Inc., a
+          Hale is a planner for your kids&rsquo; year, reached by iMessage through Linq. Hale is
+          free, with unlimited chat. There is no paid plan. You (a parent or legal guardian) text
+          the number and tell Hale about your children; there is no account to create, though you
+          may sign in to the web app, and you may optionally connect Gmail or Google Calendar. Hale
+          looks up an age, a place, and a spot, watches recreation, TEE, and swim drops and texts
+          when a place opens, and asks how it went. A connected inbox can show a class you already
+          registered; Hale recognizes the receipt and does not register you. The first parent claims
+          a family group; the second real person becomes a co-parent. Hale remembers lasting family
+          facts apart from temporary ones. It does not book a class or register you, and it does not
+          push changes back to Google. Hale is operated by Village Hale Technologies Inc., a
           company incorporated in Ontario, Canada, which is the organization responsible for your
           family&rsquo;s data under PIPEDA; see{' '}
           <a href="#contact" className="link">
@@ -142,7 +147,7 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           <li>
             <strong>Your contact details.</strong> The phone number you text from; and, if you sign
             in to the web app, your name and email address — provided through Google sign-in or the
-            email address and password you register. Plus basic preferences such as language and
+            email address and password you register. And basic preferences such as language and
             time zone.
           </li>
           <li>
@@ -188,19 +193,20 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           <li>
             <strong>Gmail (optional).</strong> What is read: the subject, the sender, the first
             line, and the time it arrived. When a message looks like it carries a date your family
-            has to be somewhere, that message is opened. Why: to notice the date and offer to put
-            it on your week. What is never read: anything you have not connected, and any message
-            that does not look like a family date.
+            has to be somewhere, that message is opened. Why: to text one short line, the activity
+            and the time. Hale does not push changes back to Google. What is never read: anything
+            you have not connected, and any message that does not look like a family date.
           </li>
           <li>
             <strong>Calendar (optional).</strong> What is read: an event&rsquo;s title, its notes,
-            start, end, place, and whether it was cancelled or moved. Why: so a change to your
-            week reaches you as a text rather than as a surprise.
+            start, end, place, and whether it was cancelled or moved. Why: so a change reaches you
+            as one short text, the activity and the time. Hale does not push changes back to Google.
           </li>
           <li>
             <strong>How it went.</strong> What is stored: your one-line answer to Hale&rsquo;s
             evening question, for thirty days, readable only by you and never shown to another
-            family.
+            family. Lasting family facts are kept until you ask for them to be deleted. A one-off
+            detail is kept only as long as it is useful.
           </li>
         </ul>
         <p>
@@ -498,14 +504,13 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
         </p>
       </LegalSectionBlock>
 
-      <LegalSectionBlock id="sms" title="Text messages (SMS)">
+      <LegalSectionBlock id="sms" title="Text messages (iMessage via Linq)">
         <p>
-          If you use Hale by text message, that conversation travels over the ordinary mobile
-          network, and you should know exactly what that means.{' '}
+          If you use Hale by text, that conversation is iMessage through Linq, and you should know
+          exactly what that means.{' '}
           <strong>Text messages are not end-to-end encrypted.</strong> Every message passes through
           your mobile carrier and through our messaging provider, Linq, and anyone holding the phone
-          can read the thread. That is how SMS works everywhere; we cannot change it, so we tell you
-          plainly and we write to it.
+          can read the thread. We cannot change that path, so we tell you plainly and we write to it.
         </p>
         <p>
           Because the channel is open, the strictest limits we apply anywhere apply to what we put

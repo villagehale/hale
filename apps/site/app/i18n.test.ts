@@ -209,7 +209,7 @@ describe('no bundle promises quiet, in any locale', () => {
   it('positive control: every bundle still says what Hale DOES send', () => {
     // The subtraction must leave the cadence described, not the page silent about
     // it — otherwise these absences would also pass on an empty bundle.
-    const say = { en: 'a heads-up the week a registration opens', fr: 'une inscription ouvre', zh: '报名开放' };
+    const say = { en: 'when a place opens', fr: "quand une place s'ouvre", zh: '报名开放' };
     for (const { locale, raw } of files) {
       expect(raw.toLowerCase()).toContain(say[locale].toLowerCase());
     }
@@ -287,7 +287,7 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
    */
   const LOCKED: Record<string, string[]> = {
     en: ['You text names, ages, and a postal code', 'No app, no account.', 'no menus'],
-    fr: ['les noms, les âges et un code postal', 'Pas d’appli, pas de compte.', 'pas de menus'],
+    fr: ['les noms, les ages et un code postal', "Pas d'appli, pas de compte.", 'pas de menus'],
     zh: ['名字、年龄和一个邮编', '不用装应用，不用注册账号。', '没有菜单'],
   };
 
@@ -304,10 +304,10 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
 
   it('pins About.cta exactly, in all three locales', () => {
     expect(bundles.en.About.cta).toBe(
-      'It starts with names, ages, and a postal code. No app, no account.',
+      'It starts with an age, a place, and a spot. No app, no account.',
     );
     expect(bundles.fr.About.cta).toBe(
-      'Ça commence par les noms, les âges et un code postal. Pas d’appli, pas de compte.',
+      "Ca commence par un age, un endroit et une place. Pas d'appli, pas de compte.",
     );
     expect(bundles.zh.About.cta).toBe('一切从名字、年龄和一个邮编开始。不用装应用，不用注册账号。');
     expect(bundles.en.About.cta).not.toMatch(/no form/i);
@@ -315,13 +315,13 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
 
   it('keeps HomeMeta, page meta, and Jsonld on the kids-year lines', () => {
     const h1 = {
-      en: 'Find what’s on. Hear how it went.',
-      fr: 'Trouvez ce qu’il y a. Écoutez comment ça va.',
+      en: 'Ask for a spot. I’ll look it up.',
+      fr: 'Demandez une place. Je la cherche.',
       zh: '看看有什么。听听怎么样。',
     } as const;
     const sub = {
-      en: 'What’s worth doing with the kids.',
-      fr: 'Ce qui vaut la peine avec les enfants.',
+      en: 'Age, place, and the spot. Toddler swim near Georgetown on Saturday is the kind of thing you can ask.',
+      fr: "L'age, l'endroit et la place. Une natation pour tout-petit pres de Georgetown un samedi, c'est le genre de demande.",
       zh: '值得和孩子一起做的事。',
     } as const;
     const banned = [
@@ -381,7 +381,7 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
     const html = renderToStaticMarkup(
       await AboutPage({ params: Promise.resolve({ locale: 'en' as const }) }),
     );
-    expect(html).toContain('It starts with names, ages, and a postal code. No app, no account.');
+    expect(html).toContain('It starts with an age, a place, and a spot. No app, no account.');
     expect(html).not.toContain('It starts with one text');
   });
 });

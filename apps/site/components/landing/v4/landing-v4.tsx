@@ -198,24 +198,14 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       </section>
 
       {/*
-        ── The thread — ONE registration, start to finish ───────────────────
-        Not a montage of what Hale can do: the single conversation the flagship
-        job produces, from the warning a week out to the receipt. The bubbles are
-        the sentences apps/web/lib/registration/sequence/copy.ts actually renders
-        for the verified Halton Hills row, and the timestamps between them are
-        that sequence's own intervals (schedule.ts: HEADS_UP_LEAD_DAYS,
-        BATTLE_PLAN_MINUTE_LOCAL, GO_LEAD_MINUTES, CHECK_IN_LEAD_HOURS).
-
-        Two deliberate departures from the live renderer, both so a page that
-        outlives one registration cycle stays true: the demo prints the row's
-        published WEEKDAY where the real heads-up prints "Sep 1, 7:00 a.m.", and
-        a bare season where it prints the "Fall 2026" cycle label.
-
-        The coaching exchange that used to share this slot moved out rather than
-        being kept alongside — breadth is already claimed above it (the hero
-        sub), so the product shot can afford depth. The hero's own exchange is
-        the moment BEFORE this one (intake, and the first answer); this is the
-        registration itself, a week later.
+        ── The thread — one find, then what follows ─────────────────────────
+        An example of a live find (age, place, and a spot), not a result Hale
+        is promising and not the registration-morning sequence. The bubbles
+        are marketing copy: Hale does not book or register anyone, logistics
+        come after the pick, a full class stays watched, and one question
+        partway through shapes the next find. Do not quote flag-gated message
+        strings here. The hero exchange above is the ask; this is what the
+        thread looks like after.
       */}
       <section className="shell pt-12 sm:pt-20 lg:pt-28">
         <p className="v4-eyebrow text-center">{t('threadEyebrow')}</p>

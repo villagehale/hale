@@ -30,13 +30,13 @@ describe('siteJsonLd', () => {
     const org = nodes.find((n) => n['@type'] === 'Organization');
     const app = nodes.find((n) => n['@type'] === 'SoftwareApplication');
     const h1 = {
-      en: 'Find what’s on. Hear how it went.',
-      fr: 'Trouvez ce qu’il y a. Écoutez comment ça va.',
+      en: 'Ask for a spot. I’ll look it up.',
+      fr: 'Demandez une place. Je la cherche.',
       zh: '看看有什么。听听怎么样。',
     }[locale];
     const planner = {
       en: 'planner for your kids’ year',
-      fr: 'planificateur pour l’année de vos enfants',
+      fr: "planificateur pour l'annee de vos enfants",
       zh: '孩子这一年的规划',
     }[locale];
     expect(String(app?.description).startsWith(h1)).toBe(true);

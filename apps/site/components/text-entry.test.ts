@@ -133,11 +133,10 @@ function qrPath(html: string): string {
 describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
   it('leads with what Hale IS — the five-second line, both arms', () => {
     for (const html of [liveHtml, unsetHtml]) {
-      expect(html).toContain('Find what’s on. Hear how it went.');
-      // ONE sentence. "No app, no account" moved out of the lede: the trust
-      // strip already says it, and above the fold every restated line is a line
-      // between a stranger and the button.
-      expect(html).toContain('What’s worth doing with the kids.');
+      expect(html).toContain('Ask for a spot. I’ll look it up.');
+      expect(html).toContain(
+        'Age, place, and the spot. Toddler swim near Georgetown on Saturday is the kind of thing you can ask.',
+      );
       expect(html).not.toContain('No app, no account — just this text thread.');
     }
     // Positive control: the fact itself is still on the page, once.
@@ -150,7 +149,7 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
   it('says what to DO in ONE folded line — the three numbered steps are gone', () => {
     // The only beat the exchange does not already show is WHEN the payoff lands;
     // the greeting bubble itself asks for the ages and the postal code.
-    expect(liveHtml).toContain('Your first watch comes back the same minute.');
+    expect(liveHtml).toContain('The find comes back in the same thread.');
     expect(liveHtml).not.toContain('Answer one text with your kids’ ages and postal code;');
     // The numbered row is retired: the exchange shows the first beat, the folded
     // line says the rest. No <ol> survives anywhere on the page.
@@ -158,7 +157,7 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
     expect(liveHtml).not.toContain('Say hi — the first message is already written.');
     expect(liveHtml).not.toContain('Answer one text: kids’ names, ages, postal code.');
     // The dark page promises no text back, so it makes no promises about one.
-    expect(unsetHtml).not.toContain('first watch comes back the same minute');
+    expect(unsetHtml).not.toContain('find comes back in the same thread');
   });
 
   it('shows what comes BACK — an honestly-labeled bubble, absent while no channel is live', () => {
@@ -168,10 +167,10 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
     expect(unsetHtml).not.toContain('The text you’ll get back:');
   });
 
-  it('carries the trust strip beside the door — free, no app, no account, STOP', () => {
-    expect(liveHtml).toContain('Free · No app · No account · Reply STOP anytime');
+  it('carries the trust strip beside the door — free, unlimited chat, no app', () => {
+    expect(liveHtml).toContain('Free · Unlimited chat · No app');
     const trust = /<p class="meta mt-8">([\s\S]*?)<\/p>/.exec(liveHtml)?.[1] ?? '';
-    expect(trust).toContain('Reply STOP anytime');
+    expect(trust).not.toContain('STOP');
     expect(trust, 'the strip does not carry a second privacy link').not.toContain('<a');
     // One privacy link in the column, on the Canada line.
     expect([...liveHtml.matchAll(/href="\/privacy"/g)]).toHaveLength(1);
@@ -179,7 +178,7 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
     expect(canada).toBeGreaterThan(-1);
     expect(liveHtml.indexOf('href="/privacy"')).toBeGreaterThan(canada);
     // The dark page has no number to STOP, and still the one legal link.
-    expect(unsetHtml).not.toContain('Reply STOP anytime');
+    expect(unsetHtml).not.toContain('Reply STOP');
     expect([...unsetHtml.matchAll(/href="\/privacy"/g)]).toHaveLength(1);
   });
 
@@ -187,7 +186,7 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
     expect(liveHtml).toContain('>Text Hale</a>');
     expect(liveHtml).not.toContain('Continue in Messages');
     expect(liveHtml).not.toContain('Or use Messages');
-    expect(liveHtml).not.toContain('iMessage');
+    expect(liveHtml).toContain('iMessage, through Linq.');
     expect(liveHtml).not.toContain('WhatsApp');
     expect([...liveHtml.matchAll(/btn-primary/g)]).toHaveLength(1);
   });
@@ -200,7 +199,7 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
       expect(html).not.toContain('wa.me');
       expect(html).not.toContain('WhatsApp');
       expect(html).not.toContain('Pick where we talk');
-      expect(html).not.toContain('iMessage');
+      expect(html).toContain('iMessage, through Linq.');
     }
     // Windows/Linux/unknown: sms: is a dead click — no button renders, and the
     // QR card leads (above the contact-card CTA), exactly once.
@@ -299,9 +298,9 @@ describe('TextEntry — the exchange is the hero', () => {
     expect(liveHtml).toContain('>Text Hale</a>');
     // Order: exchange, then the folded line, then the button.
     expect(liveHtml.indexOf('v4-bubble-in')).toBeLessThan(
-      liveHtml.indexOf('first watch comes back the same minute'),
+      liveHtml.indexOf('find comes back in the same thread'),
     );
-    expect(liveHtml.indexOf('first watch comes back the same minute')).toBeLessThan(
+    expect(liveHtml.indexOf('find comes back in the same thread')).toBeLessThan(
       liveHtml.indexOf('btn-primary'),
     );
   });
@@ -425,8 +424,10 @@ describe('TextEntry — the channel matrix, rendered', () => {
     expect(liveHtml).not.toContain('wa.me');
     expect(liveHtml).not.toContain('What is worth doing with the kids near us?');
     expect(liveHtml).not.toContain('What%20is%20worth%20doing');
-    expect(liveHtml).toContain('Find what’s on. Hear how it went.');
-    expect(liveHtml).toContain('What’s worth doing with the kids.');
+    expect(liveHtml).toContain('Ask for a spot. I’ll look it up.');
+    expect(liveHtml).toContain(
+      'Age, place, and the spot. Toddler swim near Georgetown on Saturday is the kind of thing you can ask.',
+    );
   });
 
   it('keeps the dark page dark: no composer on the email-fallback state', () => {
@@ -492,9 +493,9 @@ describe('TextEntry (number live) — the desktop card and the disclosures', () 
     expect(liveNoSourceHtml).not.toContain('which poster or friend sent you');
   });
 
-  it('carries the STOP line on the terms row — mobile states never showed the scan hint’s copy', () => {
-    expect(liveHtml).toContain('Standard message rates apply; reply STOP any time.');
-    // The dark state keeps its own honest line instead.
+  it('names iMessage via Linq on the terms row, with no STOP line', () => {
+    expect(liveHtml).toContain('iMessage, through Linq. You text first.');
+    expect(liveHtml).not.toContain('reply STOP');
     expect(unsetHtml).not.toContain('reply STOP');
   });
 });
@@ -515,7 +516,7 @@ describe('TextEntry (the other two locales)', () => {
     const zh = render({ source: null, locale: 'zh' });
     expect(fr).toContain('Ce que vous enverrez :');
     expect(zh).toContain('你会发出的内容：');
-    expect(fr).toContain('Votre première veille arrive dans la minute.');
+    expect(fr).toContain('La recherche revient dans le meme fil.');
     expect(zh).toContain('你的第一份关注同一分钟就会回来。');
     for (const html of [fr, zh]) {
       expect(html).not.toContain('Text.sentLabel');

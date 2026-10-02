@@ -105,14 +105,14 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
     >
       <LegalSectionBlock id="what-hale-is" title="What Hale is">
         <p>
-          Hale is a planner for your kids&rsquo; year, reached by text message, not an app you
-          install. Email and the web app are available too, and carry the same record.
+          Hale is a planner for your kids&rsquo; year, reached by iMessage through Linq, not an app
+          you install. Hale is free, with unlimited chat. There is no paid plan. Email and the web
+          app are available too, and carry the same record.
         </p>
         <p>
-          Hale watches for things that matter in your family&rsquo;s day — including municipal
-          registration dates and programs where you live — answers parenting questions, and asks
-          how it went. Hale does not book a class or register you. Hale is a tool to support you
-          as a parent; it does not replace your judgment.
+          Hale looks up an age, a place, and a spot, watches recreation, TEE, and swim drops and
+          texts when a place opens, and asks how it went. Hale does not book a class or register
+          you. Hale is a tool to support you as a parent; it does not replace your judgment.
         </p>
       </LegalSectionBlock>
 
@@ -142,8 +142,8 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
         <p>
           Hale texts the number the conversation started from. We never text a number that has not
           texted us first, and your consent is recorded in the words you used to give it. How often
-          Hale texts depends on what your family has asked it to watch — typically a brief at the
-          start of the week and a message when something needs you.
+          Hale texts depends on what you asked and on what is being watched — a reply when you
+          ask, a text when a place opens, and one short line from a connected inbox or calendar.
         </p>
         <p>
           <strong>Reply STOP to any message and the messages stop</strong>, immediately, until you

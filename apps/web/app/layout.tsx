@@ -42,9 +42,9 @@ const fraunces = localFont({
 // needed (DESIGN.md § Type).
 
 export const metadata: Metadata = {
-  title: 'Hale · the family assistant you text',
+  title: 'Hale · the receipts room',
   description:
-    "Hale is the family assistant you text — it takes the family admin off your plate, catches registration day before spots fill, and never acts without your say-so. This is the receipts room: approvals, history, settings. Your family's data stays in Canada.",
+    "This is the receipts room: approvals, history, settings. Hale looks up an age, a place, and a spot, and does not book a class or register you. Hale is free, with unlimited chat. Your family's data stays in Canada.",
 };
 
 export const viewport: Viewport = {

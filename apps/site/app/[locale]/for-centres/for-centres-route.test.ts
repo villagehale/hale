@@ -201,7 +201,7 @@ describe('the page promises nothing that is not live', () => {
     // Every assertion above is satisfied by an empty page, so prove the scan is
     // reading real copy through the identical path.
     const text = rawText(await render('en')).toLowerCase();
-    for (const present of ['stop', 'postal code', 'privacy@villagehale.com', 'pipeda']) {
+    for (const present of ['unlimited chat', 'postal code', 'privacy@villagehale.com', 'pipeda']) {
       expect(text).toContain(present);
     }
   });
