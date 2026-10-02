@@ -17,6 +17,7 @@ import {
   DECLINE_ACK_BY_LANGUAGE,
   FIRST_TOUCH_AGES_BY_LANGUAGE,
   FIRST_TOUCH_EMPTY_BY_LANGUAGE,
+  FIRST_TOUCH_GROUP_FR,
   FIRST_TOUCH_IMESSAGE_BY_LANGUAGE,
   FIRST_TOUCH_SMS_BY_LANGUAGE,
   HALE_GREETING_EN,
@@ -530,7 +531,7 @@ describe('the French script', () => {
 
   it('answers HELP in French with the same capability line and the French keywords', () => {
     expect(HELP_REPLY_BY_LANGUAGE.fr).toBe(
-      "Je suis Hale. Écrivez-moi l'age de vos enfants et votre code postal pour commencer, ou par exemple 'bouge la natation de jeudi à 16h30' n'importe quand. Si cela touche la semaine de la famille, c'est pour moi. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
+      "Je suis Hale. Écrivez-moi l'age de vos enfants et votre code postal pour commencer, ou par exemple 'bouge la natation de jeudi à 16h30' n'importe quand. Si cela touche la semaine de la famille, c'est pour moi. Répondez ARRET pour vous désabonner, AIDE pour de l'aide. Ou dis \"configure-moi\" et je te guide.",
     );
     // Both, because both are now real. #491 named STOP alone and said why: `matchKeyword`
     // read the English list only, so naming AIDE would have promised a word that did
@@ -566,6 +567,9 @@ describe('the French script', () => {
     // identification clause).
     expect(HELP_REPLY).toContain("I'm Hale");
     expect(HELP_REPLY).toContain('Reply STOP to unsubscribe.');
+    expect(HELP_REPLY).toBe(
+      "I'm Hale. Text me your kids' ages and postal code to get started, or things like 'move Thursday swim to 4:30' any time - if it touches the family week, it's mine. Reply STOP to unsubscribe. Or say \"set me up\" and I'll walk you through it.",
+    );
   });
 
   it('answers an identity challenge in the locked French twin, without gendering Hale', () => {
@@ -688,19 +692,23 @@ describe('VIL-385 first-touch ladder copy', () => {
   const locked = [
     ...Object.values(FIRST_TOUCH_IMESSAGE_BY_LANGUAGE),
     ...Object.values(FIRST_TOUCH_SMS_BY_LANGUAGE),
+    FIRST_TOUCH_GROUP_FR,
     ...Object.values(FIRST_TOUCH_EMPTY_BY_LANGUAGE),
     ...Object.values(FIRST_TOUCH_AGES_BY_LANGUAGE),
   ];
 
   it('keeps Sloane’s sentences byte for byte', () => {
     expect(FIRST_TOUCH_IMESSAGE_BY_LANGUAGE).toEqual({
-      en: "Hey, it's Hale. I find what's on for kids. Tap to share where you are and I'll show you what's on this week.",
-      fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants. Partage ta position et je te montre ce qui est au programme cette semaine.",
+      en: "Hey, it's Hale. I find what's on for kids near you. Tap to share where you are and I'll show you what's on this week.",
+      fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants pres de chez toi. Partage ta position et je te montre ce qui est au programme cette semaine.",
     });
     expect(FIRST_TOUCH_SMS_BY_LANGUAGE).toEqual({
-      en: "Hey, it's Hale. I find what's on for kids. What's your postal code? I'll show you what's on this week.",
-      fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants. Quel est ton code postal? Je te montre ce qui est au programme cette semaine.",
+      en: "Hey, it's Hale. I find what's on for kids near you. What's your postal code? I'll show you what's on this week.",
+      fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants pres de chez toi. Quel est ton code postal? Je te montre ce qui est au programme cette semaine.",
     });
+    expect(FIRST_TOUCH_GROUP_FR).toBe(
+      "Bonjour, c'est Hale. Je trouve ce qui se passe pour les enfants pres de chez vous. Quel est votre code postal? Je vous montre ce qui est au programme cette semaine.",
+    );
     expect(FIRST_TOUCH_EMPTY_BY_LANGUAGE).toEqual({
       en: "Nothing on near you this week yet. I'll text you the first good one in a day or two.",
       fr: "Rien pres de toi cette semaine pour l'instant. Je t'envoie le premier bon dans un jour ou deux.",
@@ -722,6 +730,7 @@ describe('VIL-385 first-touch ladder copy', () => {
     for (const line of [
       FIRST_TOUCH_IMESSAGE_BY_LANGUAGE.fr,
       FIRST_TOUCH_SMS_BY_LANGUAGE.fr,
+      FIRST_TOUCH_GROUP_FR,
       FIRST_TOUCH_EMPTY_BY_LANGUAGE.fr,
       FIRST_TOUCH_AGES_BY_LANGUAGE.fr,
     ]) {

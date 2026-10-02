@@ -531,15 +531,22 @@ export const HALE_GREETING_EN =
  * alone. Byte-stable. ASCII apostrophes. French is ASCII, tu.
  */
 export const FIRST_TOUCH_IMESSAGE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: "Hey, it's Hale. I find what's on for kids. Tap to share where you are and I'll show you what's on this week.",
-  fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants. Partage ta position et je te montre ce qui est au programme cette semaine.",
+  en: "Hey, it's Hale. I find what's on for kids near you. Tap to share where you are and I'll show you what's on this week.",
+  fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants pres de chez toi. Partage ta position et je te montre ce qui est au programme cette semaine.",
 };
 
 /** VIL-385 · Sloane lock. SMS has no location card, so this is the whole first message. */
 export const FIRST_TOUCH_SMS_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: "Hey, it's Hale. I find what's on for kids. What's your postal code? I'll show you what's on this week.",
-  fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants. Quel est ton code postal? Je te montre ce qui est au programme cette semaine.",
+  en: "Hey, it's Hale. I find what's on for kids near you. What's your postal code? I'll show you what's on this week.",
+  fr: "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants pres de chez toi. Quel est ton code postal? Je te montre ce qui est au programme cette semaine.",
 };
+
+/**
+ * VIL-392. A French group has no location card and speaks to everyone in the
+ * thread, so the opener is vous and asks for a postal code.
+ */
+export const FIRST_TOUCH_GROUP_FR =
+  "Bonjour, c'est Hale. Je trouve ce qui se passe pour les enfants pres de chez vous. Quel est votre code postal? Je vous montre ce qui est au programme cette semaine.";
 
 /** VIL-385 · Sloane lock. The week find when the live lookup has nothing. No CTA. */
 export const FIRST_TOUCH_EMPTY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
@@ -861,7 +868,7 @@ export const CO_PARENT_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
 export const STOP_ACK =
   "You're unsubscribed - I won't text you again. Reply START if you ever want me back.";
 export const HELP_REPLY =
-  "I'm Hale. Text me your kids' ages and postal code to get started, or things like 'move Thursday swim to 4:30' any time - if it touches the family week, it's mine. Reply STOP to unsubscribe.";
+  "I'm Hale. Text me your kids' ages and postal code to get started, or things like 'move Thursday swim to 4:30' any time - if it touches the family week, it's mine. Reply STOP to unsubscribe. Or say \"set me up\" and I'll walk you through it.";
 export const START_ACK = "You're back - I'll keep an eye on your week again.";
 
 /**
@@ -901,7 +908,7 @@ export const START_ACK = "You're back - I'll keep an eye on your week again.";
  */
 export const HELP_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: HELP_REPLY,
-  fr: "Je suis Hale. Écrivez-moi l'age de vos enfants et votre code postal pour commencer, ou par exemple 'bouge la natation de jeudi à 16h30' n'importe quand. Si cela touche la semaine de la famille, c'est pour moi. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
+  fr: "Je suis Hale. Écrivez-moi l'age de vos enfants et votre code postal pour commencer, ou par exemple 'bouge la natation de jeudi à 16h30' n'importe quand. Si cela touche la semaine de la famille, c'est pour moi. Répondez ARRET pour vous désabonner, AIDE pour de l'aide. Ou dis \"configure-moi\" et je te guide.",
 };
 
 /**

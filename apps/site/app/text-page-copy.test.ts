@@ -160,16 +160,16 @@ describe('the preview bubble matches the ladder’s first message when the flag 
 
   it('pins the iMessage and SMS sentences to copy.ts, in EN and FR', () => {
     expect(ladder.imessage.en).toBe(
-      "Hey, it's Hale. I find what's on for kids. Tap to share where you are and I'll show you what's on this week.",
+      "Hey, it's Hale. I find what's on for kids near you. Tap to share where you are and I'll show you what's on this week.",
     );
     expect(ladder.sms.en).toBe(
-      "Hey, it's Hale. I find what's on for kids. What's your postal code? I'll show you what's on this week.",
+      "Hey, it's Hale. I find what's on for kids near you. What's your postal code? I'll show you what's on this week.",
     );
     expect(ladder.imessage.fr).toBe(
-      "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants. Partage ta position et je te montre ce qui est au programme cette semaine.",
+      "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants pres de chez toi. Partage ta position et je te montre ce qui est au programme cette semaine.",
     );
     expect(ladder.sms.fr).toBe(
-      "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants. Quel est ton code postal? Je te montre ce qui est au programme cette semaine.",
+      "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants pres de chez toi. Quel est ton code postal? Je te montre ce qui est au programme cette semaine.",
     );
     expect(messages('en').Text.greetingLadderImessage).toBe(ladder.imessage.en);
     expect(messages('en').Text.greetingLadderSms).toBe(ladder.sms.en);

@@ -4,11 +4,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { LINQ_GROUP_UNKNOWN_HOLD } from './group';
 import {
-  LINQ_GROUP_MEMBER_WELCOME,
   declinePrivilegedGroupSeat,
   dutyAssigneeIds,
+  groupMemberWelcome,
+  groupStrangerHold,
   holdTrueStrangerOnce,
   seatParticipantAdded,
   unseatParticipantRemoved,
@@ -113,7 +113,7 @@ describe('linq group members', () => {
       role: 'co_parent',
       notice: 'sent',
     });
-    expect(wire.texts).toEqual([LINQ_GROUP_MEMBER_WELCOME]);
+    expect(wire.texts).toEqual([groupMemberWelcome('en', 'Barton')]);
 
     const again = await seatParticipantAdded(db.database, {
       chatId: CHAT,
@@ -178,7 +178,26 @@ describe('linq group members', () => {
       send: wire.send,
     });
     expect(hale).toMatchObject({ outcome: 'group_member_seated', notice: 'skipped' });
-    expect(wire.texts).toEqual([LINQ_GROUP_MEMBER_WELCOME]);
+    expect(wire.texts).toEqual([groupMemberWelcome('en', null)]);
+  });
+
+  it('welcomes in French when that is the household language', async () => {
+    const seeded = await seedFamily(PARENT, 'Barton');
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'fr' })
+      .where(eq(schema.families.id, seeded.familyId));
+    const wire = sender();
+    await seatParticipantAdded(db.database, {
+      chatId: CHAT,
+      participantHandle: '+14165550122',
+      actorHandle: PARENT,
+      isFromMe: false,
+      now: NOW,
+      send: wire.send,
+    });
+    expect(wire.texts).toEqual([groupMemberWelcome('fr', 'Barton')]);
+    expect(wire.texts[0]).not.toContain('kids');
   });
 
   it('refuses a named stranger and a phone that already belongs to another family', async () => {
@@ -254,7 +273,8 @@ describe('linq group members', () => {
     });
     expect(first).toBe('sent');
     expect(second).toBe('already_sent');
-    expect(wire.texts).toEqual([LINQ_GROUP_UNKNOWN_HOLD]);
+    expect(wire.texts).toEqual([groupStrangerHold('en', 'Barton')]);
+    expect(wire.texts[0]).not.toContain('kids');
     const [row] = await db.database
       .select({
         parentUserId: schema.channelMessages.parentUserId,

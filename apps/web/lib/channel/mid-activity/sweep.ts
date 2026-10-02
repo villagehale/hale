@@ -4,7 +4,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import type { ReviewSubjectRef } from '~/lib/reviews/aggregate';
 import { MID_ACTIVITY_ASK_TEMPLATE_KEY, isUuid, midActivityAskDedupeKey } from './claim';
-import { MID_ACTIVITY_ASK_TODO, midActivityCopyMayLeave } from './copy';
+import { midActivityAsk, midActivityCopyMayLeave } from './copy';
 import {
   type CheckInCadence,
   cadenceFromSessionStarts,
@@ -15,16 +15,16 @@ import {
 import { midActivityAskEnabled } from './flag';
 
 /**
- * VIL-393 step 3 — ask once, mid-activity, and do not send until Design locks the line.
+ * VIL-393 step 3 — ask once, mid-activity. The line is locked. No sender is wired.
  *
  * The working set is a completed authorized signup: that is the activity the
  * household is in. Session starts say how often it runs. The check-in cadence
  * says how often the parent wants to be asked, and a missing row prefers fewer.
  * A priced session is not a gate. This product does not charge for the ask.
  *
- * The sentence is a TODO-Design placeholder, so a due ask is counted as
- * `placeholder` and no `channel_messages` row is written. Writing one would
- * claim the once-only key for a text that never left.
+ * A due ask whose locked line can leave is `unwired`: no `channel_messages`
+ * row is written. Writing one would claim the once-only key for a text that
+ * never left. `placeholder` stays for a line that still cannot leave.
  */
 
 const MAX_OFFERS_PER_RUN = 200;
@@ -206,7 +206,7 @@ export async function runMidActivityAskSweep(
       continue;
     }
     seenFamily.add(ask.familyId);
-    if (!midActivityCopyMayLeave(MID_ACTIVITY_ASK_TODO)) {
+    if (!midActivityCopyMayLeave(midActivityAsk(null, 'en'))) {
       result.placeholder += 1;
       continue;
     }

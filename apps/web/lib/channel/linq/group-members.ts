@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -8,7 +9,6 @@ import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { linqFromE164, linqGroupMembersEnabled } from './config';
-import { LINQ_GROUP_UNKNOWN_HOLD } from './group';
 import { LinqSendError, sendLinqChatMessage } from './transport';
 
 type LinqGroupMemberRole = 'parent' | 'co_parent' | 'other_family' | 'caregiver';
@@ -23,10 +23,59 @@ type LinqGroupMemberRole = 'parent' | 'co_parent' | 'other_family' | 'caregiver'
  */
 
 /**
- * DESIGN LOCK PENDING (Sloane). One line when a newcomer is seated. The
- * placeholder is the copy until that lock; it must not grow an opt-out.
+ * VIL-398. One welcome when a newcomer is seated, and one hold when a stranger
+ * speaks. Nothing else about the family goes into the thread until a parent
+ * approves. French is ASCII. No opt-out wording.
  */
-export const LINQ_GROUP_MEMBER_WELCOME = 'TODO-Design: you are in this household thread.';
+export const GROUP_MEMBER_WELCOME_WITH_ADDER: Record<ReplyLanguage, string> = {
+  en: "Hi, I'm Hale. {adder} added you so the family can sort the week in one place. What should I call you?",
+  fr: "Bonjour, c'est Hale. {adder} vous a ajoute pour qu'on s'organise ensemble. Comment je vous appelle?",
+};
+
+export const GROUP_MEMBER_WELCOME_NO_ADDER: Record<ReplyLanguage, string> = {
+  en: "Hi, I'm Hale. I help the family sort the week in one place. What should I call you?",
+  fr: "Bonjour, c'est Hale. J'aide la famille a organiser la semaine au meme endroit. Comment je vous appelle?",
+};
+
+export const GROUP_STRANGER_HOLD: Record<ReplyLanguage, string> = {
+  en: 'Someone new joined this chat and I don\'t know them yet, so I\'m pausing here. {parentA}, say "add them" if they share the load.',
+  fr: 'Une nouvelle personne s\'est jointe a la conversation et je ne la connais pas encore, alors je fais une pause. {parentA}, dis "ajoute cette personne" si elle partage la charge.',
+};
+
+function fillSlots(pattern: string, slots: Record<string, string>): string {
+  return pattern.replace(/\{(\w+)\}/g, (_, key: string) => slots[key] ?? '');
+}
+
+export function groupMemberWelcome(language: ReplyLanguage, adder: string | null): string {
+  const name = adder?.trim() ?? '';
+  if (!name) return GROUP_MEMBER_WELCOME_NO_ADDER[language];
+  return fillSlots(GROUP_MEMBER_WELCOME_WITH_ADDER[language], { adder: name });
+}
+
+export function groupStrangerHold(language: ReplyLanguage, parentA: string): string {
+  return fillSlots(GROUP_STRANGER_HOLD[language], { parentA });
+}
+
+async function familyReplyLanguage(database: Database, familyId: string): Promise<ReplyLanguage> {
+  const rows = await database
+    .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  const language = rows.find((row) => row.id === familyId)?.primaryLanguage;
+  return language?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
+}
+
+async function userFirstName(database: Database, userId: string | null): Promise<string | null> {
+  if (!userId) return null;
+  const rows = await database
+    .select({ id: schema.users.id, name: schema.users.name })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId));
+  const name = rows.find((row) => row.id === userId)?.name?.trim();
+  if (!name) return null;
+  const token = name.split(/\s+/)[0];
+  return token && token.length > 0 ? token : null;
+}
 
 const WELCOME_TEMPLATE = 'linq:group_member_welcome';
 const HOLD_TEMPLATE = 'linq:group_unknown_hold';
@@ -445,11 +494,13 @@ export async function seatParticipantAdded(
     );
     return { outcome: 'group_member_seated', role, notice: 'no_primary_parent' };
   }
+  const language = await familyReplyLanguage(database, familyId);
+  const adder = decision.kind === 'parent' ? await userFirstName(database, actor.userId) : null;
   const notice = await sendOnce(database, {
     familyId,
     parentUserId: primary,
     chatId: input.chatId,
-    text: LINQ_GROUP_MEMBER_WELCOME,
+    text: groupMemberWelcome(language, adder),
     templateKey: WELCOME_TEMPLATE,
     dedupeKey: `${WELCOME_TEMPLATE}:${input.chatId}:${hash}`,
     now: input.now,
@@ -529,12 +580,21 @@ export async function holdTrueStrangerOnce(
     );
     return 'no_primary_parent';
   }
+  const parentA = await userFirstName(database, primary);
+  if (!parentA) {
+    console.warn(
+      { familyId, outcome: 'not_sent', reason: 'parent_name_missing' },
+      'linq group member: stranger hold sends nothing about the family until a parent approves',
+    );
+    return 'not_sent';
+  }
+  const language = await familyReplyLanguage(database, familyId);
   const hash = phoneBlindIndex(phone);
   const notice = await sendOnce(database, {
     familyId,
     parentUserId: primary,
     chatId: input.chatId,
-    text: LINQ_GROUP_UNKNOWN_HOLD,
+    text: groupStrangerHold(language, parentA),
     templateKey: HOLD_TEMPLATE,
     dedupeKey: `${HOLD_TEMPLATE}:${input.chatId}:${hash}`,
     now: input.now,

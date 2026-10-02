@@ -20,8 +20,8 @@ import { midActivityAskEnabled } from './flag';
  * The row is an `activity_reviews` verdict. `readHouseholdFindBias` /
  * `biasFindOrder` are what move the next recommendation. Nothing here ranks
  * candidates on its own, and nothing here is said out loud. The parent's
- * sentence is not stored. This pass sends nothing: the ask's own copy is still
- * a design placeholder, and an acknowledgment would be one too.
+ * sentence is not stored. This pass sends nothing: the ask and the
+ * acknowledgment are locked, and no sender is wired.
  */
 
 const ASK_LOOKBACK_MS = 48 * 60 * 60 * 1000;
@@ -168,8 +168,8 @@ function subjectOf(
  * verdict on the same table the next find already reads.
  *
  * Flag off is a named skip and does no read. There is no sender in this
- * function: Design has not locked the acknowledgment, so a stored verdict
- * changes the next find and does not produce a text.
+ * function. The acknowledgment is locked, and a stored verdict still only
+ * changes the next find. This pass does not text.
  */
 export async function runMidActivityAnswerPass(
   database: Database,
