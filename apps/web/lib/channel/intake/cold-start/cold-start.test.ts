@@ -10,9 +10,14 @@ import {
   localCalendarDay,
 } from './budget';
 import {
+  CALENDAR_ASK_BY_LANGUAGE,
   DISCOVERY_NEXT_STEP,
+  EMAIL_ASK_BY_LANGUAGE,
+  KIDS_NAMES_ASK_BY_LANGUAGE,
   KNOWN_VENUE_HELLO,
   NAMES_ASK_BY_LANGUAGE,
+  SIGNUP_OFFER_DATE_KNOWN_BY_LANGUAGE,
+  SIGNUP_OFFER_NO_DATE_BY_LANGUAGE,
   discoveryBubble,
   logisticsBubble,
   namesAsk,
@@ -38,7 +43,7 @@ import {
   kidFirstName,
   mentionsSchoolOrCamp,
 } from './ladder';
-import { planPull } from './pull';
+import { planFollowAsk, planPull } from './pull';
 
 const START = new Date('2026-07-01T16:00:00.000Z');
 
@@ -267,12 +272,35 @@ describe('cold-start copy and ladder', () => {
     expect(bubble.body).not.toMatch(/stop|unsubscribe/i);
   });
 
-  it('does not let a placeholder leave, and does not ask gender', () => {
-    expect(namesAsk('en', { COLD_START_LADDER_COPY_LOCKED: 'true' }).mayLeave).toBe(false);
-    expect(NAMES_ASK_BY_LANGUAGE.en).toContain('TODO-Design');
-    expect(signupOffer('date_known')).toEqual({ body: 'TODO-Design', mayLeave: false });
+  it('does not let an unlocked or unfilled line leave, and does not ask gender', () => {
+    const locked = { COLD_START_LADDER_COPY_LOCKED: 'true' };
+    expect(namesAsk('en', {}).mayLeave).toBe(false);
+    expect(namesAsk('en', locked).mayLeave).toBe(true);
+    expect(namesAsk('en', locked).body).toBe(NAMES_ASK_BY_LANGUAGE.en);
+    expect(namesAsk('fr', locked).body).toBe(NAMES_ASK_BY_LANGUAGE.fr);
+    expect(namesAsk('en', locked, { googleConfirmedParentName: true }).body).toBe(
+      KIDS_NAMES_ASK_BY_LANGUAGE.en,
+    );
+    expect(namesAsk('fr', locked, { googleConfirmedParentName: true }).body).toBe(
+      KIDS_NAMES_ASK_BY_LANGUAGE.fr,
+    );
+    expect(signupOffer('date_known')).toEqual({
+      body: SIGNUP_OFFER_DATE_KNOWN_BY_LANGUAGE.en,
+      mayLeave: false,
+    });
     expect(signupOffer('no_date').mayLeave).toBe(false);
+    expect(signupOffer('no_date').body).toBe(SIGNUP_OFFER_NO_DATE_BY_LANGUAGE.en);
+    expect(signupOffer('date_known', { activity: 'swim', env: locked })).toEqual({
+      body: 'Want me to text you the morning sign-ups open for swim?',
+      mayLeave: true,
+    });
+    expect(signupOffer('no_date', { language: 'fr', day: 'Saturday', env: locked }).body).toBe(
+      "Tu veux que je t'ecrive apres Saturday pour savoir comment ca s'est passe?",
+    );
     expect(asksGender(NAMES_ASK_BY_LANGUAGE.en)).toBe(false);
+    expect(asksGender(NAMES_ASK_BY_LANGUAGE.fr)).toBe(false);
+    expect(asksGender(KIDS_NAMES_ASK_BY_LANGUAGE.en)).toBe(false);
+    expect(asksGender(KIDS_NAMES_ASK_BY_LANGUAGE.fr)).toBe(false);
     expect(asksGender("Who's taking them Saturday to swim?")).toBe(false);
   });
 
@@ -319,7 +347,7 @@ describe('cold-start copy and ladder', () => {
       calendarAskDue({
         now: START,
         familyStartedAt: START,
-        pickSettled: true,
+        nameLineSent: true,
         alreadyAsked: false,
       }),
     ).toBe(true);
@@ -327,7 +355,23 @@ describe('cold-start copy and ladder', () => {
       calendarAskDue({
         now: START,
         familyStartedAt: START,
-        pickSettled: true,
+        nameLineSent: false,
+        alreadyAsked: false,
+      }),
+    ).toBe(false);
+    expect(
+      calendarAskDue({
+        now: new Date(START.getTime() + 7 * 24 * 60 * 60 * 1000),
+        familyStartedAt: START,
+        nameLineSent: false,
+        alreadyAsked: false,
+      }),
+    ).toBe(true);
+    expect(
+      calendarAskDue({
+        now: START,
+        familyStartedAt: START,
+        nameLineSent: true,
         alreadyAsked: true,
       }),
     ).toBe(false);
@@ -356,8 +400,9 @@ describe('cold-start copy and ladder', () => {
       ages: 'a 4-year-old',
     });
     expect(later.mayLeave).toBe(false);
-    expect(later.skipped).toBe('copy_unlocked');
-    expect(later.body).toBe('TODO-Design');
+    expect(later.skipped).toBe('not_due');
+    expect(later.body).toBe('');
+    expect(later.kind).toBe('later');
     const groupFr = planPull({
       intent: 'set_me_up',
       language: 'fr',
@@ -393,6 +438,96 @@ describe('cold-start copy and ladder', () => {
     });
     expect(fact.memoryKind).toBe('lasting');
     expect(fact.factValue).toMatchObject({ kind: 'age_correction', ageMonths: 60 });
+  });
+
+  it('sends calendar and email as separate locked lines', () => {
+    const locked = { COLD_START_LADDER_COPY_LOCKED: 'true' };
+    const ascii = /^[\x20-\x7E]+$/;
+    const lines = [
+      NAMES_ASK_BY_LANGUAGE.en,
+      NAMES_ASK_BY_LANGUAGE.fr,
+      KIDS_NAMES_ASK_BY_LANGUAGE.en,
+      KIDS_NAMES_ASK_BY_LANGUAGE.fr,
+      SIGNUP_OFFER_DATE_KNOWN_BY_LANGUAGE.en,
+      SIGNUP_OFFER_DATE_KNOWN_BY_LANGUAGE.fr,
+      SIGNUP_OFFER_NO_DATE_BY_LANGUAGE.en,
+      SIGNUP_OFFER_NO_DATE_BY_LANGUAGE.fr,
+      CALENDAR_ASK_BY_LANGUAGE.en,
+      CALENDAR_ASK_BY_LANGUAGE.fr,
+      EMAIL_ASK_BY_LANGUAGE.en,
+      EMAIL_ASK_BY_LANGUAGE.fr,
+    ];
+    for (const line of lines) {
+      expect(line, line).toMatch(ascii);
+      expect(line).not.toContain('TODO-Design');
+      expect(line).not.toMatch(/\bSTOP\b|unsubscribe/i);
+    }
+    expect(CALENDAR_ASK_BY_LANGUAGE.en).not.toBe(EMAIL_ASK_BY_LANGUAGE.en);
+    const afterNames = planFollowAsk({
+      language: 'en',
+      now: START,
+      familyStartedAt: START,
+      nameLineSent: true,
+      calendarAlreadyAsked: false,
+      emailAlreadyAsked: false,
+      parentText: 'Maya starts daycare in September',
+      schoolMentioned: true,
+      activity: 'swim',
+      env: locked,
+    });
+    expect(afterNames).toEqual({
+      kind: 'calendar',
+      body: 'Want me to check swim against your calendar? This link is just for you. I can see your events and never change them.',
+      mayLeave: true,
+    });
+    const emailAfter = planFollowAsk({
+      language: 'fr',
+      now: START,
+      familyStartedAt: START,
+      nameLineSent: true,
+      calendarAlreadyAsked: true,
+      emailAlreadyAsked: false,
+      parentText: 'ok',
+      schoolMentioned: true,
+      activity: 'swim',
+      env: locked,
+    });
+    expect(emailAfter.kind).toBe('email');
+    expect(emailAfter.body).toBe(EMAIL_ASK_BY_LANGUAGE.fr);
+    expect(emailAfter.mayLeave).toBe(true);
+    const mentionOnly = planFollowAsk({
+      language: 'en',
+      now: START,
+      familyStartedAt: START,
+      nameLineSent: false,
+      calendarAlreadyAsked: false,
+      emailAlreadyAsked: false,
+      parentText: 'camp next week',
+      activity: 'swim',
+      env: locked,
+    });
+    expect(mentionOnly.kind).toBe('email');
+    expect(mentionOnly.body).toBe(EMAIL_ASK_BY_LANGUAGE.en);
+    const unlocked = planPull({
+      intent: 'set_me_up',
+      language: 'en',
+      hasPlace: true,
+      hasAges: true,
+      channel: 'sms',
+      group: false,
+      count: 0,
+      place: 'Markham',
+      ages: 'a 4-year-old',
+      nameLineSent: true,
+      activity: 'swim',
+      now: START,
+      familyStartedAt: START,
+      env: {},
+    });
+    expect(unlocked.kind).toBe('calendar');
+    expect(unlocked.mayLeave).toBe(false);
+    expect(unlocked.skipped).toBe('copy_unlocked');
+    expect(unlocked.body).toBe(CALENDAR_ASK_BY_LANGUAGE.en.replaceAll('{activity}', 'swim'));
   });
 
   it('keeps a next step on every line that can leave', () => {

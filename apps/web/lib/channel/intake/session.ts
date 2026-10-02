@@ -130,11 +130,16 @@ export interface FirstTouchPersisted {
 }
 
 export interface ColdStartProgress {
-  step: 'pick' | 'logistics';
+  step: 'pick' | 'logistics' | 'names' | 'follow';
   group: boolean;
   findBody: string;
   activity: string | null;
   day: string | null;
+  /** The names line has already been sent. Calendar may ride the next reply. */
+  nameLineSent: boolean;
+  calendarAsked: boolean;
+  emailAsked: boolean;
+  schoolMentioned: boolean;
 }
 
 /** Held when the share was attempted. Setup that never reached the chat stays null. */
@@ -261,8 +266,19 @@ function decodeColdStart(value: unknown): ColdStartProgress | null {
     findBody?: unknown;
     activity?: unknown;
     day?: unknown;
+    nameLineSent?: unknown;
+    calendarAsked?: unknown;
+    emailAsked?: unknown;
+    schoolMentioned?: unknown;
   };
-  if (row.step !== 'pick' && row.step !== 'logistics') return null;
+  if (
+    row.step !== 'pick' &&
+    row.step !== 'logistics' &&
+    row.step !== 'names' &&
+    row.step !== 'follow'
+  ) {
+    return null;
+  }
   if (typeof row.findBody !== 'string') return null;
   return {
     step: row.step,
@@ -270,6 +286,10 @@ function decodeColdStart(value: unknown): ColdStartProgress | null {
     findBody: row.findBody,
     activity: typeof row.activity === 'string' ? row.activity : null,
     day: typeof row.day === 'string' ? row.day : null,
+    nameLineSent: row.nameLineSent === true,
+    calendarAsked: row.calendarAsked === true,
+    emailAsked: row.emailAsked === true,
+    schoolMentioned: row.schoolMentioned === true,
   };
 }
 

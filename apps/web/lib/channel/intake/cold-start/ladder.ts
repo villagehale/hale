@@ -2,9 +2,10 @@
  * VIL-392 — cold-start planners.
  *
  * Names, gender, and pronouns never filter activities. Age is the only filter.
- * Kids' names are stored as a first name. Calendar and email asks are optional,
- * never stacked on another ask, and their copy does not leave while it is still
- * a placeholder. Nothing here reads a plan tier.
+ * Kids' names are stored as a first name. Calendar and email are separate
+ * asks and are never stacked. Calendar is due on the next reply after the
+ * name line, or on day 7. Email is due only after a school, daycare, or camp
+ * mention. Nothing here reads a plan tier.
  */
 
 import type { FactWrite } from '~/lib/memory/facts';
@@ -37,11 +38,12 @@ export function mentionsSchoolOrCamp(text: string): boolean {
 export function calendarAskDue(input: {
   now: Date;
   familyStartedAt: Date;
-  pickSettled: boolean;
+  /** The name line already went out on an earlier reply. */
+  nameLineSent: boolean;
   alreadyAsked: boolean;
 }): boolean {
   if (input.alreadyAsked) return false;
-  if (input.pickSettled) return true;
+  if (input.nameLineSent) return true;
   return input.now.getTime() >= input.familyStartedAt.getTime() + 7 * DAY_MS;
 }
 
