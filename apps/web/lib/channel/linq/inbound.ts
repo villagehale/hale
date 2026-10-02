@@ -23,6 +23,7 @@ import {
   linqGroupMembersEnabled,
   linqInboundConfigured,
   linqMissingInboundEnv,
+  linqMultiFamilyGroupsEnabled,
   linqWebhookSecret,
 } from './config';
 import {
@@ -58,6 +59,7 @@ import {
 import { captureLogisticsText } from './household-calendar';
 import { readSharedLocality } from './location-share';
 import { isLogisticsPollKind, recordLogisticsVote } from './logistics-poll';
+import { takeMultiFamilyTurn, unseatMultiFamilyMember } from './multi-family';
 import {
   type LinqInboundText,
   type LinqLocationSignal,
@@ -402,6 +404,27 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     deps.log.info({ outcome: coparent.outcome }, 'linq inbound: group coparent');
     await deps.countOutcome(coparent.count);
     return json(coparent.body);
+  }
+
+  const optOut = matchKeyword(message.text);
+  if (optOut?.keyword !== 'stop') {
+    const shared = await takeMultiFamilyTurn(deps.database, {
+      chatId: message.chatId,
+      senderHandle: message.senderHandle,
+      text: message.text,
+      providerMessageId: message.messageId,
+      receivedAt: message.receivedAt,
+      now: deps.now?.() ?? new Date(),
+      send: deps.sendGroupText,
+    });
+    if (shared.handled) {
+      deps.log.info({ outcome: shared.outcome }, 'linq inbound: multi-family group');
+      await deps.countOutcome(shared.count);
+      return json({
+        outcome: shared.outcome,
+        ...(shared.notice ? { notice: shared.notice } : {}),
+      });
+    }
   }
 
   if (await shouldHoldGroupStranger(deps.database, message)) {
@@ -863,8 +886,32 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
       participantHandle: signal.participantHandle,
       now,
     });
+    const multi = linqMultiFamilyGroupsEnabled()
+      ? await unseatMultiFamilyMember(deps.database, {
+          chatId: signal.chatId,
+          participantHandle: signal.participantHandle,
+          now,
+        })
+      : null;
     await deps.countOutcome('ignored');
-    return json({ outcome: unseated.outcome });
+    return json({
+      outcome: multi?.outcome === 'linq_multi_family_unseated' ? multi.outcome : unseated.outcome,
+    });
+  }
+  if (
+    signal.event === 'participant.removed' &&
+    signal.chatId &&
+    signal.participantHandle &&
+    linqMultiFamilyGroupsEnabled() &&
+    !linqGroupMembersEnabled()
+  ) {
+    const multi = await unseatMultiFamilyMember(deps.database, {
+      chatId: signal.chatId,
+      participantHandle: signal.participantHandle,
+      now: deps.now?.() ?? new Date(),
+    });
+    await deps.countOutcome('ignored');
+    return json({ outcome: multi.outcome });
   }
   if (
     signal.event === 'participant.added' &&

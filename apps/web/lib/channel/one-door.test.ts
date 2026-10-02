@@ -68,6 +68,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'seats a noted co-parent in a claimed group; sendLine inserts the channel_messages row (reply, dedupe key) before the Linq send and audits sms_reply_sent',
   'apps/web/lib/channel/linq/group-members.ts':
     'seats and unseats household group members; sendOnce inserts the channel_messages row (reply, template linq:group_member_welcome or linq:group_unknown_hold, dedupe key) on the primary parent before sendLinqChatMessage, and audits sms_reply_sent only after the send lands',
+  'apps/web/lib/channel/linq/multi-family.ts':
+    'shared-group notices and thread-only replies; sendOnce inserts the channel_messages row (reply, template linq:multi_family_joined, linq:multi_family_left, linq:multi_family_join_needed, linq:multi_family_reply, or linq:multi_family_ask, dedupe key) on the speaking family before sendLinqChatMessage, and audits sms_reply_sent only after the send lands',
   'apps/web/lib/channel/linq/household-calendar.ts':
     'group notices for kid events, conflicts, handoffs, and how-it-went; sendGroupNotice inserts the channel_messages row before the Linq send',
   'apps/web/lib/channel/coparent/duty/asks.ts':
