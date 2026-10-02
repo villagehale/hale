@@ -45,8 +45,8 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
-import { threadProactiveMessage } from '~/lib/channel/thread';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { weekdayFinderDedupeKey, weekdayFinderTemplateKey } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
@@ -313,7 +313,12 @@ export interface NudgeRunDeps {
    */
   pendingDutyOverview?(
     database: Database,
-    input: { familyId: string; parentUserId: string; now: Date },
+    input: {
+      familyId: string;
+      parentUserId: string;
+      now: Date;
+      replyClient?: AgentClient | null;
+    },
   ): Promise<{ text: string; commit: () => Promise<void> } | null>;
   client: AgentClient | null;
 }
@@ -706,6 +711,7 @@ async function runForFamily(
         familyId: family.familyId,
         parentUserId: speakerId,
         now,
+        replyClient: deps.client,
       });
       if (dutyFold) {
         const next = absorbDutyLine(wireMessage, dutyFold.text);

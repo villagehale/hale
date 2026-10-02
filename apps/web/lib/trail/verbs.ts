@@ -192,6 +192,8 @@ export const AUDIT_VERBS = [
   'duty_calendar_cleared',
   'duty_memory_recorded',
   'duty_memory_undone',
+  'reply_copy_composed',
+  'reply_copy_fallback',
   'voice_call_received',
   // v0's callback text. No new row carries it — an enrolled caller now has a spoken
   // conversation instead — but months of rows in production do, and a verb the trail
@@ -709,6 +711,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   duty_memory_recorded: { sentence: 'Hale noted a duty answer', family: 'note' },
   duty_memory_undone: { sentence: 'Hale updated a duty note', family: 'note' },
+  reply_copy_composed: {
+    sentence: 'Hale wrote a reply from the facts it already had',
+    family: 'note',
+  },
+  reply_copy_fallback: { sentence: 'Hale sent the fixed reply', family: 'note' },
   voice_call_received: {
     // Hale keeps no audio and no transcript — only that a call arrived.
     sentence: 'a call came in to Hale’s number',

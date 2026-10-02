@@ -151,6 +151,10 @@
     "file": "reminder-voice.md",
     "sha256": "56d0a6cdec4cd84d4673243872ef5112de9ae6d62fbd59702395f85026f9ba23"
   },
+  "reply-copy.md": {
+    "file": "reply-copy.md",
+    "sha256": "6479014997b90e0513b70a8c8e13d47870d51a7d1a702a447f6d6101bbe1b798"
+  },
   "reply-intent.md": {
     "file": "reply-intent.md",
     "sha256": "322e26a774f0c1a5d492dda049ce98d548fd7830c6ee76aa68c600c406e9b13f"

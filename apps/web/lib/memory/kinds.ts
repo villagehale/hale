@@ -194,6 +194,56 @@ function recallLine(language: MemoryKindLanguage, item: MemoryRecallItem): strin
   );
 }
 
+export interface MemoryRecallParts {
+  /** Set when there is nothing to list. The header, lines, and footer are then empty. */
+  empty: string | null;
+  header: string;
+  lines: string[];
+  footer: string;
+}
+
+/**
+ * The locked recall, split so a model may rewrite only the opening and the
+ * closing. The lines themselves stay the locked list. Receipts are dropped.
+ */
+export function memoryRecallParts(
+  language: MemoryKindLanguage,
+  items: readonly MemoryRecallItem[],
+): MemoryRecallParts {
+  const visible = items.filter(
+    (item) =>
+      item.source !== 'receipt' && item.key.trim().length > 0 && item.value.trim().length > 0,
+  );
+  if (visible.length === 0) {
+    return { empty: MEMORY_KIND_LINES[language].recallEmpty, header: '', lines: [], footer: '' };
+  }
+  const { header, footer } = recallParts(language);
+  return {
+    empty: null,
+    header,
+    lines: visible.map((item) => recallLine(language, item)),
+    footer,
+  };
+}
+
+/** Newest first. At most ten lines a bubble. Header on the first, footer on the last. */
+export function paginateMemoryRecall(
+  header: string,
+  lines: readonly string[],
+  footer: string,
+): string[] {
+  const bubbles: string[] = [];
+  for (let index = 0; index < lines.length; index += MEMORY_RECALL_LINES_PER_BUBBLE) {
+    const page = lines.slice(index, index + MEMORY_RECALL_LINES_PER_BUBBLE);
+    const parts: string[] = [];
+    if (index === 0 && header) parts.push(header);
+    parts.push(...page);
+    if (index + MEMORY_RECALL_LINES_PER_BUBBLE >= lines.length && footer) parts.push(footer);
+    bubbles.push(parts.join('\n'));
+  }
+  return bubbles;
+}
+
 /**
  * Newest first. At most ten lines a bubble. The header is only on the first
  * bubble and the "wrong or old" line only on the last. An empty list is its
@@ -203,23 +253,9 @@ export function renderMemoryRecall(
   language: MemoryKindLanguage,
   items: readonly MemoryRecallItem[],
 ): string[] {
-  const visible = items.filter(
-    (item) =>
-      item.source !== 'receipt' && item.key.trim().length > 0 && item.value.trim().length > 0,
-  );
-  if (visible.length === 0) return [MEMORY_KIND_LINES[language].recallEmpty];
-  const lines = visible.map((item) => recallLine(language, item));
-  const { header, footer } = recallParts(language);
-  const bubbles: string[] = [];
-  for (let index = 0; index < lines.length; index += MEMORY_RECALL_LINES_PER_BUBBLE) {
-    const page = lines.slice(index, index + MEMORY_RECALL_LINES_PER_BUBBLE);
-    const parts: string[] = [];
-    if (index === 0) parts.push(header);
-    parts.push(...page);
-    if (index + MEMORY_RECALL_LINES_PER_BUBBLE >= lines.length) parts.push(footer);
-    bubbles.push(parts.join('\n'));
-  }
-  return bubbles;
+  const parts = memoryRecallParts(language, items);
+  if (parts.empty) return [parts.empty];
+  return paginateMemoryRecall(parts.header, parts.lines, parts.footer);
 }
 
 export function renderMemoryForgotten(
