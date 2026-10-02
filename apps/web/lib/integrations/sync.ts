@@ -5,6 +5,7 @@ import type {
   CalendarAlertSweep,
   CalendarChange,
 } from './calendar-alert';
+import { bookedDetectionBackfillEnabled, bookedDetectionEnabledFor } from './booked';
 import type { EmailAlertResult, GmailAlertEnvelope } from './email-alert';
 import type { TravelDetectOutcome } from '~/lib/travel/detect';
 import type { ConnectorProvider } from './google-oauth';
@@ -99,6 +100,9 @@ export interface GmailAlertBatch {
   /** This run seeded the cursor — a first sync, or a re-seed after Gmail expired the
    * stored historyId — so its messages are the mailbox's existing 25. */
   seeding: boolean;
+  /** Absent on the live incremental batch. `backfill` is historical booking-shaped
+   * mail and must not be texted. */
+  pass?: 'incremental' | 'backfill';
   envelopes: readonly GmailAlertEnvelope[];
 }
 
@@ -239,6 +243,13 @@ export async function syncConnection(
         );
         travelDetections = envelopes.map(() => 'detect_failed' as const);
       }
+      const backfillAlerts = await runBookedBackfill(
+        connection,
+        accessToken,
+        deps,
+        result.nextMetadata,
+      );
+      if (backfillAlerts !== null) emailAlerts = [...emailAlerts, ...backfillAlerts];
     }
     if (result.calendar) {
       const { seeding, changes } = result.calendar;
@@ -530,8 +541,20 @@ interface GmailProfileResponse {
 
 interface GmailListResponse {
   messages?: Array<{ id?: string }>;
+  nextPageToken?: string;
   historyId?: string;
 }
+
+/** One page of booking-shaped mail per sweep. Eight metadata reads plus at most
+ * eight classifications stays inside the connector cron; the page token carries
+ * the rest to the next run. */
+export const BOOKED_BACKFILL_MAX_PER_SWEEP = 8;
+
+/** Receipts, invoices, confirmations, registrations from the last 90 days.
+ * Waitlist and reminder mail that still matches is refused by falseBookingSignal
+ * before a model call. */
+export const BOOKED_BACKFILL_QUERY =
+  'newer_than:90d (receipt OR invoice OR confirmation OR registration)';
 interface GmailHistoryResponse {
   history?: Array<{ messagesAdded?: Array<{ message?: { id?: string } }> }>;
   nextPageToken?: string;
@@ -582,6 +605,29 @@ async function syncGmail(
     nextHistoryId = history.nextHistoryId;
   }
 
+  const { events, envelopes } = await readGmailMessageBatch(
+    googleFetch,
+    accessToken,
+    connection,
+    messageIds,
+  );
+  return {
+    events,
+    // Preserve bookedBackfill (and any other cursor key) across the history advance.
+    // A fresh {historyId} object would wipe an in-progress backfill page.
+    nextMetadata: { ...connection.providerMetadata, historyId: nextHistoryId },
+    // A first run and a re-seed both saw mail that was already in the mailbox.
+    // seeding is what keeps either from becoming a burst of texts.
+    gmail: { seeding: startHistoryId === undefined || reseeded, envelopes },
+  };
+}
+
+async function readGmailMessageBatch(
+  googleFetch: GoogleFetch,
+  accessToken: string,
+  connection: { id: string; familyId: string },
+  messageIds: readonly string[],
+): Promise<{ events: IngestedEventPayload[]; envelopes: GmailAlertEnvelope[] }> {
   const events: IngestedEventPayload[] = [];
   const envelopes: GmailAlertEnvelope[] = [];
   let skippedNotFound = 0;
@@ -624,12 +670,102 @@ async function syncGmail(
       'connector sync: gmail messages gone before fetch, skipped',
     );
   }
+  return { events, envelopes };
+}
+
+interface BookedBackfillCursor {
+  pageToken?: string;
+  backfilledAt?: string;
+}
+
+function readBookedBackfill(meta: Record<string, unknown>): BookedBackfillCursor {
+  const raw = meta.bookedBackfill;
+  if (typeof raw !== 'object' || raw === null) return {};
+  const record = raw as { pageToken?: unknown; backfilledAt?: unknown };
   return {
-    events,
-    nextMetadata: { historyId: nextHistoryId },
-    // A first run and a re-seed both saw mail that was already in the mailbox.
-    // seeding is what keeps either from becoming a burst of texts.
-    gmail: { seeding: startHistoryId === undefined || reseeded, envelopes },
+    pageToken: readString(record.pageToken),
+    backfilledAt: readString(record.backfilledAt),
+  };
+}
+
+/** One page, then stop. A throw leaves the page token where it was so the next
+ * sweep retries it. Completion is `backfilledAt`, after which this returns null
+ * and lists nothing. */
+async function runBookedBackfill(
+  connection: ActiveConnectorConnection,
+  accessToken: string,
+  deps: SyncDeps,
+  nextMetadata: Record<string, unknown>,
+): Promise<readonly EmailAlertResult[] | null> {
+  if (!bookedDetectionBackfillEnabled()) return null;
+  if (!bookedDetectionEnabledFor(connection.familyId)) {
+    // Do not stamp completion. Turning booked detection on later must still be
+    // able to read the mailbox. Named so a sweep that listed nothing is readable.
+    console.info(
+      { integrationId: connection.id },
+      'booked detection backfill: booked detection is off, page not started',
+    );
+    return null;
+  }
+  const prior = readBookedBackfill(connection.providerMetadata);
+  if (prior.backfilledAt !== undefined) return null;
+  try {
+    const page = await listBookedBackfillPage(deps.googleFetch, accessToken, prior.pageToken);
+    const { envelopes } = await readGmailMessageBatch(
+      deps.googleFetch,
+      accessToken,
+      connection,
+      page.messageIds,
+    );
+    let alerts: readonly EmailAlertResult[] = [];
+    if (envelopes.length > 0) {
+      alerts = await deps.alertGmailEnvelopes({
+        connection,
+        accessToken,
+        seeding: false,
+        pass: 'backfill',
+        envelopes,
+      });
+    }
+    const bookedBackfill: BookedBackfillCursor = page.nextPageToken
+      ? { pageToken: page.nextPageToken }
+      : { backfilledAt: new Date().toISOString() };
+    await deps.saveCursor(connection.id, { ...nextMetadata, bookedBackfill });
+    return alerts;
+  } catch (err) {
+    console.error(
+      {
+        integrationId: connection.id,
+        err: err instanceof Error ? err.constructor.name : 'unknown',
+      },
+      'connector sync: booked backfill did not finish - the mailbox is fine, this page will be retried',
+    );
+    return [];
+  }
+}
+
+async function listBookedBackfillPage(
+  googleFetch: GoogleFetch,
+  accessToken: string,
+  pageToken: string | undefined,
+): Promise<{ messageIds: string[]; nextPageToken?: string }> {
+  const params = new URLSearchParams({
+    maxResults: String(BOOKED_BACKFILL_MAX_PER_SWEEP),
+    q: BOOKED_BACKFILL_QUERY,
+  });
+  if (pageToken) params.set('pageToken', pageToken);
+  const { data } = await getJson<GmailListResponse>(
+    googleFetch,
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params.toString()}`,
+    accessToken,
+  );
+  const messageIds: string[] = [];
+  for (const message of data.messages ?? []) {
+    if (message.id) messageIds.push(message.id);
+  }
+  return {
+    messageIds: messageIds.slice(0, BOOKED_BACKFILL_MAX_PER_SWEEP),
+    nextPageToken: readString(data.nextPageToken),
   };
 }
 

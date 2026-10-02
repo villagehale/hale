@@ -25,6 +25,7 @@ import type {
   InboxEnvelope,
   SentinelClassification,
 } from '~/lib/sentinel';
+import { falseBookingSignal } from '~/lib/sentinel/booking-guard';
 import { bookedDetectionEnabledFor } from './booked';
 import {
   type BookingDraftResult,
@@ -113,6 +114,8 @@ export const EMAIL_ALERT_OUTCOMES = [
   'dark',
   'no_parent_user',
   'seeding_run',
+  /** Historical mail recorded by the booked-detection backfill. No text was sent. */
+  'backfill_suppressed',
   'over_sweep_cap',
   'no_received_at',
   'gate_refused:not_enrolled',
@@ -157,6 +160,11 @@ export const BOOKING_OUTCOMES = [
   'refreshed',
   'booked_dark',
   'not_a_booking',
+  // The deterministic guard, named before a model call on the backfill pass. The live
+  // path still folds these into `not_a_booking` after the classifier rewrites the kind.
+  'waitlist',
+  'registration_opens',
+  'reminder_only',
   // The model's own flag, and the child's date of birth. Two counters, because which of
   // the two teen gates is actually holding the line is the thing worth being able to read.
   'teen_content',
@@ -708,7 +716,7 @@ async function recordBooking(
     parentUserId: string;
     integrationId: string;
     messageId: string;
-    channelMessageId: string;
+    channelMessageId: string | null;
     /** `null` when booked detection is dark — the one state that is not a refusal. */
     draft: BookingDraftResult | null;
     message: string;
@@ -790,8 +798,38 @@ export interface GmailSweepAlertInput {
    * messages ALREADY in the mailbox — history the parent never asked to be told about.
    * Nothing is alerted; every later run sees only messages added since. */
   seeding: boolean;
+  /**
+   * Historical booking-shaped mail from before the cursor. Writes `activity_bookings`
+   * and sends nothing: no iMessage, no offer row, no `email_alert_sent` audit.
+   */
+  backfill?: boolean;
   envelopes: readonly GmailAlertEnvelope[];
   now: Date;
+}
+
+/** The batch the connector sweep hands this module. Structural so email-alert does not
+ * import sync.ts (sync already imports this file). */
+export function gmailAlertSweepInput(
+  batch: {
+    connection: { id: string; familyId: string; userId: string | null };
+    seeding: boolean;
+    pass?: 'incremental' | 'backfill';
+    envelopes: readonly GmailAlertEnvelope[];
+  },
+  now: Date,
+): GmailSweepAlertInput {
+  const backfill = batch.pass === 'backfill';
+  return {
+    familyId: batch.connection.familyId,
+    parentUserId: batch.connection.userId,
+    integrationId: batch.connection.id,
+    // A backfill batch is not the seeding page. Forcing seeding false keeps a caller
+    // that copied the live batch from suppressing the write.
+    seeding: backfill ? false : batch.seeding,
+    backfill,
+    envelopes: batch.envelopes,
+    now,
+  };
 }
 
 /**
@@ -801,6 +839,168 @@ export interface GmailSweepAlertInput {
  * a mailbox that just received sixty messages, where the ones worth a text are the ones
  * that arrived last and the cost of reading all of them is sixty model calls.
  */
+const BOOKING_WROTE = new Set<BookingOutcome>(['recorded', 'already_recorded', 'refreshed']);
+
+/** Why this envelope did not become a text or a booking, when that is a fact worth
+ * reading. Null when the pass did the thing it came to do. */
+function sweepSkip(result: EmailAlertResult): string | null {
+  if (result.alert === 'sent') {
+    if (
+      result.booking !== null &&
+      result.booking !== 'booked_dark' &&
+      !BOOKING_WROTE.has(result.booking)
+    ) {
+      return result.booking;
+    }
+    return null;
+  }
+  if (result.alert === 'backfill_suppressed') {
+    if (result.booking !== null && BOOKING_WROTE.has(result.booking)) return null;
+    return result.booking ?? 'backfill_suppressed';
+  }
+  return result.alert;
+}
+
+/** One structured line per envelope. No subject, snippet, or message id — those are
+ * the mail (rule #1). A sweep that skipped everything is still readable here. Seeding
+ * runs are the 25 messages already in the mailbox and are not logged. */
+function logSweepOutcomes(
+  input: GmailSweepAlertInput,
+  outcomes: readonly EmailAlertResult[],
+): void {
+  if (input.seeding && input.backfill !== true) return;
+  for (const result of outcomes) {
+    console.info(
+      {
+        familyId: input.familyId,
+        integrationId: input.integrationId,
+        pass: input.backfill === true ? 'backfill' : 'incremental',
+        alert: result.alert,
+        booking: result.booking,
+        going: result.going,
+        skip: sweepSkip(result),
+      },
+      'gmail sweep: envelope outcome',
+    );
+  }
+}
+
+function datedEnvelopes(envelopes: readonly GmailAlertEnvelope[]): {
+  skipped: EmailAlertResult[];
+  considered: Array<GmailAlertEnvelope & { receivedAt: string }>;
+  capped: EmailAlertResult[];
+} {
+  const skipped: EmailAlertResult[] = [];
+  const dated: Array<GmailAlertEnvelope & { receivedAt: string }> = [];
+  for (const envelope of envelopes) {
+    if (envelope.receivedAt === undefined)
+      skipped.push({ alert: 'no_received_at', booking: null, going: null });
+    else dated.push({ ...envelope, receivedAt: envelope.receivedAt });
+  }
+  dated.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+  const capped: EmailAlertResult[] = [];
+  for (let i = EMAIL_ALERT_MAX_PER_SWEEP; i < dated.length; i += 1) {
+    capped.push({ alert: 'over_sweep_cap', booking: null, going: null });
+  }
+  return { skipped, considered: dated.slice(0, EMAIL_ALERT_MAX_PER_SWEEP), capped };
+}
+
+/**
+ * Historical mail. The booking decision is the live one (`bookingDraftFor` and
+ * `recordActivityBooking`, including the dedupe key). The parent is not told: no
+ * transport, no offer, no `email_alert_sent`, no channel row.
+ */
+async function recordBackfillEnvelope(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    integrationId: string;
+    envelope: GmailAlertEnvelope & { receivedAt: string };
+    cancelledThisSweep: Set<string>;
+    timeZone: string;
+    now: Date;
+  },
+  ports: EmailAlertPorts,
+): Promise<EmailAlertResult> {
+  const quiet = (booking: BookingOutcome | null): EmailAlertResult => ({
+    alert: 'backfill_suppressed',
+    booking,
+    going: null,
+  });
+  if (!bookedDetectionEnabledFor(input.familyId)) return quiet('booked_dark');
+
+  const signal = falseBookingSignal({
+    subject: input.envelope.subject,
+    snippet: input.envelope.snippet,
+  });
+  if (signal) return quiet(signal);
+
+  let classification: SentinelClassification;
+  try {
+    classification = await ports.classify(
+      {
+        familyId: input.familyId,
+        messageId: input.envelope.messageId,
+        subject: input.envelope.subject,
+        from: input.envelope.from,
+        snippet: input.envelope.snippet,
+        receivedAt: input.envelope.receivedAt,
+      },
+      input.timeZone,
+    );
+  } catch (err) {
+    console.error(
+      {
+        familyId: input.familyId,
+        err: err instanceof Error ? err.constructor.name : 'unknown',
+      },
+      'email alert: the sentinel could not read this message - no text, and the key is unspent',
+    );
+    return { alert: 'classifier_failed', booking: null, going: null };
+  }
+
+  const extraction = classification.extraction;
+  if (classification.status !== 'classified' || extraction === null) {
+    return { alert: 'not_parenting', booking: null, going: null };
+  }
+
+  const cancellationKey = bookingCancellationKey(
+    input.envelope.from,
+    sanitizedTitle(extraction.event.title),
+  );
+  if (extraction.kind === 'cancellation') {
+    await closeBookingsFor(database, {
+      familyId: input.familyId,
+      from: input.envelope.from,
+      title: extraction.event.title,
+      now: input.now,
+    });
+    if (cancellationKey !== null) input.cancelledThisSweep.add(cancellationKey);
+    return quiet('not_a_booking');
+  }
+  if (
+    extraction.kind === 'booking_confirmation' &&
+    cancellationKey !== null &&
+    input.cancelledThisSweep.has(cancellationKey)
+  ) {
+    return { alert: 'cancelled_in_sweep', booking: null, going: null };
+  }
+
+  const draft = bookingDraftFor(extraction, input.envelope.from, true, input.now);
+  const booking = await recordBooking(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    integrationId: input.integrationId,
+    messageId: input.envelope.messageId,
+    channelMessageId: null,
+    draft,
+    // No sentence went out, so the audit's `offered` flag is false.
+    message: '',
+  });
+  return quiet(booking);
+}
+
 export async function alertParentForGmailSweep(
   database: Database,
   input: GmailSweepAlertInput,
@@ -808,10 +1008,44 @@ export async function alertParentForGmailSweep(
 ): Promise<readonly EmailAlertResult[]> {
   const { parentUserId, envelopes } = input;
   if (parentUserId === null) {
-    return envelopes.map(() => ({ alert: 'no_parent_user', booking: null, going: null }));
+    const outcomes = envelopes.map(
+      (): EmailAlertResult => ({ alert: 'no_parent_user', booking: null, going: null }),
+    );
+    logSweepOutcomes(input, outcomes);
+    return outcomes;
   }
-  if (input.seeding)
+  if (input.seeding && input.backfill !== true) {
     return envelopes.map(() => ({ alert: 'seeding_run', booking: null, going: null }));
+  }
+
+  if (input.backfill === true) {
+    const { skipped, considered, capped } = datedEnvelopes(envelopes);
+    const outcomes: EmailAlertResult[] = [...skipped, ...capped];
+    if (considered.length > 0) {
+      const timeZone = await ports.timeZone(parentUserId);
+      const cancelledThisSweep = new Set<string>();
+      for (const envelope of considered) {
+        outcomes.push(
+          await recordBackfillEnvelope(
+            database,
+            {
+              familyId: input.familyId,
+              parentUserId,
+              integrationId: input.integrationId,
+              envelope,
+              cancelledThisSweep,
+              timeZone,
+              now: input.now,
+            },
+            ports,
+          ),
+        );
+      }
+    }
+    logSweepOutcomes(input, outcomes);
+    return outcomes;
+  }
+
   // Nothing from a mailbox reaches the group, and a family whose home channel
   // is the group is not texted the same mail on SMS either.
   const outbound = await familyOutboundTarget(database, input.familyId);
@@ -820,23 +1054,19 @@ export async function alertParentForGmailSweep(
       { familyId: input.familyId },
       'email alert: mailbox stays off the group and off SMS',
     );
-    return envelopes.map(() => ({ alert: 'group_privacy', booking: null, going: null }));
+    const outcomes = envelopes.map(
+      (): EmailAlertResult => ({ alert: 'group_privacy', booking: null, going: null }),
+    );
+    logSweepOutcomes(input, outcomes);
+    return outcomes;
   }
 
-  const outcomes: EmailAlertResult[] = [];
-  const dated: Array<GmailAlertEnvelope & { receivedAt: string }> = [];
-  for (const envelope of envelopes) {
-    if (envelope.receivedAt === undefined)
-      outcomes.push({ alert: 'no_received_at', booking: null, going: null });
-    else dated.push({ ...envelope, receivedAt: envelope.receivedAt });
+  const { skipped, considered, capped } = datedEnvelopes(envelopes);
+  const outcomes: EmailAlertResult[] = [...skipped, ...capped];
+  if (considered.length === 0) {
+    logSweepOutcomes(input, outcomes);
+    return outcomes;
   }
-  dated.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
-  for (let i = EMAIL_ALERT_MAX_PER_SWEEP; i < dated.length; i += 1) {
-    outcomes.push({ alert: 'over_sweep_cap', booking: null, going: null });
-  }
-
-  const considered = dated.slice(0, EMAIL_ALERT_MAX_PER_SWEEP);
-  if (considered.length === 0) return outcomes;
 
   const timeZone = await ports.timeZone(parentUserId);
   // ONE SET FOR THE WHOLE BATCH. The sort above is what makes it sound: every envelope
@@ -866,6 +1096,7 @@ export async function alertParentForGmailSweep(
       ),
     );
   }
+  logSweepOutcomes(input, outcomes);
   return outcomes;
 }
 
