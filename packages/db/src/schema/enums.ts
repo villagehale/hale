@@ -183,6 +183,13 @@ export const consentTypeEnum = pgEnum('consent_type', [
   // (that is permission to ACT on the family's behalf) — this is permission to DISCLOSE
   // the family to a third household, which no other record in this table means.
   'village_intro',
+  // VIL-399 — a parent's explicit decision that THEIR family is in a named
+  // shared Linq group. Scope is the chat id. Another family's parent cannot
+  // write this for them. Granted false is the family leaving. Hale does not
+  // read this family's memory, calendar, email, children, or signups for that
+  // group unless a granted row is on file, and a shared reply still does not
+  // carry those details.
+  'multi_family_group',
 ]);
 
 // VIL-147 · what a teen raw-access grant unlocks. Deliberately a CLOSED, SMALL

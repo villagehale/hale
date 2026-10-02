@@ -79,3 +79,13 @@ export function linqGroupCoparentEnabled(): boolean {
 export function linqGroupMembersEnabled(): boolean {
   return trimmed('LINQ_GROUP_MEMBERS_ENABLED') === 'true';
 }
+
+/**
+ * Shared Linq groups that hold more than one family (VIL-399). Exactly `true`
+ * enables it. Unset, empty, `on`, and `false` stay dark. Default off.
+ * While dark, a phone from another family is still refused by the household
+ * seat.
+ */
+export function linqMultiFamilyGroupsEnabled(): boolean {
+  return trimmed('LINQ_MULTI_FAMILY_GROUPS_ENABLED') === 'true';
+}

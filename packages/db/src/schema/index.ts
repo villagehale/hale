@@ -68,6 +68,7 @@ export * from './family-trips.js';
 export * from './linq-poll-options.js';
 export * from './linq-group-onboarding.js';
 export * from './linq-group-members.js';
+export * from './linq-multi-family.js';
 export * from './parent-calendar-blocks.js';
 export * from './group-decision-sync.js';
 export * from './social-watchlist.js';

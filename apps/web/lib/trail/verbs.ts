@@ -170,6 +170,16 @@ export const AUDIT_VERBS = [
   'linq_group_member_unseated',
   'linq_group_member_refused',
   'linq_group_stranger_held',
+  'linq_multi_family_joined',
+  'linq_multi_family_left',
+  'linq_multi_family_unseated',
+  'linq_multi_family_refused',
+  'linq_multi_family_reply_sent',
+  'linq_multi_family_ask_sent',
+  'linq_multi_family_ask_capped',
+  'linq_multi_family_send_capped',
+  'linq_multi_family_private_withheld',
+  'linq_multi_family_data_refused',
   'linq_poll_sent',
   // A live logistics fact: an open ask, a named taker, a chosen time, or
   // "none of these" ending the both-free ask. One verb, because every one of
@@ -635,6 +645,46 @@ const VERBS: Record<AuditVerb, Verb> = {
   linq_group_stranger_held: {
     sentence: 'Hale answered a number that is not in this household',
     family: 'note',
+  },
+  linq_multi_family_joined: {
+    sentence: 'A family joined a shared thread',
+    family: 'done',
+  },
+  linq_multi_family_left: {
+    sentence: 'A family left a shared thread',
+    family: 'note',
+  },
+  linq_multi_family_unseated: {
+    sentence: 'Hale unseated someone from a shared thread',
+    family: 'note',
+  },
+  linq_multi_family_refused: {
+    sentence: 'Hale did not add that family to the shared thread',
+    family: 'problem',
+  },
+  linq_multi_family_reply_sent: {
+    sentence: 'Hale replied in a shared thread from what was already said',
+    family: 'done',
+  },
+  linq_multi_family_ask_sent: {
+    sentence: 'Hale asked one family in a shared thread',
+    family: 'note',
+  },
+  linq_multi_family_ask_capped: {
+    sentence: 'Hale did not ask, because that family is at its ask budget',
+    family: 'note',
+  },
+  linq_multi_family_send_capped: {
+    sentence: 'Hale did not text, because that family is at its send cap',
+    family: 'note',
+  },
+  linq_multi_family_private_withheld: {
+    sentence: "Hale kept each family's private details out of the shared thread",
+    family: 'note',
+  },
+  linq_multi_family_data_refused: {
+    sentence: "Hale did not use a family's details without that family's consent",
+    family: 'problem',
   },
   linq_poll_sent: { sentence: 'Hale sent you a short choice', family: 'note' },
   // True for an open ask, a named taker, a chosen time, and a both-free
