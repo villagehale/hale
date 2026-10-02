@@ -6,9 +6,9 @@
   },
   "HomeMeta": {
     "title": "Hale · a planner for your kids’ year",
-    "description": "Ask for a spot. I’ll look it up. Hale looks up an age, a place, and a spot, watches recreation, TEE, and swim drops across {count} GTA municipalities, and texts when a place opens. Free, with unlimited chat. No app, no account. Hale does not book a class or register you. Your data stays in Canada.",
-    "ogDescription": "Ask for a spot. I’ll look it up. Age, place, and the spot. Hale looks it up and texts when a place opens. Free, with unlimited chat. No app, no account. Your data stays in Canada.",
-    "twitterDescription": "Age, place, and the spot. Toddler swim near Georgetown on Saturday is the kind of thing you can ask. Free, with unlimited chat. Your data stays in Canada."
+    "description": "Find what’s on. Hear how it went. Hale looks up an age, a place, and a spot, watches recreation, TEE, and swim drops across {count} GTA municipalities, and texts when a place opens. Free, with unlimited chat. No app, no account. Hale does not book a class or register you. Your data stays in Canada.",
+    "ogDescription": "Find what’s on. Hear how it went. What’s worth doing with the kids. Hale looks it up and texts when a place opens. Free, with unlimited chat. No app, no account. Your data stays in Canada.",
+    "twitterDescription": "Find what’s on. Hear how it went. What’s worth doing with the kids. Free, with unlimited chat. Your data stays in Canada."
   },
   "Header": {
     "navPricing": "Pricing",
@@ -17,7 +17,7 @@
     "signIn": "Sign in"
   },
   "Footer": {
-    "blurb": "Hale is a planner for your kids’ year. Ask for a spot. I’ll look it up.",
+    "blurb": "Hale is a planner for your kids’ year. Find what’s on. Hear how it went.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— Hawaiian for home.",
@@ -57,10 +57,10 @@
   },
   "Landing": {
     "eyebrow": "Hale · /HAH-leh/ · Hawaiian for home",
-    "heroH1a": "Ask for a spot.",
-    "heroH1b": "I’ll look",
-    "heroH1Accent": "it up.",
-    "heroSub": "Age, place, and the spot. Toddler swim near Georgetown on Saturday is the kind of thing you can ask.",
+    "heroH1a": "Find what’s on.",
+    "heroH1b": "Hear how",
+    "heroH1Accent": "it went.",
+    "heroSub": "What’s worth doing with the kids.",
     "heroThread": [
       {
         "dir": "out",
@@ -311,7 +311,7 @@
   },
   "About": {
     "metaTitle": "About · Hale",
-    "metaDescription": "Hale is a planner for your kids’ year. Ask for a spot. I’ll look it up. Barton Dong, CEO, and Eugene Song, CTO, at Village Hale Technologies Inc. in Georgetown, Ontario.",
+    "metaDescription": "Hale is a planner for your kids’ year. Find what’s on. Hear how it went. Barton Dong, CEO, and Eugene Song, CTO, at Village Hale Technologies Inc. in Georgetown, Ontario.",
     "eyebrow": "About Hale",
     "headline": [
       {
@@ -725,9 +725,9 @@
   },
   "Text": {
     "metaTitle": "Text Hale",
-    "metaDescription": "Ask for a spot. I’ll look it up. Age, place, and the spot. Toddler swim near Georgetown on Saturday is the kind of thing you can ask.",
-    "headline": "Ask for a spot. I’ll look it up.",
-    "lede": "Age, place, and the spot. Toddler swim near Georgetown on Saturday is the kind of thing you can ask.",
+    "metaDescription": "Find what’s on. Hear how it went. What’s worth doing with the kids.",
+    "headline": "Find what’s on. Hear how it went.",
+    "lede": "What’s worth doing with the kids.",
     "sentLabel": "What you’ll send:",
     "sentGloss": "Hey Hale, what's going on?",
     "previewLabel": "The text you’ll get back:",
@@ -780,6 +780,6 @@
   },
   "Jsonld": {
     "orgDescription": "Hale is a planner for your kids’ year. It looks up an age, a place, and a spot, watches recreation drops, and texts when a place opens. Free, with unlimited chat. Every family’s data stays in Canada.",
-    "appDescription": "Ask for a spot. I’ll look it up. A planner for your kids’ year: Hale looks up an age, a place, and a spot, texts when a place opens, and does not book a class or register you. Free, with unlimited chat. Your family’s data never leaves Canada."
+    "appDescription": "Find what’s on. Hear how it went. A planner for your kids’ year: Hale looks up an age, a place, and a spot, texts when a place opens, and does not book a class or register you. Free, with unlimited chat. Your family’s data never leaves Canada."
   }
 }

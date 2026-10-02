@@ -133,10 +133,8 @@ function qrPath(html: string): string {
 describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
   it('leads with what Hale IS — the five-second line, both arms', () => {
     for (const html of [liveHtml, unsetHtml]) {
-      expect(html).toContain('Ask for a spot. I’ll look it up.');
-      expect(html).toContain(
-        'Age, place, and the spot. Toddler swim near Georgetown on Saturday is the kind of thing you can ask.',
-      );
+      expect(html).toContain('Find what’s on. Hear how it went.');
+      expect(html).toContain('What’s worth doing with the kids.');
       expect(html).not.toContain('No app, no account — just this text thread.');
     }
     // Positive control: the fact itself is still on the page, once.
@@ -424,10 +422,8 @@ describe('TextEntry — the channel matrix, rendered', () => {
     expect(liveHtml).not.toContain('wa.me');
     expect(liveHtml).not.toContain('What is worth doing with the kids near us?');
     expect(liveHtml).not.toContain('What%20is%20worth%20doing');
-    expect(liveHtml).toContain('Ask for a spot. I’ll look it up.');
-    expect(liveHtml).toContain(
-      'Age, place, and the spot. Toddler swim near Georgetown on Saturday is the kind of thing you can ask.',
-    );
+    expect(liveHtml).toContain('Find what’s on. Hear how it went.');
+    expect(liveHtml).toContain('What’s worth doing with the kids.');
   });
 
   it('keeps the dark page dark: no composer on the email-fallback state', () => {

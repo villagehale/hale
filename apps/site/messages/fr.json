@@ -6,9 +6,9 @@
   },
   "HomeMeta": {
     "title": "Hale · un planificateur pour l’année de vos enfants",
-    "description": "Demandez une place. Je la cherche. Hale cherche selon un age, un endroit et une place, surveille les places en loisirs, en TEE et en natation dans {count} municipalites de la RGT, et texte quand une place s'ouvre. Gratuit, avec un clavardage illimite. Pas d'appli, pas de compte. Hale ne reserve pas et n'inscrit personne. Vos donnees restent au Canada.",
-    "ogDescription": "Demandez une place. Je la cherche. L'age, l'endroit et la place. Hale cherche et texte quand une place s'ouvre. Gratuit, avec un clavardage illimite. Pas d'appli, pas de compte. Vos donnees restent au Canada.",
-    "twitterDescription": "L'age, l'endroit et la place. Une natation pour tout-petit pres de Georgetown un samedi, c'est le genre de demande. Gratuit, avec un clavardage illimite. Vos donnees restent au Canada."
+    "description": "Trouvez ce qu’il y a. Écoutez comment ça va. Hale cherche selon un age, un endroit et une place, surveille les places en loisirs, en TEE et en natation dans {count} municipalites de la RGT, et texte quand une place s'ouvre. Gratuit, avec un clavardage illimite. Pas d'appli, pas de compte. Hale ne reserve pas et n'inscrit personne. Vos donnees restent au Canada.",
+    "ogDescription": "Trouvez ce qu’il y a. Écoutez comment ça va. Ce qui vaut la peine avec les enfants. Hale cherche et texte quand une place s'ouvre. Gratuit, avec un clavardage illimite. Pas d'appli, pas de compte. Vos donnees restent au Canada.",
+    "twitterDescription": "Trouvez ce qu’il y a. Écoutez comment ça va. Ce qui vaut la peine avec les enfants. Gratuit, avec un clavardage illimite. Vos donnees restent au Canada."
   },
   "Header": {
     "navPricing": "Tarifs",
@@ -17,7 +17,7 @@
     "signIn": "Se connecter"
   },
   "Footer": {
-    "blurb": "Hale est un planificateur pour l'annee de vos enfants. Demandez une place. Je la cherche.",
+    "blurb": "Hale est un planificateur pour l'annee de vos enfants. Trouvez ce qu’il y a. Écoutez comment ça va.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— hawaïen pour « maison ».",
@@ -57,10 +57,10 @@
   },
   "Landing": {
     "eyebrow": "Hale · /HAH-leh/ · hawaïen pour « maison »",
-    "heroH1a": "Demandez une place.",
-    "heroH1b": "Je la",
-    "heroH1Accent": "cherche.",
-    "heroSub": "L'age, l'endroit et la place. Une natation pour tout-petit pres de Georgetown un samedi, c'est le genre de demande.",
+    "heroH1a": "Trouvez ce qu’il y a.",
+    "heroH1b": "Écoutez comment",
+    "heroH1Accent": "ça va.",
+    "heroSub": "Ce qui vaut la peine avec les enfants.",
     "heroThread": [
       {
         "dir": "out",
@@ -311,7 +311,7 @@
   },
   "About": {
     "metaTitle": "À propos · Hale",
-    "metaDescription": "Hale est un planificateur pour l'annee de vos enfants. Demandez une place. Je la cherche. Barton Dong, PDG, et Eugene Song, CTO, chez Village Hale Technologies Inc. a Georgetown, en Ontario.",
+    "metaDescription": "Hale est un planificateur pour l'annee de vos enfants. Trouvez ce qu’il y a. Écoutez comment ça va. Barton Dong, PDG, et Eugene Song, CTO, chez Village Hale Technologies Inc. a Georgetown, en Ontario.",
     "eyebrow": "À propos de Hale",
     "headline": [
       {
@@ -725,9 +725,9 @@
   },
   "Text": {
     "metaTitle": "Texter Hale",
-    "metaDescription": "Demandez une place. Je la cherche. L'age, l'endroit et la place. Une natation pour tout-petit pres de Georgetown un samedi, c'est le genre de demande.",
-    "headline": "Demandez une place. Je la cherche.",
-    "lede": "L'age, l'endroit et la place. Une natation pour tout-petit pres de Georgetown un samedi, c'est le genre de demande.",
+    "metaDescription": "Trouvez ce qu’il y a. Écoutez comment ça va. Ce qui vaut la peine avec les enfants.",
+    "headline": "Trouvez ce qu’il y a. Écoutez comment ça va.",
+    "lede": "Ce qui vaut la peine avec les enfants.",
     "sentLabel": "Ce que vous enverrez :",
     "sentGloss": "Salut Hale, qu'est-ce qui se passe?",
     "previewLabel": "Le texto que vous recevrez en retour :",
@@ -780,6 +780,6 @@
   },
   "Jsonld": {
     "orgDescription": "Hale est un planificateur pour l'annee de vos enfants. Il cherche selon un age, un endroit et une place, surveille les places en loisirs, et texte quand une place s'ouvre. Gratuit, avec un clavardage illimite. Les donnees de chaque famille restent au Canada.",
-    "appDescription": "Demandez une place. Je la cherche. Un planificateur pour l'annee de vos enfants: Hale cherche selon un age, un endroit et une place, texte quand une place s'ouvre, et ne reserve pas un cours et n'inscrit personne. Gratuit, avec un clavardage illimite. Les donnees de votre famille ne quittent pas le Canada."
+    "appDescription": "Trouvez ce qu’il y a. Écoutez comment ça va. Un planificateur pour l'annee de vos enfants: Hale cherche selon un age, un endroit et une place, texte quand une place s'ouvre, et ne reserve pas un cours et n'inscrit personne. Gratuit, avec un clavardage illimite. Les donnees de votre famille ne quittent pas le Canada."
   }
 }

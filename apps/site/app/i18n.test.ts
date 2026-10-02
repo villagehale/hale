@@ -315,13 +315,13 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
 
   it('keeps HomeMeta, page meta, and Jsonld on the kids-year lines', () => {
     const h1 = {
-      en: 'Ask for a spot. I’ll look it up.',
-      fr: 'Demandez une place. Je la cherche.',
+      en: 'Find what’s on. Hear how it went.',
+      fr: 'Trouvez ce qu’il y a. Écoutez comment ça va.',
       zh: '看看有什么。听听怎么样。',
     } as const;
     const sub = {
-      en: 'Age, place, and the spot. Toddler swim near Georgetown on Saturday is the kind of thing you can ask.',
-      fr: "L'age, l'endroit et la place. Une natation pour tout-petit pres de Georgetown un samedi, c'est le genre de demande.",
+      en: 'What’s worth doing with the kids.',
+      fr: 'Ce qui vaut la peine avec les enfants.',
       zh: '值得和孩子一起做的事。',
     } as const;
     const banned = [

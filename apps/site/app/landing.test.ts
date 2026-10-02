@@ -63,12 +63,12 @@ describe('landing — the v4 hero', () => {
     expect(h1).toContain('v4-display');
     // #684 locked the kids-year headline onto this layout. The shore, the thread
     // and the sections are the pre-v5 page; these two lines are not.
-    expect(visibleText(h1)).toBe("Ask for a spot. I’ll look it up.");
+    expect(visibleText(h1)).toBe("Find what’s on. Hear how it went.");
     expect(h1).not.toContain('7:02');
     expect(h1).not.toContain('I find it.');
     expect(h1).not.toContain('family assistant');
     expect(html).toContain(
-      'Age, place, and the spot. Toddler swim near Georgetown on Saturday is the kind of thing you can ask.',
+      'What’s worth doing with the kids.',
     );
     expect(html).not.toContain('Three texts, then quiet.');
     expect(html).not.toContain('Take the family admin off your plate');
@@ -128,7 +128,7 @@ describe('landing — the v4 hero', () => {
     // page after those scripts, which is what a visitor actually sees.
     const seen = visibleText(html.replace(/<script[\s\S]*?<\/script>/g, ''));
     const order = [
-      "Ask for a spot. I’ll look it up.",
+      "Find what’s on. Hear how it went.",
       'Toddler swim near Georgetown on Saturday?',
       'Free, with unlimited chat.',
       'Texting Hale looks like this',
@@ -447,7 +447,7 @@ describe('landing — sections, in the Surfaces Plan order', () => {
 
   it('orders the sections the way the Surfaces Plan does', () => {
     const order = [
-      "Ask for a spot. I’ll look it up.",
+      "Find what’s on. Hear how it went.",
       'Texting Hale looks like this',
       'How Hale works',
       'The part that matters',
