@@ -1,133 +1,81 @@
 # Family memory export and backup (VIL-388)
 
-Proposal only. No schema change, no new table, no new route. This note records what a family record is today, then a snapshot shape a later change could write.
+Proposal only. No schema change, no new route, no snapshot writer here. Parent: [VIL-364](https://linear.app/villagehale/issue/VIL-364/epic-year-loop-retention-before-paid). Brief privacy: `docs/privacy/instinct-memory.md`. `toFamilyMemoryExportFact` in `apps/web/lib/memory/kinds.ts` is the fact shape a later file should call. No snapshot builder exists today.
 
-Parent of this work: [VIL-364](https://linear.app/villagehale/issue/VIL-364/epic-year-loop-retention-before-paid). Privacy surface for the memory brief itself: `docs/privacy/instinct-memory.md`.
+## What we store today
 
-## What we store today, and where
+Postgres. Rows cascade when `families` is deleted (`packages/db/src/schema/memory.ts`).
 
-Postgres, Supabase Toronto. Per-family rows cascade when `families` is deleted. `scheduleFamilyDeletion` stamps the grace window; `runDeletionSweep` in `apps/web/lib/rights/delete.ts` is what the cron at `apps/web/app/api/cron/delete-sweep/route.ts` runs once that stamp is due.
+**Facts** (`family_memory_facts`). `family_id`, optional `child_id`, `fact_type` (`preference`, `routine`, `medical`, `logistic`, `relationship`, `voice` — `packages/db/src/schema/enums.ts`), `fact_key`, `fact_value` (JSON), `confidence`, `inferred_by`, `source_event_id`, `valid_from`, `valid_until`, `superseded_by`, plus VIL-391 `memory_kind`, `memory_source`, `sourced_at`, `expires_at`, `signal_count` (`packages/db/drizzle/0141_family_memory_kinds.sql`). One live row per `(family, child, type, key)` is partial unique index `memory_facts_one_live_per_key_idx` (migration 0084, noted on the table). `writeFact` (`apps/web/lib/memory/facts.ts`) closes the live row, inserts, then sets `superseded_by`.
 
-### Memory subsystem
+**Kinds** (`apps/web/lib/memory/kinds.ts`): `lasting`, `temporary`, `one_off`. Sources: `parent_message`, `calendar`, `receipt`, `inferred`, `legacy`. Backfill is `lasting` / `legacy`. Readers ignore the columns unless `FAMILY_MEMORY_KINDS_ENABLED` is exactly `true`. `classifyMemoryWrite`: a supplied `expires_at` is `temporary`; age, date of birth, district, language, weekday care, and pickup or dropoff owner are `lasting` on the first write; an inferred preference or routine stays `one_off` until a second signal (the same fact again, a booking, or positive feedback), then `lasting`; a calendar row with no expiry is `one_off`; anything else is `lasting`. `temporaryExpiry` is seven days or 120 days. Expiry is a read-time filter (`isExpiredTemporary` in `apps/web/lib/memory/store.ts`). The row stays. Flag on, recommendations drop `one_off` and expired `temporary`. A parent recall still lists `one_off`.
 
-| Store | Table | What a row holds |
-| --- | --- | --- |
-| Facts | `family_memory_facts` | `fact_type` is the enum `preference`, `routine`, `medical`, `logistic`, `relationship`, `voice` (`packages/db/src/schema/enums.ts`). Key, JSON value, confidence, writer, source event, `valid_from` / `valid_until`, `superseded_by`. Partial unique live row per `(family, child, type, key)` is migration SQL, described in `packages/db/src/schema/memory.ts`. Writer: `apps/web/lib/memory/facts.ts`. |
-| Episodes | `family_memory_episodes` | `occurred_at`, `episode_type`, `summary`, JSON payload, optional sentiment, `authored_by`, soft `deleted_at`. |
-| Aliases | `family_memory_aliases` | Normalized token from the fact key or the closed synonym list. Message text cannot add one (`apps/web/lib/memory/aliases.ts`). |
-| Digests | `family_memory_digests` | One row per `(family, grain, period_start)`. `summary` is counts and closed labels. `content_hash`, `source_count`. Observe-only unless `MEMORY_DIGEST_APPLY` is exactly `true` and `MEMORY_DIGEST_FAMILY_ALLOWLIST` is non-empty (`apps/web/lib/memory/digest.ts`). |
-| Open promises | `agent_commitments` | Kind, short summary, due time. The brief treats these as workstreams (`packages/db/src/schema/agent-commitments.ts`). |
+**Writers.** Forgettable beliefs are only `ask-hale`, `memory_inferencer`, and `chat_distiller` (`SYNTHESIS_WRITERS` in `apps/web/lib/memory/synthesis.ts`). `ask-hale` is coach `save_memory` (`apps/web/lib/coach/tools.ts`, source `parent_message`) and a parent's correction (`correctFamilyFact` in `store.ts`, forced `lasting`). The nightly run (`apps/web/lib/cron/inference.ts`) calls the inferencer and the distiller (`save_child_fact` in `apps/web/lib/cron/inference-tools.ts`). The distiller reads 14 days and at most 60 turns, refuses confidence under `0.7` (`CONFIDENCE_FLOOR` in `facts.ts`), and `distill-guard.ts` drops an enrollment the parent did not say and a booking or event does not back. A 13+ child's turn is a category marker before the model sees it. Other `writeFact` callers (weekday care, health and registration receipts, co-parent duty, logistics polls, intake) are outside that allowlist, so `forgetFamilyFact` refuses them.
 
-Nightly duplicate and stage retirement is `MEMORY_SYNTHESIS_APPLY` (`apps/web/lib/memory/synthesis.ts`), exact `true`. A parent can retire one belief fact with `forgetFamilyFact` (`apps/web/lib/memory/forget.ts`). Receipt keys (`health_checkpoint:`, `registration_outcome:`) are refused. Forgotten rows leave the brief and stay in history.
+**How a row ends.** Supersede sets `valid_until` and `superseded_by`. A forget sets `valid_until` and leaves `superseded_by` null (`closeFacts`). A `temporary` row past `expires_at` leaves reads and stays stored. Nightly synthesis (`MEMORY_SYNTHESIS_APPLY` exactly `true`) may close a child-scoped `chat_distiller` routine the child has outgrown, and only once that row is at least 30 days old (`MIN_STALE_FACT_AGE_DAYS`). Flag off, it audits and does not close.
 
-The agent brief (`docs/privacy/instinct-memory.md`) is a bounded text block. It omits medical values, receipt keys, and facts attributed to a 13+ child.
+**Beside the facts.** Episodes (`family_memory_episodes`) hold summary, payload, optional `sentiment_score`, `authored_by`, and soft `deleted_at`. Aliases are key tokens plus a fixed synonym list (`apps/web/lib/memory/aliases.ts`). Digests are counts and closed labels, one row per `(family, grain, period_start)`. Kids are `children`. This week's plan is `week_plans`, overwritten per `(family_id, week_start)`. Neither is a memory fact.
 
-### The year record around that memory
+## Snapshot format
 
-These are family data the year loop acts on. They are not rows in `family_memory_facts`.
-
-| What | Where |
-| --- | --- |
-| Kids | `children` — given name, optional last name, date of birth, `dob_precision` (`exact` or `derived`), gender, interests (`packages/db/src/schema/children.ts`) |
-| Household | `families` — display name, country, province, city, postal code, coarse area, intents, plan tier, `scheduled_deletion_at` |
-| Parents | `users` plus `family_members` (role `primary_parent` or `co_parent`) |
-| This week's plan | `week_plans` — one row per `(family_id, week_start)`, JSON `items`, optional `summary` and `voice`. A recompose updates that row (`packages/db/src/schema/week-plans.ts`) |
-| Calendar occasions | `family_events` |
-| Booked classes | `activity_bookings` — title, first session, provider host, parent, connection, message id. No confirmation number, amount, or child name (`packages/db/src/schema/activity-bookings.ts`) |
-| How it went | `activity_reviews` — verdict and tags, no free-text sentence |
-| Evening notes | check-in notes, requester-scoped. `NOTE_RETENTION_DAYS` is 30 in `apps/web/lib/channel/checkin/notes.ts` |
-| Consents | `consent_records` — type, scope, granted, evidence JSON for an SMS yes (`packages/db/src/schema/consent.ts`) |
-| Signup attempts | `authorized_signup_offers` — host, status, session id. Form values are not columns |
-| Saved activities | `village_saves` joined to candidate titles |
-| Audit | `audit_log` — append-only |
-
-## What a parent can already download or delete
-
-`GET /api/rights/export` builds `FamilyExportDocument` in `apps/web/lib/rights/export.ts` and writes a `data_exported` audit row. The button is `apps/web/components/hale/export-data-button.tsx`.
-
-The document includes family basics and children, members, unconfirmed call names, saved activity titles, assistant connections (no tokens), registration preparation (host only), watched spots (host and state), activity bookings (title, time, host, calendar flag, cancellation), authorized signups (host, status, session id, time), the requester's evening notes, activity reviews, the requester's trips, memory digests as grain / period / timezone / counts, and the teen-redacted trail.
-
-It does not include `family_memory_facts` values, episodes, aliases, `week_plans.items`, `family_events`, or `consent_records`. Digest prose is omitted on purpose (`docs/privacy/instinct-memory.md`).
-
-`POST /api/rights/delete` calls `scheduleFamilyDeletion`. The grace window is 7 days (`DELETION_GRACE_MS` in `apps/web/lib/rights/delete.ts`). A second request does not move the stamp. Clearing `families.scheduled_deletion_at` cancels it. A co-parent's request departs that parent rather than scheduling the household. After the stamp, the worker deletes the family row and the cascades follow. `forgetFamilyFact` is the single-fact path and is not this route.
-
-## Proposed snapshot
-
-One JSON document per family per version. Version field is an integer on the document, starting at `1`. A later reader refuses a version it does not know.
+One JSON document per family, built on request. Unknown `formatVersion` is refused. Each fact is `toFamilyMemoryExportFact` plus `value` (id, type, key, kind, source, `sourcedAt`, `expiresAt`, `invalidatedAt`). No second fact shape.
 
 ```json
 {
   "format": "hale.family_snapshot",
   "formatVersion": 1,
-  "familyId": "<uuid>",
-  "exportedAt": "<ISO-8601>",
-  "contentHash": "<sha256 of the canonical JSON below this key>",
-  "memory": {
-    "facts": [],
-    "episodes": [],
-    "digests": []
-  },
-  "year": {
-    "children": [],
-    "weekPlans": [],
-    "familyEvents": [],
-    "activityBookings": [],
-    "activityReviews": [],
-    "consents": []
-  }
+  "familyId": "2c1e0000-0000-4000-8000-000000000001",
+  "exportedAt": "2026-10-02T16:00:00.000Z",
+  "facts": [
+    {
+      "id": "9b0e0000-0000-4000-8000-000000000002",
+      "factType": "logistic",
+      "factKey": "weekday_care",
+      "kind": "lasting",
+      "source": "parent_message",
+      "sourcedAt": "2026-09-01T14:00:00.000Z",
+      "expiresAt": null,
+      "invalidatedAt": null,
+      "value": "daycare"
+    }
+  ],
+  "readable": "What Hale has saved for your family\nTaken 2 Oct 2026\n\nweekday care: daycare. Lasting. You told Hale.\n\nLeft out: other families, and Hale's private certainty numbers."
 }
 ```
 
-Rules for v1, matching the privacy already in the export:
+`readable` is file text. It is not a message, and this note does not send it. v1 is live rows only, with no 40-row cap (that cap in `recallFamilyMemory` is a message limit). Same omissions as recall: `child_id` of a teenager (`deriveStage` === `teenager`), and receipt keys `health_checkpoint:` and `registration_outcome:` (`apps/web/lib/memory/lexicon.ts`). `value` is whatever `displayFactValue` in `store.ts` already shows: a string, or one of `value`, `note`, `summary`, `text`, `name` inside the JSON.
 
-- Facts keep key, type, value, confidence, writer, validity, and supersede link. A fact attributed to a 13+ child is included only as type plus "redacted", the same omission the brief already makes.
-- Episodes include summary and payload for parent-authored rows. A teen-authored episode (`authored_by` null and the child is 13+) is redacted the way the trail is.
-- Digests stay counts and closed labels.
-- Week-plan items keep the structured `WeekPlanItem` fields. Voice strings are included because they were shown to the parent.
-- Bookings stay title, time, host, and cancellation. No message body.
-- Consent rows include type, scope, granted, times, and policy version. Evidence text is the parent's own words and is included for the requesting parent only.
-- Aliases are omitted. They are derived from keys.
-- Passwords, verification tokens, OAuth tokens, inbound forward tokens, and integration secrets are omitted. `credentials` and `integrations` token columns are not part of this document.
+## Versioning, rollback, backup
 
-Canonical JSON is UTF-8, object keys sorted, no insignificant whitespace, then SHA-256. That hash is what a backup stores beside the bytes.
+A correction already inserts a new live row and closes the old one. Week plans and digests overwrite one identity. There is no git tree.
 
-## Versioning and rollback
+**Recommended: no new store.** The parent file is a read of live rows on the existing export route. Rollback of one fact is `writeFact` of the file's value, which supersedes the live row and keeps history. Do not clear `valid_until`: the unique index allows one live row. Refuse when `families.scheduled_deletion_at` is set.
 
-Facts already version themselves: a correction inserts a new live row and sets `valid_until` and `superseded_by` on the old one (`writeFact`). Digests upsert one row per period and keep `content_hash`. Week plans overwrite the same `(family, week)`.
+Disaster recovery stays Supabase daily backups, 7-day retention, Toronto (`infra/README.md`). `.github/workflows/deploy.yml` names PITR as the manual restore after a bad migration. The window length is not in the repo.
 
-The snapshot does not become a second writer. Rollback of a proposed snapshot restore:
+**Cost.** No new storage and no cron. A daily JSON object per family in the private `family-docs` bucket would be a second copy, and `purgeFamilyStorage` (`apps/web/lib/rights/delete.ts`) only removes chat attachments and avatars, so those objects would outlive the family. Storage itself is cents per family per year. The cost that matters is the purge gap. Add objects only if a parent must recover last season without a project restore.
 
-- Facts: insert a new live row copied from the snapshot value, superseding whatever is live now. Do not delete the intervening row. History stays.
-- Digests: upsert only when the snapshot `contentHash` differs, and only for periods the snapshot names.
-- Week plans: write the snapshot items onto that `week_start` and append an audit row `family_snapshot_restored` with the snapshot hash, not the item bodies.
-- A restore refuses to run when the family's `scheduled_deletion_at` is set.
+## Privacy
 
-There is no git history of these rows today. The audit log is an event list, not a restorable tree.
+No web page lists fact values. On iMessage, `familyMemoryKindsHandler` (`apps/web/lib/memory/handler.ts`, wired in `apps/web/lib/channel/router/wiring.ts`) claims a turn only when the kinds flag is exactly `true`. The parent texts `what do you know`, `forget <key>`, or `correct <key>: <value>` (French shapes are in `parseMemoryParentIntent`). The reply is null unless `FAMILY_MEMORY_KINDS_COPY_LOCKED` is also exactly `true`. `recallFamilyMemory` returns lasting, unexpired temporary, and one-off beliefs, newest 40, dropping receipts and teen-attributed rows. `GET /api/rights/export` (`apps/web/lib/rights/export.ts`, button `apps/web/components/hale/export-data-button.tsx`) includes digest counts and not fact values.
 
-## Backup cadence
+Keep the file off the thread. A later phrase on that handler would point at the existing download. The reply is a placeholder and is never sent:
 
-What exists:
+`TODO-Design: your family record is ready to download from the receipts page.`
 
-- `infra/README.md` documents Supabase daily backups, 7-day retention, Toronto region.
-- `.github/workflows/deploy.yml` names Supabase PITR as the manual restore when a migration is bad. The workflow comment does not state the PITR window. That number is unverified here.
+`deliverMemoryKindCopy` refuses a body that still contains `TODO-Design`, so this line cannot leave until the placeholder is removed and both flags are exactly `true`.
 
-What this proposal adds, later, still in the Toronto project:
+One belief: `forgetFamilyFact` (`apps/web/lib/memory/forget.ts`). Receipt keys and non-belief writers are refused. The household: `POST /api/rights/delete` stamps `scheduled_deletion_at` for 7 days (`DELETION_GRACE_MS`). A second request does not move the stamp. A co-parent's request departs that parent and does not schedule the household. After the stamp, the sweep deletes the family and the cascades follow.
 
-- A daily job writes one snapshot per family that changed since the previous hash (facts, episodes, digests, week plans, bookings, reviews, consents). Unchanged families write nothing.
-- Keep 30 daily snapshots and 12 monthly snapshots per family. That is longer than the 7-day database backup so a parent can ask for last season without a full-project restore.
-- The object store is the existing private `family-docs` bucket (the avatar key in `packages/db/src/schema/children.ts` already points there), key `snapshots/{familyId}/{exportedAt}.json`. No new vendor.
-- The job logs `skipped: 'not_configured'` when the bucket is absent (hard rule 11). It does not pretend a snapshot was written.
+Left out: other families (every read is `family_id`); `confidence`, `signal_count`, and episode `sentiment_score`; aliases; digest prose; tokens. Teen-attributed values stay out even if an in-app grant is active. The export trail loader is called without an unlock set.
 
-Database backups remain the disaster-recovery copy. Family snapshots are the parent-scoped copy.
+## Open questions and tickets
 
-## Parent-visible export and delete
+1. Live rows only, or closed history in the same file?
+2. Episodes and `week_plans.items` in v1, or later? v1 above is facts plus `readable`.
+3. iMessage: a link to the download, or an attachment? Do not attach. The thread is not the archive.
+4. Is 7-day database retention enough? Add object copies only if a parent needs last season without a project restore.
 
-Export: extend `FamilyExportDocument` with a `memory` section (live facts, redacted as above, plus episodes the requester may see) and a `weekPlans` section. Same route, `GET /api/rights/export`. The button already downloads that JSON. A parent sees the same redaction an export already applies to the trail: a 13+ child's raw content stays out even if a teen-access grant is active (`export.ts` calls the trail loader without an unlock set).
-
-Delete:
-
-- One fact: the existing `forgetFamilyFact` path, surfaced in the export as a fact id the parent can name. Receipt keys stay refused.
-- The household: the existing 7-day scheduled deletion. Snapshots for that family are deleted in the same sweep that hard-deletes the family, not before the grace window ends, so a cancel still has the rows.
-- A single snapshot object is not a substitute for erasure. Erasure is the family delete.
-
-No code in this ticket implements the snapshot, the extra export sections, or the object-store job.
+- Extend `FamilyExportDocument` with `facts` (the hook plus `value`) and `readable`, on the same GET. Tests: teen omission, receipt omission, no score fields.
+- An iMessage phrase on `familyMemoryKindsHandler`. Reply stays null while the body contains `TODO-Design`.
+- Only if question 4 is yes: a weekly object in `family-docs` when the live-fact hash changed, and that prefix inside `purgeFamilyStorage` before the family row goes.
