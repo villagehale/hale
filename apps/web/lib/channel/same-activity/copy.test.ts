@@ -4,59 +4,98 @@ import { describe, expect, it } from 'vitest';
 import { OPT_OUT_LINE, OPT_OUT_SHORT } from '~/lib/channel/opt-out';
 import { readSameActivityChoice } from './choice';
 import {
+  SAME_ACTIVITY_CONFIRMATION_EN,
+  SAME_ACTIVITY_CONFIRMATION_FR,
+  SAME_ACTIVITY_OFFER_EN,
+  SAME_ACTIVITY_OFFER_FR,
+  SAME_ACTIVITY_WAITING_EN,
+  SAME_ACTIVITY_WAITING_FR,
   deliverSameActivityReply,
   renderSameActivityReply,
   sameActivityCopyMayLeave,
+  sameActivityDeclineToOtherSide,
 } from './copy';
-import {
-  SAME_ACTIVITY_ASK_NEXT,
-  SAME_ACTIVITY_DECLINE_NEXT,
-  SAME_ACTIVITY_MUTUAL_NEXT,
-  SAME_ACTIVITY_PLACEHOLDER_COPY,
-  SAME_ACTIVITY_WAITING_NEXT,
-} from './placeholders';
 
 const DIR = fileURLToPath(new URL('.', import.meta.url));
 const BANNED = /\bSTOP\b|unsubscribe/i;
 
+const OFFER_EN_SWIM =
+  "Another family nearby is looking at the same swim. Want me to check if they'd go together? I won't share anything about you unless they say yes too.";
+const OFFER_FR_SWIM =
+  'Une autre famille pres de chez vous regarde la meme activite: swim. Voulez-vous que je voie si elle serait partante pour y aller ensemble? Je ne partage rien sur vous sans son accord aussi.';
+const CONFIRM_EN_SAM =
+  "You're both up for it. The other parent is Sam, and they got your first name too. Want me to start a chat with the two of you?";
+const CONFIRM_FR_SAM =
+  "Vous etes tous les deux partants. L'autre parent s'appelle Sam, et elle ou il a recu votre prenom aussi. Voulez-vous que je lance une conversation a deux?";
+
 describe('same-activity copy', () => {
-  it('keeps every parent-facing line a design placeholder with one next step', () => {
-    const nextSteps = [
-      SAME_ACTIVITY_ASK_NEXT,
-      SAME_ACTIVITY_WAITING_NEXT,
-      SAME_ACTIVITY_MUTUAL_NEXT,
-      SAME_ACTIVITY_DECLINE_NEXT,
-    ];
-    for (const line of SAME_ACTIVITY_PLACEHOLDER_COPY) {
-      expect(line.startsWith('TODO-Design:')).toBe(true);
+  it('keeps the six locked lines byte for byte', () => {
+    expect(SAME_ACTIVITY_OFFER_EN).toBe(
+      "Another family nearby is looking at the same {activity}. Want me to check if they'd go together? I won't share anything about you unless they say yes too.",
+    );
+    expect(SAME_ACTIVITY_OFFER_FR).toBe(
+      'Une autre famille pres de chez vous regarde la meme activite: {activity}. Voulez-vous que je voie si elle serait partante pour y aller ensemble? Je ne partage rien sur vous sans son accord aussi.',
+    );
+    expect(SAME_ACTIVITY_WAITING_EN).toBe(
+      "Asked. If they're in, I'll let you know; if not, I won't bring it up again. Nothing to do for now.",
+    );
+    expect(SAME_ACTIVITY_WAITING_FR).toBe(
+      "C'est demande. Si elle est partante, je vous le dis; sinon, je n'en reparle pas. Rien a faire pour l'instant.",
+    );
+    expect(SAME_ACTIVITY_CONFIRMATION_EN).toBe(
+      "You're both up for it. The other parent is {firstName}, and they got your first name too. Want me to start a chat with the two of you?",
+    );
+    expect(SAME_ACTIVITY_CONFIRMATION_FR).toBe(
+      "Vous etes tous les deux partants. L'autre parent s'appelle {firstName}, et elle ou il a recu votre prenom aussi. Voulez-vous que je lance une conversation a deux?",
+    );
+    for (const line of [
+      SAME_ACTIVITY_OFFER_EN,
+      SAME_ACTIVITY_OFFER_FR,
+      SAME_ACTIVITY_WAITING_EN,
+      SAME_ACTIVITY_WAITING_FR,
+      SAME_ACTIVITY_CONFIRMATION_EN,
+      SAME_ACTIVITY_CONFIRMATION_FR,
+    ]) {
       expect(line).not.toMatch(BANNED);
       expect(line).not.toContain(OPT_OUT_LINE);
       expect(line).not.toContain(OPT_OUT_SHORT);
-      expect(line).not.toMatch(/\d/);
       expect(line.includes('\n')).toBe(false);
-      const say = line.split(/(?<=\.)\s+/u).filter((part) => part.startsWith('Say '));
-      expect(say).toHaveLength(1);
-      expect(line.endsWith(say[0] ?? '')).toBe(true);
-      expect(nextSteps).toContain(say[0]);
-      expect(sameActivityCopyMayLeave(line)).toBe(false);
+      expect(line.startsWith('TODO-Design')).toBe(false);
     }
   });
 
-  it('does not let a finished-looking sentence leave, and does not send', () => {
+  it('fills the activity and the other parent’s given name, and lets only that leave', () => {
+    const offer = renderSameActivityReply('not_opted_in', { activity: 'swim', language: 'en' });
+    expect(offer.text).toBe(OFFER_EN_SWIM);
+    expect(offer.mayLeave).toBe(true);
+    expect(offer.text).not.toContain('Sam');
     expect(
-      sameActivityCopyMayLeave('Both households said yes. Say what you want to do next.'),
-    ).toBe(false);
-    const reply = renderSameActivityReply('mutual', 'meet');
-    expect(reply.mayLeave).toBe(false);
-    expect(reply.text.endsWith(reply.nextStep)).toBe(true);
-    expect(deliverSameActivityReply(reply.text)).toEqual({ sent: false, skipped: 'placeholder' });
-    expect(renderSameActivityReply('mutual', 'join_group').text).not.toBe(reply.text);
-    expect(
-      renderSameActivityReply('waiting', 'meet').text.endsWith(SAME_ACTIVITY_WAITING_NEXT),
-    ).toBe(true);
-    expect(
-      renderSameActivityReply('declined', null).text.endsWith(SAME_ACTIVITY_DECLINE_NEXT),
-    ).toBe(true);
+      renderSameActivityReply('unread', { activity: 'swim', language: 'fr', firstName: 'Sam' })
+        .text,
+    ).toBe(OFFER_FR_SWIM);
+    expect(renderSameActivityReply('waiting', { language: 'en' }).text).toBe(
+      SAME_ACTIVITY_WAITING_EN,
+    );
+    expect(renderSameActivityReply('waiting', { language: 'fr', firstName: 'Sam' }).text).toBe(
+      SAME_ACTIVITY_WAITING_FR,
+    );
+    const confirmation = renderSameActivityReply('mutual', {
+      language: 'en',
+      firstName: 'Sam Lee',
+    });
+    expect(confirmation.text).toBe(CONFIRM_EN_SAM);
+    expect(confirmation.mayLeave).toBe(true);
+    expect(renderSameActivityReply('mutual', { language: 'fr', firstName: 'Sam' }).text).toBe(
+      CONFIRM_FR_SAM,
+    );
+    expect(renderSameActivityReply('mutual', { language: 'en' }).mayLeave).toBe(false);
+    expect(sameActivityCopyMayLeave('Both households said yes.')).toBe(false);
+    expect(sameActivityCopyMayLeave(`${OFFER_EN_SWIM}\nSay stop`)).toBe(false);
+    expect(deliverSameActivityReply(confirmation.text)).toEqual({
+      sent: false,
+      skipped: 'not_configured',
+    });
+    expect(sameActivityDeclineToOtherSide()).toEqual({ sent: false, skipped: 'decline' });
   });
 
   it('reads only a whole-message meet, join, or no', () => {
@@ -74,6 +113,7 @@ describe('same-activity copy', () => {
     );
     expect(files).toContain('offer.ts');
     expect(files).toContain('store.ts');
+    expect(files).not.toContain('placeholders.ts');
     for (const name of files) {
       const source = readFileSync(`${DIR}${name}`, 'utf8');
       expect(source, name).not.toMatch(

@@ -205,3 +205,27 @@ export async function loadActivityCohort(
     createdAtMs: row.createdAt.getTime(),
   }));
 }
+
+/**
+ * The other parent's stored name, and nothing else. Call only after a mutual
+ * match, for that one household. Email, locale, and the message are not read.
+ */
+export async function loadCounterpartGivenName(
+  database: Database,
+  input: { familyId: string; activityKey: string; kind: SameActivityKind },
+): Promise<string | null> {
+  const rows = await database
+    .select({ name: schema.users.name })
+    .from(schema.sameActivityOptIns)
+    .innerJoin(schema.users, eq(schema.users.id, schema.sameActivityOptIns.parentUserId))
+    .where(
+      and(
+        eq(schema.sameActivityOptIns.familyId, input.familyId),
+        eq(schema.sameActivityOptIns.activityKey, input.activityKey),
+        eq(schema.sameActivityOptIns.kind, input.kind),
+        isNull(schema.sameActivityOptIns.revokedAt),
+      ),
+    )
+    .limit(1);
+  return rows[0]?.name ?? null;
+}

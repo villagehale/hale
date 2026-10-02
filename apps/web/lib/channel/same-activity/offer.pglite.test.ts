@@ -2,7 +2,13 @@ import { schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { deliverSameActivityReply } from './copy';
+import {
+  SAME_ACTIVITY_CONFIRMATION_EN,
+  SAME_ACTIVITY_CONFIRMATION_FR,
+  SAME_ACTIVITY_OFFER_EN,
+  SAME_ACTIVITY_WAITING_EN,
+  deliverSameActivityReply,
+} from './copy';
 import { SAME_ACTIVITY_MEET_ENABLED_ENV } from './flag';
 import { answerSameActivity, prepareSameActivityOffer } from './offer';
 
@@ -95,6 +101,7 @@ describe('same-activity offer', () => {
     const prepared = await prepareSameActivityOffer(db.database, {
       familyId: asked.familyId,
       activityKey: KEY,
+      activity: 'swim',
       kind: 'meet',
     });
     seen.restore();
@@ -103,6 +110,8 @@ describe('same-activity offer', () => {
     if (prepared.status !== 'not_opted_in') throw new Error('expected not_opted_in');
     expect(prepared).not.toHaveProperty('counterpartFamilyIds');
     expect(JSON.stringify(prepared)).not.toContain(opted.familyId);
+    expect(prepared.reply.text).toBe(SAME_ACTIVITY_OFFER_EN.replace('{activity}', 'swim'));
+    expect(prepared.reply.text).not.toContain('Test');
     expect(prepared.reply.text).not.toContain('pool.example');
     expect(prepared.reply.text).not.toContain('saturday');
     const returned = JSON.stringify(seen.rows);
@@ -117,6 +126,9 @@ describe('same-activity offer', () => {
     const a = await seedFamily(db.database, 'Family A');
     const b = await seedFamily(db.database, 'Family B');
     const bookedOnly = await seedFamily(db.database, 'Booked Only');
+    await db.database.execute(
+      sql`update users set name = 'Sam Lee', locale = 'fr-CA' where id = ${b.parentUserId}`,
+    );
 
     const first = await answerSameActivity(db.database, {
       familyId: a.familyId,
@@ -126,6 +138,9 @@ describe('same-activity offer', () => {
       body: 'Meet.',
     });
     expect(first).toMatchObject({ status: 'waiting', recorded: 'created' });
+    if (first.status !== 'waiting') throw new Error('expected waiting');
+    expect(first.reply.text).toBe(SAME_ACTIVITY_WAITING_EN);
+    expect(first.reply.text).not.toContain('Sam');
     expect(first).not.toHaveProperty('counterpartFamilyIds');
     expect(JSON.stringify(first)).not.toContain(b.familyId);
     expect(JSON.stringify(first)).not.toContain(bookedOnly.familyId);
@@ -144,15 +159,16 @@ describe('same-activity offer', () => {
       counterpartFamilyIds: [a.familyId],
     });
     if (second.status !== 'mutual') throw new Error('expected a mutual meet');
+    expect(second.reply.language).toBe('fr');
+    expect(second.reply.text).toBe(SAME_ACTIVITY_CONFIRMATION_FR.replace('{firstName}', 'Test'));
     expect(second.reply.text).not.toContain(a.familyId);
     expect(second.reply.text).not.toContain(b.familyId);
+    expect(second.reply.text).not.toContain('Sam');
     expect(second.reply.text).not.toContain('pool.example');
-    expect(second.reply.text).not.toContain('saturday');
-    expect(second.reply.mayLeave).toBe(false);
-    expect(second.reply.text.endsWith(second.reply.nextStep)).toBe(true);
+    expect(second.reply.mayLeave).toBe(true);
     expect(deliverSameActivityReply(second.reply.text)).toEqual({
       sent: false,
-      skipped: 'placeholder',
+      skipped: 'not_configured',
     });
 
     const back = await prepareSameActivityOffer(db.database, {
@@ -164,6 +180,8 @@ describe('same-activity offer', () => {
       status: 'mutual',
       counterpartFamilyIds: [b.familyId],
     });
+    if (back.status !== 'mutual') throw new Error('expected the pair');
+    expect(back.reply.text).toBe(SAME_ACTIVITY_CONFIRMATION_EN.replace('{firstName}', 'Sam'));
     expect(JSON.stringify(back)).not.toContain(bookedOnly.familyId);
 
     const again = await answerSameActivity(db.database, {
@@ -236,11 +254,14 @@ describe('same-activity offer', () => {
       messageId: 'm-no',
       body: 'no',
     });
-    expect(declined).toMatchObject({ status: 'declined', recorded: 'revoked' });
-    if (declined.status !== 'declined') throw new Error('expected a decline');
-    expect(declined.reply.text.endsWith(declined.reply.nextStep)).toBe(true);
-    expect(declined.reply.text).not.toMatch(/\bSTOP\b/);
-    expect(deliverSameActivityReply(declined.reply.text).skipped).toBe('placeholder');
+    expect(declined).toEqual({
+      status: 'declined',
+      recorded: 'revoked',
+      otherSide: { sent: false, skipped: 'decline' },
+    });
+    expect(JSON.stringify(declined)).not.toContain(b.familyId);
+    expect(JSON.stringify(declined)).not.toContain('Sam');
+    expect(JSON.stringify(declined)).not.toMatch(/\bSTOP\b/);
 
     vi.stubEnv(SAME_ACTIVITY_MEET_ENABLED_ENV, 'true');
     const remaining = await prepareSameActivityOffer(db.database, {
@@ -249,6 +270,9 @@ describe('same-activity offer', () => {
       kind: 'join_group',
     });
     expect(remaining).toEqual(expect.objectContaining({ status: 'waiting' }));
+    if (remaining.status !== 'waiting') throw new Error('expected waiting');
+    expect(remaining.reply.text).toBe(SAME_ACTIVITY_WAITING_EN);
+    expect(remaining.reply.text).not.toContain('Test');
     expect(remaining).not.toHaveProperty('counterpartFamilyIds');
     expect(JSON.stringify(remaining)).not.toContain(a.familyId);
 
