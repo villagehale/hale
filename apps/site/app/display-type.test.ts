@@ -411,13 +411,13 @@ describe('headings use the system display stack, not a loaded display webfont', 
 
   it('ships the hero at the founder’s poster values', () => {
     for (const selector of FRAUNCES_HERO_SELECTORS) {
-      expect(only(selector, 'font-size')).toBe('clamp(40px, 5vw, 68px)');
+      expect(only(selector, 'font-size')).toBe('clamp(40px, 6vw, 68px)');
       expect(Number(only(selector, 'font-weight'))).toBe(500);
       expect(only(selector, 'letter-spacing')).toBe('-0.025em');
       expect(only(selector, 'line-height')).toBe('1.04');
     }
     // zh / non-Latin path, restored with the original poster clamp.
-    expect(only('.v4-hero-h1', 'font-size')).toBe('clamp(40px, 5vw, 68px)');
+    expect(only('.v4-hero-h1', 'font-size')).toBe('clamp(40px, 6vw, 68px)');
     expect(only('.v4-hero-sub', 'font-size')).toBe('clamp(1rem, 1.6vw, 1.15rem)');
   });
 

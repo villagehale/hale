@@ -107,10 +107,21 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           src={heroShore}
           alt=""
           aria-hidden="true"
-          fill
+          width={2200}
+          height={943}
           priority
-          sizes="(max-width: 768px) 1200px, 2200px"
+          unoptimized
           className="v4-hero-art"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: 'auto',
+            right: 'auto',
+            bottom: 'auto',
+            objectFit: 'cover',
+          }}
         />
         <div className="v4-hero-body">
           <div className="v4-hero-stage shell">

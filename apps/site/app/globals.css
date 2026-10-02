@@ -1972,7 +1972,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   /* The pill stays glass, but opaque enough that the shore cannot ghost through. */
   .v4-nav.v4-glass {
     overflow: visible;
-    background: light-dark(rgb(251 247 239 / 0.92), rgb(12 26 54 / 0.92));
+    background: light-dark(#fbf7ef, #0c1a36);
     backdrop-filter: blur(18px) saturate(1.4);
     -webkit-backdrop-filter: blur(18px) saturate(1.4);
   }
@@ -2083,7 +2083,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * amber, which clears AA on the night shore. */
   .v4-hero-top .v4-pronounce { color: light-dark(rgb(23 41 74 / 0.86), #f2c489); }
   .v4-hero-h1 {
-    font-size: clamp(40px, 5vw, 68px);
+    font-size: clamp(40px, 6vw, 68px);
     color: var(--color-ink);
     max-width: 15ch;
     font-weight: 550;
@@ -2145,7 +2145,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-hero-top .v4-hero-body { gap: 24px; padding: 24px 0 48px; text-align: left; align-items: stretch; }
   .v4-hero-top .v4-hero-h1 {
     max-width: 16ch;
-    font-size: clamp(40px, 5vw, 68px);
+    font-size: clamp(40px, 6vw, 68px);
     letter-spacing: -0.025em;
     line-height: 1.04;
     font-weight: 500;
@@ -2384,7 +2384,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     /* The founder's poster values. Stated in px rather than rem because they are
      * a drawing decision at one specific pair of sizes, not a step on the type
      * scale — and because the ceiling is what the display cut was chosen for. */
-    font-size: clamp(40px, 5vw, 68px);
+    font-size: clamp(40px, 6vw, 68px);
     font-weight: 500;
     font-optical-sizing: auto;
     font-synthesis-weight: none;
