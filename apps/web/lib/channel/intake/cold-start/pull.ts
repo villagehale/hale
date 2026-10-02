@@ -4,9 +4,9 @@
  * "set me up" / "what can you do" (and the French twins) ask for the ladder.
  * Bare HELP / INFO / AIDE stay on the keyword path and never arrive here.
  * One step per reply. Place and ages reuse the locked first-touch lines and
- * are not optional asks. After those, calendar and email are two separate
- * lines: calendar on the next eligible reply after the name line (or day 7),
- * email only after the parent mentions school, daycare, or camp.
+ * are not optional asks. After a picked result, the sign-up offer is its own
+ * reply: date known when that result says when sign-ups open, otherwise the
+ * no-date check-in. Calendar and email stay separate later replies.
  */
 
 import type { ReplyLanguage } from '~/lib/channel/language';
@@ -16,11 +16,12 @@ import {
   FIRST_TOUCH_IMESSAGE_BY_LANGUAGE,
   FIRST_TOUCH_SMS_BY_LANGUAGE,
 } from '../copy';
-import { calendarAsk, emailAsk, whatCanYouDo } from './copy';
+import { calendarAsk, emailAsk, signupOffer, whatCanYouDo } from './copy';
+import { coldStartLadderEnabled } from './flags';
 import type { ColdStartIntent } from './intent';
 import { calendarAskDue, mentionsSchoolOrCamp } from './ladder';
 
-export type PullKind = 'place' | 'ages' | 'what' | 'later' | 'calendar' | 'email';
+export type PullKind = 'place' | 'ages' | 'what' | 'later' | 'signup' | 'calendar' | 'email';
 
 export type PullSkip = 'not_pull' | 'copy_unlocked' | 'not_due' | 'unfilled';
 
@@ -31,16 +32,21 @@ export function planFollowAsk(input: {
   nameLineSent: boolean;
   calendarAlreadyAsked: boolean;
   emailAlreadyAsked: boolean;
+  signupAsked?: boolean;
+  signupDateKnown?: boolean;
   parentText: string;
   schoolMentioned?: boolean;
   activity: string | null;
+  day?: string | null;
   env?: Record<string, string | undefined>;
 }): {
-  kind: 'calendar' | 'email' | 'none';
+  kind: 'signup' | 'calendar' | 'email' | 'none';
   body: string;
   mayLeave: boolean;
   skipped?: 'not_due' | 'copy_unlocked' | 'unfilled';
 } {
+  const offer = signupOfferForResult(input);
+  if (offer) return offer;
   const emailWanted =
     !input.emailAlreadyAsked &&
     (input.schoolMentioned === true || mentionsSchoolOrCamp(input.parentText));
@@ -50,7 +56,8 @@ export function planFollowAsk(input: {
     nameLineSent: input.nameLineSent,
     alreadyAsked: input.calendarAlreadyAsked,
   });
-  // The reply after the name line belongs to calendar. Email waits.
+  // The reply after the name line belongs to calendar once the sign-up offer
+  // has already had its own turn. Email waits.
   if (calendarDue && input.nameLineSent) {
     return finishConnector('calendar', calendarAsk(input.language, input.activity, input.env));
   }
@@ -63,11 +70,42 @@ export function planFollowAsk(input: {
   return { kind: 'none', body: '', mayLeave: false, skipped: 'not_due' };
 }
 
-function finishConnector(
-  kind: 'calendar' | 'email',
+function signupOfferForResult(input: {
+  language: ReplyLanguage;
+  signupAsked?: boolean;
+  signupDateKnown?: boolean;
+  activity: string | null;
+  day?: string | null;
+  env?: Record<string, string | undefined>;
+}): {
+  kind: 'signup';
+  body: string;
+  mayLeave: boolean;
+  skipped?: 'copy_unlocked' | 'unfilled';
+} | null {
+  if (!coldStartLadderEnabled(input.env)) return null;
+  if (input.signupAsked) return null;
+  const activity = input.activity?.trim() ?? '';
+  const day = input.day?.trim() ?? '';
+  if (input.signupDateKnown) {
+    if (!activity) return null;
+    return finishConnector(
+      'signup',
+      signupOffer('date_known', { language: input.language, activity, env: input.env }),
+    );
+  }
+  if (!day) return null;
+  return finishConnector(
+    'signup',
+    signupOffer('no_date', { language: input.language, day, env: input.env }),
+  );
+}
+
+function finishConnector<K extends 'signup' | 'calendar' | 'email'>(
+  kind: K,
   line: { body: string; mayLeave: boolean },
 ): {
-  kind: 'calendar' | 'email';
+  kind: K;
   body: string;
   mayLeave: boolean;
   skipped?: 'copy_unlocked' | 'unfilled';
@@ -99,6 +137,9 @@ export function planPull(input: {
   parentText?: string;
   schoolMentioned?: boolean;
   activity?: string | null;
+  day?: string | null;
+  signupAsked?: boolean;
+  signupDateKnown?: boolean;
   env?: Record<string, string | undefined>;
 }): { kind: PullKind; body: string; mayLeave: boolean; skipped?: PullSkip } {
   if (input.intent === 'what_can_you_do') {
@@ -136,6 +177,9 @@ export function planPull(input: {
     parentText: input.parentText ?? '',
     schoolMentioned: input.schoolMentioned,
     activity: input.activity ?? null,
+    day: input.day,
+    signupAsked: input.signupAsked,
+    signupDateKnown: input.signupDateKnown,
     env: input.env,
   });
   if (follow.kind === 'none') {

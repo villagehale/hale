@@ -17,6 +17,7 @@ export const OPTIONAL_ASK_CLASSES = [
   'duty_ask',
   'logistics',
   'names',
+  'signup',
   'calendar',
   'email',
 ] as const;

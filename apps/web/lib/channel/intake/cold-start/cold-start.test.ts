@@ -42,6 +42,7 @@ import {
   calendarAskDue,
   kidFirstName,
   mentionsSchoolOrCamp,
+  signupDateKnownForPick,
 } from './ladder';
 import { planFollowAsk, planPull } from './pull';
 
@@ -441,7 +442,10 @@ describe('cold-start copy and ladder', () => {
   });
 
   it('sends calendar and email as separate locked lines', () => {
-    const locked = { COLD_START_LADDER_COPY_LOCKED: 'true' };
+    const locked = {
+      COLD_START_LADDER_ENABLED: 'true',
+      COLD_START_LADDER_COPY_LOCKED: 'true',
+    };
     const ascii = /^[\x20-\x7E]+$/;
     const lines = [
       NAMES_ASK_BY_LANGUAGE.en,
@@ -508,6 +512,88 @@ describe('cold-start copy and ladder', () => {
     });
     expect(mentionOnly.kind).toBe('email');
     expect(mentionOnly.body).toBe(EMAIL_ASK_BY_LANGUAGE.en);
+    const dateKnown = planFollowAsk({
+      language: 'en',
+      now: START,
+      familyStartedAt: START,
+      nameLineSent: true,
+      calendarAlreadyAsked: false,
+      emailAlreadyAsked: false,
+      signupDateKnown: true,
+      parentText: 'she starts daycare in September',
+      schoolMentioned: true,
+      activity: 'swim',
+      day: 'Saturday',
+      env: locked,
+    });
+    expect(dateKnown.kind).toBe('signup');
+    expect(dateKnown.mayLeave).toBe(true);
+    expect(dateKnown.body).toBe(signupOffer('date_known', { activity: 'swim', env: locked }).body);
+    expect(dateKnown.body).not.toContain('calendar');
+    expect(dateKnown.body).not.toContain('email');
+    const noDate = planPull({
+      intent: 'set_me_up',
+      language: 'fr',
+      hasPlace: true,
+      hasAges: true,
+      channel: 'sms',
+      group: false,
+      count: 0,
+      place: 'Markham',
+      ages: 'a 4-year-old',
+      nameLineSent: true,
+      signupDateKnown: false,
+      activity: 'swim',
+      day: 'Saturday',
+      now: START,
+      familyStartedAt: START,
+      parentText: 'camp next week',
+      schoolMentioned: true,
+      env: locked,
+    });
+    expect(noDate.kind).toBe('signup');
+    expect(noDate.mayLeave).toBe(true);
+    expect(noDate.body).toBe(
+      signupOffer('no_date', { language: 'fr', day: 'Saturday', env: locked }).body,
+    );
+    expect(noDate.body).not.toContain('calendrier');
+    expect(noDate.body).not.toContain('courriel');
+    const afterOffer = planFollowAsk({
+      language: 'en',
+      now: START,
+      familyStartedAt: START,
+      nameLineSent: true,
+      signupAsked: true,
+      calendarAlreadyAsked: true,
+      emailAlreadyAsked: false,
+      signupDateKnown: true,
+      parentText: 'ok',
+      schoolMentioned: true,
+      activity: 'swim',
+      day: 'Saturday',
+      env: locked,
+    });
+    expect(afterOffer.kind).toBe('email');
+    expect(afterOffer.body).toBe(EMAIL_ASK_BY_LANGUAGE.en);
+    expect(afterOffer.body).not.toContain('sign-ups open');
+    expect(signupDateKnownForPick('1. Swim (sign-ups open Sept 8) - Saturday', '1')).toBe(true);
+    expect(signupDateKnownForPick('1. Storytime (all ages) - Saturday', '1')).toBe(false);
+    const ladderOff = planFollowAsk({
+      language: 'en',
+      now: START,
+      familyStartedAt: START,
+      nameLineSent: true,
+      calendarAlreadyAsked: false,
+      emailAlreadyAsked: false,
+      signupDateKnown: true,
+      parentText: 'ok',
+      activity: 'swim',
+      day: 'Saturday',
+      env: { COLD_START_LADDER_COPY_LOCKED: 'true' },
+    });
+    expect(ladderOff.kind).toBe('calendar');
+    expect(ladderOff.mayLeave).toBe(true);
+    expect(ladderOff.body).not.toContain('sign-ups open');
     const unlocked = planPull({
       intent: 'set_me_up',
       language: 'en',

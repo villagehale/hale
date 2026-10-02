@@ -137,6 +137,9 @@ export interface ColdStartProgress {
   day: string | null;
   /** The names line has already been sent. Calendar may ride the next reply. */
   nameLineSent: boolean;
+  /** The picked line says when sign-ups open. Otherwise the offer uses the day. */
+  signupDateKnown: boolean;
+  signupAsked: boolean;
   calendarAsked: boolean;
   emailAsked: boolean;
   schoolMentioned: boolean;
@@ -267,6 +270,8 @@ function decodeColdStart(value: unknown): ColdStartProgress | null {
     activity?: unknown;
     day?: unknown;
     nameLineSent?: unknown;
+    signupDateKnown?: unknown;
+    signupAsked?: unknown;
     calendarAsked?: unknown;
     emailAsked?: unknown;
     schoolMentioned?: unknown;
@@ -287,6 +292,8 @@ function decodeColdStart(value: unknown): ColdStartProgress | null {
     activity: typeof row.activity === 'string' ? row.activity : null,
     day: typeof row.day === 'string' ? row.day : null,
     nameLineSent: row.nameLineSent === true,
+    signupDateKnown: row.signupDateKnown === true,
+    signupAsked: row.signupAsked === true,
     calendarAsked: row.calendarAsked === true,
     emailAsked: row.emailAsked === true,
     schoolMentioned: row.schoolMentioned === true,
