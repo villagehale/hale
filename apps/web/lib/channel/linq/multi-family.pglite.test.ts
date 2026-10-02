@@ -265,7 +265,7 @@ describe('multi-family joins', () => {
     expect(own.reason).toBe('consented');
     expect(own.slice.children).toEqual([CHILD]);
     expect(own.slice.memory).toEqual([MEMORY]);
-    expect(own.slice.calendar).toEqual([CALENDAR]);
+    expect(own.slice.calendar).toEqual([]);
 
     const reply = await takeMultiFamilyTurn(db.database, {
       chatId: CHAT,

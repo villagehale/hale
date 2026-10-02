@@ -7,8 +7,7 @@
 --   DROP TABLE IF EXISTS linq_multi_family_joins;
 -- The consent_type value stays; enum values cannot be removed in place.
 --
--- Follows 0146_linq_group_members. 0147 is in flight elsewhere. This ticket
--- takes 0148.
+-- Follows 0147_same_activity_opt_ins. This ticket takes 0148.
 --
 -- A family is in the shared group only after a parent of THAT family joins.
 -- The join points at that family's consent row. linq_group_members is unchanged,

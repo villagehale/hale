@@ -786,7 +786,10 @@ export async function readFamilySliceForAudience(
     return { reason: 'no_consent', slice: empty };
   }
 
-  const [kids, facts, events, mail, bookings] = await Promise.all([
+  // Calendar titles stay out of this file. That table is a named outbound door,
+  // and a shared-thread send must not be another reader of it. The calendar
+  // list on a consented slice is empty for that reason.
+  const [kids, facts, mail, bookings] = await Promise.all([
     database
       .select({ familyId: schema.children.familyId, name: schema.children.name })
       .from(schema.children)
@@ -798,10 +801,6 @@ export async function readFamilySliceForAudience(
       })
       .from(schema.familyMemoryFacts)
       .where(eq(schema.familyMemoryFacts.familyId, input.dataFamilyId)),
-    database
-      .select({ familyId: schema.familyEvents.familyId, title: schema.familyEvents.title })
-      .from(schema.familyEvents)
-      .where(eq(schema.familyEvents.familyId, input.dataFamilyId)),
     database
       .select({
         familyId: schema.emailForwardsPending.familyId,
@@ -824,7 +823,7 @@ export async function readFamilySliceForAudience(
       familyId: input.dataFamilyId,
       children: kids.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.name),
       memory: facts.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.factKey),
-      calendar: events.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.title),
+      calendar: [],
       email: mail.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.subject),
       signups: bookings
         .filter((row) => row.familyId === input.dataFamilyId)
