@@ -343,24 +343,34 @@ describe('/about — the locked page', () => {
 describe('/pricing — Free is live, Plus and Family say coming soon', () => {
   const html = pages['/pricing'];
 
-  it('renders three cards, a price on none of them, and one live feature list', () => {
+  it('renders three cards, a price on none of them, and feature lines with one text door', () => {
     expect(html).toContain('Free, with unlimited chat.');
     expect(html).toContain('Unlimited chat');
+    expect(html).toContain('Free today');
     expect(html).toContain('Plus');
     expect(html).toContain('Family');
+    expect(html).toContain('Everything in Free');
+    expect(html).toContain('A household view of the year, as it rolls out');
     expect(html.match(/Coming soon/g)).toHaveLength(2);
     expect(html).not.toContain('$');
+    expect(html).not.toContain('0 CAD');
     expect(html).not.toContain('Founding');
+    expect(html).not.toContain('Subscribe');
     expect(html).not.toContain('Your village feed');
     expect(html).not.toContain('Companion:');
-    expect(html.match(/numbered-card-list/g)).toHaveLength(1);
-    expect(html.match(/lucide-check/g)).toHaveLength(4);
+    expect(html.match(/numbered-card-list/g)).toHaveLength(3);
+    expect(html.match(/lucide-check/g)).toHaveLength(9);
+    expect(html.match(/pricing_tier/g)).toHaveLength(1);
   });
 
   it('says Hale is free today, and the other two tiers are not available', () => {
     const text = rawText(html).replace(/\s+/g, ' ');
-    expect(text).toContain('Unlimited chat is free today. Plus and Family are coming soon. There is no price.');
-    expect(text).toContain('Only Free is available today. There is no price. Your data stays in Canada.');
+    expect(text).toContain(
+      'Unlimited chat is free today. Plus and Family are coming soon. There is no price.',
+    );
+    expect(text).toContain(
+      'Only Free is available today. There is no price. Your data stays in Canada.',
+    );
     expect(text).not.toContain('Founding families join free.');
   });
 

@@ -5,15 +5,18 @@ import { getTranslator } from '~/i18n/server';
 import { chromeCta } from '~/lib/site/chrome-cta';
 
 const TIERS = ['free', 'plus', 'family'] as const;
+type PaidTier = 'plus' | 'family';
 
 /**
- * Three cards. Only Free is live: unlimited chat, and the same text door as
- * the rest of the site. Plus and Family say they are coming soon. No price,
- * no founding rate, and no upgrade button on a tier that is not available.
+ * Three cards. Only Free is live: unlimited chat, free today, and the same
+ * text door as the rest of the site. Plus and Family are labelled coming soon.
+ * Their lines describe a later tier in plain words. No price, no date, no
+ * buy or waitlist control, and no link on a tier that is not available.
  */
 export function PricingSection({ locale = routing.defaultLocale }: { locale?: Locale }) {
   const t = getTranslator(locale, 'PricingSection');
-  const features = t.raw('freeFeatures') as string[];
+  const freeFeatures = t.raw('freeFeatures') as string[];
+  const paidFeatures = t.raw('paidFeatures') as Record<PaidTier, string[]>;
   const names = t.raw('tierNames') as Record<(typeof TIERS)[number], string>;
   const cta = chromeCta(locale);
   return (
@@ -29,6 +32,7 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
       <ol className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
         {TIERS.map((tier, i) => {
           const isFree = tier === 'free';
+          const features = isFree ? freeFeatures : paidFeatures[tier];
           return (
             <li key={tier} className="glass-panel numbered-card">
               <div className="numbered-card-head">
@@ -44,28 +48,26 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
               <p className="mt-5" style={{ color: 'var(--color-spruce)', lineHeight: 1.6 }}>
                 {isFree ? t('freeBody') : t('comingBody')}
               </p>
+              <ul className="numbered-card-list">
+                {features.map((feature) => (
+                  <li key={feature}>
+                    <Check size={16} strokeWidth={2.5} aria-hidden="true" />
+                    <span>{feature}</span>
+                  </li>
+                ))}
+              </ul>
               {isFree ? (
-                <>
-                  <ul className="numbered-card-list">
-                    {features.map((feature) => (
-                      <li key={feature}>
-                        <Check size={16} strokeWidth={2.5} aria-hidden="true" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="mt-auto pt-8">
-                    <LandingCta
-                      event="cta_text_click"
-                      channel="sms"
-                      placement="pricing_tier"
-                      href={cta.href}
-                      className="btn-primary"
-                    >
-                      {cta.label}
-                    </LandingCta>
-                  </div>
-                </>
+                <div className="mt-auto pt-8">
+                  <LandingCta
+                    event="cta_text_click"
+                    channel="sms"
+                    placement="pricing_tier"
+                    href={cta.href}
+                    className="btn-primary"
+                  >
+                    {cta.label}
+                  </LandingCta>
+                </div>
               ) : null}
             </li>
           );

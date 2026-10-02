@@ -409,7 +409,7 @@
   },
   "Pricing": {
     "metaTitle": "价格 · Hale",
-    "metaDescription": "Hale 现在免费，聊天不限次数。你的数据始终留在加拿大。",
+    "metaDescription": "Hale 现在免费，聊天不限次数。列出的方案只有 0 CAD。Plus 和 Family 即将推出。你的数据始终留在加拿大。",
     "eyebrow": "价格",
     "headline": [
       {
@@ -427,7 +427,7 @@
     "eyebrow": "价格",
     "headline": "免费，聊天不限次数。",
     "lede": "你说出年龄、地点和想要的位置。Hale 去找，继续盯着，有位置时发一条短信。家庭群在同一个对话里。",
-    "freeLine": "免费",
+    "freeLine": "今天免费",
     "freeBody": "聊天不限次数。Hale 按年龄、地点和位置去找，有位置时发一条短信。",
     "footnote": "现在只有免费档可用。没有价格。你的数据始终留在加拿大。",
     "comingSoon": "即将推出",
@@ -442,7 +442,18 @@
       "当场查找",
       "有位置时发一条短信",
       "iMessage"
-    ]
+    ],
+    "paidFeatures": {
+      "plus": [
+        "免费档里的全部",
+        "提醒和草稿，还没开放",
+        "更多这一年，还没开放"
+      ],
+      "family": [
+        "Plus 里的全部",
+        "家里这一年的总览，还没开放"
+      ]
+    }
   },
   "Contact": {
     "metaTitle": "联系我们 · Hale",

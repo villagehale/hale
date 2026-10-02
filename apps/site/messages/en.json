@@ -386,7 +386,7 @@
   },
   "Pricing": {
     "metaTitle": "Pricing · Hale",
-    "metaDescription": "Hale is free, with unlimited chat. Plus and Family are coming soon. There is no price. Your data stays in Canada.",
+    "metaDescription": "Hale is free today, with unlimited chat. The only offer is 0 CAD. Plus and Family are coming soon. Your data stays in Canada.",
     "eyebrow": "Pricing",
     "headline": [
       {
@@ -404,7 +404,7 @@
     "eyebrow": "Pricing",
     "headline": "Free, with unlimited chat.",
     "lede": "You ask with an age, a place, and a spot. Hale looks it up, keeps watch, and texts when a place opens. The family group is in the same chat.",
-    "freeLine": "Free",
+    "freeLine": "Free today",
     "freeBody": "Unlimited chat. Hale looks up an age, a place, and a spot, and texts when a place opens.",
     "footnote": "Only Free is available today. There is no price. Your data stays in Canada.",
     "comingSoon": "Coming soon",
@@ -419,7 +419,18 @@
       "Live find",
       "A text when a place opens",
       "iMessage"
-    ]
+    ],
+    "paidFeatures": {
+      "plus": [
+        "Everything in Free",
+        "Reminders and drafts, as they roll out",
+        "More of the year watched with you"
+      ],
+      "family": [
+        "Everything in Plus",
+        "A household view of the year, as it rolls out"
+      ]
+    }
   },
   "Contact": {
     "metaTitle": "Contact · Hale",

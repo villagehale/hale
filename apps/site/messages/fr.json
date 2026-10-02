@@ -386,7 +386,7 @@
   },
   "Pricing": {
     "metaTitle": "Tarifs · Hale",
-    "metaDescription": "Hale est gratuit, avec un clavardage illimite. Plus et Famille arrivent bientot. Pas de prix. Vos donnees restent au Canada.",
+    "metaDescription": "Hale est gratuit aujourd'hui, avec un clavardage illimite. La seule offre est 0 CAD. Plus et Famille arrivent bientot. Vos donnees restent au Canada.",
     "eyebrow": "Tarifs",
     "headline": [
       {
@@ -404,7 +404,7 @@
     "eyebrow": "Tarif",
     "headline": "Gratuit, avec un clavardage illimite.",
     "lede": "Vous demandez un age, un endroit et une place. Hale cherche, surveille, et texte quand une place s'ouvre. Le groupe familial est dans le meme clavardage.",
-    "freeLine": "Gratuit",
+    "freeLine": "Gratuit aujourd'hui",
     "freeBody": "Clavardage illimite. Hale cherche selon l'age, l'endroit et la place, et texte quand une place s'ouvre.",
     "footnote": "Seul Gratuit est disponible aujourd'hui. Pas de prix. Vos donnees restent au Canada.",
     "comingSoon": "Bientot",
@@ -419,7 +419,18 @@
       "Recherche en direct",
       "Un texto quand une place s'ouvre",
       "iMessage"
-    ]
+    ],
+    "paidFeatures": {
+      "plus": [
+        "Tout ce qu'il y a dans Gratuit",
+        "Rappels et brouillons, a mesure qu'ils arrivent",
+        "Davantage de l'annee suivie avec vous"
+      ],
+      "family": [
+        "Tout ce qu'il y a dans Plus",
+        "Une vue du foyer sur l'annee, a mesure qu'elle arrive"
+      ]
+    }
   },
   "Contact": {
     "metaTitle": "Contact · Hale",

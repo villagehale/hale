@@ -9,7 +9,8 @@ import { PricingSection } from './pricing-section.js';
 
 /**
  * Three cards. Free is the only live tier and the only text door. Plus and
- * Family say they are coming soon. No price, no founding rate, no upgrade.
+ * Family say they are coming soon, with short lines and no way to buy them.
+ * No price, no founding rate, no upgrade.
  */
 const html = renderToStaticMarkup(createElement(PricingSection));
 
@@ -22,7 +23,7 @@ afterEach(() => {
 
 describe('PricingSection (landing pricing)', () => {
   it('states free chat as the live card, and paid tiers as coming soon, with no price', () => {
-    expect(en.PricingSection.freeLine).toBe('Free');
+    expect(en.PricingSection.freeLine).toBe('Free today');
     expect(en.PricingSection.comingSoon).toBe('Coming soon');
     expect(en.PricingSection.freeFeatures).toEqual([
       'Unlimited chat',
@@ -30,20 +31,58 @@ describe('PricingSection (landing pricing)', () => {
       'A text when a place opens',
       'iMessage',
     ]);
+    expect(en.PricingSection.paidFeatures).toEqual({
+      plus: [
+        'Everything in Free',
+        'Reminders and drafts, as they roll out',
+        'More of the year watched with you',
+      ],
+      family: ['Everything in Plus', 'A household view of the year, as it rolls out'],
+    });
+    expect(en.Pricing.metaDescription).toContain('0 CAD');
+    expect(en.Pricing.metaDescription).not.toMatch(/\$|\bPlus at\b|\bFamily at\b|\/mo/i);
     expect(html).toContain('Free, with unlimited chat.');
     expect(html).toContain('Unlimited chat');
+    expect(html).toContain('Free today');
     expect(html).toContain('Plus');
     expect(html).toContain('Family');
+    expect(html).toContain('Everything in Free');
+    expect(html).toContain('A household view of the year, as it rolls out');
     expect([...html.matchAll(/Coming soon/g)]).toHaveLength(2);
     expect(html).not.toContain('$');
+    expect(html).not.toContain('0 CAD');
     expect(html).not.toContain('Founding');
     expect(html).not.toContain('Subscribe');
-    expect([...html.matchAll(/numbered-card-list/g)]).toHaveLength(1);
-    expect([...html.matchAll(/lucide-check/g)]).toHaveLength(en.PricingSection.freeFeatures.length);
+    expect(html).not.toContain('Upgrade');
+    expect(html).not.toContain('Concierge');
+    expect(html.toLowerCase()).not.toContain('waitlist');
+    expect(html.toLowerCase()).not.toContain('google');
+    const paidCopy = [
+      ...en.PricingSection.paidFeatures.plus,
+      ...en.PricingSection.paidFeatures.family,
+    ]
+      .join(' ')
+      .toLowerCase();
+    for (const banned of ['book', 'sign up', 'register', 'subscribe', 'sync', 'buy']) {
+      expect(paidCopy, banned).not.toContain(banned);
+    }
+    const featureCount =
+      en.PricingSection.freeFeatures.length +
+      en.PricingSection.paidFeatures.plus.length +
+      en.PricingSection.paidFeatures.family.length;
+    expect([...html.matchAll(/numbered-card-list/g)]).toHaveLength(3);
+    expect([...html.matchAll(/lucide-check/g)]).toHaveLength(featureCount);
+    const cards = html.split('glass-panel numbered-card').slice(1);
+    expect(cards).toHaveLength(3);
+    expect(cards[1]).not.toContain('href');
+    expect(cards[2]).not.toContain('href');
   });
 
   it('renders the French cards: Gratuit is live, Plus and Famille are coming soon', () => {
-    const french = renderToStaticMarkup(createElement(PricingSection, { locale: 'fr' }));
+    const french = renderToStaticMarkup(createElement(PricingSection, { locale: 'fr' })).replace(
+      /&#x27;/g,
+      "'",
+    );
     expect(french).toContain('Gratuit, avec un clavardage illimite.');
     expect(french).toContain('Clavardage illimite');
     expect(french).toContain('Recherche en direct');
@@ -52,13 +91,26 @@ describe('PricingSection (landing pricing)', () => {
     expect([...french.matchAll(/Bientot/g)]).toHaveLength(2);
     expect(french).not.toContain('$');
     expect(french).not.toContain('Founding rate');
-    expect(fr.PricingSection.freeLine).toBe('Gratuit');
+    expect(french).toContain("Gratuit aujourd'hui");
+    expect(french).toContain("Tout ce qu'il y a dans Gratuit");
+    expect(french).toContain("Une vue du foyer sur l'annee, a mesure qu'elle arrive");
+    expect(fr.Pricing.metaDescription).toContain('0 CAD');
+    expect(fr.PricingSection.freeLine).toBe("Gratuit aujourd'hui");
     expect(fr.PricingSection.freeFeatures).toEqual([
       'Clavardage illimite',
       'Recherche en direct',
       "Un texto quand une place s'ouvre",
       'iMessage',
     ]);
+    expect(fr.PricingSection.paidFeatures.plus).toEqual([
+      "Tout ce qu'il y a dans Gratuit",
+      "Rappels et brouillons, a mesure qu'ils arrivent",
+      "Davantage de l'annee suivie avec vous",
+    ]);
+    const rewritten = JSON.stringify(fr.PricingSection);
+    expect(rewritten).toBe(
+      [...rewritten].map((ch) => (ch.charCodeAt(0) < 128 ? ch : '?')).join(''),
+    );
   });
 
   it('renders the Chinese cards: free is live, Plus and Family are coming soon', () => {
@@ -70,7 +122,13 @@ describe('PricingSection (landing pricing)', () => {
     expect([...chinese.matchAll(/即将推出/g)]).toHaveLength(2);
     expect(chinese).not.toContain('$');
     expect(chinese).not.toContain('创始价');
-    expect(zh.PricingSection.freeLine).toBe('免费');
+    expect(chinese).toContain('今天免费');
+    expect(chinese).toContain('免费档里的全部');
+    expect(zh.PricingSection.freeLine).toBe('今天免费');
+    expect(zh.PricingSection.paidFeatures.family).toEqual([
+      'Plus 里的全部',
+      '家里这一年的总览，还没开放',
+    ]);
   });
 
   it('argues the price without a metaphor to decode', () => {
@@ -85,7 +143,9 @@ describe('PricingSection (landing pricing)', () => {
     expect(html.toLowerCase()).not.toContain('checkout');
     expect(html).not.toContain('#waitlist');
     const { href, label } = chromeCta();
-    expect([...html.matchAll(new RegExp(escapeRe(href.replace(/&/g, '&amp;')), 'g'))]).toHaveLength(1);
+    expect([...html.matchAll(new RegExp(escapeRe(href.replace(/&/g, '&amp;')), 'g'))]).toHaveLength(
+      1,
+    );
     expect([...html.matchAll(new RegExp(escapeRe(label), 'g'))]).toHaveLength(1);
   });
 
