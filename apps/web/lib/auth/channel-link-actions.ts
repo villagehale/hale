@@ -4,10 +4,13 @@ import { AuthError } from 'next-auth';
 import { redirect } from 'next/navigation';
 import { signIn } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
+import { recallChannelSigninParent } from '~/lib/auth/channel-signin';
+import { textFreshConnectorLink } from '~/lib/channel/connect/fresh-link';
 import {
   type TextConnectProvider,
   asTextConnectProvider,
 } from '~/lib/channel/connect/text-connect';
+import { db } from '~/lib/db';
 
 /**
  * Server action for the /connect redeem page — the magic-link action's shape with a
@@ -20,15 +23,16 @@ import {
  * value rather than taken from it, so there is no redirect surface to clamp.
  *
  * A token that is invalid / expired / already consumed makes authorize return null,
- * which Auth.js surfaces as a CredentialsSignin AuthError → one generic error the
- * page pairs with a "text me again" hint (a fresh link is one text away — there is
- * no request-a-new-link form for a token only Hale can mint).
+ * which Auth.js surfaces as a CredentialsSignin AuthError. When the token still
+ * names a parent, Hale texts a fresh link for the provider on THAT link. The page
+ * says a text left only when one did, and never a phrase to type.
  */
 
 export type ChannelLinkRedeemState = { status: 'idle' } | { status: 'error'; message: string };
 
-const GENERIC_ERROR =
-  'This link is invalid or has expired. Text Hale "connect my calendar" for a fresh one.';
+const EXPIRED = 'This link is invalid or has expired.';
+const FRESH_SENT = 'This link is invalid or has expired. A fresh one is in your texts.';
+const TRY_AGAIN = 'This link did not open. Tap it again in a moment.';
 
 /** Where a link that named no connector lands: the connections section of Settings. */
 const SETTINGS_DESTINATION = '/settings#apps';
@@ -36,8 +40,10 @@ const SETTINGS_DESTINATION = '/settings#apps';
 /** `from=text` is how the consent mint learns the parent is standing in a thread, and
  * therefore that the return leg owes them a done page and a text rather than a
  * dashboard (api/integrations/[provider]/connect). */
-function destination(provider: TextConnectProvider | null): string {
-  return provider ? `/api/integrations/${provider}/connect?from=text` : SETTINGS_DESTINATION;
+function destination(provider: TextConnectProvider | null, tokenId?: string): string {
+  if (!provider) return SETTINGS_DESTINATION;
+  const path = `/api/integrations/${provider}/connect?from=text`;
+  return tokenId ? `${path}&link=${tokenId}` : path;
 }
 
 export async function redeemChannelLinkAction(
@@ -50,12 +56,26 @@ export async function redeemChannelLinkAction(
     return { status: 'error', message: 'Sign-in is not available right now.' };
   }
 
-  const redirectTo = destination(asTextConnectProvider(provider));
+  const named = asTextConnectProvider(provider);
+  const recalled = await recallChannelSigninParent(token, db());
+  // A dead link still names its parent. Text a new one for the provider they
+  // tapped, and do not open Google on a token that can no longer sign them in.
+  if (recalled && !recalled.usable && named) {
+    const outcome = await textFreshConnectorLink(db(), {
+      familyId: recalled.familyId,
+      parentUserId: recalled.userId,
+      provider: named,
+      now: new Date(),
+    });
+    return { status: 'error', message: outcome === 'sent' ? FRESH_SENT : EXPIRED };
+  }
+
+  const redirectTo = destination(named, recalled?.usable ? recalled.tokenId : undefined);
   try {
     await signIn('channel-link', { token, redirectTo });
   } catch (err) {
     if (err instanceof AuthError && err.type === 'CredentialsSignin') {
-      return { status: 'error', message: GENERIC_ERROR };
+      return { status: 'error', message: recalled?.usable ? TRY_AGAIN : EXPIRED };
     }
     throw err;
   }

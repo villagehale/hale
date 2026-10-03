@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
+import { sendYearConnectorCards } from '~/lib/channel/intake/connector-offer';
 import {
   type FriendVoiceComposer,
   createFriendVoiceComposer,
@@ -267,7 +268,6 @@ async function sendReceipt(
     .returning({ id: schema.channelMessages.id });
   if (!claimed) return { status: 'not_sent', reason: 'already_sent' };
 
-  // The receipt is the whole turn. No ladder ask is composed here.
   const body = await connectedReceiptBody(
     await familyReceiptLanguage(database, familyId),
     provider,
@@ -324,6 +324,20 @@ async function sendReceipt(
   // The sentence Hale said, where the coach reads it back: a parent answering "what did
   // you just connect" must not meet a coach that cannot see its own message.
   await ports.threadMessage(database, { familyId, parentUserId, body });
+
+  if (provider === 'gcal') {
+    await sendGmailCardAfterCalendarReceipt(
+      database,
+      {
+        familyId,
+        parentUserId,
+        now,
+        chatId: door.channel === 'imessage' ? receiptChatId : null,
+        phone,
+      },
+      ports,
+    );
+  }
 
   return { status: 'sent', channelMessageId: claimed.id };
 }
@@ -401,7 +415,78 @@ async function sendGroupHomeReceipt(
     .set({ providerMessageId })
     .where(eq(schema.channelMessages.id, claimed.id));
   await ports.threadMessage(database, { familyId, parentUserId, body });
+  if (provider === 'gcal') {
+    await sendGmailCardAfterCalendarReceipt(
+      database,
+      { familyId, parentUserId, now, chatId, phone: '' },
+      ports,
+    );
+  }
   return { status: 'sent', channelMessageId: claimed.id };
+}
+
+/**
+ * The Gmail card follows a calendar receipt in the same turn. The year ladder
+ * used to wait for the parent's next text ("Ok") before sending it.
+ * A card already sent stays `already_sent`. A failure here does not un-send
+ * the receipt.
+ */
+async function sendGmailCardAfterCalendarReceipt(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+    chatId: string | null;
+    phone: string;
+  },
+  ports: ConnectedNoticePorts,
+): Promise<void> {
+  try {
+    const phone = args.phone || (await resolveSendablePhone(database, args.parentUserId)) || '';
+    if (!phone && !args.chatId) {
+      console.info(
+        { familyId: args.familyId },
+        'connector connected: gmail card not sent - no phone and no chat',
+      );
+      return;
+    }
+    const transport: ChannelTransport = {
+      send: async (input) => {
+        if (args.chatId && ports.imessage) {
+          const sent = await ports.imessage({ chatId: args.chatId, body: input.body });
+          return {
+            providerMessageId: sent.providerMessageId,
+            transport: 'imessage' as const,
+            chatId: args.chatId,
+          };
+        }
+        return ports.transport.send(input);
+      },
+    };
+    const cards = await sendYearConnectorCards(
+      database,
+      {
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        phoneE164: phone || 'unaddressed',
+        language: await familyReceiptLanguage(database, args.familyId),
+        now: args.now,
+        ridesReply: true,
+        only: 'gmail',
+      },
+      { transport, threadMessage: ports.threadMessage },
+    );
+    console.info(
+      { familyId: args.familyId, gmail: cards.gmail },
+      'connector connected: gmail card after the calendar receipt',
+    );
+  } catch (err) {
+    console.error(
+      { familyId: args.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'connector connected: gmail card after the calendar receipt failed',
+    );
+  }
 }
 
 /**

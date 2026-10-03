@@ -16,6 +16,7 @@ import {
   forwardRevokeReply,
   matchForwardAddressRequest,
 } from '~/lib/channel/email/forward-request';
+import { mediaUnsupportedReply } from '~/lib/channel/inbound-copy';
 import {
   AMBIGUOUS_CLARIFY,
   AMBIGUOUS_CLARIFY_BY_LANGUAGE,
@@ -72,7 +73,6 @@ import {
   partialFailureReply,
   whichOneReply,
 } from '~/lib/channel/router/copy';
-import { mediaUnsupportedReply } from '~/lib/channel/inbound-copy';
 import { emailAlertOfferReplies } from '~/lib/integrations/email-alert-offer';
 import { PRIVACY_URL } from '~/lib/legal-links';
 import { smsEncoding, smsSegments } from './sms-segments';
@@ -392,11 +392,10 @@ describe('the co-parent join copy stays GSM-7 and inside two segments', () => {
 /**
  * The connector offer, rendered — the other deterministic body that carries a URL Hale
  * did not write. The link is the payload (a single-use, 15-minute sign-in token), so the
- * gates are the join copy's: GSM-7 once rendered, the WHOLE link present, and ONE
- * segment — the reply answers a parent who asked for exactly one thing, and a second
- * segment here would be pure ceremony.
+ * gates are GSM-7 once rendered and the WHOLE link present. The unverified-app line
+ * sits in front of the link, which is why the ceiling is two segments rather than one.
  */
-describe('the connector offer stays GSM-7 and inside one segment, twins in lockstep', () => {
+describe('the connector offer stays GSM-7 and inside two segments, twins in lockstep', () => {
   // Representative of the real mint: 16 bytes base64url is 22 characters, plus the
   // `&to=` deep link the redeem page needs to skip Settings.
   const URL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ&to=gmail';
@@ -409,7 +408,7 @@ describe('the connector offer stays GSM-7 and inside one segment, twins in locks
     const body = connectorOfferReply(language, provider, URL);
     expect({
       encoding: smsEncoding(body),
-      overBudget: smsSegments(body) > 1,
+      overBudget: smsSegments(body) > 2,
       carriesWholeLink: body.includes(URL),
     }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeLink: true });
   });
@@ -464,7 +463,11 @@ describe('the year-open connector cards stay GSM-7 and inside two segments', () 
   });
 });
 
-describe('the intake connector offer stays GSM-7 and inside two segments', () => {
+/**
+ * Three segments. Two sign-in URLs already filled two, and the unverified-app
+ * line in front of them is the third. The links stay whole.
+ */
+describe('the intake connector offer stays GSM-7 and inside three segments', () => {
   /** The real shapes, measured rather than approximated: appBaseUrl() in production is
    * `https://app.villagehale.com`, and a channel sign-in token is 16 random bytes in
    * base64url — 22 characters. 137 of this message is therefore URL Hale did not write. */
@@ -475,7 +478,7 @@ describe('the intake connector offer stays GSM-7 and inside two segments', () =>
     const body = intakeConnectorOffer(language, CALENDAR_URL, GMAIL_URL);
     expect({
       encoding: smsEncoding(body),
-      overBudget: smsSegments(body) > 2,
+      overBudget: smsSegments(body) > 3,
       carriesWholeLinks: body.includes(CALENDAR_URL) && body.includes(GMAIL_URL),
     }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeLinks: true });
   });
@@ -624,13 +627,15 @@ describe('the disconnect receipts stay one GSM-7 segment and say what Google sti
     expect(en).toContain('nothing was changed');
   });
 
-  /** The words the connect card teaches have to be words that work. "never" in the
-   * password sentence blocks a reply of the whole line; the disconnect sentence alone
-   * is the command. */
-  it('honours the instruction the connect card gives', () => {
-    expect(CONNECTOR_TRUST_LINE.gcal).toContain('Disconnect my calendar anytime');
-    expect(matchConnectorDisconnectRequest('Disconnect my calendar anytime.')).toBe('gcal');
-    expect(matchConnectorDisconnectRequest('Disconnect my gmail anytime.')).toBe('gmail');
+  /** The trust line is not a command. A parent can still disconnect by saying so. */
+  it('does not teach a disconnect phrase on the connect card', () => {
+    expect(CONNECTOR_TRUST_LINE.gcal).toBe(
+      'I never see your password. You can disconnect any time.',
+    );
+    expect(CONNECTOR_TRUST_LINE.gmail).toBe(CONNECTOR_TRUST_LINE.gcal);
+    expect(matchConnectorDisconnectRequest(CONNECTOR_TRUST_LINE.gcal)).toBeNull();
+    expect(matchConnectorDisconnectRequest('disconnect my calendar')).toBe('gcal');
+    expect(matchConnectorDisconnectRequest('disconnect my gmail')).toBe('gmail');
   });
 });
 

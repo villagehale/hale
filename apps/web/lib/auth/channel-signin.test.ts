@@ -4,8 +4,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   CHANNEL_SIGNIN_TTL_MS,
+  channelSigninTokenBelongsToUser,
   consumeChannelSigninToken,
+  consumeChannelSigninTokenById,
   mintChannelSigninTokens,
+  presentChannelSigninToken,
+  recallChannelSigninParent,
 } from './channel-signin';
 
 /**
@@ -161,6 +165,72 @@ describe('channel sign-in tokens', () => {
   it('refuses garbage and over-long probes without a table read', async () => {
     expect((await consumeChannelSigninToken('', db.database)).ok).toBe(false);
     expect((await consumeChannelSigninToken('x'.repeat(65), db.database)).ok).toBe(false);
+  });
+
+  it('signs the parent in on Redeem without burning the link', async () => {
+    const minted = await mintOne();
+    const later = new Date(NOW.getTime() + 60_000);
+
+    const first = await presentChannelSigninToken(minted.token, db.database, { now: later });
+    const second = await presentChannelSigninToken(minted.token, db.database, { now: later });
+
+    expect(first).toEqual({
+      ok: true,
+      identity: { id: SMS_IDENTITY, email: null },
+      tokenId: minted.tokenId,
+    });
+    expect(second.ok).toBe(true);
+    const [row] = await db.database.select().from(schema.channelSigninTokens);
+    expect(row?.consumedAt).toBeNull();
+  });
+
+  it('burns the presented token when consent succeeds, and only that token', async () => {
+    const [calendar, gmail] = await mintChannelSigninTokens(db.database, {
+      userId,
+      count: 2,
+      now: NOW,
+    });
+    if (!calendar || !gmail) throw new Error('expected two tokens');
+    const later = new Date(NOW.getTime() + 60_000);
+    await presentChannelSigninToken(calendar.token, db.database, { now: later });
+
+    const burned = await consumeChannelSigninTokenById(db.database, {
+      tokenId: calendar.tokenId,
+      userId,
+      now: later,
+    });
+    expect(burned).toEqual({ ok: true });
+    expect(
+      await channelSigninTokenBelongsToUser(db.database, {
+        tokenId: calendar.tokenId,
+        userId,
+        now: later,
+      }),
+    ).toBe(false);
+    expect((await presentChannelSigninToken(gmail.token, db.database, { now: later })).ok).toBe(
+      true,
+    );
+    const again = await consumeChannelSigninTokenById(db.database, {
+      tokenId: calendar.tokenId,
+      userId,
+      now: later,
+    });
+    expect(again).toEqual({ ok: false, reason: 'spent' });
+  });
+
+  it('recalls a spent token so a fresh link can be texted to that parent', async () => {
+    const minted = await mintOne();
+    const later = new Date(NOW.getTime() + 60_000);
+    await consumeChannelSigninToken(minted.token, db.database, { now: later });
+
+    const recalled = await recallChannelSigninParent(minted.token, db.database, { now: later });
+    expect(recalled).toEqual({
+      userId,
+      familyId,
+      tokenId: minted.tokenId,
+      usable: false,
+    });
+    expect(await recallChannelSigninParent('missing-token', db.database)).toBeNull();
   });
 
   it('refuses a token whose account has no identity to sign in as', async () => {

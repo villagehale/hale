@@ -13,11 +13,11 @@ import { MAGIC_LINK_TTL_MS } from './magic-link';
  * redemption can never fork a second account off the same family (the claim-by-phone
  * anti-fork property, link-shaped).
  *
- * Hash-only at rest, single-use via an atomic conditional burn, 15-minute TTL, and
- * invalidate-prior — each one the magic-link convention, kept deliberately byte-for-byte
- * in behaviour so there is one story about what a Hale sign-in link is. The unit of
- * "prior" is the ASK, not the link: one message may offer two connectors, and its two
- * links must outlive each other for as long as the message does.
+ * Hash-only at rest, 15-minute TTL, and invalidate-prior. Presenting the link signs
+ * the parent in and does NOT burn it: an abandoned Google screen must leave the same
+ * URL usable. The burn happens when that connector's consent succeeds, or when a
+ * newer ask invalidates the row. The unit of "prior" is the ASK, not the link: one
+ * message may offer two connectors, and its two links must outlive each other.
  */
 
 /** Same window as the email magic link — one product promise about what "a sign-in
@@ -184,4 +184,173 @@ export async function consumeChannelSigninToken(
   if (!burned) return { ok: false, reason: 'spent' };
 
   return { ok: true, identity: { id: externalAuthId, email: null } };
+}
+
+/**
+ * Sign-in for the Redeem tap. Same gates as {@link consumeChannelSigninToken}, and
+ * the same audit row, but the row stays unconsumed. Consent success burns it.
+ */
+export async function presentChannelSigninToken(
+  token: string,
+  database: Database,
+  opts?: { now?: Date },
+): Promise<
+  | { ok: true; identity: { id: string; email: null }; tokenId: string }
+  | { ok: false; reason: 'not_usable' | 'no_identity' | 'no_family' }
+> {
+  const now = opts?.now ?? new Date();
+  const pending = await usableChannelSigninToken(token, database, now);
+  if (!pending) return { ok: false, reason: 'not_usable' };
+
+  const identity = await channelSigninIdentity(database, pending.userId);
+  if (!identity.ok) return identity;
+
+  await database.insert(schema.auditLog).values({
+    familyId: identity.familyId,
+    actor: pending.userId,
+    actionTaken: 'connector_link_signed_in',
+    targetTable: 'channel_signin_tokens',
+    targetId: pending.id,
+    occurredAt: now,
+  });
+
+  return { ok: true, identity: { id: identity.externalAuthId, email: null }, tokenId: pending.id };
+}
+
+/**
+ * Who a token belongs to, including one that is already spent or expired. The
+ * failure page uses this to text a fresh link without telling the parent a phrase
+ * to type. Unknown tokens return null — there is nobody to text.
+ */
+export async function recallChannelSigninParent(
+  token: string,
+  database: Database,
+  opts?: { now?: Date },
+): Promise<{ userId: string; familyId: string; tokenId: string; usable: boolean } | null> {
+  const now = opts?.now ?? new Date();
+  if (!token || token.length > 64) return null;
+  const [row] = await database
+    .select({
+      id: schema.channelSigninTokens.id,
+      userId: schema.channelSigninTokens.userId,
+      consumedAt: schema.channelSigninTokens.consumedAt,
+      expiresAt: schema.channelSigninTokens.expiresAt,
+    })
+    .from(schema.channelSigninTokens)
+    .where(eq(schema.channelSigninTokens.tokenHash, hashToken(token)))
+    .limit(1);
+  if (!row) return null;
+  const identity = await channelSigninIdentity(database, row.userId);
+  if (!identity.ok) return null;
+  return {
+    userId: row.userId,
+    familyId: identity.familyId,
+    tokenId: row.id,
+    usable: row.consumedAt === null && row.expiresAt > now,
+  };
+}
+
+/** True when this unconsumed, unexpired token belongs to the signed-in user. */
+export async function channelSigninTokenBelongsToUser(
+  database: Database,
+  input: { tokenId: string; userId: string; now?: Date },
+): Promise<boolean> {
+  const now = input.now ?? new Date();
+  const [row] = await database
+    .select({
+      userId: schema.channelSigninTokens.userId,
+      consumedAt: schema.channelSigninTokens.consumedAt,
+      expiresAt: schema.channelSigninTokens.expiresAt,
+    })
+    .from(schema.channelSigninTokens)
+    .where(eq(schema.channelSigninTokens.id, input.tokenId))
+    .limit(1);
+  return (
+    row?.userId === input.userId &&
+    row.consumedAt === null &&
+    row.expiresAt.getTime() > now.getTime()
+  );
+}
+
+/**
+ * Burn the link whose id rode along in the signed connect state. Consent has
+ * already succeeded. A miss is named: the connection stays stored either way.
+ */
+export async function consumeChannelSigninTokenById(
+  database: Database,
+  input: { tokenId: string; userId: string; now?: Date },
+): Promise<{ ok: true } | { ok: false; reason: 'not_usable' | 'spent' }> {
+  const now = input.now ?? new Date();
+  const identity = await channelSigninIdentity(database, input.userId);
+  if (!identity.ok) return { ok: false, reason: 'not_usable' };
+
+  const burned = await database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    const spent = await tx
+      .update(schema.channelSigninTokens)
+      .set({ consumedAt: now })
+      .where(
+        and(
+          eq(schema.channelSigninTokens.id, input.tokenId),
+          eq(schema.channelSigninTokens.userId, input.userId),
+          isNull(schema.channelSigninTokens.consumedAt),
+          gt(schema.channelSigninTokens.expiresAt, now),
+        ),
+      )
+      .returning({ id: schema.channelSigninTokens.id });
+    if (!spent[0]) return false;
+    await tx.insert(schema.auditLog).values({
+      familyId: identity.familyId,
+      actor: input.userId,
+      actionTaken: 'connector_link_signed_in',
+      targetTable: 'channel_signin_tokens',
+      targetId: input.tokenId,
+      occurredAt: now,
+    });
+    return true;
+  });
+  return burned ? { ok: true } : { ok: false, reason: 'spent' };
+}
+
+async function usableChannelSigninToken(
+  token: string,
+  database: Database,
+  now: Date,
+): Promise<{ id: string; userId: string } | null> {
+  if (!token || token.length > 64) return null;
+  const [pending] = await database
+    .select({ id: schema.channelSigninTokens.id, userId: schema.channelSigninTokens.userId })
+    .from(schema.channelSigninTokens)
+    .where(
+      and(
+        eq(schema.channelSigninTokens.tokenHash, hashToken(token)),
+        isNull(schema.channelSigninTokens.consumedAt),
+        gt(schema.channelSigninTokens.expiresAt, now),
+      ),
+    )
+    .limit(1);
+  return pending ?? null;
+}
+
+async function channelSigninIdentity(
+  database: Database,
+  userId: string,
+): Promise<
+  | { ok: true; externalAuthId: string; familyId: string }
+  | { ok: false; reason: 'no_identity' | 'no_family' }
+> {
+  const [user] = await database
+    .select({ externalAuthId: schema.users.externalAuthId })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .limit(1);
+  const externalAuthId = user?.externalAuthId;
+  if (!externalAuthId) return { ok: false, reason: 'no_identity' };
+  const memberships = await database
+    .select({ familyId: schema.familyMembers.familyId, role: schema.familyMembers.role })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.userId, userId));
+  const familyId = memberships.find((m) => isParentRole(m.role))?.familyId;
+  if (!familyId) return { ok: false, reason: 'no_family' };
+  return { ok: true, externalAuthId, familyId };
 }

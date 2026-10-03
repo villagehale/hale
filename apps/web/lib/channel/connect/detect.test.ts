@@ -80,8 +80,8 @@ describe('matchConnectorRequest', () => {
  */
 describe('matchConnectorDisconnectRequest', () => {
   it.each([
-    // The plain instruction, in the words Hale's own connected receipt teaches
-    // (connect/text-connect.ts: "you can say disconnect my calendar anytime").
+    // The plain instruction a parent can still type. The connect card no longer
+    // teaches this sentence.
     ['disconnect my calendar', 'gcal'],
     ['disconnect gmail', 'gmail'],
     ['disconnect calendar', 'gcal'],

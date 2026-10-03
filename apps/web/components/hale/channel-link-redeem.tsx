@@ -2,19 +2,22 @@
 
 import { useActionState } from 'react';
 import {
+  type ChannelLinkRedeemState,
+  redeemChannelLinkAction,
+} from '~/lib/auth/channel-link-actions';
+import {
   type TextConnectProvider,
   textConnectButtonLabel,
 } from '~/lib/channel/connect/text-connect';
-import { type ChannelLinkRedeemState, redeemChannelLinkAction } from '~/lib/auth/channel-link-actions';
 
 /**
  * Redeems a texted sign-in link on a TAP, never on load — the one deliberate
  * difference from MagicLinkRedeem's auto-submit. An SMS link gets prefetched by
  * carrier scanners and Apple's link previews, which run no JS but do follow
- * redirects; a human tap is the only thing that may spend the single-use token, and
- * the button is also the interstitial that keeps a Google consent screen from
- * erupting straight out of a text message. The token is bound into the action, never
- * rendered in an input.
+ * redirects. The tap signs the parent in and does not spend the token; Google
+ * consent does. The button is also the interstitial that keeps a Google consent
+ * screen from erupting straight out of a text message. The token is bound into the
+ * action, never rendered in an input.
  *
  * When the link named a connector, the button says which one and this tap is the LAST
  * one: redemption forwards straight into Google's consent. The label is the whole

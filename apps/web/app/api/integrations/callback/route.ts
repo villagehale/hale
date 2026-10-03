@@ -2,12 +2,17 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '~/auth';
+import { consumeChannelSigninTokenById } from '~/lib/auth/channel-signin';
 import {
   connectedNoticeLabel,
   defaultConnectedNoticePorts,
   sendConnectorConnectedText,
 } from '~/lib/channel/connect/connected-notice';
-import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
+import { textFreshConnectorLink } from '~/lib/channel/connect/fresh-link';
+import {
+  type TextConnectProvider,
+  asTextConnectProvider,
+} from '~/lib/channel/connect/text-connect';
 import { holdGoogleGivenName } from '~/lib/channel/identity/parent-call-name';
 import { sendCoparentGroupCalendarReceipt } from '~/lib/channel/linq/group-coparent';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
@@ -66,12 +71,13 @@ export async function GET(req: NextRequest) {
     status: string,
     surface?: ConnectState['surface'],
     provider?: string,
-    extra?: { who?: string; lang?: string },
+    extra?: { who?: string; lang?: string; fresh?: string },
   ) => {
     if (surface === 'text') {
       const query = new URLSearchParams({ provider: provider ?? '', status });
       if (extra?.who) query.set('who', extra.who);
       if (extra?.lang) query.set('lang', extra.lang);
+      if (extra?.fresh) query.set('fresh', extra.fresh);
       return NextResponse.redirect(`${origin}/connected?${query.toString()}`);
     }
     if (surface === 'mobile') {
@@ -79,6 +85,37 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.redirect(`${origin}/settings?connect=${status}`);
   };
+
+  /**
+   * Expired, denied, or failed text connect. Mint and text a fresh link for the
+   * provider on the link, then say so on the page only when the text actually left.
+   */
+  async function textFailure(
+    status: 'denied' | 'invalid' | 'error',
+    provider: TextConnectProvider,
+    who: { familyId: string; userId: string },
+  ) {
+    let fresh: string | undefined;
+    try {
+      const outcome = await textFreshConnectorLink(db(), {
+        familyId: who.familyId,
+        parentUserId: who.userId,
+        provider,
+        now: new Date(),
+      });
+      if (outcome === 'sent') fresh = 'sent';
+      console.info(
+        { familyId: who.familyId, provider, outcome, status },
+        'connector link: fresh link after a failed connect',
+      );
+    } catch (err) {
+      console.error(
+        { familyId: who.familyId, code: err instanceof Error ? err.name : 'unknown' },
+        'connector link: fresh link after a failed connect threw',
+      );
+    }
+    return back(status, 'text', provider, fresh ? { fresh } : undefined);
+  }
 
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
@@ -108,7 +145,15 @@ export async function GET(req: NextRequest) {
   if (bound.surface === 'text' && !textProvider) return back('invalid');
   const surface = bound.surface;
 
-  if (declined) return back('denied', surface, bound.provider);
+  if (declined) {
+    if (surface === 'text' && textProvider) {
+      return textFailure('denied', textProvider, {
+        familyId: bound.familyId,
+        userId: bound.userId,
+      });
+    }
+    return back('denied', surface, bound.provider);
+  }
 
   const database = db();
   const session = await auth();
@@ -117,6 +162,12 @@ export async function GET(req: NextRequest) {
     ? await resolveUserIdForUser(externalAuthId, database)
     : null;
   if (!sessionUserId || sessionUserId !== bound.userId) {
+    if (surface === 'text' && textProvider) {
+      return textFailure('invalid', textProvider, {
+        familyId: bound.familyId,
+        userId: bound.userId,
+      });
+    }
     return back('invalid', surface, bound.provider);
   }
 
@@ -143,6 +194,12 @@ export async function GET(req: NextRequest) {
     const grantedOk =
       expected.every((sc) => scopes.includes(sc)) && scopes.every((sc) => allowed.has(sc));
     if (!grantedOk) {
+      if (surface === 'text' && textProvider) {
+        return textFailure('denied', textProvider, {
+          familyId: bound.familyId,
+          userId: bound.userId,
+        });
+      }
       return back('denied', surface, bound.provider);
     }
     let providerMetadata: Record<string, unknown> | undefined;
@@ -244,7 +301,35 @@ export async function GET(req: NextRequest) {
       }
     }
   } catch {
+    if (surface === 'text' && textProvider) {
+      return textFailure('error', textProvider, {
+        familyId: bound.familyId,
+        userId: bound.userId,
+      });
+    }
     return back('error', surface, bound.provider);
+  }
+
+  if (bound.channelSigninTokenId) {
+    try {
+      const burned = await consumeChannelSigninTokenById(database, {
+        tokenId: bound.channelSigninTokenId,
+        userId: bound.userId,
+      });
+      console.info(
+        {
+          familyId: bound.familyId,
+          provider: bound.provider,
+          burned: burned.ok ? 'burned' : burned.reason,
+        },
+        'channel sign-in: token burned after consent',
+      );
+    } catch (err) {
+      console.info(
+        { familyId: bound.familyId, code: err instanceof Error ? err.name : 'unknown' },
+        'channel sign-in: token burn failed after consent',
+      );
+    }
   }
 
   if (textProvider) {

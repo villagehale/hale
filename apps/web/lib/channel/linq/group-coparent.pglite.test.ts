@@ -430,7 +430,9 @@ describe('group co-parent seating', () => {
     expect(groupCalendarAsk('en', 'Sam')).not.toContain('/connect?t=');
     expect(wire.createdChats()).toBe(0);
     expect(wire.privateTexts()).toEqual([]);
-    const calendarToken = new URL(calendarBubble.split('\n')[1] ?? '').searchParams.get('t');
+    const calendarToken = new URL(
+      calendarBubble.split('\n').find((line) => line.startsWith('http')) ?? '',
+    ).searchParams.get('t');
     expect(calendarToken).toBeTruthy();
     expect(groupCalendarAsk('en', 'Sam')).not.toContain(calendarToken ?? 'missing-token');
     const [afterAsk] = await db.database
@@ -453,7 +455,9 @@ describe('group co-parent seating', () => {
     expect(groupGmailAsk('en', 'Sam')).not.toContain('/connect?t=');
     expect(wire.createdChats()).toBe(0);
     expect(wire.privateTexts()).toEqual([]);
-    const gmailToken = new URL((gmailBubbles[0] ?? '').split('\n')[1] ?? '').searchParams.get('t');
+    const gmailToken = new URL(
+      (gmailBubbles[0] ?? '').split('\n').find((line) => line.startsWith('http')) ?? '',
+    ).searchParams.get('t');
     expect(gmailToken).toBeTruthy();
     expect(groupGmailAsk('en', 'Sam')).not.toContain(gmailToken ?? 'missing-token');
 

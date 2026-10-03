@@ -435,9 +435,9 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
  *
  * UNGATED, like the connect half it mirrors. Connect-by-text is live for every family,
  * so gating the undo behind the F14 allowlist would leave most parents able to connect
- * by text and unable to un-connect the same way — and the connected receipt tells all
- * of them the words. A parent ending their own grant is an instruction they gave, not a
- * proactive send, so the dark-launch reasoning does not reach it.
+ * by text and unable to un-connect the same way. A parent ending their own grant is an
+ * instruction they gave, not a proactive send, so the dark-launch reasoning does not
+ * reach it.
  *
  * Rule #11, all three ways out named and all three answered in the parent's own reply
  * language: `revoked`, `not_connected` (nothing of theirs matched — never a false
