@@ -55,6 +55,8 @@ import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
 import {
   handleEmailAlertOfferReply,
+  isEmailAlertAddYes,
+  isEmailAlertOfferCorrection,
   resolveEmailAlertOffer,
 } from '~/lib/integrations/email-alert-offer';
 import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
@@ -860,17 +862,25 @@ export function emailAlertAddHandler(): DeterministicHandler {
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const answer = ctx.resolved?.kind === 'email_alert_add' ? ctx.resolved : null;
       const word = readAffirmative(ctx.body);
-      const polarity = answer?.polarity ?? (word === 'unclear' ? null : word);
+      const correction = answer === null && isEmailAlertOfferCorrection(ctx.body);
+      const polarity =
+        answer?.polarity ??
+        (correction ? 'no' : isEmailAlertAddYes(ctx.body) ? 'yes' : word === 'unclear' ? null : word);
       if (polarity === null) return { claimed: false };
       // THE BARE WORD, and the two things that make it unambiguous. `soleOpenKind` rules
       // out every OTHER kind; the count rules out the second offer of this one, which that
       // function is vacuously happy with — a family may hold three alerts a day, and "yes"
       // next to two of them names neither. Declining sends the turn to the resolver and,
       // failing that, to the one-sentence "Which one?" the subjects are written for.
+      //
+      // A correction ("it's yesterday", "not that one") is about the one offer Hale
+      // just put in front of them. Two of them still asks which, rather than guessing.
       if (answer === null) {
         const questions = await ctx.openQuestions();
         const mine = questions.filter((question) => question.kind === 'email_alert_add');
-        if (mine.length > 1 || !soleOpenKind(questions, 'email_alert_add')) {
+        if (correction) {
+          if (mine.length !== 1) return { claimed: false };
+        } else if (mine.length > 1 || !soleOpenKind(questions, 'email_alert_add')) {
           return { claimed: false };
         }
       }

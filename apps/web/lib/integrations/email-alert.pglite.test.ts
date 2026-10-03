@@ -9,7 +9,7 @@ import { extractStateClaims } from '~/lib/channel/reconcile/claims';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import {
   EMAIL_ALERT_MAX_PER_SWEEP,
   EMAIL_ALERT_TEMPLATE_KEY,
@@ -1194,7 +1194,45 @@ describe('the offer at the end', () => {
     if (!offer) throw new Error('no offer row');
     expect(offer.startsAt.toISOString()).toBe('2026-10-02T13:00:00.000Z');
     // 24h from the send, applied at the reader rather than by a sweep.
+    // This start is more than a day out, so the cap at startsAt does not bind.
     expect(offer.expiresAt.getTime() - NOW.getTime()).toBe(EMAIL_ALERT_OFFER_TTL_MS);
+  });
+
+  it('caps the offer at the occasion start when that is sooner than a day', async () => {
+    const startsAt = new Date(NOW.getTime() + 6 * 60 * 60 * 1000);
+    const h = harness({ classification: future({ newTime: startsAt.toISOString() }) });
+
+    await expect(alert(h)).resolves.toBe('sent');
+
+    const offers = await offerRows();
+    expect(offers).toHaveLength(1);
+    expect(offers[0]?.startsAt.toISOString()).toBe(startsAt.toISOString());
+    expect(offers[0]?.expiresAt.toISOString()).toBe(startsAt.toISOString());
+  });
+
+  it('does not offer an occasion already on the connected Google Calendar', async () => {
+    const startsAt = new Date('2026-10-02T13:00:00.000Z');
+    const gcal = await seedIntegration(db.database, family.familyId, family.parentUserId, 'gcal');
+    await db.database.insert(schema.parentCalendarBlocks).values({
+      integrationId: gcal,
+      eventId: 'picture-day',
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      startAt: startsAt,
+      kidRelated: true,
+      title: 'Picture day',
+      status: 'confirmed',
+      updatedStamp: 'stamp-picture-day',
+    });
+    const h = harness({ classification: future() });
+
+    await expect(alert(h)).resolves.toBe('sent');
+
+    const body = h.transport.sent[0]?.body ?? '';
+    expect(body).toContain('Picture day');
+    expect(body).not.toContain('YES');
+    expect(body).not.toMatch(/\badd\b/i);
+    await expect(offerRows()).resolves.toHaveLength(0);
   });
 
   it('holds the CTA and the row to the same decision, shape by shape', async () => {

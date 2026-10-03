@@ -1,11 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, gt, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, ne } from 'drizzle-orm';
+import { normalizeReply } from '~/lib/channel/affirmative';
+import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { familySpeech } from '~/lib/channel/linq/family-outbound';
+import { groupAddressedLine } from '~/lib/channel/linq/group-coparent-copy';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
+import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
+import { calendarHoldsEvent } from './calendar-hold';
 
 /**
  * THE YES AT THE END OF AN EMAIL ALERT — the row it lands in, and what it does.
@@ -45,8 +50,16 @@ import { stampBookingEvent } from './booking';
 /** How long an offer stands. ONE DAY, and it is the alert's own relevance window rather
  * than a new number: the outbound gate lets a household hear at most three of these in
  * 24 hours, so a day is exactly the span over which "the thing Hale just texted me about"
- * is still one identifiable thing. Applied at the READER, never by a sweep. */
+ * is still one identifiable thing. Capped at {@link offerExpiresAt} by the occasion's
+ * own start — an offer must not outlive the event it names. Applied at the READER,
+ * never by a sweep. */
 export const EMAIL_ALERT_OFFER_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** LEAST(now + 24h, startsAt). A start already in the past expires immediately. */
+export function offerExpiresAt(now: Date, startsAt: Date): Date {
+  const ttl = new Date(now.getTime() + EMAIL_ALERT_OFFER_TTL_MS);
+  return startsAt.getTime() < ttl.getTime() ? new Date(startsAt.getTime()) : ttl;
+}
 
 /** How long the placed occasion lasts when the email never said. An hour is the shape of
  * nearly every thing a school or a pool puts in a parent's calendar, and a point event
@@ -115,7 +128,7 @@ export async function recordEmailAlertOffer(
       startsAt: input.draft.startsAt,
       location: input.draft.location,
       channelMessageId: input.channelMessageId,
-      expiresAt: new Date(input.now.getTime() + EMAIL_ALERT_OFFER_TTL_MS),
+      expiresAt: offerExpiresAt(input.now, input.draft.startsAt),
     })
     .onConflictDoNothing();
 }
@@ -167,6 +180,9 @@ export async function loadOpenEmailAlertOffers(
         eq(schema.emailAlertOffers.parentUserId, input.parentUserId),
         isNull(schema.emailAlertOffers.resolvedAt),
         gt(schema.emailAlertOffers.expiresAt, input.now),
+        // A start that has passed is not an open question, even when the 24h
+        // stamp was written before the occasion arrived.
+        gt(schema.emailAlertOffers.startsAt, input.now),
       ),
     )
     .orderBy(desc(schema.emailAlertOffers.createdAt));
@@ -269,22 +285,27 @@ export async function handleEmailAlertOfferReply(
     const timeZone = await parentTimeZone(database, input.parentUserId);
     return {
       status: 'already_added',
-      reply: ALREADY_ADDED[input.language](repeat.title, when(repeat.startsAt, timeZone, input.now)),
+      reply: ALREADY_ADDED[input.language](
+        repeat.title,
+        when(repeat.startsAt, timeZone, input.now),
+      ),
     };
   }
 
   if (input.polarity === 'no') {
+    await expireEmailAlertOffer(database, offer.id, input.now);
     return { status: 'declined', offerId: offer.id, reply: DECLINED[input.language]() };
   }
 
-  const [timeZone] = await Promise.all([
+  const [timeZone, placed] = await Promise.all([
     parentTimeZone(database, input.parentUserId),
     placeOfferedEvent(database, offer, input),
   ]);
+  if (placed === 'past') return { status: 'no_open_offer' };
   return {
     status: 'added',
     offerId: offer.id,
-    reply: ADDED[input.language](offer.title, when(offer.startsAt, timeZone, input.now)),
+    reply: ADDED[input.language](placed.title, when(placed.startsAt, timeZone, input.now)),
   };
 }
 
@@ -299,8 +320,14 @@ export async function handleEmailAlertOfferReply(
 async function placeOfferedEvent(
   database: Database,
   offer: OpenEmailAlertOffer,
-  input: { familyId: string; parentUserId: string },
-): Promise<void> {
+  input: { familyId: string; parentUserId: string; now: Date },
+): Promise<{ title: string; startsAt: Date } | 'past'> {
+  // The open-list filter is the ordinary refusal. This is the one that still
+  // runs if the start passed between the read and the write: never insert it.
+  if (offer.startsAt.getTime() <= input.now.getTime()) {
+    await expireEmailAlertOffer(database, offer.id, input.now);
+    return 'past';
+  }
   const claimed = await database
     .update(schema.emailAlertOffers)
     .set({ eventId: randomUUID() })
@@ -332,7 +359,10 @@ async function placeOfferedEvent(
       createdBy: input.parentUserId,
     })
     .onConflictDoNothing({ target: schema.familyEvents.id })
-    .returning({ id: schema.familyEvents.id });
+    .returning({
+      title: schema.familyEvents.title,
+      startsAt: schema.familyEvents.startsAt,
+    });
 
   // Rule #6, and only for the pass that actually placed it: a redrive that conflicted away
   // changed nothing, and audit_log is append-only, so a second row there would be a second
@@ -373,6 +403,39 @@ async function placeOfferedEvent(
       'email alert offer: a booking offer was placed with no booking row to stamp - the follow-up ask will not happen',
     );
   }
+
+  // The receipt names the row that was inserted, not the offer Hale was holding.
+  // A redrive conflicted away and reads the same row back.
+  if (placed[0]) return placed[0];
+  const [existing] = await database
+    .select({
+      title: schema.familyEvents.title,
+      startsAt: schema.familyEvents.startsAt,
+    })
+    .from(schema.familyEvents)
+    .where(eq(schema.familyEvents.id, eventId));
+  if (!existing) {
+    throw new Error(`email alert offer: placed event ${eventId} is missing after the claim`);
+  }
+  return existing;
+}
+
+/** Stop the offer being answerable. A decline, or a start that has passed. */
+async function expireEmailAlertOffer(
+  database: Database,
+  offerId: string,
+  now: Date,
+): Promise<void> {
+  await database
+    .update(schema.emailAlertOffers)
+    .set({ expiresAt: now })
+    .where(
+      and(
+        eq(schema.emailAlertOffers.id, offerId),
+        isNull(schema.emailAlertOffers.resolvedAt),
+        gt(schema.emailAlertOffers.expiresAt, now),
+      ),
+    );
 }
 
 /**
@@ -543,7 +606,8 @@ function when(startsAt: Date, timeZone: string, now: Date): string {
  * constraint rather than a gap.
  */
 const ADDED: Record<ReplyLanguage, (title: string, at: string) => string> = {
-  en: (title, at) => `${end(`Added - ${title} on ${at}`)} It's on your week; say remove it anytime.`,
+  en: (title, at) =>
+    `${end(`Added - ${title} on ${at}`)} It's on your week; say remove it anytime.`,
   fr: (title, at) =>
     `${end(`Ajouté - ${title}, ${at}`)} C'est sur votre semaine; dites-le-moi pour l'enlever.`,
 };
@@ -562,15 +626,415 @@ function end(sentence: string): string {
 
 const DECLINED: Record<ReplyLanguage, () => string> = {
   en: () => 'Okay - left it off.',
-  fr: () => 'Entendu - je ne l\'ai pas ajouté.',
+  fr: () => "Entendu - je ne l'ai pas ajouté.",
 };
 
-/** The three, exported for the encoding guard that holds every fixed line Hale sends to
- * GSM-7 (sms-copy-encoding.test.ts). */
+/**
+ * Design-locked. Spoken when a coach reply would have asked to ADD an event
+ * that has already passed. 1:1, and a named parent in the group (tu).
+ * `{when}` keeps its own trailing period (`a.m.` / `p.m.`).
+ */
+export const CALENDAR_PASSED_NEXT =
+  "{title} on {when} already went by. Got the next date? Send it and I'll add that one.";
+export const CALENDAR_PASSED_NEXT_FR =
+  "{title} le {when}, c'est deja passe. Tu as la prochaine date? Envoie-la-moi et je l'ajoute.";
+/** Unnamed group. The question is vous; the clause before it stays. */
+export const CALENDAR_PASSED_NEXT_FR_GROUP =
+  "{title} le {when}, c'est deja passe. Vous avez la prochaine date? Envoyez-la-moi et je l'ajoute.";
+
+/**
+ * Design-locked. Spoken when a coach reply would have asked to ADD an event
+ * that is already on the connected Google Calendar. 1:1, and a named parent
+ * in the group (tu). The period after `{when}` is omitted when `{when}`
+ * already ends in punctuation.
+ */
+export const CALENDAR_HELD_NEXT =
+  '{title} is already on your calendar {when}. Want it moved? Tell me the new time.';
+export const CALENDAR_HELD_NEXT_FR =
+  '{title} est deja sur ton calendrier {when}. Tu veux le deplacer? Dis-moi la nouvelle heure.';
+/** Unnamed group. The question is vous; "ton calendrier" stays as locked. */
+export const CALENDAR_HELD_NEXT_FR_GROUP =
+  '{title} est deja sur ton calendrier {when}. Vous voulez le deplacer? Dites-moi la nouvelle heure.';
+
+/** `{when}` is `9:00 a.m.` A template period on that slot would read `a.m..`. */
+function fillCopy(pattern: string, slots: Record<string, string>): string {
+  return pattern.replace(/\{(\w+)\}(\.)?/g, (_, key: string, period: string | undefined) => {
+    const value = slots[key] ?? '';
+    if (period && key === 'when' && /[.!?]$/.test(value)) return value;
+    return `${value}${period ?? ''}`;
+  });
+}
+
+export interface CalendarReplyAudience {
+  /** True when this reply returns to the household Linq group. */
+  group: boolean;
+  /** The parent to name. A group with a name uses tu and a lowercase first letter. */
+  name: string | null;
+}
+
+const DIRECT: CalendarReplyAudience = { group: false, name: null };
+
+function nextPattern(
+  kind: 'passed' | 'held',
+  language: ReplyLanguage,
+  audience: CalendarReplyAudience,
+): string {
+  const namedGroup = audience.group && audience.name !== null;
+  const vous = audience.group && !namedGroup && language === 'fr';
+  if (kind === 'passed') {
+    if (language === 'en') return CALENDAR_PASSED_NEXT;
+    return vous ? CALENDAR_PASSED_NEXT_FR_GROUP : CALENDAR_PASSED_NEXT_FR;
+  }
+  if (language === 'en') return CALENDAR_HELD_NEXT;
+  return vous ? CALENDAR_HELD_NEXT_FR_GROUP : CALENDAR_HELD_NEXT_FR;
+}
+
+/** The locked next-step line. A named group reply is `{name}, ` plus tu, first letter lower. */
+export function calendarNextCopy(
+  kind: 'passed' | 'held',
+  language: ReplyLanguage,
+  slots: { title: string; when: string },
+  audience: CalendarReplyAudience = DIRECT,
+): string {
+  const line = fillCopy(nextPattern(kind, language, audience), slots);
+  if (audience.group && audience.name) return groupAddressedLine(audience.name, line);
+  return line;
+}
+
+/** The fixed lines, exported for the encoding guard (sms-copy-encoding.test.ts). */
 export function emailAlertOfferReplies(language: ReplyLanguage): string[] {
+  const at = 'Saturday, Sep 19 at 9:00 a.m.';
   return [
-    ADDED[language]('Swim class', 'Saturday, Sep 19 at 9:00 a.m.'),
-    ALREADY_ADDED[language]('Swim class', 'Saturday, Sep 19 at 9:00 a.m.'),
+    ADDED[language]('Swim class', at),
+    ALREADY_ADDED[language]('Swim class', at),
     DECLINED[language](),
+    calendarNextCopy('passed', language, { title: 'Swim class', when: at }),
+    calendarNextCopy('held', language, { title: 'Swim class', when: at }),
+    ...(language === 'fr'
+      ? [
+          calendarNextCopy(
+            'passed',
+            language,
+            { title: 'Swim class', when: at },
+            {
+              group: true,
+              name: null,
+            },
+          ),
+          calendarNextCopy(
+            'held',
+            language,
+            { title: 'Swim class', when: at },
+            {
+              group: true,
+              name: null,
+            },
+          ),
+        ]
+      : []),
+    calendarNextCopy(
+      'passed',
+      language,
+      { title: 'Swim class', when: at },
+      {
+        group: true,
+        name: 'Sam',
+      },
+    ),
+    calendarNextCopy(
+      'held',
+      language,
+      { title: 'Swim class', when: at },
+      {
+        group: true,
+        name: 'Sam',
+      },
+    ),
   ];
+}
+
+/** A correction about the offer Hale is holding. Not a bare "no" — that word
+ * already belongs to every other handler, and widening it here would decline an
+ * email offer a parent aimed at a draft. */
+const OFFER_CORRECTIONS = new Set([
+  'its yesterday',
+  'it was yesterday',
+  'that was yesterday',
+  'thats yesterday',
+  'yesterday',
+  'not that one',
+  'not this one',
+  'not that',
+  'wrong one',
+  'wrong day',
+  'it passed',
+  'that passed',
+  'already happened',
+  'it already happened',
+]);
+
+/** "Yes, add it" — the words a parent sends after a coach sentence, which the
+ * closed yes-vocabulary does not contain. Scoped to this handler. */
+const OFFER_ADD_YES = new Set([
+  'yes add it',
+  'yes add that',
+  'yes please add it',
+  'add it',
+  'add that',
+  'put it on',
+  'put it on my week',
+  'put it on my calendar',
+]);
+
+export function isEmailAlertOfferCorrection(body: string): boolean {
+  return OFFER_CORRECTIONS.has(normalizeReply(body));
+}
+
+export function isEmailAlertAddYes(body: string): boolean {
+  return OFFER_ADD_YES.has(normalizeReply(body));
+}
+
+const MOVE_OR_CANCEL = /\b(move|cancel|reschedule)\b/i;
+const EXPLICIT_ADD =
+  /yes to confirm|want me to add|want it on your (calendar|week)|i can add|\badd it\b|\bput it on\b/i;
+
+/** A coach sentence that is offering to put a specific occasion on the week. */
+export function isCoachAddAsk(body: string): boolean {
+  if (MOVE_OR_CANCEL.test(body) && !/\badd\b/i.test(body)) return false;
+  return EXPLICIT_ADD.test(body);
+}
+
+const MONTH_INDEX: Record<string, number> = {
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12,
+};
+
+const COACH_WHEN =
+  /\b(?:(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday),?\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?(?:,?\s+|\s+)(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?/i;
+
+const TITLE_NOISE =
+  /\b(yes to confirm|want me to add|i can add|add it|put it on|that one passed|it passed|already passed|want it on your calendar|want it on your week|reply yes|the one|one passed)\b/gi;
+
+/**
+ * A specific occasion named in a coach reply, or null when the sentence does
+ * not carry a month, a day and a clock.
+ */
+export function parseCoachEventOffer(
+  body: string,
+  now: Date,
+  timeZone: string,
+): EmailAlertOfferDraft | null {
+  const match = COACH_WHEN.exec(body);
+  if (!match || match.index === undefined) return null;
+  const month = MONTH_INDEX[match[1]?.toLowerCase() ?? ''];
+  const day = Number(match[2]);
+  if (!month || day < 1 || day > 31) return null;
+  const minute = Number(match[5] ?? '0');
+  let hour = Number(match[4]);
+  const ampm = match[6];
+  if (ampm) {
+    const pm = /^p/i.test(ampm);
+    if (hour === 12) hour = pm ? 12 : 0;
+    else if (pm) hour += 12;
+  }
+  if (hour > 23 || minute > 59) return null;
+  const explicitYear = match[3] ? Number(match[3]) : null;
+  let year = explicitYear ?? Number(dayKeyIn(now, timeZone).slice(0, 4));
+  const clock = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  let startsAt = zonedLocalInstant(dayKey(year, month, day), clock, timeZone);
+  // A month named without a year that is long past is next year's, not last
+  // year's. A start a day or two ago stays in this year so a past offer is
+  // refused rather than rolled forward.
+  if (explicitYear === null && startsAt.getTime() < now.getTime() - 30 * 24 * 60 * 60 * 1000) {
+    year += 1;
+    startsAt = zonedLocalInstant(dayKey(year, month, day), clock, timeZone);
+  }
+  const title = coachOfferTitle(body, match.index, match[0].length);
+  if (!title) return null;
+  return { kind: 'new_event', title, startsAt, location: null };
+}
+
+function dayKey(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function coachOfferTitle(body: string, index: number, length: number): string | null {
+  const before = cleanCoachTitle(body.slice(0, index));
+  if (before) return before;
+  return cleanCoachTitle(body.slice(index + length));
+}
+
+function cleanCoachTitle(chunk: string): string | null {
+  const text = chunk
+    .replace(TITLE_NOISE, ' ')
+    .replace(/[.?!]/g, ' ')
+    .replace(
+      /\b(is|on|for|at|the|a|an|to|it|that|this|me|your|week|calendar|sunday|monday|tuesday|wednesday|thursday|friday|saturday|and|was|were)\b/gi,
+      ' ',
+    )
+    .replace(/[^a-zA-Z0-9' ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length < 2 || text.length > 80) return null;
+  return text;
+}
+
+export type CoachCalendarReply =
+  | { outcome: 'not_an_offer'; body: string; offer: null }
+  | { outcome: 'unparsed'; body: string; offer: null }
+  | { outcome: 'already_on_calendar'; body: string; offer: null }
+  | { outcome: 'past'; body: string; offer: null }
+  | { outcome: 'offer'; body: string; offer: EmailAlertOfferDraft };
+
+/**
+ * The chat this reply returns to is the household group when it equals
+ * `families.linq_group_chat_id`. SMS, email, and a 1:1 iMessage are not.
+ * Read for this family only.
+ */
+async function calendarReplyAudience(
+  database: Database,
+  input: { familyId: string; parentUserId: string; chatId: string | null },
+): Promise<CalendarReplyAudience> {
+  if (!input.chatId) return DIRECT;
+  const rows = await database
+    .select({ id: schema.families.id, linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, input.familyId));
+  const family = rows.find((row) => row.id === input.familyId);
+  if (!family?.linqGroupChatId || family.linqGroupChatId !== input.chatId) return DIRECT;
+  const speech = await familySpeech(database, input.familyId, input.parentUserId);
+  return { group: true, name: speech.name };
+}
+
+/**
+ * What to send, and whether a later bare yes has a row to land on.
+ *
+ * An add-ask whose event is already on Google Calendar, or whose start has
+ * passed, is replaced with the design-locked line. Neither replacement writes
+ * an offer or a calendar row. A future event that is not on the calendar keeps
+ * the coach's own sentence; the caller writes the offer row after the send.
+ *
+ * French in a group with no parent name uses vous. A name prefixes the tu
+ * line and lowercases its first letter, the same way a group check-in does.
+ */
+export async function prepareCoachCalendarReply(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    body: string;
+    now: Date;
+    /** Linq chat the reply returns to. Null on SMS and email. */
+    chatId?: string | null;
+  },
+): Promise<CoachCalendarReply> {
+  const timeZone = await parentTimeZone(database, input.parentUserId);
+  const parsed = parseCoachEventOffer(input.body, input.now, timeZone);
+  const asking = isCoachAddAsk(input.body) || (parsed !== null && input.body.includes('?'));
+  if (!asking) return { outcome: 'not_an_offer', body: input.body, offer: null };
+  if (!parsed) return { outcome: 'unparsed', body: input.body, offer: null };
+  const language = replyLanguage(input.body);
+  const at = when(parsed.startsAt, timeZone, input.now);
+  const slots = { title: parsed.title, when: at };
+  if (parsed.startsAt.getTime() <= input.now.getTime()) {
+    const audience = await calendarReplyAudience(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      chatId: input.chatId ?? null,
+    });
+    return {
+      outcome: 'past',
+      body: calendarNextCopy('passed', language, slots, audience),
+      offer: null,
+    };
+  }
+  if (
+    await calendarHoldsEvent(database, {
+      familyId: input.familyId,
+      title: parsed.title,
+      startsAt: parsed.startsAt,
+    })
+  ) {
+    const audience = await calendarReplyAudience(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      chatId: input.chatId ?? null,
+    });
+    return {
+      outcome: 'already_on_calendar',
+      body: calendarNextCopy('held', language, slots, audience),
+      offer: null,
+    };
+  }
+  return { outcome: 'offer', body: input.body, offer: parsed };
+}
+
+/**
+ * The coach named a specific future event. Write that offer and expire every
+ * older open offer for the family, so a later bare yes is about this one.
+ *
+ * The row is keyed on the outbound message, so a redrive conflicts instead of
+ * minting a second question — and the supersede skips that same message, so
+ * the redrive does not expire the offer it just wrote.
+ */
+export async function recordCoachEventOffer(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    channelMessageId: string;
+    draft: EmailAlertOfferDraft;
+    now: Date;
+  },
+): Promise<'recorded' | 'already_recorded'> {
+  await database
+    .update(schema.emailAlertOffers)
+    .set({ expiresAt: input.now })
+    .where(
+      and(
+        eq(schema.emailAlertOffers.familyId, input.familyId),
+        isNull(schema.emailAlertOffers.resolvedAt),
+        gt(schema.emailAlertOffers.expiresAt, input.now),
+        ne(schema.emailAlertOffers.channelMessageId, input.channelMessageId),
+      ),
+    );
+  const inserted = await database
+    .insert(schema.emailAlertOffers)
+    .values({
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      integrationId: input.channelMessageId,
+      messageId: 'coach-offer',
+      kind: input.draft.kind,
+      title: input.draft.title,
+      startsAt: input.draft.startsAt,
+      location: input.draft.location,
+      channelMessageId: input.channelMessageId,
+      expiresAt: offerExpiresAt(input.now, input.draft.startsAt),
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.emailAlertOffers.id });
+  return inserted[0] ? 'recorded' : 'already_recorded';
 }

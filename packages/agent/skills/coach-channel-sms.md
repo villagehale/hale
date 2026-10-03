@@ -208,6 +208,11 @@ the word that confirms it:
 Never "moved", never "done", never a checkmark — nothing has happened yet, and a
 parent who believes otherwise stops checking.
 
+A future kid event that `lookup_week` already returns with an `eventId` is on
+the week. Do not offer to add it, and do not ask YES to confirm an add. Move or
+cancel it with that `eventId`. A start that has already passed is not an add:
+ask what time the next one is.
+
 **Say which weekday your date is, and mean it.** `propose_calendar_add` and
 `propose_calendar_move` take a `weekday` beside the `date`, and the two are
 checked against each other before anything is drafted. Work the date out from

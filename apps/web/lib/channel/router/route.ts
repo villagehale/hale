@@ -1,6 +1,6 @@
 import { type Database, type UnmetIntentLane, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
 import type { DeepResearchPayload } from '@hale/tools-contracts';
+import { eq } from 'drizzle-orm';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import { maybeOfferYearRetention } from '~/lib/billing/upgrade-ask';
 import type { WeekdayCare, WeekdayCareWriteOutcome } from '~/lib/care/weekday';
@@ -23,14 +23,15 @@ import {
   TURN_TIMEOUT,
   TURN_UNREACHABLE,
 } from '~/lib/channel/config';
+import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
+import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import {
   IDENTITY_CHALLENGE_TEMPLATE_KEY,
   identityChallengeReply,
 } from '~/lib/channel/intake/identity-challenge';
 import { replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
-import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
@@ -63,10 +64,14 @@ import {
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots/store';
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import {
+  type EmailAlertOfferDraft,
+  prepareCoachCalendarReply,
+  recordCoachEventOffer,
+} from '~/lib/integrations/email-alert-offer';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ApologyFallback, TurnApology } from './apology';
 import {
@@ -1124,6 +1129,7 @@ async function routeChannelMessageInner(
     return await runAgentTurn(deps, {
       job,
       turn,
+      route,
       answer,
       hasAnswered: () => answered,
       conversationId,
@@ -1504,6 +1510,8 @@ async function runAgentTurn(
      * because a promise is minted against the message that CARRIED it (the MEM-10
      * send-time discipline) and this is the only place that knows which row that was.
      */
+    /** Where this reply returns. A Linq chat id equal to the family's group is a group. */
+    route: ReplyRoute;
     answer: (body: string) => Promise<string>;
     /** Whether the transport has already accepted this turn's answer. */
     hasAnswered: () => boolean;
@@ -1541,7 +1549,31 @@ async function runAgentTurn(
       args,
       view,
     );
-    const channelMessageId = await args.answer(reply);
+    // A coach sentence that offers a specific event has to land on an offer row,
+    // and one that names a past or already-held event must not ask to add it.
+    // A failed calendar check still sends the coach's own words (named below).
+    let outbound = reply;
+    let coachOffer: EmailAlertOfferDraft | null = null;
+    try {
+      const prepared = await prepareCoachCalendarReply(deps.database, {
+        familyId: args.turn.familyId,
+        parentUserId: args.turn.parentUserId,
+        body: reply,
+        now: args.turn.now,
+        chatId: args.route.channel === 'imessage' ? args.route.chatId : null,
+      });
+      outbound = prepared.body;
+      if (prepared.outcome === 'offer') coachOffer = prepared.offer;
+      if (prepared.outcome !== 'not_an_offer') {
+        deps.log.info({ outcome: prepared.outcome }, 'channel router: coach calendar reply');
+      }
+    } catch (err) {
+      deps.log.error(
+        { err: err instanceof Error ? err.message : 'unknown' },
+        'channel router: coach calendar check failed',
+      );
+    }
+    const channelMessageId = await args.answer(outbound);
     // THE MENU THE COACH JUST OFFERED (VIL-304). This turn was an answer Hale could not
     // place, so the coach was handed the candidates and asked which — in its own words,
     // which is why nothing here claims a number was printed. Written down against the
@@ -1560,6 +1592,25 @@ async function runAgentTurn(
     // deliver it promised nobody anything, and must not leave a debt behind. The writer
     // never throws: the parent already has the message, so an exception here would buy a
     // carrier retry and a duplicate reply.
+    if (coachOffer) {
+      try {
+        const recorded = await recordCoachEventOffer(deps.database, {
+          familyId: args.turn.familyId,
+          parentUserId: args.turn.parentUserId,
+          channelMessageId,
+          draft: coachOffer,
+          now: args.turn.now,
+        });
+        deps.log.info({ recorded }, 'channel router: coach event offer recorded');
+      } catch (err) {
+        // The parent already has the text. Throwing here would redrive the turn
+        // and send it again.
+        deps.log.error(
+          { err: err instanceof Error ? err.message : 'unknown' },
+          'channel router: coach event offer record failed',
+        );
+      }
+    }
     if (planOffer) {
       await deps.recordPlanOffer(deps.database, {
         familyId: args.turn.familyId,

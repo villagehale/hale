@@ -1,6 +1,6 @@
 import { invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
@@ -223,13 +223,13 @@ describe('lookup_week reads the connected calendar and processed mail', () => {
       source: 'email',
     });
     expect(week.events[3]).toMatchObject({
-      kind: 'calendar',
+      kind: 'event',
       what: 'Maya gymnastics',
       when: 'Thu 4:30pm',
-      until: 'Thu 5:30pm',
-      allDay: false,
+      source: 'parent',
     });
-    expect(week.events[3]).not.toHaveProperty('eventId');
+    expect(week.events[3]?.eventId).toBeTruthy();
+    expect(JSON.stringify(week.events[3])).not.toMatch(/add|YES/i);
 
     const body = JSON.stringify(week);
     expect(body).not.toContain('Tentative picnic');
@@ -239,9 +239,25 @@ describe('lookup_week reads the connected calendar and processed mail', () => {
     expect(body).not.toContain('Other household piano');
 
     const next = (await harness().call('lookup_week', { weekOffset: 1 })) as {
-      events: Array<{ what?: string }>;
+      events: Array<{ kind?: string; what?: string; eventId?: string; source?: string }>;
     };
     expect(next.events.map((event) => event.what)).toEqual(['Next week swim']);
+    expect(next.events[0]).toMatchObject({
+      kind: 'event',
+      what: 'Next week swim',
+      source: 'parent',
+    });
+    expect(next.events[0]?.eventId).toBeTruthy();
+
+    const copied = await db.database
+      .select({ title: schema.familyEvents.title, source: schema.familyEvents.source })
+      .from(schema.familyEvents)
+      .where(eq(schema.familyEvents.familyId, familyId));
+    expect(copied.filter((row) => row.title === 'Maya gymnastics')).toHaveLength(1);
+    expect(copied.filter((row) => row.title === 'Next week swim')).toHaveLength(1);
+    // Monday's dentist is already a family event, and it has passed, so the
+    // calendar block is not copied a second time.
+    expect(copied.filter((row) => row.title === 'Dentist')).toHaveLength(1);
   });
 
   it('never returns a title for a non-kid block, and withholds a teen name', async () => {
@@ -285,6 +301,13 @@ describe('lookup_week reads the connected calendar and processed mail', () => {
     });
     expect(busy).not.toHaveProperty('what');
     expect(busy).not.toHaveProperty('title');
+
+    const copied = await db.database
+      .select({ title: schema.familyEvents.title })
+      .from(schema.familyEvents)
+      .where(eq(schema.familyEvents.familyId, familyId));
+    expect(copied.map((row) => row.title).join(' ')).not.toContain('Nadia');
+    expect(copied.map((row) => row.title).join(' ')).not.toContain('therapy');
   });
 
   it('says mail sync is paused when Gmail is in error, and does not return the message', async () => {
