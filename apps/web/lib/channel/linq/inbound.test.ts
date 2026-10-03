@@ -1112,6 +1112,7 @@ describe('location sharing', () => {
 
   it('accepts a shared city after the card, as its own find and ages bubbles', async () => {
     vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
+    vi.stubEnv('FIRST_TOUCH_LOCATION_CARD_ENABLED', 'true');
     const h = harness();
     h.deps = {
       ...h.deps,

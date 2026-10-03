@@ -16,6 +16,7 @@ import {
   FIRST_TOUCH_IMESSAGE_BY_LANGUAGE,
   FIRST_TOUCH_SMS_BY_LANGUAGE,
 } from '../copy';
+import { firstTouchLocationCardEnabled } from '../first-touch-flag';
 import { calendarAsk, emailAsk, signupOffer, whatCanYouDo } from './copy';
 import { coldStartLadderEnabled } from './flags';
 import type { ColdStartIntent } from './intent';
@@ -155,7 +156,8 @@ export function planPull(input: {
     return { kind: 'later', body: '', mayLeave: false, skipped: 'not_pull' };
   }
   if (!input.hasPlace) {
-    const card = input.channel === 'imessage' && !input.group;
+    const card =
+      firstTouchLocationCardEnabled(input.env) && input.channel === 'imessage' && !input.group;
     const body = card
       ? FIRST_TOUCH_IMESSAGE_BY_LANGUAGE[input.language]
       : input.group && input.language === 'fr'

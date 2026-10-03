@@ -129,6 +129,7 @@ describe('first touch ladder', () => {
   });
 
   it('asks for a postal code on SMS and does not guess from the area code', async () => {
+    vi.stubEnv('FIRST_TOUCH_LOCATION_CARD_ENABLED', 'true');
     const { fake, transport, deps } = harness();
     expect(await handleInboundSms(fake.db, inbound(transport, 'hi'), deps)).toEqual({
       status: 'first_touch',
@@ -138,7 +139,58 @@ describe('first touch ladder', () => {
     expect(transport.locationRequests).toEqual([]);
   });
 
+  it('asks for a postal code on iMessage and records the location card as skipped', async () => {
+    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA] });
+    const first = await handleInboundSms(
+      fake.db,
+      inbound(transport, 'hi', { transport: 'imessage', chatId: 'chat-1' }),
+      deps,
+    );
+    expect(first).toEqual({ status: 'first_touch', step: 'place_asked' });
+    expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
+    expect(transport.locationRequests).toEqual([]);
+    expect(transport.bodies()[0]).not.toBe(FIRST_TOUCH_IMESSAGE_BY_LANGUAGE.en);
+
+    await handleInboundSms(
+      fake.db,
+      inbound(transport, 'M5V 2T6', { transport: 'imessage', chatId: 'chat-1' }),
+      deps,
+    );
+    const done = await handleInboundSms(
+      fake.db,
+      inbound(transport, 'Maya is 4, Leo is 1', { transport: 'imessage', chatId: 'chat-1' }),
+      deps,
+    );
+    expect(done.status).toBe('provisioned');
+    expect(transport.locationRequests).toEqual([]);
+    expect(
+      fake.writes.some(
+        (write) =>
+          write.op === 'insert' &&
+          write.table === schema.auditLog &&
+          write.payload.actionTaken === 'first_touch_location_requested' &&
+          (write.payload.after as { outcome?: string } | undefined)?.outcome === 'skipped',
+      ),
+    ).toBe(true);
+  });
+
+  it.each(['on', '1', 'TRUE', 'true\n', ' true '])(
+    'keeps the postal sentence on iMessage when the location switch is %j',
+    async (value) => {
+      vi.stubEnv('FIRST_TOUCH_LOCATION_CARD_ENABLED', value);
+      const { fake, transport, deps } = harness();
+      await handleInboundSms(
+        fake.db,
+        inbound(transport, 'hi', { transport: 'imessage', chatId: 'chat-1' }),
+        deps,
+      );
+      expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
+      expect(transport.locationRequests).toEqual([]);
+    },
+  );
+
   it('sends the iMessage sentence and then the location card, and accepts a typed postal', async () => {
+    vi.stubEnv('FIRST_TOUCH_LOCATION_CARD_ENABLED', 'true');
     const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY] });
     const order: string[] = [];
     const request = transport.requestLocation.bind(transport);
@@ -177,6 +229,7 @@ describe('first touch ladder', () => {
   });
 
   it('asks for a postal code when Linq refuses the location card, and still audits the request', async () => {
+    vi.stubEnv('FIRST_TOUCH_LOCATION_CARD_ENABLED', 'true');
     const transport = new FakeTransport();
     const order: string[] = [];
     transport.requestLocation = async (input) => {
@@ -242,6 +295,7 @@ describe('first touch ladder', () => {
   });
 
   it('uses the postal line in a group and does not open a 1:1 location card', async () => {
+    vi.stubEnv('FIRST_TOUCH_LOCATION_CARD_ENABLED', 'true');
     const { fake, transport, deps } = harness();
     await handleInboundSms(
       fake.db,

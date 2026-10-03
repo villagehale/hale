@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DUTY_STOP_ASKING_KEY } from '~/lib/channel/coparent/duty/asks';
-import { FIRST_TOUCH_GROUP_FR, FIRST_TOUCH_SMS_BY_LANGUAGE } from '../copy';
+import {
+  FIRST_TOUCH_GROUP_FR,
+  FIRST_TOUCH_IMESSAGE_BY_LANGUAGE,
+  FIRST_TOUCH_SMS_BY_LANGUAGE,
+} from '../copy';
 import {
   ASK_UNANSWERED_MS,
   ASK_WINDOW_MS,
@@ -429,6 +433,31 @@ describe('cold-start copy and ladder', () => {
       ages: '',
     });
     expect(groupEn.body).toBe(FIRST_TOUCH_SMS_BY_LANGUAGE.en);
+    const cardOff = planPull({
+      intent: 'set_me_up',
+      language: 'en',
+      hasPlace: false,
+      hasAges: false,
+      channel: 'imessage',
+      group: false,
+      count: 0,
+      place: '',
+      ages: '',
+    });
+    expect(cardOff.body).toBe(FIRST_TOUCH_SMS_BY_LANGUAGE.en);
+    const cardOn = planPull({
+      intent: 'set_me_up',
+      language: 'en',
+      hasPlace: false,
+      hasAges: false,
+      channel: 'imessage',
+      group: false,
+      count: 0,
+      place: '',
+      ages: '',
+      env: { FIRST_TOUCH_LOCATION_CARD_ENABLED: 'true' },
+    });
+    expect(cardOn.body).toBe(FIRST_TOUCH_IMESSAGE_BY_LANGUAGE.en);
     expect(stopAskingReply('en')).not.toContain('?');
     expect(KNOWN_VENUE_HELLO.en).not.toMatch(/across the GTA|postal code/i);
     const fact = ageCorrectionFact({
