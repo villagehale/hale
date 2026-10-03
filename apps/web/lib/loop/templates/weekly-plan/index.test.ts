@@ -180,7 +180,8 @@ describe('SMS — segment budget + GSM-7 output', () => {
     // parent already knows is Hale's. The possessive header is what opens the message now.
     expect(text.startsWith("Maya & Liam's week")).toBe(true);
     expect(text).not.toContain('Hale:');
-    expect(text).toContain('reply YES');
+    expect(text).toMatch(/Want me to add it|Want me to take them one at a time/);
+    expect(text).not.toMatch(/reply YES/i);
   });
 
   /**
@@ -206,7 +207,8 @@ describe('SMS — segment budget + GSM-7 output', () => {
     // Singular: "1 need your OK ... add them" was wrong twice in one sentence.
     expect(text).not.toContain('need your OK');
     expect(text).not.toContain('them');
-    expect(text).toMatch(/reply YES to add it/i);
+    expect(text).toMatch(/Want me to add it/i);
+    expect(text).not.toMatch(/reply YES/i);
   });
 
   it('says a two-draft YES is answered one at a time — the router asks which', () => {
@@ -215,7 +217,8 @@ describe('SMS — segment budget + GSM-7 output', () => {
     // the router refuses. The ordinals are NOT quoted here on purpose: the pending list
     // is family-wide and oldest-first, so this week's drafts are not at positions 1..n.
     const text = sms(fullWeek, 'first_name');
-    expect(text).toMatch(/reply YES and I'll take them one at a time/i);
+    expect(text).toMatch(/Want me to take them one at a time/i);
+    expect(text).not.toMatch(/reply YES/i);
     expect(text).not.toMatch(/YES 1|YES 2/);
     expect(text).not.toContain('both');
   });

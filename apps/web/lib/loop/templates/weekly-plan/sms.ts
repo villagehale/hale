@@ -1,6 +1,6 @@
 import type { WeekPlanItem } from '@hale/db';
-import type { RenderedContent, VoiceOutcome } from '~/lib/channel/types';
 import { smsSegments } from '~/lib/channel/sms-segments';
+import type { RenderedContent, VoiceOutcome } from '~/lib/channel/types';
 import { assertPoolSize, pickVariant, weeklyOccasion } from '~/lib/channel/variant';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import {
@@ -118,8 +118,6 @@ export function foldWeeklyVoice(
   return { text: safe, outcome: 'used' };
 }
 
-const PENDING_TAIL = 'or tell me what to change.';
-
 /**
  * The approval ask — the one line in this message that instructs, so it is the one that
  * has to be true about the ROUTER as well as about the week.
@@ -137,13 +135,16 @@ const PENDING_TAIL = 'or tell me what to change.';
  * positions 1..n whenever anything older is still waiting, and an ordinal from here would
  * point at somebody else's row.
  *
- * A bare "reply YES" is still printed and still fine. "Yes" is English; "YES 1" and
- * "YES INTRO" were vocabulary, and those are what the 2026-08-13 arc removed.
+ * The ask is a question, not a keyword. "Yes", "sure", and "please do" are read by
+ * the shared affirmative table. "YES 1" and "YES INTRO" were vocabulary, and those
+ * are what the 2026-08-13 arc removed.
  */
 function pendingAsk(drafts: number): string {
   const instruction =
-    drafts === 1 ? 'reply YES to add it' : "reply YES and I'll take them one at a time";
-  return `${drafts} drafted for your calendar ${EM_DASH} ${instruction}, ${PENDING_TAIL}`;
+    drafts === 1
+      ? 'Want me to add it, or tell me what to change?'
+      : 'Want me to take them one at a time, or tell me what to change?';
+  return `${drafts} drafted for your calendar. ${instruction}`;
 }
 
 /** The closing line for a week that HAS items — and absent when the week asks

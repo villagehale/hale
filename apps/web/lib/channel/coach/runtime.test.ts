@@ -477,7 +477,7 @@ describe('the nearby count', () => {
           description: 'offer',
           inputSchema: {},
           handler: async () => {
-            onOffer({ summary: 'sleep', sentence: "Want the full plan? Reply YES and I'll send it." } as never);
+            onOffer({ summary: 'sleep', sentence: 'Want me to send the full plan?' } as never);
             return { offered: true };
           },
         } as never,
@@ -496,6 +496,6 @@ describe('the nearby count', () => {
 
     expect(asked).toEqual([]);
     expect(reply).not.toContain('families near you');
-    expect(reply).toContain("Want the full plan?");
+    expect(reply).toContain('Want me to send the full plan?');
   });
 });

@@ -312,7 +312,7 @@ describe('the plan offer line', () => {
   const child = { name: 'Milo', gender: 'boy', dateOfBirth: '2021-05-01' };
   // Composed by the model and already gated by offer_full_plan — the runtime only
   // protects it from the trim; it does not author it.
-  const OFFER_LINE = "Want the full plan? Reply YES and I'll send it.";
+  const OFFER_LINE = 'Want me to send the full plan?';
 
   it('is appended by code, so the model never has to spend budget on it', () => {
     const reply = toSmsReply('Try a gradual fade over two weeks.', {
@@ -321,15 +321,13 @@ describe('the plan offer line', () => {
       planOffer: OFFER_LINE,
     });
 
-    expect(reply).toBe(
-      "Try a gradual fade over two weeks. Want the full plan? Reply YES and I'll send it.",
-    );
+    expect(reply).toBe('Try a gradual fade over two weeks. Want me to send the full plan?');
   });
 
   it('trims the ANSWER to make room, never the offer', () => {
     // The bug this exists to prevent: a coaching answer plus the offer runs past two
     // segments, the trim takes from the end, and the parent gets "Want the full plan?"
-    // with the half that says the magic word cut off — an offer they cannot accept.
+    // with the question cut off — an offer they cannot accept.
     const long = `${'A gradual fade works well here. '.repeat(9)}One last background clause.`;
 
     const reply = toSmsReply(long, {
@@ -338,7 +336,7 @@ describe('the plan offer line', () => {
       planOffer: OFFER_LINE,
     });
 
-    expect(reply.endsWith("Want the full plan? Reply YES and I'll send it.")).toBe(true);
+    expect(reply.endsWith(OFFER_LINE)).toBe(true);
     expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
   });
 
@@ -352,12 +350,13 @@ describe('the plan offer line', () => {
   });
 
   it('sends the offer once when the model wrote it too', () => {
-    const reply = toSmsReply(
-      "Try a gradual fade over two weeks. Want the full plan? Reply YES and I'll send it.",
-      { children: [child], now: new Date('2026-08-12T12:00:00.000Z'), planOffer: OFFER_LINE },
-    );
+    const reply = toSmsReply('Try a gradual fade over two weeks. Want me to send the full plan?', {
+      children: [child],
+      now: new Date('2026-08-12T12:00:00.000Z'),
+      planOffer: OFFER_LINE,
+    });
 
-    expect(reply.match(/Want the full plan\?/g)).toHaveLength(1);
+    expect(reply.match(/Want me to send the full plan\?/g)).toHaveLength(1);
   });
 
   it('sends the offer alone, unpadded, when the whole answer WAS the offer', () => {
@@ -387,9 +386,7 @@ describe('the referral block', () => {
       referral: BLOCK,
     });
 
-    expect(reply).toBe(
-      `Forward this to them - when they text me, that is their yes. ${BLOCK}`,
-    );
+    expect(reply).toBe(`Forward this to them - when they text me, that is their yes. ${BLOCK}`);
   });
 
   it('trims the ANSWER, never the link — a truncated URL is a broken referral', () => {
@@ -409,7 +406,8 @@ describe('the referral block', () => {
     const reply = toSmsReply('Forward this to them.', {
       children: [teen],
       now,
-      referral: "Nora's family uses it to keep the week straight. https://www.villagehale.com/text?s=friend-0123456789ab",
+      referral:
+        "Nora's family uses it to keep the week straight. https://www.villagehale.com/text?s=friend-0123456789ab",
     });
 
     expect(reply).not.toContain('Nora');
@@ -495,7 +493,8 @@ describe('the nearby count', () => {
    * its own and no longer fits with the count is trimmed to make room, exactly as it is
    * for a plan offer. A message going out as three segments is the alternative. */
   it('never sends the answer and the count past the two-segment ceiling', () => {
-    const body = `Riverdale storytime runs Saturdays at 10. ${'They have a craft table and a singalong too. '.repeat(5)}`.trim();
+    const body =
+      `Riverdale storytime runs Saturdays at 10. ${'They have a craft table and a singalong too. '.repeat(5)}`.trim();
     // The control on the setup itself: the answer ALONE is inside the ceiling, so only
     // the appended clause can push it over.
     expect(smsSegments(body)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);

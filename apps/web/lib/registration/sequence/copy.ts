@@ -210,7 +210,7 @@ const UNATTRIBUTED_READINESS = /your account is set|you(?:'re| are) (?:all )?rea
 
 const READINESS_TOLD = 'You told me the setup is done.';
 const READINESS_UNTOLD_EVENING =
-  'You have not told me the setup is done - tonight is the time. Reply YES when it is.';
+  'You have not told me the setup is done - tonight is the time. Want me to know when it is?';
 const READINESS_UNTOLD_MORNING =
   'You have not told me the setup is done - sign in now and check it.';
 
@@ -296,8 +296,10 @@ export function preparedCopyViolations(body: string, ctx: PreparedCopyContext): 
 
   // The link's own query string carries a `?`, so it is subtracted before the rule runs:
   // the question is whether HALE asked something, and every ask in this ladder is an
-  // imperative ("Reply YES when that is done") precisely so this rule can be absolute.
-  if (without(body, ctx.url).includes('?')) violations.push('asks_a_question');
+  // One question is the ask. A second is two answers Hale cannot tell apart.
+  // The link's own query string is subtracted first, so its `?` is not Hale's.
+  const questions = (without(body, ctx.url).match(/\?/g) ?? []).length;
+  if (questions > 1) violations.push('asks_a_question');
   if (FORBIDDEN_CLAIM.test(body)) violations.push('forbidden_claim');
   if (UNATTRIBUTED_READINESS.test(body)) violations.push('unattributed_readiness');
   if (!isGsm7(body)) violations.push('not_gsm7');
@@ -343,7 +345,7 @@ function headsUp(input: LegCopyInput): string {
   // second surface to do what the thread they are already in can do.
   const cta = headsUpPromisesPlan(input.optIn)
     ? " I'll send your plan the evening before."
-    : " Reply YES and I'll run the morning with you.";
+    : ' Want me to run the morning with you?';
   return `${windowPhrase(shortlist)} registration opens ${when(shortlist.opensForFamilyAt, input.timeZone, input.now)} for ${who}.${resident}${hedge}${cta}`;
 }
 
@@ -360,7 +362,7 @@ function headsUp(input: LegCopyInput): string {
  */
 function readiness(input: LegCopyInput, portal: SpotPortal): string {
   const who = whoPhrase(input.shortlist.fitNotes);
-  return `${windowPhrase(input.shortlist)} opens ${when(input.anchor, input.timeZone, input.now)} for ${who}. Before then, on ${portal.portalLabel}: ${portal.accountLabel}, ${who} added with their birthday(s), your address complete, and a card saved. Reply YES when that is done, or NO if not.`;
+  return `${windowPhrase(input.shortlist)} opens ${when(input.anchor, input.timeZone, input.now)} for ${who}. Before then, on ${portal.portalLabel}: ${portal.accountLabel}, ${who} added with their birthday(s), your address complete, and a card saved. Want me to know when that is done?`;
 }
 
 function battlePlan(input: LegCopyInput): string {
@@ -812,7 +814,7 @@ export function renderReadinessAck(input: ReadinessAckInput): string {
 /**
  * THE SECOND PARENT'S YES, to a card the household has already approved.
  *
- * The heads-up ends "Reply YES and I'll run the morning with you" and now reaches both
+ * The heads-up ends "Want me to run the morning with you?" and now reaches both
  * numbers, so one of the two answers arrives at an approvals queue the other parent has
  * already emptied. Before this sentence existed that turn fell through to the coach,
  * whose thread still ended in that ask and which knows nothing about the partner's

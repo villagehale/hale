@@ -212,7 +212,7 @@ describe('the registration-readiness question on the open list', () => {
       id: 'sequence-1',
       kind: 'registration_readiness',
       subject: 'getting set up for the registration morning',
-      // The leg literally prints 'Reply YES when that is done, or NO if not.', and BOTH
+      // The leg asks whether to record that the setup is done, and BOTH
       // polarities have a writer — a NO is a fact this feature records, not a lapse.
       answerable: { yes: true, no: true },
       askedAt: T1,

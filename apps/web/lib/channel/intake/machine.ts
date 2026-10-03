@@ -129,6 +129,15 @@ import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract
 import { findThisWeek, renderWeekFind } from './first-touch-find';
 import { firstTouchLadderEnabled, firstTouchLocationCardEnabled } from './first-touch-flag';
 import { type FirstTouchPlace, placeFromMessage, placeFromVenue } from './first-touch-place';
+import {
+  type FriendStep,
+  type FriendVoiceComposer,
+  type FriendVoiceInput,
+  friendWeekAction,
+  speakFriend,
+  turnsFromTranscript,
+} from './friend-voice';
+import { onboardingFriendVoiceEnabled } from './friend-voice-flag';
 import { identityChallengeReply } from './identity-challenge';
 import type { IntakeAckComposer } from './intake-voice';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
@@ -161,15 +170,6 @@ import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
 import { yearOpenEmptyMessage } from './year-open';
-import {
-  type FriendStep,
-  type FriendVoiceComposer,
-  type FriendVoiceInput,
-  friendWeekAction,
-  speakFriend,
-  turnsFromTranscript,
-} from './friend-voice';
-import { onboardingFriendVoiceEnabled } from './friend-voice-flag';
 
 /**
  * VIL-237 · M2 — the conversational SMS intake state machine.
@@ -1796,8 +1796,7 @@ async function offerFriendFollow(turn: ColdStartTurn): Promise<IntakeOutcome> {
   if (!turn.progress.nameLineSent) return offerFriendNames(turn);
   if (!turn.progress.calendarAsked) await captureColdStartName(turn);
   const familyStartedAt = await loadFamilyStartedAt(turn.database, turn.familyId, turn.now);
-  const schoolMentioned =
-    turn.progress.schoolMentioned || mentionsSchoolOrCamp(turn.inbound.body);
+  const schoolMentioned = turn.progress.schoolMentioned || mentionsSchoolOrCamp(turn.inbound.body);
   const follow = planFollowAsk({
     language: turn.language,
     now: turn.now,
@@ -3220,9 +3219,7 @@ async function handleWatchReply(
     now,
   );
 
-  const ack = granted
-    ? assentAck(language)
-    : { body: DECLINE_ACK_BY_LANGUAGE[language], asked: false };
+  const ack = await consentReceipt(deps, recorded.transcript, ctx, language, inbound.body, granted);
   await sendAndRecord(database, ctx, ack.body, deps, recorded.transcript);
 
   // A yes that earned the ladder gets the assent only. Turtle waits for the
@@ -3409,6 +3406,22 @@ async function handleLadder(
       { transport: deps.transport, threadMessage: deps.threadMessage },
     );
     next = step === 'calendar' ? 'gmail' : 'coparent';
+  } else if (messagingPipe(inbound).channel !== 'imessage' && onboardingFriendVoiceEnabled()) {
+    const spoken = await friendSpeak(
+      deps,
+      recorded.transcript,
+      friendFields('coparent', language, friendAddress(ctx), { parentWords: inbound.body }),
+    );
+    await sendAndRecord(
+      database,
+      ctx,
+      spoken.body,
+      deps,
+      recorded.transcript,
+      INTAKE_COPARENT_ASK_TEMPLATE_KEY,
+    );
+    next = null;
+    closed = true;
   } else {
     const pipe = messagingPipe(inbound);
     const from = pipe.channel === 'imessage' ? linqFromE164() : null;
@@ -3449,9 +3462,30 @@ async function handleLadder(
 /**
  * The consent acknowledgment, whole. The call-name is the next text, not a tail
  * on this one. "Excited to help" and "no action needed" do not belong on a yes.
+ *
+ * With friend voice on, the model writes it. The fixed line is the failure fallback
+ * inside speakFriend, and the flag-off path below.
  */
-function assentAck(language: ReplyLanguage): { body: string; asked: boolean } {
-  return { body: ASSENT_ACK_BY_LANGUAGE[language], asked: false };
+async function consentReceipt(
+  deps: IntakeDeps,
+  transcript: TranscriptEntry[],
+  ctx: SendContext,
+  language: ReplyLanguage,
+  parentWords: string,
+  granted: boolean,
+): Promise<{ body: string; asked: boolean }> {
+  if (!onboardingFriendVoiceEnabled()) {
+    return {
+      body: granted ? ASSENT_ACK_BY_LANGUAGE[language] : DECLINE_ACK_BY_LANGUAGE[language],
+      asked: false,
+    };
+  }
+  const spoken = await friendSpeak(
+    deps,
+    transcript,
+    friendFields('ack', language, friendAddress(ctx), { parentWords, granted }),
+  );
+  return { body: spoken.body, asked: false };
 }
 
 /**
@@ -3547,7 +3581,7 @@ async function askParentCallName(
           return;
         }
         const confirm = templateKey === PARENT_NAME_CONFIRM_TEMPLATE_KEY;
-        const named = confirm ? /^Can I call you (.+)\?$/.exec(body)?.[1] ?? null : null;
+        const named = confirm ? (/^Can I call you (.+)\?$/.exec(body)?.[1] ?? null) : null;
         const spoken = await friendSpeak(
           args.friend.deps,
           args.friend.transcript,

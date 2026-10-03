@@ -1,21 +1,28 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
+import {
+  type FriendVoiceComposer,
+  createFriendVoiceComposer,
+  speakFriend,
+} from '~/lib/channel/intake/friend-voice';
+import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { familyOutboundTarget, familySpeech } from '~/lib/channel/linq/family-outbound';
 import { groupCalendarReceipt, groupGmailReceipt } from '~/lib/channel/linq/group-coparent-copy';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
-import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   createOutboundTransport,
   failedSendPatch,
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import type { ReplyLanguage } from '~/lib/channel/language';
-import { connectorConnectedText, type TextConnectProvider } from './text-connect';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { type TextConnectProvider, connectorConnectedText } from './text-connect';
 
 /**
  * The text back that ends the texted connect: the parent tapped a link in a thread,
@@ -56,6 +63,12 @@ export interface ConnectedNoticePorts {
    */
   imessage?: (input: { chatId: string; body: string }) => Promise<{ providerMessageId: string }>;
   threadMessage: typeof threadProactiveMessage;
+  /**
+   * Friend voice for the 1:1 receipt when ONBOARDING_FRIEND_VOICE_ENABLED is on.
+   * Absent, or a compose that fails, sends the short fallback. The group receipt
+   * stays the locked sentence: it names the parent, and that name is code.
+   */
+  friendVoice?: FriendVoiceComposer;
 }
 
 export type ConnectedNoticeOutcome =
@@ -98,11 +111,45 @@ export function connectedNoticeLabel(outcome: ConnectedNoticeOutcome): Connected
 /** What the callback wires in production. Named here so a test that injects a fake
  * still leaves one path that proves the real transport is reachable. */
 export function defaultConnectedNoticePorts(): ConnectedNoticePorts {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   return {
     transport: createOutboundTransport(),
     imessage: (input) => sendLinqChatMessage({ chatId: input.chatId, text: input.body }),
     threadMessage: threadProactiveMessage,
+    friendVoice:
+      onboardingFriendVoiceEnabled() && apiKey
+        ? createFriendVoiceComposer(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS))
+        : undefined,
   };
+}
+
+/** The 1:1 receipt. Flag off keeps the locked sentence. Flag on asks the model,
+ * and a failed compose still sends one short line (rule #11). */
+export async function connectedReceiptBody(
+  language: ReplyLanguage,
+  provider: TextConnectProvider,
+  composer: FriendVoiceComposer | undefined,
+): Promise<string> {
+  if (!onboardingFriendVoiceEnabled()) return connectorConnectedText(language, provider);
+  const spoken = await speakFriend(composer, {
+    step: 'connected',
+    language,
+    address: 'tu',
+    introduce: false,
+    parentWords: '',
+    recentTurns: [],
+    placeLabel: null,
+    agesLabel: null,
+    ageMonths: [],
+    findLines: [],
+    listKind: 'none',
+    activity: null,
+    day: null,
+    parentName: null,
+    connector: provider,
+    granted: null,
+  });
+  return spoken.body;
 }
 
 export interface ConnectedNoticeArgs {
@@ -221,7 +268,11 @@ async function sendReceipt(
   if (!claimed) return { status: 'not_sent', reason: 'already_sent' };
 
   // The receipt is the whole turn. No ladder ask is composed here.
-  const body = connectorConnectedText(await familyReceiptLanguage(database, familyId), provider);
+  const body = await connectedReceiptBody(
+    await familyReceiptLanguage(database, familyId),
+    provider,
+    ports.friendVoice,
+  );
   let providerMessageId: string;
   let reportedImessage = false;
   let reportedChatId: string | null = null;

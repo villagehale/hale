@@ -508,7 +508,7 @@ describe('the text itself', () => {
    * clause is there at all, and where it lands, is what `the offer at the end` asserts —
    * including every shape that must NOT carry it, so stripping here cannot hide one.
    */
-  const CTA = ' Reply YES and it goes on your week.';
+  const CTA = ' Want me to add it to your week?';
   const frame = (input: EmailAlertRenderInput): string => sentence(input).replace(CTA, '');
 
   it('is a plain sentence: the sender did it, the time is a clause, and it ends there', () => {
@@ -1105,7 +1105,7 @@ describe('the booking frame', () => {
     expect(dark).toBe(asNewEvent);
     expect(dark).toBe(
       'Riverside Pool has Swim Level 2 at the Leisure Centre on Saturday, Sep 26 at 9:00 a.m.' +
-        ' Reply YES and it goes on your week.',
+        ' Want me to add it to your week?',
     );
   });
 
@@ -1148,7 +1148,7 @@ describe('the offer at the end', () => {
    * row with no clause is a question nobody was asked that makes every bare affirmative in
    * the household ambiguous for a day.
    */
-  const CTA = 'Reply YES and it goes on your week.';
+  const CTA = 'Want me to add it to your week?';
 
   const future = (
     over: Partial<ExtractedEvent> & { kind?: ExtractionKind; teenContent?: boolean } = {},
@@ -1305,7 +1305,7 @@ describe('the offer at the end', () => {
       event: { ...event, originalTime: null, newTime: when, location: null },
     });
     expect(school).toBe(
-      'Google Classroom has Gymnastics on Thursday, Oct 1 at 4:15 p.m. Reply YES and it goes on your week.',
+      'Google Classroom has Gymnastics on Thursday, Oct 1 at 4:15 p.m. Want me to add it to your week?',
     );
 
     const h = harness({
@@ -1378,7 +1378,8 @@ describe('the offer at the end', () => {
       },
     });
     expect(body).toBe(`Riverside Pool has Picture day on Friday, Oct 2 at 9:00 a.m. ${CTA}`);
-    expect(body.match(/Reply YES/g)).toHaveLength(1);
+    expect(body.match(/Want me to add it to your week\?/g)).toHaveLength(1);
+    expect(body).not.toMatch(/Reply YES/i);
 
     // The teen text is category-only and returns before the frame runs at all.
     expect(

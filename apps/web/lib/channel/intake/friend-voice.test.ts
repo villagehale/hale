@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { loadOnboardingFriendSkill } from '~/lib/cron/skill';
-import { onboardingFriendVoiceEnabled } from './friend-voice-flag';
-import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
 import {
   FRIEND_STEPS,
   type FriendVoiceInput,
@@ -11,6 +9,8 @@ import {
   judgeFriendReply,
   speakFriend,
 } from './friend-voice';
+import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
+import { onboardingFriendVoiceEnabled } from './friend-voice-flag';
 import { YEAR_OPEN_LEAD, YEAR_OPEN_LEAD_FR } from './year-open';
 
 function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>): FriendVoiceInput {
@@ -62,6 +62,10 @@ describe('onboarding friend fixtures', () => {
     expect(skill.meta.task).toBe('speak');
     expect(skill.instructions).toContain('Exactly one question mark');
     expect(skill.instructions).toContain('Do not invent an activity');
+    expect(skill.instructions).toContain('**coparent**');
+    expect(skill.instructions).toContain('**connected**');
+    expect(skill.instructions).toContain('**ack**');
+    expect(skill.instructions).toContain('No STOP');
   });
 
   it('checks the three sample conversations', () => {
@@ -117,14 +121,12 @@ describe('friend-voice judge', () => {
   it('rejects a second question, the stock lines, and an invented price', () => {
     const prose = 'Maya is 4, near M5V. Which of these feels right?';
     expect(judgeFriendReply(assembleFriendBody(prose, swim), swim)).toEqual({ ok: true });
+    expect(judgeFriendReply(assembleFriendBody(`${prose} How old is she?`, swim), swim).ok).toBe(
+      false,
+    );
     expect(
-      judgeFriendReply(assembleFriendBody(`${prose} How old is she?`, swim), swim).ok,
-    ).toBe(false);
-    expect(
-      judgeFriendReply(
-        assembleFriendBody('Which one? Reply with the number you want.', swim),
-        swim,
-      ).ok,
+      judgeFriendReply(assembleFriendBody('Which one? Reply with the number you want.', swim), swim)
+        .ok,
     ).toBe(false);
     expect(
       judgeFriendReply(assembleFriendBody("I'll note it. Which of these?", swim), swim).ok,
@@ -172,6 +174,48 @@ describe('friend-voice judge', () => {
     expect(judgeFriendReply('Quel âge ont les enfants?', ages)).toEqual({ ok: true });
   });
 
+  it('keeps the coparent, connected, and ack fallbacks short and free of STOP', () => {
+    const coparent = blank({ step: 'coparent', parentWords: 'ok' });
+    expect(fallbackFriendProse(coparent)).toBe(
+      "Want the other parent on the kids' year? Text me their number.",
+    );
+    expect(judgeFriendReply(fallbackFriendProse(coparent), coparent)).toEqual({ ok: true });
+
+    const coparentVous = blank({
+      step: 'coparent',
+      language: 'fr',
+      address: 'vous',
+      parentWords: 'oui',
+    });
+    const vous = fallbackFriendProse(coparentVous);
+    expect(vous).toContain('année');
+    expect(vous).not.toMatch(/\bnumero\b/i);
+    expect(judgeFriendReply(vous, coparentVous)).toEqual({ ok: true });
+
+    const yes = blank({ step: 'ack', granted: true, parentWords: 'yes' });
+    const no = blank({ step: 'ack', granted: false, parentWords: 'no thanks' });
+    expect(fallbackFriendProse(yes)).toBe(
+      "Done. You're covered. I'll text when something actually matters.",
+    );
+    expect(fallbackFriendProse(no)).toBe('No problem. Text me whenever you like.');
+    expect(fallbackFriendProse(yes)).not.toMatch(/\?/);
+    expect(fallbackFriendProse(no)).not.toMatch(/\?|\bSTOP\b/);
+    expect(judgeFriendReply('Done. STOP always works.', yes)).toEqual({
+      ok: false,
+      reason: 'compliance',
+    });
+
+    const calendar = blank({ step: 'connected', connector: 'gcal', parentWords: '' });
+    const gmail = blank({ step: 'connected', connector: 'gmail', language: 'fr', parentWords: '' });
+    expect(fallbackFriendProse(calendar)).toBe('Your calendar is connected.');
+    expect(fallbackFriendProse(gmail)).toBe('Ton Gmail est connecté.');
+    expect(judgeFriendReply('Your Gmail is connected.', calendar)).toEqual({
+      ok: false,
+      reason: 'invented',
+    });
+    expect(judgeFriendReply(fallbackFriendProse(gmail), gmail)).toEqual({ ok: true });
+  });
+
   it('accepts a fallback for every step', () => {
     for (const step of FRIEND_STEPS) {
       for (const language of ['en', 'fr'] as const) {
@@ -191,6 +235,7 @@ describe('friend-voice judge', () => {
         expect(judgeFriendReply(body, input), `${language} ${step}: ${body}`).toEqual({
           ok: true,
         });
+        expect(body, `${language} ${step}`).not.toMatch(/\bSTOP\b|unsubscribe|d[ée]sabonner/i);
       }
     }
   });
@@ -209,7 +254,11 @@ describe('speakFriend', () => {
   it('keeps a composed reply that passes and drops one that does not', async () => {
     const input = blank({ step: 'ages', placeLabel: 'M5V' });
     const good = await speakFriend(
-      { async compose() { return { reply: 'How old are the kids?' }; } },
+      {
+        async compose() {
+          return { reply: 'How old are the kids?' };
+        },
+      },
       input,
     );
     expect(good).toMatchObject({ source: 'composed', body: 'How old are the kids?' });

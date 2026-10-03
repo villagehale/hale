@@ -322,10 +322,9 @@ describe('the consent moment', () => {
     expect(WATCH_OFFER).toContain('https://www.villagehale.com/privacy');
   });
 
-  it('confirms coverage and names the STOP escape, asking nothing itself', () => {
-    expect(ASSENT_ACK).toBe(
-      "Done - you're covered. I only text when something actually matters, and STOP always works.",
-    );
+  it('confirms coverage without a keyword, asking nothing itself', () => {
+    expect(ASSENT_ACK).toBe("Done. You're covered. I'll text when something actually matters.");
+    expect(ASSENT_ACK).not.toMatch(/\bSTOP\b|unsubscribe/i);
   });
 
   /**
@@ -343,10 +342,9 @@ describe('the consent moment', () => {
     );
   });
 
-  // CASL: the unsubscribe instruction must survive any copy revision. It is the one
-  // sentence in the consent turn that is not ours to soften.
-  it('keeps STOP visible in the acknowledgment a consenting parent reads', () => {
-    expect(ASSENT_ACK).toContain('STOP');
+  // STOP, HELP, and START stay on the keyword matcher. This receipt does not teach them.
+  it('does not teach STOP in the acknowledgment a consenting parent reads', () => {
+    expect(ASSENT_ACK).not.toMatch(/\bSTOP\b|unsubscribe/i);
   });
 });
 
@@ -494,13 +492,9 @@ describe('the French script', () => {
     expect(WATCH_OFFER_BY_LANGUAGE.fr).toContain(PRIVACY_URL);
   });
 
-  it('confirms coverage in French, names the STOP escape, and asks nothing itself', () => {
-    expect(ASSENT_ACK_BY_LANGUAGE.fr).toBe(
-      "C'est fait - tout est couvert. Je texte juste quand il le faut, et STOP marche toujours.",
-    );
-    // CASL: the unsubscribe instruction survives translation, and it survives as the
-    // LITERAL token, because that is the only word `matchKeyword` acts on today.
-    expect(ASSENT_ACK_BY_LANGUAGE.fr).toContain('STOP');
+  it('confirms coverage in French without a keyword, and asks nothing itself', () => {
+    expect(ASSENT_ACK_BY_LANGUAGE.fr).toBe("C'est fait. Je texte quand il le faut.");
+    expect(ASSENT_ACK_BY_LANGUAGE.fr).not.toMatch(/\bSTOP\b|désabonner/i);
     // Same reason as the English twin: the turn's one question is the composed identity
     // ask the machine appends, so this half must carry none of its own.
     expect(ASSENT_ACK_BY_LANGUAGE.fr).not.toContain('?');

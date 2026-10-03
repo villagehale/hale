@@ -40,8 +40,12 @@ describe('the character budget', () => {
   });
 
   it('refuses a tail ask that would push the consent turn into two segments', () => {
-    const overrun = `What name should I use for you, and what should I put on the ${'x'.repeat(30)}`;
-    expect(overrun.length).toBeGreaterThan(MAX_TAIL_ASK_CHARS);
+    // One character past the tail budget, which moves when the consent receipt does.
+    // Still inside a full segment, so the same sentence is a legal intros ask.
+    const lead = 'What name should I use for you, and what should I put on the ';
+    const overrun = `${lead}${'x'.repeat(MAX_TAIL_ASK_CHARS - lead.length + 1)}`;
+    expect(overrun.length).toBe(MAX_TAIL_ASK_CHARS + 1);
+    expect(overrun.length).toBeLessThanOrEqual(MAX_ASK_CHARS);
     expect(identityAskRefusals(overrun, START)).toContain('over_char_cap');
     // The SAME sentence is fine as the intros ask, which sends on its own.
     expect(

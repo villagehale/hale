@@ -2322,6 +2322,31 @@ describe('intake · one ladder job per reply', () => {
     expect(h.transport.bodies().at(-1)).not.toContain("Gmail's connected");
   });
 
+  it('asks about the other parent in a short question when friend voice is on', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    const h = harness({});
+    await text(h.fake, h.transport, h.deps, 'hi');
+    await text(h.fake, h.transport, h.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    // The name reply already sends the calendar card and advances to Gmail.
+    expect(await reply(h, 'Jimmy')).toMatchObject({
+      status: 'ladder_advanced',
+      step: 'name_reply',
+      closed: false,
+    });
+    expect(await reply(h)).toMatchObject({
+      status: 'ladder_advanced',
+      step: 'gmail',
+      closed: false,
+    });
+    expect(await reply(h)).toEqual({ status: 'ladder_advanced', step: 'coparent', closed: true });
+    const last = h.transport.bodies().at(-1) ?? '';
+    expect(last).toBe("Want the other parent on the kids' year? Text me their number.");
+    expect(last).not.toBe(CO_PARENT_ASK);
+    expect(last).not.toMatch(/\bSTOP\b|unsubscribe/i);
+    expect(last.match(/\?/g)).toHaveLength(1);
+    vi.unstubAllEnvs();
+  });
+
   it('does not wait for a soft ack, and does not read cool as a name', async () => {
     const h = harness({});
     await text(h.fake, h.transport, h.deps, 'hi');

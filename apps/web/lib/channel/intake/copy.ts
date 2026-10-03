@@ -693,16 +693,16 @@ export const WATCH_OFFER_BY_LANGUAGE: Record<ReplyLanguage, string> = {
 };
 
 /**
- * The yes. Names the restraint (only when it matters) and keeps the CASL escape hatch
- * visible. Fixed, because both of those are promises and a promise a model paraphrased
- * is a promise nobody made.
+ * The yes. Names the restraint (only when it matters). STOP, HELP, and START still
+ * work as carrier keywords; this receipt does not teach them.
  *
  * IT DOES NOT ASK ANYTHING. One text, one ask. The name, the inbox, and the co-parent
  * each go out as their own later message after a real find (machine.ts). This sentence
  * stays whole so a yes is a receipt, not a second question stapled to the first.
+ * Friend voice, when it is on, writes the live text. This line is the flag-off copy
+ * and the length budget the identity tail still measures against.
  */
-export const ASSENT_ACK =
-  "Done - you're covered. I only text when something actually matters, and STOP always works.";
+export const ASSENT_ACK = "Done. You're covered. I'll text when something actually matters.";
 export const DECLINE_ACK =
   'No problem - text me whenever you like. The dates and finds are here when you want them.';
 export const AMBIGUOUS_CLARIFY =
@@ -718,13 +718,14 @@ export const AMBIGUOUS_CLARIFY =
  * failing anywhere. The test in copy.test.ts holds it to one segment WITH a full-budget
  * tail; the words below were cut to fit that, not the other way round.
  *
- * `tout est couvert` rather than `vous etes couvert`: GSM-7 has no ê, and the fold would
- * be visible in the most prominent word of the most important message. It also sidesteps
- * a gender agreement Hale has no business guessing about the parent.
+ * `tout est couvert` rather than `vous etes couvert` was the old line. GSM-7 has no ê,
+ * and the fold would be visible. This shorter twin also sidesteps a gender agreement
+ * Hale has no business guessing about the parent. It stays no longer than the English
+ * line, because the identity tail budget is sized from the English constant.
  */
 export const ASSENT_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: ASSENT_ACK,
-  fr: "C'est fait - tout est couvert. Je texte juste quand il le faut, et STOP marche toujours.",
+  fr: "C'est fait. Je texte quand il le faut.",
 };
 
 export const DECLINE_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
