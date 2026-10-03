@@ -3,11 +3,11 @@ import { schema } from '@hale/db';
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { PROACTIVE_CAP, PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
-import { LinqSendError } from '~/lib/channel/linq/transport';
 import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
@@ -257,6 +257,15 @@ describe('alertParentForEmail', () => {
       expect(body).not.toContain(ENVELOPE.subject);
       expect(body).not.toContain('Leo');
     }
+  });
+
+  it('texts a family that is not on the allowlist when F14_ENABLED is exactly true', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', '00000000-0000-4000-8000-000000000000');
+    const h = harness();
+
+    await expect(alert(h)).resolves.toBe('sent');
+    expect(h.transport.sent).toHaveLength(1);
   });
 
   it('is dark behind F14 — no classifier call, no text, nothing written', async () => {

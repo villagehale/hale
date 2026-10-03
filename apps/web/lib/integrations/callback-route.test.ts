@@ -15,6 +15,7 @@ const readSubMock = vi.fn();
 const accountHeldMock = vi.fn();
 const groupReceiptMock = vi.fn();
 const holdNameMock = vi.fn();
+const kickMock = vi.fn();
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
@@ -48,6 +49,9 @@ vi.mock('~/lib/channel/linq/group-coparent', () => ({
 }));
 vi.mock('~/lib/channel/identity/parent-call-name', () => ({
   holdGoogleGivenName: (...a: unknown[]) => holdNameMock(...a),
+}));
+vi.mock('~/lib/integrations/booked-backfill-kick', () => ({
+  kickGmailBookedBackfill: (...a: unknown[]) => kickMock(...a),
 }));
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
@@ -84,11 +88,13 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
       accountHeldMock,
       groupReceiptMock,
       holdNameMock,
+      kickMock,
     ]) {
       m.mockReset();
     }
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
+    kickMock.mockResolvedValue({ outcome: 'off' });
     readProfileMock.mockResolvedValue(null);
     readSubMock.mockResolvedValue(null);
     accountHeldMock.mockResolvedValue(false);
@@ -199,11 +205,19 @@ describe('GET /api/integrations/callback — the text surface', () => {
 
   beforeEach(() => {
     vi.resetModules();
-    for (const m of [authMock, resolveUserIdMock, exchangeMock, saveConnectionMock, noticeMock]) {
+    for (const m of [
+      authMock,
+      resolveUserIdMock,
+      exchangeMock,
+      saveConnectionMock,
+      noticeMock,
+      kickMock,
+    ]) {
       m.mockReset();
     }
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
+    kickMock.mockResolvedValue({ outcome: 'completed' });
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
       scope: 'https://www.googleapis.com/auth/calendar.readonly',
@@ -234,6 +248,7 @@ describe('GET /api/integrations/callback — the text surface', () => {
       provider: 'gcal',
       connectId: CONNECT,
     });
+    expect(kickMock).not.toHaveBeenCalled();
   });
 
   it('still says connected when there is no number to text — the outcome is named, not shown', async () => {
@@ -246,6 +261,45 @@ describe('GET /api/integrations/callback — the text surface', () => {
     const res = await callCallback(await textState('gmail'));
 
     expect(location(res)).toBe('https://app.example.com/connected?provider=gmail&status=ok');
+    expect(kickMock).toHaveBeenCalledTimes(1);
+    expect(kickMock.mock.calls[0]?.[1]).toMatchObject({
+      id: CONNECT,
+      familyId: FAMILY,
+      userId: MINTER,
+      accessToken: 'ya29.x',
+      providerMetadata: {},
+    });
+  });
+
+  it('still says connected when the backfill kick throws', async () => {
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope: 'https://www.googleapis.com/auth/gmail.readonly',
+    });
+    kickMock.mockRejectedValue(new Error('kick down'));
+
+    const res = await callCallback(await textState('gmail'));
+
+    expect(location(res)).toBe('https://app.example.com/connected?provider=gmail&status=ok');
+  });
+
+  it('kicks the backfill on the web surface too', async () => {
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope: 'https://www.googleapis.com/auth/gmail.readonly',
+    });
+    const { signConnectState } = await import('./connect-state');
+    const state = signConnectState({ familyId: FAMILY, userId: MINTER, provider: 'gmail' });
+
+    const res = await callCallback(state);
+
+    expect(location(res)).toBe('https://app.example.com/settings?connect=gmail');
+    expect(kickMock).toHaveBeenCalledTimes(1);
+    expect(kickMock.mock.calls[0]?.[1]).toMatchObject({
+      familyId: FAMILY,
+      userId: MINTER,
+      accessToken: 'ya29.x',
+    });
   });
 
   it('says nothing at all when the parent declined at Google', async () => {
@@ -254,6 +308,7 @@ describe('GET /api/integrations/callback — the text surface', () => {
     expect(location(res)).toBe('https://app.example.com/connected?provider=gcal&status=denied');
     expect(noticeMock).not.toHaveBeenCalled();
     expect(saveConnectionMock).not.toHaveBeenCalled();
+    expect(kickMock).not.toHaveBeenCalled();
   });
 
   it('sends the parent to the done page, never Settings, when the grant is too narrow', async () => {
@@ -317,12 +372,14 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
       groupReceiptMock,
       holdNameMock,
       noticeMock,
+      kickMock,
     ]) {
       m.mockReset();
     }
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
     noticeMock.mockResolvedValue({ status: 'sent', channelMessageId: 'cm-1' });
+    kickMock.mockResolvedValue({ outcome: 'off' });
     readProfileMock.mockResolvedValue(null);
     readSubMock.mockResolvedValue(null);
     accountHeldMock.mockResolvedValue(false);

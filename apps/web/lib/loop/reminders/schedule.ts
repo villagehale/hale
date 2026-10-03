@@ -17,6 +17,11 @@ import { dayKeyIn } from '~/lib/plan/spine';
 export type ReminderOffset = '-P1D' | '-PT1H';
 export const REMINDER_OFFSETS: readonly ReminderOffset[] = ['-P1D', '-PT1H'];
 
+/** How far ahead the hourly cron materializes reminder rows. A calendar mirror
+ * uses the same window: an event Hale has not seen inside it has no reminder
+ * yet, and the next sync's window list is what brings it in. */
+export const REMINDER_HORIZON_MS = 8 * 24 * 60 * 60 * 1000;
+
 export type ReminderStatus = 'scheduled' | 'sent' | 'suppressed' | 'cancelled' | 'stale';
 
 /** T-1h is glanceable + time-sensitive (may cross quiet hours per the urgent toggle);
@@ -177,7 +182,10 @@ export interface ReminderBatch {
  * batched — each fires on its own. Grouping key is (parent, offset, family-local
  * evening of fire_at); event order within a batch is the input order.
  */
-export function batchReminders(firing: readonly FiringReminder[], timeZone: string): ReminderBatch[] {
+export function batchReminders(
+  firing: readonly FiringReminder[],
+  timeZone: string,
+): ReminderBatch[] {
   const batches = new Map<string, ReminderBatch>();
   for (const r of firing) {
     const eveningKey = dayKeyIn(r.fireAt, timeZone);

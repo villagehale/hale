@@ -317,6 +317,13 @@ describe('the D21 dark-launch flag', () => {
     expect(f14EnabledFor('fam-2')).toBe(false);
   });
 
+  it('a family absent from a non-empty allowlist is on when F14_ENABLED is exactly true', () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', 'fam-9');
+    expect(f14EnabledFor('fam-1')).toBe(true);
+    expect(f14EnabledFor('fam-9')).toBe(true);
+  });
+
   it('does no work at all when neither the flag nor the allowlist is set', async () => {
     const h = harness({ windows: [win()] });
     const selectFamilies = vi.fn(async () => [family()]);
