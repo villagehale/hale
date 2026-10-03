@@ -6,6 +6,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import {
   HALE_CONTACT_FIRST_NAME,
   HALE_CONTACT_IMAGE_URL_DEFAULT,
+  deliverHaleLinqContactCard,
   linqContactCardMoment,
   shareHaleContactCardOnce,
 } from './contact-card';
@@ -180,6 +181,47 @@ describe('Linq contact card', () => {
 
     expect(outcome).toEqual({ status: 'shared' });
     expect(fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toEqual(NOW);
+  });
+
+  it('retries one unreachable setup in the same call and logs the share', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    let setups = 0;
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (target.includes('/contact_card?') || method === 'GET') {
+        return Response.json({
+          contact_cards: [{ phone_number: '+15555550100', first_name: 'Hale', is_active: true }],
+        });
+      }
+      if (target.endsWith('/contact_card')) {
+        setups += 1;
+        if (setups === 1) {
+          const abort = new Error('The operation was aborted');
+          abort.name = 'AbortError';
+          throw abort;
+        }
+        const body = JSON.parse(String(init?.body)) as { first_name?: string; image_url?: string };
+        expect(body.first_name).toBe(HALE_CONTACT_FIRST_NAME);
+        expect(body.image_url).toBe(HALE_CONTACT_IMAGE_URL_DEFAULT);
+        return Response.json({ is_active: true, phone_number: '+15555550100' }, { status: 201 });
+      }
+      return new Response(null, { status: 200 });
+    });
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const delivered = await deliverHaleLinqContactCard({
+      chatId: CHAT,
+      familyId: null,
+      fetch: fetchMock,
+    });
+    expect(delivered.outcome).toEqual({ status: 'shared' });
+    expect(setups).toBe(2);
+    expect(info).toHaveBeenCalledWith(
+      { familyId: null, outcome: 'shared' },
+      'linq contact card: shared',
+    );
+    info.mockRestore();
   });
 
   it('releases the one-shot claim when the partner key is missing', async () => {

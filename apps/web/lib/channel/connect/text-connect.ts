@@ -55,15 +55,35 @@ const YEAR_PAYOFF: Record<TextConnectProvider, string> = {
 };
 
 /**
- * The one trust line on a connect card. Same shape for both connectors: Hale
- * never sees the password, and the disconnect words are ones the text parser
- * actually honours. The noun matches the card so "disconnect anytime" is a
- * command, not a slogan.
+ * The one trust line on a connect card. Same sentence for both connectors:
+ * Hale never sees the password, and disconnecting is something the parent can
+ * do. It is not a phrase to text back.
  */
 export const CONNECTOR_TRUST_LINE: Record<TextConnectProvider, string> = {
-  gcal: 'I never see your password. Disconnect my calendar anytime.',
-  gmail: 'I never see your password. Disconnect my gmail anytime.',
+  gcal: 'I never see your password. You can disconnect any time.',
+  gmail: 'I never see your password. You can disconnect any time.',
 };
+
+/**
+ * One plain line before a Google connect link. Google's unverified-app screen
+ * is outside Hale's page; this is the only coaching for it. Straight quotes,
+ * no emoji, GSM-7.
+ */
+export const GOOGLE_UNVERIFIED_APP_LINE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: 'Google may show an "unverified app" screen. Tap Advanced, then continue.',
+  fr: 'Google peut afficher un ecran "application non verifiee". Touchez Avance, puis continuez.',
+};
+
+export function googleUnverifiedAppLine(language: ReplyLanguage): string {
+  return GOOGLE_UNVERIFIED_APP_LINE_BY_LANGUAGE[language];
+}
+
+/** The coaching line, then the link sentence. Every Google connect link carries it once. */
+export function withGoogleConnectCaution(language: ReplyLanguage, body: string): string {
+  const line = googleUnverifiedAppLine(language);
+  if (body.startsWith(line)) return body;
+  return `${line}\n${body}`;
+}
 
 /** What the link unfurls as. Title is the ask. Description is the trust line. */
 export const CONNECTOR_CARD_TITLE: Record<TextConnectProvider, string> = {
@@ -82,7 +102,7 @@ export function connectorLinkCard(provider: TextConnectProvider | null): Connect
   if (!provider) {
     return {
       title: 'Connect - Hale',
-      description: 'I never see your password. Disconnect anytime.',
+      description: 'I never see your password. You can disconnect any time.',
     };
   }
   return {
@@ -143,13 +163,14 @@ export interface ConnectedNotice {
  *
  * FAIL CLOSED on anything it does not recognise, including `status=ok` for a provider
  * with no words: a page that congratulated a parent on a connection nobody can name
- * would be the one lie this flow cannot afford. Every failure hands back the same thing
- * — a text to send — because the thread is where this flow lives.
+ * would be the one lie this flow cannot afford. A failure does not tell the parent
+ * which words to text. When the callback actually sent a fresh link, `freshLink`
+ * says so; otherwise the page does not pretend a text left.
  */
 export function connectedNotice(
   status: string | undefined,
   provider: string | undefined,
-  options?: { name?: string; language?: 'en' | 'fr' },
+  options?: { name?: string; language?: 'en' | 'fr'; freshLink?: boolean },
 ): ConnectedNotice {
   const connected = asTextConnectProvider(provider);
   if (status === 'ok' && connected) {
@@ -161,7 +182,7 @@ export function connectedNotice(
   if (status === 'denied') {
     return {
       heading: 'Nothing changed',
-      body: "No changes made. Text me 'connect my calendar' if you change your mind.",
+      body: failureNotice('No changes made.', options?.freshLink),
     };
   }
   if (status === 'own_link') {
@@ -192,11 +213,16 @@ export function connectedNotice(
   if (status === 'invalid') {
     return {
       heading: 'Link expired',
-      body: "That link has expired. Text me 'connect my calendar' for a fresh one.",
+      body: failureNotice('That link has expired.', options?.freshLink),
     };
   }
   return {
     heading: 'Not connected',
-    body: "That didn't go through. Text me 'connect my calendar' and I'll send a fresh link.",
+    body: failureNotice("That didn't go through.", options?.freshLink),
   };
+}
+
+/** The failure sentence. A fresh link is named only when one was actually texted. */
+function failureNotice(lead: string, freshLink: boolean | undefined): string {
+  return freshLink ? `${lead} A fresh link is in your texts.` : lead;
 }

@@ -91,10 +91,12 @@ interface IntakeData {
   /** Language of the kids-and-postal text. Later replies must not re-pick it. */
   ladderLanguage?: ReplyLanguage | null;
   /**
-   * Pre-family one-shot for the Linq Name and Photo share. Parent channels do
-   * not exist yet, so the claim lives here until provisioning copies it onto
-   * parent_channels.linq_contact_card_shared_at. Absent means unclaimed.
+   * Pre-family record of the Linq Name and Photo share. Parent channels do
+   * not exist yet, so it lives here until provisioning copies a held claim
+   * onto parent_channels.linq_contact_card_shared_at. Absent means unclaimed.
    * `share_refused` stays consumed so a retry cannot push the card twice.
+   * `unreachable` is a setup that never reached the chat: it is kept so the
+   * failure is still on the session later, and it does not consume the one-shot.
    */
   linqContactCardClaim?: LinqContactCardClaim | null;
   /** VIL-385. Absent means this session is not on the ladder. */
@@ -146,11 +148,25 @@ export interface ColdStartProgress {
   schoolMentioned: boolean;
 }
 
-/** Held when the share was attempted. Setup that never reached the chat stays null. */
+/**
+ * Held when the share was attempted, or when setup failed before the chat.
+ * `unreachable` does not hold the one-shot — see {@link linqContactCardClaimHeld}.
+ */
 export interface LinqContactCardClaim {
   at: string;
-  outcome: 'shared' | 'share_refused';
+  outcome: 'shared' | 'share_refused' | 'unreachable';
   code?: string;
+  /**
+   * Pre-family setup failures so far. The first hello counts as one, including
+   * its in-turn retry. The next outbound is the second. A held claim leaves
+   * this unset.
+   */
+  attempts?: number;
+}
+
+/** True when this record consumed the one-shot. A failed setup did not. */
+export function linqContactCardClaimHeld(claim: LinqContactCardClaim | null): boolean {
+  return claim != null && claim.outcome !== 'unreachable';
 }
 
 export interface IntakeSession {
@@ -199,13 +215,24 @@ function encodeData(data: IntakeData): string {
 
 function decodeLinqContactCardClaim(value: unknown): LinqContactCardClaim | null {
   if (!value || typeof value !== 'object') return null;
-  const row = value as { at?: unknown; outcome?: unknown; code?: unknown };
-  if (row.outcome !== 'shared' && row.outcome !== 'share_refused') return null;
+  const row = value as { at?: unknown; outcome?: unknown; code?: unknown; attempts?: unknown };
+  if (
+    row.outcome !== 'shared' &&
+    row.outcome !== 'share_refused' &&
+    row.outcome !== 'unreachable'
+  ) {
+    return null;
+  }
   if (typeof row.at !== 'string' || row.at.length === 0) return null;
+  const attempts =
+    typeof row.attempts === 'number' && Number.isFinite(row.attempts) && row.attempts > 0
+      ? row.attempts
+      : null;
   return {
     at: row.at,
     outcome: row.outcome,
     ...(typeof row.code === 'string' ? { code: row.code } : {}),
+    ...(attempts != null ? { attempts } : {}),
   };
 }
 

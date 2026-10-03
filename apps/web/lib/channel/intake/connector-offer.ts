@@ -1,11 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
+import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
-import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
+import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import {
@@ -49,7 +50,7 @@ export const INTAKE_CONNECTOR_OFFER_TEMPLATE_KEY = 'intake:connector_offer';
 
 /** At most one offer per family, ever, enforced by the partial unique index on
  * `channel_messages.dedupe_key`. A second link is a second permissions ask nobody
- * made, and the parent who wanted one can say "connect my calendar" at any time. */
+ * made. A parent who wants one later asks in the thread, and Hale mints the link. */
 export function connectorOfferDedupeKey(familyId: string): string {
   return `${INTAKE_CONNECTOR_OFFER_TEMPLATE_KEY}:${familyId}`;
 }
@@ -302,13 +303,15 @@ export async function sendYearConnectorCards(
     provider: 'gcal',
     templateKey: INTAKE_CALENDAR_CARD_TEMPLATE_KEY,
     dedupeKey: calendarCardDedupeKey(args.familyId),
-    render: (url) => voiceCardBody(args.voice?.gcal, url, intakeCalendarCard(args.language, url)),
+    render: (url) =>
+      voiceCardBody(args.voice?.gcal, url, intakeCalendarCard(args.language, url), args.language),
   };
   const gmailSpec: ConnectorCard = {
     provider: 'gmail',
     templateKey: INTAKE_GMAIL_CARD_TEMPLATE_KEY,
     dedupeKey: gmailCardDedupeKey(args.familyId),
-    render: (url) => voiceCardBody(args.voice?.gmail, url, intakeGmailCard(args.language, url)),
+    render: (url) =>
+      voiceCardBody(args.voice?.gmail, url, intakeGmailCard(args.language, url), args.language),
   };
   const calendarClaim =
     args.only === 'gmail' ? null : await claimConnectorCard(database, args, calendarSpec);
@@ -371,12 +374,16 @@ export async function sendYearConnectorCards(
 }
 
 /** Prose plus the minted URL. A model-written URL is dropped before the real one is attached. */
-function voiceCardBody(prose: string | undefined, url: string, locked: string): string {
-  const clean = prose
-    ?.replace(/https?:\/\/\S+/g, '')
-    .trim();
+function voiceCardBody(
+  prose: string | undefined,
+  url: string,
+  locked: string,
+  language: ReplyLanguage,
+): string {
+  const clean = prose?.replace(/https?:\/\/\S+/g, '').trim();
   if (!clean) return locked;
-  return `${clean}\n${url}`;
+  const line = googleUnverifiedAppLine(language);
+  return clean.includes(line) ? `${clean}\n${url}` : `${clean}\n${line}\n${url}`;
 }
 
 interface ConnectorCard {

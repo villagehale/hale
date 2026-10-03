@@ -431,10 +431,10 @@ describe('the French script', () => {
   it('says the calendar is how the year stays together, and names the trust', () => {
     const url = 'https://app.villagehale.com/connect?t=token&to=gcal';
     expect(intakeCalendarCard('en', url)).toBe(
-      `Connect your calendar: ${url} Good for 15 minutes. I never see your password. Disconnect my calendar anytime.`,
+      `Google may show an "unverified app" screen. Tap Advanced, then continue.\nConnect your calendar: ${url} Good for 15 minutes. I never see your password. You can disconnect any time.`,
     );
     expect(intakeCalendarCard('fr', url)).toBe(
-      `Connectez votre agenda : ${url} Bon pour 15 minutes. Je ne vois jamais votre mot de passe. Déconnectez mon agenda à tout moment.`,
+      `Google peut afficher un ecran "application non verifiee". Touchez Avance, puis continuez.\nConnectez votre agenda : ${url} Bon pour 15 minutes. Je ne vois jamais votre mot de passe. Vous pouvez déconnecter à tout moment.`,
     );
     for (const body of [intakeCalendarCard('en', url), intakeCalendarCard('fr', url)]) {
       expect(body.toLowerCase()).not.toContain('ollie');
@@ -446,10 +446,10 @@ describe('the French script', () => {
   it('says Gmail is how notices get into the year, and that ignoring it skips', () => {
     const url = 'https://app.villagehale.com/connect?t=token&to=gmail';
     expect(intakeGmailCard('en', url)).toBe(
-      `Connect Gmail: ${url} Good for 15 minutes - ignore this to skip. I never see your password. Disconnect my gmail anytime.`,
+      `Google may show an "unverified app" screen. Tap Advanced, then continue.\nConnect Gmail: ${url} Good for 15 minutes - ignore this to skip. I never see your password. You can disconnect any time.`,
     );
     expect(intakeGmailCard('fr', url)).toBe(
-      `Connectez Gmail : ${url} Bon pour 15 minutes - ignorez pour passer. Je ne vois jamais votre mot de passe. Déconnectez mon Gmail à tout moment.`,
+      `Google peut afficher un ecran "application non verifiee". Touchez Avance, puis continuez.\nConnectez Gmail : ${url} Bon pour 15 minutes - ignorez pour passer. Je ne vois jamais votre mot de passe. Vous pouvez déconnecter à tout moment.`,
     );
     for (const body of [intakeGmailCard('en', url), intakeGmailCard('fr', url)]) {
       expect(body.toLowerCase()).not.toContain('ollie');

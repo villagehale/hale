@@ -1,10 +1,11 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
+import { channelSigninTokenBelongsToUser } from '~/lib/auth/channel-signin';
 import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
+import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
-import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { signConnectState } from '~/lib/integrations/connect-state';
 import {
   buildGoogleAuthUrl,
@@ -60,11 +61,20 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
   // promise a receipt (connect/text-connect.ts) that never arrives.
   const fromText =
     url.searchParams.get('from') === 'text' && asTextConnectProvider(provider) !== null;
+  const channelSigninTokenId = fromText
+    ? await adoptSigninToken(database, {
+        familyId,
+        userId,
+        provider,
+        link: url.searchParams.get('link'),
+      })
+    : undefined;
   const state = signConnectState({
     familyId,
     userId,
     provider,
     ...(fromText ? { surface: 'text' as const } : {}),
+    ...(channelSigninTokenId ? { channelSigninTokenId } : {}),
   });
   const authUrl = buildGoogleAuthUrl({
     provider,
@@ -81,4 +91,42 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
     'connector consent starting - this is the Google project the grant will belong to',
   );
   return NextResponse.redirect(authUrl);
+}
+
+const SIGNIN_TOKEN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The Redeem tap carried the token id so consent can burn that link and not its
+ * sibling. A miss is named and the consent still starts: an unreadable id must
+ * not trap the parent on a page that already signed them in.
+ */
+async function adoptSigninToken(
+  database: ReturnType<typeof db>,
+  input: { familyId: string; userId: string; provider: string; link: string | null },
+): Promise<string | undefined> {
+  if (!input.link || !SIGNIN_TOKEN_ID.test(input.link)) return undefined;
+  try {
+    const owned = await channelSigninTokenBelongsToUser(database, {
+      tokenId: input.link,
+      userId: input.userId,
+    });
+    if (!owned) {
+      console.info(
+        { familyId: input.familyId, provider: input.provider },
+        'connector consent: sign-in token not attached',
+      );
+      return undefined;
+    }
+    return input.link;
+  } catch (err) {
+    console.info(
+      {
+        familyId: input.familyId,
+        provider: input.provider,
+        code: err instanceof Error ? err.name : 'unknown',
+      },
+      'connector consent: sign-in token unread',
+    );
+    return undefined;
+  }
 }

@@ -3,9 +3,9 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { LinqSendError } from '~/lib/channel/linq/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
@@ -88,7 +88,10 @@ describe('sendConnectorConnectedText', () => {
     const outcome = await send('gcal');
 
     expect(connectedNoticeLabel(outcome)).toBe('sent');
-    expect(transport.sent).toEqual([{ to: PHONE, body: CONNECTOR_CONNECTED_TEXT.gcal }]);
+    expect(transport.sent[0]).toEqual({ to: PHONE, body: CONNECTOR_CONNECTED_TEXT.gcal });
+    expect(transport.sent[1]?.body).toContain('to=gmail');
+    expect(transport.sent[1]?.body).toContain('unverified app');
+    expect(transport.sent).toHaveLength(2);
   });
 
   it('writes the ledger row the dedupe key hangs on, and threads what it said', async () => {
@@ -137,8 +140,8 @@ describe('sendConnectorConnectedText', () => {
       'sent',
       'already_sent',
     ]);
-    expect(transport.sent).toHaveLength(1);
-    expect(threaded).toHaveLength(1);
+    expect(transport.sent).toHaveLength(2);
+    expect(threaded).toHaveLength(2);
   });
 
   /**
@@ -159,8 +162,9 @@ describe('sendConnectorConnectedText', () => {
       'sent',
       'sent',
     ]);
-    expect(transport.sent).toHaveLength(2);
-    expect(threaded).toHaveLength(2);
+    // The Gmail card is one per family. The reconnect texts the receipt again.
+    expect(transport.sent).toHaveLength(3);
+    expect(threaded).toHaveLength(3);
   });
 
   it('names the missing number rather than pretending it sent (rule #11)', async () => {
@@ -216,6 +220,38 @@ describe('sendConnectorConnectedText', () => {
     // claiming nothing was sent would be a guess the operator would act on.
     expect(connectedNoticeLabel(outcome)).toBe('errored');
     expect(transport.sent).toHaveLength(1);
+  });
+
+  it('sends the Gmail card in the same iMessage chat as the calendar receipt', async () => {
+    await seedChannel();
+    const chatId = '8f392755-6865-4b18-880a-227f9d8b458f';
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerMessageId: 'msg-in-parent',
+      providerChatId: chatId,
+      status: 'delivered',
+      body: 'hello',
+      sentAt: new Date('2026-09-23T22:40:00.000Z'),
+    });
+    const imessage = vi.fn(async () => ({ providerMessageId: 'msg-out-linq' }));
+    ports = { ...ports, imessage };
+
+    const outcome = await send('gcal');
+
+    expect(connectedNoticeLabel(outcome)).toBe('sent');
+    expect(transport.sent).toEqual([]);
+    expect(imessage).toHaveBeenCalledTimes(2);
+    const calls = imessage.mock.calls as unknown as Array<[{ chatId: string; body: string }]>;
+    expect(calls[0]?.[0]).toMatchObject({
+      chatId,
+      body: CONNECTOR_CONNECTED_TEXT.gcal,
+    });
+    expect(calls[1]?.[0]?.body).toContain('to=gmail');
+    expect(calls[1]?.[0]?.chatId).toBe(chatId);
   });
 
   it('sends an iMessage family the receipt in the stored Linq chat, not over Twilio', async () => {

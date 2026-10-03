@@ -67,6 +67,54 @@ export function matchConnectorRequest(body: string): ConnectorProvider | null {
 }
 
 /**
+ * A short follow-up that asks for another link without naming the provider.
+ *
+ * "give me a fresh one", "new link", and "it expired" are the live misses: they
+ * are not a connect-verb + noun pair, so they used to reach the coach, which
+ * told the parent to text the exact words instead of minting. This matcher does
+ * not name a provider. The handler mints only when the previous Hale message
+ * was already a Gmail or calendar connect link.
+ */
+const FRESH_LINK_FOLLOW_UP: readonly RegExp[] = [
+  /\b(?:give|send|get)\s+me\s+(?:a\s+)?(?:fresh|new|another)\s+(?:one|link)\b/i,
+  /\b(?:fresh|new|another)\s+link\b/i,
+  /\bfresh one\b/i,
+  /\b(?:it|that|this|the link|this link|that link)\s+(?:has\s+)?expired\b/i,
+  /\blink\s+(?:has\s+)?expired\b/i,
+  /\b(?:donne[rz]?(?:-moi)?|envoyez?(?:-moi)?)\s+(?:un\s+)?(?:nouveau|autre)\s+lien\b/i,
+  /\b(?:nouveau|autre)\s+lien\b/i,
+  /\b(?:il|elle|ça|ca|le lien|ce lien)\s+a\s+expir/i,
+  /\blien\s+expir/i,
+];
+
+export function matchFreshConnectorFollowUp(body: string): boolean {
+  const text = body.trim();
+  if (text.length === 0 || text.length > 120) return false;
+  if (NEGATION.test(text) || STATUS_QUESTION.test(text)) return false;
+  return FRESH_LINK_FOLLOW_UP.some((pattern) => pattern.test(text));
+}
+
+/** Which connector a Hale message already offered, read off the link it carried. */
+export type ConnectOfferTarget = 'gcal' | 'gmail' | 'both';
+
+export function connectOfferTarget(body: string): ConnectOfferTarget | null {
+  const gmail =
+    /[?&]to=gmail\b/i.test(body) ||
+    /\bConnect Gmail\b/i.test(body) ||
+    /\btap to connect your Gmail\b/i.test(body);
+  const gcal =
+    /[?&]to=gcal\b/i.test(body) ||
+    /\bConnect your calendar\b/i.test(body) ||
+    /\bConnectez votre agenda\b/i.test(body) ||
+    /\btap to connect your Google Calendar\b/i.test(body) ||
+    /\btap to connect your Google Agenda\b/i.test(body);
+  if (gmail && gcal) return 'both';
+  if (gmail) return 'gmail';
+  if (gcal) return 'gcal';
+  return null;
+}
+
+/**
  * ── THE OTHER HALF: ending a connection ─────────────────────────────────────────
  *
  * The asymmetry with the connect half above is deliberate and lives here so it is

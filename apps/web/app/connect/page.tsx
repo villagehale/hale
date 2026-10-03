@@ -2,7 +2,11 @@ import type { Metadata } from 'next';
 import { AuthShell } from '~/components/hale/auth-shell';
 import { ChannelLinkRedeem } from '~/components/hale/channel-link-redeem';
 import { authConfigured } from '~/lib/auth-config';
-import { asTextConnectProvider, connectorLinkCard } from '~/lib/channel/connect/text-connect';
+import {
+  asTextConnectProvider,
+  connectorLinkCard,
+  googleUnverifiedAppLine,
+} from '~/lib/channel/connect/text-connect';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,10 +41,10 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
 }
 
 /**
- * Redeem landing for the texted connect link (/connect?t=…&to=gcal). The token is spent
- * only when the client component's button submits it, in the server action — this page
- * render never consumes it, so a carrier link-scanner's GET costs the parent nothing.
- * A missing token gets the calm dead-end: the fresh link is one text away.
+ * Redeem landing for the texted connect link (/connect?t=…&to=gcal). Rendering this
+ * page never consumes the token, so a carrier link-scanner's GET costs the parent
+ * nothing. The Redeem tap signs them in and leaves the token usable until Google
+ * consent succeeds. A missing token cannot name a parent, so nothing is minted.
  *
  * `to` names which connector the link was texted for, so the one tap it already asks for
  * is also the last one: the redemption forwards straight into Google's consent instead
@@ -53,10 +57,7 @@ export default async function ConnectPage({ searchParams }: PageProps) {
   if (!authConfigured() || !t) {
     return (
       <AuthShell heading="Connect your apps">
-        <p className="meta">
-          This link is missing or incomplete. Text Hale &ldquo;connect my calendar&rdquo; and a
-          fresh one arrives in a moment.
-        </p>
+        <p className="meta">This link is missing or incomplete.</p>
       </AuthShell>
     );
   }
@@ -67,6 +68,7 @@ export default async function ConnectPage({ searchParams }: PageProps) {
   return (
     <AuthShell heading={card.title}>
       <p className="meta">{card.description}</p>
+      {provider ? <p className="meta">{googleUnverifiedAppLine('en')}</p> : null}
       <ChannelLinkRedeem token={t} provider={provider} />
     </AuthShell>
   );

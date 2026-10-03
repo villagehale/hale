@@ -16,6 +16,11 @@ const accountHeldMock = vi.fn();
 const groupReceiptMock = vi.fn();
 const holdNameMock = vi.fn();
 const kickMock = vi.fn();
+const freshMock = vi.fn();
+
+vi.mock('~/lib/channel/connect/fresh-link', () => ({
+  textFreshConnectorLink: (...a: unknown[]) => freshMock(...a),
+}));
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
@@ -89,9 +94,11 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
       groupReceiptMock,
       holdNameMock,
       kickMock,
+      freshMock,
     ]) {
       m.mockReset();
     }
+    freshMock.mockResolvedValue('not_enrolled');
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
     kickMock.mockResolvedValue({ outcome: 'off' });
@@ -212,9 +219,11 @@ describe('GET /api/integrations/callback — the text surface', () => {
       saveConnectionMock,
       noticeMock,
       kickMock,
+      freshMock,
     ]) {
       m.mockReset();
     }
+    freshMock.mockResolvedValue('not_enrolled');
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
     kickMock.mockResolvedValue({ outcome: 'completed' });
@@ -309,6 +318,24 @@ describe('GET /api/integrations/callback — the text surface', () => {
     expect(noticeMock).not.toHaveBeenCalled();
     expect(saveConnectionMock).not.toHaveBeenCalled();
     expect(kickMock).not.toHaveBeenCalled();
+    expect(freshMock.mock.calls[0]?.[1]).toMatchObject({
+      familyId: FAMILY,
+      parentUserId: MINTER,
+      provider: 'gcal',
+    });
+  });
+
+  it('texts a fresh Gmail link when that consent fails, and says so only once it sent', async () => {
+    freshMock.mockResolvedValue('sent');
+
+    const res = await callCallbackDenied(await textState('gmail'));
+
+    expect(location(res)).toBe(
+      'https://app.example.com/connected?provider=gmail&status=denied&fresh=sent',
+    );
+    expect(freshMock.mock.calls[0]?.[1]).toMatchObject({ provider: 'gmail' });
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+    expect(kickMock).not.toHaveBeenCalled();
   });
 
   it('sends the parent to the done page, never Settings, when the grant is too narrow', async () => {
@@ -373,9 +400,11 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
       holdNameMock,
       noticeMock,
       kickMock,
+      freshMock,
     ]) {
       m.mockReset();
     }
+    freshMock.mockResolvedValue('not_enrolled');
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
     noticeMock.mockResolvedValue({ status: 'sent', channelMessageId: 'cm-1' });

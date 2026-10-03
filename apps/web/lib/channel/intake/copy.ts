@@ -1,4 +1,4 @@
-import { CONNECTOR_TRUST_LINE } from '~/lib/channel/connect/text-connect';
+import { CONNECTOR_TRUST_LINE, withGoogleConnectCaution } from '~/lib/channel/connect/text-connect';
 import { isJoinCode } from '~/lib/channel/join/code';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { isReferralCode } from '~/lib/channel/referral/code';
@@ -780,7 +780,10 @@ export function intakeConnectorOffer(
   calendarUrl: string,
   gmailUrl: string,
 ): string {
-  return CONNECTOR_OFFER_BY_LANGUAGE[language](calendarUrl, gmailUrl);
+  return withGoogleConnectCaution(
+    language,
+    CONNECTOR_OFFER_BY_LANGUAGE[language](calendarUrl, gmailUrl),
+  );
 }
 
 /**
@@ -792,16 +795,15 @@ export function intakeConnectorOffer(
  */
 export const INTAKE_CALENDAR_CARD_TEMPLATE_KEY = 'intake:calendar_card';
 
-const CALENDAR_TRUST_FR =
-  'Je ne vois jamais votre mot de passe. Déconnectez mon agenda à tout moment.';
+const TRUST_FR = 'Je ne vois jamais votre mot de passe. Vous pouvez déconnecter à tout moment.';
 
 const CALENDAR_CARD_BY_LANGUAGE: Record<ReplyLanguage, (url: string) => string> = {
   en: (url) => `Connect your calendar: ${url} Good for 15 minutes. ${CONNECTOR_TRUST_LINE.gcal}`,
-  fr: (url) => `Connectez votre agenda : ${url} Bon pour 15 minutes. ${CALENDAR_TRUST_FR}`,
+  fr: (url) => `Connectez votre agenda : ${url} Bon pour 15 minutes. ${TRUST_FR}`,
 };
 
 export function intakeCalendarCard(language: ReplyLanguage, url: string): string {
-  return CALENDAR_CARD_BY_LANGUAGE[language](url);
+  return withGoogleConnectCaution(language, CALENDAR_CARD_BY_LANGUAGE[language](url));
 }
 
 /**
@@ -812,17 +814,14 @@ export function intakeCalendarCard(language: ReplyLanguage, url: string): string
  */
 export const INTAKE_GMAIL_CARD_TEMPLATE_KEY = 'intake:gmail_card';
 
-const GMAIL_TRUST_FR = 'Je ne vois jamais votre mot de passe. Déconnectez mon Gmail à tout moment.';
-
 const GMAIL_CARD_BY_LANGUAGE: Record<ReplyLanguage, (url: string) => string> = {
   en: (url) =>
     `Connect Gmail: ${url} Good for 15 minutes - ignore this to skip. ${CONNECTOR_TRUST_LINE.gmail}`,
-  fr: (url) =>
-    `Connectez Gmail : ${url} Bon pour 15 minutes - ignorez pour passer. ${GMAIL_TRUST_FR}`,
+  fr: (url) => `Connectez Gmail : ${url} Bon pour 15 minutes - ignorez pour passer. ${TRUST_FR}`,
 };
 
 export function intakeGmailCard(language: ReplyLanguage, url: string): string {
-  return GMAIL_CARD_BY_LANGUAGE[language](url);
+  return withGoogleConnectCaution(language, GMAIL_CARD_BY_LANGUAGE[language](url));
 }
 
 /**
