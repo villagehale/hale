@@ -319,11 +319,12 @@ export async function reconcileCalendarMirrors(
       .where(eq(schema.familyEvents.id, existing.id));
     counts.updated += 1;
     if (moved || existing.deletedAt !== null) {
+      const actionTaken =
+        existing.deletedAt !== null ? 'calendar_mirror_added' : 'calendar_mirror_moved';
       await database.insert(schema.auditLog).values({
         familyId: input.familyId,
         actor: 'system',
-        actionTaken:
-          existing.deletedAt !== null ? 'calendar_mirror_added' : 'calendar_mirror_moved',
+        actionTaken,
         targetTable: 'family_events',
         targetId: existing.id,
         after: { source: 'parent' },

@@ -229,6 +229,9 @@ export const AUDIT_VERBS = [
   'activity_booking_recorded',
   'activity_booking_cancelled',
   'calendar_alert_sent',
+  'calendar_mirror_added',
+  'calendar_mirror_moved',
+  'calendar_mirror_removed',
   'group_decision_sync_sent',
   // ── the travel brief (v5) ───────────────────────────────────────────────
   'travel_trip_noticed',
@@ -814,6 +817,22 @@ const VERBS: Record<AuditVerb, Verb> = {
   calendar_alert_sent: {
     sentence: 'Hale texted you about a change on your calendar',
     family: 'done',
+  },
+  // Copied from a calendar the parent connected, so reminders can fire without a
+  // separate YES. 'note': Hale did not create the occasion, it wrote down one that
+  // was already on the calendar. The row's `after` is `{ source: 'parent' }` only —
+  // no title, no time, no location.
+  calendar_mirror_added: {
+    sentence: 'Hale noted something already on your calendar',
+    family: 'note',
+  },
+  calendar_mirror_moved: {
+    sentence: 'Hale followed a time that moved on your calendar',
+    family: 'note',
+  },
+  calendar_mirror_removed: {
+    sentence: 'Hale dropped something that left your calendar',
+    family: 'note',
   },
   // A decision the parent made in a 1:1 thread, repeated once in the household
   // group. The noun is a kid-logistics category. The mailbox stays out.
