@@ -16,6 +16,69 @@ import { startLinqTyping, stopLinqTyping } from './transport';
 /** Linq's own refresh interval. One start lasts ~85s; this keeps it up. */
 export const LINQ_TYPING_REFRESH_MS = 60_000;
 
+/**
+ * How long a new-parent turn waits before painting the bubble. A reply that
+ * leaves sooner never starts it, so a postal ask does not flash typing and
+ * then the text in the same instant.
+ */
+export const LINQ_TYPING_SHOW_DELAY_MS = 500;
+
+/**
+ * Arm the bubble for one iMessage turn. SMS and a missing chat id arm nothing.
+ * `stop` cancels a bubble that has not appeared, or clears one that has.
+ * A Linq miss is logged inside {@link signalImessageTyping} and never thrown.
+ */
+export function armDelayedImessageTyping(input: {
+  channel: string;
+  chatId: string | null;
+  log: Pick<Console, 'warn'>;
+  delayMs?: number;
+}): { stop: () => Promise<void> } {
+  if (input.channel !== 'imessage' || !input.chatId) {
+    return { stop: async () => undefined };
+  }
+  // `to` is unused: the typing call is the chat id. replyTo stays null so the
+  // indicator itself does not draw a connector.
+  const route: ReplyRoute = {
+    channel: 'imessage',
+    to: '',
+    chatId: input.chatId,
+    replyToMessageId: null,
+  };
+  let phase: 'wait' | 'live' | 'done' = 'wait';
+  let starting: Promise<void> | null = null;
+  const timer = setTimeout(() => {
+    if (phase !== 'wait') return;
+    phase = 'live';
+    starting = signalImessageTyping(route, 'start', input.log).catch((err: unknown) => {
+      input.log.warn(
+        { err: err instanceof Error ? err.name : 'unknown' },
+        'linq: typing indicator did not start',
+      );
+    });
+  }, input.delayMs ?? LINQ_TYPING_SHOW_DELAY_MS);
+  if (typeof timer.unref === 'function') timer.unref();
+
+  return {
+    stop: async () => {
+      if (phase === 'done') return;
+      const live = phase === 'live';
+      phase = 'done';
+      clearTimeout(timer);
+      if (starting) await starting;
+      if (!live && !starting) return;
+      try {
+        await signalImessageTyping(route, 'stop', input.log);
+      } catch (err) {
+        input.log.warn(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'linq: typing indicator did not stop',
+        );
+      }
+    },
+  };
+}
+
 export async function signalImessageTyping(
   route: ReplyRoute,
   phase: 'start' | 'stop',

@@ -189,6 +189,16 @@ describe('createLinqTextTransport', () => {
     });
   });
 
+  it('sends a plain bubble when the turn has no reply target', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = jsonFetch(201, { message: { id: 'msg-ack' } });
+    const transport = createLinqTextTransport({ chatId: CHAT, fetch: fetchMock });
+    await transport.send({ to: '+12025559876', body: 'Hey, it is Hale.' });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      message: { parts: [{ type: 'text', value: 'Hey, it is Hale.' }] },
+    });
+  });
+
   it('refuses media by name and a turn that arrived without a chat id', async () => {
     const transport = createLinqTextTransport({ chatId: CHAT });
     await expect(
