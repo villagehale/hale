@@ -268,27 +268,21 @@ describe('runReminderCron — batching + compose-not-send', () => {
     const events = new Map<string, LiveEvent>([
       [
         'e1',
-        {
+        liveEvent({
           id: 'e1',
           startsAt: new Date('2026-07-25T14:00:00Z'),
-          deletedAt: null,
           title: 'Checkup',
           childId: 'c1',
-          sensitive: false,
-          location: null,
-        },
+        }),
       ],
       [
         'e2',
-        {
+        liveEvent({
           id: 'e2',
           startsAt: new Date('2026-07-25T18:00:00Z'),
-          deletedAt: null,
           title: 'Swim',
           childId: 'c2',
-          sensitive: false,
-          location: null,
-        },
+        }),
       ],
     ]);
     const { deps, enqueued, marked, captured } = makeDeps({
