@@ -42,15 +42,14 @@ export default async function SharedActivityPage({ params }: PageProps) {
             this pick isn't here anymore.
           </h1>
           <p className="text-lg text-on-spruce-soft leading-relaxed">
-            The link may have expired or been mistyped. You can still start your own family's
-            village.
+            The link may have expired or been mistyped. Hale looks things up by text.
           </p>
           <a
             href={JOIN_HREF}
             className="btn-primary mt-2"
             style={{ background: 'var(--color-linen)', color: 'var(--color-spruce)' }}
           >
-            start your family's village &rarr;
+            sign in &rarr;
           </a>
         </div>
       </main>

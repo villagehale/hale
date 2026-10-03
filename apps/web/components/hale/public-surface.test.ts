@@ -16,7 +16,7 @@ describe('public-surface conversion hook', () => {
     const serialized = JSON.stringify(el);
     // The CTA anchor carries the join href so a viewer can convert.
     expect(serialized).toContain(JOIN_HREF);
-    expect(serialized).toContain('join the village');
+    expect(serialized).toContain('sign in');
   });
 });
 

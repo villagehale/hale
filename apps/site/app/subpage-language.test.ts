@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { PLAN_DISPLAY, PLAN_TIERS_ORDERED } from '@hale/types';
 import postcss from 'postcss';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -81,7 +80,7 @@ const termsHtml = await renderAsync(TermsPage({ params: Promise.resolve(EN) }));
  * still read as once the words are split apart. */
 const PULLED_UP: [name: string, html: string, headline: string][] = [
   ['/about', pages['/about'], 'A planner for your kids’ year.'],
-  ['/pricing', pages['/pricing'], 'Free while Hale is new.'],
+  ['/pricing', pages['/pricing'], 'Hale is free.'],
   ['/faq', pages['/faq'], 'Is Hale right for your family?'],
   ['/contact', pages['/contact'], 'Say hello.'],
   ['/answers', pages['/answers'], 'Calm, cited guidance for every stage.'],
@@ -200,7 +199,7 @@ describe('/about — the locked page', () => {
   it('says why now, in two sentences, and drops the old framing', () => {
     const text = rawText(html);
     expect(text).toContain(
-      'What’s on near the kids gets missed; mornings fill in minutes; nobody asks how it went. Hale finds it, watches the date, asks after — by text.',
+      'You ask with an age, a place, and the spot. Hale looks it up, texts when a place opens, and asks how it went.',
     );
     expect(text).not.toMatch(/not another app|another app|agentic|assistant|Anzhe/i);
     expect(text).not.toMatch(/equity|ownership|cap table|cap-table/i);
@@ -341,62 +340,46 @@ describe('/about — the locked page', () => {
   });
 });
 
-describe('/pricing — the tier cards have anatomy', () => {
+describe('/pricing — Free is live, Plus and Family say coming soon', () => {
   const html = pages['/pricing'];
 
-  it('numbers the three tiers in ladder order, inside an ordered list', () => {
-    expect(html).toContain('<ol');
-    for (const [i, tier] of PLAN_TIERS_ORDERED.entries()) {
-      // Split on the class attribute's closing quote, so the card's own parts
-      // (numbered-card-head / -num / -list) do not each open a new slice.
-      const card = html.split('numbered-card">')[i + 1] ?? '';
-      expect(card).toContain(PLAN_DISPLAY[tier].name);
-      expect(card).toContain(`0${i + 1}`);
-    }
-    expect(html.match(/numbered-card-num/g)).toHaveLength(PLAN_TIERS_ORDERED.length);
-  });
-
-  it('titles each card with its price and lists every feature as a check', () => {
-    const marketingFree = ['Text Hale', 'Rec dates watched', 'Answers', 'Founding rate'];
-    for (const feature of marketingFree) {
-      expect(html).toContain(feature);
-    }
+  it('renders three cards, a price on none of them, and feature lines with one text door', () => {
+    expect(html).toContain('Free, with unlimited chat.');
+    expect(html).toContain('Unlimited chat');
+    expect(html).toContain('Free today');
+    expect(html).toContain('Plus');
+    expect(html).toContain('Family');
+    expect(html.match(/More to come\./g)).toHaveLength(2);
+    expect(html).not.toContain('Reminders and drafts');
+    expect(html).not.toContain('household view');
+    expect(html.match(/Coming soon/g)).toHaveLength(2);
+    expect(html).not.toContain('$');
+    expect(html).not.toContain('0 CAD');
+    expect(html).not.toContain('Founding');
+    expect(html).not.toContain('Subscribe');
     expect(html).not.toContain('Your village feed');
     expect(html).not.toContain('Companion:');
-    for (const tier of PLAN_TIERS_ORDERED.filter((t) => t !== 'free')) {
-      for (const feature of PLAN_DISPLAY[tier].features) {
-        expect(html).toContain(feature);
-      }
-    }
-    expect(html.match(/numbered-card-list/g)).toHaveLength(PLAN_TIERS_ORDERED.length);
-    const features =
-      marketingFree.length +
-      PLAN_TIERS_ORDERED.filter((t) => t !== 'free').reduce(
-        (total, tier) => total + PLAN_DISPLAY[tier].features.length,
-        0,
-      );
-    expect(html.match(/lucide-check/g)).toHaveLength(features);
+    expect(html.match(/numbered-card-list/g)).toHaveLength(3);
+    expect(html.match(/lucide-check/g)).toHaveLength(6);
+    expect(html.match(/pricing_tier/g)).toHaveLength(1);
   });
 
-  it('keeps the verified free-first copy exactly as it was reviewed', () => {
+  it('says Hale is free today, and the other two tiers are not available', () => {
     const text = rawText(html).replace(/\s+/g, ' ');
     expect(text).toContain(
-      'The whole core — every stage, every child — is free. Plus and Family add more of the year watched with you, as each part ships.',
+      'Unlimited chat is free today. Plus and Family are coming soon. There is no price.',
     );
     expect(text).toContain(
-      'The whole core is free. Paid plans add more of the year, never a paywall on the watching.',
+      'Only Free is available today. There is no price. Your data stays in Canada.',
     );
-    expect(text).toContain('Founding families join free.');
-    expect(text).toContain(
-      'Hale is free to start. Plus and Family open as their integrations ship.',
-    );
+    expect(text).not.toContain('Founding families join free.');
   });
 
   it('drops the pre-pivot village headline', () => {
     expect(heading(html)).not.toContain('build the village');
     // Positive control: the headline is present and is the new one, so the
     // absence above is a real replacement rather than a missing <h1>.
-    expect(rawText(heading(html))).toBe('Free while Hale is new.');
+    expect(rawText(heading(html))).toBe('Hale is free.');
   });
 });
 

@@ -64,7 +64,7 @@ describe('the FAQ this build serves', () => {
     // Positive control: the proactive message the old claim contradicted is
     // still described, so this passes because the claim was scoped, not because
     // the page went quiet about what Hale sends.
-    expect(answers.toLowerCase()).toContain('a heads-up the week a registration opens');
+    expect(answers.toLowerCase()).toContain('when a place opens');
   });
 
   it('claims no Sunday brief — that one needs a SECOND flag, not F14', () => {
@@ -87,27 +87,20 @@ describe('the FAQ this build serves', () => {
     const reviews = find('Will you tell me whether a class is any good?');
     const travel = find('Can you help when we travel?');
     const whoElse = find('Can you tell me who else is going?');
-    for (const answer of [reviews, travel, whoElse])
-      expect(answer.startsWith('Not yet.')).toBe(true);
-    // Who else is going STOPS too, and harder than travel: a roster is another
-    // family's data, so the answer may name the rule Hale keeps and must claim
-    // no count, no other family and no date it will arrive.
+    for (const answer of [reviews, travel]) expect(answer.startsWith('Not yet.')).toBe(true);
+    // Two families on the same activity is live, and only with a yes from both.
+    // The answer names that rule and must not quote an unreleased message or
+    // claim a roster.
     expect(whoElse).toBe(
-      'Not yet. Today I only tell you about your own family, never anyone else’s.',
+      'Only with a yes from both families. Hale introduces two families on the same activity only when each has said yes. It does not share one family’s words with another.',
     );
-    // The travel answer STOPS. `find_activities` takes { subject, window?, childId? }
-    // and nothing else, and its own description forbids a location in `subject`
-    // — the town is the family's on-file GTA one, attached from their record. A
-    // parent who asks what is on in another city gets a search run against their
-    // own town, so "ask me about another city" would be a claim with no code
-    // under it.
     expect(travel).toBe(
-      'Not yet. Today I watch registration and what’s on where you live, in the GTA.',
+      'Not yet. Today Hale looks things up where you ask, and watches recreation drops in the GTA.',
     );
     // Reviews may say what is real today (the asking) and what is wanted next,
     // and must promise no corpus: there is no table, no verdict vocabulary, no
     // k-threshold, and a web find has no stable id to hang a review on.
-    expect(reviews).toContain('asks how it went');
+    expect(reviews).toContain('one question partway through');
     expect(reviews).toContain('never anyone’s words');
     // And it claims no EFFECT for the asking. `family_check_in_notes` carries
     // "NOTHING READS THIS TODAY" in its own schema comment, the only reader
@@ -138,8 +131,8 @@ describe('the FAQ this build serves', () => {
     expect(answers).not.toContain('then quiet');
     // Positive control: the cadence answer is still here and still names what
     // Hale sends, so the absence above is a promise withheld, not a lost answer.
-    expect(answers.toLowerCase()).toContain('a heads-up the week a registration opens');
-    expect(answers).toContain('STOP works at any time');
+    expect(answers.toLowerCase()).toContain('when a place opens');
+    expect(answers).not.toContain('STOP');
   });
 
   it('says the co-parent line in the landing’s words, not its own', () => {
@@ -148,7 +141,7 @@ describe('the FAQ this build serves', () => {
     // page. Two surfaces naming the same promise two ways is how a reader learns
     // there are two promises.
     const free = FAQ.find((item) => item.question === 'Is Hale free?')?.answer ?? '';
-    expect(free).toContain('the same dates and nudges on their own number');
+    expect(free).toContain('on their own number, in the same free chat');
   });
 
   it('reaches consent and privacy inside the top four questions', () => {

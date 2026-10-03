@@ -84,7 +84,7 @@ export default async function SignInPage({ searchParams }: PageProps) {
   ) : null;
 
   return (
-    <AuthShell heading="Welcome back" subtitle="Sign in to your village.">
+    <AuthShell heading="Welcome back" subtitle="Sign in to the receipts.">
       {googleButton}
 
       {google && magicLink ? <div className="auth-or">or</div> : null}
@@ -95,7 +95,7 @@ export default async function SignInPage({ searchParams }: PageProps) {
           marketing site, which explains that Hale is a number you text. A plain
           anchor, like every other off-app link here — it leaves the router's world. */}
       <a href={MARKETING_SITE_URL} className="btn-ghost self-start">
-        New here? Join the village &rarr;
+        New here? Text Hale &rarr;
       </a>
     </AuthShell>
   );

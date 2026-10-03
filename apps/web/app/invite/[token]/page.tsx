@@ -50,7 +50,7 @@ export default async function InvitePage({ params }: PageProps) {
         <div className="panel max-w-md text-center space-y-6">
           <span className="eyebrow">you&rsquo;ve been invited</span>
           <p className="font-display text-2xl leading-snug">
-            join {invite.familyDisplayName}&rsquo;s village
+            join {invite.familyDisplayName}&rsquo;s family
           </p>
           {invite.inviterFirstName ? (
             <p className="meta">{invite.inviterFirstName} invited you to share the load.</p>

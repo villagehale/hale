@@ -132,11 +132,12 @@ describe('city registration guides', () => {
     }
   });
 
-  it('says Hale is unofficial and names founding families', () => {
+  it('says Hale is unofficial and free', () => {
     for (const guide of REGISTRATION_GUIDES) {
       const text = allText(guide);
       expect(text.toLowerCase()).toContain('unofficial');
-      expect(text.toLowerCase()).toContain('founding');
+      expect(text.toLowerCase()).toContain('unlimited chat');
+      expect(text.toLowerCase()).not.toContain('founding');
     }
   });
 
@@ -304,7 +305,7 @@ describe('the rules that make parents miss', () => {
     expect(sell).toContain("Hale watches kids' swim for parents.");
     expect(sell).toContain('Adult lessons stay on the city page.');
     expect(sell).toContain("Text your kids' names, ages, and postal and I'll watch Sept 21.");
-    expect(sell).toContain('Founding families free.');
+    expect(sell).toContain('Hale is free, with unlimited chat.');
     expect(sell).not.toContain('Hale will text you the night before');
     expect(sell).not.toMatch(/Hale will run/i);
     // City facts stay; Hale does not claim adult Learn to Swim. Sept 9 stays on

@@ -19,10 +19,16 @@ describe('siteJsonLd', () => {
     expect((byType('SoftwareApplication')?.publisher as { '@id': string })['@id']).toBe(orgId);
   });
 
-  it('declares the free tier as a concrete CAD Offer (the "is it free" AEO signal)', () => {
-    const offer = byType('SoftwareApplication')?.offers as { price: string; priceCurrency: string };
-    expect(offer.price).toBe('0');
-    expect(offer.priceCurrency).toBe('CAD');
+  it('lists one free offer at 0 CAD and no paid offers', () => {
+    for (const locale of routing.locales) {
+      const nodes = siteJsonLd(locale)['@graph'] as Array<Record<string, unknown>>;
+      const app = nodes.find((n) => n['@type'] === 'SoftwareApplication');
+      expect(app?.offers).toEqual({ '@type': 'Offer', price: '0', priceCurrency: 'CAD' });
+      const serialized = JSON.stringify(siteJsonLd(locale));
+      expect(serialized.match(/"@type":"Offer"/g)).toHaveLength(1);
+      expect(serialized).not.toMatch(/"price":"(?!0")/);
+      expect(serialized).not.toContain('$');
+    }
   });
 
   it.each(routing.locales)('%s describes a kids-year planner, find first', (locale) => {
@@ -36,7 +42,7 @@ describe('siteJsonLd', () => {
     }[locale];
     const planner = {
       en: 'planner for your kids’ year',
-      fr: 'planificateur pour l’année de vos enfants',
+      fr: "planificateur pour l'annee de vos enfants",
       zh: '孩子这一年的规划',
     }[locale];
     expect(String(app?.description).startsWith(h1)).toBe(true);

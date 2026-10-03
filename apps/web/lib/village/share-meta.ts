@@ -52,6 +52,6 @@ export function activityShareMeta(card: PublicActivityCard | null): Metadata {
   }
 
   const title = `${card.activity.title} · Hale`;
-  const description = `A genuinely good local thing for families${nearArea(card.areaCoarse)} — shared from Hale, the family assistant you text.`;
+  const description = `A local pick for families${nearArea(card.areaCoarse)} — shared from Hale. Hale looks it up. It does not book it.`;
   return shareMetadata(title, description);
 }

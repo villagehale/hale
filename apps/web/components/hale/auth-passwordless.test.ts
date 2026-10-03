@@ -81,7 +81,7 @@ describe('/sign-in with the F14 flag OFF — today’s page, unchanged', () => {
 
     expect(html).toContain('Continue with Google');
     expect(html).toContain('magic-email');
-    expect(html).toContain('Join the village');
+    expect(html).toContain('Text Hale');
     expect(html).not.toContain('claim-phone');
   });
 

@@ -120,7 +120,7 @@ export function PublicActivityCard({
  */
 export function JoinCta({
   heading = 'see what families near you are doing.',
-  sub = 'Hale is the family assistant your family texts — it watches the registration windows and the things that fill in minutes, and texts you when one matters. The families near you say which are worth it. Your family’s data stays in Canada.',
+  sub = 'Hale looks up an age, a place, and a spot, and texts when a place opens. It does not book a class or register you. Hale is free, with unlimited chat. Your family’s data stays in Canada.',
 }: {
   heading?: string;
   sub?: string;
@@ -132,7 +132,7 @@ export function JoinCta({
       </h2>
       <p className="text-lg text-slate-green leading-relaxed max-w-2xl mx-auto">{sub}</p>
       <a href={JOIN_HREF} className="btn-primary">
-        join the village &rarr;
+        sign in &rarr;
       </a>
     </section>
   );

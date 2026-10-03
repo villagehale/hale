@@ -50,7 +50,6 @@ afterEach(() => {
 
 describe('landing — the v4 hero', () => {
   const html = render();
-  const text = visibleText(html);
 
   it('opens on the shore hero, scrimmed behind glass', () => {
     expect(html).toContain('class="v4-hero"');
@@ -64,11 +63,13 @@ describe('landing — the v4 hero', () => {
     expect(h1).toContain('v4-display');
     // #684 locked the kids-year headline onto this layout. The shore, the thread
     // and the sections are the pre-v5 page; these two lines are not.
-    expect(visibleText(h1)).toBe('Find what’s on. Hear how it went.');
+    expect(visibleText(h1)).toBe("Find what’s on. Hear how it went.");
     expect(h1).not.toContain('7:02');
     expect(h1).not.toContain('I find it.');
     expect(h1).not.toContain('family assistant');
-    expect(html).toContain('What’s worth doing with the kids.');
+    expect(html).toContain(
+      'What’s worth doing with the kids.',
+    );
     expect(html).not.toContain('Three texts, then quiet.');
     expect(html).not.toContain('Take the family admin off your plate');
     // The accent word is amber at the heading's own weight — colour, not slant.
@@ -109,10 +110,9 @@ describe('landing — the v4 hero', () => {
   it('shows the terms microcopy under the hero CTA, privacy link included', () => {
     expect(html).toContain('class="v4-hero-terms"');
     expect(visibleText(html)).toContain(
-      // "You text first", to match the door right above it — the fine print was
-      // the last line still saying "message" under a button that says "Text Hale".
-      'Free to start. You text first; standard message rates apply, reply STOP any time.',
+      'You text first, on iMessage. Your data stays in Canada',
     );
+    expect(visibleText(html)).not.toContain('STOP');
     expect(visibleText(html)).toContain('Your data stays in Canada — privacy policy');
     // No exclamation marks anywhere in the hero band.
     const hero = html.match(/<section class="v4-hero v4-hero-top"[\s\S]*?<\/section>/)?.[0] ?? '';
@@ -124,12 +124,15 @@ describe('landing — the v4 hero', () => {
     // scrolling, the wedge leads, and the product is felt in ten seconds — so
     // they are pinned as order rather than as four presence checks that a
     // re-shuffle would leave green.
+    // JSON-LD repeats the headline and the free line, so order is read from the
+    // page after those scripts, which is what a visitor actually sees.
+    const seen = visibleText(html.replace(/<script[\s\S]*?<\/script>/g, ''));
     const order = [
-      'Find what’s on. Hear how it went.',
-      'Hi — Mia is 4, we’re in Stouffville, L4A.',
-      'Founding families join free — and keep the founding rate for good.',
+      "Find what’s on. Hear how it went.",
+      'Stouffville, L4A',
+      'Free, with unlimited chat.',
       'Texting Hale looks like this',
-    ].map((marker) => text.indexOf(marker));
+    ].map((marker) => seen.indexOf(marker));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     // The act itself, not only its words: the chooser door is INSIDE the hero
@@ -137,7 +140,7 @@ describe('landing — the v4 hero', () => {
     const hero = html.match(/<section class="v4-hero v4-hero-top"[\s\S]*?<\/section>/)?.[0] ?? '';
     expect(hero).toContain('data-cta-placement="hero"');
     expect(hero).toContain('v4-hero-thread');
-    expect(hero).toContain('Founding families join free — and keep the founding rate for good.');
+    expect(hero).toContain('Free, with unlimited chat.');
   });
 
   it('shows what texting Hale is like as a static thread, not a typed dramatisation', () => {
@@ -324,8 +327,9 @@ describe('landing — no signup funnel; the only way in is texting Hale', () => 
     expect(body).not.toContain('>Sign in<');
   });
 
-  it('invents no urgency around the founding rate', () => {
-    expect(text).toContain('Founding families');
+  it('invents no urgency around the free chat', () => {
+    expect(text).toContain('Free, with unlimited chat.');
+    expect(text).not.toContain('Founding families');
     for (const pressure of ['Only', 'spots left', 'Hurry', 'ends soon', 'Limited time']) {
       expect(text).not.toContain(pressure);
     }
@@ -352,11 +356,11 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     expect(text).not.toContain('Uxbridge');
   });
 
-  it('watches only what registration-windows-data.ts actually holds', () => {
-    expect(text).toContain('Swim lessons');
-    expect(text).toContain('Camps');
-    expect(text).toContain('winter-break');
-    expect(text).toContain('Waitlist clocks');
+  it('watches the live find, not a season the page invented', () => {
+    expect(text).toContain('Live find');
+    expect(text).toContain('Rec drops');
+    expect(text).toContain('Swim and TEE');
+    expect(text).toContain('Inbox receipts');
     for (const invented of ['March break', 'PA day', 'PA days', 'closures']) {
       expect(text).not.toContain(invented);
     }
@@ -391,19 +395,18 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     expect(text).not.toContain('You say hi');
     expect(text).not.toMatch(/no forms/i);
     expect(text).toContain('no menus');
-    // Step 2 is where Hale proves itself, so it is written in a parent's words —
-    // "radar" is internal vocabulary and cannot be the first description.
-    expect(text).toContain('I text back your week');
+    expect(text).toContain('I text back what I found');
     expect(text).toContain('Names, ages, a postal code');
     expect(text).toContain('I keep watch');
-    expect(text).toContain('I suggest and I prepare');
+    expect(text).toContain('I find and I ask');
     expect(text).toContain('Nothing is booked');
     expect(text).not.toContain('with your ok, I handle it');
     expect(text.toLowerCase()).toContain('receipts');
   });
 
-  it('describes the open-day ladder, not a Sunday brief and not pure silence', () => {
-    expect(text).toContain('the night before');
+  it('describes a text when a place opens, not a Sunday brief and not pure silence', () => {
+    expect(text).toContain('when a place opens');
+    expect(text).not.toContain('the night before');
     expect(text).not.toContain('A brief on Sunday');
     expect(text).not.toContain('Sunday');
     expect(text).not.toContain('Silence is the normal state');
@@ -425,8 +428,8 @@ describe('landing — sections, in the Surfaces Plan order', () => {
   it('covers the caregivers and the co-parent, and keeps the roles honest', () => {
     // Nothing in the product texts a grandparent their schedule yet — the
     // invite and the scope are what ship, so that is all the landing offers.
-    expect(text).toContain('just the schedule in scope');
-    expect(text).not.toContain('They get just the schedule');
+    expect(text).toContain('The first parent claims the group');
+    expect(text).not.toContain('just the schedule in scope');
     expect(text).toContain('co-parent');
     // "Village" is reserved for the family-to-family intros product; this section
     // is scoped caregiver access.
@@ -444,16 +447,14 @@ describe('landing — sections, in the Surfaces Plan order', () => {
 
   it('orders the sections the way the Surfaces Plan does', () => {
     const order = [
-      'Find what’s on. Hear how it went.',
+      "Find what’s on. Hear how it went.",
       'Texting Hale looks like this',
       'How Hale works',
       'The part that matters',
       'Your helpers',
-      'When you ask me something',
+      'then the next find.',
       'the Canadian way',
-      // The closing H2 exactly — "Founding families" alone now first appears in
-      // the hero, which is the change this order test would otherwise miss.
-      'Founding families join free.',
+      'Hale is free.',
     ].map((marker) => text.indexOf(marker));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
@@ -469,54 +470,37 @@ describe('landing — sections, in the Surfaces Plan order', () => {
   });
 });
 
-describe('landing — parenting coaching: the answer, the plan, the check-in', () => {
+describe('landing — after you pick: one question, then the next find', () => {
   const text = visibleText(render());
 
-  it('tells the three coaching beats the SMS coach and coach-plan skill actually ship', () => {
-    expect(text).toContain('You ask');
-    expect(text).toContain('I offer the whole plan');
-    // The check-in day is model-chosen and PROMISED in the plan's own text, so the
-    // landing claims the promise, not a fixed count.
-    expect(text).toContain('I name the day in the plan');
+  it('tells the three beats that follow a pick, and does not coach a method', () => {
+    expect(text).toContain('You pick');
+    expect(text).toContain('Hale asks');
+    expect(text).toContain('The next find');
+    expect(text).not.toContain('I offer the whole plan');
+    expect(text).not.toContain('Ferber');
     expect(text).not.toContain('Three days later');
   });
 
   it('rides below the helpers as a compact band — no rail, no display H2', () => {
-    // Sleep/solids/potty keeps every word. It is not a second product headline:
-    // not an H2, not the display face, not the amber accent on the planner spine.
     const html = render();
-    const band =
-      html.match(/<p class="v4-eyebrow">When you ask me something[\s\S]*?<\/section>/)?.[0] ?? '';
-    expect(band, 'the coaching band must render').toContain('Where I stop');
-    expect(visibleText(band)).toContain('Sleep, solids, potty — answered, then planned.');
+    const band = html.match(/<p class="v4-eyebrow">After you pick[\s\S]*?<\/section>/)?.[0] ?? '';
+    expect(band, 'the band must render').toContain('Where I stop');
+    expect(visibleText(band)).toContain('One question, then the next find.');
     expect(band).toContain('class="v4-subhead');
     expect(band).not.toContain('<h2');
     expect(band).not.toContain('v4-cardgrid');
     expect(band).not.toContain('v4-h2');
     expect(band).not.toContain('v4-display');
     expect(band).not.toContain('v4-accent');
-    // Positive control: the planner spine above it is still the display H2.
     expect(html).toContain('A planner for the year,');
     expect(html).toContain('class="v4-display v4-h2 mt-4"');
   });
 
-  it('keeps the topic claim to the header trio — the full list lives in the FAQ', () => {
-    // The seven-topic card went in the sparseness pass; the FAQ's coaching answer
-    // still names all seven, and the landing claims only what its header shows.
-    for (const topic of ['Sleep', 'solids', 'potty']) {
-      expect(text).toContain(topic);
-    }
-  });
-
-  it('names the methods the shipped plan actually attributes', () => {
-    for (const method of ['Ferber', 'three-day', 'Health Canada']) {
-      expect(text).toContain(method);
-    }
-  });
-
-  it('carries the medical boundary the skill enforces, with no outcome promise', () => {
+  it('carries the medical boundary, with no outcome promise and no named method', () => {
     expect(text).toContain('doctor');
-    for (const promise of ['guaranteed', 'will fix', 'in three nights', 'cure']) {
+    expect(text).toContain('never names a dose');
+    for (const promise of ['guaranteed', 'will fix', 'in three nights', 'cure', 'Ferber', 'Health Canada']) {
       expect(text).not.toContain(promise);
     }
   });
@@ -589,25 +573,17 @@ describe('landing — number not provisioned', () => {
   });
 });
 
-describe('landing — the thread is one continuous registration loop', () => {
+describe('landing — the thread is one find, then what follows', () => {
   const html = render();
   const text = visibleText(html);
   const thread = html.match(/<div class="v4-thread[\s\S]*?<\/section>/)?.[0] ?? '';
 
-  /**
-   * The demo runs the four legs `apps/web/lib/registration/sequence/schedule.ts`
-   * actually schedules — HEADS_UP_LEAD_DAYS = 7, the battle plan at
-   * BATTLE_PLAN_MINUTE_LOCAL the evening before, GO_LEAD_MINUTES = 15, and the
-   * check-in CHECK_IN_LEAD_HOURS = 4 after the open. apps/site cannot import
-   * apps/web, so the intervals are a hand-kept copy and these markers are what
-   * catch a drift.
-   */
-  it('runs the four scheduled legs, in the order the sequence fires them', () => {
+  it('runs the four beats of a find, in order', () => {
     const order = [
-      'A week before',
-      'The evening before',
-      'Fifteen minutes before',
-      'Four hours later',
+      'After you pick',
+      'While a class is full',
+      'Partway through',
+      'From a connected inbox',
     ].map((marker) => text.indexOf(marker));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
@@ -625,25 +601,14 @@ describe('landing — the thread is one continuous registration loop', () => {
     expect([...thread.matchAll(/class="v4-bubble v4-bubble-out"/g)]).toHaveLength(2);
   });
 
-  it('tells the whole story: the warning, the parent’s yes, the link, the receipt', () => {
-    expect(text).toContain('registration opens Tuesday at 7:00 a.m.');
-    expect(text).toContain('Reply YES and I’ll run the morning with you');
-    expect(text).toContain('Sign in tonight');
-    expect(text).toContain('Your link:');
-    expect(text).toContain('That’s a spot.');
-  });
-
-  it('quotes the sequence renderer’s own sentences instead of marketing copy', () => {
-    // Every one of these is a literal from apps/web/lib/registration/sequence/copy.ts
-    // (headsUp / battlePlan / go / checkIn / renderCheckInReply), so the landing
-    // cannot promise a message the product does not send.
-    expect(text).toContain('Your postal code gets the residents-first date.');
-    expect(text).toContain('Tomorrow:');
-    expect(text).toContain('“got in”');
-    expect(text).toContain('“missed it”');
-    // The real registration page for the row this is drawn from — Hale never
-    // stands between a parent and the municipal form.
-    expect(text).toContain('haltonhills.ca/Play/Recreation/Programs');
+  it('tells a find, not a signup Hale ran', () => {
+    expect(text).toContain('The time and the link come after this pick.');
+    expect(text).toContain('A text goes out when a place opens.');
+    expect(text).toContain('The next look leans warmer and stays close to home.');
+    expect(text).toContain('It did not register you.');
+    expect(text).not.toContain('Reply YES');
+    expect(text).not.toContain('run the morning');
+    expect(text).not.toContain('haltonhills.ca');
   });
 
   it('carries no calendar date or cycle year in EITHER conversation, so neither can go stale', () => {
@@ -725,7 +690,7 @@ describe('landing — the thread is one continuous registration loop', () => {
     // Positive control: the thread still shows the registration morning and the
     // town’s own link, so the absences above are claims withheld rather than a
     // missing section. The without/with cells no longer say Hale runs that morning.
-    expect(text).toContain('Your link:');
+    expect(text).toContain('The time and the link come after this pick.');
     expect(text).not.toContain('I run the morning with you');
   });
 });
@@ -746,7 +711,7 @@ describe('landing — without me / with me, in the section that already holds th
   it('states the calm watch on the without-me side, with no sell-out clock', () => {
     const withoutMe = text.split('Without me')[1]?.split('With me')[0] ?? '';
     expect(withoutMe).toContain(
-      'You keep the year yourself. Every sign-up morning, every waitlist clock, and what’s actually on near your kids.',
+      'You keep the search yourself. Every age, every place, and every full class.',
     );
     expect(withoutMe).not.toContain('7:02');
     expect(withoutMe).not.toContain('$54');
@@ -761,7 +726,7 @@ describe('landing — without me / with me, in the section that already holds th
     // on, have the link ready, ask how it went. It does not run the morning.
     const withMe = text.split('With me')[1]?.slice(0, 320) ?? '';
     expect(withMe).toContain(
-      'I keep that watch. I find what’s on, the town’s link is ready the night before it opens, and I ask how it went.',
+      'I look it up. Recreation, TEE, and swim drops stay on the watch, and I text when a place opens.',
     );
     expect(withMe.toLowerCase()).not.toContain('reply yes');
     expect(withMe).not.toContain('I run the morning');
@@ -778,14 +743,15 @@ describe('landing — the first-week contract, folded into How Hale works', () =
     expect([...html.matchAll(/class="v4-when"/g)]).toHaveLength(3);
     expect(text).toContain('Right now');
     expect(text).toContain('In the same thread');
-    expect(text).toContain('Then every week');
+    expect(text).toContain('Then, as it happens');
   });
 
   it('does not name a Sunday week plan — that send is behind a second flag', () => {
     // The weekly plan's send is gated by LOOP_SEND_ENABLED (default off) on top
     // of F14, so the restored layout keeps the night-before ladder and does not
     // put the Sunday brief back on the page.
-    expect(text).toContain('the night before');
+    expect(text).toContain('when a place opens');
+    expect(text).not.toContain('the night before');
     expect(text).not.toContain('A brief on Sunday');
     expect(text).not.toContain('Sunday');
     expect(text).not.toContain('A brief on Monday');

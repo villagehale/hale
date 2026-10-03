@@ -50,8 +50,9 @@ export function siteJsonLd(locale: Locale = routing.defaultLocale): Record<strin
     inLanguage,
     publisher: { '@id': `${SITE_URL}/#organization` },
     description: t('appDescription'),
-    // Free to start — the launch tier. A concrete Offer node is the signal an answer
-    // engine reads when a parent asks whether Hale costs anything.
+    // The only offer. Plus and Family are not for sale, so they are not
+    // Offers. A concrete price of 0 CAD is what an answer engine reads
+    // when a parent asks whether Hale costs anything.
     offers: { '@type': 'Offer', price: '0', priceCurrency: 'CAD' },
   };
 
