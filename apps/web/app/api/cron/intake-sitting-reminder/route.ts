@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
 import { runFirstReplyRecoveryCron } from '~/lib/channel/intake/first-reply-recovery';
-import { runSittingReminderCron } from '~/lib/channel/intake/sitting-reminder';
+import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
+import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
+import {
+  defaultSittingReminderDeps,
+  runSittingReminderCron,
+} from '~/lib/channel/intake/sitting-reminder';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 
 // Node runtime: the sweep reaches the session store and the Twilio send, neither of
 // which runs on the edge runtime.
@@ -25,6 +31,14 @@ export const maxDuration = 60;
 export const GET = cronRoute('intake-sitting-reminder', async () => {
   const database = db();
   const firstReply = await runFirstReplyRecoveryCron(database);
-  const sitting = await runSittingReminderCron(database);
+  const sitting = await runSittingReminderCron(
+    database,
+    onboardingFriendVoiceEnabled()
+      ? {
+          ...defaultSittingReminderDeps(),
+          friendVoice: createFriendVoiceComposer(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+        }
+      : defaultSittingReminderDeps(),
+  );
   return NextResponse.json({ ok: true, ...sitting, firstReply }, { status: 200 });
 });

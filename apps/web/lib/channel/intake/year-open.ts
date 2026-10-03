@@ -15,6 +15,9 @@ import { type WeekendPick, asciiCopy, parseAgeRange } from './radar-decide';
 
 export const YEAR_OPEN_LEAD = "Here's what's on for your kids this year:";
 
+/** French lead for the friend-voice year list. Accents stay; the English lead does not. */
+export const YEAR_OPEN_LEAD_FR = 'Voici ce qui se passe pour tes enfants cette année :';
+
 /**
  * Design locked (Sloane, 2026-09-24). The only bubble when the year search
  * truly failed and no source produced a line. One sentence. The ladder does
@@ -121,13 +124,14 @@ function packYearOpen(
   };
 }
 
-export function renderYearOpen(lines: readonly string[]): string {
+export function renderYearOpen(lines: readonly string[], language: ReplyLanguage = 'en'): string {
   const shown = lines
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
     .slice(0, 3);
-  if (shown.length === 0) return yearOpenEmptyMessage();
-  return `${YEAR_OPEN_LEAD}\n${shown.map((line, index) => `${index + 1}. ${line}`).join('\n')}`;
+  if (shown.length === 0) return yearOpenEmptyMessage(language);
+  const lead = language === 'fr' ? YEAR_OPEN_LEAD_FR : YEAR_OPEN_LEAD;
+  return `${lead}\n${shown.map((line, index) => `${index + 1}. ${line}`).join('\n')}`;
 }
 
 /**

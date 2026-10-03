@@ -51,3 +51,7 @@ export function loadReplyCopySkill(): Promise<Skill> {
 export function loadIntakeVoiceSkill(): Promise<Skill> {
   return loadCronSkill('intake-voice');
 }
+
+export function loadOnboardingFriendSkill(): Promise<Skill> {
+  return loadCronSkill('onboarding-friend');
+}

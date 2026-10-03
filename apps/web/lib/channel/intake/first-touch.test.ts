@@ -593,3 +593,119 @@ describe('cold-start discovery session', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('friend voice onboarding', () => {
+  beforeEach(() => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
+  });
+
+  it('asks for a postal code in one question, not the locked sentence', async () => {
+    const { fake, transport, deps } = harness();
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
+    expect(transport.bodies()).toEqual(["Hey, it's Hale. What's your postal code?"]);
+    expect(transport.bodies()[0]).not.toBe(FIRST_TOUCH_SMS_BY_LANGUAGE.en);
+    expect(transport.bodies()[0]?.match(/\?/g)).toHaveLength(1);
+  });
+
+  it('does not send an empty week find before the ages question', async () => {
+    const { fake, transport, deps } = harness({ extractions: [EMPTY] });
+    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
+    expect(transport.bodies()).toEqual(['How old are the kids?']);
+    expect(transport.bodies().join('\n')).not.toContain(FIRST_TOUCH_EMPTY_BY_LANGUAGE.en);
+  });
+
+  it('asks what to call you on an empty year find, with no number prompt', async () => {
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+    const { fake, transport, deps } = harness({ extractions: [MAYA] });
+    const done = await handleInboundSms(
+      fake.db,
+      inbound(transport, 'Maya is 4 and Leo is 1, M5V 2T6'),
+      deps,
+    );
+    expect(done.status).toBe('provisioned');
+    const last = transport.bodies().at(-1) ?? '';
+    expect(transport.bodies()).toHaveLength(1);
+    expect(last).toContain('What should I call you?');
+    expect(last).not.toContain('Reply with the number you want.');
+    expect(last).not.toContain(FIRST_TOUCH_EMPTY_BY_LANGUAGE.en);
+    expect(last.match(/\?/g)).toHaveLength(1);
+  });
+
+  it('moves from a numbered find to the name, then a calendar link', async () => {
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+    const { fake, transport, deps } = harness({ extractions: [MAYA, EMPTY, EMPTY] });
+    const timed: IntakeDeps = {
+      ...deps,
+      radar: {
+        async compose() {
+          return {
+            message:
+              "Here's what's on for your kids this year:\n1. Swim (ages 3-5) - Saturdays 10am - $12",
+            itemCount: 1,
+            followUpNeeded: false,
+            checkpointTold: null,
+            weekendPickOffered: false,
+            findWon: true,
+            firstFindPromised: false,
+            actionMove: null,
+            actionHeld: 'no_move',
+            voiceFallback: null,
+          };
+        },
+      },
+    };
+    const opened = await handleInboundSms(
+      fake.db,
+      inbound(transport, 'Maya is 4 and Leo is 1, we are in M5V 2T6'),
+      timed,
+    );
+    expect(opened.status).toBe('provisioned');
+    const find = transport.bodies().at(-1) ?? '';
+    expect(find).toContain('Which of these looks good?');
+    expect(find).toContain('Swim (ages 3-5) - Saturdays 10am - $12');
+    expect(find).not.toContain('Reply with the number you want.');
+    expect(find.match(/\?/g)).toHaveLength(1);
+
+    const picked = await handleInboundSms(fake.db, inbound(transport, '1'), timed);
+    expect(picked.status).toBe('first_touch');
+    const nameAsk = transport.bodies().at(-1) ?? '';
+    expect(nameAsk).toContain('What should I call you?');
+    expect(nameAsk).not.toMatch(/I'll note it/i);
+    expect(nameAsk.match(/\?/g)).toHaveLength(1);
+
+    const named = await handleInboundSms(fake.db, inbound(transport, 'Dana'), timed);
+    expect(named.status).toBe('first_touch');
+    const calendar = transport.bodies().at(-1) ?? '';
+    expect(calendar).toContain('/connect?t=');
+    expect(calendar).toMatch(/calendar/i);
+    expect(calendar).not.toMatch(/I'll note it/i);
+    expect(calendar.replace(/https:\/\/\S+/g, '').match(/\?/g)).toHaveLength(1);
+    expect(
+      fake.writes.some(
+        (write) =>
+          write.op === 'insert' &&
+          write.table === schema.auditLog &&
+          write.payload.actionTaken === 'parent_name_captured',
+      ),
+    ).toBe(true);
+  });
+
+  it('answers a French hello in tu, with one question', async () => {
+    const { fake, transport, deps } = harness();
+    await handleInboundSms(fake.db, inbound(transport, 'Bonjour'), deps);
+    const body = transport.bodies()[0] ?? '';
+    expect(body).toContain('code postal');
+    expect(body).toMatch(/\bton\b/);
+    expect(body).not.toMatch(/\bvotre\b/);
+    expect(body.match(/\?/g)).toHaveLength(1);
+  });
+
+  it('keeps the locked greeting when friend voice is not exactly on', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'true');
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
+    const { fake, transport, deps } = harness();
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
+    expect(transport.bodies()).toEqual([HALE_GREETING_EN]);
+  });
+});

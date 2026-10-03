@@ -65,6 +65,7 @@ function seedSession(
     closedAt?: Date | null;
     familyId?: string | null;
     followUpCount?: number;
+    dataEncrypted?: string;
   } = {},
 ): string {
   const phoneE164 = over.phoneE164 ?? PHONE;
@@ -73,7 +74,7 @@ function seedSession(
     phoneHash: phoneBlindIndex(phoneE164),
     phoneEncrypted: encryptString(phoneE164),
     state: over.state ?? 'awaiting_details',
-    dataEncrypted: dataBlob(),
+    dataEncrypted: over.dataEncrypted ?? dataBlob(),
     createdAt: over.createdAt ?? FIRST_HELLO_PREVIOUS_EVENING,
     sittingReminderSentAt:
       over.sittingReminderSentAt === undefined ? null : over.sittingReminderSentAt,
@@ -204,6 +205,7 @@ describe('runSittingReminderCron', () => {
   });
   afterEach(() => {
     process.env.APP_ENCRYPTION_KEY = '';
+    vi.unstubAllEnvs();
   });
 
   it('sends the locked line once from the injected Twilio transport', async () => {
@@ -324,6 +326,52 @@ describe('runSittingReminderCron', () => {
       familyId: null,
       state: 'awaiting_details',
     });
+  });
+
+  it('nudges a parent stuck on the postal code once, and only while friend voice is on', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake, { state: 'awaiting_place' });
+
+    const first = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0 });
+    expect(transport.bodies()).toHaveLength(1);
+    expect(transport.bodies()[0]).not.toBe(SITTING_SESSION_REMINDER);
+    expect(transport.bodies()[0]?.match(/\?/g)).toHaveLength(1);
+    expect(transport.bodies()[0]).toMatch(/postal code/i);
+
+    const second = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    expect(second.sent).toBe(0);
+    expect(transport.bodies()).toHaveLength(1);
+  });
+
+  it('does not nudge a stuck postal-code session while friend voice is off', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake, { state: 'awaiting_place' });
+    const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    expect(result.sent).toBe(0);
+    expect(transport.bodies()).toEqual([]);
+  });
+
+  it('nudges a stuck French ages session in French', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake, {
+      state: 'awaiting_ages',
+      dataEncrypted: encryptString(
+        JSON.stringify({
+          collected: { children: [], postalCode: null },
+          transcript: [],
+          ladderLanguage: 'fr',
+        }),
+      ),
+    });
+    await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    expect(transport.bodies()[0]).toMatch(/âge|code postal/i);
+    expect(transport.bodies()[0]?.match(/\?/g)).toHaveLength(1);
   });
 
   it('wires the shared outbound leg into the default deps', async () => {

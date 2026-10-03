@@ -179,6 +179,39 @@ describe('ask budget', () => {
     expect(nextDay.getTime()).toBeGreaterThan(START.getTime());
   });
 
+  it('lets the onboarding sequence ask again on a day that already had an ask', () => {
+    const duty = row({
+      sendClass: 'duty_ask',
+      askKey: 'duty-1',
+      createdAt: START,
+    });
+    expect(
+      judgeAskBudget(
+        {
+          now: START,
+          familyStartedAt: START,
+          rows: [duty],
+          stopUntil: null,
+          parentWroteSincePause: false,
+        },
+        { sendClass: 'names', askKey: 'names' },
+        { onboardingSequence: true },
+      ),
+    ).toEqual({ allow: true });
+    expect(
+      judgeAskBudget(
+        {
+          now: START,
+          familyStartedAt: START,
+          rows: [duty],
+          stopUntil: null,
+          parentWroteSincePause: false,
+        },
+        { sendClass: 'names', askKey: 'names' },
+      ),
+    ).toEqual({ allow: false, reason: 'ask_budget' });
+  });
+
   it('treats a declined ask as final and pauses after two bad asks', () => {
     const declined = row({ askKey: 'logistics:swim', outcome: 'declined', createdAt: START });
     expect(

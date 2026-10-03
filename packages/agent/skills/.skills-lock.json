@@ -127,6 +127,10 @@
     "file": "nudge-voice.md",
     "sha256": "0058da39817bb85138bf334ab1b2e4f17cea042fb2de46cba4a82af95471a11c"
   },
+  "onboarding-friend.md": {
+    "file": "onboarding-friend.md",
+    "sha256": "4426aa874a21877f8983547db7cadf7c8f14195051e3c757884823bd78095c2d"
+  },
   "parse-civic-hours.md": {
     "file": "parse-civic-hours.md",
     "sha256": "be461fbaa85e727b98416b88bd3b11e12d27a7b4d3da6a05960204694ab79da4"
