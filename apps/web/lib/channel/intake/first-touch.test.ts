@@ -30,6 +30,7 @@ import {
   makeFakeDb,
 } from './fakes';
 import { type IntakeDeps, handleInboundSms } from './machine';
+import { loadOpenSession } from './session';
 import { type ChannelTransport, FakeTransport, type InboundMessage } from './transport';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
@@ -527,12 +528,9 @@ describe('cold-start discovery session', () => {
     expect(transport.bodies().filter((body) => body === note)).toEqual([]);
   });
 
-  it('retries the Name and Photo share on the next cold-start turn after the first hello times out, once', async () => {
-    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
-    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
-    vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
+  function linqCardFetch(abortSetups: number) {
     let setups = 0;
-    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+    return vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       const target = String(url);
       const method = (init?.method ?? 'GET').toUpperCase();
       if (target.includes('share_contact_card')) {
@@ -540,12 +538,15 @@ describe('cold-start discovery session', () => {
       }
       if (target.includes('/contact_card') && method === 'POST') {
         setups += 1;
-        if (setups === 1) {
+        if (setups <= abortSetups) {
           const abort = new Error('The operation was aborted');
           abort.name = 'AbortError';
           throw abort;
         }
-        return Response.json({ is_active: true, phone_number: '+16462352164' }, { status: 201 });
+        return Response.json(
+          { is_active: true, phone_number: '+16462352164', first_name: 'Hale' },
+          { status: 201 },
+        );
       }
       if (target.includes('/contact_card')) {
         return Response.json({
@@ -557,24 +558,60 @@ describe('cold-start discovery session', () => {
       }
       return new Response(null, { status: 200 });
     });
+  }
+
+  function shareCalls(fetchMock: { mock: { calls: unknown[][] } }) {
+    return fetchMock.mock.calls.filter((call) => String(call[0]).includes('share_contact_card'));
+  }
+
+  it('retries a timed-out Name and Photo setup once in the same hello', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
+    vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
+    const fetchMock = linqCardFetch(1);
+    vi.stubGlobal('fetch', fetchMock);
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA, EMPTY, EMPTY] });
+    const imessage = { transport: 'imessage' as const, chatId: 'chat-1' };
+    await handleInboundSms(fake.db, inbound(transport, 'hi', imessage), deps);
+    expect(shareCalls(fetchMock)).toHaveLength(1);
+    expect(info).toHaveBeenCalledWith(
+      { familyId: null, outcome: 'shared' },
+      'linq contact card: shared',
+    );
+    expect((await loadOpenSession(fake.db, PHONE))?.linqContactCardClaim?.outcome).toBe('shared');
+
+    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6', imessage), deps);
+    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1', imessage), deps);
+    expect(fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toEqual(NOW);
+    expect(shareCalls(fetchMock)).toHaveLength(1);
+    await handleInboundSms(fake.db, inbound(transport, '1', imessage), deps);
+    expect(shareCalls(fetchMock)).toHaveLength(1);
+    info.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it('records a setup timeout on the session and shares on the next outbound', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
+    vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
+    const fetchMock = linqCardFetch(2);
     vi.stubGlobal('fetch', fetchMock);
     const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA, EMPTY, EMPTY] });
     const imessage = { transport: 'imessage' as const, chatId: 'chat-1' };
     await handleInboundSms(fake.db, inbound(transport, 'hi', imessage), deps);
-    expect(
-      fetchMock.mock.calls.filter((call) => String(call[0]).includes('share_contact_card')),
-    ).toHaveLength(0);
-    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6', imessage), deps);
-    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1', imessage), deps);
-    expect(fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt ?? null).toBeNull();
-    expect(
-      fetchMock.mock.calls.filter((call) => String(call[0]).includes('share_contact_card')),
-    ).toHaveLength(0);
+    expect(shareCalls(fetchMock)).toHaveLength(0);
+    expect((await loadOpenSession(fake.db, PHONE))?.linqContactCardClaim).toMatchObject({
+      outcome: 'unreachable',
+      code: 'unreachable',
+      attempts: 1,
+    });
 
-    await handleInboundSms(fake.db, inbound(transport, '1', imessage), deps);
-    expect(
-      fetchMock.mock.calls.filter((call) => String(call[0]).includes('share_contact_card')),
-    ).toHaveLength(1);
+    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6', imessage), deps);
+    expect(shareCalls(fetchMock)).toHaveLength(1);
+    expect((await loadOpenSession(fake.db, PHONE))?.linqContactCardClaim?.outcome).toBe('shared');
+
+    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1', imessage), deps);
     expect(fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toEqual(NOW);
     expect(
       fake.writes.some(
@@ -585,11 +622,8 @@ describe('cold-start discovery session', () => {
           (write.payload.after as { outcome?: string } | undefined)?.outcome === 'shared',
       ),
     ).toBe(true);
-
-    await handleInboundSms(fake.db, inbound(transport, 'ok', imessage), deps);
-    expect(
-      fetchMock.mock.calls.filter((call) => String(call[0]).includes('share_contact_card')),
-    ).toHaveLength(1);
+    await handleInboundSms(fake.db, inbound(transport, '1', imessage), deps);
+    expect(shareCalls(fetchMock)).toHaveLength(1);
     vi.unstubAllGlobals();
   });
 });

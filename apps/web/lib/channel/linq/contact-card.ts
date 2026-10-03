@@ -170,12 +170,23 @@ export async function deliverHaleLinqContactCard(args: {
   }
 
   const imageUrl = haleContactImageUrl();
-  const setup = await setupLinqContactCard({
+  let setup = await setupLinqContactCard({
     phoneNumber: from,
     firstName: HALE_CONTACT_FIRST_NAME,
     imageUrl,
     fetch: args.fetch,
   });
+  // The first hello's setup is the call that times out at SEND_TIMEOUT_MS
+  // (unreachable, familyId still null). One more try in this same turn, before
+  // the session records the miss and a later outbound has to recover it.
+  if (setup.status === 'unreachable') {
+    setup = await setupLinqContactCard({
+      phoneNumber: from,
+      firstName: HALE_CONTACT_FIRST_NAME,
+      imageUrl,
+      fetch: args.fetch,
+    });
+  }
   if (setup.status === 'accepted') {
     // Linq: confirm the card is live on the line before share. A create/patch
     // body that omitted is_active used to count as applied, and the share's
@@ -249,6 +260,7 @@ export async function deliverHaleLinqContactCard(args: {
     };
   }
 
+  console.info({ familyId: args.familyId, outcome: 'shared' }, 'linq contact card: shared');
   return {
     holdClaim: true,
     audit: { outcome: 'shared', firstName: HALE_CONTACT_FIRST_NAME },

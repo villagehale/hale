@@ -161,6 +161,7 @@ import {
   type SessionPatch,
   type TranscriptEntry,
   createSession,
+  linqContactCardClaimHeld,
   loadOpenSession,
   saveSession,
   transcriptHasOutbound,
@@ -2036,10 +2037,11 @@ async function closeColdStartForCoach(
 /**
  * The first-hello Name and Photo share runs before a family exists, and only
  * when the transcript has no outbound yet. A timeout there (unreachable,
- * httpStatus 0) stores no claim, and provisioning skips the share while the
- * cold-start flag is on. This is the later turn. {@link shareHaleContactCardOnce}
- * claims parent_channels.linq_contact_card_shared_at before it posts, and a
- * claim already held returns without a second share. The audit row is
+ * httpStatus 0) is retried once in that turn and, if it still fails, stored
+ * on the session. The next outbound tries again. This later turn is the
+ * one after a family exists. {@link shareHaleContactCardOnce} claims
+ * parent_channels.linq_contact_card_shared_at before it posts, and a claim
+ * already held returns without a second share. The audit row is
  * linq_contact_card_shared. A miss is logged and does not fail the reply.
  */
 async function retryFailedLinqContactCard(
@@ -2634,21 +2636,26 @@ async function shareLinqCardAfterFirstOutbound(
 ): Promise<void> {
   try {
     const chatId = ctx.pipe.chatId;
+    const claim = ctx.session.linqContactCardClaim;
+    const held = linqContactCardClaimHeld(claim);
+    // One more try on the outbound after a recorded setup failure. A second
+    // failure stays on the session and waits for the post-family retry.
+    const retryFailure = claim?.outcome === 'unreachable' && (claim.attempts ?? 1) < 2;
+    if (!chatId || ctx.pipe.channel !== 'imessage' || ctx.pipe.isGroup || held) {
+      return;
+    }
     if (
-      !chatId ||
-      ctx.pipe.channel !== 'imessage' ||
-      ctx.pipe.isGroup ||
-      linqCardStarted.has(ctx.session) ||
-      ctx.session.linqContactCardClaim ||
-      transcriptHasOutbound(ctx.session.transcript) ||
-      transcriptHasOutbound(priorTranscript)
+      !retryFailure &&
+      (linqCardStarted.has(ctx.session) ||
+        transcriptHasOutbound(ctx.session.transcript) ||
+        transcriptHasOutbound(priorTranscript))
     ) {
       return;
     }
     linqCardStarted.add(ctx.session);
 
     if (ctx.session.familyId && ctx.session.userId) {
-      await shareHaleContactCardOnce(database, {
+      const shared = await shareHaleContactCardOnce(database, {
         familyId: ctx.session.familyId,
         parentUserId: ctx.session.userId,
         chatId,
@@ -2656,6 +2663,28 @@ async function shareLinqCardAfterFirstOutbound(
         isGroup: false,
         now: ctx.now,
       });
+      if (
+        shared.status === 'shared' ||
+        (shared.status === 'not_sent' && shared.reason === 'already_shared')
+      ) {
+        if (!linqContactCardClaimHeld(claim)) {
+          ctx.session.linqContactCardClaim = { at: ctx.now.toISOString(), outcome: 'shared' };
+        }
+      } else if (shared.status === 'not_sent' && shared.reason === 'share_refused') {
+        ctx.session.linqContactCardClaim = {
+          at: ctx.now.toISOString(),
+          outcome: 'share_refused',
+          code: shared.code,
+        };
+      } else if (shared.status === 'not_sent' && shared.reason === 'unreachable') {
+        const attempts = (claim?.outcome === 'unreachable' ? (claim.attempts ?? 1) : 0) + 1;
+        ctx.session.linqContactCardClaim = {
+          at: ctx.now.toISOString(),
+          outcome: 'unreachable',
+          code: 'unreachable',
+          attempts,
+        };
+      }
       return;
     }
 
@@ -2672,6 +2701,16 @@ async function shareLinqCardAfterFirstOutbound(
         at: ctx.now.toISOString(),
         outcome: 'share_refused',
         code: delivered.outcome.code,
+      };
+      return;
+    }
+    if (delivered.outcome.status === 'not_sent' && delivered.outcome.reason === 'unreachable') {
+      const attempts = (claim?.outcome === 'unreachable' ? (claim.attempts ?? 1) : 0) + 1;
+      ctx.session.linqContactCardClaim = {
+        at: ctx.now.toISOString(),
+        outcome: 'unreachable',
+        code: 'unreachable',
+        attempts,
       };
     }
   } catch (err) {

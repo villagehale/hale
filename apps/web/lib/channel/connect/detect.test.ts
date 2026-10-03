@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { matchConnectorDisconnectRequest, matchConnectorRequest } from './detect';
+import {
+  connectOfferTarget,
+  matchConnectorDisconnectRequest,
+  matchConnectorRequest,
+  matchFreshConnectorFollowUp,
+} from './detect';
 
 /**
  * The connector-request detector — the deterministic pre-coach branch that answers
@@ -182,5 +187,42 @@ describe('matchConnectorDisconnectRequest', () => {
     expect(
       bodies.filter((b) => matchConnectorDisconnectRequest(b) !== null).length,
     ).toBeGreaterThan(3);
+  });
+});
+
+describe('matchFreshConnectorFollowUp', () => {
+  it.each([
+    'give me a fresh one',
+    'new link',
+    'it expired',
+    'the link has expired',
+    'another link',
+  ])('claims the follow-up %j', (body) => {
+    expect(matchFreshConnectorFollowUp(body)).toBe(true);
+    expect(matchConnectorRequest(body)).toBeNull();
+  });
+
+  it.each([
+    'thanks',
+    'the new one is Maya',
+    "what's on my calendar this week",
+    "don't give me a fresh one",
+    'connect my gmail',
+  ])('does not claim %j', (body) => {
+    expect(matchFreshConnectorFollowUp(body)).toBe(false);
+  });
+
+  it('reads the provider off the link Hale already sent', () => {
+    expect(
+      connectOfferTarget(
+        'Connect Gmail: https://app.villagehale.com/connect?t=abc&to=gmail Good for 15 minutes.',
+      ),
+    ).toBe('gmail');
+    expect(
+      connectOfferTarget(
+        'Connect your calendar: https://app.villagehale.com/connect?t=abc&to=gcal Good for 15 minutes.',
+      ),
+    ).toBe('gcal');
+    expect(connectOfferTarget('What should I call you?')).toBeNull();
   });
 });
