@@ -378,4 +378,29 @@ describe('the year-open connector cards', () => {
     expect(real.bodies()).toHaveLength(1);
     expect(real.bodies()[0]).toContain('Gmail:');
   });
+
+  it('sends friend-voice prose with the minted calendar link attached', async () => {
+    const fake = seeded();
+    const transport = new FakeTransport();
+    const prose = 'Want me to check your calendar? This link is just for you.';
+    const outcome = await sendYearConnectorCards(
+      fake.db,
+      {
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        phoneE164: PHONE,
+        language: 'en',
+        now: NOW,
+        ridesReply: true,
+        only: 'gcal',
+        voice: { gcal: prose },
+      },
+      ports(transport).ports,
+    );
+    expect(outcome.calendar).toBe('sent');
+    const body = transport.bodies()[0] ?? '';
+    expect(body).toContain(prose);
+    expect(body).toContain('/connect?t=');
+    expect(body).not.toContain('Connect your calendar:');
+  });
 });
