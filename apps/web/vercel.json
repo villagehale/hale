@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd ../.. && rm -rf packages/*/dist packages/*/*.tsbuildinfo packages/*/tsconfig.tsbuildinfo && pnpm turbo build --filter=@hale/web --force",
+  "buildCommand": "cd ../.. && pnpm --filter @hale/db exec node scripts/vercel-production-migrate.mjs && rm -rf packages/*/dist packages/*/*.tsbuildinfo packages/*/tsconfig.tsbuildinfo && pnpm turbo build --filter=@hale/web --force",
   "regions": ["yul1"],
   "crons": [
     { "path": "/api/cron/week-plan", "schedule": "2 * * * *" },
