@@ -10,13 +10,13 @@ import {
   type ProactiveSendVerdict,
   holdStatus,
 } from '~/lib/channel/outbound-gate';
-import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
-import type { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   failedSendPatch,
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
+import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { formatDayHeading } from '~/lib/format/datetime';
 import type {
   CorrelatedEventRef,
@@ -1200,8 +1200,8 @@ const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
  *     RECEIPT for a class the family already has being offered a second time, and it is
  *     reachable for a booking only because `correlate.ts` maps the kind to a time.
  *   · The mail must not already BE the parent's calendar. A Google Calendar notification
- *     is the week speaking about an event that is on it; "Reply YES and it goes on your
- *     week" asks them to add what they already have. The text is a plain notice instead
+ *     is the week speaking about an event that is on it; "Want me to add it to your
+ *     week?" asks them to add what they already have. The text is a plain notice instead
  *     ({@link calendarNotice}).
  *
  * Everything else ends with today's sentence, and that is still the common case.
@@ -1264,11 +1264,11 @@ const OFFERED_TIME: Record<ExtractionKind, (event: ExtractedEvent) => string | n
  * a language off (`replyLanguage` takes one), and `families.primary_language` is a column
  * nothing in this product reads yet. The REPLIES to this sentence do have a French twin,
  * because by then the parent has written (email-alert-offer.ts). */
-const OFFER_CTA = 'Reply YES and it goes on your week.';
+const OFFER_CTA = 'Want me to add it to your week?';
 
 /**
  * The booking's own ending. A receipt has already told the parent they are in, so
- * "Reply YES and it goes on your week" would answer a question they did not ask; what is
+ * "Want me to add it to your week?" would answer a question they did not ask; what is
  * genuinely open is the calendar.
  *
  * IT CLEARS THE CLAIM TAXONOMY, and that is checked rather than assumed:

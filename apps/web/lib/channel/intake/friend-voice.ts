@@ -39,6 +39,9 @@ export const FRIEND_STEPS = [
   'nudge_ages',
   'link_retry',
   'stop_asking',
+  'coparent',
+  'connected',
+  'ack',
 ] as const;
 
 export type FriendStep = (typeof FRIEND_STEPS)[number];
@@ -73,6 +76,10 @@ export interface FriendVoiceInput {
   activity: string | null;
   day: string | null;
   parentName: string | null;
+  /** Which connector just landed. Set only on the connected step. */
+  connector?: 'gcal' | 'gmail' | null;
+  /** Whether they agreed to be watched. Set only on the ack step. */
+  granted?: boolean | null;
 }
 
 export interface FriendVoiceResult {
@@ -116,12 +123,11 @@ const WEEKDAY =
 const PRICE = /\$\s?\d+(?:\.\d{2})?/g;
 
 /** ASCII stand-ins for accented words. A following letter (é in adapté) is not a gap. */
-const FRENCH_ASCII_GAP =
-  /\b(?:pres|age|adapt|prenoms?|ecole|ca|numero|reponds)(?![\p{L}])/iu;
+const FRENCH_ASCII_GAP = /\b(?:pres|age|adapt|prenoms?|ecole|ca|numero|reponds)(?![\p{L}])/iu;
 
 const DANGLING_LINK = /\bthis link\b|\bce lien\b/i;
 
-const ZERO_QUESTION_STEPS = new Set<FriendStep>(['stop_asking']);
+const ZERO_QUESTION_STEPS = new Set<FriendStep>(['stop_asking', 'connected', 'ack']);
 
 export function turnsFromTranscript(
   transcript: readonly { direction: 'in' | 'out'; body: string }[],
@@ -149,6 +155,8 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
       activity: input.activity,
       day: input.day,
       parentName: input.parentName,
+      connector: input.connector ?? null,
+      granted: input.granted ?? null,
     },
   };
 }
@@ -161,6 +169,8 @@ export function friendFactSlots(input: FriendVoiceInput, link?: string | null): 
   if (input.activity) slots.push(input.activity);
   if (input.day) slots.push(input.day);
   if (input.parentName) slots.push(input.parentName);
+  if (input.connector === 'gcal') slots.push('calendar', 'calendrier');
+  if (input.connector === 'gmail') slots.push('gmail', 'Gmail');
   if (link) slots.push(link);
   return slots.filter((slot) => slot.length > 0);
 }
@@ -257,10 +267,7 @@ export function judgeFriendReply(
   if (mentionsOutsideSlots(trimmed, WEEKDAY, slots).length > 0) {
     return { ok: false, reason: 'invented' };
   }
-  if (
-    input.step !== 'email' &&
-    mentionsOutsideSlots(trimmed, ACTIVITY_WORD, slots).length > 0
-  ) {
+  if (input.step !== 'email' && mentionsOutsideSlots(trimmed, ACTIVITY_WORD, slots).length > 0) {
     return { ok: false, reason: 'invented' };
   }
   if (/https?:\/\//i.test(trimmed)) {
@@ -296,7 +303,41 @@ export function judgeFriendReply(
   if (input.step === 'find_empty' && /^\s*\d+\.\s/m.test(trimmed)) {
     return { ok: false, reason: 'invented' };
   }
+  if (input.step === 'connected') {
+    const namesGmail = /\bgmail\b/i.test(trimmed);
+    const namesCalendar = /\b(calendar|calendrier|agenda)\b/i.test(trimmed);
+    if (input.connector === 'gcal' && namesGmail) return { ok: false, reason: 'invented' };
+    if (input.connector === 'gmail' && namesCalendar) return { ok: false, reason: 'invented' };
+  }
   return { ok: true };
+}
+
+function connectedFallback(
+  fr: boolean,
+  address: 'tu' | 'vous',
+  connector: 'gcal' | 'gmail' | null,
+): string {
+  if (connector === 'gmail') {
+    if (!fr) return 'Gmail is connected.';
+    return address === 'vous' ? 'Votre Gmail est connecté.' : 'Ton Gmail est connecté.';
+  }
+  if (connector === 'gcal') {
+    if (!fr) return 'Your calendar is connected.';
+    return address === 'vous' ? 'Votre calendrier est connecté.' : 'Ton calendrier est connecté.';
+  }
+  return fr ? "C'est connecté." : "It's connected.";
+}
+
+function ackFallback(fr: boolean, address: 'tu' | 'vous', granted: boolean): string {
+  if (granted) {
+    return fr
+      ? "C'est fait. Je texte quand il le faut."
+      : "Done. You're covered. I'll text when something actually matters.";
+  }
+  if (!fr) return 'No problem. Text me whenever you like.';
+  return address === 'vous'
+    ? 'Pas de problème. Textez-moi quand vous voulez.'
+    : 'Pas de problème. Texte-moi quand tu veux.';
 }
 
 /** Prose only. The shell appends lines and the link, then judges the whole text. */
@@ -382,6 +423,17 @@ export function fallbackFriendProse(input: FriendVoiceInput): string {
         : 'I could not open that connect just now. Want me to try again?';
     case 'stop_asking':
       return fr ? "D'accord. Je m'arrête là." : "Okay. I'll leave it there.";
+    case 'coparent':
+      if (fr && input.address === 'vous') {
+        return "Vous voulez l'autre parent sur l'année des enfants? Envoyez-moi leur numéro.";
+      }
+      return fr
+        ? "Tu veux l'autre parent sur l'année des enfants? Envoie-moi leur numéro."
+        : "Want the other parent on the kids' year? Text me their number.";
+    case 'connected':
+      return connectedFallback(fr, input.address, input.connector ?? null);
+    case 'ack':
+      return ackFallback(fr, input.address, input.granted !== false);
     default:
       return fr ? "Comment je t'appelle?" : 'What should I call you?';
   }
@@ -396,7 +448,11 @@ export async function speakFriend(
   input: FriendVoiceInput,
   options: SpeakOptions = {},
 ): Promise<FriendVoiceResult> {
-  const finish = (prose: string, source: FriendVoiceResult['source'], fallback: FriendFallback | null) => {
+  const finish = (
+    prose: string,
+    source: FriendVoiceResult['source'],
+    fallback: FriendFallback | null,
+  ) => {
     const body = assembleFriendBody(prose, input, options.link);
     return { body, prose: prose.trim(), source, fallback };
   };

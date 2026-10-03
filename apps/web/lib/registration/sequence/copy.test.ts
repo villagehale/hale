@@ -4,12 +4,9 @@ import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { type SpotPortal, portalForMunicipality } from '~/lib/channel/spots/url';
-import type { CourseFacts, CoursePage, PrepVerdict } from './prepare.js';
-import { courseSignInUrl } from './prepare.js';
-import type { FitNote, Shortlist } from './shortlist.js';
 import {
-  MAX_PORTAL_SEGMENTS,
   type LegCopyInput,
+  MAX_PORTAL_SEGMENTS,
   preparedCopyViolations,
   printsReadinessAsk,
   readinessClause,
@@ -19,6 +16,9 @@ import {
   renderSequenceLeg,
   renderShortlistRationale,
 } from './copy.js';
+import type { CourseFacts, CoursePage, PrepVerdict } from './prepare.js';
+import { courseSignInUrl } from './prepare.js';
+import type { FitNote, Shortlist } from './shortlist.js';
 
 /**
  * VIL-242 · M7 — every string this feature can put in front of a parent.
@@ -137,7 +137,8 @@ describe('renderSequenceLeg', () => {
     // spine the app button calls — pointing at the app buys the parent nothing and is
     // the dead end the F14 voice rules refuse.
     const pending = renderSequenceLeg('heads_up', { ...LEG_INPUT, optIn: 'pending' });
-    expect(pending).toContain('Reply YES');
+    expect(pending).toContain('Want me to run the morning with you?');
+    expect(pending).not.toMatch(/Reply YES/i);
     expect(pending).not.toContain('Open Hale');
     expect(pending.toLowerCase()).not.toContain('the app');
     expect(renderSequenceLeg('heads_up', LEG_INPUT)).not.toContain('Reply YES');
@@ -836,13 +837,13 @@ describe('VIL-338 · readiness is always attributed to the parent who said it', 
 
   it('asks exactly once, in the imperative, on the two legs that ask', () => {
     const readiness = renderSequenceLeg('readiness', portalInput());
-    expect(readiness).toContain('Reply YES when that is done, or NO if not.');
-    expect(readiness).not.toContain('?');
+    expect(readiness).toContain('Want me to know when that is done?');
+    expect(readiness).not.toMatch(/Reply YES/i);
     const plan = renderSequenceLeg('battle_plan', portalInput({ readinessReady: false }));
-    expect(plan).toContain('Reply YES when it is.');
+    expect(plan).toContain('Want me to know when it is?');
     // A parent who has answered is not asked again.
     expect(renderSequenceLeg('battle_plan', portalInput({ readinessReady: true }))).not.toContain(
-      'Reply YES',
+      'Want me to know when it is?',
     );
   });
 
@@ -854,12 +855,12 @@ describe('VIL-338 · readiness is always attributed to the parent who said it', 
     // moment to ask a parent anything at all.
     const offenders: [string, number][] = [];
     for (const [name, body] of Object.entries(everyPortalBody())) {
-      const asks = (body.match(/\bReply\b/g) ?? []).length;
+      const asks = (body.replace(/https?:\/\/\S+/g, '').match(/\?/g) ?? []).length;
       if (asks > (name.startsWith('go ') ? 0 : 1)) offenders.push([name, asks]);
     }
     expect(offenders).toEqual([]);
     // The positive control: the ask this rule is counting really is there to be found.
-    expect(everyPortalBody()['readiness/null']).toContain('Reply YES');
+    expect(everyPortalBody()['readiness/null']).toContain('Want me to know when that is done?');
   });
 
   it('carries the clause itself on every portal leg that has one', () => {
@@ -874,7 +875,7 @@ describe('VIL-338 · readiness is always attributed to the parent who said it', 
         ? 'You told me the setup is done.'
         : leg === 'go'
           ? 'You have not told me the setup is done - sign in now and check it.'
-          : 'You have not told me the setup is done - tonight is the time. Reply YES when it is.';
+          : 'You have not told me the setup is done - tonight is the time. Want me to know when it is?';
     for (const leg of ['go', 'battle_plan']) {
       for (const shape of leg === 'go'
         ? ['prepared', 'unbound']
@@ -1041,8 +1042,11 @@ describe('VIL-338 · preparedCopyViolations, the composer’s own self-gate', ()
     ).toContain('unbacked_value');
   });
 
-  it('refuses a question mark outside the link, and never reads the link’s own', () => {
-    expect(preparedCopyViolations(`Want the link? ${COURSE_URL}`, base)).toContain(
+  it('refuses a second question outside the link, and never reads the link’s own', () => {
+    expect(preparedCopyViolations(`Want the link? And another? ${COURSE_URL}`, base)).toContain(
+      'asks_a_question',
+    );
+    expect(preparedCopyViolations(`Want me to know when it is? ${COURSE_URL}`, base)).not.toContain(
       'asks_a_question',
     );
     // The sanitized URL carries `?widgetId=` — subtracting it is what makes the rule
@@ -1351,7 +1355,7 @@ describe('VIL-338 · a non-portal municipality renders byte-identically to today
 
   it('renders the pending household’s heads-up exactly as it did before', () => {
     expect(renderSequenceLeg('heads_up', { ...LEG_INPUT, optIn: 'pending' })).toBe(
-      "Richmond Hill Fall 2026 recreation programs registration opens Sep 15, 6:30 a.m. for Max. Reply YES and I'll run the morning with you.",
+      'Richmond Hill Fall 2026 recreation programs registration opens Sep 15, 6:30 a.m. for Max. Want me to run the morning with you?',
     );
   });
 

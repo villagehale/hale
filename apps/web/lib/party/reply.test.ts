@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readAffirmative } from '~/lib/channel/affirmative';
+import { partyRecorded } from './copy';
 import {
   type PartyReplyDeps,
   handlePartyReply,
@@ -16,6 +17,18 @@ import {
  * M7/M8's reply matchers give: "not done yet" contains "done". Here the stakes are a
  * publish and a cancel, so the tests below are mostly about what must NOT match.
  */
+
+describe('partyRecorded', () => {
+  it('asks whether to make the link, and does not name a keyword', () => {
+    expect(partyRecorded('Saturday at 2', "Leo's party", 'the park')).toBe(
+      "Got it - Leo's party, Saturday at 2 at the park. Want me to make a link guests can RSVP to?",
+    );
+    expect(partyRecorded('Saturday at 2', "Leo's party", null)).toBe(
+      "Got it - Leo's party, Saturday at 2. Want me to make a link guests can RSVP to?",
+    );
+    expect(partyRecorded('Saturday at 2', "Leo's party", 'the park')).not.toMatch(/reply yes/i);
+  });
+});
 
 describe('matchPartyLinkConfirm', () => {
   it('accepts the plain affirmatives a parent actually texts', () => {

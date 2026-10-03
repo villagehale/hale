@@ -16,7 +16,7 @@ import { PLAN_OFFER_TTL_HOURS } from './topics';
  */
 
 const FAMILY = 'fam-1';
-const OFFER = "Want the full plan? Reply YES and I'll send it.";
+const OFFER = 'Want me to send the full plan?';
 const NOW = new Date('2026-08-12T14:00:00.000Z');
 const database = {} as Database;
 
@@ -73,7 +73,9 @@ describe('offerFullPlanTool', () => {
     // A free-text topic would be model-authored prose selecting a proactive template
     // three days later. The schema is what makes that unexpressible.
     expect(tool.inputSchema.safeParse({ topic: 'sleep', offer: OFFER }).success).toBe(true);
-    expect(tool.inputSchema.safeParse({ topic: 'is she behind', offer: OFFER }).success).toBe(false);
+    expect(tool.inputSchema.safeParse({ topic: 'is she behind', offer: OFFER }).success).toBe(
+      false,
+    );
     // Narrowed to the topics with a verified playbook: the four softer ones still get
     // an ANSWER, they just do not get a week of improvised instructions.
     expect(tool.inputSchema.safeParse({ topic: 'tantrums', offer: OFFER }).success).toBe(false);
@@ -161,23 +163,26 @@ describe('recordPlanOffer', () => {
 });
 
 describe('the offer sentence gates', () => {
-  it('accepts a sentence that asks once and names the word that accepts it', () => {
+  it('accepts one natural question and no keyword', () => {
     expect(offerViolations(OFFER)).toEqual([]);
+    expect(offerViolations('Should I send the whole first-foods plan?')).toEqual([]);
   });
 
-  it('refuses an offer that never says YES', () => {
-    // The handler matches a bare affirmative. A parent who was never told the word has
-    // no way to take the offer, and the plan they asked for silently never arrives.
-    expect(offerViolations('Want the full plan? I can send it over.')).toEqual([
-      expect.stringContaining('never says YES'),
+  it('refuses an offer that tells them to reply YES', () => {
+    expect(offerViolations("Want the full plan? Reply YES and I'll send it.")).toEqual([
+      expect.stringContaining('keyword'),
+    ]);
+    expect(offerViolations('Say YES and it is yours?')).toEqual([
+      expect.stringContaining('keyword'),
     ]);
   });
 
   it('refuses an offer that asks nothing, or asks twice', () => {
     expect(offerViolations("Reply YES and I'll send the full plan.")).toEqual([
       expect.stringContaining('0 questions'),
+      expect.stringContaining('keyword'),
     ]);
-    expect(offerViolations('Want the plan? Shall I send it? Reply YES.')).toEqual([
+    expect(offerViolations('Want the plan? Shall I send it?')).toEqual([
       expect.stringContaining('2 questions'),
     ]);
   });

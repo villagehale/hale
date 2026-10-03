@@ -396,15 +396,15 @@ export interface OpenQuestion {
 }
 
 /**
- * Which classes' asks print an explicit solicited keyword. The 2026-08-13 doctrine took
- * the printed keywords away from the composed asks, but two fixed sentences still carry
- * one — the founder ping ("Reply YES and I'll send them your welcome note", founder/
- * copy.ts) and the plan offer ("Want the full plan? Reply YES and I'll send it.",
- * channel/plan/offer.ts). A parent answering one of those with a bare YES is doing
- * exactly what the last message told them to do, and on 2026-08-28 (ads-week audit)
- * that YES fell to an older open question instead. Per CLASS, never per caller, the
- * same way the outbound gate types urgency — a solicited flag at a call site could not
- * widen this.
+ * Which classes' asks are an explicit question a bare yes answers. The 2026-08-13
+ * doctrine took the printed keywords away from the composed asks. A few fixed asks
+ * still name the word: the founder ping ("Reply YES and I'll send them your welcome
+ * note", founder/copy.ts) and the forwarding-address revoke. The plan offer, the
+ * registration readiness ask, and the email-alert add now ask in a sentence ("Want me
+ * to...?") and stay solicited for the same reason: a parent answering with a bare yes is
+ * doing what the last message asked. On 2026-08-28 (ads-week audit) that yes fell to an
+ * older open question instead. Per CLASS, never per caller, the same way the outbound
+ * gate types urgency — a solicited flag at a call site could not widen this.
  */
 const SOLICITED: Record<OpenQuestionKind, boolean> = {
   approval: false,
@@ -414,12 +414,11 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   checkup_offer: false,
   activity_followup: false,
   founder_welcome_offer: true,
-  // The readiness leg and the battle plan both print 'Reply YES when that is done, or
-  // NO if not.' verbatim (registration/sequence/copy.ts).
+  // The readiness leg asks 'Want me to know when that is done?' (registration/sequence/copy.ts).
   registration_readiness: true,
   // The scope question prints "Reply YES and I'll text them once." (coparent/copy.ts).
   co_parent_assent: true,
-  // The alert prints "Reply YES and it goes on your week." verbatim, and it is the last
+  // The alert asks "Want me to add it to your week?" and it is the last
   // thing Hale said (integrations/email-alert.ts). A BOOKING alert ends differently —
   // "Want it on your calendar?" — and the flag's value is still correct, because
   // `newestSolicitedKind` reads this boolean rather than the string and `readAffirmative`

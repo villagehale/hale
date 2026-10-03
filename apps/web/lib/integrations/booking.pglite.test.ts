@@ -1064,7 +1064,7 @@ describe('the booking write', () => {
     const h = harness();
     await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'booked_dark', going: null });
     await expect(bookingRows()).resolves.toHaveLength(0);
-    expect(h.transport.sent[0]?.body).toContain('Reply YES and it goes on your week.');
+    expect(h.transport.sent[0]?.body).toContain('Want me to add it to your week?');
     expect(h.transport.sent[0]?.body).not.toContain('Want it on your calendar?');
   });
 

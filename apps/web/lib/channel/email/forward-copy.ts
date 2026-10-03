@@ -92,8 +92,8 @@ export function forwardAsk(
         ? `Vous m'avez transféré « ${subject} » de ${args.domain}.`
         : `Vous m'avez transféré un message de ${args.domain}.`,
       `Je ne l'ai pas lu — je ne lis que le courrier des expéditeurs que vous avez approuvés.`,
-      `Répondez OUI et je lirai ce que ${args.domain} vous envoie.`,
-      'Répondez NON et je ne vous le redemanderai plus.',
+      `Voulez-vous que je lise ce que ${args.domain} vous envoie?`,
+      'Sinon, je ne vous le redemanderai plus.',
       `Sans réponse, j'oublierai ce message dans trois jours.`,
     ].join(' ');
   }
@@ -102,8 +102,8 @@ export function forwardAsk(
       ? `You forwarded "${subject}" from ${args.domain}.`
       : `You forwarded a message from ${args.domain}.`,
     `I haven't read it — I only read mail from senders you've said yes to.`,
-    `Reply YES and I'll read what ${args.domain} sends you.`,
-    `Reply NO and I won't ask about them again.`,
+    `Want me to read what ${args.domain} sends you?`,
+    `If not, I won't ask about them again.`,
     `If you do nothing, I'll forget this message in three days.`,
   ].join(' ');
 }
@@ -125,8 +125,8 @@ export function forwardBlocked(locale: ForwardLocale, args: { domain: string }):
  */
 export function forwardUnclear(locale: ForwardLocale, args: { domain: string }): string {
   return locale === 'fr'
-    ? `Désolé — était-ce oui ou non pour lire le courrier de ${args.domain}? Répondez OUI ou NON.`
-    : `Sorry — was that a yes or a no about reading mail from ${args.domain}? Reply YES or NO.`;
+    ? `Désolé — était-ce un oui ou un non pour lire le courrier de ${args.domain}?`
+    : `Sorry — was that a yes or a no about reading mail from ${args.domain}?`;
 }
 
 /**

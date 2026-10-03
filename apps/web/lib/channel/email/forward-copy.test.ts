@@ -22,6 +22,16 @@ import { parseForwardedMessage } from './forward-parse';
 const DOMAIN = 'bcs.on.ca';
 
 describe('the forwarding ask · the subject is somebody else’s text', () => {
+  it('asks in a sentence and does not name a keyword', () => {
+    const en = forwardAsk('en', { subject: 'Picture day', domain: DOMAIN });
+    expect(en).toContain('Want me to read what bcs.on.ca sends you?');
+    expect(en).toContain("If not, I won't ask about them again.");
+    expect(en).not.toMatch(/reply yes/i);
+    const fr = forwardAsk('fr', { subject: 'Photo', domain: DOMAIN });
+    expect(fr).toContain('Voulez-vous que je lise ce que bcs.on.ca vous envoie?');
+    expect(fr).not.toMatch(/reply yes|répondez oui/i);
+  });
+
   it('cannot open a second line under Hale’s name', () => {
     // The banner reader already stops a header value at the line it sits on, so the
     // POSITIVE CONTROL first: a crafted banner gets the one line the parser promises.

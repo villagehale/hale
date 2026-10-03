@@ -1,9 +1,9 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { z } from 'zod';
-import { cancelCommitment, recordCommitment } from '~/lib/commitments/ledger';
-import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
+import { cancelCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { PLAN_OFFER_TTL_HOURS, PLAN_TOPICS, type PlanTopic, planOfferSummary } from './topics';
 
 /**
@@ -55,10 +55,12 @@ export const MAX_OFFER_CHARS = 160;
  * Everything wrong with a proposed offer sentence, phrased for the model that has to
  * rewrite it. An empty array means it may be sent.
  *
- * It must ASK (exactly one question) and it must name the word that accepts, because
- * the YES handler matches a bare affirmative and a parent who was never told the word
- * has no way in. Exported so the eval holds the same bar.
+ * It must ASK (exactly one question). It must not instruct a keyword. The parent
+ * answers in their own words, and the shared affirmative table reads yes, sure,
+ * please do, no thanks, and not now. Exported so the eval holds the same bar.
  */
+const KEYWORD_INSTRUCTION = /\b(reply|say|text)\s+(yes|no)\b/i;
+
 export function offerViolations(sentence: string): string[] {
   const violations: string[] = [];
   const text = sentence.trim();
@@ -73,13 +75,15 @@ export function offerViolations(sentence: string): string[] {
   if (questions !== 1) {
     violations.push(`The offer asks ${questions} questions; it must ask exactly one.`);
   }
-  if (!/\byes\b/i.test(text)) {
+  if (KEYWORD_INSTRUCTION.test(text)) {
     violations.push(
-      'The offer never says YES. Name the word that accepts it, or the parent has no way to take it.',
+      'The offer tells them to reply with a keyword. Ask in a sentence, like "Want me to send it?"',
     );
   }
   if (smsEncoding(text) !== 'gsm7') {
-    violations.push('The offer contains a character that doubles the cost to send. Use plain ASCII.');
+    violations.push(
+      'The offer contains a character that doubles the cost to send. Use plain ASCII.',
+    );
   }
   if (smsSegments(text) > 1) {
     violations.push('The offer is longer than one SMS segment. Shorten it.');
@@ -99,7 +103,7 @@ export function offerFullPlanTool(onOffer: (offer: PlanOffer) => void): Register
   return defineTool({
     name: 'offer_full_plan',
     description:
-      "Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters, and it must say YES, because that is the word the parent replies with. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.",
+      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters. Ask like a person ("Want me to send it?"). Do not say Reply YES or name a keyword. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
     inputSchema: z.object({
       topic: z.enum(PLAN_TOPICS as [PlanTopic, ...PlanTopic[]]),
       childId: z.string().min(1).optional(),
@@ -108,11 +112,11 @@ export function offerFullPlanTool(onOffer: (offer: PlanOffer) => void): Register
     // Invented placeholder id: examples ride the cached tool-definition grammar,
     // outside message protections (rule #1; see EXAMPLE_CHILD_ID).
     inputExamples: [
-      { topic: 'sleep', offer: "Want the full plan? Reply YES and I'll send it." },
+      { topic: 'sleep', offer: 'Want me to send the full plan?' },
       {
         topic: 'solids',
         childId: EXAMPLE_CHILD_ID,
-        offer: 'Want the whole first-foods plan? Say YES and it is yours.',
+        offer: 'Should I send the whole first-foods plan?',
       },
     ],
     monetary: false,
