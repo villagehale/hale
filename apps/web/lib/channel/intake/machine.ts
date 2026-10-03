@@ -245,6 +245,13 @@ export interface IntakeDeps {
    * `not_configured` and the locked empty line goes out — never a guess.
    */
   weekFinder?: ActivityFinder | null;
+  /**
+   * Clear the iMessage typing bubble before a reply goes out. The inbound door
+   * arms it. Absent on SMS and on a test that never armed one: there is no
+   * bubble to clear, and that is not a skipped send. A throw is logged and
+   * the reply still leaves.
+   */
+  stopTyping?: () => Promise<void>;
   /** The funnel's two milestones. Optional because the DEFAULT IS THE REAL EFFECT —
    * `captureServerEvent`, which already names its own absence on a dead PostHog key
    * (rule #11) — so this is a test seam, never a way to withhold the send. */
@@ -672,6 +679,18 @@ function sendContext(args: {
  * does it) because a message that told a family something durable has to be able to say
  * WHICH row carried it — see the checkpoint marker in {@link provision}.
  */
+async function quietStopTyping(deps: IntakeDeps): Promise<void> {
+  if (!deps.stopTyping) return;
+  try {
+    await deps.stopTyping();
+  } catch (err) {
+    console.warn(
+      { err: err instanceof Error ? err.name : 'unknown' },
+      'linq: typing indicator did not stop',
+    );
+  }
+}
+
 async function sendAndRecord(
   database: Database,
   ctx: SendContext,
@@ -684,6 +703,7 @@ async function sendAndRecord(
    * asks for the parent's name carries a key the name capture can query for. */
   templateKey?: string,
 ): Promise<{ transcript: TranscriptEntry[]; channelMessageId: string | null }> {
+  await quietStopTyping(deps);
   const sent = await sendResolvingNewChat(deps.transport, { to: ctx.phoneE164, body });
   const wireBody = sent.linkOmitted ? plainTextWithoutLinks(body) : body;
   const channel = sent.transport === 'imessage' ? 'imessage' : ctx.pipe.channel;
@@ -1181,18 +1201,25 @@ async function sendPlaceAsk(
   locationRequest: FirstTouchPersisted['locationRequest'];
 }> {
   const chatId = ctx.pipe.chatId;
-  const card =
+  const canRequest =
     ctx.pipe.channel === 'imessage' &&
     !ctx.pipe.isGroup &&
     typeof chatId === 'string' &&
     chatId.length > 0 &&
     typeof deps.transport.requestLocation === 'function';
-  const body = card
-    ? FIRST_TOUCH_IMESSAGE_BY_LANGUAGE[language]
-    : FIRST_TOUCH_SMS_BY_LANGUAGE[language];
-  const sent = await sendAndRecord(database, ctx, body, deps, transcript);
   const at = ctx.now.toISOString();
-  if (!card || !chatId || !deps.transport.requestLocation) {
+  // The card is asked first. The Tap sentence is only true once Linq accepted
+  // it. A 2011 (feature not available) or any other miss uses the postal line.
+  // The outcome is still stored, and provisioning still writes
+  // first_touch_location_requested.
+  if (!canRequest || !chatId || !deps.transport.requestLocation) {
+    const sent = await sendAndRecord(
+      database,
+      ctx,
+      FIRST_TOUCH_SMS_BY_LANGUAGE[language],
+      deps,
+      transcript,
+    );
     return {
       transcript: sent.transcript,
       locationRequest: {
@@ -1201,27 +1228,32 @@ async function sendPlaceAsk(
       },
     };
   }
+  let accepted = false;
+  let locationRequest: FirstTouchPersisted['locationRequest'];
   try {
     const result = await deps.transport.requestLocation({ chatId });
     if (result.status === 'sent') {
-      return { transcript: sent.transcript, locationRequest: { at, outcome: 'sent' } };
-    }
-    if (result.status === 'refused') {
+      accepted = true;
+      locationRequest = { at, outcome: 'sent' };
+    } else if (result.status === 'refused') {
       console.info({ outcome: 'refused', code: result.code }, 'first-touch location card: refused');
-      return {
-        transcript: sent.transcript,
-        locationRequest: { at, outcome: 'refused', code: result.code },
-      };
+      locationRequest = { at, outcome: 'refused', code: result.code };
+    } else {
+      console.info({ outcome: result.status }, 'first-touch location card: not sent');
+      locationRequest = { at, outcome: result.status };
     }
-    console.info({ outcome: result.status }, 'first-touch location card: not sent');
-    return { transcript: sent.transcript, locationRequest: { at, outcome: result.status } };
   } catch (err) {
     console.warn(
       { outcome: 'unreachable', err: err instanceof Error ? err.name : 'unknown' },
       'first-touch location card: unreachable',
     );
-    return { transcript: sent.transcript, locationRequest: { at, outcome: 'unreachable' } };
+    locationRequest = { at, outcome: 'unreachable' };
   }
+  const body = accepted
+    ? FIRST_TOUCH_IMESSAGE_BY_LANGUAGE[language]
+    : FIRST_TOUCH_SMS_BY_LANGUAGE[language];
+  const sent = await sendAndRecord(database, ctx, body, deps, transcript);
+  return { transcript: sent.transcript, locationRequest };
 }
 
 async function sendWeekFindThenAgesOrProvision(
@@ -1396,7 +1428,6 @@ function withColdStart(
 async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> {
   const { database, session, inbound, now, deps, language, familyId, progress, judged } = turn;
   const ctx = sendContext({ session, phoneE164: session.phoneE164, inbound, now });
-  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   if (progress.step === 'logistics' && judged.intent === 'decline') {
     const askKey = `logistics:${progress.activity ?? 'that one'}:${progress.day ?? 'then'}`;
     const declined = await declineOptionalAsk(database, { familyId, askKey });
@@ -1410,6 +1441,7 @@ async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> 
   const held: ColdStartProgress = { ...progress, schoolMentioned, step: 'names' };
   if (!names.mayLeave) {
     console.info({ skipped: 'copy_unlocked', ask: 'names' }, 'cold-start names: not sent');
+    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
     await sendAndRecord(
       database,
       ctx,
@@ -1438,26 +1470,14 @@ async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> 
     askKey: 'names',
   });
   if (!gate.allow) {
+    // The day is already spent. A note here used to stay the reply on every
+    // later text ("ok", a Chinese message). Close instead and hand this text
+    // to the coach. Do not record it here: the handoff inserts that row.
     console.info({ reason: gate.reason, ask: 'names' }, 'cold-start names: held');
-    await sendAndRecord(
-      database,
-      ctx,
-      notedAfterLogistics(progress.group, language),
-      deps,
-      recorded.transcript,
-    );
-    await saveSession(
-      database,
-      session,
-      {
-        lastProviderId: inbound.providerId,
-        transcript: recorded.transcript,
-        firstTouch: withColdStart(session, language, { ...held, nameLineSent: false }),
-      },
-      now,
-    );
-    return { status: 'first_touch', step: 'find_sent' };
+    await closeColdStartForCoach(database, session, inbound, now);
+    return { status: 'ignored', reason: 'no_open_conversation' };
   }
+  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   await sendAndRecord(database, ctx, names.body, deps, recorded.transcript);
   await recordOptionalAsk(database, { familyId, now, sendClass: 'names', askKey: 'names' });
   await saveSession(
@@ -1477,7 +1497,6 @@ async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> 
 async function offerColdStartFollow(turn: ColdStartTurn): Promise<IntakeOutcome> {
   const { database, session, inbound, now, deps, language, familyId, progress } = turn;
   const ctx = sendContext({ session, phoneE164: session.phoneE164, inbound, now });
-  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   const schoolMentioned = progress.schoolMentioned || mentionsSchoolOrCamp(inbound.body);
   const familyStartedAt = await loadFamilyStartedAt(database, familyId, now);
   const follow = planFollowAsk({
@@ -1507,6 +1526,7 @@ async function offerColdStartFollow(turn: ColdStartTurn): Promise<IntakeOutcome>
       { skipped: follow.skipped ?? 'not_due', ask: follow.kind },
       'cold-start follow: not sent',
     );
+    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
     await sendAndRecord(database, ctx, note, deps, recorded.transcript);
     await saveSession(
       database,
@@ -1530,19 +1550,10 @@ async function offerColdStartFollow(turn: ColdStartTurn): Promise<IntakeOutcome>
   });
   if (!gate.allow) {
     console.info({ reason: gate.reason, ask: follow.kind }, 'cold-start follow: held');
-    await sendAndRecord(database, ctx, note, deps, recorded.transcript);
-    await saveSession(
-      database,
-      session,
-      {
-        lastProviderId: inbound.providerId,
-        transcript: recorded.transcript,
-        firstTouch: withColdStart(session, language, base),
-      },
-      now,
-    );
-    return { status: 'first_touch', step: 'find_sent' };
+    await closeColdStartForCoach(database, session, inbound, now);
+    return { status: 'ignored', reason: 'no_open_conversation' };
   }
+  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   await sendAndRecord(database, ctx, follow.body, deps, recorded.transcript);
   await recordOptionalAsk(database, {
     familyId,
@@ -1574,9 +1585,59 @@ async function offerColdStartFollow(turn: ColdStartTurn): Promise<IntakeOutcome>
 }
 
 /**
+ * Close a cold-start session without answering, so the inbound door can hand
+ * this text to the coach. The message is not recorded here.
+ */
+async function closeColdStartForCoach(
+  database: Database,
+  session: IntakeSession,
+  inbound: Inbound,
+  now: Date,
+): Promise<void> {
+  await saveSession(
+    database,
+    session,
+    { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
+    now,
+  );
+}
+
+/**
+ * The first-hello Name and Photo share runs before a family exists, and only
+ * when the transcript has no outbound yet. A timeout there (unreachable,
+ * httpStatus 0) stores no claim, and provisioning skips the share while the
+ * cold-start flag is on. This is the later turn. {@link shareHaleContactCardOnce}
+ * claims parent_channels.linq_contact_card_shared_at before it posts, and a
+ * claim already held returns without a second share. The audit row is
+ * linq_contact_card_shared. A miss is logged and does not fail the reply.
+ */
+async function retryFailedLinqContactCard(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+    inbound: Inbound;
+  },
+): Promise<void> {
+  try {
+    await shareFreshLinqContactCard(database, args);
+  } catch (err) {
+    console.warn(
+      { err: err instanceof Error ? err.name : 'unknown' },
+      'linq contact card: retry after a failed first share did not finish',
+    );
+  }
+}
+
+/**
  * VIL-392. The turn after the discovery find. A number is the pick. Anything
  * else closes the session and hands the text to C1, except a pull phrase and
  * a high-confidence stop-asking.
+ *
+ * Once the day's optional-ask budget is spent, a non-answer (including "ok"
+ * and a language this ladder does not speak) takes that same handoff. The
+ * canned "I'll note it" line is not repeated on those texts.
  */
 async function continueColdStart(
   database: Database,
@@ -1596,6 +1657,12 @@ async function continueColdStart(
     );
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
+  await retryFailedLinqContactCard(database, {
+    familyId,
+    parentUserId: userId,
+    now,
+    inbound,
+  });
   const language =
     session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
   const ctx = sendContext(args);
@@ -2866,6 +2933,7 @@ async function handleKeyword(
       // still wrote an outbound row would put a message in a parent's receipts that
       // Hale never sent.
       if (!providerAnswered) {
+        await quietStopTyping(deps);
         const { providerMessageId } = await deps.transport.send({
           to: phoneE164,
           body: HELP_REPLY_BY_LANGUAGE[language],

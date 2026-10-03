@@ -1,3 +1,4 @@
+import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
@@ -5,6 +6,7 @@ import {
   EMAIL_ASK_BY_LANGUAGE,
   KNOWN_VENUE_HELLO,
   NAMES_ASK_BY_LANGUAGE,
+  notedAfterLogistics,
   receiptLine,
   signupOffer,
 } from './cold-start/copy';
@@ -138,12 +140,24 @@ describe('first touch ladder', () => {
 
   it('sends the iMessage sentence and then the location card, and accepts a typed postal', async () => {
     const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY] });
+    const order: string[] = [];
+    const request = transport.requestLocation.bind(transport);
+    transport.requestLocation = async (input) => {
+      order.push('location');
+      return request(input);
+    };
+    const send = transport.send.bind(transport);
+    transport.send = async (input) => {
+      order.push('text');
+      return send(input);
+    };
     const first = await handleInboundSms(
       fake.db,
       inbound(transport, 'hi', { transport: 'imessage', chatId: 'chat-1' }),
       deps,
     );
     expect(first).toEqual({ status: 'first_touch', step: 'place_asked' });
+    expect(order.slice(0, 2)).toEqual(['location', 'text']);
     expect(transport.bodies()).toEqual([FIRST_TOUCH_IMESSAGE_BY_LANGUAGE.en]);
     expect(transport.locationRequests).toEqual(['chat-1']);
 
@@ -162,20 +176,69 @@ describe('first touch ladder', () => {
     expect(transport.bodies().join('\n')).not.toContain(FIRST_TOUCH_SMS_BY_LANGUAGE.en);
   });
 
-  it('does not send a second place ask when the card is refused', async () => {
+  it('asks for a postal code when Linq refuses the location card, and still audits the request', async () => {
     const transport = new FakeTransport();
+    const order: string[] = [];
     transport.requestLocation = async (input) => {
+      order.push('location');
       transport.locationRequests.push(input.chatId);
-      return { status: 'refused', code: '2017' };
+      return { status: 'refused', code: '2011' };
     };
-    const { fake, deps } = harness({ transport });
+    const send = transport.send.bind(transport);
+    transport.send = async (input) => {
+      order.push('text');
+      return send(input);
+    };
+    const { fake, deps } = harness({ transport, extractions: [EMPTY, EMPTY, MAYA] });
     await handleInboundSms(
       fake.db,
       transport.inbound(PHONE, 'hi', { transport: 'imessage', chatId: 'chat-1' }),
       deps,
     );
-    expect(transport.bodies()).toEqual([FIRST_TOUCH_IMESSAGE_BY_LANGUAGE.en]);
+    expect(order.slice(0, 2)).toEqual(['location', 'text']);
+    expect(transport.bodies()[0]).toBe(FIRST_TOUCH_SMS_BY_LANGUAGE.en);
+    expect(transport.bodies()[0]).not.toBe(FIRST_TOUCH_IMESSAGE_BY_LANGUAGE.en);
     expect(transport.locationRequests).toEqual(['chat-1']);
+
+    await handleInboundSms(
+      fake.db,
+      transport.inbound(PHONE, 'M5V 2T6', { transport: 'imessage', chatId: 'chat-1' }),
+      deps,
+    );
+    const done = await handleInboundSms(
+      fake.db,
+      transport.inbound(PHONE, 'Maya is 4, Leo is 1', { transport: 'imessage', chatId: 'chat-1' }),
+      deps,
+    );
+    expect(done.status).toBe('provisioned');
+    expect(
+      fake.writes.some(
+        (write) =>
+          write.op === 'insert' &&
+          write.table === schema.auditLog &&
+          write.payload.actionTaken === 'first_touch_location_requested' &&
+          (write.payload.after as { outcome?: string; code?: string } | undefined)?.outcome ===
+            'refused' &&
+          (write.payload.after as { code?: string } | undefined)?.code === '2011',
+      ),
+    ).toBe(true);
+  });
+
+  it('still sends the place ask when stopping the typing bubble throws', async () => {
+    const { fake, transport, deps } = harness();
+    const order: string[] = [];
+    deps.stopTyping = async () => {
+      order.push('stop');
+      throw new Error('typing down');
+    };
+    const send = transport.send.bind(transport);
+    transport.send = async (input) => {
+      order.push('text');
+      return send(input);
+    };
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
+    expect(order[0]).toBe('stop');
+    expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
   });
 
   it('uses the postal line in a group and does not open a 1:1 location card', async () => {
@@ -393,4 +456,86 @@ describe('cold-start discovery session', () => {
       expect(transport.bodies().at(-1)).not.toContain(EMAIL_ASK_BY_LANGUAGE.en);
     },
   );
+
+  it('hands a non-answer to the coach once the logistics budget is spent, and does not repeat the note', async () => {
+    vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
+    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA, EMPTY, EMPTY] });
+    const note = notedAfterLogistics(false, 'en');
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
+    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
+    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), deps);
+    await handleInboundSms(fake.db, inbound(transport, '1'), deps);
+    const ok = await handleInboundSms(fake.db, inbound(transport, 'ok'), deps);
+    expect(ok).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
+    expect(transport.bodies()).not.toContain(note);
+    const chinese = await handleInboundSms(fake.db, inbound(transport, '你好，周末有什么'), deps);
+    expect(chinese).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
+    expect(transport.bodies().filter((body) => body === note)).toEqual([]);
+  });
+
+  it('retries the Name and Photo share on the next cold-start turn after the first hello times out, once', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
+    vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
+    let setups = 0;
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (target.includes('share_contact_card')) {
+        return new Response(null, { status: 200 });
+      }
+      if (target.includes('/contact_card') && method === 'POST') {
+        setups += 1;
+        if (setups === 1) {
+          const abort = new Error('The operation was aborted');
+          abort.name = 'AbortError';
+          throw abort;
+        }
+        return Response.json({ is_active: true, phone_number: '+16462352164' }, { status: 201 });
+      }
+      if (target.includes('/contact_card')) {
+        return Response.json({
+          contact_cards: [{ phone_number: '+16462352164', first_name: 'Hale', is_active: true }],
+        });
+      }
+      if (target.includes('/messages')) {
+        return Response.json({ message: { id: 'msg-out' } }, { status: 201 });
+      }
+      return new Response(null, { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA, EMPTY, EMPTY] });
+    const imessage = { transport: 'imessage' as const, chatId: 'chat-1' };
+    await handleInboundSms(fake.db, inbound(transport, 'hi', imessage), deps);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]).includes('share_contact_card')),
+    ).toHaveLength(0);
+    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6', imessage), deps);
+    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1', imessage), deps);
+    expect(fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt ?? null).toBeNull();
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]).includes('share_contact_card')),
+    ).toHaveLength(0);
+
+    await handleInboundSms(fake.db, inbound(transport, '1', imessage), deps);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]).includes('share_contact_card')),
+    ).toHaveLength(1);
+    expect(fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toEqual(NOW);
+    expect(
+      fake.writes.some(
+        (write) =>
+          write.op === 'insert' &&
+          write.table === schema.auditLog &&
+          write.payload.actionTaken === 'linq_contact_card_shared' &&
+          (write.payload.after as { outcome?: string } | undefined)?.outcome === 'shared',
+      ),
+    ).toBe(true);
+
+    await handleInboundSms(fake.db, inbound(transport, 'ok', imessage), deps);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]).includes('share_contact_card')),
+    ).toHaveLength(1);
+    vi.unstubAllGlobals();
+  });
 });
