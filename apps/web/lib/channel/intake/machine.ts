@@ -66,6 +66,7 @@ import { recordCommitment } from '~/lib/commitments/ledger';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { recordCheckpointTold } from '~/lib/health/told';
 import { writeFact } from '~/lib/memory/facts';
+import { reportFirstHelloFailure } from '~/lib/monitoring/failure-page';
 import { type DiscoveryTrigger, defaultDiscoveryTrigger } from '~/lib/onboarding/trigger-discovery';
 import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
@@ -548,7 +549,12 @@ export async function handleInboundSms(
   // left. handleDetails would extract / HELP / provision and skip greeting().
   if (session.state === 'awaiting_details' && !transcriptHasOutbound(session.transcript)) {
     return claimedTurn(database, inbound, now, () =>
-      deliverFirstHello(database, { session, phoneE164, inbound, now }, deps, session.sourceCode),
+      deliverFirstHelloReporting(
+        database,
+        { session, phoneE164, inbound, now },
+        deps,
+        session.sourceCode,
+      ),
     );
   }
 
@@ -993,7 +999,7 @@ async function greetNewFamily(
   // every Twilio retry as details (VIL-332). Close the unfinished claim so the
   // retry can greet on a new session.
   try {
-    return await deliverFirstHello(
+    return await deliverFirstHelloReporting(
       database,
       { session, phoneE164: args.phoneE164, inbound: args.inbound, now: args.now },
       deps,
@@ -1001,6 +1007,29 @@ async function greetNewFamily(
     );
   } catch (err) {
     await saveSession(database, session, { closedAt: args.now }, args.now);
+    throw err;
+  }
+}
+
+/**
+ * The first hello, and a page when it throws. Reporting happens before the
+ * caller closes the session, and it never replaces the error the caller is
+ * about to surface — a parent who got no hello is still a failed turn.
+ */
+async function deliverFirstHelloReporting(
+  database: Database,
+  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
+  deps: IntakeDeps,
+  sourceCode: string | null,
+): Promise<IntakeOutcome> {
+  try {
+    return await deliverFirstHello(database, args, deps, sourceCode);
+  } catch (err) {
+    await reportFirstHelloFailure(database, {
+      sessionId: args.session.id,
+      familyId: args.session.familyId,
+      err,
+    });
     throw err;
   }
 }
