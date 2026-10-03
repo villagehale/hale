@@ -527,8 +527,10 @@ export const HALE_GREETING_EN =
   'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.';
 
 /**
- * VIL-385 · Sloane lock. The iMessage first bubble, then the location card
- * alone. Byte-stable. ASCII apostrophes. French is ASCII, tu.
+ * VIL-385 · Sloane lock. Sent only after Linq accepts the location card.
+ * VIL-412 leaves that card off unless FIRST_TOUCH_LOCATION_CARD_ENABLED is
+ * exactly `true`; the postal sentence is the first bubble otherwise.
+ * Byte-stable. ASCII apostrophes. French is ASCII, tu.
  */
 export const FIRST_TOUCH_IMESSAGE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: "Hey, it's Hale. I find what's on for kids near you. Tap to share where you are and I'll show you what's on this week.",

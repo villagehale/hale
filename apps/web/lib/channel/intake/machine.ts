@@ -119,7 +119,7 @@ import {
 import { parseCanadianPostal, summarizeChildren } from './derive';
 import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract';
 import { findThisWeek, renderWeekFind } from './first-touch-find';
-import { firstTouchLadderEnabled } from './first-touch-flag';
+import { firstTouchLadderEnabled, firstTouchLocationCardEnabled } from './first-touch-flag';
 import { type FirstTouchPlace, placeFromMessage, placeFromVenue } from './first-touch-place';
 import { identityChallengeReply } from './identity-challenge';
 import type { IntakeAckComposer } from './intake-voice';
@@ -1200,6 +1200,26 @@ async function sendPlaceAsk(
   transcript: TranscriptEntry[];
   locationRequest: FirstTouchPersisted['locationRequest'];
 }> {
+  const at = ctx.now.toISOString();
+  // Linq location sharing is a paid add-on. Off unless the switch is exactly
+  // `true`: the postal sentence goes out and requestLocation is never called.
+  // Provisioning still writes first_touch_location_requested, outcome skipped.
+  // On, the card is asked first. The Tap sentence is only true once Linq
+  // accepted it. A 2011 (feature not available) or any other miss uses the
+  // postal line.
+  if (!firstTouchLocationCardEnabled()) {
+    const sent = await sendAndRecord(
+      database,
+      ctx,
+      FIRST_TOUCH_SMS_BY_LANGUAGE[language],
+      deps,
+      transcript,
+    );
+    return {
+      transcript: sent.transcript,
+      locationRequest: { at, outcome: 'skipped' },
+    };
+  }
   const chatId = ctx.pipe.chatId;
   const canRequest =
     ctx.pipe.channel === 'imessage' &&
@@ -1207,11 +1227,6 @@ async function sendPlaceAsk(
     typeof chatId === 'string' &&
     chatId.length > 0 &&
     typeof deps.transport.requestLocation === 'function';
-  const at = ctx.now.toISOString();
-  // The card is asked first. The Tap sentence is only true once Linq accepted
-  // it. A 2011 (feature not available) or any other miss uses the postal line.
-  // The outcome is still stored, and provisioning still writes
-  // first_touch_location_requested.
   if (!canRequest || !chatId || !deps.transport.requestLocation) {
     const sent = await sendAndRecord(
       database,

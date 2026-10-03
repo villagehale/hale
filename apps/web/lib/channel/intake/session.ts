@@ -119,7 +119,8 @@ export interface FirstTouchPersisted {
       | 'not_configured'
       | 'unreachable'
       | 'skipped_group'
-      | 'not_a_moment';
+      | 'not_a_moment'
+      | 'skipped';
     code?: string;
   } | null;
   /**
@@ -241,6 +242,7 @@ const LOCATION_REQUEST_OUTCOMES = [
   'unreachable',
   'skipped_group',
   'not_a_moment',
+  'skipped',
 ] as const;
 
 function decodeFirstTouch(value: unknown): FirstTouchPersisted | null {
