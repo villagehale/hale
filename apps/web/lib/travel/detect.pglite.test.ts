@@ -67,7 +67,9 @@ afterEach(async () => {
 });
 
 /** A booking-shaped envelope: a booking noun in the subject and a travel co-token. */
-function envelope(overrides: Partial<{ messageId: string; subject: string; snippet: string }> = {}) {
+function envelope(
+  overrides: Partial<{ messageId: string; subject: string; snippet: string }> = {},
+) {
   return {
     messageId: overrides.messageId ?? 'msg-1',
     subject: overrides.subject ?? 'Your itinerary for AC 704',
@@ -122,7 +124,11 @@ function ports(
 
 function run(
   spy: Spy,
-  input: Partial<{ seeding: boolean; envelopes: ReturnType<typeof envelope>[]; parentUserId: string | null }> = {},
+  input: Partial<{
+    seeding: boolean;
+    envelopes: ReturnType<typeof envelope>[];
+    parentUserId: string | null;
+  }> = {},
 ): Promise<readonly TravelDetectOutcome[]> {
   return detectTravelBookingsForSweep(
     database,
@@ -207,6 +213,14 @@ describe('the flags gate collection, not just the send', () => {
     expect(spy.bodyFetches).toEqual([]);
     expect(spy.extractions).toBe(0);
     expect(await tripCount()).toBe(0);
+  });
+
+  it('collects a family that is not on the allowlist when F14_ENABLED is exactly true', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', '00000000-0000-4000-8000-000000000000');
+    vi.stubEnv('TRAVEL_BRIEF_ENABLED', 'true');
+    const spy = ports();
+    expect(await run(spy)).toEqual(['trip_written']);
   });
 
   it('F14 being off is dark too, and it is checked first', async () => {
@@ -461,7 +475,7 @@ describe('the terminal CHECK', () => {
     expect(closed?.closedReason).toBe('sent');
   });
 
-  it("an `overtaken` close carries NO message id, and that is permitted", async () => {
+  it('an `overtaken` close carries NO message id, and that is permitted', async () => {
     const [trip] = await database
       .insert(schema.familyTrips)
       .values({

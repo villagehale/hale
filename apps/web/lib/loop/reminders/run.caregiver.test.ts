@@ -2,8 +2,8 @@ import type { Database } from '@hale/db';
 import { channelSendJobPayloadSchema } from '@hale/tools-contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CaregiverSeat } from '~/lib/loop/caregiver-audience';
-import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
 import { DEFAULT_LOOP_PREFS } from '~/lib/loop/prefs';
+import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
 import {
   type ChannelSendJob,
   type DueReminder,
@@ -51,6 +51,8 @@ function event(over: Partial<LiveEvent> = {}): LiveEvent {
     childId: TODDLER.id,
     sensitive: false,
     location: 'Stouffville Public School',
+    googleEventId: null,
+    createdBy: null,
     ...over,
   };
 }
@@ -138,11 +140,15 @@ describe('converge — which events a caregiver seat materializes at all', () =>
     });
     await runReminderCron(db, deps, NOW);
 
-    const caregiverRefs = [...new Set(upserts.filter((u) => u.parentUserId === 'g1').map((u) => u.eventRef))];
+    const caregiverRefs = [
+      ...new Set(upserts.filter((u) => u.parentUserId === 'g1').map((u) => u.eventRef)),
+    ];
     expect(caregiverRefs.sort()).toEqual(['e-family', 'e-toddler']);
 
     // POSITIVE CONTROL: the parent still materializes every one of the four.
-    const parentRefs = [...new Set(upserts.filter((u) => u.parentUserId === 'p1').map((u) => u.eventRef))];
+    const parentRefs = [
+      ...new Set(upserts.filter((u) => u.parentUserId === 'p1').map((u) => u.eventRef)),
+    ];
     expect(parentRefs.sort()).toEqual(['e-family', 'e-health', 'e-teen', 'e-toddler']);
   });
 });
@@ -199,7 +205,10 @@ describe('fire — what actually reaches a caregiver', () => {
   it("suppresses, by name, a due row for a teenager's event", async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     const { deps, enqueued, marked } = makeDeps({
-      loadDueReminders: async () => [dueRow(), dueRow({ id: 'r2', parentUserId: 'p1', role: 'primary_parent' })],
+      loadDueReminders: async () => [
+        dueRow(),
+        dueRow({ id: 'r2', parentUserId: 'p1', role: 'primary_parent' }),
+      ],
       loadEvent: async () => event({ childId: TEEN.id }),
     });
     const result = await runReminderCron(db, deps, NOW);
@@ -212,7 +221,10 @@ describe('fire — what actually reaches a caregiver', () => {
   it('suppresses a health-flagged event for a caregiver and sends it to the parent', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     const { deps, enqueued, marked } = makeDeps({
-      loadDueReminders: async () => [dueRow(), dueRow({ id: 'r2', parentUserId: 'p1', role: 'primary_parent' })],
+      loadDueReminders: async () => [
+        dueRow(),
+        dueRow({ id: 'r2', parentUserId: 'p1', role: 'primary_parent' }),
+      ],
       loadEvent: async () => event({ sensitive: true }),
     });
     await runReminderCron(db, deps, NOW);
@@ -408,7 +420,10 @@ describe('one recipient, two households', () => {
       // family she nannies for. One user id, two roles, two families, same slot.
       const events = new Map<string, LiveEvent>([
         ['e-teen', event({ id: 'e-teen', title: 'Therapy intake', childId: TEEN.id })],
-        ['e-piano', event({ id: 'e-piano', title: 'Piano', childId: KID_B.id, location: 'Bayview studio' })],
+        [
+          'e-piano',
+          event({ id: 'e-piano', title: 'Piano', childId: KID_B.id, location: 'Bayview studio' }),
+        ],
       ]);
       const rows: Record<string, DueReminder> = {
         'fam-1': dueRow({

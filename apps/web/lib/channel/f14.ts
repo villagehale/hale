@@ -36,6 +36,13 @@ export function f14Allowlist(): Set<string> {
   );
 }
 
+/**
+ * ON FOR EVERY FAMILY when `F14_ENABLED` is exactly the string `true`.
+ * A family that is not on `F14_FAMILY_ALLOWLIST` is included in that state.
+ * The allowlist applies only while the flag is not exactly `true`.
+ * Unset, `false`, `TRUE`, `1`, and `true\n` are off. The code default stays
+ * off so a missing env cannot start the product; production sets the value.
+ */
 export function f14EnabledFor(familyId: string): boolean {
   return f14Enabled() || f14Allowlist().has(familyId);
 }

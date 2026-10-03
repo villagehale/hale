@@ -67,3 +67,18 @@ export const BOOKED_DETECTION_BACKFILL_ENABLED_ENV = 'BOOKED_DETECTION_BACKFILL_
 export function bookedDetectionBackfillEnabled(): boolean {
   return process.env[BOOKED_DETECTION_BACKFILL_ENABLED_ENV] === 'true';
 }
+
+/**
+ * One list page of booking-shaped mail. Forty metadata reads is the ceiling;
+ * {@link BOOKED_BACKFILL_BUDGET_MS} is what actually stops the sweep. The
+ * connector cron is every 15 minutes and walks every connection inside a 300s
+ * function, so a mailbox of a few hundred matching messages — a typical 90-day
+ * inbox — finishes in a few hours, and one household cannot spend the tick.
+ */
+export const BOOKED_BACKFILL_MAX_PER_SWEEP = 40;
+
+/** Wall clock for one connection's backfill page on the cron. */
+export const BOOKED_BACKFILL_BUDGET_MS = 25_000;
+
+/** The connect redirect is a person waiting. One short page, then the cron. */
+export const BOOKED_BACKFILL_KICK_BUDGET_MS = 8_000;

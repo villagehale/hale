@@ -14,6 +14,7 @@ import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { googleAccountBlindIndex } from '~/lib/crypto/blind-index';
 import { db } from '~/lib/db';
 import { resolveUserIdForUser } from '~/lib/family';
+import { kickGmailBookedBackfill } from '~/lib/integrations/booked-backfill-kick';
 import { type ConnectState, verifyConnectState } from '~/lib/integrations/connect-state';
 import {
   CONNECTOR_SCOPES,
@@ -221,6 +222,26 @@ export async function GET(req: NextRequest) {
         { familyId: bound.familyId, code: err instanceof Error ? err.name : 'unknown' },
         'google push: connect watch failed',
       );
+    }
+    if (bound.provider === 'gmail' && tokens.accessToken) {
+      try {
+        const kick = await kickGmailBookedBackfill(database, {
+          id: connectId,
+          familyId: bound.familyId,
+          userId: bound.userId,
+          accessToken: tokens.accessToken,
+          providerMetadata: providerMetadata ?? {},
+        });
+        console.info(
+          { familyId: bound.familyId, kick: kick.outcome },
+          'gmail backfill: connect kick',
+        );
+      } catch (err) {
+        console.info(
+          { familyId: bound.familyId, code: err instanceof Error ? err.name : 'unknown' },
+          'gmail backfill: connect kick failed',
+        );
+      }
     }
   } catch {
     return back('error', surface, bound.provider);
