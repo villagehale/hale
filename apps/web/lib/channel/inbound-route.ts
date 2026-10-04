@@ -184,6 +184,7 @@ export async function routeInboundText(
     const intake = {
       ...deps.intake(inbound.transport ?? 'sms', linqTurnBind(inbound)),
       stopTyping: typing.stop,
+      keepTyping: typing.rearm,
     };
 
     // Media is answered here, but never before the CASL keywords: see the module note.

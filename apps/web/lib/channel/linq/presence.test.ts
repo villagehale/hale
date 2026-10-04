@@ -96,6 +96,29 @@ describe('armDelayedImessageTyping', () => {
     await typing.stop();
   });
 
+  it('re-arms a live bubble so a slow step does not outlive the hold', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('LINQ_API_KEY', '');
+    const warn = vi.fn();
+    const typing = armDelayedImessageTyping({
+      channel: 'imessage',
+      chatId: CHAT,
+      log: { warn },
+      delayMs: 0,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    const starts = () => warn.mock.calls.filter((call) => call[0]?.phase === 'start').length;
+    const before = starts();
+    typing.rearm();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(starts()).toBeGreaterThan(before);
+    await typing.stop();
+    const afterStop = starts();
+    typing.rearm();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(starts()).toBe(afterStop);
+  });
+
   it('starts after the delay and stops without throwing when Linq refuses', async () => {
     vi.useFakeTimers();
     vi.stubEnv('LINQ_API_KEY', '');

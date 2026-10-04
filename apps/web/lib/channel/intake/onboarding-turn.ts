@@ -293,6 +293,9 @@ export function mergeChildFacts(
       );
     }
     if (index < 0 && !child.name && incoming.length === 1 && next.length === 1) index = 0;
+    if (index < 0 && child.name && incoming.length === 1 && next.length === 1 && !next[0]?.name) {
+      index = 0;
+    }
     if (index < 0 && !child.name && child.ageMonths != null) {
       index = next.findIndex((row, i) => !used.has(i) && row.ageMonths == null);
     }

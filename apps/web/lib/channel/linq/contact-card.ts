@@ -39,6 +39,34 @@ import {
 /** Hale, a space, then hibiscus U+1F33A. The only name the line card may show. */
 export const HALE_CONTACT_FIRST_NAME = 'Hale \u{1F33A}';
 
+/**
+ * How long card setup may keep a turn after the reply has already been sent.
+ * Setup runs after that send. A slow Linq call past this budget is abandoned
+ * for this turn and retried after a later reply.
+ */
+export const LINQ_CARD_REPLY_BUDGET_MS = 2_000;
+
+/** Resolve when `work` finishes, or when the reply budget passes, whichever is first. */
+export function finishCardWithinReplyBudget(work: Promise<unknown>): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      console.warn(
+        { budgetMs: LINQ_CARD_REPLY_BUDGET_MS },
+        'linq contact card: setup held past the reply budget',
+      );
+      done();
+    }, LINQ_CARD_REPLY_BUDGET_MS);
+    void work.then(done, done);
+  });
+}
+
 /** Once-per-day shares use Hale's home zone, the same zone as quiet hours. */
 const CONTACT_CARD_DAY_ZONE = 'America/Toronto';
 

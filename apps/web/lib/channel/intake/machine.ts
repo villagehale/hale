@@ -38,6 +38,7 @@ import { acceptedStatus } from '~/lib/channel/ledger';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import {
   deliverHaleLinqContactCard,
+  finishCardWithinReplyBudget,
   haleContactCardDay,
   shareHaleContactCardOnce,
 } from '~/lib/channel/linq/contact-card';
@@ -293,6 +294,12 @@ export interface IntakeDeps {
    * the reply still leaves.
    */
   stopTyping?: () => Promise<void>;
+  /**
+   * Send another typing start. The inbound door arms the bubble at receipt.
+   * A search or a model call can outlive Linq's hold, so each slow step
+   * re-arms. Absent when nothing was armed.
+   */
+  keepTyping?: () => void;
   /** The funnel's two milestones. Optional because the DEFAULT IS THE REAL EFFECT —
    * `captureServerEvent`, which already names its own absence on a dead PostHog key
    * (rule #11) — so this is a test seam, never a way to withhold the send. */
@@ -753,7 +760,9 @@ async function sendAndRecord(
   const wireBody = sent.linkOmitted ? plainTextWithoutLinks(body) : body;
   const channel = sent.transport === 'imessage' ? 'imessage' : ctx.pipe.channel;
   const chatId = sent.transport === 'imessage' ? (sent.chatId ?? ctx.pipe.chatId) : ctx.pipe.chatId;
-  await shareLinqCardAfterFirstOutbound(database, ctx, { channel, chatId });
+  await finishCardWithinReplyBudget(
+    shareLinqCardAfterFirstOutbound(database, ctx, { channel, chatId }),
+  );
   const entry: TranscriptEntry = {
     direction: 'out',
     body: wireBody,
@@ -1151,6 +1160,7 @@ async function friendSpeak(
   input: Omit<FriendVoiceInput, 'recentTurns'>,
   options?: { link?: string | null; linkFollows?: boolean; prompt?: 'full' | 'short' },
 ) {
+  deps.keepTyping?.();
   return speakFriend(
     deps.friendVoice,
     { ...input, recentTurns: turnsFromTranscript(transcript) },
@@ -2530,11 +2540,11 @@ async function closeColdStartForCoach(
 }
 
 /**
- * The first-hello Name and Photo share runs before a family exists, and only
+ * The first-hello Name and Photo share runs after the reply is sent, and only
  * when the transcript has no outbound yet. A timeout there (unreachable,
  * httpStatus 0) is retried once in that turn and, if it still fails, stored
- * on the session. The next outbound tries again. This later turn is the
- * one after a family exists. {@link shareHaleContactCardOnce} claims
+ * on the session. The next turn tries again after its own reply, never before
+ * it. {@link shareHaleContactCardOnce} claims
  * parent_channels.linq_contact_card_shared_at before it posts, and a claim
  * already held returns without a second share. The audit row is
  * linq_contact_card_shared. A miss is logged and does not fail the reply.
@@ -2636,6 +2646,7 @@ async function refreshYearFind(
   },
 ): Promise<string | null> {
   try {
+    deps.keepTyping?.();
     const radar = await deps.radar.compose({
       familyId: args.familyId,
       children: args.children,
@@ -2976,6 +2987,7 @@ async function friendColdTurn(
         now,
       ),
       firstTouch: { ...withColdStart(session, language, nextProgress), given: nextGiven },
+      ...(next == null ? { state: 'complete' as const, closedAt: now, ladderNext: null } : {}),
     },
     now,
   );
@@ -2983,6 +2995,27 @@ async function friendColdTurn(
 }
 
 async function continueColdStart(
+  database: Database,
+  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
+  deps: IntakeDeps,
+): Promise<IntakeOutcome> {
+  const outcome = await runColdStartTurn(database, args, deps);
+  const familyId = args.session.familyId;
+  const userId = args.session.userId;
+  if (familyId && userId && args.session.firstTouch?.coldStart) {
+    await finishCardWithinReplyBudget(
+      retryFailedLinqContactCard(database, {
+        familyId,
+        parentUserId: userId,
+        now: args.now,
+        inbound: args.inbound,
+      }),
+    );
+  }
+  return outcome;
+}
+
+async function runColdStartTurn(
   database: Database,
   args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
   deps: IntakeDeps,
@@ -3000,12 +3033,6 @@ async function continueColdStart(
     );
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
-  await retryFailedLinqContactCard(database, {
-    familyId,
-    parentUserId: userId,
-    now,
-    inbound,
-  });
   if (coldStartQuestionIsStale(progress.step, lastTranscriptAt(session.transcript), now)) {
     console.info(
       { stale: 'cold_start' },
@@ -3813,6 +3840,7 @@ async function provision(
 
   await seedFirstRadar(database, { familyId, areaCoarse: gathered.location.areaCoarse, now }, deps);
 
+  deps.keepTyping?.();
   const radar = await deps.radar.compose({
     familyId,
     children: gathered.collected.children,
