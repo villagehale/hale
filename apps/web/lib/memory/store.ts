@@ -5,6 +5,7 @@ import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { linqGroupCoparentEnabled } from '~/lib/channel/linq/config';
 import { replyFrame, replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
+import { promptKind, readDisposition } from './classify-write';
 import { writeFact } from './facts';
 import { forgetFamilyFact } from './forget';
 import {
@@ -119,6 +120,10 @@ export interface RecommendationMemoryFact {
   factKey: string;
   factValue: unknown;
   confidence: number;
+  /** Model vocabulary, so a ranker can weigh the fact. */
+  kind: 'enduring' | 'obligation' | 'curiosity';
+  disposition: 'confirmed' | 'declined' | 'asked';
+  source: string;
 }
 
 /**
@@ -141,6 +146,7 @@ export async function loadRecommendationMemory(
       factValue: schema.familyMemoryFacts.factValue,
       confidence: schema.familyMemoryFacts.confidence,
       memoryKind: schema.familyMemoryFacts.memoryKind,
+      memorySource: schema.familyMemoryFacts.memorySource,
       expiresAt: schema.familyMemoryFacts.expiresAt,
     })
     .from(schema.familyMemoryFacts)
@@ -153,8 +159,23 @@ export async function loadRecommendationMemory(
     .limit(RECOMMENDATION_LIMIT);
 
   return rows
-    .filter((row) => includeInRecommendations(row, now, enabled))
-    .map(({ memoryKind: _kind, expiresAt: _expires, ...fact }) => fact);
+    .filter((row) => {
+      // A decline and a passing question never steer a recommendation, flag or
+      // not. The kinds flag still decides whether an unlabeled one-off does.
+      const disposition = readDisposition(row.factValue);
+      if (disposition === 'declined' || disposition === 'asked') return false;
+      return includeInRecommendations(row, now, enabled);
+    })
+    .map((row) => ({
+      childId: row.childId,
+      factType: row.factType,
+      factKey: row.factKey,
+      factValue: row.factValue,
+      confidence: row.confidence,
+      kind: promptKind(row.memoryKind, row.factValue),
+      disposition: readDisposition(row.factValue),
+      source: row.memorySource,
+    }));
 }
 
 export async function promoteMatchingInferredFacts(
