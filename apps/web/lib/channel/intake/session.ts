@@ -3,6 +3,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
+import { haleContactCardDay } from '../linq/contact-card';
 import type { IntakeCollected } from './extract';
 
 /**
@@ -130,6 +131,21 @@ export interface FirstTouchPersisted {
    * a number. `logistics` waits for who is taking them.
    */
   coldStart?: ColdStartProgress | null;
+  /** Re-asks on the open place or ages step. Absent means zero. */
+  clarify?: FirstTouchClarify | null;
+  /**
+   * Facts the onboarding model already took from a message, before the step
+   * that would have asked for them. Absent means nothing extra is stored.
+   */
+  given?: FirstTouchGiven | null;
+}
+
+/** Name, pick, and connector answers captured ahead of the ask that would have used them. */
+export interface FirstTouchGiven {
+  parentName: string | null;
+  activityPick: number | null;
+  connectCalendar: boolean | null;
+  connectGmail: boolean | null;
 }
 
 export interface ColdStartProgress {
@@ -148,25 +164,56 @@ export interface ColdStartProgress {
   schoolMentioned: boolean;
 }
 
+/** How many times this ladder step was asked again after a non-answer. */
+export interface FirstTouchClarify {
+  place: number;
+  ages: number;
+}
+
 /**
- * Held when the share was attempted, or when setup failed before the chat.
- * `unreachable` does not hold the one-shot — see {@link linqContactCardClaimHeld}.
+ * The last Name and Photo attempt on this pre-family session.
+ * `unreachable` did not reach share — see {@link linqContactCardClaimHeld}.
+ * A `shared` or `share_refused` claim blocks only that chat for that Toronto
+ * day — see {@link linqContactCardShareBlocked}.
  */
 export interface LinqContactCardClaim {
   at: string;
   outcome: 'shared' | 'share_refused' | 'unreachable';
+  /** The iMessage chat this attempt was for. Absent on a claim written before per-chat days. */
+  chatId?: string;
   code?: string;
   /**
-   * Pre-family setup failures so far. The first hello counts as one, including
-   * its in-turn retry. The next outbound is the second. A held claim leaves
-   * this unset.
+   * Pre-family setup failures so far this Toronto day. The first hello counts
+   * as one, including its in-turn retry. The next outbound is the second.
    */
   attempts?: number;
 }
 
-/** True when this record consumed the one-shot. A failed setup did not. */
+/**
+ * True when a share was attempted, so provisioning can copy the timestamp.
+ * A failed setup did not. This is not the once-per-day gate.
+ */
 export function linqContactCardClaimHeld(claim: LinqContactCardClaim | null): boolean {
   return claim != null && claim.outcome !== 'unreachable';
+}
+
+/**
+ * True when this chat should not be shared again today.
+ * A claim with no chat id blocks every chat for that day (the older one-shot).
+ * Two unreachable setups today wait until tomorrow. A previous day does not block.
+ */
+export function linqContactCardShareBlocked(
+  claim: LinqContactCardClaim | null,
+  chatId: string,
+  now: Date,
+): boolean {
+  if (!claim) return false;
+  const at = new Date(claim.at);
+  if (Number.isNaN(at.getTime())) return false;
+  if (haleContactCardDay(at) !== haleContactCardDay(now)) return false;
+  if (claim.chatId && claim.chatId !== chatId) return false;
+  if (claim.outcome === 'unreachable') return (claim.attempts ?? 1) >= 2;
+  return true;
 }
 
 export interface IntakeSession {
@@ -215,7 +262,13 @@ function encodeData(data: IntakeData): string {
 
 function decodeLinqContactCardClaim(value: unknown): LinqContactCardClaim | null {
   if (!value || typeof value !== 'object') return null;
-  const row = value as { at?: unknown; outcome?: unknown; code?: unknown; attempts?: unknown };
+  const row = value as {
+    at?: unknown;
+    outcome?: unknown;
+    code?: unknown;
+    attempts?: unknown;
+    chatId?: unknown;
+  };
   if (
     row.outcome !== 'shared' &&
     row.outcome !== 'share_refused' &&
@@ -231,6 +284,7 @@ function decodeLinqContactCardClaim(value: unknown): LinqContactCardClaim | null
   return {
     at: row.at,
     outcome: row.outcome,
+    ...(typeof row.chatId === 'string' && row.chatId.length > 0 ? { chatId: row.chatId } : {}),
     ...(typeof row.code === 'string' ? { code: row.code } : {}),
     ...(attempts != null ? { attempts } : {}),
   };
@@ -279,6 +333,8 @@ function decodeFirstTouch(value: unknown): FirstTouchPersisted | null {
     place?: unknown;
     locationRequest?: unknown;
     coldStart?: unknown;
+    clarify?: unknown;
+    given?: unknown;
   };
   const language = row.language === 'fr' ? 'fr' : row.language === 'en' ? 'en' : null;
   if (!language) return null;
@@ -287,7 +343,47 @@ function decodeFirstTouch(value: unknown): FirstTouchPersisted | null {
     place: decodeFirstTouchPlace(row.place),
     locationRequest: decodeLocationRequest(row.locationRequest),
     coldStart: decodeColdStart(row.coldStart),
+    clarify: decodeFirstTouchClarify(row.clarify),
+    given: decodeFirstTouchGiven(row.given),
   };
+}
+
+function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as {
+    parentName?: unknown;
+    activityPick?: unknown;
+    connectCalendar?: unknown;
+    connectGmail?: unknown;
+  };
+  const parentName =
+    typeof row.parentName === 'string' && row.parentName.trim() ? row.parentName : null;
+  const activityPick =
+    typeof row.activityPick === 'number' &&
+    Number.isInteger(row.activityPick) &&
+    row.activityPick > 0
+      ? row.activityPick
+      : null;
+  const connectCalendar =
+    row.connectCalendar === true || row.connectCalendar === false ? row.connectCalendar : null;
+  const connectGmail =
+    row.connectGmail === true || row.connectGmail === false ? row.connectGmail : null;
+  if (!parentName && activityPick == null && connectCalendar == null && connectGmail == null)
+    return null;
+  return { parentName, activityPick, connectCalendar, connectGmail };
+}
+
+function decodeCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+function decodeFirstTouchClarify(value: unknown): FirstTouchClarify | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as { place?: unknown; ages?: unknown };
+  const place = decodeCount(row.place);
+  const ages = decodeCount(row.ages);
+  if (place === 0 && ages === 0) return null;
+  return { place, ages };
 }
 
 function decodeColdStart(value: unknown): ColdStartProgress | null {

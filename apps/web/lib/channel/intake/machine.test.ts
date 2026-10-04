@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
 import { formatLinqLineForParent, linqCoParentAsk } from '~/lib/channel/linq/group';
 import { YEAR_FIND_POLL_NONE, YEAR_FIND_POLL_PROMPT } from '~/lib/channel/linq/poll';
 import { LinqSendError, createLinqTextTransport } from '~/lib/channel/linq/transport';
@@ -242,6 +243,7 @@ beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
 });
 afterEach(() => {
+  vi.unstubAllEnvs();
   process.env.APP_ENCRYPTION_KEY = '';
 });
 
@@ -2263,7 +2265,9 @@ function liveLinqCardFetch(options?: {
     const target = String(url);
     if (target.includes('/contact_card?') || init?.method === 'GET') {
       return Response.json({
-        contact_cards: [{ phone_number: LINQ_LINE, first_name: 'Hale', is_active: true }],
+        contact_cards: [
+          { phone_number: LINQ_LINE, first_name: HALE_CONTACT_FIRST_NAME, is_active: true },
+        ],
       });
     }
     if (target.includes('/contact_card') && !target.includes('share_contact_card')) {
@@ -2325,6 +2329,17 @@ describe('intake · one ladder job per reply', () => {
   it('asks about the other parent in a short question when friend voice is on', async () => {
     vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
     const h = harness({});
+    const coparent = "Text me their number. Want the other parent on the kids' year?";
+    h.deps.friendVoice = {
+      async compose(input) {
+        if (input.step === 'coparent') return { reply: coparent };
+        if (input.step === 'email') {
+          return { reply: 'Want me to watch school and camp email for the dates?' };
+        }
+        if (input.step === 'calendar') return { reply: 'Want me to check your calendar?' };
+        return { reply: 'What should I call you?' };
+      },
+    };
     await text(h.fake, h.transport, h.deps, 'hi');
     await text(h.fake, h.transport, h.deps, 'Maya is 4, Leo is 1. M5V 2T6');
     // The name reply already sends the calendar card and advances to Gmail.
@@ -2340,11 +2355,10 @@ describe('intake · one ladder job per reply', () => {
     });
     expect(await reply(h)).toEqual({ status: 'ladder_advanced', step: 'coparent', closed: true });
     const last = h.transport.bodies().at(-1) ?? '';
-    expect(last).toBe("Want the other parent on the kids' year? Text me their number.");
+    expect(last).toBe(coparent);
     expect(last).not.toBe(CO_PARENT_ASK);
     expect(last).not.toMatch(/\bSTOP\b|unsubscribe/i);
     expect(last.match(/\?/g)).toHaveLength(1);
-    vi.unstubAllEnvs();
   });
 
   it('does not wait for a soft ack, and does not read cool as a name', async () => {
@@ -2586,7 +2600,9 @@ describe('intake · one ladder job per reply', () => {
       const target = String(url);
       if (target.includes('/contact_card?') || init?.method === 'GET') {
         return Response.json({
-          contact_cards: [{ phone_number: '+16462352164', first_name: 'Hale', is_active: true }],
+          contact_cards: [
+            { phone_number: '+16462352164', first_name: HALE_CONTACT_FIRST_NAME, is_active: true },
+          ],
         });
       }
       if (target.includes('/contact_card')) {
@@ -2673,7 +2689,9 @@ describe('intake · one ladder job per reply', () => {
       const target = String(url);
       if (target.includes('/contact_card?') || init?.method === 'GET') {
         return Response.json({
-          contact_cards: [{ phone_number: '+16462352164', first_name: 'Hale', is_active: true }],
+          contact_cards: [
+            { phone_number: '+16462352164', first_name: HALE_CONTACT_FIRST_NAME, is_active: true },
+          ],
         });
       }
       if (target.includes('/contact_card')) {
@@ -2760,7 +2778,9 @@ describe('intake · one ladder job per reply', () => {
       const body = init?.body === undefined ? null : JSON.parse(String(init.body));
       if (target.includes('/contact_card?') || init?.method === 'GET') {
         return Response.json({
-          contact_cards: [{ phone_number: '+16462352164', first_name: 'Hale', is_active: true }],
+          contact_cards: [
+            { phone_number: '+16462352164', first_name: HALE_CONTACT_FIRST_NAME, is_active: true },
+          ],
         });
       }
       if (target.includes('/contact_card')) {
@@ -2859,7 +2879,9 @@ describe('intake · one ladder job per reply', () => {
       const target = String(url);
       if (target.includes('/contact_card?') || init?.method === 'GET') {
         return Response.json({
-          contact_cards: [{ phone_number: '+16462352164', first_name: 'Hale', is_active: false }],
+          contact_cards: [
+            { phone_number: '+16462352164', first_name: HALE_CONTACT_FIRST_NAME, is_active: false },
+          ],
         });
       }
       if (target.includes('/contact_card')) {
@@ -2908,7 +2930,9 @@ describe('intake · one ladder job per reply', () => {
       const target = String(url);
       if (target.includes('/contact_card?') || init?.method === 'GET') {
         return Response.json({
-          contact_cards: [{ phone_number: '+16462352164', first_name: 'Hale', is_active: true }],
+          contact_cards: [
+            { phone_number: '+16462352164', first_name: HALE_CONTACT_FIRST_NAME, is_active: true },
+          ],
         });
       }
       if (target.includes('/contact_card')) {

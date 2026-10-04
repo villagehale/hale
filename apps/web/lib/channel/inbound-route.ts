@@ -178,6 +178,7 @@ export async function routeInboundText(
     channel: inbound.transport ?? 'sms',
     chatId: inbound.chatId ?? null,
     log: deps.log,
+    delayMs: 0,
   });
   try {
     const intake = {

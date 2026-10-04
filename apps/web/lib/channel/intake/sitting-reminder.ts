@@ -174,6 +174,12 @@ export async function runSittingReminderCron(
       const body = nudge
         ? await firstTouchNudgeBody(database, phoneE164, row.state, deps.friendVoice)
         : SITTING_SESSION_REMINDER;
+      if (nudge && body.trim().length === 0) {
+        await releaseSittingReminder(database, row.id);
+        result.failed += 1;
+        console.error({ reason: 'voice_unsent' }, 'sitting reminder: reply not sent');
+        continue;
+      }
       const { providerMessageId } = await sendResolvingNewChat(deps.transport, {
         to: phoneE164,
         body,

@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
+import { HALE_CONTACT_FIRST_NAME, haleContactCardDay } from '~/lib/channel/linq/contact-card';
 import { resolveReferrerFamilyId } from '~/lib/channel/referral/attribution';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
@@ -330,8 +330,13 @@ export async function provisionFromIntake(
               actionTaken: 'linq_contact_card_shared',
               targetTable: 'parent_channels',
               targetId: channelId,
-              after:
-                input.linqContactCardClaim.outcome === 'shared'
+              occurredAt: new Date(input.linqContactCardClaim.at),
+              after: {
+                ...(input.linqContactCardClaim.chatId
+                  ? { chatId: input.linqContactCardClaim.chatId }
+                  : {}),
+                sharedOn: haleContactCardDay(new Date(input.linqContactCardClaim.at)),
+                ...(input.linqContactCardClaim.outcome === 'shared'
                   ? { outcome: 'shared', firstName: HALE_CONTACT_FIRST_NAME }
                   : input.linqContactCardClaim.outcome === 'share_refused'
                     ? {
@@ -344,7 +349,8 @@ export async function provisionFromIntake(
                         ...(input.linqContactCardClaim.attempts
                           ? { attempts: input.linqContactCardClaim.attempts }
                           : {}),
-                      },
+                      }),
+              },
             },
           ]
         : []),

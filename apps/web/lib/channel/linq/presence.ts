@@ -47,24 +47,37 @@ export function armDelayedImessageTyping(input: {
   };
   let phase: 'wait' | 'live' | 'done' = 'wait';
   let starting: Promise<void> | null = null;
-  const timer = setTimeout(() => {
+  let refresh: ReturnType<typeof setInterval> | null = null;
+  const delayMs = input.delayMs ?? LINQ_TYPING_SHOW_DELAY_MS;
+
+  const begin = () => {
     if (phase !== 'wait') return;
     phase = 'live';
-    starting = signalImessageTyping(route, 'start', input.log).catch((err: unknown) => {
-      input.log.warn(
-        { err: err instanceof Error ? err.name : 'unknown' },
-        'linq: typing indicator did not start',
-      );
-    });
-  }, input.delayMs ?? LINQ_TYPING_SHOW_DELAY_MS);
-  if (typeof timer.unref === 'function') timer.unref();
+    const startOnce = () =>
+      signalImessageTyping(route, 'start', input.log).catch((err: unknown) => {
+        input.log.warn(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'linq: typing indicator did not start',
+        );
+      });
+    starting = startOnce();
+    refresh = setInterval(() => {
+      void startOnce();
+    }, LINQ_TYPING_REFRESH_MS);
+    if (typeof refresh.unref === 'function') refresh.unref();
+  };
+
+  const timer = delayMs <= 0 ? null : setTimeout(begin, delayMs);
+  if (timer && typeof timer.unref === 'function') timer.unref();
+  if (delayMs <= 0) begin();
 
   return {
     stop: async () => {
       if (phase === 'done') return;
       const live = phase === 'live';
       phase = 'done';
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
+      if (refresh) clearInterval(refresh);
       if (starting) await starting;
       if (!live && !starting) return;
       try {

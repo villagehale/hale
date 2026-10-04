@@ -66,8 +66,8 @@ export interface ConnectedNoticePorts {
   threadMessage: typeof threadProactiveMessage;
   /**
    * Friend voice for the 1:1 receipt when ONBOARDING_FRIEND_VOICE_ENABLED is on.
-   * Absent, or a compose that fails, sends the short fallback. The group receipt
-   * stays the locked sentence: it names the parent, and that name is code.
+ * Absent, or a compose that fails, sends nothing canned. The next callback
+ * can retry. The group receipt stays the locked sentence: it names the parent.
    */
   friendVoice?: FriendVoiceComposer;
 }
@@ -86,6 +86,8 @@ export type ConnectedNoticeOutcome =
   /** The co-parent's locked group receipt owns this bubble. This path does not
    * also send 1:1 or SMS. */
   | { status: 'not_sent'; reason: 'group_home' }
+  /** Friend voice could not write the receipt. The claim is released so a retry can. */
+  | { status: 'not_sent'; reason: 'voice_unsent' }
   /** The provider refused it. `code` is Twilio's, or `unknown`. */
   | { status: 'not_sent'; reason: 'send_failed'; code: string }
   /** Something on this path threw — a ledger write, the thread append. Its own outcome
@@ -100,6 +102,7 @@ export type ConnectedNoticeLabel =
   | 'no_send_target'
   | 'no_chat'
   | 'group_home'
+  | 'voice_unsent'
   | 'errored'
   | `send_failed:${string}`;
 
@@ -124,8 +127,8 @@ export function defaultConnectedNoticePorts(): ConnectedNoticePorts {
   };
 }
 
-/** The 1:1 receipt. Flag off keeps the locked sentence. Flag on asks the model,
- * and a failed compose still sends one short line (rule #11). */
+/** The 1:1 receipt. Flag off keeps the locked sentence. Flag on asks the model.
+ * A failed compose returns an empty string and the caller does not send it. */
 export async function connectedReceiptBody(
   language: ReplyLanguage,
   provider: TextConnectProvider,
@@ -273,6 +276,11 @@ async function sendReceipt(
     provider,
     ports.friendVoice,
   );
+  if (body.trim().length === 0) {
+    await database.delete(schema.channelMessages).where(eq(schema.channelMessages.id, claimed.id));
+    console.error({ reason: 'voice_unsent' }, 'connector connected: reply not sent');
+    return { status: 'not_sent', reason: 'voice_unsent' };
+  }
   let providerMessageId: string;
   let reportedImessage = false;
   let reportedChatId: string | null = null;

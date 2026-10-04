@@ -469,6 +469,43 @@ describe('Linq group, card, poll, and effect helpers', () => {
     expect(fetchMock.mock.calls[1]?.[1]?.method).toBe('PATCH');
   });
 
+  it('patches on HTTP 409 even when the body code is not 2014', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {
+      if (String(url).includes('/contact_card?')) {
+        return Response.json({ is_active: true, phone_number: '+15555550100' }, { status: 200 });
+      }
+      return Response.json({ error: { status: 409, code: 2013 } }, { status: 409 });
+    });
+    const setup = await setupLinqContactCard({
+      phoneNumber: '+15555550100',
+      firstName: 'Hale',
+      imageUrl: 'https://app.villagehale.com/email-logo.png',
+      fetch: fetchMock,
+    });
+    expect(setup).toEqual({ status: 'accepted' });
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST');
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe('PATCH');
+  });
+
+  it('calls create again when setup returns 2022', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    let posts = 0;
+    const fetchMock = vi.fn(async () => {
+      posts += 1;
+      if (posts === 1) return Response.json({ error: { code: 2022 } }, { status: 500 });
+      return Response.json({ is_active: true, phone_number: '+15555550100' }, { status: 201 });
+    });
+    const setup = await setupLinqContactCard({
+      phoneNumber: '+15555550100',
+      firstName: 'Hale',
+      imageUrl: 'https://app.villagehale.com/email-logo.png',
+      fetch: fetchMock,
+    });
+    expect(setup).toEqual({ status: 'accepted' });
+    expect(posts).toBe(2);
+  });
+
   it('sends a poll and a screen effect', async () => {
     vi.stubEnv('LINQ_API_KEY', API_KEY);
     const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {

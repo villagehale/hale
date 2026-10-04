@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeFakeDb } from '~/lib/channel/intake/fakes';
+import { linqContactCardShareBlocked } from '~/lib/channel/intake/session';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import {
@@ -104,7 +105,9 @@ describe('Linq contact card', () => {
       const target = String(url);
       if (target.includes('/contact_card?') || init?.method === 'GET') {
         return Response.json({
-          contact_cards: [{ phone_number: '+15555550100', first_name: 'Hale', is_active: true }],
+          contact_cards: [
+            { phone_number: '+15555550100', first_name: HALE_CONTACT_FIRST_NAME, is_active: true },
+          ],
         });
       }
       if (target.endsWith('/contact_card')) {
@@ -149,6 +152,45 @@ describe('Linq contact card', () => {
     expect(shared?.after).toMatchObject({ outcome: 'shared' });
   });
 
+  it('patches a dashboard flower name to the hibiscus before it shares', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fake = makeFakeDb();
+    enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
+    let gets = 0;
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (method === 'PATCH') {
+        expect(JSON.parse(String(init?.body)).first_name).toBe(HALE_CONTACT_FIRST_NAME);
+        return Response.json({ is_active: true, phone_number: '+15555550100' });
+      }
+      if (method === 'GET' || target.includes('/contact_card?')) {
+        gets += 1;
+        const firstName = gets === 1 ? 'Hale \u{1FABB}' : HALE_CONTACT_FIRST_NAME;
+        return Response.json({
+          contact_cards: [{ phone_number: '+15555550100', first_name: firstName, is_active: true }],
+        });
+      }
+      if (target.endsWith('/contact_card')) {
+        return Response.json({ is_active: true, phone_number: '+15555550100' }, { status: 201 });
+      }
+      return new Response(null, { status: 200 });
+    });
+    const shared = await shareHaleContactCardOnce(fake.db, {
+      familyId: FAMILY,
+      parentUserId: USER,
+      chatId: CHAT,
+      channel: 'imessage',
+      isGroup: false,
+      now: NOW,
+      fetch: fetchMock,
+    });
+    expect(shared).toEqual({ status: 'shared' });
+    expect(gets).toBeGreaterThan(1);
+  });
+
   it('shares when onboard is not finished, once a 1:1 channel row exists', async () => {
     process.env.APP_ENCRYPTION_KEY = ENC_KEY;
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
@@ -159,7 +201,9 @@ describe('Linq contact card', () => {
       const target = String(url);
       if (target.includes('/contact_card?') || init?.method === 'GET') {
         return Response.json({
-          contact_cards: [{ phone_number: '+15555550100', first_name: 'Hale', is_active: true }],
+          contact_cards: [
+            { phone_number: '+15555550100', first_name: HALE_CONTACT_FIRST_NAME, is_active: true },
+          ],
         });
       }
       if (target.endsWith('/contact_card')) {
@@ -192,7 +236,9 @@ describe('Linq contact card', () => {
       const method = (init?.method ?? 'GET').toUpperCase();
       if (target.includes('/contact_card?') || method === 'GET') {
         return Response.json({
-          contact_cards: [{ phone_number: '+15555550100', first_name: 'Hale', is_active: true }],
+          contact_cards: [
+            { phone_number: '+15555550100', first_name: HALE_CONTACT_FIRST_NAME, is_active: true },
+          ],
         });
       }
       if (target.endsWith('/contact_card')) {
@@ -256,7 +302,9 @@ describe('Linq contact card', () => {
       const target = String(url);
       if (target.includes('/contact_card?') || init?.method === 'GET') {
         return Response.json({
-          contact_cards: [{ phone_number: '+15555550100', first_name: 'Hale', is_active: true }],
+          contact_cards: [
+            { phone_number: '+15555550100', first_name: HALE_CONTACT_FIRST_NAME, is_active: true },
+          ],
         });
       }
       if (target.endsWith('/contact_card')) {
@@ -304,7 +352,9 @@ describe('Linq contact card', () => {
       const target = String(url);
       if (target.includes('/contact_card?') || init?.method === 'GET') {
         return Response.json({
-          contact_cards: [{ phone_number: '+15555550100', first_name: 'Hale', is_active: true }],
+          contact_cards: [
+            { phone_number: '+15555550100', first_name: HALE_CONTACT_FIRST_NAME, is_active: true },
+          ],
         });
       }
       if (target.endsWith('/contact_card')) {
@@ -356,7 +406,9 @@ describe('Linq contact card', () => {
       const target = String(url);
       if (target.includes('/contact_card?') || init?.method === 'GET') {
         return Response.json({
-          contact_cards: [{ phone_number: '+15555550100', first_name: 'Hale', is_active: false }],
+          contact_cards: [
+            { phone_number: '+15555550100', first_name: HALE_CONTACT_FIRST_NAME, is_active: false },
+          ],
         });
       }
       if (target.endsWith('/contact_card')) {
@@ -389,7 +441,196 @@ describe('Linq contact card', () => {
     expect(audit?.after).toMatchObject({ outcome: 'card_inactive' });
     expect((audit?.after as { outcome?: string } | null)?.outcome).not.toBe('shared');
   });
+
+  it('shares the same chat again on the next Toronto day, and not twice the same day', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fake = makeFakeDb();
+    enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
+    const fetchMock = liveCardFetch();
+    const args = {
+      familyId: FAMILY,
+      parentUserId: USER,
+      chatId: CHAT,
+      channel: 'imessage' as const,
+      isGroup: false,
+      fetch: fetchMock,
+    };
+    expect(await shareHaleContactCardOnce(fake.db, { ...args, now: NOW })).toEqual({
+      status: 'shared',
+    });
+    expect(await shareHaleContactCardOnce(fake.db, { ...args, now: NOW })).toEqual({
+      status: 'not_sent',
+      reason: 'already_shared',
+    });
+    const nextDay = new Date('2026-09-25T15:00:00.000Z');
+    expect(await shareHaleContactCardOnce(fake.db, { ...args, now: nextDay })).toEqual({
+      status: 'shared',
+    });
+    const shares = fetchMock.mock.calls.filter((call) =>
+      String(call[0]).includes('share_contact_card'),
+    );
+    expect(shares).toHaveLength(2);
+  });
+
+  it('shares a different iMessage chat the same day', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fake = makeFakeDb();
+    enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
+    const fetchMock = liveCardFetch();
+    const other = '11111111-1111-4111-8111-111111111111';
+    const base = {
+      familyId: FAMILY,
+      parentUserId: USER,
+      channel: 'imessage' as const,
+      isGroup: false,
+      now: NOW,
+      fetch: fetchMock,
+    };
+    expect(await shareHaleContactCardOnce(fake.db, { ...base, chatId: CHAT })).toEqual({
+      status: 'shared',
+    });
+    expect(await shareHaleContactCardOnce(fake.db, { ...base, chatId: other })).toEqual({
+      status: 'shared',
+    });
+    const urls = fetchMock.mock.calls
+      .map((call) => String(call[0]))
+      .filter((url) => url.includes('share_contact_card'));
+    expect(urls).toEqual([
+      `https://api.linqapp.com/api/partner/v3/chats/${CHAT}/share_contact_card`,
+      `https://api.linqapp.com/api/partner/v3/chats/${other}/share_contact_card`,
+    ]);
+  });
+
+  it('creates the card when GET says 2012, then shares only after it is active', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fake = makeFakeDb();
+    enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
+    let gets = 0;
+    let posts = 0;
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (target.includes('share_contact_card')) return new Response(null, { status: 200 });
+      if (method === 'GET' || target.includes('/contact_card?')) {
+        gets += 1;
+        if (gets === 1) {
+          return Response.json({ error: { code: 2012 } }, { status: 404 });
+        }
+        return Response.json({
+          contact_cards: [
+            { phone_number: '+15555550100', first_name: HALE_CONTACT_FIRST_NAME, is_active: true },
+          ],
+        });
+      }
+      posts += 1;
+      return Response.json(
+        { is_active: true, phone_number: '+15555550100', first_name: HALE_CONTACT_FIRST_NAME },
+        { status: 201 },
+      );
+    });
+    const outcome = await shareHaleContactCardOnce(fake.db, {
+      familyId: FAMILY,
+      parentUserId: USER,
+      chatId: CHAT,
+      channel: 'imessage',
+      isGroup: false,
+      now: NOW,
+      fetch: fetchMock,
+    });
+    expect(outcome).toEqual({ status: 'shared' });
+    expect(posts).toBeGreaterThan(1);
+    expect(gets).toBeGreaterThan(1);
+    expect(
+      fetchMock.mock.calls.some((call) => String(call[0]).includes('share_contact_card')),
+    ).toBe(true);
+  });
+
+  it('creates the card when share says 2012, then shares', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fake = makeFakeDb();
+    enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
+    let shares = 0;
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (target.includes('share_contact_card')) {
+        shares += 1;
+        if (shares === 1) return Response.json({ error: { code: 2012 } }, { status: 404 });
+        return new Response(null, { status: 200 });
+      }
+      if (method === 'GET' || target.includes('/contact_card?')) {
+        return Response.json({
+          contact_cards: [
+            { phone_number: '+15555550100', first_name: HALE_CONTACT_FIRST_NAME, is_active: true },
+          ],
+        });
+      }
+      return Response.json({ is_active: true, phone_number: '+15555550100' }, { status: 201 });
+    });
+    const outcome = await shareHaleContactCardOnce(fake.db, {
+      familyId: FAMILY,
+      parentUserId: USER,
+      chatId: CHAT,
+      channel: 'imessage',
+      isGroup: false,
+      now: NOW,
+      fetch: fetchMock,
+    });
+    expect(outcome).toEqual({ status: 'shared' });
+    expect(shares).toBe(2);
+  });
+
+  it('blocks a pre-family share for one chat on one Toronto day', () => {
+    const claim = { at: NOW.toISOString(), outcome: 'shared' as const, chatId: CHAT };
+    expect(linqContactCardShareBlocked(claim, CHAT, NOW)).toBe(true);
+    expect(linqContactCardShareBlocked(claim, 'other-chat', NOW)).toBe(false);
+    expect(linqContactCardShareBlocked(claim, CHAT, new Date('2026-09-25T15:00:00.000Z'))).toBe(
+      false,
+    );
+    expect(
+      linqContactCardShareBlocked({ at: NOW.toISOString(), outcome: 'shared' }, 'other-chat', NOW),
+    ).toBe(true);
+    expect(
+      linqContactCardShareBlocked(
+        { at: NOW.toISOString(), outcome: 'unreachable', attempts: 1, chatId: CHAT },
+        CHAT,
+        NOW,
+      ),
+    ).toBe(false);
+    expect(
+      linqContactCardShareBlocked(
+        { at: NOW.toISOString(), outcome: 'unreachable', attempts: 2, chatId: CHAT },
+        CHAT,
+        NOW,
+      ),
+    ).toBe(true);
+  });
 });
+
+function liveCardFetch() {
+  return vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+    const target = String(url);
+    if (target.includes('/contact_card?') || init?.method === 'GET') {
+      return Response.json({
+        contact_cards: [
+          { phone_number: '+15555550100', first_name: HALE_CONTACT_FIRST_NAME, is_active: true },
+        ],
+      });
+    }
+    if (target.endsWith('/contact_card')) {
+      return Response.json({ is_active: true, phone_number: '+15555550100' }, { status: 201 });
+    }
+    return new Response(null, { status: 200 });
+  });
+}
 
 describe('Linq tapbacks', () => {
   it('replaces only a throwaway courtesy, and a refusal does not throw', async () => {

@@ -92,6 +92,19 @@ function deps(transport: FakeTransport): SittingReminderDeps {
   return { transport };
 }
 
+function voiceDeps(transport: FakeTransport): SittingReminderDeps {
+  return {
+    transport,
+    friendVoice: {
+      async compose(input) {
+        if (input.language === 'fr') return { reply: 'Quel âge ont les enfants?' };
+        if (input.step === 'nudge_ages') return { reply: 'How old are your kids?' };
+        return { reply: "Still here. What's your postal code?" };
+      },
+    },
+  };
+}
+
 describe('SITTING_SESSION_REMINDER — Designer lock', () => {
   it('is the verbatim locked line, GSM-7 hyphens, no invented date or city clock', () => {
     expect(SITTING_SESSION_REMINDER).toBe(
@@ -334,16 +347,28 @@ describe('runSittingReminderCron', () => {
     const transport = new FakeTransport();
     seedSession(fake, { state: 'awaiting_place' });
 
-    const first = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    const first = await runSittingReminderCron(fake.db, voiceDeps(transport), TORONTO_8AM);
     expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0 });
     expect(transport.bodies()).toHaveLength(1);
     expect(transport.bodies()[0]).not.toBe(SITTING_SESSION_REMINDER);
     expect(transport.bodies()[0]?.match(/\?/g)).toHaveLength(1);
     expect(transport.bodies()[0]).toMatch(/postal code/i);
 
-    const second = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    const second = await runSittingReminderCron(fake.db, voiceDeps(transport), TORONTO_8AM);
     expect(second.sent).toBe(0);
     expect(transport.bodies()).toHaveLength(1);
+  });
+
+  it('does not send a canned nudge when the model is missing', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake, { state: 'awaiting_place' });
+    const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    expect(result.failed).toBe(1);
+    expect(result.sent).toBe(0);
+    expect(transport.bodies()).toEqual([]);
+    expect(transport.bodies().join('\n')).not.toMatch(/How old are the kids|postal code/i);
   });
 
   it('does not nudge a stuck postal-code session while friend voice is off', async () => {
@@ -369,7 +394,7 @@ describe('runSittingReminderCron', () => {
         }),
       ),
     });
-    await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    await runSittingReminderCron(fake.db, voiceDeps(transport), TORONTO_8AM);
     expect(transport.bodies()[0]).toMatch(/âge|code postal/i);
     expect(transport.bodies()[0]?.match(/\?/g)).toHaveLength(1);
   });
