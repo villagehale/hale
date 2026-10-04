@@ -24,5 +24,6 @@ What it covers:
 6. The Linq card and the vCard name are Hale followed by U+1F33A, and the card setup runs after the reply.
 7. Typing starts when the inbound is received and is still up until the send, including a search that outlives one Linq typing hold.
 8. None of the known canned onboarding strings are in the messages that were sent.
+9. The aha after a calendar or Gmail connect. The model is handed fixture events or mail and writes one specific line from them. An empty read stays a short receipt with none of those facts. An invented event is not sent, and Slack #ops is paged. The stand-in chooses; production code does not.
 
 A change under `apps/web/lib/channel/intake` has to leave this file green.

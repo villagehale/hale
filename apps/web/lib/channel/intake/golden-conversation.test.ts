@@ -1,6 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  AHA_TIME_ZONE,
+  ahaWhenLabel,
+  calendarFactsFromItems,
+  calendarOverlaps,
+  emailFactsFromMessages,
+  emptyAha,
+} from '~/lib/channel/connect/aha-read';
+import { connectedReceiptBody } from '~/lib/channel/connect/connected-notice';
 import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
 import { routeInboundText } from '~/lib/channel/inbound-route';
 import {
@@ -575,5 +584,121 @@ describe('golden onboarding conversation', () => {
       machine.deps,
     );
     expectNoCanned(machine.transport.bodies());
+  });
+
+  it('says one useful thing from the calendar or mailbox that just connected', async () => {
+    const swimStart = '2026-09-12T13:00:00.000Z';
+    const calendar = calendarFactsFromItems(
+      [
+        {
+          summary: 'Swim at the rec centre',
+          location: 'Rec centre',
+          start: { dateTime: swimStart },
+          end: { dateTime: '2026-09-12T14:00:00.000Z' },
+        },
+        {
+          summary: 'Dentist',
+          start: { dateTime: '2026-09-12T13:30:00.000Z' },
+          end: { dateTime: '2026-09-12T14:30:00.000Z' },
+        },
+      ],
+      new Date('2026-09-10T15:00:00.000Z'),
+    );
+    const synced = {
+      provider: 'gcal' as const,
+      read: 'ok' as const,
+      calendar,
+      email: [],
+      overlaps: calendarOverlaps(calendar),
+    };
+    const when = ahaWhenLabel(swimStart, false, AHA_TIME_ZONE, 'en');
+    const useful = await connectedReceiptBody(
+      'en',
+      'gcal',
+      {
+        async compose(input) {
+          const chosen = input.synced?.calendar[0];
+          const partner = input.synced?.overlaps[0]?.later;
+          if (!chosen) return { reply: 'Your calendar is connected.', ahaMention: null };
+          const clash = partner ? ` It overlaps ${partner}.` : '';
+          return {
+            reply: `${chosen.title} is on your calendar ${when}.${clash} I can remind you the evening before.`,
+            ahaMention: chosen.title,
+          };
+        },
+      },
+      synced,
+    );
+    expect(useful).toContain('Swim at the rec centre');
+    expect(useful).toContain(when);
+    expect(useful).toContain('Dentist');
+    expect(useful).not.toMatch(/\?/);
+    expect(useful).not.toContain('Hockey');
+
+    const mail = emailFactsFromMessages([
+      {
+        internalDate: '1757606400000',
+        snippet: 'Register by Friday.',
+        payload: {
+          headers: [
+            { name: 'Subject', value: 'Camp registration closes Friday' },
+            { name: 'From', value: 'Camp Acorn <office@camp.example>' },
+          ],
+        },
+      },
+    ]);
+    const emailAha = await connectedReceiptBody(
+      'en',
+      'gmail',
+      {
+        async compose(input) {
+          const subject = input.synced?.email[0]?.subject;
+          if (!subject) return { reply: 'Gmail is connected.', ahaMention: null };
+          return {
+            reply: `${subject} is in your email. I can remind you before it.`,
+            ahaMention: subject,
+          };
+        },
+      },
+      { provider: 'gmail', read: 'ok', calendar: [], email: mail, overlaps: [] },
+    );
+    expect(emailAha).toContain('Camp registration closes Friday');
+    expect(emailAha).not.toContain('office@camp.example');
+    expect(emailAha).not.toMatch(/\?/);
+
+    const quiet = await connectedReceiptBody(
+      'en',
+      'gcal',
+      {
+        async compose() {
+          return { reply: 'Your calendar is connected.', ahaMention: null };
+        },
+      },
+      emptyAha('gcal'),
+    );
+    expect(quiet).toBe('Your calendar is connected.');
+    expect(quiet).not.toContain('Swim at the rec centre');
+    expect(quiet).not.toContain('Camp registration');
+
+    const pages: string[] = [];
+    const invented = await connectedReceiptBody(
+      'en',
+      'gcal',
+      {
+        async compose() {
+          return { reply: 'Hockey is on Thursday at 4:00.', ahaMention: 'Hockey' };
+        },
+      },
+      synced,
+      {
+        page: async (text) => {
+          pages.push(text);
+        },
+      },
+    );
+    expect(invented).toBe('');
+    expect(pages).toEqual(['onboarding friend voice unsent step=connected reason=unusable']);
+    expect(pages.join(' ')).not.toContain('Swim');
+    expect(pages.join(' ')).not.toContain('Hockey');
   });
 });

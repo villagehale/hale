@@ -361,6 +361,68 @@ describe('sendConnectorConnectedText', () => {
     expect(rows).toEqual([]);
   });
 
+  it('texts the one calendar fact the model chose, including an overlap it was given', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    await seedChannel();
+    ports = {
+      ...ports,
+      friendVoice: {
+        async compose(input) {
+          if (input.step === 'email') {
+            return { reply: 'Want me to watch school and camp email for the dates?' };
+          }
+          return {
+            reply: 'Swim at the rec centre overlaps Dentist. I can remind you the evening before.',
+            ahaMention: 'Swim at the rec centre',
+          };
+        },
+      },
+    };
+
+    const outcome = await sendConnectorConnectedText(
+      db.database,
+      {
+        familyId,
+        parentUserId,
+        provider: 'gcal',
+        connectId,
+        now: NOW,
+        aha: {
+          provider: 'gcal',
+          read: 'ok',
+          calendar: [
+            {
+              title: 'Swim at the rec centre',
+              start: '2026-09-12T13:00:00.000Z',
+              end: '2026-09-12T14:00:00.000Z',
+              allDay: false,
+              location: null,
+              declined: false,
+            },
+            {
+              title: 'Dentist',
+              start: '2026-09-12T13:30:00.000Z',
+              end: '2026-09-12T14:30:00.000Z',
+              allDay: false,
+              location: null,
+              declined: false,
+            },
+          ],
+          email: [],
+          overlaps: [{ earlier: 'Swim at the rec centre', later: 'Dentist' }],
+        },
+      },
+      ports,
+    );
+
+    expect(connectedNoticeLabel(outcome)).toBe('sent');
+    const receipt = transport.sent[0]?.body ?? '';
+    expect(receipt).toContain('Swim at the rec centre');
+    expect(receipt).toContain('Dentist');
+    expect(receipt).not.toMatch(/\?/);
+    expect(receipt).not.toContain('Hockey');
+  });
+
   it('wires a real transport in production, not just in the tests that inject one', () => {
     // Every test above hands in a fake, which can never fail on a missing default.
     const wired = defaultConnectedNoticePorts();

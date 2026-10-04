@@ -1,6 +1,12 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
+import {
+  AHA_TIME_ZONE,
+  type AhaSnapshot,
+  ahaClockLabel,
+  ahaWhenLabel,
+} from '~/lib/channel/connect/aha-read';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadOnboardingFriendSkill } from '~/lib/cron/skill';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
@@ -48,6 +54,7 @@ const SHORT_FRIEND_SYSTEM = [
   'If nothing is missing, or they asked you to stop, no question mark.',
   'Do not number a list and do not write a URL. Use only facts in the JSON.',
   'Do not invent an activity, a date, a weekday, a time, or a price.',
+  'On the connected step, facts.synced is the real calendar or mailbox. If one item is useful, set ahaMention to its exact title or subject and mention only that item, plus an overlap partner when overlaps names it. If nothing is useful, or read is empty, failed, or withheld, set ahaMention null and do not name an event, a subject, a date, or a time.',
   'No STOP, unsubscribe, or compliance wording. No emoji.',
 ].join(' ');
 
@@ -113,6 +120,11 @@ export interface FriendVoiceInput {
   /** Whether they agreed to be watched. Set only on the ack step. */
   granted?: boolean | null;
   /**
+   * Real items from the connector that just landed. Set only on the connected
+   * step. The model chooses at most one. Code does not rank them.
+   */
+  synced?: AhaSnapshot | null;
+  /**
    * What is already stored, in onboarding order. Absent on older callers.
    * The model uses it as guidance. Code computes it from stored facts.
    */
@@ -137,7 +149,7 @@ export interface FriendVoiceComposer {
   compose(
     input: FriendVoiceInput,
     options?: FriendComposeOptions,
-  ): Promise<{ reply: string; capture?: unknown }>;
+  ): Promise<{ reply: string; capture?: unknown; ahaMention?: string | null }>;
 }
 
 export interface SpeakOptions {
@@ -151,6 +163,12 @@ export interface SpeakOptions {
   page?: (text: string) => Promise<unknown>;
   /** Test hook. Production uses {@link FRIEND_ATTEMPT_TIMEOUT_MS}. */
   attemptTimeoutMs?: number;
+  /**
+   * The exact title or subject the model chose to mention. Null means the
+   * reply adds no specific from the synced data. Code checks the choice; it
+   * does not pick one.
+   */
+  ahaMention?: string | null;
 }
 
 const childSchema = z
@@ -176,6 +194,7 @@ const replySchema = z
     calendarLater: z.boolean().optional().default(false),
     gmailLater: z.boolean().optional().default(false),
     stopAsking: z.boolean().optional().default(false),
+    ahaMention: z.string().nullable().optional().default(null),
   })
   .strict();
 
@@ -205,6 +224,7 @@ const replyJsonSchema = {
     calendarLater: { type: 'boolean' },
     gmailLater: { type: 'boolean' },
     stopAsking: { type: 'boolean' },
+    ahaMention: { type: ['string', 'null'] },
   },
   required: ['reply'],
 } as const;
@@ -262,7 +282,33 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
       parentName: input.parentName,
       connector: input.connector ?? null,
       granted: input.granted ?? null,
+      synced: syncedForModel(input),
     },
+  };
+}
+
+/** Labels the model may quote. Both languages are slots, so a French reply can name samedi. */
+function syncedForModel(input: FriendVoiceInput): unknown {
+  const synced = input.synced;
+  if (!synced) return null;
+  return {
+    read: synced.read,
+    calendar: synced.calendar.map((item) => ({
+      title: item.title,
+      when: ahaWhenLabel(item.start, item.allDay, AHA_TIME_ZONE, input.language),
+      clock: item.allDay ? null : ahaClockLabel(item.start, AHA_TIME_ZONE),
+      location: item.location,
+      declined: item.declined,
+    })),
+    email: synced.email.map((item) => ({
+      subject: item.subject,
+      fromName: item.fromName,
+      when: item.receivedAt
+        ? ahaWhenLabel(item.receivedAt, false, AHA_TIME_ZONE, input.language)
+        : null,
+      snippet: item.snippet,
+    })),
+    overlaps: synced.overlaps,
   };
 }
 
@@ -277,7 +323,34 @@ export function friendFactSlots(input: FriendVoiceInput, link?: string | null): 
   if (input.connector === 'gcal') slots.push('calendar', 'calendrier');
   if (input.connector === 'gmail') slots.push('gmail', 'Gmail');
   if (link) slots.push(link);
+  for (const slot of syncedFactSlots(input)) slots.push(slot);
   return slots.filter((slot) => slot.length > 0);
+}
+
+function syncedFactSlots(input: FriendVoiceInput): string[] {
+  const synced = input.synced;
+  if (!synced) return [];
+  const slots: string[] = [];
+  for (const item of synced.calendar) {
+    slots.push(item.title);
+    if (item.location) slots.push(item.location);
+    slots.push(ahaWhenLabel(item.start, item.allDay, AHA_TIME_ZONE, 'en'));
+    slots.push(ahaWhenLabel(item.start, item.allDay, AHA_TIME_ZONE, 'fr'));
+    const clock = item.allDay ? null : ahaClockLabel(item.start, AHA_TIME_ZONE);
+    if (clock) slots.push(clock);
+  }
+  for (const item of synced.email) {
+    slots.push(item.subject);
+    if (item.fromName) slots.push(item.fromName);
+    if (item.snippet) slots.push(item.snippet);
+    if (item.receivedAt) {
+      slots.push(ahaWhenLabel(item.receivedAt, false, AHA_TIME_ZONE, 'en'));
+      slots.push(ahaWhenLabel(item.receivedAt, false, AHA_TIME_ZONE, 'fr'));
+      const clock = ahaClockLabel(item.receivedAt, AHA_TIME_ZONE);
+      if (clock) slots.push(clock);
+    }
+  }
+  return slots;
 }
 
 /**
@@ -431,12 +504,63 @@ export function judgeFriendReply(
     return { ok: false, reason: 'invented' };
   }
   if (input.step === 'connected') {
-    const namesGmail = /\bgmail\b/i.test(trimmed);
-    const namesCalendar = /\b(calendar|calendrier|agenda)\b/i.test(trimmed);
+    const named = options.ahaMention?.trim() ?? '';
+    const outside = named.length > 0 ? trimmed.replace(named, ' ') : trimmed;
+    const namesGmail = /\bgmail\b/i.test(outside);
+    const namesCalendar = /\b(calendar|calendrier|agenda)\b/i.test(outside);
     if (input.connector === 'gcal' && namesGmail) return { ok: false, reason: 'invented' };
     if (input.connector === 'gmail' && namesCalendar) return { ok: false, reason: 'invented' };
+    const grounded = ahaGrounding(trimmed, input, named);
+    if (grounded) return { ok: false, reason: grounded };
   }
   return { ok: true };
+}
+
+function ahaTitles(input: FriendVoiceInput): string[] {
+  const synced = input.synced;
+  if (!synced) return [];
+  return [
+    ...synced.calendar.map((item) => item.title),
+    ...synced.email.map((item) => item.subject),
+  ];
+}
+
+function overlapPartners(input: FriendVoiceInput, named: string): Set<string> {
+  const partners = new Set<string>();
+  for (const pair of input.synced?.overlaps ?? []) {
+    if (pair.earlier === named) partners.add(pair.later);
+    if (pair.later === named) partners.add(pair.earlier);
+  }
+  return partners;
+}
+
+/**
+ * A declared mention must be one exact synced title or subject, and the reply
+ * must contain it. Any other title is an extra fact, unless the snapshot's
+ * overlap list pairs the two. No mention means no title: nothing extra.
+ */
+function ahaGrounding(
+  body: string,
+  input: FriendVoiceInput,
+  named: string,
+): FriendJudgeFailure | null {
+  if (!input.synced) return null;
+  const titles = ahaTitles(input);
+  if (named.length > 0) {
+    if (!titles.includes(named)) return 'invented';
+    if (!body.includes(named)) return 'invented';
+    const partners = overlapPartners(input, named);
+    for (const title of titles) {
+      if (title === named || partners.has(title)) continue;
+      if (named.includes(title) || title.includes(named)) continue;
+      if (body.includes(title)) return 'invented';
+    }
+    return null;
+  }
+  for (const title of titles) {
+    if (title.length >= 3 && body.includes(title)) return 'invented';
+  }
+  return null;
 }
 
 function proseForJudge(prose: string, input: FriendVoiceInput, options: SpeakOptions): string {
@@ -578,7 +702,7 @@ export async function speakFriend(
       const judged = judgeFriendReply(
         proseForJudge(prose, input, options),
         judgeInputFor(input, capture),
-        options,
+        { ...options, ahaMention: composed.ahaMention ?? null },
       );
       if (!judged.ok) {
         console.error(
@@ -654,6 +778,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
           gmailLater: value.gmailLater,
           stopAsking: value.stopAsking,
         },
+        ahaMention: value.ahaMention,
       };
     },
   };

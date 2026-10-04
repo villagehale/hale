@@ -383,6 +383,36 @@ describe('GET /api/integrations/callback — the text surface', () => {
       redirectUri: 'https://app.example.com/api/integrations/callback',
     });
   });
+
+  it('passes the receipt one real calendar event when friend voice is on', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('/events')) {
+          return Response.json({
+            items: [
+              {
+                summary: 'Swim at the rec centre',
+                start: { dateTime: '2026-10-20T15:00:00.000Z' },
+                end: { dateTime: '2026-10-20T16:00:00.000Z' },
+              },
+            ],
+          });
+        }
+        return new Response('{}', { status: 503 });
+      }),
+    );
+
+    await callCallback(await textState('gcal'));
+
+    const handed = noticeMock.mock.calls[0]?.[1] as {
+      aha?: { read?: string; calendar?: Array<{ title?: string }> };
+    };
+    expect(handed.aha?.read).toBe('ok');
+    expect(handed.aha?.calendar?.[0]?.title).toBe('Swim at the rec centre');
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('GET /api/integrations/callback — granted-scope validation', () => {
