@@ -158,6 +158,9 @@ export const AUDIT_VERBS = [
   // to get set up (place or ages) or asked what Hale can do. A placeholder
   // that does not send writes no row.
   'cold_start_pull',
+  // A no or a later on an optional setup ask (name, kids' names, calendar, email).
+  // The ladder does not ask that thing again.
+  'onboarding_ask_declined',
   'sms_intake_provisioned',
   'sms_intake_contact_card',
   'linq_contact_card_shared',
@@ -613,6 +616,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   cold_start_pull: {
     sentence: 'Hale answered when you asked it to get set up or show what it can do',
+    family: 'note',
+  },
+  onboarding_ask_declined: {
+    sentence: 'you skipped a setup question',
     family: 'note',
   },
   sms_intake_provisioned: { sentence: 'your family was set up from your texts', family: 'done' },
