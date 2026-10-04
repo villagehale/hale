@@ -179,25 +179,27 @@ describe('the preview bubble matches the ladder’s first message when the flag 
     expect(messages('zh').Text.greetingLadderSms).toBe(ladder.sms.en);
   });
 
-  it('shows the iMessage sentence on Apple phone and Mac, and the postal sentence everywhere else', () => {
+  it('shows the postal sentence on every platform while the location card is off', () => {
     for (const locale of ['en', 'fr', 'zh'] as const) {
       const imessage = locale === 'fr' ? ladder.imessage.fr : ladder.imessage.en;
       const sms = locale === 'fr' ? ladder.sms.fr : ladder.sms.en;
-      expect(render(locale, { firstTouchLadder: true, platform: 'apple' })).toContain(
-        escapeHtml(imessage),
-      );
-      expect(render(locale, { firstTouchLadder: true, platform: 'desktop-mac' })).toContain(
-        escapeHtml(imessage),
-      );
-      expect(render(locale, { firstTouchLadder: true, platform: 'android' })).toContain(
-        escapeHtml(sms),
-      );
-      expect(render(locale, { firstTouchLadder: true, platform: 'unknown' })).toContain(
-        escapeHtml(sms),
-      );
-      expect(render(locale, { firstTouchLadder: true, platform: 'apple' })).not.toContain(
-        escapeHtml(sms),
-      );
+      for (const platform of ['apple', 'desktop-mac', 'android', 'unknown'] as const) {
+        const html = render(locale, { firstTouchLadder: true, platform });
+        expect(html).toContain(escapeHtml(sms));
+        expect(html).not.toContain(escapeHtml(imessage));
+      }
+    }
+  });
+
+  it('shows the iMessage sentence on Apple phone and Mac only when the location card is on', () => {
+    for (const locale of ['en', 'fr', 'zh'] as const) {
+      const imessage = locale === 'fr' ? ladder.imessage.fr : ladder.imessage.en;
+      const sms = locale === 'fr' ? ladder.sms.fr : ladder.sms.en;
+      const card = { firstTouchLadder: true, firstTouchLocationCard: true } as const;
+      expect(render(locale, { ...card, platform: 'apple' })).toContain(escapeHtml(imessage));
+      expect(render(locale, { ...card, platform: 'desktop-mac' })).toContain(escapeHtml(imessage));
+      expect(render(locale, { ...card, platform: 'android' })).toContain(escapeHtml(sms));
+      expect(render(locale, { ...card, platform: 'apple' })).not.toContain(escapeHtml(sms));
     }
   });
 

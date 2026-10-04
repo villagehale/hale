@@ -391,11 +391,14 @@ export async function reactToLinqMessage(input: {
 }
 
 /**
- * Push the Name and Photo card already configured on the sending line. iMessage
- * only, and only after at least one outbound message. Hale calls this once,
- * after the first successful 1:1 outbound. The call is silent: no chat bubble.
+ * Push the Name and Photo card already configured on the sending line.
+ * No request body — the card is the one on the chat's `from` number.
+ * iMessage only, and only after at least one outbound. A missing card is
+ * HTTP 404 / code 2012. Hale calls this once per Toronto day per chat,
+ * after that day's first outbound. The call is silent: no chat bubble.
  *
  * https://docs.linqapp.com/guides/chats/share-contact-card/
+ * https://docs.linqapp.com/api/resources/chats/methods/share_contact_card/
  */
 export async function shareLinqContactCard(input: {
   chatId: string;
@@ -638,12 +641,27 @@ export async function setupLinqContactCard(input: {
       fetch: input.fetch,
     });
     if (created.ok) return contactCardActive(created.payload, input.phoneNumber);
-    if (created.code !== CONTACT_CARD_ALREADY_ACTIVE) {
+    // Create is one-time. An active card comes back as HTTP 409 / code 2014.
+    // A setup that did not finish is 500 / 2022 — call create once more.
+    // https://docs.linqapp.com/api/resources/contact_card/methods/create/
+    let conflict = created;
+    if (conflict.code === '2022') {
+      const retried = await linqRequest({
+        method: 'POST',
+        path: '/contact_card',
+        body,
+        fetch: input.fetch,
+      });
+      if (retried.ok) return contactCardActive(retried.payload, input.phoneNumber);
+      conflict = retried;
+    }
+    const alreadyActive = conflict.code === CONTACT_CARD_ALREADY_ACTIVE || conflict.status === 409;
+    if (!alreadyActive) {
       return {
         status: 'refused',
-        code: created.code,
-        httpStatus: created.status,
-        permanent: created.permanent,
+        code: conflict.code,
+        httpStatus: conflict.status,
+        permanent: conflict.permanent,
       };
     }
     const patched = await linqRequest({
@@ -686,26 +704,30 @@ export function contactCardIsLive(payload: unknown, phoneNumber: string): boolea
   return false;
 }
 
-function readContactCards(payload: unknown): { phone: string | null; isActive: boolean | null }[] {
+function readContactCards(
+  payload: unknown,
+): { phone: string | null; isActive: boolean | null; firstName: string | null }[] {
+  const readOne = (card: Record<string, unknown>) => ({
+    phone: typeof card.phone_number === 'string' ? card.phone_number : null,
+    isActive: typeof card.is_active === 'boolean' ? card.is_active : null,
+    firstName:
+      typeof card.first_name === 'string' && card.first_name.length > 0 ? card.first_name : null,
+  });
   if (!isRecord(payload)) return [];
   if (Array.isArray(payload.contact_cards)) {
-    return payload.contact_cards.flatMap((card) => {
-      if (!isRecord(card)) return [];
-      return [
-        {
-          phone: typeof card.phone_number === 'string' ? card.phone_number : null,
-          isActive: typeof card.is_active === 'boolean' ? card.is_active : null,
-        },
-      ];
-    });
+    return payload.contact_cards.flatMap((card) => (isRecord(card) ? [readOne(card)] : []));
   }
   if (!('is_active' in payload) && !('phone_number' in payload)) return [];
-  return [
-    {
-      phone: typeof payload.phone_number === 'string' ? payload.phone_number : null,
-      isActive: typeof payload.is_active === 'boolean' ? payload.is_active : null,
-    },
-  ];
+  return [readOne(payload)];
+}
+
+function liveCardFirstName(payload: unknown, phoneNumber: string): string | null {
+  const want = phoneNumber.trim();
+  for (const card of readContactCards(payload)) {
+    if (card.isActive !== true) continue;
+    if (!card.phone || card.phone === want) return card.firstName;
+  }
+  return null;
 }
 
 function contactCardActive(payload: unknown, phoneNumber: string): LinqEffectResult {
@@ -713,12 +735,53 @@ function contactCardActive(payload: unknown, phoneNumber: string): LinqEffectRes
   return { status: 'refused', code: 'card_inactive', httpStatus: 200, permanent: false };
 }
 
-/** GET the card Linq has for this line. Share only after this says active. */
+/**
+ * Refresh the stored line-card name. A create that returns 201 without Linq
+ * code 2014 does not update a name already saved in the partner dashboard.
+ */
+export async function patchLinqContactCard(input: {
+  phoneNumber: string;
+  firstName: string;
+  imageUrl: string;
+  fetch?: typeof fetch;
+}): Promise<LinqEffectResult> {
+  if (!input.phoneNumber || !input.firstName || !input.imageUrl.startsWith('https://')) {
+    return { status: 'refused', code: 'invalid_contact_card', httpStatus: 400, permanent: true };
+  }
+  try {
+    const patched = await linqRequest({
+      method: 'PATCH',
+      path: `/contact_card?phone_number=${encodeURIComponent(input.phoneNumber)}`,
+      body: { first_name: input.firstName, image_url: input.imageUrl },
+      fetch: input.fetch,
+    });
+    if (!patched.ok) {
+      return {
+        status: 'refused',
+        code: patched.code,
+        httpStatus: patched.status,
+        permanent: patched.permanent,
+      };
+    }
+    return contactCardActive(patched.payload, input.phoneNumber);
+  } catch (err) {
+    if (err instanceof LinqSendError && err.code === 'not_configured') {
+      return { status: 'not_configured' };
+    }
+    if (err instanceof LinqSendError && (err.code === 'timeout' || err.code === 'network')) {
+      return { status: 'unreachable', reason: err.code };
+    }
+    throw err;
+  }
+}
+
+/** GET the card Linq has for this line. Share only after this says active.
+ * `firstName` is null when the payload omits it. */
 export async function retrieveLinqContactCard(input: {
   phoneNumber: string;
   fetch?: typeof fetch;
 }): Promise<
-  | { status: 'active' }
+  | { status: 'active'; firstName: string | null }
   | { status: 'inactive' }
   | { status: 'not_configured' }
   | { status: 'refused'; code: string; httpStatus: number }
@@ -734,7 +797,7 @@ export async function retrieveLinqContactCard(input: {
       return { status: 'refused', code: result.code, httpStatus: result.status };
     }
     return contactCardIsLive(result.payload, input.phoneNumber)
-      ? { status: 'active' }
+      ? { status: 'active', firstName: liveCardFirstName(result.payload, input.phoneNumber) }
       : { status: 'inactive' };
   } catch (err) {
     if (err instanceof LinqSendError && err.code === 'not_configured') {

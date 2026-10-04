@@ -9,9 +9,9 @@ import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { ActiveConnectorConnection } from '~/lib/integrations/store';
+import { type GoogleFetch, type SyncDeps, syncConnection } from '~/lib/integrations/sync';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { fetchGmailMessageBody } from '~/lib/sentinel';
-import { type GoogleFetch, type SyncDeps, syncConnection } from '~/lib/integrations/sync';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { recordedModel } from '~/lib/testing/recorded-model';
 import { detectTravelBookingsForSweep } from '~/lib/travel/detect';
@@ -314,6 +314,14 @@ function syncDeps(subject: string, recorded: ReturnType<typeof model>): SyncDeps
     alertGmailEnvelopes: async (batch) =>
       batch.envelopes.map(() => ({ alert: 'dark' as const, booking: null, going: null })),
     alertCalendarChanges: async () => ({ changes: [], reoffers: [] }),
+    mirrorCalendarWindow: async () => ({
+      mirrored: 0,
+      updated: 0,
+      removed: 0,
+      alreadyKnown: 0,
+      skipped: 0,
+      held: false,
+    }),
     detectTravelBookings: async (batch) =>
       detectTravelBookingsForSweep(
         db.database,

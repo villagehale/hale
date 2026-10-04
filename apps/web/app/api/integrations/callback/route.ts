@@ -1,19 +1,28 @@
 import { type Database, schema } from '@hale/db';
+import { deriveStage } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '~/auth';
+import { consumeChannelSigninTokenById } from '~/lib/auth/channel-signin';
+import { type AhaSnapshot, failedAha, loadConnectedAha } from '~/lib/channel/connect/aha-read';
 import {
   connectedNoticeLabel,
   defaultConnectedNoticePorts,
   sendConnectorConnectedText,
 } from '~/lib/channel/connect/connected-notice';
-import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
+import { textFreshConnectorLink } from '~/lib/channel/connect/fresh-link';
+import {
+  type TextConnectProvider,
+  asTextConnectProvider,
+} from '~/lib/channel/connect/text-connect';
 import { holdGoogleGivenName } from '~/lib/channel/identity/parent-call-name';
+import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
 import { sendCoparentGroupCalendarReceipt } from '~/lib/channel/linq/group-coparent';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { googleAccountBlindIndex } from '~/lib/crypto/blind-index';
 import { db } from '~/lib/db';
 import { resolveUserIdForUser } from '~/lib/family';
+import { kickGmailBookedBackfill } from '~/lib/integrations/booked-backfill-kick';
 import { type ConnectState, verifyConnectState } from '~/lib/integrations/connect-state';
 import {
   CONNECTOR_SCOPES,
@@ -22,7 +31,10 @@ import {
   exchangeCodeForTokens,
 } from '~/lib/integrations/google-oauth';
 import { readGoogleAccountSub, readGoogleGivenName } from '~/lib/integrations/google-profile';
-import { ensurePushWatchAfterConnect } from '~/lib/integrations/google-push-runtime';
+import {
+  ensurePushWatchAfterConnect,
+  googleJsonClient,
+} from '~/lib/integrations/google-push-runtime';
 import { otherParentHoldsGoogleAccount, saveConnection } from '~/lib/integrations/store';
 
 // Node runtime: node:crypto (state verify), fetch (token exchange), Drizzle.
@@ -65,12 +77,13 @@ export async function GET(req: NextRequest) {
     status: string,
     surface?: ConnectState['surface'],
     provider?: string,
-    extra?: { who?: string; lang?: string },
+    extra?: { who?: string; lang?: string; fresh?: string },
   ) => {
     if (surface === 'text') {
       const query = new URLSearchParams({ provider: provider ?? '', status });
       if (extra?.who) query.set('who', extra.who);
       if (extra?.lang) query.set('lang', extra.lang);
+      if (extra?.fresh) query.set('fresh', extra.fresh);
       return NextResponse.redirect(`${origin}/connected?${query.toString()}`);
     }
     if (surface === 'mobile') {
@@ -78,6 +91,37 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.redirect(`${origin}/settings?connect=${status}`);
   };
+
+  /**
+   * Expired, denied, or failed text connect. Mint and text a fresh link for the
+   * provider on the link, then say so on the page only when the text actually left.
+   */
+  async function textFailure(
+    status: 'denied' | 'invalid' | 'error',
+    provider: TextConnectProvider,
+    who: { familyId: string; userId: string },
+  ) {
+    let fresh: string | undefined;
+    try {
+      const outcome = await textFreshConnectorLink(db(), {
+        familyId: who.familyId,
+        parentUserId: who.userId,
+        provider,
+        now: new Date(),
+      });
+      if (outcome === 'sent') fresh = 'sent';
+      console.info(
+        { familyId: who.familyId, provider, outcome, status },
+        'connector link: fresh link after a failed connect',
+      );
+    } catch (err) {
+      console.error(
+        { familyId: who.familyId, code: err instanceof Error ? err.name : 'unknown' },
+        'connector link: fresh link after a failed connect threw',
+      );
+    }
+    return back(status, 'text', provider, fresh ? { fresh } : undefined);
+  }
 
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
@@ -107,7 +151,15 @@ export async function GET(req: NextRequest) {
   if (bound.surface === 'text' && !textProvider) return back('invalid');
   const surface = bound.surface;
 
-  if (declined) return back('denied', surface, bound.provider);
+  if (declined) {
+    if (surface === 'text' && textProvider) {
+      return textFailure('denied', textProvider, {
+        familyId: bound.familyId,
+        userId: bound.userId,
+      });
+    }
+    return back('denied', surface, bound.provider);
+  }
 
   const database = db();
   const session = await auth();
@@ -116,15 +168,23 @@ export async function GET(req: NextRequest) {
     ? await resolveUserIdForUser(externalAuthId, database)
     : null;
   if (!sessionUserId || sessionUserId !== bound.userId) {
+    if (surface === 'text' && textProvider) {
+      return textFailure('invalid', textProvider, {
+        familyId: bound.familyId,
+        userId: bound.userId,
+      });
+    }
     return back('invalid', surface, bound.provider);
   }
 
   let connectId: string;
+  let grantedAccessToken = '';
   try {
     const tokens = await exchangeCodeForTokens({
       code,
       redirectUri: connectorRedirectUri(),
     });
+    grantedAccessToken = tokens.accessToken;
     // Granular consent lets the user deselect the scope, and a provider bug could
     // broaden it: the grant must contain EXACTLY what this connector needs and
     // nothing outside the readonly universe — otherwise store nothing (a stored
@@ -142,6 +202,12 @@ export async function GET(req: NextRequest) {
     const grantedOk =
       expected.every((sc) => scopes.includes(sc)) && scopes.every((sc) => allowed.has(sc));
     if (!grantedOk) {
+      if (surface === 'text' && textProvider) {
+        return textFailure('denied', textProvider, {
+          familyId: bound.familyId,
+          userId: bound.userId,
+        });
+      }
       return back('denied', surface, bound.provider);
     }
     let providerMetadata: Record<string, unknown> | undefined;
@@ -222,8 +288,56 @@ export async function GET(req: NextRequest) {
         'google push: connect watch failed',
       );
     }
+    if (bound.provider === 'gmail' && tokens.accessToken) {
+      try {
+        const kick = await kickGmailBookedBackfill(database, {
+          id: connectId,
+          familyId: bound.familyId,
+          userId: bound.userId,
+          accessToken: tokens.accessToken,
+          providerMetadata: providerMetadata ?? {},
+        });
+        console.info(
+          { familyId: bound.familyId, kick: kick.outcome },
+          'gmail backfill: connect kick',
+        );
+      } catch (err) {
+        console.info(
+          { familyId: bound.familyId, code: err instanceof Error ? err.name : 'unknown' },
+          'gmail backfill: connect kick failed',
+        );
+      }
+    }
   } catch {
+    if (surface === 'text' && textProvider) {
+      return textFailure('error', textProvider, {
+        familyId: bound.familyId,
+        userId: bound.userId,
+      });
+    }
     return back('error', surface, bound.provider);
+  }
+
+  if (bound.channelSigninTokenId) {
+    try {
+      const burned = await consumeChannelSigninTokenById(database, {
+        tokenId: bound.channelSigninTokenId,
+        userId: bound.userId,
+      });
+      console.info(
+        {
+          familyId: bound.familyId,
+          provider: bound.provider,
+          burned: burned.ok ? 'burned' : burned.reason,
+        },
+        'channel sign-in: token burned after consent',
+      );
+    } catch (err) {
+      console.info(
+        { familyId: bound.familyId, code: err instanceof Error ? err.name : 'unknown' },
+        'channel sign-in: token burn failed after consent',
+      );
+    }
   }
 
   if (textProvider) {
@@ -231,6 +345,13 @@ export async function GET(req: NextRequest) {
     // and `after()` would let the process finish before the one text the parent is
     // standing there waiting for. The receipt never changes what the page says — the
     // connection is already stored — so its outcome is a log line (rule #11).
+    const now = new Date();
+    const aha = await ahaForTextConnect(database, {
+      familyId: bound.familyId,
+      provider: textProvider,
+      accessToken: grantedAccessToken,
+      now,
+    });
     const receipt = await sendConnectorConnectedText(
       database,
       {
@@ -238,7 +359,8 @@ export async function GET(req: NextRequest) {
         parentUserId: bound.userId,
         provider: textProvider,
         connectId,
-        now: new Date(),
+        now,
+        ...(aha ? { aha } : {}),
       },
       defaultConnectedNoticePorts(),
     );
@@ -268,6 +390,80 @@ export async function GET(req: NextRequest) {
   }
 
   return back(bound.provider);
+}
+
+/**
+ * The aha read for a texted connect. Flag off skips Google entirely: the locked
+ * receipt does not use the facts. A throw becomes a failed snapshot so the
+ * done page still loads and the model is not handed a gap it could fill in.
+ */
+async function ahaForTextConnect(
+  database: Database,
+  input: {
+    familyId: string;
+    provider: 'gcal' | 'gmail';
+    accessToken: string;
+    now: Date;
+  },
+): Promise<AhaSnapshot | undefined> {
+  if (!onboardingFriendVoiceEnabled()) return undefined;
+  let hasTeen = true;
+  try {
+    hasTeen = await familyHasTeen(database, input.familyId, input.now);
+  } catch (err) {
+    console.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'connector connected: child ages unread, email aha withheld',
+    );
+  }
+  try {
+    if (!input.accessToken) {
+      console.info(
+        { familyId: input.familyId, provider: input.provider },
+        'connector connected: aha not read, no access token',
+      );
+      const bare = failedAha(input.provider);
+      return hasTeen && input.provider === 'gmail' ? { ...bare, email: [] } : bare;
+    }
+    const snapshot = await loadConnectedAha({
+      provider: input.provider,
+      accessToken: input.accessToken,
+      now: input.now,
+      hasTeen,
+      googleFetch: (url, accessToken) =>
+        googleJsonClient.request({ method: 'GET', url, accessToken }),
+    });
+    console.info(
+      {
+        familyId: input.familyId,
+        provider: input.provider,
+        read: snapshot.read,
+        calendar: snapshot.calendar.length,
+        email: snapshot.email.length,
+      },
+      'connector connected: aha read',
+    );
+    return snapshot;
+  } catch (err) {
+    console.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'connector connected: aha read threw',
+    );
+    return failedAha(input.provider);
+  }
+}
+
+async function familyHasTeen(database: Database, familyId: string, now: Date): Promise<boolean> {
+  const rows = await database
+    .select({
+      familyId: schema.children.familyId,
+      dateOfBirth: schema.children.dateOfBirth,
+    })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  return rows.some(
+    (row) => row.familyId === familyId && deriveStage(row.dateOfBirth, now) === 'teenager',
+  );
 }
 
 /**

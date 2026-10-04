@@ -76,6 +76,7 @@ export function pauseAnchor(rows: readonly AskLedgerRow[], now: Date): Date | nu
 export function judgeAskBudget(
   input: AskBudgetInput,
   ask: { sendClass: OptionalAskClass; askKey: string },
+  options?: { onboardingSequence?: boolean },
 ): AskBudgetVerdict {
   if (input.stopUntil && input.stopUntil.getTime() > input.now.getTime()) {
     return { allow: false, reason: 'stop_asking' };
@@ -86,7 +87,9 @@ export function judgeAskBudget(
   if (pauseAnchor(input.rows, input.now) && !input.parentWroteSincePause) {
     return { allow: false, reason: 'paused' };
   }
-  if (inAskWindow(input.now, input.familyStartedAt)) {
+  // The friend-voice onboarding sequence is one conversation: name, calendar,
+  // then email. The one-a-day cap would stop it on the logistics turn.
+  if (!options?.onboardingSequence && inAskWindow(input.now, input.familyStartedAt)) {
     const day = localCalendarDay(input.now, input.timeZone);
     if (input.rows.some((row) => row.localDay === day))
       return { allow: false, reason: 'ask_budget' };

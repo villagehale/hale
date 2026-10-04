@@ -3,6 +3,7 @@ import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'dri
 import { children } from './children.js';
 import { familyEventSourceEnum } from './enums.js';
 import { families } from './families.js';
+import { integrations } from './integrations.js';
 import { users } from './users.js';
 
 /**
@@ -80,6 +81,19 @@ export const familyEvents = pgTable(
     /** Live `duty/…` fact key this projection came from. */
     dutyFactKey: text('duty_fact_key'),
     dutySetAt: timestamp('duty_set_at', { withTimezone: true }),
+    /**
+     * Google's event id when this row is a mirror of the parent's own calendar
+     * (VIL-416). Null on every Hale-authored row (a placement, a YES, a channel
+     * add). Set together with `integrationId`. The reminder cron reminds only
+     * the connecting parent, and a second mirror of the same Google event
+     * conflicts here instead of scheduling a second pair of reminders.
+     */
+    googleEventId: text('google_event_id'),
+    /** The gcal connection this mirror was read from. Null on Hale-authored rows.
+     * Deleting the connection takes the mirror (and its reminders) with it. */
+    integrationId: uuid('integration_id').references(() => integrations.id, {
+      onDelete: 'cascade',
+    }),
   },
   (table) => ({
     // The composer's read is WHERE family_id = ? AND starts_at IN [window] — index
@@ -92,6 +106,9 @@ export const familyEvents = pgTable(
     dutyFactIdx: index('family_events_duty_fact_idx')
       .on(table.familyId, table.dutyFactKey)
       .where(sql`${table.dutyFactKey} IS NOT NULL`),
+    googleEventUniq: uniqueIndex('family_events_google_event_uniq')
+      .on(table.integrationId, table.googleEventId)
+      .where(sql`${table.googleEventId} IS NOT NULL`),
   }),
 );
 

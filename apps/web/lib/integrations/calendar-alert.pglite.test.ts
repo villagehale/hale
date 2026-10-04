@@ -2,10 +2,10 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { PROACTIVE_CAP, PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
-import { LinqSendError } from '~/lib/channel/linq/transport';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import {
   CALENDAR_ALERT_MAX_PER_SWEEP,
@@ -207,6 +207,15 @@ describe('alertParentForCalendarChanges', () => {
     expect(h.transport.sent[0]?.body).not.toContain(OPT_OUT_LINE);
     expect(h.transport.sent[0]?.body).not.toContain('STOP to opt out.');
     expect(h.transport.sent[0]?.body).toBe(h.threaded[0]?.body);
+  });
+
+  it('texts a family that is not on the allowlist when F14_ENABLED is exactly true', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', '00000000-0000-4000-8000-000000000000');
+    const h = harness();
+
+    await expect(sweep(h)).resolves.toEqual(['sent']);
+    expect(h.transport.sent).toHaveLength(1);
   });
 
   it('is dark behind F14 — no text and no receipt', async () => {
@@ -774,8 +783,12 @@ describe('one edit to a series is one text', () => {
       recurringEventId: SERIES,
       title: 'Swim lessons',
       updated: '2026-09-17T14:55:00.000Z',
-      start: { dateTime: `2026-${i < 2 ? '09' : '10'}-${String(i < 2 ? 22 + i * 7 : i * 7 - 8).padStart(2, '0')}T21:00:00.000Z` },
-      end: { dateTime: `2026-${i < 2 ? '09' : '10'}-${String(i < 2 ? 22 + i * 7 : i * 7 - 8).padStart(2, '0')}T21:45:00.000Z` },
+      start: {
+        dateTime: `2026-${i < 2 ? '09' : '10'}-${String(i < 2 ? 22 + i * 7 : i * 7 - 8).padStart(2, '0')}T21:00:00.000Z`,
+      },
+      end: {
+        dateTime: `2026-${i < 2 ? '09' : '10'}-${String(i < 2 ? 22 + i * 7 : i * 7 - 8).padStart(2, '0')}T21:45:00.000Z`,
+      },
       ...over,
     }));
   }
@@ -941,9 +954,9 @@ describe('one edit to a series is one text', () => {
 
   it('says a cancelled term is cancelled, and names an unnamed one honestly', async () => {
     const h = harness();
-    await expect(
-      sweep(h, { changes: instances({ status: 'cancelled' }) }),
-    ).resolves.toHaveLength(6);
+    await expect(sweep(h, { changes: instances({ status: 'cancelled' }) })).resolves.toHaveLength(
+      6,
+    );
     expect(h.transport.sent[0]?.body).toContain(
       'Swim lessons: 6 sessions were cancelled from Sep 22.',
     );
@@ -1053,7 +1066,10 @@ describe('a change the gate held is offered again', () => {
     // Daylight, and Google has nothing new to say — the sweep's own memory is the only
     // thing that can produce this text.
     const daylight = harness();
-    const later = await sweepBoth(daylight, { changes: [], now: new Date('2026-09-17T16:00:00.000Z') });
+    const later = await sweepBoth(daylight, {
+      changes: [],
+      now: new Date('2026-09-17T16:00:00.000Z'),
+    });
     expect(later).toEqual({ changes: [], reoffers: ['sent'] });
     expect(daylight.transport.sent).toHaveLength(1);
     expect(daylight.transport.sent[0]?.body).toContain(
@@ -1368,7 +1384,12 @@ describe('the memory itself', () => {
   });
 
   it('keeps one memory per connection, so two calendars never read each other', async () => {
-    const other = await seedIntegration(db.database, family.familyId, family.parentUserId, 'gdrive');
+    const other = await seedIntegration(
+      db.database,
+      family.familyId,
+      family.parentUserId,
+      'gdrive',
+    );
     await sweep(harness());
     const rows = await db.database
       .select()

@@ -4,8 +4,8 @@ import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
-import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
+import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import {
@@ -49,7 +49,7 @@ export const INTAKE_CONNECTOR_OFFER_TEMPLATE_KEY = 'intake:connector_offer';
 
 /** At most one offer per family, ever, enforced by the partial unique index on
  * `channel_messages.dedupe_key`. A second link is a second permissions ask nobody
- * made, and the parent who wanted one can say "connect my calendar" at any time. */
+ * made. A parent who wants one later asks in the thread, and Hale mints the link. */
 export function connectorOfferDedupeKey(familyId: string): string {
   return `${INTAKE_CONNECTOR_OFFER_TEMPLATE_KEY}:${familyId}`;
 }
@@ -255,6 +255,11 @@ export async function sendYearConnectorCards(
     /** One card. The other label is `already_sent` and nothing is minted for it,
      * so a calendar link already in the thread is not invalidated by the Gmail beat. */
     only?: 'gcal' | 'gmail';
+    /**
+     * Friend-voice prose for a card. Code appends the minted URL. A URL inside
+     * the prose is stripped. Absent keeps the locked card sentence.
+     */
+    voice?: Partial<Record<'gcal' | 'gmail', string>>;
   },
   ports: ConnectorOfferPorts,
 ): Promise<{ calendar: ConnectorOfferLabel; gmail: ConnectorOfferLabel }> {
@@ -297,13 +302,15 @@ export async function sendYearConnectorCards(
     provider: 'gcal',
     templateKey: INTAKE_CALENDAR_CARD_TEMPLATE_KEY,
     dedupeKey: calendarCardDedupeKey(args.familyId),
-    render: (url) => intakeCalendarCard(args.language, url),
+    render: (url) =>
+      voiceCardBody(args.voice?.gcal, url, intakeCalendarCard(args.language, url), args.language),
   };
   const gmailSpec: ConnectorCard = {
     provider: 'gmail',
     templateKey: INTAKE_GMAIL_CARD_TEMPLATE_KEY,
     dedupeKey: gmailCardDedupeKey(args.familyId),
-    render: (url) => intakeGmailCard(args.language, url),
+    render: (url) =>
+      voiceCardBody(args.voice?.gmail, url, intakeGmailCard(args.language, url), args.language),
   };
   const calendarClaim =
     args.only === 'gmail' ? null : await claimConnectorCard(database, args, calendarSpec);
@@ -363,6 +370,20 @@ export async function sendYearConnectorCards(
     urls.get('gmail'),
   );
   return { calendar, gmail };
+}
+
+/** Prose plus the minted URL. A model-written URL is dropped before the real one is attached. */
+function voiceCardBody(
+  prose: string | undefined,
+  url: string,
+  locked: string,
+  _language: ReplyLanguage,
+): string {
+  const clean = prose?.replace(/https?:\/\/\S+/g, '').trim();
+  if (!clean) return locked;
+  // The model writes the trust line and the unverified-app heads-up.
+  // Code appends only the minted URL.
+  return `${clean}\n${url}`;
 }
 
 interface ConnectorCard {

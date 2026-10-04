@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gt, inArray, isNull } from 'drizzle-orm';
-import { SENT_STATUSES } from '~/lib/channel/ledger';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
@@ -10,8 +10,9 @@ import { stampBookingEvent } from './booking';
 /**
  * THE YES AT THE END OF AN EMAIL ALERT — the row it lands in, and what it does.
  *
- * The alert says "Reply YES and it goes on your week." That sentence was shipped once
- * with nothing behind it and removed in #649, because a parent doing exactly what the
+ * The alert asks "Want me to add it to your week?" The earlier wording, "Reply YES and
+ * it goes on your week," was shipped once with nothing behind it and removed in #649,
+ * because a parent doing exactly what the
  * text told them to do reached the coach with nothing drafted — or, with one unrelated
  * action pending, APPROVED THAT ONE (rule #4). This module is the thing that had to exist
  * before the sentence could come back: an offer written down at send time, listed as an
@@ -269,7 +270,10 @@ export async function handleEmailAlertOfferReply(
     const timeZone = await parentTimeZone(database, input.parentUserId);
     return {
       status: 'already_added',
-      reply: ALREADY_ADDED[input.language](repeat.title, when(repeat.startsAt, timeZone, input.now)),
+      reply: ALREADY_ADDED[input.language](
+        repeat.title,
+        when(repeat.startsAt, timeZone, input.now),
+      ),
     };
   }
 
@@ -543,7 +547,8 @@ function when(startsAt: Date, timeZone: string, now: Date): string {
  * constraint rather than a gap.
  */
 const ADDED: Record<ReplyLanguage, (title: string, at: string) => string> = {
-  en: (title, at) => `${end(`Added - ${title} on ${at}`)} It's on your week; say remove it anytime.`,
+  en: (title, at) =>
+    `${end(`Added - ${title} on ${at}`)} It's on your week; say remove it anytime.`,
   fr: (title, at) =>
     `${end(`Ajouté - ${title}, ${at}`)} C'est sur votre semaine; dites-le-moi pour l'enlever.`,
 };
@@ -562,7 +567,7 @@ function end(sentence: string): string {
 
 const DECLINED: Record<ReplyLanguage, () => string> = {
   en: () => 'Okay - left it off.',
-  fr: () => 'Entendu - je ne l\'ai pas ajouté.',
+  fr: () => "Entendu - je ne l'ai pas ajouté.",
 };
 
 /** The three, exported for the encoding guard that holds every fixed line Hale sends to

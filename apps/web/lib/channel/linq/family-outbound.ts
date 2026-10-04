@@ -1,16 +1,16 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNull } from 'drizzle-orm';
+import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
 import { CO_PARENT_ASK_BY_LANGUAGE } from '~/lib/channel/intake/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
-import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
-import { isWithinQuietHours } from '~/lib/loop/prefs';
 import {
   configuredOutboundChannel,
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { linqApiKey, linqGroupCoparentEnabled } from './config';
 import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
 import { groupPassedSyncLine, groupPickedSyncLine } from './group-coparent-copy';
@@ -250,6 +250,8 @@ function isCoparentAsk(body: string): boolean {
   return (
     body.includes(CO_PARENT_ASK_BY_LANGUAGE.en) ||
     body.includes(CO_PARENT_ASK_BY_LANGUAGE.fr) ||
+    body.includes("Want the other parent on the kids' year") ||
+    body.includes("l'autre parent sur l'ann") ||
     body.includes(`send: ${LINQ_GROUP_TRIGGER_PHRASE.en}`) ||
     body.includes(`envoie: ${LINQ_GROUP_TRIGGER_PHRASE.fr}`)
   );

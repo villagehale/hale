@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
@@ -20,7 +20,16 @@ import {
 } from '~/lib/channel/caregiver/route';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
-import { defaultNameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/identity/name-reply';
+import {
+  PARENT_NAME_ASK_TEMPLATE_KEY,
+  PARENT_NAME_CONFIRM_TEMPLATE_KEY,
+} from '~/lib/channel/identity/asked';
+import {
+  defaultNameCaptureDeps,
+  handleNameCaptureReply,
+  parentNeedsName,
+  storeModelParentName,
+} from '~/lib/channel/identity/name-reply';
 import { maybeSendParentCallName } from '~/lib/channel/identity/parent-call-name';
 import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
@@ -29,6 +38,8 @@ import { acceptedStatus } from '~/lib/channel/ledger';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import {
   deliverHaleLinqContactCard,
+  finishCardWithinReplyBudget,
+  haleContactCardDay,
   shareHaleContactCardOnce,
 } from '~/lib/channel/linq/contact-card';
 import {
@@ -117,11 +128,22 @@ import {
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
-import { parseCanadianPostal, summarizeChildren } from './derive';
+import { deriveDateOfBirth, parseCanadianPostal, summarizeChildren } from './derive';
 import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract';
-import { findThisWeek, renderWeekFind } from './first-touch-find';
-import { firstTouchLadderEnabled } from './first-touch-flag';
+import { findThisWeekWithin, renderWeekFind } from './first-touch-find';
+import { firstTouchLadderEnabled, firstTouchLocationCardEnabled } from './first-touch-flag';
 import { type FirstTouchPlace, placeFromMessage, placeFromVenue } from './first-touch-place';
+import {
+  type FriendStep,
+  type FriendVoiceComposer,
+  type FriendVoiceInput,
+  type FriendVoiceResult,
+  assembleFriendBody,
+  judgeFriendReply,
+  speakFriend,
+  turnsFromTranscript,
+} from './friend-voice';
+import { onboardingFriendVoiceEnabled } from './friend-voice-flag';
 import { identityChallengeReply } from './identity-challenge';
 import type { IntakeAckComposer } from './intake-voice';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
@@ -133,11 +155,24 @@ import {
   liveLookupFallbackReply,
 } from './live-lookup';
 import { isOfficialPageAsk, officialPageFallbackReply } from './official-page';
+import {
+  type OnboardingChecklist,
+  type OnboardingItem,
+  activityFromFindLine,
+  agesAreComplete,
+  coldStartQuestionIsStale,
+  confirmActivityPick,
+  kidsAreNamed,
+  lastTranscriptAt,
+  onboardingMissing,
+  storedFromCapture,
+} from './onboarding-turn';
 import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, type RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
 import {
   type ColdStartProgress,
+  type FirstTouchGiven,
   type FirstTouchPersisted,
   type IntakeLadderStep,
   type IntakeSession,
@@ -145,6 +180,7 @@ import {
   type SessionPatch,
   type TranscriptEntry,
   createSession,
+  linqContactCardShareBlocked,
   loadOpenSession,
   saveSession,
   transcriptHasOutbound,
@@ -210,6 +246,12 @@ export interface IntakeDeps {
    * (rule #11): it owns its own deterministic fallback and always returns a whole
    * message, so "no composer" would be a silently colder intake with nothing logged. */
   ackComposer: IntakeAckComposer;
+  /**
+   * Friend-voice onboarding replies. Required in production wiring. A test that
+   * leaves it off gets the named fallback inside {@link speakFriend}, and only
+   * when ONBOARDING_FRIEND_VOICE_ENABLED is exactly `on`.
+   */
+  friendVoice?: FriendVoiceComposer;
   /** Answers a question the parent asked INSTEAD of answering intake's (answer.ts).
    * Required, never nullable (rule #11): withholding it would restore the exact bug it
    * closed — an off-script question silently becoming a re-ask — and its own "there was
@@ -246,6 +288,19 @@ export interface IntakeDeps {
    * `not_configured` and the locked empty line goes out — never a guess.
    */
   weekFinder?: ActivityFinder | null;
+  /**
+   * Clear the iMessage typing bubble before a reply goes out. The inbound door
+   * arms it. Absent on SMS and on a test that never armed one: there is no
+   * bubble to clear, and that is not a skipped send. A throw is logged and
+   * the reply still leaves.
+   */
+  stopTyping?: () => Promise<void>;
+  /**
+   * Send another typing start. The inbound door arms the bubble at receipt.
+   * A search or a model call can outlive Linq's hold, so each slow step
+   * re-arms. Absent when nothing was armed.
+   */
+  keepTyping?: () => void;
   /** The funnel's two milestones. Optional because the DEFAULT IS THE REAL EFFECT —
    * `captureServerEvent`, which already names its own absence on a dead PostHog key
    * (rule #11) — so this is a test seam, never a way to withhold the send. */
@@ -678,6 +733,18 @@ function sendContext(args: {
  * does it) because a message that told a family something durable has to be able to say
  * WHICH row carried it — see the checkpoint marker in {@link provision}.
  */
+async function quietStopTyping(deps: IntakeDeps): Promise<void> {
+  if (!deps.stopTyping) return;
+  try {
+    await deps.stopTyping();
+  } catch (err) {
+    console.warn(
+      { err: err instanceof Error ? err.name : 'unknown' },
+      'linq: typing indicator did not stop',
+    );
+  }
+}
+
 async function sendAndRecord(
   database: Database,
   ctx: SendContext,
@@ -690,11 +757,18 @@ async function sendAndRecord(
    * asks for the parent's name carries a key the name capture can query for. */
   templateKey?: string,
 ): Promise<{ transcript: TranscriptEntry[]; channelMessageId: string | null }> {
+  if (body.trim().length === 0) {
+    console.error({ reason: 'empty_outbound' }, 'intake: outbound not sent');
+    return { transcript, channelMessageId: null };
+  }
+  await quietStopTyping(deps);
   const sent = await sendResolvingNewChat(deps.transport, { to: ctx.phoneE164, body });
   const wireBody = sent.linkOmitted ? plainTextWithoutLinks(body) : body;
   const channel = sent.transport === 'imessage' ? 'imessage' : ctx.pipe.channel;
   const chatId = sent.transport === 'imessage' ? (sent.chatId ?? ctx.pipe.chatId) : ctx.pipe.chatId;
-  await shareLinqCardAfterFirstOutbound(database, ctx, transcript);
+  await finishCardWithinReplyBudget(
+    shareLinqCardAfterFirstOutbound(database, ctx, { channel, chatId }),
+  );
   const entry: TranscriptEntry = {
     direction: 'out',
     body: wireBody,
@@ -1046,6 +1120,34 @@ async function deliverFirstHello(
       outcome = { status: 'question_answered', source: offScript.source };
     }
   }
+  if (onboardingFriendVoiceEnabled() && outcome.status === 'greeted') {
+    const spoken = await friendSpeak(
+      deps,
+      recorded.transcript,
+      friendFields('legacy_hello', language, friendAddress(ctx), {
+        introduce: true,
+        parentWords: args.inbound.body,
+        placeLabel: postal?.areaCoarse ?? null,
+      }),
+    );
+    const voiced = friendOutbound(spoken);
+    if (!voiced) {
+      await saveSession(
+        database,
+        session,
+        {
+          state: 'awaiting_details',
+          transcript: recorded.transcript,
+          lastProviderId: args.inbound.providerId,
+          firstReplyRecoveredAt: args.now,
+        },
+        args.now,
+      );
+      await reportIntakeStep(deps, 'intake_started', session.id);
+      return outcome;
+    }
+    body = voiced;
+  }
   const { transcript } = await sendAndRecord(database, ctx, body, deps, recorded.transcript);
 
   await saveSession(
@@ -1079,13 +1181,413 @@ async function deliverFirstHello(
  * VIL-385. New parent, flag on. Place first unless the message already has one,
  * then a live week find, then ages. One place ask. No area-code guess.
  */
+const REASK_CAP = 2;
+
+async function friendSpeak(
+  deps: IntakeDeps,
+  transcript: readonly { direction: 'in' | 'out'; body: string }[],
+  input: Omit<FriendVoiceInput, 'recentTurns'>,
+  options?: { link?: string | null; linkFollows?: boolean; prompt?: 'full' | 'short' },
+) {
+  deps.keepTyping?.();
+  return speakFriend(
+    deps.friendVoice,
+    { ...input, recentTurns: turnsFromTranscript(transcript) },
+    options,
+  );
+}
+
+/** A judged model reply. Empty means the retries already paged #ops. */
+function friendOutbound(spoken: FriendVoiceResult): string | null {
+  if (spoken.source === 'unsent' || spoken.body.trim().length === 0) return null;
+  return spoken.body;
+}
+
+function touchWithClarify(touch: FirstTouchPersisted, key: 'place' | 'ages'): FirstTouchPersisted {
+  const prior = touch.clarify ?? { place: 0, ages: 0 };
+  return {
+    ...touch,
+    clarify: { place: prior.place, ages: prior.ages, [key]: prior[key] + 1 },
+  };
+}
+
+function linesOfFind(message: string): string[] {
+  return message
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^\d+\.\s+/.test(line))
+    .map((line) => line.replace(/^\d+\.\s+/, ''));
+}
+
+function friendAddress(ctx: SendContext): 'tu' | 'vous' {
+  return ctx.pipe.isGroup ? 'vous' : 'tu';
+}
+
+function friendFields(
+  step: FriendStep,
+  language: ReplyLanguage,
+  address: 'tu' | 'vous',
+  extra: Partial<Omit<FriendVoiceInput, 'step' | 'language' | 'address' | 'recentTurns'>> = {},
+): Omit<FriendVoiceInput, 'recentTurns'> {
+  return {
+    step,
+    language,
+    address,
+    introduce: false,
+    parentWords: '',
+    placeLabel: null,
+    agesLabel: null,
+    ageMonths: [],
+    findLines: [],
+    listKind: 'none',
+    activity: null,
+    day: null,
+    parentName: null,
+    ...extra,
+  };
+}
+
+/** Post-family sends do not append to the session transcript. The next model turn reads it. */
+function threadForNext(
+  transcript: TranscriptEntry[],
+  inboundBody: string,
+  inboundAt: string,
+  outboundBody: string,
+  now: Date,
+): TranscriptEntry[] {
+  const last = transcript.at(-1);
+  const base =
+    last?.direction === 'in' && last.body === inboundBody
+      ? transcript
+      : [
+          ...transcript,
+          { direction: 'in' as const, body: inboundBody, providerId: null, at: inboundAt },
+        ];
+  return [
+    ...base,
+    { direction: 'out' as const, body: outboundBody, providerId: null, at: now.toISOString() },
+  ];
+}
+
+async function captureColdStartName(turn: ColdStartTurn): Promise<void> {
+  const captured = await handleNameCaptureReply(
+    turn.database,
+    {
+      familyId: turn.familyId,
+      parentUserId: turn.userId,
+      body: turn.inbound.body,
+      now: turn.now,
+    },
+    defaultNameCaptureDeps(),
+  );
+  console.info({ status: captured.status }, 'onboarding-friend: name reply');
+}
+
+function friendStepForGap(gap: OnboardingItem | undefined, card: boolean): FriendStep {
+  switch (gap) {
+    case 'ages':
+      return 'ages';
+    case 'pick':
+      return 'find_pick';
+    case 'name':
+      return 'names';
+    case 'kids':
+      return 'kids_names';
+    case 'calendar':
+      return 'calendar';
+    case 'gmail':
+      return 'email';
+    default:
+      return card ? 'place_card' : 'place';
+  }
+}
+
+function givenFromStored(
+  prior: FirstTouchGiven | null,
+  stored: {
+    parentName: string | null;
+    activityPick: number | null;
+    connectCalendar: boolean | null;
+    connectGmail: boolean | null;
+  },
+  capture: {
+    nameDeclined: boolean;
+    kidsNamesDeclined: boolean;
+    calendarLater: boolean;
+    gmailLater: boolean;
+  },
+): FirstTouchGiven | null {
+  const given: FirstTouchGiven = {
+    parentName: stored.parentName,
+    activityPick: stored.activityPick,
+    connectCalendar: stored.connectCalendar,
+    connectGmail: stored.connectGmail,
+    nameDeclined: prior?.nameDeclined === true || capture.nameDeclined,
+    kidsNamesDeclined: prior?.kidsNamesDeclined === true || capture.kidsNamesDeclined,
+    calendarLater: prior?.calendarLater === true || capture.calendarLater,
+    gmailLater: prior?.gmailLater === true || capture.gmailLater,
+  };
+  if (
+    !given.parentName &&
+    given.activityPick == null &&
+    given.connectCalendar == null &&
+    given.connectGmail == null &&
+    !given.nameDeclined &&
+    !given.kidsNamesDeclined &&
+    !given.calendarLater &&
+    !given.gmailLater
+  ) {
+    return null;
+  }
+  return given;
+}
+
+function agesKnown(children: readonly { ageMonths: number | null }[]): boolean {
+  return agesAreComplete(children);
+}
+
+function nameKnown(given: FirstTouchGiven | null, needsName: boolean): boolean {
+  return !needsName || Boolean(given?.parentName) || given?.nameDeclined === true;
+}
+
+function kidsKnown(
+  children: readonly { name: string | null }[],
+  given: FirstTouchGiven | null,
+): boolean {
+  return given?.kidsNamesDeclined === true || kidsAreNamed(children);
+}
+
+function calendarAnswered(given: FirstTouchGiven | null): boolean {
+  return given?.connectCalendar != null || given?.calendarLater === true;
+}
+
+function gmailAnswered(given: FirstTouchGiven | null): boolean {
+  return given?.connectGmail != null || given?.gmailLater === true;
+}
+
+/**
+ * One model turn for the pre-family ladder. The model returns the reply and
+ * every fact the message contained. Code stores those facts and, once a place
+ * and ages are both stored, provisions. It does not read the message to decide
+ * which fact arrived.
+ */
+async function friendOnboardingTurn(
+  database: Database,
+  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
+  deps: IntakeDeps,
+  opening: boolean,
+): Promise<IntakeOutcome> {
+  const { session, inbound, now } = args;
+  const ctx = sendContext(args);
+  const language =
+    session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
+  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+  let transcript = recorded.transcript;
+  const safety = namesAnEmergency(inbound.body)
+    ? EMERGENCY_REPLY
+    : namesAMentalCrisis(inbound.body)
+      ? MENTAL_CRISIS_REPLY
+      : identityChallengeReply(inbound.body);
+  if (safety) {
+    ({ transcript } = await sendAndRecord(database, ctx, safety, deps, transcript));
+    await saveSession(
+      database,
+      session,
+      {
+        state: session.state === 'awaiting_ages' ? 'awaiting_ages' : 'awaiting_place',
+        transcript,
+        lastProviderId: inbound.providerId,
+        firstReplyRecoveredAt: now,
+        ladderLanguage: language,
+        firstTouch: session.firstTouch ?? {
+          language,
+          place: null,
+          locationRequest: null,
+        },
+      },
+      now,
+    );
+    return {
+      status: 'first_touch',
+      step: session.state === 'awaiting_ages' ? 'ages_waiting' : 'place_waiting',
+    };
+  }
+
+  let place = session.firstTouch?.place ?? null;
+  if (!place && opening) {
+    const venue = venueForCode(session.sourceCode);
+    const venuePlace = venue ? placeFromVenue(venue) : null;
+    if (venuePlace) place = persistPlace(venuePlace);
+  }
+  let locationRequest = session.firstTouch?.locationRequest ?? null;
+  let card = false;
+  if (opening && !place) {
+    const located = await resolveFirstTouchLocation(ctx, deps);
+    locationRequest = located.locationRequest;
+    card = located.accepted;
+  }
+  const priorGiven = session.firstTouch?.given ?? null;
+  const checklist: OnboardingChecklist = {
+    postal: place != null,
+    ages: agesKnown(session.collected.children),
+    pick: false,
+    name: Boolean(priorGiven?.parentName) || priorGiven?.nameDeclined === true,
+    kids: kidsKnown(session.collected.children, priorGiven),
+    calendar: calendarAnswered(priorGiven),
+    gmail: gmailAnswered(priorGiven),
+  };
+  const spoken = await friendSpeak(
+    deps,
+    transcript,
+    friendFields(
+      friendStepForGap(onboardingMissing(checklist)[0], card),
+      language,
+      friendAddress(ctx),
+      {
+        introduce: opening && !transcriptHasOutbound(transcript),
+        parentWords: inbound.body,
+        placeLabel: place?.city || place?.areaCoarse || null,
+        agesLabel: summarizeChildren(session.collected.children),
+        ageMonths: session.collected.children.flatMap((child) =>
+          child.ageMonths == null ? [] : [child.ageMonths],
+        ),
+        parentName: priorGiven?.parentName ?? null,
+        checklist,
+      },
+    ),
+  );
+  const stored = storedFromCapture(
+    {
+      children: session.collected.children,
+      postalCode: session.collected.postalCode,
+      place: place
+        ? {
+            kind: place.kind,
+            areaCoarse: place.areaCoarse,
+            postalCode: place.postalCode,
+            municipality: place.municipality as FirstTouchPlace['municipality'],
+            city: place.city,
+          }
+        : null,
+      parentName: priorGiven?.parentName ?? null,
+      activityPick: priorGiven?.activityPick ?? null,
+      connectCalendar: priorGiven?.connectCalendar ?? null,
+      connectGmail: priorGiven?.connectGmail ?? null,
+    },
+    spoken.capture,
+  );
+  const nextPlace = stored.place ? persistPlace(stored.place) : null;
+  const collected: IntakeCollected = {
+    children: stored.collectedChildren,
+    postalCode: stored.postalCode,
+  };
+  const given = givenFromStored(priorGiven, stored, spoken.capture);
+  const children = withKnownAges(collected.children);
+  const location = nextPlace ? intakeLocationFor(nextPlace) : null;
+  const baseTouch: FirstTouchPersisted = {
+    language,
+    place: nextPlace,
+    locationRequest,
+    given,
+    clarify: session.firstTouch?.clarify ?? null,
+  };
+  if (children && children.length > 0 && location && nextPlace) {
+    if (opening) await reportIntakeStep(deps, 'intake_started', session.id);
+    return provision(
+      database,
+      {
+        session: { ...session, collected, ladderLanguage: language, firstTouch: baseTouch },
+        phoneE164: args.phoneE164,
+        inbound,
+        now,
+      },
+      deps,
+      { collected, children, location, transcript },
+    );
+  }
+  const voiced = friendOutbound(spoken);
+  if (voiced) {
+    ({ transcript } = await sendAndRecord(database, ctx, voiced, deps, transcript));
+  }
+  const waitingAges = nextPlace != null;
+  const clarifyKey = waitingAges ? 'ages' : 'place';
+  const priorCount = session.firstTouch?.clarify?.[clarifyKey] ?? 0;
+  const partial = knownAgeChildren(collected.children);
+  if (waitingAges && priorCount >= REASK_CAP && partial.length > 0 && location && nextPlace) {
+    return provision(
+      database,
+      {
+        session: {
+          ...session,
+          collected,
+          ladderLanguage: language,
+          firstTouch: touchWithClarify(baseTouch, 'ages'),
+        },
+        phoneE164: args.phoneE164,
+        inbound,
+        now,
+      },
+      deps,
+      { collected, children: partial, location, transcript },
+    );
+  }
+  const stuck =
+    !opening &&
+    ((session.state === 'awaiting_ages' && !agesKnown(collected.children)) ||
+      (session.state !== 'awaiting_ages' && !nextPlace));
+  await saveSession(
+    database,
+    session,
+    {
+      state: waitingAges ? 'awaiting_ages' : 'awaiting_place',
+      transcript,
+      collected,
+      lastProviderId: inbound.providerId,
+      firstReplyRecoveredAt: now,
+      ladderLanguage: language,
+      firstTouch: stuck ? touchWithClarify(baseTouch, clarifyKey) : baseTouch,
+    },
+    now,
+  );
+  if (opening) await reportIntakeStep(deps, 'intake_started', session.id);
+  if (waitingAges) {
+    return { status: 'first_touch', step: opening ? 'find_sent' : 'ages_waiting' };
+  }
+  return { status: 'first_touch', step: opening ? 'place_asked' : 'place_waiting' };
+}
+
 async function openFirstTouch(
   database: Database,
   args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
   deps: IntakeDeps,
   ctx: SendContext,
 ): Promise<IntakeOutcome> {
+  if (onboardingFriendVoiceEnabled()) return friendOnboardingTurn(database, args, deps, true);
   const { session } = args;
+  const safety = namesAnEmergency(args.inbound.body)
+    ? EMERGENCY_REPLY
+    : namesAMentalCrisis(args.inbound.body)
+      ? MENTAL_CRISIS_REPLY
+      : identityChallengeReply(args.inbound.body);
+  if (safety) {
+    const recorded = await recordInbound(database, ctx, args.inbound, session.transcript);
+    const sent = await sendAndRecord(database, ctx, safety, deps, recorded.transcript);
+    const language = replyLanguage(args.inbound.body);
+    await saveSession(
+      database,
+      session,
+      {
+        state: 'awaiting_place',
+        transcript: sent.transcript,
+        lastProviderId: args.inbound.providerId,
+        firstReplyRecoveredAt: args.now,
+        ladderLanguage: language,
+        firstTouch: { language, place: null, locationRequest: null },
+      },
+      args.now,
+    );
+    return { status: 'first_touch', step: 'place_waiting' };
+  }
   const recorded = await recordInbound(database, ctx, args.inbound, session.transcript);
   const language = replyLanguage(args.inbound.body);
   const collected = await deps.extractor.extract({
@@ -1102,13 +1604,16 @@ async function openFirstTouch(
     const venue = venueForCode(session.sourceCode);
     const venuePlace = venue ? placeFromVenue(venue) : null;
     if (venuePlace) {
-      const hello = await sendAndRecord(
-        database,
-        ctx,
-        KNOWN_VENUE_HELLO[language],
-        deps,
-        recorded.transcript,
-      );
+      // Friend voice asks once. A separate hello plus an empty week find is two bubbles.
+      const hello = onboardingFriendVoiceEnabled()
+        ? { transcript: recorded.transcript }
+        : await sendAndRecord(
+            database,
+            ctx,
+            KNOWN_VENUE_HELLO[language],
+            deps,
+            recorded.transcript,
+          );
       return sendWeekFindThenAgesOrProvision(database, args, deps, ctx, {
         language,
         place: venuePlace,
@@ -1118,7 +1623,14 @@ async function openFirstTouch(
         started: true,
       });
     }
-    const asked = await sendPlaceAsk(database, ctx, deps, language, recorded.transcript);
+    const asked = await sendPlaceAsk(
+      database,
+      ctx,
+      deps,
+      language,
+      recorded.transcript,
+      args.inbound.body,
+    );
     await saveSession(
       database,
       session,
@@ -1151,6 +1663,7 @@ async function continueFirstTouch(
   args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
+  if (onboardingFriendVoiceEnabled()) return friendOnboardingTurn(database, args, deps, false);
   const { session, inbound, now } = args;
   const ctx = sendContext(args);
   const language =
@@ -1163,23 +1676,64 @@ async function continueFirstTouch(
 
   const place = placeFromMessage(firstInboundWords(inbound.body));
   if (!place) {
-    const offScript = await offScriptReply(
-      {
-        parentWords: inbound.body,
-        pendingAsk: FIRST_TOUCH_SMS_BY_LANGUAGE[language],
-        children: session.collected.children,
-        postalCode: session.collected.postalCode,
-      },
-      deps,
-    );
     let transcript = recorded.transcript;
-    if (offScript) {
-      ({ transcript } = await sendAndRecord(database, ctx, offScript.body, deps, transcript));
+    const baseTouch: FirstTouchPersisted = session.firstTouch ?? {
+      language,
+      place: null,
+      locationRequest: null,
+    };
+    if (onboardingFriendVoiceEnabled()) {
+      const safety = namesAnEmergency(inbound.body)
+        ? EMERGENCY_REPLY
+        : namesAMentalCrisis(inbound.body)
+          ? MENTAL_CRISIS_REPLY
+          : identityChallengeReply(inbound.body);
+      if (safety) {
+        ({ transcript } = await sendAndRecord(database, ctx, safety, deps, transcript));
+      } else {
+        const spoken = await friendSpeak(
+          deps,
+          transcript,
+          friendFields('place', language, friendAddress(ctx), {
+            parentWords: inbound.body,
+          }),
+        );
+        const voiced = friendOutbound(spoken);
+        if (voiced) {
+          ({ transcript } = await sendAndRecord(database, ctx, voiced, deps, transcript));
+        }
+      }
+    } else {
+      const offScript = await offScriptReply(
+        {
+          parentWords: inbound.body,
+          pendingAsk: FIRST_TOUCH_SMS_BY_LANGUAGE[language],
+          children: session.collected.children,
+          postalCode: session.collected.postalCode,
+        },
+        deps,
+      );
+      if (offScript) {
+        ({ transcript } = await sendAndRecord(database, ctx, offScript.body, deps, transcript));
+      } else {
+        ({ transcript } = await sendAndRecord(
+          database,
+          ctx,
+          FIRST_TOUCH_SMS_BY_LANGUAGE[language],
+          deps,
+          transcript,
+        ));
+      }
     }
     await saveSession(
       database,
       session,
-      { transcript, collected: session.collected, lastProviderId: inbound.providerId },
+      {
+        transcript,
+        collected: session.collected,
+        lastProviderId: inbound.providerId,
+        firstTouch: touchWithClarify(baseTouch, 'place'),
+      },
       now,
     );
     return { status: 'first_touch', step: 'place_waiting' };
@@ -1199,58 +1753,89 @@ async function continueFirstTouch(
   });
 }
 
+async function resolveFirstTouchLocation(
+  ctx: SendContext,
+  deps: IntakeDeps,
+): Promise<{ accepted: boolean; locationRequest: FirstTouchPersisted['locationRequest'] }> {
+  const at = ctx.now.toISOString();
+  if (!firstTouchLocationCardEnabled()) {
+    return { accepted: false, locationRequest: { at, outcome: 'skipped' } };
+  }
+  const chatId = ctx.pipe.chatId;
+  const canRequest =
+    ctx.pipe.channel === 'imessage' &&
+    !ctx.pipe.isGroup &&
+    typeof chatId === 'string' &&
+    chatId.length > 0 &&
+    typeof deps.transport.requestLocation === 'function';
+  if (!canRequest || !chatId || !deps.transport.requestLocation) {
+    return {
+      accepted: false,
+      locationRequest: { at, outcome: ctx.pipe.isGroup ? 'skipped_group' : 'not_a_moment' },
+    };
+  }
+  try {
+    const result = await deps.transport.requestLocation({ chatId });
+    if (result.status === 'sent')
+      return { accepted: true, locationRequest: { at, outcome: 'sent' } };
+    if (result.status === 'refused') {
+      console.info({ outcome: 'refused', code: result.code }, 'first-touch location card: refused');
+      return { accepted: false, locationRequest: { at, outcome: 'refused', code: result.code } };
+    }
+    console.info({ outcome: result.status }, 'first-touch location card: not sent');
+    return { accepted: false, locationRequest: { at, outcome: result.status } };
+  } catch (err) {
+    console.warn(
+      { outcome: 'unreachable', err: err instanceof Error ? err.name : 'unknown' },
+      'first-touch location card: unreachable',
+    );
+    return { accepted: false, locationRequest: { at, outcome: 'unreachable' } };
+  }
+}
+
 async function sendPlaceAsk(
   database: Database,
   ctx: SendContext,
   deps: IntakeDeps,
   language: ReplyLanguage,
   transcript: TranscriptEntry[],
+  parentWords = '',
 ): Promise<{
   transcript: TranscriptEntry[];
   locationRequest: FirstTouchPersisted['locationRequest'];
 }> {
-  const chatId = ctx.pipe.chatId;
-  const card =
-    ctx.pipe.channel === 'imessage' &&
-    !ctx.pipe.isGroup &&
-    typeof chatId === 'string' &&
-    chatId.length > 0 &&
-    typeof deps.transport.requestLocation === 'function';
-  const body = card
-    ? FIRST_TOUCH_IMESSAGE_BY_LANGUAGE[language]
-    : FIRST_TOUCH_SMS_BY_LANGUAGE[language];
-  const sent = await sendAndRecord(database, ctx, body, deps, transcript);
-  const at = ctx.now.toISOString();
-  if (!card || !chatId || !deps.transport.requestLocation) {
-    return {
-      transcript: sent.transcript,
-      locationRequest: {
-        at,
-        outcome: ctx.pipe.isGroup ? 'skipped_group' : 'not_a_moment',
-      },
-    };
-  }
-  try {
-    const result = await deps.transport.requestLocation({ chatId });
-    if (result.status === 'sent') {
-      return { transcript: sent.transcript, locationRequest: { at, outcome: 'sent' } };
+  // Linq location sharing is a paid add-on. Off unless the switch is exactly
+  // `true`: the postal sentence goes out and requestLocation is never called.
+  // Provisioning still writes first_touch_location_requested, outcome skipped.
+  // On, the card is asked first. The Tap sentence is only true once Linq
+  // accepted it. A 2011 (feature not available) or any other miss uses the
+  // postal line.
+  const placeBody = async (card: boolean) => {
+    if (!onboardingFriendVoiceEnabled()) {
+      return card
+        ? FIRST_TOUCH_IMESSAGE_BY_LANGUAGE[language]
+        : FIRST_TOUCH_SMS_BY_LANGUAGE[language];
     }
-    if (result.status === 'refused') {
-      console.info({ outcome: 'refused', code: result.code }, 'first-touch location card: refused');
-      return {
-        transcript: sent.transcript,
-        locationRequest: { at, outcome: 'refused', code: result.code },
-      };
-    }
-    console.info({ outcome: result.status }, 'first-touch location card: not sent');
-    return { transcript: sent.transcript, locationRequest: { at, outcome: result.status } };
-  } catch (err) {
-    console.warn(
-      { outcome: 'unreachable', err: err instanceof Error ? err.name : 'unknown' },
-      'first-touch location card: unreachable',
-    );
-    return { transcript: sent.transcript, locationRequest: { at, outcome: 'unreachable' } };
-  }
+    const spoken = await friendSpeak(deps, transcript, {
+      step: card ? 'place_card' : 'place',
+      language,
+      address: ctx.pipe.isGroup ? 'vous' : 'tu',
+      introduce: true,
+      parentWords,
+      placeLabel: null,
+      agesLabel: null,
+      ageMonths: [],
+      findLines: [],
+      listKind: 'none',
+      activity: null,
+      day: null,
+      parentName: null,
+    });
+    return friendOutbound(spoken) ?? '';
+  };
+  const card = await resolveFirstTouchLocation(ctx, deps);
+  const sent = await sendAndRecord(database, ctx, await placeBody(card.accepted), deps, transcript);
+  return { transcript: sent.transcript, locationRequest: card.locationRequest };
 }
 
 async function sendWeekFindThenAgesOrProvision(
@@ -1268,11 +1853,60 @@ async function sendWeekFindThenAgesOrProvision(
   },
 ): Promise<IntakeOutcome> {
   const { session, inbound, now } = args;
-  const found = await findThisWeek({ finder: deps.weekFinder ?? null, place: input.place });
-  const rendered = renderWeekFind(found.lines);
-  const findBody = rendered ?? FIRST_TOUCH_EMPTY_BY_LANGUAGE[input.language];
-  let transcript = (await sendAndRecord(database, ctx, findBody, deps, input.transcript))
-    .transcript;
+  const children = withKnownAges(input.collected.children);
+  const location = intakeLocationFor(input.place);
+  const agesKnown = Boolean(children && children.length > 0 && location);
+  const friend = onboardingFriendVoiceEnabled();
+  let transcript = input.transcript;
+  if (friend) {
+    // Ages already known: the year list is the one find. An empty week line
+    // ahead of it is the bug this flag exists to stop.
+    // The week search and the ages reply run together. The search is capped
+    // so a slow web lookup cannot hold the parent for the activity timeout.
+    if (!agesKnown) {
+      const voiceInput = friendFields('ages', input.language, friendAddress(ctx), {
+        introduce: input.started && !transcriptHasOutbound(transcript),
+        parentWords: inbound.body,
+        placeLabel: input.place.city || input.place.areaCoarse || null,
+        findLines: [],
+        listKind: 'none',
+      });
+      const [found, spoken] = await Promise.all([
+        findThisWeekWithin({ finder: deps.weekFinder ?? null, place: input.place }),
+        friendSpeak(deps, transcript, voiceInput),
+      ]);
+      let outbound = friendOutbound(spoken);
+      if (outbound && found.outcome === 'found' && found.lines.length > 0) {
+        const listed: FriendVoiceInput = {
+          ...voiceInput,
+          recentTurns: turnsFromTranscript(transcript),
+          findLines: found.lines,
+          listKind: 'week',
+        };
+        const assembled = assembleFriendBody(spoken.prose, listed);
+        const judged = judgeFriendReply(assembled, listed);
+        if (judged.ok) {
+          outbound = assembled;
+        } else {
+          const retry = await friendSpeak(
+            deps,
+            transcript,
+            { ...voiceInput, findLines: found.lines, listKind: 'week' },
+            { prompt: 'short' },
+          );
+          outbound = friendOutbound(retry);
+        }
+      }
+      if (outbound) {
+        transcript = (await sendAndRecord(database, ctx, outbound, deps, transcript)).transcript;
+      }
+    }
+  } else {
+    const found = await findThisWeekWithin({ finder: deps.weekFinder ?? null, place: input.place });
+    const rendered = renderWeekFind(found.lines);
+    const findBody = rendered ?? FIRST_TOUCH_EMPTY_BY_LANGUAGE[input.language];
+    transcript = (await sendAndRecord(database, ctx, findBody, deps, input.transcript)).transcript;
+  }
   const touch: FirstTouchPersisted = {
     language: input.language,
     place: persistPlace(input.place),
@@ -1287,8 +1921,6 @@ async function sendWeekFindThenAgesOrProvision(
     ladderLanguage: input.language,
     firstTouch: touch,
   };
-  const children = withKnownAges(input.collected.children);
-  const location = intakeLocationFor(input.place);
   // An empty list is truthy and means no ages were known. Provision only with real ages.
   if (children && children.length > 0 && location) {
     if (input.started) await reportIntakeStep(deps, 'intake_started', session.id);
@@ -1304,13 +1936,15 @@ async function sendWeekFindThenAgesOrProvision(
       },
     );
   }
-  ({ transcript } = await sendAndRecord(
-    database,
-    ctx,
-    FIRST_TOUCH_AGES_BY_LANGUAGE[input.language],
-    deps,
-    transcript,
-  ));
+  if (!friend) {
+    ({ transcript } = await sendAndRecord(
+      database,
+      ctx,
+      FIRST_TOUCH_AGES_BY_LANGUAGE[input.language],
+      deps,
+      transcript,
+    ));
+  }
   await saveSession(
     database,
     session,
@@ -1345,10 +1979,63 @@ async function answerAges(
   const place = session.firstTouch?.place;
   const location = place ? intakeLocationFor(place) : null;
   if (!children || children.length === 0 || !location || !place) {
+    const partial = knownAgeChildren(collected.children);
+    const prior = session.firstTouch?.clarify?.ages ?? 0;
+    const baseTouch: FirstTouchPersisted = session.firstTouch ?? {
+      language,
+      place: place ?? null,
+      locationRequest: null,
+    };
+    if (prior >= REASK_CAP && partial.length > 0 && location && place) {
+      const located: IntakeSession = {
+        ...session,
+        collected: { ...collected, postalCode: place.postalCode ?? collected.postalCode },
+        ladderLanguage: language,
+        firstTouch: touchWithClarify(baseTouch, 'ages'),
+      };
+      return provision(
+        database,
+        { session: located, phoneE164: args.phoneE164, inbound, now },
+        deps,
+        { collected: located.collected, children: partial, location, transcript },
+      );
+    }
+    let nextTranscript = transcript;
+    if (onboardingFriendVoiceEnabled()) {
+      const spoken = await friendSpeak(
+        deps,
+        transcript,
+        friendFields('ages', language, friendAddress(sendContext(args)), {
+          parentWords: inbound.body,
+          placeLabel: place?.city || place?.areaCoarse || null,
+        }),
+      );
+      const voiced = friendOutbound(spoken);
+      if (voiced) {
+        nextTranscript = (
+          await sendAndRecord(database, sendContext(args), voiced, deps, transcript)
+        ).transcript;
+      }
+    } else {
+      nextTranscript = (
+        await sendAndRecord(
+          database,
+          sendContext(args),
+          FIRST_TOUCH_AGES_BY_LANGUAGE[language],
+          deps,
+          transcript,
+        )
+      ).transcript;
+    }
     await saveSession(
       database,
       session,
-      { transcript, collected, lastProviderId: inbound.providerId },
+      {
+        transcript: nextTranscript,
+        collected,
+        lastProviderId: inbound.providerId,
+        firstTouch: touchWithClarify(baseTouch, 'ages'),
+      },
       now,
     );
     return { status: 'first_touch', step: 'ages_waiting' };
@@ -1421,11 +2108,291 @@ function withColdStart(
   };
 }
 
+function coldFacts(
+  turn: ColdStartTurn,
+  progress: ColdStartProgress,
+): Pick<FriendVoiceInput, 'placeLabel' | 'agesLabel' | 'ageMonths' | 'activity' | 'day'> {
+  const place = turn.session.firstTouch?.place;
+  return {
+    placeLabel: place?.city || place?.areaCoarse || null,
+    agesLabel: summarizeChildren(turn.session.collected.children),
+    ageMonths: turn.session.collected.children
+      .map((child) => child.ageMonths)
+      .filter((age): age is number => age !== null),
+    activity: progress.activity,
+    day: progress.day,
+  };
+}
+
+async function sendFriendLine(
+  turn: ColdStartTurn,
+  step: FriendStep,
+  progress: ColdStartProgress,
+  ask: 'names' | 'signup' | null,
+  templateKey?: string,
+): Promise<IntakeOutcome> {
+  const { database, session, inbound, now, deps, language } = turn;
+  const ctx = sendContext({ session, phoneE164: session.phoneE164, inbound, now });
+  const spoken = await friendSpeak(
+    deps,
+    session.transcript,
+    friendFields(step, language, friendAddress(ctx), {
+      parentWords: inbound.body,
+      ...coldFacts(turn, progress),
+    }),
+  );
+  const voiced = friendOutbound(spoken);
+  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+  if (voiced) {
+    await sendAndRecord(database, ctx, voiced, deps, recorded.transcript, templateKey);
+  }
+  if (ask && voiced) {
+    await recordOptionalAsk(database, {
+      familyId: turn.familyId,
+      now,
+      sendClass: ask,
+      askKey: ask,
+    });
+  }
+  const finished =
+    Boolean(voiced) && step === 'signup' && progress.calendarAsked && progress.emailAsked;
+  await saveSession(
+    database,
+    session,
+    {
+      lastProviderId: inbound.providerId,
+      transcript: voiced
+        ? threadForNext(
+            session.transcript,
+            inbound.body,
+            inbound.receivedAt.toISOString(),
+            voiced,
+            now,
+          )
+        : recorded.transcript,
+      firstTouch: withColdStart(session, language, progress),
+      ...(finished ? { state: 'complete' as const, closedAt: now, ladderNext: null } : {}),
+    },
+    now,
+  );
+  return { status: 'first_touch', step: 'find_sent' };
+}
+
+async function sendFriendConnector(
+  turn: ColdStartTurn,
+  provider: 'gcal' | 'gmail',
+): Promise<IntakeOutcome> {
+  const { database, session, inbound, now, deps, language, familyId } = turn;
+  const ask = provider === 'gcal' ? 'calendar' : 'email';
+  const gate = await gateOptionalAsk(database, {
+    familyId,
+    now,
+    sendClass: ask,
+    askKey: ask,
+    onboardingSequence: true,
+  });
+  if (!gate.allow) {
+    console.info({ reason: gate.reason, ask }, 'onboarding-friend: connector held');
+    await closeColdStartForCoach(database, session, inbound, now);
+    return { status: 'ignored', reason: 'no_open_conversation' };
+  }
+  const ctx = sendContext({ session, phoneE164: session.phoneE164, inbound, now });
+  const step: FriendStep = provider === 'gcal' ? 'calendar' : 'email';
+  const spoken = await friendSpeak(
+    deps,
+    session.transcript,
+    friendFields(step, language, friendAddress(ctx), {
+      parentWords: inbound.body,
+      ...coldFacts(turn, turn.progress),
+    }),
+    { linkFollows: true },
+  );
+  await recordInbound(database, ctx, inbound, session.transcript);
+  if (!friendOutbound(spoken)) {
+    await saveSession(
+      database,
+      session,
+      {
+        lastProviderId: inbound.providerId,
+        firstTouch: withColdStart(session, language, turn.progress),
+      },
+      now,
+    );
+    return { status: 'first_touch', step: 'find_sent' };
+  }
+  const cards = await sendYearConnectorCards(
+    database,
+    {
+      familyId,
+      parentUserId: turn.userId,
+      phoneE164: session.phoneE164,
+      language,
+      now,
+      ridesReply: true,
+      only: provider,
+      voice: { [provider]: spoken.prose },
+    },
+    { transport: deps.transport, threadMessage: deps.threadMessage },
+  );
+  const label = provider === 'gcal' ? cards.calendar : cards.gmail;
+  if (label === 'already_sent') {
+    return offerFriendFollow({
+      ...turn,
+      progress: {
+        ...turn.progress,
+        step: 'follow',
+        nameLineSent: true,
+        calendarAsked: turn.progress.calendarAsked || provider === 'gcal',
+        emailAsked: turn.progress.emailAsked || provider === 'gmail',
+      },
+    });
+  }
+  let outbound = spoken.prose;
+  const sent = label === 'sent';
+  if (!sent) {
+    const retry = await friendSpeak(
+      deps,
+      session.transcript,
+      friendFields('link_retry', language, friendAddress(ctx), { parentWords: inbound.body }),
+    );
+    const retried = friendOutbound(retry);
+    if (!retried) {
+      await saveSession(
+        database,
+        session,
+        {
+          lastProviderId: inbound.providerId,
+          firstTouch: withColdStart(session, language, turn.progress),
+        },
+        now,
+      );
+      return { status: 'first_touch', step: 'find_sent' };
+    }
+    outbound = retried;
+    await sendAndRecord(database, ctx, retried, deps, session.transcript);
+  } else {
+    await recordOptionalAsk(database, { familyId, now, sendClass: ask, askKey: ask });
+  }
+  const progress: ColdStartProgress = {
+    ...turn.progress,
+    step: 'follow',
+    nameLineSent: true,
+    calendarAsked: turn.progress.calendarAsked || (sent && provider === 'gcal'),
+    emailAsked: turn.progress.emailAsked || (sent && provider === 'gmail'),
+  };
+  await saveSession(
+    database,
+    session,
+    {
+      lastProviderId: inbound.providerId,
+      transcript: threadForNext(
+        session.transcript,
+        inbound.body,
+        inbound.receivedAt.toISOString(),
+        outbound,
+        now,
+      ),
+      firstTouch: withColdStart(session, language, progress),
+    },
+    now,
+  );
+  return { status: 'first_touch', step: 'find_sent' };
+}
+
+async function offerFriendNames(turn: ColdStartTurn): Promise<IntakeOutcome> {
+  if (!(await parentNeedsName(turn.database, turn.userId))) {
+    return offerFriendFollow({
+      ...turn,
+      progress: { ...turn.progress, nameLineSent: true, step: 'follow' },
+    });
+  }
+  const gate = await gateOptionalAsk(turn.database, {
+    familyId: turn.familyId,
+    now: turn.now,
+    sendClass: 'names',
+    askKey: 'names',
+    onboardingSequence: true,
+  });
+  if (!gate.allow) {
+    console.info({ reason: gate.reason, ask: 'names' }, 'onboarding-friend: names held');
+    await closeColdStartForCoach(turn.database, turn.session, turn.inbound, turn.now);
+    return { status: 'ignored', reason: 'no_open_conversation' };
+  }
+  return sendFriendLine(
+    turn,
+    'names',
+    { ...turn.progress, step: 'names', nameLineSent: true },
+    'names',
+    PARENT_NAME_ASK_TEMPLATE_KEY,
+  );
+}
+
+async function offerFriendFollow(turn: ColdStartTurn): Promise<IntakeOutcome> {
+  if (!turn.progress.nameLineSent) return offerFriendNames(turn);
+  if (!turn.progress.calendarAsked) await captureColdStartName(turn);
+  const familyStartedAt = await loadFamilyStartedAt(turn.database, turn.familyId, turn.now);
+  const schoolMentioned = turn.progress.schoolMentioned || mentionsSchoolOrCamp(turn.inbound.body);
+  const follow = planFollowAsk({
+    language: turn.language,
+    now: turn.now,
+    familyStartedAt,
+    nameLineSent: true,
+    calendarAlreadyAsked: turn.progress.calendarAsked,
+    emailAlreadyAsked: turn.progress.emailAsked,
+    signupAsked: turn.progress.signupAsked,
+    signupDateKnown: turn.progress.signupDateKnown,
+    parentText: turn.inbound.body,
+    schoolMentioned,
+    activity: turn.progress.activity,
+    day: turn.progress.day,
+    env: process.env,
+    friendVoice: true,
+  });
+  const progress: ColdStartProgress = { ...turn.progress, schoolMentioned, step: 'follow' };
+  if (follow.kind === 'none' || !follow.mayLeave) {
+    console.info(
+      { skipped: follow.skipped ?? 'not_due', ask: follow.kind },
+      'onboarding-friend: follow finished',
+    );
+    await closeColdStartForCoach(turn.database, turn.session, turn.inbound, turn.now);
+    return { status: 'ignored', reason: 'no_open_conversation' };
+  }
+  if (follow.kind === 'calendar') return sendFriendConnector({ ...turn, progress }, 'gcal');
+  if (follow.kind === 'email') return sendFriendConnector({ ...turn, progress }, 'gmail');
+  const gate = await gateOptionalAsk(turn.database, {
+    familyId: turn.familyId,
+    now: turn.now,
+    sendClass: 'signup',
+    askKey: 'signup',
+    onboardingSequence: true,
+  });
+  if (!gate.allow) {
+    console.info({ reason: gate.reason, ask: 'signup' }, 'onboarding-friend: signup held');
+    await closeColdStartForCoach(turn.database, turn.session, turn.inbound, turn.now);
+    return { status: 'ignored', reason: 'no_open_conversation' };
+  }
+  return sendFriendLine(turn, 'signup', { ...progress, signupAsked: true }, 'signup');
+}
+
+async function offerFriendPick(turn: ColdStartTurn): Promise<IntakeOutcome> {
+  const pick = activityFromFind(turn.progress.findBody, turn.inbound.body);
+  const progress: ColdStartProgress = {
+    ...turn.progress,
+    activity: pick && pick.activity !== 'that one' ? pick.activity : null,
+    day: pick && pick.day !== 'then' ? pick.day : null,
+    signupDateKnown: pick
+      ? signupDateKnownForPick(turn.progress.findBody, turn.inbound.body)
+      : false,
+    step: 'names',
+  };
+  return offerFriendNames({ ...turn, progress });
+}
+
 /** Names on the reply after logistics, or the next reply when that day is already spent. */
 async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> {
+  if (onboardingFriendVoiceEnabled()) return offerFriendNames(turn);
   const { database, session, inbound, now, deps, language, familyId, progress, judged } = turn;
   const ctx = sendContext({ session, phoneE164: session.phoneE164, inbound, now });
-  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   if (progress.step === 'logistics' && judged.intent === 'decline') {
     const askKey = `logistics:${progress.activity ?? 'that one'}:${progress.day ?? 'then'}`;
     const declined = await declineOptionalAsk(database, { familyId, askKey });
@@ -1439,6 +2406,7 @@ async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> 
   const held: ColdStartProgress = { ...progress, schoolMentioned, step: 'names' };
   if (!names.mayLeave) {
     console.info({ skipped: 'copy_unlocked', ask: 'names' }, 'cold-start names: not sent');
+    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
     await sendAndRecord(
       database,
       ctx,
@@ -1467,26 +2435,14 @@ async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> 
     askKey: 'names',
   });
   if (!gate.allow) {
+    // The day is already spent. A note here used to stay the reply on every
+    // later text ("ok", a Chinese message). Close instead and hand this text
+    // to the coach. Do not record it here: the handoff inserts that row.
     console.info({ reason: gate.reason, ask: 'names' }, 'cold-start names: held');
-    await sendAndRecord(
-      database,
-      ctx,
-      notedAfterLogistics(progress.group, language),
-      deps,
-      recorded.transcript,
-    );
-    await saveSession(
-      database,
-      session,
-      {
-        lastProviderId: inbound.providerId,
-        transcript: recorded.transcript,
-        firstTouch: withColdStart(session, language, { ...held, nameLineSent: false }),
-      },
-      now,
-    );
-    return { status: 'first_touch', step: 'find_sent' };
+    await closeColdStartForCoach(database, session, inbound, now);
+    return { status: 'ignored', reason: 'no_open_conversation' };
   }
+  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   await sendAndRecord(database, ctx, names.body, deps, recorded.transcript);
   await recordOptionalAsk(database, { familyId, now, sendClass: 'names', askKey: 'names' });
   await saveSession(
@@ -1504,9 +2460,9 @@ async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> 
 
 /** Sign-up offer first, then calendar. Email only after a mention, on its own reply. */
 async function offerColdStartFollow(turn: ColdStartTurn): Promise<IntakeOutcome> {
+  if (onboardingFriendVoiceEnabled()) return offerFriendFollow(turn);
   const { database, session, inbound, now, deps, language, familyId, progress } = turn;
   const ctx = sendContext({ session, phoneE164: session.phoneE164, inbound, now });
-  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   const schoolMentioned = progress.schoolMentioned || mentionsSchoolOrCamp(inbound.body);
   const familyStartedAt = await loadFamilyStartedAt(database, familyId, now);
   const follow = planFollowAsk({
@@ -1536,6 +2492,7 @@ async function offerColdStartFollow(turn: ColdStartTurn): Promise<IntakeOutcome>
       { skipped: follow.skipped ?? 'not_due', ask: follow.kind },
       'cold-start follow: not sent',
     );
+    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
     await sendAndRecord(database, ctx, note, deps, recorded.transcript);
     await saveSession(
       database,
@@ -1559,19 +2516,10 @@ async function offerColdStartFollow(turn: ColdStartTurn): Promise<IntakeOutcome>
   });
   if (!gate.allow) {
     console.info({ reason: gate.reason, ask: follow.kind }, 'cold-start follow: held');
-    await sendAndRecord(database, ctx, note, deps, recorded.transcript);
-    await saveSession(
-      database,
-      session,
-      {
-        lastProviderId: inbound.providerId,
-        transcript: recorded.transcript,
-        firstTouch: withColdStart(session, language, base),
-      },
-      now,
-    );
-    return { status: 'first_touch', step: 'find_sent' };
+    await closeColdStartForCoach(database, session, inbound, now);
+    return { status: 'ignored', reason: 'no_open_conversation' };
   }
+  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   await sendAndRecord(database, ctx, follow.body, deps, recorded.transcript);
   await recordOptionalAsk(database, {
     familyId,
@@ -1603,11 +2551,217 @@ async function offerColdStartFollow(turn: ColdStartTurn): Promise<IntakeOutcome>
 }
 
 /**
- * VIL-392. The turn after the discovery find. A number is the pick. Anything
- * else closes the session and hands the text to C1, except a pull phrase and
- * a high-confidence stop-asking.
+ * Close a cold-start session without answering, so the inbound door can hand
+ * this text to the coach. The message is not recorded here.
  */
-async function continueColdStart(
+async function closeColdStartForCoach(
+  database: Database,
+  session: IntakeSession,
+  inbound: Inbound,
+  now: Date,
+): Promise<void> {
+  await saveSession(
+    database,
+    session,
+    { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
+    now,
+  );
+}
+
+/**
+ * The first-hello Name and Photo share runs after the reply is sent, and only
+ * when the transcript has no outbound yet. A timeout there (unreachable,
+ * httpStatus 0) is retried once in that turn and, if it still fails, stored
+ * on the session. The next turn tries again after its own reply, never before
+ * it. {@link shareHaleContactCardOnce} claims
+ * parent_channels.linq_contact_card_shared_at before it posts, and a share
+ * already recorded for this chat today returns without a second POST. The audit row is
+ * linq_contact_card_shared. A miss is logged and does not fail the reply.
+ */
+async function retryFailedLinqContactCard(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+    inbound: Inbound;
+  },
+): Promise<void> {
+  try {
+    await shareFreshLinqContactCard(database, args);
+  } catch (err) {
+    console.warn(
+      { err: err instanceof Error ? err.name : 'unknown' },
+      'linq contact card: retry after a failed first share did not finish',
+    );
+  }
+}
+
+function childAgesChanged(
+  prior: readonly { ageMonths: number | null }[],
+  next: readonly { ageMonths: number | null }[],
+): boolean {
+  return next.some(
+    (child, index) => child.ageMonths != null && child.ageMonths !== prior[index]?.ageMonths,
+  );
+}
+
+function childNamesChanged(
+  prior: readonly { name: string | null }[],
+  next: readonly { name: string | null }[],
+): boolean {
+  return next.some((child, index) => {
+    const name = child.name?.trim();
+    if (!name) return false;
+    return name !== prior[index]?.name;
+  });
+}
+
+/** Onboarding never carries more children than this. The read is this family only. */
+const ONBOARDING_CHILD_LIMIT = 24;
+
+/** Write a corrected age or a newly given first name onto the child row. */
+async function syncOnboardingChildren(
+  database: Database,
+  familyId: string,
+  prior: readonly {
+    name: string | null;
+    ageMonths: number | null;
+    agePrecision: 'years' | 'months' | null;
+  }[],
+  next: readonly {
+    name: string | null;
+    ageMonths: number | null;
+    agePrecision: 'years' | 'months' | null;
+  }[],
+  now: Date,
+): Promise<void> {
+  const mine = await database
+    .select({
+      id: schema.children.id,
+      familyId: schema.children.familyId,
+      name: schema.children.name,
+    })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId))
+    .orderBy(asc(schema.children.createdAt))
+    .limit(ONBOARDING_CHILD_LIMIT);
+  for (let index = 0; index < next.length; index++) {
+    const child = next[index];
+    const before = prior[index];
+    if (!child) continue;
+    const row =
+      mine[index] ?? mine.find((candidate) => child.name != null && candidate.name === child.name);
+    if (!row) continue;
+    const patch: { name?: string; dateOfBirth?: string; dobPrecision?: string } = {};
+    const first = kidFirstName(child.name);
+    if (first && row.name !== first) patch.name = first;
+    if (child.ageMonths != null && child.ageMonths !== before?.ageMonths) {
+      patch.dateOfBirth = deriveDateOfBirth(child.ageMonths, child.agePrecision ?? 'years', now);
+      patch.dobPrecision = 'derived';
+    }
+    if (patch.name == null && patch.dateOfBirth == null) continue;
+    await database.update(schema.children).set(patch).where(eq(schema.children.id, row.id));
+  }
+}
+
+async function refreshYearFind(
+  _database: Database,
+  deps: IntakeDeps,
+  args: {
+    familyId: string;
+    children: {
+      name: string | null;
+      ageMonths: number | null;
+      agePrecision: 'years' | 'months' | null;
+    }[];
+    areaCoarse: string;
+    language: ReplyLanguage;
+  },
+): Promise<string | null> {
+  try {
+    deps.keepTyping?.();
+    const radar = await deps.radar.compose({
+      familyId: args.familyId,
+      children: args.children,
+      areaCoarse: args.areaCoarse,
+      language: args.language,
+    });
+    return radar.message;
+  } catch (err) {
+    console.error(
+      { err: err instanceof Error ? err.name : 'unknown' },
+      'onboarding: age correction did not refresh the find',
+    );
+    return null;
+  }
+}
+
+/** A no or a later is stored on the session and on the audit log. The ledger update is best-effort. */
+async function recordOnboardingChoices(
+  database: Database,
+  args: {
+    familyId: string;
+    userId: string;
+    sessionId: string;
+    prior: FirstTouchGiven | null;
+    capture: {
+      nameDeclined: boolean;
+      kidsNamesDeclined: boolean;
+      connectCalendar: boolean | null;
+      connectGmail: boolean | null;
+      calendarLater: boolean;
+      gmailLater: boolean;
+    };
+  },
+): Promise<void> {
+  const choices: { ask: string; choice: 'no' | 'later' }[] = [];
+  if (args.capture.nameDeclined && args.prior?.nameDeclined !== true) {
+    choices.push({ ask: 'names', choice: 'no' });
+  }
+  if (args.capture.kidsNamesDeclined && args.prior?.kidsNamesDeclined !== true) {
+    choices.push({ ask: 'kids_names', choice: 'no' });
+  }
+  if (args.capture.connectCalendar === false && args.prior?.connectCalendar !== false) {
+    choices.push({ ask: 'calendar', choice: 'no' });
+  }
+  if (args.capture.calendarLater && args.prior?.calendarLater !== true) {
+    choices.push({ ask: 'calendar', choice: 'later' });
+  }
+  if (args.capture.connectGmail === false && args.prior?.connectGmail !== false) {
+    choices.push({ ask: 'email', choice: 'no' });
+  }
+  if (args.capture.gmailLater && args.prior?.gmailLater !== true) {
+    choices.push({ ask: 'email', choice: 'later' });
+  }
+  for (const choice of choices) {
+    const declined = await declineOptionalAsk(database, {
+      familyId: args.familyId,
+      askKey: choice.ask,
+    });
+    if (!declined.updated) {
+      console.info(
+        { skipped: declined.skipped, ask: choice.ask },
+        'onboarding: decline ledger not updated',
+      );
+    }
+    await database.insert(schema.auditLog).values({
+      familyId: args.familyId,
+      actor: args.userId,
+      actionTaken: 'onboarding_ask_declined',
+      targetTable: 'sms_intake_sessions',
+      targetId: args.sessionId,
+      after: choice,
+    });
+  }
+}
+
+/**
+ * VIL-392. The turn after the discovery find. The model reads the message,
+ * stores what it extracted, and writes the reply. A stale thread is closed
+ * before this runs so the coach sees a new message, not an answer to the old ask.
+ */
+async function friendColdTurn(
   database: Database,
   args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
   deps: IntakeDeps,
@@ -1625,6 +2779,303 @@ async function continueColdStart(
     );
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
+  const language =
+    session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
+  const ctx = sendContext(args);
+  const safety = namesAnEmergency(inbound.body)
+    ? EMERGENCY_REPLY
+    : namesAMentalCrisis(inbound.body)
+      ? MENTAL_CRISIS_REPLY
+      : identityChallengeReply(inbound.body);
+  if (safety) {
+    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+    await sendAndRecord(database, ctx, safety, deps, recorded.transcript);
+    await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
+    return { status: 'first_touch', step: 'find_sent' };
+  }
+  const lines = linesOfFind(progress.findBody);
+  const needsName = await parentNeedsName(database, userId);
+  const given = session.firstTouch?.given ?? null;
+  const checklist: OnboardingChecklist = {
+    postal: session.firstTouch?.place != null,
+    ages: agesKnown(session.collected.children),
+    pick: progress.step !== 'pick' || progress.activity != null,
+    name: nameKnown(given, needsName),
+    kids: kidsKnown(session.collected.children, given),
+    calendar: calendarAnswered(given),
+    gmail: gmailAnswered(given),
+  };
+  const gap = onboardingMissing(checklist)[0];
+  const step = friendStepForGap(gap, false);
+  const spoken = await friendSpeak(
+    deps,
+    session.transcript,
+    friendFields(
+      step === 'find_pick' && lines.length === 0 ? 'find_empty' : step,
+      language,
+      friendAddress(ctx),
+      {
+        parentWords: inbound.body,
+        placeLabel:
+          session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
+        agesLabel: summarizeChildren(session.collected.children),
+        ageMonths: session.collected.children.flatMap((child) =>
+          child.ageMonths == null ? [] : [child.ageMonths],
+        ),
+        findLines: lines,
+        listKind: step === 'find_pick' && lines.length > 0 ? 'year' : 'none',
+        activity: progress.activity,
+        day: progress.day,
+        parentName: given?.parentName ?? null,
+        checklist,
+      },
+    ),
+  );
+  if (spoken.capture.stopAsking) {
+    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+    const voiced = friendOutbound(spoken);
+    if (voiced) await sendAndRecord(database, ctx, voiced, deps, recorded.transcript);
+    await saveSession(
+      database,
+      session,
+      { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
+      now,
+    );
+    return { status: 'first_touch', step: 'place_waiting' };
+  }
+  const stored = storedFromCapture(
+    {
+      children: session.collected.children,
+      postalCode: session.collected.postalCode,
+      place: null,
+      parentName: given?.parentName ?? null,
+      activityPick: given?.activityPick ?? null,
+      connectCalendar: given?.connectCalendar ?? null,
+      connectGmail: given?.connectGmail ?? null,
+    },
+    spoken.capture,
+  );
+  const mergedChildren = stored.collectedChildren;
+  const agesChanged = childAgesChanged(session.collected.children, mergedChildren);
+  let activeLines = lines;
+  let findBody = progress.findBody;
+  if (agesChanged || childNamesChanged(session.collected.children, mergedChildren)) {
+    await syncOnboardingChildren(
+      database,
+      familyId,
+      session.collected.children,
+      mergedChildren,
+      now,
+    );
+  }
+  if (agesChanged) {
+    const corrected = mergedChildren.find(
+      (child, index) =>
+        child.ageMonths != null && child.ageMonths !== session.collected.children[index]?.ageMonths,
+    );
+    if (corrected?.ageMonths != null) {
+      await writeFact(
+        database,
+        ageCorrectionFact({ familyId, childId: null, ageMonths: corrected.ageMonths, now }),
+      );
+    }
+    const refreshed = await refreshYearFind(database, deps, {
+      familyId,
+      children: mergedChildren,
+      areaCoarse: session.firstTouch?.place?.areaCoarse ?? '',
+      language,
+    });
+    if (refreshed) {
+      findBody = refreshed;
+      activeLines = linesOfFind(refreshed);
+    }
+  }
+  const confirmed = confirmActivityPick(spoken.capture.activityPick, activeLines.length);
+  const picked = confirmed ? activityFromFindLine(activeLines[confirmed - 1] ?? '') : null;
+  if (spoken.capture.parentName) {
+    await storeModelParentName(database, {
+      familyId,
+      parentUserId: userId,
+      name: spoken.capture.parentName,
+    });
+  }
+  const nextGiven = givenFromStored(given, stored, spoken.capture);
+  await recordOnboardingChoices(database, {
+    familyId,
+    userId,
+    sessionId: session.id,
+    prior: given,
+    capture: spoken.capture,
+  });
+  const parentIsKnown = nameKnown(nextGiven, needsName);
+  const kidsDone = kidsKnown(mergedChildren, nextGiven);
+  const pickKnown = checklist.pick || confirmed != null;
+  const calendarKnown = calendarAnswered(nextGiven);
+  const gmailKnown = gmailAnswered(nextGiven);
+  const next = onboardingMissing({
+    postal: checklist.postal,
+    ages: agesAreComplete(mergedChildren),
+    pick: pickKnown,
+    name: parentIsKnown,
+    kids: kidsDone,
+    calendar: calendarKnown,
+    gmail: gmailKnown,
+  })[0];
+  const nextProgress: ColdStartProgress = {
+    ...progress,
+    findBody,
+    step: next === 'pick' ? 'pick' : next === 'name' || next === 'kids' ? 'names' : 'follow',
+    activity: picked?.activity ?? progress.activity,
+    day: picked?.day ?? progress.day,
+    nameLineSent: parentIsKnown || next === 'name' || next === 'kids' || next == null,
+    calendarAsked: calendarKnown,
+    emailAsked: gmailKnown,
+    signupDateKnown:
+      progress.signupDateKnown ||
+      Boolean(picked && /sign-ups open/i.test(activeLines[(confirmed ?? 1) - 1] ?? '')),
+  };
+  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+  let voiced = friendOutbound(spoken);
+  if (agesChanged && activeLines.length > 0 && spoken.prose.trim().length > 0) {
+    const relisted = assembleFriendBody(spoken.prose, {
+      language,
+      findLines: activeLines,
+      listKind: 'year',
+    });
+    if (relisted.trim().length > 0) voiced = relisted;
+  }
+  if (!voiced) {
+    await saveSession(
+      database,
+      session,
+      {
+        lastProviderId: inbound.providerId,
+        collected: { ...session.collected, children: mergedChildren },
+        firstTouch: { ...withColdStart(session, language, nextProgress), given: nextGiven },
+      },
+      now,
+    );
+    return { status: 'first_touch', step: 'find_sent' };
+  }
+  const sendCalendar =
+    !spoken.capture.calendarLater &&
+    spoken.capture.connectCalendar !== false &&
+    !progress.calendarOffered &&
+    (next === 'calendar' || spoken.capture.connectCalendar === true);
+  const sendGmail =
+    !sendCalendar &&
+    !spoken.capture.gmailLater &&
+    spoken.capture.connectGmail !== false &&
+    !progress.emailOffered &&
+    (next === 'gmail' || spoken.capture.connectGmail === true);
+  if (sendCalendar || sendGmail) {
+    const provider = sendCalendar ? 'gcal' : 'gmail';
+    const ask = sendCalendar ? 'calendar' : 'email';
+    const gate = await gateOptionalAsk(database, {
+      familyId,
+      now,
+      sendClass: ask,
+      askKey: ask,
+      onboardingSequence: true,
+    });
+    if (gate.allow) {
+      const cards = await sendYearConnectorCards(
+        database,
+        {
+          familyId,
+          parentUserId: userId,
+          phoneE164: session.phoneE164,
+          language,
+          now,
+          ridesReply: true,
+          only: provider,
+          voice: { [provider]: spoken.prose },
+        },
+        { transport: deps.transport, threadMessage: deps.threadMessage },
+      );
+      const label = provider === 'gcal' ? cards.calendar : cards.gmail;
+      if (label === 'sent') {
+        await recordOptionalAsk(database, { familyId, now, sendClass: ask, askKey: ask });
+        if (sendCalendar) nextProgress.calendarOffered = true;
+        else nextProgress.emailOffered = true;
+      } else {
+        await sendAndRecord(database, ctx, voiced, deps, recorded.transcript);
+      }
+    } else {
+      await sendAndRecord(database, ctx, voiced, deps, recorded.transcript);
+    }
+  } else {
+    await sendAndRecord(database, ctx, voiced, deps, recorded.transcript);
+  }
+  await saveSession(
+    database,
+    session,
+    {
+      lastProviderId: inbound.providerId,
+      collected: { ...session.collected, children: mergedChildren },
+      transcript: threadForNext(
+        session.transcript,
+        inbound.body,
+        inbound.receivedAt.toISOString(),
+        voiced,
+        now,
+      ),
+      firstTouch: { ...withColdStart(session, language, nextProgress), given: nextGiven },
+      ...(next == null ? { state: 'complete' as const, closedAt: now, ladderNext: null } : {}),
+    },
+    now,
+  );
+  return { status: 'first_touch', step: 'find_sent' };
+}
+
+async function continueColdStart(
+  database: Database,
+  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
+  deps: IntakeDeps,
+): Promise<IntakeOutcome> {
+  const outcome = await runColdStartTurn(database, args, deps);
+  const familyId = args.session.familyId;
+  const userId = args.session.userId;
+  if (familyId && userId && args.session.firstTouch?.coldStart) {
+    await finishCardWithinReplyBudget(
+      retryFailedLinqContactCard(database, {
+        familyId,
+        parentUserId: userId,
+        now: args.now,
+        inbound: args.inbound,
+      }),
+    );
+  }
+  return outcome;
+}
+
+async function runColdStartTurn(
+  database: Database,
+  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
+  deps: IntakeDeps,
+): Promise<IntakeOutcome> {
+  const { session, inbound, now } = args;
+  const progress = session.firstTouch?.coldStart;
+  const familyId = session.familyId;
+  const userId = session.userId;
+  if (!progress || !familyId || !userId) {
+    await saveSession(
+      database,
+      session,
+      { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
+      now,
+    );
+    return { status: 'ignored', reason: 'no_open_conversation' };
+  }
+  if (coldStartQuestionIsStale(progress.step, lastTranscriptAt(session.transcript), now)) {
+    console.info(
+      { stale: 'cold_start' },
+      'cold-start: question is stale, handing the text to the coach',
+    );
+    await closeColdStartForCoach(database, session, inbound, now);
+    return { status: 'ignored', reason: 'no_open_conversation' };
+  }
+  if (onboardingFriendVoiceEnabled()) return friendColdTurn(database, args, deps);
   const language =
     session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
   const ctx = sendContext(args);
@@ -1648,7 +3099,20 @@ async function continueColdStart(
       memorySource: 'parent_message',
       sourcedAt: now,
     });
-    await sendAndRecord(database, ctx, stopAskingReply(language), deps, recorded.transcript);
+    let stopBody: string | null = stopAskingReply(language);
+    if (onboardingFriendVoiceEnabled()) {
+      const spoken = await friendSpeak(
+        deps,
+        recorded.transcript,
+        friendFields('stop_asking', language, friendAddress(ctx), {
+          parentWords: inbound.body,
+        }),
+      );
+      stopBody = friendOutbound(spoken);
+    }
+    if (stopBody) {
+      await sendAndRecord(database, ctx, stopBody, deps, recorded.transcript);
+    }
     await saveSession(
       database,
       session,
@@ -1696,6 +3160,63 @@ async function continueColdStart(
       );
       return { status: 'ignored', reason: 'no_open_conversation' };
     }
+    if (
+      onboardingFriendVoiceEnabled() &&
+      (plan.kind === 'calendar' || plan.kind === 'email' || plan.kind === 'signup')
+    ) {
+      return offerFriendFollow({
+        database,
+        session,
+        inbound,
+        now,
+        deps,
+        language,
+        familyId,
+        userId,
+        progress,
+        judged,
+      });
+    }
+    let pullBody = plan.body;
+    if (
+      onboardingFriendVoiceEnabled() &&
+      (plan.kind === 'place' || plan.kind === 'ages' || plan.kind === 'what')
+    ) {
+      const card =
+        plan.kind === 'place' &&
+        firstTouchLocationCardEnabled() &&
+        ctx.pipe.channel === 'imessage' &&
+        !ctx.pipe.isGroup;
+      const step: FriendStep =
+        plan.kind === 'ages'
+          ? 'ages'
+          : plan.kind === 'place'
+            ? card
+              ? 'place_card'
+              : 'place'
+            : progress.nameLineSent
+              ? 'names'
+              : 'find_empty';
+      const spoken = await friendSpeak(
+        deps,
+        session.transcript,
+        friendFields(step, language, friendAddress(ctx), {
+          parentWords: inbound.body,
+          placeLabel: place?.city || place?.areaCoarse || null,
+        }),
+      );
+      const voiced = friendOutbound(spoken);
+      if (!voiced) {
+        await saveSession(
+          database,
+          session,
+          { lastProviderId: inbound.providerId, ladderNext: null },
+          now,
+        );
+        return { status: 'first_touch', step: 'place_waiting' };
+      }
+      pullBody = voiced;
+    }
     const askKind =
       plan.kind === 'signup' || plan.kind === 'calendar' || plan.kind === 'email'
         ? plan.kind
@@ -1732,7 +3253,7 @@ async function continueColdStart(
       }
     }
     const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-    await sendAndRecord(database, ctx, plan.body, deps, recorded.transcript);
+    await sendAndRecord(database, ctx, pullBody, deps, recorded.transcript);
     if (askKind) {
       await recordOptionalAsk(database, {
         familyId,
@@ -1771,7 +3292,25 @@ async function continueColdStart(
       database,
       ageCorrectionFact({ familyId, childId: null, ageMonths: corrected, now }),
     );
-    await sendAndRecord(database, ctx, DISCOVERY_NEXT_STEP[language], deps, recorded.transcript);
+    const correctionLines = linesOfFind(progress.findBody);
+    let correctionBody: string | null = DISCOVERY_NEXT_STEP[language];
+    if (onboardingFriendVoiceEnabled()) {
+      const spoken = await friendSpeak(
+        deps,
+        recorded.transcript,
+        friendFields('age_correction', language, friendAddress(ctx), {
+          parentWords: inbound.body,
+          placeLabel:
+            session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
+          findLines: correctionLines,
+          listKind: correctionLines.length > 0 ? 'year' : 'none',
+        }),
+      );
+      correctionBody = friendOutbound(spoken);
+    }
+    if (correctionBody) {
+      await sendAndRecord(database, ctx, correctionBody, deps, recorded.transcript);
+    }
     await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
     return { status: 'first_touch', step: 'ages_waiting' };
   }
@@ -1794,6 +3333,7 @@ async function continueColdStart(
   }
 
   if (progress.step === 'pick') {
+    if (onboardingFriendVoiceEnabled()) return offerFriendPick(turn);
     if (judged.intent === 'decline') {
       const recorded = await recordInbound(database, ctx, inbound, session.transcript);
       await sendAndRecord(
@@ -2051,6 +3591,16 @@ function withKnownAges(children: readonly ExtractedChild[]): ProvisionChild[] | 
   return known;
 }
 
+/** Children whose age was actually told. Siblings still missing an age are left out. */
+function knownAgeChildren(children: readonly ExtractedChild[]): ProvisionChild[] {
+  const known: ProvisionChild[] = [];
+  for (const child of children) {
+    if (child.ageMonths === null || child.agePrecision === null) continue;
+    known.push({ name: child.name, ageMonths: child.ageMonths, agePrecision: child.agePrecision });
+  }
+  return known;
+}
+
 /**
  * Where the family is, or why we can't say. Three outcomes, and the distinction
  * matters: a postal code we can't place is a COMPLIANCE refusal (rule #1 — Hale is
@@ -2074,36 +3624,32 @@ function resolveLocation(
 }
 
 /**
- * After the first successful outbound on a 1:1 iMessage chat, share Hale's
- * Name and Photo card once. Linq will not show the card before that outbound.
- * A second bubble in this turn, SMS, and groups do not share. A failure here
- * is logged and does not fail the send that already landed.
+ * After an outbound on a 1:1 iMessage chat, share Hale's Name and Photo card
+ * once per Toronto day for that chat. Linq will not show the card before that
+ * outbound. A second bubble in this turn, SMS, and groups do not share. A
+ * failure here is logged and does not fail the send that already landed.
  *
  * Before a family exists the claim is the session marker provisioning copies
- * onto parent_channels. After that, the channel row is the one-shot.
+ * onto parent_channels. After that, the channel row plus the audit chat id
+ * are the day's claim.
  */
 async function shareLinqCardAfterFirstOutbound(
   database: Database,
   ctx: SendContext,
-  priorTranscript: readonly TranscriptEntry[],
+  sent: { channel: string; chatId: string | null },
 ): Promise<void> {
   try {
-    const chatId = ctx.pipe.chatId;
-    if (
-      !chatId ||
-      ctx.pipe.channel !== 'imessage' ||
-      ctx.pipe.isGroup ||
-      linqCardStarted.has(ctx.session) ||
-      ctx.session.linqContactCardClaim ||
-      transcriptHasOutbound(ctx.session.transcript) ||
-      transcriptHasOutbound(priorTranscript)
-    ) {
-      return;
-    }
+    const chatId = sent.chatId;
+    const claim = ctx.session.linqContactCardClaim;
+    if (!chatId || sent.channel !== 'imessage' || ctx.pipe.isGroup) return;
+    if (linqCardStarted.has(ctx.session)) return;
+    if (linqContactCardShareBlocked(claim, chatId, ctx.now)) return;
     linqCardStarted.add(ctx.session);
+    const sameDay =
+      claim?.at != null && haleContactCardDay(new Date(claim.at)) === haleContactCardDay(ctx.now);
 
     if (ctx.session.familyId && ctx.session.userId) {
-      await shareHaleContactCardOnce(database, {
+      const shared = await shareHaleContactCardOnce(database, {
         familyId: ctx.session.familyId,
         parentUserId: ctx.session.userId,
         chatId,
@@ -2111,6 +3657,33 @@ async function shareLinqCardAfterFirstOutbound(
         isGroup: false,
         now: ctx.now,
       });
+      if (
+        shared.status === 'shared' ||
+        (shared.status === 'not_sent' && shared.reason === 'already_shared')
+      ) {
+        ctx.session.linqContactCardClaim = {
+          at: ctx.now.toISOString(),
+          outcome: 'shared',
+          chatId,
+        };
+      } else if (shared.status === 'not_sent' && shared.reason === 'share_refused') {
+        ctx.session.linqContactCardClaim = {
+          at: ctx.now.toISOString(),
+          outcome: 'share_refused',
+          chatId,
+          code: shared.code,
+        };
+      } else if (shared.status === 'not_sent' && shared.reason === 'unreachable') {
+        const attempts =
+          (sameDay && claim?.outcome === 'unreachable' ? (claim.attempts ?? 1) : 0) + 1;
+        ctx.session.linqContactCardClaim = {
+          at: ctx.now.toISOString(),
+          outcome: 'unreachable',
+          chatId,
+          code: 'unreachable',
+          attempts,
+        };
+      }
       return;
     }
 
@@ -2119,28 +3692,46 @@ async function shareLinqCardAfterFirstOutbound(
       familyId: null,
     });
     if (delivered.outcome.status === 'shared') {
-      ctx.session.linqContactCardClaim = { at: ctx.now.toISOString(), outcome: 'shared' };
+      ctx.session.linqContactCardClaim = {
+        at: ctx.now.toISOString(),
+        outcome: 'shared',
+        chatId,
+      };
       return;
     }
     if (delivered.outcome.status === 'not_sent' && delivered.outcome.reason === 'share_refused') {
       ctx.session.linqContactCardClaim = {
         at: ctx.now.toISOString(),
         outcome: 'share_refused',
+        chatId,
         code: delivered.outcome.code,
+      };
+      return;
+    }
+    if (delivered.outcome.status === 'not_sent' && delivered.outcome.reason === 'unreachable') {
+      const attempts =
+        (sameDay && claim?.outcome === 'unreachable' ? (claim.attempts ?? 1) : 0) + 1;
+      ctx.session.linqContactCardClaim = {
+        at: ctx.now.toISOString(),
+        outcome: 'unreachable',
+        chatId,
+        code: 'unreachable',
+        attempts,
       };
     }
   } catch (err) {
     console.warn(
       { err: err instanceof Error ? err.name : 'unknown' },
-      'linq contact card: first outbound share did not finish',
+      'linq contact card: outbound share did not finish',
     );
   }
 }
 
 /**
- * Retry the Linq Name and Photo share when the first outbound released the
- * claim. Silent either way: a claim already held returns without a second
- * POST and without a chat line. SMS and groups are not this moment.
+ * Retry the Linq Name and Photo share when today's claim is open. Silent
+ * either way: a share already recorded for this chat today returns without a
+ * second POST and without a chat line. SMS and groups are not this moment.
+ * The next Toronto day's first outbound shares again.
  */
 async function shareFreshLinqContactCard(
   database: Database,
@@ -2171,9 +3762,10 @@ async function shareFreshLinqContactCard(
  * (already sent, its own bubble), then the name ask. French skips the English
  * name and sends the calendar card instead.
  *
- * The Linq card is not a bubble. It shares on the first outbound. This ladder
- * calls the share again only so a released claim can still land once. A card
- * already shared is skipped. Nothing here apologises or adds a line.
+ * The Linq card is not a bubble. It shares after an outbound, once per
+ * Toronto day per chat. This ladder calls the share again only so a released
+ * claim can still land today. A card already shared today is skipped.
+ * Nothing here apologises or adds a line.
  */
 async function sendPostYearFindLadder(
   database: Database,
@@ -2194,7 +3786,7 @@ async function sendPostYearFindLadder(
     now: args.now,
     inbound: args.inbound,
   });
-  if (args.language === 'fr') {
+  if (args.language === 'fr' && !onboardingFriendVoiceEnabled()) {
     await sendYearConnectorCards(
       database,
       {
@@ -2210,11 +3802,20 @@ async function sendPostYearFindLadder(
     );
     return 'gmail';
   }
+  const pipe = messagingPipe(args.inbound);
   const asked = await askParentCallName(database, {
     familyId: args.familyId,
     parentUserId: args.parentUserId,
     language: args.language,
     send: args.send,
+    friend: onboardingFriendVoiceEnabled()
+      ? {
+          deps,
+          transcript: [],
+          parentWords: args.inbound.body,
+          address: pipe.isGroup ? 'vous' : 'tu',
+        }
+      : undefined,
   });
   return asked ? 'name_reply' : 'calendar';
 }
@@ -2273,6 +3874,7 @@ async function provision(
 
   await seedFirstRadar(database, { familyId, areaCoarse: gathered.location.areaCoarse, now }, deps);
 
+  deps.keepTyping?.();
   const radar = await deps.radar.compose({
     familyId,
     children: gathered.collected.children,
@@ -2283,25 +3885,125 @@ async function provision(
     session.firstTouch?.place?.city ||
     session.firstTouch?.place?.areaCoarse ||
     gathered.location.areaCoarse;
-  const discovery = discoveryOn
-    ? discoveryBubble({
-        language,
-        agesMonths: children.map((child) => child.ageMonths),
+  const friendTouch = onboardingFriendVoiceEnabled() && session.firstTouch != null;
+  const findLines = linesOfFind(radar.message);
+  let outboundBody = radar.message;
+  let outboundKey: string | undefined = radar.weekendPickOffered
+    ? INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY
+    : undefined;
+  let friendCold: ColdStartProgress | null = null;
+  let connectorSent = false;
+  if (friendTouch) {
+    const given = session.firstTouch?.given ?? null;
+    if (given?.parentName) {
+      await storeModelParentName(database, {
+        familyId,
+        parentUserId: userId,
+        name: given.parentName,
+      });
+    }
+    const empty = findLines.length === 0;
+    const picked = confirmActivityPick(given?.activityPick ?? null, findLines.length);
+    const pickedLine = picked ? activityFromFindLine(findLines[picked - 1] ?? '') : null;
+    const nameKnown = Boolean(given?.parentName) || given?.nameDeclined === true;
+    const checklist: OnboardingChecklist = {
+      postal: true,
+      ages: true,
+      pick: empty || picked != null,
+      name: nameKnown,
+      kids: kidsKnown(gathered.collected.children, given),
+      calendar: calendarAnswered(given),
+      gmail: gmailAnswered(given),
+    };
+    const gap = onboardingMissing(checklist)[0];
+    const step: FriendStep =
+      gap === 'pick'
+        ? 'find_pick'
+        : gap === 'name'
+          ? empty
+            ? 'find_empty'
+            : 'names'
+          : gap === 'kids'
+            ? 'kids_names'
+            : gap === 'calendar'
+              ? 'calendar'
+              : gap === 'gmail'
+                ? 'email'
+                : 'ack';
+    const spoken = await friendSpeak(
+      deps,
+      gathered.transcript,
+      friendFields(step, language, friendAddress(ctx), {
+        introduce: !discoveryOn && step === 'names',
+        parentWords: inbound.body,
         placeLabel,
+        agesLabel: summarizeChildren(gathered.collected.children),
+        ageMonths: children.map((child) => child.ageMonths),
+        findLines: step === 'find_pick' ? findLines : [],
+        listKind: step === 'find_pick' && findLines.length > 0 ? 'year' : 'none',
+        activity: pickedLine?.activity ?? null,
+        day: pickedLine?.day ?? null,
+        parentName: given?.parentName ?? null,
+        checklist,
+      }),
+    );
+    outboundBody = friendOutbound(spoken) ?? '';
+    if (discoveryOn && (step === 'find_empty' || step === 'names')) {
+      outboundKey = PARENT_NAME_ASK_TEMPLATE_KEY;
+    }
+    if (!discoveryOn) outboundKey = PARENT_NAME_ASK_TEMPLATE_KEY;
+    if ((step === 'calendar' || step === 'email') && outboundBody) {
+      const provider = step === 'calendar' ? 'gcal' : 'gmail';
+      await sendYearConnectorCards(
+        database,
+        {
+          familyId,
+          parentUserId: userId,
+          phoneE164,
+          language,
+          now,
+          ridesReply: true,
+          only: provider,
+          voice: { [provider]: spoken.prose },
+        },
+        { transport: deps.transport, threadMessage: deps.threadMessage },
+      );
+      connectorSent = true;
+    }
+    if (discoveryOn) {
+      friendCold = {
+        step:
+          step === 'find_pick'
+            ? 'pick'
+            : step === 'names' || step === 'find_empty'
+              ? 'names'
+              : 'follow',
+        group: ctx.pipe.isGroup,
         findBody: radar.message,
-      })
-    : null;
-  const sent = await sendAndRecord(
-    database,
-    ctx,
-    discovery?.body ?? radar.message,
-    deps,
-    [],
-    // VIL-360 · the D23 anchor. Stamped ONLY when this text carried a weekend pick,
-    // because the weekday-care ask says "those are all weekend finds" about it, and a
-    // question whose premise Hale cannot check is the defect that rule exists to stop.
-    radar.weekendPickOffered ? INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY : undefined,
-  );
+        activity: pickedLine?.activity ?? null,
+        day: pickedLine?.day ?? null,
+        nameLineSent: nameKnown || step !== 'find_pick',
+        signupDateKnown: false,
+        signupAsked: false,
+        calendarAsked: calendarAnswered(given),
+        emailAsked: gmailAnswered(given),
+        ...(step === 'calendar' ? { calendarOffered: true } : {}),
+        ...(step === 'email' ? { emailOffered: true } : {}),
+        schoolMentioned: false,
+      };
+    }
+  } else if (discoveryOn) {
+    outboundBody = discoveryBubble({
+      language,
+      agesMonths: children.map((child) => child.ageMonths),
+      placeLabel,
+      findBody: radar.message,
+    }).body;
+  }
+  const sent =
+    connectorSent || outboundBody.trim().length === 0
+      ? { transcript: [] as TranscriptEntry[], channelMessageId: null }
+      : await sendAndRecord(database, ctx, outboundBody, deps, [], outboundKey);
 
   // The find is its own bubble. A year-find with two or more titles, on the
   // Linq thread that just carried it, may ask which to look at first. That
@@ -2313,7 +4015,9 @@ async function provision(
   // VIL-392 discovery session one stops here: receipt plus the find, then
   // silence. No name, calendar, gmail, co-parent, poll, or contact card.
   let ladderNext: IntakeLadderStep | null = null;
-  if (!discoveryOn) {
+  // Friend voice makes the year bubble the name ask. A second ladder bubble
+  // would be a second question in the same turn.
+  if (!discoveryOn && !friendTouch) {
     await shareFreshLinqContactCard(database, {
       familyId,
       parentUserId: userId,
@@ -2352,6 +4056,14 @@ async function provision(
             },
             deps,
           );
+  } else if (!discoveryOn && friendTouch) {
+    await shareFreshLinqContactCard(database, {
+      familyId,
+      parentUserId: userId,
+      now,
+      inbound,
+    });
+    ladderNext = 'name_reply';
   }
 
   // The find is the watch. There is no separate yes. The parent's own kids-and-postal
@@ -2428,7 +4140,17 @@ async function provision(
     session,
     {
       collected: gathered.collected,
-      transcript: gathered.transcript,
+      transcript: friendTouch
+        ? [
+            ...gathered.transcript,
+            {
+              direction: 'out' as const,
+              body: outboundBody,
+              providerId: null,
+              at: now.toISOString(),
+            },
+          ]
+        : gathered.transcript,
       state: discoveryOn ? 'awaiting_cold_start' : 'awaiting_ladder',
       familyId,
       userId,
@@ -2440,7 +4162,7 @@ async function provision(
         ? {
             firstTouch: {
               ...session.firstTouch,
-              coldStart: {
+              coldStart: friendCold ?? {
                 step: 'pick',
                 group: ctx.pipe.isGroup,
                 findBody: radar.message,
@@ -2610,9 +4332,7 @@ async function handleWatchReply(
     now,
   );
 
-  const ack = granted
-    ? assentAck(language)
-    : { body: DECLINE_ACK_BY_LANGUAGE[language], asked: false };
+  const ack = await consentReceipt(deps, recorded.transcript, ctx, language, inbound.body, granted);
   await sendAndRecord(database, ctx, ack.body, deps, recorded.transcript);
 
   // A yes that earned the ladder gets the assent only. Turtle waits for the
@@ -2731,11 +4451,37 @@ async function handleLadder(
       language,
       send: (body, templateKey) =>
         sendAndRecord(database, ctx, body, deps, recorded.transcript, templateKey),
+      friend: onboardingFriendVoiceEnabled()
+        ? {
+            deps,
+            transcript: recorded.transcript,
+            parentWords: inbound.body,
+            address: friendAddress(ctx),
+          }
+        : undefined,
     });
     next = asked ? 'name_reply' : 'calendar';
   } else if (step === 'name_reply' && isSoftLadderAck(inbound.body)) {
     // The year-find turn already sent the name. "cool" is not a name.
     next = 'name_reply';
+  } else if (step === 'name_reply' && onboardingFriendVoiceEnabled()) {
+    const captured = await handleNameCaptureReply(
+      database,
+      { familyId, parentUserId: userId, body: inbound.body, now },
+      defaultNameCaptureDeps(),
+    );
+    console.info({ status: captured.status }, 'onboarding-friend: name reply');
+    const card = await sendLadderFriendCard(database, ctx, deps, {
+      familyId,
+      parentUserId: userId,
+      phoneE164,
+      language,
+      now,
+      inbound,
+      transcript: recorded.transcript,
+      provider: 'gcal',
+    });
+    next = card.next;
   } else if (step === 'name_reply') {
     const captured = await handleNameCaptureReply(
       database,
@@ -2746,6 +4492,18 @@ async function handleLadder(
       await sendAndRecord(database, ctx, captured.reply, deps, recorded.transcript);
     }
     next = 'calendar';
+  } else if ((step === 'calendar' || step === 'gmail') && onboardingFriendVoiceEnabled()) {
+    const card = await sendLadderFriendCard(database, ctx, deps, {
+      familyId,
+      parentUserId: userId,
+      phoneE164,
+      language,
+      now,
+      inbound,
+      transcript: recorded.transcript,
+      provider: step === 'calendar' ? 'gcal' : 'gmail',
+    });
+    next = card.next;
   } else if (step === 'calendar' || step === 'gmail') {
     await sendYearConnectorCards(
       database,
@@ -2761,6 +4519,25 @@ async function handleLadder(
       { transport: deps.transport, threadMessage: deps.threadMessage },
     );
     next = step === 'calendar' ? 'gmail' : 'coparent';
+  } else if (messagingPipe(inbound).channel !== 'imessage' && onboardingFriendVoiceEnabled()) {
+    const spoken = await friendSpeak(
+      deps,
+      recorded.transcript,
+      friendFields('coparent', language, friendAddress(ctx), { parentWords: inbound.body }),
+    );
+    const voiced = friendOutbound(spoken);
+    if (voiced) {
+      await sendAndRecord(
+        database,
+        ctx,
+        voiced,
+        deps,
+        recorded.transcript,
+        INTAKE_COPARENT_ASK_TEMPLATE_KEY,
+      );
+    }
+    next = null;
+    closed = true;
   } else {
     const pipe = messagingPipe(inbound);
     const from = pipe.channel === 'imessage' ? linqFromE164() : null;
@@ -2801,9 +4578,30 @@ async function handleLadder(
 /**
  * The consent acknowledgment, whole. The call-name is the next text, not a tail
  * on this one. "Excited to help" and "no action needed" do not belong on a yes.
+ *
+ * With friend voice on, the model writes it. A failed compose sends nothing
+ * canned; the flag-off path below keeps the locked receipt.
  */
-function assentAck(language: ReplyLanguage): { body: string; asked: boolean } {
-  return { body: ASSENT_ACK_BY_LANGUAGE[language], asked: false };
+async function consentReceipt(
+  deps: IntakeDeps,
+  transcript: TranscriptEntry[],
+  ctx: SendContext,
+  language: ReplyLanguage,
+  parentWords: string,
+  granted: boolean,
+): Promise<{ body: string; asked: boolean }> {
+  if (!onboardingFriendVoiceEnabled()) {
+    return {
+      body: granted ? ASSENT_ACK_BY_LANGUAGE[language] : DECLINE_ACK_BY_LANGUAGE[language],
+      asked: false,
+    };
+  }
+  const spoken = await friendSpeak(
+    deps,
+    transcript,
+    friendFields('ack', language, friendAddress(ctx), { parentWords, granted }),
+  );
+  return { body: friendOutbound(spoken) ?? '', asked: false };
 }
 
 /**
@@ -2816,6 +4614,63 @@ function assentAck(language: ReplyLanguage): { body: string; asked: boolean } {
  * already asked, is not asked again. A lookup that throws is logged and does
  * not hold the inbox or co-parent asks (rule #11).
  */
+async function sendLadderFriendCard(
+  database: Database,
+  ctx: SendContext,
+  deps: IntakeDeps,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    phoneE164: string;
+    language: ReplyLanguage;
+    now: Date;
+    inbound: Inbound;
+    transcript: TranscriptEntry[];
+    provider: 'gcal' | 'gmail';
+  },
+): Promise<{ next: IntakeLadderStep }> {
+  const step: FriendStep = args.provider === 'gcal' ? 'calendar' : 'email';
+  const spoken = await friendSpeak(
+    deps,
+    args.transcript,
+    friendFields(step, args.language, friendAddress(ctx), { parentWords: args.inbound.body }),
+    { linkFollows: true },
+  );
+  if (!friendOutbound(spoken)) {
+    return { next: args.provider === 'gcal' ? 'calendar' : 'gmail' };
+  }
+  const cards = await sendYearConnectorCards(
+    database,
+    {
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      phoneE164: args.phoneE164,
+      language: args.language,
+      now: args.now,
+      ridesReply: true,
+      only: args.provider,
+      voice: { [args.provider]: spoken.prose },
+    },
+    { transport: deps.transport, threadMessage: deps.threadMessage },
+  );
+  const label = args.provider === 'gcal' ? cards.calendar : cards.gmail;
+  if (label === 'sent' || label === 'already_sent') {
+    return { next: args.provider === 'gcal' ? 'gmail' : 'coparent' };
+  }
+  const retry = await friendSpeak(
+    deps,
+    args.transcript,
+    friendFields('link_retry', args.language, friendAddress(ctx), {
+      parentWords: args.inbound.body,
+    }),
+  );
+  const retried = friendOutbound(retry);
+  if (retried) {
+    await sendAndRecord(database, ctx, retried, deps, args.transcript);
+  }
+  return { next: args.provider === 'gcal' ? 'calendar' : 'gmail' };
+}
+
 async function askParentCallName(
   database: Database,
   args: {
@@ -2823,6 +4678,12 @@ async function askParentCallName(
     parentUserId: string;
     language: ReplyLanguage;
     send: (body: string, templateKey: string) => Promise<unknown>;
+    friend?: {
+      deps: IntakeDeps;
+      transcript: TranscriptEntry[];
+      parentWords: string;
+      address: 'tu' | 'vous';
+    };
   },
 ): Promise<boolean> {
   try {
@@ -2837,7 +4698,22 @@ async function askParentCallName(
         language: args.language,
       },
       async (body, templateKey) => {
-        await args.send(body, templateKey);
+        if (!args.friend || !onboardingFriendVoiceEnabled()) {
+          await args.send(body, templateKey);
+          return;
+        }
+        const confirm = templateKey === PARENT_NAME_CONFIRM_TEMPLATE_KEY;
+        const named = confirm ? (/^Can I call you (.+)\?$/.exec(body)?.[1] ?? null) : null;
+        const spoken = await friendSpeak(
+          args.friend.deps,
+          args.friend.transcript,
+          friendFields(confirm ? 'name_confirm' : 'names', args.language, args.friend.address, {
+            parentWords: args.friend.parentWords,
+            parentName: named,
+          }),
+        );
+        const voiced = friendOutbound(spoken);
+        if (voiced) await args.send(voiced, templateKey);
       },
     );
   } catch (err) {
@@ -2847,6 +4723,40 @@ async function askParentCallName(
     );
     return false;
   }
+}
+
+/** HELP is model-written when friend voice is on. STOP and the safety lines stay locked. */
+async function helpBody(
+  deps: IntakeDeps,
+  session: IntakeSession | null,
+  language: ReplyLanguage,
+  parentWords: string,
+): Promise<string | null> {
+  if (!onboardingFriendVoiceEnabled()) return HELP_REPLY_BY_LANGUAGE[language];
+  const given = session?.firstTouch?.given ?? null;
+  const children = session?.collected.children ?? [];
+  const checklist: OnboardingChecklist = {
+    postal: session?.firstTouch?.place != null,
+    ages: agesKnown(children),
+    pick: Boolean(session?.firstTouch?.coldStart?.activity),
+    name: Boolean(given?.parentName) || given?.nameDeclined === true,
+    kids: kidsKnown(children, given),
+    calendar: calendarAnswered(given),
+    gmail: gmailAnswered(given),
+  };
+  const spoken = await friendSpeak(
+    deps,
+    session?.transcript ?? [],
+    friendFields('help', language, 'tu', {
+      parentWords,
+      placeLabel:
+        session?.firstTouch?.place?.city || session?.firstTouch?.place?.areaCoarse || null,
+      agesLabel: summarizeChildren(children),
+      parentName: given?.parentName ?? null,
+      checklist,
+    }),
+  );
+  return friendOutbound(spoken);
 }
 
 async function handleKeyword(
@@ -2895,9 +4805,15 @@ async function handleKeyword(
       // still wrote an outbound row would put a message in a parent's receipts that
       // Hale never sent.
       if (!providerAnswered) {
+        const body = await helpBody(deps, null, language, inbound.body);
+        if (!body) {
+          console.error({ step: 'help' }, 'onboarding: help reply not sent');
+          return { status: 'helped', ack };
+        }
+        await quietStopTyping(deps);
         const { providerMessageId } = await deps.transport.send({
           to: phoneE164,
-          body: HELP_REPLY_BY_LANGUAGE[language],
+          body,
         });
         const enrolled = await resolveVerifiedChannelByPhone(database, phoneE164);
         if (enrolled) {
@@ -2906,7 +4822,7 @@ async function handleKeyword(
             { familyId: enrolled.familyId, parentUserId: enrolled.userId },
             {
               direction: 'out',
-              body: HELP_REPLY_BY_LANGUAGE[language],
+              body,
               providerId: providerMessageId,
               at: now.toISOString(),
               ...messagingPipe(inbound),
@@ -2923,13 +4839,24 @@ async function handleKeyword(
     // shared with fourteen other turns and has no business learning about keywords. The
     // inbound is still recorded and the session still closed on this turn's provider id,
     // so a carrier retry is still a duplicate rather than a second HELP.
+    const help = providerAnswered ? null : await helpBody(deps, session, language, inbound.body);
+    if (!providerAnswered && !help) {
+      console.error({ step: 'help' }, 'onboarding: help reply not sent');
+      await saveSession(
+        database,
+        session,
+        { transcript: recorded.transcript, lastProviderId: inbound.providerId },
+        now,
+      );
+      return { status: 'helped', ack };
+    }
     const transcript = providerAnswered
       ? recorded.transcript
       : (
           await sendAndRecord(
             database,
             ctx,
-            HELP_REPLY_BY_LANGUAGE[language],
+            help ?? HELP_REPLY_BY_LANGUAGE[language],
             deps,
             recorded.transcript,
           )

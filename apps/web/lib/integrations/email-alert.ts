@@ -10,13 +10,13 @@ import {
   type ProactiveSendVerdict,
   holdStatus,
 } from '~/lib/channel/outbound-gate';
-import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
-import type { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   failedSendPatch,
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
+import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { formatDayHeading } from '~/lib/format/datetime';
 import type {
   CorrelatedEventRef,
@@ -26,7 +26,7 @@ import type {
   SentinelClassification,
 } from '~/lib/sentinel';
 import { falseBookingSignal } from '~/lib/sentinel/booking-guard';
-import { bookedDetectionEnabledFor } from './booked';
+import { BOOKED_BACKFILL_MAX_PER_SWEEP, bookedDetectionEnabledFor } from './booked';
 import {
   type BookingDraftResult,
   bookingCancellationKey,
@@ -885,7 +885,10 @@ function logSweepOutcomes(
   }
 }
 
-function datedEnvelopes(envelopes: readonly GmailAlertEnvelope[]): {
+function datedEnvelopes(
+  envelopes: readonly GmailAlertEnvelope[],
+  limit = EMAIL_ALERT_MAX_PER_SWEEP,
+): {
   skipped: EmailAlertResult[];
   considered: Array<GmailAlertEnvelope & { receivedAt: string }>;
   capped: EmailAlertResult[];
@@ -899,10 +902,10 @@ function datedEnvelopes(envelopes: readonly GmailAlertEnvelope[]): {
   }
   dated.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
   const capped: EmailAlertResult[] = [];
-  for (let i = EMAIL_ALERT_MAX_PER_SWEEP; i < dated.length; i += 1) {
+  for (let i = limit; i < dated.length; i += 1) {
     capped.push({ alert: 'over_sweep_cap', booking: null, going: null });
   }
-  return { skipped, considered: dated.slice(0, EMAIL_ALERT_MAX_PER_SWEEP), capped };
+  return { skipped, considered: dated.slice(0, limit), capped };
 }
 
 /**
@@ -1019,7 +1022,13 @@ export async function alertParentForGmailSweep(
   }
 
   if (input.backfill === true) {
-    const { skipped, considered, capped } = datedEnvelopes(envelopes);
+    // The live sweep's cap is ten texts. A backfill is not a text: the sync
+    // already stopped at its time budget, and applying the text cap here would
+    // mark the rest over_sweep_cap and never record them.
+    const { skipped, considered, capped } = datedEnvelopes(
+      envelopes,
+      BOOKED_BACKFILL_MAX_PER_SWEEP,
+    );
     const outcomes: EmailAlertResult[] = [...skipped, ...capped];
     if (considered.length > 0) {
       const timeZone = await ports.timeZone(parentUserId);
@@ -1200,8 +1209,8 @@ const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
  *     RECEIPT for a class the family already has being offered a second time, and it is
  *     reachable for a booking only because `correlate.ts` maps the kind to a time.
  *   · The mail must not already BE the parent's calendar. A Google Calendar notification
- *     is the week speaking about an event that is on it; "Reply YES and it goes on your
- *     week" asks them to add what they already have. The text is a plain notice instead
+ *     is the week speaking about an event that is on it; "Want me to add it to your
+ *     week?" asks them to add what they already have. The text is a plain notice instead
  *     ({@link calendarNotice}).
  *
  * Everything else ends with today's sentence, and that is still the common case.
@@ -1264,11 +1273,11 @@ const OFFERED_TIME: Record<ExtractionKind, (event: ExtractedEvent) => string | n
  * a language off (`replyLanguage` takes one), and `families.primary_language` is a column
  * nothing in this product reads yet. The REPLIES to this sentence do have a French twin,
  * because by then the parent has written (email-alert-offer.ts). */
-const OFFER_CTA = 'Reply YES and it goes on your week.';
+const OFFER_CTA = 'Want me to add it to your week?';
 
 /**
  * The booking's own ending. A receipt has already told the parent they are in, so
- * "Reply YES and it goes on your week" would answer a question they did not ask; what is
+ * "Want me to add it to your week?" would answer a question they did not ask; what is
  * genuinely open is the calendar.
  *
  * IT CLEARS THE CLAIM TAXONOMY, and that is checked rather than assumed:

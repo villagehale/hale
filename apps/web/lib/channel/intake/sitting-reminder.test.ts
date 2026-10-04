@@ -12,6 +12,7 @@ import {
   SITTING_REMINDER_TIMEZONE,
   type SittingReminderDeps,
   defaultSittingReminderDeps,
+  findNudgeEligible,
   isNextTorontoMorning,
   isSittingReminderSlot,
   runSittingReminderCron,
@@ -65,6 +66,7 @@ function seedSession(
     closedAt?: Date | null;
     familyId?: string | null;
     followUpCount?: number;
+    dataEncrypted?: string;
   } = {},
 ): string {
   const phoneE164 = over.phoneE164 ?? PHONE;
@@ -73,7 +75,7 @@ function seedSession(
     phoneHash: phoneBlindIndex(phoneE164),
     phoneEncrypted: encryptString(phoneE164),
     state: over.state ?? 'awaiting_details',
-    dataEncrypted: dataBlob(),
+    dataEncrypted: over.dataEncrypted ?? dataBlob(),
     createdAt: over.createdAt ?? FIRST_HELLO_PREVIOUS_EVENING,
     sittingReminderSentAt:
       over.sittingReminderSentAt === undefined ? null : over.sittingReminderSentAt,
@@ -89,6 +91,22 @@ function seedSession(
 
 function deps(transport: FakeTransport): SittingReminderDeps {
   return { transport };
+}
+
+function voiceDeps(transport: FakeTransport): SittingReminderDeps {
+  return {
+    transport,
+    friendVoice: {
+      async compose(input) {
+        if (input.language === 'fr') return { reply: 'Quel âge ont les enfants?' };
+        if (input.step === 'nudge_ages') return { reply: 'How old are your kids?' };
+        if (input.step === 'nudge_find') {
+          return { reply: 'Still here if one of those looks good. Which of these looks good?' };
+        }
+        return { reply: "Still here. What's your postal code?" };
+      },
+    },
+  };
 }
 
 describe('SITTING_SESSION_REMINDER — Designer lock', () => {
@@ -191,6 +209,25 @@ describe('sittingSessionEligible', () => {
     expect(sittingSessionEligible({ ...open, familyId: 'fam-1' }, TORONTO_8AM)).toBe(false);
   });
 
+  it('nudges once the morning after a find, and not the same morning', () => {
+    const parked = {
+      state: 'awaiting_cold_start' as const,
+      closedAt: null,
+      sittingReminderSentAt: null,
+      firstReplyRecoveredAt: null,
+      familyId: 'fam-1',
+      createdAt: FIRST_HELLO_PREVIOUS_EVENING,
+    };
+    expect(findNudgeEligible(parked, TORONTO_8AM)).toBe(true);
+    expect(findNudgeEligible({ ...parked, createdAt: FIRST_HELLO_SAME_MORNING }, TORONTO_8AM)).toBe(
+      false,
+    );
+    expect(findNudgeEligible({ ...parked, sittingReminderSentAt: TORONTO_8AM }, TORONTO_8AM)).toBe(
+      false,
+    );
+    expect(findNudgeEligible({ ...parked, familyId: null }, TORONTO_8AM)).toBe(false);
+  });
+
   it('refuses a first-hello recovered this morning — Still here waits until tomorrow', () => {
     expect(
       sittingSessionEligible({ ...open, firstReplyRecoveredAt: TORONTO_8AM }, TORONTO_8AM),
@@ -204,6 +241,7 @@ describe('runSittingReminderCron', () => {
   });
   afterEach(() => {
     process.env.APP_ENCRYPTION_KEY = '';
+    vi.unstubAllEnvs();
   });
 
   it('sends the locked line once from the injected Twilio transport', async () => {
@@ -324,6 +362,153 @@ describe('runSittingReminderCron', () => {
       familyId: null,
       state: 'awaiting_details',
     });
+  });
+
+  it('nudges a parent stuck on the postal code once, and only while friend voice is on', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake, { state: 'awaiting_place' });
+
+    const first = await runSittingReminderCron(fake.db, voiceDeps(transport), TORONTO_8AM);
+    expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0 });
+    expect(transport.bodies()).toHaveLength(1);
+    expect(transport.bodies()[0]).not.toBe(SITTING_SESSION_REMINDER);
+    expect(transport.bodies()[0]?.match(/\?/g)).toHaveLength(1);
+    expect(transport.bodies()[0]).toMatch(/postal code/i);
+
+    const second = await runSittingReminderCron(fake.db, voiceDeps(transport), TORONTO_8AM);
+    expect(second.sent).toBe(0);
+    expect(transport.bodies()).toHaveLength(1);
+  });
+
+  it('does not send a canned nudge when the model is missing', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake, { state: 'awaiting_place' });
+    const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    expect(result.failed).toBe(1);
+    expect(result.sent).toBe(0);
+    expect(transport.bodies()).toEqual([]);
+    expect(transport.bodies().join('\n')).not.toMatch(/How old are the kids|postal code/i);
+  });
+
+  it('nudges once the morning after a find, in friend voice, and not the locked reminder', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake, {
+      state: 'awaiting_cold_start',
+      familyId: 'fam-1',
+      dataEncrypted: encryptString(
+        JSON.stringify({
+          collected: { children: [], postalCode: 'M5V 2T6' },
+          transcript: [],
+          firstTouch: {
+            language: 'en',
+            place: {
+              kind: 'postal',
+              areaCoarse: 'M5V',
+              postalCode: 'M5V 2T6',
+              municipality: 'toronto',
+              city: 'Toronto',
+            },
+            locationRequest: null,
+            coldStart: {
+              step: 'pick',
+              group: false,
+              findBody: '1. Swim (ages 3-5) - Saturday',
+              activity: null,
+              day: null,
+              nameLineSent: false,
+              signupDateKnown: false,
+              signupAsked: false,
+              calendarAsked: false,
+              emailAsked: false,
+              schoolMentioned: false,
+            },
+          },
+        }),
+      ),
+    });
+
+    const first = await runSittingReminderCron(fake.db, voiceDeps(transport), TORONTO_8AM);
+    expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0 });
+    const body = transport.bodies()[0] ?? '';
+    expect(body).toContain('1. Swim (ages 3-5) - Saturday');
+    expect(body.trim().endsWith('Which of these looks good?')).toBe(true);
+    expect(body).not.toBe(SITTING_SESSION_REMINDER);
+
+    const second = await runSittingReminderCron(fake.db, voiceDeps(transport), TORONTO_8AM);
+    expect(second.sent).toBe(0);
+    expect(transport.bodies()).toHaveLength(1);
+  });
+
+  it('does not nudge a cold-start that has already left the find', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake, {
+      state: 'awaiting_cold_start',
+      familyId: 'fam-1',
+      dataEncrypted: encryptString(
+        JSON.stringify({
+          collected: { children: [], postalCode: 'M5V 2T6' },
+          transcript: [],
+          firstTouch: {
+            language: 'en',
+            place: null,
+            locationRequest: null,
+            coldStart: {
+              step: 'names',
+              group: false,
+              findBody: '1. Swim (ages 3-5) - Saturday',
+              activity: 'Swim',
+              day: 'Saturday',
+              nameLineSent: false,
+              signupDateKnown: false,
+              signupAsked: false,
+              calendarAsked: false,
+              emailAsked: false,
+              schoolMentioned: false,
+            },
+          },
+        }),
+      ),
+    });
+    const result = await runSittingReminderCron(fake.db, voiceDeps(transport), TORONTO_8AM);
+    expect(result).toEqual({ evaluated: 1, sent: 0, skipped: 1, failed: 0 });
+    expect(transport.bodies()).toEqual([]);
+    expect(fake.rows(schema.smsIntakeSessions)[0]?.sittingReminderSentAt).toEqual(TORONTO_8AM);
+  });
+
+  it('does not nudge a stuck postal-code session while friend voice is off', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake, { state: 'awaiting_place' });
+    const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    expect(result.sent).toBe(0);
+    expect(transport.bodies()).toEqual([]);
+  });
+
+  it('nudges a stuck French ages session in French', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake, {
+      state: 'awaiting_ages',
+      dataEncrypted: encryptString(
+        JSON.stringify({
+          collected: { children: [], postalCode: null },
+          transcript: [],
+          ladderLanguage: 'fr',
+        }),
+      ),
+    });
+    await runSittingReminderCron(fake.db, voiceDeps(transport), TORONTO_8AM);
+    expect(transport.bodies()[0]).toMatch(/âge|code postal/i);
+    expect(transport.bodies()[0]?.match(/\?/g)).toHaveLength(1);
   });
 
   it('wires the shared outbound leg into the default deps', async () => {

@@ -1,11 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { Column, Param, SQL, StringChunk, is } from 'drizzle-orm';
+import type { OpenQuestionsForParent } from '~/lib/channel/caregiver/route';
 import type {
   IdentityAskOutcome,
   IdentityAskRequest,
   IdentityAskVoice,
 } from '~/lib/channel/identity/ask-voice';
-import type { OpenQuestionsForParent } from '~/lib/channel/caregiver/route';
 import type { IntroAskRequest, IntroVoice, IntroVoiceOutcome } from '~/lib/village/intros/voice';
 import type { IntakeAnswerComposer, IntakeAnswerInput, IntakeAnswerOutcome } from './answer';
 import { followUp } from './copy';
@@ -219,6 +219,10 @@ function tokenize(expr: unknown, table: unknown, out: WhereToken[]): WhereToken[
     out.push({ kind: 'value', value: expr.value });
     return out;
   }
+  if (typeof expr === 'string' || typeof expr === 'number' || typeof expr === 'boolean') {
+    out.push({ kind: 'value', value: expr });
+    return out;
+  }
   if (is(expr, StringChunk)) {
     const text = expr.value.join('').trim();
     if (text !== '') out.push({ kind: 'text', text });
@@ -279,6 +283,17 @@ function evaluate(tokens: WhereToken[], row: Record<string, unknown>): boolean {
   if (left?.kind !== 'column' || operator?.kind !== 'text') {
     throw new Error('fake where: unsupported predicate shape');
   }
+  const jsonField = operator.text.match(/^->>'([^']+)'\s*(=|is null)$/);
+  if (jsonField) {
+    const record = row[left.key];
+    const field =
+      record && typeof record === 'object' && !Array.isArray(record)
+        ? (record as Record<string, unknown>)[jsonField[1] ?? '']
+        : undefined;
+    if (jsonField[2] === 'is null') return field === null || field === undefined;
+    if (right?.kind !== 'value') throw new Error('fake where: jsonb compare has no value');
+    return field === right.value;
+  }
   const value = row[left.key];
   if (operator.text === 'is null') return value === null || value === undefined;
   if (operator.text === 'is not null') return value !== null && value !== undefined;
@@ -313,13 +328,11 @@ export interface FakeDb {
  *
  * It does NOT evaluate `where` clauses — it returns the whole table and lets the code
  * under test apply its own post-checks (which the real lookups already do as defense in
- * depth). The one exception is sms_intake_sessions, whose SELECT predicate is evaluated
- * in full here, because that predicate is the machine's whole notion of an active
- * conversation — "the open session ON THIS NUMBER" — and its reader has no post-check to
- * fall back on: the question is which row, and the where clause is the only thing that
- * answers it. Returning another number's session would silently put two phones in one
- * conversation, so every test that drives two numbers at once would be testing that
- * fiction rather than the routing.
+ * depth). Four tables are the exception, because their predicate is the bound:
+ * sms_intake_sessions (the open session on this number), parent_channels, audit_log,
+ * and children. Those SELECTs honor where, orderBy, and limit. Returning another
+ * family's rows would hide an unbounded read. A session reader has no post-check:
+ * the question is which row, and the where clause is the only thing that answers it.
  */
 export function makeFakeDb(): FakeDb {
   const writes: RecordedWrite[] = [];
@@ -376,13 +389,71 @@ export function makeFakeDb(): FakeDb {
     return chain;
   };
 
-  /** A SELECT's rows. See the module note for why one table's predicate is evaluated. */
+  const compareValues = (left: unknown, right: unknown): number => {
+    if (left instanceof Date && right instanceof Date) return left.getTime() - right.getTime();
+    if (typeof left === 'string' && typeof right === 'string') {
+      return left < right ? -1 : left > right ? 1 : 0;
+    }
+    if (typeof left === 'number' && typeof right === 'number') return left - right;
+    if (left == null && right == null) return 0;
+    if (left == null) return -1;
+    if (right == null) return 1;
+    return 0;
+  };
+
+  const sortRows = (
+    table: unknown,
+    rows: Record<string, unknown>[],
+    exprs: unknown[],
+  ): Record<string, unknown>[] => {
+    const specs = exprs.map((expr) => {
+      const tokens = tokenize(expr, table, []);
+      const column = tokens.find((token) => token.kind === 'column');
+      const direction = tokens.find(
+        (token) => token.kind === 'text' && (token.text === 'asc' || token.text === 'desc'),
+      );
+      if (!column) throw new Error('fake orderBy: no column');
+      return {
+        key: column.key,
+        dir: direction?.kind === 'text' ? direction.text : 'asc',
+      };
+    });
+    return [...rows].sort((left, right) => {
+      for (const spec of specs) {
+        const cmp = compareValues(left[spec.key], right[spec.key]);
+        if (cmp !== 0) return spec.dir === 'desc' ? -cmp : cmp;
+      }
+      return 0;
+    });
+  };
+
+  /** where, orderBy, and limit. Used where the predicate is the bound, not a post-check. */
+  const scopedSelect = (
+    table: unknown,
+    rows: Record<string, unknown>[],
+  ): Record<string, unknown> => {
+    const chain = thenable(rows);
+    chain.where = (expr: unknown) =>
+      scopedSelect(
+        table,
+        rows.filter((row) => matchesWhere(table, expr, row)),
+      );
+    chain.orderBy = (...exprs: unknown[]) => scopedSelect(table, sortRows(table, rows, exprs));
+    chain.limit = (count: number) => Promise.resolve(rows.slice(0, count));
+    return chain;
+  };
+
+  const selectsAreScoped = (table: unknown): boolean =>
+    table === schema.smsIntakeSessions ||
+    table === schema.parentChannels ||
+    table === schema.auditLog ||
+    table === schema.children;
+
+  /** A SELECT's rows. See the module note for which predicates are evaluated. */
   const selectFrom = (table: unknown) => {
     const rows = rowsFor(table);
-    if (table !== schema.smsIntakeSessions) return thenable(rows);
-    const chain = thenable(rows);
-    chain.where = (expr: unknown) => thenable(rows.filter((row) => matchesWhere(table, expr, row)));
-    return chain;
+    if (!selectsAreScoped(table)) return thenable(rows);
+    return scopedSelect(table, rows);
   };
 
   /**

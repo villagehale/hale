@@ -1,21 +1,22 @@
 import type { IngestedEventPayload } from '@hale/tools-contracts';
 import { redactEventPayload } from '@hale/worker/redaction';
-import type {
-  CalendarAlertOutcome,
-  CalendarAlertSweep,
-  CalendarChange,
-} from './calendar-alert';
-import { bookedDetectionBackfillEnabled, bookedDetectionEnabledFor } from './booked';
-import type { EmailAlertResult, GmailAlertEnvelope } from './email-alert';
+import { REMINDER_HORIZON_MS } from '~/lib/loop/reminders/schedule';
 import type { TravelDetectOutcome } from '~/lib/travel/detect';
+import {
+  BOOKED_BACKFILL_BUDGET_MS,
+  BOOKED_BACKFILL_MAX_PER_SWEEP,
+  bookedDetectionBackfillEnabled,
+  bookedDetectionEnabledFor,
+} from './booked';
+import type { CalendarAlertOutcome, CalendarAlertSweep, CalendarChange } from './calendar-alert';
+import type { CalendarMirrorCounts } from './calendar-mirror';
+import type { EmailAlertResult, GmailAlertEnvelope } from './email-alert';
 import type { ConnectorProvider } from './google-oauth';
 import type { ActiveConnectorConnection } from './store';
-import {
-  type ConnectorErrorCode,
-  ConnectorSyncError,
-  classifyConnectorError,
-} from './sync-error';
+import { type ConnectorErrorCode, ConnectorSyncError, classifyConnectorError } from './sync-error';
 import type { OAuthTokens } from './token-vault';
+
+export { BOOKED_BACKFILL_BUDGET_MS, BOOKED_BACKFILL_MAX_PER_SWEEP };
 
 /**
  * Poll-based connector sync (v1) — read-only. Every run pulls the items that
@@ -89,6 +90,17 @@ export interface SyncDeps {
    * envelopes rides the access token already in hand.
    */
   detectTravelBookings: (input: GmailAlertBatch) => Promise<readonly TravelDetectOutcome[]>;
+  /**
+   * Write eligible upcoming events on this calendar as parent-sourced reminders
+   * (lib/integrations/calendar-mirror.ts). Non-nullable (rule #11): a caller that
+   * does not mirror passes a port that says so. A rejection is held in the sync
+   * and does not mark the connection errored — a reminder bug is not a broken calendar.
+   */
+  mirrorCalendarWindow: (input: CalendarMirrorBatch) => Promise<CalendarMirrorCounts>;
+  /** Wall-clock budget for one backfill page. Defaults to {@link BOOKED_BACKFILL_BUDGET_MS}. */
+  backfillBudgetMs?: number;
+  /** Injectable clock for that budget. Defaults to `Date.now`. */
+  backfillNow?: () => number;
 }
 
 /** One connection's Gmail envelopes, as the alert path needs them. The access token is
@@ -117,6 +129,18 @@ export interface CalendarAlertBatch {
   changes: readonly CalendarChange[];
 }
 
+/** The upcoming window of one calendar, as the reminder mirror needs it. Separate from
+ * the syncToken delta: an unchanged swim class that enters the horizon is not a "change",
+ * and it is still something the parent expects to be reminded about. */
+export interface CalendarMirrorBatch {
+  connection: ActiveConnectorConnection;
+  items: readonly Record<string, unknown>[];
+  /** False when the list failed, was rate-limited, or stopped short of the last page.
+   * A missing id is then unseen, not deleted. */
+  trustWindow: boolean;
+  now: Date;
+}
+
 /** What one connection's sync produced beyond its enqueues. Each list is empty for the
  * providers it does not belong to, and for a run that failed before the alert step. */
 export interface SyncConnectionResult {
@@ -136,6 +160,8 @@ export interface SyncConnectionResult {
 
 const GONE = 410;
 const NOT_FOUND = 404;
+const RATE_LIMIT = 429;
+const FORBIDDEN = 403;
 /** Refresh a token this many ms before its stated expiry, so a sync doesn't start
  * with a token that expires mid-run. */
 const EXPIRY_SKEW_MS = 60_000;
@@ -154,7 +180,14 @@ interface ProviderResult {
   /** Calendar only: the raw changes of this run, INCLUDING the cancelled items the ingest
    * drops. A tombstone is the single most useful thing the alert path says and the one
    * thing `events` structurally cannot carry, so it rides alongside. */
-  calendar?: { seeding: boolean; changes: CalendarChange[]; droppedNoId: number };
+  calendar?: {
+    seeding: boolean;
+    changes: CalendarChange[];
+    droppedNoId: number;
+    windowItems: Record<string, unknown>[];
+    trustWindow: boolean;
+    windowAt: string;
+  };
 }
 
 /**
@@ -243,13 +276,8 @@ export async function syncConnection(
         );
         travelDetections = envelopes.map(() => 'detect_failed' as const);
       }
-      const backfillAlerts = await runBookedBackfill(
-        connection,
-        accessToken,
-        deps,
-        result.nextMetadata,
-      );
-      if (backfillAlerts !== null) emailAlerts = [...emailAlerts, ...backfillAlerts];
+      const backfill = await backfillBookedMail(connection, accessToken, deps, result.nextMetadata);
+      if (backfill.status === 'saved') emailAlerts = [...emailAlerts, ...backfill.alerts];
     }
     if (result.calendar) {
       const { seeding, changes } = result.calendar;
@@ -270,6 +298,22 @@ export async function syncConnection(
           'connector sync: the calendar alert pass threw - the calendar is fine, the alert is not',
         );
         calendarAlerts = changes.map(() => 'alert_failed' as const);
+      }
+      try {
+        await deps.mirrorCalendarWindow({
+          connection,
+          items: result.calendar.windowItems,
+          trustWindow: result.calendar.trustWindow,
+          now: new Date(result.calendar.windowAt),
+        });
+      } catch (err) {
+        console.error(
+          {
+            connectionId: connection.id,
+            err: err instanceof Error ? err.constructor.name : 'unknown',
+          },
+          'connector sync: the calendar mirror threw - the calendar is fine, the reminders are not',
+        );
       }
     }
   } catch (err) {
@@ -314,7 +358,10 @@ async function ensureFreshToken(
     throw new ConnectorSyncError('token_refresh_failed');
   }
   // Google omits refresh_token on refresh — preserve the stored one.
-  const merged: OAuthTokens = { ...refreshed, refreshToken: refreshed.refreshToken ?? tokens.refreshToken };
+  const merged: OAuthTokens = {
+    ...refreshed,
+    refreshToken: refreshed.refreshToken ?? tokens.refreshToken,
+  };
   await deps.saveTokens(connection.id, merged);
   return merged.accessToken;
 }
@@ -338,7 +385,7 @@ async function getJson<T>(
   googleFetch: GoogleFetch,
   url: string,
   accessToken: string,
-  opts?: { allowGone?: boolean; allowNotFound?: boolean },
+  opts?: { allowGone?: boolean; allowNotFound?: boolean; allowRateLimit?: boolean },
 ): Promise<{ status: number; data: T }> {
   const res = await googleFetch(url, accessToken);
   if (!res.ok) {
@@ -352,6 +399,11 @@ async function getJson<T>(
     // expired historyId. Every other 404 still errors the whole connection.
     if (res.status === NOT_FOUND && opts?.allowNotFound)
       return { status: NOT_FOUND, data: {} as T };
+    // 429 and 403 are a quota signal ONLY where the caller opted in (the reminder
+    // window, and the booked-mail backfill). Treating them as a broken connection
+    // would stop the ingest over a limit that clears on its own.
+    if ((res.status === RATE_LIMIT || res.status === FORBIDDEN) && opts?.allowRateLimit)
+      return { status: res.status, data: {} as T };
     throw new ConnectorSyncError(`google_${res.status}`);
   }
   return { status: res.status, data: (await res.json()) as T };
@@ -404,7 +456,9 @@ async function syncCalendar(
     if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
     else if (syncToken) url += `&syncToken=${encodeURIComponent(syncToken)}`;
 
-    const { status, data } = await getJson<CalendarEventsResponse>(googleFetch, url, accessToken, { allowGone: true });
+    const { status, data } = await getJson<CalendarEventsResponse>(googleFetch, url, accessToken, {
+      allowGone: true,
+    });
     if (status === GONE) {
       if (resynced) throw new ConnectorSyncError('google_410');
       // Stale syncToken → restart a full resync from scratch (drop the token/page).
@@ -461,6 +515,16 @@ async function syncCalendar(
       'connector sync: calendar items with no id, dropped',
     );
   }
+  // A second list, AFTER the delta, and on its own URL. syncToken forbids timeMin,
+  // timeMax and orderBy, so the horizon cannot ride the incremental request. A failure
+  // here must not fail the connection or throw away the cursor the delta just earned.
+  const windowAt = new Date();
+  const window = await listUpcomingCalendarWindow(
+    googleFetch,
+    accessToken,
+    windowAt,
+    connection.id,
+  );
   return {
     events,
     nextMetadata: { syncToken: nextSyncToken },
@@ -471,8 +535,69 @@ async function syncCalendar(
       seeding: startedWithToken === undefined || resynced,
       changes,
       droppedNoId,
+      windowItems: window.items,
+      trustWindow: window.trustWindow,
+      windowAt: windowAt.toISOString(),
     },
   };
+}
+
+/** How many pages of the upcoming window one sync will read. Two pages of 250 is
+ * the horizon of a family calendar; a third page is a truncation, not a deletion. */
+const WINDOW_PAGES = 2;
+
+async function listUpcomingCalendarWindow(
+  googleFetch: GoogleFetch,
+  accessToken: string,
+  now: Date,
+  integrationId: string,
+): Promise<{ items: Record<string, unknown>[]; trustWindow: boolean }> {
+  const items: Record<string, unknown>[] = [];
+  let pageToken: string | undefined;
+  try {
+    for (let page = 0; page < WINDOW_PAGES; page += 1) {
+      const params = new URLSearchParams({
+        singleEvents: 'true',
+        orderBy: 'startTime',
+        maxResults: '250',
+        timeMin: now.toISOString(),
+        timeMax: new Date(now.getTime() + REMINDER_HORIZON_MS).toISOString(),
+      });
+      if (pageToken) params.set('pageToken', pageToken);
+      const { status, data } = await getJson<CalendarEventsResponse>(
+        googleFetch,
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`,
+        accessToken,
+        { allowRateLimit: true },
+      );
+      if (status === RATE_LIMIT || status === FORBIDDEN) {
+        console.info(
+          { integrationId, status },
+          'connector sync: calendar reminder window hit quota, mirrors left in place',
+        );
+        return { items: [], trustWindow: false };
+      }
+      for (const item of data.items ?? []) items.push(item);
+      const next = readString(data.nextPageToken);
+      if (next === undefined) return { items, trustWindow: true };
+      pageToken = next;
+    }
+    console.info(
+      { integrationId, seen: items.length },
+      'connector sync: calendar reminder window truncated, mirrors not removed',
+    );
+    return { items, trustWindow: false };
+  } catch (err) {
+    console.info(
+      {
+        integrationId,
+        code: err instanceof Error ? err.name : 'unknown',
+        seen: items.length,
+      },
+      'connector sync: calendar reminder window unavailable, mirrors not removed',
+    );
+    return { items, trustWindow: false };
+  }
 }
 
 /**
@@ -544,11 +669,6 @@ interface GmailListResponse {
   nextPageToken?: string;
   historyId?: string;
 }
-
-/** One page of booking-shaped mail per sweep. Eight metadata reads plus at most
- * eight classifications stays inside the connector cron; the page token carries
- * the rest to the next run. */
-export const BOOKED_BACKFILL_MAX_PER_SWEEP = 8;
 
 /** Receipts, invoices, confirmations, registrations from the last 90 days.
  * Waitlist and reminder mail that still matches is refused by falseBookingSignal
@@ -676,28 +796,50 @@ async function readGmailMessageBatch(
 interface BookedBackfillCursor {
   pageToken?: string;
   backfilledAt?: string;
+  pendingIds?: string[];
 }
+
+export type BookedBackfillRun =
+  | { status: 'off' }
+  | { status: 'quota' }
+  | { status: 'saved'; alerts: readonly EmailAlertResult[]; complete: boolean };
 
 function readBookedBackfill(meta: Record<string, unknown>): BookedBackfillCursor {
   const raw = meta.bookedBackfill;
   if (typeof raw !== 'object' || raw === null) return {};
-  const record = raw as { pageToken?: unknown; backfilledAt?: unknown };
+  const record = raw as { pageToken?: unknown; backfilledAt?: unknown; pendingIds?: unknown };
+  const pendingIds = Array.isArray(record.pendingIds)
+    ? record.pendingIds
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+        .slice(0, BOOKED_BACKFILL_MAX_PER_SWEEP)
+    : [];
   return {
     pageToken: readString(record.pageToken),
     backfilledAt: readString(record.backfilledAt),
+    ...(pendingIds.length > 0 ? { pendingIds } : {}),
   };
 }
 
-/** One page, then stop. A throw leaves the page token where it was so the next
- * sweep retries it. Completion is `backfilledAt`, after which this returns null
- * and lists nothing. */
-async function runBookedBackfill(
+/**
+ * One bounded page of booking-shaped mail, then stop. Silent: every envelope is
+ * handed over with `pass: 'backfill'`, which records a booking and sends no text.
+ *
+ * `off` stamps nothing, so a flag that is not exactly `true` can still be turned
+ * on later. `quota` stamps nothing either — the same page is listed again. A
+ * `saved` cursor keeps every id this sweep did not finish (`pendingIds`) beside
+ * the next list token, so a time budget cannot skip a message by advancing the page.
+ */
+export async function backfillBookedMail(
   connection: ActiveConnectorConnection,
   accessToken: string,
-  deps: SyncDeps,
+  deps: Pick<
+    SyncDeps,
+    'googleFetch' | 'alertGmailEnvelopes' | 'saveCursor' | 'backfillBudgetMs' | 'backfillNow'
+  >,
   nextMetadata: Record<string, unknown>,
-): Promise<readonly EmailAlertResult[] | null> {
-  if (!bookedDetectionBackfillEnabled()) return null;
+  options?: { budgetMs?: number; now?: () => number },
+): Promise<BookedBackfillRun> {
+  if (!bookedDetectionBackfillEnabled()) return { status: 'off' };
   if (!bookedDetectionEnabledFor(connection.familyId)) {
     // Do not stamp completion. Turning booked detection on later must still be
     // able to read the mailbox. Named so a sweep that listed nothing is readable.
@@ -705,60 +847,147 @@ async function runBookedBackfill(
       { integrationId: connection.id },
       'booked detection backfill: booked detection is off, page not started',
     );
-    return null;
+    return { status: 'off' };
   }
   const prior = readBookedBackfill(connection.providerMetadata);
-  if (prior.backfilledAt !== undefined) return null;
-  try {
-    const page = await listBookedBackfillPage(deps.googleFetch, accessToken, prior.pageToken);
-    const { envelopes } = await readGmailMessageBatch(
-      deps.googleFetch,
-      accessToken,
-      connection,
-      page.messageIds,
-    );
-    let alerts: readonly EmailAlertResult[] = [];
-    if (envelopes.length > 0) {
-      alerts = await deps.alertGmailEnvelopes({
+  if (prior.backfilledAt !== undefined) return { status: 'off' };
+
+  const budgetMs = options?.budgetMs ?? deps.backfillBudgetMs ?? BOOKED_BACKFILL_BUDGET_MS;
+  const clock = options?.now ?? deps.backfillNow ?? Date.now;
+  const started = clock();
+
+  let ids: string[];
+  let nextPageToken: string | undefined;
+  if (prior.pendingIds !== undefined && prior.pendingIds.length > 0) {
+    ids = prior.pendingIds;
+    nextPageToken = prior.pageToken;
+  } else {
+    try {
+      const page = await listBookedBackfillPage(deps.googleFetch, accessToken, prior.pageToken);
+      if (page.quota) {
+        console.info(
+          { integrationId: connection.id },
+          'booked detection backfill: quota, page not saved',
+        );
+        return { status: 'quota' };
+      }
+      ids = page.messageIds;
+      nextPageToken = page.nextPageToken;
+    } catch (err) {
+      console.error(
+        {
+          integrationId: connection.id,
+          err: err instanceof Error ? err.constructor.name : 'unknown',
+        },
+        'connector sync: booked backfill did not finish - the mailbox is fine, this page will be retried',
+      );
+      return { status: 'quota' };
+    }
+  }
+
+  const alerts: EmailAlertResult[] = [];
+  let stopAt = ids.length;
+  for (let index = 0; index < ids.length; index += 1) {
+    if (clock() - started >= budgetMs) {
+      stopAt = index;
+      break;
+    }
+    const id = ids[index];
+    if (id === undefined) continue;
+    let status: number;
+    let data: GmailMessageResponse;
+    try {
+      const read = await getJson<GmailMessageResponse>(
+        deps.googleFetch,
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
+        accessToken,
+        { allowNotFound: true, allowRateLimit: true },
+      );
+      status = read.status;
+      data = read.data;
+    } catch (err) {
+      console.error(
+        {
+          integrationId: connection.id,
+          err: err instanceof Error ? err.constructor.name : 'unknown',
+        },
+        'connector sync: booked backfill did not finish - the mailbox is fine, this page will be retried',
+      );
+      stopAt = index;
+      break;
+    }
+    if (status === RATE_LIMIT || status === FORBIDDEN) {
+      console.info(
+        { integrationId: connection.id, status },
+        'booked detection backfill: quota, unread ids kept',
+      );
+      stopAt = index;
+      break;
+    }
+    if (status === NOT_FOUND) continue;
+    const headers = data.payload?.headers ?? [];
+    const subject = headers.find((header) => header.name === 'Subject')?.value ?? '';
+    const from = headers.find((header) => header.name === 'From')?.value ?? '';
+    try {
+      const one = await deps.alertGmailEnvelopes({
         connection,
         accessToken,
         seeding: false,
         pass: 'backfill',
-        envelopes,
+        envelopes: [
+          {
+            messageId: id,
+            subject,
+            from,
+            snippet: data.snippet ?? '',
+            receivedAt: epochMsToIso(data.internalDate),
+          },
+        ],
       });
+      alerts.push(...one);
+    } catch (err) {
+      console.error(
+        {
+          integrationId: connection.id,
+          err: err instanceof Error ? err.constructor.name : 'unknown',
+        },
+        'connector sync: booked backfill did not finish - the mailbox is fine, this page will be retried',
+      );
+      stopAt = index;
+      break;
     }
-    const bookedBackfill: BookedBackfillCursor = page.nextPageToken
-      ? { pageToken: page.nextPageToken }
-      : { backfilledAt: new Date().toISOString() };
-    await deps.saveCursor(connection.id, { ...nextMetadata, bookedBackfill });
-    return alerts;
-  } catch (err) {
-    console.error(
-      {
-        integrationId: connection.id,
-        err: err instanceof Error ? err.constructor.name : 'unknown',
-      },
-      'connector sync: booked backfill did not finish - the mailbox is fine, this page will be retried',
-    );
-    return [];
   }
+
+  const rest = ids.slice(stopAt);
+  const bookedBackfill: BookedBackfillCursor =
+    rest.length > 0
+      ? { pendingIds: rest, ...(nextPageToken ? { pageToken: nextPageToken } : {}) }
+      : nextPageToken
+        ? { pageToken: nextPageToken }
+        : { backfilledAt: new Date().toISOString() };
+  await deps.saveCursor(connection.id, { ...nextMetadata, bookedBackfill });
+  return { status: 'saved', alerts, complete: rest.length === 0 && nextPageToken === undefined };
 }
 
 async function listBookedBackfillPage(
   googleFetch: GoogleFetch,
   accessToken: string,
   pageToken: string | undefined,
-): Promise<{ messageIds: string[]; nextPageToken?: string }> {
+): Promise<{ messageIds: string[]; nextPageToken?: string; quota: boolean }> {
   const params = new URLSearchParams({
     maxResults: String(BOOKED_BACKFILL_MAX_PER_SWEEP),
     q: BOOKED_BACKFILL_QUERY,
   });
   if (pageToken) params.set('pageToken', pageToken);
-  const { data } = await getJson<GmailListResponse>(
+  const { status, data } = await getJson<GmailListResponse>(
     googleFetch,
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params.toString()}`,
     accessToken,
+    { allowRateLimit: true },
   );
+  if (status === RATE_LIMIT || status === FORBIDDEN) {
+    return { messageIds: [], quota: true };
+  }
   const messageIds: string[] = [];
   for (const message of data.messages ?? []) {
     if (message.id) messageIds.push(message.id);
@@ -766,6 +995,7 @@ async function listBookedBackfillPage(
   return {
     messageIds: messageIds.slice(0, BOOKED_BACKFILL_MAX_PER_SWEEP),
     nextPageToken: readString(data.nextPageToken),
+    quota: false,
   };
 }
 

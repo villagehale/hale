@@ -33,7 +33,8 @@ export const channelSigninTokens = pgTable(
     /** SHA-256 (hex) of the raw token. Never the token itself. */
     tokenHash: text('token_hash').notNull().unique(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    /** Set on redemption — the burn that makes the link single-use. */
+    /** Set when consent succeeds, or when a newer ask replaces the link. Not set
+     * on the Redeem click: closing Google's screen must leave the URL usable. */
     consumedAt: timestamp('consumed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

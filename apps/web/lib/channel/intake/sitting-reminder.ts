@@ -1,7 +1,9 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { SITTING_SESSION_REMINDER } from '~/lib/channel/intake/copy';
+import { type FriendVoiceComposer, speakFriend } from '~/lib/channel/intake/friend-voice';
+import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
 import { appendTranscript, loadOpenSession, saveSession } from '~/lib/channel/intake/session';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { PROACTIVE_QUIET_HOURS } from '~/lib/channel/outbound-gate';
@@ -60,6 +62,10 @@ const MAX_SITTING_REMINDERS_PER_RUN = 50;
 export interface SittingReminderDeps {
   /** The outbound text leg — REQUIRED (rule #11). The real adapter is Linq. */
   transport: ChannelTransport;
+  /**
+   * Friend-voice nudge. Absent, or a compose that fails, sends nothing canned.
+   */
+  friendVoice?: FriendVoiceComposer;
 }
 
 export interface SittingReminderResult {
@@ -110,6 +116,33 @@ export function sittingSessionEligible(row: SittingSessionRow, now: Date): boole
   return isNextTorontoMorning(row.createdAt, now);
 }
 
+/**
+ * VIL-413. One next-morning nudge for a parent stuck on the postal code or the
+ * ages. Same clock as the details reminder. One claim, so it cannot repeat.
+ * Flag off: these states are not candidates.
+ */
+export function firstTouchNudgeEligible(row: SittingSessionRow, now: Date): boolean {
+  if (row.state !== 'awaiting_place' && row.state !== 'awaiting_ages') return false;
+  if (row.closedAt !== null) return false;
+  if (row.sittingReminderSentAt !== null) return false;
+  if (row.familyId !== null) return false;
+  if (!isSittingReminderSlot(now)) return false;
+  return isNextTorontoMorning(row.createdAt, now);
+}
+
+/**
+ * One next-morning nudge after the find, while the parent has not picked.
+ * Same clock as the other sitting nudges. One claim, so it cannot repeat.
+ */
+export function findNudgeEligible(row: SittingSessionRow, now: Date): boolean {
+  if (row.state !== 'awaiting_cold_start') return false;
+  if (row.closedAt !== null) return false;
+  if (row.sittingReminderSentAt !== null) return false;
+  if (row.familyId === null) return false;
+  if (!isSittingReminderSlot(now)) return false;
+  return isNextTorontoMorning(row.createdAt, now);
+}
+
 export function defaultSittingReminderDeps(): SittingReminderDeps {
   return { transport: createOutboundTransport() };
 }
@@ -122,19 +155,26 @@ export async function runSittingReminderCron(
   const result: SittingReminderResult = { evaluated: 0, sent: 0, skipped: 0, failed: 0 };
   if (!isSittingReminderSlot(now)) return result;
 
-  const candidates = await loadSittingCandidates(database);
+  const friend = onboardingFriendVoiceEnabled();
+  const candidates = await loadSittingCandidates(
+    database,
+    friend
+      ? ['awaiting_details', 'awaiting_place', 'awaiting_ages', 'awaiting_cold_start']
+      : ['awaiting_details'],
+  );
   for (const row of candidates.slice(0, MAX_SITTING_REMINDERS_PER_RUN)) {
     if (FOUNDER_PAIR_SESSION_IDS.has(row.id)) {
-      await claimSittingReminder(database, row.id, now);
+      await claimSittingReminder(database, row.id, now, row.state);
       result.skipped += 1;
       continue;
     }
-    if (!sittingSessionEligible(row, now)) {
+    const nudge = friend && (firstTouchNudgeEligible(row, now) || findNudgeEligible(row, now));
+    if (!nudge && !sittingSessionEligible(row, now)) {
       result.skipped += 1;
       continue;
     }
     result.evaluated += 1;
-    if (!(await claimSittingReminder(database, row.id, now))) {
+    if (!(await claimSittingReminder(database, row.id, now, row.state))) {
       result.skipped += 1;
       continue;
     }
@@ -145,11 +185,24 @@ export async function runSittingReminderCron(
         result.skipped += 1;
         continue;
       }
+      const body = friend
+        ? await firstTouchNudgeBody(database, phoneE164, row.state, deps.friendVoice)
+        : SITTING_SESSION_REMINDER;
+      if (body == null) {
+        result.skipped += 1;
+        continue;
+      }
+      if (friend && body.trim().length === 0) {
+        await releaseSittingReminder(database, row.id);
+        result.failed += 1;
+        console.error({ reason: 'voice_unsent' }, 'sitting reminder: reply not sent');
+        continue;
+      }
       const { providerMessageId } = await sendResolvingNewChat(deps.transport, {
         to: phoneE164,
-        body: SITTING_SESSION_REMINDER,
+        body,
       });
-      await recordSittingReminderOutbound(database, phoneE164, providerMessageId, now);
+      await recordSittingReminderOutbound(database, phoneE164, providerMessageId, now, body);
       result.sent += 1;
     } catch (err) {
       const refusal = readSendRefusal(err);
@@ -176,7 +229,10 @@ interface SittingCandidate extends SittingSessionRow {
   phoneEncrypted: string;
 }
 
-async function loadSittingCandidates(database: Database): Promise<SittingCandidate[]> {
+async function loadSittingCandidates(
+  database: Database,
+  states: readonly string[],
+): Promise<SittingCandidate[]> {
   return database
     .select({
       id: schema.smsIntakeSessions.id,
@@ -193,7 +249,9 @@ async function loadSittingCandidates(database: Database): Promise<SittingCandida
       and(
         isNull(schema.smsIntakeSessions.closedAt),
         isNull(schema.smsIntakeSessions.sittingReminderSentAt),
-        eq(schema.smsIntakeSessions.state, 'awaiting_details'),
+        states.length === 1
+          ? eq(schema.smsIntakeSessions.state, states[0] ?? 'awaiting_details')
+          : or(...states.map((state) => eq(schema.smsIntakeSessions.state, state))),
       ),
     );
 }
@@ -202,6 +260,7 @@ async function claimSittingReminder(
   database: Database,
   sessionId: string,
   now: Date,
+  state: string,
 ): Promise<boolean> {
   const claimed = await database
     .update(schema.smsIntakeSessions)
@@ -211,7 +270,7 @@ async function claimSittingReminder(
         eq(schema.smsIntakeSessions.id, sessionId),
         isNull(schema.smsIntakeSessions.sittingReminderSentAt),
         isNull(schema.smsIntakeSessions.closedAt),
-        eq(schema.smsIntakeSessions.state, 'awaiting_details'),
+        eq(schema.smsIntakeSessions.state, state),
       ),
     )
     .returning({ id: schema.smsIntakeSessions.id });
@@ -231,6 +290,7 @@ async function recordSittingReminderOutbound(
   phoneE164: string,
   providerMessageId: string,
   now: Date,
+  body: string,
 ): Promise<void> {
   const session = await loadOpenSession(database, phoneE164);
   if (!session) return;
@@ -240,11 +300,54 @@ async function recordSittingReminderOutbound(
     {
       transcript: appendTranscript(session, {
         direction: 'out',
-        body: SITTING_SESSION_REMINDER,
+        body,
         providerId: providerMessageId,
         at: now.toISOString(),
       }),
     },
     now,
   );
+}
+
+async function firstTouchNudgeBody(
+  database: Database,
+  phoneE164: string,
+  state: string,
+  composer: FriendVoiceComposer | undefined,
+): Promise<string | null> {
+  const session = await loadOpenSession(database, phoneE164);
+  const language = session?.ladderLanguage ?? session?.firstTouch?.language ?? 'en';
+  const cold = session?.firstTouch?.coldStart ?? null;
+  // Null keeps the claim. Empty releases it so a missed model reply can retry.
+  if (state === 'awaiting_cold_start' && (!cold || cold.step !== 'pick')) return null;
+  const findLines =
+    state === 'awaiting_cold_start' && cold
+      ? cold.findBody
+          .split('\n')
+          .map((line) => line.trim())
+          .filter((line) => /^\d+\.\s+/.test(line))
+          .map((line) => line.replace(/^\d+\.\s+/, ''))
+      : [];
+  const spoken = await speakFriend(composer, {
+    step:
+      state === 'awaiting_ages'
+        ? 'nudge_ages'
+        : state === 'awaiting_cold_start'
+          ? 'nudge_find'
+          : 'nudge_place',
+    language,
+    address: 'tu',
+    introduce: false,
+    parentWords: '',
+    recentTurns: [],
+    placeLabel: session?.firstTouch?.place?.city || session?.firstTouch?.place?.areaCoarse || null,
+    agesLabel: null,
+    ageMonths: [],
+    findLines,
+    listKind: findLines.length > 0 ? 'year' : 'none',
+    activity: cold?.activity ?? null,
+    day: cold?.day ?? null,
+    parentName: session?.firstTouch?.given?.parentName ?? null,
+  });
+  return spoken.body;
 }

@@ -1139,13 +1139,13 @@ describe('an offered full plan', () => {
       async respond() {
         return {
           reply:
-            "Most 2-year-olds wake once or twice. Want the full plan? Reply YES and I'll send it.",
+            'Most 2-year-olds wake once or twice. Want me to send the full plan?',
           activityPromise: null,
           spotWatch: null,
           planOffer: {
             topic: 'sleep',
             childId: null,
-            sentence: "Want the full plan? Reply YES and I'll send it.",
+            sentence: 'Want me to send the full plan?',
           },
         };
       },
@@ -1174,7 +1174,7 @@ describe('an offered full plan', () => {
         offer: {
           topic: 'sleep',
           childId: null,
-          sentence: "Want the full plan? Reply YES and I'll send it.",
+          sentence: 'Want me to send the full plan?',
         },
       },
     ]);

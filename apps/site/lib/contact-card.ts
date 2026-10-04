@@ -62,7 +62,7 @@ export function buildVCard(smsNumber: string, photoJpegBase64: string): string {
     'BEGIN:VCARD',
     'VERSION:3.0',
     'N:Hale;;;;',
-    'FN:Hale',
+    'FN:Hale \u{1F33A}',
     'ORG:Hale',
     `TEL;TYPE=CELL:${smsNumber}`,
     `URL:${SITE_URL}`,

@@ -1,21 +1,30 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
+import { sendYearConnectorCards } from '~/lib/channel/intake/connector-offer';
+import {
+  type FriendVoiceComposer,
+  createFriendVoiceComposer,
+  speakFriend,
+} from '~/lib/channel/intake/friend-voice';
+import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { familyOutboundTarget, familySpeech } from '~/lib/channel/linq/family-outbound';
 import { groupCalendarReceipt, groupGmailReceipt } from '~/lib/channel/linq/group-coparent-copy';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
-import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   createOutboundTransport,
   failedSendPatch,
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import type { ReplyLanguage } from '~/lib/channel/language';
-import { connectorConnectedText, type TextConnectProvider } from './text-connect';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { type AhaSnapshot, failedAha } from './aha-read';
+import { type TextConnectProvider, connectorConnectedText } from './text-connect';
 
 /**
  * The text back that ends the texted connect: the parent tapped a link in a thread,
@@ -56,6 +65,12 @@ export interface ConnectedNoticePorts {
    */
   imessage?: (input: { chatId: string; body: string }) => Promise<{ providerMessageId: string }>;
   threadMessage: typeof threadProactiveMessage;
+  /**
+   * Friend voice for the 1:1 receipt when ONBOARDING_FRIEND_VOICE_ENABLED is on.
+   * Absent, or a compose that fails, sends nothing canned. The next callback
+   * can retry. The group receipt stays the locked sentence: it names the parent.
+   */
+  friendVoice?: FriendVoiceComposer;
 }
 
 export type ConnectedNoticeOutcome =
@@ -72,6 +87,8 @@ export type ConnectedNoticeOutcome =
   /** The co-parent's locked group receipt owns this bubble. This path does not
    * also send 1:1 or SMS. */
   | { status: 'not_sent'; reason: 'group_home' }
+  /** Friend voice could not write the receipt. The claim is released so a retry can. */
+  | { status: 'not_sent'; reason: 'voice_unsent' }
   /** The provider refused it. `code` is Twilio's, or `unknown`. */
   | { status: 'not_sent'; reason: 'send_failed'; code: string }
   /** Something on this path threw — a ledger write, the thread append. Its own outcome
@@ -86,6 +103,7 @@ export type ConnectedNoticeLabel =
   | 'no_send_target'
   | 'no_chat'
   | 'group_home'
+  | 'voice_unsent'
   | 'errored'
   | `send_failed:${string}`;
 
@@ -98,11 +116,52 @@ export function connectedNoticeLabel(outcome: ConnectedNoticeOutcome): Connected
 /** What the callback wires in production. Named here so a test that injects a fake
  * still leaves one path that proves the real transport is reachable. */
 export function defaultConnectedNoticePorts(): ConnectedNoticePorts {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   return {
     transport: createOutboundTransport(),
     imessage: (input) => sendLinqChatMessage({ chatId: input.chatId, text: input.body }),
     threadMessage: threadProactiveMessage,
+    friendVoice:
+      onboardingFriendVoiceEnabled() && apiKey
+        ? createFriendVoiceComposer(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS))
+        : undefined,
   };
+}
+
+/** The 1:1 receipt. Flag off keeps the locked sentence. Flag on asks the model.
+ * A failed compose returns an empty string and the caller does not send it. */
+export async function connectedReceiptBody(
+  language: ReplyLanguage,
+  provider: TextConnectProvider,
+  composer: FriendVoiceComposer | undefined,
+  aha?: AhaSnapshot | null,
+  options?: { page?: (text: string) => Promise<unknown> },
+): Promise<string> {
+  if (!onboardingFriendVoiceEnabled()) return connectorConnectedText(language, provider);
+  const spoken = await speakFriend(
+    composer,
+    {
+      step: 'connected',
+      language,
+      address: 'tu',
+      introduce: false,
+      parentWords: '',
+      recentTurns: [],
+      placeLabel: null,
+      agesLabel: null,
+      ageMonths: [],
+      findLines: [],
+      listKind: 'none',
+      activity: null,
+      day: null,
+      parentName: null,
+      connector: provider,
+      granted: null,
+      synced: aha ?? failedAha(provider),
+    },
+    options?.page ? { page: options.page } : {},
+  );
+  return spoken.body;
 }
 
 export interface ConnectedNoticeArgs {
@@ -112,6 +171,11 @@ export interface ConnectedNoticeArgs {
   /** This connect, as `saveConnection` recorded it — the audit row's id. */
   connectId: string;
   now: Date;
+  /**
+   * Real items from the source that just connected. Friend voice uses them
+   * for the one useful line. Absent is a failed read: the model must not invent.
+   */
+  aha?: AhaSnapshot | null;
 }
 
 export async function sendConnectorConnectedText(
@@ -220,8 +284,23 @@ async function sendReceipt(
     .returning({ id: schema.channelMessages.id });
   if (!claimed) return { status: 'not_sent', reason: 'already_sent' };
 
-  // The receipt is the whole turn. No ladder ask is composed here.
-  const body = connectorConnectedText(await familyReceiptLanguage(database, familyId), provider);
+  if (onboardingFriendVoiceEnabled() && args.aha == null) {
+    console.error(
+      { familyId, provider },
+      'connector connected: aha not supplied - the receipt will not name an event',
+    );
+  }
+  const body = await connectedReceiptBody(
+    await familyReceiptLanguage(database, familyId),
+    provider,
+    ports.friendVoice,
+    args.aha,
+  );
+  if (body.trim().length === 0) {
+    await database.delete(schema.channelMessages).where(eq(schema.channelMessages.id, claimed.id));
+    console.error({ reason: 'voice_unsent' }, 'connector connected: reply not sent');
+    return { status: 'not_sent', reason: 'voice_unsent' };
+  }
   let providerMessageId: string;
   let reportedImessage = false;
   let reportedChatId: string | null = null;
@@ -273,6 +352,20 @@ async function sendReceipt(
   // The sentence Hale said, where the coach reads it back: a parent answering "what did
   // you just connect" must not meet a coach that cannot see its own message.
   await ports.threadMessage(database, { familyId, parentUserId, body });
+
+  if (provider === 'gcal') {
+    await sendGmailCardAfterCalendarReceipt(
+      database,
+      {
+        familyId,
+        parentUserId,
+        now,
+        chatId: door.channel === 'imessage' ? receiptChatId : null,
+        phone,
+      },
+      ports,
+    );
+  }
 
   return { status: 'sent', channelMessageId: claimed.id };
 }
@@ -350,7 +443,107 @@ async function sendGroupHomeReceipt(
     .set({ providerMessageId })
     .where(eq(schema.channelMessages.id, claimed.id));
   await ports.threadMessage(database, { familyId, parentUserId, body });
+  if (provider === 'gcal') {
+    await sendGmailCardAfterCalendarReceipt(
+      database,
+      { familyId, parentUserId, now, chatId, phone: '' },
+      ports,
+    );
+  }
   return { status: 'sent', channelMessageId: claimed.id };
+}
+
+/**
+ * The Gmail card follows a calendar receipt in the same turn. The year ladder
+ * used to wait for the parent's next text ("Ok") before sending it.
+ * A card already sent stays `already_sent`. A failure here does not un-send
+ * the receipt.
+ */
+async function sendGmailCardAfterCalendarReceipt(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+    chatId: string | null;
+    phone: string;
+  },
+  ports: ConnectedNoticePorts,
+): Promise<void> {
+  try {
+    const phone = args.phone || (await resolveSendablePhone(database, args.parentUserId)) || '';
+    if (!phone && !args.chatId) {
+      console.info(
+        { familyId: args.familyId },
+        'connector connected: gmail card not sent - no phone and no chat',
+      );
+      return;
+    }
+    const transport: ChannelTransport = {
+      send: async (input) => {
+        if (args.chatId && ports.imessage) {
+          const sent = await ports.imessage({ chatId: args.chatId, body: input.body });
+          return {
+            providerMessageId: sent.providerMessageId,
+            transport: 'imessage' as const,
+            chatId: args.chatId,
+          };
+        }
+        return ports.transport.send(input);
+      },
+    };
+    const language = await familyReceiptLanguage(database, args.familyId);
+    let voice: { gmail: string } | undefined;
+    if (onboardingFriendVoiceEnabled()) {
+      const spoken = await speakFriend(ports.friendVoice, {
+        step: 'email',
+        language,
+        address: 'tu',
+        introduce: false,
+        parentWords: '',
+        recentTurns: [],
+        placeLabel: null,
+        agesLabel: null,
+        ageMonths: [],
+        findLines: [],
+        listKind: 'none',
+        activity: null,
+        day: null,
+        parentName: null,
+      });
+      if (!spoken.prose.trim()) {
+        console.error(
+          { familyId: args.familyId },
+          'connector connected: gmail card not sent - friend voice unsent',
+        );
+        return;
+      }
+      voice = { gmail: spoken.prose };
+    }
+    const cards = await sendYearConnectorCards(
+      database,
+      {
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        phoneE164: phone || 'unaddressed',
+        language,
+        now: args.now,
+        ridesReply: true,
+        only: 'gmail',
+        ...(voice ? { voice } : {}),
+      },
+      { transport, threadMessage: ports.threadMessage },
+    );
+    console.info(
+      { familyId: args.familyId, gmail: cards.gmail },
+      'connector connected: gmail card after the calendar receipt',
+    );
+  } catch (err) {
+    console.error(
+      { familyId: args.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'connector connected: gmail card after the calendar receipt failed',
+    );
+  }
 }
 
 /**

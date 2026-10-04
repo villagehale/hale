@@ -10,8 +10,8 @@ import {
   rememberAndNarrateCalendar,
 } from '~/lib/channel/linq/household-calendar';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
-import { threadProactiveMessage } from '~/lib/channel/thread';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
   type CalendarAlertCounts,
@@ -19,6 +19,11 @@ import {
   alertParentForCalendarChanges,
   emptyCalendarAlertCounts,
 } from '~/lib/integrations/calendar-alert';
+import {
+  type CalendarMirrorCounts,
+  emptyCalendarMirrorCounts,
+  reconcileCalendarMirrors,
+} from '~/lib/integrations/calendar-mirror';
 import {
   type BookingCounts,
   type EmailAlertCounts,
@@ -40,6 +45,7 @@ import {
 } from '~/lib/integrations/store';
 import {
   type CalendarAlertBatch,
+  type CalendarMirrorBatch,
   type GmailAlertBatch,
   type GoogleFetch,
   type SyncConnectionResult,
@@ -215,6 +221,7 @@ export function connectorSyncDeps(database: Database, queue: PgBoss): RunConnect
     alertGmailEnvelopes: (batch) => alertGmailSweep(database, batch),
     alertCalendarChanges: (batch) => alertCalendarSweep(database, batch),
     detectTravelBookings: (batch) => detectTravelSweep(database, batch),
+    mirrorCalendarWindow: (batch) => mirrorCalendarWindow(database, batch),
   };
   return {
     listConnections: () => listActiveConnectorConnections(database),
@@ -303,6 +310,62 @@ function travelDetectPorts(
     // member — child or parent — whose name belongs there.
     householdNames: () => reader.householdNames(database, familyId),
     timeZone: (parentUserId) => buildOutboundGatePorts(database).parentTimeZone(parentUserId),
+  };
+}
+
+/**
+ * The sweep's half of the reminder mirror. The connecting parent's timezone places
+ * an all-day occasion on their local midnight. No user means nobody to remind:
+ * that absence is logged and the window is held (rule #11).
+ */
+async function mirrorCalendarWindow(
+  database: Database,
+  batch: CalendarMirrorBatch,
+): Promise<CalendarMirrorCounts> {
+  const userId = batch.connection.userId;
+  if (!userId) {
+    console.info(
+      { integrationId: batch.connection.id },
+      'calendar mirror: no parent user, skipped',
+    );
+    return emptyCalendarMirrorCounts(true);
+  }
+  const [parent] = await database
+    .select({ timezone: schema.users.timezone })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .limit(1);
+  return reconcileCalendarMirrors(database, {
+    familyId: batch.connection.familyId,
+    userId,
+    integrationId: batch.connection.id,
+    items: batch.items,
+    timeZone: parent?.timezone || 'America/Toronto',
+    now: batch.now,
+    trustWindow: batch.trustWindow,
+  });
+}
+
+/** Deps for the connect-time backfill kick. The cursor write merges onto the row
+ * so a historyId or googleAccountKey stored during the kick is kept. */
+export function kickGmailBackfillDeps(
+  database: Database,
+): Pick<SyncDeps, 'googleFetch' | 'alertGmailEnvelopes' | 'saveCursor'> {
+  return {
+    googleFetch: googleGetFetch,
+    alertGmailEnvelopes: (batch) => alertGmailSweep(database, batch),
+    saveCursor: async (id, meta) => {
+      const [row] = await database
+        .select({ providerMetadata: schema.integrations.providerMetadata })
+        .from(schema.integrations)
+        .where(eq(schema.integrations.id, id))
+        .limit(1);
+      const current =
+        row?.providerMetadata && typeof row.providerMetadata === 'object'
+          ? row.providerMetadata
+          : {};
+      await saveConnectionCursor(database, id, { ...current, ...meta });
+    },
   };
 }
 

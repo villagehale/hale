@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { matchConnectorRequest } from '~/lib/channel/connect/detect';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
+import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
 import { soleGivenName } from '~/lib/channel/identity/name-reply';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
@@ -337,6 +338,7 @@ async function advanceSeatedCoparent(
       parentUserId: sender.userId,
       groupChatId: message.chatId,
       text: groupCalendarAsk(language, name),
+      language,
       templateKey: CALENDAR_ASK_KEY,
       dedupeKey: `${CALENDAR_ASK_KEY}:${sender.userId}`,
       provider: 'gcal',
@@ -465,6 +467,7 @@ async function sendAskWithLink(
     parentUserId: string;
     groupChatId: string;
     text: string;
+    language: ReplyLanguage;
     templateKey: string;
     dedupeKey: string;
     provider: 'gcal' | 'gmail';
@@ -493,7 +496,7 @@ async function sendAskWithLink(
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     chatId: input.groupChatId,
-    text: `${input.text}\n${url}`,
+    text: `${input.text}\n${googleUnverifiedAppLine(input.language)}\n${url}`,
     templateKey: input.templateKey,
     dedupeKey: input.dedupeKey,
     now: input.now,
@@ -658,6 +661,7 @@ async function sendGmailAskOnce(
     parentUserId: input.parentUserId,
     groupChatId: input.chatId,
     text: groupGmailAsk(input.language, input.name),
+    language: input.language,
     templateKey: GMAIL_ASK_KEY,
     dedupeKey: `${GMAIL_ASK_KEY}:${input.parentUserId}`,
     provider: 'gmail',

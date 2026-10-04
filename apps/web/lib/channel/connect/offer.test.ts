@@ -230,11 +230,11 @@ describe('connectorLinkHandler', () => {
     await db.close();
   });
 
-  function turn(body: string): HandlerContext {
+  function turn(body: string, conversationId = 'conv-1'): HandlerContext {
     return {
       familyId,
       parentUserId,
-      conversationId: 'conv-1',
+      conversationId,
       body,
       // This handler answers through its verdict; a self-send here would be a bug.
       send: async () => {
@@ -279,6 +279,92 @@ describe('connectorLinkHandler', () => {
     // The must-not-mint half: no token, no audit row, nothing to leak.
     expect(await db.database.select().from(schema.channelSigninTokens)).toHaveLength(0);
     expect(await db.database.select().from(schema.auditLog)).toHaveLength(0);
+  });
+
+  async function threadOffer(content: string, earlier?: string): Promise<string> {
+    const [conversation] = await db.database
+      .insert(schema.conversations)
+      .values({ familyId })
+      .returning({ id: schema.conversations.id });
+    if (!conversation) throw new Error('expected a conversation');
+    if (earlier) {
+      await db.database.insert(schema.messages).values({
+        conversationId: conversation.id,
+        role: 'assistant',
+        content: earlier,
+        createdAt: new Date('2026-08-31T14:00:00.000Z'),
+      });
+    }
+    await db.database.insert(schema.messages).values({
+      conversationId: conversation.id,
+      role: 'assistant',
+      content,
+      createdAt: new Date('2026-08-31T14:05:00.000Z'),
+    });
+    return conversation.id;
+  }
+
+  const GMAIL_OFFER =
+    'Connect Gmail: https://app.villagehale.com/connect?t=old-gmail&to=gmail Good for 15 minutes.';
+  const CALENDAR_OFFER =
+    'Connect your calendar: https://app.villagehale.com/connect?t=old-gcal&to=gcal Good for 15 minutes.';
+
+  it.each(['give me a fresh one', 'new link', 'it expired'])(
+    'mints a fresh Gmail link for %j instead of telling them what to text',
+    async (body) => {
+      const conversationId = await threadOffer(GMAIL_OFFER);
+      const verdict = await connectorLinkHandler().handle(db.database, turn(body, conversationId));
+      if (!verdict.claimed) throw new Error('expected the handler to claim');
+      expect(verdict.outcome).toBe('sent');
+      expect(verdict.reply).toContain('tap to connect your Gmail');
+      expect(verdict.reply).toContain('to=gmail');
+      expect(verdict.reply).toContain('Good for 15 minutes.');
+      expect(verdict.reply).not.toMatch(/text me the words/i);
+      expect(verdict.reply).not.toContain('old-gmail');
+      const tokens = await db.database.select().from(schema.channelSigninTokens);
+      expect(tokens).toHaveLength(1);
+      const audits = await db.database
+        .select()
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actionTaken, 'connector_link_minted'));
+      expect(audits.map((row) => row.after)).toEqual([{ provider: 'gmail' }]);
+    },
+  );
+
+  it('mints a fresh calendar link when that was the offer', async () => {
+    const conversationId = await threadOffer(CALENDAR_OFFER);
+    const verdict = await connectorLinkHandler().handle(
+      db.database,
+      turn('give me a fresh one', conversationId),
+    );
+    if (!verdict.claimed) throw new Error('expected the handler to claim');
+    expect(verdict.reply).toContain('tap to connect your Google Calendar');
+    expect(verdict.reply).toContain('to=gcal');
+    expect(verdict.reply).not.toContain('old-gcal');
+  });
+
+  it('does not mint a fresh link when the last Hale message was not a connect link', async () => {
+    const conversationId = await threadOffer('What should I call you?', GMAIL_OFFER);
+    const verdict = await connectorLinkHandler().handle(
+      db.database,
+      turn('new link', conversationId),
+    );
+    expect(verdict.claimed).toBe(false);
+    expect(await db.database.select().from(schema.channelSigninTokens)).toHaveLength(0);
+  });
+
+  it('does not mint when nothing was offered', async () => {
+    const [conversation] = await db.database
+      .insert(schema.conversations)
+      .values({ familyId })
+      .returning({ id: schema.conversations.id });
+    if (!conversation) throw new Error('expected a conversation');
+    const verdict = await connectorLinkHandler().handle(
+      db.database,
+      turn('it expired', conversation.id),
+    );
+    expect(verdict.claimed).toBe(false);
+    expect(await db.database.select().from(schema.channelSigninTokens)).toHaveLength(0);
   });
 
   it('answers a mint failure honestly rather than deferring the turn (mint_failed named)', async () => {

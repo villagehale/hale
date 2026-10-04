@@ -142,6 +142,15 @@ describe('the dark-launch gate', () => {
     expect(result.asked).toBe(1);
     expect(sent).toHaveLength(1);
   });
+
+  it('asks a household that is not on the allowlist when F14_ENABLED is exactly true', async () => {
+    process.env[F14_ENABLED_ENV] = 'true';
+    process.env[F14_ALLOWLIST_ENV] = 'someone-else';
+    const { deps, sent } = harness();
+    const result = await runEveningCheckInSweep(database, deps, EVENING);
+    expect(result.asked).toBe(1);
+    expect(sent).toHaveLength(1);
+  });
 });
 
 describe('the evening slot', () => {

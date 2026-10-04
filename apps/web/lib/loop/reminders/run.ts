@@ -27,6 +27,7 @@ import { composeReminderVoice } from '~/lib/loop/voice/reminder-voice';
 import { getQueue } from '~/lib/queue';
 import {
   type EventSnapshot,
+  REMINDER_HORIZON_MS,
   REMINDER_OFFSETS,
   type ReminderOffset,
   type ReminderStatus,
@@ -62,8 +63,6 @@ import {
 
 const REMINDER_TEMPLATE_KEY = 'reminder';
 const REMINDER_EMAIL_TYPE = 'reminder';
-// Materialize a week-plus ahead so the ledger is warm before either offset's slot.
-const REMINDER_HORIZON_MS = 8 * 24 * 60 * 60 * 1000;
 
 /** An enrolled parent whose reminder category is on. */
 export interface ReminderParent {
@@ -83,6 +82,17 @@ export interface LiveEvent extends EventSnapshot {
   /** Where to be. Unused by the parents' copy (they know), and half of what a caregiver's
    * `event_logistics` scope is FOR. */
   location: string | null;
+  /**
+   * Set when this row mirrors one event on a connected Google Calendar (VIL-416).
+   * Null for every Hale-authored event. A mirror is reminded to its owner only —
+   * a co-parent and a caregiver do not hear a work block that lives on one
+   * parent's calendar. The send itself still rides channel.send, so consent,
+   * the frequency cap and quiet hours are the dispatch's.
+   */
+  googleEventId: string | null;
+  /** `family_events.created_by`. For a mirror this is the parent who connected
+   * that calendar. Null when the row has no acting user. */
+  createdBy: string | null;
 }
 
 /** A materialized reminder that is due (status 'scheduled', fire_at ≤ now), joined to
@@ -219,6 +229,8 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           childId: schema.familyEvents.childId,
           sensitive: schema.familyEvents.sensitive,
           location: schema.familyEvents.location,
+          googleEventId: schema.familyEvents.googleEventId,
+          createdBy: schema.familyEvents.createdBy,
         })
         .from(schema.familyEvents)
         .where(
@@ -334,6 +346,8 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           childId: schema.familyEvents.childId,
           sensitive: schema.familyEvents.sensitive,
           location: schema.familyEvents.location,
+          googleEventId: schema.familyEvents.googleEventId,
+          createdBy: schema.familyEvents.createdBy,
         })
         .from(schema.familyEvents)
         .where(eq(schema.familyEvents.id, eventRef))
@@ -484,7 +498,12 @@ export async function runReminderCron(
     };
 
     for (const parent of familyParents.get(familyId) ?? []) {
-      for (const event of events) await materialize(parent.userId, parent.timezone, event);
+      for (const event of events) {
+        // A Google mirror is that parent's own calendar. The other parent already
+        // has a reminder when Hale itself placed the event (googleEventId null).
+        if (event.googleEventId && event.createdBy !== parent.userId) continue;
+        await materialize(parent.userId, parent.timezone, event);
+      }
     }
 
     // The caregiver seats, scoped. Materializing only what the role may see is what keeps
@@ -496,6 +515,9 @@ export async function runReminderCron(
       const children = await childrenFor(familyId);
       for (const seat of seats) {
         for (const event of events) {
+          // A raw calendar mirror is not a household occasion a caregiver was
+          // told about. Hale-authored rows (no google id) keep the role gate.
+          if (event.googleEventId) continue;
           if (!roleAllows(seat.role, classifyFamilyEvent(event, children, now))) continue;
           await materialize(seat.userId, seat.timezone, event);
         }
@@ -633,9 +655,7 @@ export async function runReminderCron(
     // caregiver's reminder is deterministic logistics, and paying for a sentence in
     // somebody else's voice is the wrong spend twice over (rule #8).
     const nameLevel =
-      !caregiver && sendEnabled && deps.client
-        ? await deps.loadNameLevel(db, parentUserId)
-        : null;
+      !caregiver && sendEnabled && deps.client ? await deps.loadNameLevel(db, parentUserId) : null;
 
     for (const batch of batches) {
       const [firstRef] = batch.eventRefs;

@@ -31,8 +31,9 @@ import { CONTACT_EMAIL, buildSmsHref, smsUriFormForPlatform } from '~/lib/text-e
  * The page never invents Hale speech: ZH shows the English reply under a
  * translated label because copy.ts has no Chinese greeting. When
  * FIRST_TOUCH_LADDER_ENABLED is exactly on, the received bubble is that
- * ladder's first message: the iMessage sentence on Apple phone and Mac, the
- * postal-code sentence on every other platform. The "(via <code>)"
+ * ladder's first message: the postal-code sentence. The Tap sentence appears
+ * on Apple phone and Mac only when FIRST_TOUCH_LOCATION_CARD_ENABLED is
+ * exactly true, the same switch that asks Linq for the card. The "(via <code>)"
  * attribution token rides ONLY inside composer hrefs; on the page it is
  * disclosed in words (prefilledWithSource), never printed raw — the sent bubble
  * shows the locale's prefill itself, tokenless. FR sends
@@ -57,6 +58,7 @@ export function TextEntry({
   platform = 'unknown',
   locale = routing.defaultLocale,
   firstTouchLadder = false,
+  firstTouchLocationCard = false,
 }: {
   source: string | null;
   smsNumber: string;
@@ -65,6 +67,8 @@ export function TextEntry({
   locale?: Locale;
   /** VIL-385. The received bubble matches the ladder's first message. */
   firstTouchLadder?: boolean;
+  /** VIL-412. The Tap sentence is the preview only while the location card is on. */
+  firstTouchLocationCard?: boolean;
 }) {
   const t = getTranslator(locale, 'Text');
   const common = getTranslator(locale, 'Common');
@@ -123,7 +127,8 @@ export function TextEntry({
   const sentLabel = t('sentLabel');
   const previewLabel = t('previewLabel');
   const sentGloss = t('sentGloss');
-  const messagesPipe = platform === 'apple' || platform === 'desktop-mac';
+  const messagesPipe =
+    firstTouchLocationCard && (platform === 'apple' || platform === 'desktop-mac');
   const haleFirst = firstTouchLadder
     ? t(messagesPipe ? 'greetingLadderImessage' : 'greetingLadderSms')
     : t('greeting');

@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ChannelMessageReceivedJob, InboundRouteDeps } from '~/lib/channel/inbound-route';
 import {
   type FakeDb,
   FakeExtractor,
@@ -14,7 +15,6 @@ import {
 } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import type { ChannelMessageReceivedJob, InboundRouteDeps } from '~/lib/channel/inbound-route';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
@@ -805,6 +805,8 @@ describe('handleLinqInboundRequest', () => {
     await expect(res.json()).resolves.toEqual({ outcome: 'handed_off' });
     expect(h.reads).toEqual([{ chatId: CHAT_ID }]);
     expect(h.warns).toEqual([
+      expect.objectContaining({ phase: 'start', outcome: 'refused', code: '2004' }),
+      expect.objectContaining({ phase: 'stop', outcome: 'refused', code: '2004' }),
       expect.objectContaining({ outcome: 'refused', code: '2001', httpStatus: 404 }),
     ]);
     expect(JSON.stringify(h.warns)).not.toContain(CHAT_ID);
@@ -1112,6 +1114,7 @@ describe('location sharing', () => {
 
   it('accepts a shared city after the card, as its own find and ages bubbles', async () => {
     vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
+    vi.stubEnv('FIRST_TOUCH_LOCATION_CARD_ENABLED', 'true');
     const h = harness();
     h.deps = {
       ...h.deps,
