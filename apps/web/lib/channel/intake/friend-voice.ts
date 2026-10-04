@@ -4,22 +4,52 @@ import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadOnboardingFriendSkill } from '~/lib/cron/skill';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
+import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { YEAR_OPEN_LEAD, YEAR_OPEN_LEAD_FR } from './year-open';
+import {
+  ONBOARDING_ORDER,
+  type OnboardingCapture,
+  type OnboardingChecklist,
+  type OnboardingItem,
+  acceptOnboardingCapture,
+  checklistAfter,
+  confirmActivityPick,
+  mergeCaptures,
+  onboardingMissing,
+} from './onboarding-turn';
 
 /**
- * VIL-413. The onboarding reply, written from a per-step direction.
+ * VIL-413 / VIL-417. The onboarding reply, written from a per-step direction.
  *
  * The skill (packages/agent/skills/onboarding-friend.md) holds the directions.
  * This module holds the rules that must not be left to the model: one question,
  * no invented find facts, no compliance wording, no link without a URL, French
- * accents. A failed compose is logged and named, then a short fallback question
- * goes out. The parent is not left in silence (rule #11).
+ * accents. A failed, judged-bad, or timed-out compose is retried once on a
+ * smaller prompt. If that also fails, nothing canned goes out: the miss is
+ * logged, #ops is paged, and the next inbound or the morning nudge tries again.
  */
 
 const MAX_TOKENS = 500;
+const SHORT_MAX_TOKENS = 180;
 const MAX_PROSE_CHARS = 360;
 const MAX_BODY_CHARS = 1200;
+
+/** One model attempt. A hang past this retries on the smaller prompt. */
+export const FRIEND_ATTEMPT_TIMEOUT_MS = 12_000;
+
+/**
+ * Model instruction for the retry. Not a parent-facing message: the parent
+ * only ever sees what the model returns.
+ */
+const SHORT_FRIEND_SYSTEM = [
+  'You are Hale, texting one parent. Write one short warm reply in their language.',
+  'Read known, missing, and parentWords. Extract every onboarding item this message gives.',
+  'Answer anything that is not one of those items, then ask only the first item still missing. The question is your last sentence.',
+  'If nothing is missing, or they asked you to stop, no question mark.',
+  'Do not number a list and do not write a URL. Use only facts in the JSON.',
+  'Do not invent an activity, a date, a weekday, a time, or a price.',
+  'No STOP, unsubscribe, or compliance wording. No emoji.',
+].join(' ');
 
 export const FRIEND_STEPS = [
   'place',
@@ -37,7 +67,9 @@ export const FRIEND_STEPS = [
   'legacy_hello',
   'nudge_place',
   'nudge_ages',
+  'nudge_find',
   'link_retry',
+  'help',
   'stop_asking',
   'coparent',
   'connected',
@@ -80,17 +112,32 @@ export interface FriendVoiceInput {
   connector?: 'gcal' | 'gmail' | null;
   /** Whether they agreed to be watched. Set only on the ack step. */
   granted?: boolean | null;
+  /**
+   * What is already stored, in onboarding order. Absent on older callers.
+   * The model uses it as guidance. Code computes it from stored facts.
+   */
+  checklist?: OnboardingChecklist;
 }
 
 export interface FriendVoiceResult {
   body: string;
   prose: string;
-  source: 'composed' | 'fallback';
+  source: 'composed' | 'retry' | 'unsent';
   fallback: FriendFallback | null;
+  /** Shape-checked fields from the model. Empty when nothing was stored. */
+  capture: OnboardingCapture;
+}
+
+export interface FriendComposeOptions {
+  /** `short` skips the skill and uses the smaller retry prompt. */
+  prompt?: 'full' | 'short';
 }
 
 export interface FriendVoiceComposer {
-  compose(input: FriendVoiceInput): Promise<{ reply: string }>;
+  compose(
+    input: FriendVoiceInput,
+    options?: FriendComposeOptions,
+  ): Promise<{ reply: string; capture?: unknown }>;
 }
 
 export interface SpeakOptions {
@@ -98,13 +145,67 @@ export interface SpeakOptions {
   link?: string | null;
   /** The connector card will append the URL after this prose is judged. */
   linkFollows?: boolean;
+  /** `short` is the one smaller retry, used when a list has to be rewritten. */
+  prompt?: 'full' | 'short';
+  /** Test hook. Production pages Slack #ops. */
+  page?: (text: string) => Promise<unknown>;
+  /** Test hook. Production uses {@link FRIEND_ATTEMPT_TIMEOUT_MS}. */
+  attemptTimeoutMs?: number;
 }
 
-const replySchema = z.object({ reply: z.string() }).strict();
+const childSchema = z
+  .object({
+    name: z.string().nullable().optional().default(null),
+    ageMonths: z.number().nullable().optional().default(null),
+    agePrecision: z.enum(['years', 'months']).nullable().optional().default(null),
+  })
+  .strict();
+
+const replySchema = z
+  .object({
+    reply: z.string(),
+    postalCode: z.string().nullable().optional().default(null),
+    city: z.string().nullable().optional().default(null),
+    children: z.array(childSchema).optional().default([]),
+    parentName: z.string().nullable().optional().default(null),
+    activityPick: z.number().nullable().optional().default(null),
+    connectCalendar: z.boolean().nullable().optional().default(null),
+    connectGmail: z.boolean().nullable().optional().default(null),
+    nameDeclined: z.boolean().optional().default(false),
+    kidsNamesDeclined: z.boolean().optional().default(false),
+    calendarLater: z.boolean().optional().default(false),
+    gmailLater: z.boolean().optional().default(false),
+    stopAsking: z.boolean().optional().default(false),
+  })
+  .strict();
 
 const replyJsonSchema = {
   type: 'object',
-  properties: { reply: { type: 'string' } },
+  properties: {
+    reply: { type: 'string' },
+    postalCode: { type: ['string', 'null'] },
+    city: { type: ['string', 'null'] },
+    children: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: ['string', 'null'] },
+          ageMonths: { type: ['number', 'null'] },
+          agePrecision: { type: ['string', 'null'], enum: ['years', 'months', null] },
+        },
+      },
+    },
+    parentName: { type: ['string', 'null'] },
+    activityPick: { type: ['number', 'null'] },
+    connectCalendar: { type: ['boolean', 'null'] },
+    connectGmail: { type: ['boolean', 'null'] },
+    nameDeclined: { type: 'boolean' },
+    kidsNamesDeclined: { type: 'boolean' },
+    calendarLater: { type: 'boolean' },
+    gmailLater: { type: 'boolean' },
+    stopAsking: { type: 'boolean' },
+  },
   required: ['reply'],
 } as const;
 
@@ -140,6 +241,7 @@ export function turnsFromTranscript(
 
 /** What the model is handed. No link, no family id, no phone. */
 export function friendVoiceContext(input: FriendVoiceInput): unknown {
+  const checklist = input.checklist ?? null;
   return {
     step: input.step,
     language: input.language,
@@ -147,6 +249,9 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
     introduce: input.introduce,
     parentWords: input.parentWords,
     recentTurns: input.recentTurns,
+    order: [...ONBOARDING_ORDER],
+    known: checklist,
+    missing: checklist ? onboardingMissing(checklist) : null,
     facts: {
       placeLabel: input.placeLabel,
       agesLabel: input.agesLabel,
@@ -176,15 +281,10 @@ export function friendFactSlots(input: FriendVoiceInput, link?: string | null): 
 }
 
 /**
- * Empty week find is not sent. A week list is sent only while ages are still
- * missing. Once ages are known, the year list is the one find.
+ * Activities wait until ages are known. A week list is never the ages ask.
  */
-export function friendWeekAction(
-  agesKnown: boolean,
-  lineCount: number,
-): 'skip' | 'ask_ages' | 'ask_ages_with_lines' {
-  if (agesKnown) return 'skip';
-  return lineCount > 0 ? 'ask_ages_with_lines' : 'ask_ages';
+export function friendWeekAction(agesKnown: boolean, _lineCount: number): 'skip' | 'ask_ages' {
+  return agesKnown ? 'skip' : 'ask_ages';
 }
 
 export function numberedFindLines(lines: readonly string[]): string {
@@ -196,6 +296,30 @@ export function numberedFindLines(lines: readonly string[]): string {
     .join('\n');
 }
 
+/**
+ * Split model prose so the question can sit under a list. A question with no
+ * earlier sentence stays whole, as the last line.
+ */
+export function peelFriendAsk(prose: string): { lead: string; ask: string } {
+  const trimmed = prose.trim();
+  const mark = trimmed.indexOf('?');
+  if (mark < 0) return { lead: trimmed, ask: '' };
+  const before = trimmed.slice(0, mark);
+  let splitAt = -1;
+  for (let i = before.length - 1; i >= 0; i--) {
+    const char = before[i];
+    if (char === '.' || char === '!' || char === '\n') {
+      splitAt = i;
+      break;
+    }
+  }
+  if (splitAt < 0) return { lead: '', ask: trimmed };
+  return {
+    lead: trimmed.slice(0, splitAt + 1).trim(),
+    ask: trimmed.slice(splitAt + 1).trim(),
+  };
+}
+
 export function assembleFriendBody(
   prose: string,
   input: Pick<FriendVoiceInput, 'language' | 'findLines' | 'listKind'>,
@@ -205,13 +329,13 @@ export function assembleFriendBody(
   const lines = input.findLines.map((line) => line.trim()).filter((line) => line.length > 0);
   let body = trimmed;
   if (lines.length > 0 && input.listKind !== 'none') {
+    const { lead, ask } = peelFriendAsk(trimmed);
+    const parts: string[] = [];
+    if (lead.length > 0) parts.push(lead);
     const numbered = numberedFindLines(lines);
-    if (input.listKind === 'year') {
-      const lead = input.language === 'fr' ? YEAR_OPEN_LEAD_FR : YEAR_OPEN_LEAD;
-      body = `${trimmed}\n${lead}\n${numbered}`;
-    } else {
-      body = `${trimmed}\n${numbered}`;
-    }
+    if (numbered.length > 0) parts.push(numbered);
+    if (ask.length > 0) parts.push(ask);
+    body = parts.join('\n');
   }
   if (typeof link === 'string' && link.startsWith('https://')) body = `${body}\n${link}`;
   return body;
@@ -233,6 +357,19 @@ function mentionsOutsideSlots(text: string, pattern: RegExp, slots: readonly str
   return unique.filter((token) => !slots.some((slot) => slot.toLowerCase().includes(token)));
 }
 
+/** The one question ends the message. A URL code appended after it does not count. */
+export function questionIsLast(body: string): boolean {
+  const withoutUrl = body.replace(/\nhttps:\/\/\S+\s*$/u, '').trim();
+  const mark = withoutUrl.lastIndexOf('?');
+  if (mark < 0) return false;
+  if (withoutUrl.slice(mark + 1).trim().length > 0) return false;
+  const before = withoutUrl
+    .slice(0, mark)
+    .split('\n')
+    .filter((line) => !/^\d+\.\s/u.test(line.trim()));
+  return !before.join('\n').includes('?');
+}
+
 export type FriendJudgeFailure =
   | 'empty'
   | 'long'
@@ -241,8 +378,7 @@ export type FriendJudgeFailure =
   | 'compliance'
   | 'invented'
   | 'french'
-  | 'link'
-  | 'header';
+  | 'link';
 
 export function judgeFriendReply(
   body: string,
@@ -256,6 +392,7 @@ export function judgeFriendReply(
   if (questionsBeyondFacts(trimmed, input.findLines) !== needed) {
     return { ok: false, reason: 'question' };
   }
+  if (needed === 1 && !questionIsLast(trimmed)) return { ok: false, reason: 'question' };
   if (BANNED_PHRASE.test(trimmed)) return { ok: false, reason: 'banned' };
   if (COMPLIANCE.test(trimmed)) return { ok: false, reason: 'compliance' };
 
@@ -277,12 +414,6 @@ export function judgeFriendReply(
 
   if (input.language === 'fr') {
     if (FRENCH_ASCII_GAP.test(trimmed)) return { ok: false, reason: 'french' };
-    if (
-      (input.step === 'find_pick' || input.step === 'find_empty') &&
-      !/près|âge|adapté|noté|année/i.test(trimmed)
-    ) {
-      return { ok: false, reason: 'french' };
-    }
     if (input.address === 'tu' && /\b(vous|votre|vos)\b/i.test(trimmed)) {
       return { ok: false, reason: 'french' };
     }
@@ -296,10 +427,6 @@ export function judgeFriendReply(
     if (!attached && !options.linkFollows) return { ok: false, reason: 'link' };
   }
 
-  if (input.listKind === 'year' && input.findLines.length > 0) {
-    const lead = input.language === 'fr' ? YEAR_OPEN_LEAD_FR : YEAR_OPEN_LEAD;
-    if (!trimmed.includes(lead)) return { ok: false, reason: 'header' };
-  }
   if (input.step === 'find_empty' && /^\s*\d+\.\s/m.test(trimmed)) {
     return { ok: false, reason: 'invented' };
   }
@@ -312,135 +439,91 @@ export function judgeFriendReply(
   return { ok: true };
 }
 
-function connectedFallback(
-  fr: boolean,
-  address: 'tu' | 'vous',
-  connector: 'gcal' | 'gmail' | null,
-): string {
-  if (connector === 'gmail') {
-    if (!fr) return 'Gmail is connected.';
-    return address === 'vous' ? 'Votre Gmail est connecté.' : 'Ton Gmail est connecté.';
-  }
-  if (connector === 'gcal') {
-    if (!fr) return 'Your calendar is connected.';
-    return address === 'vous' ? 'Votre calendrier est connecté.' : 'Ton calendrier est connecté.';
-  }
-  return fr ? "C'est connecté." : "It's connected.";
-}
-
-function ackFallback(fr: boolean, address: 'tu' | 'vous', granted: boolean): string {
-  if (granted) {
-    return fr
-      ? "C'est fait. Je texte quand il le faut."
-      : "Done. You're covered. I'll text when something actually matters.";
-  }
-  if (!fr) return 'No problem. Text me whenever you like.';
-  return address === 'vous'
-    ? 'Pas de problème. Textez-moi quand vous voulez.'
-    : 'Pas de problème. Texte-moi quand tu veux.';
-}
-
-/** Prose only. The shell appends lines and the link, then judges the whole text. */
-export function fallbackFriendProse(input: FriendVoiceInput): string {
-  const fr = input.language === 'fr';
-  const place = input.placeLabel?.trim() || null;
-  const activity = input.activity?.trim() || null;
-  const day = input.day?.trim() || null;
-  const name = input.parentName?.trim() || null;
-  switch (input.step) {
-    case 'place':
-    case 'legacy_hello':
-      if (input.step === 'legacy_hello' && place) {
-        return fr ? 'Quel âge ont les enfants?' : 'How old are the kids?';
-      }
-      if (fr && input.address === 'vous') {
-        return "Bonjour, c'est Hale. Quel est votre code postal?";
-      }
-      return fr
-        ? "Salut, c'est Hale. Quel est ton code postal?"
-        : "Hey, it's Hale. What's your postal code?";
-    case 'place_card':
-      return fr
-        ? "Salut, c'est Hale. Tu peux partager ta position?"
-        : "Hey, it's Hale. Can you tap to share where you are?";
-    case 'ages':
-    case 'nudge_ages':
-      return fr ? 'Quel âge ont les enfants?' : 'How old are the kids?';
-    case 'nudge_place':
-      return fr ? 'Je suis là. Quel est ton code postal?' : "Still here. What's your postal code?";
-    case 'find_pick':
-      if (fr) {
-        return place
-          ? `C'est noté, près de ${place}. Lequel te tente?`
-          : "C'est noté. Lequel te tente?";
-      }
-      return 'Which of these looks good?';
-    case 'find_empty':
-      return fr
-        ? "Rien d'adapté près de toi pour l'instant. Comment je t'appelle?"
-        : 'Nothing age-fit nearby yet. What should I call you?';
-    case 'names':
-      return fr ? "Comment je t'appelle?" : 'What should I call you?';
-    case 'kids_names':
-      return fr
-        ? "Quels sont les prénoms des enfants, si tu veux que je m'en serve?"
-        : "What are the kids' first names, if you want me to use them?";
-    case 'name_confirm':
-      if (name) {
-        return fr ? `Ça te va si je t'appelle ${name}?` : `Can I call you ${name}?`;
-      }
-      return fr ? "Comment je t'appelle?" : 'What should I call you?';
-    case 'calendar':
-      if (fr) {
-        return activity
-          ? `Tu veux que je compare ${activity} à ton calendrier?`
-          : 'Tu veux que je regarde ton calendrier?';
-      }
-      return activity
-        ? `Want me to check ${activity} against your calendar?`
-        : 'Want me to check your calendar?';
-    case 'email':
-      return fr
-        ? "Tu veux que je surveille les courriels d'école et de camp pour les dates?"
-        : 'Want me to watch school and camp email for the dates?';
-    case 'signup':
-      if (fr) {
-        return activity
-          ? `Tu veux que je t'écrive quand les inscriptions ouvrent pour ${activity}?`
-          : "Tu veux que je t'écrive quand les inscriptions ouvrent?";
-      }
-      if (activity) return `Want me to text you when sign-ups open for ${activity}?`;
-      if (day) return `Want me to text you after ${day} and ask how it went?`;
-      return 'Want me to text you when sign-ups open?';
-    case 'age_correction':
-      if (input.findLines.length > 0) {
-        return fr ? "C'est noté. Lequel te tente?" : 'Which of these should I look at?';
-      }
-      return fr ? "C'est noté. Comment je t'appelle?" : 'What should I call you?';
-    case 'link_retry':
-      return fr
-        ? "Je n'arrive pas à ouvrir ça. Je réessaie?"
-        : 'I could not open that connect just now. Want me to try again?';
-    case 'stop_asking':
-      return fr ? "D'accord. Je m'arrête là." : "Okay. I'll leave it there.";
-    case 'coparent':
-      if (fr && input.address === 'vous') {
-        return "Vous voulez l'autre parent sur l'année des enfants? Envoyez-moi leur numéro.";
-      }
-      return fr
-        ? "Tu veux l'autre parent sur l'année des enfants? Envoie-moi leur numéro."
-        : "Want the other parent on the kids' year? Text me their number.";
-    case 'connected':
-      return connectedFallback(fr, input.address, input.connector ?? null);
-    case 'ack':
-      return ackFallback(fr, input.address, input.granted !== false);
-    default:
-      return fr ? "Comment je t'appelle?" : 'What should I call you?';
-  }
-}
-
 function proseForJudge(prose: string, input: FriendVoiceInput, options: SpeakOptions): string {
   return assembleFriendBody(prose, input, options.link);
+}
+
+class FriendAttemptTimeout extends Error {
+  constructor() {
+    super('onboarding-friend: attempt timed out');
+    this.name = 'FriendAttemptTimeout';
+  }
+}
+
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  if (ms <= 0) return work;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new FriendAttemptTimeout()), ms);
+    if (typeof timer.unref === 'function') timer.unref();
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+function unsent(reason: FriendFallback): FriendVoiceResult {
+  return {
+    body: '',
+    prose: '',
+    source: 'unsent',
+    fallback: reason,
+    capture: acceptOnboardingCapture(null),
+  };
+}
+
+/** The step a reply is written for, once this message's facts are counted. */
+function stepAfterCapture(current: FriendStep, gap: OnboardingItem | undefined): FriendStep {
+  switch (gap) {
+    case 'postal':
+      return current === 'place_card' ? 'place_card' : 'place';
+    case 'ages':
+      return 'ages';
+    case 'pick':
+      return current === 'find_empty' ? 'find_empty' : 'find_pick';
+    case 'name':
+      return 'names';
+    case 'kids':
+      return 'kids_names';
+    case 'calendar':
+      return 'calendar';
+    case 'gmail':
+      return 'email';
+    default:
+      return current;
+  }
+}
+
+/**
+ * The judge sees the step the reply was written for. A yes that finishes the
+ * current ask is judged as the next gap, so the pull-back is not graded against
+ * the question that just got answered. A finished ladder or a stop is a receipt.
+ */
+function judgeInputFor(input: FriendVoiceInput, capture: OnboardingCapture): FriendVoiceInput {
+  if (!input.checklist && !capture.stopAsking) return input;
+  const remaining = input.checklist
+    ? onboardingMissing(
+        checklistAfter(input.checklist, capture, {
+          pickConfirmed: confirmActivityPick(capture.activityPick, input.findLines.length) != null,
+        }),
+      )
+    : [];
+  if (capture.stopAsking || (input.checklist != null && remaining.length === 0)) {
+    return { ...input, step: capture.stopAsking ? 'stop_asking' : 'ack' };
+  }
+  const step = stepAfterCapture(input.step, remaining[0]);
+  return step === input.step ? input : { ...input, step };
+}
+
+/** Step and reason only. Parent words stay out of #ops. */
+function unsentPage(step: FriendStep, reason: FriendFallback): string {
+  return `onboarding friend voice unsent step=${step} reason=${reason}`;
 }
 
 export async function speakFriend(
@@ -451,57 +534,127 @@ export async function speakFriend(
   const finish = (
     prose: string,
     source: FriendVoiceResult['source'],
-    fallback: FriendFallback | null,
-  ) => {
+    capture: OnboardingCapture,
+  ): FriendVoiceResult => {
     const body = assembleFriendBody(prose, input, options.link);
-    return { body, prose: prose.trim(), source, fallback };
+    return { body, prose: prose.trim(), source, fallback: null, capture };
   };
 
-  const fallback = (reason: FriendFallback): FriendVoiceResult => {
-    console.error({ fallback: reason, step: input.step }, 'onboarding-friend: fallback reply');
-    return finish(fallbackFriendProse(input), 'fallback', reason);
+  const page = async (reason: FriendFallback): Promise<void> => {
+    const text = unsentPage(input.step, reason);
+    console.error({ fallback: reason, step: input.step }, 'onboarding-friend: reply not sent');
+    try {
+      await (options.page ?? postOpsSlack)(text);
+    } catch (err) {
+      console.error(
+        { err: err instanceof Error ? err.name : 'unknown', step: input.step },
+        'onboarding-friend: ops page failed',
+      );
+    }
   };
 
-  if (!composer) return fallback('voice_unavailable');
-
-  let prose = '';
-  try {
-    const composed = await composer.compose(input);
-    prose = composed.reply.trim();
-  } catch (err) {
-    console.error(
-      { err: err instanceof Error ? err.name : 'unknown', step: input.step },
-      'onboarding-friend: compose failed',
-    );
-    return fallback('model_failed');
+  if (!composer) {
+    await page('voice_unavailable');
+    return unsent('voice_unavailable');
   }
 
-  if (prose.length === 0 || prose.length > MAX_PROSE_CHARS) return fallback('unusable');
-  const judged = judgeFriendReply(proseForJudge(prose, input, options), input, options);
-  if (!judged.ok) {
-    console.error({ reason: judged.reason, step: input.step }, 'onboarding-friend: unusable reply');
-    return fallback('unusable');
+  const timeoutMs = options.attemptTimeoutMs ?? FRIEND_ATTEMPT_TIMEOUT_MS;
+
+  const attempt = async (
+    prompt: 'full' | 'short',
+  ): Promise<
+    | { prose: string; capture: OnboardingCapture }
+    | { fail: FriendFallback; capture: OnboardingCapture }
+  > => {
+    const empty = acceptOnboardingCapture(null);
+    try {
+      const composed = await withTimeout(composer.compose(input, { prompt }), timeoutMs);
+      const capture = acceptOnboardingCapture(composed.capture, {
+        findLineCount: input.findLines.length,
+      });
+      const prose = composed.reply.trim();
+      if (prose.length === 0 || prose.length > MAX_PROSE_CHARS)
+        return { fail: 'unusable', capture };
+      const judged = judgeFriendReply(
+        proseForJudge(prose, input, options),
+        judgeInputFor(input, capture),
+        options,
+      );
+      if (!judged.ok) {
+        console.error(
+          { reason: judged.reason, step: input.step, prompt },
+          'onboarding-friend: unusable reply',
+        );
+        return { fail: 'unusable', capture };
+      }
+      return { prose, capture };
+    } catch (err) {
+      console.error(
+        {
+          err: err instanceof Error ? err.name : 'unknown',
+          step: input.step,
+          prompt,
+        },
+        'onboarding-friend: compose failed',
+      );
+      return { fail: 'model_failed', capture: empty };
+    }
+  };
+
+  const firstPrompt = options.prompt === 'short' ? 'short' : 'full';
+  const first = await attempt(firstPrompt);
+  if ('prose' in first) {
+    return finish(first.prose, firstPrompt === 'short' ? 'retry' : 'composed', first.capture);
   }
-  return finish(prose, 'composed', null);
+
+  if (firstPrompt === 'short') {
+    await page(first.fail);
+    return unsent(first.fail);
+  }
+
+  const second = await attempt('short');
+  const capture =
+    'capture' in second ? mergeCaptures(first.capture, second.capture) : first.capture;
+  if ('prose' in second) return finish(second.prose, 'retry', capture);
+  await page(second.fail);
+  return { ...unsent(second.fail), capture };
 }
 
 export function createFriendVoiceComposer(client: AgentClient | null): FriendVoiceComposer {
   return {
-    async compose(input) {
+    async compose(input, options) {
       if (!client) throw new Error('onboarding-friend: voice_unavailable');
-      const skill = await loadOnboardingFriendSkill();
+      const short = options?.prompt === 'short';
+      const skill = short ? null : await loadOnboardingFriendSkill();
       const { value } = await forceToolJson({
         client,
-        lane: pickLane(skill.meta.task),
-        system: skill.instructions,
+        lane: pickLane(skill?.meta.task ?? 'speak'),
+        system: skill?.instructions ?? SHORT_FRIEND_SYSTEM,
         userMessage: JSON.stringify(friendVoiceContext(input)),
         toolName: 'reply',
-        toolDescription: 'Return the onboarding text.',
+        toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
         inputJsonSchema: replyJsonSchema,
         schema: replySchema,
-        maxTokens: MAX_TOKENS,
+        maxTokens: short ? SHORT_MAX_TOKENS : MAX_TOKENS,
+        transport: 'stream',
       });
-      return { reply: value.reply };
+      return {
+        reply: value.reply,
+        capture: {
+          postalCode: value.postalCode,
+          city: value.city,
+          children: value.children,
+          parentName: value.parentName,
+          activityPick: value.activityPick,
+          connectCalendar: value.connectCalendar,
+          connectGmail: value.connectGmail,
+          nameDeclined: value.nameDeclined,
+          kidsNamesDeclined: value.kidsNamesDeclined,
+          calendarLater: value.calendarLater,
+          gmailLater: value.gmailLater,
+          stopAsking: value.stopAsking,
+        },
+      };
     },
   };
 }

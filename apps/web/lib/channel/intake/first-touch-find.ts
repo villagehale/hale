@@ -13,7 +13,10 @@ import { asciiCopy } from './radar-decide';
 export const WEEK_FIND_SUBJECT =
   'kids week drop-ins, examples not a limit: swim soccer gym earlyon library parks storytime music';
 
-export type WeekFindOutcome = 'found' | 'empty' | 'not_configured' | 'failed' | 'refused';
+export type WeekFindOutcome = 'found' | 'empty' | 'not_configured' | 'failed' | 'refused' | 'budget';
+
+/** How long the first-touch turn waits on the week search. The search may keep running. */
+export const WEEK_FIND_BUDGET_MS = 8_000;
 
 export async function findThisWeek(input: {
   finder: ActivityFinder | null;
@@ -62,6 +65,28 @@ export async function findThisWeek(input: {
       'first-touch week find: search failed',
     );
     return { lines: [], outcome: 'failed' };
+  }
+}
+
+/**
+ * The same search as {@link findThisWeek}, except a slow finder resolves as
+ * `budget` with no lines. The underlying request is not cancelled.
+ */
+export async function findThisWeekWithin(
+  input: { finder: ActivityFinder | null; place: FirstTouchPlace },
+  budgetMs = WEEK_FIND_BUDGET_MS,
+): Promise<{ lines: string[]; outcome: WeekFindOutcome }> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const budget = new Promise<{ lines: string[]; outcome: 'budget' }>((resolve) => {
+    timer = setTimeout(() => {
+      console.error({ outcome: 'budget', budgetMs }, 'first-touch week find: budget');
+      resolve({ lines: [], outcome: 'budget' });
+    }, budgetMs);
+  });
+  try {
+    return await Promise.race([findThisWeek(input), budget]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 

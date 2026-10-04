@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { loadOnboardingFriendSkill } from '~/lib/cron/skill';
 import {
-  FRIEND_STEPS,
   type FriendVoiceInput,
   assembleFriendBody,
-  fallbackFriendProse,
   friendWeekAction,
   judgeFriendReply,
   speakFriend,
@@ -51,7 +49,7 @@ describe('friend week find', () => {
     expect(friendWeekAction(true, 3)).toBe('skip');
     expect(friendWeekAction(true, 0)).toBe('skip');
     expect(friendWeekAction(false, 0)).toBe('ask_ages');
-    expect(friendWeekAction(false, 2)).toBe('ask_ages_with_lines');
+    expect(friendWeekAction(false, 2)).toBe('ask_ages');
   });
 });
 
@@ -85,14 +83,16 @@ describe('onboarding friend fixtures', () => {
     }
   });
 
-  it('puts the French year header and a receipt on the French find', () => {
+  it('puts the French find under the model lead, with the question last', () => {
     const french = FRIEND_CONVERSATIONS[1]?.turns[2];
     expect(french).toBeDefined();
     if (!french) return;
     const body = fixtureBody(french);
-    expect(body).toContain(YEAR_OPEN_LEAD_FR);
     expect(body).toContain('près');
+    expect(body).toContain('1. ');
+    expect(body.trim().endsWith('?')).toBe(true);
     expect(body).not.toContain(YEAR_OPEN_LEAD);
+    expect(body).not.toContain(YEAR_OPEN_LEAD_FR);
     expect(body).not.toMatch(/\bpres\b|\bage\b|\badapt\b/);
   });
 
@@ -116,6 +116,18 @@ describe('friend-voice judge', () => {
     findLines: ['Swim (ages 3-5) - Saturdays 10am - $12'],
     listKind: 'year',
     language: 'en',
+  });
+
+  it('puts the question after the list, and rejects a question that sits above it', () => {
+    const prose = 'Maya is 4 and Leo is 1, near M5V. Which of these feels right?';
+    const body = assembleFriendBody(prose, swim);
+    const lines = body.split('\n');
+    expect(lines.at(-1)).toBe('Which of these feels right?');
+    expect(body).not.toContain(YEAR_OPEN_LEAD);
+    expect(body.indexOf('1. ')).toBeLessThan(body.lastIndexOf('?'));
+    expect(judgeFriendReply(body, swim)).toEqual({ ok: true });
+    const buried = `How old are the kids?\n${YEAR_OPEN_LEAD}\n1. Swim (ages 3-5) - Saturdays 10am - $12`;
+    expect(judgeFriendReply(buried, swim)).toEqual({ ok: false, reason: 'question' });
   });
 
   it('rejects a second question, the stock lines, and an invented price', () => {
@@ -159,10 +171,20 @@ describe('friend-voice judge', () => {
       parentName: 'Dana',
       activity: 'Swim',
     });
-    const prose = 'Want me to check that swim against your calendar? This link is just for you.';
+    const prose = 'This link is just for you. Want me to check that swim against your calendar?';
     expect(judgeFriendReply(prose, calendar).ok).toBe(false);
     const link = 'https://app.villagehale.com/connect?t=abc&to=gcal';
     expect(judgeFriendReply(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
+  });
+
+  it('requires the question to end the message, and does not grade the aside', () => {
+    const place = blank({ step: 'place', parentWords: 'what is this?', listKind: 'none' });
+    expect(
+      judgeFriendReply("It's a text for your kids' year. What's your postal code?", place),
+    ).toEqual({ ok: true });
+    expect(
+      judgeFriendReply("What's your postal code? It's a text for your kids' year.", place),
+    ).toEqual({ ok: false, reason: 'question' });
   });
 
   it('rejects French with the ASCII gaps', () => {
@@ -174,104 +196,119 @@ describe('friend-voice judge', () => {
     expect(judgeFriendReply('Quel âge ont les enfants?', ages)).toEqual({ ok: true });
   });
 
-  it('keeps the coparent, connected, and ack fallbacks short and free of STOP', () => {
-    const coparent = blank({ step: 'coparent', parentWords: 'ok' });
-    expect(fallbackFriendProse(coparent)).toBe(
-      "Want the other parent on the kids' year? Text me their number.",
-    );
-    expect(judgeFriendReply(fallbackFriendProse(coparent), coparent)).toEqual({ ok: true });
-
-    const coparentVous = blank({
-      step: 'coparent',
-      language: 'fr',
-      address: 'vous',
-      parentWords: 'oui',
-    });
-    const vous = fallbackFriendProse(coparentVous);
-    expect(vous).toContain('année');
-    expect(vous).not.toMatch(/\bnumero\b/i);
-    expect(judgeFriendReply(vous, coparentVous)).toEqual({ ok: true });
-
+  it('rejects STOP and a connector named on the wrong step', () => {
     const yes = blank({ step: 'ack', granted: true, parentWords: 'yes' });
-    const no = blank({ step: 'ack', granted: false, parentWords: 'no thanks' });
-    expect(fallbackFriendProse(yes)).toBe(
-      "Done. You're covered. I'll text when something actually matters.",
-    );
-    expect(fallbackFriendProse(no)).toBe('No problem. Text me whenever you like.');
-    expect(fallbackFriendProse(yes)).not.toMatch(/\?/);
-    expect(fallbackFriendProse(no)).not.toMatch(/\?|\bSTOP\b/);
     expect(judgeFriendReply('Done. STOP always works.', yes)).toEqual({
       ok: false,
       reason: 'compliance',
     });
+    expect(judgeFriendReply("Done. You're covered.", yes)).toEqual({ ok: true });
 
     const calendar = blank({ step: 'connected', connector: 'gcal', parentWords: '' });
     const gmail = blank({ step: 'connected', connector: 'gmail', language: 'fr', parentWords: '' });
-    expect(fallbackFriendProse(calendar)).toBe('Your calendar is connected.');
-    expect(fallbackFriendProse(gmail)).toBe('Ton Gmail est connecté.');
     expect(judgeFriendReply('Your Gmail is connected.', calendar)).toEqual({
       ok: false,
       reason: 'invented',
     });
-    expect(judgeFriendReply(fallbackFriendProse(gmail), gmail)).toEqual({ ok: true });
-  });
-
-  it('accepts a fallback for every step', () => {
-    for (const step of FRIEND_STEPS) {
-      for (const language of ['en', 'fr'] as const) {
-        const input = blank({
-          step,
-          language,
-          parentWords: language === 'fr' ? 'Léa a 4 ans' : 'Maya is 4',
-          placeLabel: 'M5V',
-          activity: language === 'fr' ? 'Natation' : 'Swim',
-          day: 'Saturday',
-          parentName: 'Dana',
-          findLines: step === 'find_pick' ? ['Swim (ages 3-5) - Saturdays 10am - $12'] : [],
-          listKind: step === 'find_pick' ? 'year' : 'none',
-          ageMonths: [48],
-        });
-        const body = assembleFriendBody(fallbackFriendProse(input), input, null);
-        expect(judgeFriendReply(body, input), `${language} ${step}: ${body}`).toEqual({
-          ok: true,
-        });
-        expect(body, `${language} ${step}`).not.toMatch(/\bSTOP\b|unsubscribe|d[ée]sabonner/i);
-      }
-    }
+    expect(judgeFriendReply('Ton Gmail est connecté.', gmail)).toEqual({ ok: true });
   });
 });
 
 describe('speakFriend', () => {
-  it('names a missing composer and still returns one question', async () => {
-    const input = blank({ step: 'place', introduce: true });
-    const spoken = await speakFriend(undefined, input);
-    expect(spoken.source).toBe('fallback');
-    expect(spoken.fallback).toBe('voice_unavailable');
-    expect(spoken.body.match(/\?/g)).toHaveLength(1);
-    expect(judgeFriendReply(spoken.body, input)).toEqual({ ok: true });
+  it('pages and sends nothing when the composer is missing', async () => {
+    const input = blank({ step: 'ages', parentWords: 'Maya is 4', placeLabel: 'M5V' });
+    const pages: string[] = [];
+    const spoken = await speakFriend(undefined, input, {
+      page: async (text) => {
+        pages.push(text);
+      },
+    });
+    expect(spoken).toMatchObject({ source: 'unsent', body: '', fallback: 'voice_unavailable' });
+    expect(pages).toEqual(['onboarding friend voice unsent step=ages reason=voice_unavailable']);
+    expect(pages.join(' ')).not.toContain('Maya');
+    expect(spoken.body).not.toBe('How old are the kids?');
   });
 
-  it('keeps a composed reply that passes and drops one that does not', async () => {
-    const input = blank({ step: 'ages', placeLabel: 'M5V' });
+  it('keeps a composed reply and retries once on a smaller prompt', async () => {
+    const input = blank({ step: 'ages', placeLabel: 'M5V', parentWords: 'And' });
     const good = await speakFriend(
       {
         async compose() {
-          return { reply: 'How old are the kids?' };
+          return { reply: 'How old are your kids?' };
         },
       },
       input,
     );
-    expect(good).toMatchObject({ source: 'composed', body: 'How old are the kids?' });
+    expect(good).toMatchObject({ source: 'composed', body: 'How old are your kids?' });
 
-    const bad = await speakFriend(
+    const prompts: string[] = [];
+    const retried = await speakFriend(
+      {
+        async compose(_input, options) {
+          prompts.push(options?.prompt ?? 'full');
+          if (options?.prompt === 'short') return { reply: 'How old are your kids?' };
+          return { reply: "How old are the kids? I'll note it." };
+        },
+      },
+      input,
+    );
+    expect(prompts).toEqual(['full', 'short']);
+    expect(retried).toMatchObject({ source: 'retry', body: 'How old are your kids?' });
+    expect(retried.body).not.toMatch(/i'll note it/i);
+  });
+
+  it('sends nothing and pages when both attempts fail', async () => {
+    const input = blank({ step: 'ages', parentWords: 'secret words', placeLabel: 'M5V' });
+    const pages: string[] = [];
+    const spoken = await speakFriend(
       {
         async compose() {
           return { reply: "How old are the kids? I'll note it." };
         },
       },
       input,
+      {
+        page: async (text) => {
+          pages.push(text);
+        },
+        attemptTimeoutMs: 1_000,
+      },
     );
-    expect(bad.source).toBe('fallback');
-    expect(bad.body).not.toMatch(/i'll note it/i);
+    expect(spoken.source).toBe('unsent');
+    expect(spoken.body).toBe('');
+    expect(pages).toHaveLength(1);
+    expect(pages[0]).not.toContain('secret');
+    expect(spoken.body).not.toBe('How old are the kids?');
+  });
+
+  it('judges a yes as the next ask, so camp email is not an invented activity', async () => {
+    const input = blank({
+      step: 'calendar',
+      parentWords: 'yes',
+      checklist: {
+        postal: true,
+        ages: true,
+        pick: true,
+        name: true,
+        kids: true,
+        calendar: false,
+        gmail: false,
+      },
+    });
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Want me to watch school and camp email for the dates?',
+            capture: { connectCalendar: true },
+          };
+        },
+      },
+      input,
+      { page: async () => undefined },
+    );
+    expect(spoken.source).toBe('composed');
+    expect(spoken.capture.connectCalendar).toBe(true);
+    expect(spoken.body).toMatch(/camp email/i);
   });
 });

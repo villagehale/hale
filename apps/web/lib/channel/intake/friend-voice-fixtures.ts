@@ -1,4 +1,4 @@
-import { assembleFriendBody, type FriendVoiceInput } from './friend-voice';
+import { type FriendVoiceInput, assembleFriendBody } from './friend-voice';
 
 /**
  * VIL-413. Three onboarding conversations the friend-voice judge checks.
@@ -27,7 +27,9 @@ export interface FriendFixtureConversation {
   turns: readonly FriendFixtureTurn[];
 }
 
-function input(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step' | 'parentWords'>): FriendVoiceInput {
+function input(
+  over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step' | 'parentWords'>,
+): FriendVoiceInput {
   return {
     language: 'en',
     address: 'tu',
@@ -98,7 +100,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
       },
       {
         title: 'calendar link attached',
-        prose: 'Dana, want me to check that swim against your calendar? This link is just for you.',
+        prose: 'Dana, this link is just for you. Want me to check that swim against your calendar?',
         link: CALENDAR_LINK,
         input: input({
           step: 'calendar',
@@ -161,7 +163,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
       },
       {
         title: 'calendrier avec le lien',
-        prose: 'Tu veux que je compare la natation à ton calendrier? Ce lien est juste pour toi.',
+        prose: 'Ce lien est juste pour toi. Tu veux que je compare la natation à ton calendrier?',
         link: CALENDAR_LINK,
         input: input({
           step: 'calendar',
@@ -193,7 +195,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
       },
       {
         title: 'gmail link on its own turn',
-        prose: 'Want me to watch school and camp email for the dates? This link is just for you.',
+        prose: 'This link is just for you. Want me to watch school and camp email for the dates?',
         link: GMAIL_LINK,
         input: input({
           step: 'email',

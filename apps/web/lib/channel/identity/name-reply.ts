@@ -265,6 +265,31 @@ export function defaultNameCaptureDeps(): NameCaptureDeps {
 }
 
 /**
+ * Store a parent name the onboarding model already returned as its own field.
+ * The raw message is not read here.
+ */
+export async function storeModelParentName(
+  database: Database,
+  input: { familyId: string; parentUserId: string; name: string },
+): Promise<NameCaptureWrite> {
+  const updated = await database
+    .update(schema.users)
+    .set({ name: input.name, updatedAt: new Date() })
+    .where(and(eq(schema.users.id, input.parentUserId), isNull(schema.users.name)))
+    .returning({ id: schema.users.id });
+  if (updated.length === 0) return 'already_named';
+  await database.insert(schema.auditLog).values({
+    familyId: input.familyId,
+    actor: input.parentUserId,
+    actionTaken: 'parent_name_captured',
+    targetTable: 'users',
+    targetId: input.parentUserId,
+    after: { source: 'onboarding_model', name: input.name },
+  });
+  return 'stored';
+}
+
+/**
  * Whether there is still no name on file for this parent — the one condition that makes
  * asking for one honest.
  *

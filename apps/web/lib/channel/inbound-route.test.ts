@@ -580,8 +580,7 @@ describe('iMessage first-touch door', () => {
     });
   });
 
-  it('does not flash a typing bubble on a reply that leaves inside the delay', async () => {
-    vi.useFakeTimers();
+  it('starts typing as soon as the inbound arrives and stops when the turn ends', async () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => {
       return new Response(null, { status: 204 });
@@ -589,9 +588,8 @@ describe('iMessage first-touch door', () => {
     vi.stubGlobal('fetch', fetchMock);
     const h = harness();
     await routeInboundText(h.deps, { ...inbound(), transport: 'imessage', chatId: 'chat-1' }, 0);
-    await vi.advanceTimersByTimeAsync(LINQ_TYPING_SHOW_DELAY_MS);
     const typing = fetchMock.mock.calls.filter((call) => String(call[0]).includes('/typing'));
-    expect(typing).toEqual([]);
+    expect(typing.length).toBeGreaterThan(0);
     vi.unstubAllGlobals();
   });
 

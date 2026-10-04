@@ -16,7 +16,7 @@ describe('connected receipt voice', () => {
     );
   });
 
-  it('sends the model receipt, and a short fallback when the model fails', async () => {
+  it('sends the model receipt, and nothing canned when the model is missing', async () => {
     vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
     const composed = await connectedReceiptBody('en', 'gmail', {
       async compose() {
@@ -26,10 +26,9 @@ describe('connected receipt voice', () => {
     expect(composed).toBe('Gmail is connected.');
     expect(composed).not.toMatch(/\bSTOP\b|\?/);
 
-    const fallback = await connectedReceiptBody('en', 'gcal', undefined);
-    expect(fallback).toBe('Your calendar is connected.');
-    expect(fallback).not.toBe(CONNECTOR_CONNECTED_TEXT.gcal);
-    expect(fallback).not.toMatch(/\bSTOP\b|unsubscribe/i);
+    const missing = await connectedReceiptBody('en', 'gcal', undefined);
+    expect(missing).toBe('');
+    expect(missing).not.toBe(CONNECTOR_CONNECTED_TEXT.gcal);
   });
 
   it('does not send a receipt that names the other connector', async () => {
@@ -39,7 +38,7 @@ describe('connected receipt voice', () => {
         return { reply: 'Ton Gmail est connecté.' };
       },
     });
-    expect(body).toBe('Ton calendrier est connecté.');
-    expect(body).not.toMatch(/\bSTOP\b/);
+    expect(body).toBe('');
+    expect(body).not.toMatch(/Gmail|calendrier/i);
   });
 });

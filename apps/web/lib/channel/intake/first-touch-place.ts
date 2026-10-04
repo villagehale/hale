@@ -67,6 +67,35 @@ const POSTAL_IN_TEXT =
  * A SOURCE_VENUES code. The poster's city is the place we say back. The FSA
  * is the venue's own coarse area, not a street.
  */
+/**
+ * A postal code or a city the model already pulled out as its own field.
+ * The field has to be that fact and nothing else. This does not search a sentence.
+ */
+export function placeFromGivenFields(input: {
+  postalCode: string | null;
+  city: string | null;
+}): FirstTouchPlace | null {
+  if (input.postalCode) {
+    const postal = parseCanadianPostal(input.postalCode.trim());
+    if (postal) return fromPostal(postal);
+  }
+  if (input.city) {
+    const trimmed = input.city.trim();
+    const municipality = municipalityForCity(trimmed);
+    if (municipality && trimmed.length > 0) {
+      const label = titleCity(trimmed);
+      return {
+        kind: 'city',
+        areaCoarse: label,
+        postalCode: null,
+        municipality,
+        city: label,
+      };
+    }
+  }
+  return null;
+}
+
 export function placeFromVenue(venue: {
   areaCoarse: string;
   poster?: string;

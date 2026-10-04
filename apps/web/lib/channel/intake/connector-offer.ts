@@ -1,7 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
-import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
@@ -378,12 +377,13 @@ function voiceCardBody(
   prose: string | undefined,
   url: string,
   locked: string,
-  language: ReplyLanguage,
+  _language: ReplyLanguage,
 ): string {
   const clean = prose?.replace(/https?:\/\/\S+/g, '').trim();
   if (!clean) return locked;
-  const line = googleUnverifiedAppLine(language);
-  return clean.includes(line) ? `${clean}\n${url}` : `${clean}\n${line}\n${url}`;
+  // The model writes the trust line and the unverified-app heads-up.
+  // Code appends only the minted URL.
+  return `${clean}\n${url}`;
 }
 
 interface ConnectorCard {

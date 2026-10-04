@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReplyRoute } from '~/lib/channel/router/reply-route';
 import {
+  LINQ_TYPING_REFRESH_MS,
   LINQ_TYPING_SHOW_DELAY_MS,
   armDelayedImessageTyping,
   signalImessageTyping,
@@ -74,6 +75,48 @@ describe('armDelayedImessageTyping', () => {
     await vi.advanceTimersByTimeAsync(LINQ_TYPING_SHOW_DELAY_MS);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('starts immediately when the delay is zero and refreshes while the turn is open', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('LINQ_API_KEY', '');
+    const warn = vi.fn();
+    const typing = armDelayedImessageTyping({
+      channel: 'imessage',
+      chatId: CHAT,
+      log: { warn },
+      delayMs: 0,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(warn.mock.calls.some((call) => call[0]?.phase === 'start')).toBe(true);
+    const starts = () => warn.mock.calls.filter((call) => call[0]?.phase === 'start').length;
+    const before = starts();
+    await vi.advanceTimersByTimeAsync(LINQ_TYPING_REFRESH_MS);
+    expect(starts()).toBeGreaterThan(before);
+    await typing.stop();
+  });
+
+  it('re-arms a live bubble so a slow step does not outlive the hold', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('LINQ_API_KEY', '');
+    const warn = vi.fn();
+    const typing = armDelayedImessageTyping({
+      channel: 'imessage',
+      chatId: CHAT,
+      log: { warn },
+      delayMs: 0,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    const starts = () => warn.mock.calls.filter((call) => call[0]?.phase === 'start').length;
+    const before = starts();
+    typing.rearm();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(starts()).toBeGreaterThan(before);
+    await typing.stop();
+    const afterStop = starts();
+    typing.rearm();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(starts()).toBe(afterStop);
   });
 
   it('starts after the delay and stops without throwing when Linq refuses', async () => {

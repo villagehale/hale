@@ -26,7 +26,7 @@ A 1:1 text is marked read on Linq before the turn finishes. A refused mark-read 
 | Before a family exists | `sms_intake_sessions` | One open row per number. `state` is the step. `data_encrypted` holds the transcript, the collected postal code and ages, and any contact-card claim. `family_id` is null. |
 | After the family is created | `channel_messages` | Inbound and outbound rows, `channel = 'imessage'`, `category = 'intake'`. Inbound `body` is the parent's text. Outbound `body` is null. `provider_chat_id` is the Linq chat. |
 | Every write that has a family | `audit_log` | One row per action. Names used below. |
-| The number, once enrolled | `parent_channels` | Active row for that parent. `linq_contact_card_shared_at` is set once the Hale card has been shared. |
+| The number, once enrolled | `parent_channels` | Active row for that parent. `linq_contact_card_shared_at` is the last time the Hale card was shared (or a share still in flight). |
 
 `channel_messages.family_id` is required, so a brand-new parent's first texts are not in `channel_messages` yet. They are on `sms_intake_sessions`. Provisioning replays that transcript into `channel_messages`.
 
@@ -39,12 +39,12 @@ Code: `apps/web/lib/channel/intake/session.ts` (read/write the session), `apps/w
 | What the parent does | Hale sends | Code | Session `state` | Rows |
 | --- | --- | --- | --- | --- |
 | Texts the number | Postal-code question. If `FIRST_TOUCH_LOCATION_CARD_ENABLED` is exactly `true` (no trim) and Linq accepts, a location card goes first and the text asks them to tap it. | `openFirstTouch`, `sendPlaceAsk` | `awaiting_place` | `sms_intake_sessions`. Audit `first_touch_location_requested` is written at provisioning, with `outcome`. |
-| Sends a Canadian postal code (or the location share resolves to a city) | A this-week list of things nearby, then a question for the kids' ages. | `sendWeekFindThenAgesOrProvision`, `findThisWeek` in `first-touch-find.ts` | `awaiting_ages` | Same session. Collected place is inside `data_encrypted` (`firstTouch.place`). |
+| Sends a Canadian postal code (or the location share resolves to a city) | Asks only for the kids' ages. No activity list on this step. When `ONBOARDING_FRIEND_VOICE_ENABLED` is not exactly `on`, the locked ladder still sends a this-week list and then the age question. | `friendOnboardingTurn` when friend voice is on; otherwise `sendWeekFindThenAgesOrProvision`, `findThisWeek` in `first-touch-find.ts` | `awaiting_ages` | Same session. Collected place is inside `data_encrypted` (`firstTouch.place`). |
 | Sends the kids' ages | The family is created. Hale sends the first find: age-fit activities for the year. | `provision` → `provisionFromIntake` in `provision.ts`, then `radar.compose` | `awaiting_ladder`, or `awaiting_cold_start` when the cold-start flag is on | See "Family create" below. PostHog `intake_completed`. |
 | Answers the name question | What to call them, and the kids' first names if they want. | `handleLadder` when `ladder_next` is `name` / `name_reply`. Cold-start uses `continueColdStart`. | stays `awaiting_ladder` or `awaiting_cold_start` | `channel_messages`. Name capture writes `audit_log.action_taken = 'parent_name_captured'`. |
 | Next replies | A link to connect Google Calendar, then a link to connect Gmail. Code mints the URL and appends it. | `sendYearConnectorCards` in `connector-offer.ts` | `complete` when the ladder finishes | `channel_messages`, deduped per family. Template keys `intake:calendar_card` and `intake:gmail_card`. |
 
-The Hale contact card is not one of those questions. After the first successful 1:1 outbound, `shareLinqCardAfterFirstOutbound` shares the Name and Photo card (first name `Hale`). Linq shows it only after that outbound. Before a family exists, the claim sits in the session blob. `provisionFromIntake` copies it onto `parent_channels.linq_contact_card_shared_at`. A share that already landed is not repeated. Audit action: `linq_contact_card_shared`. Code: `apps/web/lib/channel/linq/contact-card.ts`.
+The Hale contact card is not one of those questions. After a successful 1:1 iMessage outbound, `shareLinqCardAfterFirstOutbound` shares the Name and Photo card once per America/Toronto day for that chat, after that day's first outbound. SMS and groups are not shared. The name is `Hale` plus a hibiscus (U+1F33A), from `HALE_CONTACT_FIRST_NAME`, and a stored line-card name that differs is patched to that before the share. Setup is `POST /v3/contact_card`; HTTP 409 or Linq code 2014 is `PATCH /v3/contact_card`. Share waits until `GET /v3/contact_card` says `is_active`. Linq code 2012 (no card) creates the card, confirms it, then shares. Before a family exists, the claim sits in the session blob. `provisionFromIntake` copies it onto `parent_channels.linq_contact_card_shared_at` and writes audit `linq_contact_card_shared` with `chatId` and `sharedOn`. A share already recorded for that chat today is not repeated. The next Toronto day's first outbound shares again. Code: `apps/web/lib/channel/linq/contact-card.ts`.
 
 PostHog `intake_started` fires on the first reply. `intake_completed` fires when the family row exists.
 
@@ -67,7 +67,7 @@ PostHog `intake_started` fires on the first reply. `intake_completed` fires when
 
 On, the machine still picks the step. The model writes that one reply from `packages/agent/skills/onboarding-friend.md`, via `speakFriend` in `apps/web/lib/channel/intake/friend-voice.ts`. Find lines and connector URLs are appended in code. The model does not choose the next step.
 
-A failed compose is logged `onboarding-friend: fallback reply` with `fallback` set to `voice_unavailable`, `skill_unavailable`, `model_failed`, or `unusable`. The parent still gets a short question from `fallbackFriendProse`.
+A failed, judged-bad, or timed-out compose is retried once on a smaller prompt. If that also fails, nothing canned is sent. The miss is logged `onboarding-friend: reply not sent` and paged to Slack #ops. The next inbound, or the morning nudge, tries the model again.
 
 With friend voice on, an empty this-week list is not announced. The ages question goes out alone. When cold start is also on and the year list has titles, that list is the "which of these" question, and the name question comes on the next reply. Calendar and Gmail each wait for their own reply. When cold start is off, the year-find turn asks the name, and the connector links follow on later replies.
 
@@ -152,7 +152,7 @@ Slack handles only. Page in **#ops**.
 
 - `channel_messages` — `channel = 'imessage'`, newest `created_at`. Inbound rows have `direction = 'in'` and a `body`. A parent who already has a family should grow a row per text. `handed_off_at` null on an inbound row means the coach queue does not have it yet.
 - `sms_intake_sessions` — open rows have `closed_at` null. `state` is `awaiting_place`, `awaiting_ages`, `awaiting_ladder`, `awaiting_cold_start`, or `complete`. `updated_at` moves on each reply.
-- `parent_channels` — `revoked_at` null is the live number. `linq_contact_card_shared_at` null means the card has not been claimed.
+- `parent_channels` — `revoked_at` null is the live number. `linq_contact_card_shared_at` is the last share time. Null means no share is held, including a setup that failed before the card was pushed.
 - `audit_log` — `action_taken` of `sms_intake_inbound`, `sms_intake_outbound`, `sms_intake_provisioned`, `family_created`, `linq_contact_card_shared`, `sms_reply_received`.
 
 **PostHog.** Event `webhook_route_failed` with `route = linq_inbound` (distinct id `route:linq_inbound`). Events `intake_started` and `intake_completed` for the funnel. The failure event carries the route and the error class.
@@ -183,7 +183,7 @@ Also confirm `LINQ_API_KEY` and `LINQ_FROM_E164` are set. The door stays dark if
 - **400 / unsupported version.** Point the Linq subscription at `?version=2026-02-03`.
 - **500 after a deploy.** Promote the last good hale-web deployment. Then read the thrown error class in the Vercel log and in PostHog.
 - **200s and no replies.** The door accepted the text. Read `outcome` on `linq inbound: routed`. Then check `sms_intake_sessions` for an open row, and `channel_messages` for a parent who already has a family. If `handed_off_at` is null, `/api/cron/queue-maintenance` and `/api/cron/drain` are the next place to look. If the log says `onboarding-friend: fallback reply`, the text did leave, on the fallback sentence.
-- **Texts arrive, card does not.** The reply path is fine. Read `linq contact card:` in the same request log. `parent_channels.linq_contact_card_shared_at` stays null until a share is claimed.
+- **Texts arrive, card does not.** The reply path is fine. Read `linq contact card:` in the same request log. `parent_channels.linq_contact_card_shared_at` stays at the previous share time (or null) until this attempt claims the day.
 
 ### Escalation
 
