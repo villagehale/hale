@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { linqFromE164 } from './config';
 import {
   patchLinqContactCard,
@@ -66,6 +66,13 @@ export function finishCardWithinReplyBudget(work: Promise<unknown>): Promise<voi
     void work.then(done, done);
   });
 }
+
+/**
+ * How many recent share audits one chat reads. A family shares at most once
+ * a day per chat, so the newest rows are the ones that decide today. Older
+ * rows past this bound cannot hide a share that just landed.
+ */
+export const CONTACT_CARD_SHARE_LOOKBACK = 32;
 
 /** Once-per-day shares use Hale's home zone, the same zone as quiet hours. */
 const CONTACT_CARD_DAY_ZONE = 'America/Toronto';
@@ -156,7 +163,7 @@ export async function shareHaleContactCardOnce(
   }
 
   const day = haleContactCardDay(args.now);
-  const channels = await database
+  const [channel] = await database
     .select({
       id: schema.parentChannels.id,
       familyId: schema.parentChannels.familyId,
@@ -164,13 +171,15 @@ export async function shareHaleContactCardOnce(
       revokedAt: schema.parentChannels.revokedAt,
       linqContactCardSharedAt: schema.parentChannels.linqContactCardSharedAt,
     })
-    .from(schema.parentChannels);
-  const channel = channels.find(
-    (row) =>
-      row.familyId === args.familyId &&
-      row.userId === args.parentUserId &&
-      (row.revokedAt === null || row.revokedAt === undefined),
-  );
+    .from(schema.parentChannels)
+    .where(
+      and(
+        eq(schema.parentChannels.familyId, args.familyId),
+        eq(schema.parentChannels.userId, args.parentUserId),
+        isNull(schema.parentChannels.revokedAt),
+      ),
+    )
+    .limit(1);
   if (!channel) return { status: 'not_sent', reason: 'already_shared' };
 
   const audits = await database
@@ -180,8 +189,20 @@ export async function shareHaleContactCardOnce(
       after: schema.auditLog.after,
       occurredAt: schema.auditLog.occurredAt,
     })
-    .from(schema.auditLog);
-  if (contactCardShareRecordedToday(audits, args.familyId, chatId, day)) {
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, args.familyId),
+        eq(schema.auditLog.actionTaken, 'linq_contact_card_shared'),
+        or(
+          sql`${schema.auditLog.after}->>'chatId' = ${chatId}`,
+          sql`${schema.auditLog.after}->>'chatId' is null`,
+        ),
+      ),
+    )
+    .orderBy(desc(schema.auditLog.occurredAt))
+    .limit(CONTACT_CARD_SHARE_LOOKBACK);
+  if (contactCardShareRecordedToday(audits, chatId, day)) {
     return { status: 'not_sent', reason: 'already_shared' };
   }
 
@@ -242,12 +263,10 @@ function contactCardShareRecordedToday(
     after: unknown;
     occurredAt: Date;
   }[],
-  familyId: string,
   chatId: string,
   day: string,
 ): boolean {
   return rows.some((row) => {
-    if (row.familyId !== familyId) return false;
     if (row.actionTaken !== 'linq_contact_card_shared') return false;
     if (!isAuditRecord(row.after)) return false;
     const outcome = row.after.outcome;

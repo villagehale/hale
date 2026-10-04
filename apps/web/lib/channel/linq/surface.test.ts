@@ -5,6 +5,7 @@ import { linqContactCardShareBlocked } from '~/lib/channel/intake/session';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import {
+  CONTACT_CARD_SHARE_LOOKBACK,
   HALE_CONTACT_FIRST_NAME,
   HALE_CONTACT_IMAGE_URL_DEFAULT,
   deliverHaleLinqContactCard,
@@ -603,6 +604,85 @@ describe('Linq contact card', () => {
       `https://api.linqapp.com/api/partner/v3/chats/${CHAT}/share_contact_card`,
       `https://api.linqapp.com/api/partner/v3/chats/${other}/share_contact_card`,
     ]);
+  });
+
+  it('ignores another family when the channel and the share audit are read', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fake = makeFakeDb();
+    enrol(fake, COPARENT, { familyId: FAMILY_B, userId: USER_B });
+    enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
+    const other = fake.rows(schema.parentChannels).find((row) => row.userId === USER_B);
+    if (!other) throw new Error('test seed: expected the other family channel');
+    other.linqContactCardSharedAt = NOW;
+    await fake.db.insert(schema.auditLog).values({
+      familyId: FAMILY_B,
+      actor: USER_B,
+      actionTaken: 'linq_contact_card_shared',
+      targetTable: 'parent_channels',
+      targetId: String(other.id),
+      occurredAt: NOW,
+      after: { outcome: 'shared', chatId: CHAT, sharedOn: '2026-09-24' },
+    });
+    const outcome = await shareHaleContactCardOnce(fake.db, {
+      familyId: FAMILY,
+      parentUserId: USER,
+      chatId: CHAT,
+      channel: 'imessage',
+      isGroup: false,
+      now: NOW,
+      fetch: liveCardFetch(),
+    });
+    expect(outcome).toEqual({ status: 'shared' });
+    expect(
+      fake.rows(schema.parentChannels).find((row) => row.userId === USER)?.linqContactCardSharedAt,
+    ).toEqual(NOW);
+    expect(other.linqContactCardSharedAt).toEqual(NOW);
+  });
+
+  it('keeps a chat-less share for today and still finds today past the lookback', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fake = makeFakeDb();
+    enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
+    const old = new Date('2020-01-01T00:00:00.000Z');
+    for (let index = 0; index < CONTACT_CARD_SHARE_LOOKBACK; index += 1) {
+      await fake.db.insert(schema.auditLog).values({
+        familyId: FAMILY,
+        actor: USER,
+        actionTaken: 'linq_contact_card_shared',
+        targetTable: 'parent_channels',
+        targetId: 'old',
+        occurredAt: new Date(old.getTime() + index * 1000),
+        after: { outcome: 'card_refused', chatId: CHAT },
+      });
+    }
+    await fake.db.insert(schema.auditLog).values({
+      familyId: FAMILY,
+      actor: USER,
+      actionTaken: 'linq_contact_card_shared',
+      targetTable: 'parent_channels',
+      targetId: 'legacy',
+      occurredAt: NOW,
+      after: { outcome: 'shared', sharedOn: '2026-09-24' },
+    });
+    const fetchMock = vi.fn();
+    const args = {
+      familyId: FAMILY,
+      parentUserId: USER,
+      chatId: CHAT,
+      channel: 'imessage' as const,
+      isGroup: false,
+      now: NOW,
+      fetch: fetchMock,
+    };
+    expect(await shareHaleContactCardOnce(fake.db, args)).toEqual({
+      status: 'not_sent',
+      reason: 'already_shared',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('creates the card when GET says 2012, then shares only after it is active', async () => {

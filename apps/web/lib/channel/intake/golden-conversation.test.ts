@@ -524,7 +524,7 @@ describe('golden onboarding conversation', () => {
 
   it('does not hold the first reply for a slow card setup', async () => {
     vi.useFakeTimers();
-    let release = () => undefined;
+    let release: () => void = () => {};
     const hung = new Promise<void>((resolve) => {
       release = resolve;
     });

@@ -1235,12 +1235,22 @@ describe('friend voice onboarding', () => {
         };
       },
     };
+    const otherDob = '2010-01-01';
+    await fake.db.insert(schema.children).values({
+      familyId: '00000000-0000-4000-8000-000000000099',
+      name: 'Other',
+      dateOfBirth: otherDob,
+      dobPrecision: 'exact',
+    } as never);
     await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, M5V 2T6'), deps);
-    const before = fake.rows(schema.children)[0]?.dateOfBirth;
+    const before = fake.rows(schema.children).find((row) => row.name === 'Maya')?.dateOfBirth;
     await handleInboundSms(fake.db, inbound(transport, '1'), deps);
     await handleInboundSms(fake.db, inbound(transport, 'actually 5'), deps);
     expect(calls).toBeGreaterThanOrEqual(2);
-    expect(fake.rows(schema.children)[0]?.dateOfBirth).not.toBe(before);
+    const maya = fake.rows(schema.children).find((row) => row.name === 'Maya');
+    const other = fake.rows(schema.children).find((row) => row.name === 'Other');
+    expect(maya?.dateOfBirth).not.toBe(before);
+    expect(other?.dateOfBirth).toBe(otherDob);
     expect(transport.bodies().at(-1)).toContain('Swim (ages 5-6)');
   });
 

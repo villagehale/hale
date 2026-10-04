@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
@@ -2588,6 +2588,9 @@ function childNamesChanged(
   });
 }
 
+/** Onboarding never carries more children than this. The read is this family only. */
+const ONBOARDING_CHILD_LIMIT = 24;
+
 /** Write a corrected age or a newly given first name onto the child row. */
 async function syncOnboardingChildren(
   database: Database,
@@ -2604,14 +2607,16 @@ async function syncOnboardingChildren(
   }[],
   now: Date,
 ): Promise<void> {
-  const rows = await database
+  const mine = await database
     .select({
       id: schema.children.id,
       familyId: schema.children.familyId,
       name: schema.children.name,
     })
-    .from(schema.children);
-  const mine = rows.filter((row) => row.familyId === familyId);
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId))
+    .orderBy(asc(schema.children.createdAt))
+    .limit(ONBOARDING_CHILD_LIMIT);
   for (let index = 0; index < next.length; index++) {
     const child = next[index];
     const before = prior[index];
