@@ -212,7 +212,9 @@ export async function shareHaleContactCardOnce(
     familyId: args.familyId,
     fetch: args.fetch,
   });
-  if (!delivered.holdClaim && stampedThisCall) await clearContactCardClaim(database, channelId);
+  if (!delivered.holdClaim && stampedThisCall) {
+    await clearContactCardClaim(database, channelId, stamp instanceof Date ? stamp : null);
+  }
   if (delivered.audit) {
     await database.insert(schema.auditLog).values({
       familyId: args.familyId,
@@ -510,11 +512,17 @@ function shareRefused(familyId: string | null, err: unknown): HaleContactCardDel
   };
 }
 
-/** Setup never reached the parent's chat. Release the claim. A share that
- * was attempted stays consumed so a retry cannot push the card twice. */
-async function clearContactCardClaim(database: Database, channelId: string): Promise<void> {
+/** Setup never reached the parent's chat. Put the last shared time back so
+ * this miss can be retried, and a share from an earlier day is still the
+ * stored timestamp. A share that was attempted stays consumed until the next
+ * Toronto day, so a retry cannot push the card twice that day. */
+async function clearContactCardClaim(
+  database: Database,
+  channelId: string,
+  restore: Date | null,
+): Promise<void> {
   await database
     .update(schema.parentChannels)
-    .set({ linqContactCardSharedAt: null })
+    .set({ linqContactCardSharedAt: restore })
     .where(eq(schema.parentChannels.id, channelId));
 }

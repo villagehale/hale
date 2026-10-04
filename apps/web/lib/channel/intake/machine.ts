@@ -2545,8 +2545,8 @@ async function closeColdStartForCoach(
  * httpStatus 0) is retried once in that turn and, if it still fails, stored
  * on the session. The next turn tries again after its own reply, never before
  * it. {@link shareHaleContactCardOnce} claims
- * parent_channels.linq_contact_card_shared_at before it posts, and a claim
- * already held returns without a second share. The audit row is
+ * parent_channels.linq_contact_card_shared_at before it posts, and a share
+ * already recorded for this chat today returns without a second POST. The audit row is
  * linq_contact_card_shared. A miss is logged and does not fail the reply.
  */
 async function retryFailedLinqContactCard(

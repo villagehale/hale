@@ -467,6 +467,10 @@ describe('Linq group, card, poll, and effect helpers', () => {
       image_url: 'https://app.villagehale.com/email-logo.png',
     });
     expect(fetchMock.mock.calls[1]?.[1]?.method).toBe('PATCH');
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      first_name: 'Hale',
+      image_url: 'https://app.villagehale.com/email-logo.png',
+    });
   });
 
   it('patches on HTTP 409 even when the body code is not 2014', async () => {

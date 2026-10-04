@@ -26,7 +26,7 @@ A 1:1 text is marked read on Linq before the turn finishes. A refused mark-read 
 | Before a family exists | `sms_intake_sessions` | One open row per number. `state` is the step. `data_encrypted` holds the transcript, the collected postal code and ages, and any contact-card claim. `family_id` is null. |
 | After the family is created | `channel_messages` | Inbound and outbound rows, `channel = 'imessage'`, `category = 'intake'`. Inbound `body` is the parent's text. Outbound `body` is null. `provider_chat_id` is the Linq chat. |
 | Every write that has a family | `audit_log` | One row per action. Names used below. |
-| The number, once enrolled | `parent_channels` | Active row for that parent. `linq_contact_card_shared_at` is set once the Hale card has been shared. |
+| The number, once enrolled | `parent_channels` | Active row for that parent. `linq_contact_card_shared_at` is the last time the Hale card was shared (or a share still in flight). |
 
 `channel_messages.family_id` is required, so a brand-new parent's first texts are not in `channel_messages` yet. They are on `sms_intake_sessions`. Provisioning replays that transcript into `channel_messages`.
 
@@ -152,7 +152,7 @@ Slack handles only. Page in **#ops**.
 
 - `channel_messages` — `channel = 'imessage'`, newest `created_at`. Inbound rows have `direction = 'in'` and a `body`. A parent who already has a family should grow a row per text. `handed_off_at` null on an inbound row means the coach queue does not have it yet.
 - `sms_intake_sessions` — open rows have `closed_at` null. `state` is `awaiting_place`, `awaiting_ages`, `awaiting_ladder`, `awaiting_cold_start`, or `complete`. `updated_at` moves on each reply.
-- `parent_channels` — `revoked_at` null is the live number. `linq_contact_card_shared_at` null means the card has not been claimed.
+- `parent_channels` — `revoked_at` null is the live number. `linq_contact_card_shared_at` is the last share time. Null means no share is held, including a setup that failed before the card was pushed.
 - `audit_log` — `action_taken` of `sms_intake_inbound`, `sms_intake_outbound`, `sms_intake_provisioned`, `family_created`, `linq_contact_card_shared`, `sms_reply_received`.
 
 **PostHog.** Event `webhook_route_failed` with `route = linq_inbound` (distinct id `route:linq_inbound`). Events `intake_started` and `intake_completed` for the funnel. The failure event carries the route and the error class.
@@ -183,7 +183,7 @@ Also confirm `LINQ_API_KEY` and `LINQ_FROM_E164` are set. The door stays dark if
 - **400 / unsupported version.** Point the Linq subscription at `?version=2026-02-03`.
 - **500 after a deploy.** Promote the last good hale-web deployment. Then read the thrown error class in the Vercel log and in PostHog.
 - **200s and no replies.** The door accepted the text. Read `outcome` on `linq inbound: routed`. Then check `sms_intake_sessions` for an open row, and `channel_messages` for a parent who already has a family. If `handed_off_at` is null, `/api/cron/queue-maintenance` and `/api/cron/drain` are the next place to look. If the log says `onboarding-friend: fallback reply`, the text did leave, on the fallback sentence.
-- **Texts arrive, card does not.** The reply path is fine. Read `linq contact card:` in the same request log. `parent_channels.linq_contact_card_shared_at` stays null until a share is claimed.
+- **Texts arrive, card does not.** The reply path is fine. Read `linq contact card:` in the same request log. `parent_channels.linq_contact_card_shared_at` stays at the previous share time (or null) until this attempt claims the day.
 
 ### Escalation
 

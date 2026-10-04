@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, text, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { consentRecords } from './consent.js';
 import { families } from './families.js';
 import { users } from './users.js';
@@ -52,9 +52,10 @@ export const parentChannels = pgTable(
     consentRecordId: uuid('consent_record_id').references(() => consentRecords.id),
     /** Soft-revoke: in-app toggle or STOP. A revoked row is kept for audit. */
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
-    /** Set the moment Hale shares the Linq Name and Photo card into this
-     * parent's 1:1 chat. Null means it has not been shared. The share is
-     * one-shot: a later onboard must not push the card again. */
+    /** Last time Hale shared the Linq Name and Photo card, or claimed a share
+     * still in flight. Null means nothing is held. At most once per
+     * America/Toronto day per chat, after that day's first outbound. A setup
+     * that never reached the chat restores the previous value. */
     linqContactCardSharedAt: timestamp('linq_contact_card_shared_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

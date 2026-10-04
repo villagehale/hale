@@ -191,6 +191,54 @@ describe('Linq contact card', () => {
     expect(gets).toBeGreaterThan(1);
   });
 
+  it('writes Hale plus hibiscus on the 409 patch body when a card is already active', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (method === 'PATCH') {
+        return Response.json({
+          is_active: true,
+          phone_number: '+15555550100',
+          first_name: HALE_CONTACT_FIRST_NAME,
+        });
+      }
+      if (method === 'POST' && target.endsWith('/contact_card')) {
+        return Response.json({ error: { status: 409, code: 2014 } }, { status: 409 });
+      }
+      if (method === 'GET') {
+        return Response.json({
+          contact_cards: [
+            { phone_number: '+15555550100', first_name: HALE_CONTACT_FIRST_NAME, is_active: true },
+          ],
+        });
+      }
+      return new Response(null, { status: 200 });
+    });
+    const delivered = await deliverHaleLinqContactCard({
+      chatId: CHAT,
+      familyId: null,
+      fetch: fetchMock,
+    });
+    expect(delivered.outcome).toEqual({ status: 'shared' });
+    const post = fetchMock.mock.calls.find(
+      (call) =>
+        (call[1]?.method ?? 'GET').toUpperCase() === 'POST' &&
+        String(call[0]).endsWith('/contact_card'),
+    );
+    const patch = fetchMock.mock.calls.find(
+      (call) => (call[1]?.method ?? '').toUpperCase() === 'PATCH',
+    );
+    expect(JSON.parse(String(post?.[1]?.body)).first_name).toBe('Hale \u{1F33A}');
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({
+      first_name: 'Hale \u{1F33A}',
+      image_url: HALE_CONTACT_IMAGE_URL_DEFAULT,
+    });
+    expect(JSON.parse(String(patch?.[1]?.body)).first_name).toBe(HALE_CONTACT_FIRST_NAME);
+    expect(String(patch?.[0])).toContain('/contact_card?phone_number=');
+  });
+
   it('shares when onboard is not finished, once a 1:1 channel row exists', async () => {
     process.env.APP_ENCRYPTION_KEY = ENC_KEY;
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
@@ -468,6 +516,58 @@ describe('Linq contact card', () => {
     expect(await shareHaleContactCardOnce(fake.db, { ...args, now: nextDay })).toEqual({
       status: 'shared',
     });
+    expect(fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toEqual(nextDay);
+    const shares = fetchMock.mock.calls.filter((call) =>
+      String(call[0]).includes('share_contact_card'),
+    );
+    expect(shares).toHaveLength(2);
+  });
+
+  it('keeps the last shared time when a later day fails setup, then retries that day', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fake = makeFakeDb();
+    enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
+    let setups = 0;
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (method === 'GET' || target.includes('/contact_card?')) {
+        return Response.json({
+          contact_cards: [
+            { phone_number: '+15555550100', first_name: HALE_CONTACT_FIRST_NAME, is_active: true },
+          ],
+        });
+      }
+      if (method === 'POST' && target.endsWith('/contact_card')) {
+        setups += 1;
+        if (setups === 2) {
+          return Response.json({ error: { code: 'image_unreachable' } }, { status: 400 });
+        }
+        return Response.json({ is_active: true, phone_number: '+15555550100' }, { status: 201 });
+      }
+      return new Response(null, { status: 200 });
+    });
+    const args = {
+      familyId: FAMILY,
+      parentUserId: USER,
+      chatId: CHAT,
+      channel: 'imessage' as const,
+      isGroup: false,
+      fetch: fetchMock,
+    };
+    const nextDay = new Date('2026-09-25T15:00:00.000Z');
+    expect(await shareHaleContactCardOnce(fake.db, { ...args, now: NOW })).toEqual({
+      status: 'shared',
+    });
+    const missed = await shareHaleContactCardOnce(fake.db, { ...args, now: nextDay });
+    expect(missed).toMatchObject({ status: 'not_sent', reason: 'card_refused' });
+    expect(fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toEqual(NOW);
+    expect(await shareHaleContactCardOnce(fake.db, { ...args, now: nextDay })).toEqual({
+      status: 'shared',
+    });
+    expect(fake.rows(schema.parentChannels)[0]?.linqContactCardSharedAt).toEqual(nextDay);
     const shares = fetchMock.mock.calls.filter((call) =>
       String(call[0]).includes('share_contact_card'),
     );

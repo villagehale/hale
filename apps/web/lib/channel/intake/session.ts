@@ -95,9 +95,9 @@ interface IntakeData {
    * Pre-family record of the Linq Name and Photo share. Parent channels do
    * not exist yet, so it lives here until provisioning copies a held claim
    * onto parent_channels.linq_contact_card_shared_at. Absent means unclaimed.
-   * `share_refused` stays consumed so a retry cannot push the card twice.
-   * `unreachable` is a setup that never reached the chat: it is kept so the
-   * failure is still on the session later, and it does not consume the one-shot.
+   * `share_refused` stays consumed for that Toronto day so a retry cannot
+   * push the card twice. `unreachable` never reached the chat: it is kept so
+   * the failure is still on the session, and it does not consume the day.
    */
   linqContactCardClaim?: LinqContactCardClaim | null;
   /** VIL-385. Absent means this session is not on the ladder. */
@@ -211,7 +211,8 @@ export function linqContactCardClaimHeld(claim: LinqContactCardClaim | null): bo
 
 /**
  * True when this chat should not be shared again today.
- * A claim with no chat id blocks every chat for that day (the older one-shot).
+ * A claim with no chat id blocks every chat for that day (an older share
+ * that did not record which chat).
  * Two unreachable setups today wait until tomorrow. A previous day does not block.
  */
 export function linqContactCardShareBlocked(
@@ -247,7 +248,7 @@ export interface IntakeSession {
   /** Null until the year-find turn parks the conversation on the ladder. */
   ladderNext: IntakeLadderStep | null;
   ladderLanguage: ReplyLanguage | null;
-  /** Null until a pre-family iMessage share holds the one-shot. */
+  /** Null until a pre-family iMessage share records the last attempt time. */
   linqContactCardClaim: LinqContactCardClaim | null;
   /**
    * VIL-385. Absent on a session that started before the ladder, which decodes
