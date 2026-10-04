@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import {
   WEEK_FIND_BUDGET_MS,
