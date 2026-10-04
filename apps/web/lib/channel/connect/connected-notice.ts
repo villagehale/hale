@@ -66,8 +66,8 @@ export interface ConnectedNoticePorts {
   threadMessage: typeof threadProactiveMessage;
   /**
    * Friend voice for the 1:1 receipt when ONBOARDING_FRIEND_VOICE_ENABLED is on.
- * Absent, or a compose that fails, sends nothing canned. The next callback
- * can retry. The group receipt stays the locked sentence: it names the parent.
+   * Absent, or a compose that fails, sends nothing canned. The next callback
+   * can retry. The group receipt stays the locked sentence: it names the parent.
    */
   friendVoice?: FriendVoiceComposer;
 }
@@ -472,16 +472,45 @@ async function sendGmailCardAfterCalendarReceipt(
         return ports.transport.send(input);
       },
     };
+    const language = await familyReceiptLanguage(database, args.familyId);
+    let voice: { gmail: string } | undefined;
+    if (onboardingFriendVoiceEnabled()) {
+      const spoken = await speakFriend(ports.friendVoice, {
+        step: 'email',
+        language,
+        address: 'tu',
+        introduce: false,
+        parentWords: '',
+        recentTurns: [],
+        placeLabel: null,
+        agesLabel: null,
+        ageMonths: [],
+        findLines: [],
+        listKind: 'none',
+        activity: null,
+        day: null,
+        parentName: null,
+      });
+      if (!spoken.prose.trim()) {
+        console.error(
+          { familyId: args.familyId },
+          'connector connected: gmail card not sent - friend voice unsent',
+        );
+        return;
+      }
+      voice = { gmail: spoken.prose };
+    }
     const cards = await sendYearConnectorCards(
       database,
       {
         familyId: args.familyId,
         parentUserId: args.parentUserId,
         phoneE164: phone || 'unaddressed',
-        language: await familyReceiptLanguage(database, args.familyId),
+        language,
         now: args.now,
         ridesReply: true,
         only: 'gmail',
+        ...(voice ? { voice } : {}),
       },
       { transport, threadMessage: ports.threadMessage },
     );

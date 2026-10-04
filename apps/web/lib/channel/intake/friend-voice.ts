@@ -7,8 +7,10 @@ import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import {
+  ONBOARDING_ORDER,
   type OnboardingCapture,
   type OnboardingChecklist,
+  type OnboardingItem,
   acceptOnboardingCapture,
   checklistAfter,
   confirmActivityPick,
@@ -65,7 +67,9 @@ export const FRIEND_STEPS = [
   'legacy_hello',
   'nudge_place',
   'nudge_ages',
+  'nudge_find',
   'link_retry',
+  'help',
   'stop_asking',
   'coparent',
   'connected',
@@ -167,6 +171,10 @@ const replySchema = z
     activityPick: z.number().nullable().optional().default(null),
     connectCalendar: z.boolean().nullable().optional().default(null),
     connectGmail: z.boolean().nullable().optional().default(null),
+    nameDeclined: z.boolean().optional().default(false),
+    kidsNamesDeclined: z.boolean().optional().default(false),
+    calendarLater: z.boolean().optional().default(false),
+    gmailLater: z.boolean().optional().default(false),
     stopAsking: z.boolean().optional().default(false),
   })
   .strict();
@@ -192,6 +200,10 @@ const replyJsonSchema = {
     activityPick: { type: ['number', 'null'] },
     connectCalendar: { type: ['boolean', 'null'] },
     connectGmail: { type: ['boolean', 'null'] },
+    nameDeclined: { type: 'boolean' },
+    kidsNamesDeclined: { type: 'boolean' },
+    calendarLater: { type: 'boolean' },
+    gmailLater: { type: 'boolean' },
     stopAsking: { type: 'boolean' },
   },
   required: ['reply'],
@@ -237,7 +249,7 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
     introduce: input.introduce,
     parentWords: input.parentWords,
     recentTurns: input.recentTurns,
-    order: ['postal', 'ages', 'pick', 'name', 'calendar', 'gmail'],
+    order: [...ONBOARDING_ORDER],
     known: checklist,
     missing: checklist ? onboardingMissing(checklist) : null,
     facts: {
@@ -466,27 +478,47 @@ function unsent(reason: FriendFallback): FriendVoiceResult {
   };
 }
 
+/** The step a reply is written for, once this message's facts are counted. */
+function stepAfterCapture(current: FriendStep, gap: OnboardingItem | undefined): FriendStep {
+  switch (gap) {
+    case 'postal':
+      return current === 'place_card' ? 'place_card' : 'place';
+    case 'ages':
+      return 'ages';
+    case 'pick':
+      return current === 'find_empty' ? 'find_empty' : 'find_pick';
+    case 'name':
+      return 'names';
+    case 'kids':
+      return 'kids_names';
+    case 'calendar':
+      return 'calendar';
+    case 'gmail':
+      return 'email';
+    default:
+      return current;
+  }
+}
+
 /**
- * The judge sees the step the reply was written for. Once a checklist is
- * present, a turn that finished the ladder or a stop is a receipt: no question.
+ * The judge sees the step the reply was written for. A yes that finishes the
+ * current ask is judged as the next gap, so the pull-back is not graded against
+ * the question that just got answered. A finished ladder or a stop is a receipt.
  */
-function judgeInputFor(
-  input: FriendVoiceInput,
-  capture: OnboardingCapture,
-): FriendVoiceInput {
+function judgeInputFor(input: FriendVoiceInput, capture: OnboardingCapture): FriendVoiceInput {
   if (!input.checklist && !capture.stopAsking) return input;
   const remaining = input.checklist
     ? onboardingMissing(
         checklistAfter(input.checklist, capture, {
-          pickConfirmed:
-            confirmActivityPick(capture.activityPick, input.findLines.length) != null,
+          pickConfirmed: confirmActivityPick(capture.activityPick, input.findLines.length) != null,
         }),
       )
     : [];
   if (capture.stopAsking || (input.checklist != null && remaining.length === 0)) {
     return { ...input, step: capture.stopAsking ? 'stop_asking' : 'ack' };
   }
-  return input;
+  const step = stepAfterCapture(input.step, remaining[0]);
+  return step === input.step ? input : { ...input, step };
 }
 
 /** Step and reason only. Parent words stay out of #ops. */
@@ -530,7 +562,10 @@ export async function speakFriend(
 
   const attempt = async (
     prompt: 'full' | 'short',
-  ): Promise<{ prose: string; capture: OnboardingCapture } | { fail: FriendFallback; capture: OnboardingCapture }> => {
+  ): Promise<
+    | { prose: string; capture: OnboardingCapture }
+    | { fail: FriendFallback; capture: OnboardingCapture }
+  > => {
     const empty = acceptOnboardingCapture(null);
     try {
       const composed = await withTimeout(composer.compose(input, { prompt }), timeoutMs);
@@ -538,7 +573,8 @@ export async function speakFriend(
         findLineCount: input.findLines.length,
       });
       const prose = composed.reply.trim();
-      if (prose.length === 0 || prose.length > MAX_PROSE_CHARS) return { fail: 'unusable', capture };
+      if (prose.length === 0 || prose.length > MAX_PROSE_CHARS)
+        return { fail: 'unusable', capture };
       const judged = judgeFriendReply(
         proseForJudge(prose, input, options),
         judgeInputFor(input, capture),
@@ -577,7 +613,8 @@ export async function speakFriend(
   }
 
   const second = await attempt('short');
-  const capture = 'capture' in second ? mergeCaptures(first.capture, second.capture) : first.capture;
+  const capture =
+    'capture' in second ? mergeCaptures(first.capture, second.capture) : first.capture;
   if ('prose' in second) return finish(second.prose, 'retry', capture);
   await page(second.fail);
   return { ...unsent(second.fail), capture };
@@ -611,6 +648,10 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
           activityPick: value.activityPick,
           connectCalendar: value.connectCalendar,
           connectGmail: value.connectGmail,
+          nameDeclined: value.nameDeclined,
+          kidsNamesDeclined: value.kidsNamesDeclined,
+          calendarLater: value.calendarLater,
+          gmailLater: value.gmailLater,
           stopAsking: value.stopAsking,
         },
       };

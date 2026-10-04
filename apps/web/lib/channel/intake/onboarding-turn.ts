@@ -21,6 +21,14 @@ export interface OnboardingCapture {
   activityPick: number | null;
   connectCalendar: boolean | null;
   connectGmail: boolean | null;
+  /** They do not want to give a parent name. Do not ask it again. */
+  nameDeclined: boolean;
+  /** They do not want to give the kids' names. Do not ask that again. */
+  kidsNamesDeclined: boolean;
+  /** Not now for the calendar. Do not ask it again in this onboarding. */
+  calendarLater: boolean;
+  /** Not now for email. Do not ask it again in this onboarding. */
+  gmailLater: boolean;
   stopAsking: boolean;
 }
 
@@ -32,11 +40,23 @@ export const EMPTY_ONBOARDING_CAPTURE: OnboardingCapture = {
   activityPick: null,
   connectCalendar: null,
   connectGmail: null,
+  nameDeclined: false,
+  kidsNamesDeclined: false,
+  calendarLater: false,
+  gmailLater: false,
   stopAsking: false,
 };
 
 /** The order Hale walks. Guidance for the model, and the order code uses once fields are stored. */
-export const ONBOARDING_ORDER = ['postal', 'ages', 'pick', 'name', 'calendar', 'gmail'] as const;
+export const ONBOARDING_ORDER = [
+  'postal',
+  'ages',
+  'pick',
+  'name',
+  'kids',
+  'calendar',
+  'gmail',
+] as const;
 
 export type OnboardingItem = (typeof ONBOARDING_ORDER)[number];
 
@@ -45,6 +65,7 @@ export interface OnboardingChecklist {
   ages: boolean;
   pick: boolean;
   name: boolean;
+  kids: boolean;
   calendar: boolean;
   gmail: boolean;
 }
@@ -54,9 +75,57 @@ export const EMPTY_CHECKLIST: OnboardingChecklist = {
   ages: false,
   pick: false,
   name: false,
+  kids: false,
   calendar: false,
   gmail: false,
 };
+
+/** A find still waiting on a pick, older than this, is not what the next text answers. */
+export const COLD_START_FRESH_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * True when the last thing on the thread is at least {@link COLD_START_FRESH_MS} old.
+ * A missing stamp is not stale: there is no old question to retire.
+ */
+export function coldStartIsStale(lastActivityAt: string | null | undefined, now: Date): boolean {
+  if (!lastActivityAt) return false;
+  const at = Date.parse(lastActivityAt);
+  if (Number.isNaN(at)) return false;
+  return now.getTime() - at >= COLD_START_FRESH_MS;
+}
+
+/**
+ * Only the unanswered find goes stale. Name, calendar, and email are answered
+ * whenever they arrive, including the next day.
+ */
+export function coldStartQuestionIsStale(
+  step: string | null | undefined,
+  lastActivityAt: string | null | undefined,
+  now: Date,
+): boolean {
+  return step === 'pick' && coldStartIsStale(lastActivityAt, now);
+}
+
+export function lastTranscriptAt(transcript: readonly { at: string }[]): string | null {
+  for (let i = transcript.length - 1; i >= 0; i--) {
+    const at = transcript[i]?.at;
+    if (at) return at;
+  }
+  return null;
+}
+
+/** Every child we are keeping has an age. A named child with no age is not done. */
+export function agesAreComplete(children: readonly { ageMonths: number | null }[]): boolean {
+  return children.length > 0 && children.every((child) => child.ageMonths != null);
+}
+
+/** Every child we are keeping has a first name. */
+export function kidsAreNamed(children: readonly { name: string | null }[]): boolean {
+  return (
+    children.length > 0 &&
+    children.every((child) => child.name != null && child.name.trim().length > 0)
+  );
+}
 
 const MAX_PENDING_PICK = 3;
 const MAX_AGE_MONTHS = 216;
@@ -104,12 +173,15 @@ export function acceptOnboardingCapture(
       item.ageMonths <= MAX_AGE_MONTHS
         ? item.ageMonths
         : null;
-    if (ageMonths === null) return [];
-    const agePrecision: 'years' | 'months' =
-      item.agePrecision === 'years' || item.agePrecision === 'months'
-        ? item.agePrecision
-        : 'months';
-    return [{ name: acceptName(item.name), ageMonths, agePrecision }];
+    const name = acceptName(item.name);
+    if (ageMonths === null && !name) return [];
+    const agePrecision: 'years' | 'months' | null =
+      ageMonths === null
+        ? null
+        : item.agePrecision === 'years' || item.agePrecision === 'months'
+          ? item.agePrecision
+          : 'months';
+    return [{ name, ageMonths, agePrecision }];
   });
   const pickRaw = row.activityPick;
   const pickMax = limits.findLineCount > 0 ? limits.findLineCount : MAX_PENDING_PICK;
@@ -125,6 +197,10 @@ export function acceptOnboardingCapture(
     activityPick,
     connectCalendar: acceptBool(row.connectCalendar),
     connectGmail: acceptBool(row.connectGmail),
+    nameDeclined: row.nameDeclined === true,
+    kidsNamesDeclined: row.kidsNamesDeclined === true,
+    calendarLater: row.calendarLater === true,
+    gmailLater: row.gmailLater === true,
     stopAsking: row.stopAsking === true,
   };
 }
@@ -145,11 +221,12 @@ export function checklistAfter(
     postal:
       prior.postal ||
       placeFromGivenFields({ postalCode: capture.postalCode, city: capture.city }) != null,
-    ages: prior.ages || capture.children.some((child) => child.ageMonths != null),
+    ages: prior.ages || agesAreComplete(capture.children),
     pick: prior.pick || extra.pickConfirmed === true,
-    name: prior.name || capture.parentName != null,
-    calendar: prior.calendar || capture.connectCalendar != null,
-    gmail: prior.gmail || capture.connectGmail != null,
+    name: prior.name || capture.parentName != null || capture.nameDeclined,
+    kids: prior.kids || capture.kidsNamesDeclined || kidsAreNamed(capture.children),
+    calendar: prior.calendar || capture.connectCalendar != null || capture.calendarLater,
+    gmail: prior.gmail || capture.connectGmail != null || capture.gmailLater,
   };
 }
 
@@ -166,6 +243,10 @@ export function mergeCaptures(
     activityPick: next.activityPick ?? prior.activityPick,
     connectCalendar: next.connectCalendar ?? prior.connectCalendar,
     connectGmail: next.connectGmail ?? prior.connectGmail,
+    nameDeclined: next.nameDeclined || prior.nameDeclined,
+    kidsNamesDeclined: next.kidsNamesDeclined || prior.kidsNamesDeclined,
+    calendarLater: next.calendarLater || prior.calendarLater,
+    gmailLater: next.gmailLater || prior.gmailLater,
     stopAsking: next.stopAsking || prior.stopAsking,
   };
 }
@@ -178,6 +259,60 @@ export interface StoredOnboarding {
   activityPick: number | null;
   connectCalendar: boolean | null;
   connectGmail: boolean | null;
+}
+
+/**
+ * Fold a model's children into the ones already stored.
+ * A named child updates that child. One unnamed age updates the only child,
+ * which is how "actually 5" lands. A name with no age is kept so the age
+ * question can come back for that child.
+ */
+export function mergeChildFacts(
+  prior: readonly ExtractedChild[],
+  incoming: readonly {
+    name: string | null;
+    ageMonths: number | null;
+    agePrecision: 'years' | 'months' | null;
+  }[],
+): ExtractedChild[] {
+  if (incoming.length === 0) return prior.map((child) => ({ ...child }));
+  if (prior.length === 0) {
+    return incoming.map((child) => ({
+      name: child.name,
+      ageMonths: child.ageMonths,
+      agePrecision: child.ageMonths == null ? null : (child.agePrecision ?? 'months'),
+    }));
+  }
+  const next = prior.map((child) => ({ ...child }));
+  const used = new Set<number>();
+  for (const child of incoming) {
+    let index = -1;
+    if (child.name) {
+      index = next.findIndex(
+        (row, i) => !used.has(i) && row.name?.toLowerCase() === child.name?.toLowerCase(),
+      );
+    }
+    if (index < 0 && !child.name && incoming.length === 1 && next.length === 1) index = 0;
+    if (index < 0 && !child.name && child.ageMonths != null) {
+      index = next.findIndex((row, i) => !used.has(i) && row.ageMonths == null);
+    }
+    const row = index >= 0 ? next[index] : undefined;
+    if (row) {
+      used.add(index);
+      if (child.name) row.name = child.name;
+      if (child.ageMonths != null) {
+        row.ageMonths = child.ageMonths;
+        row.agePrecision = child.agePrecision ?? row.agePrecision ?? 'months';
+      }
+    } else if (child.name || child.ageMonths != null) {
+      next.push({
+        name: child.name,
+        ageMonths: child.ageMonths,
+        agePrecision: child.ageMonths == null ? null : (child.agePrecision ?? 'months'),
+      });
+    }
+  }
+  return next;
 }
 
 /**
@@ -201,14 +336,7 @@ export function storedFromCapture(
     city: capture.city,
   });
   const place = placed ?? prior.place;
-  const children: ExtractedChild[] =
-    capture.children.length > 0
-      ? capture.children.map((child) => ({
-          name: child.name,
-          ageMonths: child.ageMonths,
-          agePrecision: child.agePrecision ?? 'months',
-        }))
-      : [...prior.children];
+  const children = mergeChildFacts(prior.children, capture.children);
   return {
     collectedChildren: children,
     postalCode: place?.postalCode ?? prior.postalCode,

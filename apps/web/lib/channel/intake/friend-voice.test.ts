@@ -280,4 +280,35 @@ describe('speakFriend', () => {
     expect(pages[0]).not.toContain('secret');
     expect(spoken.body).not.toBe('How old are the kids?');
   });
+
+  it('judges a yes as the next ask, so camp email is not an invented activity', async () => {
+    const input = blank({
+      step: 'calendar',
+      parentWords: 'yes',
+      checklist: {
+        postal: true,
+        ages: true,
+        pick: true,
+        name: true,
+        kids: true,
+        calendar: false,
+        gmail: false,
+      },
+    });
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Want me to watch school and camp email for the dates?',
+            capture: { connectCalendar: true },
+          };
+        },
+      },
+      input,
+      { page: async () => undefined },
+    );
+    expect(spoken.source).toBe('composed');
+    expect(spoken.capture.connectCalendar).toBe(true);
+    expect(spoken.body).toMatch(/camp email/i);
+  });
 });

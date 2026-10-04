@@ -146,6 +146,14 @@ export interface FirstTouchGiven {
   activityPick: number | null;
   connectCalendar: boolean | null;
   connectGmail: boolean | null;
+  /** True once they declined the parent-name ask. Absent on older sessions. */
+  nameDeclined?: boolean;
+  /** True once they declined the kids'-names ask. */
+  kidsNamesDeclined?: boolean;
+  /** True once they said later to the calendar. */
+  calendarLater?: boolean;
+  /** True once they said later to email. */
+  gmailLater?: boolean;
 }
 
 export interface ColdStartProgress {
@@ -162,6 +170,10 @@ export interface ColdStartProgress {
   calendarAsked: boolean;
   emailAsked: boolean;
   schoolMentioned: boolean;
+  /** The calendar link has already gone out. A later reply does not send it again. */
+  calendarOffered?: boolean;
+  /** The email link has already gone out. */
+  emailOffered?: boolean;
 }
 
 /** How many times this ladder step was asked again after a non-answer. */
@@ -355,6 +367,10 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     activityPick?: unknown;
     connectCalendar?: unknown;
     connectGmail?: unknown;
+    nameDeclined?: unknown;
+    kidsNamesDeclined?: unknown;
+    calendarLater?: unknown;
+    gmailLater?: unknown;
   };
   const parentName =
     typeof row.parentName === 'string' && row.parentName.trim() ? row.parentName : null;
@@ -368,9 +384,32 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     row.connectCalendar === true || row.connectCalendar === false ? row.connectCalendar : null;
   const connectGmail =
     row.connectGmail === true || row.connectGmail === false ? row.connectGmail : null;
-  if (!parentName && activityPick == null && connectCalendar == null && connectGmail == null)
+  const nameDeclined = row.nameDeclined === true;
+  const kidsNamesDeclined = row.kidsNamesDeclined === true;
+  const calendarLater = row.calendarLater === true;
+  const gmailLater = row.gmailLater === true;
+  if (
+    !parentName &&
+    activityPick == null &&
+    connectCalendar == null &&
+    connectGmail == null &&
+    !nameDeclined &&
+    !kidsNamesDeclined &&
+    !calendarLater &&
+    !gmailLater
+  ) {
     return null;
-  return { parentName, activityPick, connectCalendar, connectGmail };
+  }
+  return {
+    parentName,
+    activityPick,
+    connectCalendar,
+    connectGmail,
+    ...(nameDeclined ? { nameDeclined } : {}),
+    ...(kidsNamesDeclined ? { kidsNamesDeclined } : {}),
+    ...(calendarLater ? { calendarLater } : {}),
+    ...(gmailLater ? { gmailLater } : {}),
+  };
 }
 
 function decodeCount(value: unknown): number {
@@ -400,6 +439,8 @@ function decodeColdStart(value: unknown): ColdStartProgress | null {
     calendarAsked?: unknown;
     emailAsked?: unknown;
     schoolMentioned?: unknown;
+    calendarOffered?: unknown;
+    emailOffered?: unknown;
   };
   if (
     row.step !== 'pick' &&
@@ -422,6 +463,8 @@ function decodeColdStart(value: unknown): ColdStartProgress | null {
     calendarAsked: row.calendarAsked === true,
     emailAsked: row.emailAsked === true,
     schoolMentioned: row.schoolMentioned === true,
+    ...(row.calendarOffered === true ? { calendarOffered: true } : {}),
+    ...(row.emailOffered === true ? { emailOffered: true } : {}),
   };
 }
 

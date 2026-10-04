@@ -63,8 +63,7 @@ export interface SittingReminderDeps {
   /** The outbound text leg — REQUIRED (rule #11). The real adapter is Linq. */
   transport: ChannelTransport;
   /**
-   * Friend-voice nudge for a parent stuck on postal code or ages.
-   * Absent is named `voice_unavailable` and a one-question fallback still goes out.
+   * Friend-voice nudge. Absent, or a compose that fails, sends nothing canned.
    */
   friendVoice?: FriendVoiceComposer;
 }
@@ -131,6 +130,19 @@ export function firstTouchNudgeEligible(row: SittingSessionRow, now: Date): bool
   return isNextTorontoMorning(row.createdAt, now);
 }
 
+/**
+ * One next-morning nudge after the find, while the parent has not picked.
+ * Same clock as the other sitting nudges. One claim, so it cannot repeat.
+ */
+export function findNudgeEligible(row: SittingSessionRow, now: Date): boolean {
+  if (row.state !== 'awaiting_cold_start') return false;
+  if (row.closedAt !== null) return false;
+  if (row.sittingReminderSentAt !== null) return false;
+  if (row.familyId === null) return false;
+  if (!isSittingReminderSlot(now)) return false;
+  return isNextTorontoMorning(row.createdAt, now);
+}
+
 export function defaultSittingReminderDeps(): SittingReminderDeps {
   return { transport: createOutboundTransport() };
 }
@@ -146,7 +158,9 @@ export async function runSittingReminderCron(
   const friend = onboardingFriendVoiceEnabled();
   const candidates = await loadSittingCandidates(
     database,
-    friend ? ['awaiting_details', 'awaiting_place', 'awaiting_ages'] : ['awaiting_details'],
+    friend
+      ? ['awaiting_details', 'awaiting_place', 'awaiting_ages', 'awaiting_cold_start']
+      : ['awaiting_details'],
   );
   for (const row of candidates.slice(0, MAX_SITTING_REMINDERS_PER_RUN)) {
     if (FOUNDER_PAIR_SESSION_IDS.has(row.id)) {
@@ -154,7 +168,7 @@ export async function runSittingReminderCron(
       result.skipped += 1;
       continue;
     }
-    const nudge = friend && firstTouchNudgeEligible(row, now);
+    const nudge = friend && (firstTouchNudgeEligible(row, now) || findNudgeEligible(row, now));
     if (!nudge && !sittingSessionEligible(row, now)) {
       result.skipped += 1;
       continue;
@@ -171,10 +185,14 @@ export async function runSittingReminderCron(
         result.skipped += 1;
         continue;
       }
-      const body = nudge
+      const body = friend
         ? await firstTouchNudgeBody(database, phoneE164, row.state, deps.friendVoice)
         : SITTING_SESSION_REMINDER;
-      if (nudge && body.trim().length === 0) {
+      if (body == null) {
+        result.skipped += 1;
+        continue;
+      }
+      if (friend && body.trim().length === 0) {
         await releaseSittingReminder(database, row.id);
         result.failed += 1;
         console.error({ reason: 'voice_unsent' }, 'sitting reminder: reply not sent');
@@ -296,11 +314,27 @@ async function firstTouchNudgeBody(
   phoneE164: string,
   state: string,
   composer: FriendVoiceComposer | undefined,
-): Promise<string> {
+): Promise<string | null> {
   const session = await loadOpenSession(database, phoneE164);
   const language = session?.ladderLanguage ?? session?.firstTouch?.language ?? 'en';
+  const cold = session?.firstTouch?.coldStart ?? null;
+  // Null keeps the claim. Empty releases it so a missed model reply can retry.
+  if (state === 'awaiting_cold_start' && (!cold || cold.step !== 'pick')) return null;
+  const findLines =
+    state === 'awaiting_cold_start' && cold
+      ? cold.findBody
+          .split('\n')
+          .map((line) => line.trim())
+          .filter((line) => /^\d+\.\s+/.test(line))
+          .map((line) => line.replace(/^\d+\.\s+/, ''))
+      : [];
   const spoken = await speakFriend(composer, {
-    step: state === 'awaiting_ages' ? 'nudge_ages' : 'nudge_place',
+    step:
+      state === 'awaiting_ages'
+        ? 'nudge_ages'
+        : state === 'awaiting_cold_start'
+          ? 'nudge_find'
+          : 'nudge_place',
     language,
     address: 'tu',
     introduce: false,
@@ -309,11 +343,11 @@ async function firstTouchNudgeBody(
     placeLabel: session?.firstTouch?.place?.city || session?.firstTouch?.place?.areaCoarse || null,
     agesLabel: null,
     ageMonths: [],
-    findLines: [],
-    listKind: 'none',
-    activity: null,
-    day: null,
-    parentName: null,
+    findLines,
+    listKind: findLines.length > 0 ? 'year' : 'none',
+    activity: cold?.activity ?? null,
+    day: cold?.day ?? null,
+    parentName: session?.firstTouch?.given?.parentName ?? null,
   });
   return spoken.body;
 }

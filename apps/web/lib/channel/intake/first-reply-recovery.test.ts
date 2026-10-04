@@ -2,7 +2,13 @@ import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { HALE_GREETING_EN, SITTING_SESSION_REMINDER, greeting } from './copy';
+import { KNOWN_VENUE_HELLO } from './cold-start/copy';
+import {
+  FIRST_TOUCH_SMS_BY_LANGUAGE,
+  HALE_GREETING_EN,
+  SITTING_SESSION_REMINDER,
+  greeting,
+} from './copy';
 import { type FakeDb, makeFakeDb } from './fakes';
 import {
   type FirstReplyRecoveryDeps,
@@ -130,11 +136,9 @@ describe('runFirstReplyRecoveryCron', () => {
 
     const first = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
     expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0 });
-    expect(transport.bodies()).toEqual([greeting(null, 'en')]);
-    expect(transport.bodies()[0]).toBe(HALE_GREETING_EN);
-    expect(transport.bodies()[0]).toBe(
-      'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.',
-    );
+    expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
+    expect(transport.bodies()[0]).not.toBe(HALE_GREETING_EN);
+    expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
     expect(transport.bodies()).not.toContain(SITTING_SESSION_REMINDER);
     expect(transport.sent[0]?.to).toBe(PHONE);
   });
@@ -190,17 +194,22 @@ describe('runFirstReplyRecoveryCron', () => {
     const second = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
 
     expect(second).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });
-    expect(transport.bodies()).toEqual([greeting(null, 'en')]);
+    expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
   });
 
-  it('uses the venue greeting when the session already has a venue', async () => {
+  it('uses the ladder venue hello when the session already has a venue', async () => {
     const fake = makeFakeDb();
     const transport = new FakeTransport();
     seedSession(fake, { sourceCode: 'LIBRARY' });
 
     await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
-    expect(transport.bodies()).toEqual([greeting('library', 'en')]);
+    expect(transport.bodies()).toEqual([KNOWN_VENUE_HELLO.en]);
+    expect(transport.bodies()[0]).not.toBe(greeting('library', 'en'));
     expect(transport.bodies()).not.toContain(SITTING_SESSION_REMINDER);
+    expect(fake.rows(schema.smsIntakeSessions)[0]).toMatchObject({
+      familyId: null,
+      state: 'awaiting_ages',
+    });
   });
 
   it('does not mint a family — the session stays an intake', async () => {
@@ -213,7 +222,7 @@ describe('runFirstReplyRecoveryCron', () => {
     expect(fake.rows(schema.families)).toEqual([]);
     expect(fake.rows(schema.smsIntakeSessions)[0]).toMatchObject({
       familyId: null,
-      state: 'awaiting_details',
+      state: 'awaiting_place',
     });
   });
 
