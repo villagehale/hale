@@ -1,8 +1,10 @@
 import { type Database, schema } from '@hale/db';
+import { deriveStage } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import { consumeChannelSigninTokenById } from '~/lib/auth/channel-signin';
+import { type AhaSnapshot, failedAha, loadConnectedAha } from '~/lib/channel/connect/aha-read';
 import {
   connectedNoticeLabel,
   defaultConnectedNoticePorts,
@@ -14,6 +16,7 @@ import {
   asTextConnectProvider,
 } from '~/lib/channel/connect/text-connect';
 import { holdGoogleGivenName } from '~/lib/channel/identity/parent-call-name';
+import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
 import { sendCoparentGroupCalendarReceipt } from '~/lib/channel/linq/group-coparent';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { googleAccountBlindIndex } from '~/lib/crypto/blind-index';
@@ -28,7 +31,10 @@ import {
   exchangeCodeForTokens,
 } from '~/lib/integrations/google-oauth';
 import { readGoogleAccountSub, readGoogleGivenName } from '~/lib/integrations/google-profile';
-import { ensurePushWatchAfterConnect } from '~/lib/integrations/google-push-runtime';
+import {
+  ensurePushWatchAfterConnect,
+  googleJsonClient,
+} from '~/lib/integrations/google-push-runtime';
 import { otherParentHoldsGoogleAccount, saveConnection } from '~/lib/integrations/store';
 
 // Node runtime: node:crypto (state verify), fetch (token exchange), Drizzle.
@@ -172,11 +178,13 @@ export async function GET(req: NextRequest) {
   }
 
   let connectId: string;
+  let grantedAccessToken = '';
   try {
     const tokens = await exchangeCodeForTokens({
       code,
       redirectUri: connectorRedirectUri(),
     });
+    grantedAccessToken = tokens.accessToken;
     // Granular consent lets the user deselect the scope, and a provider bug could
     // broaden it: the grant must contain EXACTLY what this connector needs and
     // nothing outside the readonly universe — otherwise store nothing (a stored
@@ -337,6 +345,13 @@ export async function GET(req: NextRequest) {
     // and `after()` would let the process finish before the one text the parent is
     // standing there waiting for. The receipt never changes what the page says — the
     // connection is already stored — so its outcome is a log line (rule #11).
+    const now = new Date();
+    const aha = await ahaForTextConnect(database, {
+      familyId: bound.familyId,
+      provider: textProvider,
+      accessToken: grantedAccessToken,
+      now,
+    });
     const receipt = await sendConnectorConnectedText(
       database,
       {
@@ -344,7 +359,8 @@ export async function GET(req: NextRequest) {
         parentUserId: bound.userId,
         provider: textProvider,
         connectId,
-        now: new Date(),
+        now,
+        ...(aha ? { aha } : {}),
       },
       defaultConnectedNoticePorts(),
     );
@@ -374,6 +390,80 @@ export async function GET(req: NextRequest) {
   }
 
   return back(bound.provider);
+}
+
+/**
+ * The aha read for a texted connect. Flag off skips Google entirely: the locked
+ * receipt does not use the facts. A throw becomes a failed snapshot so the
+ * done page still loads and the model is not handed a gap it could fill in.
+ */
+async function ahaForTextConnect(
+  database: Database,
+  input: {
+    familyId: string;
+    provider: 'gcal' | 'gmail';
+    accessToken: string;
+    now: Date;
+  },
+): Promise<AhaSnapshot | undefined> {
+  if (!onboardingFriendVoiceEnabled()) return undefined;
+  let hasTeen = true;
+  try {
+    hasTeen = await familyHasTeen(database, input.familyId, input.now);
+  } catch (err) {
+    console.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'connector connected: child ages unread, email aha withheld',
+    );
+  }
+  try {
+    if (!input.accessToken) {
+      console.info(
+        { familyId: input.familyId, provider: input.provider },
+        'connector connected: aha not read, no access token',
+      );
+      const bare = failedAha(input.provider);
+      return hasTeen && input.provider === 'gmail' ? { ...bare, email: [] } : bare;
+    }
+    const snapshot = await loadConnectedAha({
+      provider: input.provider,
+      accessToken: input.accessToken,
+      now: input.now,
+      hasTeen,
+      googleFetch: (url, accessToken) =>
+        googleJsonClient.request({ method: 'GET', url, accessToken }),
+    });
+    console.info(
+      {
+        familyId: input.familyId,
+        provider: input.provider,
+        read: snapshot.read,
+        calendar: snapshot.calendar.length,
+        email: snapshot.email.length,
+      },
+      'connector connected: aha read',
+    );
+    return snapshot;
+  } catch (err) {
+    console.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'connector connected: aha read threw',
+    );
+    return failedAha(input.provider);
+  }
+}
+
+async function familyHasTeen(database: Database, familyId: string, now: Date): Promise<boolean> {
+  const rows = await database
+    .select({
+      familyId: schema.children.familyId,
+      dateOfBirth: schema.children.dateOfBirth,
+    })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  return rows.some(
+    (row) => row.familyId === familyId && deriveStage(row.dateOfBirth, now) === 'teenager',
+  );
 }
 
 /**

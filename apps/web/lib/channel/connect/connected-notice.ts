@@ -23,6 +23,7 @@ import {
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { type AhaSnapshot, failedAha } from './aha-read';
 import { type TextConnectProvider, connectorConnectedText } from './text-connect';
 
 /**
@@ -133,26 +134,33 @@ export async function connectedReceiptBody(
   language: ReplyLanguage,
   provider: TextConnectProvider,
   composer: FriendVoiceComposer | undefined,
+  aha?: AhaSnapshot | null,
+  options?: { page?: (text: string) => Promise<unknown> },
 ): Promise<string> {
   if (!onboardingFriendVoiceEnabled()) return connectorConnectedText(language, provider);
-  const spoken = await speakFriend(composer, {
-    step: 'connected',
-    language,
-    address: 'tu',
-    introduce: false,
-    parentWords: '',
-    recentTurns: [],
-    placeLabel: null,
-    agesLabel: null,
-    ageMonths: [],
-    findLines: [],
-    listKind: 'none',
-    activity: null,
-    day: null,
-    parentName: null,
-    connector: provider,
-    granted: null,
-  });
+  const spoken = await speakFriend(
+    composer,
+    {
+      step: 'connected',
+      language,
+      address: 'tu',
+      introduce: false,
+      parentWords: '',
+      recentTurns: [],
+      placeLabel: null,
+      agesLabel: null,
+      ageMonths: [],
+      findLines: [],
+      listKind: 'none',
+      activity: null,
+      day: null,
+      parentName: null,
+      connector: provider,
+      granted: null,
+      synced: aha ?? failedAha(provider),
+    },
+    options?.page ? { page: options.page } : {},
+  );
   return spoken.body;
 }
 
@@ -163,6 +171,11 @@ export interface ConnectedNoticeArgs {
   /** This connect, as `saveConnection` recorded it — the audit row's id. */
   connectId: string;
   now: Date;
+  /**
+   * Real items from the source that just connected. Friend voice uses them
+   * for the one useful line. Absent is a failed read: the model must not invent.
+   */
+  aha?: AhaSnapshot | null;
 }
 
 export async function sendConnectorConnectedText(
@@ -271,10 +284,17 @@ async function sendReceipt(
     .returning({ id: schema.channelMessages.id });
   if (!claimed) return { status: 'not_sent', reason: 'already_sent' };
 
+  if (onboardingFriendVoiceEnabled() && args.aha == null) {
+    console.error(
+      { familyId, provider },
+      'connector connected: aha not supplied - the receipt will not name an event',
+    );
+  }
   const body = await connectedReceiptBody(
     await familyReceiptLanguage(database, familyId),
     provider,
     ports.friendVoice,
+    args.aha,
   );
   if (body.trim().length === 0) {
     await database.delete(schema.channelMessages).where(eq(schema.channelMessages.id, claimed.id));

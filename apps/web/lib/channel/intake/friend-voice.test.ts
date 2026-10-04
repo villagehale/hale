@@ -62,6 +62,7 @@ describe('onboarding friend fixtures', () => {
     expect(skill.instructions).toContain('Do not invent an activity');
     expect(skill.instructions).toContain('**coparent**');
     expect(skill.instructions).toContain('**connected**');
+    expect(skill.instructions).toContain('ahaMention');
     expect(skill.instructions).toContain('**ack**');
     expect(skill.instructions).toContain('No STOP');
   });
@@ -211,6 +212,40 @@ describe('friend-voice judge', () => {
       reason: 'invented',
     });
     expect(judgeFriendReply('Ton Gmail est connecté.', gmail)).toEqual({ ok: true });
+  });
+
+  it('lets a connected reply name one synced title, and nothing the snapshot does not have', () => {
+    const synced = {
+      provider: 'gcal' as const,
+      read: 'ok' as const,
+      calendar: [
+        {
+          title: 'Swim at the rec centre',
+          start: '2026-09-12T13:00:00.000Z',
+          end: '2026-09-12T14:00:00.000Z',
+          allDay: false,
+          location: null,
+          declined: false,
+        },
+      ],
+      email: [],
+      overlaps: [],
+    };
+    const input = blank({ step: 'connected', connector: 'gcal', parentWords: '', synced });
+    expect(
+      judgeFriendReply('Swim at the rec centre is on your calendar.', input, {
+        ahaMention: 'Swim at the rec centre',
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      judgeFriendReply('Swim at the rec centre is on your calendar.', input, { ahaMention: null }),
+    ).toEqual({ ok: false, reason: 'invented' });
+    expect(judgeFriendReply('Your calendar is connected.', input, { ahaMention: null })).toEqual({
+      ok: true,
+    });
+    expect(
+      judgeFriendReply('Hockey is on Thursday at 4:00.', input, { ahaMention: 'Hockey' }),
+    ).toEqual({ ok: false, reason: 'invented' });
   });
 });
 
