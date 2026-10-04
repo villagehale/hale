@@ -23,6 +23,7 @@ import {
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import { decryptString } from '~/lib/crypto/string-cipher';
+import { reportFirstHelloFailure } from '~/lib/monitoring/failure-page';
 import { FOUNDER_PAIR_SESSION_IDS } from './sitting-reminder';
 
 /**
@@ -143,6 +144,11 @@ export async function runFirstReplyRecoveryCron(
       await recordFirstReplyOutbound(database, phoneE164, wireBody, sent.providerMessageId, now);
       result.sent += 1;
     } catch (err) {
+      await reportFirstHelloFailure(database, {
+        sessionId: row.id,
+        familyId: row.familyId,
+        err,
+      });
       const refusal = readSendRefusal(err);
       if (refusalStopsRetry(err)) {
         result.skipped += 1;
