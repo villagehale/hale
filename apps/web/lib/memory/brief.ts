@@ -2,7 +2,9 @@ import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { readFamilyTimezone } from '../dashboard/trail-query';
+import { promptKind, readDisposition, readObservedAt } from './classify-write';
 import { CONFIDENCE_FLOOR } from './facts';
+import { isExpiredTemporary } from './kinds';
 import { isReceiptKey, valueText } from './lexicon';
 import { digestWindows } from './period';
 
@@ -57,6 +59,9 @@ interface BriefFact {
   confidence: number;
   validFrom: Date;
   childId: string | null;
+  memoryKind?: string | null;
+  memorySource?: string | null;
+  expiresAt?: Date | string | null;
 }
 
 interface BriefWorkstream {
@@ -94,8 +99,36 @@ function dayLabel(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+function displayValue(value: unknown): string {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const bag = value as { summary?: unknown; text?: unknown };
+    if (typeof bag.summary === 'string') return bag.summary;
+    if (typeof bag.text === 'string') return bag.text;
+  }
+  return valueText(value);
+}
+
+/**
+ * Kind, disposition, source, and confidence travel with the value so the model
+ * can weigh an identity fact differently from a question or a declined event.
+ */
 function factLine(fact: BriefFact): string {
-  return `${fact.factType}:${fact.factKey}=${clip(valueText(fact.factValue), VALUE_CHARS)} (valid_from=${dayLabel(fact.validFrom)})`;
+  const kind = promptKind(fact.memoryKind, fact.factValue);
+  const disposition = readDisposition(fact.factValue);
+  const source = fact.memorySource ?? 'legacy';
+  const observed = readObservedAt(fact.factValue);
+  const observedLabel = observed ? ` observed=${observed.slice(0, 10)}` : '';
+  return `${fact.factType}:${fact.factKey}=${clip(displayValue(fact.factValue), VALUE_CHARS)} (kind=${kind} disposition=${disposition} source=${source} confidence=${fact.confidence}${observedLabel} valid_from=${dayLabel(fact.validFrom)})`;
+}
+
+function briefBucket(fact: BriefFact): 'passing' | 'obligation' | 'identity' {
+  const disposition = readDisposition(fact.factValue);
+  if (disposition === 'declined') return 'obligation';
+  if (disposition === 'asked' || promptKind(fact.memoryKind, fact.factValue) === 'curiosity') {
+    return 'passing';
+  }
+  if (promptKind(fact.memoryKind, fact.factValue) === 'obligation') return 'obligation';
+  return 'identity';
 }
 
 function digestFreshness(
@@ -115,10 +148,21 @@ export function renderMemoryBrief(input: RenderMemoryBriefInput): MemoryBrief {
     if (fact.confidence < CONFIDENCE_FLOOR) return false;
     if (fact.childId !== null && input.teenChildIds.has(fact.childId)) return false;
     if (isReceiptKey(fact.factKey) || fact.factKey.includes(':')) return false;
+    // Decay is a read-time filter. An expired obligation stays stored and leaves
+    // the prompt, so a finished one-off does not keep steering.
+    if (isExpiredTemporary({ memoryKind: fact.memoryKind, expiresAt: fact.expiresAt }, input.now)) {
+      return false;
+    }
     return true;
   });
 
-  const autonomy = facts
+  const passing = facts.filter((fact) => briefBucket(fact) === 'passing').slice(0, FACT_LINE_LIMIT);
+  const obligations = facts
+    .filter((fact) => briefBucket(fact) === 'obligation')
+    .slice(0, FACT_LINE_LIMIT);
+  const identity = facts.filter((fact) => briefBucket(fact) === 'identity');
+
+  const autonomy = identity
     .filter((fact) => {
       if (fact.factType === 'voice') return true;
       const key = fact.factKey.toLowerCase();
@@ -127,17 +171,17 @@ export function renderMemoryBrief(input: RenderMemoryBriefInput): MemoryBrief {
     })
     .slice(0, FACT_LINE_LIMIT);
   const autonomyIds = new Set(autonomy.map((fact) => `${fact.factType}:${fact.factKey}`));
-  const preferences = facts
+  const preferences = identity
     .filter((fact) => fact.factType === 'preference' || fact.factType === 'routine')
     .filter((fact) => !autonomyIds.has(`${fact.factType}:${fact.factKey}`))
     .slice(0, FACT_LINE_LIMIT);
   const preferenceIds = new Set(preferences.map((fact) => `${fact.factType}:${fact.factKey}`));
-  const life = facts
+  const life = identity
     .filter((fact) => fact.factType === 'logistic' || fact.factType === 'relationship')
     .filter((fact) => !autonomyIds.has(`${fact.factType}:${fact.factKey}`))
     .filter((fact) => !preferenceIds.has(`${fact.factType}:${fact.factKey}`))
     .slice(0, FACT_LINE_LIMIT);
-  const medicalOnFile = facts.filter((fact) => fact.factType === 'medical').length;
+  const medicalOnFile = identity.filter((fact) => fact.factType === 'medical').length;
 
   const dayFresh = digestFreshness(input.dayDigest, input.expectedDay, DAY_FRESH_MS, input.now);
   const weekFresh = digestFreshness(input.weekDigest, input.expectedWeek, WEEK_FRESH_MS, input.now);
@@ -152,6 +196,8 @@ export function renderMemoryBrief(input: RenderMemoryBriefInput): MemoryBrief {
   if (autonomy.length > 0) lines.push(`autonomy: ${autonomy.map(factLine).join('; ')}`);
   if (preferences.length > 0) lines.push(`preferences: ${preferences.map(factLine).join('; ')}`);
   if (life.length > 0) lines.push(`life: ${life.map(factLine).join('; ')}`);
+  if (obligations.length > 0) lines.push(`obligations: ${obligations.map(factLine).join('; ')}`);
+  if (passing.length > 0) lines.push(`passing: ${passing.map(factLine).join('; ')}`);
   if (input.workstreams.length > 0) {
     const shown = input.workstreams.slice(0, WORKSTREAM_LIMIT);
     lines.push(
@@ -216,6 +262,9 @@ export async function assembleMemoryBrief(
           confidence: schema.familyMemoryFacts.confidence,
           validFrom: schema.familyMemoryFacts.validFrom,
           childId: schema.familyMemoryFacts.childId,
+          memoryKind: schema.familyMemoryFacts.memoryKind,
+          memorySource: schema.familyMemoryFacts.memorySource,
+          expiresAt: schema.familyMemoryFacts.expiresAt,
         })
         .from(schema.familyMemoryFacts)
         .where(

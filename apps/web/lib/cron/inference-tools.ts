@@ -3,10 +3,15 @@ import { type Database, schema } from '@hale/db';
 import { type FamilyStage, deriveStage } from '@hale/types';
 import { and, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
+import {
+  commitClassifiedMemory,
+  modelClassificationShape,
+  promptKind,
+  readDisposition,
+} from '~/lib/memory/classify-write';
 import { distillFactNeedsEvidence, guardChatDistilledFact } from '~/lib/memory/distill-guard';
 import type { DistillGuardDecision } from '~/lib/memory/distill-guard';
-import { CONFIDENCE_FLOOR, resolveValidFrom, writeFact } from '~/lib/memory/facts';
-import { memoryTypingForWrite } from '~/lib/memory/store';
+import { CONFIDENCE_FLOOR } from '~/lib/memory/facts';
 
 /**
  * The memory-inferencer agent's tools — family-scoped (rule #1) and run through
@@ -64,6 +69,11 @@ interface MemorySnapshot {
     factKey: string;
     factValue: unknown;
     confidence: number;
+    /** Model vocabulary, so a later pass can weigh the fact. Absent on older fixtures. */
+    kind?: string;
+    disposition?: string;
+    source?: string;
+    expiresAt?: string | null;
   }[];
 }
 
@@ -110,6 +120,10 @@ function redactMemorySnapshotForTeens(
             factKey: TEEN_MEMORY_PLACEHOLDER,
             factValue: TEEN_MEMORY_PLACEHOLDER,
             confidence: f.confidence,
+            ...(f.kind ? { kind: f.kind } : {}),
+            ...(f.disposition ? { disposition: f.disposition } : {}),
+            ...(f.source ? { source: f.source } : {}),
+            ...(f.expiresAt ? { expiresAt: f.expiresAt } : {}),
           }
         : f,
     ),
@@ -120,7 +134,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
   const readRecentMemory = defineTool({
     name: 'read_recent_memory',
     description:
-      "Read THIS family's recent activity (events + episodes in the last week) and its currently-valid memory facts — the snapshot to diff against when inferring new facts.",
+      "Read THIS family's recent activity (events + episodes in the last week) and its currently-valid memory facts — the snapshot to diff against when inferring new facts. Each fact includes kind, disposition, source, and expiry so a declined or passing fact is not saved again as identity.",
     inputSchema: z.object({}),
     monetary: false,
     touchesChildContent: false,
@@ -166,6 +180,9 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
           factKey: schema.familyMemoryFacts.factKey,
           factValue: schema.familyMemoryFacts.factValue,
           confidence: schema.familyMemoryFacts.confidence,
+          memoryKind: schema.familyMemoryFacts.memoryKind,
+          memorySource: schema.familyMemoryFacts.memorySource,
+          expiresAt: schema.familyMemoryFacts.expiresAt,
         })
         .from(schema.familyMemoryFacts)
         .where(
@@ -188,7 +205,17 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
           summary: e.summary,
           occurredAt: e.occurredAt.toISOString(),
         })),
-        currentFacts,
+        currentFacts: currentFacts.map((fact) => ({
+          childId: fact.childId,
+          factType: fact.factType,
+          factKey: fact.factKey,
+          factValue: fact.factValue,
+          confidence: fact.confidence,
+          kind: promptKind(fact.memoryKind, fact.factValue),
+          disposition: readDisposition(fact.factValue),
+          source: fact.memorySource,
+          expiresAt: fact.expiresAt ? fact.expiresAt.toISOString() : null,
+        })),
       };
 
       return redactMemorySnapshotForTeens(snapshot, stageByChild);
@@ -198,13 +225,14 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
   const saveMemory = defineTool({
     name: 'save_memory',
     description:
-      "Persist ONE high-precision fact inferred about THIS family, with a confidence in [0,1]. Facts below 0.7 confidence are REFUSED — do not call this for a hunch. Upserts on (factType, factKey): a new value supersedes the old one. Pass `observedAt` (ISO-8601) with the timestamp of the event or episode this came from — WHEN it became true, not when you read it. Omit it if the source carries no time; never guess. Save only what the parent said or confirmed. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not write enrolled, enrollment, signed up, booked, or registered unless a booking or family event already records that activity.",
+      "Persist ONE fact inferred about THIS family, with a confidence in [0,1]. Facts below 0.7 confidence are REFUSED. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies the same fact as enduring. Upserts on (factType, factKey). Pass correctsKey when this replaces a different key. Pass observedAt (ISO-8601) for WHEN it became true, not when you read it. Omit it if the source carries no time; never guess. Save only what the parent said or confirmed. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not write enrolled, enrollment, signed up, booked, or registered unless a booking or family event already records that activity.",
     inputSchema: z.object({
       factType: memoryFactType,
       factKey: z.string().min(1),
       factValue: z.unknown(),
       confidence: z.number().min(0).max(1),
       observedAt: z.string().optional(),
+      ...modelClassificationShape,
     }),
     monetary: false,
     touchesChildContent: false,
@@ -227,15 +255,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
         return { saved: false as const, reason: decision.reason };
       }
 
-      const typing = await memoryTypingForWrite(database, {
-        familyId: ctx.familyId,
-        childId: null,
-        factType: input.factType,
-        factKey: input.factKey,
-        source: 'inferred',
-        now,
-      });
-      const { factId } = await writeFact(database, {
+      const { factId } = await commitClassifiedMemory(database, {
         familyId: ctx.familyId,
         childId: null,
         factType: input.factType,
@@ -243,8 +263,14 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
         factValue: input.factValue,
         confidence: input.confidence,
         inferredBy: 'memory_inferencer',
-        validFrom: resolveValidFrom(input.observedAt, now),
-        ...typing,
+        source: 'inferred',
+        now,
+        omittedClass: 'curiosity',
+        memoryClass: input.memoryClass,
+        disposition: input.disposition,
+        observedAt: input.observedAt,
+        expiresAt: input.expiresAt,
+        correctsKey: input.correctsKey,
       });
       return { saved: true as const, factId };
     },
@@ -471,13 +497,15 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
   const saveChildFact = defineTool({
     name: 'save_child_fact',
     description:
-      "Persist ONE durable, categorized fact distilled from what the PARENT said or confirmed about a specific child (or family-wide with childId omitted), confidence in [0,1]. Categories: health, development, routines, preferences, concerns. Facts below 0.7 confidence are REFUSED. NEVER pass raw teen content — only a category/summary. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not put enrolled, enrollment, signed up, booked, or registered in the summary unless a booking or family event already records that activity.",
+      "Persist ONE categorized fact distilled from what the PARENT said or confirmed about a specific child (or family-wide with childId omitted), confidence in [0,1]. Categories: health, development, routines, preferences, concerns. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies it as enduring. Facts below 0.7 confidence are REFUSED. NEVER pass raw teen content — only a category/summary. Pass correctsKey when this replaces a different key. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not put enrolled, enrollment, signed up, booked, or registered in the summary unless a booking or family event already records that activity.",
     inputSchema: z.object({
       childId: z.string().uuid().nullish(),
       category: distillCategory,
       factKey: z.string().min(1),
       summary: z.string().min(1),
       confidence: z.number().min(0).max(1),
+      observedAt: z.string().optional(),
+      ...modelClassificationShape,
     }),
     monetary: false,
     // VIL-269: this input NAMES a child, so the guarded invoker's teen check resolves
@@ -510,15 +538,7 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
 
       const childId = input.childId ?? null;
       const factType = CATEGORY_TO_FACT_TYPE[input.category];
-      const typing = await memoryTypingForWrite(database, {
-        familyId: ctx.familyId,
-        childId,
-        factType,
-        factKey: input.factKey,
-        source: 'inferred',
-        now,
-      });
-      const { factId } = await writeFact(database, {
+      const { factId } = await commitClassifiedMemory(database, {
         familyId: ctx.familyId,
         childId,
         factType,
@@ -526,8 +546,14 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
         factValue: { category: input.category, summary },
         confidence: input.confidence,
         inferredBy: 'chat_distiller',
-        validFrom: now,
-        ...typing,
+        source: 'inferred',
+        now,
+        omittedClass: 'curiosity',
+        memoryClass: input.memoryClass,
+        disposition: input.disposition,
+        observedAt: input.observedAt,
+        expiresAt: input.expiresAt,
+        correctsKey: input.correctsKey,
       });
       return { saved: true as const, factId };
     },

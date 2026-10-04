@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { promptKind, readDisposition } from './classify-write';
 import { type MatchChannel, expandTokens, scoreFact, tokenize } from './lexicon';
 
 /**
@@ -26,6 +27,10 @@ export interface MemorySearchHit {
   validUntil: string | null;
   score: number;
   matchedBy: MatchChannel;
+  /** How the model should weigh this row. */
+  kind: 'enduring' | 'obligation' | 'curiosity';
+  disposition: 'confirmed' | 'declined' | 'asked';
+  source: string;
 }
 
 export interface SearchFamilyMemoryInput {
@@ -48,6 +53,8 @@ interface FactRow {
   validUntil: Date | null;
   supersededBy: string | null;
   inferredBy: string | null;
+  memoryKind?: string | null;
+  memorySource?: string | null;
 }
 
 const factColumns = {
@@ -61,6 +68,8 @@ const factColumns = {
   validUntil: schema.familyMemoryFacts.validUntil,
   supersededBy: schema.familyMemoryFacts.supersededBy,
   inferredBy: schema.familyMemoryFacts.inferredBy,
+  memoryKind: schema.familyMemoryFacts.memoryKind,
+  memorySource: schema.familyMemoryFacts.memorySource,
 };
 
 function isTeen(row: { childId: string | null }, teenChildIds: ReadonlySet<string>): boolean {
@@ -172,6 +181,9 @@ export async function searchFamilyMemory(
       validUntil: validUntil?.toISOString() ?? null,
       score: scored.score,
       matchedBy: scored.matchedBy,
+      kind: promptKind(row.memoryKind, row.factValue),
+      disposition: readDisposition(row.factValue),
+      source: row.memorySource ?? 'legacy',
     });
   }
 
@@ -195,6 +207,9 @@ export interface MemoryFactView {
   validUntil: string | null;
   supersededBy: string | null;
   inferredBy: string | null;
+  kind: 'enduring' | 'obligation' | 'curiosity';
+  disposition: 'confirmed' | 'declined' | 'asked';
+  source: string;
 }
 
 export type GetMemoryFactResult =
@@ -235,6 +250,9 @@ export async function getFamilyMemoryFact(
     validUntil: row.validUntil?.toISOString() ?? null,
     supersededBy: row.supersededBy,
     inferredBy: row.inferredBy,
+    kind: promptKind(row.memoryKind, row.factValue),
+    disposition: readDisposition(row.factValue),
+    source: row.memorySource ?? 'legacy',
   };
 }
 
@@ -246,6 +264,9 @@ export interface MemoryHistoryNode {
   validUntil: string | null;
   supersededBy: string | null;
   inferredBy: string | null;
+  kind: 'enduring' | 'obligation' | 'curiosity';
+  disposition: 'confirmed' | 'declined' | 'asked';
+  source: string;
 }
 
 export type MemoryHistoryResult =
@@ -382,6 +403,9 @@ export async function loadFactHistory(
       validUntil: row.validUntil?.toISOString() ?? null,
       supersededBy: row.supersededBy,
       inferredBy: row.inferredBy,
+      kind: promptKind(row.memoryKind, row.factValue),
+      disposition: readDisposition(row.factValue),
+      source: row.memorySource ?? 'legacy',
     })),
   };
 }
