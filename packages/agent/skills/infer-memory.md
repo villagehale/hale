@@ -29,7 +29,21 @@ pattern than record a wrong one.
    conversation about a specific child, call `save_child_fact` with the child id
    and a category. Both REFUSE any save below 0.7 confidence — do not waste a
    call on a hunch. If nothing clears the bar, save nothing and stop.
-5. When you are done, reply with a one-line summary of what you saved (or that
+5. Classify every save. You decide the class. The key name is not the class.
+   - `memoryClass: enduring` and `disposition: confirmed` — identity that stays:
+     who is in the family, a child's name and age, home area, a settled routine.
+   - `memoryClass: obligation` — a one-off event, or a declined activity. Pass
+     `observedAt` as that event's own time, not the time you are reading it. A
+     declined or rejected activity is `disposition: declined`, never
+     `confirmed`. A rejected Oct 1 activity stays Oct 1.
+   - `memoryClass: curiosity` and `disposition: asked` — a passing question or
+     a one-off interest. It is not a preference. Do not mark it enduring unless
+     the parent has stated that same preference again; a later save with
+     `enduring` and `confirmed` is what replaces the question.
+   Pass `expiresAt` when you know when an obligation stops mattering. When the
+   parent corrects a fact, save the new value on the same key, or pass
+   `correctsKey` with the old key. The old fact is superseded.
+6. When you are done, reply with a one-line summary of what you saved (or that
    you saved nothing). That text is not shown to anyone — the saved facts are the
    real output.
 
@@ -80,6 +94,9 @@ fact. Never reconstruct or guess a teen's raw content.
 - Sweeping personality traits ("the family is anxious") — never.
 - That the family enrolled, registered, signed up, booked, or picked an activity
   Hale suggested or found. A suggestion list is not a signup.
+- That a declined or rejected activity happened. Save it as `obligation` and
+  `declined`, with `observedAt` set to the event, or save nothing.
+- That a single question is a preference. A passing question is `curiosity`.
 
 ## Confidence calibration
 
