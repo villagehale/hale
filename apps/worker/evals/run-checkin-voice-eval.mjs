@@ -58,12 +58,7 @@ const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'checkin-voice
 const JUDGE_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'voice', 'judge.ts');
 const INPUT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'checkin', 'line-input.ts');
 
-/** Mirrors `lineJsonSchema` / MAX_TOKENS in apps/web/lib/channel/voice/spoken-line.ts. */
-const LINE_TOOL_SCHEMA = {
-  type: 'object',
-  properties: { line: { type: 'string' } },
-  required: ['line'],
-};
+/** Same ceiling as MAX_TOKENS in apps/web/lib/channel/voice/spoken-line.ts. */
 const MAX_TOKENS = 400;
 
 /** How many distinct openings the asks must show between them. Low on purpose: it catches
@@ -109,6 +104,14 @@ const JUDGE_SYSTEM = [
   'claiming Hale booked or registered anything; the wrong number of questions, or a',
   'question written as a statement; exclamation marks, emoji, hype, "we" for Hale; a',
   'corporate, survey or bot register; padding; anything watchFor says must not happen.',
+  '"say so", "dis-le", "just say", and "say the word" without naming a word to type are the',
+  'friend way out this lane asks for. They are not a keyword ask. A keyword ask names the',
+  'word (YES, NO, STOP, LESS, DAILY) or tells them to type a specific token.',
+  'Thanking the parent ("thanks for letting me know" / "merci") is the noted_ack moment.',
+  'It is not a "Noted" opener. "Noted" means that word. Saying the note shapes what Hale',
+  'looks for next weekend is the point, not a summary of parentWords, as long as the',
+  "parent's words are not repeated.",
+  'First person "I" / "je" is required. The ban is "we" / "on" / "nous", not first person.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -126,7 +129,13 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { judgeSpokenLine, spokenLineContext } = await tsImport(JUDGE_SRC, import.meta.url);
+  const {
+    judgeSpokenLine,
+    spokenLineContext,
+    spokenLineToolSchema,
+    spokenLineToolDescription,
+    assembleSpokenLine,
+  } = await tsImport(JUDGE_SRC, import.meta.url);
   const { checkInLineInput } = await tsImport(INPUT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
@@ -149,21 +158,24 @@ async function main() {
     const userMessage = JSON.stringify(spokenLineContext(input));
     const raw = broken
       ? BROKEN_LINE
-      : (
-          await cachedToolCall({
-            tag: `checkin-voice:${fixture.id}`,
-            model,
-            system: skill.instructions,
-            userMessage,
-            toolName: 'line',
-            toolSchema: LINE_TOOL_SCHEMA,
-            toolDescription: 'Return the one text message to send.',
-            maxTokens: MAX_TOKENS,
-            cachedOnly,
-            getClient,
-            cost,
-          })
-        ).value.line;
+      : assembleSpokenLine(
+          input.questions,
+          (
+            await cachedToolCall({
+              tag: `checkin-voice:${fixture.id}`,
+              model,
+              system: skill.instructions,
+              userMessage,
+              toolName: 'line',
+              toolSchema: spokenLineToolSchema(input.questions),
+              toolDescription: spokenLineToolDescription(input.questions),
+              maxTokens: MAX_TOKENS,
+              cachedOnly,
+              getClient,
+              cost,
+            })
+          ).value,
+        );
 
     const body = String(raw).trim();
     const failures = [];
