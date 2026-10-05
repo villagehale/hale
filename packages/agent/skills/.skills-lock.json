@@ -59,6 +59,10 @@
     "file": "coach-plan.md",
     "sha256": "51c69fa3664adb0ea2d497f226813437cf155be00399c059688e729266c70190"
   },
+  "connect-voice.md": {
+    "file": "connect-voice.md",
+    "sha256": "dba0a225f95116026b54a234c9d9ab9345dc9599e1db8129c7fc41c76ed86681"
+  },
   "curate-shortlist.md": {
     "file": "curate-shortlist.md",
     "sha256": "44f794b974575b8d8b8a85fe44adfba0756abb1bdcf32df75d1a1cd072f47e72"
@@ -194,6 +198,10 @@
   "reply-resolver.md": {
     "file": "reply-resolver.md",
     "sha256": "83fec3c09426b2c2a8b811ee00266fe2f12a0ff5b2a26752644a181e95a8890c"
+  },
+  "request-intent.md": {
+    "file": "request-intent.md",
+    "sha256": "af4fdc2f23ed17bea1ef04a78a2e9905e4b3dbd660bd5d8c55e0521f9bdcf567"
   },
   "triage-child-event.md": {
     "file": "triage-child-event.md",

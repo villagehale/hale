@@ -195,6 +195,26 @@ describe('groupLineInput', () => {
     expect(input.recentTurns).toEqual([{ role: 'hale', body: 'earlier' }]);
     expect(input.facts).toEqual({ name: 'Sam' });
   });
+
+  it('does not coach a parent past the Google warning', () => {
+    const ask = groupLineInput({ kind: 'calendar_ask', name: 'Sam' }, 'en');
+    expect(ask.facts).toEqual({ name: 'Sam' });
+    expect(ask.linkFollows).toBeUndefined();
+    expect(judgeSpokenLine('Sam, this link is just for you. Want the kids on your calendar?', ask)).toEqual({
+      ok: false,
+      reason: 'link',
+    });
+    const link = groupLineInput({ kind: 'calendar_link', name: 'Sam' }, 'en');
+    expect(
+      judgeSpokenLine(
+        'Sam, this link is just for you. Google may say Hale is not verified yet, because the review is still open. No worries if you would rather wait.',
+        link,
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      judgeSpokenLine('Sam, this link is just for you. If Google warns you, tap Advanced and carry on.', link),
+    ).toEqual({ ok: false, reason: 'forbidden:google_coaching' });
+  });
 });
 
 describe('the judge on group lines', () => {

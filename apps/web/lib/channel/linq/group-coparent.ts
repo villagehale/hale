@@ -1,7 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import { matchConnectorRequest } from '~/lib/channel/connect/detect';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
+import {
+  type RequestIntentReader,
+  defaultRequestIntentReader,
+  readRequestIntent,
+} from '~/lib/channel/connect/request-intent';
 import { soleGivenName } from '~/lib/channel/identity/name-reply';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
@@ -26,7 +30,7 @@ import {
   defaultGroupVoice,
   speakGroupLine,
 } from './group-voice';
-import { matchBothFreeAsk, planBothFreeAsk, rememberBothFreeAsked } from './household-calendar';
+import { planBothFreeAsk, rememberBothFreeAsked } from './household-calendar';
 import { sendLinqLinkPreview } from './link-preview';
 import type { LinqInboundText } from './payload';
 import { sendChoicePoll } from './poll';
@@ -82,6 +86,12 @@ export interface GroupCoparentPorts {
   voice?: GroupVoice;
   /** Reads a reply to the calendar question. Absent falls back to the production reader. */
   consentReader?: CalendarConsentReader;
+  /**
+   * Reads what a seated parent's later message asks for (a connect link, both-free).
+   * Absent falls back to the production reader; `undefined` from that is the named
+   * no-key state — nothing is claimed and #ops is paged once a day.
+   */
+  intentReader?: RequestIntentReader;
   recordInbound: (
     message: LinqInboundText,
     owner: { familyId: string; userId: string },
@@ -561,6 +571,12 @@ async function answerCalendarConsent(
  * After both asks have gone out, a later "connect my gmail" (or calendar)
  * still gets a fresh link card. A both-free question is answered here and
  * nowhere else in the sweep.
+ *
+ * What the message asks for is the MODEL's reading (connect/request-intent.ts, setting
+ * `household_group`), not a phrase list: a parent asks in their own words. One
+ * classify-lane call per message from a seated parent whose asks are done; `other`
+ * (the common case, and the answer for anything below the confidence floor) costs
+ * nothing further and the turn goes on to the member route.
  */
 async function answerDoneStep(
   database: Database,
@@ -569,9 +585,16 @@ async function answerDoneStep(
   language: ReplyLanguage,
   ports: GroupCoparentPorts,
 ): Promise<GroupCoparentEffect | null> {
-  const asked = matchConnectorRequest(message.text);
-  const bothFree = matchBothFreeAsk(message.text);
-  if (asked !== 'gmail' && asked !== 'gcal' && !bothFree) return null;
+  const reader = 'intentReader' in ports ? ports.intentReader : defaultRequestIntentReader();
+  const read = await readRequestIntent(
+    reader,
+    { message: message.text, language, setting: 'household_group' },
+    { scope: { familyId: sender.familyId, database } },
+  );
+  const asked =
+    read.intent === 'connect_gmail' ? 'gmail' : read.intent === 'connect_gcal' ? 'gcal' : null;
+  const bothFree = read.intent === 'both_free';
+  if (asked === null && !bothFree) return null;
   const recorded = await ports.recordInbound(message, sender);
   if (!recorded) {
     return {
@@ -581,7 +604,7 @@ async function answerDoneStep(
       body: { outcome: 'duplicate' },
     };
   }
-  if (bothFree && asked !== 'gmail' && asked !== 'gcal') {
+  if (asked === null) {
     const plan = await planBothFreeAsk(database, {
       familyId: sender.familyId,
       now: ports.now,
@@ -650,7 +673,7 @@ async function answerDoneStep(
       body: { outcome: 'group_coparent_both_free' },
     };
   }
-  const provider = asked === 'gmail' ? 'gmail' : 'gcal';
+  const provider = asked;
   const sent = await deliverGroupLink(database, {
     familyId: sender.familyId,
     parentUserId: sender.userId,
@@ -680,7 +703,6 @@ async function sendAskWithLink(
     parentUserId: string;
     groupChatId: string;
     text: string;
-    language: ReplyLanguage;
     templateKey: string;
     dedupeKey: string;
     provider: 'gcal' | 'gmail';
@@ -709,6 +731,7 @@ async function sendAskWithLink(
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     chatId: input.groupChatId,
+    // The model's line carries the heads-up. Code appends only the URL.
     text: `${input.text}\n${url}`,
     templateKey: input.templateKey,
     dedupeKey: input.dedupeKey,
@@ -901,7 +924,6 @@ async function sendGmailAskOnce(
     parentUserId: input.parentUserId,
     groupChatId: input.chatId,
     text: ask,
-    language: input.language,
     templateKey: GMAIL_ASK_KEY,
     dedupeKey: `${GMAIL_ASK_KEY}:${input.parentUserId}`,
     provider: 'gmail',

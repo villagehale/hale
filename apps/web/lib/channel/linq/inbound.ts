@@ -1,5 +1,6 @@
 import { schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
+import type { RequestIntentReader } from '~/lib/channel/connect/request-intent';
 import { answerParentDutyAsk } from '~/lib/channel/coparent/duty/asks';
 import { coparentDutyAsksArmed } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
@@ -130,6 +131,11 @@ export async function handleLinqInboundRequest(
     }>;
     /** The group's model voice (group-voice.ts). Absent falls back to the production composer. */
     groupVoice?: GroupVoice;
+    /**
+     * The reader of what a seated parent's message asks for (connect/request-intent.ts).
+     * Absent falls back to the production reader.
+     */
+    requestIntentReader?: RequestIntentReader;
     /** Test seam. Production reads Linq and keeps the street address inside that door. */
     readSharedLocality?: typeof readSharedLocality;
   },
@@ -387,6 +393,7 @@ function coparentPorts(deps: LinqDoorDeps): GroupCoparentPorts {
     now: deps.now?.() ?? new Date(),
     recordInbound: (message, owner) => recordHandledInbound(deps, message, owner),
     voice: deps.groupVoice,
+    ...('requestIntentReader' in deps ? { intentReader: deps.requestIntentReader } : {}),
   };
 }
 

@@ -558,17 +558,6 @@ export function sharedFreeOffer(input: {
   return { slot1: phrase(first), slot2: phrase(second) };
 }
 
-/**
- * A parent asking for a shared free window. Conservative: two-slot copy is
- * never attached to a nudge. (Intent routing; the answer itself is the model's.)
- */
-const BOTH_FREE_ASK =
-  /\b(?:both free|when (?:are|can) we both|free together|tous les deux libres|libres tous les deux|quand (?:est-ce qu'on|on) est libres)\b/i;
-
-export function matchBothFreeAsk(body: string): boolean {
-  return BOTH_FREE_ASK.test(body);
-}
-
 export function formatDay(date: Date, timeZone: string, language: ReplyLanguage): string {
   return new Intl.DateTimeFormat(language === 'fr' ? 'fr-CA' : 'en-CA', {
     timeZone,

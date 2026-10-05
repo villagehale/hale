@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { judgeSpokenLine } from '~/lib/channel/voice/spoken-line';
-import { absorbHowItWentLines, groupBothReaderFrench } from './group-coparent-copy';
+import { absorbHowItWentLines } from './group-coparent-copy';
 import { type GroupLineRequest, groupLineInput } from './group-voice';
 import {
   type BusyBlock,
@@ -105,6 +105,7 @@ describe('group asks hand the model the parent and a link to follow', () => {
       const gmail = groupLineInput({ kind: 'gmail_ask', name: 'Sam' }, language);
       expect(gmail.questions).toBe(1);
       expect(gmail.linkFollows).toBe(true);
+      expect(gmail.facts).toEqual({ name: 'Sam' });
       const link = groupLineInput({ kind: 'calendar_link', name: 'Sam' }, language);
       expect(link.questions).toBe(0);
       expect(link.linkFollows).toBe(true);
@@ -176,16 +177,6 @@ describe('two-reader group lines', () => {
       ok: false,
       reason: 'question',
     });
-  });
-
-  it('switches a both-parents French line to vous and keeps English', () => {
-    expect(groupBothReaderFrench('Tu veux une idee? Envoie-moi un oui.')).toBe(
-      'Vous voulez une idee? Envoyez-moi un oui.',
-    );
-    expect(groupBothReaderFrench('Regarde ton calendrier et ta liste.')).toBe(
-      'Regarde votre calendrier et votre liste.',
-    );
-    expect(groupBothReaderFrench('Want one nearby find?')).toBe('Want one nearby find?');
   });
 
   it('folds up to three how-it-went lines into the weekly bubble', () => {
