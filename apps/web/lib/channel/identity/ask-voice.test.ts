@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { ASSENT_ACK } from '~/lib/channel/intake/copy';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import {
+  type IdentityAskRequest,
   MAX_ASK_CHARS,
   MAX_TAIL_ASK_CHARS,
-  type IdentityAskRequest,
   askCharCap,
   identityAskRefusals,
   identityAskUserMessage,

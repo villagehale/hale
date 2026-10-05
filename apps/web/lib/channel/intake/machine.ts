@@ -3606,7 +3606,8 @@ async function sendPostYearFindLadder(
         }
       : undefined,
   });
-  return asked ? 'name_reply' : 'calendar';
+  // No voice, no fixed line: the ask is skipped and the ladder moves on.
+  return asked ? 'name_reply' : onboardingFriendVoiceEnabled() ? 'gmail' : 'calendar';
 }
 
 async function provision(
@@ -4218,7 +4219,13 @@ async function handleLadder(
   let closed = false;
   let heldForQuestion = false;
 
-  if ((step === 'turtle' || step === 'name_reply') && isQuestionOrNewFind(inbound.body)) {
+  // With no voice the ladder opens on the calendar card, so a question there
+  // is still the parent's first words after the find and is answered first.
+  const openOffScript =
+    step === 'turtle' ||
+    step === 'name_reply' ||
+    ((step === 'calendar' || step === 'gmail') && !onboardingFriendVoiceEnabled());
+  if (openOffScript && isQuestionOrNewFind(inbound.body)) {
     const offScript = await offScriptReply(
       {
         parentWords: inbound.body,
