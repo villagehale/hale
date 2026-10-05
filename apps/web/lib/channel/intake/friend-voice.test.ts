@@ -335,6 +335,63 @@ describe('speakFriend', () => {
     expect(retried.body).not.toMatch(/i'll note it/i);
   });
 
+  it('never sends a reply that confirmed an add code refused; the retry with real adds goes out', async () => {
+    const input = blank({
+      step: 'schedule',
+      parentWords:
+        "Put Mia's swim on weekly please. And the library drop-in for Seb, just this Thursday",
+      placeLabel: 'Burlington',
+      agesLabel: 'Sebastian (1) and Mia (6)',
+      ageMonths: [15, 72],
+      children: [
+        { name: 'Sebastian', ageMonths: 15 },
+        { name: 'Mia', ageMonths: 72 },
+      ],
+      findLines: [
+        'Parent and Tot Swim (6-36 months) - Saturdays 10:00',
+        'Swim Kids 3 (ages 6-8) - Saturdays 11:00',
+        'Family Storytime drop-in (ages 0-5) - Thursdays 10:30',
+      ],
+      now: new Date('2026-10-05T14:00:00Z'),
+    });
+    const seen: Array<{ prompt: string; children: unknown }> = [];
+    const spoken = await speakFriend(
+      {
+        async compose(given, options) {
+          seen.push({ prompt: options?.prompt ?? 'full', children: given.children });
+          if (options?.prompt === 'short') {
+            return {
+              reply:
+                "Both are on as reminders: Mia's Swim Kids Saturdays at 11:00 weekly, Seb's storytime Thursday at 10:30. Anything else from the list?",
+              capture: {
+                scheduleAdds: [
+                  { line: 2, cadence: 'weekly', date: '2026-10-10', time: '11:00' },
+                  { line: 3, cadence: 'once', date: '2026-10-08', time: '10:30' },
+                ],
+              },
+            };
+          }
+          // The full draft confirmed a swim with no settled date and a line off the map.
+          return {
+            reply: "Done: Mia's swim weekly and Seb's drop-in Thursday, as reminders.",
+            capture: {
+              scheduleAdds: [
+                { line: 2, cadence: 'weekly' },
+                { line: 7, cadence: 'once', date: '2026-10-08' },
+              ],
+            },
+          };
+        },
+      },
+      input,
+    );
+    expect(seen.map((call) => call.prompt)).toEqual(['full', 'short']);
+    expect(seen[0]?.children).toEqual(input.children);
+    expect(spoken.source).toBe('retry');
+    expect(spoken.capture.scheduleAdds.map((add) => add.line)).toEqual([2, 3]);
+    expect(spoken.body).toContain('11:00');
+  });
+
   it('sends nothing and pages when both attempts fail', async () => {
     const input = blank({ step: 'ages', parentWords: 'secret words', placeLabel: 'M5V' });
     const pages: string[] = [];

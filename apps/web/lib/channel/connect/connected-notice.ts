@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
+import { groupsFromFindBody } from '~/lib/channel/intake/activity-map';
 import { sendYearConnectorCards } from '~/lib/channel/intake/connector-offer';
 import { summarizeChildren } from '~/lib/channel/intake/derive';
 import {
@@ -732,6 +733,7 @@ async function askAfterCalendarReceipt(
         ...receiptVoiceBase(language, session),
         step,
         findLines: lines,
+        findGroups: progress ? groupsFromFindBody(progress.findBody) : [],
         now: args.now,
         coparentJoin: join,
       },
@@ -806,6 +808,7 @@ function receiptVoiceBase(language: ReplyLanguage, session: IntakeSession | null
     placeLabel: session?.firstTouch?.place?.city || session?.firstTouch?.place?.areaCoarse || null,
     agesLabel: children.length > 0 ? summarizeChildren(children) : null,
     ageMonths: children.flatMap((child) => (child.ageMonths == null ? [] : [child.ageMonths])),
+    children: children.map((child) => ({ name: child.name, ageMonths: child.ageMonths })),
     findLines: [] as string[],
     listKind: 'none' as const,
     activity: null,

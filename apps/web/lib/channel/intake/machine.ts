@@ -80,6 +80,7 @@ import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { type LatLng, geocodeArea } from '~/lib/village/geocode';
+import { groupsFromFindBody } from './activity-map';
 import type { IntakeAnswerComposer } from './answer';
 import { findReenrollableChannelOwner, reenrolOnStart } from './channel-state';
 import { SHARED_STOP_ASKING_KEY } from './cold-start/budget';
@@ -139,6 +140,7 @@ import { findThisWeekWithin, renderWeekFind } from './first-touch-find';
 import { firstTouchLadderEnabled, firstTouchLocationCardEnabled } from './first-touch-flag';
 import { type FirstTouchPlace, placeFromMessage, placeFromVenue } from './first-touch-place';
 import {
+  type FriendChild,
   type FriendStep,
   type FriendVoiceComposer,
   type FriendVoiceInput,
@@ -1258,6 +1260,13 @@ function friendFields(
   };
 }
 
+/** The kids as the model sees them: name and age only, so a line's age fit lands on the right kid. */
+function friendChildren(
+  children: readonly { name: string | null; ageMonths: number | null }[],
+): FriendChild[] {
+  return children.map((child) => ({ name: child.name, ageMonths: child.ageMonths }));
+}
+
 /** Post-family sends do not append to the session transcript. The next model turn reads it. */
 function threadForNext(
   transcript: TranscriptEntry[],
@@ -1550,6 +1559,7 @@ async function friendOnboardingTurn(
         ageMonths: session.collected.children.flatMap((child) =>
           child.ageMonths == null ? [] : [child.ageMonths],
         ),
+        children: friendChildren(session.collected.children),
         parentName: priorGiven?.parentName ?? null,
         parentRole: priorGiven?.parentRole ?? null,
         checklist,
@@ -2621,7 +2631,9 @@ async function friendColdTurn(
       ageMonths: session.collected.children.flatMap((child) =>
         child.ageMonths == null ? [] : [child.ageMonths],
       ),
+      children: friendChildren(session.collected.children),
       findLines: lines,
+      findGroups: groupsFromFindBody(progress.findBody),
       listKind: 'none',
       activity: progress.activity,
       day: progress.day,
@@ -3716,6 +3728,7 @@ async function provision(
       placeLabel,
       agesLabel: summarizeChildren(gathered.collected.children),
       ageMonths: children.map((child) => child.ageMonths),
+      children: friendChildren(children),
       parentName: given?.parentName ?? null,
       parentRole: given?.parentRole ?? null,
       checklist,

@@ -245,6 +245,19 @@ export function acceptScheduleAdd(raw: unknown, limits: ScheduleLimits): Schedul
 }
 
 /**
+ * How many adds the model wrote that code refused: a line off the map, a day
+ * that is not a real upcoming date. The same line twice is one add, not a
+ * refusal. A reply that came with a refused add may confirm something that
+ * was never written, so the caller treats it as unusable.
+ */
+export function countRejectedScheduleAdds(raw: unknown, limits: ScheduleLimits): number {
+  if (!raw || typeof raw !== 'object') return 0;
+  const addsIn = (raw as Record<string, unknown>).scheduleAdds;
+  if (!Array.isArray(addsIn)) return 0;
+  return addsIn.filter((add) => acceptScheduleAdd(add, limits) === null).length;
+}
+
+/**
  * Keep a field only when it is the shape of that fact.
  */
 export function acceptOnboardingCapture(
@@ -277,10 +290,14 @@ export function acceptOnboardingCapture(
     return [{ name, ageMonths, agePrecision }];
   });
   const addsIn = Array.isArray(row.scheduleAdds) ? row.scheduleAdds : [];
-  const scheduleAdds = addsIn.flatMap((add) => {
+  const scheduleAdds: ScheduleAdd[] = [];
+  for (const add of addsIn) {
     const accepted = acceptScheduleAdd(add, limits);
-    return accepted ? [accepted] : [];
-  });
+    // One add per line: the same activity settled twice in one message is one reminder.
+    if (accepted && !scheduleAdds.some((seen) => seen.line === accepted.line)) {
+      scheduleAdds.push(accepted);
+    }
+  }
   return {
     postalCode: postalCode && postalCode.length > 0 ? postalCode : null,
     city: city && city.length > 0 ? city : null,

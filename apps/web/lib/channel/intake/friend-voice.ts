@@ -21,6 +21,7 @@ import {
   type OnboardingItem,
   acceptOnboardingCapture,
   checklistAfter,
+  countRejectedScheduleAdds,
   mergeCaptures,
   onboardingMissing,
 } from './onboarding-turn';
@@ -106,6 +107,12 @@ export interface FriendFindGroup {
   lines: readonly string[];
 }
 
+/** One kid as stored: name and age, either may still be unknown. */
+export interface FriendChild {
+  name: string | null;
+  ageMonths: number | null;
+}
+
 /** An activity already written to the calendar during this onboarding. */
 export interface FriendScheduled {
   title: string;
@@ -124,6 +131,8 @@ export interface FriendVoiceInput {
   placeLabel: string | null;
   agesLabel: string | null;
   ageMonths: readonly number[];
+  /** Each kid by name and age, so a line's age fit can be matched to the right kid. */
+  children?: readonly FriendChild[];
   findLines: readonly string[];
   /** year = the kids' year header. week = numbered lines only. */
   listKind: FriendListKind;
@@ -404,6 +413,7 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
       placeLabel: input.placeLabel,
       agesLabel: input.agesLabel,
       ageMonths: input.ageMonths,
+      children: input.children ?? null,
       findLines: input.findLines,
       findGroups: input.findGroups ?? null,
       activity: input.activity,
@@ -1116,9 +1126,19 @@ export async function speakFriend(
     const empty = acceptOnboardingCapture(null);
     try {
       const composed = await withTimeout(composer.compose(input, { prompt }), timeoutMs);
-      const capture = acceptOnboardingCapture(composed.capture, scheduleLimits(input));
+      const limits = scheduleLimits(input);
+      const capture = acceptOnboardingCapture(composed.capture, limits);
       const prose = composed.reply.trim();
       if (prose.length > MAX_PROSE_CHARS) return { fail: 'unusable', capture };
+      // A refused add means the reply may confirm a reminder that was never written.
+      const refusedAdds = countRejectedScheduleAdds(composed.capture, limits);
+      if (refusedAdds > 0) {
+        console.error(
+          { reason: 'schedule_add_refused', refusedAdds, step: input.step, prompt },
+          'onboarding-friend: unusable reply',
+        );
+        return { fail: 'unusable', capture };
+      }
       let bubbles: string[] = [];
       let judgedText: string;
       if (input.step === 'find_show') {

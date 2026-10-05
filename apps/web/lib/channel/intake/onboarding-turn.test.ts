@@ -9,6 +9,7 @@ import {
   checklistAfter,
   coldStartIsStale,
   coldStartQuestionIsStale,
+  countRejectedScheduleAdds,
   kidsAreNamed,
   mergeCaptures,
   mergeChildFacts,
@@ -271,6 +272,37 @@ describe('schedule adds (step 9)', () => {
       limits,
     );
     expect(mergeCaptures(a, b).scheduleAdds.map((add) => add.line)).toEqual([1, 3]);
+  });
+
+  it('keeps one add per line when the model settles the same activity eight times in one message', () => {
+    const capture = acceptOnboardingCapture(
+      {
+        scheduleAdds: Array.from({ length: 8 }, (_, week) => ({
+          line: 2,
+          cadence: 'weekly',
+          date: `2026-10-${String(10 + week).padStart(2, '0')}`,
+          time: '10:00',
+        })),
+      },
+      limits,
+    );
+    expect(capture.scheduleAdds).toEqual([
+      { line: 2, cadence: 'weekly', date: '2026-10-10', time: '10:00', weeks: null },
+    ]);
+    expect(countRejectedScheduleAdds({ scheduleAdds: capture.scheduleAdds }, limits)).toBe(0);
+  });
+
+  it('counts the adds code refused so the reply that confirmed them is not sent', () => {
+    const raw = {
+      scheduleAdds: [
+        { line: 1, cadence: 'once', date: '2026-10-10' },
+        { line: 9, cadence: 'once', date: '2026-10-10' },
+        { line: 2, cadence: 'weekly' },
+      ],
+    };
+    expect(countRejectedScheduleAdds(raw, limits)).toBe(2);
+    expect(countRejectedScheduleAdds(null, limits)).toBe(0);
+    expect(countRejectedScheduleAdds({ reply: 'hi' }, limits)).toBe(0);
   });
 
   it('reads the title and day off a line Hale fetched', () => {
