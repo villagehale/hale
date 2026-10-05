@@ -12,12 +12,14 @@ import {
   loadFamilyTextRecipients,
 } from '~/lib/channel/family-recipients';
 import { howItWentLinesForGroupWeekly } from '~/lib/channel/followup/run';
+import { composeParentCallNameAsk } from '~/lib/channel/identity/call-name-voice';
 import {
   type ParentCallNameState,
   decideParentCallName,
   deliverParentCallNameLine,
   loadParentCallName,
 } from '~/lib/channel/identity/parent-call-name';
+import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
 import {
   readWindows as readRegistrationWindows,
   readCandidates as readVillageCandidates,
@@ -868,18 +870,24 @@ async function runForFamily(
         });
         const nameLine = decideParentCallName({ ...callName, isWin: true });
         if (nameLine.kind !== 'none') {
-          await deliverParentCallNameLine(
-            database,
-            {
-              familyId: family.familyId,
-              parentUserId: recipient.parentUserId,
-              to,
-              now,
-              body: nameLine.body,
-              templateKey: nameLine.templateKey,
-            },
-            { transport: deps.transport, threadMessage: deps.threadMessage },
-          );
+          const body = await composeParentCallNameAsk(createFriendVoiceComposer(deps.client), {
+            ask: nameLine,
+            language: 'en',
+          });
+          if (body) {
+            await deliverParentCallNameLine(
+              database,
+              {
+                familyId: family.familyId,
+                parentUserId: recipient.parentUserId,
+                to,
+                now,
+                body,
+                templateKey: nameLine.templateKey,
+              },
+              { transport: deps.transport, threadMessage: deps.threadMessage },
+            );
+          }
         }
       } catch (err) {
         console.error(

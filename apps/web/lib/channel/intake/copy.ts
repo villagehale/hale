@@ -825,16 +825,6 @@ export function intakeGmailCard(language: ReplyLanguage, url: string): string {
 }
 
 /**
- * The parent's call-name, its own text, after the turtle card and before the inbox.
- *
- * Locked with PR #689: `What should I call you?` The Google confirm
- * (`Can I call you {first}?`) belongs to that PR once a given name is already on
- * file. This moment is before the inbox ask, so there is no Google name to confirm.
- * A French watch reply does not get this English line.
- */
-export const PARENT_CALL_NAME_ASK = 'What should I call you?';
-
-/**
  * Last ask of intake on SMS, its own text, after the Gmail card.
  *
  * Twilio still needs a number before it can text the invite, so this door

@@ -1,30 +1,21 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
-import { readAffirmative } from '~/lib/channel/affirmative';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
-import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
-import { isGsm7 } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { PARENT_NAME_ASK_TEMPLATE_KEY, PARENT_NAME_CONFIRM_TEMPLATE_KEY } from './asked';
-import { soleGivenName } from './name-reply';
+import { type ParentRoleGuess, storeParentRole } from './parent-role';
 
 /**
  * What to call this parent, asked once, after the first real radar win.
  *
- * The lines are fixed. A model that paraphrases "What should I call you?" has
- * not asked the question the product locked. Confirmed names live on `users.name`.
- * An unconfirmed Google given name lives on `users.google_given_name` and is
- * spoken only inside the confirm line, and only after it has passed the same
- * shape check a typed name has to pass.
+ * Code decides the MOMENT and which kind of ask it is; the onboarding model
+ * writes the sentence (VIL-417). There is no fixed line here. Confirmed names
+ * live on `users.name`. An unconfirmed Google given name lives on
+ * `users.google_given_name` and reaches the model only after it has passed the
+ * same shape check a typed name has to pass.
  */
-
-export const PARENT_CALL_NAME_ASK = 'What should I call you?';
-
-export function parentCallNameConfirm(first: string): string {
-  return `Can I call you ${first}?`;
-}
 
 const ASK_KEYS = [PARENT_NAME_ASK_TEMPLATE_KEY, PARENT_NAME_CONFIRM_TEMPLATE_KEY] as const;
 
@@ -60,17 +51,20 @@ export interface ParentCallNameState {
   googleGivenName: string | null;
 }
 
+export type ParentCallNameAsk =
+  | { kind: 'confirm'; first: string; templateKey: typeof PARENT_NAME_CONFIRM_TEMPLATE_KEY }
+  | { kind: 'ask'; templateKey: typeof PARENT_NAME_ASK_TEMPLATE_KEY };
+
 export type ParentCallNameDecision =
   | { kind: 'none'; reason: 'not_a_win' | 'already_named' | 'already_asked' }
-  | { kind: 'confirm'; body: string; templateKey: typeof PARENT_NAME_CONFIRM_TEMPLATE_KEY }
-  | { kind: 'ask'; body: string; templateKey: typeof PARENT_NAME_ASK_TEMPLATE_KEY };
+  | ParentCallNameAsk;
 
 /**
- * Which one line to send, if any.
+ * Which kind of ask this moment is, if any. The words are the model's.
  *
- * A win with no name and no prior ask is the only moment. A safe, GSM-7 Google
- * given name confirms; everything else (missing, phone-shaped, not GSM-7) is the
- * open ask, and that ask never interpolates the rejected string.
+ * A win with no name and no prior ask is the only moment. A safe Google given
+ * name is a confirm; everything else (missing, phone-shaped) is the open ask,
+ * and the rejected string never reaches the model.
  */
 export function decideParentCallName(input: {
   needsName: boolean;
@@ -82,13 +76,8 @@ export function decideParentCallName(input: {
   if (!input.needsName) return { kind: 'none', reason: 'already_named' };
   if (input.alreadyAsked) return { kind: 'none', reason: 'already_asked' };
   const first = safeGivenName(input.googleGivenName);
-  if (first) {
-    const body = parentCallNameConfirm(first);
-    if (isGsm7(body)) {
-      return { kind: 'confirm', body, templateKey: PARENT_NAME_CONFIRM_TEMPLATE_KEY };
-    }
-  }
-  return { kind: 'ask', body: PARENT_CALL_NAME_ASK, templateKey: PARENT_NAME_ASK_TEMPLATE_KEY };
+  if (first) return { kind: 'confirm', first, templateKey: PARENT_NAME_CONFIRM_TEMPLATE_KEY };
+  return { kind: 'ask', templateKey: PARENT_NAME_ASK_TEMPLATE_KEY };
 }
 
 interface MessageStamp {
@@ -256,72 +245,94 @@ async function writeConfirmedName(
 
 export type ParentCallNameReply =
   | { status: 'declined' }
-  | { status: 'answered'; reply: string; templateKey?: string };
+  /** `reply` is null when the model could not write one: nothing is sent and #ops was paged. */
+  | { status: 'answered'; reply: string | null };
+
+/** What the model read in the parent's reply to "can I call you {first}?". */
+export interface ParentCallNameRead {
+  /** The judged reply, or null when both attempts failed. */
+  reply: string | null;
+  /** A name they gave instead, already shape-checked by the caller. */
+  parentName: string | null;
+  nameConfirmed: boolean | null;
+  parentRole: ParentRoleGuess | null;
+}
+
+export interface ParentCallNameVoice {
+  read(input: {
+    familyId: string;
+    parentUserId: string;
+    body: string;
+    heldName: string;
+  }): Promise<ParentCallNameRead>;
+}
 
 /**
- * A reply to "Can I call you {first}?".
+ * A reply to the confirm ask.
  *
  * Runs only when THAT confirm is the latest ask this parent was sent. The open
- * "What should I call you?" stays with the name capture behind this handler.
- * Yes keeps the held name. No clears it and asks the open line. A name-shaped
- * reply stores THAT name, not the Google one.
+ * ask stays with the name capture behind this handler. The model reads the
+ * answer and writes the receipt; code stores only what passes the shape check.
+ * A yes keeps the held name. A no clears it; the model's reply asks what to
+ * call them. A different name stores THAT name, not the Google one. A reply
+ * the model read as none of those is not claimed.
  */
 export async function handleParentCallNameReply(
   database: Database,
   input: { familyId: string; parentUserId: string; body: string },
+  voice: ParentCallNameVoice,
 ): Promise<ParentCallNameReply> {
   const pending = await latestAsk(database, input);
   if (pending !== PARENT_NAME_CONFIRM_TEMPLATE_KEY) return { status: 'declined' };
 
-  const polarity = readAffirmative(input.body);
-  if (polarity === 'yes') {
-    const held = await readHeldGivenName(database, input.parentUserId);
-    const safe = safeGivenName(held);
-    if (!safe) {
-      await releaseGoogleGivenName(database, {
-        familyId: input.familyId,
-        userId: input.parentUserId,
-        reason: 'confirm_declined',
-      });
-      return {
-        status: 'answered',
-        reply: PARENT_CALL_NAME_ASK,
-        templateKey: PARENT_NAME_ASK_TEMPLATE_KEY,
-      };
-    }
-    const written = await writeConfirmedName(database, {
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      name: safe,
-      source: 'google_confirm',
-    });
-    if (written !== 'stored') return { status: 'declined' };
-    return { status: 'answered', reply: NAME_CAPTURED_REPLY };
-  }
-
-  if (polarity === 'no') {
+  const held = safeGivenName(await readHeldGivenName(database, input.parentUserId));
+  if (!held) {
     await releaseGoogleGivenName(database, {
       familyId: input.familyId,
       userId: input.parentUserId,
       reason: 'confirm_declined',
     });
-    return {
-      status: 'answered',
-      reply: PARENT_CALL_NAME_ASK,
-      templateKey: PARENT_NAME_ASK_TEMPLATE_KEY,
-    };
+    return { status: 'declined' };
   }
 
-  const preferred = soleGivenName(input.body);
-  if (!preferred) return { status: 'declined' };
-  const written = await writeConfirmedName(database, {
-    familyId: input.familyId,
-    parentUserId: input.parentUserId,
-    name: preferred,
-    source: 'sms_preference',
-  });
-  if (written !== 'stored') return { status: 'declined' };
-  return { status: 'answered', reply: NAME_CAPTURED_REPLY };
+  const read = await voice.read({ ...input, heldName: held });
+  const preferred = safeGivenName(read.parentName);
+  if (read.parentRole) {
+    await storeParentRole(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      guess: read.parentRole,
+    });
+  }
+  if (preferred) {
+    const written = await writeConfirmedName(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      name: preferred,
+      source: 'sms_preference',
+    });
+    if (written !== 'stored') return { status: 'declined' };
+    return { status: 'answered', reply: read.reply };
+  }
+  if (read.nameConfirmed === true) {
+    const written = await writeConfirmedName(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      name: held,
+      source: 'google_confirm',
+    });
+    if (written !== 'stored') return { status: 'declined' };
+    return { status: 'answered', reply: read.reply };
+  }
+  if (read.nameConfirmed === false) {
+    await releaseGoogleGivenName(database, {
+      familyId: input.familyId,
+      userId: input.parentUserId,
+      reason: 'confirm_declined',
+    });
+    return { status: 'answered', reply: read.reply };
+  }
+  return { status: 'declined' };
 }
 
 async function readHeldGivenName(database: Database, userId: string): Promise<string | null> {
@@ -366,10 +377,12 @@ function stampTime(row: MessageStamp): number {
 }
 
 /**
- * Send the one line, when this moment is a win and the parent still needs it.
+ * Ask, when this moment is a win and the parent still needs a name.
  *
- * French replies skip the English line and say so. A send that throws is the
- * caller's to catch — intake still closes the session, a nudge still keeps the find.
+ * `send` writes and delivers the line for the decided kind and reports whether
+ * anything went out; a model that could not write one reports false. A send
+ * that throws is the caller's to catch — intake still closes the session, a
+ * nudge still keeps the find.
  */
 export async function maybeSendParentCallName(
   database: Database,
@@ -379,18 +392,23 @@ export async function maybeSendParentCallName(
     isWin: boolean;
     language: 'en' | 'fr';
   },
-  send: (body: string, templateKey: string) => Promise<void>,
+  send: (ask: ParentCallNameAsk) => Promise<boolean>,
 ): Promise<boolean> {
   if (!input.isWin) return false;
-  if (input.language === 'fr') {
-    console.info('intake: skipped the English name ask on a French reply');
-    return false;
-  }
   const state = await loadParentCallName(database, input);
   const decision = decideParentCallName({ ...state, isWin: true });
   if (decision.kind === 'none') return false;
-  await send(decision.body, decision.templateKey);
-  return true;
+  return send(decision);
+}
+
+/** Store the held Google name as confirmed. Used when the onboarding model read a yes. */
+export async function confirmHeldGivenName(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<'stored' | 'already_named' | 'none_held'> {
+  const held = safeGivenName(await readHeldGivenName(database, input.parentUserId));
+  if (!held) return 'none_held';
+  return writeConfirmedName(database, { ...input, name: held, source: 'google_confirm' });
 }
 
 /**

@@ -45,7 +45,10 @@ import {
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { type FounderReplyDeps, handleFounderWelcomeReply } from '~/lib/channel/founder/reply';
 import { type NameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/identity/name-reply';
-import { handleParentCallNameReply } from '~/lib/channel/identity/parent-call-name';
+import {
+  type ParentCallNameVoice,
+  handleParentCallNameReply,
+} from '~/lib/channel/identity/parent-call-name';
 import { intakeConnectorOffer } from '~/lib/channel/intake/copy';
 import { replyLanguage } from '~/lib/channel/language';
 import {
@@ -713,31 +716,31 @@ async function bareWordAsk(
  * race is settled by Postgres rather than by the order two texts arrived in.
  */
 /**
- * "Can I call you {first}?" — yes keeps the held Google name, no asks what to call
- * them, and a name-shaped reply stores that preference instead.
+ * The reply to the confirm of a held Google name — yes keeps it, no asks what to
+ * call them, and a different name stores that preference instead. The model reads
+ * the answer and writes the receipt; code stores only what passes the shape check.
  *
  * IMMEDIATELY BEFORE the name capture. A bare yes is not a name, so the capture
  * would decline it; this handler has to see it first when a confirm is the latest
- * ask. It declines when the latest ask is the open "What should I call you?",
- * which is the capture's question. A yes that belongs to an approval, a plan, or
+ * ask. It declines when the latest ask is the open name question, which is the
+ * capture's. A yes that belongs to an approval, a plan, or
  * a health nudge is claimed by those handlers, which sit ahead of this one.
  */
-export function parentCallNameHandler(): DeterministicHandler {
+export function parentCallNameHandler(voice: ParentCallNameVoice): DeterministicHandler {
   return {
     name: 'parent_call_name',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const outcome = await handleParentCallNameReply(database, {
-        familyId: ctx.familyId,
-        parentUserId: ctx.parentUserId,
-        body: ctx.body,
-      });
+      const outcome = await handleParentCallNameReply(
+        database,
+        {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          body: ctx.body,
+        },
+        voice,
+      );
       if (outcome.status === 'declined') return { claimed: false };
-      return {
-        claimed: true,
-        outcome: 'parent_call_name',
-        reply: outcome.reply,
-        templateKey: outcome.templateKey,
-      };
+      return { claimed: true, outcome: 'parent_call_name', reply: outcome.reply };
     },
   };
 }

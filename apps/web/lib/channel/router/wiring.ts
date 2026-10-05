@@ -26,17 +26,21 @@ import { resolveSendableEmail } from '~/lib/channel/email/sendable';
 import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import { daycareFollowupQuestion } from '~/lib/channel/followup/question';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
+import {
+  defaultCallNameComposer,
+  parentCallNameVoice,
+} from '~/lib/channel/identity/call-name-voice';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
+import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
 import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { FamilyRole } from '~/lib/channel/role-scope';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
 import { recordStatedState } from '~/lib/channel/stated-state';
-import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
 import { searchWeekdaysForFamily } from '~/lib/channel/weekday-care/search';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -412,7 +416,7 @@ export function defaultHandlers(): DeterministicHandler[] {
     familyMemoryKindsHandler(),
     sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
     recMorningHandler(),
-    parentCallNameHandler(),
+    parentCallNameHandler(parentCallNameVoice(defaultCallNameComposer())),
     nameCaptureHandler(defaultNameCaptureDeps()),
     // BEHIND EVERY SHAPE MATCHER, because it is the only handler that claims a whole
     // sentence — see its own note. It still runs ahead of the canary, so every decline
