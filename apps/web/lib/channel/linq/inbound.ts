@@ -48,14 +48,15 @@ import {
   firstSeatableHandle,
   seatAppearingCoparent,
   steerNotedCoparentOneToOne,
+  welcomeSeatedCoparent,
 } from './group-coparent';
-import { type GroupVoice, defaultGroupVoice, speakGroupLine } from './group-voice';
 import {
   holdTrueStrangerOnce,
   seatParticipantAdded,
   shouldHoldGroupStranger,
   unseatParticipantRemoved,
 } from './group-members';
+import type { GroupVoice } from './group-voice';
 import { captureLogisticsText } from './household-calendar';
 import { readSharedLocality } from './location-share';
 import { isLogisticsPollKind, recordLogisticsVote } from './logistics-poll';
@@ -614,23 +615,15 @@ async function claimGroupFromTrigger(
       now,
     });
     if (seated.status === 'seated') {
-      const welcome = await speakGroupLine(
-        deps.groupVoice ?? defaultGroupVoice(),
-        { kind: 'welcome' },
+      // Claimed before the model is asked (welcomeSeatedCoparent), so a webhook retry
+      // costs no second call, and an unwritten welcome is retried on their next message.
+      const notice = await welcomeSeatedCoparent(deps.database, {
+        familyId: mapped.familyId,
+        userId: seated.userId,
+        chatId: message.chatId,
         language,
-      );
-      const notice =
-        welcome.source === 'unsent'
-          ? 'voice_unsent'
-          : await deliverLinqGroupNotice(deps.database, {
-              familyId: mapped.familyId,
-              parentUserId: seated.userId,
-              chatId: message.chatId,
-              text: welcome.body,
-              templateKey: 'linq:coparent_welcome',
-              now,
-              send: deps.sendGroupText,
-            });
+        ports: { voice: deps.groupVoice, now, send: deps.sendGroupText },
+      });
       deps.log.info(
         { outcome: 'group_claimed', claim: claim.status, notice },
         'linq inbound: group claim',
@@ -944,23 +937,13 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         now,
       });
       if (seated.status === 'seated') {
-        const welcome = await speakGroupLine(
-          deps.groupVoice ?? defaultGroupVoice(),
-          { kind: 'welcome' },
-          'en',
-        );
-        const notice =
-          welcome.source === 'unsent'
-            ? 'voice_unsent'
-            : await deliverLinqGroupNotice(deps.database, {
-                familyId,
-                parentUserId: seated.userId,
-                chatId: signal.chatId,
-                text: welcome.body,
-                templateKey: 'linq:coparent_welcome',
-                now,
-                send: deps.sendGroupText,
-              });
+        const notice = await welcomeSeatedCoparent(deps.database, {
+          familyId,
+          userId: seated.userId,
+          chatId: signal.chatId,
+          language: 'en',
+          ports: { voice: deps.groupVoice, now, send: deps.sendGroupText },
+        });
         await deps.countOutcome('intake');
         return json({ outcome: 'group_coparent_seated', notice });
       }

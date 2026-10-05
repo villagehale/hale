@@ -272,6 +272,35 @@ describe('telling the parent who stayed', () => {
     expect(await noticeRows(household.familyId)).toHaveLength(1);
   });
 
+  it('claims before it composes, and an unwritten notice gives the claim back for the next attempt', async () => {
+    const household = await seedHousehold();
+    await departCoParent(db.database, {
+      familyId: household.familyId,
+      actorUserId: household.departedUserId,
+      now: MORNING,
+    });
+    const transport = new FakeTransport();
+    const args = {
+      familyId: household.familyId,
+      departedUserId: household.departedUserId,
+      now: MORNING,
+    };
+
+    // The model is down: nothing reaches the provider, nothing canned is written, and
+    // the ledger holds no spent key for a message nobody received.
+    const broken = ports(transport, fakeSpokenLineComposer({ fail: true }));
+    expect(await tellStayingParent(db.database, args, broken.ports)).toBe('voice_unsent');
+    expect(transport.sent).toEqual([]);
+    expect(await noticeRows(household.familyId)).toEqual([]);
+    expect(broken.voice.calls.map((call) => call.prompt)).toEqual(['full', 'short']);
+
+    // The next attempt — a redrive, a webhook retry — tries again and sends once.
+    const healthy = ports(transport);
+    expect(await tellStayingParent(db.database, args, healthy.ports)).toBe('sent');
+    expect(transport.sent).toHaveLength(1);
+    expect(await noticeRows(household.familyId)).toHaveLength(1);
+  });
+
   it('holds the 23:12 notice on a receipt with NO key, so the morning can still send it', async () => {
     const household = await seedHousehold();
     await departCoParent(db.database, {

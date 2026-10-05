@@ -177,35 +177,57 @@ export async function considerGroupCoparent(
 }
 
 /**
- * The welcome, model-written. One send per seat: the dedupe key is the
- * record, so a welcome the model could not write on the seating turn is
- * retried on the parent's next message and never sent twice.
+ * The welcome, model-written. One send per seat: the dedupe key is the record, CLAIMED
+ * BEFORE THE MODEL IS ASKED, so a webhook retry arriving while the first attempt is still
+ * composing finds the key taken and costs no second call. A welcome the model could not
+ * write gives the claim back, and is retried on the parent's next message — never sent
+ * twice, never spent on a message nobody received.
+ *
+ * Exported for the two inbound doors (a claim with a seatable second handle, and Linq's
+ * participant.added signal), which seat the same co-parent and owe the same welcome.
  */
-async function sendWelcome(
+export async function welcomeSeatedCoparent(
   database: Database,
   input: {
     familyId: string;
     userId: string;
     chatId: string;
     language: ReplyLanguage;
-    ports: GroupCoparentPorts;
+    ports: Pick<GroupCoparentPorts, 'voice' | 'now' | 'fetch'> & {
+      /** A test hook for the inbound doors; production goes to Linq. */
+      send?: (notice: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
+    };
   },
 ): Promise<'sent' | 'already_sent' | 'not_sent' | 'voice_unsent'> {
   const dedupeKey = `linq:coparent_welcome:${input.userId}`;
-  if (await dedupeActive(dedupeKey, database)) return 'already_sent';
-  const text = await groupLine(input.ports, { kind: 'welcome' }, input.language);
-  if (!text) return 'voice_unsent';
-  return sendLine(database, {
+  const claimed = await claimLine(database, {
+    familyId: input.familyId,
+    parentUserId: input.userId,
+    chatId: input.chatId,
+    templateKey: WELCOME_KEY,
+    dedupeKey,
+    now: input.ports.now,
+  });
+  if (!claimed) return 'already_sent';
+  const text = await groupLine(input.ports, { kind: 'welcome' }, input.language, undefined, {
+    familyId: input.familyId,
+    database,
+  });
+  if (!text) {
+    await releaseLine(database, claimed);
+    return 'voice_unsent';
+  }
+  return sendClaimedLine(database, claimed, {
     familyId: input.familyId,
     parentUserId: input.userId,
     chatId: input.chatId,
     text,
-    templateKey: WELCOME_KEY,
-    dedupeKey,
-    now: input.ports.now,
     fetch: input.ports.fetch,
+    send: input.ports.send,
   });
 }
+
+const sendWelcome = welcomeSeatedCoparent;
 
 /** One group line from the model, or null when it could not be written (already paged). */
 async function groupLine(
@@ -213,9 +235,11 @@ async function groupLine(
   request: GroupLineRequest,
   language: ReplyLanguage,
   parentWords?: string,
+  scope?: { familyId: string; database: Database },
 ): Promise<string | null> {
   const spoken = await speakGroupLine(ports.voice ?? defaultGroupVoice(), request, language, {
     parentWords: parentWords ?? null,
+    scope,
   });
   return spoken.source === 'unsent' ? null : spoken.body;
 }
@@ -330,7 +354,10 @@ async function advanceSeatedCoparent(
       });
     }
     await setStep(database, sender.userId, 'awaiting_calendar', ports.now);
-    const ack = await groupLine(ports, { kind: 'name_ack', name }, language, message.text);
+    const ack = await groupLine(ports, { kind: 'name_ack', name }, language, message.text, {
+      familyId: sender.familyId,
+      database,
+    });
     const notice = ack
       ? await sendLine(database, {
           familyId: sender.familyId,
@@ -386,7 +413,10 @@ async function advanceSeatedCoparent(
         body: { outcome },
       };
     }
-    const ask = await groupLine(ports, { kind: 'calendar_ask', name }, language, message.text);
+    const ask = await groupLine(ports, { kind: 'calendar_ask', name }, language, message.text, {
+      familyId: sender.familyId,
+      database,
+    });
     if (!ask) {
       return {
         type: 'done',
@@ -464,6 +494,7 @@ async function answerDoneStep(
       { kind: 'both_free', slots: plan.slotLabels },
       language,
       message.text,
+      { familyId: sender.familyId, database },
     );
     if (!text) {
       return {
@@ -692,6 +723,8 @@ export async function sendCoparentGroupCalendarReceipt(
     input,
     { kind: gmail ? 'gmail_receipt' : 'calendar_receipt', name },
     language,
+    undefined,
+    { familyId: input.familyId, database },
   );
   if (!receipt) return 'skipped';
   const notice = await sendLine(database, {
@@ -745,7 +778,16 @@ async function sendGmailAskOnce(
   if (await dedupeActive(`${GMAIL_ASK_KEY}:${input.parentUserId}`, database)) {
     return 'already_sent';
   }
-  const ask = await groupLine(input, { kind: 'gmail_ask', name: input.name }, input.language);
+  const ask = await groupLine(
+    input,
+    { kind: 'gmail_ask', name: input.name },
+    input.language,
+    undefined,
+    {
+      familyId: input.familyId,
+      database,
+    },
+  );
   if (!ask) return 'not_sent';
   const notice = await sendAskWithLink(database, {
     familyId: input.familyId,
@@ -1061,6 +1103,23 @@ async function sendLine(
     fetch?: typeof fetch;
   },
 ): Promise<'sent' | 'already_sent' | 'not_sent'> {
+  const claimed = await claimLine(database, input);
+  if (!claimed) return 'already_sent';
+  return sendClaimedLine(database, claimed, input);
+}
+
+/** The ledger row that IS the claim: one per dedupe key, first writer wins. Null when taken. */
+async function claimLine(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    chatId: string;
+    templateKey: string;
+    dedupeKey: string;
+    now: Date;
+  },
+): Promise<string | null> {
   const [claimed] = await database
     .insert(schema.channelMessages)
     .values({
@@ -1077,23 +1136,40 @@ async function sendLine(
     })
     .onConflictDoNothing()
     .returning({ id: schema.channelMessages.id });
-  if (!claimed) return 'already_sent';
+  return claimed?.id ?? null;
+}
+
+/** Give a claim back: the line was never written, so the key must not read as spent. */
+async function releaseLine(database: Database, claimedId: string): Promise<void> {
+  await database.delete(schema.channelMessages).where(eq(schema.channelMessages.id, claimedId));
+}
+
+async function sendClaimedLine(
+  database: Database,
+  claimedId: string,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    chatId: string;
+    text: string;
+    fetch?: typeof fetch;
+    send?: (notice: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
+  },
+): Promise<'sent' | 'not_sent'> {
   try {
-    const sent = await sendLinqChatMessage({
-      chatId: input.chatId,
-      text: input.text,
-      fetch: input.fetch,
-    });
+    const sent = input.send
+      ? await input.send({ chatId: input.chatId, text: input.text })
+      : await sendLinqChatMessage({ chatId: input.chatId, text: input.text, fetch: input.fetch });
     await database
       .update(schema.channelMessages)
       .set({ providerMessageId: sent.providerMessageId })
-      .where(eq(schema.channelMessages.id, claimed.id));
+      .where(eq(schema.channelMessages.id, claimedId));
     await database.insert(schema.auditLog).values({
       familyId: input.familyId,
       actor: input.parentUserId,
       actionTaken: 'sms_reply_sent',
       targetTable: 'channel_messages',
-      targetId: claimed.id,
+      targetId: claimedId,
     });
     return 'sent';
   } catch (err) {
@@ -1101,7 +1177,7 @@ async function sendLine(
     await database
       .update(schema.channelMessages)
       .set({ status: 'failed', errorCode: code })
-      .where(eq(schema.channelMessages.id, claimed.id));
+      .where(eq(schema.channelMessages.id, claimedId));
     console.warn({ familyId: input.familyId, code }, 'linq group coparent: the line did not land');
     return 'not_sent';
   }

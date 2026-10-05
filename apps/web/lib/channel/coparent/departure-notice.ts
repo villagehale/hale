@@ -19,8 +19,8 @@ import {
   buildOutboundGatePorts,
   holdStatus,
 } from '~/lib/channel/outbound-gate';
-import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { failedSendPatch, readSendRefusal } from '~/lib/channel/outbound-transport';
+import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 
 /**
@@ -179,9 +179,31 @@ export async function tellStayingParent(
     return `gate_refused:${verdict.reason}`;
   }
 
+  // CLAIM FIRST, by the insert rather than by the read above: two erasure requests
+  // racing the same departure both pass a read and only one wins the unique index. The
+  // claim also sits AHEAD of the model call, so a webhook retry arriving while the first
+  // attempt is still composing finds the key taken and costs no second call.
+  const [claimed] = await database
+    .insert(schema.channelMessages)
+    .values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'co_parent_departed',
+      templateKey: DEPARTURE_NOTICE_TEMPLATE_KEY,
+      dedupeKey,
+      status: acceptedStatus('sms'),
+      sentAt: now,
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.channelMessages.id });
+  if (!claimed) return 'already_sent';
+
   // Model-written (group-voice `departure`), from the one fact there is: who left, when
-  // their name is stored. In the group it reads to both (vous); 1:1 it is tu. Composed
-  // before the claim so an unwritten notice is retried rather than lost.
+  // their name is stored. In the group it reads to both (vous); 1:1 it is tu. An
+  // unwritten notice RELEASES the claim, so the next attempt tries again rather than
+  // finding a key spent on a message nobody received.
   const target = await familyOutboundTarget(database, familyId);
   let language: ReplyLanguage;
   let departedName: string | null = null;
@@ -200,28 +222,13 @@ export async function tellStayingParent(
       address: target.channel === 'group' ? 'vous' : 'tu',
     },
     language,
+    { scope: { familyId, database } },
   );
-  if (spoken.source === 'unsent') return 'voice_unsent';
+  if (spoken.source === 'unsent') {
+    await database.delete(schema.channelMessages).where(eq(schema.channelMessages.id, claimed.id));
+    return 'voice_unsent';
+  }
   const message = spoken.body;
-
-  // CLAIM FIRST, by the insert rather than by the read above: two erasure requests
-  // racing the same departure both pass a read and only one wins the unique index.
-  const [claimed] = await database
-    .insert(schema.channelMessages)
-    .values({
-      familyId,
-      parentUserId,
-      channel: 'sms',
-      direction: 'out',
-      category: 'co_parent_departed',
-      templateKey: DEPARTURE_NOTICE_TEMPLATE_KEY,
-      dedupeKey,
-      status: acceptedStatus('sms'),
-      sentAt: now,
-    })
-    .onConflictDoNothing()
-    .returning({ id: schema.channelMessages.id });
-  if (!claimed) return 'already_sent';
 
   const to = await ports.resolvePhone(database, parentUserId);
   if (to === null) {
