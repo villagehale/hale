@@ -1479,4 +1479,44 @@ describe('friend voice onboarding', () => {
     await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
     expect(transport.bodies()).toEqual([HALE_GREETING_EN]);
   });
+
+  it('retries once, then sends nothing and pages #ops when the model cannot write the turn', async () => {
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.example/ops');
+    const pages: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        pages.push(String(init?.body ?? ''));
+        return new Response(null, { status: 200 });
+      }),
+    );
+    try {
+      let attempts = 0;
+      const { fake, transport, deps } = harness({ voice: true });
+      const broken: IntakeDeps = {
+        ...deps,
+        friendVoice: {
+          async compose() {
+            attempts += 1;
+            throw new Error('model down: secret-token-123');
+          },
+        },
+      };
+      const outcome = await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), broken);
+      expect(outcome.status).toBe('first_touch');
+      expect(attempts).toBe(2);
+      expect(transport.bodies()).toEqual([]);
+      expect(pages).toHaveLength(1);
+      expect(pages[0]).toContain('onboarding friend voice unsent');
+      expect(pages[0]).toContain('reason=model_failed');
+      expect(pages[0]).not.toContain('secret-token-123');
+      expect(pages[0]).not.toContain('M5V');
+      // Code does not read the postal code itself, so nothing was stored and the
+      // ask is still open: the parent's next text is answered, not retired.
+      const session = await loadOpenSession(fake.db, PHONE);
+      expect(session?.state).toBe('awaiting_place');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
