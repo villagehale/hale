@@ -98,7 +98,7 @@ export function settleCheckInIntent(
   }
   if (isCadenceIntent(answer.intent)) {
     if (answer.confidence < CHECK_IN_CADENCE_CONFIDENCE_MIN) {
-      return { intent: 'other', interpretation: `cadence read below confidence floor` };
+      return { intent: 'other', interpretation: 'cadence read below confidence floor' };
     }
     if (CADENCE_OF_INTENT[answer.intent] === input.cadence) {
       return { intent: 'other', interpretation: 'cadence already as asked' };
