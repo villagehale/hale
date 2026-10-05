@@ -18,10 +18,7 @@ import { createFollowupVoice } from '~/lib/channel/followup/voice';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import {
-  type EmailAlertPorts,
-  alertParentForGmailSweep,
-} from '~/lib/integrations/email-alert';
+import { type EmailAlertPorts, alertParentForGmailSweep } from '~/lib/integrations/email-alert';
 import { defaultReminderRunDeps, runReminderCron } from '~/lib/loop/reminders/run';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
@@ -299,7 +296,9 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
     const text = transport.sent[0]?.body ?? '';
     // The provider is the subject, the first session is named, and the one question is
     // the CTA. The model chose the title; the frame is Hale's.
-    expect(text).toContain("City of Brookfield Recreation says you're in for Preschool Swim Level 2");
+    expect(text).toContain(
+      "City of Brookfield Recreation says you're in for Preschool Swim Level 2",
+    );
     expect(text).toContain('first one Saturday, Aug 1 at 9:00 a.m.');
     expect(text).toContain('Want it on your calendar?');
     // The receipt's own details have no column and never reach the wire.
@@ -396,12 +395,11 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
     // happened - hears nothing.
     expect(askTransport.sent[0]?.to).toBe(CO_PARENT_PHONE);
     expect(askTransport.sent.map((sent) => sent.to)).not.toContain(PRIMARY_PHONE);
-    // The locked how-it-went sentence names the class the receipt booked. The model
-    // is not called for an activity ask (VIL-366).
+    // The model-written ask (recorded in __recordings__) names the class the receipt
+    // booked and asks exactly one question. No fixed sentence underneath (VIL-413).
     expect(askTransport.sent[0]?.body).toContain('Preschool Swim Level 2');
-    expect(askTransport.sent[0]?.body).toContain(
-      'How did Preschool Swim Level 2 go? One line is plenty.',
-    );
+    expect(askTransport.sent[0]?.body.match(/\?/g)).toHaveLength(1);
+    expect(askTransport.sent[0]?.body).not.toContain('One line is plenty');
 
     const audit = await db.database
       .select()

@@ -434,7 +434,7 @@ describe('the activity follow-up', () => {
 
     expect(result.activityAsked).toBe(1);
     expect(h.transport.bodies()).toEqual([
-      withOptOut('How did Swim class go? One line is plenty.', 'short'),
+      withOptOut(composedAsk({ kind: 'activity', activity: 'Swim class' }), 'short'),
     ]);
     expect(h.recorded[0]).toMatchObject({
       templateKey: 'followup:activity',
@@ -572,14 +572,25 @@ describe('when the voice has nothing sendable', () => {
    * found it. Nothing sent, nothing claimed, nothing audited — and the very next tick
    * tries again and succeeds.
    */
-  it('sends the locked ask even when the voice would have deferred', async () => {
-    const h = harness({ activities: { [FAM_A]: [activity()] }, voiceDefers: 'gate_exhausted' });
+  it('sends no activity ask and claims nothing when the voice defers, then asks next tick', async () => {
+    const overrides: Parameters<typeof harness>[0] = {
+      activities: { [FAM_A]: [activity()] },
+      voiceDefers: 'gate_exhausted',
+    };
+    const h = harness(overrides);
 
     const result = await runFollowupSweep(DB, h.deps, NOW);
 
-    expect(result).toMatchObject({ activityAsked: 1, composeDeferred: 0 });
+    expect(result).toMatchObject({ activityAsked: 0, composeDeferred: 1 });
+    expect(h.transport.bodies()).toEqual([]);
+    expect(h.recorded).toEqual([]);
+    expect(h.audits).toEqual([]);
+
+    overrides.voiceDefers = undefined;
+    const next = await runFollowupSweep(DB, h.deps, new Date(NOW.getTime() + 60 * 60 * 1000));
+    expect(next).toMatchObject({ activityAsked: 1, composeDeferred: 0 });
     expect(h.transport.bodies()).toEqual([
-      withOptOut('How did Swim class go? One line is plenty.', 'short'),
+      withOptOut(composedAsk({ kind: 'activity', activity: 'Swim class' }), 'short'),
     ]);
   });
 

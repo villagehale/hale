@@ -1,10 +1,9 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
-import { withOptOut } from '~/lib/channel/opt-out';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -189,19 +188,23 @@ function deferred(reason: ComposeDeferral, detail?: string): FollowupVoiceOutcom
 }
 
 /**
- * VIL-366 · the booked-activity ask is the locked sentence, not a model line.
- *
- * Intro and daycare stay on the composer below. An activity title that fails the
- * same refusals, or that blows one GSM-7 segment with the full opt-out on it,
- * defers — the claim stays unspent. The model is not called either way.
+ * A deferral is a parent hearing nothing this tick, so #ops hears about it (the
+ * PR #768 pattern). Kind and reason only: no title, no family, in Slack.
  */
-export function lockedActivityFollowup(activity: string): FollowupVoiceOutcome {
-  const body = howItWentAsk(activity);
-  const problems = refusals(body, { kind: 'activity', activity });
-  if (problems.length > 0 || smsSegments(withOptOut(body, 'full')) !== 1) {
-    return deferred('gate_exhausted', problems.join('+') || 'segment');
+async function pageDeferral(
+  page: (text: string) => Promise<unknown>,
+  request: FollowupVoiceRequest,
+  outcome: FollowupVoiceOutcome,
+): Promise<FollowupVoiceOutcome> {
+  if (outcome.status !== 'deferred') return outcome;
+  try {
+    await page(
+      `spoken line unsent skill=followup-voice kind=${request.kind} reason=${outcome.reason}`,
+    );
+  } catch (err) {
+    console.error({ err: message(err) }, 'followup voice: ops page failed');
   }
-  return { status: 'composed', body };
+  return outcome;
 }
 
 /**
@@ -212,54 +215,63 @@ export function lockedActivityFollowup(activity: string): FollowupVoiceOutcome {
  * is due, so constructing a client at wiring time would turn a missing key into a broken
  * cron — and deferring it buys the honest `client_unavailable` outcome instead.
  */
-export function createFollowupVoice(client: () => AgentClient): FollowupVoice {
+export function createFollowupVoice(
+  client: () => AgentClient,
+  options: { page?: (text: string) => Promise<unknown> } = {},
+): FollowupVoice {
+  const page = options.page ?? postOpsSlack;
   return {
     async compose(request) {
-      if (request.kind === 'activity') return lockedActivityFollowup(request.activity);
-
-      let resolved: AgentClient;
-      try {
-        resolved = client();
-      } catch (err) {
-        return deferred('client_unavailable', message(err));
-      }
-
-      let skill: Awaited<ReturnType<typeof loadCronSkill>>;
-      try {
-        skill = await loadCronSkill('followup-voice');
-      } catch (err) {
-        return deferred('skill_unavailable', message(err));
-      }
-
-      const rejected: RejectedAttempt[] = [];
-      for (let attempt = 0; attempt < MAX_COMPOSE_ATTEMPTS; attempt += 1) {
-        let raw: string;
-        try {
-          const { value } = await forceToolJson({
-            client: resolved,
-            lane: pickLane(skill.meta.task),
-            system: skill.instructions,
-            userMessage: followupVoiceUserMessage(request, rejected),
-            toolName: 'ask',
-            toolDescription: 'Return the one short check-in question.',
-            inputJsonSchema: askJsonSchema,
-            schema: askSchema,
-            maxTokens: MAX_TOKENS,
-          });
-          raw = value.ask;
-        } catch (err) {
-          // An outage does not get three tries. It will not have resolved by the third,
-          // and the sweep's next tick is an hour away — which is the right place to wait.
-          return deferred('model_failed', message(err));
-        }
-
-        const body = plainText(raw);
-        const problems = refusals(body, request);
-        if (problems.length === 0) return { status: 'composed', body };
-        rejected.push({ ask: body, problems });
-      }
-
-      return deferred('gate_exhausted', rejected.map((r) => r.problems.join('+')).join(' | '));
+      return pageDeferral(page, request, await composeOnce(client, request));
     },
   };
+}
+
+async function composeOnce(
+  client: () => AgentClient,
+  request: FollowupVoiceRequest,
+): Promise<FollowupVoiceOutcome> {
+  let resolved: AgentClient;
+  try {
+    resolved = client();
+  } catch (err) {
+    return deferred('client_unavailable', message(err));
+  }
+
+  let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+  try {
+    skill = await loadCronSkill('followup-voice');
+  } catch (err) {
+    return deferred('skill_unavailable', message(err));
+  }
+
+  const rejected: RejectedAttempt[] = [];
+  for (let attempt = 0; attempt < MAX_COMPOSE_ATTEMPTS; attempt += 1) {
+    let raw: string;
+    try {
+      const { value } = await forceToolJson({
+        client: resolved,
+        lane: pickLane(skill.meta.task),
+        system: skill.instructions,
+        userMessage: followupVoiceUserMessage(request, rejected),
+        toolName: 'ask',
+        toolDescription: 'Return the one short check-in question.',
+        inputJsonSchema: askJsonSchema,
+        schema: askSchema,
+        maxTokens: MAX_TOKENS,
+      });
+      raw = value.ask;
+    } catch (err) {
+      // An outage does not get three tries. It will not have resolved by the third,
+      // and the sweep's next tick is an hour away — which is the right place to wait.
+      return deferred('model_failed', message(err));
+    }
+
+    const body = plainText(raw);
+    const problems = refusals(body, request);
+    if (problems.length === 0) return { status: 'composed', body };
+    rejected.push({ ask: body, problems });
+  }
+
+  return deferred('gate_exhausted', rejected.map((r) => r.problems.join('+')).join(' | '));
 }

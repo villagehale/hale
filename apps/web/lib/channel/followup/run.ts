@@ -44,7 +44,6 @@ import {
   type FollowupVoice,
   type FollowupVoiceRequest,
   createFollowupVoice,
-  lockedActivityFollowup,
 } from './voice';
 
 /**
@@ -460,12 +459,26 @@ async function sendFollowup(
   );
   if (!verdict.allowed) return { status: 'held', reason: verdict.reason };
 
-  const composed =
-    input.ask.kind === 'activity'
-      ? lockedActivityFollowup(input.ask.activity)
-      : await deps.voice.compose(input.ask);
-  if (composed.status === 'deferred') {
-    return { status: 'compose_deferred', reason: composed.reason };
+  // Every ask is the model's. A family whose thread is the Linq group hears the
+  // group voice (vous, both parents); a 1:1 family hears the follow-up composer.
+  // Either way an unwritten line leaves the claim unspent for the next tick.
+  const target = await familyOutboundTarget(database, input.familyId);
+  let spoken: string;
+  if (target.channel === 'group' && input.ask.kind === 'activity') {
+    const speech = await familySpeech(database, input.familyId, input.parentUserId);
+    const line = await speakGroupLine(
+      deps.groupVoice ?? defaultGroupVoice(),
+      { kind: 'how_it_went', name: speech.name, activity: input.ask.activity },
+      speech.language,
+    );
+    if (line.source === 'unsent') return { status: 'compose_deferred', reason: 'model_failed' };
+    spoken = line.body;
+  } else {
+    const composed = await deps.voice.compose(input.ask);
+    if (composed.status === 'deferred') {
+      return { status: 'compose_deferred', reason: composed.reason };
+    }
+    spoken = composed.body;
   }
 
   const to = await deps.resolveSendablePhone(database, input.parentUserId);
@@ -481,19 +494,6 @@ async function sendFollowup(
   // so an empty answer is the ordinary one and costs no query; a non-empty one means the
   // voice wrote a sentence about a row that is not there, and the claim stays unspent for
   // the next tick rather than the sentence being trimmed.
-  const target = await familyOutboundTarget(database, input.familyId);
-  let spoken = composed.body;
-  if (target.channel === 'group' && input.ask.kind === 'activity') {
-    const speech = await familySpeech(database, input.familyId, input.parentUserId);
-    const line = await speakGroupLine(
-      deps.groupVoice ?? defaultGroupVoice(),
-      { kind: 'how_it_went', name: speech.name, activity: input.ask.activity },
-      speech.language,
-    );
-    // Unsent leaves the claim unspent: the next tick asks again, with a line.
-    if (line.source === 'unsent') return { status: 'compose_deferred', reason: 'model_failed' };
-    spoken = line.body;
-  }
   const body = withOptOut(spoken, verdict.optOut);
   const unbacked = await deps.refuseUnbackedSend(database, {
     familyId: input.familyId,
@@ -552,7 +552,7 @@ async function sendFollowup(
   await deps.threadMessage(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
-    body: composed.body,
+    body: spoken,
   });
   return { status: 'sent' };
 }

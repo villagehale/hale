@@ -1,11 +1,9 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
-import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
 import {
   MAX_COMPOSE_ATTEMPTS,
   createFollowupVoice,
   followupVoiceUserMessage,
-  lockedActivityFollowup,
   refusals,
 } from './voice';
 
@@ -160,42 +158,47 @@ describe('followupVoiceUserMessage', () => {
 });
 
 describe('createFollowupVoice', () => {
-  it('locks an activity ask and does not call the model', async () => {
+  it('writes the activity ask with the model, handed the title and nothing else', async () => {
     const seen: Captured[] = [];
-    const voice = createFollowupVoice(clientSaying([GOOD_ACTIVITY], seen));
+    const page = vi.fn(async (_text: string) => undefined);
+    const voice = createFollowupVoice(clientSaying([GOOD_ACTIVITY], seen), { page });
 
-    expect(await voice.compose(ACTIVITY)).toEqual({
-      status: 'composed',
-      body: howItWentAsk('Swim class'),
-    });
-    expect(seen).toEqual([]);
+    expect(await voice.compose(ACTIVITY)).toEqual({ status: 'composed', body: GOOD_ACTIVITY });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.messages?.[0]?.content).toBe('{"kind":"activity","activity":"Swim class"}');
+    expect(page).not.toHaveBeenCalled();
   });
 
-  it('still locks the activity ask when the client cannot be built', async () => {
-    const voice = createFollowupVoice(throwingClient);
-    expect(await voice.compose(ACTIVITY)).toEqual({
-      status: 'composed',
-      body: 'How did Swim class go? One line is plenty.',
-    });
+  it('defers an activity ask when the client cannot be built, and pages #ops', async () => {
+    const restore = quiet();
+    const page = vi.fn(async (_text: string) => undefined);
+    const outcome = await createFollowupVoice(throwingClient, { page }).compose(ACTIVITY);
+    restore.mockRestore();
+    expect(outcome).toEqual({ status: 'deferred', reason: 'client_unavailable' });
+    expect(page).toHaveBeenCalledWith(
+      'spoken line unsent skill=followup-voice kind=activity reason=client_unavailable',
+    );
   });
 
-  it('defers an activity title that will not fit, without calling the model', async () => {
+  it('defers an activity title the model cannot fit, after the attempts run out', async () => {
     const seen: Captured[] = [];
     const restore = quiet();
-    const outcome = await createFollowupVoice(clientSaying([GOOD_ACTIVITY], seen)).compose({
-      kind: 'activity',
-      activity: 'x'.repeat(200),
-    });
+    const page = vi.fn(async (_text: string) => undefined);
+    const long = 'x'.repeat(200);
+    const outcome = await createFollowupVoice(clientSaying([`How did ${long} go?`], seen), {
+      page,
+    }).compose({ kind: 'activity', activity: long });
     restore.mockRestore();
     expect(outcome).toEqual({ status: 'deferred', reason: 'gate_exhausted' });
-    expect(seen).toEqual([]);
-    expect(lockedActivityFollowup('x'.repeat(200)).status).toBe('deferred');
+    expect(seen).toHaveLength(MAX_COMPOSE_ATTEMPTS);
+    expect(page).toHaveBeenCalledTimes(1);
+    expect(String(page.mock.calls[0]?.[0])).toContain('reason=gate_exhausted');
+    expect(String(page.mock.calls[0]?.[0])).not.toContain('xxxx');
   });
 
   /**
    * The recompose loop, and the half that matters: the second request must CARRY the
    * refusal. A retry that just asks again is a retry that gets the same answer.
-   * Activity asks no longer reach this loop; intro still does.
    */
   it('recomposes with the refusal fed back, and sends the fixed ask', async () => {
     const seen: Captured[] = [];
