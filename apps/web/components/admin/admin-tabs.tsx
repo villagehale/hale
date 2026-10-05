@@ -1,9 +1,10 @@
 'use client';
 
-import type { Route } from 'next';
 import { motion, useReducedMotion } from 'motion/react';
+import type { Route } from 'next';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 /**
  * The tab bar — one question per tab, in the dial's own anatomy scaled up
@@ -36,9 +37,17 @@ export function AdminTabs() {
   const pathname = usePathname();
   const w = useSearchParams().get('w');
   const reduced = useReducedMotion();
+  // `useReducedMotion` is null through SSR and the first client paint, then
+  // resolves in an effect. The links are already in the HTML before that, and
+  // a click in the gap is swallowed — the URL never moves. `data-ready` flips
+  // only once that value has settled, which is the moment a click is safe.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (reduced !== null) setReady(true);
+  }, [reduced]);
 
   return (
-    <nav className="adm-tabs" aria-label="Admin sections">
+    <nav className="adm-tabs" aria-label="Admin sections" data-ready={ready ? 'true' : undefined}>
       {ADMIN_TABS.map((tab) => {
         const active = isActiveTab(tab.href, pathname);
         return (

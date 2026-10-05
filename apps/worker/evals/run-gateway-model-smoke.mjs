@@ -25,7 +25,7 @@ function credential() {
     const value = process.env[name];
     if (value) return { name, value };
   }
-  throw new Error('Set AI_GATEWAY_API_KEY (preferred), VERCEL_KEY, or JEV_KEY');
+  return null;
 }
 
 function numberOrNull(value) {
@@ -69,6 +69,7 @@ async function probe(model, auth) {
 
 async function main() {
   const selected = argument('model');
+  const cachedOnly = process.argv.includes('--cached-only');
   if (process.argv.includes('--list')) {
     console.info(MODELS.join('\n'));
     return;
@@ -78,6 +79,20 @@ async function main() {
   }
 
   const auth = credential();
+  // The Monday sweep runs every runner with --cached-only and no secrets. A throw
+  // here fails that job. Live probing stays the path when a credential is present
+  // and this is not a cache replay.
+  if (cachedOnly || !auth) {
+    const why = [
+      cachedOnly ? '--cached-only' : null,
+      auth ? null : 'no AI_GATEWAY_API_KEY, VERCEL_KEY, or JEV_KEY',
+    ]
+      .filter(Boolean)
+      .join('; ');
+    console.info(`gateway-model-smoke: skipped (${why}); no live probe`);
+    return;
+  }
+
   const models = selected ? [selected] : MODELS;
   console.info(`Gateway smoke | credential=${auth.name} | models=${models.length}`);
   let failed = 0;
