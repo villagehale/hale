@@ -18,6 +18,7 @@ import {
   FIRST_TOUCH_IMESSAGE_BY_LANGUAGE,
   FIRST_TOUCH_SMS_BY_LANGUAGE,
   HALE_GREETING_EN,
+  IDENTITY_ACCOUNTABILITY_LINE,
 } from './copy';
 import type { IntakeCollected } from './extract';
 import {
@@ -50,6 +51,9 @@ const MAYA: IntakeCollected = {
 };
 
 function offScriptAside(words: string): string | null {
+  if (/who is this/i.test(words)) {
+    return "I'm Hale, from Village Hale Technologies (villagehale.com). Trying me costs nothing to ask about; the site has the details.";
+  }
   if (/what is this/i.test(words)) return "I find what's on for your kids.";
   if (/is this free/i.test(words)) return 'Yes, texting me is free.';
   if (/tell me a joke/i.test(words)) return "I'm not much of a comic.";
@@ -1078,6 +1082,39 @@ describe('friend voice onboarding', () => {
     expect(body).toContain('Yes, texting me is free.');
     expect(body.trim().endsWith("What are your kids' names?")).toBe(true);
     expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_ages');
+  });
+
+  it('answers who-is-this in the model voice with the company named, and steers back', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
+    const result = await handleInboundSms(
+      fake.db,
+      inbound(transport, 'wait who is this? is this free?'),
+      deps,
+    );
+    expect(result.status).toBe('first_touch');
+    const body = transport.bodies().at(-1) ?? '';
+    expect(body).toContain('Village Hale Technologies');
+    expect(body).toContain('villagehale.com');
+    expect(body).not.toBe(IDENTITY_ACCOUNTABILITY_LINE);
+    expect(body).not.toMatch(/\bSTOP\b/);
+    expect(body.trim().endsWith("What are your kids' names?")).toBe(true);
+    expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_ages');
+  });
+
+  it('walks a session left in awaiting_details with the friend voice, not the unreadable door', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
+    const row = fake.rows(schema.smsIntakeSessions)[0];
+    expect(row?.state).toBe('awaiting_place');
+    // A row from before the walk: details state, greeting already out.
+    if (row) row.state = 'awaiting_details';
+    const result = await handleInboundSms(fake.db, inbound(transport, 'ok'), deps);
+    expect(result.status).toBe('first_touch');
+    const body = transport.bodies().at(-1) ?? '';
+    expect(body).toBe("Got it. What's your postal code?");
+    expect(body).not.toMatch(/couldn't read|could not read/i);
+    expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_place');
   });
 
   it('goes straight to the map when the first text has a postal code and ages, then asks the name', async () => {

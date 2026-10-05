@@ -257,6 +257,33 @@ describe('friend-voice judge', () => {
     expect(judgeFriendReply('Ton Gmail est connecté.', gmail)).toEqual({ ok: true });
   });
 
+  it('answers who-is-this in the model voice, but only when the company is named', () => {
+    const asked = blank({
+      step: 'kids_names',
+      placeLabel: 'Burlington',
+      parentWords: 'wait who is this? is this free?',
+    });
+    expect(
+      judgeFriendReply(
+        "Fair question. I'm Hale, from Village Hale Technologies (villagehale.com) - I find kids' activities near you and keep the dates straight. Pricing isn't mine to quote; the site has it. Who are the kids?",
+        asked,
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      judgeFriendReply("I'm Hale, a text helper for parents. Who are the kids?", asked),
+    ).toEqual({ ok: false, reason: 'identity' });
+    // A fixed-copy shape, with STOP in it, is not what the model writes.
+    expect(
+      judgeFriendReply(
+        'This is Hale from Village Hale Technologies Inc. Reply STOP anytime and we stop. Who are the kids?',
+        asked,
+      ),
+    ).toEqual({ ok: false, reason: 'compliance' });
+    // A parent who is not challenging Hale is not made to hear the company name.
+    const plain = blank({ step: 'kids_names', placeLabel: 'Burlington', parentWords: 'L7G 4S8' });
+    expect(judgeFriendReply('Burlington, got it. Who are the kids?', plain)).toEqual({ ok: true });
+  });
+
   it('lets a connected reply name one synced title, and nothing the snapshot does not have', () => {
     const synced = {
       provider: 'gcal' as const,

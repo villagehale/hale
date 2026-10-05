@@ -1113,7 +1113,14 @@ async function deliverFirstHello(
   // VIL-322: two site intakes dropped because greet() never read the inbound body.
   let body = postal ? greetingWithArea(postal.areaCoarse) : greeting(venue?.name ?? null, language);
   let outcome: IntakeOutcome = { status: 'greeted' };
-  if (postal === null && !isBareFirstHello(args.inbound.body)) {
+  if (postal === null && !isBareFirstHello(args.inbound.body) && onboardingFriendVoiceEnabled()) {
+    // Only the two safety lines stay fixed; a first question is answered by the friend voice below.
+    const safety = fixedSafetyReply(args.inbound.body);
+    if (safety) {
+      body = safety;
+      outcome = { status: 'question_answered', source: 'safety' };
+    }
+  } else if (postal === null && !isBareFirstHello(args.inbound.body)) {
     const offScript = await offScriptReply(
       {
         parentWords: args.inbound.body,
@@ -1258,6 +1265,18 @@ function friendFields(
     parentName: null,
     ...extra,
   };
+}
+
+/**
+ * The two replies that stay fixed when the friend voice is on: a physical
+ * emergency and a mental-health crisis go out alone, before any model. Who is
+ * behind this number is answered by the model from `facts.identity`, and the
+ * judge refuses a reply to a challenge that does not name the company.
+ */
+function fixedSafetyReply(body: string): string | null {
+  if (namesAnEmergency(body)) return EMERGENCY_REPLY;
+  if (namesAMentalCrisis(body)) return MENTAL_CRISIS_REPLY;
+  return null;
 }
 
 /** The kids as the model sees them: name and age only, so a line's age fit lands on the right kid. */
@@ -1489,11 +1508,7 @@ async function friendOnboardingTurn(
     session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   let transcript = recorded.transcript;
-  const safety = namesAnEmergency(inbound.body)
-    ? EMERGENCY_REPLY
-    : namesAMentalCrisis(inbound.body)
-      ? MENTAL_CRISIS_REPLY
-      : identityChallengeReply(inbound.body);
+  const safety = fixedSafetyReply(inbound.body);
   if (safety) {
     ({ transcript } = await sendAndRecord(database, ctx, safety, deps, transcript));
     await saveSession(
@@ -1793,11 +1808,7 @@ async function continueFirstTouch(
       locationRequest: null,
     };
     if (onboardingFriendVoiceEnabled()) {
-      const safety = namesAnEmergency(inbound.body)
-        ? EMERGENCY_REPLY
-        : namesAMentalCrisis(inbound.body)
-          ? MENTAL_CRISIS_REPLY
-          : identityChallengeReply(inbound.body);
+      const safety = fixedSafetyReply(inbound.body);
       if (safety) {
         ({ transcript } = await sendAndRecord(database, ctx, safety, deps, transcript));
       } else {
@@ -2594,11 +2605,7 @@ async function friendColdTurn(
   const language =
     session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
   const ctx = sendContext(args);
-  const safety = namesAnEmergency(inbound.body)
-    ? EMERGENCY_REPLY
-    : namesAMentalCrisis(inbound.body)
-      ? MENTAL_CRISIS_REPLY
-      : identityChallengeReply(inbound.body);
+  const safety = fixedSafetyReply(inbound.body);
   if (safety) {
     const recorded = await recordInbound(database, ctx, inbound, session.transcript);
     await sendAndRecord(database, ctx, safety, deps, recorded.transcript);
@@ -3260,6 +3267,17 @@ async function handleDetails(
   args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
+  // With the friend voice and the first-touch walk both on, a pre-family session
+  // is one conversation whatever state it was left in: the model reads the text
+  // and writes the next ask. No unreadable door, no fixed region line.
+  if (onboardingFriendVoiceEnabled() && firstTouchLadderEnabled()) {
+    return friendOnboardingTurn(
+      database,
+      args,
+      deps,
+      !transcriptHasOutbound(args.session.transcript),
+    );
+  }
   const { session, inbound, now } = args;
   const ctx = sendContext(args);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
@@ -4089,6 +4107,22 @@ async function handleWatchReply(
   const ctx = sendContext(args);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   const language = replyLanguage(inbound.body);
+
+  // The watch offer is retired under the friend voice: the find is the watch.
+  // A session left waiting on it still gets an answer, written by the model,
+  // and is closed so the next text reaches the family's own thread.
+  if (onboardingFriendVoiceEnabled()) {
+    const safety = fixedSafetyReply(inbound.body);
+    const body = safety ?? (await helpBody(deps, session, language, inbound.body));
+    if (body) await sendAndRecord(database, ctx, body, deps, recorded.transcript);
+    await saveSession(
+      database,
+      session,
+      { state: 'complete', closedAt: now, lastProviderId: inbound.providerId },
+      now,
+    );
+    return { status: 'question_answered', source: safety ? 'safety' : 'composed' };
+  }
 
   // The QUESTION stays English because the question that was actually asked was English:
   // WATCH_OFFER rides out appended to the model-composed radar line, which has no

@@ -14,6 +14,7 @@ import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
+import { HALE_IDENTITY, NAMES_HALE_COMPANY, isIdentityChallenge } from './identity-challenge';
 import {
   ONBOARDING_ORDER,
   type OnboardingCapture,
@@ -429,6 +430,7 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
       scheduled: input.scheduled ?? [],
       coparentJoin: input.coparentJoin ?? null,
       coparentGroup: input.coparentGroup ?? null,
+      identity: HALE_IDENTITY,
     },
   };
 }
@@ -477,6 +479,13 @@ export function friendFactSlots(input: FriendVoiceInput, link?: string | null): 
     for (const day of upcomingDays(input.now, 'fr')) slots.push(day.label);
   }
   for (const slot of syncedFactSlots(input)) slots.push(slot);
+  slots.push(
+    HALE_IDENTITY.company,
+    HALE_IDENTITY.site,
+    `https://${HALE_IDENTITY.site}`,
+    HALE_IDENTITY.person,
+    HALE_IDENTITY.contact,
+  );
   return slots.filter((slot) => slot.length > 0);
 }
 
@@ -762,7 +771,8 @@ export type FriendJudgeFailure =
   | 'invented'
   | 'french'
   | 'link'
-  | 'registration_claim';
+  | 'registration_claim'
+  | 'identity';
 
 function trailerFacts(options: SpeakOptions): string[] {
   return options.trailer ? [options.trailer] : [];
@@ -797,6 +807,10 @@ export function judgeFriendReply(
   if (BANNED_PHRASE.test(trimmed)) return { ok: false, reason: 'banned' };
   if (COMPLIANCE.test(trimmed)) return { ok: false, reason: 'compliance' };
   if (REGISTRATION_CLAIM.test(trimmed)) return { ok: false, reason: 'registration_claim' };
+  // Who is behind this number is a disclosure: when they asked, the company is named.
+  if (isIdentityChallenge(input.parentWords) && !NAMES_HALE_COMPANY.test(trimmed)) {
+    return { ok: false, reason: 'identity' };
+  }
 
   const slots = friendFactSlots(input, options.link);
   for (const fact of trailerFacts(options)) slots.push(fact);
