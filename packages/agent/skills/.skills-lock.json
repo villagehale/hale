@@ -79,6 +79,10 @@
     "file": "general-answer.md",
     "sha256": "c0a6f0eb71c7e9ab925407bbeac82ed77ad41498ee37612b0368c1b5ce520744"
   },
+  "group-voice.md": {
+    "file": "group-voice.md",
+    "sha256": "44e4ee15138cfcf5e823bbd79bc5d06a658953fc11d04e7fd0e1893004ec2dd3"
+  },
   "identity-ask.md": {
     "file": "identity-ask.md",
     "sha256": "85602f9dcaedf34dc490c99f42bf272ebc3555c40efddf2ef1eb553d1224c36c"
