@@ -9,6 +9,7 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import type { KidItemsInput } from './aha-kids';
 import {
   CONNECTOR_CONNECTED_TEMPLATE_KEY,
   type ConnectedNoticePorts,
@@ -365,14 +366,30 @@ describe('sendConnectorConnectedText', () => {
     return { title, start, end, allDay: false, location: null, declined: false };
   }
 
+  /** The classifier port, scripted: kid items are the ones naming Maya or a swim. */
+  function scriptedKidItems(asked: KidItemsInput[]) {
+    return {
+      async classify(input: KidItemsInput) {
+        asked.push(input);
+        return {
+          kidItemIds: input.items
+            .filter((item) => /\bmaya\b|\bswim\b/i.test(item.text))
+            .map((item) => item.id),
+        };
+      },
+    };
+  }
+
   it('hands the model only kid items: a clash between two kid activities is kept, the parent appointment is not', async () => {
     vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
     await seedChannel();
     await seedChild(db.database, familyId, 'Maya', 48, undefined, NOW);
     const seen: Array<{ titles: string[]; overlaps: Array<{ earlier: string; later: string }> }> =
       [];
+    const asked: KidItemsInput[] = [];
     ports = {
       ...ports,
+      kidItems: scriptedKidItems(asked),
       friendVoice: {
         async compose(input) {
           if (input.step === 'email') {
@@ -426,6 +443,15 @@ describe('sendConnectorConnectedText', () => {
     );
 
     expect(connectedNoticeLabel(outcome)).toBe('sent');
+    // The classifier was handed the kids by name and age, and every item once.
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.children).toEqual([{ name: 'Maya', ageMonths: 48 }]);
+    expect(asked[0]?.items.map((item) => item.text)).toEqual([
+      'Swim at the rec centre',
+      'Maya soccer',
+      'Dentist',
+      'Budget review',
+    ]);
     expect(seen).toEqual([
       {
         titles: ['Swim at the rec centre', 'Maya soccer'],
@@ -447,6 +473,7 @@ describe('sendConnectorConnectedText', () => {
     const reads: string[] = [];
     ports = {
       ...ports,
+      kidItems: scriptedKidItems([]),
       friendVoice: {
         async compose(input) {
           if (input.step === 'email') {
@@ -497,6 +524,7 @@ describe('sendConnectorConnectedText', () => {
     const reads: string[] = [];
     ports = {
       ...ports,
+      kidItems: scriptedKidItems([]),
       friendVoice: {
         async compose(input) {
           if (input.step === 'calendar') {

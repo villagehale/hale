@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import { sendYearConnectorCards } from '~/lib/channel/intake/connector-offer';
+import { summarizeChildren } from '~/lib/channel/intake/derive';
 import {
   type FriendVoiceComposer,
   createFriendVoiceComposer,
@@ -30,7 +31,12 @@ import {
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
-import { kidRelatedAha, loadKidContext } from './aha-kids';
+import {
+  type KidItemClassifier,
+  createKidItemClassifier,
+  kidRelatedAha,
+  loadKidContext,
+} from './aha-kids';
 import { type AhaSnapshot, failedAha } from './aha-read';
 import { type TextConnectProvider, connectorConnectedText } from './text-connect';
 
@@ -79,6 +85,12 @@ export interface ConnectedNoticePorts {
    * can retry. The group receipt stays the locked sentence: it names the parent.
    */
   friendVoice?: FriendVoiceComposer;
+  /**
+   * Says which synced items are about the kids before the wow line is written.
+   * Absent keeps nothing from the source: the receipt is plain and the reason
+   * is logged (aha-kids.ts).
+   */
+  kidItems?: KidItemClassifier;
 }
 
 export type ConnectedNoticeOutcome =
@@ -125,14 +137,14 @@ export function connectedNoticeLabel(outcome: ConnectedNoticeOutcome): Connected
  * still leaves one path that proves the real transport is reachable. */
 export function defaultConnectedNoticePorts(): ConnectedNoticePorts {
   const apiKey = process.env.ANTHROPIC_API_KEY;
+  const client =
+    onboardingFriendVoiceEnabled() && apiKey ? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS) : null;
   return {
     transport: createOutboundTransport(),
     imessage: (input) => sendLinqChatMessage({ chatId: input.chatId, text: input.body }),
     threadMessage: threadProactiveMessage,
-    friendVoice:
-      onboardingFriendVoiceEnabled() && apiKey
-        ? createFriendVoiceComposer(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS))
-        : undefined,
+    friendVoice: client ? createFriendVoiceComposer(client) : undefined,
+    kidItems: client ? createKidItemClassifier(client) : undefined,
   };
 }
 
@@ -143,26 +155,18 @@ export async function connectedReceiptBody(
   provider: TextConnectProvider,
   composer: FriendVoiceComposer | undefined,
   aha?: AhaSnapshot | null,
-  options?: { page?: (text: string) => Promise<unknown> },
+  options?: {
+    page?: (text: string) => Promise<unknown>;
+    /** The open onboarding, so the receipt knows the parent, the kids and the thread. */
+    session?: IntakeSession | null;
+  },
 ): Promise<string> {
   if (!onboardingFriendVoiceEnabled()) return connectorConnectedText(language, provider);
   const spoken = await speakFriend(
     composer,
     {
+      ...receiptVoiceBase(language, options?.session ?? null),
       step: 'connected',
-      language,
-      address: 'tu',
-      introduce: false,
-      parentWords: '',
-      recentTurns: [],
-      placeLabel: null,
-      agesLabel: null,
-      ageMonths: [],
-      findLines: [],
-      listKind: 'none',
-      activity: null,
-      day: null,
-      parentName: null,
       connector: provider,
       granted: null,
       synced: aha ?? failedAha(provider),
@@ -298,12 +302,13 @@ async function sendReceipt(
       'connector connected: aha not supplied - the receipt will not name an event',
     );
   }
-  // HARD RULE: the one useful line is about the kids only. Items that do not
-  // match a child, a found activity, or kid-activity vocabulary never reach the
-  // model. A mailbox or calendar with nothing kid-related yields no mention.
+  // HARD RULE: the one useful line is about the kids only. Items the
+  // classifier does not read as about a child or a kid activity never reach
+  // the model. A mailbox or calendar with nothing kid-related yields no mention.
+  const session = onboardingFriendVoiceEnabled() ? await openOnboarding(database, familyId) : null;
   const aha =
     onboardingFriendVoiceEnabled() && args.aha
-      ? kidRelatedAha(args.aha, await loadKidContext(database, familyId))
+      ? await kidRelatedAha(args.aha, await loadKidContext(database, familyId, now), ports.kidItems)
       : args.aha;
   if (aha && aha.read === 'none_for_kids') {
     console.info({ familyId, provider }, 'connector connected: nothing kid-related to mention');
@@ -313,10 +318,23 @@ async function sendReceipt(
     provider,
     ports.friendVoice,
     aha,
+    { session },
   );
+  const continuation = {
+    familyId,
+    parentUserId,
+    provider,
+    now,
+    chatId: door.channel === 'imessage' ? receiptChatId : null,
+    phone,
+    receipt: body,
+  };
   if (body.trim().length === 0) {
+    // The wow moment is skipped, not the walk: the next beat still goes out,
+    // and the released claim lets a later callback write the receipt.
     await database.delete(schema.channelMessages).where(eq(schema.channelMessages.id, claimed.id));
     console.error({ reason: 'voice_unsent' }, 'connector connected: reply not sent');
+    await continueAfterReceipt(database, continuation, ports);
     return { status: 'not_sent', reason: 'voice_unsent' };
   }
   let providerMessageId: string;
@@ -371,19 +389,7 @@ async function sendReceipt(
   // you just connect" must not meet a coach that cannot see its own message.
   await ports.threadMessage(database, { familyId, parentUserId, body });
 
-  await continueAfterReceipt(
-    database,
-    {
-      familyId,
-      parentUserId,
-      provider,
-      now,
-      chatId: door.channel === 'imessage' ? receiptChatId : null,
-      phone,
-      receipt: body,
-    },
-    ports,
-  );
+  await continueAfterReceipt(database, continuation, ports);
 
   return { status: 'sent', channelMessageId: claimed.id };
 }
@@ -690,6 +696,30 @@ async function askAfterCalendarReceipt(
       await rememberConnected(database, session, { provider: 'gcal', now: args.now });
       return;
     }
+    // One ask per session off this receipt. A reconnect does not ask again;
+    // the walk continues from the parent's next text.
+    const templateKey = step === 'schedule' ? 'onboarding:schedule_ask' : 'onboarding:coparent_ask';
+    const [claimed] = await database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        channel: args.chatId ? 'imessage' : 'sms',
+        direction: 'out',
+        category: 'reply',
+        templateKey,
+        dedupeKey: `${templateKey}:receipt:${session.id}`,
+        providerChatId: args.chatId,
+        status: acceptedStatus(args.chatId ? 'imessage' : 'sms'),
+        sentAt: args.now,
+      })
+      .onConflictDoNothing()
+      .returning({ id: schema.channelMessages.id });
+    if (!claimed) {
+      console.info({ familyId: args.familyId, step }, 'connector connected: ask already went out');
+      await rememberConnected(database, session, { provider: 'gcal', now: args.now });
+      return;
+    }
     const language = await familyReceiptLanguage(database, args.familyId);
     const from = args.chatId ? linqFromE164() : null;
     const join =
@@ -708,6 +738,9 @@ async function askAfterCalendarReceipt(
       { trailer: join ? `${join.line}\n${join.phrase}` : null },
     );
     if (spoken.source === 'unsent' || !spoken.body.trim()) {
+      await database
+        .delete(schema.channelMessages)
+        .where(eq(schema.channelMessages.id, claimed.id));
       await rememberConnected(database, session, { provider: 'gcal', now: args.now });
       return;
     }
@@ -717,18 +750,15 @@ async function askAfterCalendarReceipt(
       body: spoken.body,
     });
     const channel = sent.transport === 'imessage' ? 'imessage' : 'sms';
-    await database.insert(schema.channelMessages).values({
-      familyId: args.familyId,
-      parentUserId: args.parentUserId,
-      channel,
-      direction: 'out',
-      category: 'reply',
-      templateKey: step === 'schedule' ? 'onboarding:schedule_ask' : 'onboarding:coparent_ask',
-      providerMessageId: sent.providerMessageId,
-      providerChatId: sent.chatId ?? args.chatId,
-      status: acceptedStatus(channel),
-      sentAt: args.now,
-    });
+    await database
+      .update(schema.channelMessages)
+      .set({
+        channel,
+        providerMessageId: sent.providerMessageId,
+        providerChatId: sent.chatId ?? args.chatId,
+        status: acceptedStatus(channel),
+      })
+      .where(eq(schema.channelMessages.id, claimed.id));
     await ports.threadMessage(database, {
       familyId: args.familyId,
       parentUserId: args.parentUserId,
@@ -774,7 +804,7 @@ function receiptVoiceBase(language: ReplyLanguage, session: IntakeSession | null
       body: entry.body,
     })),
     placeLabel: session?.firstTouch?.place?.city || session?.firstTouch?.place?.areaCoarse || null,
-    agesLabel: null,
+    agesLabel: children.length > 0 ? summarizeChildren(children) : null,
     ageMonths: children.flatMap((child) => (child.ageMonths == null ? [] : [child.ageMonths])),
     findLines: [] as string[],
     listKind: 'none' as const,
