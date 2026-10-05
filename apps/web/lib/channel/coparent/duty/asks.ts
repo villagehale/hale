@@ -1,4 +1,3 @@
-import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNull } from 'drizzle-orm';
 import { coldStartLadderEnabled } from '~/lib/channel/intake/cold-start/flags';
@@ -24,8 +23,6 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
-import { replyProse } from '~/lib/channel/reply-copy/apply';
-import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { isWithinQuietHours, localParts } from '~/lib/loop/prefs';
 import { closeFacts, writeFact } from '~/lib/memory/facts';
 import {
@@ -41,27 +38,33 @@ import {
   planDutyCadence,
 } from './cadence';
 import {
-  type DutyCopyParams,
-  type DutyWeekEntry,
   dutyClockLabel,
-  dutyCopy,
   dutyCopyLocked,
   dutyCopyMayLeave,
-  dutyWeekList,
+  dutyKidChoices,
   dutyWeekdayName,
-  formatDutyKids,
   spokenFirstName,
 } from './copy';
 import { coparentDutySendsActive, coparentDutySendsArmed } from './flag';
 import type { DutyExtractor } from './interpret';
 import { type DutyRole, type DutyState, dutyStateFromFact, needsWhichKid } from './model';
+import {
+  type DutyLineRequest,
+  type DutyVoice,
+  type DutyWeekEntry,
+  defaultDutyVoice,
+  speakDutyBubble,
+} from './voice';
 
 /**
  * VIL-382 · duty asks in the Linq co-parent group.
  *
  * Flag off is a no-op before any read. A send goes to `families.linq_group_chat_id`
- * and nowhere else: no 1:1, no SMS, no email, no push. Copy leaves only when it
- * is locked and no longer a design placeholder. Every fact write is an
+ * and nowhere else: no 1:1, no SMS, no email, no push. Every line is written by the
+ * model through the duty-voice skill from the facts this module gathers (VIL-413 /
+ * VIL-417): a bubble the model could not write is `voice_unsent`, #ops is paged, and
+ * nothing is sent — there is no template underneath. The lane's dark flag
+ * (`dutyCopyLocked`) is read before the model is asked. Every fact write is an
  * audit row with `logistics_decision_recorded`. Nothing is deleted.
  *
  * Email stays out. This module does not read a mailbox. An occasion marked
@@ -127,6 +130,7 @@ export type DutyDelivery =
         | 'group_cap'
         | 'ask_budget';
     }
+  /** `voice_unsent`: the model could not write the bubble; #ops was paged; nothing left. */
   | { status: 'not_sent'; reason: string };
 
 export interface DutySweepResult {
@@ -137,6 +141,8 @@ export interface DutySweepResult {
   steppedDown: number;
   held: number;
   skipped: number;
+  /** Bubbles the model could not write (rule #11: an unsent line is a counted outcome). */
+  voiceUnsent: number;
 }
 
 export function emptyDutySweep(enabled: boolean): DutySweepResult {
@@ -148,6 +154,7 @@ export function emptyDutySweep(enabled: boolean): DutySweepResult {
     steppedDown: 0,
     held: 0,
     skipped: 0,
+    voiceUnsent: 0,
   };
 }
 
@@ -607,7 +614,12 @@ function silentParentName(ctx: DutyRenderInput, occasion: DutyOccasion | undefin
   return only ? (ctx.parentNames[only] ?? null) : null;
 }
 
-function paramsFor(line: CadenceLine, ctx: DutyRenderInput): DutyCopyParams | null {
+/**
+ * The facts one cadence line hands the model, or null when code cannot honestly supply
+ * them (no kid, no event, no name a parent agreed to). A line with nothing behind it is
+ * dropped from the bubble, as it always was; nothing is written in its place.
+ */
+function requestFor(line: CadenceLine, ctx: DutyRenderInput): DutyLineRequest | null {
   if (line.mode === 'week_overview') {
     const entries: DutyWeekEntry[] = ctx.occasions
       .filter((row) => row.source !== 'email' && !row.cancelled)
@@ -618,116 +630,86 @@ function paramsFor(line: CadenceLine, ctx: DutyRenderInput): DutyCopyParams | nu
         const day = dutyWeekdayName(row.startsAt, ctx.timeZone, ctx.language);
         const event = row.eventLabel?.trim();
         if (!event) return [];
-        return [{ day, event, name: row.spokenName ?? null }];
+        return [{ day, event, owner: row.spokenName ?? null }];
       });
     if (entries.length === 0) return null;
-    return { list: dutyWeekList(ctx.language, entries) };
+    return { kind: 'week_overview', entries };
   }
   const occasion = occasionForLine(line, ctx);
   if (!occasion) return null;
   const day = dutyWeekdayName(occasion.startsAt, ctx.timeZone, ctx.language);
   const time = dutyClockLabel(occasion.startsAt, ctx.timeZone, ctx.language);
   const kid = occasion.kid ?? null;
-  const event = occasion.eventLabel ?? null;
+  const event = occasion.eventLabel?.trim() || null;
   if (line.mode === 'which_kid') {
     const name = ctx.speakerName ?? occasion.soloCalendarName ?? null;
-    const kids = formatDutyKids(occasion.childFirstNames ?? ctx.childFirstNames, ctx.language);
+    const kids = dutyKidChoices(occasion.childFirstNames ?? ctx.childFirstNames);
     if (!name || !kids) return null;
-    return { name, kids };
+    return { kind: 'which_kid', name, kids };
   }
   if (line.mode === 'both_claimed') {
     const parentA = occasion.claimantNames?.[0];
     const parentB = occasion.claimantNames?.[1];
     if (!event || !parentA || !parentB) return null;
-    return { event, day, parentA, parentB };
+    return { kind: 'both_claimed', event, day, parentA, parentB };
   }
   if (line.mode === 'silent_parent') {
     const name = silentParentName(ctx, occasion);
     if (!name || !event) return null;
-    return { name, event, day };
+    return { kind: 'silent_parent', name, event, day };
   }
   if (line.mode === 'night_before') {
     if (!occasion.spokenName || !kid || !event) return null;
-    return { name: occasion.spokenName, kid, event, time };
+    return { kind: 'night_before', owner: occasion.spokenName, kid, event, time };
   }
   if (line.mode === 'reask_48h') {
     if (!kid || !event) return null;
-    return { kid, event, day, time };
+    return { kind: 'reask', kid, event, day, time };
   }
   if (line.mode === 'parent_initiated') {
     if (!kid || !event) return null;
     return occasion.spokenName
-      ? { name: occasion.spokenName, kid, event, day, time }
-      : { kid, event, day, time };
+      ? { kind: 'owner', owner: occasion.spokenName, kid, event, day, time, recorded: false }
+      : { kind: 'nobody_yet', kid, event, day, time };
   }
   return null;
 }
 
-function renderOne(line: CadenceLine, ctx: DutyRenderInput): string | null {
-  const params = paramsFor(line, ctx);
-  if (!params) return null;
-  try {
-    const text = dutyCopy(line.mode, ctx.language, params);
-    if (!dutyCopyMayLeave(text)) return null;
-    return text;
-  } catch {
-    return null;
-  }
-}
-
-function dutyFacts(lines: readonly CadenceLine[], ctx: DutyRenderInput): string[] {
-  const facts: string[] = [];
-  for (const line of lines) {
-    const params = paramsFor(line, ctx);
-    if (!params) continue;
-    for (const value of Object.values(params)) {
-      if (typeof value === 'string' && value.trim()) facts.push(value.trim());
-    }
-  }
-  return facts;
+/** What the model is handed for a bubble. Null when no line has facts behind it. */
+export function dutyLineRequests(
+  lines: readonly CadenceLine[],
+  ctx: DutyRenderInput,
+): DutyLineRequest[] | null {
+  const requests = lines
+    .map((line) => requestFor(line, ctx))
+    .filter((request): request is DutyLineRequest => request !== null);
+  return requests.length === 0 ? null : requests;
 }
 
 /**
- * Rewrite one already-budgeted duty bubble. The model may not add a question
- * the locked line did not already ask. A failed check, or a line that may not
- * leave, keeps the locked sentence.
+ * One duty bubble, written by the model or not at all. Null when the lane is dark
+ * (no model call is made), when no line has facts, or when the model could not write
+ * every line (#ops paged by the engine).
  */
-async function voiceDuty(
+async function speakDutyText(
   database: Database,
   input: {
     familyId: string;
-    language: 'en' | 'fr';
-    locked: string;
-    facts: readonly string[];
-    replyClient?: AgentClient | null;
+    lines: readonly CadenceLine[];
+    ctx: DutyRenderInput;
+    voice: DutyVoice | undefined;
   },
-): Promise<string> {
-  const voiced = await replyProse(
-    {
-      client: await resolveReplyClient(input.replyClient),
-      database,
-      familyId: input.familyId,
-      language: input.language,
-      audience: 'group',
-      flagOn: dutyCopyLocked(),
-      surface: 'duty',
-    },
-    { fallback: input.locked, facts: input.facts },
-  );
-  return dutyCopyMayLeave(voiced) ? voiced : input.locked;
-}
-
-/** Joined copy for a bubble. Null when nothing finished may leave. */
-export function renderDutyLines(
-  lines: readonly CadenceLine[],
-  ctx: DutyRenderInput,
-): string | null {
-  if (lines.length === 0) return null;
-  const parts = lines
-    .map((line) => renderOne(line, ctx))
-    .filter((part): part is string => part !== null);
-  if (parts.length === 0) return null;
-  return parts.join('\n');
+): Promise<
+  { text: string } | { text: null; reason: 'copy_unlocked' | 'no_facts' | 'voice_unsent' }
+> {
+  if (!dutyCopyLocked()) return { text: null, reason: 'copy_unlocked' };
+  const requests = dutyLineRequests(input.lines, input.ctx);
+  if (!requests) return { text: null, reason: 'no_facts' };
+  const bubble = await speakDutyBubble(input.voice, requests, input.ctx.language, {
+    scope: { familyId: input.familyId, database },
+  });
+  if (bubble.text === null) return { text: null, reason: 'voice_unsent' };
+  return { text: bubble.text };
 }
 
 async function auditDuty(
@@ -1002,20 +984,27 @@ async function applyPlan(
     bubbleKind: 'discretionary' | 'ceiling';
     templateKey: string;
     ports?: DutySendPorts;
-    replyClient?: AgentClient | null;
+    voice: DutyVoice | undefined;
   },
 ): Promise<DutyDelivery> {
-  const locked = renderDutyLines(input.lines, input.view.render);
-  if (!locked) return { status: 'skipped', reason: 'placeholder' };
-  const text = await voiceDuty(database, {
-    familyId: input.familyId,
-    language: input.view.render.language,
-    locked,
-    facts: dutyFacts(input.lines, input.view.render),
-    replyClient: input.replyClient,
-  });
   const first = input.lines[0];
   const ymd = localYmd(input.now, input.view.timeZone);
+  const dedupeKey = `duty_ask:${first?.mode ?? 'none'}:${first?.eventKey ?? 'none'}:${first?.role ?? 'none'}:${ymd}`;
+  // A bubble this tick already sent costs no model call. The claim itself is still the
+  // ledger insert in deliverDutyGroupLine; this is the cheap read in front of it.
+  if (await dedupeActive(dedupeKey, database)) return { status: 'skipped', reason: 'deduped' };
+  const spoken = await speakDutyText(database, {
+    familyId: input.familyId,
+    lines: input.lines,
+    ctx: input.view.render,
+    voice: input.voice,
+  });
+  if (spoken.text === null) {
+    return spoken.reason === 'voice_unsent'
+      ? { status: 'not_sent', reason: 'voice_unsent' }
+      : { status: 'skipped', reason: 'placeholder' };
+  }
+  const text = spoken.text;
   const delivered = await deliverDutyGroupLine(
     database,
     {
@@ -1023,7 +1012,7 @@ async function applyPlan(
       parentUserId: input.view.parentUserId,
       text,
       now: input.now,
-      dedupeKey: `duty_ask:${first?.mode ?? 'none'}:${first?.eventKey ?? 'none'}:${first?.role ?? 'none'}:${ymd}`,
+      dedupeKey,
       templateKey: input.templateKey,
       bubbleKind: input.bubbleKind,
       sendsActive: true,
@@ -1043,10 +1032,16 @@ async function applyPlan(
 
 export async function sweepDutyAsks(
   database: Database,
-  input: { now?: Date; ports?: DutySendPorts; replyClient?: AgentClient | null } = {},
+  input: {
+    now?: Date;
+    ports?: DutySendPorts;
+    /** The duty voice. Absent means the production composer; with no model key nothing is sent and #ops is paged. */
+    voice?: DutyVoice;
+  } = {},
 ): Promise<DutySweepResult> {
   if (!coparentDutySendsArmed()) return emptyDutySweep(false);
   const now = input.now ?? new Date();
+  const voice = 'voice' in input ? input.voice : defaultDutyVoice();
   const result = emptyDutySweep(true);
   const families = await database
     .select({ id: schema.families.id, linqGroupChatId: schema.families.linqGroupChatId })
@@ -1093,10 +1088,12 @@ export async function sweepDutyAsks(
         ? 'linq:group_duty_parent'
         : 'linq:group_duty_night_before',
       ports: input.ports,
-      replyClient: input.replyClient,
+      voice,
     });
     if (delivered.status === 'sent') result.sent += 1;
     else if (delivered.status === 'held') result.held += 1;
+    else if (delivered.status === 'not_sent' && delivered.reason === 'voice_unsent')
+      result.voiceUnsent += 1;
     else result.skipped += 1;
   }
   return result;
@@ -1108,7 +1105,8 @@ export async function dutyOverviewForWeeklyBubble(
     familyId: string;
     parentUserId: string;
     now: Date;
-    replyClient?: AgentClient | null;
+    /** The duty voice. Absent means the production composer. */
+    voice?: DutyVoice;
   },
 ): Promise<{ text: string; commit: () => Promise<void> } | null> {
   // The weekly bubble is already addressed to this parent. The fold does not
@@ -1121,17 +1119,16 @@ export async function dutyOverviewForWeeklyBubble(
     bubbleLeaving: true,
   });
   if ('skipped' in view) return null;
-  const locked = renderDutyLines(view.plan.foldLines, view.render);
-  if (!locked) return null;
-  const text = await voiceDuty(database, {
+  if (view.plan.foldLines.length === 0) return null;
+  const spoken = await speakDutyText(database, {
     familyId: input.familyId,
-    language: view.render.language,
-    locked,
-    facts: dutyFacts(view.plan.foldLines, view.render),
-    replyClient: input.replyClient,
+    lines: view.plan.foldLines,
+    ctx: view.render,
+    voice: 'voice' in input ? input.voice : defaultDutyVoice(),
   });
+  if (spoken.text === null) return null;
   return {
-    text,
+    text: spoken.text,
     commit: async () => {
       await noteLinesSent(database, {
         familyId: input.familyId,
@@ -1177,7 +1174,8 @@ export async function answerParentDutyAsk(
     now: Date;
     extract?: DutyExtractor;
     ports?: DutySendPorts;
-    replyClient?: AgentClient | null;
+    /** The duty voice. Absent means the production composer. */
+    voice?: DutyVoice;
   },
 ): Promise<
   | {
@@ -1260,7 +1258,7 @@ export async function answerParentDutyAsk(
     bubbleKind: 'ceiling',
     templateKey: 'linq:group_duty_parent',
     ports: input.ports,
-    replyClient: input.replyClient,
+    voice: 'voice' in input ? input.voice : defaultDutyVoice(),
   });
   return { delivery };
 }

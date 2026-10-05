@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { fakeSpokenLineBody, fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { writeFact } from '~/lib/memory/facts';
 import {
   type TestDb,
@@ -22,7 +23,6 @@ import {
   planFamilyDutyAsks,
   sweepDutyAsks,
 } from './asks';
-import { DUTY_NIGHT_BEFORE_COPY_EN } from './copy';
 import { COPARENT_DUTY_COPY_LOCKED_ENV } from './copy';
 import { COPARENT_DUTY_SENDS_ENABLED_ENV } from './flag';
 import { commitDutyUpdate, loadReadableDuties } from './model';
@@ -157,6 +157,7 @@ describe('duty ask sweep', () => {
     void sam;
     const send = vi.fn();
     const result = await sweepDutyAsks(db.database, {
+      voice: fakeSpokenLineComposer(),
       now: SUNDAY_AFTERNOON,
       ports: sendPorts(send),
     });
@@ -252,7 +253,11 @@ describe('duty ask sweep', () => {
     if (!('plan' in view)) throw new Error('expected a plan');
     expect(view.plan.foldLines.some((row) => row.mode === 'both_claimed')).toBe(true);
     const send = vi.fn();
-    await sweepDutyAsks(db.database, { now: SUNDAY_AFTERNOON, ports: sendPorts(send) });
+    await sweepDutyAsks(db.database, {
+      voice: fakeSpokenLineComposer(),
+      now: SUNDAY_AFTERNOON,
+      ports: sendPorts(send),
+    });
     expect(send).not.toHaveBeenCalled();
     const live = await loadReadableDuties(db.database, family.familyId);
     expect(live.find((row) => row.role === 'pickup')?.status).toBe('conflict');
@@ -298,7 +303,7 @@ describe('duty ask sweep', () => {
       .select({ id: schema.familyMemoryFacts.id })
       .from(schema.familyMemoryFacts)
       .where(eq(schema.familyMemoryFacts.familyId, family.familyId));
-    await sweepDutyAsks(db.database, { now: SUNDAY_AFTERNOON });
+    await sweepDutyAsks(db.database, { voice: fakeSpokenLineComposer(), now: SUNDAY_AFTERNOON });
     const after = await db.database
       .select({
         id: schema.familyMemoryFacts.id,
@@ -352,6 +357,7 @@ describe('duty ask sweep', () => {
     });
     const send = vi.fn();
     const result = await sweepDutyAsks(db.database, {
+      voice: fakeSpokenLineComposer(),
       now: SUNDAY_AFTERNOON,
       ports: sendPorts(send),
     });
@@ -462,7 +468,7 @@ describe('duty ask sweep', () => {
       {
         familyId: family.familyId,
         parentUserId: family.parentUserId,
-        text: DUTY_NIGHT_BEFORE_COPY_EN,
+        text: "Tomorrow: {name} has {kid}'s {event} at {time}.",
         now: SUNDAY_EVENING,
         dedupeKey: `duty-ph-${family.familyId}`,
         templateKey: 'linq:group_duty_night_before',
@@ -520,7 +526,7 @@ describe('duty ask sweep', () => {
     expect(JSON.stringify(body)).not.toMatch(/\+\d{10}/);
   });
 
-  it('sends the locked night-before sentence and nothing with a booking claim', async () => {
+  it('sends the night-before bubble the model wrote from the facts, and nothing with a booking claim', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
     vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
     const family = await seedFamily(db.database, 'Locked night');
@@ -559,17 +565,109 @@ describe('duty ask sweep', () => {
     const send = vi.fn(async (input: { text: string }) => ({
       providerMessageId: `linq-${input.text.length}`,
     }));
+    const voice = fakeSpokenLineComposer();
     const result = await sweepDutyAsks(db.database, {
+      voice,
       now: SUNDAY_EVENING,
       ports: sendPorts(send),
     });
     expect(result.sent).toBe(1);
+    expect(result.voiceUnsent).toBe(0);
     const body = send.mock.calls[0]?.[0]?.text as string;
-    expect(body.split('\n')[0]).toBe(
-      "Tomorrow: Test has Maya's swim at 3:00pm. Say so here if that changes.",
-    );
+    // The first line is the model's night-before, handed the owner's first name, the
+    // kid, the event as the calendar titles it and the clock as a word - nothing else.
+    const night = voice.calls[0]?.input;
+    expect(night).toMatchObject({
+      skill: 'duty-voice',
+      kind: 'night_before',
+      language: 'en',
+      address: 'vous',
+      questions: 0,
+      facts: { owner: 'Test', kid: 'Maya', event: 'swim', time: '3:00pm' },
+      mustMention: ['Test', 'Maya', 'swim', '3:00pm'],
+    });
+    expect(body.split('\n')[0]).toBe(fakeSpokenLineBody(night as NonNullable<typeof night>));
+    expect(body).not.toContain('Say so here if that changes.');
     expect(body).not.toMatch(/\b(booked|enrolled|signed up)\b/i);
     expect(body).not.toMatch(/\{[a-zA-Z]+\}/);
+  });
+
+  it('sends nothing and spends no key when the model cannot write the bubble', async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
+    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
+    const family = await seedFamily(db.database, 'Voice unsent');
+    await secondParent(family.familyId, 'Sam');
+    await claimGroup(family.familyId, 'chat-unsent');
+    await seedChild(db.database, family.familyId, 'Maya', 36, undefined, SUNDAY_EVENING);
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-unsent',
+      title: 'Maya swim',
+      start: MONDAY,
+    });
+    await commitDutyUpdate(db.database, {
+      mode: 'write',
+      familyId: family.familyId,
+      actorUserId: family.parentUserId,
+      parentCount: 2,
+      subjectKey: 'evt-unsent',
+      eventTitle: 'Maya swim',
+      childNames: ['Maya'],
+      slot: {
+        role: 'pickup',
+        claim: 'self',
+        name: null,
+        userId: family.parentUserId,
+        confidence: 1,
+      },
+      prior: null,
+      source: 'text',
+      now: SUNDAY_EVENING,
+      childId: null,
+      question: false,
+      askWhichKid: false,
+    });
+    const send = vi.fn(async () => ({ providerMessageId: 'msg-unsent' }));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const failing = fakeSpokenLineComposer({ fail: true });
+    const result = await sweepDutyAsks(db.database, {
+      voice: failing,
+      now: SUNDAY_EVENING,
+      ports: sendPorts(send),
+    });
+    error.mockRestore();
+    expect(result.sent).toBe(0);
+    expect(result.voiceUnsent).toBe(1);
+    expect(send).not.toHaveBeenCalled();
+    // Full prompt, then the short retry, then nothing: no template stood in.
+    expect(failing.calls.map((call) => call.prompt)).toEqual(['full', 'short']);
+    const messages = await db.database
+      .select({ id: schema.channelMessages.id })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.familyId, family.familyId));
+    expect(messages).toEqual([]);
+    // The lane does not ask the model while it is dark, either.
+    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'false');
+    const dark = fakeSpokenLineComposer();
+    const unlit = await sweepDutyAsks(db.database, {
+      voice: dark,
+      now: SUNDAY_EVENING,
+      ports: sendPorts(send),
+    });
+    expect(unlit.sent).toBe(0);
+    expect(dark.calls).toEqual([]);
+    // The key was never claimed, so the next tick with a working voice briefs once.
+    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
+    const healthy = fakeSpokenLineComposer();
+    const again = await sweepDutyAsks(db.database, {
+      voice: healthy,
+      now: SUNDAY_EVENING,
+      ports: sendPorts(send),
+    });
+    expect(again.sent).toBe(1);
+    expect(again.voiceUnsent).toBe(0);
+    expect(send).toHaveBeenCalledTimes(1);
   });
 
   it('suppresses asks 3 to 7 for 30 days after stop asking, and still answers', async () => {
@@ -609,6 +707,7 @@ describe('duty ask sweep', () => {
       askWhichKid: false,
     });
     const noted = await answerParentDutyAsk(db.database, {
+      voice: fakeSpokenLineComposer(),
       familyId: family.familyId,
       actorUserId: family.parentUserId,
       text: 'stop asking',
@@ -642,9 +741,14 @@ describe('duty ask sweep', () => {
     expect(modes).not.toContain('reask_48h');
     expect(modes).not.toContain('silent_parent');
     const send = vi.fn();
-    await sweepDutyAsks(db.database, { now: SUNDAY_EVENING, ports: sendPorts(send) });
+    await sweepDutyAsks(db.database, {
+      voice: fakeSpokenLineComposer(),
+      now: SUNDAY_EVENING,
+      ports: sendPorts(send),
+    });
     expect(send).not.toHaveBeenCalled();
     const answer = await answerParentDutyAsk(db.database, {
+      voice: fakeSpokenLineComposer(),
       familyId: family.familyId,
       actorUserId: family.parentUserId,
       text: "who's got pickup?",

@@ -8,9 +8,17 @@ import { assertNoInventedFacts, findInventedFacts } from './facts-lint';
  */
 describe('findInventedFacts', () => {
   it('catches a time not present in any slot', () => {
-    const text = "your checkup is at 3:30 — see you then";
+    const text = 'your checkup is at 3:30 — see you then';
     const slots = ["Mira's 18-month checkup", '2026-07-24'];
     expect(findInventedFacts(text, slots)).toEqual(['3:30']);
+  });
+
+  it("catches a time in Hale's own am/pm clock form, and passes the one it was handed", () => {
+    // "2:30pm" has no word boundary after the minutes, so a \b-ended pattern never saw it.
+    const text = "Sam has Maya's swim at 3:00pm, so leave by 2:30pm.";
+    expect(findInventedFacts(text, ['3:00pm'])).toEqual(['2:30']);
+    // A bare date key still never matches.
+    expect(findInventedFacts('on 2026-07-24 at 3:00pm', ['3:00pm'])).toEqual([]);
   });
 
   it('passes when every time and link appears in a slot', () => {
@@ -42,7 +50,9 @@ describe('findInventedFacts', () => {
 
 describe('assertNoInventedFacts', () => {
   it('throws when a fact is invented', () => {
-    expect(() => assertNoInventedFacts('meet at 9:15', ['no times here'])).toThrow(/invented facts/);
+    expect(() => assertNoInventedFacts('meet at 9:15', ['no times here'])).toThrow(
+      /invented facts/,
+    );
   });
 
   it('does not throw when all facts are grounded', () => {

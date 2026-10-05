@@ -7,7 +7,7 @@ import {
   titleForStorage,
 } from '~/lib/channel/linq/kid-event';
 import { CONFIDENCE_FLOOR, writeFact } from '~/lib/memory/facts';
-import { DUTY_BOTH_CLAIMED_COPY, DUTY_WHICH_KID_COPY } from './copy';
+import type { DutyLineKind } from './line-input';
 import { rememberDutyEffects } from './memory';
 
 /**
@@ -458,7 +458,11 @@ export interface DutyCommitResult {
   sent: false;
   reason: DutySkipReason | 'recorded';
   state: DutyState | null;
-  ask: string | null;
+  /**
+   * The question the lane owes the group after this write, as the duty-voice kind the
+   * cadence will speak (VIL-413 / VIL-417) — never a sentence. Null when nothing is owed.
+   */
+  ask: Extract<DutyLineKind, 'which_kid' | 'both_claimed'> | null;
   factKey: string | null;
 }
 
@@ -531,7 +535,7 @@ export async function commitDutyUpdate(
       sent,
       reason: 'which_kid',
       state: null,
-      ask: DUTY_WHICH_KID_COPY,
+      ask: 'which_kid',
       factKey: null,
     };
   }
@@ -541,7 +545,7 @@ export async function commitDutyUpdate(
     eventKey: stored.storageEventId,
     kidTitle: stored.kidTitle,
   });
-  const ask = state.status === 'conflict' ? DUTY_BOTH_CLAIMED_COPY : null;
+  const ask = state.status === 'conflict' ? ('both_claimed' as const) : null;
   if (input.mode === 'shadow') {
     return { written: false, sent, reason: 'shadow', state, ask, factKey: stored.factKey };
   }

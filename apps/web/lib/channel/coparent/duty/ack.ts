@@ -1,16 +1,25 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { LinqSendError, reactToLinqMessage, sendLinqChatMessage } from '~/lib/channel/linq/transport';
+import {
+  LinqSendError,
+  reactToLinqMessage,
+  sendLinqChatMessage,
+} from '~/lib/channel/linq/transport';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
-import { dutyOwnerEcho, dutyTitleMayBeSpoken } from './copy';
+import { dutyCopyLocked, dutyTitleMayBeSpoken } from './copy';
 import { coparentDutyMemoryEnabled } from './flag';
+import { type DutyVoice, defaultDutyVoice, speakDutyLine } from './voice';
 
 /**
- * LLM writes get one restate line (locked owner sentence plus the locked
- * next step). Deterministic hits get a tapback and no text. Neither leaves
- * during quiet hours, and neither starts a 1:1: the chat has to be the one
- * the parent just used.
+ * LLM writes get one restate line — the model confirming back what Hale just wrote down,
+ * and making it easy to correct (duty-voice `owner`, `recorded: true`). Deterministic
+ * hits get a tapback and no text. Neither leaves during quiet hours, and neither starts
+ * a 1:1: the chat has to be the one the parent just used.
+ *
+ * The restate is written by the model or not at all (VIL-413 / VIL-417): a line the
+ * model could not write is `voice_unsent`, #ops is paged by the engine, and nothing is
+ * sent. There is no sentence underneath.
  */
 
 const QUIET_START = '21:00:00';
@@ -35,6 +44,8 @@ export type DutyAck =
         | 'flag_off'
         | 'no_proactive_1to1'
         | 'copy_locked'
+        | 'no_facts'
+        | 'voice_unsent'
         | 'non_kid_title'
         | 'not_configured'
         | 'placeholder';
@@ -57,11 +68,16 @@ export async function acknowledgeDutyWrite(input: {
   event: string | null;
   day: string | null;
   time: string | null;
+  /** The duty voice. Absent means the production composer; with no model key the restate is `voice_unsent`. */
+  voice?: DutyVoice;
   fetch?: typeof fetch;
 }): Promise<DutyAck> {
-  const skip = (
-    reason: Extract<DutyAck, { status: 'skipped' }>['reason'],
-  ): DutyAck => ({ status: 'skipped', reason, sent: false, text: null });
+  const skip = (reason: Extract<DutyAck, { status: 'skipped' }>['reason']): DutyAck => ({
+    status: 'skipped',
+    reason,
+    sent: false,
+    text: null,
+  });
   if (!coparentDutyMemoryEnabled()) return skip('flag_off');
   if (dutyQuietHours(input.now, input.timeZone)) {
     return { status: 'held', reason: 'quiet_hours', sent: false, text: null };
@@ -70,17 +86,30 @@ export async function acknowledgeDutyWrite(input: {
   if (input.event && !dutyTitleMayBeSpoken(input.event)) return skip('non_kid_title');
 
   const templateKey = input.source === 'llm' ? 'linq:duty_restate' : 'linq:duty_tapback';
-  const line =
-    input.source === 'llm'
-      ? dutyOwnerEcho(input.language, {
-          name: input.name,
-          kid: input.kid,
-          event: input.event,
-          day: input.day,
-          time: input.time,
-        })
-      : null;
-  if (input.source === 'llm' && !line) return skip('copy_locked');
+  let line: string | null = null;
+  if (input.source === 'llm') {
+    // The lane's dark flag is read before the model is asked: a dark lane costs no call.
+    if (!dutyCopyLocked()) return skip('copy_locked');
+    if (!input.name || !input.kid || !input.event || !input.day || !input.time) {
+      return skip('no_facts');
+    }
+    const spoken = await speakDutyLine(
+      'voice' in input ? input.voice : defaultDutyVoice(),
+      {
+        kind: 'owner',
+        owner: input.name,
+        kid: input.kid,
+        event: input.event,
+        day: input.day,
+        time: input.time,
+        recorded: true,
+      },
+      input.language,
+      { scope: { familyId: input.familyId, database: input.database } },
+    );
+    if (spoken.source === 'unsent') return skip('voice_unsent');
+    line = spoken.body;
+  }
   if (input.source !== 'llm' && !input.inboundMessageId) return skip('no_proactive_1to1');
 
   const [claimed] = await input.database

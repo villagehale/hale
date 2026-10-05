@@ -11,6 +11,7 @@ import { interpretDutyReply } from './interpret';
 import { commitDutyUpdate, loadLiveDutyFacts } from './model';
 import { readDutySyncDecision } from './sync-line';
 import { applyDutyUndo } from './undo';
+import type { DutyVoice } from './voice';
 
 /**
  * VIL-383 write path. Flag off returns before any read. Sends, when they
@@ -39,6 +40,8 @@ export async function settleDutyMemory(
     timeZone?: string;
     language?: 'en' | 'fr';
     extract?: DutyExtractor;
+    /** The duty voice for the restate line. Absent means the production composer. */
+    voice?: DutyVoice;
     fetch?: typeof fetch;
   },
 ): Promise<DutySettleResult> {
@@ -87,6 +90,7 @@ export async function settleDutyMemory(
       event: null,
       day: null,
       time: null,
+      ...('voice' in input ? { voice: input.voice } : {}),
       fetch: input.fetch,
     });
     return {
@@ -144,6 +148,7 @@ export async function settleDutyMemory(
       event: sync.activity,
       day: sync.day,
       time: sync.time,
+      ...('voice' in input ? { voice: input.voice } : {}),
       fetch: input.fetch,
     });
     return {
@@ -204,6 +209,7 @@ export async function settleDutyMemory(
     event: null,
     day: null,
     time: null,
+    ...('voice' in input ? { voice: input.voice } : {}),
     fetch: input.fetch,
   });
   return {

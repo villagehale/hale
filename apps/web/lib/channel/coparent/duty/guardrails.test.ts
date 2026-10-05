@@ -7,16 +7,7 @@ import {
   decideLopsidedNudge,
   lopsidedConsentCopy,
 } from './burden';
-import {
-  COPARENT_DUTY_COPY_LOCKED_ENV,
-  DUTY_CHANGE_NEXT_EN,
-  DUTY_CHANGE_NEXT_FR,
-  DUTY_NIGHT_BEFORE_COPY_EN,
-  DUTY_NIGHT_BEFORE_COPY_FR,
-  dutyCopyMayLeave,
-  dutyOwnerEcho,
-  dutyTitleMayBeSpoken,
-} from './copy';
+import { COPARENT_DUTY_COPY_LOCKED_ENV, dutyCopyMayLeave, dutyTitleMayBeSpoken } from './copy';
 import { COPARENT_DUTY_MEMORY_ENABLED_ENV } from './flag';
 import {
   DUTY_BURDEN_ANSWER_FR,
@@ -109,42 +100,9 @@ describe('duty guardrails', () => {
     expect(lopsidedConsentCopy()).toBe(DUTY_LOPSIDED_CONSENT_TODO);
   });
 
-  it('echoes only a locked kid-event owner line and ends on the locked next step', () => {
-    expect(DUTY_NIGHT_BEFORE_COPY_EN.endsWith(DUTY_CHANGE_NEXT_EN)).toBe(true);
-    expect(DUTY_NIGHT_BEFORE_COPY_FR.endsWith(DUTY_CHANGE_NEXT_FR)).toBe(true);
+  it('speaks a kid-word title and not an adult one', () => {
     expect(dutyTitleMayBeSpoken('Quarterly board review')).toBe(false);
     expect(dutyTitleMayBeSpoken('swim')).toBe(true);
-    expect(
-      dutyOwnerEcho('en', {
-        name: 'Barton',
-        kid: 'Maya',
-        event: 'Quarterly board review',
-        day: 'Saturday',
-        time: '3:00pm',
-      }),
-    ).toBeNull();
-    expect(
-      dutyOwnerEcho('en', {
-        name: 'Barton',
-        kid: 'Maya',
-        event: 'swim',
-        day: 'Saturday',
-        time: '3:00pm',
-      }),
-    ).toBeNull();
-
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
-    const line = dutyOwnerEcho('en', {
-      name: 'Barton',
-      kid: 'Maya',
-      event: 'swim',
-      day: 'Saturday',
-      time: '3:00pm',
-    });
-    expect(line).toBe("Barton has Maya's swim, Saturday at 3:00pm. Say so here if that changes.");
-    expect(line?.endsWith(DUTY_CHANGE_NEXT_EN)).toBe(true);
-    expect(line).not.toMatch(BANNED_SEND);
-    expect(line).not.toContain('\n');
   });
 
   it('does not read a non-kid 1:1 line as a duty decision', () => {

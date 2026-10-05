@@ -1,8 +1,10 @@
 import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fakeSpokenLineBody, fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { acknowledgeDutyWrite, dutyQuietHours } from './ack';
 import { COPARENT_DUTY_COPY_LOCKED_ENV } from './copy';
 import { COPARENT_DUTY_MEMORY_ENABLED_ENV } from './flag';
+import { dutyLineInput } from './line-input';
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 const ACTOR = '22222222-2222-4222-8222-222222222222';
@@ -113,13 +115,12 @@ describe('acknowledgeDutyWrite', () => {
       fetch: tap.fetch,
     });
     expect(tapped).toEqual({ status: 'tapback', sent: false, text: null });
-    expect(tap.urls()).toEqual([
-      'https://api.linqapp.com/api/partner/v3/messages/msg-1/reactions',
-    ]);
+    expect(tap.urls()).toEqual(['https://api.linqapp.com/api/partner/v3/messages/msg-1/reactions']);
     expect(tap.bodies()[0]).toContain('"type":"like"');
     expect(tap.urls().join('\n')).not.toContain(`/chats/${CHAT}/messages`);
 
     const rest = http();
+    const voice = fakeSpokenLineComposer();
     const restated = await acknowledgeDutyWrite({
       database: ledgerDb(),
       familyId: FAMILY,
@@ -135,15 +136,78 @@ describe('acknowledgeDutyWrite', () => {
       event: 'swim',
       day: 'Saturday',
       time: '3:00pm',
+      voice,
       fetch: rest.fetch,
     });
     expect(restated.status).toBe('restated');
     expect(restated.sent).toBe(true);
-    expect(restated.text).toBe(
-      "Barton has Maya's swim, Saturday at 3:00pm. Say so here if that changes.",
-    );
+    // The restate is the model's (VIL-413 / VIL-417): the owner kind, confirming back
+    // what Hale just wrote down, from exactly these facts.
+    const request = {
+      kind: 'owner' as const,
+      owner: 'Barton',
+      kid: 'Maya',
+      event: 'swim',
+      day: 'Saturday',
+      time: '3:00pm',
+      recorded: true,
+    };
+    expect(voice.calls.map((call) => call.input)).toEqual([dutyLineInput(request, 'en')]);
+    expect(restated.text).toBe(fakeSpokenLineBody(dutyLineInput(request, 'en')));
+    expect(restated.text).not.toContain('Say so here if that changes.');
     expect(rest.urls()[0]).toContain(`/chats/${CHAT}/messages`);
     expect(rest.bodies().join('\n')).not.toMatch(/reply stop|unsubscribe/i);
+  });
+
+  it('sends no restate when the lane is dark, when a fact is missing, or when the model cannot write it', async () => {
+    vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const wire = http();
+    const base = {
+      database: ledgerDb(),
+      familyId: FAMILY,
+      actorUserId: ACTOR,
+      source: 'llm' as const,
+      now: DAY,
+      timeZone: 'America/Toronto',
+      inboundChatId: CHAT,
+      inboundMessageId: 'msg-3',
+      language: 'en' as const,
+      name: 'Barton',
+      kid: 'Maya',
+      event: 'swim',
+      day: 'Saturday',
+      time: '3:00pm',
+      fetch: wire.fetch,
+    };
+    // Dark lane: no model call is made.
+    const dark = fakeSpokenLineComposer();
+    expect(await acknowledgeDutyWrite({ ...base, voice: dark })).toMatchObject({
+      status: 'skipped',
+      reason: 'copy_locked',
+    });
+    expect(dark.calls).toEqual([]);
+
+    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
+    const idle = fakeSpokenLineComposer();
+    expect(await acknowledgeDutyWrite({ ...base, kid: null, voice: idle })).toMatchObject({
+      status: 'skipped',
+      reason: 'no_facts',
+    });
+    expect(idle.calls).toEqual([]);
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const failing = fakeSpokenLineComposer({ fail: true });
+    expect(await acknowledgeDutyWrite({ ...base, voice: failing })).toMatchObject({
+      status: 'skipped',
+      reason: 'voice_unsent',
+      sent: false,
+      text: null,
+    });
+    error.mockRestore();
+    // Full prompt, then the short retry; then nothing - no template stood in.
+    expect(failing.calls.map((call) => call.prompt)).toEqual(['full', 'short']);
+    expect(wire.urls()).toEqual([]);
   });
 
   it('does not speak a non-kid title', async () => {

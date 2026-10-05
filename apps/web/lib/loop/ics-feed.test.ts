@@ -217,9 +217,10 @@ describe('loadIcsFeed — token resolution + teen gate (rule #1)', () => {
     );
     const feed = (await loadIcsFeed(db, TOKEN, NOW)) as string;
     const unfolded = feed.replace(/\r\n[ \t]/g, '');
-    expect(unfolded).toContain('DESCRIPTION:');
-    expect(unfolded).toContain("Barton has Maya's swim");
-    expect(unfolded).toContain('Say so here if that changes.');
+    // The duty field is a data value (the owner's first name), not a sentence: the
+    // feed renders synchronously on poll with no model in the path.
+    expect(unfolded).toContain('DESCRIPTION:Barton\r\n');
+    expect(unfolded).not.toContain('Say so here');
     expect(unfolded).not.toContain('Reply STOP');
     expect(feed).not.toContain('ATTENDEE');
   });

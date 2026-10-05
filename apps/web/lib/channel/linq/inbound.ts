@@ -526,6 +526,7 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
           inboundChatId: message.chatId,
           inboundMessageId: message.messageId,
           surface: 'group',
+          ...('groupVoice' in deps ? { voice: deps.groupVoice } : {}),
         });
       } catch (err) {
         deps.log.warn(
@@ -539,6 +540,7 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
           actorUserId: mapped.userId,
           text: message.text,
           now: deps.now?.() ?? new Date(),
+          ...('groupVoice' in deps ? { voice: deps.groupVoice } : {}),
         });
       } catch (err) {
         deps.log.warn(

@@ -17,9 +17,11 @@
  * sees them (rule #1), and titles ride as slots too.
  */
 
-// A clock time: 1-2 digit hour, ':', 2 digit minute. Word-bounded so a bare date
-// key ("2026-07-24", no colon) never matches.
-const TIME_RE = /\b\d{1,2}:\d{2}\b/g;
+// A clock time: 1-2 digit hour, ':', 2 digit minute. Word-bounded at the front so a bare
+// date key ("2026-07-24", no colon) never matches; at the back only "not another digit",
+// so Hale's own clock form "2:30pm" is caught as "2:30" — a \b there sits between "0"
+// and "p", two word characters, and never fires, which let an invented "2:30pm" through.
+const TIME_RE = /\b\d{1,2}:\d{2}(?!\d)/g;
 // An http(s) URL. \S+ greedily takes the whole token; trailing sentence
 // punctuation is trimmed below so "…/plan." matches the "…/plan" slot.
 const URL_RE = /https?:\/\/\S+/g;

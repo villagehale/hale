@@ -71,6 +71,10 @@
     "file": "draft-action.md",
     "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"
   },
+  "duty-voice.md": {
+    "file": "duty-voice.md",
+    "sha256": "cfee2a04019100a74a0003e1c0d0d555f738ffeaea63e92a3ef2e3589deff33e"
+  },
   "extract-child-event.md": {
     "file": "extract-child-event.md",
     "sha256": "4989569d42cf0eb4ce3950082b53e3920a0fe002bec774c2a23e00a731a17dd6"

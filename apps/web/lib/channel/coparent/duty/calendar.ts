@@ -3,10 +3,8 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { classifyKidCalendarItem, splitKidEvent } from '~/lib/channel/linq/kid-event';
 import {
   type DutyCopyLanguage,
-  dutyClockLabel,
-  dutyOwnerEcho,
+  dutyCopyLocked,
   dutyTitleMayBeSpoken,
-  dutyWeekdayName,
   spokenFirstName,
 } from './copy';
 import { coparentDutyMemoryEnabled } from './flag';
@@ -85,7 +83,8 @@ export async function projectDutyOnFamilyEvent(
   },
 ): Promise<DutyProjection> {
   if (!coparentDutyMemoryEnabled()) return { status: 'skipped', reason: 'flag_off' };
-  if (typeof database.select !== 'function') return { status: 'skipped', reason: 'no_family_event' };
+  if (typeof database.select !== 'function')
+    return { status: 'skipped', reason: 'no_family_event' };
 
   const children = await database
     .select({ name: schema.children.name, familyId: schema.children.familyId })
@@ -109,7 +108,9 @@ export async function projectDutyOnFamilyEvent(
       dutyFactKey: schema.familyEvents.dutyFactKey,
     })
     .from(schema.familyEvents)
-    .where(and(eq(schema.familyEvents.familyId, input.familyId), isNull(schema.familyEvents.deletedAt)));
+    .where(
+      and(eq(schema.familyEvents.familyId, input.familyId), isNull(schema.familyEvents.deletedAt)),
+    );
 
   const live = rows.filter((row) => row.familyId === input.familyId && row.deletedAt === null);
   const byFact = live.filter((row) => row.dutyFactKey === input.factKey);
@@ -158,7 +159,9 @@ export async function projectDutyOnFamilyEvent(
   await database
     .update(schema.familyEvents)
     .set(next)
-    .where(and(eq(schema.familyEvents.id, event.id), eq(schema.familyEvents.familyId, input.familyId)));
+    .where(
+      and(eq(schema.familyEvents.id, event.id), eq(schema.familyEvents.familyId, input.familyId)),
+    );
   const audit = {
     familyId: input.familyId,
     actor: input.actorUserId,
@@ -184,10 +187,21 @@ export async function projectDutyOnFamilyEvent(
       actionTaken: 'duty_calendar_cleared',
     });
   }
-  return owner ? { status: 'updated', eventId: event.id } : { status: 'cleared', eventId: event.id };
+  return owner
+    ? { status: 'updated', eventId: event.id }
+    : { status: 'cleared', eventId: event.id };
 }
 
-/** DESCRIPTION for one feed event. Null leaves the VEVENT without one. */
+/**
+ * DESCRIPTION for one feed event. Null leaves the VEVENT without one.
+ *
+ * A DATA VALUE, not a sentence: the owner's first name, exactly as a parent agreed to it.
+ * The feed is rendered synchronously on every calendar poll with no model in the path,
+ * so this is the one duty surface that stays fixed (VIL-413 / VIL-417) — and what stays
+ * fixed is a name, which code can honestly supply, rather than the owner sentence and
+ * "Say so here if that changes." it used to carry. The title beside it already says whose
+ * event it is; this says who has it.
+ */
 export function dutyFeedDescription(input: {
   title: string;
   startsAt: Date;
@@ -198,7 +212,7 @@ export function dutyFeedDescription(input: {
   timeZone: string;
   language: DutyCopyLanguage;
 }): string | null {
-  if (!coparentDutyMemoryEnabled()) return null;
+  if (!coparentDutyMemoryEnabled() || !dutyCopyLocked()) return null;
   if (input.teen) return null;
   if (input.ownerKind !== 'parent' && input.ownerKind !== 'named') return null;
   if (!dutyTitleMayBeSpoken(input.title)) return null;
@@ -211,15 +225,5 @@ export function dutyFeedDescription(input: {
   if (!kid) return null;
   const spokenEvent = dutyTitleMayBeSpoken(event) ? event : input.title;
   if (!dutyTitleMayBeSpoken(spokenEvent)) return null;
-  try {
-    return dutyOwnerEcho(input.language, {
-      name,
-      kid,
-      event: spokenEvent,
-      day: dutyWeekdayName(input.startsAt, input.timeZone, input.language),
-      time: dutyClockLabel(input.startsAt, input.timeZone, input.language),
-    });
-  } catch {
-    return null;
-  }
+  return name;
 }

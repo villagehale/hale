@@ -337,7 +337,8 @@ export interface NudgeRunDeps {
       familyId: string;
       parentUserId: string;
       now: Date;
-      replyClient?: AgentClient | null;
+      /** The duty voice (VIL-413 / VIL-417). Absent means the production composer. */
+      voice?: SpokenLineComposer;
     },
   ): Promise<{ text: string; commit: () => Promise<void> } | null>;
   client: AgentClient | null;
@@ -832,7 +833,7 @@ async function runForFamily(
         familyId: family.familyId,
         parentUserId: speakerId,
         now,
-        replyClient: deps.client,
+        ...('groupVoice' in deps ? { voice: deps.groupVoice } : {}),
       });
       if (dutyFold) {
         const next = absorbDutyLine(wireMessage, dutyFold.text);
