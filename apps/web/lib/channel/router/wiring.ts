@@ -600,13 +600,20 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
       return rows.length > 0 ? 'deferred' : 'fresh';
     },
     recordDeferred: async (input) => {
+      const after =
+        input.reason || input.providerFailure
+          ? {
+              ...(input.reason ? { reason: input.reason } : {}),
+              ...(input.providerFailure ? { providerFailure: input.providerFailure } : {}),
+            }
+          : null;
       await database.insert(schema.auditLog).values({
         familyId: input.familyId,
         actor: input.parentUserId,
         actionTaken: TURN_DEFERRED_ACTION,
         targetTable: TURN_LEDGER_TARGET,
         targetId: input.channelMessageId,
-        after: input.reason ? { reason: input.reason } : null,
+        after,
       });
     },
     recordUnanswered: async (input) => {

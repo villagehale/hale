@@ -53,6 +53,9 @@ describe('GET /api/cron/failure-page', () => {
     pageFailureAlertsMock.mockResolvedValue({
       turns: { posted: 1, deduped: 0, failed: 0 },
       firstHellos: { posted: 0, deduped: 0, failed: 0 },
+      providerIncidents: { posted: 0, deduped: 0, failed: 0 },
+      deadLetters: { posted: 0, deduped: 0, failed: 0 },
+      deferredPileups: { posted: 0, deduped: 0, failed: 0 },
     });
 
     const response = await GET(request());
@@ -62,6 +65,9 @@ describe('GET /api/cron/failure-page', () => {
       ok: true,
       turns: { posted: 1, deduped: 0, failed: 0 },
       firstHellos: { posted: 0, deduped: 0, failed: 0 },
+      providerIncidents: { posted: 0, deduped: 0, failed: 0 },
+      deadLetters: { posted: 0, deduped: 0, failed: 0 },
+      deferredPileups: { posted: 0, deduped: 0, failed: 0 },
     });
     expect(pageFailureAlertsMock).toHaveBeenCalledTimes(1);
   });

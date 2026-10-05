@@ -3,13 +3,13 @@ import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
 import { EMERGENCY_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/lane';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -213,7 +213,11 @@ function fakeSmokeAlarmClaim(): SmokeAlarmClaim & { fired: string[]; reads: stri
 function fakeTurnLedger(): InboundTurnLedger & {
   answered: string[];
   deferred: string[];
-  deferredReasons: { channelMessageId: string; reason?: string }[];
+  deferredReasons: {
+    channelMessageId: string;
+    reason?: string;
+    providerFailure?: 'billing' | 'auth';
+  }[];
   unanswered: { channelMessageId: string; reason: string }[];
   failed: { channelMessageId: string; reason: string }[];
   reads: string[];
@@ -221,7 +225,11 @@ function fakeTurnLedger(): InboundTurnLedger & {
   const ledger = {
     answered: [] as string[],
     deferred: [] as string[],
-    deferredReasons: [] as { channelMessageId: string; reason?: string }[],
+    deferredReasons: [] as {
+      channelMessageId: string;
+      reason?: string;
+      providerFailure?: 'billing' | 'auth';
+    }[],
     unanswered: [] as { channelMessageId: string; reason: string }[],
     failed: [] as { channelMessageId: string; reason: string }[],
     reads: [] as string[],
@@ -235,11 +243,16 @@ function fakeTurnLedger(): InboundTurnLedger & {
       ledger.answered.push(input.channelMessageId);
       return 'claimed' as const;
     },
-    async recordDeferred(input: { channelMessageId: string; reason?: string }) {
+    async recordDeferred(input: {
+      channelMessageId: string;
+      reason?: string;
+      providerFailure?: 'billing' | 'auth';
+    }) {
       ledger.deferred.push(input.channelMessageId);
       ledger.deferredReasons.push({
         channelMessageId: input.channelMessageId,
         reason: input.reason,
+        providerFailure: input.providerFailure,
       });
     },
     async recordUnanswered(input: { channelMessageId: string; reason: string }) {
@@ -1138,8 +1151,7 @@ describe('an offered full plan', () => {
     return {
       async respond() {
         return {
-          reply:
-            'Most 2-year-olds wake once or twice. Want me to send the full plan?',
+          reply: 'Most 2-year-olds wake once or twice. Want me to send the full plan?',
           activityPromise: null,
           spotWatch: null,
           planOffer: {
@@ -1445,6 +1457,52 @@ describe('deferring a turn the provider cannot answer', () => {
 
     expect(h.turns.deferred).toEqual([job().channel_message_id]);
     expect(h.turns.answered).toEqual([]);
+  });
+
+  /**
+   * A 400 credit-balance failure is not `model_unreachable` (that list is 5xx
+   * and a dropped connection). The turn is deferred as model_failed, nothing
+   * is sent, and the ledger carries the billing class so #ops can page it.
+   * The provider's sentence stays off the log and off the ledger.
+   */
+  it('records a billing failure on the deferral and sends nothing', async () => {
+    const secret = 'the secret phrase about nap time';
+    const credit =
+      'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.';
+    const h = harness({
+      context: { body: secret },
+      coach: {
+        respond: async () => {
+          throw new ChannelTurnFailed('channel coach: agent loop failed', {
+            cause: Anthropic.APIError.generate(
+              400,
+              {
+                type: 'error',
+                error: { type: 'invalid_request_error', message: credit },
+              },
+              undefined,
+              {},
+            ),
+            draftedActionIds: [],
+          });
+        },
+      },
+      apology: fakeApology({ status: 'unavailable', reason: 'model_failed' }),
+    });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+
+    expect(h.transport.sent).toEqual([]);
+    expect(h.turns.deferredReasons).toEqual([
+      expect.objectContaining({
+        channelMessageId: job().channel_message_id,
+        providerFailure: 'billing',
+      }),
+    ]);
+    const dump = JSON.stringify(h.logs);
+    expect(dump).not.toContain(secret);
+    expect(dump).not.toContain(credit);
+    expect(dump).not.toContain('credit balance');
   });
 
   /**

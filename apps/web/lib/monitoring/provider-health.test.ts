@@ -9,6 +9,7 @@ import {
   type ProviderIncident,
   abortsSendWindow,
   claimProviderIncident,
+  classifyChainedProviderFailure,
   classifyProviderFailure,
   createProviderAlertSender,
   formatProviderAlert,
@@ -40,6 +41,21 @@ const CREDIT_EXHAUSTED = apiError(
   'invalid_request_error',
   'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.',
 );
+
+describe('classifyChainedProviderFailure', () => {
+  it('reads a billing 400 through the coach wrapper and ignores a 5xx', () => {
+    const wrapped = new Error('channel coach: agent loop failed', { cause: CREDIT_EXHAUSTED });
+    expect(classifyChainedProviderFailure(wrapped)).toBe('billing');
+    expect(classifyProviderFailure(wrapped)).toBe('transient');
+    const down = new Error('channel coach: agent loop failed', {
+      cause: apiError(500, 'api_error', 'Internal server error'),
+    });
+    expect(classifyChainedProviderFailure(down)).toBeNull();
+    expect(
+      classifyChainedProviderFailure(apiError(401, 'authentication_error', 'invalid x-api-key')),
+    ).toBe('auth');
+  });
+});
 
 describe('classifyProviderFailure — the failure table', () => {
   const table: Array<{ name: string; err: unknown; expected: ProviderFailureClass }> = [

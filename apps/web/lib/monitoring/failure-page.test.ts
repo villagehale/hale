@@ -1,17 +1,29 @@
 import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
+import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
 import { LinqSendError } from '~/lib/channel/linq/transport';
-import { TURN_FAILED_ACTION } from '~/lib/channel/router/wiring';
+import { TURN_DEFERRED_ACTION, TURN_FAILED_ACTION } from '~/lib/channel/router/wiring';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
+  DEAD_LETTER_PAGE_ROUTE,
+  DEFERRED_PILEUP_PAGE_ROUTE,
+  DEFERRED_PILEUP_THRESHOLD,
   FIRST_HELLO_PAGE_ROUTE,
+  MODEL_PROVIDER,
+  PROVIDER_INCIDENT_PAGE_ROUTE,
+  TURN_DEFERRED_AUDIT_ACTION,
   TURN_FAILED_AUDIT_ACTION,
   TURN_FAILURE_PAGE_ROUTE,
+  composeDeadLetterAlert,
+  composeDeferredPileupAlert,
   composeFirstHelloFailureAlert,
+  composeProviderIncidentAlert,
   composeTurnFailureAlert,
   failureCategory,
   firstHelloFailureCategory,
+  noteDeadLetteredTurn,
   noteFirstHelloFailure,
   pageFailureAlerts,
 } from './failure-page';
@@ -47,6 +59,7 @@ function assertNoParentPayload(text: string, ...allowedIds: string[]) {
 describe('failure page copy', () => {
   it('uses the same audit action the turn ledger writes', () => {
     expect(TURN_FAILED_AUDIT_ACTION).toBe(TURN_FAILED_ACTION);
+    expect(TURN_DEFERRED_AUDIT_ACTION).toBe(TURN_DEFERRED_ACTION);
   });
 
   it('keeps a short provider code and redacts a phone-shaped category', () => {
@@ -102,6 +115,58 @@ describe('failure page copy', () => {
     expect(text).toContain(sessionId);
     expect(text).toContain('not_configured');
     assertNoParentPayload(text, sessionId);
+  });
+
+  it('names the provider, the class, and a turn count, and drops a phone-shaped provider', () => {
+    const text = composeProviderIncidentAlert({
+      provider: 'anthropic',
+      failure: 'billing',
+      affectedTurns: 3,
+    });
+    expect(text).toContain('provider anthropic');
+    expect(text).toContain('class billing');
+    expect(text).toContain('affected turns 3');
+    assertNoParentPayload(text);
+
+    const leaked = composeProviderIncidentAlert({
+      provider: PHONE_SHAPED,
+      failure: PARENT_WORDS,
+      affectedTurns: 1,
+    });
+    expect(leaked).toContain('provider redacted');
+    expect(leaked).not.toContain(PHONE_SHAPED);
+    expect(leaked).not.toContain(PARENT_WORDS);
+  });
+
+  it('names a dead-lettered turn by internal ids and omits a phone-shaped job id', () => {
+    const familyId = randomUUID();
+    const messageId = randomUUID();
+    const text = composeDeadLetterAlert({
+      familyId,
+      channelMessageId: messageId,
+      jobId: 'job-1',
+    });
+    expect(text).toContain(familyId);
+    expect(text).toContain(messageId);
+    expect(text).toContain('job job-1');
+    assertNoParentPayload(text, familyId, messageId);
+
+    const dropped = composeDeadLetterAlert({
+      familyId: PHONE_SHAPED,
+      channelMessageId: PARENT_WORDS,
+      jobId: PHONE_SHAPED.replace('+', ''),
+    });
+    expect(dropped).toContain('family invalid');
+    expect(dropped).toContain('message invalid');
+    expect(dropped).not.toContain(PHONE_SHAPED);
+    expect(dropped).not.toContain('14165550199');
+  });
+
+  it('names a deferral pile-up by count and window', () => {
+    const text = composeDeferredPileupAlert({ count: 8, windowMinutes: 60 });
+    expect(text).toContain('count 8');
+    expect(text).toContain('window 60m');
+    assertNoParentPayload(text);
   });
 });
 
@@ -296,5 +361,262 @@ describe('pageFailureAlerts (real DDL)', () => {
     );
     expect(claims.some((row) => row.identifier.startsWith(`${sessionId}:`))).toBe(true);
     expect(claims.some((row) => row.route === FIRST_HELLO_PAGE_ROUTE)).toBe(true);
+  });
+});
+
+describe('provider incidents, dead letters, and deferral pile-ups', () => {
+  let db: TestDb;
+  const KEY = Buffer.alloc(32, 9).toString('base64');
+
+  beforeEach(async () => {
+    process.env.APP_ENCRYPTION_KEY = KEY;
+    db = await createTestDb();
+  });
+
+  afterEach(async () => {
+    await db.close();
+    Reflect.deleteProperty(process.env, 'APP_ENCRYPTION_KEY');
+  });
+
+  async function seedDeferred(
+    family: { familyId: string; parentUserId: string },
+    over: { providerFailure?: 'billing' | 'auth'; targetId?: string; occurredAt?: Date } = {},
+  ) {
+    const [row] = await db.database
+      .insert(schema.auditLog)
+      .values({
+        familyId: family.familyId,
+        actor: family.parentUserId,
+        actionTaken: TURN_DEFERRED_AUDIT_ACTION,
+        targetTable: 'channel_messages',
+        targetId: over.targetId ?? randomUUID(),
+        after: over.providerFailure
+          ? { providerFailure: over.providerFailure }
+          : { reason: 'model_failed' },
+        occurredAt: over.occurredAt ?? NOW,
+      })
+      .returning({ id: schema.auditLog.id, targetId: schema.auditLog.targetId });
+    if (!row) throw new Error('seedDeferred: no row');
+    return row;
+  }
+
+  it('pages a billing incident once, with the provider, the class, and the turn count', async () => {
+    const family = await seedFamily(db.database, 'Billing');
+    const other = await seedFamily(db.database, 'Billing Two');
+    const messageId = randomUUID();
+    await seedDeferred(family, { providerFailure: 'billing', targetId: messageId });
+    await seedDeferred(family, { providerFailure: 'billing', targetId: messageId });
+    await seedDeferred(other, { providerFailure: 'billing' });
+    await seedDeferred(family, { providerFailure: 'auth' });
+    const { texts, post } = recorder();
+
+    const first = await pageFailureAlerts(db.database, { post, now: NOW });
+    const second = await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(first.providerIncidents.posted).toBe(2);
+    expect(second.providerIncidents).toEqual({ posted: 0, deduped: 2, failed: 0 });
+    const billing = texts.find((text) => text.includes('class billing'));
+    const auth = texts.find((text) => text.includes('class auth'));
+    expect(billing).toContain('provider anthropic');
+    expect(billing).toContain('affected turns 2');
+    expect(auth).toContain('affected turns 1');
+    expect(texts.join(' ')).not.toContain(PHONE_SHAPED);
+    expect(texts.join(' ')).not.toContain(PARENT_WORDS);
+    expect(texts.join(' ')).not.toContain(messageId);
+  });
+
+  it('does not page a deferral that is not billing or auth', async () => {
+    const family = await seedFamily(db.database, 'Ordinary Deferral');
+    await seedDeferred(family);
+    const { texts, post } = recorder();
+
+    const result = await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(result.providerIncidents).toEqual({ posted: 0, deduped: 0, failed: 0 });
+    expect(texts).toEqual([]);
+  });
+
+  it('retries a provider page whose Slack post did not land', async () => {
+    const family = await seedFamily(db.database, 'Retry Billing');
+    await seedDeferred(family, { providerFailure: 'billing' });
+    const flaky = recorder((nth) => (nth === 1 ? 'failed' : 'sent'));
+
+    const first = await pageFailureAlerts(db.database, { post: flaky.post, now: NOW });
+    const second = await pageFailureAlerts(db.database, { post: flaky.post, now: NOW });
+
+    expect(first.providerIncidents.failed).toBe(1);
+    expect(second.providerIncidents.posted).toBe(1);
+    expect(flaky.texts).toHaveLength(2);
+  });
+
+  it('does not page or count a canary billing deferral', async () => {
+    const seeded = await seedCanaryHousehold(db.database);
+    if (seeded.status !== 'created') throw new Error(`canary seed: ${seeded.status}`);
+    const channels = await db.database
+      .select({
+        userId: schema.parentChannels.userId,
+        familyId: schema.parentChannels.familyId,
+      })
+      .from(schema.parentChannels);
+    const canary = channels.find((row) => row.familyId === seeded.familyId);
+    if (!canary) throw new Error('canary channel missing');
+    await seedDeferred(
+      { familyId: seeded.familyId, parentUserId: canary.userId },
+      { providerFailure: 'billing' },
+    );
+    const quiet = recorder();
+    const onlyCanary = await pageFailureAlerts(db.database, { post: quiet.post, now: NOW });
+    expect(onlyCanary.providerIncidents.posted).toBe(0);
+    expect(quiet.texts).toEqual([]);
+
+    const family = await seedFamily(db.database, 'Real Billing');
+    await seedDeferred(family, { providerFailure: 'billing' });
+    const { texts, post } = recorder();
+    const withParent = await pageFailureAlerts(db.database, { post, now: NOW });
+    expect(withParent.providerIncidents.posted).toBe(1);
+    expect(texts[0]).toContain('affected turns 1');
+    expect(texts[0]).not.toContain(CANARY_PHONE_E164);
+    expect(texts[0]).not.toContain(seeded.familyId);
+  });
+
+  it('pages a dead-lettered turn once, by internal ids, and retries a refused post', async () => {
+    const family = await seedFamily(db.database, 'Dead Letter');
+    const messageId = randomUUID();
+    const { texts, post } = recorder();
+
+    const first = await noteDeadLetteredTurn(
+      db.database,
+      { familyId: family.familyId, channelMessageId: messageId, jobId: 'job-1' },
+      { post, now: NOW },
+    );
+    const second = await noteDeadLetteredTurn(
+      db.database,
+      { familyId: family.familyId, channelMessageId: messageId, jobId: 'job-1' },
+      { post, now: NOW },
+    );
+
+    expect(first.deadLetters.posted).toBe(1);
+    expect(second.deadLetters.posted).toBe(0);
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain(family.familyId);
+    expect(texts[0]).toContain(messageId);
+    expect(texts[0]).toContain('job job-1');
+    assertNoParentPayload(texts[0] ?? '', family.familyId, messageId);
+
+    const refused = recorder((nth) => (nth === 1 ? 'failed' : 'sent'));
+    const otherMessage = randomUUID();
+    const failed = await noteDeadLetteredTurn(
+      db.database,
+      { familyId: family.familyId, channelMessageId: otherMessage, jobId: '14165550199' },
+      { post: refused.post, now: NOW },
+    );
+    const retried = await noteDeadLetteredTurn(
+      db.database,
+      { familyId: family.familyId, channelMessageId: otherMessage, jobId: '14165550199' },
+      { post: refused.post, now: NOW },
+    );
+    expect(failed.deadLetters.failed).toBe(1);
+    expect(retried.deadLetters.posted).toBe(1);
+    expect(refused.texts[0]).not.toContain('14165550199');
+    expect(refused.texts.join(' ')).not.toContain(PHONE_SHAPED);
+
+    const leaked = recorder();
+    await noteDeadLetteredTurn(
+      db.database,
+      { familyId: PHONE_SHAPED, channelMessageId: messageId, jobId: 'job-1' },
+      { post: leaked.post, now: NOW },
+    );
+    expect(leaked.texts.join(' ')).not.toContain(PHONE_SHAPED);
+    const claims = await db.database
+      .select({ identifier: schema.rateLimits.identifier, route: schema.rateLimits.route })
+      .from(schema.rateLimits);
+    expect(
+      claims.some(
+        (row) => row.route === DEAD_LETTER_PAGE_ROUTE && row.identifier.includes('416555'),
+      ),
+    ).toBe(false);
+  });
+
+  it('does not page a canary turn that dead-lettered', async () => {
+    const seeded = await seedCanaryHousehold(db.database);
+    if (seeded.status !== 'created') throw new Error(`canary seed: ${seeded.status}`);
+    const { texts, post } = recorder();
+
+    const result = await noteDeadLetteredTurn(
+      db.database,
+      { familyId: seeded.familyId, channelMessageId: randomUUID(), jobId: 'job-1' },
+      { post, now: NOW },
+    );
+
+    expect(result.deadLetters.posted).toBe(0);
+    expect(texts).toEqual([]);
+    const claims = await db.database
+      .select({ route: schema.rateLimits.route })
+      .from(schema.rateLimits);
+    expect(claims.some((row) => row.route === DEAD_LETTER_PAGE_ROUTE)).toBe(false);
+  });
+
+  it('pages once when deferred turns reach the threshold, and not one under it', async () => {
+    const family = await seedFamily(db.database, 'Pile');
+    const quiet = recorder();
+    for (let i = 0; i < DEFERRED_PILEUP_THRESHOLD - 1; i += 1) {
+      await seedDeferred(family);
+    }
+    const under = await pageFailureAlerts(db.database, { post: quiet.post, now: NOW });
+    expect(under.deferredPileups).toEqual({ posted: 0, deduped: 0, failed: 0 });
+    expect(quiet.texts).toEqual([]);
+
+    await seedDeferred(family);
+    const { texts, post } = recorder();
+    const first = await pageFailureAlerts(db.database, { post, now: NOW });
+    const second = await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(first.deferredPileups.posted).toBe(1);
+    expect(second.deferredPileups).toEqual({ posted: 0, deduped: 1, failed: 0 });
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain(`count ${DEFERRED_PILEUP_THRESHOLD}`);
+    expect(texts[0]).toContain('window 60m');
+    expect(texts[0]).not.toContain(family.familyId);
+    assertNoParentPayload(texts[0] ?? '');
+  });
+
+  it('does not let canary deferrals fill the pile-up threshold', async () => {
+    const seeded = await seedCanaryHousehold(db.database);
+    if (seeded.status !== 'created') throw new Error(`canary seed: ${seeded.status}`);
+    const channels = await db.database
+      .select({
+        userId: schema.parentChannels.userId,
+        familyId: schema.parentChannels.familyId,
+      })
+      .from(schema.parentChannels);
+    const canary = channels.find((row) => row.familyId === seeded.familyId);
+    if (!canary) throw new Error('canary channel missing');
+    for (let i = 0; i < DEFERRED_PILEUP_THRESHOLD; i += 1) {
+      await seedDeferred({ familyId: seeded.familyId, parentUserId: canary.userId });
+    }
+    const { texts, post } = recorder();
+
+    const result = await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(result.deferredPileups.posted).toBe(0);
+    expect(texts).toEqual([]);
+    expect(texts.join(' ')).not.toContain(CANARY_PHONE_E164);
+  });
+
+  it('keeps the provider claim on its own route', async () => {
+    const family = await seedFamily(db.database, 'Route');
+    await seedDeferred(family, { providerFailure: 'billing' });
+    await pageFailureAlerts(db.database, { post: recorder().post, now: NOW });
+    const claims = await db.database
+      .select({
+        identifier: schema.rateLimits.identifier,
+        route: schema.rateLimits.route,
+      })
+      .from(schema.rateLimits);
+    expect(claims).toContainEqual({
+      identifier: `${MODEL_PROVIDER}:billing`,
+      route: PROVIDER_INCIDENT_PAGE_ROUTE,
+    });
+    expect(claims.some((row) => row.route === DEFERRED_PILEUP_PAGE_ROUTE)).toBe(false);
   });
 });

@@ -99,8 +99,35 @@ export function classifyProviderFailure(err: unknown): ProviderFailureClass {
  * once-a-week plan over either would cost more than the retries do. A sustained one of
  * those is caught within the hour by the failed-run backstop instead.
  */
-export function abortsSendWindow(failure: ProviderFailureClass): boolean {
+export function abortsSendWindow(failure: ProviderFailureClass): failure is 'billing' | 'auth' {
   return failure === 'billing' || failure === 'auth';
+}
+
+/** How far down a `cause` chain to look. The coach wraps the SDK error once
+ * (ChannelTurnFailed); the bound is what makes a cyclic cause terminate. */
+const PROVIDER_CAUSE_DEPTH = 5;
+
+/**
+ * The billing or auth class of a provider failure, looking through wrappers.
+ *
+ * {@link classifyProviderFailure} reads the error it is handed. A coach turn
+ * wraps that error, and the wrapper has no HTTP status, so the outer frame is
+ * `transient` and the 400 credit-balance body sits one `cause` down. The first
+ * frame that would abort a send window wins. Quota, a 5xx, and a bug return
+ * null: those are not an incident to page.
+ */
+export function classifyChainedProviderFailure(err: unknown): 'billing' | 'auth' | null {
+  let current: unknown = err;
+  for (
+    let depth = 0;
+    depth < PROVIDER_CAUSE_DEPTH && current !== null && current !== undefined;
+    depth += 1
+  ) {
+    const failure = classifyProviderFailure(current);
+    if (abortsSendWindow(failure)) return failure;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return null;
 }
 
 // ── the probe ────────────────────────────────────────────────────────────────

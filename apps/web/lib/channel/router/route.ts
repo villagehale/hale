@@ -13,6 +13,7 @@ import {
   dispatchDepthForPromise,
 } from '~/lib/channel/activity/deep-queue';
 import { readAffirmative } from '~/lib/channel/affirmative';
+import { isCanaryTurn } from '~/lib/channel/canary/config';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import {
   CALL_TIMEOUT_MS,
@@ -68,6 +69,7 @@ import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { reportTurnFailures } from '~/lib/monitoring/failure-page';
+import { classifyChainedProviderFailure } from '~/lib/monitoring/provider-health';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ApologyFallback, TurnApology } from './apology';
 import {
@@ -1660,10 +1662,31 @@ async function runAgentTurn(
     );
 
     if (disposition.outcome === 'deferred') {
+      // A 400 credit-balance failure is a defect to the turn classifier (it is
+      // not a 5xx and not a dropped connection), so the turn is deferred as
+      // model_failed and the existing sms_turn_failed page never sees it. The
+      // class is the preflight's, read through the coach's wrapper. A canary
+      // turn is not an incident.
+      const providerFailure =
+        classifyChainedProviderFailure(err) ?? disposition.providerFailure ?? null;
+      let pageThisFailure = providerFailure;
+      if (providerFailure) {
+        try {
+          if (await isCanaryTurn(deps.database, args.turn.body, args.job.family_id)) {
+            pageThisFailure = null;
+          }
+        } catch (canaryErr) {
+          deps.log.error(
+            { code: canaryErr instanceof Error ? canaryErr.name : 'unknown' },
+            'channel router: canary check threw — paging the provider failure',
+          );
+        }
+      }
       await deps.turns.recordDeferred({
         familyId: args.job.family_id,
         parentUserId: args.job.parent_user_id,
         channelMessageId: args.job.channel_message_id,
+        ...(pageThisFailure ? { providerFailure: pageThisFailure } : {}),
       });
       // A deferral is the quietest failure Hale has: the parent is told nothing and the
       // job goes back on the queue, so past the retry ceiling a question is simply never
@@ -1675,6 +1698,12 @@ async function runAgentTurn(
         reason: disposition.reason,
         familyId: args.job.family_id,
       });
+      if (pageThisFailure) {
+        // The deferral row carries the class. Page #ops in this request; the
+        // five-minute sweep posts it if this call never lands. Never throws,
+        // and never sends the parent anything.
+        await reportTurnFailures(deps.database);
+      }
       throw new TurnDeferred(disposition.reason, err);
     }
     if (disposition.reply !== null) {
@@ -1897,7 +1926,13 @@ type FailedTurnDisposition =
       afterSend?: (channelMessageId: string) => Promise<void>;
       log: object;
     }
-  | { outcome: 'deferred'; reason: TurnDeferralReason; log: object };
+  | {
+      outcome: 'deferred';
+      reason: TurnDeferralReason;
+      /** Billing or auth on the provider call that deferred the turn. */
+      providerFailure?: 'billing' | 'auth';
+      log: object;
+    };
 
 async function disposeOfFailedTurn(
   deps: ChannelRouterDeps,
@@ -2021,7 +2056,13 @@ async function disposeOfFailedTurn(
   // route.
   const reason: TurnDeferralReason =
     apology.status === 'unreachable' ? 'model_unreachable' : apology.reason;
-  return { outcome: 'deferred', reason, log: { deferred: reason } };
+  const providerFailure = apology.status === 'unavailable' ? apology.providerFailure : undefined;
+  return {
+    outcome: 'deferred',
+    reason,
+    ...(providerFailure ? { providerFailure } : {}),
+    log: { deferred: reason, ...(providerFailure ? { providerFailure } : {}) },
+  };
 }
 
 /**

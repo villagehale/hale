@@ -9,9 +9,11 @@ export const runtime = 'nodejs';
 export const maxDuration = 30;
 
 /**
- * GET /api/cron/failure-page — Slack #ops for failed text turns and failed
- * first hellos (VIL-404). Every five minutes, which is the bound on a failure
- * the inline hook did not already post. Cron-secret gated like every cron route.
+ * GET /api/cron/failure-page — Slack #ops for failed text turns, failed
+ * first hellos, provider billing/auth incidents, dead-lettered inbounds, and
+ * a pile of deferred turns (VIL-404). Every five minutes, which is the bound
+ * on a failure the inline hook did not already post. Cron-secret gated like
+ * every cron route.
  *
  * The inline hook pages in the same request that recorded the failure. This
  * sweep is the backstop: a crash between the ledger write and Slack, or a

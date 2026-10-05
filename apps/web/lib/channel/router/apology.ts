@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { classifyChainedProviderFailure } from '~/lib/monitoring/provider-health';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { classifyTurnFailure } from './smoke-alarm';
 
@@ -151,7 +152,15 @@ export type ApologyOutcome =
    * turn, which the router defers into the retry queue (rule #11: the caller must be
    * able to tell these apart, so they are not one bucket). */
   | { status: 'unreachable' }
-  | { status: 'unavailable'; reason: ApologyFallback };
+  | {
+      status: 'unavailable';
+      reason: ApologyFallback;
+      /**
+       * Set when the call itself was a billing or auth failure. The provider's
+       * message stays off this object: a request echo can carry a parent's words.
+       */
+      providerFailure?: 'billing' | 'auth';
+    };
 
 export interface TurnApology {
   compose(): Promise<ApologyOutcome>;
@@ -229,6 +238,16 @@ export function createTurnApology(client: () => AgentClient): TurnApology {
               'turn apology: the model went down mid-apology — deferring the turn',
             );
             return { status: 'unreachable' };
+          }
+          const providerFailure = classifyChainedProviderFailure(err);
+          if (providerFailure) {
+            // The class only. `unavailable` logs the provider message, and that
+            // message is not what a billing page is allowed to carry.
+            console.error(
+              { providerFailure },
+              'turn apology: provider refused the call — deferring the turn',
+            );
+            return { status: 'unavailable', reason: 'model_failed', providerFailure };
           }
           return unavailable('model_failed', message(err));
         }
