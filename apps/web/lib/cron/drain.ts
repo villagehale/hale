@@ -191,6 +191,17 @@ export interface DrainDeps {
   handlers: DrainHandlers;
   log: Pick<Console, 'info' | 'error'>;
   now: () => number;
+  /**
+   * Page Slack #ops when an inbound turn lands on the dead letter. Optional
+   * only so a test can omit it; a run without it logs `skipped_not_configured`
+   * and still completes the job. Production wires {@link noteDeadLetteredTurn}.
+   * A throw from this must not change the dead-letter outcome.
+   */
+  pageExpiredTurn?(input: {
+    jobId: string;
+    familyId: string;
+    channelMessageId: string;
+  }): Promise<void>;
 }
 
 export interface DrainSummary {
@@ -379,6 +390,37 @@ async function processExpiredTurnJob(
     },
     'drain: inbound turn ran out of retries — the parent was never answered',
   );
+  if (parsed.success) {
+    if (!deps.pageExpiredTurn) {
+      deps.log.error(
+        {
+          queue: CHANNEL_MESSAGE_RECEIVED_DLQ,
+          jobId: job.id,
+          page: 'skipped_not_configured',
+        },
+        'drain: expired turn was not paged — pageExpiredTurn is not configured',
+      );
+    } else {
+      try {
+        await deps.pageExpiredTurn({
+          jobId: job.id,
+          familyId: parsed.data.family_id,
+          channelMessageId: parsed.data.channel_message_id,
+        });
+      } catch (err) {
+        // The dead letter still completes. A page that throws must not put the
+        // job back, and must not send the parent anything.
+        deps.log.error(
+          {
+            queue: CHANNEL_MESSAGE_RECEIVED_DLQ,
+            jobId: job.id,
+            err: err instanceof Error ? err.name : 'unknown',
+          },
+          'drain: expired-turn page threw — the dead letter still completes',
+        );
+      }
+    }
+  }
   return 'dropped';
 }
 
@@ -708,6 +750,7 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   // The channel seam pulls the loop dispatch + adapters (and the db-backed ports);
   // scoped to the runtime entrypoint so importing a drain constant stays test-light.
   const { routeInboundChannelMessage } = await import('~/lib/channel/router/wiring');
+  const { noteDeadLetteredTurn } = await import('~/lib/monitoring/failure-page');
   const { keepPromiseNow } = await import('~/lib/channel/activity/deep-job');
   const { dispatchLoopMessage, recordAbandonedDispatch } = await import('~/lib/channel/dispatch');
   const { buildDispatchPorts } = await import('~/lib/channel/wiring');
@@ -768,6 +811,7 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
         },
         log: console,
         now: () => Date.now(),
+        pageExpiredTurn: (input) => noteDeadLetteredTurn(db(), input).then(() => undefined),
       },
       options,
     );

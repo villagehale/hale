@@ -103,6 +103,12 @@ export interface InboundTurnLedger {
     /** Why the turn went back. Absent on the older model-unreachable path's
      * callers that only need the stage. */
     reason?: string;
+    /**
+     * Billing or auth, when the provider call that deferred this turn was one
+     * of those. A closed pair. The ops page counts these rows; the value is
+     * never a provider message.
+     */
+    providerFailure?: 'billing' | 'auth';
   }): Promise<void>;
   /**
    * A known parent's inbound ended a step with nothing sent, or a step gave
