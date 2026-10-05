@@ -67,6 +67,18 @@ describe('onboarding friend fixtures', () => {
     expect(skill.instructions).toContain('No STOP');
   });
 
+  it('stays lean: state and a playbook, with the gates left to code', async () => {
+    const skill = await loadOnboardingFriendSkill();
+    const words = skill.instructions.split(/\s+/).filter(Boolean).length;
+    const ruleWords = skill.instructions.match(/\b(never|do not|don't|always)\b/gi) ?? [];
+    expect(words).toBeLessThan(2400);
+    expect(ruleWords.length).toBeLessThan(20);
+    expect(skill.instructions).toContain('## What parents need');
+    expect(skill.instructions).toContain('## Checked by code');
+    expect(skill.instructions).toContain('Registration windows');
+    expect(skill.instructions).toContain('Weekly vs one-off');
+  });
+
   it('checks the three sample conversations', () => {
     expect(FRIEND_CONVERSATIONS).toHaveLength(3);
     for (const conversation of FRIEND_CONVERSATIONS) {
