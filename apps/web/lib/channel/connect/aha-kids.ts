@@ -20,7 +20,7 @@ import { type AhaSnapshot, calendarOverlaps } from './aha-read';
 export interface KidContext {
   /** The kids' first names as stored. */
   childNames: readonly string[];
-  /** Titles of activities Hale found or the family has on its plan. */
+  /** Titles of activities Hale found for this family. */
   activityTitles: readonly string[];
 }
 
@@ -194,8 +194,9 @@ export function kidRelatedAha(snapshot: AhaSnapshot, context: KidContext): AhaSn
 
 /**
  * What the family already told Hale about the kids: names and the activities
- * on their radar. Read once per receipt. A failed read keeps the names empty,
- * and the vocabulary match still applies.
+ * Hale found for them. Read once per receipt. The family calendar is not read
+ * here on purpose: it is a named privacy door (teen rows), and the found
+ * activities are vocabulary enough.
  */
 export async function loadKidContext(database: Database, familyId: string): Promise<KidContext> {
   const children = await database
@@ -211,19 +212,14 @@ export async function loadKidContext(database: Database, familyId: string): Prom
         isNull(schema.villageCandidates.supersededAt),
       ),
     );
-  const events = await database
-    .select({ familyId: schema.familyEvents.familyId, title: schema.familyEvents.title })
-    .from(schema.familyEvents)
-    .where(eq(schema.familyEvents.familyId, familyId));
   const own = <T extends { familyId: string }>(rows: T[]) =>
     rows.filter((row) => row.familyId === familyId);
   return {
     childNames: own(children)
       .map((row) => row.name ?? '')
       .filter((name) => name.trim().length > 0),
-    activityTitles: [
-      ...own(candidates).map((row) => row.title),
-      ...own(events).map((row) => row.title),
-    ].filter((title) => typeof title === 'string' && title.trim().length > 0),
+    activityTitles: own(candidates)
+      .map((row) => row.title)
+      .filter((title): title is string => typeof title === 'string' && title.trim().length > 0),
   };
 }

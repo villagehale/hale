@@ -161,6 +161,9 @@ export const AUDIT_VERBS = [
   // A no or a later on an optional setup ask (name, kids' names, calendar, email).
   // The ladder does not ask that thing again.
   'onboarding_ask_declined',
+  // An activity from the first find put on the family calendar as a reminder
+  // (one-off or weekly). It is not a registration.
+  'onboarding_schedule_added',
   'sms_intake_provisioned',
   'sms_intake_contact_card',
   'linq_contact_card_shared',
@@ -221,6 +224,9 @@ export const AUDIT_VERBS = [
   'google_given_name_held',
   'google_given_name_released',
   'parent_name_asked',
+  // A soft mother/father guess the model offered (or the parent stated). Never
+  // a fact, never a gate; the sentence does not name the role.
+  'parent_role_recorded',
   'channel_sms.calendar_drafted',
   // ── proactive nudges + the watch offer ──────────────────────────────────
   'proactive_nudge_sent',
@@ -622,6 +628,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'you skipped a setup question',
     family: 'note',
   },
+  onboarding_schedule_added: {
+    sentence: 'you put an activity from the find on your calendar as a reminder',
+    family: 'done',
+  },
   sms_intake_provisioned: { sentence: 'your family was set up from your texts', family: 'done' },
   sms_intake_contact_card: { sentence: 'Hale texted you its contact card', family: 'note' },
   linq_contact_card_shared: {
@@ -779,6 +789,7 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'done',
   },
   parent_name_asked: { sentence: 'Hale asked what to call you', family: 'note' },
+  parent_role_recorded: { sentence: 'Hale noted how you refer to yourself as a parent', family: 'note' },
   email_unsubscribe_received: { sentence: 'you unsubscribed from an email', family: 'done' },
   'channel_sms.calendar_drafted': {
     sentence: 'your text became a calendar change, waiting on your yes',
