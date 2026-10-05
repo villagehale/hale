@@ -16,6 +16,7 @@ import {
   HALE_CONTACT_FIRST_NAME,
   LINQ_CARD_REPLY_BUDGET_MS,
 } from '~/lib/channel/linq/contact-card';
+import { LINQ_GROUP_TRIGGER_PHRASE } from '~/lib/channel/linq/group';
 import { LINQ_TYPING_REFRESH_MS } from '~/lib/channel/linq/presence';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { DISCOVERY_NEXT_STEP, KNOWN_VENUE_HELLO } from './cold-start/copy';
@@ -93,10 +94,33 @@ function offScriptAside(words: string): string | null {
   return null;
 }
 
-/** Stand-in for the onboarding model. Production does not parse the message. */
-function scriptedTurn(input: FriendVoiceInput): { reply: string; capture: OnboardingCapture } {
+/** The model's wire shape: the capture fields flat, the role as two strings. */
+type WireCapture = Omit<OnboardingCapture, 'parentRole'> & {
+  parentRole: 'mother' | 'father' | 'unknown' | null;
+  parentRoleBasis: 'stated' | 'guessed' | null;
+};
+
+interface ScriptedTurn {
+  reply: string;
+  capture: WireCapture;
+  groupLeads?: string[];
+}
+
+/**
+ * Stand-in for the onboarding model. Production does not parse the message;
+ * this fake does, so the tests can drive the ten steps with plain texts:
+ * postal, kids' names, ages, the map (no question), the name, Gmail,
+ * calendar, schedule, co-parent.
+ */
+function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
   const words = input.parentWords.trim();
-  const capture: OnboardingCapture = { ...EMPTY_ONBOARDING_CAPTURE, children: [] };
+  const capture: WireCapture = {
+    ...EMPTY_ONBOARDING_CAPTURE,
+    children: [],
+    scheduleAdds: [],
+    parentRole: null,
+    parentRoleBasis: null,
+  };
   const postal = words.match(
     /\b([ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z])(?:[ -]?(\d[ABCEGHJ-NPRSTV-Z]\d))?\b/i,
   );
@@ -118,53 +142,85 @@ function scriptedTurn(input: FriendVoiceInput): { reply: string; capture: Onboar
   const called = words.match(/\bI'm\s+([A-Z][a-z]+)\b/);
   if (called?.[1]) capture.parentName = called[1];
   if (/^dana$/i.test(words)) capture.parentName = 'Dana';
+  if (capture.parentName) {
+    // A unisex name stays unknown; the model never guesses off a name like Dana.
+    capture.parentRole = 'unknown';
+    capture.parentRoleBasis = 'guessed';
+  }
   if (input.step === 'kids_names' && /^[A-Z][a-z]+$/.test(words)) {
     const age = input.ageMonths[0] ?? null;
     capture.children = [
       { name: words, ageMonths: age, agePrecision: age == null ? null : 'years' },
     ];
   }
-  if (
-    /^\s*1\s*$/.test(words) ||
-    /\bthe first one\b/i.test(words) ||
-    /\bthe swim one\b/i.test(words)
-  ) {
-    const swimAt = input.findLines.findIndex((line) => /swim/i.test(line));
-    capture.activityPick = swimAt >= 0 ? swimAt + 1 : 1;
-  }
   if (/\bcheck my calendar\b/i.test(words)) capture.connectCalendar = true;
+  if (/\bwatch my email\b/i.test(words)) capture.connectGmail = true;
   if (/^(yes|yeah|yep)$/i.test(words)) {
     if (input.step === 'calendar') capture.connectCalendar = true;
     if (input.step === 'email') capture.connectGmail = true;
+    if (input.step === 'coparent') capture.coparentGroup = true;
+    if (input.step === 'schedule' && input.findLines.length > 0) {
+      const swimAt = input.findLines.findIndex((line) => /swim/i.test(line));
+      capture.scheduleAdds = [
+        {
+          line: swimAt >= 0 ? swimAt + 1 : 1,
+          cadence: 'weekly',
+          date: '2026-08-01',
+          time: null,
+          weeks: null,
+        },
+      ];
+      capture.scheduleDone = true;
+    }
+  }
+  if (/^(no|nope)$/i.test(words)) {
+    if (input.step === 'calendar') capture.connectCalendar = false;
+    if (input.step === 'email') capture.connectGmail = false;
+    if (input.step === 'schedule') capture.scheduleDone = true;
+    if (input.step === 'coparent') capture.coparentGroup = false;
   }
 
   const postalKnown =
     Boolean(capture.postalCode) || Boolean(input.placeLabel) || input.checklist?.postal === true;
+  const kidsKnown =
+    (capture.children.length > 0 && capture.children.every((child) => Boolean(child.name))) ||
+    input.checklist?.kids === true;
   const capturedAges = capture.children.filter((child) => child.ageMonths != null);
   const agesKnown =
     (capture.children.length > 0 && capturedAges.length === capture.children.length) ||
     input.ageMonths.length > 0 ||
     input.checklist?.ages === true;
-  const pickKnown =
-    capture.activityPick != null || Boolean(input.activity) || input.checklist?.pick === true;
   const nameKnown =
     Boolean(capture.parentName) || Boolean(input.parentName) || input.checklist?.name === true;
-  const kidsKnown =
-    (capture.children.length > 0 && capture.children.every((child) => Boolean(child.name))) ||
-    input.checklist?.kids === true;
-  const calendarKnown = capture.connectCalendar != null || input.checklist?.calendar === true;
   const gmailKnown = capture.connectGmail != null || input.checklist?.gmail === true;
+  const calendarKnown = capture.connectCalendar != null || input.checklist?.calendar === true;
+  const scheduleKnown = capture.scheduleDone || input.checklist?.schedule === true;
+  const coparentKnown = capture.coparentGroup != null || input.checklist?.coparent === true;
   const who = capture.parentName || input.parentName;
+
+  if (input.step === 'find_show') {
+    // Step 4: the map. A lead per group, no question anywhere.
+    return {
+      reply: 'Here is what is on near you for their ages.',
+      capture,
+      groupLeads: (input.findGroups ?? []).map(() => 'Worth a look.'),
+    };
+  }
 
   let ask: string;
   if (!postalKnown) ask = "Hey, it's Hale. What's your postal code?";
+  else if (!kidsKnown) ask = "What are your kids' names?";
   else if (!agesKnown) ask = 'How old are your kids?';
-  else if (!pickKnown) ask = 'Which of these looks good?';
   else if (!nameKnown) ask = 'What should I call you?';
-  else if (!kidsKnown) ask = 'What are their first names?';
-  else if (!calendarKnown) {
+  else if (!gmailKnown) {
+    ask = who
+      ? `${who}, want me to watch school and camp email for the dates?`
+      : 'Want me to watch school and camp email for the dates?';
+  } else if (!calendarKnown) {
     ask = who ? `${who}, want me to check your calendar?` : 'Want me to check your calendar?';
-  } else if (!gmailKnown) ask = 'Want me to watch school and camp email for the dates?';
+  } else if (!scheduleKnown && input.findLines.length > 0) {
+    ask = 'Want the swim one on your calendar as a weekly reminder?';
+  } else if (!coparentKnown) ask = 'Want me to set up a group chat with the other parent?';
   else ask = "I'll take it from here.";
 
   const aside = offScriptAside(words);
@@ -216,12 +272,7 @@ interface Conversation {
 }
 
 function conversation(options?: {
-  compose?: FriendVoiceInput extends never
-    ? never
-    : (input: FriendVoiceInput) => {
-        reply: string;
-        capture: OnboardingCapture;
-      };
+  compose?: (input: FriendVoiceInput) => ScriptedTurn;
   search?: () => Promise<ReturnType<typeof findResult>>;
 }): Conversation {
   const fake = makeFakeDb();
@@ -353,75 +404,110 @@ afterEach(() => {
 });
 
 describe('golden onboarding conversation', () => {
-  it('walks postal, ages, activities, pick, names, calendar, Gmail, then chat', async () => {
+  it('walks postal, kids, ages, the map, name, Gmail, calendar, schedule, co-parent, then chat', async () => {
     const talk = conversation();
     const postal = await talk.say('hi');
     expect(postal.bodies.join('\n')).toMatch(/postal code\?$/);
     assertTypingUntilSend(postal.marks);
 
-    const ages = await talk.say('M5V 2T6');
+    // Step 2: the kids' names, before any ages or any find.
+    const kids = await talk.say('M5V 2T6');
+    expect(kids.bodies.join('\n')).toMatch(/kids' names\?$/);
+    expect(kids.bodies.join('\n')).not.toMatch(/Swim/);
+    assertTypingUntilSend(kids.marks);
+
+    // Step 3: the ages.
+    const ages = await talk.say('Maya');
     expect(ages.bodies.join('\n')).toMatch(/How old are your kids\?$/);
     expect(ages.bodies.join('\n')).not.toMatch(/Swim/);
     assertTypingUntilSend(ages.marks);
 
-    const activities = await talk.say("she's 4");
-    const listed = activities.bodies.join('\n');
-    expect(listed).toContain('1. Swim at the rec centre');
-    expect(listed).toMatch(/Which of these looks good\?$/);
-    assertTypingUntilSend(activities.marks);
+    // Step 4: the map in its own bubbles with no question, then the name ask on its own.
+    const shown = await talk.say("she's 4");
+    expect(shown.bodies.length).toBeGreaterThanOrEqual(2);
+    const nameAsk = shown.bodies.at(-1) ?? '';
+    const map = shown.bodies.slice(0, -1).join('\n');
+    expect(map).toContain('Swim at the rec centre');
+    expect(map).not.toContain('?');
+    expect(map).not.toMatch(/which (one|of these)/i);
+    expect(nameAsk).toMatch(/What should I call you\?$/);
+    expect(nameAsk).not.toContain('Swim');
+    assertTypingUntilSend(shown.marks);
 
-    const pick = await talk.say('the swim one');
-    expect(pick.bodies.join('\n')).toMatch(/What should I call you\?$/);
-    assertTypingUntilSend(pick.marks);
-
+    // Step 5: Gmail, its own turn, the link in the card.
     const parent = await talk.say('Dana');
-    expect(parent.bodies.join('\n')).toMatch(/What are their first names\?$/);
+    const gmail = parent.bodies.join('\n');
+    expect(gmail.replace(/\nhttps:\/\/\S+/g, '')).toMatch(
+      /Dana, want me to watch school and camp email for the dates\?$/,
+    );
+    expect(gmail).toMatch(/https:\/\//);
+    expect(gmail).toContain('to=gmail');
     assertTypingUntilSend(parent.marks);
 
-    const kids = await talk.say('Maya');
-    expect(kids.bodies.join('\n').replace(/\nhttps:\/\/\S+/g, '')).toMatch(
+    // Step 7: the calendar, only after Gmail was answered.
+    const calendar = await talk.say('yes');
+    const calendarBody = calendar.bodies.join('\n');
+    expect(calendarBody.replace(/\nhttps:\/\/\S+/g, '')).toMatch(
       /Dana, want me to check your calendar\?$/,
     );
-    expect(kids.bodies.join('\n')).toMatch(/https:\/\//);
-    assertTypingUntilSend(kids.marks);
-
-    const calendar = await talk.say('yes');
-    expect(calendar.bodies.join('\n')).toMatch(/email/i);
+    expect(calendarBody).toContain('to=gcal');
     assertTypingUntilSend(calendar.marks);
 
-    const gmail = await talk.say('yes');
-    expect(gmail.bodies.join('\n').trim().length).toBeGreaterThan(0);
-    expect(gmail.outcome).toBe('intake');
+    // Step 9: one found activity onto the calendar as a reminder.
+    const schedule = await talk.say('yes');
+    expect(schedule.bodies.join('\n')).toMatch(/weekly reminder\?$/);
+    expect(schedule.bodies.join('\n')).not.toMatch(/https:\/\//);
+    assertTypingUntilSend(schedule.marks);
+
+    // Step 10: the co-parent, asked once and on its own.
+    // The prose is the model's; the join line under it is real data, like a URL.
+    const coparent = await talk.say('yes');
+    const [coparentProse, ...joinLines] = (coparent.bodies[0] ?? '').split('\n');
+    expect(coparentProse).toMatch(/group chat with the other parent\?$/);
+    expect(joinLines.join('\n')).toContain(LINQ_GROUP_TRIGGER_PHRASE.en);
+    expect(coparent.bodies.join('\n')).not.toMatch(/reminder/);
+    assertTypingUntilSend(coparent.marks);
+
+    const done = await talk.say('no');
+    expect(done.bodies.join('\n').trim().length).toBeGreaterThan(0);
+    expect(done.outcome).toBe('intake');
 
     const chat = await talk.say('Maya loved the pool');
     expect(chat.outcome).toBe('handed_off');
     expect(chat.bodies).toEqual([]);
     expect(chat.marks).toContain('typing-start');
+    expect(talk.transport.bodies().join('\n')).not.toMatch(/booked|enrolled|signed up|registered/i);
     expectNoCanned(talk.transport.bodies());
   });
 
-  it('takes postal, ages, a pick, a name, and calendar from the first message', async () => {
+  it('takes postal, kids, ages, a name, and both connections from the first message', async () => {
     const talk = conversation();
-    const first = await talk.say("M5V 2T6, Maya is 4, I'm Dana, the swim one, check my calendar");
+    const first = await talk.say(
+      "M5V 2T6, Maya is 4, I'm Dana, check my calendar and watch my email",
+    );
     const body = first.bodies.join('\n');
-    expect(body).toMatch(/email/i);
+    expect(body).toContain('Swim at the rec centre');
     expect(body).not.toMatch(/postal code/i);
     expect(body).not.toMatch(/How old/);
-    expect(body).not.toMatch(/Which of these/);
+    expect(body).not.toMatch(/kids' names/);
     expect(body).not.toMatch(/What should I call you/);
+    expect(body).not.toMatch(/which (one|of these)/i);
     expect(first.bodies.length).toBeGreaterThan(0);
     assertTypingUntilSend(first.marks);
     expectNoCanned(talk.transport.bodies());
   });
 
-  it('takes two items from one message and asks the next missing one', async () => {
+  it('takes two items from one message, shows the map, and asks the next missing one', async () => {
     const talk = conversation();
     const first = await talk.say('M5V 2T6, Maya is 4');
-    const body = first.bodies.join('\n');
-    expect(body).toContain('1. Swim at the rec centre');
-    expect(body).toMatch(/Which of these looks good\?$/);
-    expect(body).not.toMatch(/How old/);
-    expect(body).not.toMatch(/postal code\?$/);
+    const map = first.bodies.slice(0, -1).join('\n');
+    const ask = first.bodies.at(-1) ?? '';
+    expect(map).toContain('Swim at the rec centre');
+    expect(map).not.toContain('?');
+    expect(ask).toMatch(/What should I call you\?$/);
+    expect(first.bodies.join('\n')).not.toMatch(/How old/);
+    expect(first.bodies.join('\n')).not.toMatch(/postal code\?$/);
+    expect(first.bodies.join('\n')).not.toMatch(/which (one|of these)/i);
     assertTypingUntilSend(first.marks);
     expectNoCanned(talk.transport.bodies());
   });
@@ -445,34 +531,41 @@ describe('golden onboarding conversation', () => {
       assertTypingUntilSend(turn.marks);
     }
     await talk.say('M5V 2T6');
-    const ages = await talk.say('is this free?');
-    expect(ages.bodies.join('\n')).toContain('Yes, texting me is free.');
+    const kids = await talk.say('is this free?');
+    expect(kids.bodies.join('\n')).toContain('Yes, texting me is free.');
+    expect(kids.bodies.join('\n')).toMatch(/kids' names\?$/);
+
+    await talk.say('Maya');
+    const ages = await talk.say('tell me a joke');
+    expect(ages.bodies.join('\n')).toContain("I'm not much of a comic.");
     expect(ages.bodies.join('\n')).toMatch(/How old are your kids\?$/);
 
     await talk.say("she's 4");
-    const pick = await talk.say('tell me a joke');
-    expect(pick.bodies.join('\n')).toContain("I'm not much of a comic.");
-    expect(pick.bodies.join('\n')).toMatch(/Which of these looks good\?$/);
-
-    await talk.say('the swim one');
     const name = await talk.say('is this private?');
     expect(name.bodies.join('\n')).toContain('I only keep what you send');
     expect(name.bodies.join('\n')).toMatch(/What should I call you\?$/);
 
     await talk.say('Dana');
-    const kids = await talk.say('what is the weather?');
-    expect(kids.bodies.join('\n')).toContain("That's outside what I do.");
-    expect(kids.bodies.join('\n')).toMatch(/What are their first names\?$/);
-
-    await talk.say('Maya');
-    const calendar = await talk.say('lol');
-    expect(calendar.bodies.join('\n')).toContain('Got it.');
-    expect(calendar.bodies.join('\n')).toMatch(/calendar\?$/);
+    const email = await talk.say('what is the weather?');
+    expect(email.bodies.join('\n')).toContain("That's outside what I do.");
+    expect(email.bodies.join('\n').replace(/\nhttps:\/\/\S+/g, '')).toMatch(
+      /email for the dates\?$/,
+    );
 
     await talk.say('yes');
-    const email = await talk.say('ok');
-    expect(email.bodies.join('\n')).toContain('Got it.');
-    expect(email.bodies.join('\n')).toMatch(/email/i);
+    const calendar = await talk.say('lol');
+    expect(calendar.bodies.join('\n')).toContain('Got it.');
+    expect(calendar.bodies.join('\n').replace(/\nhttps:\/\/\S+/g, '')).toMatch(/calendar\?$/);
+
+    await talk.say('yes');
+    const schedule = await talk.say('ok');
+    expect(schedule.bodies.join('\n')).toContain('Got it.');
+    expect(schedule.bodies.join('\n')).toMatch(/reminder\?$/);
+
+    await talk.say('yes');
+    const coparent = await talk.say("What's next");
+    expect(coparent.bodies.join('\n')).toContain('Got it.');
+    expect(coparent.bodies.join('\n').split('\n')[0]).toMatch(/other parent\?$/);
     expect(talk.transport.bodies().every((body) => body.trim().length > 0)).toBe(true);
     expectNoCanned(talk.transport.bodies());
   });
@@ -518,7 +611,7 @@ describe('golden onboarding conversation', () => {
           setTimeout(() => resolve(findResult()), LINQ_TYPING_REFRESH_MS + 1_000),
         ),
     });
-    const pending = talk.say("M5V 2T6 and she's 4");
+    const pending = talk.say('M5V 2T6 and Maya is 4');
     await vi.advanceTimersByTimeAsync(LINQ_TYPING_REFRESH_MS + 1_000);
     await vi.advanceTimersByTimeAsync(LINQ_CARD_REPLY_BUDGET_MS);
     const turn = await pending;
@@ -528,7 +621,9 @@ describe('golden onboarding conversation', () => {
     expect(stopAt).toBeGreaterThan(searchAt);
     expect(turn.marks.slice(searchAt + 1, stopAt)).toContain('typing-start');
     assertTypingUntilSend(turn.marks);
-    expect(turn.bodies.join('\n')).toMatch(/Which of these looks good\?$/);
+    expect(turn.bodies.slice(0, -1).join('\n')).toContain('Swim at the rec centre');
+    expect(turn.bodies.slice(0, -1).join('\n')).not.toContain('?');
+    expect(turn.bodies.at(-1)).toMatch(/What should I call you\?$/);
   });
 
   it('does not hold the first reply for a slow card setup', async () => {
@@ -573,7 +668,7 @@ describe('golden onboarding conversation', () => {
     await talk.say('hi');
     await talk.say('M5V 2T6, Maya is 4');
     await talk.say('what is this?');
-    await talk.say('the swim one');
+    await talk.say('Dana');
     await talk.say("What's next");
     expect(talk.transport.bodies().length).toBeGreaterThan(0);
     expectNoCanned(talk.transport.bodies());
