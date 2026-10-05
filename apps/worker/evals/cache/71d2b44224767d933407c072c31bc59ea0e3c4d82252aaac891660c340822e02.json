@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CfjugmTcLnHBuKe3JFs5T",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EuQCCqQBCBIYAipAgYWEdALNVWqoVY3/fFMjeu/uT/xmOI5wcvvH5Oe399Myuj4PD+8Oue+jdmP8GipVDr41tq2+FJFRtIqzQdVUQDIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagB5dOQ1gYSDEyUSQjGySmDZw9moBoMSA19ZF9WFSEgi7EgIjAH0RC2i5OevrqKuC1o6Q7hHEZqmtmDT8lF5CjDBwoBeSeD1goTcgRTP/7CQZDDeuAqbc0yUlk+DcMOgzmwx6+AvuD4VlYohAO33z08KKnKCBiX/wULIjn/fg1B6F3npdmyFoYAWnqJMy7G9scEjToRhZATcoCEcxtFRXb0vM8bo0W6WNyZhDzfgYgsjYTq12BrNOTEtd0F7cxj+g9+m7gYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Yes — Mira has a confirmed mild egg allergy (hives), confirmed by Riverdale Pediatrics. Worth putting on a quick note for any new caregiver, along with what to watch for and that it's been flagged by her pediatric office.\n\nA couple of things worth including on that note:\n\n- What reaction to expect (mild hives) and what's *not* expected, so a caregiver doesn't panic over something unrelated.\n- That Riverdale Pediatrics is her office, in case they need to call with a question.\n\nIf anything changes or you want it worded differently, let me know and I'll help you draft it."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1103,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 3944,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 234,
+      "output_tokens_details": {
+        "thinking_tokens": 39
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3321,
+  "firstInputTokens": 1103
+}

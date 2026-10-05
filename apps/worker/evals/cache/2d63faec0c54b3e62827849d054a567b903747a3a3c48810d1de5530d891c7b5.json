@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CfjumuyESinyRZSx74HUR",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "Et4CCqQBCBIYAipAPAHOqu3+3uCNjcEUC/rWPZceQmypSViSrGQwN3SM2+b8rCyaIhfNSnQwQajlnKQUBFS8EHhfS8CXZWM8cEbS8DIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagBq9SQ1gYSDOrsCwjVlhOmbGug6xoMJuYMxM+CJBuWEe4TIjC+4hF1cm/EL4eFLaqMU1j7bmW2kbRlKJketLyABkw+Ynchi5veO4sdBs6erupd8t0qZ+LtHChC0Doraw2Uw8HRWepQL9nydy1qvTRBN6/CoFpsTsVvQm04bZYLTOP7k+CNOKiskg58KverZGINEfYKqzgNLP8UhixSLzlTJ4To/A1m9YwCd04XxIfcMT4pywcBQtj4nw9/uWAYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "You use Riverdale Pediatrics, and you've noted you prefer booking evenings when you can."
+      }
+    ],
+    "usage": {
+      "input_tokens": 5659,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 3944,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 62,
+      "output_tokens_details": {
+        "thinking_tokens": 28
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 1502,
+  "firstInputTokens": 5659
+}

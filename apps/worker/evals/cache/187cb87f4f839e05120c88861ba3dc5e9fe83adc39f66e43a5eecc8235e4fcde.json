@@ -1,0 +1,72 @@
+{
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cfjufu3zioNBVrEAGhsFg",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_01SoD9ScHfQu1mKTdEJXfanT",
+        "name": "list_village_candidates",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01SjQU4bJoiV9gnFF2vV4YYh",
+        "name": "get_family_fit_context",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01HdZcphmyTCZ5tKgufZKCLt",
+        "name": "get_family_tastes",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_017sLVELs8tffxD5NTWDi8C9",
+        "name": "get_endorsement_signals",
+        "input": {
+          "candidateIds": [
+            "swim",
+            "story",
+            "teen"
+          ]
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 95,
+      "cache_creation_input_tokens": 1290,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1290,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 148,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    },
+    "diagnostics": null
+  }
+}

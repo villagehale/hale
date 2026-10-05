@@ -1,0 +1,39 @@
+{
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cfjug3K61FPDknwc8p12S",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQStwcKEAgSGAI4AUIIdGhpbmtpbmcSDFOcYMAU5kgi6WhOPRoMZ/9wFqMKMrF0HO7oIjAdZabbiJ2xa9P2UgvEL1AmIIFSKhJ2zdLTPOuL7XxiFAWaJS87TqT3Lr2bFgHztyoq1AZmTNz1PXBZ8iQYp08wWKXD6WplEuVINSNjuuWTn7dZsv/JkpKVO4J6Nl/XlkdTpe/Se4pcczfPhTZBxn756MXOKXCeEXg2fgCZx3M1059nm2jneJh2UiX1p66bE603Rd7QCBLahs7hZ61UEikE6dmiT5hlM6wCqGDqYAQNd8lKlGTcPtA5V12hkhIeKpCnMmq91mVnfW2JlVCMB2KkC1mPiPhmcredFmVhKfEN1O2NXxpo/z5AOE0aUx+yvlBwf8lvCT1m3nRGTYuXIApirv9WJ2v1yQznj/3bKWhHRyKmWLZYz2qOKYPLYbTCoSBPADF8nxp/BvvMUa7t8456YSFQU030D7pP3/PxKuhZLzTRF9VnKfoZwui3HgVxMh1nVJdwsl3a7WSGgKL6RLMl89/RFh34SSHYndeXE3th0EE7J+jUzJQ4bYWEJvBjZD+BstL4pMFA4PD8OsTFpvBFIu4M76L52BndEo4jdDcighijdkqO4n9IPWfWa/qq6KcmSS4ORYjyiJtYjwplC/83UpjTEFOKCkCvE3KHe4+1tkvcJ7StbcavzvKcRqQEPvewzfMCZ3sjwdxZ4Mp5QgQJ+S0PatsWHk50U7yD6EihpmWfQk5jvLM2Q0sFCHMXezCyTB0TNyS6xHcK0qRvxpnfzbTC1RHKLdJuuW+0QaPXiUnVeiP67W9205VE+sZMRAj0BQu2BoyYbgXng1I/MpzcMafNUIAdlRDotJDcg4OTWwhzGLGb30BkN6/Javu1UK7Jx7W8sCtHWnEtjzlCrj9NzQ2vg89lpJHbDjU6mjkwSA5HTSoBMa0N69z+IqBCn9Vq2dOv5Q7X//yJlhNEghMBVb35xGLDF5wvyHs/+2XI9hWzYI4Z6rB9MvZhQxfy+o3lEAAa5Ljuk/iRaXrFdT+Q0xyzIpkQBvYvET/7xl8rn6KuglyMWX62hhX20Vj9qoHLDQu3ouJeIehveOHfW7hjv+GFcdTszijJcSc1lue2so7oEXm7+zGVexYZ13nGvxN6UQBcdGi820rYXeKpU4D2ql8kiwFUvYGBQOrJh8uPE/sZ43uel76HGHSaupmI+krWcRHLNJeLHCHtkijjywH2Hfk0s6gRiIVmeNZX8ofJI5OPcPjJjq0YAQ=="
+      },
+      {
+        "type": "text",
+        "text": "**Shortlist: `[\"swim\"]`**\n\n- **swim (Toddler swim):** This is a strong fit. It's for ages 1–3, which matches the family's toddler stage. It also matches their clearest taste, swimming (confidence 0.9), and it's their stated intent. It's loved by 3 families near M5V.\n\nI left out the other two:\n- **story (Library story time):** It suits the age and has 6 endorsements. But it doesn't match the family's swimming focus, so I judged it merely okay and not worth sharing.\n- **teen:** It's teen-attributed, so it's category-only and can't be shared with another family. Its 10 endorsements don't change that."
+      }
+    ],
+    "container": null,
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 647,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 1290,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 366,
+      "output_tokens_details": {
+        "thinking_tokens": 146
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    },
+    "diagnostics": null
+  }
+}

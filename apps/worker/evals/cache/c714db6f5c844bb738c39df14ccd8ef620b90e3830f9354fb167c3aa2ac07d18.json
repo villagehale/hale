@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CfjuiPkTQy3tKgiTrc9d3",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Mira's bedtime window is 7:30pm, with a wind-down routine of bath, story, then lights out — that's what's been working for her.\n\nSince she's been having some short, cranky-by-evening naps lately, keeping that routine consistent (same order, same time) can help her settle even on the rougher days."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1216,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 3944,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 99,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 1892,
+  "firstInputTokens": 1216
+}

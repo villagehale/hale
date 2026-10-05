@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The assistant claims it doesn't have a record of Mira being enrolled in a specific Saturday class, but the reference answer clearly states \"mira goes to the Tumbleweeds toddler gym class on saturdays.\" Additionally, the known family history includes an episode that says \"started the Tumbleweeds toddler gym class on saturdays,\" confirming this information. The assistant's answer misses the fact that should be known and even offers to save the information, when it should already be providing it. This is a clear failure to recall information that the system should have access to."
+  }
+}
