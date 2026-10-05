@@ -27,6 +27,7 @@ import {
 } from '~/lib/channel/intake/radar';
 import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   type FamilyOutboundTarget,
@@ -40,7 +41,6 @@ import {
   absorbHowItWentLines,
   groupBothReaderFrench,
 } from '~/lib/channel/linq/group-coparent-copy';
-import type { ReplyLanguage } from '~/lib/channel/language';
 import { type GroupVoice, defaultGroupVoice, speakGroupLine } from '~/lib/channel/linq/group-voice';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -51,6 +51,11 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
+import {
+  type SpokenLineComposer,
+  defaultSpokenLineComposer,
+  speakLine,
+} from '~/lib/channel/voice/spoken-line';
 import { weekdayFinderDedupeKey, weekdayFinderTemplateKey } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
@@ -70,11 +75,6 @@ import { matchRegistrationWindows } from '~/lib/registration/match-registration-
 import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type HouseholdFindBias, readHouseholdFindBias } from '~/lib/reviews/household-bias';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
-import {
-  type SpokenLineComposer,
-  defaultSpokenLineComposer,
-  speakLine,
-} from '~/lib/channel/voice/spoken-line';
 import { type Nudge, type NudgeDecision, type NudgeSkipCounts, decideNudge } from './nudge-decide';
 import { type SpokenAskNudge, composeNudgeMessage, isSpokenAskNudge } from './nudge-voice';
 import { type ProactiveLineRequest, proactiveLineInput } from './proactive-line';
@@ -492,14 +492,16 @@ async function speakAsk(
     target: FamilyOutboundTarget;
     speech: { name: string | null; language: ReplyLanguage };
     deps: NudgeRunDeps;
+    scope: { familyId: string; database: Database };
   },
 ): Promise<string | null> {
-  const { target, speech, deps } = input;
+  const { target, speech, deps, scope } = input;
   if (target.channel === 'group' && nudge.kind === 'empty_saturday') {
     const line = await speakGroupLine(
       deps.groupVoice ?? defaultGroupVoice(),
       { kind: 'empty_saturday', name: speech.name, kid: nudge.kidName },
       speech.language,
+      { scope },
     );
     return line.source === 'unsent' ? null : line.body;
   }
@@ -510,6 +512,7 @@ async function speakAsk(
       speech.language,
       target.channel === 'group' ? 'vous' : 'tu',
     ),
+    { scope },
   );
   return line.source === 'unsent' ? null : line.body;
 }
@@ -758,7 +761,12 @@ async function runForFamily(
   // the slot asks again, and #ops has already been paged by the engine.
   let message: string;
   if (isSpokenAskNudge(nudge)) {
-    const line = await speakAsk(nudge, { target, speech, deps });
+    const line = await speakAsk(nudge, {
+      target,
+      speech,
+      deps,
+      scope: { familyId: family.familyId, database },
+    });
     if (line === null) {
       await deps.audit(database, {
         familyId: family.familyId,

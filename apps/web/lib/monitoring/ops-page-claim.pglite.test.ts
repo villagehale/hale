@@ -1,5 +1,7 @@
+import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { createFollowupVoice } from '~/lib/channel/followup/voice';
 import { fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { type SpokenLineInput, speakLine } from '~/lib/channel/voice/spoken-line';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -83,5 +85,33 @@ describe('speakLine with a scope', () => {
     await speakLine(voice, input, { page });
     await speakLine(voice, input, { page });
     expect(page).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('createFollowupVoice with a scope', () => {
+  const noClient = (): AgentClient => {
+    throw new Error('ANTHROPIC_API_KEY is not set');
+  };
+
+  it('pages #ops once per family and kind per day across hourly deferrals', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const page = vi.fn(async (_text: string) => undefined);
+    const voice = createFollowupVoice(noClient, { page });
+    const scope = { familyId: 'fam-followup-1', database: db.database };
+    for (let tick = 0; tick < 3; tick++) {
+      const outcome = await voice.compose({ kind: 'intro' }, scope);
+      expect(outcome).toEqual({ status: 'deferred', reason: 'client_unavailable' });
+    }
+    expect(page).toHaveBeenCalledTimes(1);
+
+    await voice.compose({ kind: 'activity', activity: 'Swim' }, scope);
+    expect(page).toHaveBeenCalledTimes(2);
+
+    await voice.compose({ kind: 'intro' }, { ...scope, familyId: 'fam-followup-2' });
+    expect(page).toHaveBeenCalledTimes(3);
+
+    await voice.compose({ kind: 'intro' });
+    expect(page).toHaveBeenCalledTimes(4);
+    quiet.mockRestore();
   });
 });

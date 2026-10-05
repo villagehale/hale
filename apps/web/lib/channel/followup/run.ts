@@ -29,9 +29,9 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { type SendRefusalReason, refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { readDueBookings } from '~/lib/integrations/booking';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
@@ -470,11 +470,12 @@ async function sendFollowup(
       deps.groupVoice ?? defaultGroupVoice(),
       { kind: 'how_it_went', name: speech.name, activity: input.ask.activity },
       speech.language,
+      { scope: { familyId: input.familyId, database } },
     );
     if (line.source === 'unsent') return { status: 'compose_deferred', reason: 'model_failed' };
     spoken = line.body;
   } else {
-    const composed = await deps.voice.compose(input.ask);
+    const composed = await deps.voice.compose(input.ask, { familyId: input.familyId, database });
     if (composed.status === 'deferred') {
       return { status: 'compose_deferred', reason: composed.reason };
     }
@@ -1108,6 +1109,7 @@ export async function howItWentLinesForGroupWeekly(
         voice,
         { kind: 'how_it_went', name: speech.name, activity: event.title },
         speech.language,
+        { scope: { familyId: input.familyId, database } },
       );
       // An unsent line is left for the follow-up sweep: its key stays unclaimed.
       if (line.source === 'unsent') continue;

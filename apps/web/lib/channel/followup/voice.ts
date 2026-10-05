@@ -1,8 +1,10 @@
 import { type AgentClient, pickLane } from '@hale/agent';
+import type { Database } from '@hale/db';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { claimOpsPage } from '~/lib/monitoring/ops-page-claim';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -164,8 +166,18 @@ export type FollowupVoiceOutcome =
    * a retry, and a retry that has consumed its idempotency key never happens. */
   | { status: 'deferred'; reason: ComposeDeferral };
 
+/**
+ * Who the ask is for, so a deferral is traced to its family and #ops hears about one
+ * stuck family once a day rather than on every tick (same key shape as `speakLine`).
+ * Never sent to the model.
+ */
+export interface FollowupVoiceScope {
+  familyId: string;
+  database?: Database;
+}
+
 export interface FollowupVoice {
-  compose(request: FollowupVoiceRequest): Promise<FollowupVoiceOutcome>;
+  compose(request: FollowupVoiceRequest, scope?: FollowupVoiceScope): Promise<FollowupVoiceOutcome>;
 }
 
 const askSchema = z.object({ ask: z.string() });
@@ -182,21 +194,41 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : 'unknown';
 }
 
-function deferred(reason: ComposeDeferral, detail?: string): FollowupVoiceOutcome {
-  console.error({ reason, detail }, 'followup voice: no ask composed, deferring to the next tick');
+function deferred(
+  reason: ComposeDeferral,
+  detail: string | undefined,
+  scope: FollowupVoiceScope | undefined,
+): FollowupVoiceOutcome {
+  console.error(
+    { reason, detail, familyId: scope?.familyId },
+    'followup voice: no ask composed, deferring to the next tick',
+  );
   return { status: 'deferred', reason };
 }
 
 /**
  * A deferral is a parent hearing nothing this tick, so #ops hears about it (the
- * PR #768 pattern). Kind and reason only: no title, no family, in Slack.
+ * PR #768 pattern). Kind and reason only: no title, no family, in Slack. With a scope,
+ * one family pages once a day per kind; the sweep retries hourly and the page would
+ * otherwise repeat every tick.
  */
 async function pageDeferral(
   page: (text: string) => Promise<unknown>,
   request: FollowupVoiceRequest,
   outcome: FollowupVoiceOutcome,
+  scope: FollowupVoiceScope | undefined,
 ): Promise<FollowupVoiceOutcome> {
   if (outcome.status !== 'deferred') return outcome;
+  if (scope?.database) {
+    const key = `spoken-line:followup-voice:${request.kind}:${scope.familyId}`;
+    if (!(await claimOpsPage(scope.database, key))) {
+      console.warn(
+        { kind: request.kind, reason: outcome.reason, familyId: scope.familyId },
+        'followup voice: #ops already paged for this family today',
+      );
+      return outcome;
+    }
+  }
   try {
     await page(
       `spoken line unsent skill=followup-voice kind=${request.kind} reason=${outcome.reason}`,
@@ -221,8 +253,8 @@ export function createFollowupVoice(
 ): FollowupVoice {
   const page = options.page ?? postOpsSlack;
   return {
-    async compose(request) {
-      return pageDeferral(page, request, await composeOnce(client, request));
+    async compose(request, scope) {
+      return pageDeferral(page, request, await composeOnce(client, request, scope), scope);
     },
   };
 }
@@ -230,19 +262,20 @@ export function createFollowupVoice(
 async function composeOnce(
   client: () => AgentClient,
   request: FollowupVoiceRequest,
+  scope: FollowupVoiceScope | undefined,
 ): Promise<FollowupVoiceOutcome> {
   let resolved: AgentClient;
   try {
     resolved = client();
   } catch (err) {
-    return deferred('client_unavailable', message(err));
+    return deferred('client_unavailable', message(err), scope);
   }
 
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
   try {
     skill = await loadCronSkill('followup-voice');
   } catch (err) {
-    return deferred('skill_unavailable', message(err));
+    return deferred('skill_unavailable', message(err), scope);
   }
 
   const rejected: RejectedAttempt[] = [];
@@ -264,14 +297,20 @@ async function composeOnce(
     } catch (err) {
       // An outage does not get three tries. It will not have resolved by the third,
       // and the sweep's next tick is an hour away — which is the right place to wait.
-      return deferred('model_failed', message(err));
+      return deferred('model_failed', message(err), scope);
     }
 
     const body = plainText(raw);
     const problems = refusals(body, request);
-    if (problems.length === 0) return { status: 'composed', body };
+    if (problems.length === 0) {
+      console.info(
+        { kind: request.kind, familyId: scope?.familyId, chars: body.length, attempt },
+        'followup voice: ask written',
+      );
+      return { status: 'composed', body };
+    }
     rejected.push({ ask: body, problems });
   }
 
-  return deferred('gate_exhausted', rejected.map((r) => r.problems.join('+')).join(' | '));
+  return deferred('gate_exhausted', rejected.map((r) => r.problems.join('+')).join(' | '), scope);
 }
