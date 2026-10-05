@@ -142,18 +142,20 @@ describe('nudgeLineInput', () => {
 
   it('anchors a find on its title, its day and the kids, and grounds the venue', () => {
     const swap = nudgeLineInput(nudgeVoiceContext(SWAP), 'en');
-    expect(swap.mustMention).toEqual(['Library story time', 'saturday', 'Maya']);
+    expect(swap.mustMention).toEqual(['Library story time', 'Saturday', 'Maya']);
     expect(spokenFactSlots(swap)).toEqual(
       expect.arrayContaining(['Riverdale Library', 'the weekend forecast is wet', 'free']),
     );
     const dropIn = nudgeLineInput(nudgeVoiceContext(DROP_IN), 'en');
-    expect(dropIn.mustMention).toEqual(['EarlyON drop-in', 'tuesday', 'Mia']);
+    expect(dropIn.mustMention).toEqual(['EarlyON drop-in', 'Tuesday', 'Mia']);
     expect(spokenFactSlots(dropIn)).not.toContain('2026-08-04');
   });
 
-  it('hands a French line its day in French, so the judge accepts the only weekday it may name', () => {
+  it('hands the day over the way a person writes it: capitalized in English, French in French', () => {
     expect(nudgeDayLabel('saturday', 'fr')).toBe('samedi');
-    expect(nudgeDayLabel('tuesday', 'en')).toBe('tuesday');
+    expect(nudgeDayLabel('tuesday', 'en')).toBe('Tuesday');
+    expect(nudgeDayLabel('wednesday', 'en')).toBe('Wednesday');
+    expect(nudgeDayLabel('someday', 'en')).toBe('someday');
     const input = nudgeLineInput(nudgeVoiceContext(DROP_IN), 'fr');
     expect(input.facts.day).toBe('mardi');
     expect(input.mustMention).toContain('mardi');

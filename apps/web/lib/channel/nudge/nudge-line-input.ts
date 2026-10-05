@@ -61,10 +61,15 @@ const FRENCH_DAY: Record<string, string> = {
   sunday: 'dimanche',
 };
 
-/** The day in the language the line is written in: the judge refuses any weekday the facts did not name. */
+/**
+ * The day in the language the line is written in, written the way a person writes it:
+ * the decide emits `tuesday`, a parent reads `Tuesday` (French weekdays stay lowercase).
+ * The judge refuses any weekday the facts did not name and matches case-insensitively.
+ */
 export function nudgeDayLabel(day: string, language: ReplyLanguage): string {
-  if (language === 'fr') return FRENCH_DAY[day.toLowerCase()] ?? day;
-  return day;
+  const key = day.toLowerCase();
+  if (language === 'fr') return FRENCH_DAY[key] ?? day;
+  return key in FRENCH_DAY ? key.charAt(0).toUpperCase() + key.slice(1) : day;
 }
 
 /** The nudge is an offer, never a request for an answer, and never urgency Hale was not given. */
