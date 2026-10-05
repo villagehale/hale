@@ -84,34 +84,54 @@ describe('onboarding friend fixtures', () => {
     }
   });
 
-  it('puts the French find under the model lead, with the question last', () => {
-    const french = FRIEND_CONVERSATIONS[1]?.turns[2];
+  it('puts the French find under the model lead, with no question', () => {
+    const french = FRIEND_CONVERSATIONS[1]?.turns[3];
     expect(french).toBeDefined();
     if (!french) return;
     const body = fixtureBody(french);
     expect(body).toContain('près');
     expect(body).toContain('1. ');
-    expect(body.trim().endsWith('?')).toBe(true);
+    expect(body).not.toContain('?');
     expect(body).not.toContain(YEAR_OPEN_LEAD);
     expect(body).not.toContain(YEAR_OPEN_LEAD_FR);
     expect(body).not.toMatch(/\bpres\b|\bage\b|\badapt\b/);
   });
 
-  it('does not ask a second question when the first text already has everything', () => {
-    const first = FRIEND_CONVERSATIONS[2]?.turns[0];
+  it('shows the map with no question when the first text already has everything, then asks the name', () => {
+    const [first, second] = FRIEND_CONVERSATIONS[2]?.turns ?? [];
     expect(first).toBeDefined();
-    if (!first) return;
+    expect(second).toBeDefined();
+    if (!first || !second) return;
     const body = fixtureBody(first);
-    expect(body.match(/\?/g)).toHaveLength(1);
+    expect(body).not.toContain('?');
     expect(body).not.toMatch(/postal code/i);
+    expect(body).not.toMatch(/which (one|of these)/i);
     expect(body).toContain('Swim');
     expect(body).toContain('$12');
+    const name = fixtureBody(second);
+    expect(name.match(/\?/g)).toHaveLength(1);
+    expect(name).toMatch(/call you/i);
+  });
+
+  it('never puts a which-one ask or a second question on the map', () => {
+    for (const conversation of FRIEND_CONVERSATIONS) {
+      for (const turn of conversation.turns) {
+        if (turn.input.step !== 'find_show') continue;
+        const body = fixtureBody(turn);
+        expect(body, `${conversation.id} / ${turn.title}`).not.toContain('?');
+        const bubbles = body.split('\n\n');
+        expect(bubbles.length).toBeGreaterThanOrEqual(2);
+        expect(bubbles.length).toBeLessThanOrEqual(4);
+        for (const line of turn.input.findLines) expect(body).toContain(line);
+      }
+    }
   });
 });
 
 describe('friend-voice judge', () => {
+  // A list with one question: the legacy numbered find a nudge still sends.
   const swim = blank({
-    step: 'find_pick',
+    step: 'nudge_find',
     parentWords: 'Maya is 4',
     placeLabel: 'M5V',
     findLines: ['Swim (ages 3-5) - Saturdays 10am - $12'],
@@ -323,11 +343,12 @@ describe('speakFriend', () => {
       checklist: {
         postal: true,
         ages: true,
-        pick: true,
         name: true,
         kids: true,
         calendar: false,
         gmail: false,
+        schedule: false,
+        coparent: false,
       },
     });
     const spoken = await speakFriend(
