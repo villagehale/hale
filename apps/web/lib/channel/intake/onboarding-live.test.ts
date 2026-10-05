@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createKidItemClassifier } from '~/lib/channel/connect/aha-kids';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { LIVE_FROM, runOnboardingReplay } from '~/lib/testing/onboarding-live-harness';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { createFriendVoiceComposer } from './friend-voice';
-import { LIVE_FROM, runOnboardingReplay } from './onboarding-live-harness';
 
 /**
  * The live replay of the founder's iMessage test (VIL-417): real model, real
@@ -15,9 +15,9 @@ import { LIVE_FROM, runOnboardingReplay } from './onboarding-live-harness';
  *     pnpm exec vitest run lib/channel/intake/onboarding-live.test.ts
  *
  * or `pnpm --filter @hale/web live:onboarding`. Every outbound bubble is
- * printed verbatim, then the rule checks (onboarding-live-rules.ts) and the
+ * printed verbatim, then the rule checks (lib/testing/onboarding-live-rules.ts) and the
  * p50 turn latency. The mechanics of the walk are covered without a key in
- * onboarding-live-harness.test.ts.
+ * lib/testing/onboarding-live-harness.test.ts.
  */
 
 const LIVE = process.env.LIVE === '1' && Boolean(process.env.ANTHROPIC_API_KEY);

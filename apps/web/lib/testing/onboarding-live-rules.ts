@@ -1,11 +1,11 @@
 /**
  * The rule checks the live onboarding replay runs over every outbound bubble
- * (onboarding-live.test.ts). Pure, so the rules themselves are unit-tested
+ * (lib/channel/intake/onboarding-live.test.ts). Pure, so the rules themselves are unit-tested
  * without a model; the replay prints each bubble verbatim and then lists the
  * rules it broke.
  */
 
-import { MAX_PROSE_CHARS } from './friend-voice';
+import { MAX_PROSE_CHARS } from '~/lib/channel/intake/friend-voice';
 
 export interface LiveTurn {
   /** What the parent sent, or a connector receipt label like `[gmail connected]`. */

@@ -10,9 +10,7 @@ import {
 } from '~/lib/channel/connect/aha-read';
 import { sendConnectorConnectedText } from '~/lib/channel/connect/connected-notice';
 import { routeInboundText } from '~/lib/channel/inbound-route';
-import { threadProactiveMessage } from '~/lib/channel/thread';
-import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { type ActivityMapGroup, renderActivityMapBody } from './activity-map';
+import { type ActivityMapGroup, renderActivityMapBody } from '~/lib/channel/intake/activity-map';
 import {
   FakeExtractor,
   FakeIdentityAsk,
@@ -20,17 +18,19 @@ import {
   fakeAckComposer,
   fakeNoOpenQuestions,
   fakeSilentAnswerComposer,
-} from './fakes';
-import type { FriendVoiceComposer } from './friend-voice';
-import type { IntakeDeps } from './machine';
+} from '~/lib/channel/intake/fakes';
+import type { FriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
+import type { IntakeDeps } from '~/lib/channel/intake/machine';
+import type { RadarPayload } from '~/lib/channel/intake/radar';
+import { FakeTransport, type InboundMessage } from '~/lib/channel/intake/transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
   type LiveExpectations,
   type LiveTurn,
   liveViolations,
   p50TurnMs,
 } from './onboarding-live-rules';
-import type { RadarPayload } from './radar';
-import { FakeTransport, type InboundMessage } from './transport';
 
 /**
  * The founder's iMessage walk (VIL-417), replayed against the real intake

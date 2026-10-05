@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { KidItemClassifier } from '~/lib/channel/connect/aha-kids';
+import type {
+  FriendComposed,
+  FriendVoiceComposer,
+  FriendVoiceInput,
+} from '~/lib/channel/intake/friend-voice';
+import { isIdentityChallenge } from '~/lib/channel/intake/identity-challenge';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import type { FriendComposed, FriendVoiceComposer, FriendVoiceInput } from './friend-voice';
-import { isIdentityChallenge } from './identity-challenge';
 import {
   LIVE_FROM,
   LIVE_KID_CALENDAR,
