@@ -18,7 +18,7 @@ import {
   FIRST_TOUCH_IMESSAGE_BY_LANGUAGE,
   FIRST_TOUCH_SMS_BY_LANGUAGE,
   HALE_GREETING_EN,
-  PARENT_CALL_NAME_ASK,
+  IDENTITY_ACCOUNTABILITY_LINE,
 } from './copy';
 import type { IntakeCollected } from './extract';
 import {
@@ -51,8 +51,11 @@ const MAYA: IntakeCollected = {
 };
 
 function offScriptAside(words: string): string | null {
+  if (/who is this/i.test(words)) {
+    return "I'm Hale, from Village Hale Technologies (villagehale.com). The site has the details, price included.";
+  }
   if (/what is this/i.test(words)) return "I find what's on for your kids.";
-  if (/is this free/i.test(words)) return 'Yes, texting me is free.';
+  if (/is this free/i.test(words)) return 'The price is on villagehale.com.';
   if (/tell me a joke/i.test(words)) return "I'm not much of a comic.";
   if (/privacy|private/i.test(words))
     return 'I only keep what you send, and you can ask what I have.';
@@ -64,10 +67,24 @@ function offScriptAside(words: string): string | null {
   return null;
 }
 
-/** Stand-in for the onboarding model. Production does not parse the message. */
-function scriptedTurn(input: FriendVoiceInput): { reply: string; capture: OnboardingCapture } {
+/**
+ * Stand-in for the onboarding model. Production does not parse the message;
+ * this fake does, so the tests can drive the order with plain texts. The ask
+ * it writes follows ONBOARDING_ORDER from what the checklist and its own
+ * capture say is known: postal, kids, ages, the map (no question), the name,
+ * Gmail, calendar, schedule, co-parent.
+ */
+function scriptedTurn(input: FriendVoiceInput): {
+  reply: string;
+  capture: OnboardingCapture;
+  groupLeads?: string[];
+} {
   const words = input.parentWords.trim();
-  const capture: OnboardingCapture = { ...EMPTY_ONBOARDING_CAPTURE, children: [] };
+  const capture: OnboardingCapture = {
+    ...EMPTY_ONBOARDING_CAPTURE,
+    children: [],
+    scheduleAdds: [],
+  };
   const postal = words.match(
     /\b([ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z])(?:[ -]?(\d[ABCEGHJ-NPRSTV-Z]\d))?\b/i,
   );
@@ -82,12 +99,20 @@ function scriptedTurn(input: FriendVoiceInput): { reply: string; capture: Onboar
       agePrecision: 'years' as const,
     }));
   }
+  const bareNames = words.match(/^([A-Z][a-z]+)(?:\s+and\s+([A-Z][a-z]+))?$/);
+  if (bareNames?.[1] && input.step === 'kids_names') {
+    capture.children = [bareNames[1], bareNames[2]]
+      .filter((name): name is string => Boolean(name))
+      .map((name) => ({ name, ageMonths: null, agePrecision: null }));
+  }
   const called = words.match(/\bI'm\s+([A-Z][a-z]+)\b/);
   if (called?.[1]) capture.parentName = called[1];
   if (/^dana$/i.test(words)) capture.parentName = 'Dana';
-  if (/^\s*1\s*$/.test(words) || /\bthe first one\b/i.test(words)) capture.activityPick = 1;
-  const swimAt = input.findLines.findIndex((line) => /swim/i.test(line));
-  if (/\bthe swim one\b/i.test(words) && swimAt >= 0) capture.activityPick = swimAt + 1;
+  if (/\bI'm (his|her|their) dad\b/i.test(words)) {
+    capture.parentRole = { role: 'father', basis: 'stated' };
+  } else if (capture.parentName === 'Dana') {
+    capture.parentRole = { role: 'unknown', basis: 'guessed' };
+  }
   const actually = words.match(/\bactually\s+(\d{1,2})\b/i);
   if (actually?.[1]) {
     capture.children = [{ name: null, ageMonths: Number(actually[1]) * 12, agePrecision: 'years' }];
@@ -95,15 +120,30 @@ function scriptedTurn(input: FriendVoiceInput): { reply: string; capture: Onboar
   if (/\b10001\b/.test(words)) capture.postalCode = '10001';
   if (/\bchicago\b/i.test(words)) capture.city = 'Chicago';
   if (/\bcheck my calendar\b/i.test(words)) capture.connectCalendar = true;
+  if (/\bwatch my email\b/i.test(words)) capture.connectGmail = true;
   if (/^(yes|yeah|yep)$/i.test(words)) {
     if (input.step === 'calendar') capture.connectCalendar = true;
     if (input.step === 'email') capture.connectGmail = true;
+    if (input.step === 'coparent') capture.coparentGroup = true;
+    if (
+      input.step === 'schedule' &&
+      input.findLines.length > 0 &&
+      (input.scheduled ?? []).length === 0
+    ) {
+      capture.scheduleAdds = [
+        { line: 1, cadence: 'weekly', date: '2026-08-01', time: null, weeks: null },
+      ];
+    }
   }
+  // The reminders are confirmed; the next plain reply closes the schedule.
+  if (input.step === 'schedule' && (input.scheduled ?? []).length > 0) capture.scheduleDone = true;
   if (/^(no|nope)$/i.test(words)) {
     if (input.step === 'names' || input.step === 'name_confirm') capture.nameDeclined = true;
     if (input.step === 'kids_names') capture.kidsNamesDeclined = true;
     if (input.step === 'calendar') capture.connectCalendar = false;
     if (input.step === 'email') capture.connectGmail = false;
+    if (input.step === 'schedule') capture.scheduleDone = true;
+    if (input.step === 'coparent') capture.coparentGroup = false;
   }
   if (/^later$/i.test(words)) {
     if (input.step === 'names') capture.nameDeclined = true;
@@ -115,6 +155,10 @@ function scriptedTurn(input: FriendVoiceInput): { reply: string; capture: Onboar
     (Boolean(capture.postalCode) && capture.postalCode !== '10001') ||
     Boolean(input.placeLabel) ||
     input.checklist?.postal === true;
+  const kidsKnown =
+    capture.children.some((child) => child.name) ||
+    capture.kidsNamesDeclined ||
+    input.checklist?.kids === true;
   const capturedAges = capture.children.filter((child) => child.ageMonths != null);
   const agesKnown =
     (capture.children.length > 0 &&
@@ -122,45 +166,25 @@ function scriptedTurn(input: FriendVoiceInput): { reply: string; capture: Onboar
       capturedAges.length > 0) ||
     input.ageMonths.length > 0 ||
     input.checklist?.ages === true;
-  const pickKnown =
-    (capture.activityPick != null && input.findLines.length > 0) ||
-    Boolean(input.activity) ||
-    input.checklist?.pick === true;
   const nameKnown =
     Boolean(capture.parentName) ||
     capture.nameDeclined ||
     Boolean(input.parentName) ||
     input.checklist?.name === true;
-  const calendarKnown =
-    capture.connectCalendar != null || capture.calendarLater || input.checklist?.calendar === true;
   const gmailKnown =
     capture.connectGmail != null || capture.gmailLater || input.checklist?.gmail === true;
+  const calendarKnown =
+    capture.connectCalendar != null || capture.calendarLater || input.checklist?.calendar === true;
+  const scheduleKnown = capture.scheduleDone || input.checklist?.schedule === true;
+  const coparentKnown = capture.coparentGroup != null || input.checklist?.coparent === true;
+  const name = capture.parentName ?? input.parentName;
 
-  let ask: string;
-  if (input.language === 'fr' && !postalKnown) {
-    ask = "Salut, c'est Hale. Quel est ton code postal?";
-  } else if (input.language === 'fr' && !agesKnown) {
-    ask = 'Quel âge ont les enfants?';
-  } else if (!postalKnown) {
-    ask = input.introduce ? "Hey, it's Hale. What's your postal code?" : "What's your postal code?";
-  } else if (!agesKnown) {
-    ask = 'How old are your kids?';
-  } else if (!pickKnown && (input.findLines.length > 0 || input.step === 'find_pick')) {
-    ask = 'Which of these looks good?';
-  } else if (!nameKnown) {
-    ask = 'What should I call you?';
-  } else if (input.step === 'kids_names') {
-    ask = 'What are their first names?';
-  } else if (!calendarKnown) {
-    ask = capture.parentName
-      ? `${capture.parentName}, want me to check your calendar?`
-      : 'Want me to check your calendar?';
-  } else if (!gmailKnown) {
-    ask = 'Want me to watch school and camp email for the dates?';
-  } else if (input.step === 'coparent') {
-    ask = "Want the other parent on the kids' year? Text me their number.";
-  } else {
-    ask = 'Want me to watch school and camp email for the dates?';
+  if (input.step === 'find_show') {
+    return { reply: 'Here is what is on near you for their ages.', capture, groupLeads: [] };
+  }
+  // Reminders just recorded: confirm them, ask nothing.
+  if (capture.scheduleAdds.length > 0) {
+    return { reply: 'Done, a weekly reminder for the first one.', capture };
   }
   if (input.step === 'help') {
     const missing =
@@ -171,7 +195,48 @@ function scriptedTurn(input: FriendVoiceInput): { reply: string; capture: Onboar
     };
   }
   if (input.step === 'nudge_find') {
-    return { reply: 'Still here if one of those looks good. Which of these looks good?', capture };
+    return { reply: 'Still here if one of those looks good. What should I call you?', capture };
+  }
+  // A yes to the connector just asked: the receipt for the yes, nothing more.
+  // The next ask rides the connect receipt (connected-notice.ts) or the next text.
+  if (
+    (input.step === 'email' && capture.connectGmail === true && !input.checklist?.gmail) ||
+    (input.step === 'calendar' && capture.connectCalendar === true && !input.checklist?.calendar)
+  ) {
+    return {
+      reply:
+        "Great, the link is right there. Tap it when you're ready and I'll text you what I see.",
+      capture,
+    };
+  }
+
+  let ask: string;
+  if (input.language === 'fr' && !postalKnown) {
+    ask = "Salut, c'est Hale. Quel est ton code postal?";
+  } else if (input.language === 'fr' && !kidsKnown) {
+    ask = "Comment s'appellent tes enfants?";
+  } else if (input.language === 'fr' && !agesKnown) {
+    ask = 'Quel âge ont les enfants?';
+  } else if (!postalKnown) {
+    ask = input.introduce ? "Hey, it's Hale. What's your postal code?" : "What's your postal code?";
+  } else if (!kidsKnown) {
+    ask = "What are your kids' names?";
+  } else if (!agesKnown) {
+    ask = 'How old are your kids?';
+  } else if (!nameKnown) {
+    ask = 'What should I call you?';
+  } else if (!gmailKnown) {
+    ask = name
+      ? `${name}, want me to watch school and camp email for the dates?`
+      : 'Want me to watch school and camp email for the dates?';
+  } else if (!calendarKnown) {
+    ask = name ? `${name}, want me to check your calendar?` : 'Want me to check your calendar?';
+  } else if (!scheduleKnown && input.findLines.length > 0) {
+    ask = 'Want the first one on your calendar as a weekly reminder?';
+  } else if (!coparentKnown) {
+    ask = 'Want me to set up a group chat with the other parent?';
+  } else {
+    return { reply: offScriptAside(words) ?? 'All set.', capture };
   }
   const aside = offScriptAside(words);
   const reply = aside ? `${aside} ${ask}` : ask;
@@ -224,7 +289,18 @@ function harness(
       ? {
           friendVoice: {
             async compose(input: FriendVoiceInput) {
-              return scriptedTurn(input);
+              // The composer hands back the model's wire fields; the role is two
+              // flat strings there, not the typed guess the capture carries.
+              const { capture, ...rest } = scriptedTurn(input);
+              const { parentRole, ...fields } = capture;
+              return {
+                ...rest,
+                capture: {
+                  ...fields,
+                  parentRole: parentRole?.role ?? null,
+                  parentRoleBasis: parentRole?.basis ?? null,
+                },
+              };
             },
           },
         }
@@ -507,10 +583,10 @@ describe('first touch ladder', () => {
       FIRST_TOUCH_EMPTY_BY_LANGUAGE.fr,
       FIRST_TOUCH_AGES_BY_LANGUAGE.fr,
     ]);
-    expect(transport.bodies().join('\n')).not.toContain(PARENT_CALL_NAME_ASK);
+    expect(transport.bodies().join('\n')).not.toMatch(/call you/i);
   });
 
-  it('sends the age-fit find and the name ask after the ages, and does not repeat the ages ask', async () => {
+  it('sends the age-fit find after the ages with no fixed name line, and does not repeat the ages ask', async () => {
     const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA, EMPTY] });
     await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
     await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
@@ -521,8 +597,9 @@ describe('first touch ladder', () => {
       FIRST_TOUCH_EMPTY_BY_LANGUAGE.en,
       FIRST_TOUCH_AGES_BY_LANGUAGE.en,
       'RADAR',
-      PARENT_CALL_NAME_ASK,
     ]);
+    // The name ask is the model's to write; with no voice there is no line, and no stand-in.
+    expect(transport.bodies().join('\n')).not.toMatch(/call you/i);
 
     const waiting = harness({ extractions: [EMPTY, EMPTY, EMPTY] });
     await handleInboundSms(waiting.fake.db, inbound(waiting.transport, 'hi'), waiting.deps);
@@ -564,7 +641,7 @@ describe('cold-start discovery session', () => {
     expect(done.status).toBe('provisioned');
     const receipt = receiptLine([48, 12], 'M5V');
     expect(transport.bodies().at(-1)).toBe(`${receipt}\nRADAR\nReply with the number you want.`);
-    expect(transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
+    expect(transport.bodies().join('\n')).not.toMatch(/call you/i);
     expect(transport.bodies().join('\n')).not.toMatch(/stop|unsubscribe/i);
   });
 
@@ -577,7 +654,7 @@ describe('cold-start discovery session', () => {
     expect(pick.status).toBe('first_touch');
     expect(transport.bodies().at(-1)).toBe("Who's taking them then to that one? I'll note it.");
     expect(transport.bodies().at(-1)?.match(/\?/g)).toHaveLength(1);
-    expect(transport.bodies()).not.toContain(PARENT_CALL_NAME_ASK);
+    expect(transport.bodies().join('\n')).not.toMatch(/call you/i);
   });
 
   it.each([
@@ -787,13 +864,23 @@ describe('friend voice onboarding', () => {
     expect(transport.bodies()[0]?.match(/\?/g)).toHaveLength(1);
   });
 
-  it('does not send an empty week find before the ages question', async () => {
+  it('asks the kids names after the postal code, with no empty week find', async () => {
     const { fake, transport, deps } = harness({ extractions: [EMPTY], voice: true });
     await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
-    expect(transport.bodies()).toEqual(['How old are your kids?']);
+    expect(transport.bodies()).toEqual(["What are your kids' names?"]);
     expect(transport.bodies().join('\n')).not.toContain(FIRST_TOUCH_EMPTY_BY_LANGUAGE.en);
   });
 
+  it('takes the kids names, then asks their ages, one ask per message', async () => {
+    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY], voice: true });
+    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
+    const named = await handleInboundSms(fake.db, inbound(transport, 'Maya and Leo'), deps);
+    expect(named).toEqual({ status: 'first_touch', step: 'ages_waiting' });
+    expect(transport.bodies().at(-1)).toBe('How old are your kids?');
+    expect(transport.bodies().at(-1)?.match(/\?/g)).toHaveLength(1);
+    const session = await loadOpenSession(fake.db, PHONE);
+    expect(session?.collected.children.map((child) => child.name)).toEqual(['Maya', 'Leo']);
+  });
   it('asks what to call you on an empty year find, with no number prompt', async () => {
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     const { fake, transport, deps } = harness({ extractions: [MAYA], voice: true });
@@ -811,7 +898,7 @@ describe('friend voice onboarding', () => {
     expect(last.match(/\?/g)).toHaveLength(1);
   });
 
-  it('moves from a numbered find to the name, then a calendar link', async () => {
+  it('shows the map with no question, asks the name next, then Gmail, calendar, schedule, co-parent', async () => {
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     const { fake, transport, deps } = harness({ extractions: [MAYA, EMPTY, EMPTY], voice: true });
     const timed: IntakeDeps = {
@@ -840,26 +927,24 @@ describe('friend voice onboarding', () => {
       timed,
     );
     expect(opened.status).toBe('provisioned');
-    const find = transport.bodies().at(-1) ?? '';
-    expect(find).toContain('Which of these looks good?');
-    expect(find).toContain('Swim (ages 3-5) - Saturdays 10am - $12');
-    expect(find).not.toContain('Reply with the number you want.');
-    expect(find.match(/\?/g)).toHaveLength(1);
+    // Step 4: the map, its own bubbles, no question. Step 4b: the name, the next message.
+    const [opener, map, nameAsk] = transport.bodies();
+    expect(opener).not.toContain('?');
+    expect(map).toContain('Swim (ages 3-5) - Saturdays 10am - $12');
+    expect(map).not.toContain('?');
+    expect(map).not.toMatch(/which (one|of these)/i);
+    expect(map).not.toContain('Reply with the number you want.');
+    expect(nameAsk).toBe('What should I call you?');
+    expect(transport.bodies()).toHaveLength(3);
 
-    const picked = await handleInboundSms(fake.db, inbound(transport, '1'), timed);
-    expect(picked.status).toBe('first_touch');
-    const nameAsk = transport.bodies().at(-1) ?? '';
-    expect(nameAsk).toContain('What should I call you?');
-    expect(nameAsk).not.toMatch(/I'll note it/i);
-    expect(nameAsk.match(/\?/g)).toHaveLength(1);
-
+    // Step 5: Gmail, its own turn, link in the card.
     const named = await handleInboundSms(fake.db, inbound(transport, 'Dana'), timed);
     expect(named.status).toBe('first_touch');
-    const calendar = transport.bodies().at(-1) ?? '';
-    expect(calendar).toContain('/connect?t=');
-    expect(calendar).toMatch(/calendar/i);
-    expect(calendar).not.toMatch(/I'll note it/i);
-    expect(calendar.replace(/https:\/\/\S+/g, '').match(/\?/g)).toHaveLength(1);
+    const gmail = transport.bodies().at(-1) ?? '';
+    expect(gmail).toContain('Dana, want me to watch school and camp email for the dates?');
+    expect(gmail).toContain('/connect?t=');
+    expect(gmail).toContain('to=gmail');
+    expect(gmail.replace(/https:\/\/\S+/g, '').match(/\?/g)).toHaveLength(1);
     expect(
       fake.writes.some(
         (write) =>
@@ -868,8 +953,53 @@ describe('friend voice onboarding', () => {
           write.payload.actionTaken === 'parent_name_captured',
       ),
     ).toBe(true);
-  });
 
+    // A yes to Gmail is its own receipt: no calendar link under a Gmail yes.
+    await handleInboundSms(fake.db, inbound(transport, 'yes'), timed);
+    const gmailYes = transport.bodies().at(-1) ?? '';
+    expect(gmailYes).toContain('Tap it when');
+    expect(gmailYes).not.toContain('/connect?t=');
+
+    // Step 7: the calendar, only after they answered Gmail.
+    await handleInboundSms(fake.db, inbound(transport, 'ok'), timed);
+    const calendar = transport.bodies().at(-1) ?? '';
+    expect(calendar).toContain('Dana, want me to check your calendar?');
+    expect(calendar).toContain('to=gcal');
+    expect(calendar).not.toMatch(/email/i);
+
+    // Step 9: one activity, a sensible default, a reminder — not a registration.
+    await handleInboundSms(fake.db, inbound(transport, 'yes'), timed);
+    expect(transport.bodies().at(-1)).toContain('Tap it when');
+    await handleInboundSms(fake.db, inbound(transport, 'ok'), timed);
+    const schedule = transport.bodies().at(-1) ?? '';
+    expect(schedule).toContain('Want the first one on your calendar as a weekly reminder?');
+    expect(schedule).not.toContain('/connect?t=');
+
+    await handleInboundSms(fake.db, inbound(transport, 'yes'), timed);
+    const events = fake.rows(schema.familyEvents);
+    expect(events.length).toBeGreaterThanOrEqual(1);
+    expect(events.every((row) => row.title === 'Swim')).toBe(true);
+    expect(
+      fake.writes.some(
+        (write) =>
+          write.op === 'insert' &&
+          write.table === schema.auditLog &&
+          write.payload.actionTaken === 'onboarding_schedule_added',
+      ),
+    ).toBe(true);
+
+    // The add is confirmed with no question; the next reply closes the schedule.
+    expect(transport.bodies().at(-1)).toBe('Done, a weekly reminder for the first one.');
+    await handleInboundSms(fake.db, inbound(transport, 'sounds good'), timed);
+
+    // Step 10: the co-parent, asked once, after the schedule — not combined with it.
+    const coparent = transport.bodies().at(-1) ?? '';
+    expect(coparent).toBe('Want me to set up a group chat with the other parent?');
+    await handleInboundSms(fake.db, inbound(transport, 'no'), timed);
+    expect(transport.bodies().at(-1)).toBe('All set.');
+    expect(await loadOpenSession(fake.db, PHONE)).toBeNull();
+    expect(transport.bodies().join('\n')).not.toMatch(/booked|enrolled|signed up|registered/i);
+  });
   it('answers a French hello in tu, with one question', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     await handleInboundSms(fake.db, inbound(transport, 'Bonjour'), deps);
@@ -941,7 +1071,7 @@ describe('friend voice onboarding', () => {
 
   it.each([
     ['what is this?', "I find what's on for your kids.", "What's your postal code?"],
-    ['is this free?', 'Yes, texting me is free.', "What's your postal code?"],
+    ['is this free?', 'The price is on villagehale.com.', "What's your postal code?"],
     ['tell me a joke', "I'm not much of a comic.", "What's your postal code?"],
     ['ok', 'Got it.', "What's your postal code?"],
     ['lol', 'Got it.', "What's your postal code?"],
@@ -957,17 +1087,50 @@ describe('friend voice onboarding', () => {
     expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_place');
   });
 
-  it('answers an ages aside and keeps the age question last', async () => {
+  it('answers a kids-names aside and keeps that question last', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
     await handleInboundSms(fake.db, inbound(transport, 'is this free?'), deps);
     const body = transport.bodies().at(-1) ?? '';
-    expect(body).toContain('Yes, texting me is free.');
-    expect(body.trim().endsWith('How old are your kids?')).toBe(true);
+    expect(body).toContain('The price is on villagehale.com.');
+    expect(body.trim().endsWith("What are your kids' names?")).toBe(true);
     expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_ages');
   });
 
-  it('goes straight to the activities when the first text has a postal code and ages', async () => {
+  it('answers who-is-this in the model voice with the company named, and steers back', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
+    const result = await handleInboundSms(
+      fake.db,
+      inbound(transport, 'wait who is this? is this free?'),
+      deps,
+    );
+    expect(result.status).toBe('first_touch');
+    const body = transport.bodies().at(-1) ?? '';
+    expect(body).toContain('Village Hale Technologies');
+    expect(body).toContain('villagehale.com');
+    expect(body).not.toBe(IDENTITY_ACCOUNTABILITY_LINE);
+    expect(body).not.toMatch(/\bSTOP\b/);
+    expect(body.trim().endsWith("What are your kids' names?")).toBe(true);
+    expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_ages');
+  });
+
+  it('walks a session left in awaiting_details with the friend voice, not the unreadable door', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
+    const row = fake.rows(schema.smsIntakeSessions)[0];
+    expect(row?.state).toBe('awaiting_place');
+    // A row from before the walk: details state, greeting already out.
+    if (row) row.state = 'awaiting_details';
+    const result = await handleInboundSms(fake.db, inbound(transport, 'ok'), deps);
+    expect(result.status).toBe('first_touch');
+    const body = transport.bodies().at(-1) ?? '';
+    expect(body).toBe("Got it. What's your postal code?");
+    expect(body).not.toMatch(/couldn't read|could not read/i);
+    expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_place');
+  });
+
+  it('goes straight to the map when the first text has a postal code and ages, then asks the name', async () => {
     const { fake, transport, deps } = harness({
       voice: true,
       extractions: [EMPTY],
@@ -995,13 +1158,13 @@ describe('friend voice onboarding', () => {
       deps,
     );
     expect(done.status).toBe('provisioned');
-    const body = transport.bodies().at(-1) ?? '';
-    expect(transport.bodies()).toHaveLength(1);
-    expect(body).toContain('1. Swim (ages 3-5) - Saturday');
-    expect(body.trim().endsWith('Which of these looks good?')).toBe(true);
-    expect(body).not.toMatch(/postal code|how old/i);
+    const bodies = transport.bodies();
+    expect(bodies).toHaveLength(3);
+    expect(bodies[1]).toContain('1. Swim (ages 3-5) - Saturday');
+    expect(bodies[1]).not.toContain('?');
+    expect(bodies[2]).toBe('What should I call you?');
+    expect(bodies.join('\n')).not.toMatch(/postal code|how old|which of these/i);
   });
-
   it('keeps a name given out of order and still asks for the postal code first', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     await handleInboundSms(fake.db, inbound(transport, "Maya is 4 and I'm Dana"), deps);
@@ -1014,7 +1177,7 @@ describe('friend voice onboarding', () => {
     expect(session?.state).toBe('awaiting_place');
   });
 
-  it('skips the name after a combined postal, ages, name, and pick, and asks for the calendar', async () => {
+  it('skips the name after a combined postal, ages and name, and asks for Gmail', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     deps.radar = {
       async compose() {
@@ -1035,14 +1198,14 @@ describe('friend voice onboarding', () => {
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     const done = await handleInboundSms(
       fake.db,
-      inbound(transport, "Maya is 4 and Leo is 1, M5V 2T6, I'm Dana, the first one. Is this free?"),
+      inbound(transport, "Maya is 4 and Leo is 1, M5V 2T6, I'm Dana. Is this free?"),
       deps,
     );
     expect(done.status).toBe('provisioned');
     const body = transport.bodies().at(-1) ?? '';
-    expect(transport.bodies()).toHaveLength(1);
-    expect(body).toContain('Yes, texting me is free.');
-    expect(body).toMatch(/calendar/i);
+    expect(transport.bodies()).toHaveLength(3);
+    expect(body).toContain('The price is on villagehale.com.');
+    expect(body).toMatch(/email/i);
     expect(body).toContain('/connect?t=');
     expect(body).not.toMatch(/which of these|call you|postal code|how old/i);
     expect(
@@ -1052,8 +1215,7 @@ describe('friend voice onboarding', () => {
         .endsWith('?'),
     ).toBe(true);
   });
-
-  it('answers off-script at the pick, name, and calendar steps and keeps that question last', async () => {
+  it('answers off-script at the name, Gmail and calendar steps and keeps that question last', async () => {
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     const { fake, transport, deps } = harness({ voice: true });
     deps.radar = {
@@ -1074,35 +1236,44 @@ describe('friend voice onboarding', () => {
     };
     await handleInboundSms(fake.db, inbound(transport, 'Maya is 4 and Leo is 1, M5V 2T6'), deps);
     await handleInboundSms(fake.db, inbound(transport, 'tell me a joke'), deps);
-    const pick = transport.bodies().at(-1) ?? '';
-    expect(pick).toContain("I'm not much of a comic.");
-    expect(pick.trim().endsWith('Which of these looks good?')).toBe(true);
-    expect(pick).toContain('1. Swim');
+    const joke = transport.bodies().at(-1) ?? '';
+    expect(joke).toContain("I'm not much of a comic.");
+    expect(joke.trim().endsWith('What should I call you?')).toBe(true);
 
-    await handleInboundSms(fake.db, inbound(transport, '1'), deps);
     await handleInboundSms(fake.db, inbound(transport, 'ok'), deps);
     const name = transport.bodies().at(-1) ?? '';
     expect(name).toContain('Got it.');
     expect(name.trim().endsWith('What should I call you?')).toBe(true);
 
     await handleInboundSms(fake.db, inbound(transport, 'Dana'), deps);
-    const calendar = transport.bodies().at(-1) ?? '';
-    expect(calendar).toMatch(/calendar/i);
-    expect(calendar).toContain('/connect?t=');
-
-    await handleInboundSms(fake.db, inbound(transport, 'lol'), deps);
-    const stillCalendar = transport.bodies().at(-1) ?? '';
-    expect(stillCalendar).toContain('Got it.');
-    expect(stillCalendar).toMatch(/calendar/i);
-    expect(stillCalendar).not.toContain('/connect?t=');
-    expect(stillCalendar.trim().endsWith('?')).toBe(true);
-
-    await handleInboundSms(fake.db, inbound(transport, 'yes'), deps);
     const gmail = transport.bodies().at(-1) ?? '';
     expect(gmail).toMatch(/email/i);
     expect(gmail).toContain('/connect?t=');
-  });
 
+    await handleInboundSms(fake.db, inbound(transport, 'lol'), deps);
+    const stillGmail = transport.bodies().at(-1) ?? '';
+    expect(stillGmail).toContain('Got it.');
+    expect(stillGmail).toMatch(/email/i);
+    expect(stillGmail).not.toContain('/connect?t=');
+    expect(stillGmail.trim().endsWith('?')).toBe(true);
+
+    // A yes to Gmail is answered as a yes: no second link, no calendar yet. The
+    // calendar card rides the Gmail receipt (connected-notice.ts).
+    await handleInboundSms(fake.db, inbound(transport, 'yes'), deps);
+    const yes = transport.bodies().at(-1) ?? '';
+    expect(yes).toContain('Tap it when');
+    expect(yes).not.toMatch(/calendar/i);
+    expect(yes).not.toContain('/connect?t=');
+    expect(yes).not.toContain('?');
+
+    // The next text, with Gmail answered, is the calendar's own turn with its link.
+    await handleInboundSms(fake.db, inbound(transport, 'ok'), deps);
+    const calendar = transport.bodies().at(-1) ?? '';
+    expect(calendar).toMatch(/calendar/i);
+    expect(calendar).not.toMatch(/gmail|email/i);
+    expect(calendar).toContain('/connect?t=');
+    expect(calendar).toContain('to=gcal');
+  });
   it('answers a first-text question and sends the safety line before any ask', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     const crisis = await handleInboundSms(fake.db, inbound(transport, 'not breathing'), deps);
@@ -1182,13 +1353,51 @@ describe('friend voice onboarding', () => {
     await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, M5V 2T6'), deps);
     const kids = fake.rows(schema.children);
     expect(kids.map((row) => row.name)).toEqual(['Maya']);
-    expect(transport.bodies().at(-1)).not.toContain(YEAR_OPEN_LEAD);
-    await handleInboundSms(fake.db, inbound(transport, '1'), deps);
+    expect(transport.bodies().join('\n')).not.toContain(YEAR_OPEN_LEAD);
     await handleInboundSms(fake.db, inbound(transport, 'Dana'), deps);
-    expect(transport.bodies().at(-1)).toContain('Dana, want me to check your calendar?');
+    expect(transport.bodies().at(-1)).toContain(
+      'Dana, want me to watch school and camp email for the dates?',
+    );
   });
 
-  it('resolves a word pick against the find lines', async () => {
+  it('stores the soft parent-role guess, and an explicit statement overrides it', async () => {
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+    const { fake, transport, deps } = harness({ voice: true });
+    deps.radar = {
+      async compose() {
+        return {
+          message: '1. Swim (ages 3-5) - Saturday',
+          itemCount: 1,
+          followUpNeeded: false,
+          checkpointTold: null,
+          weekendPickOffered: false,
+          findWon: true,
+          firstFindPromised: false,
+          actionMove: null,
+          actionHeld: 'no_move',
+          voiceFallback: null,
+        };
+      },
+    };
+    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, M5V 2T6'), deps);
+    await handleInboundSms(fake.db, inbound(transport, 'Dana'), deps);
+    const guessed = fake.rows(schema.users).find((row) => row.name === 'Dana');
+    expect(guessed).toMatchObject({ parentRole: 'unknown', parentRoleBasis: 'guessed' });
+    expect(transport.bodies().join('\n')).not.toMatch(/\b(mom|mum|dad|mother|father)\b/i);
+
+    await handleInboundSms(fake.db, inbound(transport, "I'm her dad"), deps);
+    const stated = fake.rows(schema.users).find((row) => row.name === 'Dana');
+    expect(stated).toMatchObject({ parentRole: 'father', parentRoleBasis: 'stated' });
+    expect(
+      fake.writes.some(
+        (write) =>
+          write.op === 'insert' &&
+          write.table === schema.auditLog &&
+          write.payload.actionTaken === 'parent_role_recorded',
+      ),
+    ).toBe(true);
+  });
+  it('keeps the found activities for the schedule step without any pick gate', async () => {
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     const { fake, transport, deps } = harness({ voice: true });
     deps.radar = {
@@ -1208,13 +1417,13 @@ describe('friend voice onboarding', () => {
       },
     };
     await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, M5V 2T6'), deps);
-    await handleInboundSms(fake.db, inbound(transport, 'the swim one'), deps);
     const session = await loadOpenSession(fake.db, PHONE);
-    expect(session?.firstTouch?.coldStart?.activity).toMatch(/Swim/);
-    expect(transport.bodies().at(-1)).toContain('What should I call you?');
+    expect(session?.firstTouch?.coldStart?.findBody).toContain('Swim (ages 3-5)');
+    expect(session?.firstTouch?.coldStart?.step).toBe('names');
+    expect(transport.bodies().join('\n')).not.toMatch(/which (one|of these)/i);
+    expect(transport.bodies().at(-1)).toBe('What should I call you?');
   });
-
-  it('updates the child age and runs the find again', async () => {
+  it('updates the child age without re-running the find, and leaves the other family alone', async () => {
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     const { fake, transport, deps } = harness({ voice: true });
     let calls = 0;
@@ -1222,7 +1431,7 @@ describe('friend voice onboarding', () => {
       async compose() {
         calls += 1;
         return {
-          message: calls === 1 ? '1. Storytime - Tuesday' : '1. Swim (ages 5-6) - Saturday',
+          message: '1. Storytime - Tuesday',
           itemCount: 1,
           followUpNeeded: false,
           checkpointTold: null,
@@ -1244,16 +1453,14 @@ describe('friend voice onboarding', () => {
     } as never);
     await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, M5V 2T6'), deps);
     const before = fake.rows(schema.children).find((row) => row.name === 'Maya')?.dateOfBirth;
-    await handleInboundSms(fake.db, inbound(transport, '1'), deps);
     await handleInboundSms(fake.db, inbound(transport, 'actually 5'), deps);
-    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(calls).toBe(1);
     const maya = fake.rows(schema.children).find((row) => row.name === 'Maya');
     const other = fake.rows(schema.children).find((row) => row.name === 'Other');
     expect(maya?.dateOfBirth).not.toBe(before);
     expect(other?.dateOfBirth).toBe(otherDob);
-    expect(transport.bodies().at(-1)).toContain('Swim (ages 5-6)');
+    expect(transport.bodies().at(-1)).toBe('What should I call you?');
   });
-
   it('records a no and a later and does not ask that thing again', async () => {
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     const { fake, transport, deps } = harness({ voice: true });
@@ -1274,17 +1481,20 @@ describe('friend voice onboarding', () => {
       },
     };
     await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, M5V 2T6'), deps);
-    await handleInboundSms(fake.db, inbound(transport, '1'), deps);
     await handleInboundSms(fake.db, inbound(transport, 'no'), deps);
     const declined = await loadOpenSession(fake.db, PHONE);
     expect(declined?.firstTouch?.given?.nameDeclined).toBe(true);
-    expect(transport.bodies().at(-1)).toMatch(/calendar/i);
+    expect(transport.bodies().at(-1)).toMatch(/email/i);
     await handleInboundSms(fake.db, inbound(transport, 'later'), deps);
     const later = await loadOpenSession(fake.db, PHONE);
-    expect(later?.firstTouch?.given?.calendarLater).toBe(true);
-    await handleInboundSms(fake.db, inbound(transport, 'ok'), deps);
-    expect(transport.bodies().at(-1)).toMatch(/email/i);
-    expect(transport.bodies().at(-1)).not.toMatch(/calendar/i);
+    expect(later?.firstTouch?.given?.gmailLater).toBe(true);
+    expect(transport.bodies().at(-1)).toMatch(/calendar/i);
+    expect(transport.bodies().at(-1)).not.toMatch(/email/i);
+    await handleInboundSms(fake.db, inbound(transport, 'no'), deps);
+    expect(transport.bodies().at(-1)).toBe(
+      'Want the first one on your calendar as a weekly reminder?',
+    );
+    expect(transport.bodies().filter((body) => /email/i.test(body))).toHaveLength(1);
     expect(
       fake.writes.some(
         (write) =>
@@ -1294,8 +1504,7 @@ describe('friend voice onboarding', () => {
       ),
     ).toBe(true);
   });
-
-  it('hands a stale cold-start text to the coach instead of the old question', async () => {
+  it('answers a next-day text on the current ask instead of retiring it', async () => {
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     const { fake, transport, deps } = harness({ voice: true });
     deps.radar = {
@@ -1317,7 +1526,7 @@ describe('friend voice onboarding', () => {
     await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, M5V 2T6'), deps);
     const session = await loadOpenSession(fake.db, PHONE);
     expect(session?.state).toBe('awaiting_cold_start');
-    const staleAt = new Date(NOW.getTime() - 7 * 60 * 60 * 1000).toISOString();
+    const staleAt = new Date(NOW.getTime() - 30 * 60 * 60 * 1000).toISOString();
     if (session?.firstTouch) {
       const { saveSession } = await import('./session');
       await saveSession(
@@ -1330,12 +1539,12 @@ describe('friend voice onboarding', () => {
       );
     }
     const before = transport.bodies().length;
-    const stale = await handleInboundSms(fake.db, inbound(transport, 'ok'), deps);
-    expect(stale).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
-    expect(transport.bodies().length).toBe(before);
-    expect(await loadOpenSession(fake.db, PHONE)).toBeNull();
+    const resumed = await handleInboundSms(fake.db, inbound(transport, 'Dana'), deps);
+    expect(resumed).toEqual({ status: 'first_touch', step: 'find_sent' });
+    expect(transport.bodies().length).toBe(before + 1);
+    expect(transport.bodies().at(-1)).toContain('Dana, want me to watch school and camp email');
+    expect(fake.rows(schema.users).find((row) => row.name === 'Dana')).toBeDefined();
   });
-
   it('writes HELP from the model when friend voice is on', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     await handleInboundSms(fake.db, inbound(transport, 'HELP'), deps);
@@ -1351,5 +1560,45 @@ describe('friend voice onboarding', () => {
     const { fake, transport, deps } = harness();
     await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
     expect(transport.bodies()).toEqual([HALE_GREETING_EN]);
+  });
+
+  it('retries once, then sends nothing and pages #ops when the model cannot write the turn', async () => {
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.example/ops');
+    const pages: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        pages.push(String(init?.body ?? ''));
+        return new Response(null, { status: 200 });
+      }),
+    );
+    try {
+      let attempts = 0;
+      const { fake, transport, deps } = harness({ voice: true });
+      const broken: IntakeDeps = {
+        ...deps,
+        friendVoice: {
+          async compose() {
+            attempts += 1;
+            throw new Error('model down: secret-token-123');
+          },
+        },
+      };
+      const outcome = await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), broken);
+      expect(outcome.status).toBe('first_touch');
+      expect(attempts).toBe(2);
+      expect(transport.bodies()).toEqual([]);
+      expect(pages).toHaveLength(1);
+      expect(pages[0]).toContain('onboarding friend voice unsent');
+      expect(pages[0]).toContain('reason=model_failed');
+      expect(pages[0]).not.toContain('secret-token-123');
+      expect(pages[0]).not.toContain('M5V');
+      // Code does not read the postal code itself, so nothing was stored and the
+      // ask is still open: the parent's next text is answered, not retired.
+      const session = await loadOpenSession(fake.db, PHONE);
+      expect(session?.state).toBe('awaiting_place');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { loadOnboardingFriendSkill } from '~/lib/cron/skill';
+import { loadOnboardingFriendShortSkill, loadOnboardingFriendSkill } from '~/lib/cron/skill';
 import {
   type FriendVoiceInput,
   assembleFriendBody,
   friendWeekAction,
   judgeFriendReply,
+  repairedProse,
   speakFriend,
 } from './friend-voice';
 import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
@@ -59,12 +60,37 @@ describe('onboarding friend fixtures', () => {
     expect(skill.meta.name).toBe('onboarding-friend');
     expect(skill.meta.task).toBe('speak');
     expect(skill.instructions).toContain('Exactly one question mark');
-    expect(skill.instructions).toContain('Do not invent an activity');
+    expect(skill.instructions).toContain('Never name a town, neighbourhood, school, venue, date');
     expect(skill.instructions).toContain('**coparent**');
     expect(skill.instructions).toContain('**connected**');
     expect(skill.instructions).toContain('ahaMention');
     expect(skill.instructions).toContain('**ack**');
     expect(skill.instructions).toContain('No STOP');
+  });
+
+  it('stays lean: state and a playbook, with the gates left to code', async () => {
+    const skill = await loadOnboardingFriendSkill();
+    const words = skill.instructions.split(/\s+/).filter(Boolean).length;
+    const ruleWords = skill.instructions.match(/\b(never|do not|don't|always)\b/gi) ?? [];
+    expect(words).toBeLessThan(2400);
+    expect(ruleWords.length).toBeLessThan(20);
+    expect(skill.instructions).toContain('## Facts');
+    expect(skill.instructions).toContain('## Output');
+    expect(skill.instructions).toContain('reminders, not registrations');
+    expect(skill.instructions).toContain('Propose a default per item');
+    // The trust lines are true for a full-read Google scope: no "never sees your mail".
+    expect(skill.instructions).not.toMatch(/never sees? your (personal|work) (mail|email)/i);
+    expect(skill.instructions).toContain(
+      'Never claim Hale only reads, only sees, or never sees some of it',
+    );
+
+    // The retry prompt is a skill too, and knows the step it is rewriting.
+    const short = await loadOnboardingFriendShortSkill();
+    const shortWords = short.instructions.split(/\s+/).filter(Boolean).length;
+    expect(shortWords).toBeLessThan(700);
+    expect(short.instructions).toContain('**find_show**');
+    expect(short.instructions).toContain('**connected**');
+    expect(short.meta.task).toBe('speak');
   });
 
   it('checks the three sample conversations', () => {
@@ -84,34 +110,54 @@ describe('onboarding friend fixtures', () => {
     }
   });
 
-  it('puts the French find under the model lead, with the question last', () => {
-    const french = FRIEND_CONVERSATIONS[1]?.turns[2];
+  it('puts the French find under the model lead, with no question', () => {
+    const french = FRIEND_CONVERSATIONS[1]?.turns[3];
     expect(french).toBeDefined();
     if (!french) return;
     const body = fixtureBody(french);
     expect(body).toContain('près');
     expect(body).toContain('1. ');
-    expect(body.trim().endsWith('?')).toBe(true);
+    expect(body).not.toContain('?');
     expect(body).not.toContain(YEAR_OPEN_LEAD);
     expect(body).not.toContain(YEAR_OPEN_LEAD_FR);
     expect(body).not.toMatch(/\bpres\b|\bage\b|\badapt\b/);
   });
 
-  it('does not ask a second question when the first text already has everything', () => {
-    const first = FRIEND_CONVERSATIONS[2]?.turns[0];
+  it('shows the map with no question when the first text already has everything, then asks the name', () => {
+    const [first, second] = FRIEND_CONVERSATIONS[2]?.turns ?? [];
     expect(first).toBeDefined();
-    if (!first) return;
+    expect(second).toBeDefined();
+    if (!first || !second) return;
     const body = fixtureBody(first);
-    expect(body.match(/\?/g)).toHaveLength(1);
+    expect(body).not.toContain('?');
     expect(body).not.toMatch(/postal code/i);
+    expect(body).not.toMatch(/which (one|of these)/i);
     expect(body).toContain('Swim');
     expect(body).toContain('$12');
+    const name = fixtureBody(second);
+    expect(name.match(/\?/g)).toHaveLength(1);
+    expect(name).toMatch(/call you/i);
+  });
+
+  it('never puts a which-one ask or a second question on the map', () => {
+    for (const conversation of FRIEND_CONVERSATIONS) {
+      for (const turn of conversation.turns) {
+        if (turn.input.step !== 'find_show') continue;
+        const body = fixtureBody(turn);
+        expect(body, `${conversation.id} / ${turn.title}`).not.toContain('?');
+        const bubbles = body.split('\n\n');
+        expect(bubbles.length).toBeGreaterThanOrEqual(2);
+        expect(bubbles.length).toBeLessThanOrEqual(4);
+        for (const line of turn.input.findLines) expect(body).toContain(line);
+      }
+    }
   });
 });
 
 describe('friend-voice judge', () => {
+  // A list with one question: the legacy numbered find a nudge still sends.
   const swim = blank({
-    step: 'find_pick',
+    step: 'nudge_find',
     parentWords: 'Maya is 4',
     placeLabel: 'M5V',
     findLines: ['Swim (ages 3-5) - Saturdays 10am - $12'],
@@ -120,7 +166,7 @@ describe('friend-voice judge', () => {
   });
 
   it('puts the question after the list, and rejects a question that sits above it', () => {
-    const prose = 'Maya is 4 and Leo is 1, near M5V. Which of these feels right?';
+    const prose = 'Maya is 4, near M5V. Which of these feels right?';
     const body = assembleFriendBody(prose, swim);
     const lines = body.split('\n');
     expect(lines.at(-1)).toBe('Which of these feels right?');
@@ -178,14 +224,14 @@ describe('friend-voice judge', () => {
     expect(judgeFriendReply(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
   });
 
-  it('requires the question to end the message, and does not grade the aside', () => {
+  it('lets the aside follow the question: one ask, wherever it sits', () => {
     const place = blank({ step: 'place', parentWords: 'what is this?', listKind: 'none' });
     expect(
       judgeFriendReply("It's a text for your kids' year. What's your postal code?", place),
     ).toEqual({ ok: true });
     expect(
       judgeFriendReply("What's your postal code? It's a text for your kids' year.", place),
-    ).toEqual({ ok: false, reason: 'question' });
+    ).toEqual({ ok: true });
   });
 
   it('rejects French with the ASCII gaps', () => {
@@ -207,11 +253,65 @@ describe('friend-voice judge', () => {
 
     const calendar = blank({ step: 'connected', connector: 'gcal', parentWords: '' });
     const gmail = blank({ step: 'connected', connector: 'gmail', language: 'fr', parentWords: '' });
-    expect(judgeFriendReply('Your Gmail is connected.', calendar)).toEqual({
+    expect(judgeFriendReply('Your Gmail is connected.', calendar)).toMatchObject({
       ok: false,
       reason: 'invented',
     });
     expect(judgeFriendReply('Ton Gmail est connecté.', gmail)).toEqual({ ok: true });
+  });
+
+  it('refuses every way of claiming a registration Hale did not make, and keeps the reminder wording', () => {
+    const schedule = blank({
+      step: 'schedule',
+      parentWords: 'yes',
+      findLines: ['Swim Kids 3 (ages 6-8) - Saturdays 11:00'],
+      now: new Date('2026-10-05T14:00:00Z'),
+    });
+    for (const claim of [
+      "Done, she's signed up for Swim Kids. Anything else?",
+      'Mia is registered for swim on Saturdays. Anything else?',
+      'I signed Mia up for swim. Anything else?',
+      "She's signed-up for swim. Anything else?",
+      "You're booked for swim Saturday. Anything else?",
+    ]) {
+      expect(judgeFriendReply(claim, schedule)).toEqual({
+        ok: false,
+        reason: 'registration_claim',
+      });
+    }
+    expect(
+      judgeFriendReply(
+        "Swim is on your calendar as a reminder for Saturdays at 11:00; I'll flag it when registration opens. Anything else?",
+        schedule,
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it('answers who-is-this in the model voice, but only when the company is named', () => {
+    const asked = blank({
+      step: 'kids_names',
+      placeLabel: 'Burlington',
+      parentWords: 'wait who is this? is this free?',
+    });
+    expect(
+      judgeFriendReply(
+        "Fair question. I'm Hale, from Village Hale Technologies (villagehale.com) - I find kids' activities near you and keep the dates straight. Pricing isn't mine to quote; the site has it. Who are the kids?",
+        asked,
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      judgeFriendReply("I'm Hale, a text helper for parents. Who are the kids?", asked),
+    ).toEqual({ ok: false, reason: 'identity' });
+    // A fixed-copy shape, with STOP in it, is not what the model writes.
+    expect(
+      judgeFriendReply(
+        'This is Hale from Village Hale Technologies Inc. Reply STOP anytime and we stop. Who are the kids?',
+        asked,
+      ),
+    ).toEqual({ ok: false, reason: 'compliance' });
+    // A parent who is not challenging Hale is not made to hear the company name.
+    const plain = blank({ step: 'kids_names', placeLabel: 'Burlington', parentWords: 'L7G 4S8' });
+    expect(judgeFriendReply('Burlington, got it. Who are the kids?', plain)).toEqual({ ok: true });
   });
 
   it('lets a connected reply name one synced title, and nothing the snapshot does not have', () => {
@@ -239,13 +339,13 @@ describe('friend-voice judge', () => {
     ).toEqual({ ok: true });
     expect(
       judgeFriendReply('Swim at the rec centre is on your calendar.', input, { ahaMention: null }),
-    ).toEqual({ ok: false, reason: 'invented' });
+    ).toEqual({ ok: true });
     expect(judgeFriendReply('Your calendar is connected.', input, { ahaMention: null })).toEqual({
       ok: true,
     });
     expect(
       judgeFriendReply('Hockey is on Thursday at 4:00.', input, { ahaMention: 'Hockey' }),
-    ).toEqual({ ok: false, reason: 'invented' });
+    ).toMatchObject({ ok: false, reason: 'invented' });
   });
 });
 
@@ -292,6 +392,63 @@ describe('speakFriend', () => {
     expect(retried.body).not.toMatch(/i'll note it/i);
   });
 
+  it('never sends a reply that confirmed an add code refused; the retry with real adds goes out', async () => {
+    const input = blank({
+      step: 'schedule',
+      parentWords:
+        "Put Mia's swim on weekly please. And the library drop-in for Seb, just this Thursday",
+      placeLabel: 'Burlington',
+      agesLabel: 'Sebastian (1) and Mia (6)',
+      ageMonths: [15, 72],
+      children: [
+        { name: 'Sebastian', ageMonths: 15 },
+        { name: 'Mia', ageMonths: 72 },
+      ],
+      findLines: [
+        'Parent and Tot Swim (6-36 months) - Saturdays 10:00',
+        'Swim Kids 3 (ages 6-8) - Saturdays 11:00',
+        'Family Storytime drop-in (ages 0-5) - Thursdays 10:30',
+      ],
+      now: new Date('2026-10-05T14:00:00Z'),
+    });
+    const seen: Array<{ prompt: string; children: unknown }> = [];
+    const spoken = await speakFriend(
+      {
+        async compose(given, options) {
+          seen.push({ prompt: options?.prompt ?? 'full', children: given.children });
+          if (options?.prompt === 'short') {
+            return {
+              reply:
+                "Both are on as reminders: Mia's Swim Kids Saturdays at 11:00 weekly, Seb's storytime Thursday at 10:30. Anything else from the list?",
+              capture: {
+                scheduleAdds: [
+                  { line: 2, cadence: 'weekly', date: '2026-10-10', time: '11:00' },
+                  { line: 3, cadence: 'once', date: '2026-10-08', time: '10:30' },
+                ],
+              },
+            };
+          }
+          // The full draft confirmed a swim with no settled date and a line off the map.
+          return {
+            reply: "Done: Mia's swim weekly and Seb's drop-in Thursday, as reminders.",
+            capture: {
+              scheduleAdds: [
+                { line: 2, cadence: 'weekly' },
+                { line: 7, cadence: 'once', date: '2026-10-08' },
+              ],
+            },
+          };
+        },
+      },
+      input,
+    );
+    expect(seen.map((call) => call.prompt)).toEqual(['full', 'short']);
+    expect(seen[0]?.children).toEqual(input.children);
+    expect(spoken.source).toBe('retry');
+    expect(spoken.capture.scheduleAdds.map((add) => add.line)).toEqual([2, 3]);
+    expect(spoken.body).toContain('11:00');
+  });
+
   it('sends nothing and pages when both attempts fail', async () => {
     const input = blank({ step: 'ages', parentWords: 'secret words', placeLabel: 'M5V' });
     const pages: string[] = [];
@@ -316,34 +473,205 @@ describe('speakFriend', () => {
     expect(spoken.body).not.toBe('How old are the kids?');
   });
 
-  it('judges a yes as the next ask, so camp email is not an invented activity', async () => {
+  it('judges a yes to a connector as that connector step: a receipt with no question passes, the next ask does not ride it', async () => {
     const input = blank({
       step: 'calendar',
       parentWords: 'yes',
       checklist: {
         postal: true,
         ages: true,
-        pick: true,
         name: true,
         kids: true,
         calendar: false,
         gmail: false,
+        schedule: false,
+        coparent: false,
       },
     });
-    const spoken = await speakFriend(
+    const receipt = await speakFriend(
       {
         async compose() {
           return {
-            reply: 'Want me to watch school and camp email for the dates?',
+            reply: "Great, the link is right there. Tap it and I'll text you what I see.",
             capture: { connectCalendar: true },
           };
         },
       },
       input,
-      { page: async () => undefined },
+      { page: async () => undefined, linkFollows: true },
     );
-    expect(spoken.source).toBe('composed');
-    expect(spoken.capture.connectCalendar).toBe(true);
-    expect(spoken.body).toMatch(/camp email/i);
+    expect(receipt.source).toBe('composed');
+    expect(receipt.step).toBe('calendar');
+    expect(receipt.capture.connectCalendar).toBe(true);
+    expect(receipt.body).not.toContain('?');
+
+    // Prose about Gmail under the calendar card sends the parent to the wrong link.
+    const pivot = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Want me to watch Gmail for the dates too?',
+            capture: { connectCalendar: true },
+          };
+        },
+      },
+      input,
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(pivot.source).toBe('unsent');
+  });
+
+  it('sends the real map lines on their own when both openers fail, and still pages', async () => {
+    const pages: string[] = [];
+    const input = blank({
+      step: 'find_show',
+      parentWords: "she's 4",
+      findLines: [
+        'Swim at the rec centre (ages 3-5) - Saturday',
+        'Story time (all ages) - Tuesday',
+      ],
+      findGroups: [
+        { category: 'swimming', lines: ['Swim at the rec centre (ages 3-5) - Saturday'] },
+        { category: 'parent_baby', lines: ['Story time (all ages) - Tuesday'] },
+      ],
+    });
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          throw new Error('model down');
+        },
+      },
+      input,
+      { page: async (text) => pages.push(text) },
+    );
+    expect(spoken.source).toBe('lines');
+    expect(spoken.fallback).toBe('model_failed');
+    expect(spoken.bubbles).toEqual([
+      '1. Swim at the rec centre (ages 3-5) - Saturday',
+      '2. Story time (all ages) - Tuesday',
+    ]);
+    expect(spoken.body).not.toContain('?');
+    expect(pages).toHaveLength(1);
+  });
+
+  it('judges a wow line on the fact, not the spelling: a weekday from the subject and a clock from the start pass', () => {
+    const input = blank({
+      step: 'connected',
+      connector: 'gmail',
+      synced: {
+        provider: 'gmail',
+        read: 'ok',
+        calendar: [],
+        email: [
+          {
+            subject: 'Picture Day at Park Public School Thu Oct 8',
+            fromName: 'Park Public School',
+            receivedAt: '2026-10-05T14:00:00.000Z',
+            snippet: 'Order forms are due Wednesday.',
+          },
+        ],
+        overlaps: [],
+      },
+    });
+    expect(
+      judgeFriendReply(
+        'Saw the picture day at Park Public School on Thursday in your inbox. Want a reminder the evening before?',
+        input,
+        { ahaMention: 'Picture Day at Park Public School Thu Oct 8' },
+      ),
+    ).toEqual({ ok: false, reason: 'question' });
+    expect(
+      judgeFriendReply(
+        'Saw the picture day at Park Public School on Thursday in your inbox. I can remind you the evening before.',
+        input,
+        { ahaMention: 'Picture Day at Park Public School Thu Oct 8' },
+      ),
+    ).toEqual({ ok: true });
+    // A weekday the subject does not carry is still invented.
+    expect(
+      judgeFriendReply(
+        'Saw the picture day at Park Public School on Friday in your inbox. I can remind you the evening before.',
+        input,
+        { ahaMention: 'Picture Day at Park Public School Thu Oct 8' },
+      ),
+    ).toMatchObject({ ok: false, reason: 'invented' });
+
+    const clash = blank({
+      step: 'connected',
+      connector: 'gcal',
+      synced: {
+        provider: 'gcal',
+        read: 'ok',
+        calendar: [
+          {
+            title: 'Mia swim',
+            start: '2026-10-17T14:00:00.000Z',
+            end: '2026-10-17T14:45:00.000Z',
+            allDay: false,
+            location: null,
+            declined: false,
+          },
+          {
+            title: 'Mia birthday party',
+            start: '2026-10-17T14:15:00.000Z',
+            end: '2026-10-17T16:00:00.000Z',
+            allDay: false,
+            location: null,
+            declined: false,
+          },
+        ],
+        email: [],
+        overlaps: [{ earlier: 'Mia swim', later: 'Mia birthday party' }],
+      },
+    });
+    expect(
+      judgeFriendReply(
+        "Mia's swim and the Mia birthday party both start around 10:00 on Saturday the 17th, so they clash. I can flag it the evening before.",
+        clash,
+        { ahaMention: 'Mia swim' },
+      ),
+    ).toEqual({ ok: true });
+  });
+});
+
+describe('repairedProse', () => {
+  it('folds offered choices into one question and leaves a clean draft alone', () => {
+    expect(
+      repairedProse(
+        'Which of these would help? Baby and Me storytime on Thursdays for Sebastian, or Swim Kids on Saturdays for Mia?',
+        'schedule',
+      ),
+    ).toBe('Baby and Me storytime on Thursdays for Sebastian, or Swim Kids on Saturdays for Mia?');
+    expect(
+      repairedProse(
+        'For Sebastian, how about the storytime Thursdays? For Mia, the Swim Kids class Saturdays? Want reminders for either?',
+        'schedule',
+      ),
+    ).toBe(
+      'For Sebastian, how about the storytime Thursdays. For Mia, the Swim Kids class Saturdays. Want reminders for either?',
+    );
+    expect(repairedProse('Want reminders for the swim?', 'schedule')).toBe('');
+    expect(repairedProse('Do you have kids? If so, what are their names?', 'kids_names')).toBe('');
+    expect(
+      repairedProse(
+        `Village Hale Technologies Inc. made Hale, and villagehale.com has the details. ${'It texts you the kids things that fit. '.repeat(3)}What are your kids names?`,
+        'kids_names',
+      ),
+    ).toMatch(/^Village Hale Technologies Inc\. made Hale/);
+  });
+
+  it('never folds in another step, never repairs a no-question step, and trims a long draft from the front', () => {
+    expect(
+      repairedProse(
+        'Want the swim on your calendar? Would a group chat with the other parent help?',
+        'schedule',
+      ),
+    ).toBe('');
+    expect(repairedProse('Saw picture day. Want a reminder?', 'connected')).toBe('');
+    const long = `${'Gmail helps me catch registration confirmations and activity updates for the kids. '.repeat(2)}Google shares your whole inbox with me, and I keep only what is about the kids. Want to connect?`;
+    const trimmed = repairedProse(long, 'email');
+    expect(trimmed.length).toBeLessThanOrEqual(220);
+    expect(trimmed).toContain('Google shares your whole inbox');
+    expect(trimmed.endsWith('Want to connect?')).toBe(true);
   });
 });

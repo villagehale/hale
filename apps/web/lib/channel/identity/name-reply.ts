@@ -2,15 +2,17 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
-import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
 import { IDENTITY_ASK_TEMPLATE_KEYS } from './asked';
+import { composeNameCapturedReceipt, defaultCallNameComposer } from './call-name-voice';
 
 /**
  * THE NAME CAPTURE — a parent answering "what should I call you", read deterministically.
  *
- * NO MODEL, EVER, on this path, for the reason the address capture has none: a name is a
- * literal, and a model that paraphrases one has not read a name, it has invented a
- * person. The recognizer below either sees a name or hands the turn on.
+ * NO MODEL DECIDES THE NAME on this path, for the reason the address capture has none: a
+ * name is a literal, and a model that paraphrases one has not read a name, it has
+ * invented a person. The recognizer below either sees a name or hands the turn on. The
+ * receipt it sends back IS the model's (VIL-417): no fixed line, and a compose that fails
+ * twice sends nothing and pages #ops.
  *
  * WHY IT EXISTS AT ALL. Until now no path in Hale ever collected a parent's own name over
  * text. `provisionFromIntake` inserts `users.name = null` and nothing later fills it in —
@@ -158,7 +160,8 @@ export type NameCaptureWrite = 'stored' | 'already_named';
 
 export type NameCaptureOutcome =
   | { status: 'declined_to_claim' }
-  | { status: 'captured'; reply: string };
+  /** `reply` is null when the model could not write the receipt: nothing is sent, #ops paged. */
+  | { status: 'captured'; reply: string | null };
 
 export interface NameCaptureInput {
   familyId: string;
@@ -175,6 +178,8 @@ export interface NameCaptureDeps {
     database: Database,
     input: { familyId: string; parentUserId: string; name: string },
   ): Promise<NameCaptureWrite>;
+  /** The receipt, written by the onboarding model. Null when it could not be written. */
+  say(input: { name: string; parentWords: string }): Promise<string | null>;
 }
 
 /**
@@ -204,7 +209,7 @@ export async function handleNameCaptureReply(
   // message is something else — handing it to the coach is the only reading left.
   if (written === 'already_named') return { status: 'declined_to_claim' };
 
-  return { status: 'captured', reply: NAME_CAPTURED_REPLY };
+  return { status: 'captured', reply: await deps.say({ name, parentWords: input.body }) };
 }
 
 // ── prod wiring ──────────────────────────────────────────────────────────────
@@ -261,7 +266,12 @@ async function captureParentName(
 }
 
 export function defaultNameCaptureDeps(): NameCaptureDeps {
-  return { wasAsked: askWasDelivered, capture: captureParentName };
+  const composer = defaultCallNameComposer();
+  return {
+    wasAsked: askWasDelivered,
+    capture: captureParentName,
+    say: (input) => composeNameCapturedReceipt(composer, { ...input, language: 'en' }),
+  };
 }
 
 /**

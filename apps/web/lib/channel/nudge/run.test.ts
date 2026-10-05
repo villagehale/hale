@@ -3,11 +3,7 @@ import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
-import {
-  PARENT_CALL_NAME_ASK,
-  type ParentCallNameState,
-  parentCallNameConfirm,
-} from '~/lib/channel/identity/parent-call-name';
+import type { ParentCallNameState } from '~/lib/channel/identity/parent-call-name';
 import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -171,6 +167,8 @@ function harness(
     familyCapCountsLedger?: boolean;
     /** Default: this parent is already named, so a find does not grow a second text. */
     parentCallName?: ParentCallNameState;
+    /** The model could not write the name ask this run. */
+    nameAskUnwritten?: boolean;
   } = {},
 ): Harness {
   const writes: Harness['writes'] = [];
@@ -257,6 +255,14 @@ function harness(
     },
     transport,
     client: null,
+    // The model writes the name ask; the harness answers with a marker per kind so a
+    // test can tell the open ask from the confirm without any fixed copy existing.
+    composeNameAsk: async ({ ask }) =>
+      options.nameAskUnwritten
+        ? null
+        : ask.kind === 'confirm'
+          ? `NAME CONFIRM ${ask.first}`
+          : 'NAME ASK',
     // MEM-10 · the ledger seam. Recorded rather than executed: the real writer's own
     // contract is unit-tested in lib/commitments/ledger.test.ts, and what this sweep
     // owes is that it calls it, once, with the message that made good.
@@ -1409,8 +1415,8 @@ describe('the call-name line after a find', () => {
     });
     const store = recordingDb();
     await runNudgeCron(store.db, open.deps, FRIDAY_10AM);
-    expect(open.transport.bodies().at(-1)).toBe(PARENT_CALL_NAME_ASK);
-    expect(open.transport.bodies()[0]).not.toBe(PARENT_CALL_NAME_ASK);
+    expect(open.transport.bodies().at(-1)).toBe('NAME ASK');
+    expect(open.transport.bodies()[0]).not.toBe('NAME ASK');
     expect(store.rows.some((row) => row.actionTaken === 'parent_name_asked')).toBe(true);
     expect(
       store.rows.some((row) => row.category === 'nudge' && row.templateKey === 'parent_name_ask'),
@@ -1421,15 +1427,28 @@ describe('the call-name line after a find', () => {
       parentCallName: { needsName: true, alreadyAsked: false, googleGivenName: 'Bea' },
     });
     await runNudgeCron(recordingDb().db, confirm.deps, FRIDAY_10AM);
-    expect(confirm.transport.bodies().at(-1)).toBe(parentCallNameConfirm('Bea'));
+    expect(confirm.transport.bodies().at(-1)).toBe('NAME CONFIRM Bea');
 
     const again = harness({
       windows: [win()],
       parentCallName: { needsName: true, alreadyAsked: true, googleGivenName: 'Bea' },
     });
     await runNudgeCron(db(), again.deps, FRIDAY_10AM);
-    expect(again.transport.bodies().some((body) => body === PARENT_CALL_NAME_ASK)).toBe(false);
-    expect(again.transport.bodies().some((body) => body.startsWith('Can I call you'))).toBe(false);
+    expect(again.transport.bodies().some((body) => body.startsWith('NAME '))).toBe(false);
+  });
+
+  it('sends the find and nothing else when the model could not write the name ask', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const open = harness({
+      windows: [win()],
+      parentCallName: { needsName: true, alreadyAsked: false, googleGivenName: null },
+      nameAskUnwritten: true,
+    });
+    const store = recordingDb();
+    await runNudgeCron(store.db, open.deps, FRIDAY_10AM);
+    expect(open.transport.bodies()).toHaveLength(1);
+    expect(open.transport.bodies().some((body) => body.startsWith('NAME '))).toBe(false);
+    expect(store.rows.some((row) => row.actionTaken === 'parent_name_asked')).toBe(false);
   });
 
   it('does not ask a quiet family, and does not ask on the weekday-care question', async () => {
@@ -1475,7 +1494,7 @@ describe('the call-name line after a find', () => {
     );
     expect(result.sent).toBe(1);
     expect(care.transport.bodies().some((body) => body.includes('weekdays too'))).toBe(true);
-    expect(care.transport.bodies().some((body) => body === PARENT_CALL_NAME_ASK)).toBe(false);
+    expect(care.transport.bodies().some((body) => body.startsWith('NAME '))).toBe(false);
     expect(load).not.toHaveBeenCalled();
   });
 });

@@ -20,6 +20,21 @@ import { IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE } from './copy';
 export const IDENTITY_CHALLENGE_TEMPLATE_KEY = 'identity_challenge';
 
 /**
+ * Who is behind this number, as facts code hands the friend voice. The model
+ * says them in its own words when a parent asks; the judge checks the company
+ * is named whenever the inbound was a challenge.
+ */
+export const HALE_IDENTITY = {
+  company: 'Village Hale Technologies Inc.',
+  site: 'villagehale.com',
+  person: 'Barton Dong',
+  contact: 'aloha@villagehale.com',
+} as const;
+
+/** The only way to spell the company that counts as naming it. */
+export const NAMES_HALE_COMPANY = /village\s?hale/i;
+
+/**
  * Folded the same way {@link replyLanguage} folds: accents off, apostrophes closed
  * so "who's" and "I'm" and "c'est" are one spelling each. Digits stay, because an
  * age or a postal code is evidence this is intake rather than a bare authority claim.

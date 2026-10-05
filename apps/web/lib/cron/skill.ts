@@ -55,3 +55,13 @@ export function loadIntakeVoiceSkill(): Promise<Skill> {
 export function loadOnboardingFriendSkill(): Promise<Skill> {
   return loadCronSkill('onboarding-friend');
 }
+
+/** The smaller, step-aware prompt for the one retry after a failed onboarding reply. */
+export function loadOnboardingFriendShortSkill(): Promise<Skill> {
+  return loadCronSkill('onboarding-friend-short');
+}
+
+/** Which calendar and mail items are about the kids, before a wow moment is written. */
+export function loadKidItemClassifierSkill(): Promise<Skill> {
+  return loadCronSkill('kid-item-classifier');
+}

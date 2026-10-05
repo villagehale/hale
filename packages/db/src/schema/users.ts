@@ -18,6 +18,18 @@ export const users = pgTable(
      * says yes (copied into `name`) or no. Never a phone number, never invented.
      */
     googleGivenName: text('google_given_name'),
+    /**
+     * VIL-417. A SOFT guess at which parent this is: `mother`, `father`, or
+     * `unknown`. The onboarding model returns it with its structured capture
+     * (from the first name and anything the parent said); code validates the
+     * enum and stores it. Never stated to the parent as fact, never a gate.
+     */
+    parentRole: text('parent_role').$type<'mother' | 'father' | 'unknown'>(),
+    /**
+     * How the role was reached. `stated` when the parent said so ("I'm his
+     * dad"), `guessed` when read off a name. A guess never overwrites `stated`.
+     */
+    parentRoleBasis: text('parent_role_basis').$type<'stated' | 'guessed'>(),
     locale: text('locale').notNull().default('en-CA'),
     timezone: text('timezone').notNull().default('America/Toronto'),
     units: text('units').notNull().default('metric'),

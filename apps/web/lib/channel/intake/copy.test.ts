@@ -25,7 +25,6 @@ import {
   HELP_REPLY_BY_LANGUAGE,
   IDENTITY_ACCOUNTABILITY_LINE,
   IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE,
-  PARENT_CALL_NAME_ASK,
   REGION_UNAVAILABLE_REPLY,
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
   SITTING_SESSION_REMINDER,
@@ -333,7 +332,7 @@ describe('the consent moment', () => {
    */
   it('ends without a question, so the call-name can be its own text', () => {
     expect(ASSENT_ACK).not.toContain('?');
-    expect(ASSENT_ACK).not.toContain(PARENT_CALL_NAME_ASK);
+    expect(ASSENT_ACK).not.toMatch(/call you/i);
   });
 
   it('takes a no without friction and leaves the door open', () => {
@@ -422,10 +421,12 @@ describe('the French script', () => {
     expect(greeting(null, 'fr').toLowerCase()).not.toContain('activity finder');
   });
 
-  it('asks what to call the parent in its own line, the words PR #689 locked', () => {
-    expect(PARENT_CALL_NAME_ASK).toBe('What should I call you?');
-    expect(PARENT_CALL_NAME_ASK).not.toContain('activity finder');
-    expect(PARENT_CALL_NAME_ASK).not.toContain('excited');
+  it('has no fixed call-name line any more — the onboarding model writes that ask (VIL-417)', async () => {
+    const copy = await import('./copy');
+    expect(Object.keys(copy).some((key) => /CALL_NAME/.test(key))).toBe(false);
+    for (const value of Object.values(copy)) {
+      if (typeof value === 'string') expect(value).not.toMatch(/What should I call you/i);
+    }
   });
 
   it('says the calendar is how the year stays together, and names the trust', () => {
@@ -711,7 +712,6 @@ describe('VIL-385 first-touch ladder copy', () => {
       en: 'How old are the kids?',
       fr: 'Quel age ont les enfants?',
     });
-    expect(PARENT_CALL_NAME_ASK).toBe('What should I call you?');
   });
 
   it('stays GSM-7, ASCII in French, and free of signup or booking claims', () => {
