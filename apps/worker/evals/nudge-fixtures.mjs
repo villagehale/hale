@@ -1,7 +1,10 @@
-// VIL-239 · M4 proactive-nudge COMPOSE fixtures.
+// VIL-239 · M4 proactive-nudge COMPOSE fixtures, after VIL-413 / VIL-417.
 //
-// Each fixture is a NUDGE — exactly what the deterministic selector emits and the only
-// thing the composer ever sees — or `null`, meaning the composer must never run at all.
+// Each fixture is the FACTS of one find — exactly what `nudgeVoiceContext` reduces the
+// selector's decision to, and the only thing the composer ever sees — plus the language
+// and register the sweep would speak it in. `nudgeLineInput` (loaded live from
+// apps/web/lib/channel/nudge/nudge-line-input.ts) turns it into what the model sees, so a
+// change to the facts a kind hands over re-keys the cache here.
 //
 // The corpus spans what actually changes an honest message:
 //
@@ -12,26 +15,25 @@
 //   weather       wet / cold / dry             (the swap must say WHICH fact it acts on;
 //                                               "cold" rendered as "rain" is a fabrication
 //                                               even when the swap itself is right)
-//   silence       nothing worth saying, and a family that pressed STOP
+//   language      English tu / French tu / French vous (the household group)
 //
-// The last two carry `expect.neverComposes`. They are not model tests: they lock the
-// invariant that COMPOSE is downstream of BOTH the outbound gate and a non-null
-// decision (apps/web/lib/channel/nudge/run.ts), so a regression that composed first and
-// checked later would fail here as well as in the vitest suite.
+// `forbidden` is the old fabrication gate, kept: words that would mean the model reached
+// past its facts (rain on a cold forecast, a weekend on a weekday find). Checked outside
+// the fact slots, lower-cased.
+//
+// The two "never composes" cases the corpus used to carry (nothing worth saying; a family
+// that pressed STOP) are plumbing invariants — compose is downstream of the gate and a
+// non-null decision — and live in apps/web/lib/channel/nudge/run.test.ts, where no model
+// runs. They are not model tests and no longer sit here.
 
-/** The opt-out sentence a composer must never write. Outbound texts no longer append it
- * (founder decision 2026-10-01). Mirrors NUDGE_OPT_OUT in nudge-voice.ts. */
+/** The opt-out sentence a composer must never write. Mirrors NUDGE_OPT_OUT in nudge-voice.ts. */
 export const NUDGE_OPT_OUT = 'Reply STOP to opt out.';
 
 function registration(over = {}) {
   return {
     kind: 'registration',
-    windowRef: {
-      id: 'w-1',
-      municipality: 'richmond_hill',
-      programDomain: 'rec_program',
-      cycleLabel: 'Fall 2026',
-    },
+    town: 'Richmond Hill',
+    cycle: 'Fall 2026',
     opensAtLocal: 'Aug 5, 10:30 a.m.',
     kidNames: ['Maya'],
     residentNote: null,
@@ -43,11 +45,8 @@ function registration(over = {}) {
 function swap(over = {}) {
   return {
     kind: 'weather_swap',
-    candidateRef: {
-      id: 'cand-1',
-      title: 'Central Library story time',
-      venueName: 'Toronto Public Library',
-    },
+    what: 'Central Library story time',
+    where: 'Toronto Public Library',
     day: 'saturday',
     kidNames: ['Maya'],
     weatherFact: 'the weekend forecast is wet',
@@ -59,13 +58,9 @@ function swap(over = {}) {
 function dropIn(over = {}) {
   return {
     kind: 'weekday_dropin',
-    candidateRef: {
-      id: 'civic-1',
-      title: 'EarlyON drop-in',
-      venueName: 'Armour Heights',
-    },
-    eventDate: '2026-08-04',
-    weekday: 'tuesday',
+    what: 'EarlyON drop-in',
+    where: 'Armour Heights',
+    day: 'tuesday',
     kidNames: ['Mia'],
     ...over,
   };
@@ -74,131 +69,156 @@ function dropIn(over = {}) {
 export const NUDGE_FIXTURES = [
   {
     id: '1kid-window-soon',
-    nudge: registration(),
-    gateAllowed: true,
-    expect: { mustRecall: ['Richmond Hill', '10:30'], forbidden: ['weekend', 'forecast'] },
+    language: 'en',
+    address: 'tu',
+    facts: registration(),
+    forbidden: ['weekend', 'forecast'],
+    watchFor:
+      'A registration deadline: the town, the cycle, when it opens (reuse "Aug 5, 10:30 a.m." as given or omit the time), and that it is for Maya. One or two sentences. No urgency Hale was not given, no advice, no reminder offer, no question.',
   },
   {
     id: '2kid-window-soon-resident-head-start',
-    nudge: registration({
+    language: 'en',
+    address: 'tu',
+    facts: registration({
       kidNames: ['Maya', 'Leo'],
       residentNote: 'residents can register first',
     }),
-    gateAllowed: true,
-    expect: { mustRecall: ['Maya', 'Leo', '10:30'] },
+    forbidden: ['weekend', 'forecast'],
+    watchFor:
+      'Names Maya and Leo naturally in the line. Carries the resident head start in its own words. No question, no "set a reminder".',
   },
   {
     id: '3kid-window-soon-approximate-age',
-    // Three kids, ONE message. The age match rests on a guess, so the copy must hedge
-    // rather than assert the band.
-    nudge: registration({
-      cycleLabel: 'Winter 2027',
-      windowRef: {
-        id: 'w-2',
-        municipality: 'markham',
-        programDomain: 'rec_program',
-        cycleLabel: 'Winter 2027',
-      },
+    language: 'en',
+    address: 'tu',
+    facts: registration({
+      town: 'Markham',
+      cycle: 'Winter 2027',
       kidNames: ['Maya', 'Leo', 'Sam'],
       ageApproximate: true,
     }),
-    gateAllowed: true,
-    expect: { mustRecall: ['Markham', '10:30'], forbidden: ['forecast'] },
+    forbidden: ['forecast'],
+    watchFor:
+      'Three kids, ONE message. The age match rests on a guess, so the line hedges the KIDS ("if they are still in that band"), never the date. Must not assert the age band.',
   },
   {
     id: 'weather-swap-wet-indoor',
-    nudge: swap({ kidNames: ['Maya', 'Leo'] }),
-    gateAllowed: true,
-    expect: { mustRecall: ['story time'], forbidden: ['sunny', 'dry', 'cold'] },
+    language: 'en',
+    address: 'tu',
+    facts: swap({ kidNames: ['Maya', 'Leo'] }),
+    forbidden: ['sunny', 'dry', 'cold'],
+    watchFor:
+      'Wet forecast is the PREMISE: lead with the weather, then the thing it points to. Uses "Central Library story time" as given. At most one reason (free or indoor) in its own words. No time of day. No second day.',
   },
   {
     id: 'weather-swap-cold-indoor',
-    // COLD, not wet. Saying "rain" here would be a fabrication with a correct conclusion.
-    nudge: swap({
-      candidateRef: { id: 'cand-2', title: 'Family swim', venueName: 'Angus Glen Community Centre' },
+    language: 'en',
+    address: 'tu',
+    facts: swap({
+      what: 'Family swim',
+      where: 'Angus Glen Community Centre',
       day: 'sunday',
       weatherFact: 'the weekend forecast is cold',
       whyFacts: ['paid ($$)', 'indoor'],
     }),
-    gateAllowed: true,
-    expect: { mustRecall: ['Family swim'], forbidden: ['rain', 'wet', 'free'] },
+    forbidden: ['rain', 'wet', 'free'],
+    watchFor:
+      'COLD, not wet. Saying rain here is a fabrication with a correct conclusion. Must not call it free. Sunday only.',
   },
   {
     id: 'weather-swap-dry-free-outdoor',
-    nudge: swap({
-      candidateRef: { id: 'cand-3', title: 'Riverdale Farm drop-in', venueName: 'Riverdale Farm' },
+    language: 'en',
+    address: 'tu',
+    facts: swap({
+      what: 'Riverdale Farm drop-in',
+      where: 'Riverdale Farm',
       weatherFact: 'the forecast looks dry',
       whyFacts: ['free', 'outdoor'],
     }),
-    gateAllowed: true,
-    expect: { mustRecall: ['Riverdale'], forbidden: ['rain', 'wet', 'indoor'] },
+    forbidden: ['rain', 'wet', 'indoor'],
+    watchFor:
+      'Dry forecast is the good news: lead with the day and the thing, let the forecast close the sentence. "Dry" is not "sunny". Does not write "at Riverdale Farm at Riverdale Farm".',
   },
   {
     id: 'weather-swap-no-venue',
-    // venueName is null: naming a venue here would be a straight invention.
-    nudge: swap({
-      candidateRef: { id: 'cand-4', title: 'Neighbourhood skating drop-in', venueName: null },
+    language: 'en',
+    address: 'tu',
+    facts: swap({
+      what: 'Neighbourhood skating drop-in',
+      where: null,
       whyFacts: ['free', 'outdoor'],
       weatherFact: 'the forecast looks dry',
     }),
-    gateAllowed: true,
-    expect: { mustRecall: ['skating'] },
+    forbidden: [],
+    watchFor:
+      'venueName is null: naming a venue is a straight invention. Uses "Neighbourhood skating drop-in" as given, not "an outdoor skate".',
   },
   {
     id: 'weather-swap-unnamed-children',
-    // The family's children were never named. No name may be invented for them.
-    nudge: swap({ kidNames: [] }),
-    gateAllowed: true,
-    expect: { mustRecall: ['story time'] },
+    language: 'en',
+    address: 'tu',
+    facts: swap({ kidNames: [] }),
+    forbidden: [],
+    watchFor:
+      'The children were never named. No name may be invented, and the sentence must still read without reaching for "the kids" or "you" to patch it.',
   },
   {
     id: 'weekday-dropin-named-venue',
-    // VIL-360 · the weekday find. The row carries no clock time at all, so the DAY is
-    // the only time-shaped fact and a stated hour is a straight invention.
-    nudge: dropIn(),
-    gateAllowed: true,
-    expect: {
-      mustRecall: ['EarlyON drop-in', 'Tuesday'],
-      forbidden: ['saturday', 'sunday', 'forecast', 'am', 'a.m.'],
-    },
+    language: 'en',
+    address: 'tu',
+    facts: dropIn(),
+    forbidden: ['saturday', 'sunday', 'forecast', ' am', 'a.m.', 'p.m.'],
+    watchFor:
+      'The weekday find. The row carries no clock time, so the DAY is the only time-shaped fact and a stated hour is an invention. Tuesday singular ("on Tuesday", never "Tuesdays"). Nothing expires, so no urgency.',
   },
   {
     id: 'weekday-dropin-no-venue-no-names',
-    // Neither a venue nor a named child. The message still has to read as a sentence
-    // rather than reach for "the kids" or a place Hale never found.
-    nudge: dropIn({
-      candidateRef: { id: 'civic-2', title: 'Baby storytime', venueName: null },
-      eventDate: '2026-08-05',
-      weekday: 'wednesday',
-      kidNames: [],
-    }),
-    gateAllowed: true,
-    expect: { mustRecall: ['Baby storytime', 'Wednesday'], forbidden: ['tuesday'] },
+    language: 'en',
+    address: 'tu',
+    facts: dropIn({ what: 'Baby storytime', where: null, day: 'wednesday', kidNames: [] }),
+    forbidden: ['tuesday'],
+    watchFor:
+      'Neither a venue nor a named child. Reads as a sentence without "the kids" or a place Hale never found. Wednesday only.',
   },
   {
     id: 'weekday-dropin-friday',
-    // A Friday session for two children, so the day and the names both have to land.
-    nudge: dropIn({
-      candidateRef: { id: 'civic-3', title: 'Family drop-in', venueName: 'Leaside Library' },
-      eventDate: '2026-08-07',
-      weekday: 'friday',
+    language: 'en',
+    address: 'tu',
+    facts: dropIn({
+      what: 'Family drop-in',
+      where: 'Leaside Library',
+      day: 'friday',
       kidNames: ['Mia', 'Leo'],
     }),
-    gateAllowed: true,
-    expect: { mustRecall: ['Family drop-in', 'Friday', 'Mia', 'Leo'], forbidden: ['weekend'] },
+    forbidden: ['weekend'],
+    watchFor: 'A Friday session for two children: the day and both names land. No time of day.',
   },
   {
-    id: 'nothing-worthy-never-composes',
-    nudge: null,
-    gateAllowed: true,
-    expect: { neverComposes: true },
+    id: 'registration-fr-tu',
+    language: 'fr',
+    address: 'tu',
+    facts: registration({ kidNames: ['Léo'] }),
+    forbidden: ['forecast', 'weekend'],
+    watchFor:
+      'French, tu, real accents. The town, the cycle, when it opens (reuse the given time or omit it), for Léo. No question. Never vous.',
   },
   {
-    id: 'post-stop-never-composes',
-    // The family pressed STOP. There IS something worth saying and it must still not be
-    // written, let alone sent.
-    nudge: registration(),
-    gateAllowed: false,
-    expect: { neverComposes: true },
+    id: 'weather-swap-fr-vous',
+    language: 'fr',
+    address: 'vous',
+    facts: swap({ kidNames: ['Maya', 'Léo'] }),
+    forbidden: ['sunny', 'sec', 'froid'],
+    watchFor:
+      'Lands in the household group: vous, both parents reading, real accents. Wet forecast leads; "Central Library story time" as given; samedi. No time of day, no second day.',
+  },
+  {
+    id: 'weekday-dropin-fr-tu',
+    language: 'fr',
+    address: 'tu',
+    facts: dropIn({ kidNames: ['Mia'] }),
+    forbidden: ['samedi', 'dimanche', 'tuesday'],
+    watchFor:
+      'French, tu. "EarlyON drop-in" as given, mardi singular, for Mia, at Armour Heights. No hour. Nothing urgent.',
   },
 ];
