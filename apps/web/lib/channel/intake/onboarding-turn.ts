@@ -1,5 +1,27 @@
+import {
+  type ParentRoleGuess,
+  acceptParentRole,
+  preferParentRole,
+} from '~/lib/channel/identity/parent-role';
 import type { ExtractedChild } from './extract';
 import { type FirstTouchPlace, placeFromGivenFields } from './first-touch-place';
+
+/**
+ * One activity the parent agreed to put on the calendar. The model settles
+ * the day and cadence in conversation; code checks the shape and creates the
+ * event. Adding is a reminder, never a registration.
+ */
+export interface ScheduleAdd {
+  /** 1-based index into the real activity lines Hale showed. */
+  line: number;
+  cadence: 'once' | 'weekly';
+  /** First occurrence, YYYY-MM-DD in the family's time zone. */
+  date: string;
+  /** HH:MM, or null when no start time was settled. */
+  time: string | null;
+  /** Weekly only. How many weeks to write. Null takes the default. */
+  weeks: number | null;
+}
 
 /**
  * What the onboarding model may hand back with its reply.
@@ -17,10 +39,22 @@ export interface OnboardingCapture {
     agePrecision: 'years' | 'months' | null;
   }[];
   parentName: string | null;
-  /** 1-based index into the real activity lines. Pending until those lines exist. */
-  activityPick: number | null;
+  /**
+   * VIL-417. The model's soft read of whether this parent is the mother or the
+   * father, from their name or from what they said ("my wife", "I'm his dad").
+   * `unknown` for an ambiguous name. Code validates the enum and stores it.
+   */
+  parentRole: ParentRoleGuess | null;
+  /** Their answer when asked whether a held name is the right one to use. */
+  nameConfirmed: boolean | null;
   connectCalendar: boolean | null;
   connectGmail: boolean | null;
+  /** Activities they agreed to put on the calendar, with the settled schedule. */
+  scheduleAdds: ScheduleAdd[];
+  /** Nothing more to add to the calendar: declined, or every wanted activity is on. */
+  scheduleDone: boolean;
+  /** Whether to set up the group chat with the co-parent. Null until they answer. */
+  coparentGroup: boolean | null;
   /** They do not want to give a parent name. Do not ask it again. */
   nameDeclined: boolean;
   /** They do not want to give the kids' names. Do not ask that again. */
@@ -37,9 +71,13 @@ export const EMPTY_ONBOARDING_CAPTURE: OnboardingCapture = {
   city: null,
   children: [],
   parentName: null,
-  activityPick: null,
+  parentRole: null,
+  nameConfirmed: null,
   connectCalendar: null,
   connectGmail: null,
+  scheduleAdds: [],
+  scheduleDone: false,
+  coparentGroup: null,
   nameDeclined: false,
   kidsNamesDeclined: false,
   calendarLater: false,
@@ -47,37 +85,36 @@ export const EMPTY_ONBOARDING_CAPTURE: OnboardingCapture = {
   stopAsking: false,
 };
 
-/** The order Hale walks. Guidance for the model, and the order code uses once fields are stored. */
+/**
+ * The order Hale walks. Guidance for the model, and the order code uses once
+ * fields are stored. The activity map (step 4) is not an item: it is shown
+ * between ages and the parent's name and asks nothing. The two wow moments
+ * ride the connected receipts, not this list.
+ */
 export const ONBOARDING_ORDER = [
   'postal',
-  'ages',
-  'pick',
-  'name',
   'kids',
-  'calendar',
+  'ages',
+  'name',
   'gmail',
+  'calendar',
+  'schedule',
+  'coparent',
 ] as const;
 
 export type OnboardingItem = (typeof ONBOARDING_ORDER)[number];
 
-export interface OnboardingChecklist {
-  postal: boolean;
-  ages: boolean;
-  pick: boolean;
-  name: boolean;
-  kids: boolean;
-  calendar: boolean;
-  gmail: boolean;
-}
+export type OnboardingChecklist = Record<OnboardingItem, boolean>;
 
 export const EMPTY_CHECKLIST: OnboardingChecklist = {
   postal: false,
-  ages: false,
-  pick: false,
-  name: false,
   kids: false,
-  calendar: false,
+  ages: false,
+  name: false,
   gmail: false,
+  calendar: false,
+  schedule: false,
+  coparent: false,
 };
 
 /** A find still waiting on a pick, older than this, is not what the next text answers. */
@@ -95,8 +132,8 @@ export function coldStartIsStale(lastActivityAt: string | null | undefined, now:
 }
 
 /**
- * Only the unanswered find goes stale. Name, calendar, and email are answered
- * whenever they arrive, including the next day.
+ * Only the legacy unanswered pick goes stale. Every item on the current
+ * order is answered whenever it arrives, including the next day.
  */
 export function coldStartQuestionIsStale(
   step: string | null | undefined,
@@ -127,8 +164,12 @@ export function kidsAreNamed(children: readonly { name: string | null }[]): bool
   );
 }
 
-const MAX_PENDING_PICK = 3;
 const MAX_AGE_MONTHS = 216;
+/** The most weekly occurrences one schedule add may write. */
+export const MAX_SCHEDULE_WEEKS = 12;
+export const DEFAULT_SCHEDULE_WEEKS = 8;
+/** A first occurrence more than a year out is not this year's plan. */
+const MAX_SCHEDULE_DAYS_AHEAD = 366;
 
 export function onboardingMissing(list: OnboardingChecklist): OnboardingItem[] {
   return ONBOARDING_ORDER.filter((item) => !list[item]);
@@ -149,16 +190,68 @@ function acceptBool(value: unknown): boolean | null {
   return null;
 }
 
+function validDayKey(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
+  const at = new Date(`${value}T12:00:00Z`);
+  return !Number.isNaN(at.getTime()) && at.toISOString().slice(0, 10) === value;
+}
+
+export interface ScheduleLimits {
+  findLineCount: number;
+  /** YYYY-MM-DD of today in the family's zone. A date before it is dropped. */
+  today?: string | null;
+}
+
+/**
+ * Keep an add only when it points at a real line and names a real day.
+ * Code never fills a missing date: a proposal the parent has not settled is
+ * not an event.
+ */
+export function acceptScheduleAdd(raw: unknown, limits: ScheduleLimits): ScheduleAdd | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  const line = row.line;
+  if (
+    typeof line !== 'number' ||
+    !Number.isInteger(line) ||
+    line < 1 ||
+    line > limits.findLineCount
+  ) {
+    return null;
+  }
+  const cadence = row.cadence === 'weekly' ? 'weekly' : row.cadence === 'once' ? 'once' : null;
+  if (!cadence) return null;
+  const date = typeof row.date === 'string' ? row.date.trim() : '';
+  if (!validDayKey(date)) return null;
+  if (limits.today) {
+    if (date < limits.today) return null;
+    const ahead =
+      (Date.parse(`${date}T12:00:00Z`) - Date.parse(`${limits.today}T12:00:00Z`)) / 86_400_000;
+    if (ahead > MAX_SCHEDULE_DAYS_AHEAD) return null;
+  }
+  const time =
+    typeof row.time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/u.test(row.time.trim())
+      ? row.time.trim()
+      : null;
+  const weeks =
+    cadence === 'weekly' &&
+    typeof row.weeks === 'number' &&
+    Number.isInteger(row.weeks) &&
+    row.weeks >= 1 &&
+    row.weeks <= MAX_SCHEDULE_WEEKS
+      ? row.weeks
+      : null;
+  return { line, cadence, date, time, weeks };
+}
+
 /**
  * Keep a field only when it is the shape of that fact.
- * A pick is kept as pending (1–3) before any lines exist, and only if it
- * points at a real line once they do.
  */
 export function acceptOnboardingCapture(
   raw: unknown,
-  limits: { findLineCount: number } = { findLineCount: 0 },
+  limits: ScheduleLimits = { findLineCount: 0 },
 ): OnboardingCapture {
-  if (!raw || typeof raw !== 'object') return { ...EMPTY_ONBOARDING_CAPTURE };
+  if (!raw || typeof raw !== 'object') return { ...EMPTY_ONBOARDING_CAPTURE, scheduleAdds: [] };
   const row = raw as Record<string, unknown>;
   const postalCode = typeof row.postalCode === 'string' ? row.postalCode.trim() : null;
   const city = typeof row.city === 'string' ? row.city.trim() : null;
@@ -183,20 +276,23 @@ export function acceptOnboardingCapture(
           : 'months';
     return [{ name, ageMonths, agePrecision }];
   });
-  const pickRaw = row.activityPick;
-  const pickMax = limits.findLineCount > 0 ? limits.findLineCount : MAX_PENDING_PICK;
-  const activityPick =
-    typeof pickRaw === 'number' && Number.isInteger(pickRaw) && pickRaw >= 1 && pickRaw <= pickMax
-      ? pickRaw
-      : null;
+  const addsIn = Array.isArray(row.scheduleAdds) ? row.scheduleAdds : [];
+  const scheduleAdds = addsIn.flatMap((add) => {
+    const accepted = acceptScheduleAdd(add, limits);
+    return accepted ? [accepted] : [];
+  });
   return {
     postalCode: postalCode && postalCode.length > 0 ? postalCode : null,
     city: city && city.length > 0 ? city : null,
     children,
     parentName: acceptName(row.parentName),
-    activityPick,
+    parentRole: acceptParentRole(row.parentRole, row.parentRoleBasis),
+    nameConfirmed: acceptBool(row.nameConfirmed),
     connectCalendar: acceptBool(row.connectCalendar),
     connectGmail: acceptBool(row.connectGmail),
+    scheduleAdds,
+    scheduleDone: row.scheduleDone === true,
+    coparentGroup: acceptBool(row.coparentGroup),
     nameDeclined: row.nameDeclined === true,
     kidsNamesDeclined: row.kidsNamesDeclined === true,
     calendarLater: row.calendarLater === true,
@@ -205,29 +301,26 @@ export function acceptOnboardingCapture(
   };
 }
 
-/** A pending pick becomes real only when it selects one of the lines code fetched. */
-export function confirmActivityPick(pick: number | null, lineCount: number): number | null {
-  if (pick == null || lineCount <= 0) return null;
-  if (!Number.isInteger(pick) || pick < 1 || pick > lineCount) return null;
-  return pick;
-}
-
 export function checklistAfter(
   prior: OnboardingChecklist,
   capture: OnboardingCapture,
-  extra: { pickConfirmed?: boolean } = {},
 ): OnboardingChecklist {
   return {
     postal:
       prior.postal ||
       placeFromGivenFields({ postalCode: capture.postalCode, city: capture.city }) != null,
-    ages: prior.ages || agesAreComplete(capture.children),
-    pick: prior.pick || extra.pickConfirmed === true,
-    name: prior.name || capture.parentName != null || capture.nameDeclined,
     kids: prior.kids || capture.kidsNamesDeclined || kidsAreNamed(capture.children),
-    calendar: prior.calendar || capture.connectCalendar != null || capture.calendarLater,
+    ages: prior.ages || agesAreComplete(capture.children),
+    name: prior.name || capture.parentName != null || capture.nameDeclined,
     gmail: prior.gmail || capture.connectGmail != null || capture.gmailLater,
+    calendar: prior.calendar || capture.connectCalendar != null || capture.calendarLater,
+    schedule: prior.schedule || capture.scheduleDone,
+    coparent: prior.coparent || capture.coparentGroup != null,
   };
+}
+
+function sameAdd(a: ScheduleAdd, b: ScheduleAdd): boolean {
+  return a.line === b.line && a.date === b.date && a.cadence === b.cadence;
 }
 
 /** Prefer the later capture, and keep a prior fact when the new one is empty. */
@@ -235,14 +328,22 @@ export function mergeCaptures(
   prior: OnboardingCapture,
   next: OnboardingCapture,
 ): OnboardingCapture {
+  const scheduleAdds = [
+    ...prior.scheduleAdds,
+    ...next.scheduleAdds.filter((add) => !prior.scheduleAdds.some((seen) => sameAdd(seen, add))),
+  ];
   return {
     postalCode: next.postalCode ?? prior.postalCode,
     city: next.city ?? prior.city,
     children: next.children.length > 0 ? next.children : prior.children,
     parentName: next.parentName ?? prior.parentName,
-    activityPick: next.activityPick ?? prior.activityPick,
+    parentRole: preferParentRole(prior.parentRole, next.parentRole),
+    nameConfirmed: next.nameConfirmed ?? prior.nameConfirmed,
     connectCalendar: next.connectCalendar ?? prior.connectCalendar,
     connectGmail: next.connectGmail ?? prior.connectGmail,
+    scheduleAdds,
+    scheduleDone: next.scheduleDone || prior.scheduleDone,
+    coparentGroup: next.coparentGroup ?? prior.coparentGroup,
     nameDeclined: next.nameDeclined || prior.nameDeclined,
     kidsNamesDeclined: next.kidsNamesDeclined || prior.kidsNamesDeclined,
     calendarLater: next.calendarLater || prior.calendarLater,
@@ -256,7 +357,7 @@ export interface StoredOnboarding {
   postalCode: string | null;
   place: FirstTouchPlace | null;
   parentName: string | null;
-  activityPick: number | null;
+  parentRole: ParentRoleGuess | null;
   connectCalendar: boolean | null;
   connectGmail: boolean | null;
 }
@@ -299,6 +400,9 @@ export function mergeChildFacts(
     if (index < 0 && !child.name && child.ageMonths != null) {
       index = next.findIndex((row, i) => !used.has(i) && row.ageMonths == null);
     }
+    if (index < 0 && child.name && child.ageMonths == null) {
+      index = next.findIndex((row, i) => !used.has(i) && !row.name);
+    }
     const row = index >= 0 ? next[index] : undefined;
     if (row) {
       used.add(index);
@@ -321,6 +425,7 @@ export function mergeChildFacts(
 /**
  * Turn a model capture into facts code can store.
  * A postal or city is kept only when the field itself is one we can place.
+ * A stated role replaces a guess; a later guess replaces an earlier guess.
  */
 export function storedFromCapture(
   prior: {
@@ -328,7 +433,7 @@ export function storedFromCapture(
     postalCode: string | null;
     place: FirstTouchPlace | null;
     parentName: string | null;
-    activityPick: number | null;
+    parentRole?: ParentRoleGuess | null;
     connectCalendar: boolean | null;
     connectGmail: boolean | null;
   },
@@ -345,7 +450,7 @@ export function storedFromCapture(
     postalCode: place?.postalCode ?? prior.postalCode,
     place,
     parentName: capture.parentName ?? prior.parentName,
-    activityPick: capture.activityPick ?? prior.activityPick,
+    parentRole: preferParentRole(prior.parentRole ?? null, capture.parentRole),
     connectCalendar: capture.connectCalendar ?? prior.connectCalendar,
     connectGmail: capture.connectGmail ?? prior.connectGmail,
   };

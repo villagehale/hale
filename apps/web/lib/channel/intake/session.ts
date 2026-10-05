@@ -140,12 +140,26 @@ export interface FirstTouchPersisted {
   given?: FirstTouchGiven | null;
 }
 
-/** Name, pick, and connector answers captured ahead of the ask that would have used them. */
+/** One activity written to the calendar during onboarding. */
+export interface FirstTouchScheduled {
+  /** 1-based line on the stored map. */
+  line: number;
+  title: string;
+  cadence: 'once' | 'weekly';
+  /** First occurrence, YYYY-MM-DD. */
+  date: string;
+  time: string | null;
+}
+
+/** Name, role, connector, schedule and co-parent answers captured ahead of the ask that would have used them. */
 export interface FirstTouchGiven {
   parentName: string | null;
+  /** Legacy. The pick step is gone; kept so an older stored session decodes. */
   activityPick: number | null;
   connectCalendar: boolean | null;
   connectGmail: boolean | null;
+  /** VIL-417. The model's soft read of mother / father / unknown. */
+  parentRole?: { role: 'mother' | 'father' | 'unknown'; basis: 'stated' | 'guessed' } | null;
   /** True once they declined the parent-name ask. Absent on older sessions. */
   nameDeclined?: boolean;
   /** True once they declined the kids'-names ask. */
@@ -154,6 +168,12 @@ export interface FirstTouchGiven {
   calendarLater?: boolean;
   /** True once they said later to email. */
   gmailLater?: boolean;
+  /** True once the schedule step is finished: declined, or everything wanted is on. */
+  scheduleDone?: boolean;
+  /** What this onboarding already wrote to the calendar. */
+  scheduled?: FirstTouchScheduled[];
+  /** Their answer to the group chat. Absent until asked and answered. */
+  coparentGroup?: boolean | null;
 }
 
 export interface ColdStartProgress {
@@ -368,10 +388,14 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     activityPick?: unknown;
     connectCalendar?: unknown;
     connectGmail?: unknown;
+    parentRole?: unknown;
     nameDeclined?: unknown;
     kidsNamesDeclined?: unknown;
     calendarLater?: unknown;
     gmailLater?: unknown;
+    scheduleDone?: unknown;
+    scheduled?: unknown;
+    coparentGroup?: unknown;
   };
   const parentName =
     typeof row.parentName === 'string' && row.parentName.trim() ? row.parentName : null;
@@ -389,15 +413,24 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
   const kidsNamesDeclined = row.kidsNamesDeclined === true;
   const calendarLater = row.calendarLater === true;
   const gmailLater = row.gmailLater === true;
+  const scheduleDone = row.scheduleDone === true;
+  const parentRole = decodeParentRole(row.parentRole);
+  const scheduled = decodeScheduled(row.scheduled);
+  const coparentGroup =
+    row.coparentGroup === true || row.coparentGroup === false ? row.coparentGroup : null;
   if (
     !parentName &&
     activityPick == null &&
     connectCalendar == null &&
     connectGmail == null &&
+    !parentRole &&
     !nameDeclined &&
     !kidsNamesDeclined &&
     !calendarLater &&
-    !gmailLater
+    !gmailLater &&
+    !scheduleDone &&
+    scheduled.length === 0 &&
+    coparentGroup == null
   ) {
     return null;
   }
@@ -406,11 +439,41 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     activityPick,
     connectCalendar,
     connectGmail,
+    ...(parentRole ? { parentRole } : {}),
     ...(nameDeclined ? { nameDeclined } : {}),
     ...(kidsNamesDeclined ? { kidsNamesDeclined } : {}),
     ...(calendarLater ? { calendarLater } : {}),
     ...(gmailLater ? { gmailLater } : {}),
+    ...(scheduleDone ? { scheduleDone } : {}),
+    ...(scheduled.length > 0 ? { scheduled } : {}),
+    ...(coparentGroup != null ? { coparentGroup } : {}),
   };
+}
+
+function decodeParentRole(value: unknown): FirstTouchGiven['parentRole'] {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as { role?: unknown; basis?: unknown };
+  if (row.role !== 'mother' && row.role !== 'father' && row.role !== 'unknown') return null;
+  return { role: row.role, basis: row.basis === 'stated' ? 'stated' : 'guessed' };
+}
+
+function decodeScheduled(value: unknown): FirstTouchScheduled[] {
+  if (!Array.isArray(value)) return [];
+  const out: FirstTouchScheduled[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row = raw as Record<string, unknown>;
+    if (typeof row.line !== 'number' || !Number.isInteger(row.line) || row.line < 1) continue;
+    if (typeof row.title !== 'string' || typeof row.date !== 'string') continue;
+    out.push({
+      line: row.line,
+      title: row.title,
+      cadence: row.cadence === 'weekly' ? 'weekly' : 'once',
+      date: row.date,
+      time: typeof row.time === 'string' ? row.time : null,
+    });
+  }
+  return out;
 }
 
 function decodeCount(value: unknown): number {
@@ -524,6 +587,48 @@ export async function loadOpenSession(
     .limit(1);
   if (!row) return null;
 
+  const data = decodeData(row.dataEncrypted);
+  return {
+    id: row.id,
+    phoneHash: row.phoneHash,
+    phoneE164: decryptString(row.phoneEncrypted),
+    state: row.state as IntakeState,
+    sourceCode: row.sourceCode,
+    collected: data.collected,
+    transcript: data.transcript,
+    followUpCount: row.followUpCount,
+    clarifyCount: row.clarifyCount,
+    familyId: row.familyId,
+    userId: row.userId,
+    lastProviderId: row.lastProviderId,
+    findWon: data.findWon === true,
+    ladderNext: data.ladderNext ?? null,
+    ladderLanguage: data.ladderLanguage ?? null,
+    linqContactCardClaim: data.linqContactCardClaim ?? null,
+    firstTouch: data.firstTouch ?? null,
+  };
+}
+
+/**
+ * The open session that already belongs to this family, or null. The connect
+ * receipt uses it to pick onboarding back up once a connector lands.
+ */
+export async function loadOpenSessionByFamily(
+  database: Database,
+  familyId: string,
+): Promise<IntakeSession | null> {
+  const rows = await database
+    .select()
+    .from(schema.smsIntakeSessions)
+    .where(
+      and(
+        eq(schema.smsIntakeSessions.familyId, familyId),
+        isNull(schema.smsIntakeSessions.closedAt),
+      ),
+    )
+    .limit(1);
+  const row = rows.find((candidate) => candidate.familyId === familyId && !candidate.closedAt);
+  if (!row) return null;
   const data = decodeData(row.dataEncrypted);
   return {
     id: row.id,
