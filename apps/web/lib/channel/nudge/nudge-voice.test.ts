@@ -1,30 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { smsSegments } from '~/lib/channel/sms-segments';
+import { fakeSpokenLineBody, fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
+import { judgeSpokenLine, spokenFactSlots } from '~/lib/channel/voice/spoken-line';
 import type { Nudge } from './nudge-decide.js';
+import { NUDGE_VOICE_SKILL, nudgeDayLabel, nudgeLineInput } from './nudge-line-input';
 import {
-  MAX_NUDGE_SEGMENTS,
   NUDGE_OPT_OUT,
-  type RenderedNudge,
   type VoicedNudge,
-  nudgeFactSlots,
+  isSpokenAskNudge,
+  isVoicedNudge,
   nudgeVoiceContext,
-  nudgeVoiceStrings,
-  parseNudgeVoiceAnswer,
-  renderNudgeDeterministically,
-  usableNudgeMessage,
+  speakNudgeLine,
 } from './nudge-voice.js';
 
 /**
- * VIL-239 · M4 — COMPOSE's pure seam. Same contract as M3's, with one addition that
- * matters more here than anywhere else in the product: this message is UNSOLICITED,
- * so the CASL opt-out line is part of the shell and the model may not touch it.
+ * VIL-239 · M4 — COMPOSE's pure seam, after VIL-413 / VIL-417.
  *
  * What is proved:
  *   - the model is handed the decision's facts and no internal identifiers;
- *   - a message that invents a time or a link, writes the opt-out line itself, or
- *     blows the segment budget once the opt-out is appended, is REJECTED;
- *   - the deterministic render is honest, grounded, in budget, and plain ASCII in
- *     every shape — so a model outage costs a parent warmth, never accuracy.
+ *   - per kind, what the line must carry and which red lines code holds;
+ *   - a line that invents a time or a link, writes the opt-out line itself, asks a
+ *     question, claims urgency Hale was not given, or blows the budget is REFUSED;
+ *   - there is no deterministic sentence underneath: a voice that cannot write the
+ *     line is `unsent`, and the sweep (run.test.ts) sends nothing.
+ * The model's own words are proved by the cached eval (apps/worker/evals/run-nudge-eval.mjs).
  */
 
 const REGISTRATION: Nudge = {
@@ -91,12 +89,13 @@ describe('nudgeVoiceContext', () => {
     const context = JSON.stringify(nudgeVoiceContext(REGISTRATION));
     expect(context).toContain('Richmond Hill');
     expect(context).not.toContain('richmond_hill');
+    expect(context).not.toContain('window-uuid-1');
   });
 
   it('tells the model which kind of nudge it is writing', () => {
-    expect((nudgeVoiceContext(REGISTRATION) as { kind: string }).kind).toBe('registration');
-    expect((nudgeVoiceContext(SWAP) as { kind: string }).kind).toBe('weather_swap');
-    expect((nudgeVoiceContext(DROP_IN) as { kind: string }).kind).toBe('weekday_dropin');
+    expect(nudgeVoiceContext(REGISTRATION).kind).toBe('registration');
+    expect(nudgeVoiceContext(SWAP).kind).toBe('weather_swap');
+    expect(nudgeVoiceContext(DROP_IN).kind).toBe('weekday_dropin');
   });
 
   /** The weekday find's context carries a DAY and no date and no time: the row it came
@@ -111,171 +110,151 @@ describe('nudgeVoiceContext', () => {
   });
 });
 
-describe('nudgeFactSlots', () => {
-  it('lists every renderable fact so the lint can ground the voice against them', () => {
-    expect(nudgeFactSlots(REGISTRATION)).toEqual(
-      expect.arrayContaining(['Richmond Hill', 'Fall 2026', 'Aug 5, 10:30 a.m.', 'Maya', 'Leo']),
-    );
-    expect(nudgeFactSlots(SWAP)).toEqual(
-      expect.arrayContaining([
-        'Library story time',
-        'Riverdale Library',
-        'the weekend forecast is wet',
-      ]),
+describe('nudgeLineInput', () => {
+  it('is a statement on the nudge-voice skill with the two red lines, for every find', () => {
+    for (const nudge of ALL) {
+      for (const language of ['en', 'fr'] as const) {
+        const input = nudgeLineInput(nudgeVoiceContext(nudge), language);
+        expect(input.skill).toBe(NUDGE_VOICE_SKILL);
+        expect(input.kind).toBe(nudge.kind);
+        expect(input.questions).toBe(0);
+        expect(input.address).toBe('tu');
+        expect(input.maxChars).toBe(220);
+        expect(input.forbidden?.map((rule) => rule.name)).toEqual([
+          'booking_claim',
+          'invented_urgency',
+        ]);
+      }
+    }
+  });
+
+  it('speaks vous when the bubble lands in the household group', () => {
+    expect(nudgeLineInput(nudgeVoiceContext(SWAP), 'fr', 'vous').address).toBe('vous');
+  });
+
+  it('anchors a registration on the town and the kids, and hands over the only time', () => {
+    const input = nudgeLineInput(nudgeVoiceContext(REGISTRATION), 'en');
+    expect(input.mustMention).toEqual(['Richmond Hill', 'Maya', 'Leo']);
+    expect(spokenFactSlots(input)).toEqual(
+      expect.arrayContaining(['Fall 2026', 'Aug 5, 10:30 a.m.', 'residents can register first']),
     );
   });
 
-  it('grounds the weekday find on its day, its title and its venue', () => {
-    expect(nudgeFactSlots(DROP_IN)).toEqual(
-      expect.arrayContaining(['EarlyON drop-in', 'tuesday', 'Armour Heights', 'Mia']),
+  it('anchors a find on its title, its day and the kids, and grounds the venue', () => {
+    const swap = nudgeLineInput(nudgeVoiceContext(SWAP), 'en');
+    expect(swap.mustMention).toEqual(['Library story time', 'saturday', 'Maya']);
+    expect(spokenFactSlots(swap)).toEqual(
+      expect.arrayContaining(['Riverdale Library', 'the weekend forecast is wet', 'free']),
     );
-    expect(nudgeFactSlots(DROP_IN)).not.toContain('2026-08-04');
+    const dropIn = nudgeLineInput(nudgeVoiceContext(DROP_IN), 'en');
+    expect(dropIn.mustMention).toEqual(['EarlyON drop-in', 'tuesday', 'Mia']);
+    expect(spokenFactSlots(dropIn)).not.toContain('2026-08-04');
   });
 
-  it('carries no internal identifier a model could echo', () => {
-    expect(nudgeFactSlots(SWAP)).not.toContain('cand-uuid-1');
-    expect(nudgeFactSlots(REGISTRATION)).not.toContain('window-uuid-1');
-    expect(JSON.stringify(nudgeVoiceContext(REGISTRATION))).not.toContain('window-uuid-1');
+  it('hands a French line its day in French, so the judge accepts the only weekday it may name', () => {
+    expect(nudgeDayLabel('saturday', 'fr')).toBe('samedi');
+    expect(nudgeDayLabel('tuesday', 'en')).toBe('tuesday');
+    const input = nudgeLineInput(nudgeVoiceContext(DROP_IN), 'fr');
+    expect(input.facts.day).toBe('mardi');
+    expect(input.mustMention).toContain('mardi');
   });
 });
 
-describe('parseNudgeVoiceAnswer', () => {
-  it('reads the message out of a clean JSON object', () => {
-    expect(parseNudgeVoiceAnswer('{"message":"Saturday looks good."}')).toEqual({
-      message: 'Saturday looks good.',
+describe('the judge on a find', () => {
+  it('accepts the fake composer on every find in both languages', () => {
+    for (const nudge of ALL) {
+      for (const language of ['en', 'fr'] as const) {
+        const input = nudgeLineInput(nudgeVoiceContext(nudge), language);
+        expect(judgeSpokenLine(fakeSpokenLineBody(input), input)).toEqual({ ok: true });
+      }
+    }
+  });
+
+  it('accepts a grounded, short line', () => {
+    const input = nudgeLineInput(nudgeVoiceContext(SWAP), 'en');
+    expect(
+      judgeSpokenLine(
+        'The weekend forecast is wet, so Saturday: Library story time at Riverdale Library for Maya.',
+        input,
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it('refuses a line that invents a time, a link, or a second day', () => {
+    const input = nudgeLineInput(nudgeVoiceContext(SWAP), 'en');
+    expect(
+      judgeSpokenLine('Library story time for Maya starts at 9:15 on Saturday.', input),
+    ).toEqual({ ok: false, reason: 'invented' });
+    expect(
+      judgeSpokenLine(
+        'Saturday: Library story time for Maya. Register at https://x.example.ca.',
+        input,
+      ),
+    ).toEqual({ ok: false, reason: 'invented' });
+    expect(
+      judgeSpokenLine('Saturday: Library story time for Maya, or Sunday if it clears.', input),
+    ).toEqual({ ok: false, reason: 'invented' });
+  });
+
+  it('refuses the opt-out line, a question, a booking claim, and urgency Hale was not given', () => {
+    const input = nudgeLineInput(nudgeVoiceContext(REGISTRATION), 'en');
+    const base = 'Richmond Hill Fall 2026 registration opens Aug 5, 10:30 a.m. for Maya and Leo.';
+    expect(judgeSpokenLine(`${base} ${NUDGE_OPT_OUT}`, input)).toEqual({
+      ok: false,
+      reason: 'compliance',
+    });
+    expect(judgeSpokenLine(`${base} Want me to set a reminder?`, input)).toEqual({
+      ok: false,
+      reason: 'question',
+    });
+    expect(judgeSpokenLine(`${base} I've registered them.`, input)).toEqual({
+      ok: false,
+      reason: 'forbidden:booking_claim',
+    });
+    expect(judgeSpokenLine(`${base} Spots fill fast.`, input)).toEqual({
+      ok: false,
+      reason: 'forbidden:invented_urgency',
     });
   });
 
-  it('reads it out of an object wrapped in prose', () => {
-    expect(parseNudgeVoiceAnswer('Sure:\n{"message":"ok"}\nhope that helps')).toEqual({
-      message: 'ok',
+  it('refuses a line past the skill ceiling', () => {
+    const input = nudgeLineInput(nudgeVoiceContext(SWAP), 'en');
+    expect(judgeSpokenLine('Library story time suits Maya on Saturday. '.repeat(8), input)).toEqual(
+      { ok: false, reason: 'long' },
+    );
+  });
+});
+
+describe('speakNudgeLine', () => {
+  it('speaks the find through the composer with the facts, language and register', async () => {
+    const voice = fakeSpokenLineComposer();
+    const line = await speakNudgeLine(voice, DROP_IN, 'fr', 'vous');
+    expect(line.source).toBe('composed');
+    expect(line.body).toContain('EarlyON drop-in');
+    expect(voice.calls[0]?.input).toMatchObject({
+      skill: 'nudge-voice',
+      kind: 'weekday_dropin',
+      language: 'fr',
+      address: 'vous',
     });
   });
 
-  it('rejects an extra field — the schema is strict', () => {
-    expect(parseNudgeVoiceAnswer('{"message":"ok","link":"https://x.test"}')).toBeNull();
-  });
-
-  it('rejects a non-object, an empty message, and no answer at all', () => {
-    expect(parseNudgeVoiceAnswer('no json here')).toBeNull();
-    expect(parseNudgeVoiceAnswer('{"message":"   "}')).toBeNull();
-    expect(parseNudgeVoiceAnswer(null)).toBeNull();
+  it('is unsent, with no sentence underneath, when the model fails twice', async () => {
+    const voice = fakeSpokenLineComposer({ fail: true });
+    const line = await speakNudgeLine(voice, SWAP, 'en', 'tu');
+    expect(line).toEqual({ body: '', source: 'unsent', fallback: 'model_failed' });
+    expect(voice.calls.map((call) => call.prompt)).toEqual(['full', 'short']);
   });
 });
 
-describe('usableNudgeMessage', () => {
-  it('accepts a grounded, short message', () => {
-    expect(
-      usableNudgeMessage('Library story time at Riverdale Library on Saturday suits Maya.', SWAP),
-    ).toBe(true);
-  });
-
-  it('rejects a message that invents a time nobody gave it', () => {
-    expect(usableNudgeMessage('Library story time starts at 9:15 on Saturday.', SWAP)).toBe(false);
-  });
-
-  it('rejects a message that invents a link', () => {
-    expect(
-      usableNudgeMessage('Register at https://richmondhill.example.ca now.', REGISTRATION),
-    ).toBe(false);
-  });
-
-  it('rejects a message that writes the opt-out line the shell appends', () => {
-    expect(usableNudgeMessage(`Saturday looks good. ${NUDGE_OPT_OUT}`, SWAP)).toBe(false);
-  });
-
-  it('rejects a message that blows the segment budget once the opt-out is appended', () => {
-    const long = 'Library story time suits Maya. '.repeat(20);
-    expect(smsSegments(`${long}\n\n${NUDGE_OPT_OUT}`)).toBeGreaterThan(MAX_NUDGE_SEGMENTS);
-    expect(usableNudgeMessage(long, SWAP)).toBe(false);
-  });
-});
-
-describe('renderNudgeDeterministically', () => {
-  it('names the town, the cycle, when it opens, and the kids it is for', () => {
-    const message = renderNudgeDeterministically(REGISTRATION);
-    expect(message).toContain('Richmond Hill');
-    expect(message).toContain('Fall 2026');
-    expect(message).toContain('Aug 5, 10:30 a.m.');
-    expect(message).toContain('Maya');
-    expect(message).toContain('Leo');
-    expect(message).toContain('residents can register first');
-  });
-
-  it('hedges an approximate age fit rather than asserting the band', () => {
-    const message = renderNudgeDeterministically({
-      ...REGISTRATION,
-      ageApproximate: true,
-    } as RenderedNudge);
-    expect(message.toLowerCase()).toContain('if');
-  });
-
-  it('names the swap, its day, its weather reason, and the kids it fits', () => {
-    const message = renderNudgeDeterministically(SWAP);
-    expect(message).toContain('Library story time');
-    expect(message).toContain('Riverdale Library');
-    expect(message).toContain('Saturday');
-    expect(message).toContain('The weekend forecast is wet');
-    expect(message).toContain('Maya');
-  });
-
-  it('says nothing about a venue or kids it was not given', () => {
-    const message = renderNudgeDeterministically(BARE_SWAP);
-    expect(message).toContain('Splash pad');
-    expect(message).not.toContain(' at ');
-    expect(message).not.toContain(' for ');
-  });
-
-  /**
-   * VIL-360 · the weekday find. The day is the only time-shaped fact there is — the
-   * candidate reader does not select a clock time — so the render says the weekday and
-   * stops rather than reaching for one.
-   */
-  it('names the weekday, the session and the venue, and no clock time', () => {
-    const message = renderNudgeDeterministically(DROP_IN);
-    expect(message).toBe('Tuesday weekday drop-in: EarlyON drop-in at Armour Heights for Mia.');
-    expect(message).not.toMatch(/\d/);
-  });
-
-  it('says nothing about a venue or kids the weekday find was not given', () => {
-    const message = renderNudgeDeterministically(BARE_DROP_IN);
-    expect(message).toContain('Baby storytime');
-    expect(message).toContain('Wednesday');
-    expect(message).not.toContain(' at ');
-    expect(message).not.toContain(' for ');
-  });
-
-  it('starts the sentence with a capital — the weather fact is a mid-sentence phrase', () => {
-    // weatherFact is authored as a clause ('the weekend forecast is wet'), and the swap
-    // render puts it FIRST. Uncapitalized it is the only Hale text that opens lowercase.
-    for (const nudge of [SWAP, BARE_SWAP]) {
-      const first = renderNudgeDeterministically(nudge).charAt(0);
-      expect(first).toBe(first.toUpperCase());
-    }
-  });
-
-  it('never writes the opt-out line — the shell appends it exactly once', () => {
+describe('the kind guards', () => {
+  it('split the sweep three ways: spoken asks, voiced finds, and static health copy', () => {
     for (const nudge of ALL) {
-      expect(renderNudgeDeterministically(nudge)).not.toContain(NUDGE_OPT_OUT);
+      expect(isVoicedNudge(nudge)).toBe(true);
+      expect(isSpokenAskNudge(nudge)).toBe(false);
     }
-  });
-
-  it('is itself grounded and within budget in every shape', () => {
-    for (const nudge of ALL) {
-      expect(usableNudgeMessage(renderNudgeDeterministically(nudge), nudge)).toBe(true);
-    }
-  });
-
-  it('stays plain ASCII so the payload is billed as GSM-7, not UCS-2', () => {
-    for (const nudge of ALL) {
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: the ASCII range check IS the assertion
-      expect(renderNudgeDeterministically(nudge)).toMatch(/^[\x0A\x20-\x7E]*$/);
-    }
-  });
-});
-
-describe('nudgeVoiceStrings', () => {
-  it('exposes the one user-facing string for the lint', () => {
-    expect(nudgeVoiceStrings({ message: 'hello' })).toEqual(['hello']);
+    const ask: Nudge = { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } };
+    expect(isSpokenAskNudge(ask)).toBe(true);
+    expect(isVoicedNudge(ask)).toBe(false);
   });
 });

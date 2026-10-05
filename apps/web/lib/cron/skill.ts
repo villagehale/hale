@@ -40,10 +40,6 @@ export function loadRadarVoiceSkill(): Promise<Skill> {
   return loadCronSkill('radar-voice');
 }
 
-export function loadNudgeVoiceSkill(): Promise<Skill> {
-  return loadCronSkill('nudge-voice');
-}
-
 export function loadReplyCopySkill(): Promise<Skill> {
   return loadCronSkill('reply-copy');
 }

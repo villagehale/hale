@@ -344,7 +344,7 @@ describe('the weekday-care arc', () => {
 
     expect(found.sent).toBe(1);
     const findBody = findTransport.sent[0]?.body ?? '';
-    expect(findBody).toContain('Tuesday');
+    expect(findBody).toMatch(/tuesday/i);
     expect(findBody).toContain('EarlyON drop-in');
     expect(findBody).toContain('Armour Heights');
     expect(findBody).not.toContain('Ava');

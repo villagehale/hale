@@ -37,10 +37,7 @@ import {
   householdCopies,
   notePermanentSkip,
 } from '~/lib/channel/linq/family-outbound';
-import {
-  absorbHowItWentLines,
-  groupBothReaderFrench,
-} from '~/lib/channel/linq/group-coparent-copy';
+import { absorbHowItWentLines } from '~/lib/channel/linq/group-coparent-copy';
 import { type GroupVoice, defaultGroupVoice, speakGroupLine } from '~/lib/channel/linq/group-voice';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -68,6 +65,7 @@ import {
 import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
 import { TOLD_RECIPIENT_SEPARATOR, checkpointToldKey } from '~/lib/health/told';
 import { localParts } from '~/lib/loop/prefs';
+import { renderHealthNudge } from '~/lib/health/copy';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import { weekWindow } from '~/lib/plan/spine';
@@ -76,7 +74,13 @@ import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type HouseholdFindBias, readHouseholdFindBias } from '~/lib/reviews/household-bias';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import { type Nudge, type NudgeDecision, type NudgeSkipCounts, decideNudge } from './nudge-decide';
-import { type SpokenAskNudge, composeNudgeMessage, isSpokenAskNudge } from './nudge-voice';
+import {
+  type SpokenAskNudge,
+  type VoicedNudge,
+  isSpokenAskNudge,
+  isVoicedNudge,
+  speakNudgeLine,
+} from './nudge-voice';
 import { type ProactiveLineRequest, proactiveLineInput } from './proactive-line';
 import { type SaturdayPlans, loadSaturdayPlans } from './saturday-plans';
 import { proactiveNudgeTemplateKey } from './shell';
@@ -344,11 +348,12 @@ export interface NudgeRunDeps {
    */
   groupVoice?: GroupVoice;
   /**
-   * The 1:1 voice for the two asks (VIL-413 / VIL-417): the empty-Saturday ask and
-   * the weekday-care finder ask are written by the model from the kid, the day, or
-   * the break label. No deterministic sentence stands in: an unsent ask is silence,
-   * an audit row, and an #ops page, and its keys stay unclaimed for the next tick.
-   * Absent means the production composer.
+   * The voice every model-written nudge line is spoken through (VIL-413 / VIL-417):
+   * the three finds on the nudge-voice skill, the empty-Saturday and weekday-care
+   * asks on the proactive-voice skill. No deterministic sentence stands in: an unsent
+   * line is silence, an audit row (voice_unsent), an #ops page, and unclaimed keys
+   * for the next tick. Absent means the production composer. Health checkpoints
+   * never go through it.
    */
   proactiveVoice?: SpokenLineComposer;
 }
@@ -469,11 +474,6 @@ function isFindNudge(kind: Nudge['kind']): boolean {
   return kind === 'registration' || kind === 'weather_swap' || kind === 'weekday_dropin';
 }
 
-/** Rec-morning, the weekly follow-up, and find results are for both parents. */
-function isBothParentsNudge(kind: Nudge['kind']): boolean {
-  return kind !== 'empty_saturday';
-}
-
 function proactiveRequest(nudge: SpokenAskNudge): ProactiveLineRequest {
   return nudge.kind === 'empty_saturday'
     ? { kind: 'empty_saturday', kid: nudge.kidName }
@@ -481,13 +481,12 @@ function proactiveRequest(nudge: SpokenAskNudge): ProactiveLineRequest {
 }
 
 /**
- * The model-written ask, or null when nothing may go out. In a household group the
- * empty-Saturday ask is the group's own line (both readers, vous); the weekday ask
- * is spoken by the 1:1 skill in the group's register. Alone with one parent, both
- * are tu.
+ * The model-written line, or null when nothing may go out. In a household group the
+ * empty-Saturday ask is the group's own line (both readers, vous); every other line is
+ * spoken by its 1:1 skill in the group's register. Alone with one parent, all are tu.
  */
-async function speakAsk(
-  nudge: SpokenAskNudge,
+async function speakNudge(
+  nudge: SpokenAskNudge | VoicedNudge,
   input: {
     target: FamilyOutboundTarget;
     speech: { name: string | null; language: ReplyLanguage };
@@ -496,6 +495,8 @@ async function speakAsk(
   },
 ): Promise<string | null> {
   const { target, speech, deps, scope } = input;
+  const address = target.channel === 'group' ? 'vous' : 'tu';
+  const voice = deps.proactiveVoice ?? defaultSpokenLineComposer();
   if (target.channel === 'group' && nudge.kind === 'empty_saturday') {
     const line = await speakGroupLine(
       deps.groupVoice ?? defaultGroupVoice(),
@@ -505,15 +506,13 @@ async function speakAsk(
     );
     return line.source === 'unsent' ? null : line.body;
   }
-  const line = await speakLine(
-    deps.proactiveVoice ?? defaultSpokenLineComposer(),
-    proactiveLineInput(
-      proactiveRequest(nudge),
-      speech.language,
-      target.channel === 'group' ? 'vous' : 'tu',
-    ),
-    { scope },
-  );
+  const line = isSpokenAskNudge(nudge)
+    ? await speakLine(
+        voice,
+        proactiveLineInput(proactiveRequest(nudge), speech.language, address),
+        { scope },
+      )
+    : await speakNudgeLine(voice, nudge, speech.language, address, { scope });
   return line.source === 'unsent' ? null : line.body;
 }
 
@@ -755,13 +754,16 @@ async function runForFamily(
   // about a parent, so composing it twice would spend the model twice to say the same
   // thing — and risk saying it two different ways to two people in one house.
   //
-  // The two ASKS are spoken, not rendered (VIL-413 / VIL-417): the model writes them
-  // from the kid, the day, or the break label, and nothing templated goes out in
-  // their place. An unsent ask leaves every key unclaimed, so the next tick inside
-  // the slot asks again, and #ops has already been paged by the engine.
+  // Every line but the health checkpoint is SPOKEN, not rendered (VIL-413 / VIL-417):
+  // the model writes it from the facts the decide gathered, in the family's language
+  // and the channel's register, and nothing templated goes out in its place. An unsent
+  // line leaves every key unclaimed, so the next tick inside the slot tries again, and
+  // #ops has already been paged by the engine. A health checkpoint never reaches the
+  // model (VIL-243 · M8): that copy is REVIEWABLE copy, and it is the one message class
+  // where a warmer sentence is not worth the chance of a sentence nobody approved.
   let message: string;
-  if (isSpokenAskNudge(nudge)) {
-    const line = await speakAsk(nudge, {
+  if (isSpokenAskNudge(nudge) || isVoicedNudge(nudge)) {
+    const line = await speakNudge(nudge, {
       target,
       speech,
       deps,
@@ -780,20 +782,13 @@ async function runForFamily(
     }
     message = line;
   } else {
-    message = await composeNudgeMessage(nudge, {
-      familyId: family.familyId,
-      database,
-      client: deps.client,
-    });
+    message = renderHealthNudge(nudge);
   }
 
   let wireMessage = message;
   let absorbed: readonly GroupHowItWentLine[] = [];
   let dutyFold: { text: string; commit: () => Promise<void> } | null = null;
   if (target.channel === 'group') {
-    if (!isSpokenAskNudge(nudge) && speech.language === 'fr' && isBothParentsNudge(nudge.kind)) {
-      wireMessage = groupBothReaderFrench(message);
-    }
     if (nudge.kind !== 'registration' && deps.pendingHowItWent) {
       absorbed = await deps.pendingHowItWent(database, {
         familyId: family.familyId,

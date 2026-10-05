@@ -18,6 +18,7 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { type NudgeRunDeps, type NudgeRunResult, runNudgeCron } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
+import { fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import {
   aggregateCommitmentDebt,
   fulfillCommitment,
@@ -233,6 +234,10 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     },
     transport,
     client: null,
+    // The find is SPOKEN (VIL-413): no deterministic sentence stands under it, so the
+    // fake composer writes the facts it was handed. Its real words are the cached
+    // eval's job (apps/worker/evals/run-nudge-eval.mjs, rule #8).
+    proactiveVoice: fakeSpokenLineComposer(),
     // The REAL ledger writer over the same store.
     fulfillCommitment,
     // The REAL offer writer over the same store: a health nudge whose task is booking
