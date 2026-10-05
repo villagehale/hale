@@ -1,9 +1,11 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
+import type { Database } from '@hale/db';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { claimOpsPage } from '~/lib/monitoring/ops-page-claim';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
-import { budgetedAnthropic, HOT_SMS_CLIENT_OPTIONS } from '~/lib/pipeline/client';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { type SpokenLineInput, judgeSpokenLine, spokenLineContext } from './judge';
 
@@ -47,7 +49,7 @@ export const SPOKEN_LINE_ATTEMPT_TIMEOUT_MS = 12_000;
 const SHORT_LINE_SYSTEM = [
   'You are Hale, texting a family. Write one short warm message in the given language, as a friend who is good at this.',
   'Use only the facts in the JSON. Do not invent a name, an activity, a date, a weekday, a time, a place, or a price.',
-  'Follow questions exactly: 1 means your last sentence is the one question, 0 means no question mark at all.',
+  'Follow questions exactly: 1 means your last sentence is the one question and ends with a question mark; 0 means no question mark at all.',
   'Mention every string in mustMention, copied as given.',
   'French: address vous means vous/votre, address tu means tu/ton. Real accents.',
   'Do not write a URL, a phone number, STOP, unsubscribe, or any compliance wording. No emoji. Two or three short sentences at most.',
@@ -79,6 +81,13 @@ export interface SpokenLineOptions {
   attemptTimeoutMs?: number;
   /** `short` skips the skill and uses the smaller retry prompt first. */
   prompt?: 'full' | 'short';
+  /**
+   * Who the line is for. Names the family in every trace log (the composeVoice-era
+   * per-family trace), and bounds #ops paging to ONE page per family, skill and kind per
+   * day (ops-page-claim.ts) when `database` is given — a family whose line keeps failing
+   * must not page on every cron tick. Without a scope, every miss pages.
+   */
+  scope?: { familyId: string; database?: Database };
 }
 
 const lineSchema = z.object({ line: z.string() }).strict();
@@ -128,12 +137,23 @@ export async function speakLine(
   input: SpokenLineInput,
   options: SpokenLineOptions = {},
 ): Promise<SpokenLineResult> {
+  const familyId = options.scope?.familyId ?? null;
   const page = async (reason: SpokenLineFallback): Promise<void> => {
     console.error(
-      { fallback: reason, skill: input.skill, kind: input.kind },
+      { fallback: reason, skill: input.skill, kind: input.kind, familyId },
       'spoken-line: line not sent',
     );
     try {
+      if (options.scope?.database) {
+        const key = `spoken-line:${input.skill}:${input.kind}:${options.scope.familyId}`;
+        if (!(await claimOpsPage(options.scope.database, key))) {
+          console.error(
+            { skill: input.skill, kind: input.kind, familyId },
+            'spoken-line: #ops already paged for this family today',
+          );
+          return;
+        }
+      }
       await (options.page ?? postOpsSlack)(unsentPage(input, reason));
     } catch (err) {
       console.error(
@@ -159,11 +179,15 @@ export async function speakLine(
       const judged = judgeSpokenLine(body, input);
       if (!judged.ok) {
         console.error(
-          { reason: judged.reason, skill: input.skill, kind: input.kind, prompt },
+          { reason: judged.reason, skill: input.skill, kind: input.kind, prompt, familyId },
           'spoken-line: unusable line',
         );
         return { fail: 'unusable' };
       }
+      console.info(
+        { skill: input.skill, kind: input.kind, prompt, familyId, chars: body.length },
+        'spoken-line: line written',
+      );
       return { body };
     } catch (err) {
       const skillMissing = err instanceof Error && /ENOENT|skill/i.test(err.message);
@@ -173,6 +197,7 @@ export async function speakLine(
           skill: input.skill,
           kind: input.kind,
           prompt,
+          familyId,
         },
         'spoken-line: compose failed',
       );

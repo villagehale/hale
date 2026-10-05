@@ -671,6 +671,7 @@ export async function flushGroupDecisionSyncs(
       input.voice ?? defaultGroupVoice(),
       { kind: 'decision_sync', decisions },
       speech.language,
+      { scope: { familyId, database } },
     );
     if (spoken.source === 'unsent') {
       held += 1;

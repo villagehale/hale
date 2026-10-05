@@ -1148,6 +1148,7 @@ async function sendGroupNotice(
     input.voice ?? defaultGroupVoice(),
     input.notice.line,
     input.language,
+    { scope: { familyId: input.familyId, database } },
   );
   if (spoken.source === 'unsent') return 'voice_unsent';
   const body = withOptOut(spoken.body, verdict.optOut);

@@ -479,6 +479,7 @@ async function sendGroupHomeReceipt(
     ports.groupVoice ?? defaultGroupVoice(),
     { kind: provider === 'gmail' ? 'gmail_receipt' : 'calendar_receipt', name: speech.name },
     speech.language,
+    { scope: { familyId, database } },
   );
   if (spoken.source === 'unsent') return { status: 'not_sent', reason: 'voice_unsent' };
   const body = spoken.body;

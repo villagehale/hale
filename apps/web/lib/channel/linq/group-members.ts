@@ -94,8 +94,9 @@ async function memberLine(
   voice: GroupVoice | undefined,
   request: GroupLineRequest,
   language: ReplyLanguage,
+  scope: { familyId: string; database: Database },
 ): Promise<string | null> {
-  const spoken = await speakGroupLine(voice ?? defaultGroupVoice(), request, language);
+  const spoken = await speakGroupLine(voice ?? defaultGroupVoice(), request, language, { scope });
   return spoken.source === 'unsent' ? null : spoken.body;
 }
 
@@ -489,7 +490,10 @@ export async function seatParticipantAdded(
   if (await dedupeActive(welcomeKey, database)) {
     return { outcome: 'group_member_seated', role, notice: 'already_sent' };
   }
-  const text = await memberLine(input.voice, { kind: 'member_welcome', adder }, language);
+  const text = await memberLine(input.voice, { kind: 'member_welcome', adder }, language, {
+    familyId,
+    database,
+  });
   if (!text) return { outcome: 'group_member_seated', role, notice: 'not_sent' };
   const notice = await sendOnce(database, {
     familyId,
@@ -588,7 +592,10 @@ export async function holdTrueStrangerOnce(
   const hash = phoneBlindIndex(phone);
   const holdKey = `${HOLD_TEMPLATE}:${input.chatId}:${hash}`;
   if (await dedupeActive(holdKey, database)) return 'already_sent';
-  const text = await memberLine(input.voice, { kind: 'stranger_hold', parentA }, language);
+  const text = await memberLine(input.voice, { kind: 'stranger_hold', parentA }, language, {
+    familyId,
+    database,
+  });
   if (!text) return 'not_sent';
   const notice = await sendOnce(database, {
     familyId,
