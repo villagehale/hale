@@ -2,8 +2,9 @@ import { namesAPerson } from '~/lib/channel/activity/deidentify';
 import type { ActivityPick } from '~/lib/channel/activity/lane';
 import { SLOTS_IN_TEXT } from '~/lib/channel/activity/share-page';
 import type { TravelPickFact } from '~/lib/channel/nudge/proactive-line';
-import { withOptOut } from '~/lib/channel/opt-out';
-import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
+import { type TravelBriefProseContext, travelBriefProseViolations } from './brief-lint';
+
+export { MAX_TRAVEL_BRIEF_SEGMENTS } from './brief-lint';
 
 /**
  * THE ONE TEXT A TRIP GETS — the facts it is built from and the lint it must pass.
@@ -37,19 +38,6 @@ import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
  */
 
 export const TRAVEL_BRIEF_TEMPLATE_KEY = 'travel:brief';
-
-/**
- * FOUR SEGMENTS, measured against the FULL opt-out form — the longest a real send can be,
- * since the form is chosen per recipient and this budget must hold for whichever one the
- * gate picks.
- *
- * Four, not the three the portal legs and the spot-open text sit at, and not the check-in's
- * one. Those carry ONE fact each and one of them arrives nightly; this carries two venue
- * names, two schedules and two prices, and a household gets it at most once per trip —
- * twice a year for the cohort. The discipline that is right for a nightly message is the
- * wrong discipline for this one.
- */
-export const MAX_TRAVEL_BRIEF_SEGMENTS = 4;
 
 /** "12th", "1st", "22nd", "13th". */
 function ordinal(day: number): string {
@@ -88,65 +76,23 @@ export function picksNamedIn<T extends { name: string }>(body: string, picks: re
   return picks.filter((pick) => body.includes(pick.name));
 }
 
-export interface TravelBriefContext {
-  dayPhrase: string;
-  /** The picks that actually made it into the body. */
-  rendered: readonly { name: string; when: string | null; price: string | null }[];
+export interface TravelBriefContext extends TravelBriefProseContext {
   teenNames: readonly string[];
 }
-
-/** Removes one literal occurrence, so the checks below run on what is left over after the
- * pieces the body is allowed to carry are accounted for. The `spots/copy.ts` helper. */
-function without(text: string, literal: string | null): string {
-  if (literal === null || literal === '') return text;
-  const at = text.indexOf(literal);
-  return at < 0 ? text : `${text.slice(0, at)} ${text.slice(at + literal.length)}`;
-}
-
-/**
- * The disclosure every brief must make, in the model's own words: these details are off
- * the venues' own pages. Any phrasing that ties "their / own / the venues'" to a page,
- * site or listing counts; what is refused is a body that never says where the facts came
- * from.
- */
-const SAYS_PROVENANCE =
-  /\b(?:their|its|own|venues?['’]?s?)\b[^.!?]{0,40}\b(?:pages?|sites?|websites?|listings?)\b|\b(?:pages?|sites?|websites?|listings?)\b[^.!?]{0,20}\b(?:their|its|own|venues?)\b/i;
 
 /**
  * Everything wrong with this body, named. Exported because the sweep runs it on the
  * spoken body and copy.test.ts runs it on fixtures: a gate only the sweep can reach is a
- * gate nobody can test.
+ * gate nobody can test. The prose checks live in brief-lint.ts (pure, so the worker eval
+ * runs them on the model's brief too); this adds the one that needs the redactor.
  */
 export function travelBriefViolations(body: string, context: TravelBriefContext): string[] {
-  const violations: string[] = [];
-
-  if (context.rendered.length === 0) violations.push('no_picks');
+  const violations = travelBriefProseViolations(body, context);
   // ON A WORD BOUNDARY, and `namesAPerson` rather than a substring test of its own: that
   // is the boundary the outbound redactor uses, so the set of names this refuses is
   // exactly the set that one replaces. A substring match refuses the WHOLE body, so its
   // false positives are briefs a household never gets -- a teen called Al makes
   // "Algonquin Outfitters" unsendable.
   if (namesAPerson(body, context.teenNames)) violations.push('names_a_teen');
-
-  // Subtract the pieces the body is ALLOWED to carry, then judge what is left. Order
-  // matters only in that each subtraction removes the FIRST occurrence.
-  let rest = without(body, context.dayPhrase);
-  for (const pick of context.rendered) {
-    rest = without(rest, pick.name);
-    rest = without(rest, pick.when);
-    rest = without(rest, pick.price);
-  }
-  if (rest.includes('?')) violations.push('asks_a_question');
-  // A DIGIT WITH NOTHING BEHIND IT. Every number in this text traces to the trip's own
-  // dates or to a figure a page published; one that survives the subtraction above was
-  // invented by the model, which on a message carrying prices is the worst thing it
-  // could do.
-  if (/\d/.test(rest)) violations.push('unbacked_digit');
-  if (!SAYS_PROVENANCE.test(rest)) violations.push('no_provenance');
-
-  if (!isGsm7(body)) violations.push('not_gsm7');
-  if (smsSegments(withOptOut(body, 'full')) > MAX_TRAVEL_BRIEF_SEGMENTS) {
-    violations.push('too_many_segments');
-  }
   return violations;
 }
