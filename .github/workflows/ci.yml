@@ -212,6 +212,11 @@ jobs:
       - name: Group voice composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:group-voice
 
+      # The two 1:1 asks (open Saturday, weekday-care finder) were fixed sentences and
+      # are now model-written with nothing underneath (VIL-413 / VIL-417).
+      - name: Proactive voice composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:proactive-voice
+
       - name: Calendar invite + email-ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:calendar-voice
 
