@@ -217,6 +217,15 @@ jobs:
       - name: Proactive voice composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:proactive-voice
 
+      # The evening check-in lane was a copy file that taught LESS / NO / DAILY; every
+      # line is now model-written with nothing underneath, and the parent's reply is
+      # read by the model instead of matched against those words (VIL-413 / VIL-417).
+      - name: Check-in voice composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:checkin-voice
+
+      - name: Check-in reply intent eval (cached-only)
+        run: pnpm --filter @hale/worker eval:checkin-intent
+
       - name: Calendar invite + email-ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:calendar-voice
 
