@@ -14,6 +14,10 @@ const USER = '00000000-0000-4000-8000-000000000002';
 const SESSION = '00000000-0000-4000-8000-000000000003';
 const LINES = ['Swim (ages 3-5) - Saturdays 9:15am - $12', 'Fall fair - Sunday', 'Story time'];
 
+function iso(value: unknown): string {
+  return new Date(value as string | number | Date).toISOString();
+}
+
 function audits(fake: ReturnType<typeof makeFakeDb>) {
   return fake.writes.filter(
     (write) =>
@@ -38,7 +42,7 @@ describe('writeScheduleAdds', () => {
     expect(events).toHaveLength(3);
     expect(events.every((row) => row.title === 'Swim')).toBe(true);
     expect(events.every((row) => row.source === 'channel' && row.createdBy === USER)).toBe(true);
-    const starts = events.map((row) => new Date(row.startsAt).toISOString());
+    const starts = events.map((row) => iso(row.startsAt));
     expect(starts).toEqual([
       '2026-10-10T13:15:00.000Z',
       '2026-10-17T13:15:00.000Z',
@@ -65,8 +69,8 @@ describe('writeScheduleAdds', () => {
     });
     const [event] = fake.rows(schema.familyEvents);
     expect(event?.title).toBe('Fall fair');
-    expect(new Date(event?.startsAt ?? 0).toISOString()).toBe('2026-10-11T04:00:00.000Z');
-    expect(new Date(event?.endsAt ?? 0).toISOString()).toBe('2026-10-12T04:00:00.000Z');
+    expect(iso(event?.startsAt)).toBe('2026-10-11T04:00:00.000Z');
+    expect(iso(event?.endsAt)).toBe('2026-10-12T04:00:00.000Z');
   });
 
   it('defaults a weekly add to eight weeks and caps it at twelve', async () => {
