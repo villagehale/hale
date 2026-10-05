@@ -7,10 +7,17 @@ import {
   speakFriend,
 } from '~/lib/channel/intake/friend-voice';
 import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
+import {
+  type IntakeSession,
+  loadOpenSessionByFamily,
+  saveSession,
+} from '~/lib/channel/intake/session';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { linqFromE164 } from '~/lib/channel/linq/config';
 import { familyOutboundTarget, familySpeech } from '~/lib/channel/linq/family-outbound';
+import { LINQ_GROUP_TRIGGER_PHRASE, formatLinqLineForParent } from '~/lib/channel/linq/group';
 import { groupCalendarReceipt, groupGmailReceipt } from '~/lib/channel/linq/group-coparent-copy';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
@@ -23,6 +30,7 @@ import {
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { kidRelatedAha, loadKidContext } from './aha-kids';
 import { type AhaSnapshot, failedAha } from './aha-read';
 import { type TextConnectProvider, connectorConnectedText } from './text-connect';
 
@@ -290,11 +298,21 @@ async function sendReceipt(
       'connector connected: aha not supplied - the receipt will not name an event',
     );
   }
+  // HARD RULE: the one useful line is about the kids only. Items that do not
+  // match a child, a found activity, or kid-activity vocabulary never reach the
+  // model. A mailbox or calendar with nothing kid-related yields no mention.
+  const aha =
+    onboardingFriendVoiceEnabled() && args.aha
+      ? kidRelatedAha(args.aha, await loadKidContext(database, familyId))
+      : args.aha;
+  if (aha && aha.read === 'none_for_kids') {
+    console.info({ familyId, provider }, 'connector connected: nothing kid-related to mention');
+  }
   const body = await connectedReceiptBody(
     await familyReceiptLanguage(database, familyId),
     provider,
     ports.friendVoice,
-    args.aha,
+    aha,
   );
   if (body.trim().length === 0) {
     await database.delete(schema.channelMessages).where(eq(schema.channelMessages.id, claimed.id));
@@ -353,21 +371,53 @@ async function sendReceipt(
   // you just connect" must not meet a coach that cannot see its own message.
   await ports.threadMessage(database, { familyId, parentUserId, body });
 
-  if (provider === 'gcal') {
-    await sendGmailCardAfterCalendarReceipt(
-      database,
-      {
-        familyId,
-        parentUserId,
-        now,
-        chatId: door.channel === 'imessage' ? receiptChatId : null,
-        phone,
-      },
-      ports,
-    );
-  }
+  await continueAfterReceipt(
+    database,
+    {
+      familyId,
+      parentUserId,
+      provider,
+      now,
+      chatId: door.channel === 'imessage' ? receiptChatId : null,
+      phone,
+      receipt: body,
+    },
+    ports,
+  );
 
   return { status: 'sent', channelMessageId: claimed.id };
+}
+
+/**
+ * The next onboarding beat rides the receipt. Friend voice on: Gmail first,
+ * so its receipt carries the calendar card, and the calendar receipt carries
+ * the schedule ask (or the co-parent ask when there is nothing to schedule).
+ * Flag off keeps the older order: the Gmail card after the calendar receipt.
+ */
+async function continueAfterReceipt(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    provider: TextConnectProvider;
+    now: Date;
+    chatId: string | null;
+    phone: string;
+    receipt: string;
+  },
+  ports: ConnectedNoticePorts,
+): Promise<void> {
+  if (!onboardingFriendVoiceEnabled()) {
+    if (args.provider === 'gcal') await sendGmailCardAfterCalendarReceipt(database, args, ports);
+    return;
+  }
+  if (args.provider === 'gmail') {
+    await sendCalendarCardAfterGmailReceipt(database, args, ports);
+    return;
+  }
+  if (args.provider === 'gcal') {
+    await askAfterCalendarReceipt(database, args, ports);
+  }
 }
 
 /** Intake stamps this when the kids-and-postal text was French. Anything else is English. */
@@ -443,19 +493,37 @@ async function sendGroupHomeReceipt(
     .set({ providerMessageId })
     .where(eq(schema.channelMessages.id, claimed.id));
   await ports.threadMessage(database, { familyId, parentUserId, body });
-  if (provider === 'gcal') {
-    await sendGmailCardAfterCalendarReceipt(
-      database,
-      { familyId, parentUserId, now, chatId, phone: '' },
-      ports,
-    );
-  }
+  await continueAfterReceipt(
+    database,
+    { familyId, parentUserId, provider, now, chatId, phone: '', receipt: body },
+    ports,
+  );
   return { status: 'sent', channelMessageId: claimed.id };
 }
 
+/** The receipt's own door, as a transport the connector card can ride. */
+function receiptTransport(
+  args: { chatId: string | null },
+  ports: ConnectedNoticePorts,
+): ChannelTransport {
+  return {
+    send: async (input) => {
+      if (args.chatId && ports.imessage) {
+        const sent = await ports.imessage({ chatId: args.chatId, body: input.body });
+        return {
+          providerMessageId: sent.providerMessageId,
+          transport: 'imessage' as const,
+          chatId: args.chatId,
+        };
+      }
+      return ports.transport.send(input);
+    },
+  };
+}
+
 /**
- * The Gmail card follows a calendar receipt in the same turn. The year ladder
- * used to wait for the parent's next text ("Ok") before sending it.
+ * The Gmail card follows a calendar receipt in the same turn (flag off). The
+ * year ladder used to wait for the parent's next text ("Ok") before sending it.
  * A card already sent stays `already_sent`. A failure here does not un-send
  * the receipt.
  */
@@ -479,47 +547,7 @@ async function sendGmailCardAfterCalendarReceipt(
       );
       return;
     }
-    const transport: ChannelTransport = {
-      send: async (input) => {
-        if (args.chatId && ports.imessage) {
-          const sent = await ports.imessage({ chatId: args.chatId, body: input.body });
-          return {
-            providerMessageId: sent.providerMessageId,
-            transport: 'imessage' as const,
-            chatId: args.chatId,
-          };
-        }
-        return ports.transport.send(input);
-      },
-    };
     const language = await familyReceiptLanguage(database, args.familyId);
-    let voice: { gmail: string } | undefined;
-    if (onboardingFriendVoiceEnabled()) {
-      const spoken = await speakFriend(ports.friendVoice, {
-        step: 'email',
-        language,
-        address: 'tu',
-        introduce: false,
-        parentWords: '',
-        recentTurns: [],
-        placeLabel: null,
-        agesLabel: null,
-        ageMonths: [],
-        findLines: [],
-        listKind: 'none',
-        activity: null,
-        day: null,
-        parentName: null,
-      });
-      if (!spoken.prose.trim()) {
-        console.error(
-          { familyId: args.familyId },
-          'connector connected: gmail card not sent - friend voice unsent',
-        );
-        return;
-      }
-      voice = { gmail: spoken.prose };
-    }
     const cards = await sendYearConnectorCards(
       database,
       {
@@ -530,9 +558,8 @@ async function sendGmailCardAfterCalendarReceipt(
         now: args.now,
         ridesReply: true,
         only: 'gmail',
-        ...(voice ? { voice } : {}),
       },
-      { transport, threadMessage: ports.threadMessage },
+      { transport: receiptTransport(args, ports), threadMessage: ports.threadMessage },
     );
     console.info(
       { familyId: args.familyId, gmail: cards.gmail },
@@ -544,6 +571,291 @@ async function sendGmailCardAfterCalendarReceipt(
       'connector connected: gmail card after the calendar receipt failed',
     );
   }
+}
+
+/**
+ * The calendar card follows the Gmail receipt, in the model's words (step 7 of
+ * the onboarding order). The open session, when there is one, remembers that
+ * Gmail is connected and that the calendar link went out. A calendar the
+ * parent already turned down is not offered again.
+ */
+async function sendCalendarCardAfterGmailReceipt(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+    chatId: string | null;
+    phone: string;
+    receipt: string;
+  },
+  ports: ConnectedNoticePorts,
+): Promise<void> {
+  try {
+    const session = await openOnboarding(database, args.familyId);
+    const given = session?.firstTouch?.given ?? null;
+    if (given?.connectCalendar === false) {
+      await rememberConnected(database, session, { provider: 'gmail', now: args.now });
+      console.info(
+        { familyId: args.familyId },
+        'connector connected: calendar card not sent - they already said no',
+      );
+      return;
+    }
+    const phone = args.phone || (await resolveSendablePhone(database, args.parentUserId)) || '';
+    if (!phone && !args.chatId) {
+      console.info(
+        { familyId: args.familyId },
+        'connector connected: calendar card not sent - no phone and no chat',
+      );
+      return;
+    }
+    const language = await familyReceiptLanguage(database, args.familyId);
+    const spoken = await speakFriend(
+      ports.friendVoice,
+      {
+        ...receiptVoiceBase(language, session),
+        step: 'calendar',
+      },
+      { linkFollows: true },
+    );
+    if (!spoken.prose.trim() || spoken.source === 'unsent') {
+      console.error(
+        { familyId: args.familyId },
+        'connector connected: calendar card not sent - friend voice unsent',
+      );
+      await rememberConnected(database, session, { provider: 'gmail', now: args.now });
+      return;
+    }
+    const cards = await sendYearConnectorCards(
+      database,
+      {
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        phoneE164: phone || 'unaddressed',
+        language,
+        now: args.now,
+        ridesReply: true,
+        only: 'gcal',
+        voice: { gcal: spoken.prose },
+      },
+      { transport: receiptTransport(args, ports), threadMessage: ports.threadMessage },
+    );
+    console.info(
+      { familyId: args.familyId, calendar: cards.calendar },
+      'connector connected: calendar card after the gmail receipt',
+    );
+    await rememberConnected(database, session, {
+      provider: 'gmail',
+      now: args.now,
+      calendarOffered: cards.calendar === 'sent' || cards.calendar === 'already_sent',
+      said: cards.calendar === 'sent' ? spoken.prose : null,
+    });
+  } catch (err) {
+    console.error(
+      { familyId: args.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'connector connected: calendar card after the gmail receipt failed',
+    );
+  }
+}
+
+/**
+ * After the calendar receipt: the schedule ask when the map has lines and the
+ * schedule is still open (step 9), else the co-parent ask when that is still
+ * open (step 10). Nothing when the onboarding has no open session. The model
+ * writes the ask; code supplies the real lines, the dates it may name, and the
+ * join data.
+ */
+async function askAfterCalendarReceipt(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+    chatId: string | null;
+    phone: string;
+  },
+  ports: ConnectedNoticePorts,
+): Promise<void> {
+  try {
+    const session = await openOnboarding(database, args.familyId);
+    if (!session) return;
+    const progress = session.firstTouch?.coldStart;
+    const given = session.firstTouch?.given ?? null;
+    const lines = progress ? linesOfFind(progress.findBody) : [];
+    const scheduleOpen = lines.length > 0 && given?.scheduleDone !== true;
+    const coparentOpen = given?.coparentGroup == null;
+    const step = scheduleOpen ? 'schedule' : coparentOpen ? 'coparent' : null;
+    if (!step) {
+      await rememberConnected(database, session, { provider: 'gcal', now: args.now });
+      return;
+    }
+    const language = await familyReceiptLanguage(database, args.familyId);
+    const from = args.chatId ? linqFromE164() : null;
+    const join =
+      step === 'coparent' && from
+        ? { line: formatLinqLineForParent(from), phrase: LINQ_GROUP_TRIGGER_PHRASE[language] }
+        : null;
+    const spoken = await speakFriend(
+      ports.friendVoice,
+      {
+        ...receiptVoiceBase(language, session),
+        step,
+        findLines: lines,
+        now: args.now,
+        coparentJoin: join,
+      },
+      { trailer: join ? `${join.line}\n${join.phrase}` : null },
+    );
+    if (spoken.source === 'unsent' || !spoken.body.trim()) {
+      await rememberConnected(database, session, { provider: 'gcal', now: args.now });
+      return;
+    }
+    const phone = args.phone || (await resolveSendablePhone(database, args.parentUserId)) || '';
+    const sent = await receiptTransport(args, ports).send({
+      to: phone || 'unaddressed',
+      body: spoken.body,
+    });
+    const channel = sent.transport === 'imessage' ? 'imessage' : 'sms';
+    await database.insert(schema.channelMessages).values({
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      channel,
+      direction: 'out',
+      category: 'reply',
+      templateKey: step === 'schedule' ? 'onboarding:schedule_ask' : 'onboarding:coparent_ask',
+      providerMessageId: sent.providerMessageId,
+      providerChatId: sent.chatId ?? args.chatId,
+      status: acceptedStatus(channel),
+      sentAt: args.now,
+    });
+    await ports.threadMessage(database, {
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      body: spoken.body,
+    });
+    await rememberConnected(database, session, {
+      provider: 'gcal',
+      now: args.now,
+      said: spoken.body,
+    });
+  } catch (err) {
+    console.error(
+      { familyId: args.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'connector connected: the ask after the calendar receipt failed',
+    );
+  }
+}
+
+function linesOfFind(message: string): string[] {
+  return message
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^\d+\.\s+/.test(line))
+    .map((line) => line.replace(/^\d+\.\s+/, ''));
+}
+
+/** The onboarding session still open for this family, when the cold start is on it. */
+async function openOnboarding(database: Database, familyId: string): Promise<IntakeSession | null> {
+  const session = await loadOpenSessionByFamily(database, familyId);
+  return session?.firstTouch?.coldStart ? session : null;
+}
+
+function receiptVoiceBase(language: ReplyLanguage, session: IntakeSession | null) {
+  const given = session?.firstTouch?.given ?? null;
+  const children = session?.collected.children ?? [];
+  return {
+    language,
+    address: 'tu' as const,
+    introduce: false,
+    parentWords: '',
+    recentTurns: (session?.transcript ?? []).slice(-8).map((entry) => ({
+      role: entry.direction === 'in' ? ('parent' as const) : ('hale' as const),
+      body: entry.body,
+    })),
+    placeLabel: session?.firstTouch?.place?.city || session?.firstTouch?.place?.areaCoarse || null,
+    agesLabel: null,
+    ageMonths: children.flatMap((child) => (child.ageMonths == null ? [] : [child.ageMonths])),
+    findLines: [] as string[],
+    listKind: 'none' as const,
+    activity: null,
+    day: null,
+    parentName: given?.parentName ?? null,
+    parentRole: given?.parentRole ?? null,
+    scheduled: (given?.scheduled ?? []).map((row) => ({
+      title: row.title,
+      when: `${row.date}${row.time ? ` ${row.time}` : ''}`,
+      cadence: row.cadence,
+    })),
+  };
+}
+
+/**
+ * The open session learns what the receipt proved: that connector is on, and
+ * what Hale said next, so the next model turn reads it.
+ */
+async function rememberConnected(
+  database: Database,
+  session: IntakeSession | null,
+  patch: {
+    provider: 'gcal' | 'gmail';
+    now: Date;
+    calendarOffered?: boolean;
+    said?: string | null;
+  },
+): Promise<void> {
+  if (!session?.firstTouch) return;
+  const given = session.firstTouch.given ?? {
+    parentName: null,
+    activityPick: null,
+    connectCalendar: null,
+    connectGmail: null,
+  };
+  const coldStart = session.firstTouch.coldStart;
+  const transcript = patch.said
+    ? [
+        ...session.transcript,
+        {
+          direction: 'out' as const,
+          body: patch.said,
+          providerId: null,
+          at: patch.now.toISOString(),
+        },
+      ]
+    : session.transcript;
+  await saveSession(
+    database,
+    session,
+    {
+      transcript,
+      firstTouch: {
+        ...session.firstTouch,
+        given: {
+          ...given,
+          connectGmail: patch.provider === 'gmail' ? true : given.connectGmail,
+          connectCalendar: patch.provider === 'gcal' ? true : given.connectCalendar,
+        },
+        ...(coldStart
+          ? {
+              coldStart: {
+                ...coldStart,
+                emailAsked: patch.provider === 'gmail' ? true : coldStart.emailAsked,
+                emailOffered: patch.provider === 'gmail' ? true : coldStart.emailOffered,
+                calendarAsked:
+                  patch.provider === 'gcal' || patch.calendarOffered
+                    ? true
+                    : coldStart.calendarAsked,
+                calendarOffered:
+                  patch.provider === 'gcal' || patch.calendarOffered
+                    ? true
+                    : coldStart.calendarOffered,
+              },
+            }
+          : {}),
+      },
+    },
+    patch.now,
+  );
 }
 
 /**

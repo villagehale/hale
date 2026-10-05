@@ -17,7 +17,12 @@ export const AHA_CALENDAR_HORIZON_MS = 21 * 24 * 60 * 60 * 1000;
 const TITLE_MAX = 120;
 const SNIPPET_MAX = 160;
 
-export type AhaRead = 'ok' | 'empty' | 'failed' | 'withheld';
+/**
+ * `none_for_kids`: the read worked and the source had items, but none of them
+ * was about the kids (aha-kids.ts). Not "empty": the model must not say the
+ * source had nothing in it, and must not name a parent item instead.
+ */
+export type AhaRead = 'ok' | 'empty' | 'failed' | 'withheld' | 'none_for_kids';
 
 export interface AhaCalendarFact {
   title: string;
