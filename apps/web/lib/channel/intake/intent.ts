@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { type JevChoiceEvaluator, evaluateJevChoice, meetsJevConfidence } from '~/lib/pipeline/jev';
 import { recordModelFallback } from '~/lib/pipeline/model-fallback';
+import { parseModelMode } from '~/lib/pipeline/model-mode';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -89,13 +90,6 @@ interface ReplyIntentReaderDeps {
   evaluateChoice?: JevChoiceEvaluator<ReplyIntent>;
 }
 
-function modelMode(raw: string | undefined): 'current' | 'candidate' {
-  const mode = raw?.trim() || 'current';
-  if (mode === 'current' || mode === 'candidate') return mode;
-  console.error({ mode }, 'reply intent: invalid model mode; using current');
-  return 'current';
-}
-
 export function createReplyIntentReader(
   client: AgentClient,
   deps: ReplyIntentReaderDeps = {},
@@ -103,7 +97,8 @@ export function createReplyIntentReader(
   return {
     async read(input) {
       const skill = await loadCronSkill('reply-intent');
-      const mode = deps.modelMode ?? modelMode(process.env.HALE_REPLY_INTENT_MODEL_MODE);
+      const mode =
+        deps.modelMode ?? parseModelMode(process.env.HALE_REPLY_INTENT_MODEL_MODE, 'reply intent');
       if (mode === 'candidate') {
         try {
           const result = await (deps.evaluateChoice ?? evaluateJevChoice)({

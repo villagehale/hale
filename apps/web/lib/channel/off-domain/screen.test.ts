@@ -123,16 +123,20 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
     });
   });
 
-  it('keeps Haiku by default', async () => {
-    const evaluateChoice = vi.fn();
-    const screen = createInboundLaneScreen(
-      clientReturning({ lane: 'in_domain', category: 'none', reason: 'family request' }),
-      { evaluateChoice },
-    );
+  it.each([undefined, '', ' \t\n ', 'invalid', 'shadow', 'current'])(
+    'keeps Haiku for model mode %j',
+    async (raw) => {
+      vi.stubEnv('HALE_INBOUND_SCREEN_MODEL_MODE', raw);
+      const evaluateChoice = vi.fn();
+      const screen = createInboundLaneScreen(
+        clientReturning({ lane: 'in_domain', category: 'none', reason: 'family request' }),
+        { evaluateChoice },
+      );
 
-    expect((await screen.read(READ)).lane).toBe('in_domain');
-    expect(evaluateChoice).not.toHaveBeenCalled();
-  });
+      expect((await screen.read(READ)).lane).toBe('in_domain');
+      expect(evaluateChoice).not.toHaveBeenCalled();
+    },
+  );
 
   it('uses a confident JEV reading when explicitly enabled', async () => {
     const currentClient = clientReturning({
