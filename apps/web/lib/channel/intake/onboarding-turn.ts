@@ -422,10 +422,37 @@ export function mergeChildFacts(
   return next;
 }
 
+function foldName(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * The parent's name is never one of the kids' names, or a kid's nickname
+ * ("Seb" for Sebastian). A model that read the kids' names as the parent's
+ * stored the one-year-old as the account holder once; code does not let it.
+ */
+export function namesAChild(name: string, children: readonly { name: string | null }[]): boolean {
+  const given = foldName(name);
+  if (given.length < 2) return false;
+  return children.some((child) => {
+    const kid = foldName(child.name ?? '');
+    if (kid.length < 2) return false;
+    if (kid === given) return true;
+    const shorter = kid.length < given.length ? kid : given;
+    const longer = shorter === kid ? given : kid;
+    return shorter.length >= 3 && longer.startsWith(shorter);
+  });
+}
+
 /**
  * Turn a model capture into facts code can store.
  * A postal or city is kept only when the field itself is one we can place.
  * A stated role replaces a guess; a later guess replaces an earlier guess.
+ * A parent name that is one of the kids' names is dropped.
  */
 export function storedFromCapture(
   prior: {
@@ -445,11 +472,13 @@ export function storedFromCapture(
   });
   const place = placed ?? prior.place;
   const children = mergeChildFacts(prior.children, capture.children);
+  const parentName =
+    capture.parentName && !namesAChild(capture.parentName, children) ? capture.parentName : null;
   return {
     collectedChildren: children,
     postalCode: place?.postalCode ?? prior.postalCode,
     place,
-    parentName: capture.parentName ?? prior.parentName,
+    parentName: parentName ?? prior.parentName,
     parentRole: preferParentRole(prior.parentRole ?? null, capture.parentRole),
     connectCalendar: capture.connectCalendar ?? prior.connectCalendar,
     connectGmail: capture.connectGmail ?? prior.connectGmail,

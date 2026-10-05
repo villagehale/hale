@@ -2681,11 +2681,12 @@ async function friendColdTurn(
       );
     }
   }
-  if (spoken.capture.parentName) {
+  // stored.parentName has already dropped a kid's name read as the parent's.
+  if (stored.parentName && stored.parentName !== given?.parentName) {
     await storeModelParentName(database, {
       familyId,
       parentUserId: userId,
-      name: spoken.capture.parentName,
+      name: stored.parentName,
     });
   }
   await keepParentRole(database, { familyId, userId, guess: stored.parentRole });
@@ -2753,12 +2754,16 @@ async function friendColdTurn(
   if (trailer && (next === 'coparent' || spoken.capture.coparentGroup === true)) {
     voiced = `${voiced}\n${trailer}`;
   }
-  const pending =
-    next === 'gmail' && !progress.emailOffered
+  // A card rides this reply only when the reply is about that connector: a
+  // yes whose card has not gone out yet, or the ask itself. A reply written
+  // for another step (the name, the schedule) carries no link.
+  const askCard =
+    spoken.step === 'email' && next === 'gmail' && !progress.emailOffered
       ? 'gmail'
-      : next === 'calendar' && !progress.calendarOffered
+      : spoken.step === 'calendar' && next === 'calendar' && !progress.calendarOffered
         ? 'gcal'
-        : pendingConnector(nextGiven, progress);
+        : null;
+  const pending = pendingConnector(nextGiven, progress) ?? askCard;
   if (pending) {
     const provider = pending;
     const ask = provider === 'gmail' ? 'email' : 'calendar';
@@ -3765,8 +3770,9 @@ async function provision(
       outboundKey = PARENT_NAME_ASK_TEMPLATE_KEY;
     }
     if (!discoveryOn) outboundKey = PARENT_NAME_ASK_TEMPLATE_KEY;
-    if ((step === 'calendar' || step === 'email') && outboundBody) {
-      const provider = step === 'calendar' ? 'gcal' : 'gmail';
+    const cardStep = spoken.step;
+    if ((cardStep === 'calendar' || cardStep === 'email') && outboundBody) {
+      const provider = cardStep === 'calendar' ? 'gcal' : 'gmail';
       await sendYearConnectorCards(
         database,
         {
@@ -3795,8 +3801,8 @@ async function provision(
         signupAsked: false,
         calendarAsked: calendarAnswered(given),
         emailAsked: gmailAnswered(given),
-        ...(step === 'calendar' ? { calendarOffered: true } : {}),
-        ...(step === 'email' ? { emailOffered: true } : {}),
+        ...(connectorSent && cardStep === 'calendar' ? { calendarOffered: true } : {}),
+        ...(connectorSent && cardStep === 'email' ? { emailOffered: true } : {}),
         schoolMentioned: false,
       };
     }

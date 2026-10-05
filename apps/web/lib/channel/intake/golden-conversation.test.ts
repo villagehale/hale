@@ -206,6 +206,18 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
       groupLeads: (input.findGroups ?? []).map(() => 'Worth a look.'),
     };
   }
+  // A yes to the connector just asked is answered as a yes. The next ask
+  // waits for the connect receipt or the next text.
+  if (
+    (input.step === 'email' && capture.connectGmail === true && !input.checklist?.gmail) ||
+    (input.step === 'calendar' && capture.connectCalendar === true && !input.checklist?.calendar)
+  ) {
+    return {
+      reply:
+        "Great, the link is right there. Tap it when you're ready and I'll text you what I see.",
+      capture,
+    };
+  }
 
   let ask: string;
   if (!postalKnown) ask = "Hey, it's Hale. What's your postal code?";
@@ -444,17 +456,32 @@ describe('golden onboarding conversation', () => {
     expect(gmail).toContain('to=gmail');
     assertTypingUntilSend(parent.marks);
 
-    // Step 7: the calendar, only after Gmail was answered.
-    const calendar = await talk.say('yes');
+    // A yes to Gmail gets the receipt for the yes: no question, no second
+    // link, nothing about the calendar. The calendar card rides the Gmail
+    // receipt, or the next text when the parent never taps.
+    const yes = await talk.say('yes');
+    const yesBody = yes.bodies.join('\n');
+    expect(yesBody).toContain('Tap it when');
+    expect(yesBody).not.toMatch(/calendar|https:\/\//);
+    expect(yesBody).not.toContain('?');
+    assertTypingUntilSend(yes.marks);
+
+    // Step 7: the calendar, its own turn, only after Gmail was answered.
+    const calendar = await talk.say('ok');
     const calendarBody = calendar.bodies.join('\n');
     expect(calendarBody.replace(/\nhttps:\/\/\S+/g, '')).toMatch(
       /Dana, want me to check your calendar\?$/,
     );
+    expect(calendarBody).not.toMatch(/gmail|email/i);
     expect(calendarBody).toContain('to=gcal');
     assertTypingUntilSend(calendar.marks);
 
-    // Step 9: one found activity onto the calendar as a reminder.
-    const schedule = await talk.say('yes');
+    // Step 9: one found activity onto the calendar as a reminder. A yes to
+    // the calendar is its receipt first; the next text brings the schedule.
+    const calendarYes = await talk.say('yes');
+    expect(calendarYes.bodies.join('\n')).toContain('Tap it when');
+    expect(calendarYes.bodies.join('\n')).not.toContain('?');
+    const schedule = await talk.say('ok');
     expect(schedule.bodies.join('\n')).toMatch(/weekly reminder\?$/);
     expect(schedule.bodies.join('\n')).not.toMatch(/https:\/\//);
     assertTypingUntilSend(schedule.marks);

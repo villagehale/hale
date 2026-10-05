@@ -184,6 +184,18 @@ function scriptedTurn(input: FriendVoiceInput): {
   if (input.step === 'nudge_find') {
     return { reply: 'Still here if one of those looks good. What should I call you?', capture };
   }
+  // A yes to the connector just asked: the receipt for the yes, nothing more.
+  // The next ask rides the connect receipt (connected-notice.ts) or the next text.
+  if (
+    (input.step === 'email' && capture.connectGmail === true && !input.checklist?.gmail) ||
+    (input.step === 'calendar' && capture.connectCalendar === true && !input.checklist?.calendar)
+  ) {
+    return {
+      reply:
+        "Great, the link is right there. Tap it when you're ready and I'll text you what I see.",
+      capture,
+    };
+  }
 
   let ask: string;
   if (input.language === 'fr' && !postalKnown) {
@@ -929,8 +941,14 @@ describe('friend voice onboarding', () => {
       ),
     ).toBe(true);
 
-    // Step 7: the calendar, only after they answered Gmail.
+    // A yes to Gmail is its own receipt: no calendar link under a Gmail yes.
     await handleInboundSms(fake.db, inbound(transport, 'yes'), timed);
+    const gmailYes = transport.bodies().at(-1) ?? '';
+    expect(gmailYes).toContain('Tap it when');
+    expect(gmailYes).not.toContain('/connect?t=');
+
+    // Step 7: the calendar, only after they answered Gmail.
+    await handleInboundSms(fake.db, inbound(transport, 'ok'), timed);
     const calendar = transport.bodies().at(-1) ?? '';
     expect(calendar).toContain('Dana, want me to check your calendar?');
     expect(calendar).toContain('to=gcal');
@@ -938,8 +956,10 @@ describe('friend voice onboarding', () => {
 
     // Step 9: one activity, a sensible default, a reminder — not a registration.
     await handleInboundSms(fake.db, inbound(transport, 'yes'), timed);
+    expect(transport.bodies().at(-1)).toContain('Tap it when');
+    await handleInboundSms(fake.db, inbound(transport, 'ok'), timed);
     const schedule = transport.bodies().at(-1) ?? '';
-    expect(schedule).toBe('Want the first one on your calendar as a weekly reminder?');
+    expect(schedule).toContain('Want the first one on your calendar as a weekly reminder?');
     expect(schedule).not.toContain('/connect?t=');
 
     await handleInboundSms(fake.db, inbound(transport, 'yes'), timed);
@@ -1187,10 +1207,22 @@ describe('friend voice onboarding', () => {
     expect(stillGmail).not.toContain('/connect?t=');
     expect(stillGmail.trim().endsWith('?')).toBe(true);
 
+    // A yes to Gmail is answered as a yes: no second link, no calendar yet. The
+    // calendar card rides the Gmail receipt (connected-notice.ts).
     await handleInboundSms(fake.db, inbound(transport, 'yes'), deps);
+    const yes = transport.bodies().at(-1) ?? '';
+    expect(yes).toContain('Tap it when');
+    expect(yes).not.toMatch(/calendar/i);
+    expect(yes).not.toContain('/connect?t=');
+    expect(yes).not.toContain('?');
+
+    // The next text, with Gmail answered, is the calendar's own turn with its link.
+    await handleInboundSms(fake.db, inbound(transport, 'ok'), deps);
     const calendar = transport.bodies().at(-1) ?? '';
     expect(calendar).toMatch(/calendar/i);
+    expect(calendar).not.toMatch(/gmail|email/i);
     expect(calendar).toContain('/connect?t=');
+    expect(calendar).toContain('to=gcal');
   });
   it('answers a first-text question and sends the safety line before any ask', async () => {
     const { fake, transport, deps } = harness({ voice: true });
