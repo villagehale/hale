@@ -224,6 +224,46 @@ describe('assembleSpokenLine', () => {
     );
   });
 
+  it('closes the sentence before the question, and puts no space before ?', () => {
+    expect(
+      assembleSpokenLine(1, {
+        before: "Sam, Maya's Saturday looks open",
+        question: "Want me to find something nearby that's actually running that day?",
+      }),
+    ).toBe(
+      "Sam, Maya's Saturday looks open. Want me to find something nearby that's actually running that day?",
+    );
+    expect(
+      assembleSpokenLine(1, {
+        before: "Le samedi de Maya a l'air libre en ce moment",
+        question: 'Vous voulez que je cherche quelque chose ?',
+      }),
+    ).toBe(
+      "Le samedi de Maya a l'air libre en ce moment. Vous voulez que je cherche quelque chose?",
+    );
+    expect(
+      assembleSpokenLine(1, {
+        before: 'Ton coparent a quitté Hale.',
+        question: 'Tu veux que je reste ?',
+      }),
+    ).toBe('Ton coparent a quitté Hale. Tu veux que je reste?');
+  });
+
+  it('keeps a question the model wrote in both fields once', () => {
+    expect(
+      assembleSpokenLine(1, {
+        before: 'Sam, how did gymnastics go',
+        question: 'How did gymnastics go?',
+      }),
+    ).toBe('Sam. How did gymnastics go?');
+    expect(
+      assembleSpokenLine(1, {
+        before: 'The weekend options I just sent.',
+        question: 'Would weekday care help too? Would weekday care help too?',
+      }),
+    ).toBe('The weekend options I just sent. Would weekday care help too?');
+  });
+
   it('keeps the questions-0 tool schema stable for the statement evals', () => {
     expect(JSON.stringify(spokenLineToolSchema(0))).toBe(
       JSON.stringify({

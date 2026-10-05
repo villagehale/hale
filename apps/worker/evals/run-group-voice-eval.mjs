@@ -90,7 +90,7 @@ const JUDGE_SYSTEM = [
   'both otherwise, with exactly the asked number of questions and the question last.',
   'In French a 5 uses vous (or tu only when address is tu) and real accents.',
   'A LOW score is any of: a fact not in the request (a name, activity, time, day, place,',
-  'price, count); guessing who is reading, travelling, busy, or said yes; claiming Hale',
+  'price, count); guessing who is reading, travelling, or said yes; claiming Hale',
   'booked, registered, reserved, or signed anyone up; a second question; telling anyone to',
   'reply with a keyword, a number, YES or NO; mentioning STOP or unsubscribing; a URL;',
   'quoting anything from a mailbox; exclamation marks, emoji, hype, "we" for Hale; a',
@@ -104,6 +104,12 @@ const JUDGE_SYSTEM = [
   '"the kids\' year" / "l\'année des enfants" is the name of this thread when the moment is',
   'about it, not invented jargon. "I am still here" / "je suis toujours là" is the departure',
   'line when the register matches address (toi when tu, vous when vous), not padding.',
+  'kind conflict means both parents are busy at that time. Saying so is required. The ban',
+  'is guessing which parent, or why they are busy.',
+  'When the facts name the parent who added a kid event, saying that parent added it is the',
+  'heads-up. The ban is Hale claiming Hale booked or added it.',
+  'The gmail receipt says you will pull out the kids\' dates and the inbox stays private.',
+  'That statement is the receipt, not an extra claim.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 

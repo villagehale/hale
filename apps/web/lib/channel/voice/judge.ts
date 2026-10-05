@@ -170,21 +170,61 @@ export function spokenLineToolSchema(questions: 0 | 1): {
 /** Tool description paired with {@link spokenLineToolSchema}. Statement copy is the historical one. */
 export function spokenLineToolDescription(questions: 0 | 1): string {
   return questions === 1
-    ? 'Return before and question. question is one sentence and its last character is ?.'
+    ? 'Return before and question. question is one sentence and its last character is ?. before does not repeat that question. No space before ?.'
     : 'Return the one text message to send.';
 }
 
-/** Join the tool fields into the one bubble the parent would read. No words are added here. */
+/** . ! ? … : ; and a closing quote after them already end the sentence. */
+const SENTENCE_END = /[.!?…:;]["'»”’)\]]*$/u;
+
+/** French in this product has no space before ?. Also strip the no-break spaces models copy from typography. */
+function tightQuestionMark(question: string): string {
+  return question.replace(/[ \u00A0\u202F\u2009]+(?=\?)/gu, '');
+}
+
+/** The split schema invites the model to write the question twice. Keep one. */
+function oneQuestion(question: string): string {
+  const tight = tightQuestionMark(question.trim());
+  const parts = tight.split(/(?<=\?)\s+/u).filter((part) => part.length > 0);
+  if (parts.length >= 2 && parts.every((part) => part.toLowerCase() === parts[0].toLowerCase())) {
+    return parts[0];
+  }
+  return tight;
+}
+
+function withoutRepeatedQuestion(before: string, question: string): string {
+  const stem = question.replace(/[?？]+\s*$/u, '').trim();
+  if (stem.length < 8) return before;
+  const at = before.toLowerCase().lastIndexOf(stem.toLowerCase());
+  if (at < 0) return before;
+  const tail = before.slice(at + stem.length).trim();
+  if (tail !== '' && !/^[?.!…]+$/u.test(tail)) return before;
+  return before
+    .slice(0, at)
+    .replace(/[\s,;:.!?…-]+$/u, '')
+    .trim();
+}
+
+function closeSentence(before: string): string {
+  if (SENTENCE_END.test(before)) return before;
+  return `${before.replace(/[,，]+$/u, '').trim()}.`;
+}
+
+/**
+ * Join the tool fields into the one bubble the parent would read.
+ * A missing period between the two fields is added. No words are added.
+ * A question the model wrote in both fields is kept once.
+ */
 export function assembleSpokenLine(
   questions: 0 | 1,
   value: { line?: string; before?: string; question?: string },
 ): string {
   if (questions === 0) return (value.line ?? '').trim();
-  const before = (value.before ?? '').trim();
-  const question = (value.question ?? '').trim();
+  const question = oneQuestion(value.question ?? '');
+  const before = withoutRepeatedQuestion((value.before ?? '').trim(), question);
   if (before.length === 0) return question;
   if (question.length === 0) return before;
-  return `${before} ${question}`;
+  return `${closeSentence(before)} ${question}`;
 }
 
 /** What to tell the model on the one retry. Not a parent-facing sentence. */
