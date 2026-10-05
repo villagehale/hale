@@ -586,6 +586,9 @@ describe('runNudgeCron — the outbound gate', () => {
     expect(result.held.not_enrolled).toBe(1);
     expect(h.transport.sent).toHaveLength(0);
     expect(h.writes).toHaveLength(0);
+    // Compose is downstream of the gate: there IS something worth saying, and it is
+    // still never written, let alone sent.
+    expect(h.voice.calls).toHaveLength(0);
   });
 
   it('sends nothing to a family that never agreed to be watched', async () => {
@@ -677,6 +680,8 @@ describe('runNudgeCron — silence', () => {
     const audit = h.writes.find((w) => w.table === schema.auditLog);
     expect(audit?.payload.actionTaken).toBe('proactive_nudge_skipped');
     expect(audit?.payload.after).toMatchObject({ reason: 'nothing_worth_saying' });
+    // Compose is downstream of a non-null decision: no model is asked to write anything.
+    expect(h.voice.calls).toHaveLength(0);
   });
 
   it('suggests no weekend to a household whose only children are 13+ (rule #1)', async () => {
