@@ -61,7 +61,7 @@
   },
   "connect-voice.md": {
     "file": "connect-voice.md",
-    "sha256": "dba0a225f95116026b54a234c9d9ab9345dc9599e1db8129c7fc41c76ed86681"
+    "sha256": "07506a9724d49fe0ddb75fda4faaaf77a9e7a466b8abc31c7ea054640d48c18f"
   },
   "curate-shortlist.md": {
     "file": "curate-shortlist.md",
@@ -73,7 +73,7 @@
   },
   "duty-voice.md": {
     "file": "duty-voice.md",
-    "sha256": "cfee2a04019100a74a0003e1c0d0d555f738ffeaea63e92a3ef2e3589deff33e"
+    "sha256": "f721cb644b6ed6dfddc6e70494fb8da7b529ea0b0532f5f5b181e78eb8562d7b"
   },
   "extract-child-event.md": {
     "file": "extract-child-event.md",

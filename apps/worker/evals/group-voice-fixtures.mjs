@@ -59,7 +59,7 @@ export const GROUP_VOICE_FIXTURES = [
     request: { kind: 'calendar_ask', name: 'Sam' },
     parentWords: 'ready',
     watchFor:
-      'For Sam. One question: whether they want their calendar in the kids year too. Says the link is just for them; may say "this link" because code appends the URL. Must not write a URL. Must not mention Gmail. Must not say Hale will change their events.',
+      'For Sam, by name. Statements first, then ONE question as the last sentence: whether they want their calendar in the kids year too. Says the link is just for them (may say "this link" because code appends the URL) and that if Google warns about an unverified app they tap "Advanced" and carry on. Must not write a URL. Must not mention Gmail. Must not say Hale will change their events. Nothing after the question.',
   },
   {
     id: 'calendar-receipt-fr',
@@ -75,7 +75,7 @@ export const GROUP_VOICE_FIXTURES = [
     request: { kind: 'gmail_ask', name: 'Sam' },
     parentWords: 'done',
     watchFor:
-      'For Sam. One question: whether they want Hale to catch school and camp emails too. Says the link is just for them and nothing from their inbox shows up in this thread. Must not mention the calendar. Must not write a URL.',
+      'For Sam, by name. Statements first, then ONE question as the last sentence: whether they want Hale to catch school and camp emails too. Says the link is just for them and nothing from their inbox shows up in this thread, and that if Google warns about an unverified app they tap "Advanced" and carry on. Must not mention the calendar. Must not write a URL. Nothing after the question.',
   },
   {
     id: 'gmail-receipt-en',
