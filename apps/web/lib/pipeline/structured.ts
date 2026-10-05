@@ -59,6 +59,21 @@ export function llmTransport(): 'create' | 'stream' {
   return process.env.HALE_LLM_NO_STREAM === '1' ? 'create' : 'stream';
 }
 
+/**
+ * The stable system prompt behind one ephemeral cache breakpoint.
+ *
+ * Wire order is tools → system → messages, so a breakpoint on this block caches
+ * the tool definitions and the instructions together — the same shape the worker's
+ * `cachedSystem` uses. Callers pass `skill.instructions` here and the per-turn
+ * payload (names, timestamps, family state) as `userMessage`, which renders after
+ * the breakpoint and stays outside the cached prefix. A prefix shorter than the
+ * model's minimum cacheable length is billed as ordinary input and returns no
+ * cache tokens; the marker itself does not change the prompt text.
+ */
+export function cachedSystem(instructions: string): Anthropic.TextBlockParam[] {
+  return [{ type: 'text', text: instructions, cache_control: { type: 'ephemeral' } }];
+}
+
 export interface ForceToolJsonResult<TValue> {
   value: TValue;
   usage: Anthropic.Usage;
@@ -74,7 +89,7 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
     // Narrowing to the one field it does know keeps the rest type-checked.
     ...(laneRequestFields(args.lane) as Pick<Anthropic.MessageCreateParams, 'model'>),
     max_tokens: args.maxTokens,
-    system: args.system,
+    system: cachedSystem(args.system),
     tools: [
       {
         name: args.toolName,

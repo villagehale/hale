@@ -122,6 +122,10 @@ export async function recordEvent(
     promptTokens: input.usage.promptTokens,
     completionTokens: input.usage.completionTokens,
     costUsd,
+    // A deterministic pre-filter never called a model, so it is not a cache
+    // measurement. A real call records the hit (or the known miss) the spend
+    // view divides by.
+    promptCacheHit: input.model === 'deterministic' ? undefined : input.usage.cacheReadTokens > 0,
     status: 'completed',
     langfuseTraceId: input.langfuseTraceId,
   });
@@ -165,6 +169,7 @@ export async function recordDraft(
     promptTokens: input.usage.promptTokens,
     completionTokens: input.usage.completionTokens,
     costUsd: agentRunCostUsd(input.model, input.usage),
+    promptCacheHit: input.usage.cacheReadTokens > 0,
     status: 'completed',
     langfuseTraceId: input.langfuseTraceId,
   });

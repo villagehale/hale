@@ -1,7 +1,8 @@
+import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, SONNET55_MODEL, pickLane } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { forceToolJson } from './structured';
+import { cachedSystem, forceToolJson } from './structured';
 
 /**
  * forceToolJson mechanics — specifically that a max_tokens-truncated forced tool
@@ -102,5 +103,125 @@ describe('forceToolJson — truncation is not a schema failure', () => {
         tool_choice: { type: 'auto' },
       }),
     );
+  });
+});
+
+/**
+ * Prompt caching (VIL-142). These tests mock the transport to assert the request
+ * SHAPE — the stable system prefix carries an ephemeral breakpoint and the
+ * per-turn payload stays outside it — not the model's words (those are the
+ * cached-LLM eval, hard rule #8).
+ */
+
+const CACHE_TOOL = 'do_thing';
+
+function cacheToolUseMessage(): Anthropic.Message {
+  return {
+    id: 'msg_test',
+    type: 'message',
+    role: 'assistant',
+    model: 'claude-test',
+    stop_reason: 'tool_use',
+    stop_sequence: null,
+    usage: {
+      input_tokens: 10,
+      output_tokens: 5,
+      cache_creation_input_tokens: null,
+      cache_read_input_tokens: null,
+      server_tool_use: null,
+    },
+    content: [{ type: 'tool_use', id: 'tu_0', name: CACHE_TOOL, input: { ok: true } }],
+  };
+}
+
+const cacheArgs = {
+  lane: pickLane('classify'),
+  system: 'STABLE AGENT INSTRUCTIONS',
+  userMessage: JSON.stringify({
+    childName: 'VARIABLE PER-RUN PAYLOAD',
+    now: '2026-10-05T12:00:00Z',
+  }),
+  toolName: CACHE_TOOL,
+  toolDescription: 'desc',
+  inputJsonSchema: {
+    type: 'object',
+    properties: { ok: { type: 'boolean' } },
+    required: ['ok'],
+  } as Anthropic.Tool.InputSchema,
+  schema: z.object({ ok: z.boolean() }),
+  maxTokens: 64,
+};
+
+describe('cachedSystem', () => {
+  it('wraps instructions in one ephemeral-cached text block', () => {
+    expect(cachedSystem('SYSTEM INSTRUCTIONS')).toEqual([
+      { type: 'text', text: 'SYSTEM INSTRUCTIONS', cache_control: { type: 'ephemeral' } },
+    ]);
+  });
+});
+
+describe('forceToolJson — prompt caching', () => {
+  it('marks the stable system prefix cacheable', async () => {
+    const create = vi.fn(async (_params: Anthropic.MessageCreateParamsNonStreaming) =>
+      cacheToolUseMessage(),
+    );
+    await forceToolJson({
+      client: { messages: { create } } as unknown as AgentClient,
+      ...cacheArgs,
+    });
+
+    const req = create.mock.calls[0]?.[0];
+    if (!req) throw new Error('forceToolJson did not call the model');
+    expect(req.system).toEqual([
+      {
+        type: 'text',
+        text: 'STABLE AGENT INSTRUCTIONS',
+        cache_control: { type: 'ephemeral' },
+      },
+    ]);
+  });
+
+  it('keeps per-turn names and timestamps OUT of the cached prefix', async () => {
+    const create = vi.fn(async (_params: Anthropic.MessageCreateParamsNonStreaming) =>
+      cacheToolUseMessage(),
+    );
+    await forceToolJson({
+      client: { messages: { create } } as unknown as AgentClient,
+      ...cacheArgs,
+    });
+
+    const req = create.mock.calls[0]?.[0];
+    if (!req) throw new Error('forceToolJson did not call the model');
+    const cached = JSON.stringify(req.system);
+    expect(cached).not.toContain('VARIABLE PER-RUN PAYLOAD');
+    expect(cached).not.toContain('2026-10-05T12:00:00Z');
+    // Tools sit before system on the wire, so the system breakpoint covers them.
+    // They are the stable schema, not this turn's family state.
+    expect(JSON.stringify(req.tools)).not.toContain('VARIABLE PER-RUN PAYLOAD');
+    expect(req.tools?.[0]).not.toHaveProperty('cache_control');
+    expect(req.messages).toEqual([{ role: 'user', content: cacheArgs.userMessage }]);
+    expect(JSON.stringify(req.messages)).not.toContain('cache_control');
+  });
+
+  it('marks the same prefix on the streamed transport', async () => {
+    const stream = vi.fn((_params: Anthropic.MessageCreateParams) => ({
+      finalMessage: async () => cacheToolUseMessage(),
+    }));
+    await forceToolJson({
+      client: { messages: { stream } } as unknown as AgentClient,
+      ...cacheArgs,
+      transport: 'stream',
+    });
+
+    const req = stream.mock.calls[0]?.[0];
+    if (!req) throw new Error('forceToolJson did not call the model');
+    expect(req.system).toEqual([
+      {
+        type: 'text',
+        text: 'STABLE AGENT INSTRUCTIONS',
+        cache_control: { type: 'ephemeral' },
+      },
+    ]);
+    expect(JSON.stringify(req.system)).not.toContain('VARIABLE PER-RUN PAYLOAD');
   });
 });

@@ -41,8 +41,28 @@ interface Recording {
 
 type Recordings = Record<string, Recording>;
 
-function keyFor(model: string, system: string, userMessage: string): string {
-  return createHash('sha256').update(`${model}\n${system}\n${userMessage}`).digest('hex');
+/**
+ * The prompt text the model is asked, whether `system` arrived as a string or as
+ * cache-marked text blocks. The journey cache is content-addressed on that text:
+ * `cache_control` changes the bill, not the question, so a recording made before
+ * the breakpoint still answers the same request.
+ */
+function systemKey(system: Anthropic.MessageCreateParams['system']): string {
+  if (typeof system === 'string') return system;
+  if (!system) return '';
+  return system
+    .map((block) => (block.type === 'text' ? block.text : JSON.stringify(block)))
+    .join('');
+}
+
+function keyFor(
+  model: string,
+  system: Anthropic.MessageCreateParams['system'],
+  userMessage: string,
+): string {
+  return createHash('sha256')
+    .update(`${model}\n${systemKey(system)}\n${userMessage}`)
+    .digest('hex');
 }
 
 function read(path: string): Recordings {
@@ -81,7 +101,7 @@ export function recordedModel(path: string, live: () => AgentClient): RecordedMo
   async function create(params: Anthropic.MessageCreateParams) {
     const userMessage = firstText(params);
     requests.push(userMessage);
-    const key = keyFor(params.model, String(params.system ?? ''), userMessage);
+    const key = keyFor(params.model, params.system, userMessage);
 
     const hit = recordings[key];
     if (hit) return hit.response as unknown as Anthropic.Message;

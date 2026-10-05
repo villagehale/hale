@@ -24,9 +24,21 @@ const GSM7_CONCAT_PART = 153;
  * NOTHING about their family.
  */
 
+interface SystemBlock {
+  type: string;
+  text: string;
+}
+
 interface Captured {
-  system?: string;
+  system?: string | SystemBlock[];
   messages?: Array<{ role: string; content: string }>;
+}
+
+/** The instructions the model is given, whether they arrived as a string or as
+ * cache-marked text blocks. */
+function systemText(system: Captured['system']): string {
+  if (typeof system === 'string') return system;
+  return (system ?? []).map((block) => block.text).join('');
 }
 
 /** A client whose one tool call returns `input`, recording what it was asked. */
@@ -98,9 +110,10 @@ describe('createGeneralAnswer', () => {
     expect(seen.messages).toEqual([
       { role: 'user', content: '{"text":"whats the capital of peru"}' },
     ]);
-    expect(seen.system).toContain('One good answer, then stop');
-    // The skill body is the whole system prompt: no context block spliced after it.
-    expect(seen.system?.endsWith('Say the useful thing first and stop.')).toBe(true);
+    const instructions = systemText(seen.system);
+    expect(instructions).toContain('One good answer, then stop');
+    // The skill body is the whole cached prefix: no context block spliced after it.
+    expect(instructions.endsWith('Say the useful thing first and stop.')).toBe(true);
   });
 
   it('names a missing client rather than throwing', async () => {
