@@ -789,7 +789,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'done',
   },
   parent_name_asked: { sentence: 'Hale asked what to call you', family: 'note' },
-  parent_role_recorded: { sentence: 'Hale noted how you refer to yourself as a parent', family: 'note' },
+  parent_role_recorded: {
+    sentence: 'Hale noted how you refer to yourself as a parent',
+    family: 'note',
+  },
   email_unsubscribe_received: { sentence: 'you unsubscribed from an email', family: 'done' },
   'channel_sms.calendar_drafted': {
     sentence: 'your text became a calendar change, waiting on your yes',
