@@ -145,6 +145,13 @@ export const PROACTIVE_VOICE_FIXTURES = [
     watchFor:
       'Lands in the household group, both parents reading. Says the options were weekend ones and offers weekday ones too. One question. Names nobody.',
   },
+  // ── travel_brief ─────────────────────────────────────────────────────────────
+  // The WHOLE travel text is the model's now (VIL-413 / VIL-417): until this change the
+  // opening was spoken and the two picks plus the closing "their own pages" sentence were
+  // fixed templates in lib/travel/copy.ts. The picks arrive as facts, each exactly as the
+  // venue published it; the brief must carry every one of their words and say in its own
+  // words where they came from. The eval also runs the travel lint
+  // (lib/travel/brief-lint.ts) that the sweep runs before sending.
   {
     id: 'travel-brief-named-en',
     language: 'en',
@@ -154,16 +161,47 @@ export const PROACTIVE_VOICE_FIXTURES = [
       city: 'New York',
       days: 'the 12th to the 15th',
       kids: ['Mia', 'Leo'],
+      picks: [
+        {
+          name: "Brooklyn Children's Museum",
+          when: 'Tue-Sun 10am-5pm',
+          price: '$15 per person',
+        },
+        { name: 'Pier 25 Mini Golf', when: 'daily from 11am', price: '$8 a round' },
+      ],
     },
     watchFor:
-      'The OPENING of a travel text; code appends one or two real finds right after it. Carries "New York", "the 12th to the 15th", Mia and Leo as given, says a couple of things are on there for them, and leads into a list (ends with a colon). No question. Must not name a place, an activity, a price or a time of its own. Under 110 characters.',
+      'A whole travel text, no list to follow. Carries "New York", "the 12th to the 15th", Mia and Leo as given. Names both picks and carries each one\'s when and price EXACTLY as written ("Tue-Sun 10am-5pm", "$15 per person", "daily from 11am", "$8 a round"), no digit changed, none added. Then says in its own words that those details are off the venues\' own pages and nobody has been to check. No question. No recommendation, distance, or place of its own. Plain ASCII, under 500 characters.',
   },
   {
     id: 'travel-brief-group-nobody-en',
     language: 'en',
     address: 'vous',
-    request: { kind: 'travel_brief', city: 'Montreal', days: 'the 3rd', kids: [] },
+    request: {
+      kind: 'travel_brief',
+      city: 'Montreal',
+      days: 'the 3rd',
+      kids: [],
+      picks: [{ name: 'Biodome', when: 'Tue-Sun 9am-5pm', price: '$24 adults, $12 kids' }],
+    },
     watchFor:
-      'Lands in the household group; both parents read it and Hale does not know which of them is going, so it says the trip rather than "you\'re in". Carries "Montreal" and "the 3rd" as given, says "the kids" and names nobody, leads into the list with a colon. No question. No place, activity, price or time of its own.',
+      'Lands in the household group; both parents read it and Hale does not know which of them is going, so it says the trip rather than "you\'re in". Carries "Montreal" and "the 3rd" as given, says "the kids" and names nobody. One pick: "Biodome" with "Tue-Sun 9am-5pm" and "$24 adults, $12 kids" exactly as written. Says in its own words that the details are off the venue\'s own page and nobody has been. No question. No second find invented.',
+  },
+  {
+    id: 'travel-brief-null-price-en',
+    language: 'en',
+    address: 'tu',
+    request: {
+      kind: 'travel_brief',
+      city: 'Ottawa',
+      days: 'the 20th to the 21st',
+      kids: ['Noah'],
+      picks: [
+        { name: 'Canada Science and Technology Museum', when: null, price: '$18 adults' },
+        { name: 'Rideau Canal Skateway', when: 'open dawn to dusk', price: null },
+      ],
+    },
+    watchFor:
+      'Carries "Ottawa", "the 20th to the 21st" and Noah. Names both picks. The museum has no when and the Skateway has no price: those are simply not said, never filled in ("free", "all day", a guessed hour or fee are all wrong). Carries "$18 adults" and "open dawn to dusk" exactly. Says in its own words the details are off the venues\' own pages and nobody has checked. No question.',
   },
 ];

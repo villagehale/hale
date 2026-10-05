@@ -226,6 +226,18 @@ jobs:
       - name: Check-in reply intent eval (cached-only)
         run: pnpm --filter @hale/worker eval:checkin-intent
 
+      # The connect-by-text door, the request reader that replaced the connector /
+      # both-free regexes, and the co-parent duty bubbles: all model-written or
+      # model-read now (VIL-413 / VIL-417).
+      - name: Connect voice composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:connect-voice
+
+      - name: Request intent eval (cached-only)
+        run: pnpm --filter @hale/worker eval:request-intent
+
+      - name: Co-parent duty voice composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:duty-voice
+
       - name: Calendar invite + email-ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:calendar-voice
 

@@ -27,6 +27,11 @@
 //     exactly one question with the question last, a missing kid / day / label, an
 //     invented time / weekday / price / URL / phone, compliance or keyword-reply wording,
 //     vous in a 1:1 French ask or an ASCII accent gap, or a booking claim.
+//   · travel lint — the travel_brief fixtures also run the sweep's own lint
+//     (apps/web/lib/travel/brief-lint.ts): a pick not named, a question, a digit that
+//     traces to no fact, no provenance sentence, a non-GSM-7 character, over four
+//     segments. The whole brief is the model's now (VIL-413 / VIL-417); the picks and the
+//     "their own pages" sentence used to be templates.
 //   · one-template corpus — the asks (questions: 1) opening the same way
 //     every time is the preset body this change exists to remove. A parent reads these
 //     for months.
@@ -53,6 +58,7 @@ const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'proactive-voice.md');
 const JUDGE_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'voice', 'judge.ts');
 const INPUT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'nudge', 'proactive-line.ts');
+const TRAVEL_LINT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'travel', 'brief-lint.ts');
 
 /** Same ceiling as MAX_TOKENS in apps/web/lib/channel/voice/spoken-line.ts. */
 const MAX_TOKENS = 400;
@@ -87,8 +93,9 @@ const JUDGE_SYSTEM = [
   'first person, one or two sentences, offering exactly what the moment calls for and',
   'nothing more. When questions is 1 there is exactly one question, it is the last',
   'sentence and it ends with a question mark; when questions is 0 there is no question',
-  'at all (the travel_brief kind is an opening that code appends real finds after, so it',
-  'leads into a list and asks nothing).',
+  'at all (the travel_brief kind is the whole travel text: it names each find it was handed',
+  "with that find's when and price exactly as written, says in its own words that those",
+  "details are off the venues' own pages, and asks nothing).",
   'In French a 5 uses tu when address is tu and vous when address is vous, with real accents.',
   'A LOW score is any of: a fact not in the request (a child name, activity, program, venue,',
   'time, date, weekday, place, price, weather); listing options Hale has not found yet;',
@@ -134,6 +141,7 @@ async function main() {
     assembleSpokenLine,
   } = await tsImport(JUDGE_SRC, import.meta.url);
   const { proactiveLineInput } = await tsImport(INPUT_SRC, import.meta.url);
+  const { travelBriefProseViolations } = await tsImport(TRAVEL_LINT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
   const judgeModel = await readJudgeModel();
@@ -173,6 +181,17 @@ async function main() {
     const failures = [];
     const judged = judgeSpokenLine(body, input);
     if (!judged.ok) failures.push(`refused:${judged.reason}`);
+    if (fixture.request.kind === 'travel_brief') {
+      // Exactly what the sweep does with the spoken body: the picks it actually names are
+      // the ones the parent was told about, and the lint runs on what is left over.
+      const rendered = fixture.request.picks.filter((pick) => body.includes(pick.name));
+      for (const violation of travelBriefProseViolations(body, {
+        dayPhrase: fixture.request.days,
+        rendered,
+      })) {
+        failures.push(`refused:travel:${violation}`);
+      }
+    }
 
     const verdict = await judge(fixture.id, {
       request: userMessage,
