@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The answer correctly identifies both key facts from the reference: (1) the pediatric office is Riverdale Pediatrics, and (2) evening appointments are preferred for booking. The phrasing is a natural paraphrase (\"evenings work best for booking appointments\") of the reference (\"prefer evening appointment slots\"). The answer adds no contradictory or invented information, and these facts are also confirmed in the knownFamilyHistory data."
+  }
+}

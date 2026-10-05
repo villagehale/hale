@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CfjuthAyztPLMm6vmbTTr",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "Ep4ICqQBCBIYAipAwo/3x5cxdZH/W/O1268Dl80gwPm9uEH+QdWL0/PORS3nod9TpoTUnWivO3evcY4b9gnlULhwvbJu4wMC2GcJdjIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagBi9WQ1gYSDOoQNb/gka9uV9gDWhoM+bMa5V/f7UjruAj6IjCwwkbHdpwdPMp5dwsy8Vgtpi9cq/NtIbO8/DQN0O/2yWYbHDIJuvYXyX7o753NaNYqpgbaFhyI5O5WDYW52DLdfNLVfcsPr6RjxFVJBi2RNXvtgOCpBxP2HzVTHYT2U9tMAXhLKfVlceBduz9HUbY325W0SOiCrUFTsRnEUgfyqDdXN+iGBpuPCCs4n/80ixX+dHoLtDQ1/Id+ZCYGZGgh0P2y+DcMEKzufDrvP/cUUUIlCorTR+srEVIFFFvqGPlMQh293VXPwY7Crl+9pmblSavLqqBEUWDQwDZWaB/3pd4f/t2J2QZusEQvv36lcIdt0M5pXd8ifW8xYAUffh/Bwi23P/zGeBsp/IaEIRckf+Wu83AponaMHMIBU/niQnMuHjfunt0Uh2n97dInjJRi3gouD7neKl6Oajc8WND4QuSBjkctrpZxFRyZ3KlFIdJ7rS3SNIRD/23bo0TzGNOL32Qd0wfb5N6H0sOMJhlQYM03sR9kX6hKc4Eo667Hy0gafNZyP0NzodIFE485FKSB4fBwqFpU9IpZrD8So6ZO499158R57QsMyYQ0W/5G9Sz/VGG/t9BzyLcOc3oOYSJ0HVajDYTEOawWOqBWqZPsbH1BwRCx0JRuvW7ripsNt7TieOkQL9qp3rcXohFUdgrjX7dSmrBGtBoTdc67D6uf8RyXwgrkPpz5Z1zCrhAUw8m9Oesl070AbGY2Gt+wJydhK6TQa7UVVXt1FTLdVIwEQxvPm170ANB/miE8l6c+xwLxtSlUOiAaOECk+9NXiSaCxCP4hUJpteNx8KMflmmCitti2vim/IVJ5zD2xtw0Xrb3vC9a0l0Opy4EtAr/TpilZBClTcQo2s7gpcGrD7j8TQYelAPnodFZ77KRLw9No4Cf1jKtRVgymERtDnQ/iKUY1cKAtXjh61aWZwzdkE/kpJLdCUU7GT5CqBmtABbuos4Ee54gSxNVyFVUna1CtaDGrTJGRTc1+yrMUR/UuwXhg2L8ODOQQENTzH1ylXwc8pOfbpH0BspV8PeMQnQTklB/BEwSjftkHxheArtNLTPpfBo79Uq8FJNHV6u83wIYX3rvzmUQszGIyacCRW7GG9D47I+AZvazvRQJXMaiGc4sYkA0aDHkiKjsVhgB"
+      },
+      {
+        "type": "text",
+        "text": "Mira started the Tumbleweeds toddler gym class on Saturdays — that's logged in her activity history from September 2024. I don't have a standing enrollment fact confirming she's still enrolled there now, just that one entry.\n\nIf she's still going, let me know and I'll save it as a confirmed routine so it stays accurate going forward."
+      }
+    ],
+    "usage": {
+      "input_tokens": 24470,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 3944,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 378,
+      "output_tokens_details": {
+        "thinking_tokens": 268
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 6271,
+  "firstInputTokens": 24470
+}

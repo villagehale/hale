@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CfjupYbC3EpEbMK1X4oYQ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EuoCCqQBCBIYAipARpqnAKBr1K2Jvq3w+D0SEzsjpYRqp4zLd9p8XYl8qXPiKCrHsOCRESoMpbcfjr5/4GYwGvmtBIz9Dnd2Krf1kDIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagBz9SQ1gYSDGuEl9FXI4OukReNmRoMVGwSo7W2vmSjaU7xIjBc+j7ced0lBVkt6nI0i/r3fHld3tkQM6XOfHTM1emGw9i4csKmFs3S5OgjiW5ilykqcz9Zj1bUctW4Zqg2PZUVKe9Je/qk8/2aEhnmfQkecX6frg9Yp3eudGNVRBm9xR2A4aaBrjamELv9uwn3wCIMfyfZGpMW+F2Mp5CkLLC/nj9lD0OtO27nP/TulFlUliS0Jt2/YuKmAjQkPMfjHRCBKO+eEUUYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Mira moved from purees to finger foods at 9 months, according to what you'd shared before. That's recorded as a settled routine transition, not a recent change."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1200,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 3944,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 88,
+      "output_tokens_details": {
+        "thinking_tokens": 36
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 1821,
+  "firstInputTokens": 1200
+}

@@ -323,11 +323,64 @@ function buildTools(agent, context) {
     inputSchema: zPassthrough(),
     handler: async () => ({ facts: context.memoryFacts, episodes: context.recentEpisodes }),
   });
+  // The ask-hale frontmatter lists these four beside search/save. runAgent throws
+  // if a listed tool is absent, so the harness carries them. This slice has no
+  // fact ids (the recall questions read the injected facts and search_memory),
+  // and a teenager is not in this synthetic family.
+  const facts = () => context.memoryFacts ?? [];
+  const listMemory = agent.defineTool({
+    name: 'list_memory',
+    description:
+      "Counts of THIS family's live memory by fact type, open and completed workstreams, and stored digests. No fact values. Pass includeHistory to also count closed facts.",
+    inputSchema: zPassthrough(),
+    handler: async (input) => {
+      const factsByType = {};
+      for (const fact of facts()) {
+        const type = fact.factType ?? 'unknown';
+        factsByType[type] = (factsByType[type] ?? 0) + 1;
+      }
+      const listed = {
+        factsByType,
+        openWorkstreams: 0,
+        completedWorkstreams: 0,
+        digests: { day: 0, week: 0 },
+      };
+      if (input.includeHistory === true) listed.closedFacts = 0;
+      return listed;
+    },
+  });
+  const getMemory = agent.defineTool({
+    name: 'get_memory',
+    description:
+      "Read one memory fact of THIS family by id. Closed and forgotten facts require includeHistory. A teenager's fact is refused.",
+    inputSchema: zPassthrough(),
+    handler: async () => ({ found: false, reason: 'not_found' }),
+  });
+  const memoryHistory = agent.defineTool({
+    name: 'memory_history',
+    description:
+      "The supersede chain for one fact of THIS family: earlier values and the row that replaced them. This is the explicit history read. A teenager's chain is refused.",
+    inputSchema: zPassthrough(),
+    handler: async () => ({ found: false, reason: 'not_found' }),
+  });
   const saveMemory = agent.defineTool({
     name: 'save_memory',
     description: 'Persist a durable fact the parent STATED about THIS family.',
     inputSchema: zPassthrough(),
     handler: async () => ({ saved: true, factId: 'fixture-fact' }),
+  });
+  const forgetMemory = agent.defineTool({
+    name: 'forget_memory',
+    description:
+      'Retire one live fact the parent asked Hale to forget. It leaves search and the memory brief; history can still show it. Health-checkpoint and registration-outcome receipts are refused.',
+    inputSchema: zPassthrough(),
+    handler: async () => ({
+      forgotten: 0,
+      refusedControlPlane: 0,
+      refusedWriter: 0,
+      alreadyClosed: 0,
+      notFound: 1,
+    }),
   });
   const getFrameworkGuidance = agent.defineTool({
     name: 'get_framework_guidance',
@@ -369,7 +422,11 @@ function buildTools(agent, context) {
   return [
     getChildProfile,
     searchMemory,
+    listMemory,
+    getMemory,
+    memoryHistory,
     saveMemory,
+    forgetMemory,
     getFrameworkGuidance,
     searchVillage,
     driveSearch,
