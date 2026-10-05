@@ -257,6 +257,33 @@ describe('friend-voice judge', () => {
     expect(judgeFriendReply('Ton Gmail est connecté.', gmail)).toEqual({ ok: true });
   });
 
+  it('refuses every way of claiming a registration Hale did not make, and keeps the reminder wording', () => {
+    const schedule = blank({
+      step: 'schedule',
+      parentWords: 'yes',
+      findLines: ['Swim Kids 3 (ages 6-8) - Saturdays 11:00'],
+      now: new Date('2026-10-05T14:00:00Z'),
+    });
+    for (const claim of [
+      "Done, she's signed up for Swim Kids. Anything else?",
+      'Mia is registered for swim on Saturdays. Anything else?',
+      'I signed Mia up for swim. Anything else?',
+      "She's signed-up for swim. Anything else?",
+      "You're booked for swim Saturday. Anything else?",
+    ]) {
+      expect(judgeFriendReply(claim, schedule)).toEqual({
+        ok: false,
+        reason: 'registration_claim',
+      });
+    }
+    expect(
+      judgeFriendReply(
+        "Swim is on your calendar as a reminder for Saturdays at 11:00; I'll flag it when registration opens. Anything else?",
+        schedule,
+      ),
+    ).toEqual({ ok: true });
+  });
+
   it('answers who-is-this in the model voice, but only when the company is named', () => {
     const asked = blank({
       step: 'kids_names',

@@ -789,8 +789,9 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'done',
   },
   parent_name_asked: { sentence: 'Hale asked what to call you', family: 'note' },
+  // True whether the parent said so or Hale read it off a name: a soft read, never a fact.
   parent_role_recorded: {
-    sentence: 'Hale noted how you refer to yourself as a parent',
+    sentence: 'Hale kept a soft read of which parent you are, never stated as fact',
     family: 'note',
   },
   email_unsubscribe_received: { sentence: 'you unsubscribed from an email', family: 'done' },

@@ -332,7 +332,7 @@ const COMPLIANCE =
 
 /** Adding to the calendar is a reminder. These words claim a registration Hale did not make. */
 const REGISTRATION_CLAIM =
-  /\b(booked|enrolled|signed (?:you|them|her|him) up|registered (?:you|them|her|him)|you're registered|inscrit[es]?\b|réservé)\b/i;
+  /\b(booked|enrolled|signed[- ]up|signed (?:you|them|her|him|\w+) up|registered|registration (?:is )?done|inscrit[es]?\b|réservé)\b/i;
 
 const ACTIVITY_WORD =
   /\b(swims?|swimming|soccer|gym|gymnastics|librar(?:y|ies)|zoo|museum|hockey|dance|ballet|music|storytime|story time|camps?|daycare|earlyon|farm|natation)\b/gi;

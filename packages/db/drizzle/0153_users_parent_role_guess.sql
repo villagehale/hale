@@ -9,6 +9,12 @@
 -- no guess, which is the truth. Re-runnable: ADD COLUMN IF NOT EXISTS, and the
 -- check constraints are inside a duplicate-object guard.
 --
+-- The checks are added NOT VALID and then validated in their own statements:
+-- NOT VALID takes only a brief lock and applies to new writes at once, and
+-- VALIDATE scans the table with a SHARE UPDATE EXCLUSIVE lock that does not
+-- block reads or writes. The columns are new and null everywhere, so the
+-- scan has nothing to reject.
+--
 -- Reversible:
 --   ALTER TABLE users DROP CONSTRAINT IF EXISTS users_parent_role_check;
 --   ALTER TABLE users DROP CONSTRAINT IF EXISTS users_parent_role_basis_check;
@@ -22,7 +28,8 @@ ALTER TABLE "public"."users" ADD COLUMN IF NOT EXISTS "parent_role_basis" text;-
 DO $$ BEGIN
   ALTER TABLE "public"."users"
     ADD CONSTRAINT "users_parent_role_check"
-    CHECK ("parent_role" IS NULL OR "parent_role" IN ('mother', 'father', 'unknown'));
+    CHECK ("parent_role" IS NULL OR "parent_role" IN ('mother', 'father', 'unknown'))
+    NOT VALID;
 EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;--> statement-breakpoint
@@ -30,7 +37,11 @@ END $$;--> statement-breakpoint
 DO $$ BEGIN
   ALTER TABLE "public"."users"
     ADD CONSTRAINT "users_parent_role_basis_check"
-    CHECK ("parent_role_basis" IS NULL OR "parent_role_basis" IN ('stated', 'guessed'));
+    CHECK ("parent_role_basis" IS NULL OR "parent_role_basis" IN ('stated', 'guessed'))
+    NOT VALID;
 EXCEPTION
   WHEN duplicate_object THEN null;
-END $$;
+END $$;--> statement-breakpoint
+
+ALTER TABLE "public"."users" VALIDATE CONSTRAINT "users_parent_role_check";--> statement-breakpoint
+ALTER TABLE "public"."users" VALIDATE CONSTRAINT "users_parent_role_basis_check";

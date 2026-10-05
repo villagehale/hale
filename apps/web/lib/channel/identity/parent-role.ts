@@ -63,7 +63,55 @@ export function likelyCoParentRole(guess: ParentRoleGuess | null | undefined): P
   return 'unknown';
 }
 
-export type ParentRoleWrite = 'stored' | 'unchanged' | 'kept_stated';
+/**
+ * `column_missing` is the deploy window before migration 0153 has run: the
+ * guess is dropped, logged, and named here rather than crashing the turn that
+ * carried it. Nothing is gated on the role, so losing it costs one soft read.
+ */
+export type ParentRoleWrite = 'stored' | 'unchanged' | 'kept_stated' | 'column_missing';
+
+/** Postgres 42703, undefined_column, as drizzle surfaces it from pg or pglite. */
+function isUndefinedColumn(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const seen = new Set<object>();
+  let cursor: unknown = err;
+  while (cursor && typeof cursor === 'object' && !seen.has(cursor)) {
+    seen.add(cursor);
+    const row = cursor as { code?: unknown; message?: unknown; cause?: unknown };
+    if (row.code === '42703') return true;
+    if (typeof row.message === 'string' && /column .* does not exist/i.test(row.message)) {
+      return true;
+    }
+    cursor = row.cause;
+  }
+  return false;
+}
+
+type ParentRoleRow = Pick<
+  typeof schema.users.$inferSelect,
+  'id' | 'parentRole' | 'parentRoleBasis'
+>;
+
+async function readParentRoleRow(
+  database: Database,
+  parentUserId: string,
+): Promise<ParentRoleRow | 'column_missing' | null> {
+  try {
+    const rows = await database
+      .select({
+        id: schema.users.id,
+        parentRole: schema.users.parentRole,
+        parentRoleBasis: schema.users.parentRoleBasis,
+      })
+      .from(schema.users)
+      .where(eq(schema.users.id, parentUserId));
+    return rows.find((row) => row.id === parentUserId) ?? null;
+  } catch (err) {
+    if (!isUndefinedColumn(err)) throw err;
+    console.warn({ parentUserId }, 'parent-role: users.parent_role is not migrated yet');
+    return 'column_missing';
+  }
+}
 
 /**
  * Store the role on the parent's row. A guess does not overwrite a stated
@@ -73,15 +121,8 @@ export async function storeParentRole(
   database: Database,
   input: { familyId: string; parentUserId: string; guess: ParentRoleGuess },
 ): Promise<ParentRoleWrite> {
-  const rows = await database
-    .select({
-      id: schema.users.id,
-      parentRole: schema.users.parentRole,
-      parentRoleBasis: schema.users.parentRoleBasis,
-    })
-    .from(schema.users)
-    .where(eq(schema.users.id, input.parentUserId));
-  const user = rows.find((row) => row.id === input.parentUserId);
+  const user = await readParentRoleRow(database, input.parentUserId);
+  if (user === 'column_missing') return 'column_missing';
   if (!user) return 'unchanged';
   const current: ParentRoleGuess | null =
     user.parentRole && user.parentRoleBasis
@@ -106,20 +147,12 @@ export async function storeParentRole(
   return 'stored';
 }
 
-/** The stored reading for a parent, or null. */
+/** The stored reading for a parent, or null; null too while the column is not migrated. */
 export async function loadParentRole(
   database: Database,
   parentUserId: string,
 ): Promise<ParentRoleGuess | null> {
-  const rows = await database
-    .select({
-      id: schema.users.id,
-      parentRole: schema.users.parentRole,
-      parentRoleBasis: schema.users.parentRoleBasis,
-    })
-    .from(schema.users)
-    .where(eq(schema.users.id, parentUserId));
-  const user = rows.find((row) => row.id === parentUserId);
-  if (!user?.parentRole || !user.parentRoleBasis) return null;
+  const user = await readParentRoleRow(database, parentUserId);
+  if (user === 'column_missing' || !user?.parentRole || !user.parentRoleBasis) return null;
   return { role: user.parentRole, basis: user.parentRoleBasis };
 }
