@@ -186,8 +186,13 @@ function tightQuestionMark(question: string): string {
 function oneQuestion(question: string): string {
   const tight = tightQuestionMark(question.trim());
   const parts = tight.split(/(?<=\?)\s+/u).filter((part) => part.length > 0);
-  if (parts.length >= 2 && parts.every((part) => part.toLowerCase() === parts[0].toLowerCase())) {
-    return parts[0];
+  const first = parts[0];
+  if (
+    first !== undefined &&
+    parts.length >= 2 &&
+    parts.every((part) => part.toLowerCase() === first.toLowerCase())
+  ) {
+    return first;
   }
   return tight;
 }
