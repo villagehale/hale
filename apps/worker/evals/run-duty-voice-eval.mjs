@@ -67,12 +67,7 @@ const INPUT_SRC = join(
   'line-input.ts',
 );
 
-/** Mirrors `lineJsonSchema` / MAX_TOKENS in apps/web/lib/channel/voice/spoken-line.ts. */
-const LINE_TOOL_SCHEMA = {
-  type: 'object',
-  properties: { line: { type: 'string' } },
-  required: ['line'],
-};
+/** Same ceiling as MAX_TOKENS in apps/web/lib/channel/voice/spoken-line.ts. */
 const MAX_TOKENS = 400;
 
 /** How many distinct openings the asks must show between them. Low on purpose: it catches
@@ -120,6 +115,15 @@ const JUDGE_SYSTEM = [
   'registered anything; the wrong number of questions, or a question written as a',
   'statement; exclamation marks, emoji, hype, "we" for Hale; a corporate, scheduler or bot',
   'register; padding; anything watchFor says must not happen.',
+  'night_before must say, as a statement, that if it changes they can just say so here',
+  '("If that changes, just say so here." / "Si ça change, vous pouvez le dire ici.").',
+  'That sentence is the moment. It is not the banned stock "Text me if that changes",',
+  '"I\'ll note it", "Noted", or "Je le note", and it is not padding.',
+  'silent_parent hands the event to the named parent: "it is yours to say" / "c\'est à toi"',
+  'is the handoff, not pressure and not "your turn". Pressure is "your turn", "à ton tour",',
+  "urgency, or mentioning the other parent is waiting. The parent's name has to be in the line.",
+  'reask must not use "encore" or "again". "personne n\'a dit" is the fact. That ban stays.',
+  'First person "I" / "je" is required. The ban is "we" / "on" / "nous", not first person.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -137,7 +141,13 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { judgeSpokenLine, spokenLineContext } = await tsImport(JUDGE_SRC, import.meta.url);
+  const {
+    judgeSpokenLine,
+    spokenLineContext,
+    spokenLineToolSchema,
+    spokenLineToolDescription,
+    assembleSpokenLine,
+  } = await tsImport(JUDGE_SRC, import.meta.url);
   const { dutyLineInput } = await tsImport(INPUT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
@@ -155,21 +165,24 @@ async function main() {
     const userMessage = JSON.stringify(spokenLineContext(input));
     const raw = broken
       ? BROKEN_LINE
-      : (
-          await cachedToolCall({
-            tag: `duty-voice:${fixture.id}`,
-            model,
-            system: skill.instructions,
-            userMessage,
-            toolName: 'line',
-            toolSchema: LINE_TOOL_SCHEMA,
-            toolDescription: 'Return the one text message to send.',
-            maxTokens: MAX_TOKENS,
-            cachedOnly,
-            getClient,
-            cost,
-          })
-        ).value.line;
+      : assembleSpokenLine(
+          input.questions,
+          (
+            await cachedToolCall({
+              tag: `duty-voice:${fixture.id}`,
+              model,
+              system: skill.instructions,
+              userMessage,
+              toolName: 'line',
+              toolSchema: spokenLineToolSchema(input.questions),
+              toolDescription: spokenLineToolDescription(input.questions),
+              maxTokens: MAX_TOKENS,
+              cachedOnly,
+              getClient,
+              cost,
+            })
+          ).value,
+        );
 
     const body = String(raw).trim();
     const failures = [];
