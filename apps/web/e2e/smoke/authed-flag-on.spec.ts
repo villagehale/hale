@@ -204,8 +204,10 @@ test('the dial rides the URL: ?w=365 deep-loads and survives a tab switch', asyn
   await expect(tabs).toHaveAttribute('data-ready', 'true');
   const engagement = tabs.getByRole('link', { name: 'Engagement' });
   await expect(engagement).toHaveAttribute('href', '/admin/engagement?w=365');
+  // App Router applies the click with history.pushState. waitForURL defaults to
+  // the document `load` event, which that navigation never fires, so the test
+  // budget dies on a URL that already moved. Poll the URL instead.
   await engagement.click();
-  await page.waitForURL(/\/admin\/engagement\?w=365$/);
   await expect(page).toHaveURL(/\/admin\/engagement\?w=365$/);
   await expect(page.getByRole('button', { name: '365d' })).toHaveAttribute(
     'aria-pressed',

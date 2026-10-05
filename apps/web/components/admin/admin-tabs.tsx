@@ -54,6 +54,10 @@ export function AdminTabs() {
           <Link
             key={tab.href}
             href={tabHref(tab.href, w) as Route}
+            // An auto-prefetch is stored without the query string. In production
+            // Next then aliases that entry onto the click and the `?w=` on the
+            // href is not the navigation that runs. The click still client-navigates.
+            prefetch={false}
             aria-current={active ? 'page' : undefined}
             className="adm-tab"
           >
