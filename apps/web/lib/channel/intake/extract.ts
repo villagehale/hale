@@ -3,6 +3,7 @@ import { SONNET55_MODEL, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { recordModelFallback } from '~/lib/pipeline/model-fallback';
+import { parseModelMode } from '~/lib/pipeline/model-mode';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -136,13 +137,6 @@ interface IntakeExtractorDeps {
   modelMode?: 'current' | 'candidate';
 }
 
-function modelMode(raw: string | undefined): 'current' | 'candidate' {
-  const mode = raw?.trim() || 'current';
-  if (mode === 'current' || mode === 'candidate') return mode;
-  console.error({ mode }, 'intake extraction: invalid model mode; using current');
-  return 'current';
-}
-
 export function createIntakeExtractor(
   client: AgentClient,
   deps: IntakeExtractorDeps = {},
@@ -166,7 +160,9 @@ export function createIntakeExtractor(
 
       let call: Awaited<ReturnType<typeof run>> | undefined;
       if (
-        (deps.modelMode ?? modelMode(process.env.HALE_INTAKE_EXTRACT_MODEL_MODE)) === 'candidate'
+        (deps.modelMode ??
+          parseModelMode(process.env.HALE_INTAKE_EXTRACT_MODEL_MODE, 'intake extraction')) ===
+        'candidate'
       ) {
         try {
           call = await run(CANDIDATE_LANE);

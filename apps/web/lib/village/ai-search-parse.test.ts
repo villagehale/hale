@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, DEEPSEEK_MODEL } from '@hale/agent';
+import { type AgentClient, DEEPSEEK_MODEL, SONNET5_MODEL } from '@hale/agent';
 import { schema } from '@hale/db';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseVillageSearchIntent } from './ai-search-parse';
 
 /**
@@ -48,6 +48,34 @@ function fakeClient(text: string | { throws: true }): AgentClient {
 }
 
 describe('parseVillageSearchIntent', () => {
+  beforeEach(() => vi.stubEnv('HALE_VILLAGE_SEARCH_PARSE_MODEL_MODE', ''));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([undefined, '', ' \t\n ', 'invalid', 'shadow', 'current'])(
+    'keeps Sonnet 5 for model mode %j',
+    async (raw) => {
+      vi.stubEnv('HALE_VILLAGE_SEARCH_PARSE_MODEL_MODE', raw);
+      const client = fakeClient(JSON.stringify({ keywords: ['swim'] }));
+      const candidateClient = fakeClient(JSON.stringify({ keywords: ['candidate'] }));
+      await parseVillageSearchIntent(
+        {
+          prompt: 'swim',
+          familyId: FAMILY_ID,
+          childrenAgesMonths: [],
+          hasTeen: false,
+          areaCoarse: null,
+        },
+        fakeDb({ agentRuns: [] }),
+        client,
+        { candidateClient },
+      );
+      expect(client.messages.create).toHaveBeenCalledWith(
+        expect.objectContaining({ model: SONNET5_MODEL }),
+      );
+      expect(candidateClient.messages.create).not.toHaveBeenCalled();
+    },
+  );
+
   it('turns a clean JSON answer into a typed intent and records a completed run', async () => {
     const capture = { agentRuns: [] as Record<string, unknown>[] };
     const answer = JSON.stringify({

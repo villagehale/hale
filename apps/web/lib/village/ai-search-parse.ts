@@ -5,6 +5,7 @@ import { recordAgentRun } from '~/lib/agent-run';
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { budgetedAiGateway, budgetedAnthropic } from '~/lib/pipeline/client';
 import { modelErrorCategory, recordModelFallback } from '~/lib/pipeline/model-fallback';
+import { parseModelMode } from '~/lib/pipeline/model-mode';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import {
   type VillageSearchIntent,
@@ -69,13 +70,6 @@ interface ParseIntentDeps {
   candidateClient?: AgentClient;
 }
 
-function parseModelMode(raw: string | undefined): 'current' | 'candidate' {
-  const mode = raw?.trim() || 'current';
-  if (mode === 'current' || mode === 'candidate') return mode;
-  console.error({ mode }, 'village search parse: invalid model mode; using current');
-  return 'current';
-}
-
 export interface ParseIntentInput {
   prompt: string;
   familyId: string;
@@ -105,7 +99,9 @@ export async function parseVillageSearchIntent(
   // bug that must surface, not degrade to keywords (rule #8).
   const skill = await loadParseVillageSearchSkill();
   const guardDeps = buildGuardDeps(database);
-  const mode = deps.modelMode ?? parseModelMode(process.env.HALE_VILLAGE_SEARCH_PARSE_MODEL_MODE);
+  const mode =
+    deps.modelMode ??
+    parseModelMode(process.env.HALE_VILLAGE_SEARCH_PARSE_MODEL_MODE, 'village search parse');
   const lane =
     mode === 'candidate'
       ? ({ model: DEEPSEEK_MODEL, thinking: 'disabled' } as const)

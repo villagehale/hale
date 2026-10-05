@@ -61,23 +61,27 @@ describe('createReplyIntentReader rollout', () => {
   beforeEach(() => vi.stubEnv('HALE_REPLY_INTENT_MODEL_MODE', ''));
   afterEach(() => vi.unstubAllEnvs());
 
-  it('keeps Sonnet 5 by default', async () => {
-    const client = currentClient();
-    const evaluateChoice = vi.fn(async () => ({
-      choice: 'assent' as const,
-      probabilities: { assent: 0.9 },
-      confidence: 0.8,
-      usage: { inputTokens: 10, outputTokens: 1 },
-    }));
+  it.each([undefined, '', ' \t\n ', 'invalid', 'shadow', 'current'])(
+    'keeps Sonnet 5 for model mode %j',
+    async (raw) => {
+      vi.stubEnv('HALE_REPLY_INTENT_MODEL_MODE', raw);
+      const client = currentClient();
+      const evaluateChoice = vi.fn(async () => ({
+        choice: 'assent' as const,
+        probabilities: { assent: 0.9 },
+        confidence: 0.8,
+        usage: { inputTokens: 10, outputTokens: 1 },
+      }));
 
-    const result = await createReplyIntentReader(client, {
-      evaluateChoice,
-    }).read({ question: 'Want me to watch this?', reply: 'no thanks' });
+      const result = await createReplyIntentReader(client, {
+        evaluateChoice,
+      }).read({ question: 'Want me to watch this?', reply: 'no thanks' });
 
-    expect(result.intent).toBe('decline');
-    expect(evaluateChoice).not.toHaveBeenCalled();
-    expect(client.messages.create).toHaveBeenCalledTimes(1);
-  });
+      expect(result.intent).toBe('decline');
+      expect(evaluateChoice).not.toHaveBeenCalled();
+      expect(client.messages.create).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('falls back to the current model when JEV fails', async () => {
     const client = currentClient();

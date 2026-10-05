@@ -9,6 +9,7 @@ import {
   budgetedAiGateway,
   budgetedAnthropic,
 } from '~/lib/pipeline/client';
+import { parseModelMode } from '~/lib/pipeline/model-mode';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { MAX_FAMILIES_PER_RUN, selectFamiliesForRun } from './families';
 import { buildCronGuardDeps } from './guards';
@@ -57,17 +58,10 @@ export interface InferenceResult {
 let anthropicClient: Anthropic | undefined;
 let gatewayClient: Anthropic | undefined;
 
-function inferenceModelMode(raw: string | undefined): 'current' | 'candidate' {
-  const mode = raw?.trim() || 'current';
-  if (mode === 'current' || mode === 'candidate') return mode;
-  console.error({ mode }, 'memory inference: invalid model mode; using current');
-  return 'current';
-}
-
 export function defaultInferenceDeps(): InferenceDeps {
   // Daily inference cron, maxDuration 300, multi-step loop per family: the sweep
   // budget bounds each request so one stall cannot eat the window (audit P1-7).
-  const modelMode = inferenceModelMode(process.env.HALE_MEMORY_INFER_MODEL_MODE);
+  const modelMode = parseModelMode(process.env.HALE_MEMORY_INFER_MODEL_MODE, 'memory inference');
   if (modelMode === 'candidate') {
     gatewayClient ??= budgetedAiGateway(CRON_SWEEP_CLIENT_OPTIONS);
     return { client: gatewayClient, modelMode };

@@ -40,23 +40,27 @@ describe('triageEmail rollout', () => {
   beforeEach(() => vi.stubEnv('HALE_TRIAGE_MODEL_MODE', ''));
   afterEach(() => vi.unstubAllEnvs());
 
-  it('keeps Haiku by default', async () => {
-    const currentClient = client(false);
-    const evaluateChoice = vi.fn(async () => ({
-      choice: 'yes' as const,
-      probabilities: { yes: 0.95, no: 0.05 },
-      confidence: 0.9,
-      usage: { inputTokens: 20, outputTokens: 1 },
-    }));
+  it.each([undefined, '', ' \t\n ', 'invalid', 'shadow', 'current'])(
+    'keeps Haiku for model mode %j',
+    async (raw) => {
+      vi.stubEnv('HALE_TRIAGE_MODEL_MODE', raw);
+      const currentClient = client(false);
+      const evaluateChoice = vi.fn(async () => ({
+        choice: 'yes' as const,
+        probabilities: { yes: 0.95, no: 0.05 },
+        confidence: 0.9,
+        usage: { inputTokens: 20, outputTokens: 1 },
+      }));
 
-    const result = await triageEmail(envelope, ['Mia'], currentClient, {
-      evaluateChoice,
-    });
+      const result = await triageEmail(envelope, ['Mia'], currentClient, {
+        evaluateChoice,
+      });
 
-    expect(result.childRelated).toBe(false);
-    expect(evaluateChoice).not.toHaveBeenCalled();
-    expect(currentClient.messages.create).toHaveBeenCalledTimes(1);
-  });
+      expect(result.childRelated).toBe(false);
+      expect(evaluateChoice).not.toHaveBeenCalled();
+      expect(currentClient.messages.create).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('falls back to Haiku when JEV fails', async () => {
     const currentClient = client(false);

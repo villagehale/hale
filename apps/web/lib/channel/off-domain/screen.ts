@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { type JevChoiceEvaluator, evaluateJevChoice, meetsJevConfidence } from '~/lib/pipeline/jev';
 import { recordModelFallback } from '~/lib/pipeline/model-fallback';
+import { parseModelMode } from '~/lib/pipeline/model-mode';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -130,13 +131,6 @@ interface InboundLaneScreenDeps {
   evaluateChoice?: JevChoiceEvaluator<JevLaneChoice>;
 }
 
-function modelMode(raw: string | undefined): 'current' | 'candidate' {
-  const mode = raw?.trim() || 'current';
-  if (mode === 'current' || mode === 'candidate') return mode;
-  console.error({ mode }, 'off-domain screen: invalid model mode; using current');
-  return 'current';
-}
-
 /**
  * Parsed loosely on purpose, in BOTH directions.
  *
@@ -243,7 +237,9 @@ export function createInboundLaneScreen(
       }
 
       if (
-        (deps.modelMode ?? modelMode(process.env.HALE_INBOUND_SCREEN_MODEL_MODE)) === 'candidate'
+        (deps.modelMode ??
+          parseModelMode(process.env.HALE_INBOUND_SCREEN_MODEL_MODE, 'off-domain screen')) ===
+        'candidate'
       ) {
         try {
           const result = await (deps.evaluateChoice ?? evaluateJevChoice)({

@@ -35,19 +35,23 @@ describe('createIntakeExtractor rollout', () => {
   beforeEach(() => vi.stubEnv('HALE_INTAKE_EXTRACT_MODEL_MODE', ''));
   afterEach(() => vi.unstubAllEnvs());
 
-  it('keeps Sonnet 5 by default', async () => {
-    const create = vi.fn(async () => response());
-    const result = await createIntakeExtractor({
-      messages: { create },
-    } as unknown as AgentClient).extract(INPUT);
+  it.each([undefined, '', ' \t\n ', 'invalid', 'shadow', 'current'])(
+    'keeps Sonnet 5 for model mode %j',
+    async (raw) => {
+      vi.stubEnv('HALE_INTAKE_EXTRACT_MODEL_MODE', raw);
+      const create = vi.fn(async () => response());
+      const result = await createIntakeExtractor({
+        messages: { create },
+      } as unknown as AgentClient).extract(INPUT);
 
-    expect(result.children).toHaveLength(1);
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        model: SONNET5_MODEL,
-      }),
-    );
-  });
+      expect(result.children).toHaveLength(1);
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: SONNET5_MODEL,
+        }),
+      );
+    },
+  );
 
   it('falls back to Sonnet 5 when the candidate fails', async () => {
     const create = vi.fn().mockRejectedValueOnce(new Error('candidate unavailable'));
