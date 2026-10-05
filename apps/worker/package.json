@@ -36,6 +36,7 @@
     "eval:activity-deep": "node evals/run-activity-deep-eval.mjs --cached-only",
     "eval:turn-apology": "node evals/run-turn-apology-eval.mjs --cached-only",
     "eval:followup-voice": "node evals/run-followup-voice-eval.mjs --cached-only",
+    "eval:group-voice": "node evals/run-group-voice-eval.mjs --cached-only",
     "eval:calendar-voice": "node evals/run-calendar-voice-eval.mjs --cached-only",
     "eval:identity-ask": "node evals/run-identity-ask-eval.mjs --cached-only",
     "eval:reminder-voice": "node evals/run-reminder-voice-eval.mjs --cached-only",

@@ -206,6 +206,12 @@ jobs:
       - name: Follow-up ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:followup-voice
 
+      # Every line in the Linq household group is model-written with no fallback
+      # sentence underneath (VIL-413 / VIL-417); a refused line is a line two
+      # parents never get, so the real judge gates the real model's words here.
+      - name: Group voice composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:group-voice
+
       - name: Calendar invite + email-ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:calendar-voice
 
