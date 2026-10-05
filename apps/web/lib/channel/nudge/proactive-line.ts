@@ -3,10 +3,11 @@ import { NO_BOOKING_CLAIM } from '../linq/group-line-input';
 import type { SpokenLineInput } from '../voice/judge';
 
 /**
- * VIL-413 / VIL-417. What the model is handed for the proactive asks Hale texts
- * ONE parent in their own thread: an open Saturday, and the weekday-care finder
- * ask. Until this change both were byte-locked sentences; now code supplies the
- * kid, the day, the break label, and the judge holds the limits.
+ * VIL-413 / VIL-417. What the model is handed for the proactive texts Hale sends
+ * ONE parent in their own thread: an open Saturday, the weekday-care finder ask,
+ * and the travel brief. Until this change these were byte-locked sentences; now
+ * code supplies the kid, the day, the break label, the venues' own words, and the
+ * judge holds the limits.
  *
  * Pure, relative imports only: the worker eval loads this module through tsx so
  * the real request shape is judged, not a replica.
@@ -18,28 +19,34 @@ export const PROACTIVE_VOICE_SKILL = 'proactive-voice';
 const PROACTIVE_MAX_CHARS = 200;
 
 /**
- * The travel opening shares a four-segment brief with two venue names, two schedules,
- * two prices and the provenance line (lib/travel/copy.ts), so it gets one short clause.
+ * The travel brief is the one proactive text allowed four GSM-7 segments (612 septets,
+ * lib/travel/copy.ts): two venue names, two schedules, two prices. The judge's cap is a
+ * coarse character count; the exact segment lint runs in the sweep afterwards.
  */
-export const TRAVEL_OPENING_MAX_CHARS = 110;
+export const TRAVEL_BRIEF_MAX_CHARS = 600;
 
-/**
- * The opening leads INTO the finds; it must not be one. A museum, a zoo or a pool named
- * here is a place the brief's own picks did not supply, and the brief's fact-lint cannot
- * subtract it. Words that sit inside real city names (park, beach) are left out: the
- * judge tests the whole line, and "Long Beach" is a city.
- */
 /** "Ça t'intéresse que je cherche" stuffs the offer inside que. The question does not start that way. */
 export const BROKEN_CA_TINTERESSE = {
   name: 'ca_tinteresse_que',
   pattern: /ça t['’]int[ée]resse que\b/i,
 };
 
-export const NO_TRAVEL_FIND = {
-  name: 'travel_find',
+/**
+ * A travel find is off a venue's own page. Nobody has been; nobody recommends. A body
+ * that says otherwise is claiming a review Hale does not hold.
+ */
+export const NO_BEEN_THERE_CLAIM = {
+  name: 'been_there_claim',
   pattern:
-    /\b(?:museum|zoo|aquarium|pool|playground|library|theat(?:re|er)|mus[ée]e|piscine|plage|biblioth[èe]que)\b/i,
+    /\b(?:i['’]ve been|we['’]ve been|parents? (?:love|loved|recommend|swear by)|families (?:love|loved|recommend)|highly recommended|recommended by|a (?:local )?favou?rite)\b/i,
 };
+
+/** One find, in the venue's own words. Null is unpublished, and stays unsaid. */
+export interface TravelPickFact {
+  name: string;
+  when: string | null;
+  price: string | null;
+}
 
 /**
  * Same shape the weekday-care decide produces (nudge-decide.ts). It is repeated here
@@ -55,13 +62,19 @@ export type ProactiveLineRequest =
   | { kind: 'empty_saturday'; kid: string }
   | { kind: 'weekday_care'; ask: ProactiveWeekdayAsk }
   /**
-   * The opening of the travel brief (lib/travel/copy.ts): where the family will be and
-   * when, leading into the finds code appends in the source's own words. `days` is the
-   * trip's own phrase ("the 12th to the 15th"); `kids` are the under-13s' first names,
-   * empty when there are none to name (a teen's absence is indistinguishable from
-   * having no children on file).
+   * The whole travel brief (lib/travel/copy.ts): where the family will be and when, the
+   * one or two finds in the venues' own words, and that those words are the venues'.
+   * `days` is the trip's own phrase ("the 12th to the 15th"); `kids` are the under-13s'
+   * first names, empty when there are none to name (a teen's absence is
+   * indistinguishable from having no children on file); `picks` are at most two.
    */
-  | { kind: 'travel_brief'; city: string; days: string; kids: readonly string[] };
+  | {
+      kind: 'travel_brief';
+      city: string;
+      days: string;
+      kids: readonly string[];
+      picks: readonly TravelPickFact[];
+    };
 
 export type ProactiveLineKind = ProactiveLineRequest['kind'];
 
@@ -87,16 +100,32 @@ export function proactiveLineInput(
   switch (request.kind) {
     case 'travel_brief': {
       // No question: there is no reply handler behind the brief, and a question with
-      // nothing behind it is the recorded 2026-08-22 defect. The finds follow the
-      // opening, so the line must not name a place or a thing to do of its own.
+      // nothing behind it is the recorded 2026-08-22 defect. Every pick's name, schedule
+      // and price must be carried as published: the venue's words are the only facts
+      // the body may hold, and the travel lint (lib/travel/copy.ts) refuses any digit
+      // that traces to none of them.
       const kids = [...request.kids];
+      const picks = request.picks.map((pick) => ({ ...pick }));
       return {
         ...base,
         questions: 0,
-        maxChars: TRAVEL_OPENING_MAX_CHARS,
-        facts: { city: request.city, days: request.days, kids: kids.length > 0 ? kids : null },
-        mustMention: [request.city, request.days, ...kids],
-        forbidden: [NO_BOOKING_CLAIM, NO_TRAVEL_FIND],
+        maxChars: TRAVEL_BRIEF_MAX_CHARS,
+        facts: {
+          city: request.city,
+          days: request.days,
+          kids: kids.length > 0 ? kids : null,
+          picks,
+          source: 'the venues own pages',
+        },
+        mustMention: [
+          request.city,
+          request.days,
+          ...kids,
+          ...picks.flatMap((pick) =>
+            [pick.name, pick.when, pick.price].filter((v): v is string => v !== null),
+          ),
+        ],
+        forbidden: [NO_BOOKING_CLAIM, NO_BEEN_THERE_CLAIM],
       };
     }
     case 'empty_saturday': {

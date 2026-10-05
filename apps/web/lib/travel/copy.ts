@@ -1,42 +1,39 @@
 import { namesAPerson } from '~/lib/channel/activity/deidentify';
 import type { ActivityPick } from '~/lib/channel/activity/lane';
 import { SLOTS_IN_TEXT } from '~/lib/channel/activity/share-page';
+import type { TravelPickFact } from '~/lib/channel/nudge/proactive-line';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
 
 /**
- * THE ONE TEXT A TRIP GETS.
+ * THE ONE TEXT A TRIP GETS — the facts it is built from and the lint it must pass.
  *
- * The OPENING is the model's (VIL-413 / VIL-417, founder rule 2026-10-04): the sweep
+ * THE WHOLE BODY IS THE MODEL'S (VIL-413 / VIL-417, founder rule 2026-10-04). The sweep
  * speaks it through the proactive-voice skill (`travel_brief`, nudge/proactive-line.ts)
- * from the city, the trip's day phrase and the under-13s' names, judged before it gets
- * here, and an unwritten opening means no brief this tick. The PICKS stay in the source's
- * own words: they are already model-produced and already gated, and a second composer
- * would only give it a chance to say something the pages did not. The closing provenance
- * sentence stays fixed too — it is the lane's disclosure that every pick is `source: 'web'`.
+ * from the city, the trip's day phrase, the under-13s' names and up to two picks — each
+ * pick's name, schedule and price exactly as the venue published them — and says in its
+ * own words that those details are off the venues' own pages. Until this change the
+ * opening was spoken and the picks and the closing provenance sentence were two fixed
+ * templates (`renderPick`, `PROVENANCE`); they are gone. The model is handed the venues'
+ * words and must carry them; nothing here writes a sentence.
  *
- * WHAT IT MAY NOT DO:
+ * WHAT THE LINT HOLDS, after the engine's own judge:
  *   · It carries no LINK. The lane's picks deliberately have no URL ("Hale never texts a
- *     link"), so there is nothing here that could invite one.
+ *     link"), so there is nothing here that could invite one; the judge refuses any.
  *   · It CLAIMS NOTHING ABOUT ANYONE HAVING BEEN. A web pick has no field in which it
- *     could say it was verified, and the closing sentence says whose facts these are —
- *     which is the lane's own doctrine, not a hedge. A travel find can never be a review
- *     subject either: `activity_reviews.subject_ref` is a Places id or a civic venue id,
- *     and an `ActivityPick` has neither, so there is no k-check to gate and no review
- *     clause to write.
+ *     could say it was verified, and the body must say whose facts these are
+ *     (`no_provenance`) — which is the lane's own doctrine, not a hedge. A travel find can
+ *     never be a review subject either: `activity_reviews.subject_ref` is a Places id or
+ *     a civic venue id, and an `ActivityPick` has neither.
  *   · It ASKS NOTHING. There is no reply handler and no open question behind this text; a
  *     question with nothing behind it is the recorded 2026-08-22 defect.
- *   · It NAMES NO TEEN, and names no age at all. The age adds nothing the picks' own
- *     `ageFit` does not carry and it is one more identifier in a message that may be read
- *     over a shoulder.
+ *   · It NAMES NO TEEN, and invents no digit: every number traces to the trip's own
+ *     dates or to a figure a page published.
  *
  * ENGLISH ONLY, and that is an honest limit rather than an oversight: this class is
  * outbound-first with no inbound message to read a language off, the same reason the
  * evening check-in's ask is English-only. `families.primary_language` is written by
  * nothing.
- *
- * Plain ASCII throughout: one typographic dash flips the whole SMS to UCS-2 and halves the
- * budget. `lib/travel/copy.ts` is registered in SMS_COPY_SOURCES so the scan sees it.
  */
 
 export const TRAVEL_BRIEF_TEMPLATE_KEY = 'travel:brief';
@@ -53,32 +50,6 @@ export const TRAVEL_BRIEF_TEMPLATE_KEY = 'travel:brief';
  * wrong discipline for this one.
  */
 export const MAX_TRAVEL_BRIEF_SEGMENTS = 4;
-
-/** The closing sentence, and it is not decoration: every pick is `source: 'web'`, stamped
- * in code, and this is where the text says so. */
-const PROVENANCE = "That's off their own pages, not from anyone who's been.";
-
-export interface TravelBriefInput {
-  /** The model-written opening, already judged (`travel_brief` in proactive-line.ts). It
-   * carries the city, the day phrase and the kids; this render adds the picks after it. */
-  opening: string;
-  /** YYYY-MM-DD, the destination's own calendar days. */
-  startsOn: string;
-  endsOn: string;
-  /** Everything the lane found, in its own order. At most {@link SLOTS_IN_TEXT} are
-   * rendered; the rest are dropped, not linked. */
-  picks: readonly ActivityPick[];
-  /** The household's 13+ first names. Passed so the render can REFUSE rather than trim —
-   * a teen's name reaching this body is a bug upstream, not a string to fix here. */
-  teenNames: readonly string[];
-}
-
-export interface TravelBriefContext {
-  dayPhrase: string;
-  /** The picks that actually made it into the body. */
-  rendered: readonly ActivityPick[];
-  teenNames: readonly string[];
-}
 
 /** "12th", "1st", "22nd", "13th". */
 function ordinal(day: number): string {
@@ -100,13 +71,28 @@ export function tripDayPhrase(startsOn: string, endsOn: string): string {
   return start === end ? `the ${start}` : `the ${start} to the ${end}`;
 }
 
-/** One pick, in the source's own words. A null `when` or `price` omits its clause and
- * invents nothing — the lane's rule that a missing detail is not a dropped find. */
-function renderPick(pick: ActivityPick): string {
-  const details = [pick.when, pick.price].filter((detail): detail is string => detail !== null);
-  return details.length === 0
-    ? `${pick.name} (their site).`
-    : `${pick.name} - ${details.join(', ')} (their site).`;
+/**
+ * The picks the model is handed: at most {@link SLOTS_IN_TEXT}, in the lane's own order,
+ * each reduced to the three things a parent can act on. The rest are dropped, not linked.
+ * A null `when` or `price` stays null — the lane's rule that a missing detail is not a
+ * dropped find, and the skill's rule that null is not filled.
+ */
+export function travelBriefPicks(picks: readonly ActivityPick[]): TravelPickFact[] {
+  return picks
+    .slice(0, SLOTS_IN_TEXT)
+    .map((pick) => ({ name: pick.name, when: pick.when, price: pick.price }));
+}
+
+/** The picks a body actually names, which is what the parent was told about. */
+export function picksNamedIn<T extends { name: string }>(body: string, picks: readonly T[]): T[] {
+  return picks.filter((pick) => body.includes(pick.name));
+}
+
+export interface TravelBriefContext {
+  dayPhrase: string;
+  /** The picks that actually made it into the body. */
+  rendered: readonly { name: string; when: string | null; price: string | null }[];
+  teenNames: readonly string[];
 }
 
 /** Removes one literal occurrence, so the checks below run on what is left over after the
@@ -118,9 +104,18 @@ function without(text: string, literal: string | null): string {
 }
 
 /**
- * Everything wrong with this body, named. Exported because the composer runs it on itself
- * and copy.test.ts runs it on the output: a gate only the composer can reach is a gate
- * nobody can test.
+ * The disclosure every brief must make, in the model's own words: these details are off
+ * the venues' own pages. Any phrasing that ties "their / own / the venues'" to a page,
+ * site or listing counts; what is refused is a body that never says where the facts came
+ * from.
+ */
+const SAYS_PROVENANCE =
+  /\b(?:their|its|own|venues?['’]?s?)\b[^.!?]{0,40}\b(?:pages?|sites?|websites?|listings?)\b|\b(?:pages?|sites?|websites?|listings?)\b[^.!?]{0,20}\b(?:their|its|own|venues?)\b/i;
+
+/**
+ * Everything wrong with this body, named. Exported because the sweep runs it on the
+ * spoken body and copy.test.ts runs it on fixtures: a gate only the sweep can reach is a
+ * gate nobody can test.
  */
 export function travelBriefViolations(body: string, context: TravelBriefContext): string[] {
   const violations: string[] = [];
@@ -144,69 +139,14 @@ export function travelBriefViolations(body: string, context: TravelBriefContext)
   if (rest.includes('?')) violations.push('asks_a_question');
   // A DIGIT WITH NOTHING BEHIND IT. Every number in this text traces to the trip's own
   // dates or to a figure a page published; one that survives the subtraction above was
-  // invented by the composer, which on a message carrying prices is the worst thing it
+  // invented by the model, which on a message carrying prices is the worst thing it
   // could do.
   if (/\d/.test(rest)) violations.push('unbacked_digit');
+  if (!SAYS_PROVENANCE.test(rest)) violations.push('no_provenance');
 
   if (!isGsm7(body)) violations.push('not_gsm7');
   if (smsSegments(withOptOut(body, 'full')) > MAX_TRAVEL_BRIEF_SEGMENTS) {
     violations.push('too_many_segments');
   }
   return violations;
-}
-
-export interface TravelBriefRender {
-  body: string;
-  /**
-   * THE PICKS THE PARENT WAS ACTUALLY TOLD ABOUT, and the reason this is a return value
-   * rather than something the caller recomputes.
-   *
-   * How many picks are in the body is a decision only the assembly below makes: the lane
-   * may hand up three, {@link SLOTS_IN_TEXT} caps it at two, and the segment ceiling can
-   * drop the second as well. The sweep's `travel_brief_sent` audit row counted
-   * `found.picks.length` instead — so the receipt a parent reads in the trail said THREE
-   * on a text that named two, live, on the very first recorded New York find. A count
-   * derived a second time from a different object is a count that can disagree with the
-   * message; this one is the assembly's own.
-   */
-  rendered: readonly ActivityPick[];
-}
-
-/**
- * The body, or nothing at all.
- *
- * A refusal here is NOT recoverable by trimming: a brief whose numbers cannot be traced to
- * a pick is not a text worth sending in a shorter form. The `renderSpotOpen` shape.
- *
- * The assembly is WHOLE-PICK-AT-A-TIME, never truncated — the `share-page.ts` rule, and it
- * is not tidiness: a cut that lands inside "USD 2" publishes a wrong price. A second pick
- * that would push past the ceiling is dropped entire.
- */
-export function renderTravelBrief(input: TravelBriefInput): TravelBriefRender {
-  const dayPhrase = tripDayPhrase(input.startsOn, input.endsOn);
-
-  const rendered: ActivityPick[] = [];
-  let body = input.opening.trim();
-  for (const pick of input.picks.slice(0, SLOTS_IN_TEXT)) {
-    const candidate = `${body} ${renderPick(pick)}`;
-    // Measured with the closing sentence already counted, so the provenance line can never
-    // be the thing that pushes a sent body over the ceiling. The opt-out line is not
-    // part of the measurement: it is not appended.
-    if (smsSegments(withOptOut(`${candidate} ${PROVENANCE}`, 'full')) > MAX_TRAVEL_BRIEF_SEGMENTS) {
-      break;
-    }
-    body = candidate;
-    rendered.push(pick);
-  }
-  body = `${body} ${PROVENANCE}`;
-
-  const violations = travelBriefViolations(body, {
-    dayPhrase,
-    rendered,
-    teenNames: input.teenNames,
-  });
-  if (violations.length > 0) {
-    throw new Error(`travel brief copy refused: ${violations.join(', ')}`);
-  }
-  return { body, rendered };
 }

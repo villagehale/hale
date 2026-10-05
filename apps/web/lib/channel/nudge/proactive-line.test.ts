@@ -4,7 +4,7 @@ import { judgeSpokenLine, spokenFactSlots } from '~/lib/channel/voice/spoken-lin
 import {
   PROACTIVE_VOICE_SKILL,
   type ProactiveLineRequest,
-  TRAVEL_OPENING_MAX_CHARS,
+  TRAVEL_BRIEF_MAX_CHARS,
   proactiveLineInput,
 } from './proactive-line';
 
@@ -96,70 +96,104 @@ describe('proactiveLineInput', () => {
     expect(JSON.stringify(input)).not.toContain('2026-10-09');
   });
 
-  it('hands the travel opening the city, the day phrase and the kids, asks nothing, and bans a find of its own', () => {
+  it("hands the travel brief the city, the day phrase, the kids and the venues' own words, and asks nothing", () => {
     const named = proactiveLineInput(TRAVEL, 'en');
     expect(named.questions).toBe(0);
-    expect(named.maxChars).toBe(TRAVEL_OPENING_MAX_CHARS);
+    expect(named.maxChars).toBe(TRAVEL_BRIEF_MAX_CHARS);
     expect(named.facts).toEqual({
       city: 'New York',
       days: 'the 12th to the 15th',
       kids: ['Mia', 'Leo'],
+      picks: [MUSEUM, ZOO],
+      source: 'the venues own pages',
     });
-    expect(named.mustMention).toEqual(['New York', 'the 12th to the 15th', 'Mia', 'Leo']);
-    expect(named.forbidden?.map((rule) => rule.name)).toEqual(['booking_claim', 'travel_find']);
+    // Every published detail is carried as published; a null price is not a slot.
+    expect(named.mustMention).toEqual([
+      'New York',
+      'the 12th to the 15th',
+      'Mia',
+      'Leo',
+      'American Museum of Natural History',
+      'open daily 10am-5:30pm',
+      'USD 28 adults / 16 kids',
+      'Central Park Zoo',
+      '10am-5pm',
+    ]);
+    expect(named.forbidden?.map((rule) => rule.name)).toEqual([
+      'booking_claim',
+      'been_there_claim',
+    ]);
 
     // No under-13 to name: the model is told so (null), never handed an empty list to
     // fill, and the group register reaches it when the brief lands in the household.
     const nobody = proactiveLineInput({ ...TRAVEL_REQUEST, kids: [] }, 'en', 'vous');
-    expect(nobody.facts).toEqual({ city: 'New York', days: 'the 12th to the 15th', kids: null });
-    expect(nobody.mustMention).toEqual(['New York', 'the 12th to the 15th']);
+    expect(nobody.facts).toMatchObject({ city: 'New York', kids: null });
+    expect(nobody.mustMention?.slice(0, 2)).toEqual(['New York', 'the 12th to the 15th']);
     expect(nobody.address).toBe('vous');
   });
 });
+
+const MUSEUM = {
+  name: 'American Museum of Natural History',
+  when: 'open daily 10am-5:30pm',
+  price: 'USD 28 adults / 16 kids',
+};
+const ZOO = { name: 'Central Park Zoo', when: '10am-5pm', price: null };
 
 const TRAVEL_REQUEST = {
   kind: 'travel_brief' as const,
   city: 'New York',
   days: 'the 12th to the 15th',
   kids: ['Mia', 'Leo'],
+  picks: [MUSEUM, ZOO],
 };
 const TRAVEL: ProactiveLineRequest = TRAVEL_REQUEST;
 
-describe('the judge on a travel opening', () => {
-  it('accepts the fake composer and an opening that leads into the finds', () => {
+const GOOD_BRIEF =
+  "You're in New York the 12th to the 15th - a couple of things on for Mia and Leo. American Museum of Natural History, open daily 10am-5:30pm, USD 28 adults / 16 kids. Central Park Zoo, 10am-5pm. That's off their own pages, not from anyone who's been.";
+
+describe('the judge on a travel brief', () => {
+  it("accepts the fake composer and a whole brief in the venues' words", () => {
     const input = proactiveLineInput(TRAVEL, 'en');
     expect(judgeSpokenLine(fakeSpokenLineBody(input), input)).toEqual({ ok: true });
-    expect(
-      judgeSpokenLine(
-        "You're in New York the 12th to the 15th. A couple of things on for Mia and Leo:",
-        input,
-      ),
-    ).toEqual({ ok: true });
+    expect(judgeSpokenLine(GOOD_BRIEF, input)).toEqual({ ok: true });
   });
 
-  it('refuses a question, a dropped kid, a find of its own, and a time the trip never gave', () => {
+  it('refuses a question, a dropped kid, a dropped price, a been-there claim, and a time no page gave', () => {
     const input = proactiveLineInput(TRAVEL, 'en');
-    expect(
-      judgeSpokenLine('New York the 12th to the 15th with Mia and Leo. Want some ideas?', input),
-    ).toEqual({ ok: false, reason: 'question' });
-    expect(
-      judgeSpokenLine(
-        "You're in New York the 12th to the 15th. A couple of things for Mia:",
-        input,
-      ),
-    ).toEqual({ ok: false, reason: 'missing' });
-    expect(
-      judgeSpokenLine(
-        "You're in New York the 12th to the 15th. The museum is great for Mia and Leo:",
-        input,
-      ),
-    ).toEqual({ ok: false, reason: 'forbidden:travel_find' });
+    expect(judgeSpokenLine(`${GOOD_BRIEF} Want more?`, input)).toEqual({
+      ok: false,
+      reason: 'question',
+    });
+    expect(judgeSpokenLine(GOOD_BRIEF.replace(' and Leo', ''), input)).toEqual({
+      ok: false,
+      reason: 'missing',
+    });
+    expect(judgeSpokenLine(GOOD_BRIEF.replace(', USD 28 adults / 16 kids', ''), input)).toEqual({
+      ok: false,
+      reason: 'missing',
+    });
     expect(
       judgeSpokenLine(
-        "You're in New York the 12th to the 15th. Things on for Mia and Leo from 10:00:",
+        GOOD_BRIEF.replace(
+          "That's off their own pages, not from anyone who's been.",
+          'Parents love the zoo.',
+        ),
         input,
       ),
-    ).toEqual({ ok: false, reason: 'invented' });
+    ).toEqual({ ok: false, reason: 'forbidden:been_there_claim' });
+    expect(
+      judgeSpokenLine(
+        GOOD_BRIEF.replace(
+          'Central Park Zoo, 10am-5pm',
+          'Central Park Zoo, 10am-5pm, last entry 16:30',
+        ),
+        input,
+      ),
+    ).toEqual({
+      ok: false,
+      reason: 'invented',
+    });
   });
 });
 

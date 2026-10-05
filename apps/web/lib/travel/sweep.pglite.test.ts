@@ -273,8 +273,9 @@ describe('what the parent actually gets', () => {
     expect(body).not.toContain('Reply STOP');
     expect(body).not.toContain('STOP to opt out.');
 
-    // The opening was the model's, handed the city, the trip's own day phrase and the
-    // under-13 by name - and nothing about the picks, which code appends after it.
+    // The WHOLE body was the model's, handed the city, the trip's own day phrase, the
+    // under-13 by name and each pick exactly as the venue published it - and held to
+    // carrying every one of them. Nothing of the picks was written by code.
     expect(h.voice.calls).toHaveLength(1);
     expect(h.voice.calls[0]?.input).toMatchObject({
       skill: 'proactive-voice',
@@ -282,10 +283,33 @@ describe('what the parent actually gets', () => {
       language: 'en',
       address: 'tu',
       questions: 0,
-      facts: { city: 'New York', days: 'the 12th to the 15th', kids: ['Mia'] },
-      mustMention: ['New York', 'the 12th to the 15th', 'Mia'],
+      facts: {
+        city: 'New York',
+        days: 'the 12th to the 15th',
+        kids: ['Mia'],
+        picks: [
+          {
+            name: 'American Museum of Natural History',
+            when: 'open daily 10am-5:30pm',
+            price: 'USD 28 adults / 16 kids',
+          },
+          { name: 'Central Park Zoo', when: '10am-5pm', price: 'USD 20' },
+        ],
+      },
+      mustMention: [
+        'New York',
+        'the 12th to the 15th',
+        'Mia',
+        'American Museum of Natural History',
+        'open daily 10am-5:30pm',
+        'USD 28 adults / 16 kids',
+        'Central Park Zoo',
+        '10am-5pm',
+        'USD 20',
+      ],
     });
-    expect(JSON.stringify(h.voice.calls[0]?.input)).not.toContain('Central Park Zoo');
+    expect(body).toContain('USD 28 adults / 16 kids');
+    expect(body).not.toContain('(their site)');
 
     // The query that crossed the border carried a place, a coarse window with no year and
     // a stage band — and no name.

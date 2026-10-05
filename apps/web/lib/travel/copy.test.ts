@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { ActivityPick } from '~/lib/channel/activity/lane';
 import { withOptOut } from '~/lib/channel/opt-out';
-import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import {
   MAX_TRAVEL_BRIEF_SEGMENTS,
-  renderTravelBrief,
+  picksNamedIn,
+  travelBriefPicks,
   travelBriefViolations,
   tripDayPhrase,
 } from './copy';
 
 /**
- * The one text a trip gets. This file IS the spec: the tests assert the strings, so a
- * change to what a family reads on holiday is a reviewable diff.
+ * The one text a trip gets. Nothing here writes a sentence any more (VIL-413 / VIL-417):
+ * the whole body is the model's, so this file is the spec for the FACTS it is handed and
+ * the LINT the spoken body must pass — which is what a reviewer can still diff.
  */
 
 function pick(overrides: Partial<ActivityPick> = {}): ActivityPick {
@@ -33,134 +35,81 @@ const ZOO = pick({
   sourceName: 'Central Park Zoo',
 });
 
-/** The BODY, which is what all but one of these tests are about. The render's other half
- * — which picks actually made it in — has its own test below. */
-function brief(overrides: Partial<Parameters<typeof renderTravelBrief>[0]> = {}) {
-  return renderBrief(overrides).body;
-}
+/** A body the model might write, carrying every fact as published and the provenance in
+ * its own words. The exact wording is the eval's business; the lint is this file's. */
+const GOOD_BRIEF =
+  "You're in New York the 12th to the 15th - a couple of things on for Mia and Leo. American Museum of Natural History, open daily 10am-5:30pm, USD 28 adults / 16 kids. Central Park Zoo, 10am-5pm, USD 20. That's off their own pages, not from anyone who's been.";
 
-/** A model-written opening, as the sweep hands it over after the judge (the words are
- * the eval's business; this file is about what the render does around them). */
-const OPENING = "You're in New York the 12th to the 15th. A couple of things on for Mia:";
+const CONTEXT = {
+  dayPhrase: 'the 12th to the 15th',
+  rendered: [pick(), ZOO],
+  teenNames: ['Ari'],
+};
 
-function renderBrief(overrides: Partial<Parameters<typeof renderTravelBrief>[0]> = {}) {
-  return renderTravelBrief({
-    opening: OPENING,
-    startsOn: '2026-09-12',
-    endsOn: '2026-09-15',
-    picks: [pick(), ZOO],
-    teenNames: [],
-    ...overrides,
-  });
-}
-
-describe('renderTravelBrief', () => {
-  it('puts the spoken opening first, then the picks in their own words, then the provenance line', () => {
-    const body = brief();
-    expect(body).toBe(
-      [
-        OPENING,
-        'American Museum of Natural History - open daily 10am-5:30pm, USD 28 adults / 16 kids',
-        '(their site). Central Park Zoo - 10am-5pm, USD 20 (their site).',
-        "That's off their own pages, not from anyone who's been.",
-      ].join(' '),
-    );
-    // No link, and no question: there is no reply handler behind this text, and a question
-    // with nothing behind it is the recorded 2026-08-22 defect.
-    expect(body).not.toContain('http');
-    expect(body).not.toContain('?');
+describe('travelBriefPicks', () => {
+  it('hands the model each pick as name, schedule and price in the lane order', () => {
+    expect(travelBriefPicks([pick(), ZOO])).toEqual([
+      {
+        name: 'American Museum of Natural History',
+        when: 'open daily 10am-5:30pm',
+        price: 'USD 28 adults / 16 kids',
+      },
+      { name: 'Central Park Zoo', when: '10am-5pm', price: 'USD 20' },
+    ]);
   });
 
-  it('writes no opening of its own: the body starts with whatever was spoken', () => {
-    const body = brief({
-      opening: ' Trip: New York, the 12th to the 15th. Two things on for the kids: ',
-    });
-    expect(
-      body.startsWith('Trip: New York, the 12th to the 15th. Two things on for the kids: American'),
-    ).toBe(true);
-    expect(body).not.toContain("You're in");
-  });
-
-  it('fits four segments against the FULL opt-out form, in GSM-7', () => {
-    const body = brief();
-    expect(isGsm7(body)).toBe(true);
-    expect(smsSegments(withOptOut(body, 'full'))).toBeLessThanOrEqual(MAX_TRAVEL_BRIEF_SEGMENTS);
-  });
-
-  it('omits a clause the source never published, and invents nothing in its place', () => {
-    const body = brief({ picks: [pick({ price: null }), ZOO] });
-    expect(body).toContain(
-      'American Museum of Natural History - open daily 10am-5:30pm (their site).',
-    );
-    expect(body).not.toContain('USD 28');
-    // THE POSITIVE CONTROL: the same pick WITH a price renders it, so the absence above is
-    // a claim about the null rather than about a renderer that never prints prices.
-    expect(brief()).toContain('USD 28 adults / 16 kids');
-  });
-
-  it('renders a pick with neither a time nor a price rather than dropping it', () => {
-    const body = brief({ picks: [pick({ when: null, price: null })] });
-    expect(body).toContain('American Museum of Natural History (their site).');
-  });
-
-  it('carries at most two picks — the third is dropped, not linked', () => {
+  it('carries at most two — the third is dropped, not linked', () => {
     const third = pick({
       name: 'Brooklyn Childrens Museum',
       sourceName: 'Brooklyn Childrens Museum',
     });
-    const render = renderBrief({ picks: [pick(), ZOO, third] });
-    expect(render.body).not.toContain('Brooklyn Childrens Museum');
-    // AND IT SAYS SO. `rendered` is what the sweep's audit row counts; counting the picks
-    // the LANE handed up instead put a three on the receipt for a text that named two.
-    expect(render.rendered.map((entry) => entry.name)).toEqual([
+    expect(travelBriefPicks([pick(), ZOO, third]).map((entry) => entry.name)).toEqual([
       'American Museum of Natural History',
       'Central Park Zoo',
     ]);
   });
 
-  /**
-   * WHOLE-PICK-AT-A-TIME. A cut that lands inside "USD 2" publishes a wrong price, so a
-   * pick that would not fit whole is dropped entire — asserted by the FIRST pick's
-   * complete price string still being present.
-   */
-  it('drops a second pick whole rather than cutting one in half', () => {
-    const long = pick({
-      name: 'Long Island Childrens Museum and Discovery Centre at Mitchel Field',
-      when: 'Tuesday to Sunday 10am to 5pm, and every statutory holiday Monday as well, with the last admission half an hour before closing and the whole building shut for the first week of September',
-      price:
-        'USD 17 per person over one year old, members free, EBT card holders USD 3, and a family membership that covers two adults and up to four children for the year',
-      sourceName: 'Long Island Childrens Museum',
+  it('keeps a null clause null rather than inventing one', () => {
+    expect(travelBriefPicks([pick({ price: null })])[0]).toEqual({
+      name: 'American Museum of Natural History',
+      when: 'open daily 10am-5:30pm',
+      price: null,
     });
-    const render = renderBrief({ picks: [pick(), long] });
-    const body = render.body;
-    expect(body).toContain('USD 28 adults / 16 kids (their site).');
-    expect(body).not.toContain('USD 17');
-    expect(body).not.toContain('USD 1');
-    expect(smsSegments(withOptOut(body, 'full'))).toBeLessThanOrEqual(MAX_TRAVEL_BRIEF_SEGMENTS);
-    // A pick dropped for length is a pick the receipt must not count either.
-    expect(render.rendered).toHaveLength(1);
+    // Nothing about the pick is passed that a parent cannot act on: no source name, no
+    // age band of the lane's own.
+    expect(Object.keys(travelBriefPicks([pick()])[0] ?? {})).toEqual(['name', 'when', 'price']);
   });
+});
 
-  it('throws rather than shortening when the body cannot be trusted', () => {
-    // Nothing on: there is no honest one-line version of this text, so there is no text.
-    expect(() => brief({ picks: [] })).toThrow(/no_picks/);
+describe('picksNamedIn', () => {
+  it('counts only the picks the body actually names — the receipt is about what was said', () => {
+    const named = picksNamedIn(GOOD_BRIEF.replace('Central Park Zoo, 10am-5pm, USD 20. ', ''), [
+      pick(),
+      ZOO,
+    ]);
+    expect(named.map((entry) => entry.name)).toEqual(['American Museum of Natural History']);
+    expect(picksNamedIn(GOOD_BRIEF, [pick(), ZOO])).toHaveLength(2);
   });
 });
 
 describe('travelBriefViolations', () => {
-  const context = {
-    dayPhrase: 'the 12th to the 15th',
-    rendered: [pick(), ZOO],
-    teenNames: ['Ari'],
-  };
+  it('is empty for a body that carries the facts and says whose they are', () => {
+    expect(travelBriefViolations(GOOD_BRIEF, CONTEXT)).toEqual([]);
+  });
 
-  it('is empty for the body the composer produces', () => {
-    expect(travelBriefViolations(brief(), context)).toEqual([]);
+  it('refuses a body that names no pick: there is no honest one-line version of this text', () => {
+    expect(
+      travelBriefViolations("You're in New York the 12th to the 15th, off their own pages.", {
+        ...CONTEXT,
+        rendered: [],
+      }),
+    ).toContain('no_picks');
   });
 
   it("refuses a teen's name outright rather than trimming it", () => {
-    const body = `${brief()} Ari is coming too.`;
-    expect(travelBriefViolations(body, context)).toContain('names_a_teen');
+    expect(travelBriefViolations(`${GOOD_BRIEF} Ari is coming too.`, CONTEXT)).toContain(
+      'names_a_teen',
+    );
   });
 
   /**
@@ -172,12 +121,10 @@ describe('travelBriefViolations', () => {
    * "Algonquin Outfitters" unsendable, and a teen called Ed does the same to "Edmonton".
    */
   it('reads a short teen name inside a longer word as the word, not the teen', () => {
-    const outfitters = pick({
-      name: 'Algonquin Outfitters',
-      sourceName: 'Algonquin Outfitters',
-    });
+    const outfitters = pick({ name: 'Algonquin Outfitters', sourceName: 'Algonquin Outfitters' });
     const short = { dayPhrase: 'the 12th to the 15th', rendered: [outfitters], teenNames: ['Al'] };
-    const body = brief({ picks: [outfitters], teenNames: ['Al'] });
+    const body =
+      "You're in Huntsville the 12th to the 15th. Algonquin Outfitters, open daily 10am-5:30pm, USD 28 adults / 16 kids. That's off their own site.";
     expect(travelBriefViolations(body, short)).toEqual([]);
 
     // The positive control the negative above needs: the same teen, standing as a word.
@@ -188,21 +135,68 @@ describe('travelBriefViolations', () => {
   });
 
   it('refuses a digit that traces to nothing', () => {
-    const body = brief().replace("That's off", "Roughly 40 minutes away. That's off");
-    expect(travelBriefViolations(body, context)).toContain('unbacked_digit');
+    const body = GOOD_BRIEF.replace("That's off", "Roughly 40 minutes away. That's off");
+    expect(travelBriefViolations(body, CONTEXT)).toContain('unbacked_digit');
     // Positive control: the same body without the invented figure is clean, so the rule is
     // about the digit rather than about the sentence.
-    expect(travelBriefViolations(brief(), context)).toEqual([]);
+    expect(travelBriefViolations(GOOD_BRIEF, CONTEXT)).toEqual([]);
   });
 
-  it('refuses a question the composer put outside a pick', () => {
-    const body = `${brief()} Want anything else?`;
-    expect(travelBriefViolations(body, context)).toContain('asks_a_question');
+  it("does not read a published price or schedule as the model's own digit", () => {
+    // Every digit in GOOD_BRIEF sits inside a pick's `when` or `price` or the day phrase.
+    expect(travelBriefViolations(GOOD_BRIEF, CONTEXT)).not.toContain('unbacked_digit');
+    // And a pick that was NOT handed over does not get that pass: the same price with
+    // the museum missing from `rendered` is an unbacked figure.
+    expect(travelBriefViolations(GOOD_BRIEF, { ...CONTEXT, rendered: [ZOO] })).toContain(
+      'unbacked_digit',
+    );
+  });
+
+  it('refuses a question: there is no reply handler behind this text', () => {
+    expect(travelBriefViolations(`${GOOD_BRIEF} Want anything else?`, CONTEXT)).toContain(
+      'asks_a_question',
+    );
+  });
+
+  /**
+   * THE LANE'S DOCTRINE IN THE MODEL'S WORDS. A web pick has no field in which it could say
+   * it was verified, so the body must say the details are off the venues' own pages. Any
+   * phrasing that ties "their / its / own / the venues'" to a page, site or listing counts;
+   * what is refused is a body that never says where the facts came from.
+   */
+  it('refuses a body that never says whose facts these are', () => {
+    const silent = GOOD_BRIEF.replace(
+      " That's off their own pages, not from anyone who's been.",
+      '',
+    );
+    expect(travelBriefViolations(silent, CONTEXT)).toContain('no_provenance');
+  });
+
+  it('accepts the provenance in different words', () => {
+    const base = GOOD_BRIEF.replace(" That's off their own pages, not from anyone who's been.", '');
+    for (const closing of [
+      " All from the venues' own sites.",
+      ' Those details are straight off their websites.',
+      " Hours and prices are the museums' own listings, nobody has been.",
+      " That's what the pages of the venues themselves say.",
+      ' From their own site, not a recommendation.',
+    ]) {
+      expect(travelBriefViolations(`${base}${closing}`, CONTEXT), closing).not.toContain(
+        'no_provenance',
+      );
+    }
   });
 
   it('refuses a character that would halve the segment budget', () => {
-    const body = brief().replace(' - ', ' — ');
-    expect(travelBriefViolations(body, context)).toContain('not_gsm7');
+    expect(travelBriefViolations(GOOD_BRIEF.replace(' - ', ' — '), CONTEXT)).toContain('not_gsm7');
+  });
+
+  it('refuses a body over four segments against the FULL opt-out form', () => {
+    expect(smsSegments(withOptOut(GOOD_BRIEF, 'full'))).toBeLessThanOrEqual(
+      MAX_TRAVEL_BRIEF_SEGMENTS,
+    );
+    const padded = `${GOOD_BRIEF} ${'Lovely place to walk around with the kids. '.repeat(12)}`;
+    expect(travelBriefViolations(padded, CONTEXT)).toContain('too_many_segments');
   });
 });
 

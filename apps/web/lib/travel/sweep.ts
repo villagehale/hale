@@ -36,8 +36,9 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { activityClient } from '~/lib/pipeline/client';
 import {
   TRAVEL_BRIEF_TEMPLATE_KEY,
-  type TravelBriefRender,
-  renderTravelBrief,
+  picksNamedIn,
+  travelBriefPicks,
+  travelBriefViolations,
   tripDayPhrase,
 } from './copy';
 import { localCalendarDay } from './detect';
@@ -146,10 +147,11 @@ export interface TravelBriefResult {
    * records when it may be searched again — a search that found nothing is not a brief
    * the parent received, and it is not searched again this hour. */
   noPicks: number;
-  /** `travelBriefViolations` was non-empty. Its own count, because a body the gates had
-   * already passed and the composer still could not back is a bug in CODE. */
+  /** `travelBriefViolations` was non-empty on a body the engine's judge had passed:
+   * nothing went out, the trip stays open. Its own count because the travel lint is the
+   * second gate and a body that fails it after the first is worth seeing on its own. */
   refusedAtRender: number;
-  /** The model could not write the opening (VIL-413 / VIL-417): the search ran, nothing
+  /** The model could not write the brief (VIL-413 / VIL-417): the search ran, nothing
    * went out, the trip stays open for the next tick, and #ops was paged by the engine. */
   voiceUnsent: number;
   /** No phone, no recipient — a broken row, not a hold. */
@@ -222,7 +224,7 @@ export interface TravelBriefDeps {
   threadMessage: typeof threadProactiveMessage;
   dedupeActive: typeof dedupeActive;
   /**
-   * The composer that writes the brief's opening. Omitted means the production
+   * The composer that writes the brief. Omitted means the production
    * composer, which is `undefined` without an API key — `speakLine` logs that and the
    * brief is counted `voiceUnsent`, never rendered from a template (rule #11).
    */
@@ -464,50 +466,54 @@ async function briefOne(
     return;
   }
 
-  // THE OPENING IS SPOKEN (VIL-413 / VIL-417). English, like the picks and the provenance
-  // line it leads into: the brief is outbound-first with no inbound text to read a
-  // language off, and a French opening on English finds would be the stranger text. In
-  // a claimed group both parents read it (vous, and no guess at who is travelling).
+  // THE WHOLE BRIEF IS SPOKEN (VIL-413 / VIL-417). English, like the picks it carries:
+  // the brief is outbound-first with no inbound text to read a language off, and a
+  // French brief on English finds would be the stranger text. In a claimed group both
+  // parents read it (vous, and no guess at who is travelling). The model is handed the
+  // venues' own words for at most two picks and must carry them; the lint below is the
+  // second gate on what it wrote.
   const target = await familyOutboundTarget(database, trip.familyId);
-  const opening = await speakLine(
+  const dayPhrase = tripDayPhrase(trip.startsOn, trip.endsOn);
+  const picks = travelBriefPicks(found.picks);
+  const spoken = await speakLine(
     deps.voice ?? defaultSpokenLineComposer(),
     proactiveLineInput(
       {
         kind: 'travel_brief',
         city: trip.destinationCity,
-        days: tripDayPhrase(trip.startsOn, trip.endsOn),
+        days: dayPhrase,
         kids: names.namable,
+        picks,
       },
       'en',
       target.channel === 'group' ? 'vous' : 'tu',
     ),
     { scope: { familyId: trip.familyId, database } },
   );
-  if (opening.source === 'unsent') {
+  if (spoken.source === 'unsent') {
     // The engine paged #ops. The trip stays open and is briefed on the next tick that
     // can write it; the search result is not kept, which is the price of no template.
     result.voiceUnsent += 1;
     console.warn(
       { tripId: trip.id, familyId: trip.familyId },
-      'travel brief: opening unwritten, nothing sent',
+      'travel brief: body unwritten, nothing sent',
     );
     return;
   }
 
-  let rendered: TravelBriefRender;
-  try {
-    rendered = renderTravelBrief({
-      opening: opening.body,
-      startsOn: trip.startsOn,
-      endsOn: trip.endsOn,
-      picks: found.picks,
-      teenNames: names.teens,
-    });
-  } catch (err) {
+  const rendered = { body: spoken.body, picks: picksNamedIn(spoken.body, picks) };
+  const violations = travelBriefViolations(rendered.body, {
+    dayPhrase,
+    rendered: rendered.picks,
+    teenNames: names.teens,
+  });
+  if (violations.length > 0) {
+    // Not recoverable by trimming: a brief whose numbers cannot be traced to a page is
+    // not a text worth sending in a shorter form. Nothing goes out; the trip stays open.
     result.refusedAtRender += 1;
     console.error(
-      { tripId: trip.id, err: err instanceof Error ? err.message : 'unknown' },
-      'travel brief: the composed body was refused',
+      { tripId: trip.id, violations: violations.join(', ') },
+      'travel brief: the spoken body was refused',
     );
     return;
   }
@@ -639,10 +645,10 @@ async function briefOne(
     targetId: claimed.id,
     // COUNTS, NOT NAMES. Never the city, never the venues, never the dates: an audit row a
     // support agent can read is a copy of the text in a table that is never redacted.
-    // `rendered.length`, not `found.picks.length`: the lane may hand up three and the
-    // assembly renders at most two, so the finder's count is a receipt that disagrees with
-    // the message the parent got.
-    after: { picks: rendered.rendered.length, merged: merged.length },
+    // The picks the BODY names, not `found.picks.length`: the lane may hand up three and
+    // the model is handed at most two, so the finder's count is a receipt that disagrees
+    // with the message the parent got.
+    after: { picks: rendered.picks.length, merged: merged.length },
   });
 
   result.sent += 1;

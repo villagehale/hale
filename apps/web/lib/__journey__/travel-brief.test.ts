@@ -487,13 +487,23 @@ describe('a booking email becomes one text a week before the trip', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]?.to).toBe(PHONE);
     const body = sent[0]?.body ?? '';
-    // The opening is spoken (VIL-413 / VIL-417): the fake composer writes its facts, so
+    // The WHOLE body is spoken (VIL-413 / VIL-417): the fake composer writes its facts, so
     // what is asserted is what the model was HANDED - the city, the trip's own day phrase,
-    // and both under-13s by name. Neither age is.
+    // both under-13s by name, and the picks as the venues published them. Neither age is.
+    const picks = recordedPicks();
+    expect(picks).toHaveLength(3);
     expect(voice.calls[0]?.input).toMatchObject({
       kind: 'travel_brief',
       address: 'tu',
-      facts: { city: 'New York', days: 'the 12th to the 15th', kids: ['Mia', 'Leo'] },
+      facts: {
+        city: 'New York',
+        days: 'the 12th to the 15th',
+        kids: ['Mia', 'Leo'],
+        picks: [
+          { name: picks[0]?.name, when: picks[0]?.when, price: picks[0]?.price },
+          { name: picks[1]?.name, when: picks[1]?.when, price: picks[1]?.price },
+        ],
+      },
       questions: 0,
     });
     expect(body).toContain('New York');
@@ -503,27 +513,28 @@ describe('a booking email becomes one text a week before the trip', () => {
     expect(body).not.toMatch(/\b(4|7)\b/);
 
     // THE PICKS ARE THE MODEL'S OWN, read out of the recording rather than typed here —
-    // so this is a claim about the RENDERER carrying what the lane found, not about a set
-    // of words this file chose. Two of the three are rendered and the third is dropped
+    // so this is a claim about the sweep HANDING OVER what the lane found, not about a set
+    // of words this file chose. Two of the three are handed over and the third is dropped
     // WHOLE (SLOTS_IN_TEXT), which is the never-a-directory rule on real output.
-    const picks = recordedPicks();
-    expect(picks).toHaveLength(3);
     expect(body).toContain(picks[0]?.name);
     expect(body).toContain(picks[1]?.name);
     expect(body).not.toContain(picks[2]?.name);
+    expect(JSON.stringify(voice.calls[0]?.input)).not.toContain(picks[2]?.name);
 
     // NOTHING WAS INVENTED, and the pair is what makes that a claim rather than a hope.
     // The live New York turn published NO price for either pick — the null path the
     // product will meet most days — so no currency may appear in the body; and the second
     // pick's `when` DID come back, so its own figures must, or the absence above would
-    // only be proving that the renderer drops everything.
+    // only be proving that the composer drops everything.
     expect(picks[0]?.price).toBeNull();
     expect(picks[1]?.price).toBeNull();
     expect(body).not.toMatch(/\$|USD|CAD|EUR|GBP/);
     expect(body).toContain(picks[1]?.when);
 
-    // It claims nothing about anyone having been, and it asks nothing.
-    expect(body).toContain("not from anyone who's been");
+    // It says whose facts these are (the fake carries the `source` slot; the real model
+    // says it in its own words and `travelBriefViolations` refuses a body that does not),
+    // claims nothing about anyone having been, and asks nothing.
+    expect(body).toContain('the venues own pages');
     expect(body).not.toContain('?');
     expect(body).not.toContain('Reply STOP');
     expect(body).not.toContain('STOP to opt out.');

@@ -1187,10 +1187,11 @@ async function main() {
     // rule this file's header states about the tool list, one layer up: DO NOT SCORE A
     // TURN PRODUCTION DOES NOT MAKE. `createActivityFinder` ends at the picks; the
     // follow-up composer below is `followup-note.ts`, which the coach reaches and the
-    // travel sweep never does — it hands the picks to `renderTravelBrief`, which is
-    // deterministic, has no model call in it at all, and writes to a four-segment ceiling
-    // rather than this one's two. Running it here would have scored the travel query on
-    // the coach's composer and reported the result as a fact about the travel brief.
+    // travel sweep never does — it hands the picks to the proactive-voice skill's
+    // `travel_brief` kind, which has its own eval (run-proactive-voice-eval.mjs) and
+    // writes to a four-segment ceiling rather than this one's two. Running it here would
+    // have scored the travel query on the coach's composer and reported the result as a
+    // fact about the travel brief.
     //
     // Nothing is weakened by the skip: every HARD ZERO above — the identity leak, the
     // grounding, the fabricated pick, the half find, the directory, and `no_picks` — runs
