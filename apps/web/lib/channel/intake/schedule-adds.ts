@@ -35,8 +35,8 @@ export interface ScheduleWriteResult {
 
 /**
  * Write each accepted add. A weekly add writes one event per week from the
- * first date, up to {@link MAX_SCHEDULE_WEEKS}. A line already scheduled on
- * the same date is not written twice.
+ * first date, up to {@link MAX_SCHEDULE_WEEKS}. A line already scheduled is
+ * not written twice.
  */
 export async function writeScheduleAdds(
   database: Database,
@@ -54,8 +54,9 @@ export async function writeScheduleAdds(
   for (const add of input.adds) {
     const line = input.lines[add.line - 1];
     if (!line) continue;
-    if (input.already.some((row) => row.line === add.line && row.date === add.date)) continue;
-    if (scheduled.some((row) => row.line === add.line && row.date === add.date)) continue;
+    // One reminder series per line: a line already on the calendar is not written again.
+    if (input.already.some((row) => row.line === add.line)) continue;
+    if (scheduled.some((row) => row.line === add.line)) continue;
     const { activity } = activityFromFindLine(line);
     const weeks =
       add.cadence === 'weekly'

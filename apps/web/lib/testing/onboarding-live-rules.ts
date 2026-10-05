@@ -6,6 +6,7 @@
  */
 
 import { MAX_PROSE_CHARS } from '~/lib/channel/intake/friend-voice';
+import { LINQ_GROUP_TRIGGER_PHRASE } from '~/lib/channel/linq/group';
 
 export interface LiveTurn {
   /** What the parent sent, or a connector receipt label like `[gmail connected]`. */
@@ -59,10 +60,16 @@ function isMapBubble(bubble: string): boolean {
 }
 
 /** The prose of a bubble: no URL line, no numbered lines, no join trailer. */
+/** The co-parent join lines code puts under a yes: Hale's number and the phrase. */
+const JOIN_LINE = new RegExp(
+  `^(?:\\+?[\\d\\s().-]{10,}|${Object.values(LINQ_GROUP_TRIGGER_PHRASE).join('|')})$`,
+  'u',
+);
+
 function proseOf(bubble: string): string {
   return bubble
     .split('\n')
-    .filter((line) => !LINK.test(line) && !/^\d+\.\s/.test(line))
+    .filter((line) => !LINK.test(line) && !/^\d+\.\s/.test(line) && !JOIN_LINE.test(line.trim()))
     .join('\n')
     .trim();
 }
@@ -194,6 +201,41 @@ export function liveViolations(replay: LiveReplay, expect: LiveExpectations): st
     }
     if (!expect.kidItems.some((item) => mentionsKidItem(text, item))) {
       out.push(`${label}: no kid item mentioned (wow skipped)`);
+    }
+  }
+
+  // Nothing is connected until its receipt: no "Gmail is set" before the tap.
+  const gmailAt = replay.turns.findIndex((turn) => turn.inbound === '[gmail connected]');
+  const beforeGmail = gmailAt < 0 ? replay.turns : replay.turns.slice(0, gmailAt);
+  for (const turn of beforeGmail) {
+    for (const bubble of turn.bubbles) {
+      if (
+        /\b(?:gmail|inbox|calendar)\b[^.?!]{0,20}\b(?:is|['’]s) (?:now )?(?:set|connected|linked|done)\b/i.test(
+          bubble,
+        )
+      ) {
+        out.push(`connected claimed before the tap: "${bubble.slice(0, 80)}"`);
+      }
+    }
+  }
+
+  // The schedule ask follows the calendar wow; the co-parent ask comes once.
+  const calendarReceipt = replay.turns.find((turn) => turn.inbound === '[calendar connected]');
+  if (calendarReceipt && calendarReceipt.bubbles.length > 0) {
+    if (!calendarReceipt.bubbles.some((bubble) => proseOf(bubble).includes('?'))) {
+      out.push('schedule ask not sent after the calendar wow');
+    }
+  }
+  const coparentAsks = all.filter(
+    (bubble) =>
+      proseOf(bubble).includes('?') &&
+      /\b(?:group (?:chat|text)|other parent|co-?parent)\b/i.test(proseOf(bubble)),
+  );
+  if (coparentAsks.length > 1) out.push(`co-parent asked ${coparentAsks.length} times`);
+  if (expect.parentName) {
+    const asParent = new RegExp(`\\bI['’]?m ${expect.parentName}\\b`, 'i');
+    if (all.some((bubble) => asParent.test(bubble))) {
+      out.push(`Hale called itself ${expect.parentName}`);
     }
   }
 

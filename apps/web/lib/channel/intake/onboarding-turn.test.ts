@@ -237,7 +237,14 @@ describe('schedule adds (step 9)', () => {
         { line: 2, cadence: 'weekly', date: '2026-10-10', time: '10:00', weeks: 6 },
         limits,
       ),
-    ).toEqual({ line: 2, cadence: 'weekly', date: '2026-10-10', time: '10:00', weeks: 6 });
+    ).toEqual({
+      line: 2,
+      child: null,
+      cadence: 'weekly',
+      date: '2026-10-10',
+      time: '10:00',
+      weeks: 6,
+    });
   });
 
   it('drops a line Hale never showed, a past day, a bad time, and an unsettled date', () => {
@@ -287,7 +294,7 @@ describe('schedule adds (step 9)', () => {
       limits,
     );
     expect(capture.scheduleAdds).toEqual([
-      { line: 2, cadence: 'weekly', date: '2026-10-10', time: '10:00', weeks: null },
+      { line: 2, child: null, cadence: 'weekly', date: '2026-10-10', time: '10:00', weeks: null },
     ]);
     expect(countRejectedScheduleAdds({ scheduleAdds: capture.scheduleAdds }, limits)).toBe(0);
   });

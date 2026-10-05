@@ -7,6 +7,7 @@ import { summarizeChildren } from '~/lib/channel/intake/derive';
 import {
   type FriendVoiceComposer,
   createFriendVoiceComposer,
+  pageOncePerDay,
   speakFriend,
 } from '~/lib/channel/intake/friend-voice';
 import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
@@ -23,9 +24,7 @@ import {
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { linqFromE164 } from '~/lib/channel/linq/config';
 import { familyOutboundTarget, familySpeech } from '~/lib/channel/linq/family-outbound';
-import { LINQ_GROUP_TRIGGER_PHRASE, formatLinqLineForParent } from '~/lib/channel/linq/group';
 import { groupCalendarReceipt, groupGmailReceipt } from '~/lib/channel/linq/group-coparent-copy';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
@@ -38,6 +37,7 @@ import {
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import {
   type KidItemClassifier,
   createKidItemClassifier,
@@ -332,7 +332,11 @@ async function sendReceipt(
     provider,
     ports.friendVoice,
     aha,
-    { session, nameStored: await parentNameStored(database, parentUserId) },
+    {
+      session,
+      nameStored: await parentNameStored(database, parentUserId),
+      page: pageOncePerDay(new PostgresRateLimiter(database), familyId),
+    },
   );
   const continuation = {
     familyId,
@@ -642,7 +646,10 @@ async function sendCalendarCardAfterGmailReceipt(
         ),
         step: 'calendar',
       },
-      { linkFollows: true },
+      {
+        linkFollows: true,
+        page: pageOncePerDay(new PostgresRateLimiter(database), args.familyId),
+      },
     );
     if (!spoken.prose.trim() || spoken.source === 'unsent') {
       console.error(
@@ -740,11 +747,7 @@ async function askAfterCalendarReceipt(
       return;
     }
     const language = await familyReceiptLanguage(database, args.familyId);
-    const from = args.chatId ? linqFromE164() : null;
-    const join =
-      step === 'coparent' && from
-        ? { line: formatLinqLineForParent(from), phrase: LINQ_GROUP_TRIGGER_PHRASE[language] }
-        : null;
+    // The ask carries no join number: that goes under their yes, in the turn that reads it.
     const spoken = await speakFriend(
       ports.friendVoice,
       {
@@ -758,9 +761,9 @@ async function askAfterCalendarReceipt(
         findLines: lines,
         findGroups: progress ? groupsFromFindBody(progress.findBody) : [],
         now: args.now,
-        coparentJoin: join,
+        coparentJoin: null,
       },
-      { trailer: join ? `${join.line}\n${join.phrase}` : null },
+      { page: pageOncePerDay(new PostgresRateLimiter(database), args.familyId) },
     );
     if (spoken.source === 'unsent' || !spoken.body.trim()) {
       await database
@@ -881,6 +884,7 @@ function receiptVoiceBase(
     parentName: given?.parentName ?? null,
     parentRole: given?.parentRole ?? null,
     scheduled: (given?.scheduled ?? []).map((row) => ({
+      line: row.line,
       title: row.title,
       when: `${row.date}${row.time ? ` ${row.time}` : ''}`,
       cadence: row.cadence,

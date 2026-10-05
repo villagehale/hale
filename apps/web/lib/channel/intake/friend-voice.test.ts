@@ -5,6 +5,7 @@ import {
   assembleFriendBody,
   friendWeekAction,
   judgeFriendReply,
+  repairedProse,
   speakFriend,
 } from './friend-voice';
 import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
@@ -59,7 +60,7 @@ describe('onboarding friend fixtures', () => {
     expect(skill.meta.name).toBe('onboarding-friend');
     expect(skill.meta.task).toBe('speak');
     expect(skill.instructions).toContain('Exactly one question mark');
-    expect(skill.instructions).toContain('Do not invent an activity');
+    expect(skill.instructions).toContain('Never name a town, neighbourhood, school, venue, date');
     expect(skill.instructions).toContain('**coparent**');
     expect(skill.instructions).toContain('**connected**');
     expect(skill.instructions).toContain('ahaMention');
@@ -73,13 +74,15 @@ describe('onboarding friend fixtures', () => {
     const ruleWords = skill.instructions.match(/\b(never|do not|don't|always)\b/gi) ?? [];
     expect(words).toBeLessThan(2400);
     expect(ruleWords.length).toBeLessThan(20);
-    expect(skill.instructions).toContain('## What parents need');
-    expect(skill.instructions).toContain('## Checked by code');
-    expect(skill.instructions).toContain('Registration windows');
-    expect(skill.instructions).toContain('Weekly vs one-off');
+    expect(skill.instructions).toContain('## Facts');
+    expect(skill.instructions).toContain('## Output');
+    expect(skill.instructions).toContain('reminders, not registrations');
+    expect(skill.instructions).toContain('Propose a default per item');
     // The trust lines are true for a full-read Google scope: no "never sees your mail".
     expect(skill.instructions).not.toMatch(/never sees? your (personal|work) (mail|email)/i);
-    expect(skill.instructions).toContain('Do not promise that work or personal mail is never seen');
+    expect(skill.instructions).toContain(
+      'Never claim Hale only reads, only sees, or never sees some of it',
+    );
 
     // The retry prompt is a skill too, and knows the step it is rewriting.
     const short = await loadOnboardingFriendShortSkill();
@@ -163,7 +166,7 @@ describe('friend-voice judge', () => {
   });
 
   it('puts the question after the list, and rejects a question that sits above it', () => {
-    const prose = 'Maya is 4 and Leo is 1, near M5V. Which of these feels right?';
+    const prose = 'Maya is 4, near M5V. Which of these feels right?';
     const body = assembleFriendBody(prose, swim);
     const lines = body.split('\n');
     expect(lines.at(-1)).toBe('Which of these feels right?');
@@ -221,14 +224,14 @@ describe('friend-voice judge', () => {
     expect(judgeFriendReply(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
   });
 
-  it('requires the question to end the message, and does not grade the aside', () => {
+  it('lets the aside follow the question: one ask, wherever it sits', () => {
     const place = blank({ step: 'place', parentWords: 'what is this?', listKind: 'none' });
     expect(
       judgeFriendReply("It's a text for your kids' year. What's your postal code?", place),
     ).toEqual({ ok: true });
     expect(
       judgeFriendReply("What's your postal code? It's a text for your kids' year.", place),
-    ).toEqual({ ok: false, reason: 'question' });
+    ).toEqual({ ok: true });
   });
 
   it('rejects French with the ASCII gaps', () => {
@@ -250,7 +253,7 @@ describe('friend-voice judge', () => {
 
     const calendar = blank({ step: 'connected', connector: 'gcal', parentWords: '' });
     const gmail = blank({ step: 'connected', connector: 'gmail', language: 'fr', parentWords: '' });
-    expect(judgeFriendReply('Your Gmail is connected.', calendar)).toEqual({
+    expect(judgeFriendReply('Your Gmail is connected.', calendar)).toMatchObject({
       ok: false,
       reason: 'invented',
     });
@@ -336,13 +339,13 @@ describe('friend-voice judge', () => {
     ).toEqual({ ok: true });
     expect(
       judgeFriendReply('Swim at the rec centre is on your calendar.', input, { ahaMention: null }),
-    ).toEqual({ ok: false, reason: 'invented' });
+    ).toEqual({ ok: true });
     expect(judgeFriendReply('Your calendar is connected.', input, { ahaMention: null })).toEqual({
       ok: true,
     });
     expect(
       judgeFriendReply('Hockey is on Thursday at 4:00.', input, { ahaMention: 'Hockey' }),
-    ).toEqual({ ok: false, reason: 'invented' });
+    ).toMatchObject({ ok: false, reason: 'invented' });
   });
 });
 
@@ -591,7 +594,7 @@ describe('speakFriend', () => {
         input,
         { ahaMention: 'Picture Day at Park Public School Thu Oct 8' },
       ),
-    ).toEqual({ ok: false, reason: 'invented' });
+    ).toMatchObject({ ok: false, reason: 'invented' });
 
     const clash = blank({
       step: 'connected',
@@ -628,5 +631,47 @@ describe('speakFriend', () => {
         { ahaMention: 'Mia swim' },
       ),
     ).toEqual({ ok: true });
+  });
+});
+
+describe('repairedProse', () => {
+  it('folds offered choices into one question and leaves a clean draft alone', () => {
+    expect(
+      repairedProse(
+        'Which of these would help? Baby and Me storytime on Thursdays for Sebastian, or Swim Kids on Saturdays for Mia?',
+        'schedule',
+      ),
+    ).toBe('Baby and Me storytime on Thursdays for Sebastian, or Swim Kids on Saturdays for Mia?');
+    expect(
+      repairedProse(
+        'For Sebastian, how about the storytime Thursdays? For Mia, the Swim Kids class Saturdays? Want reminders for either?',
+        'schedule',
+      ),
+    ).toBe(
+      'For Sebastian, how about the storytime Thursdays. For Mia, the Swim Kids class Saturdays. Want reminders for either?',
+    );
+    expect(repairedProse('Want reminders for the swim?', 'schedule')).toBe('');
+    expect(repairedProse('Do you have kids? If so, what are their names?', 'kids_names')).toBe('');
+    expect(
+      repairedProse(
+        `Village Hale Technologies Inc. made Hale, and villagehale.com has the details. ${'It texts you the kids things that fit. '.repeat(3)}What are your kids names?`,
+        'kids_names',
+      ),
+    ).toMatch(/^Village Hale Technologies Inc\. made Hale/);
+  });
+
+  it('never folds in another step, never repairs a no-question step, and trims a long draft from the front', () => {
+    expect(
+      repairedProse(
+        'Want the swim on your calendar? Would a group chat with the other parent help?',
+        'schedule',
+      ),
+    ).toBe('');
+    expect(repairedProse('Saw picture day. Want a reminder?', 'connected')).toBe('');
+    const long = `${'Gmail helps me catch registration confirmations and activity updates for the kids. '.repeat(2)}Google shares your whole inbox with me, and I keep only what is about the kids. Want to connect?`;
+    const trimmed = repairedProse(long, 'email');
+    expect(trimmed.length).toBeLessThanOrEqual(220);
+    expect(trimmed).toContain('Google shares your whole inbox');
+    expect(trimmed.endsWith('Want to connect?')).toBe(true);
   });
 });

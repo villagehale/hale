@@ -4,7 +4,7 @@ import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { LIVE_FROM, runOnboardingReplay } from '~/lib/testing/onboarding-live-harness';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { createFriendVoiceComposer } from './friend-voice';
+import { type FriendVoiceComposer, createFriendVoiceComposer } from './friend-voice';
 
 /**
  * The live replay of the founder's iMessage test (VIL-417): real model, real
@@ -71,8 +71,30 @@ describe.skipIf(!LIVE)('live onboarding replay (real model)', () => {
     'walks the founder script and keeps every rule',
     async () => {
       const client = budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+      const composer = createFriendVoiceComposer(client);
+      // LIVE_VERBOSE=1 prints every draft the model wrote, sent or not, so a
+      // judged-bad reply can be read next to the reason it was refused.
+      const friendVoice: FriendVoiceComposer =
+        process.env.LIVE_VERBOSE === '1'
+          ? {
+              async compose(input, options) {
+                const composed = await composer.compose(input, options);
+                process.stdout.write(
+                  `    ~ draft step=${input.step} prompt=${options?.prompt ?? 'full'}: ${JSON.stringify(
+                    {
+                      reply: composed.reply,
+                      leads: composed.groupLeads ?? undefined,
+                      aha: composed.ahaMention ?? undefined,
+                      capture: composed.capture,
+                    },
+                  )}\n`,
+                );
+                return composed;
+              },
+            }
+          : composer;
       const report = await runOnboardingReplay(db.database, {
-        friendVoice: createFriendVoiceComposer(client),
+        friendVoice,
         kidItems: createKidItemClassifier(client),
         print: (line) => process.stdout.write(`${line}\n`),
       });

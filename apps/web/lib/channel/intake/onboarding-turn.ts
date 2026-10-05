@@ -21,6 +21,8 @@ export interface ScheduleAdd {
   time: string | null;
   /** Weekly only. How many weeks to write. Null takes the default. */
   weeks: number | null;
+  /** The kid it is for, as the model named them. Checked against the line's age fit. */
+  child?: string | null;
 }
 
 /**
@@ -200,6 +202,90 @@ export interface ScheduleLimits {
   findLineCount: number;
   /** YYYY-MM-DD of today in the family's zone. A date before it is dropped. */
   today?: string | null;
+  /** The real map lines, so an add can be checked against the line's day, time and age fit. */
+  lines?: readonly string[];
+  /** The kids as stored, for the age-fit check. */
+  children?: readonly { name: string | null; ageMonths: number | null }[];
+  /** Lines already on the calendar from this onboarding. A repeat is dropped, not refused. */
+  scheduledLines?: readonly number[];
+}
+
+const WEEKDAY_INDEX: Record<string, number> = {
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
+};
+
+/** The weekdays a line runs on ("Tuesdays 9:30", "Tuesdays and Thursdays"), as 0-6. */
+export function lineWeekdays(line: string): number[] {
+  const found =
+    line.match(/\b(sun|mon|tues?|wed(?:nes)?|thu(?:rs?)?|fri|sat(?:ur)?)(?:days?)?\b/giu) ?? [];
+  const days = new Set<number>();
+  for (const token of found) {
+    const index = WEEKDAY_INDEX[token.slice(0, 3).toLowerCase()];
+    if (index != null) days.add(index);
+  }
+  return [...days].sort((a, b) => a - b);
+}
+
+/** The one start time a line names ("Saturdays 11:00", "Wednesdays 18:30"), as HH:MM. */
+export function lineStartTime(line: string): string | null {
+  const times = line.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/gu) ?? [];
+  if (times.length !== 1) return null;
+  const [hour, minute] = (times[0] ?? '').split(':');
+  return `${String(Number(hour)).padStart(2, '0')}:${minute}`;
+}
+
+/**
+ * The age fit a line states, in months, inclusive: "(6-36 months)", "(0-6 yrs)",
+ * "(ages 6-8)". Null when the line does not say ("all ages", nothing in brackets).
+ */
+export function lineAgeFitMonths(line: string): { min: number; max: number } | null {
+  const match =
+    /\((?:ages?\s*)?(\d{1,2})\s*[-\u2013]\s*(\d{1,2})\s*(months?|mos?|yrs?|years?)?\)/iu.exec(line);
+  if (!match) return null;
+  const low = Number(match[1]);
+  const high = Number(match[2]);
+  if (/^mo/iu.test(match[3] ?? '')) return { min: low, max: high };
+  return { min: low * 12, max: high * 12 + 11 };
+}
+
+function weekdayOf(dayKey: string): number {
+  return new Date(`${dayKey}T12:00:00Z`).getUTCDay();
+}
+
+function shiftDayKey(dayKey: string, days: number): string {
+  const at = new Date(`${dayKey}T12:00:00Z`);
+  at.setUTCDate(at.getUTCDate() + days);
+  return at.toISOString().slice(0, 10);
+}
+
+/** The first day on or after `dayKey` that the line runs on. The line's day is the fact. */
+function snapToLineDay(dayKey: string, weekdays: readonly number[]): string {
+  if (weekdays.length === 0 || weekdays.includes(weekdayOf(dayKey))) return dayKey;
+  for (let offset = 1; offset < 7; offset += 1) {
+    const next = shiftDayKey(dayKey, offset);
+    if (weekdays.includes(weekdayOf(next))) return next;
+  }
+  return dayKey;
+}
+
+/** The stored kid an add names: the same first name, or a nickname it starts ("Seb"). */
+function childNamed(
+  name: string,
+  children: readonly { name: string | null; ageMonths: number | null }[],
+): { name: string | null; ageMonths: number | null } | undefined {
+  const given = name.trim().toLowerCase();
+  if (given.length < 2) return undefined;
+  return children.find((child) => {
+    const kid = (child.name ?? '').trim().toLowerCase();
+    if (kid.length < 2) return false;
+    return kid === given || (given.length >= 3 && kid.startsWith(given));
+  });
 }
 
 /**
@@ -221,18 +307,31 @@ export function acceptScheduleAdd(raw: unknown, limits: ScheduleLimits): Schedul
   }
   const cadence = row.cadence === 'weekly' ? 'weekly' : row.cadence === 'once' ? 'once' : null;
   if (!cadence) return null;
-  const date = typeof row.date === 'string' ? row.date.trim() : '';
-  if (!validDayKey(date)) return null;
+  const text = limits.lines?.[line - 1] ?? '';
+  const child = typeof row.child === 'string' && row.child.trim() ? row.child.trim() : null;
+  // A line for a baby is not the six-year-old's: the age fit the line states is the check.
+  if (child && limits.children) {
+    const kid = childNamed(child, limits.children);
+    const fit = lineAgeFitMonths(text);
+    if (kid?.ageMonths != null && fit && (kid.ageMonths < fit.min || kid.ageMonths > fit.max)) {
+      return null;
+    }
+  }
+  const proposed = typeof row.date === 'string' ? row.date.trim() : '';
+  if (!validDayKey(proposed)) return null;
+  // The day the line runs on wins over the day the model counted to.
+  const date = snapToLineDay(proposed, lineWeekdays(text));
   if (limits.today) {
     if (date < limits.today) return null;
     const ahead =
       (Date.parse(`${date}T12:00:00Z`) - Date.parse(`${limits.today}T12:00:00Z`)) / 86_400_000;
     if (ahead > MAX_SCHEDULE_DAYS_AHEAD) return null;
   }
-  const time =
+  const given =
     typeof row.time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/u.test(row.time.trim())
       ? row.time.trim()
       : null;
+  const time = lineStartTime(text) ?? given;
   const weeks =
     cadence === 'weekly' &&
     typeof row.weeks === 'number' &&
@@ -241,7 +340,14 @@ export function acceptScheduleAdd(raw: unknown, limits: ScheduleLimits): Schedul
     row.weeks <= MAX_SCHEDULE_WEEKS
       ? row.weeks
       : null;
-  return { line, cadence, date, time, weeks };
+  return { line, cadence, date, time, weeks, child };
+}
+
+/** An add for a line that is already on the calendar: dropped quietly, it is already there. */
+function alreadyScheduled(raw: unknown, limits: ScheduleLimits): boolean {
+  if (!raw || typeof raw !== 'object') return false;
+  const line = (raw as Record<string, unknown>).line;
+  return typeof line === 'number' && (limits.scheduledLines ?? []).includes(line);
 }
 
 /**
@@ -254,7 +360,9 @@ export function countRejectedScheduleAdds(raw: unknown, limits: ScheduleLimits):
   if (!raw || typeof raw !== 'object') return 0;
   const addsIn = (raw as Record<string, unknown>).scheduleAdds;
   if (!Array.isArray(addsIn)) return 0;
-  return addsIn.filter((add) => acceptScheduleAdd(add, limits) === null).length;
+  return addsIn.filter(
+    (add) => !alreadyScheduled(add, limits) && acceptScheduleAdd(add, limits) === null,
+  ).length;
 }
 
 /**
@@ -292,6 +400,7 @@ export function acceptOnboardingCapture(
   const addsIn = Array.isArray(row.scheduleAdds) ? row.scheduleAdds : [];
   const scheduleAdds: ScheduleAdd[] = [];
   for (const add of addsIn) {
+    if (alreadyScheduled(add, limits)) continue;
     const accepted = acceptScheduleAdd(add, limits);
     // One add per line: the same activity settled twice in one message is one reminder.
     if (accepted && !scheduleAdds.some((seen) => seen.line === accepted.line)) {

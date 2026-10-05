@@ -145,8 +145,10 @@ import {
   type FriendVoiceComposer,
   type FriendVoiceInput,
   type FriendVoiceResult,
+  type SpeakOptions,
   assembleFriendBody,
   judgeFriendReply,
+  pageOncePerDay,
   speakFriend,
   turnsFromTranscript,
 } from './friend-voice';
@@ -1202,18 +1204,17 @@ async function friendSpeak(
   deps: IntakeDeps,
   transcript: readonly { direction: 'in' | 'out'; body: string }[],
   input: Omit<FriendVoiceInput, 'recentTurns'>,
-  options?: {
-    link?: string | null;
-    linkFollows?: boolean;
-    trailer?: string | null;
-    prompt?: 'full' | 'short';
+  options?: Omit<SpeakOptions, 'page'> & {
+    /** The family or session a miss is paged for: #ops hears once per kind per day. */
+    pageScope?: string | null;
   },
 ) {
   deps.keepTyping?.();
+  const { pageScope, ...speak } = options ?? {};
   return speakFriend(
     deps.friendVoice,
     { ...input, recentTurns: turnsFromTranscript(transcript) },
-    options,
+    pageScope ? { ...speak, page: pageOncePerDay(deps.limiter, pageScope) } : speak,
   );
 }
 
@@ -1346,6 +1347,7 @@ function coparentTrailer(join: { line: string; phrase: string } | null): string 
 
 function scheduledForModel(given: FirstTouchGiven | null, language: ReplyLanguage) {
   return (given?.scheduled ?? []).map((row) => ({
+    line: row.line,
     title: row.title,
     when: `${dayLabelFor(row.date, language)}${row.time ? ` ${row.time}` : ''}`,
     cadence: row.cadence,
@@ -1559,6 +1561,23 @@ async function friendOnboardingTurn(
     schedule: false,
     coparent: false,
   };
+  const prior = {
+    children: session.collected.children,
+    postalCode: session.collected.postalCode,
+    place: place
+      ? {
+          kind: place.kind,
+          areaCoarse: place.areaCoarse,
+          postalCode: place.postalCode,
+          municipality: place.municipality as FirstTouchPlace['municipality'],
+          city: place.city,
+        }
+      : null,
+    parentName: priorGiven?.parentName ?? null,
+    parentRole: priorGiven?.parentRole ?? null,
+    connectCalendar: priorGiven?.connectCalendar ?? null,
+    connectGmail: priorGiven?.connectGmail ?? null,
+  };
   const spoken = await friendSpeak(
     deps,
     transcript,
@@ -1580,27 +1599,19 @@ async function friendOnboardingTurn(
         checklist,
       },
     ),
-  );
-  const stored = storedFromCapture(
     {
-      children: session.collected.children,
-      postalCode: session.collected.postalCode,
-      place: place
-        ? {
-            kind: place.kind,
-            areaCoarse: place.areaCoarse,
-            postalCode: place.postalCode,
-            municipality: place.municipality as FirstTouchPlace['municipality'],
-            city: place.city,
-          }
-        : null,
-      parentName: priorGiven?.parentName ?? null,
-      parentRole: priorGiven?.parentRole ?? null,
-      connectCalendar: priorGiven?.connectCalendar ?? null,
-      connectGmail: priorGiven?.connectGmail ?? null,
+      pageScope: session.id,
+      // Place and an age provision this turn: the map and the name ask are the
+      // reply, written next. This draft is read for its facts only.
+      replyDiscardedWhen: (capture) => {
+        const next = storedFromCapture(prior, capture);
+        const nextPlace = next.place ? persistPlace(next.place) : null;
+        const kids = withKnownAges(next.collectedChildren);
+        return Boolean(kids && kids.length > 0 && nextPlace && intakeLocationFor(nextPlace));
+      },
     },
-    spoken.capture,
   );
+  const stored = storedFromCapture(prior, spoken.capture);
   const nextPlace = stored.place ? persistPlace(stored.place) : null;
   const collected: IntakeCollected = {
     children: stored.collectedChildren,
@@ -2651,7 +2662,16 @@ async function friendColdTurn(
       coparentJoin: join,
       checklist,
     }),
-    { linkFollows: true },
+    {
+      // A card rides only the ask for its own connector, and only the first time.
+      linkFollows: (judged) =>
+        (judged === 'email' && !progress.emailOffered) ||
+        (judged === 'calendar' && !progress.calendarOffered),
+      linkAbove:
+        (gap === 'gmail' && progress.emailOffered === true) ||
+        (gap === 'calendar' && progress.calendarOffered === true),
+      pageScope: familyId,
+    },
   );
   if (spoken.capture.stopAsking) {
     const recorded = await recordInbound(database, ctx, inbound, session.transcript);
@@ -2709,8 +2729,9 @@ async function friendColdTurn(
     });
   }
   await keepParentRole(database, { familyId, userId, guess: stored.parentRole });
+  // A reminder is written only when the reply that confirms it goes out.
   const written =
-    lines.length > 0 && spoken.capture.scheduleAdds.length > 0
+    lines.length > 0 && spoken.capture.scheduleAdds.length > 0 && friendOutbound(spoken)
       ? await writeScheduleAdds(database, {
           familyId,
           userId,
@@ -2769,8 +2790,9 @@ async function friendColdTurn(
     );
     return { status: 'first_touch', step: 'find_sent' };
   }
+  // The number and phrase go under the yes to the group chat, never under the ask.
   const trailer = coparentTrailer(join);
-  if (trailer && (next === 'coparent' || spoken.capture.coparentGroup === true)) {
+  if (trailer && spoken.capture.coparentGroup === true) {
     voiced = `${voiced}\n${trailer}`;
   }
   // A card rides this reply only when the reply is about that connector: a
@@ -3774,6 +3796,7 @@ async function provision(
               findLines,
               findGroups: groups,
             }),
+            { pageScope: familyId },
           )
         : Promise.resolve(null),
       friendSpeak(
@@ -3786,7 +3809,10 @@ async function provision(
           findLines,
           listKind: 'none',
         }),
-        { linkFollows: true },
+        {
+          linkFollows: (judged) => judged === 'email' || judged === 'calendar',
+          pageScope: familyId,
+        },
       ),
     ]);
     if (map && map.source !== 'unsent') {

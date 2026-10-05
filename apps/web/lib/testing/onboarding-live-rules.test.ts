@@ -46,7 +46,10 @@ function clean(): LiveReplay {
       },
       {
         inbound: '[calendar connected]',
-        bubbles: ["Calendar is connected. Mia's swim runs into her party."],
+        bubbles: [
+          "Calendar is connected. Mia's swim runs into her party.",
+          'Want any of those on your calendar as reminders?',
+        ],
       },
       { inbound: 'thanks!', bubbles: [], outcome: 'handed_off' },
     ],

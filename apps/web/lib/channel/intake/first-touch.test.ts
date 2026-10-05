@@ -52,10 +52,10 @@ const MAYA: IntakeCollected = {
 
 function offScriptAside(words: string): string | null {
   if (/who is this/i.test(words)) {
-    return "I'm Hale, from Village Hale Technologies (villagehale.com). Trying me costs nothing to ask about; the site has the details.";
+    return "I'm Hale, from Village Hale Technologies (villagehale.com). The site has the details, price included.";
   }
   if (/what is this/i.test(words)) return "I find what's on for your kids.";
-  if (/is this free/i.test(words)) return 'Yes, texting me is free.';
+  if (/is this free/i.test(words)) return 'The price is on villagehale.com.';
   if (/tell me a joke/i.test(words)) return "I'm not much of a comic.";
   if (/privacy|private/i.test(words))
     return 'I only keep what you send, and you can ask what I have.';
@@ -125,13 +125,18 @@ function scriptedTurn(input: FriendVoiceInput): {
     if (input.step === 'calendar') capture.connectCalendar = true;
     if (input.step === 'email') capture.connectGmail = true;
     if (input.step === 'coparent') capture.coparentGroup = true;
-    if (input.step === 'schedule' && input.findLines.length > 0) {
+    if (
+      input.step === 'schedule' &&
+      input.findLines.length > 0 &&
+      (input.scheduled ?? []).length === 0
+    ) {
       capture.scheduleAdds = [
         { line: 1, cadence: 'weekly', date: '2026-08-01', time: null, weeks: null },
       ];
-      capture.scheduleDone = true;
     }
   }
+  // The reminders are confirmed; the next plain reply closes the schedule.
+  if (input.step === 'schedule' && (input.scheduled ?? []).length > 0) capture.scheduleDone = true;
   if (/^(no|nope)$/i.test(words)) {
     if (input.step === 'names' || input.step === 'name_confirm') capture.nameDeclined = true;
     if (input.step === 'kids_names') capture.kidsNamesDeclined = true;
@@ -176,6 +181,10 @@ function scriptedTurn(input: FriendVoiceInput): {
 
   if (input.step === 'find_show') {
     return { reply: 'Here is what is on near you for their ages.', capture, groupLeads: [] };
+  }
+  // Reminders just recorded: confirm them, ask nothing.
+  if (capture.scheduleAdds.length > 0) {
+    return { reply: 'Done, a weekly reminder for the first one.', capture };
   }
   if (input.step === 'help') {
     const missing =
@@ -979,6 +988,10 @@ describe('friend voice onboarding', () => {
       ),
     ).toBe(true);
 
+    // The add is confirmed with no question; the next reply closes the schedule.
+    expect(transport.bodies().at(-1)).toBe('Done, a weekly reminder for the first one.');
+    await handleInboundSms(fake.db, inbound(transport, 'sounds good'), timed);
+
     // Step 10: the co-parent, asked once, after the schedule — not combined with it.
     const coparent = transport.bodies().at(-1) ?? '';
     expect(coparent).toBe('Want me to set up a group chat with the other parent?');
@@ -1058,7 +1071,7 @@ describe('friend voice onboarding', () => {
 
   it.each([
     ['what is this?', "I find what's on for your kids.", "What's your postal code?"],
-    ['is this free?', 'Yes, texting me is free.', "What's your postal code?"],
+    ['is this free?', 'The price is on villagehale.com.', "What's your postal code?"],
     ['tell me a joke', "I'm not much of a comic.", "What's your postal code?"],
     ['ok', 'Got it.', "What's your postal code?"],
     ['lol', 'Got it.', "What's your postal code?"],
@@ -1079,7 +1092,7 @@ describe('friend voice onboarding', () => {
     await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
     await handleInboundSms(fake.db, inbound(transport, 'is this free?'), deps);
     const body = transport.bodies().at(-1) ?? '';
-    expect(body).toContain('Yes, texting me is free.');
+    expect(body).toContain('The price is on villagehale.com.');
     expect(body.trim().endsWith("What are your kids' names?")).toBe(true);
     expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_ages');
   });
@@ -1191,7 +1204,7 @@ describe('friend voice onboarding', () => {
     expect(done.status).toBe('provisioned');
     const body = transport.bodies().at(-1) ?? '';
     expect(transport.bodies()).toHaveLength(3);
-    expect(body).toContain('Yes, texting me is free.');
+    expect(body).toContain('The price is on villagehale.com.');
     expect(body).toMatch(/email/i);
     expect(body).toContain('/connect?t=');
     expect(body).not.toMatch(/which of these|call you|postal code|how old/i);

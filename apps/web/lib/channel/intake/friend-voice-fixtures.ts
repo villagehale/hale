@@ -121,7 +121,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
       {
         title: 'gmail, trust lines, link on its own',
         prose:
-          'Dana, I only read kid-activity mail, never send anything for you, and you can disconnect any time. Google may show an unverified app screen; Advanced, then continue. Want me to watch for the registration dates?',
+          'Dana, Google shares the whole inbox and I keep only kid-activity mail, never send anything for you, and you can disconnect any time. Google may show an unverified app screen; Advanced, then continue. Want me to watch for the registration dates?',
         link: GMAIL_LINK,
         input: input({
           step: 'email',

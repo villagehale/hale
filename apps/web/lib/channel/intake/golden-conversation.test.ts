@@ -85,7 +85,7 @@ type Mark = 'typing-start' | 'typing-stop' | 'send' | 'card' | 'search';
 
 function offScriptAside(words: string): string | null {
   if (/what is this/i.test(words)) return "I find what's on for your kids.";
-  if (/is this free/i.test(words)) return 'Yes, texting me is free.';
+  if (/is this free/i.test(words)) return 'The price is on villagehale.com.';
   if (/tell me a joke/i.test(words)) return "I'm not much of a comic.";
   if (/privacy|private/i.test(words))
     return 'I only keep what you send, and you can ask what I have.';
@@ -159,7 +159,11 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
     if (input.step === 'calendar') capture.connectCalendar = true;
     if (input.step === 'email') capture.connectGmail = true;
     if (input.step === 'coparent') capture.coparentGroup = true;
-    if (input.step === 'schedule' && input.findLines.length > 0) {
+    if (
+      input.step === 'schedule' &&
+      input.findLines.length > 0 &&
+      (input.scheduled ?? []).length === 0
+    ) {
       const swimAt = input.findLines.findIndex((line) => /swim/i.test(line));
       capture.scheduleAdds = [
         {
@@ -170,9 +174,10 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
           weeks: null,
         },
       ];
-      capture.scheduleDone = true;
     }
   }
+  // The reminders are confirmed; the next reply closes the schedule.
+  if (input.step === 'schedule' && (input.scheduled ?? []).length > 0) capture.scheduleDone = true;
   if (/^(no|nope)$/i.test(words)) {
     if (input.step === 'calendar') capture.connectCalendar = false;
     if (input.step === 'email') capture.connectGmail = false;
@@ -204,6 +209,17 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
       reply: 'Here is what is on near you for their ages.',
       capture,
       groupLeads: (input.findGroups ?? []).map(() => 'Worth a look.'),
+    };
+  }
+  // Reminders just recorded: confirm them, ask nothing.
+  if (capture.scheduleAdds.length > 0) {
+    return { reply: 'Done, a weekly reminder for the swim.', capture };
+  }
+  // A yes to the group: the number and phrase ride below the reply.
+  if (input.step === 'coparent' && capture.coparentGroup === true) {
+    return {
+      reply: 'Start a group text with them and this number, then send the phrase below.',
+      capture,
     };
   }
   // A yes to the connector just asked is answered as a yes. The next ask
@@ -486,18 +502,24 @@ describe('golden onboarding conversation', () => {
     expect(schedule.bodies.join('\n')).not.toMatch(/https:\/\//);
     assertTypingUntilSend(schedule.marks);
 
-    // Step 10: the co-parent, asked once and on its own.
-    // The prose is the model's; the join line under it is real data, like a URL.
-    const coparent = await talk.say('yes');
-    const [coparentProse, ...joinLines] = (coparent.bodies[0] ?? '').split('\n');
-    expect(coparentProse).toMatch(/group chat with the other parent\?$/);
-    expect(joinLines.join('\n')).toContain(LINQ_GROUP_TRIGGER_PHRASE.en);
+    // The add is confirmed with no question; the next reply closes the schedule.
+    const added = await talk.say('yes');
+    expect(added.bodies.join('\n')).toBe('Done, a weekly reminder for the swim.');
+
+    // Step 10: the co-parent, asked once and on its own, with nothing under it.
+    const coparent = await talk.say('sounds good');
+    expect(coparent.bodies.join('\n')).toMatch(/group chat with the other parent\?$/);
+    expect(coparent.bodies.join('\n')).not.toContain(LINQ_GROUP_TRIGGER_PHRASE.en);
     expect(coparent.bodies.join('\n')).not.toMatch(/reminder/);
     assertTypingUntilSend(coparent.marks);
 
-    const done = await talk.say('no');
-    expect(done.bodies.join('\n').trim().length).toBeGreaterThan(0);
-    expect(done.outcome).toBe('intake');
+    // A yes: the prose is the model's; the join line under it is real data, like a URL.
+    const joined = await talk.say('yes');
+    const [joinProse, ...joinLines] = (joined.bodies[0] ?? '').split('\n');
+    expect(joinProse).toMatch(/below/);
+    expect(joinLines.join('\n')).toContain(LINQ_GROUP_TRIGGER_PHRASE.en);
+
+    expect(joined.outcome).toBe('intake');
 
     const chat = await talk.say('Maya loved the pool');
     expect(chat.outcome).toBe('handed_off');
@@ -547,7 +569,11 @@ describe('golden onboarding conversation', () => {
         aside: "I find what's on for your kids.",
         question: /postal code\?$/,
       },
-      { text: 'is this free?', aside: 'Yes, texting me is free.', question: /postal code\?$/ },
+      {
+        text: 'is this free?',
+        aside: 'The price is on villagehale.com.',
+        question: /postal code\?$/,
+      },
     ];
     for (const step of steps) {
       const turn = await talk.say(step.text);
@@ -559,7 +585,7 @@ describe('golden onboarding conversation', () => {
     }
     await talk.say('M5V 2T6');
     const kids = await talk.say('is this free?');
-    expect(kids.bodies.join('\n')).toContain('Yes, texting me is free.');
+    expect(kids.bodies.join('\n')).toContain('The price is on villagehale.com.');
     expect(kids.bodies.join('\n')).toMatch(/kids' names\?$/);
 
     await talk.say('Maya');
