@@ -246,6 +246,8 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
       const { loadParentCallName } = await import('~/lib/channel/identity/parent-call-name');
       return loadParentCallName(database, input);
     },
+    // No model in this journey: the name ask cannot be written, so nothing is sent after the find.
+    composeNameAsk: async () => null,
   };
 }
 
@@ -346,11 +348,11 @@ describe('an unkept promise is a queryable state', () => {
 describe('the sweep pays it off', () => {
   it('finally has something real to send', () => {
     expect(journey.sweep).toMatchObject({ enabled: true, evaluated: 1, sent: 1 });
-    // Year-open already asked the name, even when the first radar had nothing to show.
-    // This sweep is the find that keeps the promise, and it does not ask again.
+    // The name ask after a find is the model's to write (VIL-417); with no model here
+    // it is not written, and the find goes out alone. No fixed line fills the gap.
     expect(journey.sweepBodies).toHaveLength(1);
     expect(journey.sweepBodies[0]).toContain('Library story time');
-    expect(journey.sweepBodies[0]).not.toContain('What should I call you?');
+    expect(journey.sweepBodies[0]).not.toMatch(/call you/i);
   });
 
   it('closes the promise against the message that kept it', () => {

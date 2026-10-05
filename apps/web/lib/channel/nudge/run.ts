@@ -14,6 +14,7 @@ import {
 import { howItWentLinesForGroupWeekly } from '~/lib/channel/followup/run';
 import { composeParentCallNameAsk } from '~/lib/channel/identity/call-name-voice';
 import {
+  type ParentCallNameAsk,
   type ParentCallNameState,
   decideParentCallName,
   deliverParentCallNameLine,
@@ -301,6 +302,12 @@ export interface NudgeRunDeps {
     database: Database,
     input: { familyId: string; parentUserId: string },
   ): Promise<ParentCallNameState>;
+  /**
+   * The name ask after a find, written by the onboarding model for the decided
+   * kind (VIL-417). Null means it could not be written: nothing is sent and the
+   * composer has already paged #ops.
+   */
+  composeNameAsk(input: { ask: ParentCallNameAsk; language: 'en' | 'fr' }): Promise<string | null>;
   /**
    * How-it-went lines the weekly group bubble absorbs. Absent means none.
    * Those lines are not also sent as their own bubble.
@@ -870,11 +877,13 @@ async function runForFamily(
         });
         const nameLine = decideParentCallName({ ...callName, isWin: true });
         if (nameLine.kind !== 'none') {
-          const body = await composeParentCallNameAsk(createFriendVoiceComposer(deps.client), {
-            ask: nameLine,
-            language: 'en',
-          });
-          if (body) {
+          const body = await deps.composeNameAsk({ ask: nameLine, language: 'en' });
+          if (body === null) {
+            console.warn(
+              { familyId: family.familyId, kind: nameLine.kind },
+              'nudge: name ask not written; nothing sent after the find',
+            );
+          } else {
             await deliverParentCallNameLine(
               database,
               {
@@ -1082,6 +1091,8 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
       recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
     threadMessage: threadProactiveMessage,
     loadParentCallName,
+    composeNameAsk: (input) =>
+      composeParentCallNameAsk(createFriendVoiceComposer(voiceClient()), input),
     pendingHowItWent: howItWentLinesForGroupWeekly,
     pendingDutyOverview: dutyOverviewForWeeklyBubble,
   };

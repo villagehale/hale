@@ -660,6 +660,7 @@ async function runToddlerJourney(): Promise<Journey> {
       alreadyAsked: false,
       googleGivenName: null,
     }),
+    composeNameAsk: async () => null,
   };
 
   vi.stubEnv('F14_ENABLED', 'true');
