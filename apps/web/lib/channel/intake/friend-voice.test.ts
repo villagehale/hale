@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadOnboardingFriendSkill } from '~/lib/cron/skill';
+import { loadOnboardingFriendShortSkill, loadOnboardingFriendSkill } from '~/lib/cron/skill';
 import {
   type FriendVoiceInput,
   assembleFriendBody,
@@ -77,6 +77,17 @@ describe('onboarding friend fixtures', () => {
     expect(skill.instructions).toContain('## Checked by code');
     expect(skill.instructions).toContain('Registration windows');
     expect(skill.instructions).toContain('Weekly vs one-off');
+    // The trust lines are true for a full-read Google scope: no "never sees your mail".
+    expect(skill.instructions).not.toMatch(/never sees? your (personal|work) (mail|email)/i);
+    expect(skill.instructions).toContain('Do not promise that work or personal mail is never seen');
+
+    // The retry prompt is a skill too, and knows the step it is rewriting.
+    const short = await loadOnboardingFriendShortSkill();
+    const shortWords = short.instructions.split(/\s+/).filter(Boolean).length;
+    expect(shortWords).toBeLessThan(700);
+    expect(short.instructions).toContain('**find_show**');
+    expect(short.instructions).toContain('**connected**');
+    expect(short.meta.task).toBe('speak');
   });
 
   it('checks the three sample conversations', () => {
@@ -348,7 +359,7 @@ describe('speakFriend', () => {
     expect(spoken.body).not.toBe('How old are the kids?');
   });
 
-  it('judges a yes as the next ask, so camp email is not an invented activity', async () => {
+  it('judges a yes to a connector as that connector step: a receipt with no question passes, the next ask does not ride it', async () => {
     const input = blank({
       step: 'calendar',
       parentWords: 'yes',
@@ -363,20 +374,148 @@ describe('speakFriend', () => {
         coparent: false,
       },
     });
-    const spoken = await speakFriend(
+    const receipt = await speakFriend(
       {
         async compose() {
           return {
-            reply: 'Want me to watch school and camp email for the dates?',
+            reply: "Great, the link is right there. Tap it and I'll text you what I see.",
             capture: { connectCalendar: true },
           };
         },
       },
       input,
-      { page: async () => undefined },
+      { page: async () => undefined, linkFollows: true },
     );
-    expect(spoken.source).toBe('composed');
-    expect(spoken.capture.connectCalendar).toBe(true);
-    expect(spoken.body).toMatch(/camp email/i);
+    expect(receipt.source).toBe('composed');
+    expect(receipt.step).toBe('calendar');
+    expect(receipt.capture.connectCalendar).toBe(true);
+    expect(receipt.body).not.toContain('?');
+
+    // Prose about Gmail under the calendar card sends the parent to the wrong link.
+    const pivot = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Want me to watch Gmail for the dates too?',
+            capture: { connectCalendar: true },
+          };
+        },
+      },
+      input,
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(pivot.source).toBe('unsent');
+  });
+
+  it('sends the real map lines on their own when both openers fail, and still pages', async () => {
+    const pages: string[] = [];
+    const input = blank({
+      step: 'find_show',
+      parentWords: "she's 4",
+      findLines: [
+        'Swim at the rec centre (ages 3-5) - Saturday',
+        'Story time (all ages) - Tuesday',
+      ],
+      findGroups: [
+        { category: 'swimming', lines: ['Swim at the rec centre (ages 3-5) - Saturday'] },
+        { category: 'parent_baby', lines: ['Story time (all ages) - Tuesday'] },
+      ],
+    });
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          throw new Error('model down');
+        },
+      },
+      input,
+      { page: async (text) => pages.push(text) },
+    );
+    expect(spoken.source).toBe('lines');
+    expect(spoken.fallback).toBe('model_failed');
+    expect(spoken.bubbles).toEqual([
+      '1. Swim at the rec centre (ages 3-5) - Saturday',
+      '2. Story time (all ages) - Tuesday',
+    ]);
+    expect(spoken.body).not.toContain('?');
+    expect(pages).toHaveLength(1);
+  });
+
+  it('judges a wow line on the fact, not the spelling: a weekday from the subject and a clock from the start pass', () => {
+    const input = blank({
+      step: 'connected',
+      connector: 'gmail',
+      synced: {
+        provider: 'gmail',
+        read: 'ok',
+        calendar: [],
+        email: [
+          {
+            subject: 'Picture Day at Park Public School Thu Oct 8',
+            fromName: 'Park Public School',
+            receivedAt: '2026-10-05T14:00:00.000Z',
+            snippet: 'Order forms are due Wednesday.',
+          },
+        ],
+        overlaps: [],
+      },
+    });
+    expect(
+      judgeFriendReply(
+        'Saw the picture day at Park Public School on Thursday in your inbox. Want a reminder the evening before?',
+        input,
+        { ahaMention: 'Picture Day at Park Public School Thu Oct 8' },
+      ),
+    ).toEqual({ ok: false, reason: 'question' });
+    expect(
+      judgeFriendReply(
+        'Saw the picture day at Park Public School on Thursday in your inbox. I can remind you the evening before.',
+        input,
+        { ahaMention: 'Picture Day at Park Public School Thu Oct 8' },
+      ),
+    ).toEqual({ ok: true });
+    // A weekday the subject does not carry is still invented.
+    expect(
+      judgeFriendReply(
+        'Saw the picture day at Park Public School on Friday in your inbox. I can remind you the evening before.',
+        input,
+        { ahaMention: 'Picture Day at Park Public School Thu Oct 8' },
+      ),
+    ).toEqual({ ok: false, reason: 'invented' });
+
+    const clash = blank({
+      step: 'connected',
+      connector: 'gcal',
+      synced: {
+        provider: 'gcal',
+        read: 'ok',
+        calendar: [
+          {
+            title: 'Mia swim',
+            start: '2026-10-17T14:00:00.000Z',
+            end: '2026-10-17T14:45:00.000Z',
+            allDay: false,
+            location: null,
+            declined: false,
+          },
+          {
+            title: 'Mia birthday party',
+            start: '2026-10-17T14:15:00.000Z',
+            end: '2026-10-17T16:00:00.000Z',
+            allDay: false,
+            location: null,
+            declined: false,
+          },
+        ],
+        email: [],
+        overlaps: [{ earlier: 'Mia swim', later: 'Mia birthday party' }],
+      },
+    });
+    expect(
+      judgeFriendReply(
+        "Mia's swim and the Mia birthday party both start around 10:00 on Saturday the 17th, so they clash. I can flag it the evening before.",
+        clash,
+        { ahaMention: 'Mia swim' },
+      ),
+    ).toEqual({ ok: true });
   });
 });

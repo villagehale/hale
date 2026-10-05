@@ -9,10 +9,10 @@ import {
 } from '~/lib/channel/connect/aha-read';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { loadOnboardingFriendSkill } from '~/lib/cron/skill';
+import { loadOnboardingFriendShortSkill, loadOnboardingFriendSkill } from '~/lib/cron/skill';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
-import { forceToolJson } from '~/lib/pipeline/structured';
+import { forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
 import {
   ONBOARDING_ORDER,
@@ -33,13 +33,23 @@ import {
  * no invented find facts, no compliance wording, no link without a URL, French
  * accents, nothing about a connected source that is not in the kid-only
  * snapshot. A failed, judged-bad, or timed-out compose is retried once on a
- * smaller prompt. If that also fails, nothing canned goes out: the miss is
- * logged, #ops is paged, and the next inbound or the morning nudge tries again.
+ * smaller prompt that still names the step
+ * (packages/agent/skills/onboarding-friend-short.md). If that also fails,
+ * nothing canned goes out: the miss is logged, #ops is paged, and the next
+ * inbound or the morning nudge tries again. The one exception is the map:
+ * the activity lines are real data code found, so they go out numbered on
+ * their own when both openers fail.
  */
 
-const MAX_TOKENS = 700;
-const SHORT_MAX_TOKENS = 220;
-const MAX_PROSE_CHARS = 360;
+/**
+ * The reply plus the capture fields, as one forced tool call. The map turn
+ * returns an opener, up to three leads and the kids; a cut-off at max_tokens
+ * is a failed attempt, so the budget is well over what a good reply uses.
+ */
+const MAX_TOKENS = 1000;
+const SHORT_MAX_TOKENS = 600;
+/** A text bubble. Longer than this reads as a letter, not a text. */
+export const MAX_PROSE_CHARS = 220;
 const MAX_LEAD_CHARS = 160;
 const MAX_BODY_CHARS = 1200;
 /** How far ahead the model may name a day on the schedule step. */
@@ -47,23 +57,6 @@ export const SCHEDULE_DAYS_AHEAD = 21;
 
 /** One model attempt. A hang past this retries on the smaller prompt. */
 export const FRIEND_ATTEMPT_TIMEOUT_MS = 12_000;
-
-/**
- * Model instruction for the retry. Not a parent-facing message: the parent
- * only ever sees what the model returns.
- */
-const SHORT_FRIEND_SYSTEM = [
-  'You are Hale, texting one parent. Write one short warm reply in their language.',
-  'Read known, missing, and parentWords. Extract every onboarding item this message gives, in the order listed.',
-  'Answer anything that is not one of those items, then ask only the first item still missing. The question is your last sentence. One ask per message.',
-  'If nothing is missing, or they asked you to stop, or the step is find_show, connected, or ack, no question mark.',
-  'Do not number a list and do not write a URL. Use only facts in the JSON.',
-  'Do not invent an activity, a date, a weekday, a time, or a price.',
-  'parentRole is your soft read of mother, father, or unknown from their name or words; basis is stated or guessed. Never state it to them as fact.',
-  'On the connected step, facts.synced holds only kid-related items. If one is useful, set ahaMention to its exact title or subject and mention only that item. If read is empty, failed, withheld, or none_for_kids, set ahaMention null and do not name an event, a subject, a date, or a time, and do not say the source was empty.',
-  'Adding to the calendar is a reminder. Never say booked, enrolled, signed up, or registered.',
-  'No STOP, unsubscribe, or compliance wording. No emoji.',
-].join(' ');
 
 export const FRIEND_STEPS = [
   'place',
@@ -170,8 +163,14 @@ export interface FriendVoiceResult {
   prose: string;
   /** The bubbles to send, in order. One for most steps; two or three on find_show. */
   bubbles: string[];
-  source: 'composed' | 'retry' | 'unsent';
+  /**
+   * `lines` is the map with no opener: both attempts failed, so the real
+   * numbered lines go out on their own and `fallback` says why. Only find_show.
+   */
+  source: 'composed' | 'retry' | 'lines' | 'unsent';
   fallback: FriendFallback | null;
+  /** The step the reply was judged for, once this message's facts were counted. */
+  step: FriendStep;
   /** Shape-checked fields from the model. Empty when nothing was stored. */
   capture: OnboardingCapture;
 }
@@ -215,6 +214,11 @@ export interface SpeakOptions {
    * does not pick one.
    */
   ahaMention?: string | null;
+  /**
+   * The parent just said yes to the connector this reply is for. The card is
+   * already on the thread or rides this reply, so the reply may ask nothing.
+   */
+  yesToLink?: boolean;
 }
 
 const childSchema = z
@@ -466,6 +470,75 @@ export function friendFactSlots(input: FriendVoiceInput, link?: string | null): 
   return slots.filter((slot) => slot.length > 0);
 }
 
+/**
+ * Every true way to say when a synced item is: the long label in both
+ * languages, the weekday on its own, the day of the month ("17", "17th"),
+ * the month, and the clock as "10:00", "10 am", "10am" and "10 h". The
+ * judge is checking the fact, not the model's phrasing of it.
+ */
+export function instantFactSlots(start: string, allDay: boolean): string[] {
+  const slots: string[] = [];
+  const instant = allDay ? new Date(`${start}T12:00:00Z`) : new Date(start);
+  if (Number.isNaN(instant.getTime())) return slots;
+  const zone = allDay ? 'UTC' : AHA_TIME_ZONE;
+  for (const locale of ['en-CA', 'fr-CA']) {
+    const parts = new Intl.DateTimeFormat(locale, {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      timeZone: zone,
+    }).formatToParts(instant);
+    for (const part of parts) {
+      if (part.type === 'weekday' || part.type === 'month') slots.push(part.value);
+      if (part.type === 'day') {
+        const day = Number(part.value);
+        slots.push(
+          part.value,
+          `${part.value}th`,
+          `${part.value}st`,
+          `${part.value}nd`,
+          `${part.value}rd`,
+        );
+        if (day === 1) slots.push('1er');
+      }
+    }
+    slots.push(
+      new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: zone }).format(instant),
+      new Intl.DateTimeFormat(locale, { month: 'short', timeZone: zone }).format(instant),
+    );
+  }
+  if (!allDay) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: AHA_TIME_ZONE,
+    }).formatToParts(instant);
+    const hour24 = Number(parts.find((part) => part.type === 'hour')?.value ?? Number.NaN);
+    const minute = parts.find((part) => part.type === 'minute')?.value ?? '';
+    if (!Number.isNaN(hour24) && minute) {
+      const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+      const meridiem = hour24 < 12 ? 'am' : 'pm';
+      const padded = String(hour24).padStart(2, '0');
+      slots.push(`${padded}:${minute}`, `${hour24}:${minute}`, `${hour12}:${minute}`);
+      slots.push(
+        `${hour12} ${meridiem}`,
+        `${hour12}${meridiem}`,
+        `${hour12}:${minute} ${meridiem}`,
+      );
+      slots.push(`${hour12} ${meridiem === 'am' ? 'a.m.' : 'p.m.'}`);
+      slots.push(
+        `${padded} h ${minute}`,
+        `${hour24} h ${minute}`,
+        `${hour24}h${minute}`,
+        `${hour24} h`,
+      );
+      if (minute === '00') slots.push(`${hour24}h`);
+    }
+  }
+  return slots;
+}
+
 function syncedFactSlots(input: FriendVoiceInput): string[] {
   const synced = input.synced;
   if (!synced) return [];
@@ -477,6 +550,7 @@ function syncedFactSlots(input: FriendVoiceInput): string[] {
     slots.push(ahaWhenLabel(item.start, item.allDay, AHA_TIME_ZONE, 'fr'));
     const clock = item.allDay ? null : ahaClockLabel(item.start, AHA_TIME_ZONE);
     if (clock) slots.push(clock);
+    slots.push(...instantFactSlots(item.start, item.allDay));
   }
   for (const item of synced.email) {
     slots.push(item.subject);
@@ -487,6 +561,7 @@ function syncedFactSlots(input: FriendVoiceInput): string[] {
       slots.push(ahaWhenLabel(item.receivedAt, false, AHA_TIME_ZONE, 'fr'));
       const clock = ahaClockLabel(item.receivedAt, AHA_TIME_ZONE);
       if (clock) slots.push(clock);
+      slots.push(...instantFactSlots(item.receivedAt, false));
     }
   }
   return slots;
@@ -596,6 +671,62 @@ function mentionsOutsideSlots(text: string, pattern: RegExp, slots: readonly str
   return unique.filter((token) => !slots.some((slot) => slot.toLowerCase().includes(token)));
 }
 
+/** "swimming" against a line that says "Swim", "camps" against "Day Camp", "storytime" against "Story Time". */
+function activityStem(token: string): string {
+  return token
+    .toLowerCase()
+    .replace(/[\s-]+/g, '')
+    .replace(/(?:ming|ing|ies|es|s)$/u, (suffix) =>
+      suffix === 'ming' ? 'm' : suffix === 'ies' ? 'i' : '',
+    );
+}
+
+function activitiesOutsideSlots(text: string, slots: readonly string[]): string[] {
+  const found = text.match(ACTIVITY_WORD) ?? [];
+  const unique = [...new Set(found.map((token) => token.toLowerCase()))];
+  const haystack = slots.map((slot) => slot.toLowerCase().replace(/[\s-]+/g, ''));
+  return unique.filter((token) => {
+    const stem = activityStem(token);
+    return !haystack.some((slot) => slot.includes(token) || slot.includes(stem));
+  });
+}
+
+const WEEKDAY_KEYS: Record<string, string[]> = {
+  mon: ['mon', 'lundi'],
+  tues: ['tue', 'tues', 'mardi'],
+  wednes: ['wed', 'wednes', 'mercredi'],
+  thurs: ['thu', 'thur', 'thurs', 'jeudi'],
+  fri: ['fri', 'vendredi'],
+  satur: ['sat', 'satur', 'samedi'],
+  sun: ['sun', 'dimanche'],
+  lundi: ['mon', 'lundi'],
+  mardi: ['tue', 'tues', 'mardi'],
+  mercredi: ['wed', 'wednes', 'mercredi'],
+  jeudi: ['thu', 'thur', 'thurs', 'jeudi'],
+  vendredi: ['fri', 'vendredi'],
+  samedi: ['sat', 'satur', 'samedi'],
+  dimanche: ['sun', 'dimanche'],
+};
+
+/**
+ * A weekday the reply names must be one a slot names too, in either language
+ * or abbreviated the way a subject line does ("Thu Oct 8"). The day itself is
+ * the fact; its spelling is not.
+ */
+function weekdaysOutsideSlots(text: string, slots: readonly string[]): string[] {
+  const found = text.match(WEEKDAY) ?? [];
+  const unique = [...new Set(found.map((token) => token.toLowerCase()))];
+  const lowered = slots.map((slot) => slot.toLowerCase());
+  return unique.filter((token) => {
+    const key = Object.keys(WEEKDAY_KEYS).find((candidate) => token.startsWith(candidate));
+    const forms = key ? WEEKDAY_KEYS[key] : undefined;
+    if (!forms) return !lowered.some((slot) => slot.includes(token));
+    return !lowered.some((slot) =>
+      forms.some((form) => new RegExp(`\\b${form}(?:days?|\\.|\\b)`, 'u').test(slot)),
+    );
+  });
+}
+
 /** The one question ends the message. A URL or trailer code appended after it does not count. */
 export function questionIsLast(body: string, trailer?: string | null): boolean {
   let withoutUrl = body.replace(/\nhttps:\/\/\S+\s*$/u, '').trim();
@@ -642,7 +773,10 @@ export function judgeFriendReply(
     ...groupLines,
     ...trailerFacts(options),
   ]);
-  if (FLEX_QUESTION_STEPS.has(input.step)) {
+  const flex =
+    FLEX_QUESTION_STEPS.has(input.step) ||
+    (options.yesToLink === true && LINK_STEPS.has(input.step));
+  if (flex) {
     if (asked > 1) return { ok: false, reason: 'question' };
   } else if (asked !== needed) {
     return { ok: false, reason: 'question' };
@@ -660,10 +794,10 @@ export function judgeFriendReply(
   if (mentionsOutsideSlots(trimmed, PRICE, slots).length > 0) {
     return { ok: false, reason: 'invented' };
   }
-  if (mentionsOutsideSlots(trimmed, WEEKDAY, slots).length > 0) {
+  if (weekdaysOutsideSlots(trimmed, slots).length > 0) {
     return { ok: false, reason: 'invented' };
   }
-  if (input.step !== 'email' && mentionsOutsideSlots(trimmed, ACTIVITY_WORD, slots).length > 0) {
+  if (input.step !== 'email' && activitiesOutsideSlots(trimmed, slots).length > 0) {
     return { ok: false, reason: 'invented' };
   }
   if (/https?:\/\//i.test(trimmed)) {
@@ -685,6 +819,15 @@ export function judgeFriendReply(
     const attached = Boolean(options.link && trimmed.includes(options.link));
     if (!attached && !options.linkFollows) return { ok: false, reason: 'link' };
     if (!LINK_STEPS.has(input.step) && !attached) return { ok: false, reason: 'link' };
+  }
+  // A card is for one connector. Prose about the other one under its link
+  // sends the parent to the wrong place.
+  if (options.linkFollows || options.link) {
+    if (input.step === 'calendar' && /\bgmail\b/i.test(trimmed))
+      return { ok: false, reason: 'link' };
+    if (input.step === 'email' && /\b(calendar|calendrier|agenda)\b/i.test(trimmed)) {
+      return { ok: false, reason: 'link' };
+    }
   }
 
   if (input.step === 'find_empty' && /^\s*\d+\.\s/m.test(trimmed)) {
@@ -724,9 +867,45 @@ function overlapPartners(input: FriendVoiceInput, named: string): Set<string> {
 /** A snippet this long, copied whole, is the email quoted verbatim. */
 const VERBATIM_SNIPPET_CHARS = 40;
 
+/** Lower case, no possessive, one space between words: "Mia's swim" reads as "mia swim". */
+function looseText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/['’]s\b/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+const DATE_TOKEN =
+  /^(?:\d{1,2}(?:st|nd|rd|th)?|\d{1,2}:\d{2}|\d{1,2}(?:am|pm)|am|pm|at|on|le|à|a|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun|(?:mon|tues|wednes|thurs|fri|satur|sun)day|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|may|june|july|august|september|october|november|december|janv|févr|fevr|mars|avr|mai|juin|juil|août|aout|déc|dec|janvier|février|fevrier|avril|juillet|septembre|octobre|novembre|décembre|decembre)$/u;
+
+/**
+ * The title with the date and time a subject line carries at either end
+ * taken off: "Picture Day at Park Public School Thu Oct 8" is about picture
+ * day at Park Public School. What is left is what the reply must carry.
+ */
+export function mentionCore(title: string): string {
+  const words = looseText(title)
+    .split(' ')
+    .filter((word) => word.length > 0);
+  let start = 0;
+  let end = words.length;
+  while (start < end && DATE_TOKEN.test(words[start] ?? '')) start += 1;
+  while (end > start && DATE_TOKEN.test(words[end - 1] ?? '')) end -= 1;
+  const core = words.slice(start, end).join(' ');
+  return core.length >= 3 ? core : words.join(' ');
+}
+
+/** The reply names this title: its core words, in order, allowing case and possessives. */
+export function bodyCarriesTitle(body: string, title: string): boolean {
+  const core = mentionCore(title);
+  if (core.length === 0) return false;
+  return ` ${looseText(body)} `.includes(` ${core} `) || looseText(body).includes(core);
+}
+
 /**
  * A declared mention must be one exact synced title or subject, and the reply
- * must contain it. Any other title is an extra fact, unless the snapshot's
+ * must carry it. Any other title is an extra fact, unless the snapshot's
  * overlap list pairs the two. No mention means no title: nothing extra. A
  * read with nothing kid-related allows no mention at all. An email is never
  * quoted verbatim.
@@ -745,17 +924,17 @@ function ahaGrounding(
   if (named.length > 0) {
     if (input.synced.read !== 'ok') return 'invented';
     if (!titles.includes(named)) return 'invented';
-    if (!body.includes(named)) return 'invented';
+    if (!bodyCarriesTitle(body, named)) return 'invented';
     const partners = overlapPartners(input, named);
     for (const title of titles) {
       if (title === named || partners.has(title)) continue;
       if (named.includes(title) || title.includes(named)) continue;
-      if (body.includes(title)) return 'invented';
+      if (bodyCarriesTitle(body, title)) return 'invented';
     }
     return null;
   }
   for (const title of titles) {
-    if (title.length >= 3 && body.includes(title)) return 'invented';
+    if (title.length >= 3 && bodyCarriesTitle(body, title)) return 'invented';
   }
   return null;
 }
@@ -785,13 +964,29 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-function unsent(reason: FriendFallback): FriendVoiceResult {
+function unsent(reason: FriendFallback, step: FriendStep): FriendVoiceResult {
   return {
     body: '',
     prose: '',
     bubbles: [],
     source: 'unsent',
     fallback: reason,
+    step,
+    capture: acceptOnboardingCapture(null),
+  };
+}
+
+/** The map with no opener and no leads: real lines, numbered, nothing written by code. */
+function linesOnly(input: FriendVoiceInput, reason: FriendFallback): FriendVoiceResult {
+  const bubbles = assembleFindShowBubbles('', input.findGroups ?? [], null);
+  if (bubbles.length === 0) return unsent(reason, input.step);
+  return {
+    body: bubbles.join('\n\n'),
+    prose: '',
+    bubbles,
+    source: 'lines',
+    fallback: reason,
+    step: input.step,
     capture: acceptOnboardingCapture(null),
   };
 }
@@ -825,8 +1020,21 @@ export function stepAfterCapture(current: FriendStep, gap: OnboardingItem | unde
  * current ask is judged as the next gap, so the pull-back is not graded against
  * the question that just got answered. A finished ladder or a stop is a receipt.
  */
+/**
+ * The parent just said yes to the connector this turn asked about. The reply
+ * is the receipt for that yes; the next ask waits for the connect receipt.
+ */
+export function yesToLink(input: FriendVoiceInput, capture: OnboardingCapture): boolean {
+  if (input.step === 'email') return capture.connectGmail === true && !input.checklist?.gmail;
+  if (input.step === 'calendar') {
+    return capture.connectCalendar === true && !input.checklist?.calendar;
+  }
+  return false;
+}
+
 function judgeInputFor(input: FriendVoiceInput, capture: OnboardingCapture): FriendVoiceInput {
   if (input.step === 'find_show' || input.step === 'connected') return input;
+  if (yesToLink(input, capture)) return input;
   if (!input.checklist && !capture.stopAsking) return input;
   const remaining = input.checklist
     ? onboardingMissing(checklistAfter(input.checklist, capture))
@@ -860,6 +1068,7 @@ export async function speakFriend(
     bubbles: string[],
     source: FriendVoiceResult['source'],
     capture: OnboardingCapture,
+    step: FriendStep,
   ): FriendVoiceResult => {
     const body =
       input.step === 'find_show'
@@ -871,6 +1080,7 @@ export async function speakFriend(
       bubbles: input.step === 'find_show' ? bubbles : [body],
       source,
       fallback: null,
+      step,
       capture,
     };
   };
@@ -890,7 +1100,9 @@ export async function speakFriend(
 
   if (!composer) {
     await page('voice_unavailable');
-    return unsent('voice_unavailable');
+    return input.step === 'find_show'
+      ? linesOnly(input, 'voice_unavailable')
+      : unsent('voice_unavailable', input.step);
   }
 
   const timeoutMs = options.attemptTimeoutMs ?? FRIEND_ATTEMPT_TIMEOUT_MS;
@@ -898,7 +1110,7 @@ export async function speakFriend(
   const attempt = async (
     prompt: 'full' | 'short',
   ): Promise<
-    | { prose: string; bubbles: string[]; capture: OnboardingCapture }
+    | { prose: string; bubbles: string[]; capture: OnboardingCapture; step: FriendStep }
     | { fail: FriendFallback; capture: OnboardingCapture }
   > => {
     const empty = acceptOnboardingCapture(null);
@@ -922,18 +1134,20 @@ export async function speakFriend(
         if (prose.length === 0) return { fail: 'unusable', capture };
         judgedText = assembleFriendBody(prose, input, options.link, options.trailer);
       }
-      const judged = judgeFriendReply(judgedText, judgeInputFor(input, capture), {
+      const judgeInput = judgeInputFor(input, capture);
+      const judged = judgeFriendReply(judgedText, judgeInput, {
         ...options,
         ahaMention: composed.ahaMention ?? null,
+        yesToLink: yesToLink(input, capture),
       });
       if (!judged.ok) {
         console.error(
-          { reason: judged.reason, step: input.step, prompt },
+          { reason: judged.reason, step: input.step, judgedAs: judgeInput.step, prompt },
           'onboarding-friend: unusable reply',
         );
         return { fail: 'unusable', capture };
       }
-      return { prose, bubbles, capture };
+      return { prose, bubbles, capture, step: judgeInput.step };
     } catch (err) {
       console.error(
         {
@@ -955,20 +1169,26 @@ export async function speakFriend(
       first.bubbles,
       firstPrompt === 'short' ? 'retry' : 'composed',
       first.capture,
+      first.step,
     );
   }
 
-  if (firstPrompt === 'short') {
-    await page(first.fail);
-    return unsent(first.fail);
-  }
+  const failed = async (reason: FriendFallback, capture: OnboardingCapture) => {
+    await page(reason);
+    const result =
+      input.step === 'find_show' ? linesOnly(input, reason) : unsent(reason, input.step);
+    return { ...result, capture };
+  };
+
+  if (firstPrompt === 'short') return failed(first.fail, first.capture);
 
   const second = await attempt('short');
   const capture =
     'capture' in second ? mergeCaptures(first.capture, second.capture) : first.capture;
-  if ('prose' in second) return finish(second.prose, second.bubbles, 'retry', capture);
-  await page(second.fail);
-  return { ...unsent(second.fail), capture };
+  if ('prose' in second) {
+    return finish(second.prose, second.bubbles, 'retry', capture, second.step);
+  }
+  return failed(second.fail, capture);
 }
 
 export function createFriendVoiceComposer(client: AgentClient | null): FriendVoiceComposer {
@@ -976,18 +1196,20 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
     async compose(input, options) {
       if (!client) throw new Error('onboarding-friend: voice_unavailable');
       const short = options?.prompt === 'short';
-      const skill = short ? null : await loadOnboardingFriendSkill();
+      const skill = short
+        ? await loadOnboardingFriendShortSkill()
+        : await loadOnboardingFriendSkill();
       const { value } = await forceToolJson({
         client,
-        lane: pickLane(skill?.meta.task ?? 'speak'),
-        system: skill?.instructions ?? SHORT_FRIEND_SYSTEM,
+        lane: pickLane(skill.meta.task),
+        system: skill.instructions,
         userMessage: JSON.stringify(friendVoiceContext(input)),
         toolName: 'reply',
         toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
         inputJsonSchema: replyJsonSchema,
         schema: replySchema,
         maxTokens: short ? SHORT_MAX_TOKENS : MAX_TOKENS,
-        transport: 'stream',
+        transport: llmTransport(),
       });
       return {
         reply: value.reply,
