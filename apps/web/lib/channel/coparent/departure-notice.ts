@@ -9,7 +9,7 @@ import {
   familyOutboundTarget,
   familySpeech,
 } from '~/lib/channel/linq/family-outbound';
-import { groupDepartureNotice } from '~/lib/channel/linq/group-coparent-copy';
+import { type GroupVoice, defaultGroupVoice, speakGroupLine } from '~/lib/channel/linq/group-voice';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type ProactiveHoldReason,
@@ -22,7 +22,6 @@ import {
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { failedSendPatch, readSendRefusal } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE } from './copy';
 
 /**
  * VIL-355 follow-up · the parent who STAYED is told, once.
@@ -64,6 +63,8 @@ export type DepartureNoticeOutcome =
   | 'no_staying_parent'
   | 'no_send_target'
   | 'send_failed'
+  /** The model could not write the notice after one retry. Nothing claimed; #ops paged. */
+  | 'voice_unsent'
   | `gate_refused:${ProactiveHoldReason}`;
 
 export interface DepartureNoticePorts {
@@ -71,6 +72,8 @@ export interface DepartureNoticePorts {
   resolvePhone(database: Database, parentUserId: string): Promise<string | null>;
   transport: ChannelTransport;
   threadMessage: typeof threadProactiveMessage;
+  /** The model voice for the notice. Absent falls back to the production composer. */
+  voice?: GroupVoice;
 }
 
 /** The gate and the phone resolver, wired to the real readers. The transport is NOT
@@ -176,17 +179,30 @@ export async function tellStayingParent(
     return `gate_refused:${verdict.reason}`;
   }
 
+  // Model-written (group-voice `departure`), from the one fact there is: who left, when
+  // their name is stored. In the group it reads to both (vous); 1:1 it is tu. Composed
+  // before the claim so an unwritten notice is retried rather than lost.
   const target = await familyOutboundTarget(database, familyId);
-  let message: string;
   let language: ReplyLanguage;
+  let departedName: string | null = null;
   if (target.channel === 'group') {
     const speech = await familySpeech(database, familyId, departedUserId);
     language = speech.language;
-    message = groupDepartureNotice(language, speech.name);
+    departedName = speech.name;
   } else {
     language = await parentLanguage(database, parentUserId);
-    message = CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE[language];
   }
+  const spoken = await speakGroupLine(
+    ports.voice ?? defaultGroupVoice(),
+    {
+      kind: 'departure',
+      name: departedName,
+      address: target.channel === 'group' ? 'vous' : 'tu',
+    },
+    language,
+  );
+  if (spoken.source === 'unsent') return 'voice_unsent';
+  const message = spoken.body;
 
   // CLAIM FIRST, by the insert rather than by the read above: two erasure requests
   // racing the same departure both pass a read and only one wins the unique index.

@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNull } from 'drizzle-orm';
-import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
+import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
+import { dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
 import { CO_PARENT_ASK_BY_LANGUAGE } from '~/lib/channel/intake/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
@@ -13,7 +14,12 @@ import {
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { linqApiKey, linqGroupCoparentEnabled } from './config';
 import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
-import { groupPassedSyncLine, groupPickedSyncLine } from './group-coparent-copy';
+import {
+  type GroupDecisionFact,
+  type GroupVoice,
+  defaultGroupVoice,
+  speakGroupLine,
+} from './group-voice';
 import { LinqSendError, sendLinqChatMessage } from './transport';
 
 /**
@@ -559,7 +565,7 @@ export async function noteGroupSyncConversation(
  */
 export async function flushGroupDecisionSyncs(
   database: Database,
-  input: { now: Date; fetch?: typeof fetch },
+  input: { now: Date; fetch?: typeof fetch; voice?: GroupVoice },
 ): Promise<{ sent: number; held: number }> {
   if (typeof database.select !== 'function') return { sent: 0, held: 0 };
   const waiting = await database
@@ -618,42 +624,58 @@ export async function flushGroupDecisionSyncs(
     }
     rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     const speech = await familySpeech(database, familyId, rows[0]?.parentUserId ?? '');
-    const lines: string[] = [];
+    const decisions: GroupDecisionFact[] = [];
     for (const row of rows) {
-      if (lines.length >= SYNC_LINE_MAX) break;
-      const name = speech.name ?? (speech.language === 'fr' ? 'Un parent' : 'A parent');
+      if (decisions.length >= SYNC_LINE_MAX) break;
       if (row.decision === 'picked' && row.day && row.time) {
-        lines.push(
-          groupPickedSyncLine(speech.language, {
-            name,
-            activity: row.activity,
-            kid: row.kid,
-            day: row.day,
-            time: row.time,
-          }),
-        );
-      } else if (row.decision === 'passed') {
-        lines.push(
-          groupPassedSyncLine(speech.language, {
-            name,
-            activity: row.activity,
-            kid: row.kid,
-          }),
-        );
-      } else if (row.decision === 'duty' && row.day && row.time) {
-        const line = dutySyncLine(speech.language, {
-          name: speech.name,
+        decisions.push({
+          parent: speech.name,
+          decision: 'picked',
           activity: row.activity,
           kid: row.kid,
           day: row.day,
           time: row.time,
         });
-        if (line && line.split('\n').length <= 1) lines.push(line);
+      } else if (row.decision === 'passed') {
+        decisions.push({
+          parent: speech.name,
+          decision: 'passed',
+          activity: row.activity,
+          kid: row.kid,
+          day: null,
+          time: null,
+        });
+      } else if (
+        row.decision === 'duty' &&
+        row.day &&
+        row.time &&
+        speech.name &&
+        coparentDutyMemoryEnabled() &&
+        dutyTitleMayBeSpoken(row.activity)
+      ) {
+        decisions.push({
+          parent: speech.name,
+          decision: 'duty',
+          activity: row.activity,
+          kid: row.kid,
+          day: row.day,
+          time: row.time,
+        });
       }
     }
-    if (lines.length === 0) continue;
+    if (decisions.length === 0) continue;
     const actor = rows[0]?.parentUserId;
     if (!actor) continue;
+    // Composed before the claim: an unwritten sync leaves the rows unflushed for the next tick.
+    const spoken = await speakGroupLine(
+      input.voice ?? defaultGroupVoice(),
+      { kind: 'decision_sync', decisions },
+      speech.language,
+    );
+    if (spoken.source === 'unsent') {
+      held += 1;
+      continue;
+    }
     const [claimed] = await database
       .insert(schema.channelMessages)
       .values({
@@ -674,7 +696,7 @@ export async function flushGroupDecisionSyncs(
     try {
       const delivered = await sendLinqChatMessage({
         chatId: target.chatId,
-        text: lines.join('\n'),
+        text: spoken.body,
         fetch: input.fetch,
       });
       await database
@@ -687,7 +709,7 @@ export async function flushGroupDecisionSyncs(
         actionTaken: 'group_decision_sync_sent',
         targetTable: 'channel_messages',
         targetId: claimed.id,
-        after: { lines: lines.length },
+        after: { lines: decisions.length },
       });
       const dueIds = rows.map((row) => row.id);
       await database

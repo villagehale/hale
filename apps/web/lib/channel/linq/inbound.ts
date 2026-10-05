@@ -49,7 +49,7 @@ import {
   seatAppearingCoparent,
   steerNotedCoparentOneToOne,
 } from './group-coparent';
-import { groupWelcome } from './group-coparent-copy';
+import { type GroupVoice, defaultGroupVoice, speakGroupLine } from './group-voice';
 import {
   holdTrueStrangerOnce,
   seatParticipantAdded,
@@ -127,6 +127,8 @@ export async function handleLinqInboundRequest(
     sendGroupText?: (input: { chatId: string; text: string }) => Promise<{
       providerMessageId: string;
     }>;
+    /** The group's model voice (group-voice.ts). Absent falls back to the production composer. */
+    groupVoice?: GroupVoice;
     /** Test seam. Production reads Linq and keeps the street address inside that door. */
     readSharedLocality?: typeof readSharedLocality;
   },
@@ -383,6 +385,7 @@ function coparentPorts(deps: LinqDoorDeps): GroupCoparentPorts {
   return {
     now: deps.now?.() ?? new Date(),
     recordInbound: (message, owner) => recordHandledInbound(deps, message, owner),
+    voice: deps.groupVoice,
   };
 }
 
@@ -439,6 +442,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
       senderHandle: message.senderHandle,
       now: deps.now?.() ?? new Date(),
       send: deps.sendGroupText,
+      voice: deps.groupVoice,
     });
     if (held !== 'no_family') {
       deps.log.info({ outcome: 'group_unknown_sender', hold: held }, 'linq inbound: group held');
@@ -610,15 +614,23 @@ async function claimGroupFromTrigger(
       now,
     });
     if (seated.status === 'seated') {
-      const notice = await deliverLinqGroupNotice(deps.database, {
-        familyId: mapped.familyId,
-        parentUserId: seated.userId,
-        chatId: message.chatId,
-        text: groupWelcome(language),
-        templateKey: 'linq:coparent_welcome',
-        now,
-        send: deps.sendGroupText,
-      });
+      const welcome = await speakGroupLine(
+        deps.groupVoice ?? defaultGroupVoice(),
+        { kind: 'welcome' },
+        language,
+      );
+      const notice =
+        welcome.source === 'unsent'
+          ? 'voice_unsent'
+          : await deliverLinqGroupNotice(deps.database, {
+              familyId: mapped.familyId,
+              parentUserId: seated.userId,
+              chatId: message.chatId,
+              text: welcome.body,
+              templateKey: 'linq:coparent_welcome',
+              now,
+              send: deps.sendGroupText,
+            });
       deps.log.info(
         { outcome: 'group_claimed', claim: claim.status, notice },
         'linq inbound: group claim',
@@ -872,6 +884,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         isFromMe: signal.isFromMe,
         now,
         send: deps.sendGroupText,
+        voice: deps.groupVoice,
       });
       await deps.countOutcome(seated.outcome === 'group_member_seated' ? 'intake' : 'ignored');
       return json({
@@ -931,15 +944,23 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         now,
       });
       if (seated.status === 'seated') {
-        const notice = await deliverLinqGroupNotice(deps.database, {
-          familyId,
-          parentUserId: seated.userId,
-          chatId: signal.chatId,
-          text: groupWelcome('en'),
-          templateKey: 'linq:coparent_welcome',
-          now,
-          send: deps.sendGroupText,
-        });
+        const welcome = await speakGroupLine(
+          deps.groupVoice ?? defaultGroupVoice(),
+          { kind: 'welcome' },
+          'en',
+        );
+        const notice =
+          welcome.source === 'unsent'
+            ? 'voice_unsent'
+            : await deliverLinqGroupNotice(deps.database, {
+                familyId,
+                parentUserId: seated.userId,
+                chatId: signal.chatId,
+                text: welcome.body,
+                templateKey: 'linq:coparent_welcome',
+                now,
+                send: deps.sendGroupText,
+              });
         await deps.countOutcome('intake');
         return json({ outcome: 'group_coparent_seated', notice });
       }

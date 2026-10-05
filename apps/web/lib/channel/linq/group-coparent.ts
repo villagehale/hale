@@ -6,8 +6,7 @@ import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
 import { soleGivenName } from '~/lib/channel/identity/name-reply';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
-import { acceptedStatus } from '~/lib/channel/ledger';
-import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
@@ -20,16 +19,14 @@ import {
   linqGroupMakeInstruction,
   matchLinqGroupTrigger,
 } from './group';
-import {
-  groupCalendarAsk,
-  groupCalendarReceipt,
-  groupGmailAsk,
-  groupGmailReceipt,
-  groupWelcome,
-  matchBothFreeAsk,
-} from './group-coparent-copy';
 import { liveSeatBlocksPrivileged, nonParentWithoutLiveSeat } from './group-members';
-import { planBothFreeAsk, rememberBothFreeAsked } from './household-calendar';
+import {
+  type GroupLineRequest,
+  type GroupVoice,
+  defaultGroupVoice,
+  speakGroupLine,
+} from './group-voice';
+import { matchBothFreeAsk, planBothFreeAsk, rememberBothFreeAsked } from './household-calendar';
 import { sendLinqLinkPreview } from './link-preview';
 import type { LinqInboundText } from './payload';
 import { sendChoicePoll } from './poll';
@@ -43,8 +40,9 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * that will not parse as a phone — is seated on the SAME family. A legacy
  * `identity_noted` row is accepted if one still exists; it is not required.
  * Children and postal code are not asked again. One welcome carries the name
- * ask. The name ack is the locked line. The next beat asks for that parent's
- * calendar. The connect link is a card in the group, bound to that parent,
+ * ask. Every line here is model-written from real facts (group-voice.ts); a
+ * line the model cannot write is not sent, #ops is paged, and the next inbound
+ * tries again. The next beat asks for that parent's calendar. The connect link is a card in the group, bound to that parent,
  * never a 1:1 and never written into the ask. The beat after that asks for
  * Gmail the same way. One ask per turn. A Google account already on the
  * family is still refused at the connect callback.
@@ -78,6 +76,8 @@ export type GroupCoparentEffect =
 export interface GroupCoparentPorts {
   now: Date;
   fetch?: typeof fetch;
+  /** The group's model voice. Absent falls back to the production composer. */
+  voice?: GroupVoice;
   recordInbound: (
     message: LinqInboundText,
     owner: { familyId: string; userId: string },
@@ -161,15 +161,12 @@ export async function considerGroupCoparent(
       body: { outcome: 'duplicate' },
     };
   }
-  const notice = await sendLine(database, {
+  const notice = await sendWelcome(database, {
     familyId: owner.familyId,
-    parentUserId: seated.userId,
+    userId: seated.userId,
     chatId: message.chatId,
-    text: groupWelcome(language),
-    templateKey: WELCOME_KEY,
-    dedupeKey: `linq:coparent_welcome:${seated.userId}`,
-    now: ports.now,
-    fetch: ports.fetch,
+    language,
+    ports,
   });
   return {
     type: 'done',
@@ -177,6 +174,50 @@ export async function considerGroupCoparent(
     count: 'intake',
     body: { outcome: 'group_coparent_seated', notice },
   };
+}
+
+/**
+ * The welcome, model-written. One send per seat: the dedupe key is the
+ * record, so a welcome the model could not write on the seating turn is
+ * retried on the parent's next message and never sent twice.
+ */
+async function sendWelcome(
+  database: Database,
+  input: {
+    familyId: string;
+    userId: string;
+    chatId: string;
+    language: ReplyLanguage;
+    ports: GroupCoparentPorts;
+  },
+): Promise<'sent' | 'already_sent' | 'not_sent' | 'voice_unsent'> {
+  const dedupeKey = `linq:coparent_welcome:${input.userId}`;
+  if (await dedupeActive(dedupeKey, database)) return 'already_sent';
+  const text = await groupLine(input.ports, { kind: 'welcome' }, input.language);
+  if (!text) return 'voice_unsent';
+  return sendLine(database, {
+    familyId: input.familyId,
+    parentUserId: input.userId,
+    chatId: input.chatId,
+    text,
+    templateKey: WELCOME_KEY,
+    dedupeKey,
+    now: input.ports.now,
+    fetch: input.ports.fetch,
+  });
+}
+
+/** One group line from the model, or null when it could not be written (already paged). */
+async function groupLine(
+  ports: Pick<GroupCoparentPorts, 'voice'>,
+  request: GroupLineRequest,
+  language: ReplyLanguage,
+  parentWords?: string,
+): Promise<string | null> {
+  const spoken = await speakGroupLine(ports.voice ?? defaultGroupVoice(), request, language, {
+    parentWords: parentWords ?? null,
+  });
+  return spoken.source === 'unsent' ? null : spoken.body;
 }
 
 /**
@@ -258,11 +299,19 @@ async function advanceSeatedCoparent(
   if (step.step === 'awaiting_name') {
     const name = soleGivenName(message.text);
     if (!name) {
+      // A welcome the model could not write on the seating turn goes out now, once.
+      const welcome = await sendWelcome(database, {
+        familyId: sender.familyId,
+        userId: sender.userId,
+        chatId: message.chatId,
+        language,
+        ports,
+      });
       return {
         type: 'done',
         outcome: 'group_coparent_name_waiting',
         count: 'ignored',
-        body: { outcome: 'group_coparent_name_waiting' },
+        body: { outcome: 'group_coparent_name_waiting', welcome },
       };
     }
     const updated = await database
@@ -281,16 +330,19 @@ async function advanceSeatedCoparent(
       });
     }
     await setStep(database, sender.userId, 'awaiting_calendar', ports.now);
-    const notice = await sendLine(database, {
-      familyId: sender.familyId,
-      parentUserId: sender.userId,
-      chatId: message.chatId,
-      text: NAME_CAPTURED_REPLY,
-      templateKey: 'parent_name_captured',
-      dedupeKey: `linq:coparent_name_ack:${sender.userId}`,
-      now: ports.now,
-      fetch: ports.fetch,
-    });
+    const ack = await groupLine(ports, { kind: 'name_ack', name }, language, message.text);
+    const notice = ack
+      ? await sendLine(database, {
+          familyId: sender.familyId,
+          parentUserId: sender.userId,
+          chatId: message.chatId,
+          text: ack,
+          templateKey: 'parent_name_captured',
+          dedupeKey: `linq:coparent_name_ack:${sender.userId}`,
+          now: ports.now,
+          fetch: ports.fetch,
+        })
+      : 'voice_unsent';
     return {
       type: 'done',
       outcome: 'group_coparent_named',
@@ -324,6 +376,7 @@ async function advanceSeatedCoparent(
         language,
         now: ports.now,
         fetch: ports.fetch,
+        voice: ports.voice,
       });
       const outcome = asked === 'not_sent' ? 'group_coparent_link_held' : 'group_coparent_gmail';
       return {
@@ -333,11 +386,20 @@ async function advanceSeatedCoparent(
         body: { outcome },
       };
     }
+    const ask = await groupLine(ports, { kind: 'calendar_ask', name }, language, message.text);
+    if (!ask) {
+      return {
+        type: 'done',
+        outcome: 'group_coparent_link_held',
+        count: 'intake',
+        body: { outcome: 'group_coparent_link_held', reason: 'voice_unsent' },
+      };
+    }
     const sent = await sendAskWithLink(database, {
       familyId: sender.familyId,
       parentUserId: sender.userId,
       groupChatId: message.chatId,
-      text: groupCalendarAsk(language, name),
+      text: ask,
       language,
       templateKey: CALENDAR_ASK_KEY,
       dedupeKey: `${CALENDAR_ASK_KEY}:${sender.userId}`,
@@ -396,8 +458,21 @@ async function answerDoneStep(
         body: { outcome: 'group_coparent_both_free_none' },
       };
     }
-    // Flag on: the locked prompt replaces the both-free sentence. Do not send both.
-    const text = plan.mode === 'text' ? plan.text : plan.prompt;
+    // One model-written line carries both slots. With polls on, the poll follows it.
+    const text = await groupLine(
+      ports,
+      { kind: 'both_free', slots: plan.slotLabels },
+      language,
+      message.text,
+    );
+    if (!text) {
+      return {
+        type: 'done',
+        outcome: 'group_coparent_both_free',
+        count: 'intake',
+        body: { outcome: 'group_coparent_both_free', reason: 'voice_unsent' },
+      };
+    }
     const sent = await sendLine(database, {
       familyId: sender.familyId,
       parentUserId: sender.userId,
@@ -572,6 +647,7 @@ export async function sendCoparentGroupCalendarReceipt(
     connectId: string;
     now: Date;
     fetch?: typeof fetch;
+    voice?: GroupVoice;
   },
 ): Promise<'sent' | 'skipped'> {
   if (!linqGroupCoparentEnabled()) return 'skipped';
@@ -610,13 +686,21 @@ export async function sendCoparentGroupCalendarReceipt(
     : 'en';
   const gmail = input.provider === 'gmail';
   const templateKey = gmail ? GMAIL_RECEIPT_KEY : RECEIPT_KEY;
+  const dedupeKey = `${templateKey}:${input.connectId}`;
+  if (await dedupeActive(dedupeKey, database)) return 'skipped';
+  const receipt = await groupLine(
+    input,
+    { kind: gmail ? 'gmail_receipt' : 'calendar_receipt', name },
+    language,
+  );
+  if (!receipt) return 'skipped';
   const notice = await sendLine(database, {
     familyId: input.familyId,
     parentUserId: input.userId,
     chatId: family.linqGroupChatId,
-    text: gmail ? groupGmailReceipt(language, name) : groupCalendarReceipt(language, name),
+    text: receipt,
     templateKey,
-    dedupeKey: `${templateKey}:${input.connectId}`,
+    dedupeKey,
     now: input.now,
     fetch: input.fetch,
   });
@@ -635,6 +719,7 @@ export async function sendCoparentGroupCalendarReceipt(
       language,
       now: input.now,
       fetch: input.fetch,
+      voice: input.voice,
     });
   }
   return notice === 'sent' ? 'sent' : 'skipped';
@@ -654,13 +739,19 @@ async function sendGmailAskOnce(
     language: ReplyLanguage;
     now: Date;
     fetch?: typeof fetch;
+    voice?: GroupVoice;
   },
 ): Promise<'sent' | 'already_sent' | 'not_sent'> {
+  if (await dedupeActive(`${GMAIL_ASK_KEY}:${input.parentUserId}`, database)) {
+    return 'already_sent';
+  }
+  const ask = await groupLine(input, { kind: 'gmail_ask', name: input.name }, input.language);
+  if (!ask) return 'not_sent';
   const notice = await sendAskWithLink(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     groupChatId: input.chatId,
-    text: groupGmailAsk(input.language, input.name),
+    text: ask,
     language: input.language,
     templateKey: GMAIL_ASK_KEY,
     dedupeKey: `${GMAIL_ASK_KEY}:${input.parentUserId}`,

@@ -1,22 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { judgeSpokenLine } from '~/lib/channel/voice/spoken-line';
 import {
-  GROUP_BOTH_FREE,
-  GROUP_CALENDAR_ASK,
-  GROUP_CALENDAR_RECEIPT,
-  GROUP_CONFLICT,
-  GROUP_GMAIL_ASK,
-  GROUP_GMAIL_RECEIPT,
-  GROUP_HANDOFF,
-  GROUP_KID_EVENT,
-  GROUP_WELCOME,
   absorbHowItWentLines,
-  groupActivityHowItWent,
   groupAddressedLine,
   groupBothReaderFrench,
-  groupDepartureNotice,
-  groupEmptySaturdayLine,
-  groupPostEventText,
 } from './group-coparent-copy';
+import { type GroupLineRequest, groupLineInput } from './group-voice';
 import {
   type BusyBlock,
   classifyKidCalendarItem,
@@ -29,7 +18,7 @@ import {
   proposeSharedFree,
   splitKidEvent,
 } from './household-calendar';
-import { whoTakesFactKey, whoTakesPrompt } from './logistics-poll';
+import { whoTakesFactKey } from './logistics-poll';
 
 /**
  * Kid vs not-kid is a function, not a prompt. A non-kid title must be unable
@@ -108,54 +97,61 @@ describe('kidMailboxSubject', () => {
   });
 });
 
-describe('group ask strings', () => {
-  it('matches the locked in-group asks, and drops the private-link line', () => {
-    expect(GROUP_CALENDAR_ASK.en).toBe(
-      "{name}, want your calendar in the kids' year too? This link is just for you.",
-    );
-    expect(GROUP_CALENDAR_ASK.fr).toBe(
-      "{name}, tu veux ajouter ton calendrier a l'annee des enfants? Ce lien est juste pour toi.",
-    );
-    expect(GROUP_GMAIL_ASK.en).toBe(
-      '{name}, want me to catch school and camp emails for you too? This link is just for you. Nothing from your inbox shows up here.',
-    );
-    expect(GROUP_GMAIL_ASK.fr).toBe(
-      "{name}, tu veux que je repere aussi les courriels de l'ecole et des camps? Ce lien est juste pour toi. Rien de ta boite ne s'affiche ici.",
-    );
-    for (const line of [
-      GROUP_CALENDAR_ASK.en,
-      GROUP_CALENDAR_ASK.fr,
-      GROUP_GMAIL_ASK.en,
-      GROUP_GMAIL_ASK.fr,
-    ]) {
-      expect(line).not.toMatch(/one-to-one|en prive/i);
+describe('group asks hand the model the parent and a link to follow', () => {
+  it('names the parent, asks one question, and lets the model say "this link"', () => {
+    for (const kind of ['calendar_ask', 'gmail_ask'] as const) {
+      for (const language of ['en', 'fr'] as const) {
+        const input = groupLineInput({ kind, name: 'Sam' }, language);
+        expect(input.address).toBe('vous');
+        expect(input.questions).toBe(1);
+        expect(input.linkFollows).toBe(true);
+        expect(input.mustMention).toEqual(['Sam']);
+        expect(input.facts).toEqual({ name: 'Sam' });
+      }
     }
+    // The receipts ask nothing and may not claim a booking.
+    const receipt = groupLineInput({ kind: 'gmail_receipt', name: 'Sam' }, 'en');
+    expect(receipt.questions).toBe(0);
+    expect(receipt.linkFollows).toBeUndefined();
+    expect(
+      judgeSpokenLine("Sam's Gmail is connected. I've booked the kids' dates for you.", receipt),
+    ).toEqual({ ok: false, reason: 'forbidden:booking_claim' });
+    expect(
+      judgeSpokenLine(
+        "Sam's Gmail is connected. I'll pull the kids' dates out of it; the inbox itself stays private.",
+        receipt,
+      ),
+    ).toEqual({ ok: true });
   });
 });
 
 describe('two-reader group lines', () => {
-  it('names a known parent on how-it-went and empty Saturday', () => {
-    expect(groupActivityHowItWent('en', 'Sam', 'swim')).toBe(
-      'Sam, how did swim go? One line is plenty.',
-    );
-    expect(groupActivityHowItWent('fr', 'Sam', 'natation')).toBe(
-      "Sam, comment ca s'est passe pour natation ? Une ligne suffit.",
-    );
-    expect(groupActivityHowItWent('fr', null, 'swim')).toBe(
-      "Comment ca s'est passe pour swim ? Une ligne suffit.",
-    );
-    expect(groupEmptySaturdayLine('en', 'Sam', 'Maya')).toBe(
-      "Sam, this Saturday looks open for Maya. Want one nearby find that's actually running?",
-    );
-    expect(groupEmptySaturdayLine('fr', 'Sam', 'Maya')).toBe(
-      "Sam, ce samedi a l'air libre pour Maya. Tu veux une seule idee a cote qui tourne vraiment ?",
-    );
-    expect(groupEmptySaturdayLine('en', null, 'Maya')).toBe(
-      "This Saturday looks open for Maya. Want one nearby find that's actually running?",
-    );
-    expect(groupEmptySaturdayLine('fr', null, 'Maya')).toBe(
-      "Ce samedi a l'air libre pour Maya. Vous voulez une seule idee a cote qui tourne vraiment ?",
-    );
+  it('names a known parent on how-it-went and empty Saturday, and nobody when unknown', () => {
+    const known = groupLineInput({ kind: 'how_it_went', name: 'Sam', activity: 'swim' }, 'en');
+    expect(known.facts).toEqual({ name: 'Sam', activity: 'swim' });
+    expect(known.mustMention).toEqual(['swim', 'Sam']);
+    expect(known.questions).toBe(1);
+
+    const unknown = groupLineInput({ kind: 'how_it_went', name: null, activity: 'swim' }, 'fr');
+    expect(unknown.mustMention).toEqual(['swim']);
+    expect(unknown.address).toBe('vous');
+    // Two readers: the French may not slip into tu.
+    expect(judgeSpokenLine("Comment s'est passée la natation pour toi, swim ?", unknown)).toEqual({
+      ok: false,
+      reason: 'french',
+    });
+    expect(judgeSpokenLine("Alors, comment ça s'est passé, swim ?", unknown)).toEqual({ ok: true });
+
+    const saturday = groupLineInput({ kind: 'empty_saturday', name: 'Sam', kid: 'Maya' }, 'en');
+    expect(saturday.facts).toEqual({ name: 'Sam', kid: 'Maya', day: 'Saturday' });
+    expect(saturday.mustMention).toEqual(['Maya', 'Sam', 'Saturday']);
+    // Saturday is the only weekday it may name, because that is the fact.
+    expect(
+      judgeSpokenLine('Sam, Saturday looks open for Maya. Want one nearby idea?', saturday),
+    ).toEqual({ ok: true });
+    expect(
+      judgeSpokenLine('Sam, Sunday looks open for Maya. Want one nearby idea?', saturday),
+    ).toEqual({ ok: false, reason: 'invented' });
   });
 
   it('prefixes a known evening and leaves an unknown one alone', () => {
@@ -167,19 +163,21 @@ describe('two-reader group lines', () => {
     );
   });
 
-  it('uses the locked group departure line, and the role when the name is unknown', () => {
-    expect(groupDepartureNotice('en', 'Sam')).toBe(
-      "Sam left Hale. Nothing in the kids' year changed, and I'm still here.",
-    );
-    expect(groupDepartureNotice('fr', 'Sam')).toBe(
-      "Sam a quitte Hale. Rien n'a change dans l'annee des enfants, et je suis toujours la.",
-    );
-    expect(groupDepartureNotice('en', null)).toBe(
-      "Your co-parent left Hale. Nothing in the kids' year changed, and I'm still here.",
-    );
-    expect(groupDepartureNotice('fr', null)).toBe(
-      "Votre co-parent a quitte Hale. Rien n'a change dans l'annee des enfants, et je suis toujours la.",
-    );
+  it('names the parent who left when stored, and hands the model no name otherwise', () => {
+    const named = groupLineInput({ kind: 'departure', name: 'Sam' }, 'en');
+    expect(named.mustMention).toEqual(['Sam']);
+    expect(named.questions).toBe(0);
+    expect(named.address).toBe('vous');
+
+    const unnamed = groupLineInput({ kind: 'departure', name: null, address: 'tu' }, 'fr');
+    expect(unnamed.facts).toEqual({ name: null });
+    expect(unnamed.mustMention).toEqual([]);
+    expect(unnamed.address).toBe('tu');
+    // A departure states; it does not ask.
+    expect(judgeSpokenLine('Ton co-parent a quitté Hale. Ça va ?', unnamed)).toEqual({
+      ok: false,
+      reason: 'question',
+    });
   });
 
   it('switches a both-parents French line to vous and keeps English', () => {
@@ -209,50 +207,117 @@ describe('two-reader group lines', () => {
   });
 });
 
-describe('design-locked group strings', () => {
-  it('matches Sloane byte for byte', () => {
-    expect(GROUP_WELCOME.en).toBe(
-      "Hi, I'm Hale. This thread is your kids' year — both of you, and me. What should I call you?",
+describe('group lines are written from facts, inside the red lines', () => {
+  const kidEvent: GroupLineRequest = {
+    kind: 'kid_event',
+    events: [{ parent: 'Barton', kid: 'Maya', event: 'gymnastics', day: 'Fri', time: '15:00' }],
+  };
+
+  it('a kid event must carry the kid, the event, and the time, and may not invent another', () => {
+    const input = groupLineInput(kidEvent, 'en');
+    expect(input.questions).toBe(0);
+    expect(input.mustMention).toEqual(['Maya', 'gymnastics', '15:00']);
+    expect(
+      judgeSpokenLine(
+        "Heads up, Barton put Maya's gymnastics on the calendar: Fri at 15:00.",
+        input,
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      judgeSpokenLine("Barton added Maya's gymnastics, Fri at 15:00. Pickup is at 16:30.", input),
+    ).toEqual({ ok: false, reason: 'invented' });
+    expect(
+      judgeSpokenLine("Barton added Maya's gymnastics, Fri at 15:00. I've booked it.", input),
+    ).toEqual({ ok: false, reason: 'forbidden:booking_claim' });
+    expect(
+      judgeSpokenLine("Barton added Maya's gymnastics, Fri at 15:00. Who's driving?", input),
+    ).toEqual({ ok: false, reason: 'question' });
+  });
+
+  it('a conflict asks exactly one question and never names the other calendar', () => {
+    const input = groupLineInput(
+      { kind: 'conflict', kid: 'Maya', event: 'gymnastics', day: 'Fri', time: '15:00' },
+      'en',
     );
-    expect(GROUP_WELCOME.fr).toBe(
-      "Salut, c'est Hale. Ce fil, c'est l'annee des enfants: vous deux, et moi. Comment je t'appelle?",
+    expect(input.questions).toBe(1);
+    expect(input.facts).not.toHaveProperty('other');
+    expect(
+      judgeSpokenLine(
+        "Maya's gymnastics is Fri at 15:00 and you both have something on. Who's taking it?",
+        input,
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      judgeSpokenLine(
+        "Maya's gymnastics is Fri at 15:00. You're both busy. Who takes it? Or skip?",
+        input,
+      ),
+    ).toEqual({ ok: false, reason: 'question' });
+  });
+
+  it('a handoff states tomorrow and names the parent; a sync never says Hale booked', () => {
+    const handoff = groupLineInput(
+      { kind: 'handoff', name: 'Sam', kid: 'Maya', event: 'gymnastics', time: '15:00' },
+      'fr',
     );
-    expect(GROUP_CALENDAR_RECEIPT.en).toBe(
-      "{name}'s calendar is connected. I'll keep the kids' stuff straight across both.",
+    expect(handoff.facts).toMatchObject({ when: 'demain' });
+    expect(judgeSpokenLine('Demain, Sam emmène Maya à gymnastics à 15:00.', handoff)).toEqual({
+      ok: true,
+    });
+    expect(judgeSpokenLine('Demain, tu emmènes Maya à gymnastics à 15:00, Sam.', handoff)).toEqual({
+      ok: false,
+      reason: 'french',
+    });
+
+    const sync = groupLineInput(
+      {
+        kind: 'decision_sync',
+        decisions: [
+          {
+            parent: 'Sam',
+            decision: 'picked',
+            activity: 'swim',
+            kid: 'Maya',
+            day: 'Sat',
+            time: '9:00',
+          },
+        ],
+      },
+      'en',
     );
-    expect(GROUP_CALENDAR_RECEIPT.fr).toBe(
-      'Le calendrier de {name} est connecte. Je suis les activites des enfants sur les deux.',
-    );
-    expect(GROUP_GMAIL_RECEIPT.en).toBe(
-      "{name}'s Gmail is connected. I'll pull out the kids' dates; the inbox stays private.",
-    );
-    expect(GROUP_GMAIL_RECEIPT.fr).toBe(
-      'Le Gmail de {name} est connecte. Je garde les dates des enfants; la boite reste privee.',
-    );
-    expect(GROUP_KID_EVENT.en).toBe("Heads up: {name} added {kid}'s {event}, {day} at {time}.");
-    expect(GROUP_KID_EVENT.fr).toBe(
-      'Pour info: {name} a ajoute {event} pour {kid}, {day} a {time}.',
-    );
-    expect(GROUP_CONFLICT.en).toBe(
-      "{kid}'s {event} is {day} at {time}, and you're both busy then. Who's taking it?",
-    );
-    expect(GROUP_CONFLICT.fr).toBe(
-      "{event} pour {kid}, {day} a {time}, et vous etes pris tous les deux. Qui s'en occupe?",
-    );
-    expect(GROUP_HANDOFF.en).toBe("Tomorrow: {name} has {kid}'s {event} at {time}.");
-    expect(GROUP_HANDOFF.fr).toBe("Demain: {name} s'occupe de {event} pour {kid} a {time}.");
-    expect(GROUP_BOTH_FREE.en).toBe(
-      "You're both free {slot1} or {slot2}. Want the sign-up page for one?",
-    );
-    expect(GROUP_BOTH_FREE.fr).toBe(
-      "Vous etes libres tous les deux {slot1} ou {slot2}. Vous voulez la page d'inscription pour l'un des deux?",
-    );
-    expect(groupPostEventText('en', 'Sam', 'swim')).toBe(
-      'Sam, how did swim go? One line is plenty.',
-    );
-    expect(groupPostEventText('fr', 'Sam', 'natation')).toBe(
-      "Sam, comment ca s'est passe pour natation ? Une ligne suffit.",
-    );
+    expect(judgeSpokenLine('Quick sync: Sam picked swim for Maya, Sat at 9:00.', sync)).toEqual({
+      ok: true,
+    });
+    expect(
+      judgeSpokenLine(
+        "Quick sync: Sam picked swim for Maya, Sat at 9:00. I've registered her.",
+        sync,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:booking_claim' });
+  });
+
+  it('both-free names both slots and asks once; the welcome asks the one name question', () => {
+    const bothFree = groupLineInput({ kind: 'both_free', slots: ['Sat 10:00', 'Sun 14:00'] }, 'en');
+    expect(bothFree.mustMention).toEqual(['Sat 10:00', 'Sun 14:00']);
+    expect(
+      judgeSpokenLine(
+        "You're both free Sat 10:00 or Sun 14:00. Want the sign-up page for one?",
+        bothFree,
+      ),
+    ).toEqual({ ok: true });
+
+    const welcome = groupLineInput({ kind: 'welcome' }, 'en');
+    expect(welcome.facts).toEqual({});
+    expect(welcome.questions).toBe(1);
+    expect(
+      judgeSpokenLine(
+        "Hi, I'm Hale. This thread is your kids' year. What should I call you?",
+        welcome,
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      judgeSpokenLine("Hi, I'm Hale. Reply STOP anytime. What should I call you?", welcome),
+    ).toEqual({ ok: false, reason: 'compliance' });
   });
 });
 
@@ -272,10 +337,12 @@ describe('planHouseholdNotices', () => {
     ]);
     const clock = when(start);
     expect(planned).toHaveLength(1);
-    expect(planned[0]?.text).toBe(
-      `Heads up: Barton added Maya's gymnastics, ${clock.day} at ${clock.time}.`,
-    );
-    expect(planned[0]?.text).not.toMatch(/I(?:'ll| will) book/i);
+    expect(planned[0]?.line).toEqual({
+      kind: 'kid_event',
+      events: [
+        { parent: 'Barton', kid: 'Maya', event: 'gymnastics', day: clock.day, time: clock.time },
+      ],
+    });
     expect(planned[0]?.recipientUserId).toBe(PARENT_B);
   });
 
@@ -301,12 +368,17 @@ describe('planHouseholdNotices', () => {
     const clock = when(start);
     expect(planned).toHaveLength(1);
     expect(planned[0]?.kind).toBe('conflict');
-    expect(planned[0]?.text).toBe(
-      `Maya's gymnastics is ${clock.day} at ${clock.time}, and you're both busy then. Who's taking it?`,
-    );
-    expect(planned[0]?.text).not.toContain('Quarterly');
-    expect(planned[0]?.text).not.toContain('budget');
-    expect(planned[0]?.text).not.toContain('free');
+    expect(planned[0]?.line).toEqual({
+      kind: 'conflict',
+      kid: 'Maya',
+      event: 'gymnastics',
+      day: clock.day,
+      time: clock.time,
+    });
+    // The other calendar's title never reaches the model, so it cannot reach the group.
+    const handed = JSON.stringify(planned[0]?.line);
+    expect(handed).not.toContain('Quarterly');
+    expect(handed).not.toContain('budget');
     const passed = planHouseholdNotices({
       blocks: [
         block({
@@ -381,9 +453,13 @@ describe('planHouseholdNotices', () => {
       evening,
     );
     expect(planned).toHaveLength(1);
-    expect(planned[0]?.text).toBe(
-      `Tomorrow: Barton has Maya's gymnastics at ${formatTime(start, ZONE, 'en')}.`,
-    );
+    expect(planned[0]?.line).toEqual({
+      kind: 'handoff',
+      name: 'Barton',
+      kid: 'Maya',
+      event: 'gymnastics',
+      time: formatTime(start, ZONE, 'en'),
+    });
   });
 
   it("uses a parent's own words for a handoff when both calendars show the event", () => {
@@ -417,12 +493,16 @@ describe('planHouseholdNotices', () => {
     });
     expect(planned).toHaveLength(1);
     expect(planned[0]?.kind).toBe('handoff');
-    expect(planned[0]?.text).toBe(
-      `Tomorrow: Sam has Maya's gymnastics at ${formatTime(start, ZONE, 'en')}.`,
-    );
+    expect(planned[0]?.line).toEqual({
+      kind: 'handoff',
+      name: 'Sam',
+      kid: 'Maya',
+      event: 'gymnastics',
+      time: formatTime(start, ZONE, 'en'),
+    });
   });
 
-  it('asks the parent who took the kid, once, with the locked how-it-went line', () => {
+  it('asks the parent who took the kid, once, with a how-it-went line', () => {
     const planned = notices([
       block({
         eventId: 'done-1',
@@ -436,7 +516,11 @@ describe('planHouseholdNotices', () => {
     ]);
     expect(planned).toHaveLength(1);
     expect(planned[0]?.kind).toBe('followup');
-    expect(planned[0]?.text).toBe('Barton, how did gymnastics go? One line is plenty.');
+    expect(planned[0]?.line).toEqual({
+      kind: 'how_it_went',
+      name: 'Barton',
+      activity: 'gymnastics',
+    });
     expect(planned[0]?.recipientUserId).toBe(PARENT_A);
   });
 
@@ -478,7 +562,9 @@ describe('planHouseholdNotices', () => {
       ),
     );
     expect(planned).toHaveLength(1);
-    expect(planned[0]?.text.split('\n')).toHaveLength(3);
+    const line = planned[0]?.line;
+    expect(line?.kind).toBe('kid_event');
+    expect(line?.kind === 'kid_event' ? line.events : []).toHaveLength(3);
     expect(planned[0]?.mark).toHaveLength(3);
   });
 
@@ -499,7 +585,12 @@ describe('planHouseholdNotices', () => {
       timeZone: ZONE,
       language: 'en',
     });
-    expect(asked).toMatch(/^You're both free .+ or .+\. Want the sign-up page for one\?$/);
+    // Two real slots, formatted once, for the model to name both of.
+    expect(asked).toHaveLength(2);
+    expect(asked?.[0]).not.toBe(asked?.[1]);
+    expect(
+      groupLineInput({ kind: 'both_free', slots: asked as [string, string] }, 'en').mustMention,
+    ).toEqual(asked);
     expect(splitKidEvent('swim class', ['Maya', 'Leo'])).toBeNull();
     const oneHour = listSharedFreeSlots({
       requested: true,
@@ -564,9 +655,13 @@ describe('planHouseholdNotices', () => {
       remembered: [{ ...remembered, status: 'decided', takerUserId: PARENT_B }],
     });
     expect(decided[0]?.kind).toBe('handoff');
-    expect(decided[0]?.text).toBe(
-      `Tomorrow: Sam has Maya's gymnastics at ${formatTime(start, ZONE, 'en')}.`,
-    );
+    expect(decided[0]?.line).toEqual({
+      kind: 'handoff',
+      name: 'Sam',
+      kid: 'Maya',
+      event: 'gymnastics',
+      time: formatTime(start, ZONE, 'en'),
+    });
     const unanswered = planHouseholdNotices({
       blocks: both,
       parentUserIds: [PARENT_A, PARENT_B],
@@ -578,7 +673,7 @@ describe('planHouseholdNotices', () => {
       remembered: [{ ...remembered, status: 'open', takerUserId: null }],
     });
     expect(unanswered.find((notice) => notice.kind === 'handoff')).toBeUndefined();
-    expect(unanswered.find((notice) => notice.text.includes('Tomorrow:'))).toBeUndefined();
+    expect(unanswered.find((notice) => notice.line.kind === 'handoff')).toBeUndefined();
     const declined = planHouseholdNotices({
       blocks: both,
       parentUserIds: [PARENT_A, PARENT_B],
@@ -618,10 +713,13 @@ describe('planAmbiguousWhoTakes', () => {
     });
     expect(ask?.kind).toBe('who_takes');
     const clock = when(start);
-    expect(ask?.text).toBe(
-      whoTakesPrompt('en', { kid: 'Maya', event: 'gymnastics', day: clock.day, time: clock.time }),
-    );
-    expect(ask?.text).not.toContain('busy');
-    expect(ask?.text).not.toContain("Who's taking it?");
+    // The ask is the who-takes line, not the conflict line: nobody is said to be busy.
+    expect(ask?.line).toEqual({
+      kind: 'who_takes',
+      kid: 'Maya',
+      event: 'gymnastics',
+      day: clock.day,
+      time: clock.time,
+    });
   });
 });

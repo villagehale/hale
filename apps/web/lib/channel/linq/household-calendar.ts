@@ -11,14 +11,13 @@ import { classifyKidCalendarItem, splitKidEvent, titleForStorage } from './kid-e
 
 export { classifyKidCalendarItem, splitKidEvent, titleForStorage };
 import {
-  groupBothFreeText,
-  groupConflictText,
-  groupHandoffText,
-  groupKidEventText,
-  groupPostEventText,
-} from './group-coparent-copy';
+  type GroupKidEventFact,
+  type GroupLineRequest,
+  type GroupVoice,
+  defaultGroupVoice,
+  speakGroupLine,
+} from './group-voice';
 import {
-  BOTH_FREE_PROMPT,
   type LogisticsSlot,
   type RememberedLogistics,
   bothFreeDay,
@@ -31,7 +30,6 @@ import {
   rememberedWhoTakes,
   whoTakesFactKey,
   whoTakesPollOptions,
-  whoTakesPrompt,
   withholdWhoTakes,
   writeLogisticsDecision,
 } from './logistics-poll';
@@ -52,12 +50,14 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * never during quiet hours. A cancellation, a weekly recap, and an unprompted
  * both-free suggestion are not bubbles.
  *
- * VIL-377, Design locked 2026-09-26: when LINQ_POLLS is on, a conflict is the
- * who-takes prompt alone, then the poll. The locked conflict sentence is not
- * sent on that turn. The prompt carries day and time. The poll ledger row
- * does not spend a second discretionary bubble. An evening event with no
- * taker and no conflict uses that same prompt. Flag off keeps the locked
- * conflict text and does not poll. "We'll figure it out" stores no taker
+ * VIL-413 / VIL-417: every bubble here is written by the model from the real
+ * facts the planner found (group-voice.ts). The planner stays pure and
+ * decides WHAT is said; the send composes it. When LINQ_POLLS is on, the
+ * conflict and who-takes questions are followed by the poll on the same
+ * turn; the poll ledger row does not spend a second discretionary bubble.
+ * Flag off asks the same question in words and does not poll. A line the
+ * model cannot write is not sent and the event is not marked, so the next
+ * sweep tries again. "We'll figure it out" stores no taker
  * and does not ask again that day.
  *
  * Kid-event, conflict, handoff, and post-event notices leave only through the
@@ -112,7 +112,8 @@ export interface HouseholdNotice {
    */
   gateKind: 'activity_followup';
   category: 'calendar_alert' | 'followup';
-  text: string;
+  /** What the model is asked to say, with only the facts the planner found. */
+  line: GroupLineRequest;
   recipientUserId: string;
   /** Rows to stamp after the send lands. */
   mark: Array<{ integrationId: string; eventId: string; field: 'announced' | 'followup' }>;
@@ -206,7 +207,7 @@ export function planAmbiguousWhoTakes(input: NoticePlanInput): HouseholdNotice |
     dedupeKey: `linq-group:who-takes:${best.eventId}:${startIso}`,
     gateKind: 'activity_followup',
     category: 'calendar_alert',
-    text: whoTakesPrompt(input.language, ask),
+    line: { kind: 'who_takes', kid: ask.kid, event: ask.event, day: ask.day, time: ask.time },
     recipientUserId: recipient,
     mark: [{ integrationId: best.integrationId, eventId: best.eventId, field: 'announced' }],
     whoTakes: ask,
@@ -262,12 +263,7 @@ function soonestConflict(input: NoticePlanInput): HouseholdNotice | null {
     dedupeKey: `linq-group:conflict:${best.block.eventId}:${startIso}`,
     gateKind: 'activity_followup',
     category: 'calendar_alert',
-    text: groupConflictText(input.language, {
-      kid: parts.kid,
-      event: parts.event,
-      day: ask.day,
-      time: ask.time,
-    }),
+    line: { kind: 'conflict', kid: parts.kid, event: parts.event, day: ask.day, time: ask.time },
     recipientUserId: recipient,
     mark: [
       {
@@ -356,12 +352,13 @@ function soonestHandoff(input: NoticePlanInput): HouseholdNotice | null {
     dedupeKey: `linq-group:handoff:${best.eventId}:${best.start.toISOString()}`,
     gateKind: 'activity_followup',
     category: 'calendar_alert',
-    text: groupHandoffText(input.language, {
+    line: {
+      kind: 'handoff',
       name,
       kid: parts.kid,
       event: parts.event,
       time: formatTime(best.start, input.timeZone, input.language),
-    }),
+    },
     recipientUserId: recipient,
     mark: [{ integrationId: best.integrationId, eventId: best.eventId, field: 'announced' }],
   };
@@ -372,37 +369,35 @@ function batchedKidEvents(input: NoticePlanInput): HouseholdNotice | null {
   const fresh = input.blocks
     .filter((block) => upcomingKid(block, input.now) && !block.announced && block.start)
     .sort((a, b) => (a.start?.getTime() ?? 0) - (b.start?.getTime() ?? 0));
-  const lines: string[] = [];
+  const events: GroupKidEventFact[] = [];
   const mark: HouseholdNotice['mark'] = [];
   const ids: string[] = [];
   let recipient: string | null = null;
   for (const block of fresh) {
-    if (lines.length >= KID_LINES_MAX) break;
+    if (events.length >= KID_LINES_MAX) break;
     if (!block.title || !block.start) continue;
     const parts = splitKidEvent(block.title, input.childNames);
     const name = input.parentNames[block.userId]?.trim();
     const other = otherParent(block.userId, first, second);
     if (!parts || !name || !other) continue;
-    lines.push(
-      groupKidEventText(input.language, {
-        name,
-        kid: parts.kid,
-        event: parts.event,
-        day: formatDay(block.start, input.timeZone, input.language),
-        time: formatTime(block.start, input.timeZone, input.language),
-      }),
-    );
+    events.push({
+      parent: name,
+      kid: parts.kid,
+      event: parts.event,
+      day: formatDay(block.start, input.timeZone, input.language),
+      time: formatTime(block.start, input.timeZone, input.language),
+    });
     mark.push({ integrationId: block.integrationId, eventId: block.eventId, field: 'announced' });
     ids.push(block.eventId);
     recipient ??= other;
   }
-  if (lines.length === 0 || !recipient) return null;
+  if (events.length === 0 || !recipient) return null;
   return {
     kind: 'kid_event',
     dedupeKey: `linq-group:kids:${ids.join(':')}`,
     gateKind: 'activity_followup',
     category: 'calendar_alert',
-    text: lines.join('\n'),
+    line: { kind: 'kid_event', events },
     recipientUserId: recipient,
     mark,
   };
@@ -430,7 +425,7 @@ function soonestFollowup(input: NoticePlanInput): HouseholdNotice | null {
     dedupeKey: `linq-group:followup:${best.block.eventId}`,
     gateKind: 'activity_followup',
     category: 'followup',
-    text: groupPostEventText(input.language, name, parts.event),
+    line: { kind: 'how_it_went', name, activity: parts.event },
     recipientUserId: best.ownerId,
     mark: [
       { integrationId: best.block.integrationId, eventId: best.block.eventId, field: 'followup' },
@@ -530,8 +525,9 @@ export function sharedFreeSlots(
 }
 
 /**
- * Both-free copy. `requested` must be true: a calendar sweep never sets it.
- * Returns null when fewer than two shared hours exist. Hale does not book.
+ * The two shared-free slot phrases the model is handed. `requested` must be
+ * true: a calendar sweep never sets it. Null when fewer than two shared hours
+ * exist. Hale does not book.
  */
 export function proposeSharedFree(input: {
   requested: boolean;
@@ -539,18 +535,19 @@ export function proposeSharedFree(input: {
   now: Date;
   timeZone: string;
   language: ReplyLanguage;
-}): string | null {
-  return sharedFreeOffer(input)?.text ?? null;
+}): readonly [string, string] | null {
+  const offer = sharedFreeOffer(input);
+  return offer ? [offer.slot1, offer.slot2] : null;
 }
 
-/** The locked both-free sentence plus the two slot phrases a poll can reuse. */
+/** The two slot phrases, formatted once so the line and a poll name the same hours. */
 export function sharedFreeOffer(input: {
   requested: boolean;
   blocks: readonly BusyBlock[];
   now: Date;
   timeZone: string;
   language: ReplyLanguage;
-}): { text: string; slot1: string; slot2: string } | null {
+}): { slot1: string; slot2: string } | null {
   if (!input.requested) return null;
   const slots = sharedFreeSlots(input.blocks, input.now, input.timeZone, 2);
   const first = slots[0];
@@ -558,9 +555,18 @@ export function sharedFreeOffer(input: {
   if (!first || !second) return null;
   const phrase = (slot: Date) =>
     `${formatDay(slot, input.timeZone, input.language)} ${formatTime(slot, input.timeZone, input.language)}`;
-  const slot1 = phrase(first);
-  const slot2 = phrase(second);
-  return { text: groupBothFreeText(input.language, slot1, slot2), slot1, slot2 };
+  return { slot1: phrase(first), slot2: phrase(second) };
+}
+
+/**
+ * A parent asking for a shared free window. Conservative: two-slot copy is
+ * never attached to a nudge. (Intent routing; the answer itself is the model's.)
+ */
+const BOTH_FREE_ASK =
+  /\b(?:both free|when (?:are|can) we both|free together|tous les deux libres|libres tous les deux|quand (?:est-ce qu'on|on) est libres)\b/i;
+
+export function matchBothFreeAsk(body: string): boolean {
+  return BOTH_FREE_ASK.test(body);
 }
 
 export function formatDay(date: Date, timeZone: string, language: ReplyLanguage): string {
@@ -860,6 +866,8 @@ export async function narrateHouseholdCalendar(
     familyId: string;
     now: Date;
     fetch?: typeof fetch;
+    /** The group's model voice. Absent falls back to the production composer. */
+    voice?: GroupVoice;
   },
 ): Promise<void> {
   if (!linqGroupCoparentEnabled()) return;
@@ -917,10 +925,16 @@ export async function narrateHouseholdCalendar(
       notice = ambiguous;
     }
   }
-  if (!notice) return;
-  if (linqPollsEnabled() && notice.kind === 'conflict' && notice.whoTakes) {
-    notice = { ...notice, text: whoTakesPrompt(context.language, notice.whoTakes) };
+  // With polls on, a conflict is asked as the who-takes question and the poll
+  // carries the choices: one bubble, and nobody is said to be busy.
+  if (linqPollsEnabled() && notice?.kind === 'conflict' && notice.whoTakes) {
+    const ask = notice.whoTakes;
+    notice = {
+      ...notice,
+      line: { kind: 'who_takes', kid: ask.kid, event: ask.event, day: ask.day, time: ask.time },
+    };
   }
+  if (!notice) return;
   if (
     await groupProactiveCapReached(database, {
       familyId: input.familyId,
@@ -935,8 +949,10 @@ export async function narrateHouseholdCalendar(
     familyId: input.familyId,
     chatId: context.chatId,
     notice,
+    language: context.language,
     now: input.now,
     fetch: input.fetch,
+    voice: input.voice,
   });
   if (sent === 'sent' && notice.whoTakes && linqPollsEnabled()) {
     await attachWhoTakesPoll(database, {
@@ -1015,7 +1031,7 @@ async function loadHandoffStatements(
 /**
  * Mail stays out of the group. Subjects, senders, and bodies are not spoken
  * here, and this function does not render them. A kid date is a calendar
- * notice ({@link groupKidEventText}), never a line built from an envelope.
+ * notice (the group-voice `kid_event` line), never a line built from an envelope.
  * The owner's existing SMS email alert is a different path. The return is
  * named so a caller can see the suppression.
  */
@@ -1103,10 +1119,12 @@ async function sendGroupNotice(
     familyId: string;
     chatId: string;
     notice: HouseholdNotice;
+    language: ReplyLanguage;
     now: Date;
     fetch?: typeof fetch;
+    voice?: GroupVoice;
   },
-): Promise<'sent' | 'already_sent' | 'held' | 'not_sent'> {
+): Promise<'sent' | 'already_sent' | 'held' | 'not_sent' | 'voice_unsent'> {
   if (await dedupeActive(input.notice.dedupeKey, database)) return 'already_sent';
   const verdict = await assertProactiveSendAllowed(
     {
@@ -1124,7 +1142,15 @@ async function sendGroupNotice(
     );
     return 'held';
   }
-  const body = withOptOut(input.notice.text, verdict.optOut);
+  // Composed before the claim: a line the model cannot write leaves the key
+  // unspent and the event unmarked, so the next sweep tries again.
+  const spoken = await speakGroupLine(
+    input.voice ?? defaultGroupVoice(),
+    input.notice.line,
+    input.language,
+  );
+  if (spoken.source === 'unsent') return 'voice_unsent';
+  const body = withOptOut(spoken.body, verdict.optOut);
   const [claimed] = await database
     .insert(schema.channelMessages)
     .values({
@@ -1183,24 +1209,15 @@ async function sendGroupNotice(
   }
 }
 
-/** A parent asked, or a live find needs a time. Never called from the sweep. */
-export async function answerBothFreeInGroup(
-  database: Database,
-  input: { familyId: string; now: Date; language: ReplyLanguage },
-): Promise<string | null> {
-  return (await answerBothFreeOffer(database, input))?.text ?? null;
-}
-
 /**
- * The locked both-free sentence when the flag is off. Two slots only.
- * A poll, when LINQ_POLLS is on and there are two or more slots, is
- * {@link deliverBothFreeAsk}. One slot stays quiet: there is no locked
- * one-slot sentence, and this ticket does not invent one.
+ * The two shared slots a parent asked about. Two slots only; one slot stays
+ * quiet. Never called from the sweep. The sentence is the model's
+ * (group-voice `both_free`), from these two phrases.
  */
 export async function answerBothFreeOffer(
   database: Database,
   input: { familyId: string; now: Date; language: ReplyLanguage },
-): Promise<{ text: string; slot1: string; slot2: string } | null> {
+): Promise<{ slot1: string; slot2: string } | null> {
   const context = await loadFamilyCalendarContext(database, input.familyId);
   const rows = await database
     .select()
@@ -1248,10 +1265,10 @@ export function listSharedFreeSlots(input: {
 
 export type BothFreeDelivery =
   | { mode: 'none' }
-  | { mode: 'text'; text: string }
+  | { mode: 'text'; slotLabels: readonly [string, string] }
   | {
       mode: 'poll';
-      prompt: string;
+      slotLabels: readonly [string, string];
       options: readonly {
         text: string;
         pollKind?: string | null;
@@ -1288,15 +1305,14 @@ export async function planBothFreeAsk(
     timeZone: context.timeZone,
     language: input.language,
   });
-  if (slots.length < 2) return { mode: 'none' };
-  if (!linqPollsEnabled()) {
-    const text = groupBothFreeText(input.language, slots[0]?.label ?? '', slots[1]?.label ?? '');
-    return { mode: 'text', text };
-  }
+  const [firstSlot, secondSlot] = slots;
+  if (!firstSlot || !secondSlot) return { mode: 'none' };
+  const slotLabels: readonly [string, string] = [firstSlot.label, secondSlot.label];
+  if (!linqPollsEnabled()) return { mode: 'text', slotLabels };
   const factKey = bothFreeFactKey(day);
   const options = bothFreePollOptions(input.language, slots, factKey);
   if (!options) return { mode: 'none' };
-  return { mode: 'poll', prompt: BOTH_FREE_PROMPT[input.language], options, factKey, day, slots };
+  return { mode: 'poll', slotLabels, options, factKey, day, slots };
 }
 
 export async function rememberBothFreeAsked(
@@ -1498,6 +1514,7 @@ export async function rememberAndNarrateCalendar(
     seeding: boolean;
     now: Date;
     fetch?: typeof fetch;
+    voice?: GroupVoice;
   },
 ): Promise<void> {
   if (!linqGroupCoparentEnabled() || !input.userId) return;
@@ -1516,5 +1533,6 @@ export async function rememberAndNarrateCalendar(
     familyId: input.familyId,
     now: input.now,
     fetch: input.fetch,
+    voice: input.voice,
   });
 }

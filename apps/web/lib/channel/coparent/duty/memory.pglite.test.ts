@@ -5,14 +5,12 @@ import {
   flushGroupDecisionSyncs,
   queueGroupActivityDecision,
 } from '~/lib/channel/linq/family-outbound';
+import { fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { writeFact } from '~/lib/memory/facts';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { COPARENT_DUTY_COPY_LOCKED_ENV } from './copy';
 import { DUTY_BURDEN_FACT_KEY, burdenMayLeave, defaultOwnerOffer, noteDutyBurden } from './burden';
-import {
-  COPARENT_DUTY_BURDEN_SURFACE_ENABLED_ENV,
-  COPARENT_DUTY_MEMORY_ENABLED_ENV,
-} from './flag';
+import { COPARENT_DUTY_BURDEN_SURFACE_ENABLED_ENV, COPARENT_DUTY_MEMORY_ENABLED_ENV } from './flag';
 import { loadDutyMetrics, recordDutyAnswered, recordDutyUndone } from './metrics';
 import { type DutyState, commitDutyUpdate } from './model';
 import { projectDutyOnFamilyEvent } from './calendar';
@@ -20,6 +18,8 @@ import { settleDutyMemory } from './settle';
 
 const GROUP = 'chat-home';
 const PERSONAL = 'chat-one-to-one';
+/** The group's voice, faked: the sync's plumbing is under test, not the model's words. */
+const voice = fakeSpokenLineComposer();
 const GROUP_MESSAGES = `https://api.linqapp.com/api/partner/v3/chats/${GROUP}/messages`;
 const START = new Date('2026-09-29T19:00:00.000Z');
 const DAY = new Date('2026-09-24T15:00:00.000Z');
@@ -209,7 +209,9 @@ describe('duty calendar memory', () => {
     expect(facts).toHaveLength(2);
     expect(facts.some((row) => row.validUntil !== null)).toBe(true);
     expect(facts.some((row) => row.validUntil === null)).toBe(true);
-    const events = await db.database.select({ id: schema.familyEvents.id }).from(schema.familyEvents);
+    const events = await db.database
+      .select({ id: schema.familyEvents.id })
+      .from(schema.familyEvents);
     expect(events).toHaveLength(1);
   });
 });
@@ -254,12 +256,14 @@ describe('duty group sync', () => {
       return new Response(JSON.stringify({ message: { id: 'msg-1' } }), { status: 201 });
     });
     const early = await flushGroupDecisionSyncs(db.database, {
+      voice,
       now: new Date(DAY.getTime() + 4 * 1000),
       fetch: fetchMock as unknown as typeof fetch,
     });
     expect(early.sent).toBe(0);
     expect(urls).toEqual([]);
     const flushed = await flushGroupDecisionSyncs(db.database, {
+      voice,
       now: new Date(DAY.getTime() + 10 * 60 * 1000 + 4000),
       fetch: fetchMock as unknown as typeof fetch,
     });
@@ -268,12 +272,12 @@ describe('duty group sync', () => {
     const payload = JSON.parse(bodies[0] ?? '{}') as {
       message?: { parts?: Array<{ value?: string }> };
     };
-    const spoken = (payload.message?.parts?.[0]?.value ?? '').split('\n');
-    expect(spoken.length).toBeLessThanOrEqual(3);
-    expect(spoken.some((line) => line.includes('piano'))).toBe(false);
-    for (const line of spoken) {
-      expect(line.endsWith('Say so here if that changes.')).toBe(true);
-    }
+    const spoken = payload.message?.parts?.[0]?.value ?? '';
+    // At most three decisions reach the model; the fourth waits for the next flush.
+    const handed = voice.calls.at(-1)?.input.facts.decisions;
+    expect(Array.isArray(handed) ? handed.length : 0).toBe(3);
+    for (const activity of ['swim', 'daycare', 'soccer']) expect(spoken).toContain(activity);
+    expect(spoken).not.toContain('piano');
     expect(bodies.join('\n')).not.toMatch(/reply stop|unsubscribe/i);
   });
 
@@ -296,12 +300,19 @@ describe('duty group sync', () => {
       familyId: family.familyId,
       parentUserId: family.parentUserId,
       originChatId: PERSONAL,
-      decision: { decision: 'duty', activity: 'swim', kid: 'Maya', day: 'Saturday', time: '3:00pm' },
+      decision: {
+        decision: 'duty',
+        activity: 'swim',
+        kid: 'Maya',
+        day: 'Saturday',
+        time: '3:00pm',
+      },
       now: new Date(quiet.getTime() - 11 * 60 * 1000),
     });
     expect(queued).toBe('queued');
     const fetchMock = vi.fn(async () => new Response('{}', { status: 201 }));
     const held = await flushGroupDecisionSyncs(db.database, {
+      voice,
       now: quiet,
       fetch: fetchMock as unknown as typeof fetch,
     });
@@ -325,7 +336,13 @@ describe('duty group sync', () => {
       familyId: family.familyId,
       parentUserId: family.parentUserId,
       originChatId: GROUP,
-      decision: { decision: 'duty', activity: 'daycare', kid: 'Maya', day: 'Monday', time: '9:00am' },
+      decision: {
+        decision: 'duty',
+        activity: 'daycare',
+        kid: 'Maya',
+        day: 'Monday',
+        time: '9:00am',
+      },
       now: DAY,
     });
     expect(fromGroup).toBe('skipped');
@@ -338,7 +355,11 @@ describe('duty burden and metrics', () => {
     vi.stubEnv(COPARENT_DUTY_BURDEN_SURFACE_ENABLED_ENV, 'true');
     const family = await seedFamily(db.database, 'Burden');
     await secondParent(family.familyId, 'Sam');
-    for (const iso of ['2026-08-01T15:00:00.000Z', '2026-08-08T15:00:00.000Z', '2026-08-15T15:00:00.000Z']) {
+    for (const iso of [
+      '2026-08-01T15:00:00.000Z',
+      '2026-08-08T15:00:00.000Z',
+      '2026-08-15T15:00:00.000Z',
+    ]) {
       const subject = `who-takes/${iso}/swim`;
       await writeFact(db.database, {
         familyId: family.familyId,

@@ -23,9 +23,9 @@ import {
 } from '~/lib/channel/intake/session';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { acceptedStatus } from '~/lib/channel/ledger';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { familyOutboundTarget, familySpeech } from '~/lib/channel/linq/family-outbound';
-import { groupCalendarReceipt, groupGmailReceipt } from '~/lib/channel/linq/group-coparent-copy';
+import { type GroupVoice, defaultGroupVoice, speakGroupLine } from '~/lib/channel/linq/group-voice';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import {
@@ -89,7 +89,7 @@ export interface ConnectedNoticePorts {
   /**
    * Friend voice for the 1:1 receipt when ONBOARDING_FRIEND_VOICE_ENABLED is on.
    * Absent, or a compose that fails, sends nothing canned. The next callback
-   * can retry. The group receipt stays the locked sentence: it names the parent.
+   * can retry.
    */
   friendVoice?: FriendVoiceComposer;
   /**
@@ -98,6 +98,8 @@ export interface ConnectedNoticePorts {
    * is logged (aha-kids.ts).
    */
   kidItems?: KidItemClassifier;
+  /** The group receipt's voice (group-voice.ts). Absent falls back to the production composer. */
+  groupVoice?: GroupVoice;
 }
 
 export type ConnectedNoticeOutcome =
@@ -469,10 +471,17 @@ async function sendGroupHomeReceipt(
   if (!speech.name || (provider !== 'gcal' && provider !== 'gmail')) {
     return { status: 'not_sent', reason: 'group_home' };
   }
-  const body =
-    provider === 'gmail'
-      ? groupGmailReceipt(speech.language, speech.name)
-      : groupCalendarReceipt(speech.language, speech.name);
+  if (await dedupeActive(connectorConnectedDedupeKey(connectId), database)) {
+    return { status: 'not_sent', reason: 'already_sent' };
+  }
+  // Model-written, before the claim: an unwritten receipt leaves the key for the next callback.
+  const spoken = await speakGroupLine(
+    ports.groupVoice ?? defaultGroupVoice(),
+    { kind: provider === 'gmail' ? 'gmail_receipt' : 'calendar_receipt', name: speech.name },
+    speech.language,
+  );
+  if (spoken.source === 'unsent') return { status: 'not_sent', reason: 'voice_unsent' };
+  const body = spoken.body;
   const [claimed] = await database
     .insert(schema.channelMessages)
     .values({

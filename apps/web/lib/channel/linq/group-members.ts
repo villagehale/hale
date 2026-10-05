@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { acceptedStatus } from '~/lib/channel/ledger';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
@@ -9,6 +9,12 @@ import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { linqFromE164, linqGroupMembersEnabled } from './config';
+import {
+  type GroupLineRequest,
+  type GroupVoice,
+  defaultGroupVoice,
+  speakGroupLine,
+} from './group-voice';
 import { LinqSendError, sendLinqChatMessage } from './transport';
 
 type LinqGroupMemberRole = 'parent' | 'co_parent' | 'other_family' | 'caregiver';
@@ -23,39 +29,11 @@ type LinqGroupMemberRole = 'parent' | 'co_parent' | 'other_family' | 'caregiver'
  */
 
 /**
- * VIL-398. One welcome when a newcomer is seated, and one hold when a stranger
- * speaks. Nothing else about the family goes into the thread until a parent
- * approves. French is ASCII. No opt-out wording.
+ * VIL-398 / VIL-413. One welcome when a newcomer is seated, and one hold when
+ * a stranger speaks, both written by the model from the real names
+ * (group-voice.ts `member_welcome`, `stranger_hold`). Nothing else about the
+ * family goes into the thread until a parent approves.
  */
-export const GROUP_MEMBER_WELCOME_WITH_ADDER: Record<ReplyLanguage, string> = {
-  en: "Hi, I'm Hale. {adder} added you so the family can sort the week in one place. What should I call you?",
-  fr: "Bonjour, c'est Hale. {adder} vous a ajoute pour qu'on s'organise ensemble. Comment je vous appelle?",
-};
-
-export const GROUP_MEMBER_WELCOME_NO_ADDER: Record<ReplyLanguage, string> = {
-  en: "Hi, I'm Hale. I help the family sort the week in one place. What should I call you?",
-  fr: "Bonjour, c'est Hale. J'aide la famille a organiser la semaine au meme endroit. Comment je vous appelle?",
-};
-
-export const GROUP_STRANGER_HOLD: Record<ReplyLanguage, string> = {
-  en: 'Someone new joined this chat and I don\'t know them yet, so I\'m pausing here. {parentA}, say "add them" if they share the load.',
-  fr: 'Une nouvelle personne s\'est jointe a la conversation et je ne la connais pas encore, alors je fais une pause. {parentA}, dis "ajoute cette personne" si elle partage la charge.',
-};
-
-function fillSlots(pattern: string, slots: Record<string, string>): string {
-  return pattern.replace(/\{(\w+)\}/g, (_, key: string) => slots[key] ?? '');
-}
-
-export function groupMemberWelcome(language: ReplyLanguage, adder: string | null): string {
-  const name = adder?.trim() ?? '';
-  if (!name) return GROUP_MEMBER_WELCOME_NO_ADDER[language];
-  return fillSlots(GROUP_MEMBER_WELCOME_WITH_ADDER[language], { adder: name });
-}
-
-export function groupStrangerHold(language: ReplyLanguage, parentA: string): string {
-  return fillSlots(GROUP_STRANGER_HOLD[language], { parentA });
-}
-
 async function familyReplyLanguage(database: Database, familyId: string): Promise<ReplyLanguage> {
   const rows = await database
     .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
@@ -110,6 +88,16 @@ export type SeatParticipantResult =
 type SendGroup = (notice: { chatId: string; text: string }) => Promise<{
   providerMessageId: string;
 }>;
+
+/** One model-written group line, or null when it could not be written (already paged). */
+async function memberLine(
+  voice: GroupVoice | undefined,
+  request: GroupLineRequest,
+  language: ReplyLanguage,
+): Promise<string | null> {
+  const spoken = await speakGroupLine(voice ?? defaultGroupVoice(), request, language);
+  return spoken.source === 'unsent' ? null : spoken.body;
+}
 
 async function familyIdForChat(database: Database, chatId: string): Promise<string | null> {
   const rows = await database
@@ -377,6 +365,7 @@ export async function seatParticipantAdded(
     isFromMe: boolean;
     now: Date;
     send?: SendGroup;
+    voice?: GroupVoice;
   },
 ): Promise<SeatParticipantResult> {
   if (!linqGroupMembersEnabled()) return { outcome: 'flag_off' };
@@ -496,13 +485,19 @@ export async function seatParticipantAdded(
   }
   const language = await familyReplyLanguage(database, familyId);
   const adder = decision.kind === 'parent' ? await userFirstName(database, actor.userId) : null;
+  const welcomeKey = `${WELCOME_TEMPLATE}:${input.chatId}:${hash}`;
+  if (await dedupeActive(welcomeKey, database)) {
+    return { outcome: 'group_member_seated', role, notice: 'already_sent' };
+  }
+  const text = await memberLine(input.voice, { kind: 'member_welcome', adder }, language);
+  if (!text) return { outcome: 'group_member_seated', role, notice: 'not_sent' };
   const notice = await sendOnce(database, {
     familyId,
     parentUserId: primary,
     chatId: input.chatId,
-    text: groupMemberWelcome(language, adder),
+    text,
     templateKey: WELCOME_TEMPLATE,
-    dedupeKey: `${WELCOME_TEMPLATE}:${input.chatId}:${hash}`,
+    dedupeKey: welcomeKey,
     now: input.now,
     send: input.send,
   });
@@ -564,6 +559,7 @@ export async function holdTrueStrangerOnce(
     senderHandle: string;
     now: Date;
     send?: SendGroup;
+    voice?: GroupVoice;
   },
 ): Promise<
   'sent' | 'already_sent' | 'not_sent' | 'no_primary_parent' | 'not_a_phone' | 'no_family'
@@ -590,13 +586,17 @@ export async function holdTrueStrangerOnce(
   }
   const language = await familyReplyLanguage(database, familyId);
   const hash = phoneBlindIndex(phone);
+  const holdKey = `${HOLD_TEMPLATE}:${input.chatId}:${hash}`;
+  if (await dedupeActive(holdKey, database)) return 'already_sent';
+  const text = await memberLine(input.voice, { kind: 'stranger_hold', parentA }, language);
+  if (!text) return 'not_sent';
   const notice = await sendOnce(database, {
     familyId,
     parentUserId: primary,
     chatId: input.chatId,
-    text: groupStrangerHold(language, parentA),
+    text,
     templateKey: HOLD_TEMPLATE,
-    dedupeKey: `${HOLD_TEMPLATE}:${input.chatId}:${hash}`,
+    dedupeKey: holdKey,
     now: input.now,
     send: input.send,
   });

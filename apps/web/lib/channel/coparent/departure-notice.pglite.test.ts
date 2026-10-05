@@ -6,8 +6,13 @@ import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
 import { OPT_OUT_LINE, OPT_OUT_SHORT } from '~/lib/channel/opt-out';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { groupLineInput } from '~/lib/channel/linq/group-voice';
+import {
+  type FakeSpokenLineComposer,
+  fakeSpokenLineBody,
+  fakeSpokenLineComposer,
+} from '~/lib/channel/voice/fakes';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE } from './copy';
 import { departCoParent } from './depart';
 import {
   DEPARTURE_NOTICE_TEMPLATE_KEY,
@@ -147,16 +152,28 @@ async function seedHousehold(options: { locale?: string; watchConsent?: boolean 
   return { familyId, stayingUserId, stayingPhone, departedUserId, departedPhone } as Household;
 }
 
-function ports(transport: FakeTransport): {
+/** What the fake voice says 1:1 — no name, since the staying parent is told nobody's. */
+const NOTICE_1TO1 = {
+  en: fakeSpokenLineBody(groupLineInput({ kind: 'departure', name: null, address: 'tu' }, 'en')),
+  fr: fakeSpokenLineBody(groupLineInput({ kind: 'departure', name: null, address: 'tu' }, 'fr')),
+};
+
+function ports(
+  transport: FakeTransport,
+  voice: FakeSpokenLineComposer = fakeSpokenLineComposer(),
+): {
   ports: DepartureNoticePorts;
   threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
+  voice: FakeSpokenLineComposer;
 } {
   const threaded: Array<{ familyId: string; parentUserId: string; body: string }> = [];
   return {
     threaded,
+    voice,
     ports: {
       ...departureNoticeReaders(db.database),
       transport,
+      voice,
       threadMessage: async (_db, input) => {
         threaded.push(input);
         return 'conv-1';
@@ -204,8 +221,8 @@ describe('telling the parent who stayed', () => {
     expect(transport.sent).toHaveLength(1);
     expect(transport.sent[0]?.to).toBe(household.stayingPhone);
     expect(transport.sent[0]?.to).not.toBe(household.departedPhone);
-    // The sentence, and nothing after it.
-    expect(transport.sent[0]?.body).toBe(CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.en);
+    // The composed sentence, and nothing after it.
+    expect(transport.sent[0]?.body).toBe(NOTICE_1TO1.en);
     expect(transport.sent[0]?.body).not.toContain(OPT_OUT_LINE);
     expect(transport.sent[0]?.body).not.toContain(OPT_OUT_SHORT);
     // Nobody is named — see the dedicated wire test below for the whole household.
@@ -223,7 +240,7 @@ describe('telling the parent who stayed', () => {
       {
         familyId: household.familyId,
         parentUserId: household.stayingUserId,
-        body: CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.en,
+        body: NOTICE_1TO1.en,
       },
     ]);
     const verbs = await db.database
@@ -331,6 +348,7 @@ describe('telling the parent who stayed', () => {
     const english = await seedHousehold();
     const french = await seedHousehold({ locale: 'fr-CA' });
     const transport = new FakeTransport();
+    const voice = fakeSpokenLineComposer();
     for (const household of [english, french]) {
       await departCoParent(db.database, {
         familyId: household.familyId,
@@ -341,7 +359,7 @@ describe('telling the parent who stayed', () => {
         await tellStayingParent(
           db.database,
           { familyId: household.familyId, departedUserId: household.departedUserId, now: MORNING },
-          ports(transport).ports,
+          ports(transport, voice).ports,
         ),
       ).toBe('sent');
     }
@@ -360,13 +378,16 @@ describe('telling the parent who stayed', () => {
         expect(sent.body).not.toContain(name);
       }
     }
-    // Both languages really were rendered — otherwise the loop above proves one body.
-    expect(transport.sent.map((s) => s.body).join('\n')).toContain(
-      CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.fr,
-    );
-    expect(transport.sent.map((s) => s.body).join('\n')).toContain(
-      CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.en,
-    );
+    // The model was handed no name either: 1:1, the staying parent is told nobody's.
+    for (const call of voice.calls) {
+      expect(call.input.facts).toEqual({ name: null });
+      expect(call.input.address).toBe('tu');
+      expect(JSON.stringify(call.input)).not.toMatch(
+        new RegExp([TEEN_NAME, SIBLING_NAME, DEPARTED_NAME].join('|')),
+      );
+    }
+    // Both languages really were composed — otherwise the loop above proves one body.
+    expect(voice.calls.map((call) => call.input.language).sort()).toEqual(['en', 'fr']);
   });
 
   it('writes the French sentence to a parent whose account is in French', async () => {
@@ -384,7 +405,7 @@ describe('telling the parent who stayed', () => {
       ports(transport).ports,
     );
 
-    expect(transport.sent[0]?.body).toBe(CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.fr);
+    expect(transport.sent[0]?.body).toBe(NOTICE_1TO1.fr);
     // The audit row records the language that was CHOSEN. It used to be re-derived by
     // comparing the rendered body against the EN constant, so any change to how the
     // message is built relabelled every row — including the English ones.

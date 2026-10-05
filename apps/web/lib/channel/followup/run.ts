@@ -21,7 +21,7 @@ import {
   familySpeech,
   notePermanentSkip,
 } from '~/lib/channel/linq/family-outbound';
-import { groupActivityHowItWent } from '~/lib/channel/linq/group-coparent-copy';
+import { type GroupVoice, defaultGroupVoice, speakGroupLine } from '~/lib/channel/linq/group-voice';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -338,6 +338,12 @@ export interface FollowupSweepDeps {
    * send a duller message — it sends nothing, visibly. */
   voice: FollowupVoice;
   /**
+   * The group's voice (VIL-413): a how-it-went asked in the household group is
+   * written for both readers, naming the parent it is for. Absent means the
+   * production composer; with no model key the line is unsent and #ops is paged.
+   */
+  groupVoice?: GroupVoice;
+  /**
    * Put the sent ask in the parent's own text thread — REQUIRED, same reason as the two
    * above (rule #11). Every message this sweep sends is a QUESTION, and the answer to it
    * comes back as a coach turn; `channel_messages` carries no body (rule #1), so an ask
@@ -479,7 +485,14 @@ async function sendFollowup(
   let spoken = composed.body;
   if (target.channel === 'group' && input.ask.kind === 'activity') {
     const speech = await familySpeech(database, input.familyId, input.parentUserId);
-    spoken = groupActivityHowItWent(speech.language, speech.name, input.ask.activity);
+    const line = await speakGroupLine(
+      deps.groupVoice ?? defaultGroupVoice(),
+      { kind: 'how_it_went', name: speech.name, activity: input.ask.activity },
+      speech.language,
+    );
+    // Unsent leaves the claim unspent: the next tick asks again, with a line.
+    if (line.source === 'unsent') return { status: 'compose_deferred', reason: 'model_failed' };
+    spoken = line.body;
   }
   const body = withOptOut(spoken, verdict.optOut);
   const unbacked = await deps.refuseUnbackedSend(database, {
@@ -1075,13 +1088,14 @@ function followupVoiceClient(): AgentClient {
  */
 export async function howItWentLinesForGroupWeekly(
   database: Database,
-  input: { familyId: string; parentUserId: string; now: Date },
+  input: { familyId: string; parentUserId: string; now: Date; voice?: GroupVoice },
 ): Promise<readonly { text: string; dedupeKey: string; parentUserId: string }[]> {
   if (typeof database.select !== 'function') return [];
   try {
     const due = await readDueActivities(database, input.familyId, input.parentUserId, input.now);
     const children = await readFollowupChildren(database, input.familyId);
     const speech = await familySpeech(database, input.familyId, input.parentUserId);
+    const voice = input.voice ?? defaultGroupVoice();
     const lines: { text: string; dedupeKey: string; parentUserId: string }[] = [];
     for (const event of due) {
       if (lines.length >= 3) break;
@@ -1090,8 +1104,15 @@ export async function howItWentLinesForGroupWeekly(
       ) {
         continue;
       }
+      const line = await speakGroupLine(
+        voice,
+        { kind: 'how_it_went', name: speech.name, activity: event.title },
+        speech.language,
+      );
+      // An unsent line is left for the follow-up sweep: its key stays unclaimed.
+      if (line.source === 'unsent') continue;
       lines.push({
-        text: groupActivityHowItWent(speech.language, speech.name, event.title),
+        text: line.body,
         dedupeKey: activityFollowupAskDedupeKey(event.ref.id),
         parentUserId: event.parentUserId,
       });

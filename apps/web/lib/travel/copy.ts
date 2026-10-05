@@ -2,7 +2,6 @@ import { namesAPerson } from '~/lib/channel/activity/deidentify';
 import type { ActivityPick } from '~/lib/channel/activity/lane';
 import { SLOTS_IN_TEXT } from '~/lib/channel/activity/share-page';
 import { childPhrase } from '~/lib/channel/checkin/copy';
-import { groupTravelBriefOpening } from '~/lib/channel/linq/group-coparent-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
 
@@ -100,6 +99,18 @@ export function tripDayPhrase(startsOn: string, endsOn: string): string {
   const start = ordinal(new Date(`${startsOn}T12:00:00Z`).getUTCDate());
   const end = ordinal(new Date(`${endsOn}T12:00:00Z`).getUTCDate());
   return start === end ? `the ${start}` : `the ${start} to the ${end}`;
+}
+
+/**
+ * The group opening. The group does not guess who is travelling.
+ * `Trip: {city}, {days}. A couple of things on for {kids}:`
+ *
+ * Still a template, like the rest of this brief: the whole body (opening, picks,
+ * provenance) is one lint-checked unit and moves to the composed path together
+ * (VIL-413 follow-up), not one clause at a time.
+ */
+function groupTravelBriefOpening(city: string, days: string, kids: string): string {
+  return `Trip: ${city}, ${days}. A couple of things on for ${kids}:`;
 }
 
 /** One pick, in the source's own words. A null `when` or `price` omits its clause and

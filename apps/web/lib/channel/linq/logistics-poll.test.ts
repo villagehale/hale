@@ -1,50 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import {
   BOTH_FREE_NONE,
-  BOTH_FREE_PROMPT,
   FIGURE_IT_OUT,
-  WHO_TAKES_PROMPT,
   bothFreePollOptions,
   readSlotReply,
   readWhoTakesReply,
   whoTakesPollOptions,
-  whoTakesPrompt,
 } from './logistics-poll';
 import { yearFindPollOptions } from './poll';
 
 /**
- * Design locked (Sloane, 2026-09-26). French is ASCII. Year-find still needs two titles.
+ * The question is the group-voice line (group-voice.ts). The only fixed
+ * strings left are the two trailing poll OPTION LABELS, which the reply parser
+ * matches back by exact text. French is ASCII. Year-find still needs two titles.
  */
 
 function isAscii(line: string): boolean {
   return [...line].every((char) => char.charCodeAt(0) <= 127);
 }
 
-describe('logistics poll copy', () => {
-  it('uses the locked strings verbatim, and French is ASCII', () => {
-    expect(
-      whoTakesPrompt('en', { kid: 'Maya', event: 'gymnastics', day: 'Fri', time: '15:00' }),
-    ).toBe("Who's taking Maya's gymnastics, Fri at 15:00?");
-    expect(
-      whoTakesPrompt('fr', { kid: 'Maya', event: 'gymnastique', day: 'ven.', time: '15:00' }),
-    ).toBe("Qui s'occupe de gymnastique pour Maya, ven. a 15:00?");
-    expect(isAscii(WHO_TAKES_PROMPT.fr)).toBe(true);
+describe('logistics poll option labels', () => {
+  it('keeps the two trailing option labels, and French is ASCII', () => {
     expect(FIGURE_IT_OUT).toEqual({ en: "We'll figure it out", fr: 'On verra' });
-    expect(BOTH_FREE_PROMPT).toEqual({
-      en: 'Which time works for both of you?',
-      fr: 'Quel creneau vous arrange tous les deux?',
-    });
     expect(BOTH_FREE_NONE).toEqual({ en: 'None of these', fr: 'Aucun de ceux-la' });
-    for (const line of [
-      WHO_TAKES_PROMPT.en,
-      WHO_TAKES_PROMPT.fr,
-      FIGURE_IT_OUT.en,
-      FIGURE_IT_OUT.fr,
-      BOTH_FREE_PROMPT.en,
-      BOTH_FREE_PROMPT.fr,
-      BOTH_FREE_NONE.en,
-      BOTH_FREE_NONE.fr,
-    ]) {
+    for (const line of [FIGURE_IT_OUT.en, FIGURE_IT_OUT.fr, BOTH_FREE_NONE.en, BOTH_FREE_NONE.fr]) {
       expect(isAscii(line)).toBe(true);
     }
   });

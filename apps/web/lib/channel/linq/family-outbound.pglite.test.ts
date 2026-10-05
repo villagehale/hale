@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { CO_PARENT_ASK } from '~/lib/channel/intake/copy';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { queueActivityDecisionFromReply } from './activity-decision';
 import {
   deliverFamilyOutbound,
@@ -20,6 +21,8 @@ import {
 
 const GROUP = 'chat-home';
 const PERSONAL = 'chat-one-to-one';
+/** The group's voice, faked: the sync's plumbing is under test, not the model's words. */
+const voice = fakeSpokenLineComposer();
 const GROUP_MESSAGES = `https://api.linqapp.com/api/partner/v3/chats/${GROUP}/messages`;
 const NOW = new Date('2026-09-24T15:00:00.000Z');
 
@@ -168,18 +171,35 @@ describe('a 1:1 decision syncs the group', () => {
       now: NOW,
     });
     expect(queued).toBe('queued');
-    const early = await flushGroupDecisionSyncs(db.database, { now: NOW, fetch: http.fetch });
+    const early = await flushGroupDecisionSyncs(db.database, {
+      voice,
+      now: NOW,
+      fetch: http.fetch,
+    });
     expect(early.sent).toBe(0);
     expect(http.linqUrls()).toEqual([]);
     const settled = new Date(NOW.getTime() + 10 * 60 * 1000);
     const flushed = await flushGroupDecisionSyncs(db.database, {
+      voice,
       now: settled,
       fetch: http.fetch,
     });
     expect(flushed.sent).toBe(1);
     expect(http.linqUrls()).toEqual([GROUP_MESSAGES]);
     expect(http.twilioUrls()).toEqual([]);
-    expect(http.bodies()).toContain('Quick sync: Barton picked swim for Maya, Tuesday at 4:00.');
+    expect(voice.calls.at(-1)?.input.facts.decisions).toEqual([
+      {
+        parent: 'Barton',
+        decision: 'picked',
+        activity: 'swim',
+        kid: 'Maya',
+        day: 'Tuesday',
+        time: '4:00',
+      },
+    ]);
+    for (const fact of ['Barton', 'swim', 'Maya', 'Tuesday', '4:00']) {
+      expect(http.bodies()).toContain(fact);
+    }
     expect(http.bodies()).not.toMatch(/inbox|subject|@|booked/i);
     const [row] = await db.database
       .select({
@@ -239,15 +259,35 @@ describe('a 1:1 decision syncs the group', () => {
       });
     }
     const flushed = await flushGroupDecisionSyncs(db.database, {
+      voice,
       now: new Date(NOW.getTime() + 3 * 1000 + 10 * 60 * 1000),
       fetch: http.fetch,
     });
     expect(flushed.sent).toBe(1);
     expect(http.linqUrls()).toEqual([GROUP_MESSAGES]);
     const body = http.bodies();
-    expect(body).toContain('Quick sync: Barton picked swim for Maya, Tuesday at 4:00.');
-    expect(body).toContain('Quick sync: Barton passed on art for Maya.');
-    expect(body).toContain('Quick sync: Barton picked music for Leo, Wednesday at 5:00.');
+    expect(voice.calls.at(-1)?.input.facts.decisions).toEqual([
+      {
+        parent: 'Barton',
+        decision: 'picked',
+        activity: 'swim',
+        kid: 'Maya',
+        day: 'Tuesday',
+        time: '4:00',
+      },
+      { parent: 'Barton', decision: 'passed', activity: 'art', kid: 'Maya', day: null, time: null },
+      {
+        parent: 'Barton',
+        decision: 'picked',
+        activity: 'music',
+        kid: 'Leo',
+        day: 'Wednesday',
+        time: '5:00',
+      },
+    ]);
+    for (const fact of ['swim', 'art', 'music', 'Leo', 'Wednesday', '5:00']) {
+      expect(body).toContain(fact);
+    }
     expect(body).not.toContain('dance');
     expect(body).not.toMatch(/booked/i);
     const waiting = await db.database
@@ -281,16 +321,32 @@ describe('a 1:1 decision syncs the group', () => {
       now: later,
     });
     const early = await flushGroupDecisionSyncs(db.database, {
+      voice,
       now: new Date(NOW.getTime() + 10 * 60 * 1000),
       fetch: http.fetch,
     });
     expect(early.sent).toBe(0);
     const flushed = await flushGroupDecisionSyncs(db.database, {
+      voice,
       now: new Date(later.getTime() + 10 * 60 * 1000),
       fetch: http.fetch,
     });
     expect(flushed.sent).toBe(1);
-    expect(http.bodies()).toContain('Pour info: Barton a choisi swim pour Maya, mardi a 16 h.');
+    const last = voice.calls.at(-1)?.input;
+    expect(last?.language).toBe('fr');
+    expect(last?.address).toBe('vous');
+    expect(last?.facts.decisions).toEqual([
+      {
+        parent: 'Barton',
+        decision: 'picked',
+        activity: 'swim',
+        kid: 'Maya',
+        day: 'mardi',
+        time: '16 h',
+      },
+    ]);
+    const body = http.bodies();
+    for (const fact of ['Barton', 'swim', 'Maya', 'mardi', '16 h']) expect(body).toContain(fact);
   });
 
   it('does not queue a question or an incomplete pick', async () => {
@@ -335,7 +391,7 @@ describe('a 1:1 decision syncs the group', () => {
       .from(schema.groupDecisionSync);
     expect(rows).toHaveLength(1);
     const settled = new Date(NOW.getTime() + 11 * 60 * 1000);
-    await flushGroupDecisionSyncs(db.database, { now: settled, fetch: http.fetch });
+    await flushGroupDecisionSyncs(db.database, { voice, now: settled, fetch: http.fetch });
     const repeat = await queueGroupActivityDecision(db.database, {
       familyId: seeded.familyId,
       parentUserId: seeded.parentUserId,
@@ -345,6 +401,7 @@ describe('a 1:1 decision syncs the group', () => {
     });
     expect(repeat).toBe('skipped');
     const later = await flushGroupDecisionSyncs(db.database, {
+      voice,
       now: new Date(settled.getTime() + 20 * 60 * 1000),
       fetch: http.fetch,
     });
@@ -367,13 +424,24 @@ describe('a 1:1 decision syncs the group', () => {
       now: new Date(quiet.getTime() - 11 * 60 * 1000),
     });
     const http = wire();
-    const heldQuiet = await flushGroupDecisionSyncs(db.database, { now: quiet, fetch: http.fetch });
+    const heldQuiet = await flushGroupDecisionSyncs(db.database, {
+      voice,
+      now: quiet,
+      fetch: http.fetch,
+    });
     expect(heldQuiet).toEqual({ sent: 0, held: 1 });
     expect(http.linqUrls()).toEqual([]);
     const morning = new Date('2026-09-25T12:30:00.000Z');
-    const sent = await flushGroupDecisionSyncs(db.database, { now: morning, fetch: http.fetch });
+    const sent = await flushGroupDecisionSyncs(db.database, {
+      voice,
+      now: morning,
+      fetch: http.fetch,
+    });
     expect(sent.sent).toBe(1);
-    expect(http.bodies()).toContain('Quick sync: Barton passed on art for Maya.');
+    expect(http.bodies()).toContain('art');
+    expect(voice.calls.at(-1)?.input.facts.decisions).toEqual([
+      { parent: 'Barton', decision: 'passed', activity: 'art', kid: 'Maya', day: null, time: null },
+    ]);
 
     await db.database.insert(schema.channelMessages).values([
       {
@@ -414,7 +482,11 @@ describe('a 1:1 decision syncs the group', () => {
       },
       now: new Date(morning.getTime() - 11 * 60 * 1000),
     });
-    const capped = await flushGroupDecisionSyncs(db.database, { now: morning, fetch: http.fetch });
+    const capped = await flushGroupDecisionSyncs(db.database, {
+      voice,
+      now: morning,
+      fetch: http.fetch,
+    });
     expect(capped.held).toBe(1);
     expect(http.linqUrls()).toEqual([GROUP_MESSAGES]);
 
@@ -437,6 +509,7 @@ describe('a 1:1 decision syncs the group', () => {
       now: NOW,
     });
     const failed = await flushGroupDecisionSyncs(db.database, {
+      voice,
       now: new Date(NOW.getTime() + 10 * 60 * 1000),
       fetch: failing as unknown as typeof fetch,
     });
@@ -447,12 +520,15 @@ describe('a 1:1 decision syncs the group', () => {
     expect(unflushed?.flushedAt).toBeNull();
     const retry = wire();
     const recovered = await flushGroupDecisionSyncs(db.database, {
+      voice,
       now: new Date(NOW.getTime() + 20 * 60 * 1000),
       fetch: retry.fetch,
     });
     expect(recovered.sent).toBe(1);
     expect(retry.linqUrls()).toEqual([GROUP_MESSAGES]);
-    expect(retry.bodies()).toContain('Quick sync: Barton picked swim for Maya, Friday at 3:00.');
+    for (const fact of ['Barton', 'swim', 'Maya', 'Friday', '3:00']) {
+      expect(retry.bodies()).toContain(fact);
+    }
   });
 
   it('does not mark a not-yet-due row flushed with the sitting', async () => {
@@ -482,6 +558,7 @@ describe('a 1:1 decision syncs the group', () => {
       createdAt: new Date(NOW.getTime() + 1000),
     });
     await flushGroupDecisionSyncs(db.database, {
+      voice,
       now: new Date(NOW.getTime() + 10 * 60 * 1000),
       fetch: http.fetch,
     });

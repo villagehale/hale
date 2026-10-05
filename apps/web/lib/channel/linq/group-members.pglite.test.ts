@@ -3,16 +3,22 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { fakeSpokenLineBody, fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
   declinePrivilegedGroupSeat,
   dutyAssigneeIds,
-  groupMemberWelcome,
-  groupStrangerHold,
   holdTrueStrangerOnce,
   seatParticipantAdded,
   unseatParticipantRemoved,
 } from './group-members';
+import { type GroupLineRequest, groupLineInput } from './group-voice';
+import type { ReplyLanguage } from '~/lib/channel/language';
+
+/** What the fake voice writes for a request, so a test can find the facts on the wire. */
+function spoken(request: GroupLineRequest, language: ReplyLanguage = 'en'): string {
+  return fakeSpokenLineBody(groupLineInput(request, language));
+}
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PARENT = '+14165550111';
@@ -49,7 +55,7 @@ function sender() {
     texts.push(notice.text);
     return { providerMessageId: `msg-${texts.length}` };
   };
-  return { send, texts };
+  return { send, texts, voice: fakeSpokenLineComposer() };
 }
 
 async function seedFamily(phone: string, name: string) {
@@ -107,13 +113,14 @@ describe('linq group members', () => {
       isFromMe: false,
       now: NOW,
       send: wire.send,
+      voice: wire.voice,
     });
     expect(first).toMatchObject({
       outcome: 'group_member_seated',
       role: 'co_parent',
       notice: 'sent',
     });
-    expect(wire.texts).toEqual([groupMemberWelcome('en', 'Barton')]);
+    expect(wire.texts).toEqual([spoken({ kind: 'member_welcome', adder: 'Barton' })]);
 
     const again = await seatParticipantAdded(db.database, {
       chatId: CHAT,
@@ -122,6 +129,7 @@ describe('linq group members', () => {
       isFromMe: false,
       now: NOW,
       send: wire.send,
+      voice: wire.voice,
     });
     expect(again.outcome).toBe('group_member_already');
     expect(wire.texts).toHaveLength(1);
@@ -134,6 +142,7 @@ describe('linq group members', () => {
         isFromMe: false,
         now: NOW,
         send: wire.send,
+        voice: wire.voice,
       });
       expect(seated).toMatchObject({
         outcome: 'group_member_seated',
@@ -166,6 +175,7 @@ describe('linq group members', () => {
       isFromMe: true,
       now: NOW,
       send: wire.send,
+      voice: wire.voice,
     });
     expect(unnamed).toMatchObject({ outcome: 'group_member_seated', notice: 'sent' });
 
@@ -176,9 +186,10 @@ describe('linq group members', () => {
       isFromMe: true,
       now: NOW,
       send: wire.send,
+      voice: wire.voice,
     });
     expect(hale).toMatchObject({ outcome: 'group_member_seated', notice: 'skipped' });
-    expect(wire.texts).toEqual([groupMemberWelcome('en', null)]);
+    expect(wire.texts).toEqual([spoken({ kind: 'member_welcome', adder: null })]);
   });
 
   it('welcomes in French when that is the household language', async () => {
@@ -195,8 +206,9 @@ describe('linq group members', () => {
       isFromMe: false,
       now: NOW,
       send: wire.send,
+      voice: wire.voice,
     });
-    expect(wire.texts).toEqual([groupMemberWelcome('fr', 'Barton')]);
+    expect(wire.texts).toEqual([spoken({ kind: 'member_welcome', adder: 'Barton' }, 'fr')]);
     expect(wire.texts[0]).not.toContain('kids');
   });
 
@@ -211,6 +223,7 @@ describe('linq group members', () => {
       isFromMe: false,
       now: NOW,
       send: wire.send,
+      voice: wire.voice,
     });
     expect(stranger).toEqual({ outcome: 'group_member_refused', reason: 'actor' });
 
@@ -221,6 +234,7 @@ describe('linq group members', () => {
       isFromMe: false,
       now: NOW,
       send: wire.send,
+      voice: wire.voice,
     });
     expect(other).toEqual({ outcome: 'group_member_refused', reason: 'other_family' });
     expect(await liveRoles(home.familyId)).toEqual([]);
@@ -237,6 +251,7 @@ describe('linq group members', () => {
       isFromMe: true,
       now: NOW,
       send: wire.send,
+      voice: wire.voice,
     });
     const removed = await unseatParticipantRemoved(db.database, {
       chatId: CHAT,
@@ -264,16 +279,18 @@ describe('linq group members', () => {
       senderHandle: '+14165550777',
       now: NOW,
       send: wire.send,
+      voice: wire.voice,
     });
     const second = await holdTrueStrangerOnce(db.database, {
       chatId: CHAT,
       senderHandle: '+14165550777',
       now: NOW,
       send: wire.send,
+      voice: wire.voice,
     });
     expect(first).toBe('sent');
     expect(second).toBe('already_sent');
-    expect(wire.texts).toEqual([groupStrangerHold('en', 'Barton')]);
+    expect(wire.texts).toEqual([spoken({ kind: 'stranger_hold', parentA: 'Barton' })]);
     expect(wire.texts[0]).not.toContain('kids');
     const [row] = await db.database
       .select({
@@ -300,6 +317,7 @@ describe('linq group members', () => {
       isFromMe: false,
       now: NOW,
       send: wire.send,
+      voice: wire.voice,
     });
     await seatParticipantAdded(db.database, {
       chatId: CHAT,
@@ -308,6 +326,7 @@ describe('linq group members', () => {
       isFromMe: false,
       now: NOW,
       send: wire.send,
+      voice: wire.voice,
     });
     const seats = await db.database
       .select({

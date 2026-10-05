@@ -1,14 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { linqGroupMembersEnabled } from './config';
 import { holdUnknownGroupSender } from './group';
-import {
-  GROUP_MEMBER_WELCOME_NO_ADDER,
-  GROUP_MEMBER_WELCOME_WITH_ADDER,
-  GROUP_STRANGER_HOLD,
-  classifyParticipantAdd,
-  groupMemberWelcome,
-  groupStrangerHold,
-} from './group-members';
+import { classifyParticipantAdd } from './group-members';
+import { groupLineInput, speakGroupLine } from './group-voice';
 
 describe('LINQ_GROUP_MEMBERS_ENABLED', () => {
   afterEach(() => {
@@ -75,51 +70,32 @@ describe('classifyParticipantAdd', () => {
   });
 });
 
-describe('group member copy', () => {
-  it('keeps each welcome and hold byte for byte, with no family detail and no opt-out', () => {
-    expect(GROUP_MEMBER_WELCOME_WITH_ADDER.en).toBe(
-      "Hi, I'm Hale. {adder} added you so the family can sort the week in one place. What should I call you?",
-    );
-    expect(GROUP_MEMBER_WELCOME_WITH_ADDER.fr).toBe(
-      "Bonjour, c'est Hale. {adder} vous a ajoute pour qu'on s'organise ensemble. Comment je vous appelle?",
-    );
-    expect(GROUP_MEMBER_WELCOME_NO_ADDER.en).toBe(
-      "Hi, I'm Hale. I help the family sort the week in one place. What should I call you?",
-    );
-    expect(GROUP_MEMBER_WELCOME_NO_ADDER.fr).toBe(
-      "Bonjour, c'est Hale. J'aide la famille a organiser la semaine au meme endroit. Comment je vous appelle?",
-    );
-    expect(GROUP_STRANGER_HOLD.en).toBe(
-      'Someone new joined this chat and I don\'t know them yet, so I\'m pausing here. {parentA}, say "add them" if they share the load.',
-    );
-    expect(GROUP_STRANGER_HOLD.fr).toBe(
-      'Une nouvelle personne s\'est jointe a la conversation et je ne la connais pas encore, alors je fais une pause. {parentA}, dis "ajoute cette personne" si elle partage la charge.',
-    );
-    expect(groupMemberWelcome('en', 'Sam')).toBe(
-      "Hi, I'm Hale. Sam added you so the family can sort the week in one place. What should I call you?",
-    );
-    expect(groupMemberWelcome('fr', 'Sam')).toBe(
-      "Bonjour, c'est Hale. Sam vous a ajoute pour qu'on s'organise ensemble. Comment je vous appelle?",
-    );
-    expect(groupMemberWelcome('en', null)).toBe(GROUP_MEMBER_WELCOME_NO_ADDER.en);
-    expect(groupMemberWelcome('fr', '  ')).toBe(GROUP_MEMBER_WELCOME_NO_ADDER.fr);
-    expect(groupStrangerHold('en', 'Sam')).toBe(
-      'Someone new joined this chat and I don\'t know them yet, so I\'m pausing here. Sam, say "add them" if they share the load.',
-    );
-    expect(groupStrangerHold('fr', 'Sam')).toBe(
-      'Une nouvelle personne s\'est jointe a la conversation et je ne la connais pas encore, alors je fais une pause. Sam, dis "ajoute cette personne" si elle partage la charge.',
-    );
-    for (const line of [
-      ...Object.values(GROUP_MEMBER_WELCOME_WITH_ADDER),
-      ...Object.values(GROUP_MEMBER_WELCOME_NO_ADDER),
-      ...Object.values(GROUP_STRANGER_HOLD),
-      groupMemberWelcome('en', 'Sam'),
-      groupStrangerHold('fr', 'Sam'),
-    ]) {
-      expect(line).toMatch(/^[\x20-\x7E]+$/);
-      expect(line.toLowerCase()).not.toContain('stop');
-      expect(line).not.toMatch(/\b(swim|postal|birthday|calendar)\b/i);
-    }
+describe('group member lines', () => {
+  it('hands the model only the adder and the asking parent, and asks one question', () => {
+    const withAdder = groupLineInput({ kind: 'member_welcome', adder: 'Sam' }, 'fr');
+    expect(withAdder.facts).toEqual({ adder: 'Sam' });
+    expect(withAdder.questions).toBe(1);
+    expect(withAdder.address).toBe('vous');
+
+    const noAdder = groupLineInput({ kind: 'member_welcome', adder: null }, 'en');
+    expect(noAdder.facts).toEqual({ adder: null });
+
+    const hold = groupLineInput({ kind: 'stranger_hold', parentA: 'Sam' }, 'en');
+    expect(hold.mustMention).toEqual(['Sam']);
+    expect(hold.questions).toBe(1);
+  });
+
+  it('refuses a welcome that carries family detail or compliance wording', async () => {
+    const page = vi.fn(async () => 'sent' as const);
+    const leaky = fakeSpokenLineComposer({
+      body: "Hi, I'm Hale. Sam added you. Maya's swim is Saturday at 9:00. Reply STOP to opt out. What should I call you?",
+    });
+    const result = await speakGroupLine(leaky, { kind: 'member_welcome', adder: 'Sam' }, 'en', {
+      page,
+    });
+    expect(result.source).toBe('unsent');
+    expect(leaky.calls.map((call) => call.prompt)).toEqual(['full', 'short']);
+    expect(page).toHaveBeenCalledTimes(1);
   });
 
   it('sends nothing about a family from an unclaimed group', async () => {

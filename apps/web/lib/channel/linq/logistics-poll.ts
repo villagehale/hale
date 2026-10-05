@@ -7,34 +7,24 @@ import type { PollOptionWrite } from './poll';
 /**
  * VIL-377 — logistics polls in a claimed Linq group.
  *
- * Design locked (Sloane, 2026-09-26). These strings are verbatim.
- * French is ASCII. One flag: LINQ_POLLS, shared with the year-find poll.
- * Year-find copy and the "only after two or more hits" rule stay in poll.ts.
+ * One flag: LINQ_POLLS, shared with the year-find poll. Year-find options and
+ * the "only after two or more hits" rule stay in poll.ts.
  *
- * The who-takes prompt is the one bubble that turn. It carries day and time
- * so it stands alone. The locked conflict sentence is not sent with it.
- * "We'll figure it out" / "On verra" stores no taker.
+ * The question itself is the group-voice `who_takes` / `both_free` line
+ * (group-voice.ts); the poll goes out under it with no prompt of its own. The
+ * only fixed strings here are the two trailing OPTION LABELS. They are poll
+ * buttons the reply parser matches back by exact text, not sentences Hale
+ * says, so they stay code-supplied. "We'll figure it out" / "On verra" stores
+ * no taker.
  */
 
-/** Design locked. The one who-takes bubble. Day and time are in the prompt. */
-export const WHO_TAKES_PROMPT: Record<ReplyLanguage, string> = {
-  en: "Who's taking {kid}'s {event}, {day} at {time}?",
-  fr: "Qui s'occupe de {event} pour {kid}, {day} a {time}?",
-};
-
-/** Design locked. Always the last who-takes option. Not a named taker. */
+/** Poll option label. Always the last who-takes option. Not a named taker. */
 export const FIGURE_IT_OUT: Record<ReplyLanguage, string> = {
   en: "We'll figure it out",
   fr: 'On verra',
 };
 
-/** Design locked. Replaces the both-free sentence when a parent asked and there are 2+ slots. */
-export const BOTH_FREE_PROMPT: Record<ReplyLanguage, string> = {
-  en: 'Which time works for both of you?',
-  fr: 'Quel creneau vous arrange tous les deux?',
-};
-
-/** Design locked. Always the last both-free option. Ends the ask. Not a chosen slot. */
+/** Poll option label. Always the last both-free option. Ends the ask. Not a chosen slot. */
 export const BOTH_FREE_NONE: Record<ReplyLanguage, string> = {
   en: 'None of these',
   fr: 'Aucun de ceux-la',
@@ -97,18 +87,7 @@ interface LogisticsFactValue {
   source: 'poll' | 'text';
 }
 
-function fill(pattern: string, slots: Record<string, string>): string {
-  return pattern.replace(/\{(\w+)\}/g, (_, key: string) => slots[key] ?? '');
-}
-
-export function whoTakesPrompt(
-  language: ReplyLanguage,
-  input: { kid: string; event: string; day: string; time: string },
-): string {
-  return fill(WHO_TAKES_PROMPT[language], input);
-}
-
-/** The locked pass line, either language. Not a parent name. */
+/** The pass option, either language. Not a parent name. */
 export function isFigureItOutLine(text: string): boolean {
   return FIGURE_OPTIONS.has(text.trim().replace(/\s+/g, ' ').toLowerCase());
 }

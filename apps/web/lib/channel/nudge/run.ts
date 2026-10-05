@@ -39,8 +39,8 @@ import {
 import {
   absorbHowItWentLines,
   groupBothReaderFrench,
-  groupEmptySaturdayLine,
 } from '~/lib/channel/linq/group-coparent-copy';
+import { type GroupVoice, defaultGroupVoice, speakGroupLine } from '~/lib/channel/linq/group-voice';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -314,7 +314,7 @@ export interface NudgeRunDeps {
    */
   pendingHowItWent?(
     database: Database,
-    input: { familyId: string; parentUserId: string; now: Date },
+    input: { familyId: string; parentUserId: string; now: Date; voice?: GroupVoice },
   ): Promise<readonly GroupHowItWentLine[]>;
   /**
    * Sunday duty overview folded into this same bubble. Absent means none.
@@ -330,6 +330,12 @@ export interface NudgeRunDeps {
     },
   ): Promise<{ text: string; commit: () => Promise<void> } | null>;
   client: AgentClient | null;
+  /**
+   * The group's voice (VIL-413): the empty-Saturday ask in a household group is
+   * written for both readers rather than templated. Absent means the production
+   * composer; with no model key the bubble is held and #ops is paged.
+   */
+  groupVoice?: GroupVoice;
 }
 
 export interface NudgeRunResult {
@@ -700,7 +706,25 @@ async function runForFamily(
     const speakerId = copies[0]?.recipient.parentUserId ?? '';
     const speech = await familySpeech(database, family.familyId, speakerId);
     if (nudge.kind === 'empty_saturday') {
-      wireMessage = groupEmptySaturdayLine(speech.language, speech.name, nudge.kidName);
+      const line = await speakGroupLine(
+        deps.groupVoice ?? defaultGroupVoice(),
+        { kind: 'empty_saturday', name: speech.name, kid: nudge.kidName },
+        speech.language,
+      );
+      if (line.source === 'unsent') {
+        // Nothing templated goes out in its place. The keys stay unclaimed, so the
+        // next tick inside the slot asks again, and #ops has already been paged.
+        await deps.audit(database, {
+          familyId: family.familyId,
+          actor: 'system',
+          actionTaken: 'proactive_nudge_skipped',
+          targetTable: 'families',
+          targetId: family.familyId,
+          after: { reason: 'voice_unsent', kind: nudge.kind, cohort },
+        });
+        return emptyTally({ held });
+      }
+      wireMessage = line.body;
     } else if (speech.language === 'fr' && isBothParentsNudge(nudge.kind)) {
       wireMessage = groupBothReaderFrench(message);
     }
@@ -709,6 +733,7 @@ async function runForFamily(
         familyId: family.familyId,
         parentUserId: speakerId,
         now,
+        voice: deps.groupVoice,
       });
       wireMessage = absorbHowItWentLines(
         wireMessage,

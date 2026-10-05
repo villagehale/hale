@@ -161,24 +161,7 @@ export const CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE: Record<ReplyLanguage, string
   fr: "Merci d'avoir répondu - quelqu'un d'autre a été ajouté comme co-parent entre-temps, donc il n'y a plus de place ici. Je ne vous écrirai plus.",
 };
 
-/**
- * What the parent who STAYS is told, once, when their co-parent leaves.
- *
- * IT NAMES NOBODY. Not the person who left — the trail's own departure sentences are
- * third-person and byline-safe for exactly this reason (trail/verbs.ts), and the actor
- * has no seat here any more — and no child, which sidesteps the teen-name question
- * entirely rather than redacting its way past it (rule #1).
- *
- * THREE FACTS AND NO ASK: the seat is empty, the week is unchanged, and the door back in
- * still works. No question, so it can never claim a bare YES that belongs to another
- * open question (router/open-questions.ts). "the join link still works" is the only
- * forward-looking half, and it is deliberately not a link: minting one unasked would be
- * Hale proposing a replacement co-parent on the day somebody left.
- */
-export const CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: 'Your co-parent has left Hale. Your week is yours alone now - nothing in it changed, and the join link still works if you want to add someone.',
-  fr: "Votre co-parent a quitte Hale. Votre semaine est a vous seul maintenant - rien n'y a change, et le lien d'invitation fonctionne toujours.",
-};
+/* The departure notice is model-written (lib/channel/linq/group-voice.ts `departure`, VIL-413). */
 
 /**
  * The answer that arrived after the invitation had already lapsed.

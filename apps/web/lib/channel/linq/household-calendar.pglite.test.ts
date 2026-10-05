@@ -8,7 +8,8 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
 import { listActiveConnectorConnections } from '~/lib/integrations/store';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { groupKidEventText } from './group-coparent-copy';
+import { fakeSpokenLineBody, fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
+import { type GroupVoice, groupLineInput } from './group-voice';
 import {
   captureLogisticsText,
   familyHasTwoCalendars,
@@ -19,7 +20,7 @@ import {
   rememberAndNarrateCalendar,
   rememberCalendarChanges,
 } from './household-calendar';
-import { recordLogisticsVote, whoTakesPrompt } from './logistics-poll';
+import { recordLogisticsVote } from './logistics-poll';
 
 /**
  * Both calendars in one family. Kid news may be said in the group. A non-kid
@@ -66,6 +67,7 @@ function groupWire(over?: { status?: number }): {
   linqUrls: () => string[];
   twilioUrls: () => string[];
   bodies: () => string;
+  voice: GroupVoice;
 } {
   const linqUrls: string[] = [];
   const twilioUrls: string[] = [];
@@ -98,6 +100,7 @@ function groupWire(over?: { status?: number }): {
     linqUrls: () => [...linqUrls],
     twilioUrls: () => [...twilioUrls],
     bodies: () => bodies.join('\n'),
+    voice: fakeSpokenLineComposer(),
   };
 }
 
@@ -109,7 +112,7 @@ function stubTwilioConfigured(): void {
   vi.stubEnv('TWILIO_FROM_NUMBER', '+14165550000');
 }
 
-function linqFetch(): { fetch: typeof fetch; texts: () => string } {
+function linqFetch(): { fetch: typeof fetch; texts: () => string; voice: GroupVoice } {
   const bodies: unknown[] = [];
   const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
     bodies.push(init?.body ? JSON.parse(String(init.body)) : null);
@@ -120,6 +123,7 @@ function linqFetch(): { fetch: typeof fetch; texts: () => string } {
   return {
     fetch: fetchImpl as unknown as typeof fetch,
     texts: () => JSON.stringify(bodies),
+    voice: fakeSpokenLineComposer(),
   };
 }
 
@@ -303,6 +307,7 @@ describe('household calendars', () => {
       seeding: true,
       now: DAY,
       fetch: wire.fetch,
+      voice: wire.voice,
     });
     expect(wire.texts()).toBe('[]');
     const [row] = await db.database
@@ -325,8 +330,9 @@ describe('household calendars', () => {
       seeding: false,
       now: DAY,
       fetch: wire.fetch,
+      voice: wire.voice,
     });
-    expect(wire.texts()).toContain('Heads up:');
+    expect(wire.texts()).toContain('kid_event:');
     expect(wire.texts()).toContain('gymnastics');
     expect(wire.texts()).not.toContain('Quarterly');
     expect(wire.texts()).not.toContain('budget');
@@ -339,6 +345,7 @@ describe('household calendars', () => {
       seeding: false,
       now: DAY,
       fetch: wire.fetch,
+      voice: wire.voice,
     });
     expect(wire.texts()).toBe(afterFirst);
 
@@ -353,6 +360,7 @@ describe('household calendars', () => {
       seeding: false,
       now: QUIET,
       fetch: quietWire.fetch,
+      voice: quietWire.voice,
     });
     expect(quietWire.texts()).toBe('[]');
     const [held] = await db.database
@@ -368,8 +376,9 @@ describe('household calendars', () => {
       seeding: false,
       now: DAY,
       fetch: quietWire.fetch,
+      voice: quietWire.voice,
     });
-    expect(quietWire.texts()).toContain('Heads up:');
+    expect(quietWire.texts()).toContain('kid_event:');
     expect(quietWire.texts()).toContain('gymnastics');
   });
 
@@ -417,15 +426,26 @@ describe('household calendars', () => {
       seeding: false,
       now: DAY,
       fetch: wire.fetch,
+      voice: wire.voice,
     });
     const when = new Date('2026-09-25T19:00:00.000Z');
-    const notice = groupKidEventText('en', {
-      name: 'Barton',
-      kid: 'Maya',
-      event: 'gymnastics',
-      day: formatDay(when, 'America/Toronto', 'en'),
-      time: formatTime(when, 'America/Toronto', 'en'),
-    });
+    const notice = fakeSpokenLineBody(
+      groupLineInput(
+        {
+          kind: 'kid_event',
+          events: [
+            {
+              parent: 'Barton',
+              kid: 'Maya',
+              event: 'gymnastics',
+              day: formatDay(when, 'America/Toronto', 'en'),
+              time: formatTime(when, 'America/Toronto', 'en'),
+            },
+          ],
+        },
+        'en',
+      ),
+    );
     expect(wire.texts()).toContain(notice);
     for (const secret of [subject, sender, body, 'Quarterly budget', 'coach@gym.test', 'snack']) {
       expect(wire.texts()).not.toContain(secret);
@@ -443,8 +463,9 @@ describe('household calendars', () => {
       seeding: false,
       now: DAY,
       fetch: wire.fetch,
+      voice: wire.voice,
     });
-    expect(wire.texts()).toContain('Heads up:');
+    expect(wire.texts()).toContain('kid_event:');
     const afterFirst = wire.texts();
     await rememberAndNarrateCalendar(db.database, {
       integrationId: seeded.primaryIntegrationId,
@@ -461,6 +482,7 @@ describe('household calendars', () => {
       seeding: false,
       now: DAY,
       fetch: wire.fetch,
+      voice: wire.voice,
     });
     expect(wire.texts()).toBe(afterFirst);
     const [held] = await db.database
@@ -485,10 +507,11 @@ describe('household calendars', () => {
       seeding: false,
       now: DAY,
       fetch: kidWire.fetch,
+      voice: kidWire.voice,
     });
     expect(kidWire.linqUrls()).toEqual([GROUP_MESSAGES]);
     expect(kidWire.twilioUrls()).toEqual([]);
-    expect(kidWire.bodies()).toContain('Heads up:');
+    expect(kidWire.bodies()).toContain('kid_event:');
 
     await db.exec('truncate table families, users cascade');
     const conflict = await seedPair();
@@ -523,10 +546,11 @@ describe('household calendars', () => {
       familyId: conflict.familyId,
       now: DAY,
       fetch: conflictWire.fetch,
+      voice: conflictWire.voice,
     });
     expect(conflictWire.linqUrls()).toEqual([GROUP_MESSAGES]);
     expect(conflictWire.twilioUrls()).toEqual([]);
-    expect(conflictWire.bodies()).toContain("Who's taking it?");
+    expect(conflictWire.bodies()).toContain('conflict:');
 
     await db.exec('truncate table families, users cascade');
     const handoff = await seedPair();
@@ -548,10 +572,11 @@ describe('household calendars', () => {
       familyId: handoff.familyId,
       now: HANDOFF_AT,
       fetch: handoffWire.fetch,
+      voice: handoffWire.voice,
     });
     expect(handoffWire.linqUrls()).toEqual([GROUP_MESSAGES]);
     expect(handoffWire.twilioUrls()).toEqual([]);
-    expect(handoffWire.bodies()).toContain('Tomorrow:');
+    expect(handoffWire.bodies()).toContain('handoff:');
 
     await db.exec('truncate table families, users cascade');
     const followup = await seedPair();
@@ -573,10 +598,11 @@ describe('household calendars', () => {
       familyId: followup.familyId,
       now: DAY,
       fetch: followupWire.fetch,
+      voice: followupWire.voice,
     });
     expect(followupWire.linqUrls()).toEqual([GROUP_MESSAGES]);
     expect(followupWire.twilioUrls()).toEqual([]);
-    expect(followupWire.bodies()).toContain('how did gymnastics go?');
+    expect(followupWire.bodies()).toContain('how_it_went:');
 
     const rows = await db.database
       .select({
@@ -609,6 +635,7 @@ describe('household calendars', () => {
       seeding: false,
       now: DAY,
       fetch: wire.fetch,
+      voice: wire.voice,
     });
     expect(wire.linqUrls()).toEqual([GROUP_MESSAGES]);
     expect(wire.twilioUrls()).toEqual([]);
@@ -663,18 +690,25 @@ describe('household calendars', () => {
       familyId: seeded.familyId,
       now: new Date('2026-09-23T14:00:00.000Z'),
       fetch: wire.fetch,
+      voice: wire.voice,
     });
     expect(wire.texts()).toHaveLength(1);
-    expect(wire.texts()[0]).toContain(
-      whoTakesPrompt('en', {
-        kid: 'Maya',
-        event: 'gymnastics',
-        day: formatDay(start, 'America/Toronto', 'en'),
-        time: formatTime(start, 'America/Toronto', 'en'),
-      }),
+    expect(wire.texts()[0]).toBe(
+      fakeSpokenLineBody(
+        groupLineInput(
+          {
+            kind: 'who_takes',
+            kid: 'Maya',
+            event: 'gymnastics',
+            day: formatDay(start, 'America/Toronto', 'en'),
+            time: formatTime(start, 'America/Toronto', 'en'),
+          },
+          'en',
+        ),
+      ),
     );
     expect(wire.texts()[0]).not.toContain("you're both busy");
-    expect(wire.texts()[0]).not.toContain("Who's taking it?");
+    expect(wire.texts()[0]).not.toContain('conflict:');
     expect(wire.texts()[0]).not.toContain('Quarterly');
     expect(wire.pollOptions().slice(0, 2).sort()).toEqual(['Barton', 'Sam']);
     expect(wire.pollOptions().at(-1)).toBe("We'll figure it out");
@@ -733,9 +767,10 @@ describe('household calendars', () => {
       familyId: seeded.familyId,
       now: new Date('2026-09-23T14:00:00.000Z'),
       fetch: wire.fetch,
+      voice: wire.voice,
     });
     expect(wire.texts()).toHaveLength(1);
-    expect(wire.texts()[0]).toContain("Who's taking it?");
+    expect(wire.texts()[0]).toContain('conflict:');
     expect(wire.pollOptions()).toEqual([]);
     expect(wire.urls().some((url) => url.includes('/polls'))).toBe(false);
   });
@@ -777,6 +812,7 @@ describe('household calendars', () => {
       familyId: seeded.familyId,
       now: QUIET,
       fetch: quiet.fetch,
+      voice: quiet.voice,
     });
     expect(quiet.texts()).toEqual([]);
     expect(quiet.pollOptions()).toEqual([]);
@@ -799,6 +835,7 @@ describe('household calendars', () => {
       familyId: seeded.familyId,
       now: cappedAt,
       fetch: capped.fetch,
+      voice: capped.voice,
     });
     expect(capped.texts()).toEqual([]);
     expect(capped.pollOptions()).toEqual([]);
@@ -818,6 +855,7 @@ describe('household calendars', () => {
       familyId: unanswered.familyId,
       now: askedAt,
       fetch: ask.fetch,
+      voice: ask.voice,
     });
     expect(ask.pollOptions().slice(0, 2).sort()).toEqual(['Barton', 'Sam']);
     expect(ask.pollOptions().at(-1)).toBe("We'll figure it out");
@@ -830,8 +868,9 @@ describe('household calendars', () => {
       familyId: unanswered.familyId,
       now: HANDOFF_AT,
       fetch: later.fetch,
+      voice: later.voice,
     });
-    expect(later.texts().join('\n')).not.toContain('Tomorrow:');
+    expect(later.texts().join('\n')).not.toContain('handoff:');
 
     await db.exec('truncate table families, users cascade');
     const voted = await seedPair();
@@ -841,6 +880,7 @@ describe('household calendars', () => {
       familyId: voted.familyId,
       now: askedAt,
       fetch: first.fetch,
+      voice: first.voice,
     });
     const sam = await db.database
       .select({
@@ -873,8 +913,9 @@ describe('household calendars', () => {
       familyId: voted.familyId,
       now: HANDOFF_AT,
       fetch: handoff.fetch,
+      voice: handoff.voice,
     });
-    expect(handoff.texts().join('\n')).toContain('Tomorrow: Sam has Maya');
+    expect(handoff.texts().join('\n')).toContain('handoff: Sam, Maya');
     expect(handoff.pollOptions()).toEqual([]);
 
     const stored = await captureLogisticsText(db.database, {
@@ -913,6 +954,7 @@ describe('household calendars', () => {
       familyId: seeded.familyId,
       now: askedAt,
       fetch: ask.fetch,
+      voice: ask.voice,
     });
     const pass = await db.database
       .select({
@@ -956,16 +998,18 @@ describe('household calendars', () => {
       familyId: seeded.familyId,
       now: new Date(askedAt.getTime() + 60 * 60 * 1000),
       fetch: again.fetch,
+      voice: again.voice,
     });
-    expect(again.texts().join('\n')).not.toContain("Who's taking");
+    expect(again.texts().join('\n')).not.toContain('conflict:');
     expect(again.pollOptions()).toEqual([]);
     const evening = pollWire();
     await narrateHouseholdCalendar(db.database, {
       familyId: seeded.familyId,
       now: HANDOFF_AT,
       fetch: evening.fetch,
+      voice: evening.voice,
     });
-    expect(evening.texts().join('\n')).not.toContain('Tomorrow:');
+    expect(evening.texts().join('\n')).not.toContain('handoff:');
   });
 });
 
@@ -1013,6 +1057,7 @@ function pollWire(): {
   texts: () => string[];
   pollOptions: () => string[];
   urls: () => string[];
+  voice: GroupVoice;
 } {
   const texts: string[] = [];
   const pollOptions: string[] = [];
@@ -1050,5 +1095,6 @@ function pollWire(): {
     texts: () => texts,
     pollOptions: () => pollOptions,
     urls: () => urls,
+    voice: fakeSpokenLineComposer(),
   };
 }

@@ -1,34 +1,12 @@
-import {
-  type DutyCopyLanguage,
-  dutyOwnerEcho,
-  dutyTitleMayBeSpoken,
-  spokenFirstName,
-} from './copy';
+import { dutyTitleMayBeSpoken } from './copy';
 
 export { dutyTitleMayBeSpoken };
-import { coparentDutyMemoryEnabled } from './flag';
 
 /**
- * One group-sync line for a duty decision. Null when the memory flag is
- * off, copy may not leave, or the activity is not a kid event. A refused
- * activity is not included in the return value.
+ * A 1:1 duty decision, read for the group sync. The group line itself is the
+ * model-written `decision_sync` (linq/group-voice.ts); this module only reads
+ * the decision and says which titles may be spoken.
  */
-export function dutySyncLine(
-  language: DutyCopyLanguage,
-  input: { name: string | null; activity: string; kid: string; day: string; time: string },
-): string | null {
-  if (!coparentDutyMemoryEnabled()) return null;
-  if (!dutyTitleMayBeSpoken(input.activity)) return null;
-  const name = spokenFirstName(input.name);
-  if (!name) return null;
-  return dutyOwnerEcho(language, {
-    name,
-    kid: input.kid,
-    event: input.activity,
-    day: input.day,
-    time: input.time,
-  });
-}
 
 export interface DutySyncDecision {
   decision: 'duty';
