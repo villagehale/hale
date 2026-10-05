@@ -18,6 +18,24 @@ export const PROACTIVE_VOICE_SKILL = 'proactive-voice';
 const PROACTIVE_MAX_CHARS = 200;
 
 /**
+ * The travel opening shares a four-segment brief with two venue names, two schedules,
+ * two prices and the provenance line (lib/travel/copy.ts), so it gets one short clause.
+ */
+export const TRAVEL_OPENING_MAX_CHARS = 110;
+
+/**
+ * The opening leads INTO the finds; it must not be one. A museum, a zoo or a pool named
+ * here is a place the brief's own picks did not supply, and the brief's fact-lint cannot
+ * subtract it. Words that sit inside real city names (park, beach) are left out: the
+ * judge tests the whole line, and "Long Beach" is a city.
+ */
+export const NO_TRAVEL_FIND = {
+  name: 'travel_find',
+  pattern:
+    /\b(?:museum|zoo|aquarium|pool|playground|library|theat(?:re|er)|mus[ée]e|piscine|plage|biblioth[èe]que)\b/i,
+};
+
+/**
  * Same shape the weekday-care decide produces (nudge-decide.ts). It is repeated here
  * rather than imported so this module stays loadable without `~/` (see above).
  */
@@ -29,7 +47,15 @@ export type ProactiveWeekdayAsk =
 
 export type ProactiveLineRequest =
   | { kind: 'empty_saturday'; kid: string }
-  | { kind: 'weekday_care'; ask: ProactiveWeekdayAsk };
+  | { kind: 'weekday_care'; ask: ProactiveWeekdayAsk }
+  /**
+   * The opening of the travel brief (lib/travel/copy.ts): where the family will be and
+   * when, leading into the finds code appends in the source's own words. `days` is the
+   * trip's own phrase ("the 12th to the 15th"); `kids` are the under-13s' first names,
+   * empty when there are none to name (a teen's absence is indistinguishable from
+   * having no children on file).
+   */
+  | { kind: 'travel_brief'; city: string; days: string; kids: readonly string[] };
 
 export type ProactiveLineKind = ProactiveLineRequest['kind'];
 
@@ -53,6 +79,20 @@ export function proactiveLineInput(
     forbidden: [NO_BOOKING_CLAIM],
   };
   switch (request.kind) {
+    case 'travel_brief': {
+      // No question: there is no reply handler behind the brief, and a question with
+      // nothing behind it is the recorded 2026-08-22 defect. The finds follow the
+      // opening, so the line must not name a place or a thing to do of its own.
+      const kids = [...request.kids];
+      return {
+        ...base,
+        questions: 0,
+        maxChars: TRAVEL_OPENING_MAX_CHARS,
+        facts: { city: request.city, days: request.days, kids: kids.length > 0 ? kids : null },
+        mustMention: [request.city, request.days, ...kids],
+        forbidden: [NO_BOOKING_CLAIM, NO_TRAVEL_FIND],
+      };
+    }
     case 'empty_saturday': {
       // The day is a fact the model must be handed, or the judge would refuse the
       // only weekday this line exists to name.

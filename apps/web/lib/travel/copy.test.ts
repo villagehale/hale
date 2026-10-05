@@ -39,12 +39,15 @@ function brief(overrides: Partial<Parameters<typeof renderTravelBrief>[0]> = {})
   return renderBrief(overrides).body;
 }
 
+/** A model-written opening, as the sweep hands it over after the judge (the words are
+ * the eval's business; this file is about what the render does around them). */
+const OPENING = "You're in New York the 12th to the 15th. A couple of things on for Mia:";
+
 function renderBrief(overrides: Partial<Parameters<typeof renderTravelBrief>[0]> = {}) {
   return renderTravelBrief({
-    city: 'New York',
+    opening: OPENING,
     startsOn: '2026-09-12',
     endsOn: '2026-09-15',
-    childNames: ['Mia'],
     picks: [pick(), ZOO],
     teenNames: [],
     ...overrides,
@@ -52,21 +55,15 @@ function renderBrief(overrides: Partial<Parameters<typeof renderTravelBrief>[0]>
 }
 
 describe('renderTravelBrief', () => {
-  it('uses the locked group opening and does not guess who is travelling', () => {
-    const body = brief({ forGroup: true });
-    expect(
-      body.startsWith('Trip: New York, the 12th to the 15th. A couple of things on for Mia:'),
-    ).toBe(true);
-    expect(body).not.toContain("You're in");
-  });
-
-  it('names the city, the days and two things, and claims nothing about having been', () => {
+  it('puts the spoken opening first, then the picks in their own words, then the provenance line', () => {
     const body = brief();
     expect(body).toBe(
-      "You're in New York the 12th to the 15th. A couple of things on for Mia: " +
-        'American Museum of Natural History - open daily 10am-5:30pm, USD 28 adults / 16 kids ' +
-        '(their site). Central Park Zoo - 10am-5pm, USD 20 (their site). ' +
+      [
+        OPENING,
+        'American Museum of Natural History - open daily 10am-5:30pm, USD 28 adults / 16 kids',
+        '(their site). Central Park Zoo - 10am-5pm, USD 20 (their site).',
         "That's off their own pages, not from anyone who's been.",
+      ].join(' '),
     );
     // No link, and no question: there is no reply handler behind this text, and a question
     // with nothing behind it is the recorded 2026-08-22 defect.
@@ -74,17 +71,20 @@ describe('renderTravelBrief', () => {
     expect(body).not.toContain('?');
   });
 
+  it('writes no opening of its own: the body starts with whatever was spoken', () => {
+    const body = brief({
+      opening: ' Trip: New York, the 12th to the 15th. Two things on for the kids: ',
+    });
+    expect(
+      body.startsWith('Trip: New York, the 12th to the 15th. Two things on for the kids: American'),
+    ).toBe(true);
+    expect(body).not.toContain("You're in");
+  });
+
   it('fits four segments against the FULL opt-out form, in GSM-7', () => {
     const body = brief();
     expect(isGsm7(body)).toBe(true);
     expect(smsSegments(withOptOut(body, 'full'))).toBeLessThanOrEqual(MAX_TRAVEL_BRIEF_SEGMENTS);
-  });
-
-  it('names the under-13s, and falls back generically when there are none to name', () => {
-    expect(brief({ childNames: ['Mia', 'Leo'] })).toContain('for Mia and Leo:');
-    // A teen-only household arrives here with an empty list and is answered generically —
-    // which is the point: the teen's absence is indistinguishable from having no children.
-    expect(brief({ childNames: [] })).toContain('for the kids:');
   });
 
   it('omits a clause the source never published, and invents nothing in its place', () => {

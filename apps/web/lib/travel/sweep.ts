@@ -12,6 +12,7 @@ import { f14Allowlist, f14Enabled, f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound, familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
+import { proactiveLineInput } from '~/lib/channel/nudge/proactive-line';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -26,9 +27,19 @@ import {
   readSendRefusal,
 } from '~/lib/channel/outbound-transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
+import {
+  type SpokenLineComposer,
+  defaultSpokenLineComposer,
+  speakLine,
+} from '~/lib/channel/voice/spoken-line';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { activityClient } from '~/lib/pipeline/client';
-import { TRAVEL_BRIEF_TEMPLATE_KEY, type TravelBriefRender, renderTravelBrief } from './copy';
+import {
+  TRAVEL_BRIEF_TEMPLATE_KEY,
+  type TravelBriefRender,
+  renderTravelBrief,
+  tripDayPhrase,
+} from './copy';
 import { localCalendarDay } from './detect';
 import { travelBriefAllowlist, travelBriefEnabled, travelBriefEnabledFor } from './flag';
 import { TRAVEL_SUBJECT, travelDestination, travelWindow } from './query';
@@ -138,6 +149,9 @@ export interface TravelBriefResult {
   /** `travelBriefViolations` was non-empty. Its own count, because a body the gates had
    * already passed and the composer still could not back is a bug in CODE. */
   refusedAtRender: number;
+  /** The model could not write the opening (VIL-413 / VIL-417): the search ran, nothing
+   * went out, the trip stays open for the next tick, and #ops was paged by the engine. */
+  voiceUnsent: number;
   /** No phone, no recipient — a broken row, not a hold. */
   unsendable: number;
   /**
@@ -174,6 +188,7 @@ export function emptyTravelBriefResult(enabled: boolean): TravelBriefResult {
     searchFailed: 0,
     noPicks: 0,
     refusedAtRender: 0,
+    voiceUnsent: 0,
     unsendable: 0,
     alreadyClaimed: 0,
     overtaken: 0,
@@ -206,6 +221,12 @@ export interface TravelBriefDeps {
   transport: ChannelTransport;
   threadMessage: typeof threadProactiveMessage;
   dedupeActive: typeof dedupeActive;
+  /**
+   * The composer that writes the brief's opening. Omitted means the production
+   * composer, which is `undefined` without an API key — `speakLine` logs that and the
+   * brief is counted `voiceUnsent`, never rendered from a template (rule #11).
+   */
+  voice?: SpokenLineComposer;
 }
 
 interface OpenTrip {
@@ -443,17 +464,44 @@ async function briefOne(
     return;
   }
 
+  // THE OPENING IS SPOKEN (VIL-413 / VIL-417). English, like the picks and the provenance
+  // line it leads into: the brief is outbound-first with no inbound text to read a
+  // language off, and a French opening on English finds would be the stranger text. In
+  // a claimed group both parents read it (vous, and no guess at who is travelling).
+  const target = await familyOutboundTarget(database, trip.familyId);
+  const opening = await speakLine(
+    deps.voice ?? defaultSpokenLineComposer(),
+    proactiveLineInput(
+      {
+        kind: 'travel_brief',
+        city: trip.destinationCity,
+        days: tripDayPhrase(trip.startsOn, trip.endsOn),
+        kids: names.namable,
+      },
+      'en',
+      target.channel === 'group' ? 'vous' : 'tu',
+    ),
+    { scope: { familyId: trip.familyId, database } },
+  );
+  if (opening.source === 'unsent') {
+    // The engine paged #ops. The trip stays open and is briefed on the next tick that
+    // can write it; the search result is not kept, which is the price of no template.
+    result.voiceUnsent += 1;
+    console.warn(
+      { tripId: trip.id, familyId: trip.familyId },
+      'travel brief: opening unwritten, nothing sent',
+    );
+    return;
+  }
+
   let rendered: TravelBriefRender;
   try {
-    const target = await familyOutboundTarget(database, trip.familyId);
     rendered = renderTravelBrief({
-      city: trip.destinationCity,
+      opening: opening.body,
       startsOn: trip.startsOn,
       endsOn: trip.endsOn,
-      childNames: names.namable,
       picks: found.picks,
       teenNames: names.teens,
-      forGroup: target.channel === 'group',
     });
   } catch (err) {
     result.refusedAtRender += 1;

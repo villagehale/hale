@@ -10,6 +10,7 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { type FakeSpokenLineComposer, fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
   type TravelBriefDeps,
@@ -146,18 +147,26 @@ interface Harness {
   deps: TravelBriefDeps;
   sent: Array<{ to: string; body: string }>;
   queries: ActivityQuery[];
+  voice: FakeSpokenLineComposer;
 }
 
 /** The real deps, with only the phone network, the web and the gate's two consent reads
  * standing in. The cap, the timezone and the quiet-hours floor are the real ones. */
-function harness(options: { find?: ActivityFindResult } = {}): Harness {
+function harness(
+  options: { find?: ActivityFindResult; voice?: FakeSpokenLineComposer } = {},
+): Harness {
   const sent: Array<{ to: string; body: string }> = [];
   const queries: ActivityQuery[] = [];
+  const voice = options.voice ?? fakeSpokenLineComposer();
   return {
     sent,
     queries,
+    voice,
     deps: {
       ...defaultTravelBriefDeps(),
+      // The opening is spoken (VIL-413 / VIL-417); the deterministic fake writes its
+      // facts so the body can be checked for what the model was handed.
+      voice,
       finder: {
         find: async (query) => {
           queries.push(query);
@@ -263,6 +272,20 @@ describe('what the parent actually gets', () => {
     expect(body).toContain('Mia');
     expect(body).not.toContain('Reply STOP');
     expect(body).not.toContain('STOP to opt out.');
+
+    // The opening was the model's, handed the city, the trip's own day phrase and the
+    // under-13 by name - and nothing about the picks, which code appends after it.
+    expect(h.voice.calls).toHaveLength(1);
+    expect(h.voice.calls[0]?.input).toMatchObject({
+      skill: 'proactive-voice',
+      kind: 'travel_brief',
+      language: 'en',
+      address: 'tu',
+      questions: 0,
+      facts: { city: 'New York', days: 'the 12th to the 15th', kids: ['Mia'] },
+      mustMention: ['New York', 'the 12th to the 15th', 'Mia'],
+    });
+    expect(JSON.stringify(h.voice.calls[0]?.input)).not.toContain('Central Park Zoo');
 
     // The query that crossed the border carried a place, a coarse window with no year and
     // a stage band — and no name.
@@ -371,6 +394,29 @@ describe('the searches that never run', () => {
     const result = await run(h);
     expect(result.queryRefused.names_a_person).toBe(1);
     expect(h.queries).toEqual([]);
+  });
+
+  it('sends nothing templated when the opening cannot be written, and briefs next tick', async () => {
+    const family = await seedFamily();
+    const trip = await seedTrip({ ...family, startsOn: '2026-09-12', endsOn: '2026-09-15' });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const failing = harness({ voice: fakeSpokenLineComposer({ fail: true }) });
+    const result = await run(failing);
+    warn.mockRestore();
+
+    expect(result.voiceUnsent).toBe(1);
+    expect(result.sent).toBe(0);
+    expect(failing.sent).toHaveLength(0);
+    expect(failing.voice.calls.map((call) => call.prompt)).toEqual(['full', 'short']);
+    expect(await ledgerRows(family.familyId)).toEqual([]);
+    expect((await tripRow(trip))?.closedReason).toBeNull();
+
+    // The key was never claimed, so the next tick with a working voice briefs once.
+    const healthy = harness();
+    const again = await run(healthy);
+    expect(again.sent).toBe(1);
+    expect(healthy.sent).toHaveLength(1);
+    expect((await tripRow(trip))?.closedReason).toBe('sent');
   });
 
   it('a search that found nothing sends nothing and leaves the trip OPEN', async () => {

@@ -4,6 +4,7 @@ import { judgeSpokenLine, spokenFactSlots } from '~/lib/channel/voice/spoken-lin
 import {
   PROACTIVE_VOICE_SKILL,
   type ProactiveLineRequest,
+  TRAVEL_OPENING_MAX_CHARS,
   proactiveLineInput,
 } from './proactive-line';
 
@@ -75,6 +76,72 @@ describe('proactiveLineInput', () => {
     expect(input.facts).toEqual({ prompt: 'break', label: 'PA day' });
     expect(input.mustMention).toEqual(['PA day']);
     expect(JSON.stringify(input)).not.toContain('2026-10-09');
+  });
+
+  it('hands the travel opening the city, the day phrase and the kids, asks nothing, and bans a find of its own', () => {
+    const named = proactiveLineInput(TRAVEL, 'en');
+    expect(named.questions).toBe(0);
+    expect(named.maxChars).toBe(TRAVEL_OPENING_MAX_CHARS);
+    expect(named.facts).toEqual({
+      city: 'New York',
+      days: 'the 12th to the 15th',
+      kids: ['Mia', 'Leo'],
+    });
+    expect(named.mustMention).toEqual(['New York', 'the 12th to the 15th', 'Mia', 'Leo']);
+    expect(named.forbidden?.map((rule) => rule.name)).toEqual(['booking_claim', 'travel_find']);
+
+    // No under-13 to name: the model is told so (null), never handed an empty list to
+    // fill, and the group register reaches it when the brief lands in the household.
+    const nobody = proactiveLineInput({ ...TRAVEL_REQUEST, kids: [] }, 'en', 'vous');
+    expect(nobody.facts).toEqual({ city: 'New York', days: 'the 12th to the 15th', kids: null });
+    expect(nobody.mustMention).toEqual(['New York', 'the 12th to the 15th']);
+    expect(nobody.address).toBe('vous');
+  });
+});
+
+const TRAVEL_REQUEST = {
+  kind: 'travel_brief' as const,
+  city: 'New York',
+  days: 'the 12th to the 15th',
+  kids: ['Mia', 'Leo'],
+};
+const TRAVEL: ProactiveLineRequest = TRAVEL_REQUEST;
+
+describe('the judge on a travel opening', () => {
+  it('accepts the fake composer and an opening that leads into the finds', () => {
+    const input = proactiveLineInput(TRAVEL, 'en');
+    expect(judgeSpokenLine(fakeSpokenLineBody(input), input)).toEqual({ ok: true });
+    expect(
+      judgeSpokenLine(
+        "You're in New York the 12th to the 15th. A couple of things on for Mia and Leo:",
+        input,
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it('refuses a question, a dropped kid, a find of its own, and a time the trip never gave', () => {
+    const input = proactiveLineInput(TRAVEL, 'en');
+    expect(
+      judgeSpokenLine('New York the 12th to the 15th with Mia and Leo. Want some ideas?', input),
+    ).toEqual({ ok: false, reason: 'question' });
+    expect(
+      judgeSpokenLine(
+        "You're in New York the 12th to the 15th. A couple of things for Mia:",
+        input,
+      ),
+    ).toEqual({ ok: false, reason: 'missing' });
+    expect(
+      judgeSpokenLine(
+        "You're in New York the 12th to the 15th. The museum is great for Mia and Leo:",
+        input,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:travel_find' });
+    expect(
+      judgeSpokenLine(
+        "You're in New York the 12th to the 15th. Things on for Mia and Leo from 10:00:",
+        input,
+      ),
+    ).toEqual({ ok: false, reason: 'invented' });
   });
 });
 

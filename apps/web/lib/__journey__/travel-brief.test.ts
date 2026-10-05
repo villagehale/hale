@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { type ActivityPick, createActivityFinder } from '~/lib/channel/activity/lane';
 import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { ActiveConnectorConnection } from '~/lib/integrations/store';
@@ -357,10 +358,14 @@ async function runSync(subject = SUBJECT) {
 async function runBrief() {
   const sent: Array<{ to: string; body: string }> = [];
   const web = model();
+  const voice = fakeSpokenLineComposer();
   const result = await runTravelBriefSweep(
     db.database,
     {
       ...defaultTravelBriefDeps(),
+      // The brief's opening is spoken; a deterministic fake stands in for the model so
+      // this journey can assert on what it was handed (lib/channel/voice/fakes.ts).
+      voice,
       // THE REAL FINDER over a RECORDED model. An injected fake could never fail on the
       // lane's behaviour with a travel-shaped query, and that is the only new thing here.
       finder: createActivityFinder(web.client),
@@ -381,7 +386,7 @@ async function runBrief() {
   const searched = web.requests.filter(
     (request) => request.includes('"town"') && !request.includes('research_notes'),
   );
-  return { result, sent, searched };
+  return { result, sent, searched, voice };
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -458,7 +463,7 @@ describe('a booking email becomes one text a week before the trip', () => {
     expect(extractionLeg).not.toContain(parentUserId);
 
     // ── T-7d: the hourly nudge leg ───────────────────────────────────────────
-    const { result, sent, searched } = await runBrief();
+    const { result, sent, searched, voice } = await runBrief();
     expect(result.sent).toBe(1);
     expect(result.due).toBe(1);
 
@@ -482,9 +487,19 @@ describe('a booking email becomes one text a week before the trip', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]?.to).toBe(PHONE);
     const body = sent[0]?.body ?? '';
-    expect(body).toContain("You're in New York the 12th to the 15th");
-    // Both children are under 13, so both are named; neither age is.
-    expect(body).toContain('for Mia and Leo');
+    // The opening is spoken (VIL-413 / VIL-417): the fake composer writes its facts, so
+    // what is asserted is what the model was HANDED - the city, the trip's own day phrase,
+    // and both under-13s by name. Neither age is.
+    expect(voice.calls[0]?.input).toMatchObject({
+      kind: 'travel_brief',
+      address: 'tu',
+      facts: { city: 'New York', days: 'the 12th to the 15th', kids: ['Mia', 'Leo'] },
+      questions: 0,
+    });
+    expect(body).toContain('New York');
+    expect(body).toContain('the 12th to the 15th');
+    expect(body).toContain('Mia');
+    expect(body).toContain('Leo');
     expect(body).not.toMatch(/\b(4|7)\b/);
 
     // THE PICKS ARE THE MODEL'S OWN, read out of the recording rather than typed here —

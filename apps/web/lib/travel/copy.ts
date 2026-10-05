@@ -1,16 +1,19 @@
 import { namesAPerson } from '~/lib/channel/activity/deidentify';
 import type { ActivityPick } from '~/lib/channel/activity/lane';
 import { SLOTS_IN_TEXT } from '~/lib/channel/activity/share-page';
-import { childPhrase } from '~/lib/channel/checkin/copy';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
 
 /**
- * THE ONE TEXT A TRIP GETS, and it is DETERMINISTIC.
+ * THE ONE TEXT A TRIP GETS.
  *
- * `renderEmailAlert`'s stated reason, and it holds harder here: there is no prompt and no
- * second model call. The picks are already model-produced and already gated — a second
- * composer would only give it a chance to say something the pages did not.
+ * The OPENING is the model's (VIL-413 / VIL-417, founder rule 2026-10-04): the sweep
+ * speaks it through the proactive-voice skill (`travel_brief`, nudge/proactive-line.ts)
+ * from the city, the trip's day phrase and the under-13s' names, judged before it gets
+ * here, and an unwritten opening means no brief this tick. The PICKS stay in the source's
+ * own words: they are already model-produced and already gated, and a second composer
+ * would only give it a chance to say something the pages did not. The closing provenance
+ * sentence stays fixed too — it is the lane's disclosure that every pick is `source: 'web'`.
  *
  * WHAT IT MAY NOT DO:
  *   · It carries no LINK. The lane's picks deliberately have no URL ("Hale never texts a
@@ -56,22 +59,18 @@ export const MAX_TRAVEL_BRIEF_SEGMENTS = 4;
 const PROVENANCE = "That's off their own pages, not from anyone who's been.";
 
 export interface TravelBriefInput {
-  city: string;
+  /** The model-written opening, already judged (`travel_brief` in proactive-line.ts). It
+   * carries the city, the day phrase and the kids; this render adds the picks after it. */
+  opening: string;
   /** YYYY-MM-DD, the destination's own calendar days. */
   startsOn: string;
   endsOn: string;
-  /** The UNDER-13s' first names, read live at send time. Empty is normal and is answered
-   * generically — which is the point: a teen's absence from this sentence is
-   * indistinguishable from having no children on file. */
-  childNames: readonly string[];
   /** Everything the lane found, in its own order. At most {@link SLOTS_IN_TEXT} are
    * rendered; the rest are dropped, not linked. */
   picks: readonly ActivityPick[];
   /** The household's 13+ first names. Passed so the render can REFUSE rather than trim —
    * a teen's name reaching this body is a bug upstream, not a string to fix here. */
   teenNames: readonly string[];
-  /** A claimed group hears the locked two-reader opening. 1:1 keeps "You're in". */
-  forGroup?: boolean;
 }
 
 export interface TravelBriefContext {
@@ -99,18 +98,6 @@ export function tripDayPhrase(startsOn: string, endsOn: string): string {
   const start = ordinal(new Date(`${startsOn}T12:00:00Z`).getUTCDate());
   const end = ordinal(new Date(`${endsOn}T12:00:00Z`).getUTCDate());
   return start === end ? `the ${start}` : `the ${start} to the ${end}`;
-}
-
-/**
- * The group opening. The group does not guess who is travelling.
- * `Trip: {city}, {days}. A couple of things on for {kids}:`
- *
- * Still a template, like the rest of this brief: the whole body (opening, picks,
- * provenance) is one lint-checked unit and moves to the composed path together
- * (VIL-413 follow-up), not one clause at a time.
- */
-function groupTravelBriefOpening(city: string, days: string, kids: string): string {
-  return `Trip: ${city}, ${days}. A couple of things on for ${kids}:`;
 }
 
 /** One pick, in the source's own words. A null `when` or `price` omits its clause and
@@ -197,13 +184,9 @@ export interface TravelBriefRender {
  */
 export function renderTravelBrief(input: TravelBriefInput): TravelBriefRender {
   const dayPhrase = tripDayPhrase(input.startsOn, input.endsOn);
-  const kids = childPhrase([...input.childNames]);
-  const opening = input.forGroup
-    ? groupTravelBriefOpening(input.city, dayPhrase, kids)
-    : `You're in ${input.city} ${dayPhrase}. A couple of things on for ${kids}:`;
 
   const rendered: ActivityPick[] = [];
-  let body = opening;
+  let body = input.opening.trim();
   for (const pick of input.picks.slice(0, SLOTS_IN_TEXT)) {
     const candidate = `${body} ${renderPick(pick)}`;
     // Measured with the closing sentence already counted, so the provenance line can never

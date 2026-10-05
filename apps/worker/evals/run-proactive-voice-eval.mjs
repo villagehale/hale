@@ -27,7 +27,7 @@
 //     exactly one question with the question last, a missing kid / day / label, an
 //     invented time / weekday / price / URL / phone, compliance or keyword-reply wording,
 //     vous in a 1:1 French ask or an ASCII accent gap, or a booking claim.
-//   · one-template corpus — every fixture is an ask, so the corpus opening the same way
+//   · one-template corpus — the asks (questions: 1) opening the same way
 //     every time is the preset body this change exists to remove. A parent reads these
 //     for months.
 // Everything else is the judge model's bar (JUDGE_MIN per fixture): the right ask for the
@@ -36,7 +36,6 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
-import { PROACTIVE_VOICE_FIXTURES } from './proactive-voice-fixtures.mjs';
 import {
   JUDGE_MIN,
   cachedToolCall,
@@ -46,6 +45,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { PROACTIVE_VOICE_FIXTURES } from './proactive-voice-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -85,11 +85,15 @@ const JUDGE_SYSTEM = [
   'this moment. Score 1-5.',
   'A 5 reads like a friend who is good at this, texting one parent: short, plain, warm,',
   'first person, one or two sentences, offering exactly what the moment calls for and',
-  'nothing more, with exactly one question and the question last.',
+  'nothing more. When questions is 1 there is exactly one question, it is the last',
+  'sentence and it ends with a question mark; when questions is 0 there is no question',
+  'at all (the travel_brief kind is an opening that code appends real finds after, so it',
+  'leads into a list and asks nothing).',
   'In French a 5 uses tu when address is tu and vous when address is vous, with real accents.',
   'A LOW score is any of: a fact not in the request (a child name, activity, program, venue,',
   'time, date, weekday, place, price, weather); listing options Hale has not found yet;',
-  'claiming Hale booked, registered, reserved, or signed anyone up; a second question;',
+  'claiming Hale booked, registered, reserved, or signed anyone up; the wrong number of',
+  'questions, or a question written as a statement;',
   'telling the parent to reply with a keyword, a number, YES or NO; mentioning STOP or',
   'unsubscribing; a URL; exclamation marks, emoji, hype, "we" for Hale; a corporate or bot',
   'register; padding; a judgement about the family having nothing planned; anything',

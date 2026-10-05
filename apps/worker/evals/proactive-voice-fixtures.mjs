@@ -145,4 +145,25 @@ export const PROACTIVE_VOICE_FIXTURES = [
     watchFor:
       'Lands in the household group, both parents reading. Says the options were weekend ones and offers weekday ones too. One question. Names nobody.',
   },
+  {
+    id: 'travel-brief-named-en',
+    language: 'en',
+    address: 'tu',
+    request: {
+      kind: 'travel_brief',
+      city: 'New York',
+      days: 'the 12th to the 15th',
+      kids: ['Mia', 'Leo'],
+    },
+    watchFor:
+      'The OPENING of a travel text; code appends one or two real finds right after it. Carries "New York", "the 12th to the 15th", Mia and Leo as given, says a couple of things are on there for them, and leads into a list (ends with a colon). No question. Must not name a place, an activity, a price or a time of its own. Under 110 characters.',
+  },
+  {
+    id: 'travel-brief-group-nobody-en',
+    language: 'en',
+    address: 'vous',
+    request: { kind: 'travel_brief', city: 'Montreal', days: 'the 3rd', kids: [] },
+    watchFor:
+      'Lands in the household group; both parents read it and Hale does not know which of them is going, so it says the trip rather than "you\'re in". Carries "Montreal" and "the 3rd" as given, says "the kids" and names nobody, leads into the list with a colon. No question. No place, activity, price or time of its own.',
+  },
 ];
