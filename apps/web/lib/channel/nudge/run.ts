@@ -40,6 +40,7 @@ import {
   absorbHowItWentLines,
   groupBothReaderFrench,
 } from '~/lib/channel/linq/group-coparent-copy';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { type GroupVoice, defaultGroupVoice, speakGroupLine } from '~/lib/channel/linq/group-voice';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -69,8 +70,14 @@ import { matchRegistrationWindows } from '~/lib/registration/match-registration-
 import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type HouseholdFindBias, readHouseholdFindBias } from '~/lib/reviews/household-bias';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
+import {
+  type SpokenLineComposer,
+  defaultSpokenLineComposer,
+  speakLine,
+} from '~/lib/channel/voice/spoken-line';
 import { type Nudge, type NudgeDecision, type NudgeSkipCounts, decideNudge } from './nudge-decide';
-import { composeNudgeMessage } from './nudge-voice';
+import { type SpokenAskNudge, composeNudgeMessage, isSpokenAskNudge } from './nudge-voice';
+import { type ProactiveLineRequest, proactiveLineInput } from './proactive-line';
 import { type SaturdayPlans, loadSaturdayPlans } from './saturday-plans';
 import { proactiveNudgeTemplateKey } from './shell';
 
@@ -336,6 +343,14 @@ export interface NudgeRunDeps {
    * composer; with no model key the bubble is held and #ops is paged.
    */
   groupVoice?: GroupVoice;
+  /**
+   * The 1:1 voice for the two asks (VIL-413 / VIL-417): the empty-Saturday ask and
+   * the weekday-care finder ask are written by the model from the kid, the day, or
+   * the break label. No deterministic sentence stands in: an unsent ask is silence,
+   * an audit row, and an #ops page, and its keys stay unclaimed for the next tick.
+   * Absent means the production composer.
+   */
+  proactiveVoice?: SpokenLineComposer;
 }
 
 export interface NudgeRunResult {
@@ -457,6 +472,46 @@ function isFindNudge(kind: Nudge['kind']): boolean {
 /** Rec-morning, the weekly follow-up, and find results are for both parents. */
 function isBothParentsNudge(kind: Nudge['kind']): boolean {
   return kind !== 'empty_saturday';
+}
+
+function proactiveRequest(nudge: SpokenAskNudge): ProactiveLineRequest {
+  return nudge.kind === 'empty_saturday'
+    ? { kind: 'empty_saturday', kid: nudge.kidName }
+    : { kind: 'weekday_care', ask: nudge.ask };
+}
+
+/**
+ * The model-written ask, or null when nothing may go out. In a household group the
+ * empty-Saturday ask is the group's own line (both readers, vous); the weekday ask
+ * is spoken by the 1:1 skill in the group's register. Alone with one parent, both
+ * are tu.
+ */
+async function speakAsk(
+  nudge: SpokenAskNudge,
+  input: {
+    target: FamilyOutboundTarget;
+    speech: { name: string | null; language: ReplyLanguage };
+    deps: NudgeRunDeps;
+  },
+): Promise<string | null> {
+  const { target, speech, deps } = input;
+  if (target.channel === 'group' && nudge.kind === 'empty_saturday') {
+    const line = await speakGroupLine(
+      deps.groupVoice ?? defaultGroupVoice(),
+      { kind: 'empty_saturday', name: speech.name, kid: nudge.kidName },
+      speech.language,
+    );
+    return line.source === 'unsent' ? null : line.body;
+  }
+  const line = await speakLine(
+    deps.proactiveVoice ?? defaultSpokenLineComposer(),
+    proactiveLineInput(
+      proactiveRequest(nudge),
+      speech.language,
+      target.channel === 'group' ? 'vous' : 'tu',
+    ),
+  );
+  return line.source === 'unsent' ? null : line.body;
 }
 
 /**
@@ -678,15 +733,6 @@ async function runForFamily(
   }
   if (pending.length === 0) return emptyTally({ deduped, held });
 
-  // ONE COMPOSE FOR THE HOUSEHOLD. The nudge is a fact about this family's week, not
-  // about a parent, so composing it twice would spend the model twice to say the same
-  // thing — and risk saying it two different ways to two people in one house.
-  const message = await composeNudgeMessage(nudge, {
-    familyId: family.familyId,
-    database,
-    client: deps.client,
-  });
-
   let sent = 0;
   /** The row a family-scoped ledger write points at — the first copy that actually
    * left, in the reader's stable primary-parent-first order. */
@@ -699,33 +745,45 @@ async function runForFamily(
   // family has no group. The weekly cap is counted on the ledger, so the
   // second seat is held on the next tick rather than texted again.
   const copies = householdCopies(target, pending);
+  const speakerId = copies[0]?.recipient.parentUserId ?? '';
+  const speech = await familySpeech(database, family.familyId, speakerId);
+
+  // ONE COMPOSE FOR THE HOUSEHOLD. The nudge is a fact about this family's week, not
+  // about a parent, so composing it twice would spend the model twice to say the same
+  // thing — and risk saying it two different ways to two people in one house.
+  //
+  // The two ASKS are spoken, not rendered (VIL-413 / VIL-417): the model writes them
+  // from the kid, the day, or the break label, and nothing templated goes out in
+  // their place. An unsent ask leaves every key unclaimed, so the next tick inside
+  // the slot asks again, and #ops has already been paged by the engine.
+  let message: string;
+  if (isSpokenAskNudge(nudge)) {
+    const line = await speakAsk(nudge, { target, speech, deps });
+    if (line === null) {
+      await deps.audit(database, {
+        familyId: family.familyId,
+        actor: 'system',
+        actionTaken: 'proactive_nudge_skipped',
+        targetTable: 'families',
+        targetId: family.familyId,
+        after: { reason: 'voice_unsent', kind: nudge.kind, cohort },
+      });
+      return emptyTally({ held });
+    }
+    message = line;
+  } else {
+    message = await composeNudgeMessage(nudge, {
+      familyId: family.familyId,
+      database,
+      client: deps.client,
+    });
+  }
+
   let wireMessage = message;
   let absorbed: readonly GroupHowItWentLine[] = [];
   let dutyFold: { text: string; commit: () => Promise<void> } | null = null;
   if (target.channel === 'group') {
-    const speakerId = copies[0]?.recipient.parentUserId ?? '';
-    const speech = await familySpeech(database, family.familyId, speakerId);
-    if (nudge.kind === 'empty_saturday') {
-      const line = await speakGroupLine(
-        deps.groupVoice ?? defaultGroupVoice(),
-        { kind: 'empty_saturday', name: speech.name, kid: nudge.kidName },
-        speech.language,
-      );
-      if (line.source === 'unsent') {
-        // Nothing templated goes out in its place. The keys stay unclaimed, so the
-        // next tick inside the slot asks again, and #ops has already been paged.
-        await deps.audit(database, {
-          familyId: family.familyId,
-          actor: 'system',
-          actionTaken: 'proactive_nudge_skipped',
-          targetTable: 'families',
-          targetId: family.familyId,
-          after: { reason: 'voice_unsent', kind: nudge.kind, cohort },
-        });
-        return emptyTally({ held });
-      }
-      wireMessage = line.body;
-    } else if (speech.language === 'fr' && isBothParentsNudge(nudge.kind)) {
+    if (!isSpokenAskNudge(nudge) && speech.language === 'fr' && isBothParentsNudge(nudge.kind)) {
       wireMessage = groupBothReaderFrench(message);
     }
     if (nudge.kind !== 'registration' && deps.pendingHowItWent) {

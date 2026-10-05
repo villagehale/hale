@@ -1,0 +1,128 @@
+import { describe, expect, it } from 'vitest';
+import { fakeSpokenLineBody } from '~/lib/channel/voice/fakes';
+import { judgeSpokenLine, spokenFactSlots } from '~/lib/channel/voice/spoken-line';
+import {
+  PROACTIVE_VOICE_SKILL,
+  type ProactiveLineRequest,
+  proactiveLineInput,
+} from './proactive-line';
+
+/**
+ * Per ask: what the model is handed, what it must carry, and which red lines code
+ * holds. The model's actual words are proved by the cached eval
+ * (apps/worker/evals/run-proactive-voice-eval.mjs, rule #8).
+ */
+
+const EVERY_ASK: ProactiveLineRequest[] = [
+  { kind: 'empty_saturday', kid: 'Maya' },
+  { kind: 'weekday_care', ask: { prompt: 'after_school_named', childId: 'c1', name: 'Maya' } },
+  { kind: 'weekday_care', ask: { prompt: 'after_school_household' } },
+  {
+    kind: 'weekday_care',
+    ask: { prompt: 'verified_break', eventKey: 'pa-day-2026-10-09', label: 'PA day' },
+  },
+  { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } },
+];
+
+describe('proactiveLineInput', () => {
+  it('is one question, tu, on the proactive-voice skill, for every ask', () => {
+    for (const request of EVERY_ASK) {
+      for (const language of ['en', 'fr'] as const) {
+        const input = proactiveLineInput(request, language);
+        expect(input.skill).toBe(PROACTIVE_VOICE_SKILL);
+        expect(input.kind).toBe(request.kind);
+        expect(input.language).toBe(language);
+        expect(input.address).toBe('tu');
+        expect(input.questions).toBe(1);
+        expect(input.maxChars).toBe(200);
+        expect(input.forbidden?.map((rule) => rule.name)).toEqual(['booking_claim']);
+      }
+    }
+  });
+
+  it('speaks vous when the ask lands in the household group', () => {
+    const input = proactiveLineInput(EVERY_ASK[4] as ProactiveLineRequest, 'fr', 'vous');
+    expect(input.address).toBe('vous');
+  });
+
+  it('hands the empty-Saturday ask the kid and the day in the right language, and nothing else', () => {
+    const en = proactiveLineInput({ kind: 'empty_saturday', kid: 'Maya' }, 'en');
+    expect(en.facts).toEqual({ kid: 'Maya', day: 'Saturday' });
+    expect(en.mustMention).toEqual(['Maya', 'Saturday']);
+    const fr = proactiveLineInput({ kind: 'empty_saturday', kid: 'Maya' }, 'fr');
+    expect(fr.facts).toEqual({ kid: 'Maya', day: 'samedi' });
+    expect(fr.mustMention).toEqual(['Maya', 'samedi']);
+  });
+
+  it('names the one school-age child, and nobody on the household and fallback prompts', () => {
+    const named = proactiveLineInput(EVERY_ASK[1] as ProactiveLineRequest, 'en');
+    expect(named.facts).toEqual({ prompt: 'after_school', kid: 'Maya' });
+    expect(named.mustMention).toEqual(['Maya']);
+    // The child id is internal and never reaches the model.
+    expect(JSON.stringify(named)).not.toContain('c1');
+
+    const household = proactiveLineInput(EVERY_ASK[2] as ProactiveLineRequest, 'en');
+    expect(household.facts).toEqual({ prompt: 'after_school', kid: null });
+    expect(household.mustMention).toBeUndefined();
+
+    const fallback = proactiveLineInput(EVERY_ASK[4] as ProactiveLineRequest, 'en');
+    expect(fallback.facts).toEqual({ prompt: 'weekend_fallback' });
+    expect(spokenFactSlots(fallback)).toEqual(['weekend_fallback']);
+  });
+
+  it('carries a verified break label word for word and not its event key', () => {
+    const input = proactiveLineInput(EVERY_ASK[3] as ProactiveLineRequest, 'en');
+    expect(input.facts).toEqual({ prompt: 'break', label: 'PA day' });
+    expect(input.mustMention).toEqual(['PA day']);
+    expect(JSON.stringify(input)).not.toContain('2026-10-09');
+  });
+});
+
+describe('the judge on a proactive ask', () => {
+  it('accepts the fake composer on every ask in both languages', () => {
+    for (const request of EVERY_ASK) {
+      for (const language of ['en', 'fr'] as const) {
+        const input = proactiveLineInput(request, language);
+        expect(judgeSpokenLine(fakeSpokenLineBody(input), input)).toEqual({ ok: true });
+      }
+    }
+  });
+
+  it('refuses a line that drops the kid, asks twice, or invents a day or a time', () => {
+    const input = proactiveLineInput({ kind: 'empty_saturday', kid: 'Maya' }, 'en');
+    expect(judgeSpokenLine('Saturday looks open. Want one nearby find?', input)).toEqual({
+      ok: false,
+      reason: 'missing',
+    });
+    expect(judgeSpokenLine('Saturday looks open for Maya. Want a find? Or Sunday?', input)).toEqual(
+      { ok: false, reason: 'question' },
+    );
+    expect(
+      judgeSpokenLine('Saturday looks open for Maya. Want one nearby find at 10:00?', input),
+    ).toEqual({ ok: false, reason: 'invented' });
+  });
+
+  it('refuses a keyword ask, a booking claim, and vous in a 1:1 French ask', () => {
+    const en = proactiveLineInput(EVERY_ASK[4] as ProactiveLineRequest, 'en');
+    expect(judgeSpokenLine('Those were weekend options. Reply yes for weekdays too?', en)).toEqual({
+      ok: false,
+      reason: 'banned',
+    });
+    expect(
+      judgeSpokenLine("Those were weekend options. I've booked a weekday one, want it?", en),
+    ).toEqual({ ok: false, reason: 'forbidden:booking_claim' });
+    const fr = proactiveLineInput(EVERY_ASK[4] as ProactiveLineRequest, 'fr');
+    expect(
+      judgeSpokenLine(
+        'Ça, c’était pour la fin de semaine. Vous voulez une idée pour la semaine ?',
+        fr,
+      ),
+    ).toEqual({ ok: false, reason: 'french' });
+    expect(
+      judgeSpokenLine(
+        'Ça, c’était pour la fin de semaine. Tu veux une idée pour la semaine aussi ?',
+        fr,
+      ),
+    ).toEqual({ ok: true });
+  });
+});

@@ -4,6 +4,7 @@ import type { Nudge } from './nudge-decide.js';
 import {
   MAX_NUDGE_SEGMENTS,
   NUDGE_OPT_OUT,
+  type RenderedNudge,
   type VoicedNudge,
   nudgeFactSlots,
   nudgeVoiceContext,
@@ -116,7 +117,11 @@ describe('nudgeFactSlots', () => {
       expect.arrayContaining(['Richmond Hill', 'Fall 2026', 'Aug 5, 10:30 a.m.', 'Maya', 'Leo']),
     );
     expect(nudgeFactSlots(SWAP)).toEqual(
-      expect.arrayContaining(['Library story time', 'Riverdale Library', 'the weekend forecast is wet']),
+      expect.arrayContaining([
+        'Library story time',
+        'Riverdale Library',
+        'the weekend forecast is wet',
+      ]),
     );
   });
 
@@ -170,9 +175,9 @@ describe('usableNudgeMessage', () => {
   });
 
   it('rejects a message that invents a link', () => {
-    expect(usableNudgeMessage('Register at https://richmondhill.example.ca now.', REGISTRATION)).toBe(
-      false,
-    );
+    expect(
+      usableNudgeMessage('Register at https://richmondhill.example.ca now.', REGISTRATION),
+    ).toBe(false);
   });
 
   it('rejects a message that writes the opt-out line the shell appends', () => {
@@ -198,7 +203,10 @@ describe('renderNudgeDeterministically', () => {
   });
 
   it('hedges an approximate age fit rather than asserting the band', () => {
-    const message = renderNudgeDeterministically({ ...REGISTRATION, ageApproximate: true } as Nudge);
+    const message = renderNudgeDeterministically({
+      ...REGISTRATION,
+      ageApproximate: true,
+    } as RenderedNudge);
     expect(message.toLowerCase()).toContain('if');
   });
 

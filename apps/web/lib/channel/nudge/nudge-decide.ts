@@ -11,16 +11,13 @@ import {
   upcomingWeekend,
   weekdayOf,
 } from '~/lib/channel/intake/radar-decide';
-import { renderEmptySaturdayAsk } from '~/lib/channel/nudge/empty-saturday-copy';
 import type { SaturdayPlans } from '~/lib/channel/nudge/saturday-plans';
 import {
+  MAX_ASK_NAME_CHARS,
   type WeekdayFinderAsk,
   printableWeekdayName,
-  renderWeekdayFinderAsk,
-  weekdayVerifiedBreakAsk,
 } from '~/lib/channel/nudge/weekday-care-copy';
-import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
-import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
+import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { dayKeyOf, formatWhenPhrase } from '~/lib/format/datetime';
 import { priceBandLabel } from '~/lib/format/labels';
@@ -659,13 +656,15 @@ export function decideWeekdayDropIn(input: DecideNudgeInput): LegOutcome<Weekday
 
 const BREAK_EVENT_KEY = /^[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}$/;
 
+/** A label the spoken ask can carry word for word inside one short text. */
 function breakAskFits(label: string): boolean {
   if (!isPrintableGsm7Basic(label)) return false;
-  if (label.length === 0 || label.length > 40 || label.includes('?') || label.includes('\n')) {
-    return false;
-  }
-  const sentence = weekdayVerifiedBreakAsk(label);
-  return smsSegments(`${sentence}\n\n${OPT_OUT_LINE}`) === 1;
+  return (
+    label.length > 0 &&
+    label.length <= MAX_ASK_NAME_CHARS &&
+    !label.includes('?') &&
+    !label.includes('\n')
+  );
 }
 
 /**
@@ -770,7 +769,7 @@ export function decideWeekdayCareAsk(input: DecideNudgeInput): LegOutcome<Weekda
     childId: roster.child.id,
     name,
   };
-  if (smsSegments(`${renderWeekdayFinderAsk(ask)}\n\n${OPT_OUT_LINE}`) > 1) {
+  if (name.length > MAX_ASK_NAME_CHARS) {
     return {
       nudge: { kind: 'weekday_care', ask: { prompt: 'after_school_household' } },
       skips: [...skips, 'name_not_printable'],
@@ -858,9 +857,7 @@ function decideEmptySaturday(input: DecideNudgeInput): LegOutcome<EmptySaturdayN
       break;
     }
   }
-  if (kidName === null) return { nudge: null, skips: ['saturday_name_unusable'] };
-  const body = renderEmptySaturdayAsk(kidName);
-  if (smsSegments(`${body}\n\n${OPT_OUT_LINE}`) !== 1) {
+  if (kidName === null || kidName.length > MAX_ASK_NAME_CHARS) {
     return { nudge: null, skips: ['saturday_name_unusable'] };
   }
   return {

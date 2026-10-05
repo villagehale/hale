@@ -1,13 +1,16 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gt, inArray } from 'drizzle-orm';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
-import { EMPTY_SATURDAY_TEMPLATE_KEY } from './empty-saturday-copy';
+import { proactiveNudgeTemplateKey } from './shell';
+
+/** Ledger key the open-question reader recognises. Same string the sender stamps. */
+export const EMPTY_SATURDAY_TEMPLATE_KEY = proactiveNudgeTemplateKey('empty_saturday');
 
 /**
  * IS THE EMPTY-SATURDAY ASK STILL OPEN? Derived from the ledger, the way the
  * weekday-care question is.
  *
- * The locked sentence is a yes/no. Listing it (yes: false, no: false) is what
+ * The ask is a yes/no. Listing it (yes: false, no: false) is what
  * stops a bare YES from approving an unrelated draft. A yes is not a delivery:
  * the held candidate is not auto-sent. The turn falls through to the coach,
  * whose next search is what a later how-it-went answer can bias.

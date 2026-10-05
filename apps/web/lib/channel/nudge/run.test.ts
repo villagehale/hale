@@ -7,6 +7,7 @@ import type { ParentCallNameState } from '~/lib/channel/identity/parent-call-nam
 import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
+import { type FakeSpokenLineComposer, fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
@@ -124,6 +125,8 @@ interface Harness {
   offers: Array<{ ref: string; channelMessageId: string | null }>;
   /** Every nudge that landed in the parent's own text thread (lib/channel/thread.ts). */
   threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
+  /** The 1:1 voice the two asks are spoken through, with every request it saw. */
+  voice: FakeSpokenLineComposer;
 }
 
 function harness(
@@ -169,9 +172,12 @@ function harness(
     parentCallName?: ParentCallNameState;
     /** The model could not write the name ask this run. */
     nameAskUnwritten?: boolean;
+    /** The asks' voice. Default writes `<kind>: <facts>?`; `fail` is a model outage. */
+    voice?: FakeSpokenLineComposer;
   } = {},
 ): Harness {
   const writes: Harness['writes'] = [];
+  const voice = options.voice ?? fakeSpokenLineComposer();
   const dedupeKeys = new Set<string>();
   const closed: Harness['closed'] = [];
   const offers: Harness['offers'] = [];
@@ -263,6 +269,7 @@ function harness(
         : ask.kind === 'confirm'
           ? `NAME CONFIRM ${ask.first}`
           : 'NAME ASK',
+    proactiveVoice: voice,
     // MEM-10 · the ledger seam. Recorded rather than executed: the real writer's own
     // contract is unit-tested in lib/commitments/ledger.test.ts, and what this sweep
     // owes is that it calls it, once, with the message that made good.
@@ -291,7 +298,7 @@ function harness(
       },
   };
 
-  return { deps, transport, writes, dedupeKeys, closed, offers, threaded };
+  return { deps, transport, writes, dedupeKeys, closed, offers, threaded, voice };
 }
 
 function db() {
@@ -1311,9 +1318,14 @@ describe('runNudgeCron — the weekday-care ask', () => {
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
     expect(result.sent).toBe(1);
-    expect(h.transport.sent[0]?.body).toContain(
-      'Those are weekend options. Want me to find something for weekdays too?',
-    );
+    expect(h.voice.calls.at(-1)?.input).toMatchObject({
+      skill: 'proactive-voice',
+      kind: 'weekday_care',
+      address: 'tu',
+      questions: 1,
+      facts: { prompt: 'weekend_fallback' },
+    });
+    expect(h.transport.sent[0]?.body).toContain('weekend_fallback');
     expect(h.transport.sent[0]?.body).not.toContain('Mia');
     const write = h.writes.find((w) => w.table === schema.channelMessages);
     expect(write?.payload.templateKey).toBe('proactive_nudge:weekday_care');
@@ -1340,9 +1352,7 @@ describe('runNudgeCron — the weekday-care ask', () => {
     await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
     const body = h.transport.sent[0]?.body ?? '';
-    expect(body).toContain(
-      'Those are weekend options. Want me to find something for weekdays too?',
-    );
+    expect(h.voice.calls.at(-1)?.input.facts).toEqual({ prompt: 'weekend_fallback' });
     expect(body).not.toContain('Mia');
     expect(body).not.toContain('Ava');
   });
@@ -1354,14 +1364,14 @@ describe('runNudgeCron — the weekday-care ask', () => {
 
     expect(result.sent).toBe(1);
     const body = h.transport.sent[0]?.body ?? '';
-    expect(body).toContain('Want me to find one good after-school option nearby too?');
+    expect(h.voice.calls.at(-1)?.input.facts).toEqual({ prompt: 'after_school', kid: null });
     expect(body).not.toContain('Ava');
     const write = h.writes.find((w) => w.table === schema.channelMessages);
     expect(write?.payload.templateKey).toBe('proactive_nudge:weekday_after_school');
     expect(write?.payload.dedupeKey).toBe('nudge:fam-1:weekday_after_school:household:user-1');
   });
 
-  it('asks one school-age child with the locked sentence', async () => {
+  it('asks about one school-age child by name', async () => {
     const h = ask([
       {
         id: 'child-maya',
@@ -1373,20 +1383,37 @@ describe('runNudgeCron — the weekday-care ask', () => {
 
     await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
-    expect(h.transport.sent[0]?.body).toContain(
-      'Want me to find one good after-school option for Maya too?',
-    );
+    expect(h.voice.calls.at(-1)?.input).toMatchObject({
+      facts: { prompt: 'after_school', kid: 'Maya' },
+      mustMention: ['Maya'],
+    });
+    expect(h.transport.sent[0]?.body).toContain('Maya');
     const write = h.writes.find((w) => w.table === schema.channelMessages);
     expect(write?.payload.templateKey).toBe('proactive_nudge:weekday_after_school');
     expect(write?.payload.dedupeKey).toBe('nudge:fam-1:weekday_after_school:child-maya:user-1');
   });
 
-  it('is deterministic: no model is asked to write a question', async () => {
+  it('sends nothing templated when the voice cannot write the ask, and asks next tick', async () => {
+    const failing = fakeSpokenLineComposer({ fail: true });
     const h = ask([TODDLER]);
+    // The engine itself pages #ops (voice/spoken-line.test.ts); what the sweep owes is
+    // silence on the wire, an unclaimed key, and an audit row that names the reason.
+    const result = await runNudgeCron(db(), { ...h.deps, proactiveVoice: failing }, FRIDAY_10AM);
 
-    await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(result.sent).toBe(0);
+    expect(h.transport.sent).toHaveLength(0);
+    expect(h.writes.filter((w) => w.table === schema.channelMessages)).toHaveLength(0);
+    const audit = h.writes.find((w) => w.table === schema.auditLog);
+    expect(audit?.payload).toMatchObject({
+      actionTaken: 'proactive_nudge_skipped',
+      after: { reason: 'voice_unsent', kind: 'weekday_care' },
+    });
+    expect(failing.calls.map((call) => call.prompt)).toEqual(['full', 'short']);
 
-    expect(h.transport.sent[0]?.body.startsWith('Those are weekend options.')).toBe(true);
+    // The key was never claimed, so the next fire with a working voice asks once.
+    const again = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(again.sent).toBe(1);
+    expect(h.transport.sent).toHaveLength(1);
   });
 });
 
@@ -1493,14 +1520,15 @@ describe('the call-name line after a find', () => {
       FRIDAY_10AM,
     );
     expect(result.sent).toBe(1);
-    expect(care.transport.bodies().some((body) => body.includes('weekdays too'))).toBe(true);
+    expect(care.voice.calls.at(-1)?.input.kind).toBe('weekday_care');
+    expect(care.transport.bodies().some((body) => body.includes('weekend_fallback'))).toBe(true);
     expect(care.transport.bodies().some((body) => body.startsWith('NAME '))).toBe(false);
     expect(load).not.toHaveBeenCalled();
   });
 });
 
 describe('runNudgeCron — empty Saturday', () => {
-  it('sends the locked ask once, through the nudge gate, and not a second text', async () => {
+  it('sends the model-written ask once, through the nudge gate, and not a second text', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({
       saturdayPlans: { householdBusy: false, busyChildIds: new Set() },
@@ -1516,9 +1544,17 @@ describe('runNudgeCron — empty Saturday', () => {
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
     expect(result).toMatchObject({ sent: 1, quiet: 0 });
-    expect(h.transport.bodies()).toEqual([
-      "This Saturday looks open for Maya. Want one nearby find that's actually running?",
-    ]);
+    expect(h.voice.calls.at(-1)?.input).toMatchObject({
+      skill: 'proactive-voice',
+      kind: 'empty_saturday',
+      address: 'tu',
+      language: 'en',
+      facts: { kid: 'Maya', day: 'Saturday' },
+      mustMention: ['Maya', 'Saturday'],
+    });
+    expect(h.transport.bodies()).toEqual(['empty_saturday: Maya, Saturday?']);
+    // The option Hale found is not handed to the model, so it cannot be listed.
+    expect(JSON.stringify(h.voice.calls.at(-1)?.input)).not.toContain('EarlyON');
     const ledger = h.writes.filter((w) => w.table === schema.channelMessages);
     expect(ledger[0]?.payload).toMatchObject({
       templateKey: 'proactive_nudge:empty_saturday',

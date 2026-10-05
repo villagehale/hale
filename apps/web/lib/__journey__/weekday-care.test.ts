@@ -18,6 +18,7 @@ import { readCandidates } from '~/lib/channel/intake/radar';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { type NudgeRunDeps, defaultNudgeRunDeps, runNudgeCron } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { channelRouterDeps } from '~/lib/channel/router/wiring';
 import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
 import { CIVIC_SOURCE } from '~/lib/civic/project';
@@ -144,6 +145,8 @@ const openGate = (): OutboundGatePorts => ({
  * `selectFamilies` and `loadRecipients` are overridden because both join
  * `parent_channels`, which needs an encryption key this journey has no use for.
  */
+const askVoice = fakeSpokenLineComposer();
+
 function nudgeDeps(transport: FakeTransport): NudgeRunDeps {
   return {
     ...defaultNudgeRunDeps(),
@@ -161,9 +164,12 @@ function nudgeDeps(transport: FakeTransport): NudgeRunDeps {
     weather: { getDailyOutlook: async () => [] },
     buildGate: openGate,
     transport,
-    // No model: the deterministic render IS the message for the ask, and for the find it
-    // is the grounded floor. Either way the words below are Hale's own.
+    // No model for the find: its deterministic render is the grounded floor. The ASK has
+    // no such floor (VIL-413): it is spoken, so the fake composer below stands in for the
+    // model and writes the facts it was handed. Its real words are proved by the cached
+    // eval (apps/worker/evals/run-proactive-voice-eval.mjs, rule #8).
     client: null,
+    proactiveVoice: askVoice,
   };
 }
 
@@ -272,13 +278,17 @@ describe('the weekday-care arc', () => {
 
     expect(asked.sent).toBe(1);
     const askBody = askTransport.sent[0]?.body ?? '';
-    expect(askBody).toContain(
-      'Those are weekend options. Want me to find something for weekdays too?',
-    );
+    // The real readers handed the model the fallback prompt and no name: a toddler and a
+    // teenager in one house is the household sentence, and the teen is never spoken of.
+    expect(askVoice.calls.at(-1)?.input).toMatchObject({
+      skill: 'proactive-voice',
+      kind: 'weekday_care',
+      facts: { prompt: 'weekend_fallback' },
+    });
+    expect(askBody).toContain('weekend_fallback');
     expect(askBody).not.toContain('Mia');
     expect(askBody).not.toContain('Ava');
     expect(askBody.toLowerCase()).not.toContain('pa day');
-    expect(askBody.toLowerCase()).not.toContain('weekends are covered');
     const [askRow] = await outbound('proactive_nudge:weekday_care');
     expect(askRow?.dedupeKey).toBe(`nudge:${familyId}:weekday_care:household:${parentUserId}`);
 

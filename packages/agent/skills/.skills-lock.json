@@ -159,6 +159,10 @@
     "file": "party-extraction.md",
     "sha256": "7fe117e97be8e781456314c33596dd2d778a84ce5c367bdbeedd1f45258da539"
   },
+  "proactive-voice.md": {
+    "file": "proactive-voice.md",
+    "sha256": "64c873ddd1758cf5061ea7016b031f3c1c4a2433537b6a36925d521c61c41f2f"
+  },
   "radar-voice.md": {
     "file": "radar-voice.md",
     "sha256": "9256f73604bf6ffdd88848ef0dc4d4aec168f57b4ba997e6f4378354d4eadc8f"

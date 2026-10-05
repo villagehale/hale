@@ -7,7 +7,6 @@ import { loadNudgeVoiceSkill } from '~/lib/cron/skill';
 import { renderHealthNudge } from '~/lib/health/copy';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
-import { renderEmptySaturdayAsk } from './empty-saturday-copy';
 import type {
   EmptySaturdayNudge,
   HealthCheckpointNudge,
@@ -15,7 +14,6 @@ import type {
   WeekdayCareAsk,
 } from './nudge-decide';
 import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from './shell';
-import { renderWeekdayFinderAsk } from './weekday-care-copy';
 
 /**
  * VIL-239 · M4 — COMPOSE: the decision object, said out loud in Hale's voice.
@@ -48,16 +46,26 @@ export interface NudgeVoice {
  * a human can review once and know what every family receives, and excluding them from
  * this type means a future voice path cannot quietly start composing them.
  *
- * VIL-360's weekday-care ASK is excluded for the sharper version of that reason. It
- * opens a standing question whose answer is read by a deterministic grammar and written
- * as a durable fact, so the exact words have to be the ones that grammar was written
- * against — and this skill's own contract forbids it anyway ("Never write a question").
- * The weekday FIND is voiced like any other offer; it asks nothing.
+ * VIL-360's weekday-care ASK and VIL-365's empty-Saturday ask are excluded because
+ * they are QUESTIONS, and this skill's contract forbids one ("Never write a question").
+ * They are spoken by the proactive-voice skill instead (./proactive-line.ts), through
+ * the shared spoken-line engine, and they have NO deterministic fallback: an unsent
+ * ask is silence plus an #ops page (VIL-413 / VIL-417).
  */
 export type VoicedNudge = Exclude<
   Nudge,
   HealthCheckpointNudge | WeekdayCareAsk | EmptySaturdayNudge
 >;
+
+/** The two 1:1 asks the model writes through the proactive-voice skill. */
+export type SpokenAskNudge = WeekdayCareAsk | EmptySaturdayNudge;
+
+/** Every nudge this module can render: the voiced offers plus the static health copy. */
+export type RenderedNudge = Exclude<Nudge, SpokenAskNudge>;
+
+export function isSpokenAskNudge(nudge: Nudge): nudge is SpokenAskNudge {
+  return nudge.kind === 'weekday_care' || nudge.kind === 'empty_saturday';
+}
 
 /** Voice fields ONLY, strict: an unknown/extra top-level key fails the parse and the
  * caller falls back to the deterministic render. */
@@ -192,19 +200,10 @@ function sentenceCase(text: string): string {
  * Plain ASCII on purpose: one typographic dash would flip the whole SMS to UCS-2 and
  * halve the character budget (see sms-segments.ts).
  */
-export function renderNudgeDeterministically(nudge: Nudge): string {
+export function renderNudgeDeterministically(nudge: RenderedNudge): string {
   // M8's health-admin copy has no voiced form at all — the static render IS the
   // message, not a fallback for one.
   if (nudge.kind === 'health_checkpoint') return renderHealthNudge(nudge);
-
-  // VIL-360's ask, for the same reason: the sentence IS the message. It is measured to
-  // the character, it carries the one question mark the grammar answers, and no model
-  // sees it (nudge/weekday-care-copy.ts).
-  if (nudge.kind === 'weekday_care') return renderWeekdayFinderAsk(nudge.ask);
-
-  // VIL-365. The sentence is the message. The model must not see it: the nudge
-  // voice skill forbids questions, and this ask is byte-locked.
-  if (nudge.kind === 'empty_saturday') return renderEmptySaturdayAsk(nudge.kidName);
 
   if (nudge.kind === 'registration') {
     const who = nudge.kidNames.length > 0 ? ` for ${joinNames(nudge.kidNames)}` : '';
@@ -234,19 +233,14 @@ export function renderNudgeDeterministically(nudge: Nudge): string {
  * entirely — the deterministic render is a first-class outcome, not an error path.
  */
 export async function composeNudgeMessage(
-  nudge: Nudge,
+  nudge: RenderedNudge,
   deps: { familyId: string; database: Database; client: AgentClient | null },
 ): Promise<string> {
   const deterministic = renderNudgeDeterministically(nudge);
   // A health checkpoint never reaches the model (VIL-243 · M8): deterministic copy is
   // REVIEWABLE copy, and this is the one message class where a warmer sentence is not
   // worth the chance of a sentence nobody approved.
-  if (
-    nudge.kind === 'health_checkpoint' ||
-    nudge.kind === 'weekday_care' ||
-    nudge.kind === 'empty_saturday' ||
-    !deps.client
-  ) {
+  if (nudge.kind === 'health_checkpoint' || !deps.client) {
     return deterministic;
   }
 
