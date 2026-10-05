@@ -1,159 +1,198 @@
 import { describe, expect, it } from 'vitest';
-import { type KidContext, isKidRelated, kidRelatedAha } from './aha-kids';
+import {
+  type KidItemClassifier,
+  type KidItemsInput,
+  acceptKidItemIds,
+  kidItemsFor,
+  kidRelatedAha,
+} from './aha-kids';
 import type { AhaSnapshot } from './aha-read';
 
-/**
- * Hard rule (VIL-417): both wow moments are about the kids only. The filter
- * here is what stands between the parent's calendar or mailbox and the model.
- */
-
-const FAMILY: KidContext = {
-  childNames: ['Maya', 'Léo'],
-  activityTitles: ['Swim at the rec centre', 'Story time at the library'],
+const context = {
+  children: [
+    { name: 'Sebastian', ageMonths: 15 },
+    { name: 'Mia', ageMonths: 72 },
+  ],
+  activityTitles: ['Parent and Tot Swim', 'Library drop-in'],
 };
 
-function item(title: string, start: string, end: string, location: string | null = null) {
-  return { title, start, end, allDay: false, location, declined: false };
+function calendar(title: string, start: string, end: string): AhaSnapshot['calendar'][number] {
+  return { title, start, end, allDay: false, location: null, declined: false };
 }
 
-function mail(subject: string, fromName: string | null = null, snippet: string | null = null) {
-  return { subject, fromName, receivedAt: '2026-09-11T12:00:00.000Z', snippet };
+function email(subject: string, fromName: string | null = null): AhaSnapshot['email'][number] {
+  return { subject, fromName, receivedAt: '2026-10-05T14:00:00Z', snippet: null };
 }
 
-describe('isKidRelated', () => {
-  it("matches a child's name, with or without accents", () => {
-    expect(isKidRelated('Maya dentist', FAMILY)).toBe(true);
-    expect(isKidRelated('Leo soccer', FAMILY)).toBe(true);
-    expect(isKidRelated('Pick up Léo', FAMILY)).toBe(true);
-  });
+/** A scripted classifier: the port, not the model. It records what it was handed. */
+function scripted(answer: (input: KidItemsInput) => unknown) {
+  const calls: KidItemsInput[] = [];
+  const classifier: KidItemClassifier = {
+    async classify(input) {
+      calls.push(input);
+      return answer(input);
+    },
+  };
+  return { classifier, calls };
+}
 
-  it('matches an activity Hale already found, by two shared words', () => {
-    expect(isKidRelated('Swim lesson - rec centre', FAMILY)).toBe(true);
-    expect(isKidRelated('Library story time', FAMILY)).toBe(true);
+describe('kidItemsFor', () => {
+  it('hands the classifier every item with a stable id, the kids with ages, and the found activities', () => {
+    const snapshot: AhaSnapshot = {
+      provider: 'gmail',
+      read: 'ok',
+      calendar: [],
+      email: [
+        email('Seb 15-month checkup', 'Dr Patel'),
+        {
+          subject: 'Coffee next week?',
+          fromName: 'Sebastian',
+          receivedAt: null,
+          snippet: 'Free Tuesday?',
+        },
+      ],
+      overlaps: [],
+    };
+    const input = kidItemsFor(snapshot, context);
+    expect(input.children).toEqual(context.children);
+    expect(input.activityTitles).toEqual(context.activityTitles);
+    expect(input.items).toEqual([
+      { id: 'e0', text: 'Seb 15-month checkup from Dr Patel' },
+      { id: 'e1', text: 'Coffee next week? from Sebastian - Free Tuesday?' },
+    ]);
   });
+});
 
-  it('does not match a parent item on one shared word', () => {
-    expect(isKidRelated('Centre Street parking', FAMILY)).toBe(false);
-    expect(isKidRelated('Library card renewal', FAMILY)).toBe(true);
-  });
-
-  it('matches kid-activity vocabulary in both languages', () => {
-    expect(isKidRelated('Camp registration closes Friday', FAMILY)).toBe(true);
-    expect(isKidRelated('Inscription piscine', FAMILY)).toBe(true);
-    expect(isKidRelated('Garderie: fermeture vendredi', FAMILY)).toBe(true);
-  });
-
-  it("leaves the parent's own work, money, and health alone", () => {
-    for (const text of [
-      'Team standup',
-      'Budget review',
-      'Dentist',
-      'Your Amazon order has shipped',
-      'Q3 planning deck',
-      'Your lab results are ready',
-      'Gym',
-      'Registration renewal: vehicle',
-      'Practice interview',
-      'Spin class',
-      '',
-    ]) {
-      expect(isKidRelated(text, FAMILY), text).toBe(false);
-    }
+describe('acceptKidItemIds', () => {
+  it('keeps only ids that were offered, and nothing from a malformed answer', () => {
+    expect([...acceptKidItemIds({ kidItemIds: ['c0', 'e9', 'x'] }, ['c0', 'e1'])]).toEqual(['c0']);
+    expect(acceptKidItemIds({ kidItemIds: 'c0' }, ['c0']).size).toBe(0);
+    expect(acceptKidItemIds(null, ['c0']).size).toBe(0);
+    expect(acceptKidItemIds('c0', ['c0']).size).toBe(0);
   });
 });
 
 describe('kidRelatedAha', () => {
-  it('keeps kid items and recomputes the clash from them alone', () => {
+  it('keeps the items the classifier named and recomputes overlaps from the kid items alone', async () => {
     const snapshot: AhaSnapshot = {
       provider: 'gcal',
       read: 'ok',
       calendar: [
-        item('Swim at the rec centre', '2026-09-12T13:00:00.000Z', '2026-09-12T14:00:00.000Z'),
-        item('Maya soccer', '2026-09-12T13:30:00.000Z', '2026-09-12T14:30:00.000Z'),
-        item('Dentist', '2026-09-12T13:45:00.000Z', '2026-09-12T14:45:00.000Z'),
-        item('Budget review', '2026-09-14T13:00:00.000Z', '2026-09-14T14:00:00.000Z'),
+        calendar('Mia swim', '2026-10-17T14:00:00Z', '2026-10-17T14:45:00Z'),
+        calendar('1:1 with Mia Chen (Product)', '2026-10-17T14:00:00Z', '2026-10-17T14:30:00Z'),
+        calendar('Mia birthday party', '2026-10-17T14:15:00Z', '2026-10-17T16:00:00Z'),
+        calendar(
+          'Rotman School alumni dinner - RSVP',
+          '2026-10-20T23:00:00Z',
+          '2026-10-21T02:00:00Z',
+        ),
       ],
       email: [],
       overlaps: [
-        { earlier: 'Swim at the rec centre', later: 'Maya soccer' },
-        { earlier: 'Maya soccer', later: 'Dentist' },
+        { earlier: 'Mia swim', later: '1:1 with Mia Chen (Product)' },
+        { earlier: 'Mia swim', later: 'Mia birthday party' },
       ],
     };
-    const kept = kidRelatedAha(snapshot, FAMILY);
+    const { classifier, calls } = scripted(() => ({ kidItemIds: ['c0', 'c2'] }));
+    const kept = await kidRelatedAha(snapshot, context, classifier);
+    expect(calls).toHaveLength(1);
     expect(kept.read).toBe('ok');
-    expect(kept.calendar.map((row) => row.title)).toEqual([
-      'Swim at the rec centre',
-      'Maya soccer',
-    ]);
-    expect(kept.overlaps).toEqual([{ earlier: 'Swim at the rec centre', later: 'Maya soccer' }]);
+    expect(kept.kidFilter).toBe('kept');
+    expect(kept.calendar.map((row) => row.title)).toEqual(['Mia swim', 'Mia birthday party']);
+    expect(kept.overlaps).toEqual([{ earlier: 'Mia swim', later: 'Mia birthday party' }]);
   });
 
-  it('turns a parent-only calendar into none_for_kids with nothing to mention', () => {
-    const snapshot: AhaSnapshot = {
-      provider: 'gcal',
-      read: 'ok',
-      calendar: [
-        item('Dentist', '2026-09-12T13:00:00.000Z', '2026-09-12T14:00:00.000Z'),
-        item('Team standup', '2026-09-12T13:30:00.000Z', '2026-09-12T14:00:00.000Z'),
-      ],
-      email: [],
-      overlaps: [{ earlier: 'Dentist', later: 'Team standup' }],
-    };
-    expect(kidRelatedAha(snapshot, FAMILY)).toEqual({
-      provider: 'gcal',
-      read: 'none_for_kids',
-      calendar: [],
-      email: [],
-      overlaps: [],
-    });
-  });
-
-  it('turns a parent-only mailbox into none_for_kids', () => {
+  it('a mailbox the classifier reads as all parent yields none_for_kids, never a parent item', async () => {
     const snapshot: AhaSnapshot = {
       provider: 'gmail',
       read: 'ok',
       calendar: [],
       email: [
-        mail('Your Amazon order has shipped', 'Amazon', 'Arriving Thursday.'),
-        mail('Q3 planning deck', 'Priya', 'Comments by Friday.'),
+        email('Rotman School alumni dinner - RSVP'),
+        email('Baby shower for Jen'),
+        email('Library hold ready: Atomic Habits'),
+        email('Coffee next week?', 'Sebastian'),
       ],
       overlaps: [],
     };
-    const kept = kidRelatedAha(snapshot, FAMILY);
+    const { classifier } = scripted(() => ({ kidItemIds: [] }));
+    const kept = await kidRelatedAha(snapshot, context, classifier);
     expect(kept.read).toBe('none_for_kids');
+    expect(kept.kidFilter).toBe('none_for_kids');
     expect(kept.email).toEqual([]);
   });
 
-  it('keeps a kid mail by subject, sender or snippet', () => {
+  it('ids the classifier invents are dropped; nothing reaches the model that was not offered', async () => {
     const snapshot: AhaSnapshot = {
       provider: 'gmail',
       read: 'ok',
       calendar: [],
-      email: [
-        mail('Registration closes Friday', 'Camp Acorn', 'Spots are going fast.'),
-        mail('Reminder', 'Rec centre', 'Maya is enrolled in Saturday swim.'),
-        mail('Invoice 4471', 'Hydro', 'Your bill is ready.'),
-      ],
+      email: [email('Music festival with friends')],
       overlaps: [],
     };
-    const kept = kidRelatedAha(snapshot, FAMILY);
-    expect(kept.read).toBe('ok');
-    expect(kept.email.map((row) => row.subject)).toEqual([
-      'Registration closes Friday',
-      'Reminder',
-    ]);
+    const { classifier } = scripted(() => ({ kidItemIds: ['e4', 'c0'] }));
+    const kept = await kidRelatedAha(snapshot, context, classifier);
+    expect(kept.read).toBe('none_for_kids');
   });
 
-  it('leaves an empty, failed or withheld read as it was', () => {
-    for (const read of ['empty', 'failed', 'withheld'] as const) {
-      const snapshot: AhaSnapshot = {
-        provider: 'gcal',
-        read,
-        calendar: [],
-        email: [],
-        overlaps: [],
-      };
-      expect(kidRelatedAha(snapshot, FAMILY)).toEqual(snapshot);
-    }
+  it('a read that already failed or was withheld passes through without a classifier call', async () => {
+    const { classifier, calls } = scripted(() => ({ kidItemIds: [] }));
+    const failed: AhaSnapshot = {
+      provider: 'gmail',
+      read: 'failed',
+      calendar: [],
+      email: [],
+      overlaps: [],
+    };
+    const withheld: AhaSnapshot = {
+      provider: 'gmail',
+      read: 'withheld',
+      calendar: [],
+      email: [],
+      overlaps: [],
+    };
+    const empty: AhaSnapshot = {
+      provider: 'gcal',
+      read: 'empty',
+      calendar: [],
+      email: [],
+      overlaps: [],
+    };
+    expect((await kidRelatedAha(failed, context, classifier)).read).toBe('failed');
+    expect((await kidRelatedAha(withheld, context, classifier)).read).toBe('withheld');
+    expect((await kidRelatedAha(empty, context, classifier)).read).toBe('empty');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('no classifier keeps nothing and names why (rule #11)', async () => {
+    const snapshot: AhaSnapshot = {
+      provider: 'gcal',
+      read: 'ok',
+      calendar: [calendar('Mia swim', '2026-10-17T14:00:00Z', '2026-10-17T14:45:00Z')],
+      email: [],
+      overlaps: [],
+    };
+    const kept = await kidRelatedAha(snapshot, context, undefined);
+    expect(kept.read).toBe('none_for_kids');
+    expect(kept.kidFilter).toBe('classifier_unavailable');
+    expect(kept.calendar).toEqual([]);
+  });
+
+  it('a classifier that throws keeps nothing and names why', async () => {
+    const snapshot: AhaSnapshot = {
+      provider: 'gcal',
+      read: 'ok',
+      calendar: [calendar('Mia swim', '2026-10-17T14:00:00Z', '2026-10-17T14:45:00Z')],
+      email: [],
+      overlaps: [],
+    };
+    const classifier: KidItemClassifier = {
+      async classify() {
+        throw new Error('boom');
+      },
+    };
+    const kept = await kidRelatedAha(snapshot, context, classifier);
+    expect(kept.read).toBe('none_for_kids');
+    expect(kept.kidFilter).toBe('classifier_failed');
   });
 });
