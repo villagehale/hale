@@ -2,6 +2,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { townLabel } from '~/lib/channel/town-label';
 import {
   type SpokenLineComposer,
+  type SpokenLineOptions,
   type SpokenLineResult,
   speakLine,
 } from '~/lib/channel/voice/spoken-line';
@@ -117,6 +118,7 @@ export function speakNudgeLine(
   nudge: VoicedNudge,
   language: ReplyLanguage,
   address: 'tu' | 'vous',
+  options: SpokenLineOptions = {},
 ): Promise<SpokenLineResult> {
-  return speakLine(voice, nudgeLineInput(nudgeVoiceContext(nudge), language, address));
+  return speakLine(voice, nudgeLineInput(nudgeVoiceContext(nudge), language, address), options);
 }

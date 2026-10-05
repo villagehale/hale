@@ -56,6 +56,7 @@ import {
 import { weekdayFinderDedupeKey, weekdayFinderTemplateKey } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
+import { renderHealthNudge } from '~/lib/health/copy';
 import type { HealthChild } from '~/lib/health/match';
 import {
   type CheckupOfferRecordOutcome,
@@ -65,7 +66,6 @@ import {
 import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
 import { TOLD_RECIPIENT_SEPARATOR, checkpointToldKey } from '~/lib/health/told';
 import { localParts } from '~/lib/loop/prefs';
-import { renderHealthNudge } from '~/lib/health/copy';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import { weekWindow } from '~/lib/plan/spine';
@@ -517,6 +517,17 @@ async function speakNudge(
 }
 
 /**
+ * The operator's kill switch for the model-written finds. Before VIL-413 a disabled
+ * voice meant the deterministic render went out instead; there is no render now, so
+ * a disabled voice means the find is HELD — nothing on the wire, every key unclaimed,
+ * an audit row naming `voice_disabled`, and no #ops page, because this is a switch
+ * someone pulled on purpose rather than an outage.
+ */
+export function voiceDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.VOICE_DISABLED === 'true';
+}
+
+/**
  * The children a proactive message may be built around: the family's UNDER-13s.
  *
  * Rule #1's deterministic floor, applied at the source rather than as a redaction on
@@ -763,6 +774,21 @@ async function runForFamily(
   // where a warmer sentence is not worth the chance of a sentence nobody approved.
   let message: string;
   if (isSpokenAskNudge(nudge) || isVoicedNudge(nudge)) {
+    if (isVoicedNudge(nudge) && voiceDisabled()) {
+      console.warn(
+        { familyId: family.familyId, kind: nudge.kind },
+        'nudge: VOICE_DISABLED - find held, keys unclaimed, nothing sent',
+      );
+      await deps.audit(database, {
+        familyId: family.familyId,
+        actor: 'system',
+        actionTaken: 'proactive_nudge_skipped',
+        targetTable: 'families',
+        targetId: family.familyId,
+        after: { reason: 'voice_disabled', kind: nudge.kind, cohort },
+      });
+      return emptyTally({ held });
+    }
     const line = await speakNudge(nudge, {
       target,
       speech,

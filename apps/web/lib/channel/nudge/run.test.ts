@@ -616,6 +616,44 @@ describe('runNudgeCron — the outbound gate', () => {
   });
 });
 
+describe('runNudgeCron — the VOICE_DISABLED kill switch', () => {
+  it('holds a find with nothing on the wire, keys unclaimed, and names voice_disabled', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('VOICE_DISABLED', 'true');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const h = harness({ windows: [win()] });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    warn.mockRestore();
+
+    expect(result.sent).toBe(0);
+    expect(h.voice.calls).toHaveLength(0);
+    expect(h.transport.sent).toHaveLength(0);
+    expect(h.writes.filter((w) => w.table === schema.channelMessages)).toHaveLength(0);
+    const audit = h.writes.find((w) => w.table === schema.auditLog);
+    expect(audit?.payload).toMatchObject({
+      actionTaken: 'proactive_nudge_skipped',
+      after: { reason: 'voice_disabled', kind: 'registration' },
+    });
+
+    // The switch is deliberate, not an outage: the key was never spent, so the find
+    // goes out on the first tick after the switch is released.
+    vi.stubEnv('VOICE_DISABLED', '');
+    const again = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(again.sent).toBe(1);
+    expect(h.voice.calls).toHaveLength(1);
+    expect(h.transport.sent).toHaveLength(1);
+  });
+
+  it('does not stop a health checkpoint, which never used the voice', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('VOICE_DISABLED', 'true');
+    const h = harness({ children: SIX_MONTH_OLD });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(result.sent).toBe(1);
+    expect(h.voice.calls).toHaveLength(0);
+  });
+});
+
 describe('runNudgeCron — idempotency', () => {
   it('sends once across two cron fires in the same slot', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
