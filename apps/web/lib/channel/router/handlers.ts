@@ -2,15 +2,21 @@ import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { imessageUpgradeAskEnabled, prepareYearRetentionAnswer } from '~/lib/billing/upgrade-ask';
 import { readAffirmative } from '~/lib/channel/affirmative';
-import type { CheckInCadence } from '~/lib/channel/checkin/cadence';
-import { CHECK_IN_ACK_TEMPLATE_KEY } from '~/lib/channel/checkin/copy';
+import { readCheckInState } from '~/lib/channel/checkin/cadence';
+import {
+  CADENCE_OF_INTENT,
+  type CheckInIntentReader,
+  isCadenceIntent,
+  readCheckInIntent,
+} from '~/lib/channel/checkin/intent';
+import { CHECK_IN_ACK_TEMPLATE_KEY } from '~/lib/channel/checkin/keys';
 import {
   answeredOnTheSameChannel,
   applyCheckInCadence,
-  checkInKeywordReach,
+  checkInCadenceReach,
   handleEveningCheckInReply,
-  readCadenceWord,
 } from '~/lib/channel/checkin/reply';
+import type { CheckInVoice } from '~/lib/channel/checkin/voice';
 import { connectorOfferReply, connectorRevokeReply } from '~/lib/channel/connect/copy';
 import {
   type ConnectOfferTarget,
@@ -1490,18 +1496,28 @@ export function recMorningHandler(): DeterministicHandler {
  *
  * IT READS TWO DIFFERENT KINDS OF MESSAGE, and their permissions are not the same.
  *
- *   · A TAUGHT WORD (LESS / NO / DAILY) is a decision about the product, and it outlives
- *     the standing question — which closes the moment ANY outbound reaches the parent,
- *     Hale's own thank-you included, so a NO a minute later would otherwise fall to the
- *     coach, which has no cadence tool, and the nightly message would keep coming. How far
- *     it outlives it is `checkInKeywordReach`, and the floor is this lane's own voice: its
- *     ask, its step-down notice or one of its acks being the last thing Hale said to that
- *     parent, inside thirty days.
+ *   · A CADENCE WISH ("not every night, please", "no more of these", "can you ask every
+ *     day again") is a decision about the product, and it outlives the standing question
+ *     — which closes the moment ANY outbound reaches the parent, Hale's own thank-you
+ *     included, so a "please stop" a minute later would otherwise fall to the coach, which
+ *     has no cadence tool, and the nightly message would keep coming. How far it outlives
+ *     it is `checkInCadenceReach`, and the floor is this lane's own voice: its ask, its
+ *     step-down notice or one of its acks being the last thing Hale said to that parent,
+ *     inside thirty days.
  *
  *   · A SENTENCE is an answer to a question, so it needs Hale to actually be holding one
  *     (the ledger says so, reply.ts) AND `soleOpenKind` to say no OTHER open question
  *     could have meant these words. An empty question list is vacuously unambiguous, so
  *     without the first check any sentence at all would be filed as a day note.
+ *
+ * SINCE VIL-413 / VIL-417 THE READING IS THE MODEL'S. There is no taught word any more —
+ * Hale never asks a parent to reply LESS, NO or DAILY — so which of the two a message is
+ * comes from the `checkin-intent` skill (checkin/intent.ts), and the model is consulted
+ * ONLY when this lane could act on the answer: a question standing, or the lane holding
+ * the floor. A reply from a household this lane has nothing open with is never shown to
+ * the reader, so no sentence can be mistaken for a wish about a question nobody asked.
+ * When the reader cannot answer (no key, two failed reads) the turn goes to the coach and
+ * #ops is paged; nothing is guessed from a keyword.
  *
  * BOTH NEED THE DOOR TO MATCH. The question is a text; an email arriving inside the
  * window is answering something else (answeredOnTheSameChannel).
@@ -1511,20 +1527,20 @@ export function recMorningHandler(): DeterministicHandler {
  * resolved yes-or-no could write. Declining says so truthfully; without an owner at all,
  * route.ts would log a resolution nobody claims at ERROR.
  */
-export function eveningCheckInHandler(): DeterministicHandler {
+export interface EveningCheckInHandlerDeps {
+  /** Reads what the parent's reply is. `undefined` is the named no-key state: nothing is claimed, #ops is paged. */
+  intentReader: CheckInIntentReader | undefined;
+  /** Writes the one sentence back. `undefined` likewise: the write still happens, no reply is sent. */
+  voice: CheckInVoice | undefined;
+}
+
+export function eveningCheckInHandler(deps: EveningCheckInHandlerDeps): DeterministicHandler {
   return {
     name: 'evening_check_in',
     resolves: new Set<OpenQuestionKind>(['evening_check_in']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       if (ctx.resolved !== null) return { claimed: false };
-
-      const questions = await ctx.openQuestions();
-      const cadence = readCadenceWord(ctx.body);
-      if (cadence !== null) return moveEveningCadence(database, ctx, questions, cadence);
-
-      const standing = questions.find((question) => question.kind === 'evening_check_in');
-      if (!standing || standing.askedAt === null) return { claimed: false };
-      if (!soleOpenKind(questions, 'evening_check_in')) return { claimed: false };
+      if (ctx.body.trim() === '') return { claimed: false };
 
       const inboundId = ctx.inboundChannelMessageId;
       if (inboundId === null) {
@@ -1537,18 +1553,58 @@ export function eveningCheckInHandler(): DeterministicHandler {
         );
         return { claimed: false };
       }
-      if (!(await answeredOnTheSameChannel(database, standing.id, inboundId))) {
+
+      const questions = await ctx.openQuestions();
+      const standing = questions.find((question) => question.kind === 'evening_check_in');
+      const openStanding = standing && standing.askedAt !== null ? standing : null;
+      const reach = await checkInCadenceReach(database, {
+        familyId: ctx.familyId,
+        parentUserId: ctx.parentUserId,
+        now: ctx.now,
+      });
+      // Nothing open and no floor: these are just words, and they belong to whatever
+      // else is going on — where they went before this lane existed. The model is not
+      // asked.
+      if (openStanding === null && reach.reach === 'none') return { claimed: false };
+
+      const askId = openStanding?.id ?? (reach.reach === 'none' ? null : reach.askId);
+      if (askId === null || !(await answeredOnTheSameChannel(database, askId, inboundId))) {
         return { claimed: false };
       }
+
+      const { cadence } = await readCheckInState(database, ctx.familyId);
+      const reading = await readCheckInIntent(deps.intentReader, {
+        reply: ctx.body,
+        language: replyLanguage(ctx.body),
+        questionStanding: openStanding !== null,
+        cadence,
+      });
+      if (reading.failure !== null) return { claimed: false };
+
+      if (isCadenceIntent(reading.intent)) {
+        return moveEveningCadence(database, ctx, deps, {
+          questions,
+          reach,
+          cadence: CADENCE_OF_INTENT[reading.intent],
+          inboundId,
+        });
+      }
+
+      // A sentence about the day needs the question to be open and to be the only thing
+      // these words could answer.
+      if (openStanding === null || openStanding.askedAt === null) return { claimed: false };
+      if (!soleOpenKind(questions, 'evening_check_in')) return { claimed: false };
 
       const outcome = await handleEveningCheckInReply(database, {
         familyId: ctx.familyId,
         parentUserId: ctx.parentUserId,
         body: ctx.body,
-        askedAt: standing.askedAt,
+        intent: reading.intent,
+        askedAt: openStanding.askedAt,
         timeZone: await readFamilyTimezone(database, ctx.familyId),
         inboundChannelMessageId: inboundId,
         now: ctx.now,
+        voice: deps.voice,
       });
       if (outcome.status === 'declined_to_claim') return { claimed: false };
       return {
@@ -1562,52 +1618,46 @@ export function eveningCheckInHandler(): DeterministicHandler {
 }
 
 /**
- * LESS, NO or DAILY — outlasting the standing question, but not the conversation.
+ * A wish about the rhythm — outlasting the standing question, but not the conversation.
  *
- * HOW FAR THE WORDS REACH IS `checkInKeywordReach`, and it is the lane's own reader
- * because the answer is a fact about the message ledger, not about this chain. In short:
- * while this lane has the last word to that parent, or the evening it asked about is still
- * open, all three words are its own; afterwards only DAILY is, and only as the way back
- * for a household Hale stopped asking.
+ * HOW FAR IT REACHES IS `checkInCadenceReach`, and it is the lane's own reader because
+ * the answer is a fact about the message ledger, not about this chain. In short: while
+ * this lane has the last word to that parent, or the evening it asked about is still
+ * open, every cadence wish is its own; afterwards only the wish to have the question
+ * BACK is, and only as the way in for a household Hale stopped asking.
  *
- * A BARE NO IS THE ONE THAT HAS TO BE CAREFUL EVEN INSIDE THAT WINDOW, because it is also
- * how a parent declines an approval, an intro and a co-parent invite. It is taken only
- * when no other question is open — the same rule `soleOpenKind` applies to a bare
- * affirmative, drawn here by hand because the evening question is deliberately absent from
- * the list most of the time this runs. LESS and DAILY answer nothing else in the product,
- * so they need no such guard.
+ * A WISH TO STOP IS THE ONE THAT HAS TO BE CAREFUL EVEN INSIDE THAT WINDOW, because "no"
+ * is also how a parent declines an approval, an intro and a co-parent invite. It is taken
+ * only when no other question is open — the same rule `soleOpenKind` applies to a bare
+ * affirmative, drawn here by hand because the evening question is deliberately absent
+ * from the list most of the time this runs. "Less often" and "every night" answer nothing
+ * else in the product, so they need no such guard.
  */
 async function moveEveningCadence(
   database: Database,
   ctx: HandlerContext,
-  questions: readonly OpenQuestion[],
-  cadence: CheckInCadence,
+  deps: EveningCheckInHandlerDeps,
+  input: {
+    questions: readonly OpenQuestion[];
+    reach: Awaited<ReturnType<typeof checkInCadenceReach>>;
+    cadence: 'weekly' | 'off' | 'daily';
+    inboundId: string;
+  },
 ): Promise<HandlerVerdict> {
-  const others = questions.filter((question) => question.kind !== 'evening_check_in');
-  if (cadence === 'off' && others.length > 0) return { claimed: false };
-
-  const inboundId = ctx.inboundChannelMessageId;
-  if (inboundId === null) return { claimed: false };
-  const reach = await checkInKeywordReach(database, {
-    familyId: ctx.familyId,
-    parentUserId: ctx.parentUserId,
-    now: ctx.now,
-  });
-  // Never asked, or asked long enough ago that these are just words: they belong to
-  // whatever else is going on, which is where they went before this lane existed.
-  if (reach.reach === 'none') return { claimed: false };
-  if (reach.reach === 'reoffer' && cadence !== 'daily') return { claimed: false };
-  if (!(await answeredOnTheSameChannel(database, reach.askId, inboundId))) {
-    return { claimed: false };
-  }
+  const others = input.questions.filter((question) => question.kind !== 'evening_check_in');
+  if (input.cadence === 'off' && others.length > 0) return { claimed: false };
+  // Past the floor, only the way back in is this lane's to honour.
+  if (input.reach.reach === 'reoffer' && input.cadence !== 'daily') return { claimed: false };
 
   const outcome = await applyCheckInCadence(database, {
     familyId: ctx.familyId,
     parentUserId: ctx.parentUserId,
-    inboundChannelMessageId: inboundId,
-    cadence,
+    inboundChannelMessageId: input.inboundId,
+    body: ctx.body,
+    cadence: input.cadence,
     language: replyLanguage(ctx.body),
     now: ctx.now,
+    voice: deps.voice,
   });
   return {
     claimed: true,

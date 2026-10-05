@@ -270,8 +270,8 @@ export type HandlerVerdict =
        *
        * Most receipts need none: nothing ever reads them back. A lane needs one when its
        * own reader has to recognise its own voice later. The evening check-in is the
-       * case: whether LESS, NO and DAILY still mean what that lane taught them turns on
-       * whether the last thing this parent heard from Hale was ITS message, and a reply
+       * case: whether a parent's "not every night" is a wish about ITS question turns on
+       * whether the last thing this parent heard from Hale was its message, and a reply
        * row with no name on it is indistinguishable from the coach's.
        */
       templateKey?: string;

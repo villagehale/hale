@@ -15,7 +15,6 @@ import {
   familySpeech,
   notePermanentSkip,
 } from '~/lib/channel/linq/family-outbound';
-import { groupAddressedLine } from '~/lib/channel/linq/group-coparent-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -23,10 +22,9 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
-import { nightlyOccasion } from '~/lib/channel/variant';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { dayKeyIn } from '~/lib/plan/spine';
 import { readinessQuestion } from '~/lib/registration/sequence/prepare-reply';
@@ -41,12 +39,14 @@ import {
   recordCheckInAsk,
   recordCheckInCadence,
 } from './cadence';
+import { CHECK_IN_ASK_TEMPLATE_KEY, CHECK_IN_STEP_DOWN_TEMPLATE_KEY } from './keys';
 import {
-  CHECK_IN_ASK_TEMPLATE_KEY,
-  CHECK_IN_STEP_DOWN,
-  CHECK_IN_STEP_DOWN_TEMPLATE_KEY,
-  composeCheckInAsk,
-} from './copy';
+  CHECK_IN_MAX_ACTIVITY_CHARS,
+  type CheckInLineRequest,
+  type CheckInVoice,
+  defaultCheckInVoice,
+  speakCheckInLine,
+} from './voice';
 
 /**
  * VIL-353 · THE EVENING CHECK-IN — the one question Hale asks every day.
@@ -79,6 +79,16 @@ import {
  * THE STATE MACHINE IS THE PREFS ROW, and the ladder inside it (cadence.ts) is a pure
  * function: the sweep decides nothing about silence, it only carries out the decision and
  * writes down what happened.
+ *
+ * THE WORDS ARE THE MODEL'S (VIL-413 / VIL-417). Since 2026-10-04 this lane has no copy
+ * file: the nightly question, the anchored "how did swim go" and the step-down notice are
+ * written by the `checkin-voice` skill through the shared spoken-line engine, from the
+ * facts this sweep gathers (which kids may be named, which activity Hale saw, what the
+ * cadence became and why), in the family's language, as tu in a parent's own thread and
+ * vous — naming the parent — in the household group. When the model cannot write the
+ * line after one retry, NOTHING is sent: the miss is counted (`voiceUnsent`), #ops is
+ * paged once per family and kind per day, and the dedupe key and the prefs row are left
+ * untouched so tomorrow's tick asks again. There is no sentence underneath.
  */
 
 /** Filter first, then cap — a cap-then-filter would starve every family past the oldest N
@@ -129,8 +139,8 @@ export function checkInAnchorEnabled(): boolean {
 export type AnchorOutcome =
   /** Named. */
   | 'anchored'
-  /** This household's first evening question ever — it prints the keywords and is never
-   * anchored, so the anchor lane did not run rather than finding nothing. */
+  /** This household's first evening question ever — it introduces the ritual and is
+   * never anchored, so the anchor lane did not run rather than finding nothing. */
   | 'first_ask'
   /** CHECK_IN_ANCHOR_ENABLED is not 'true'. */
   | 'flag_off'
@@ -146,8 +156,9 @@ export type AnchorOutcome =
   | 'no_child'
   /** A title Hale cannot spell inside the budget. */
   | 'not_gsm7'
-  /** Composed, measured, did not fit one segment with the opt-out on it. */
-  | 'over_segment'
+  /** A title longer than the question's budget has room for (CHECK_IN_MAX_ACTIVITY_CHARS):
+   * the model is not handed a fact it could not carry, and the evening asks the day form. */
+  | 'over_budget'
   /** The read threw. Counted rather than swallowed: a reader that started failing would
    * otherwise look exactly like a product where nothing ever happens. */
   | 'read_failed';
@@ -192,6 +203,9 @@ export interface EveningCheckInResult {
   held: Record<ProactiveHoldReason, number>;
   /** Already sent this evening — a second cron tick inside the same local hour. */
   duplicate: number;
+  /** Due, gated through, and the model could not write the line after one retry. Nothing
+   * was sent, nothing was written, #ops was paged; the household is due again tomorrow. */
+  voiceUnsent: number;
   failed: number;
   /** One entry per household this run actually ASKED (the step-down notice asks nothing,
    * so it is not counted here). Same shape as `skipped` and `held`, for the same reason. */
@@ -210,6 +224,7 @@ function emptyResult(enabled: boolean): EveningCheckInResult {
     heldForRegistration: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
     duplicate: 0,
+    voiceUnsent: 0,
     failed: 0,
     anchor: {
       anchored: 0,
@@ -220,7 +235,7 @@ function emptyResult(enabled: boolean): EveningCheckInResult {
       placement_lane: 0,
       no_child: 0,
       not_gsm7: 0,
-      over_segment: 0,
+      over_budget: 0,
       read_failed: 0,
     },
   };
@@ -286,6 +301,12 @@ export interface EveningCheckInDeps {
   threadMessage: typeof threadProactiveMessage;
   recordAsk: typeof recordCheckInAsk;
   recordCadence: typeof recordCheckInCadence;
+  /**
+   * The composer every word of this lane goes through. REQUIRED as a field so a caller
+   * decides it (rule #11); `undefined` is the named "no model key" state, in which the
+   * engine pages `voice_unavailable` and the sweep sends nothing — never a template.
+   */
+  voice: CheckInVoice | undefined;
 }
 
 export async function runEveningCheckInSweep(
@@ -403,51 +424,64 @@ async function runForFamily(
     return;
   }
 
-  // Composed only AFTER the gate and the dedupe: a family already asked, or over budget,
-  // must not cost a read of their children's names — nor, now, a read of their calendar.
-  let message: string;
+  // The facts are gathered only AFTER the gate and the dedupe: a family already asked, or
+  // over budget, must not cost a read of their children's names, nor of their calendar,
+  // nor a model call.
+  let request: CheckInLineRequest;
   // Whether tonight's question named an activity — the one thing the audit row learns from
   // the anchor. The step-down notice names nothing and asks nothing, so it is false there
   // by construction rather than by omission.
   let anchored = false;
   if (decision.kind === 'step_down') {
-    message = CHECK_IN_STEP_DOWN;
+    request = { kind: 'cadence_ack', cadence: 'weekly', trigger: 'quiet_evenings' };
   } else {
     const found = await readAnchor(database, deps, family, decision.first, now);
-    const ask = composeCheckInAsk({
-      first: decision.first,
-      childNames: await deps.loadNamableChildren(database, family.familyId, now),
-      todayActivity: found.anchor,
-      // Which of the five ways of asking this household reads tonight. The rotation
-      // steps once per family-local day, so no family reads the same sentence two
-      // evenings running (variant.ts).
-      familyId: family.familyId,
-      occasion: nightlyOccasion(now, family.timeZone),
-    });
-    message = ask.body;
-    anchored = ask.anchored;
+    const kids = await deps.loadNamableChildren(database, family.familyId, now);
     // A title that was offered and not used was refused by the BUDGET, and that is a
     // different fact from having nothing to name.
-    result.anchor[found.anchor !== null && !ask.anchored ? 'over_segment' : found.outcome] += 1;
+    const fits = found.anchor !== null && found.anchor.length <= CHECK_IN_MAX_ACTIVITY_CHARS;
+    if (found.anchor !== null && fits) {
+      request = { kind: 'how_it_went', activity: found.anchor, kids };
+      anchored = true;
+    } else {
+      request = { kind: decision.first ? 'first_ask' : 'later_ask', kids };
+    }
+    result.anchor[found.anchor !== null && !fits ? 'over_budget' : found.outcome] += 1;
   }
+
+  // In a claimed group the evening is about one parent, with both reading: vous, and
+  // the parent named when known. In their own thread it is tu, and the language is the
+  // household's.
+  const target = await familyOutboundTarget(database, family.familyId);
+  const speech = await familySpeech(database, family.familyId, family.parentUserId);
+  const line = await speakCheckInLine(
+    deps.voice,
+    request,
+    speech.language,
+    target.channel === 'group' ? 'vous' : 'tu',
+    {
+      parentName: target.channel === 'group' ? speech.name : null,
+      scope: { familyId: family.familyId, database },
+    },
+  );
+  if (line.source === 'unsent') {
+    // Nothing templated goes out, and nothing is written: the dedupe key is unclaimed and
+    // the prefs row untouched, so the same household is due again tomorrow. The engine
+    // has already paged #ops (once per family and kind per day).
+    result.voiceUnsent += 1;
+    console.warn(
+      { familyId: family.familyId, kind: request.kind, fallback: line.fallback },
+      'evening check-in: line not written - nothing sent',
+    );
+    return;
+  }
+  const spoken = line.body;
 
   const to = await deps.resolveSendablePhone(database, family.parentUserId);
   if (!to) {
     // The gate just said this parent has a live channel, so there IS one — a missing
     // number here is a contradiction, not a state to paper over.
     throw new Error(`evening check-in: no send target for parent ${family.parentUserId}`);
-  }
-
-  // In a claimed group the evening is about one parent. Name them when known.
-  // An unknown parent keeps the pool line, which already reads to both.
-  // The step-down notice has no "you" and stays as written.
-  let spoken = message;
-  if (decision.kind !== 'step_down') {
-    const target = await familyOutboundTarget(database, family.familyId);
-    if (target.channel === 'group') {
-      const speech = await familySpeech(database, family.familyId, family.parentUserId);
-      if (speech.name) spoken = groupAddressedLine(speech.name, message);
-    }
   }
 
   const delivered = await deliverFamilyOutbound(database, {
@@ -549,8 +583,8 @@ async function readAnchor(
   first: boolean,
   now: Date,
 ): Promise<{ anchor: string | null; outcome: AnchorOutcome }> {
-  // The first question a household is ever asked prints the keywords and is one pinned
-  // sentence. It is not anchored, and saying so is not the same as finding nothing.
+  // The first question a household is ever asked introduces the ritual and the way out
+  // of it. It is not anchored, and saying so is not the same as finding nothing.
   if (first) return { anchor: null, outcome: 'first_ask' };
   if (!checkInAnchorEnabled()) return { anchor: null, outcome: 'flag_off' };
   try {
@@ -642,8 +676,8 @@ async function readNamableChildren(
  *
  *   PRIVATE — a teen's or a sensitive row yields NO anchor at all. The nightly message
  *   then never discloses that a private item existed, which is stronger than genericising
- *   it and is the same property `childPhrase` already relies on: the absence of an anchor
- *   is indistinguishable from a quiet day.
+ *   it and is the same property the kids' names rely on (`nameableKids`): the absence of
+ *   an anchor is indistinguishable from a quiet day.
  *
  *   PLACEMENT — Hale put that one there, and the composed follow-up lane already owns
  *   "you went to the thing I found, how was it" (channel/followup/run.ts). Both sweeps
@@ -752,5 +786,6 @@ export function defaultEveningCheckInDeps(): EveningCheckInDeps {
     threadMessage: threadProactiveMessage,
     recordAsk: recordCheckInAsk,
     recordCadence: recordCheckInCadence,
+    voice: defaultCheckInVoice(),
   };
 }

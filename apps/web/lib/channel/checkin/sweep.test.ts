@@ -1,12 +1,11 @@
 import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
-import { groupAddressedLine } from '~/lib/channel/linq/group-coparent-copy';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
-import { nightlyOccasion } from '~/lib/channel/variant';
+import { type FakeSpokenLineComposer, fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import type { CheckInState } from './cadence';
-import { CHECK_IN_ASK_TEMPLATE_KEY, CHECK_IN_STEP_DOWN, composeCheckInAsk } from './copy';
+import { CHECK_IN_ASK_TEMPLATE_KEY, CHECK_IN_STEP_DOWN_TEMPLATE_KEY } from './keys';
 import {
   CHECK_IN_ANCHOR_ENABLED_ENV,
   type EveningCheckInDeps,
@@ -24,6 +23,12 @@ import {
  * own four checks live in outbound-gate.test.ts and the ladder's arithmetic in
  * cadence.test.ts — what matters here is that this sweep cannot reach a transport
  * without both.
+ *
+ * THE WORDS ARE THE MODEL'S (VIL-413 / VIL-417), so the voice here is the deterministic
+ * fake from voice/fakes.ts: what is pinned is WHICH FACTS reach it (the kids, the
+ * activity, the cadence and why, tu or vous, the language) and that the sweep sends its
+ * line verbatim or sends nothing. Whether the real model writes a good evening question
+ * is the cached eval's business (apps/worker/evals/run-checkin-voice-eval.mjs, rule #8).
  */
 
 const FAMILY = 'fam-1';
@@ -47,9 +52,11 @@ interface Overrides {
   registrationStanding?: boolean;
   children?: string[];
   today?: TodayActivity | (() => Promise<TodayActivity>);
+  voice?: FakeSpokenLineComposer;
 }
 
 function harness(overrides: Overrides = {}) {
+  const voice = overrides.voice ?? fakeSpokenLineComposer();
   const sent: Array<{ to: string; body: string }> = [];
   const ledger: Array<{ dedupeKey: string; templateKey: string }> = [];
   const audits: Array<Record<string, unknown>> = [];
@@ -122,8 +129,16 @@ function harness(overrides: Overrides = {}) {
           : { silentStreakSince: input.silentStreakSince }),
       });
     },
+    voice,
   };
-  return { deps, sent, ledger, audits, threaded, asks, cadences };
+  return { deps, sent, ledger, audits, threaded, asks, cadences, voice };
+}
+
+/** What the voice was handed for the one line this run spoke. */
+function spoken(voice: FakeSpokenLineComposer, index = 0) {
+  const call = voice.calls[index];
+  if (!call) throw new Error(`the voice was not asked for line ${index}`);
+  return call.input;
 }
 
 describe('the dark-launch gate', () => {
@@ -243,16 +258,33 @@ describe('an hour with more households in it than one run may carry', () => {
 });
 
 describe('what goes out', () => {
-  it('asks the long way the first time, with no opt-out line on the wire or in the thread', async () => {
+  it("asks the FIRST question the first time, from the kids' names, with no opt-out line on the wire or in the thread", async () => {
     process.env[F14_ENABLED_ENV] = 'true';
-    const { deps, sent, ledger, threaded, audits, asks } = harness();
+    const { deps, sent, ledger, threaded, audits, asks, voice } = harness();
     await runEveningCheckInSweep(database, deps, EVENING);
 
-    expect(sent[0]?.body).toBe(
-      "Quick one before the day's gone: how did today go with Mia and Leo? One line is plenty. Reply LESS for weekly, or NO to skip these.",
-    );
+    const input = spoken(voice);
+    expect({
+      skill: input.skill,
+      kind: input.kind,
+      language: input.language,
+      address: input.address,
+      questions: input.questions,
+      kids: input.facts.kids,
+    }).toEqual({
+      skill: 'checkin-voice',
+      kind: 'first_ask',
+      language: 'en',
+      address: 'tu',
+      questions: 1,
+      kids: ['Mia', 'Leo'],
+    });
+    expect(input.mustMention).toEqual(['Mia', 'Leo']);
+    // The model's line goes out VERBATIM: nothing is prefixed, appended or templated
+    // around it, on the wire or in the thread the coach re-reads.
+    expect(sent[0]?.body).toBe('first_ask: Mia, Leo?');
+    expect(threaded[0]).toBe(sent[0]?.body);
     expect(sent[0]?.body).not.toContain(OPT_OUT_LINE);
-    expect(threaded[0]).not.toContain(OPT_OUT_LINE);
     expect(ledger[0]).toEqual({
       dedupeKey: 'evening_check_in:fam-1:2026-07-05',
       templateKey: CHECK_IN_ASK_TEMPLATE_KEY,
@@ -261,61 +293,84 @@ describe('what goes out', () => {
     expect(asks).toEqual([{ silentStreak: 0 }]);
   });
 
-  it('asks the short way once the family has been asked before', async () => {
+  it('asks the LATER question once the family has been asked before', async () => {
     process.env[F14_ENABLED_ENV] = 'true';
-    const { deps, sent } = harness({
+    const { deps, voice } = harness({
       state: { lastAskedAt: new Date(EVENING.getTime() - 24 * 3_600_000), silentStreak: 0 },
     });
     await runEveningCheckInSweep(database, deps, EVENING);
-    // Which of the five it is belongs to the rotation (copy.test.ts owns the members).
-    // What belongs HERE is that the sweep asked the LATER question and not the first one:
-    // the keywords are printed once in a lifetime, and printing them again would teach a
-    // parent an opt-out they have already been offered.
-    const body = sent[0]?.body ?? '';
-    expect(body).toContain('Mia and Leo');
-    expect(body).not.toContain('Reply LESS for weekly');
-    expect(body).not.toContain("Quick one before the day's gone");
+    // The first question is the one that makes the way out known; every later one is a
+    // different kind, so the skill does not re-offer an opt-out the parent already has.
+    expect(spoken(voice).kind).toBe('later_ask');
+    expect(spoken(voice).facts.kids).toEqual(['Mia', 'Leo']);
   });
 
-  it('asks a different one of the five the next evening', async () => {
-    process.env[F14_ENABLED_ENV] = 'true';
-    // The property a pool exists for, through the sweep rather than through the composer:
-    // the occasion is derived from the family's own clock inside runForFamily, so a sweep
-    // that stopped passing it — or passed a constant — reads identically two nights
-    // running and nothing else in this file would notice.
-    const bodies = [0, 1, 2, 3, 4, 5].map(() => '');
-    for (const [index, dayOffset] of [0, 1, 2, 3, 4, 5].entries()) {
-      const { deps, sent } = harness({
-        state: { lastAskedAt: new Date(EVENING.getTime() - 24 * 3_600_000), silentStreak: 0 },
-      });
-      await runEveningCheckInSweep(
-        database,
-        deps,
-        new Date(EVENING.getTime() + dayOffset * 24 * 3_600_000),
-      );
-      bodies[index] = sent[0]?.body ?? '';
-    }
-    for (let i = 1; i < bodies.length; i++) {
-      expect(bodies[i], `evening ${i}`).not.toBe(bodies[i - 1]);
-    }
-    // Five members, so the sixth evening comes back round to the first — the rotation,
-    // not a stream of new sentences.
-    expect(bodies[5]).toBe(bodies[0]);
-  });
-
-  it('never names a teenager', async () => {
+  it('never hands the voice a teenager, and says "the kids" by handing it nobody', async () => {
     process.env[F14_ENABLED_ENV] = 'true';
     // A household of one 4-year-old and one 14-year-old arrives here with the teen
-    // already dropped at the source, so the sentence cannot leak the name back.
-    const { deps, sent } = harness({ children: ['Mia'] });
+    // already dropped at the source, so the model cannot be given the name to leak.
+    const { deps, sent, voice } = harness({ children: ['Mia'] });
     await runEveningCheckInSweep(database, deps, EVENING);
-    // Named, whichever of the five tonight is — the slot is the same in every member.
+    expect(spoken(voice).facts.kids).toEqual(['Mia']);
     expect(sent[0]?.body).toContain('Mia');
-    expect(sent[0]?.body).not.toContain('Noah');
+    expect(JSON.stringify(spoken(voice))).not.toContain('Noah');
 
     const teensOnly = harness({ children: [] });
     await runEveningCheckInSweep(database, teensOnly.deps, EVENING);
-    expect(teensOnly.sent[0]?.body).toContain('the kids');
+    expect(spoken(teensOnly.voice).facts.kids).toEqual([]);
+    expect(spoken(teensOnly.voice).mustMention).toEqual([]);
+  });
+
+  it('drops the names rather than the brevity when they will not fit', async () => {
+    process.env[F14_ENABLED_ENV] = 'true';
+    const long = ['Maximilian-Alexander', 'Anastasia-Josephine', 'Bartholomew'];
+    const { deps, voice } = harness({ children: long });
+    await runEveningCheckInSweep(database, deps, EVENING);
+    expect(spoken(voice).facts.kids).toEqual([]);
+  });
+});
+
+describe('when the voice cannot write the line', () => {
+  it('sends nothing, writes nothing, leaves the family due tomorrow, and counts it', async () => {
+    process.env[F14_ENABLED_ENV] = 'true';
+    const { deps, sent, ledger, audits, threaded, asks, cadences, voice } = harness({
+      voice: fakeSpokenLineComposer({ fail: true }),
+    });
+    const result = await runEveningCheckInSweep(database, deps, EVENING);
+
+    // One full attempt and one short retry, then nothing canned: there is no sentence
+    // underneath this lane any more.
+    expect(voice.calls.map((call) => call.prompt)).toEqual(['full', 'short']);
+    expect(result.voiceUnsent).toBe(1);
+    expect(result.asked).toBe(0);
+    expect(result.failed).toBe(0);
+    expect(sent).toEqual([]);
+    expect([...ledger, ...audits, ...threaded, ...asks, ...cadences]).toEqual([]);
+  });
+
+  it('holds the step-down notice the same way, with the cadence unchanged', async () => {
+    process.env[F14_ENABLED_ENV] = 'true';
+    const { deps, sent, cadences } = harness({
+      voice: fakeSpokenLineComposer({ fail: true }),
+      state: {
+        cadence: 'daily',
+        silentStreak: 2,
+        lastAskedAt: new Date(EVENING.getTime() - 24 * 3_600_000),
+      },
+    });
+    const result = await runEveningCheckInSweep(database, deps, EVENING);
+    expect(result.voiceUnsent).toBe(1);
+    expect(result.steppedDownToWeekly).toBe(0);
+    expect(sent).toEqual([]);
+    expect(cadences).toEqual([]);
+  });
+
+  it('sends the retry when only the full prompt failed', async () => {
+    process.env[F14_ENABLED_ENV] = 'true';
+    const { deps, sent } = harness({ voice: fakeSpokenLineComposer({ failFullPrompt: true }) });
+    const result = await runEveningCheckInSweep(database, deps, EVENING);
+    expect(result.asked).toBe(1);
+    expect(sent).toHaveLength(1);
   });
 });
 
@@ -362,18 +417,24 @@ describe('the ladder, end to end', () => {
   it('announces the step down to weekly, once, and leaves the ask clock alone', async () => {
     process.env[F14_ENABLED_ENV] = 'true';
     const lastAsked = new Date(EVENING.getTime() - 24 * 3_600_000);
-    const { deps, sent, ledger, cadences, asks, audits } = harness({
+    const { deps, sent, ledger, cadences, asks, audits, voice } = harness({
       state: { cadence: 'daily', silentStreak: 2, lastAskedAt: lastAsked },
     });
     const result = await runEveningCheckInSweep(database, deps, EVENING);
 
     expect(result.steppedDownToWeekly).toBe(1);
-    expect(sent[0]?.body.startsWith(CHECK_IN_STEP_DOWN)).toBe(true);
+    // The notice is the voice's cadence receipt, told WHY: three quiet evenings, not a
+    // parent's wish. The skill is what keeps it from mentioning the silence.
+    expect(spoken(voice).kind).toBe('cadence_ack');
+    expect(spoken(voice).questions).toBe(0);
+    expect(spoken(voice).facts).toMatchObject({ cadence: 'weekly', trigger: 'quiet_evenings' });
+    expect(sent[0]?.body).toBe('cadence_ack: weekly, quiet_evenings.');
     // Its own dedupe key, anchored on the ask being stepped down from — so a retry
     // tomorrow cannot announce the same change twice.
-    expect(ledger[0]?.dedupeKey).toBe(
-      `evening_check_in:weekly:${FAMILY}:${lastAsked.toISOString()}`,
-    );
+    expect(ledger[0]).toEqual({
+      dedupeKey: `evening_check_in:weekly:${FAMILY}:${lastAsked.toISOString()}`,
+      templateKey: CHECK_IN_STEP_DOWN_TEMPLATE_KEY,
+    });
     expect(audits[0]?.actionTaken).toBe('evening_check_in_stepped_down');
     // The counter is baselined on this evening, so the lapse this rung just answered is
     // not read off the timestamps again by the first weekly question (which would make
@@ -429,11 +490,15 @@ describe('the activity anchor', () => {
     });
   };
 
-  it('names the activity and counts it, once the flag is armed', async () => {
+  it('hands the voice the activity and counts it, once the flag is armed', async () => {
     process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
-    const { deps, sent, threaded } = asked({ today: { anchor: 'swim' } });
+    const { deps, sent, threaded, voice } = asked({ today: { anchor: 'swim' } });
     const result = await runEveningCheckInSweep(database, deps, EVENING);
     expect(result.anchor.anchored).toBe(1);
+    expect(spoken(voice).kind).toBe('how_it_went');
+    expect(spoken(voice).facts.activity).toBe('swim');
+    // The title is an anchor: the model must carry it as the family wrote it.
+    expect(spoken(voice).mustMention).toContain('swim');
     expect(sent[0]?.body).toContain('swim');
     // The thread the coach re-reads carries the composed sentence, never the wire body.
     expect(threaded[0]).toContain('swim');
@@ -446,13 +511,14 @@ describe('the activity anchor', () => {
     for (const value of [undefined, '', 'false', 'TRUE', '1', 'true\n', ' true']) {
       if (value === undefined) delete process.env[CHECK_IN_ANCHOR_ENABLED_ENV];
       else process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = value;
-      const { deps, sent } = asked({ today: { anchor: 'swim' } });
+      const { deps, voice } = asked({ today: { anchor: 'swim' } });
       const result = await runEveningCheckInSweep(database, deps, EVENING);
       expect(result.anchor.flag_off, JSON.stringify(value)).toBe(1);
       expect(result.anchor.anchored, JSON.stringify(value)).toBe(0);
-      // Off is not degraded: it is the day question, which is the shipped message.
-      expect(sent[0]?.body, JSON.stringify(value)).toContain('Mia and Leo');
-      expect(sent[0]?.body, JSON.stringify(value)).not.toContain('swim');
+      // Off is not degraded: it is the day question, and the calendar never reaches
+      // the model.
+      expect(spoken(voice).kind, JSON.stringify(value)).toBe('later_ask');
+      expect(JSON.stringify(spoken(voice)), JSON.stringify(value)).not.toContain('swim');
     }
     // The positive control, or every assertion above would pass on a flag nothing reads.
     process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
@@ -469,23 +535,24 @@ describe('the activity anchor', () => {
       'no_child',
       'not_gsm7',
     ] as const) {
-      const { deps, sent } = asked({ today: { anchor: null, reason } });
+      const { deps, voice } = asked({ today: { anchor: null, reason } });
       const result = await runEveningCheckInSweep(database, deps, EVENING);
       expect(result.anchor[reason], reason).toBe(1);
       expect(result.anchor.anchored, reason).toBe(0);
       expect(result.anchor.no_event_today, reason).toBe(reason === 'no_event_today' ? 1 : 0);
-      expect(sent[0]?.body, reason).toContain('Mia and Leo');
+      expect(spoken(voice).kind, reason).toBe('later_ask');
     }
   });
 
-  it('counts a title the budget refused as over_segment, not as a quiet day', async () => {
+  it('counts a title the budget refused as over_budget, not as a quiet day, and never hands it over', async () => {
     process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
-    const { deps, sent } = asked({ today: { anchor: 'x'.repeat(200) } });
+    const { deps, voice } = asked({ today: { anchor: 'x'.repeat(200) } });
     const result = await runEveningCheckInSweep(database, deps, EVENING);
-    expect(result.anchor.over_segment).toBe(1);
+    expect(result.anchor.over_budget).toBe(1);
     expect(result.anchor.anchored).toBe(0);
     expect(result.anchor.no_event_today).toBe(0);
-    expect(sent[0]?.body).toContain('Mia and Leo');
+    expect(spoken(voice).kind).toBe('later_ask');
+    expect(JSON.stringify(spoken(voice))).not.toContain('xxxx');
   });
 
   it('still asks when the read throws, and says the read threw', async () => {
@@ -504,11 +571,11 @@ describe('the activity anchor', () => {
   it("does not anchor a household's first ever question, and says so", async () => {
     process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
     process.env[F14_ENABLED_ENV] = 'true';
-    const { deps, sent } = harness({ today: { anchor: 'swim' } });
+    const { deps, voice } = harness({ today: { anchor: 'swim' } });
     const result = await runEveningCheckInSweep(database, deps, EVENING);
     expect(result.anchor.first_ask).toBe(1);
     expect(result.anchor.anchored).toBe(0);
-    expect(sent[0]?.body).toContain("Quick one before the day's gone");
+    expect(spoken(voice).kind).toBe('first_ask');
   });
 
   it('records on the audit row whether the evening named anything, and never what', async () => {
@@ -548,7 +615,7 @@ describe('the activity anchor', () => {
     const result = await runEveningCheckInSweep(database, deps, EVENING);
     expect(result.steppedDownToWeekly).toBe(1);
     expect(Object.values(result.anchor).reduce((a, b) => a + b, 0)).toBe(0);
-    expect(sent[0]?.body).toBe(CHECK_IN_STEP_DOWN);
+    expect(sent[0]?.body).toBe('cadence_ack: weekly, quiet_evenings.');
     expect(sent[0]?.body).not.toContain(OPT_OUT_LINE);
   });
 
@@ -570,13 +637,13 @@ describe('the activity anchor', () => {
   });
 });
 
-/** A select double that answers the group resolver and the name read, and nothing else. */
-function groupDatabase(name: string | null): Database {
+/** A select double that answers the group resolver and the speech read, and nothing else. */
+function groupDatabase(name: string | null, language = 'en'): Database {
   const select = (fields: object) => {
     const keys = Object.keys(fields);
     let rows: Array<Record<string, unknown>> = [];
     if (keys.includes('linqGroupChatId')) rows = [{ linqGroupChatId: 'chat-home' }];
-    else if (keys.includes('primaryLanguage')) rows = [{ primaryLanguage: 'en' }];
+    else if (keys.includes('primaryLanguage')) rows = [{ primaryLanguage: language }];
     else if (keys.includes('name') && keys.length === 1) rows = [{ name }];
     else if (keys.includes('timezone')) rows = [{ timezone: 'America/Toronto' }];
     const limited = Object.assign(Promise.resolve(rows), {
@@ -598,9 +665,7 @@ describe('a claimed group', () => {
     vi.unstubAllGlobals();
   });
 
-  it('prefixes the evening when the parent is known, and leaves an unknown parent unprefixed', async () => {
-    process.env[F14_ENABLED_ENV] = 'true';
-    process.env.LINQ_API_KEY = 'linq_test_key_not_a_secret';
+  function linqCapture(): string[] {
     const bodies: string[] = [];
     vi.stubGlobal(
       'fetch',
@@ -609,39 +674,53 @@ describe('a claimed group', () => {
         return new Response(JSON.stringify({ message: { id: 'chk-1' } }), { status: 201 });
       }),
     );
+    return bodies;
+  }
+
+  it('speaks as vous and names the parent when known; an unknown parent is vous and unnamed', async () => {
+    process.env[F14_ENABLED_ENV] = 'true';
+    process.env.LINQ_API_KEY = 'linq_test_key_not_a_secret';
+    const bodies = linqCapture();
     const asked = { lastAskedAt: new Date(EVENING.getTime() - 24 * 3_600_000) };
-    const expected = composeCheckInAsk({
-      first: false,
-      childNames: ['Mia', 'Leo'],
-      todayActivity: null,
-      familyId: FAMILY,
-      occasion: nightlyOccasion(EVENING, 'America/Toronto'),
-    });
+
     const named = harness({ state: asked, children: ['Mia', 'Leo'] });
     await runEveningCheckInSweep(groupDatabase('Sam'), named.deps, EVENING);
     expect(named.sent).toEqual([]);
-    expect(bodies.join('\n')).toContain(groupAddressedLine('Sam', expected.body));
+    const input = spoken(named.voice);
+    expect({ address: input.address, parent: input.facts.parentName }).toEqual({
+      address: 'vous',
+      parent: 'Sam',
+    });
+    // Both readers must know whose evening it is: the name is an anchor, not a hint.
+    expect(input.mustMention).toContain('Sam');
+    expect(bodies.join('\n')).toContain('Sam');
 
     bodies.length = 0;
     const unknown = harness({ state: asked, children: ['Mia', 'Leo'] });
     await runEveningCheckInSweep(groupDatabase(null), unknown.deps, EVENING);
     expect(unknown.sent).toEqual([]);
-    expect(bodies.join('\n')).toContain(expected.body);
-    expect(bodies.join('\n')).not.toContain('Sam,');
+    expect(spoken(unknown.voice).address).toBe('vous');
+    expect(spoken(unknown.voice).facts.parentName).toBeNull();
+    expect(spoken(unknown.voice).mustMention).toEqual(['Mia', 'Leo']);
+    expect(bodies.join('\n')).not.toContain('Sam');
   });
 
-  it('does not prefix the step-down notice', async () => {
+  it("speaks the household's language", async () => {
     process.env[F14_ENABLED_ENV] = 'true';
     process.env.LINQ_API_KEY = 'linq_test_key_not_a_secret';
-    const bodies: string[] = [];
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (_url: string, init?: RequestInit) => {
-        if (init?.body) bodies.push(String(init.body));
-        return new Response(JSON.stringify({ message: { id: 'chk-2' } }), { status: 201 });
-      }),
-    );
-    const { deps, sent } = harness({
+    linqCapture();
+    const { deps, voice } = harness({
+      state: { lastAskedAt: new Date(EVENING.getTime() - 24 * 3_600_000) },
+    });
+    await runEveningCheckInSweep(groupDatabase('Sam', 'fr-CA'), deps, EVENING);
+    expect(spoken(voice).language).toBe('fr');
+  });
+
+  it('names the parent on the step-down notice too', async () => {
+    process.env[F14_ENABLED_ENV] = 'true';
+    process.env.LINQ_API_KEY = 'linq_test_key_not_a_secret';
+    const bodies = linqCapture();
+    const { deps, sent, voice } = harness({
       state: {
         cadence: 'daily',
         lastAskedAt: new Date(EVENING.getTime() - 24 * 3_600_000),
@@ -650,7 +729,9 @@ describe('a claimed group', () => {
     });
     await runEveningCheckInSweep(groupDatabase('Sam'), deps, EVENING);
     expect(sent).toEqual([]);
-    expect(bodies.join('\n')).toContain(CHECK_IN_STEP_DOWN);
-    expect(bodies.join('\n')).not.toContain('Sam,');
+    expect(spoken(voice).kind).toBe('cadence_ack');
+    expect(spoken(voice).address).toBe('vous');
+    expect(spoken(voice).facts.parentName).toBe('Sam');
+    expect(bodies.join('\n')).toContain('Sam');
   });
 });

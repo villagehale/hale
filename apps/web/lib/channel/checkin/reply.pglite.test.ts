@@ -3,6 +3,7 @@ import { and, eq, gt } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { createDisambiguationStore } from '~/lib/channel/router/disambiguation';
+import type { EveningCheckInHandlerDeps } from '~/lib/channel/router/handlers';
 import type { OpenQuestion } from '~/lib/channel/router/open-questions';
 import { FakeReplyTransport } from '~/lib/channel/router/reply-route';
 import type { ChannelRouterDeps, HandlerContext } from '~/lib/channel/router/route';
@@ -14,21 +15,23 @@ import {
   defaultOpenQuestionReader,
   loadInboundContext,
 } from '~/lib/channel/router/wiring';
-import { nightlyOccasion } from '~/lib/channel/variant';
+import {
+  type FakeSpokenLineComposer,
+  fakeSpokenLineBody,
+  fakeSpokenLineComposer,
+} from '~/lib/channel/voice/fakes';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { type FakeCheckInIntentReader, fakeCheckInIntentReader } from './fakes';
+import type { CheckInIntentLabel } from './intent';
 import {
   CHECK_IN_ACK_TEMPLATE_KEY,
   CHECK_IN_ASK_TEMPLATE_KEY,
-  CHECK_IN_DAILY_ACK,
-  CHECK_IN_NOT_KEPT_ACK,
-  CHECK_IN_OFF_ACK,
   CHECK_IN_STEP_DOWN_TEMPLATE_KEY,
-  CHECK_IN_WEEKLY_ACK,
-  checkInNotedAck,
-} from './copy';
+} from './keys';
+import { type CheckInLineRequest, checkInLineInput } from './line-input';
 import { NOTE_RETENTION_DAYS, purgeExpiredCheckInNotes } from './notes';
 import { CHECK_IN_REOFFER_DAYS, eveningCheckInQuestion, handleEveningCheckInReply } from './reply';
 
@@ -39,6 +42,13 @@ import { CHECK_IN_REOFFER_DAYS, eveningCheckInQuestion, handleEveningCheckInRepl
  * message ledger — so a test that injected the source would be testing a stipulation.
  * `defaultOpenQuestionReader()` is what the router actually calls, and this file is the
  * only pin on that wiring.
+ *
+ * THE TWO MODEL PORTS ARE FAKES (rule #8): the intent reader answers from a small test
+ * table and echoes the reply verbatim, and the voice writes `<kind>: <facts>`. What is
+ * pinned here is the plumbing — which turns reach the reader, what a cadence change
+ * writes, where the floor ends, and that the thank-you is the voice's line or nothing.
+ * Whether the real model reads a parent well, or writes a good thank-you, is the cached
+ * evals' business (apps/worker/evals/run-checkin-*.mjs).
  */
 
 /** 20:17 Toronto on Sunday 2026-07-05, the instant the question went out. */
@@ -47,15 +57,23 @@ const ASKED_AT = new Date('2026-07-06T00:17:00.000Z');
 const ANSWERED_AT = new Date('2026-07-06T01:40:00.000Z');
 const TZ = 'America/Toronto';
 
-/**
- * The thank-you THIS household reads on THIS evening. The ack is pooled (five per
- * language, rotating once per family-local day — variant.ts), so the expected string is a
- * function of the seeded family's id and the clock rather than a constant. Computed
- * through the production selector, so a test cannot quietly disagree with the lane about
- * which member tonight is.
- */
-function notedAck(familyId: string, now: Date, language: 'en' | 'fr' = 'en'): string {
-  return checkInNotedAck(language, familyId, nightlyOccasion(now, TZ));
+/** What the fake voice says for one check-in line, in a parent's own thread. */
+function line(request: CheckInLineRequest, language: 'en' | 'fr' = 'en'): string {
+  return fakeSpokenLineBody(checkInLineInput(request, language, 'tu'));
+}
+
+const WEEKLY_ACK = line({ kind: 'cadence_ack', cadence: 'weekly', trigger: 'parent_asked' });
+const OFF_ACK = line({ kind: 'cadence_ack', cadence: 'off', trigger: 'parent_asked' });
+const DAILY_ACK = line({ kind: 'cadence_ack', cadence: 'daily', trigger: 'parent_asked' });
+const NOTED_ACK = line({ kind: 'noted_ack', kept: true });
+
+interface Ports {
+  intentReader: FakeCheckInIntentReader;
+  voice: FakeSpokenLineComposer;
+}
+
+function ports(options: Parameters<typeof fakeCheckInIntentReader>[0] = {}): Ports {
+  return { intentReader: fakeCheckInIntentReader(options), voice: fakeSpokenLineComposer() };
 }
 
 let db: TestDb;
@@ -234,25 +252,47 @@ describe('the standing question, read the way the router reads it', () => {
   });
 });
 
-describe('the three words that move the cadence', () => {
+/** One reply into the lane, with the reader's verdict already made. */
+function replyInput(
+  seeded: Seeded,
+  body: string,
+  intent: CheckInIntentLabel,
+  inbound: string,
+  voice: FakeSpokenLineComposer | undefined = fakeSpokenLineComposer(),
+) {
+  return {
+    ...seeded,
+    body,
+    intent,
+    askedAt: ASKED_AT,
+    timeZone: TZ,
+    inboundChannelMessageId: inbound,
+    now: ANSWERED_AT,
+    voice,
+  };
+}
+
+describe('a wish about the rhythm, as the reader read it', () => {
   it('moves to weekly, off and back to nightly, and never writes a note doing it', async () => {
-    for (const [body, cadence, ack] of [
-      ['LESS', 'weekly', CHECK_IN_WEEKLY_ACK.en],
-      ['no', 'off', CHECK_IN_OFF_ACK.en],
-      ['Daily.', 'daily', CHECK_IN_DAILY_ACK.en],
+    for (const [body, intent, cadence, ack] of [
+      ['not every night please', 'cadence_weekly', 'weekly', WEEKLY_ACK],
+      ['no', 'cadence_off', 'off', OFF_ACK],
+      ['can you go back to asking every day', 'cadence_daily', 'daily', DAILY_ACK],
     ] as const) {
       const seeded = await seedFamily();
       const inbound = await seedInbound(seeded, body);
-      const outcome = await handleEveningCheckInReply(db.database, {
-        ...seeded,
-        body,
-        askedAt: ASKED_AT,
-        timeZone: TZ,
-        inboundChannelMessageId: inbound,
-        now: ANSWERED_AT,
-      });
+      const voice = fakeSpokenLineComposer();
+      const outcome = await handleEveningCheckInReply(
+        db.database,
+        replyInput(seeded, body, intent, inbound, voice),
+      );
 
       expect(outcome, body).toEqual({ status: `cadence_${cadence}`, reply: ack });
+      // The receipt is told what changed and why, and what the parent said — so it can
+      // answer them without a template, and without quoting them.
+      expect(voice.calls[0]?.input.facts, body).toMatchObject({ cadence, trigger: 'parent_asked' });
+      expect(voice.calls[0]?.input.parentWords, body).toBe(body);
+      expect(voice.calls[0]?.input.questions, body).toBe(0);
       const prefs = await readPrefs(seeded.familyId);
       expect(prefs?.cadence, body).toBe(cadence);
       expect(prefs?.lastAnsweredAt, body).toEqual(ANSWERED_AT);
@@ -269,17 +309,27 @@ describe('the three words that move the cadence', () => {
   it('answers a French parent in French', async () => {
     const seeded = await seedFamily();
     const inbound = await seedInbound(seeded, 'non merci');
-    const outcome = await handleEveningCheckInReply(db.database, {
-      ...seeded,
-      // 'non merci' is not the bare keyword, so it is a SENTENCE — the point here is only
-      // that the language of the reply follows the parent's own words.
-      body: 'non',
-      askedAt: ASKED_AT,
-      timeZone: TZ,
-      inboundChannelMessageId: inbound,
-      now: ANSWERED_AT,
-    });
-    expect(outcome).toEqual({ status: 'cadence_off', reply: CHECK_IN_OFF_ACK.fr });
+    const voice = fakeSpokenLineComposer();
+    const outcome = await handleEveningCheckInReply(
+      db.database,
+      replyInput(seeded, 'non merci', 'cadence_off', inbound, voice),
+    );
+    expect(outcome).toEqual({ status: 'cadence_off', reply: OFF_ACK });
+    expect(voice.calls[0]?.input.language).toBe('fr');
+    expect(voice.calls[0]?.input.address).toBe('tu');
+  });
+
+  it('still moves the cadence when the voice cannot write the receipt, and sends nothing', async () => {
+    // The parent's decision is kept whether or not Hale can say so tonight: the write is
+    // the point, the receipt is a courtesy, and a canned receipt is not an option.
+    const seeded = await seedFamily();
+    const inbound = await seedInbound(seeded, 'no');
+    const outcome = await handleEveningCheckInReply(
+      db.database,
+      replyInput(seeded, 'no', 'cadence_off', inbound, fakeSpokenLineComposer({ fail: true })),
+    );
+    expect(outcome).toEqual({ status: 'cadence_off', reply: null });
+    expect((await readPrefs(seeded.familyId))?.cadence).toBe('off');
   });
 });
 
@@ -288,19 +338,17 @@ describe('what the parent said about their day', () => {
     const seeded = await seedFamily();
     const body = 'Park after daycare and both asleep by 7. Rare win.';
     const inbound = await seedInbound(seeded, body);
+    const voice = fakeSpokenLineComposer();
 
-    const outcome = await handleEveningCheckInReply(db.database, {
-      ...seeded,
-      body,
-      askedAt: ASKED_AT,
-      timeZone: TZ,
-      inboundChannelMessageId: inbound,
-      now: ANSWERED_AT,
-    });
-    expect(outcome).toEqual({
-      status: 'note_stored',
-      reply: notedAck(seeded.familyId, ANSWERED_AT),
-    });
+    const outcome = await handleEveningCheckInReply(
+      db.database,
+      replyInput(seeded, body, 'day_note', inbound, voice),
+    );
+    expect(outcome).toEqual({ status: 'note_stored', reply: NOTED_ACK });
+    // The thank-you knows the note was kept and what the parent wrote; the words go to
+    // the model so it can answer them, never to the wire.
+    expect(voice.calls[0]?.input.facts.kept).toBe(true);
+    expect(voice.calls[0]?.input.parentWords).toBe(body);
 
     const notes = await readNotes(seeded.familyId);
     expect(notes).toHaveLength(1);
@@ -327,16 +375,17 @@ describe('what the parent said about their day', () => {
     const seeded = await seedFamily();
     const body = 'Mia had a fever all afternoon, up half the night';
     const inbound = await seedInbound(seeded, body);
+    const voice = fakeSpokenLineComposer();
 
-    const outcome = await handleEveningCheckInReply(db.database, {
-      ...seeded,
-      body,
-      askedAt: ASKED_AT,
-      timeZone: TZ,
-      inboundChannelMessageId: inbound,
-      now: ANSWERED_AT,
+    const outcome = await handleEveningCheckInReply(
+      db.database,
+      replyInput(seeded, body, 'day_note', inbound, voice),
+    );
+    expect(outcome).toEqual({
+      status: 'not_stored_sensitive',
+      reply: line({ kind: 'noted_ack', kept: false }),
     });
-    expect(outcome).toEqual({ status: 'not_stored_sensitive', reply: CHECK_IN_NOT_KEPT_ACK.en });
+    expect(voice.calls[0]?.input.facts.kept).toBe(false);
     expect(await readNotes(seeded.familyId)).toEqual([]);
     // The answer still counts as an answer: the ladder must not punish a parent for
     // telling Hale something it chose not to keep.
@@ -348,17 +397,9 @@ describe('what the parent said about their day', () => {
   it('corrects itself rather than writing a second evening', async () => {
     const seeded = await seedFamily();
     const first = await seedInbound(seeded, 'ok day');
-    const input = {
-      ...seeded,
-      askedAt: ASKED_AT,
-      timeZone: TZ,
-      inboundChannelMessageId: first,
-      now: ANSWERED_AT,
-    };
-    await handleEveningCheckInReply(db.database, { ...input, body: 'ok day' });
+    await handleEveningCheckInReply(db.database, replyInput(seeded, 'ok day', 'day_note', first));
     await handleEveningCheckInReply(db.database, {
-      ...input,
-      body: 'actually a great day',
+      ...replyInput(seeded, 'actually a great day', 'day_note', first),
       now: new Date(ANSWERED_AT.getTime() + 120_000),
     });
     const notes = await readNotes(seeded.familyId);
@@ -366,21 +407,54 @@ describe('what the parent said about their day', () => {
     expect(notes[0]?.note).toBe('actually a great day');
   });
 
-  it('hands a question back to the coach instead of filing it as a diary entry', async () => {
+  it('files the note and sends nothing when the voice cannot write the thank-you', async () => {
+    const seeded = await seedFamily();
+    const body = 'long day, early bed';
+    const inbound = await seedInbound(seeded, body);
+    const outcome = await handleEveningCheckInReply(
+      db.database,
+      replyInput(seeded, body, 'day_note', inbound, fakeSpokenLineComposer({ fail: true })),
+    );
+    expect(outcome).toEqual({ status: 'note_stored', reply: null });
+    expect(await readNotes(seeded.familyId)).toHaveLength(1);
+  });
+
+  it('hands a request back to the coach instead of filing it as a diary entry', async () => {
     const seeded = await seedFamily();
     const body = 'Fine - can you find a swim class on Saturdays?';
     const inbound = await seedInbound(seeded, body);
-    const outcome = await handleEveningCheckInReply(db.database, {
-      ...seeded,
-      body,
-      askedAt: ASKED_AT,
-      timeZone: TZ,
-      inboundChannelMessageId: inbound,
-      now: ANSWERED_AT,
-    });
+    const outcome = await handleEveningCheckInReply(
+      db.database,
+      replyInput(seeded, body, 'request', inbound),
+    );
     expect(outcome).toEqual({ status: 'declined_to_claim' });
     expect(await readNotes(seeded.familyId)).toEqual([]);
     expect(await readAudit(seeded.familyId)).toEqual([]);
+  });
+
+  it('keeps the deterministic floor under the reader: a request read as a day note is still handed back', async () => {
+    const seeded = await seedFamily();
+    const body = 'add swim to the calendar saturday 10am';
+    const inbound = await seedInbound(seeded, body);
+    const outcome = await handleEveningCheckInReply(
+      db.database,
+      replyInput(seeded, body, 'day_note', inbound),
+    );
+    expect(outcome).toEqual({ status: 'declined_to_claim' });
+    expect(await readNotes(seeded.familyId)).toEqual([]);
+  });
+
+  it('files nothing and thanks for nothing when the reply was about nothing', async () => {
+    const seeded = await seedFamily();
+    const inbound = await seedInbound(seeded, 'thanks');
+    const voice = fakeSpokenLineComposer();
+    const outcome = await handleEveningCheckInReply(
+      db.database,
+      replyInput(seeded, 'thanks', 'other', inbound, voice),
+    );
+    expect(outcome).toEqual({ status: 'declined_to_claim' });
+    expect(voice.calls).toEqual([]);
+    expect(await readNotes(seeded.familyId)).toEqual([]);
   });
 });
 
@@ -409,8 +483,10 @@ describe('the handler in the chain', () => {
     };
   }
 
-  function handler() {
-    const found = defaultHandlers().find((each) => each.name === 'evening_check_in');
+  function handler(p: EveningCheckInHandlerDeps = ports()) {
+    const found = defaultHandlers({ eveningCheckIn: p }).find(
+      (each) => each.name === 'evening_check_in',
+    );
     if (!found) throw new Error('the evening check-in handler is not in the chain');
     return found;
   }
@@ -429,25 +505,91 @@ describe('the handler in the chain', () => {
     } as unknown as HandlerContext;
   }
 
-  it('claims a sentence only while Hale is holding the question', async () => {
+  it('claims a sentence only while Hale is holding the question, and reads it only then', async () => {
     const seeded = await seedFamily();
     const askId = await seedAsk(seeded);
     const inbound = await seedInbound(seeded, 'quiet one');
-    expect(await handler().handle(db.database, turn(seeded, 'quiet one', [], inbound))).toEqual({
+    const p = ports();
+    expect(await handler(p).handle(db.database, turn(seeded, 'quiet one', [], inbound))).toEqual({
       claimed: false,
     });
     expect(await readNotes(seeded.familyId)).toEqual([]);
 
-    const verdict = await handler().handle(
+    const verdict = await handler(p).handle(
       db.database,
       turn(seeded, 'quiet one', [evening(askId)], inbound),
     );
     expect(verdict).toEqual({
       claimed: true,
       outcome: 'note_stored',
-      reply: notedAck(seeded.familyId, ANSWERED_AT),
+      reply: NOTED_ACK,
       templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
     });
+    // The reader saw the message once — with the question open — and was told so. (The
+    // first turn above also reached it: the ask is this lane's last word, so the floor
+    // was held; it was the open-question list that was empty.)
+    expect(p.intentReader.calls.map((call) => call.questionStanding)).toEqual([false, true]);
+    expect(p.intentReader.calls[1]).toEqual({
+      reply: 'quiet one',
+      language: 'en',
+      questionStanding: true,
+      cadence: 'daily',
+    });
+  });
+
+  it('never shows the reader a message from a household it has nothing open with', async () => {
+    const seeded = await seedFamily();
+    const inbound = await seedInbound(seeded, 'no');
+    const p = ports();
+    expect(await handler(p).handle(db.database, turn(seeded, 'no', [], inbound))).toEqual({
+      claimed: false,
+    });
+    expect(p.intentReader.calls).toEqual([]);
+    expect(p.voice.calls).toEqual([]);
+  });
+
+  it('hands the turn to the coach, paged, when the reader cannot answer', async () => {
+    const seeded = await seedFamily();
+    const askId = await seedAsk(seeded);
+    const inbound = await seedInbound(seeded, 'quiet one');
+    // No key at all.
+    expect(
+      await handler({ intentReader: undefined, voice: fakeSpokenLineComposer() }).handle(
+        db.database,
+        turn(seeded, 'quiet one', [evening(askId)], inbound),
+      ),
+    ).toEqual({ claimed: false });
+    // A model that fails twice.
+    const failing = ports({ fail: true });
+    expect(
+      await handler(failing).handle(
+        db.database,
+        turn(seeded, 'quiet one', [evening(askId)], inbound),
+      ),
+    ).toEqual({ claimed: false });
+    expect(failing.intentReader.calls).toHaveLength(2);
+    expect(await readNotes(seeded.familyId)).toEqual([]);
+  });
+
+  it('does not act on a cadence read the guards threw out', async () => {
+    const seeded = await seedFamily();
+    const askId = await seedAsk(seeded);
+    const inbound = await seedInbound(seeded, 'no more of these');
+    // A paraphrased echo, and a low-confidence read: both settle to `other`.
+    for (const answer of [
+      { intent: 'cadence_off', verbatim: 'no more', rationale: 'wants out', confidence: 0.95 },
+      { intent: 'cadence_off', verbatim: 'no more of these', rationale: 'maybe', confidence: 0.4 },
+    ] as const) {
+      const p = ports({ answer: () => ({ ...answer }) });
+      expect(
+        await handler(p).handle(
+          db.database,
+          turn(seeded, 'no more of these', [evening(askId)], inbound),
+        ),
+        answer.verbatim,
+      ).toEqual({ claimed: false });
+      expect((await readPrefs(seeded.familyId))?.cadence, answer.verbatim).toBeUndefined();
+    }
   });
 
   it('hands a request back to the coach rather than filing it as a diary entry', async () => {
@@ -477,10 +619,13 @@ describe('the handler in the chain', () => {
     const askId = await seedAsk(seeded);
     const body = 'Forwarding the school newsletter for the calendar';
     const inbound = await seedInbound(seeded, body, 'email');
+    const p = ports();
     expect(
-      await handler().handle(db.database, turn(seeded, body, [evening(askId)], inbound)),
+      await handler(p).handle(db.database, turn(seeded, body, [evening(askId)], inbound)),
     ).toEqual({ claimed: false });
     expect(await readNotes(seeded.familyId)).toEqual([]);
+    // The door is checked before the model is asked.
+    expect(p.intentReader.calls).toEqual([]);
   });
 
   it('does not steal a bare NO that an open approval could have meant', async () => {
@@ -496,21 +641,27 @@ describe('the handler in the chain', () => {
   it('declines a spoken turn rather than inventing provenance for the note', async () => {
     const seeded = await seedFamily();
     const askId = await seedAsk(seeded);
+    const p = ports();
     expect(
-      await handler().handle(db.database, turn(seeded, 'lovely day', [evening(askId)], null)),
+      await handler(p).handle(db.database, turn(seeded, 'lovely day', [evening(askId)], null)),
     ).toEqual({ claimed: false });
     expect(await readNotes(seeded.familyId)).toEqual([]);
+    expect(p.intentReader.calls).toEqual([]);
   });
 });
 
 /**
- * The words every message in this lane prints have to work after the question has closed,
- * and Hale's own thank-you is what closes it. These are the moments a parent actually
- * reaches for the keyword — and the ones where the word belongs to somebody else.
+ * A wish about the rhythm has to work after the question has closed, and Hale's own
+ * thank-you is what closes it. These are the moments a parent actually says "please
+ * stop" or "can I have these back" — and the ones where those words belong to somebody
+ * else. The bodies below are what a parent types; the fake reader's table maps them the
+ * way the real one is expected to (the cached eval holds the real one to it).
  */
-describe('LESS, NO and DAILY after the question has closed', () => {
-  function handler() {
-    const found = defaultHandlers().find((each) => each.name === 'evening_check_in');
+describe('a cadence wish after the question has closed', () => {
+  function handler(p: EveningCheckInHandlerDeps = ports()) {
+    const found = defaultHandlers({ eveningCheckIn: p }).find(
+      (each) => each.name === 'evening_check_in',
+    );
     if (!found) throw new Error('the evening check-in handler is not in the chain');
     return found;
   }
@@ -529,7 +680,7 @@ describe('LESS, NO and DAILY after the question has closed', () => {
     } as unknown as HandlerContext;
   }
 
-  it("drops the evening check-ins for good when NO arrives after Hale's own thank-you", async () => {
+  it("drops the evening check-ins for good when 'no thanks' arrives after Hale's own thank-you", async () => {
     const seeded = await seedFamily();
     await seedAsk(seeded);
     // The ack Hale sent back closes the standing question — this is the state the router
@@ -545,49 +696,59 @@ describe('LESS, NO and DAILY after the question has closed', () => {
     });
     expect(await openQuestions(seeded, ANSWERED_AT)).toEqual([]);
 
-    const inbound = await seedInbound(seeded, 'NO');
+    const inbound = await seedInbound(seeded, 'no thanks');
     expect(
-      await handler().handle(db.database, turn(seeded, 'NO', [], inbound, ANSWERED_AT)),
+      await handler().handle(db.database, turn(seeded, 'no thanks', [], inbound, ANSWERED_AT)),
     ).toEqual({
       claimed: true,
       outcome: 'cadence_off',
-      reply: CHECK_IN_OFF_ACK.en,
+      reply: OFF_ACK,
       templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
     });
     expect((await readPrefs(seeded.familyId))?.cadence).toBe('off');
   });
 
-  it('switches back to nightly when DAILY arrives after the weekly notice', async () => {
+  it("switches back to nightly when 'every night please' arrives after the weekly notice", async () => {
     const seeded = await seedFamily();
-    // The step-down notice is the message that teaches DAILY, and it opens no question.
+    // The step-down notice is the message that makes the way back known, and it opens no
+    // question. The household is on weekly, so there is something to return from.
     await seedAsk(seeded, { templateKey: CHECK_IN_STEP_DOWN_TEMPLATE_KEY });
+    await db.database
+      .insert(schema.familyCheckInPrefs)
+      .values({ familyId: seeded.familyId, cadence: 'weekly' });
     expect(await openQuestions(seeded, ANSWERED_AT)).toEqual([]);
 
-    const inbound = await seedInbound(seeded, 'DAILY');
+    const inbound = await seedInbound(seeded, 'every night please');
     expect(
-      await handler().handle(db.database, turn(seeded, 'DAILY', [], inbound, ANSWERED_AT)),
+      await handler().handle(
+        db.database,
+        turn(seeded, 'every night please', [], inbound, ANSWERED_AT),
+      ),
     ).toEqual({
       claimed: true,
       outcome: 'cadence_daily',
-      reply: CHECK_IN_DAILY_ACK.en,
+      reply: DAILY_ACK,
       templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
     });
     expect((await readPrefs(seeded.familyId))?.cadence).toBe('daily');
   });
 
-  it('takes LESS the next afternoon, long after the ask lapsed', async () => {
+  it("takes 'less often please' the next afternoon, long after the ask lapsed", async () => {
     const seeded = await seedFamily();
     await seedAsk(seeded);
     const nextAfternoon = new Date('2026-07-06T18:00:00.000Z');
     expect(await openQuestions(seeded, nextAfternoon)).toEqual([]);
 
-    const inbound = await seedInbound(seeded, 'LESS');
+    const inbound = await seedInbound(seeded, 'less often please');
     expect(
-      await handler().handle(db.database, turn(seeded, 'LESS', [], inbound, nextAfternoon)),
+      await handler().handle(
+        db.database,
+        turn(seeded, 'less often please', [], inbound, nextAfternoon),
+      ),
     ).toEqual({
       claimed: true,
       outcome: 'cadence_weekly',
-      reply: CHECK_IN_WEEKLY_ACK.en,
+      reply: WEEKLY_ACK,
       templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
     });
     expect((await readPrefs(seeded.familyId))?.cadence).toBe('weekly');
@@ -610,8 +771,8 @@ describe('LESS, NO and DAILY after the question has closed', () => {
   /** 14:00 Toronto the day after ASKED_AT: the evening has lapsed. */
   const NEXT_AFTERNOON = new Date('2026-07-06T18:00:00.000Z');
 
-  it('gives a bare NO and a bare LESS back once another lane has had the last word', async () => {
-    for (const body of ['no', 'LESS']) {
+  it("gives a bare 'no' and a 'less often' back once another lane has had the last word", async () => {
+    for (const body of ['no', 'less often please']) {
       const seeded = await seedFamily();
       // Asked three weeks ago; a nudge two days ago is the last thing Hale said.
       await seedAsk(seeded, { createdAt: new Date(ASKED_AT.getTime() - 21 * 24 * 3_600_000) });
@@ -627,7 +788,7 @@ describe('LESS, NO and DAILY after the question has closed', () => {
     }
   });
 
-  it('still takes DAILY as the way back in, for thirty days after Hale slowed down', async () => {
+  it("still takes 'every night please' as the way back in, for thirty days after Hale slowed down", async () => {
     // Off the constant, a day either side of it: 21-vs-40 would hold with the window at
     // any length in between, and the window IS the rule here.
     for (const [askedDaysAgo, claimed] of [
@@ -639,22 +800,22 @@ describe('LESS, NO and DAILY after the question has closed', () => {
         createdAt: new Date(NEXT_AFTERNOON.getTime() - askedDaysAgo * 24 * 3_600_000),
       });
       await seedOtherLaneOutbound(seeded, new Date(NEXT_AFTERNOON.getTime() - 2 * 24 * 3_600_000));
-      // Hale has stopped asking — which is the only state DAILY has anything to say about.
+      // Hale has stopped asking — the only state a wish for nightly has anything to say about.
       await db.database
         .insert(schema.familyCheckInPrefs)
         .values({ familyId: seeded.familyId, cadence: 'off' });
-      const inbound = await seedInbound(seeded, 'DAILY');
+      const inbound = await seedInbound(seeded, 'every night please');
 
       const verdict = await handler().handle(
         db.database,
-        turn(seeded, 'DAILY', [], inbound, NEXT_AFTERNOON),
+        turn(seeded, 'every night please', [], inbound, NEXT_AFTERNOON),
       );
       expect(verdict, `${askedDaysAgo} days`).toEqual(
         claimed
           ? {
               claimed: true,
               outcome: 'cadence_daily',
-              reply: CHECK_IN_DAILY_ACK.en,
+              reply: DAILY_ACK,
               templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
             }
           : { claimed: false },
@@ -688,7 +849,7 @@ describe('LESS, NO and DAILY after the question has closed', () => {
           ? {
               claimed: true,
               outcome: 'cadence_off',
-              reply: CHECK_IN_OFF_ACK.en,
+              reply: OFF_ACK,
               templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
             }
           : { claimed: false },
@@ -700,9 +861,10 @@ describe('LESS, NO and DAILY after the question has closed', () => {
     }
   });
 
-  it('hands DAILY to the coach for a household that is already on nightly', async () => {
+  it("hands 'every night please' to the coach for a household that is already on nightly", async () => {
     // The reoffer window exists to un-quit a family Hale stopped asking. A family it asks
-    // every evening has nothing to return from, so the word is about something else.
+    // every evening has nothing to return from, so the words are about something else —
+    // and it is the GUARD in settleCheckInIntent that says so, whatever the reader read.
     const seeded = await seedFamily();
     await seedAsk(seeded, {
       createdAt: new Date(NEXT_AFTERNOON.getTime() - 21 * 24 * 3_600_000),
@@ -711,10 +873,13 @@ describe('LESS, NO and DAILY after the question has closed', () => {
     await db.database
       .insert(schema.familyCheckInPrefs)
       .values({ familyId: seeded.familyId, cadence: 'daily' });
-    const inbound = await seedInbound(seeded, 'DAILY');
+    const inbound = await seedInbound(seeded, 'every night please');
 
     expect(
-      await handler().handle(db.database, turn(seeded, 'DAILY', [], inbound, NEXT_AFTERNOON)),
+      await handler().handle(
+        db.database,
+        turn(seeded, 'every night please', [], inbound, NEXT_AFTERNOON),
+      ),
     ).toEqual({ claimed: false });
   });
 
@@ -727,13 +892,13 @@ describe('LESS, NO and DAILY after the question has closed', () => {
     expect(await readPrefs(seeded.familyId)).toBeUndefined();
   });
 
-  it('is a way back in and nothing more: DAILY returns, a bare NO does not', async () => {
+  it("is a way back in and nothing more: 'every night please' returns, a bare 'no' does not", async () => {
     // A stepped-down household, another lane speaking since: the reoffer window is open,
-    // and it is open for exactly one word. Without that narrowing a bare NO out here
+    // and it is open for exactly one wish. Without that narrowing a bare no out here
     // would be a cadence change filed off a word the parent meant for somebody else.
     for (const [body, claimed, cadence] of [
       ['no', false, 'weekly'],
-      ['DAILY', true, 'daily'],
+      ['every night please', true, 'daily'],
     ] as const) {
       const seeded = await seedFamily();
       await seedAsk(seeded, {
@@ -754,7 +919,7 @@ describe('LESS, NO and DAILY after the question has closed', () => {
           ? {
               claimed: true,
               outcome: 'cadence_daily',
-              reply: CHECK_IN_DAILY_ACK.en,
+              reply: DAILY_ACK,
               templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
             }
           : { claimed: false },
@@ -776,7 +941,7 @@ describe('LESS, NO and DAILY after the question has closed', () => {
     expect(await readPrefs(seeded.familyId)).toBeUndefined();
   });
 
-  it('does not read a keyword off the wrong door', async () => {
+  it('does not read a wish off the wrong door', async () => {
     const seeded = await seedFamily();
     await seedAsk(seeded);
     const inbound = await seedInbound(seeded, 'no', 'email');
@@ -835,7 +1000,7 @@ describe("the floor after Hale's own thank-you, through the real router", () => 
       database: db.database,
       loadContext: loadInboundContext,
       transport,
-      handlers: defaultHandlers(),
+      handlers: defaultHandlers({ eveningCheckIn: ports() }),
       questions: defaultOpenQuestionReader(),
       offDomain: { consider: async () => ({ status: 'in_domain', fallback: null }) },
       coach: {
@@ -924,29 +1089,26 @@ describe("the floor after Hale's own thank-you, through the real router", () => 
     return rows.map((row) => row.templateKey);
   }
 
-  it('takes NO the afternoon after an answered evening, because its own ack is the last word', async () => {
+  it("takes 'no thanks' the afternoon after an answered evening, because its own ack is the last word", async () => {
     const seeded = await seedReachable();
     await seedAsk(seeded);
 
     const answered = await text(seeded, 'quiet one', ANSWERED_AT);
     expect(answered.handler).toBe('evening_check_in');
-    expect(transport.bodies()).toEqual([notedAck(seeded.familyId, ANSWERED_AT)]);
+    expect(transport.bodies()).toEqual([NOTED_ACK]);
     // The thank-you is NAMED in the ledger — the whole of what makes the next turn work.
     expect(await outboundKeys(seeded.familyId)).toEqual([
       CHECK_IN_ASK_TEMPLATE_KEY,
       CHECK_IN_ACK_TEMPLATE_KEY,
     ]);
 
-    const dropped = await text(seeded, 'NO', NEXT_AFTERNOON);
+    const dropped = await text(seeded, 'no thanks', NEXT_AFTERNOON);
     expect(dropped.handler).toBe('evening_check_in');
-    expect(transport.bodies()).toEqual([
-      notedAck(seeded.familyId, ANSWERED_AT),
-      CHECK_IN_OFF_ACK.en,
-    ]);
+    expect(transport.bodies()).toEqual([NOTED_ACK, OFF_ACK]);
     expect((await readPrefs(seeded.familyId))?.cadence).toBe('off');
   });
 
-  it('gives that same NO to the coach once another turn has answered in between', async () => {
+  it("gives that same 'no thanks' to the coach once another turn has answered in between", async () => {
     const seeded = await seedReachable();
     await seedAsk(seeded);
 
@@ -956,7 +1118,7 @@ describe("the floor after Hale's own thank-you, through the real router", () => 
     const asked = await text(seeded, 'what is on saturday?', LATER_THAT_EVENING, 'Swim at 10.');
     expect(asked.status).toBe('agent_replied');
 
-    const declined = await text(seeded, 'NO', NEXT_AFTERNOON, 'Say more?');
+    const declined = await text(seeded, 'no thanks', NEXT_AFTERNOON, 'Say more?');
     expect(declined.handler).not.toBe('evening_check_in');
     expect((await readPrefs(seeded.familyId))?.cadence).toBe('daily');
   });
@@ -984,7 +1146,7 @@ describe("the floor after Hale's own thank-you, through the real router", () => 
     expect((await readPrefs(seeded.familyId))?.cadence).toBe('daily');
   });
 
-  it("still takes NO on the evening it asked, with another lane's nudge in between", async () => {
+  it("still takes 'no thanks' on the evening it asked, with another lane's nudge in between", async () => {
     // The positive control for the case above, and the clause the ASK earns: 20:17 the
     // question, 20:30 a nudge from somewhere else, 21:40 the parent's NO. Hale does not
     // hold the floor, but the evening it asked about is still tonight.
@@ -1001,9 +1163,9 @@ describe("the floor after Hale's own thank-you, through the real router", () => 
     });
     expect(await openQuestions(seeded, ANSWERED_AT)).toEqual([]);
 
-    const dropped = await text(seeded, 'NO', ANSWERED_AT);
+    const dropped = await text(seeded, 'no thanks', ANSWERED_AT);
     expect(dropped.handler).toBe('evening_check_in');
-    expect(transport.bodies()).toEqual([CHECK_IN_OFF_ACK.en]);
+    expect(transport.bodies()).toEqual([OFF_ACK]);
     expect((await readPrefs(seeded.familyId))?.cadence).toBe('off');
   });
 });
@@ -1012,14 +1174,10 @@ describe('the thirty-day purge', () => {
   it('destroys what is past its stamp and leaves the rest', async () => {
     const seeded = await seedFamily();
     const inbound = await seedInbound(seeded, 'good day');
-    await handleEveningCheckInReply(db.database, {
-      ...seeded,
-      body: 'good day',
-      askedAt: ASKED_AT,
-      timeZone: TZ,
-      inboundChannelMessageId: inbound,
-      now: ANSWERED_AT,
-    });
+    await handleEveningCheckInReply(
+      db.database,
+      replyInput(seeded, 'good day', 'day_note', inbound),
+    );
 
     const oneDayShort = new Date(
       ANSWERED_AT.getTime() + (NOTE_RETENTION_DAYS - 1) * 24 * 3_600_000,

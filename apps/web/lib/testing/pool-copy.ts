@@ -65,11 +65,10 @@ export function nearDuplicatePairs(
  * The auxiliaries and modals a question may not open with.
  *
  * This is the mechanical half of rule 11, and the rule is mechanical so that it CAN be a
- * test. `readCadenceWord` maps a whole-string "no" / "non" to cadence OFF and the reply
- * handler reads it before anything else (checkin/reply.ts), for as long as the lane holds
- * the floor — so "Did Mia make it to swim?" is a question a parent can answer honestly
- * and thereby turn the evening off for good, with CHECK_IN_OFF_ACK as the only notice.
- * "How did swim go?" cannot be answered "No".
+ * test. The evening lane reads a bare "no" / "non" to its question as a wish to stop being
+ * asked (checkin-intent skill, checkin/reply.ts), for as long as the lane holds the floor
+ * — so "Did Mia make it to swim?" is a question a parent can answer honestly and thereby
+ * turn the evening off for good. "How did swim go?" cannot be answered "No".
  */
 const AUXILIARY_OPENERS = [
   'did',

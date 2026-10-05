@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { judgeSpokenLine } from '~/lib/channel/voice/spoken-line';
-import {
-  absorbHowItWentLines,
-  groupAddressedLine,
-  groupBothReaderFrench,
-} from './group-coparent-copy';
+import { absorbHowItWentLines, groupBothReaderFrench } from './group-coparent-copy';
 import { type GroupLineRequest, groupLineInput } from './group-voice';
 import {
   type BusyBlock,
@@ -163,15 +159,6 @@ describe('two-reader group lines', () => {
     expect(
       judgeSpokenLine('Sam, Sunday looks open for Maya. Want one nearby idea?', saturday),
     ).toEqual({ ok: false, reason: 'invented' });
-  });
-
-  it('prefixes a known evening and leaves an unknown one alone', () => {
-    expect(
-      groupAddressedLine('Sam', 'How did today go with Mia and Leo? One line is plenty.'),
-    ).toBe('Sam, how did today go with Mia and Leo? One line is plenty.');
-    expect(groupAddressedLine('Sam', 'What was the best bit of today with Mia?')).toBe(
-      'Sam, what was the best bit of today with Mia?',
-    );
   });
 
   it('names the parent who left when stored, and hands the model no name otherwise', () => {

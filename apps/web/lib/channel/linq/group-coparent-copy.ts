@@ -4,16 +4,10 @@
  * Every line Hale says in the group is written by the model from real facts
  * (group-voice.ts, VIL-413 / VIL-417). What is left is how composed lines are
  * joined into one bubble and how a 1:1 line written for one reader is addressed
- * to two until that line is composed for the group as well.
+ * to two until that line is composed for the group as well. (The evening check-in
+ * no longer needs the `{name}, ` prefix: the model is handed the parent's name and
+ * `vous` when the line lands in the group.)
  */
-
-/** `{name}, ` then the line. The first letter after the comma is lowercase. */
-export function groupAddressedLine(name: string, line: string): string {
-  const trimmed = line.trimStart();
-  const rest =
-    trimmed.length === 0 ? trimmed : `${trimmed.charAt(0).toLowerCase()}${trimmed.slice(1)}`;
-  return `${name}, ${rest}`;
-}
 
 /**
  * A line for both parents. English stays. French tu/ton/ta/envoie-moi become

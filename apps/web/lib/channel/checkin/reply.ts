@@ -9,49 +9,33 @@ import {
   readCheckInState,
   recordCheckInAnswer,
 } from './cadence';
-import { nightlyOccasion } from '~/lib/channel/variant';
+import { CADENCE_OF_INTENT, type CheckInIntentLabel, isCadenceIntent } from './intent-reading';
 import {
   CHECK_IN_ACK_TEMPLATE_KEY,
   CHECK_IN_ASK_TEMPLATE_KEY,
-  CHECK_IN_DAILY_ACK,
-  CHECK_IN_NOT_KEPT_ACK,
-  CHECK_IN_OFF_ACK,
   CHECK_IN_STEP_DOWN_TEMPLATE_KEY,
-  CHECK_IN_WEEKLY_ACK,
-  checkInNotedAck,
-} from './copy';
+} from './keys';
 import { isNotKept, storeCheckInNote } from './notes';
 import { asksHaleForSomething } from './request';
+import { type CheckInVoice, speakCheckInLine } from './voice';
 
 /**
  * VIL-353 · WHAT THE PARENT SAYS BACK.
  *
- * Three words move the cadence and everything else is the answer itself. The two halves
- * are deliberately not symmetrical: a keyword is a decision about the product, and a
- * sentence is a fact about a family's evening, so only one of them is written down and
- * only one of them can be refused.
- */
-
-/** The three words the ask itself teaches, plus the French a francophone parent would
- * reach for. Whole-string, never a substring: "no swimming tonight" is an answer.
+ * A wish about the rhythm moves the cadence and everything else is the answer itself. The
+ * two halves are deliberately not symmetrical: a cadence wish is a decision about the
+ * product, and a sentence is a fact about a family's evening, so only one of them is
+ * written down and only one of them can be refused.
  *
- * EXPORTED so the pools are held to this map rather than to a list restated in a test
- * (docs/voice.md rule 11): "no" being read as cadence OFF before anything else looks at
- * the reply is what makes "no member may be answerable by a bare yes or no" mechanical,
- * and a seventh keyword must not be able to widen that trap in silence. */
-export const CADENCE_WORDS: Record<string, CheckInCadence> = {
-  less: 'weekly',
-  weekly: 'weekly',
-  no: 'off',
-  non: 'off',
-  daily: 'daily',
-  nightly: 'daily',
-};
-
-/** The cadence this message asks for, or null if it is not one of the words. */
-export function readCadenceWord(body: string): CheckInCadence | null {
-  return CADENCE_WORDS[body.trim().toLowerCase().replace(/[.!]+$/, '')] ?? null;
-}
+ * SINCE VIL-413 / VIL-417 THE READING IS THE MODEL'S (intent.ts), not a keyword table.
+ * Hale no longer prints LESS, NO or DAILY anywhere, so there is no word to match: the
+ * parent says "not every night, please" or "no more of these" or "can you go back to
+ * asking every day" in their own words, and the reader says which it was. This module
+ * receives that reading and does only what code should: stores the cadence, files or
+ * refuses the note, writes the audit row, and asks the voice for the one sentence back.
+ * When the voice cannot write it, NOTHING canned goes out — the write still happens, the
+ * reply is null, and #ops has been paged.
+ */
 
 export type CheckInReplyStatus =
   | 'cadence_weekly'
@@ -61,7 +45,8 @@ export type CheckInReplyStatus =
   | 'not_stored_sensitive';
 
 export type CheckInReplyOutcome =
-  | { status: CheckInReplyStatus; reply: string }
+  /** Done. `reply` is null when the voice could not write the ack (already paged). */
+  | { status: CheckInReplyStatus; reply: string | null }
   /** Not an answer to this question — the coach takes the turn (see the '?' rule). */
   | { status: 'declined_to_claim' };
 
@@ -69,6 +54,8 @@ export interface CheckInReplyInput {
   familyId: string;
   parentUserId: string;
   body: string;
+  /** What the reader said this message is (intent.ts). The handler read it once. */
+  intent: CheckInIntentLabel;
   /** When Hale asked, off the standing question — the note is filed under THAT local
    * day, so a parent answering at 00:20 is still telling Hale about yesterday. */
   askedAt: Date;
@@ -77,17 +64,24 @@ export interface CheckInReplyInput {
    * row's target. */
   inboundChannelMessageId: string;
   now: Date;
+  /** The composer every parent-facing word goes through. Undefined is a named outcome
+   * (voice_unavailable, paged), never a template. */
+  voice: CheckInVoice | undefined;
 }
 
 /**
  * Read the parent's reply, move what it moves, and say one sentence back.
  *
- * A MESSAGE ADDRESSED TO HALE IS NEVER CLAIMED (request.ts). "Fine, and can you find a
- * swim class on Saturdays?" is a parent asking Hale for something, and filing it as a
- * diary entry would answer the wrong half of their message — badly, since the coach never
- * sees it. The evening note is the cheap half of this exchange and the request is the
- * expensive one, so the ambiguity resolves toward the coach every time, and the standing
- * question simply lapses at 08:00.
+ * A MESSAGE ADDRESSED TO HALE IS NEVER CLAIMED. The reader says `request`, and the
+ * deterministic floor (request.ts) says so too for the shapes it knows — both refuse the
+ * claim, never the parent. "Fine, and can you find a swim class on Saturdays?" is a
+ * parent asking Hale for something, and filing it as a diary entry would answer the
+ * wrong half of their message — badly, since the coach never sees it. The evening note
+ * is the cheap half of this exchange and the request is the expensive one, so the
+ * ambiguity resolves toward the coach every time, and the standing question lapses.
+ *
+ * `other` IS ALSO NOT CLAIMED. "ok", "thanks", a greeting: nothing about the day was
+ * said, so nothing is filed and nothing is thanked for. The coach can say something true.
  */
 export async function handleEveningCheckInReply(
   database: Database,
@@ -97,10 +91,14 @@ export async function handleEveningCheckInReply(
   if (body === '') return { status: 'declined_to_claim' };
 
   const language = replyLanguage(input.body);
-  // The taught word first, so a keyword is never mistaken for a request or a diary line.
-  const cadence = readCadenceWord(body);
-  if (cadence !== null) return applyCheckInCadence(database, { ...input, cadence, language });
-
+  if (isCadenceIntent(input.intent)) {
+    return applyCheckInCadence(database, {
+      ...input,
+      cadence: CADENCE_OF_INTENT[input.intent],
+      language,
+    });
+  }
+  if (input.intent !== 'day_note') return { status: 'declined_to_claim' };
   if (asksHaleForSomething(body)) return { status: 'declined_to_claim' };
 
   // A sentence about the day. Screened first, because the whole point of the screen is
@@ -110,7 +108,7 @@ export async function handleEveningCheckInReply(
       await recordCheckInAnswer(tx, { familyId: input.familyId, cadence: null, now: input.now });
       await auditAnswer(tx, input, { stored: false });
     });
-    return { status: 'not_stored_sensitive', reply: CHECK_IN_NOT_KEPT_ACK[language] };
+    return { status: 'not_stored_sensitive', reply: await notedAck(input, language, false) };
   }
 
   await database.transaction(async (tx) => {
@@ -125,17 +123,24 @@ export async function handleEveningCheckInReply(
     await recordCheckInAnswer(tx, { familyId: input.familyId, cadence: null, now: input.now });
     await auditAnswer(tx, input, { stored: true });
   });
-  return {
-    status: 'note_stored',
-    reply: checkInNotedAck(language, input.familyId, nightlyOccasion(input.now, input.timeZone)),
-  };
+  return { status: 'note_stored', reply: await notedAck(input, language, true) };
 }
 
-const CADENCE_ACK: Record<CheckInCadence, Record<ReplyLanguage, string>> = {
-  weekly: CHECK_IN_WEEKLY_ACK,
-  off: CHECK_IN_OFF_ACK,
-  daily: CHECK_IN_DAILY_ACK,
-};
+/**
+ * The thank-you, in the language the parent just wrote in. The parent's words go to the
+ * model so it can answer them without quoting them; `kept` is the one fact it is told.
+ * Null when the voice could not write it: the note is already filed, nothing is sent.
+ */
+async function notedAck(
+  input: Pick<CheckInReplyInput, 'body' | 'voice'>,
+  language: ReplyLanguage,
+  kept: boolean,
+): Promise<string | null> {
+  const line = await speakCheckInLine(input.voice, { kind: 'noted_ack', kept }, language, 'tu', {
+    parentWords: input.body,
+  });
+  return line.source === 'unsent' ? null : line.body;
+}
 
 const CADENCE_STATUS: Record<CheckInCadence, CheckInReplyStatus> = {
   weekly: 'cadence_weekly',
@@ -144,15 +149,14 @@ const CADENCE_STATUS: Record<CheckInCadence, CheckInReplyStatus> = {
 };
 
 /**
- * The parent moved the dial. Nothing about their day is written — the word IS the whole
+ * The parent moved the dial. Nothing about their day is written — the wish IS the whole
  * message, and inventing a note out of it would be Hale remembering something nobody
  * said.
  *
- * EXPORTED, because the dial moves whether or not a question is standing. Every message
- * this lane sends prints "Reply NO to drop these" or "reply DAILY to switch back", and a
- * word that only worked until Hale's next sentence — its own thank-you included — would be
- * a word the parent was taught and then quietly denied. How far it does reach is
- * {@link checkInKeywordReach}.
+ * EXPORTED, because the dial moves whether or not a question is standing. The lane makes
+ * the way out and the way back known in its own voice, and a wish that only worked until
+ * Hale's next sentence — its own thank-you included — would be a way out the parent was
+ * offered and then quietly denied. How far it does reach is {@link checkInCadenceReach}.
  */
 export async function applyCheckInCadence(
   database: Database,
@@ -160,11 +164,13 @@ export async function applyCheckInCadence(
     familyId: string;
     parentUserId: string;
     inboundChannelMessageId: string;
+    body: string;
     cadence: CheckInCadence;
     language: ReplyLanguage;
     now: Date;
+    voice: CheckInVoice | undefined;
   },
-): Promise<{ status: CheckInReplyStatus; reply: string }> {
+): Promise<{ status: CheckInReplyStatus; reply: string | null }> {
   const { cadence, language } = input;
   await database.transaction(async (tx) => {
     await recordCheckInAnswer(tx, { familyId: input.familyId, cadence, now: input.now });
@@ -178,7 +184,17 @@ export async function applyCheckInCadence(
       after: { cadence },
     } as never);
   });
-  return { status: CADENCE_STATUS[cadence], reply: CADENCE_ACK[cadence][language] };
+  const line = await speakCheckInLine(
+    input.voice,
+    { kind: 'cadence_ack', cadence, trigger: 'parent_asked' },
+    language,
+    'tu',
+    { parentWords: input.body },
+  );
+  return {
+    status: CADENCE_STATUS[cadence],
+    reply: line.source === 'unsent' ? null : line.body,
+  };
 }
 
 /** Rule #6, and NOTHING the parent wrote: the row says an answer arrived and whether it
@@ -186,7 +202,7 @@ export async function applyCheckInCadence(
  * the one copy of them with a lifetime. */
 async function auditAnswer(
   tx: Pick<Database, 'insert'>,
-  input: CheckInReplyInput,
+  input: Pick<CheckInReplyInput, 'familyId' | 'parentUserId' | 'inboundChannelMessageId'>,
   after: { stored: boolean },
 ): Promise<void> {
   await tx.insert(schema.auditLog).values({
@@ -222,8 +238,8 @@ async function auditAnswer(
  * co-parent's evening is not the one Hale asked about.
  *
  * WHAT CLOSES HERE IS THE QUESTION, NOT THE KEYWORDS. A SENTENCE is only an answer while
- * this returns something; LESS, NO and DAILY reach further, because the messages that
- * teach them are still the last thing Hale said (checkInKeywordReach).
+ * this returns something; a cadence wish reaches further, because the lane's own messages
+ * are still the last thing Hale said (checkInCadenceReach).
  */
 export async function eveningCheckInQuestion(
   database: Database,
@@ -285,7 +301,7 @@ async function parentTimeZone(database: Database, parentUserId: string): Promise
 }
 
 /**
- * How long after this lane last spoke its taught words still mean what it taught them to.
+ * How long after this lane last spoke a cadence wish still belongs to it.
  *
  * It bounds BOTH clauses below. The last-word clause is a statement about the shape of the
  * conversation, and a conversation nobody has added to in a month is not one — a household
@@ -297,68 +313,68 @@ export const CHECK_IN_REOFFER_DAYS = 30;
 const REOFFER_MS = CHECK_IN_REOFFER_DAYS * 24 * 3_600_000;
 
 /**
- * HOW FAR A TAUGHT WORD REACHES — the answer to "may this lane claim LESS, NO or DAILY
- * from this parent right now".
+ * HOW FAR A CADENCE WISH REACHES — the answer to "may this lane read this parent's message
+ * as a wish about the evening question right now".
  *
- * `standing` is the lane holding the floor and the words meaning what they were taught to.
- * `reoffer` is the narrow afterwards in which DAILY alone still means something.
+ * `standing` is the lane holding the floor. `reoffer` is the narrow afterwards in which
+ * only a wish to have the nightly question BACK still means something.
  */
-export type CheckInKeywordReach =
+export type CheckInCadenceReach =
   | { reach: 'standing'; askId: string }
   | { reach: 'reoffer'; askId: string }
   | { reach: 'none' };
 
 /**
- * WHEN LESS, NO AND DAILY BELONG TO THIS LANE.
- *
- * These six words ('less', 'weekly', 'no', 'non', 'daily', 'nightly') are the broadest
- * claim in the product and they are ordinary English, so the question is not whether Hale
- * ever taught them but whether THIS is still the conversation it taught them in. The rule
- * is the floor, and it is two clauses:
+ * WHEN A CADENCE WISH BELONGS TO THIS LANE — and, since the reading is the model's, WHEN
+ * THE MODEL IS CONSULTED AT ALL: a reply from a family this lane has no floor with and no
+ * open question for is never shown to the reader, so no sentence can be mistaken for a
+ * wish about a question nobody asked. "No" and "less" are ordinary English, so the
+ * question is not whether a parent said them but whether THIS is still the conversation
+ * the evening question lives in. The rule is the floor, and it is two clauses:
  *
  *   · THE LANE HAS THE LAST WORD — its ask, its step-down notice or ONE OF ITS OWN ACKS is
  *     the most recent outbound of any kind to this parent, and it spoke inside
- *     {@link CHECK_IN_REOFFER_DAYS}. Hale's last sentence to them was "How did today go?"
- *     or "Noted - thanks", so 'no' is an answer to that and to nothing else, whether it
- *     comes back in a minute or the following afternoon.
+ *     {@link CHECK_IN_REOFFER_DAYS}. Hale's last sentence to them was the evening question
+ *     or its thank-you, so "no more of these" is about that and about nothing else,
+ *     whether it comes back in a minute or the following afternoon.
  *
  *     THE ACKS ARE IN THAT LIST BECAUSE THE FLOOR IS NOT A QUESTION. A parent who answers
  *     the evening question gets a thank-you, and a thank-you is an outbound — so without
  *     it, every ANSWERED evening ended this lane's claim on its own words the moment it
- *     said thank you, and the NO that came the next afternoon went to the coach while the
- *     nightly message kept arriving. Hale hearing a parent out must not cost the parent
- *     the way to stop being asked.
+ *     said thank you, and the "please stop these" that came the next afternoon went to
+ *     the coach while the nightly message kept arriving. Hale hearing a parent out must
+ *     not cost the parent the way to stop being asked.
  *   · OR THE EVENING IT ASKED ABOUT IS STILL OPEN — `askStillStanding` measured from
  *     THE ASK, this local evening through 08:00 the next morning. The narrow clause the
  *     one above cannot cover: a household Hale texts about something else at 21:00 still
- *     gets to say NO to tonight's question.
+ *     gets to turn tonight's question off.
  *
  *     FROM THE ASK, BECAUSE ONLY AN ASK HAS AN EVENING. An ack goes out whenever the
  *     parent happens to write, breakfast included, and `askStillStanding` holds for the
  *     whole local calendar day of what it is given — so measuring this clause from an ack
  *     would widen "the evening" to "the rest of today, whoever has spoken since", and a
- *     bare NO typed at the coach at 10:05 would be filed as a cadence change. The ack
+ *     bare no typed at the coach at 10:05 would be read as a cadence wish. The ack
  *     keeps the floor under the clause above, where the test is who spoke LAST; it does
  *     not open a window of its own.
  *
- * OUTSIDE BOTH, LESS AND NO GO WHERE THEY WENT BEFORE THIS LANE EXISTED — to the coach.
+ * OUTSIDE BOTH, THE MESSAGE GOES WHERE IT WENT BEFORE THIS LANE EXISTED — to the coach.
  * A bare 'no' three weeks after an ask, with another lane's message in between and nothing
  * open, is a parent declining something else; claiming it filed a cadence change and
- * swallowed the turn. The lane loses a keyword it had no business holding; it does not
+ * swallowed the turn. The lane loses a reading it had no business making; it does not
  * lose an opt-out, because the opt-out is STOP and that never came near here.
  *
- * DAILY IS THE ONE EXCEPTION, and only as a way BACK IN: a household Hale has stepped down
- * or gone quiet on hears from this lane weekly or never, so the two clauses above can only
- * be false for them — and a dormant family with no route back is a feature that cannot be
- * un-quit. So DAILY is honoured while the cadence is not already daily (there is something
- * to return from) and this lane spoke inside {@link CHECK_IN_REOFFER_DAYS}. Past that the
- * word is stale and the coach takes it, which is also where a family who said NO last
- * spring gets their answer.
+ * THE WAY BACK IN IS THE ONE EXCEPTION: a household Hale has stepped down or gone quiet on
+ * hears from this lane weekly or never, so the two clauses above can only be false for
+ * them — and a dormant family with no route back is a feature that cannot be un-quit. So
+ * a wish for the nightly question back is honoured while the cadence is not already daily
+ * (there is something to return from) and this lane spoke inside
+ * {@link CHECK_IN_REOFFER_DAYS}. Past that the floor is stale and the coach takes the
+ * turn, which is also where a family who turned this off last spring gets their answer.
  */
-export async function checkInKeywordReach(
+export async function checkInCadenceReach(
   database: Database,
   input: { familyId: string; parentUserId: string; now: Date },
-): Promise<CheckInKeywordReach> {
+): Promise<CheckInCadenceReach> {
   const last = await lastCheckInMessageToParent(database, input);
   if (last === null) return { reach: 'none' };
   const spokeRecently = input.now.getTime() - last.createdAt.getTime() <= REOFFER_MS;
@@ -398,7 +414,7 @@ export async function checkInKeywordReach(
  * looking like one that never was, and it is exactly that family whose NO must work.
  *
  * ALL THREE OF THIS LANE'S TEMPLATE KEYS, and the set is what "this lane" MEANS here — the
- * question, the step-down notice that teaches DAILY, and the acks, which is how the lane
+ * question, the step-down notice, and the acks, which is how the lane
  * keeps the floor after thanking a parent for answering. The keys are namespaced, so they
  * identify the sender on their own; the category is not asked for, because an ack is a
  * `reply` row written by the router and matching on `evening_check_in` would find only the

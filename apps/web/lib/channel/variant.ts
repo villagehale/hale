@@ -4,9 +4,10 @@ import { localDaysBetween } from '~/lib/channel/checkin/cadence';
 /**
  * WHICH SENTENCE THIS FAMILY READS TONIGHT — a rotation, never a draw.
  *
- * A message a household reads every evening of their life cannot be one sentence, and it
- * cannot be a model call either (checkin/copy.ts states that trade). What is left is a
- * pool of reviewed sentences and something that picks one, and the shape of that
+ * A message a household reads every evening of their life cannot be one sentence. Where a
+ * lane still rotates reviewed sentences (the reminder core; the evening check-in moved to
+ * the model's voice in VIL-413 / VIL-417), what is left is a pool and something that picks
+ * one, and the shape of that
  * something is already decided in this repo: `Math.random` appears NOWHERE in production
  * source, and the one injected default that could has its reason attached — "a sweep
  * nobody can make deterministic is a sweep nobody can prove is spaced"

@@ -109,13 +109,8 @@ const WEB_ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/,
  */
 const SMS_COPY_SOURCES = [
   'lib/channel/router/copy.ts',
-  // VIL-353's nightly lane. Its own copy.test.ts measures segments by hand, which only
-  // ever covers the strings somebody remembered to list there; this scan is what makes a
-  // new pool member with a curly apostrophe in it a failing test rather than a doubled
-  // carrier bill on every evening, forever.
-  'lib/channel/checkin/copy.ts',
-  // VIL-366. The locked how-it-went sentence, EN and the GSM-7 ASCII FR twin.
-  'lib/channel/how-it-went-copy.ts',
+  // VIL-353's nightly lane is no longer here: since VIL-413 / VIL-417 every word of it is
+  // the model's (checkin/line-input.ts), judged against its own budget at compose time.
   'lib/channel/intake/copy.ts',
   // The one deterministic line the first reply appends under the radar message. Its FR
   // twin is written and unwired, which is exactly the shape this scan exists for: a `ç`

@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { PRIVATE_EVENT_WHAT } from '~/lib/channel/coach/tools';
 import { F14_ENABLED_ENV } from '~/lib/channel/f14';
 import {
   FOLLOWUP_ASKS_ENABLED_ENV,
@@ -10,9 +11,9 @@ import {
   runFollowupSweep,
 } from '~/lib/channel/followup/run';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { PRIVATE_EVENT_WHAT } from '~/lib/channel/coach/tools';
-import { CHECK_IN_ASK_TEMPLATE_KEY } from './copy';
+import { CHECK_IN_ASK_TEMPLATE_KEY } from './keys';
 import { eveningCheckInQuestion } from './reply';
 import {
   CHECK_IN_ANCHOR_ENABLED_ENV,
@@ -138,10 +139,11 @@ async function seedEvent(input: {
 }
 
 /**
- * The real deps, with only the four things a test cannot have: the phone network, the
- * consent/enrolment state the gate reads from tables this test does not seed, and the
- * registration ladder. Selection, the children read, the dedupe key, the ledger write and
- * the prefs write are all production code.
+ * The real deps, with only the five things a test cannot have: the phone network, the
+ * consent/enrolment state the gate reads from tables this test does not seed, the
+ * registration ladder, and the model (rule #8: the deterministic fake writes
+ * `<kind>: <facts>`, so the facts can be found in the wire body). Selection, the children
+ * read, the dedupe key, the ledger write and the prefs write are all production code.
  */
 function prodDeps(
   sent: Array<{ to: string; body: string }>,
@@ -149,6 +151,7 @@ function prodDeps(
 ): EveningCheckInDeps {
   return {
     ...defaultEveningCheckInDeps(),
+    voice: fakeSpokenLineComposer(),
     buildGate: (database) => ({
       ...buildOutboundGatePorts(database),
       channelEnrolled: async () => true,
@@ -190,9 +193,9 @@ describe('who the sweep actually selects, and what it may call their children', 
     const first = await runEveningCheckInSweep(db.database, prodDeps(sent), TORONTO_EVENING);
     expect({ inSlot: first.inSlot, asked: first.asked }).toEqual({ inSlot: 1, asked: 1 });
     expect(sent).toHaveLength(1);
-    // The four-year-old is named; the fourteen-year-old is not, and the sentence reads as
+    // The four-year-old is named; the fourteen-year-old is not, and the facts read as
     // though she were the only child on file (rule #1).
-    expect(sent[0]?.body).toContain('with Mia?');
+    expect(sent[0]?.body).toBe('first_ask: Mia?');
     expect(sent[0]?.body).not.toContain('Noah');
 
     const [ask] = await db.database
@@ -401,7 +404,8 @@ describe('what the evening question may name', () => {
     expect(teen.anchor.anchored).toBe(0);
     expect(teen.body).not.toContain('orthodontist');
     expect(teen.body).not.toContain(PRIVATE_EVENT_WHAT);
-    expect(teen.body).toContain('the kids');
+    // Nobody to name and nothing to name: the day question with no facts at all.
+    expect(teen.body).toBe('later_ask: ?');
 
     await db.exec('truncate table families, users cascade');
     const sibling = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
@@ -556,8 +560,9 @@ describe('what the evening question may name', () => {
       childId: long.childIds.Mia as string,
     });
     const oversized = await anchorCounts();
-    expect(oversized.anchor.over_segment).toBe(1);
+    expect(oversized.anchor.over_budget).toBe(1);
     expect(oversized.body).toContain('Mia');
+    expect(oversized.body).not.toContain('Stouffville');
   });
 
   it("is off unless the flag is exactly 'true' — a trailing newline is not", async () => {

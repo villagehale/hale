@@ -17,7 +17,9 @@ import { type DeepResearchQueue, dispatchDeepResearch } from '~/lib/channel/acti
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
 import { INVITE_SILENCE_MS, loadPendingAssent } from '~/lib/channel/caregiver/invites';
+import { defaultCheckInIntentReader } from '~/lib/channel/checkin/intent';
 import { answeredOnTheSameChannel, eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
+import { defaultCheckInVoice } from '~/lib/channel/checkin/voice';
 import { productionChannelCoach } from '~/lib/channel/coach/runtime';
 import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
 import { forwardRevokeAsk } from '~/lib/channel/email/forward-request';
@@ -71,6 +73,7 @@ import { createTurnApology } from './apology';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { createDisambiguationStore } from './disambiguation';
 import {
+  type EveningCheckInHandlerDeps,
   approvalHandler,
   coParentAssentHandler,
   coParentNumberHandler,
@@ -361,11 +364,20 @@ function refused(error: string): SpineOutcome {
 }
 
 /**
+ * What a test may swap under the shipped chain. Only the ports that reach a model: the
+ * evening lane's reply reader and its voice (rule #8 keeps the model itself out of unit
+ * tests; the eval suite judges it). Everything else in the chain is production wiring.
+ */
+export interface DefaultHandlersOptions {
+  eveningCheckIn?: Partial<EveningCheckInHandlerDeps>;
+}
+
+/**
  * The handler chain, in the order it runs — narrow claimers before broad ones. See
  * handlers.ts for why "yes" resolves the way it does, why registration is late, and why
  * the name capture is the one thing behind it.
  */
-export function defaultHandlers(): DeterministicHandler[] {
+export function defaultHandlers(options: DefaultHandlersOptions = {}): DeterministicHandler[] {
   return [
     villageIntroHandler(defaultVillageIntroReplyDeps()),
     approvalHandler(defaultApprovalSpine()),
@@ -420,8 +432,19 @@ export function defaultHandlers(): DeterministicHandler[] {
     nameCaptureHandler(defaultNameCaptureDeps()),
     // BEHIND EVERY SHAPE MATCHER, because it is the only handler that claims a whole
     // sentence — see its own note. It still runs ahead of the canary, so every decline
-    // path above it is exercised before the probe turn.
-    eveningCheckInHandler(),
+    // path above it is exercised before the probe turn. Its reader and its voice are
+    // both built lazily from the environment: a missing key is a named outcome inside
+    // the lane (nothing claimed, #ops paged), never a thrown route.
+    eveningCheckInHandler({
+      intentReader:
+        options.eveningCheckIn && 'intentReader' in options.eveningCheckIn
+          ? options.eveningCheckIn.intentReader
+          : defaultCheckInIntentReader(),
+      voice:
+        options.eveningCheckIn && 'voice' in options.eveningCheckIn
+          ? options.eveningCheckIn.voice
+          : defaultCheckInVoice(),
+    }),
     // LAST, and that placement is the mechanism rather than a tidy tail: the
     // probe turn is only evidence if it runs every handler's decline path
     // first — including the registration reader, which is where every turn
