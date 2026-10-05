@@ -83,11 +83,18 @@ describe('parent call name on postgres', () => {
       status: 'queued',
       sentAt: new Date('2026-09-22T15:00:00.000Z'),
     });
-    const yes = await handleParentCallNameReply(db.database, {
-      familyId: a.familyId,
-      parentUserId: a.userId,
-      body: 'yes',
-    });
+    const yes = await handleParentCallNameReply(
+      db.database,
+      { familyId: a.familyId, parentUserId: a.userId, body: 'yes' },
+      {
+        read: async () => ({
+          reply: 'MODEL REPLY',
+          parentName: null,
+          nameConfirmed: true,
+          parentRole: null,
+        }),
+      },
+    );
     expect(yes.status).toBe('answered');
 
     const [confirmed] = await db.database

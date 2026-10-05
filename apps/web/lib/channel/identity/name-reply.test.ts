@@ -1,6 +1,5 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it } from 'vitest';
-import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
 import {
   type NameCaptureDeps,
   type NameCaptureWrite,
@@ -87,28 +86,40 @@ describe('soleGivenName', () => {
 describe('handleNameCaptureReply', () => {
   function deps(overrides: Partial<NameCaptureDeps> & { write?: NameCaptureWrite } = {}) {
     const captured: string[] = [];
+    const said: { name: string; parentWords: string }[] = [];
     const base: NameCaptureDeps = {
       wasAsked: async () => true,
       capture: async (_db, input) => {
         captured.push(input.name);
         return overrides.write ?? 'stored';
       },
+      say: async (input) => {
+        said.push(input);
+        return 'MODEL RECEIPT';
+      },
     };
-    return { deps: { ...base, ...overrides } as NameCaptureDeps, captured };
+    return { deps: { ...base, ...overrides } as NameCaptureDeps, captured, said };
   }
 
   const turn = (body: string) => ({ familyId: FAMILY, parentUserId: PARENT, body, now: NOW });
 
-  it('stores the name and acks it without reading it back', async () => {
-    const { deps: d, captured } = deps();
+  it('stores the name and hands the model the name and the parent words for the receipt', async () => {
+    const { deps: d, captured, said } = deps();
 
     const outcome = await handleNameCaptureReply(DB, turn("I'm Dana"), d);
 
     expect(captured).toEqual(['Dana']);
-    expect(outcome).toEqual({ status: 'captured', reply: NAME_CAPTURED_REPLY });
-    // The receipt says what changed, never the value: a recognizer that took the wrong
-    // word would otherwise make Hale look like it misheard twice.
-    expect(NAME_CAPTURED_REPLY).not.toContain('Dana');
+    expect(outcome).toEqual({ status: 'captured', reply: 'MODEL RECEIPT' });
+    expect(said).toEqual([{ name: 'Dana', parentWords: "I'm Dana" }]);
+  });
+
+  it('a failed receipt compose still stores the name and reports a null reply', async () => {
+    const { deps: d, captured } = deps({ say: async () => null });
+
+    const outcome = await handleNameCaptureReply(DB, turn("I'm Dana"), d);
+
+    expect(captured).toEqual(['Dana']);
+    expect(outcome).toEqual({ status: 'captured', reply: null });
   });
 
   it('falls through when Hale never asked this family for a name', async () => {
