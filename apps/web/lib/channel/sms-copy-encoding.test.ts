@@ -3,11 +3,7 @@ import { fileURLToPath } from 'node:url';
 import type { ActionType } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
-import { connectorOfferReply, connectorRevokeReply } from '~/lib/channel/connect/copy';
-import {
-  matchConnectorDisconnectRequest,
-  matchConnectorRequest,
-} from '~/lib/channel/connect/detect';
+import { matchConnectorDisconnectRequest } from '~/lib/channel/connect/detect';
 import { CONNECTOR_CONNECTED_TEXT, CONNECTOR_TRUST_LINE } from '~/lib/channel/connect/text-connect';
 import {
   forwardAddressReply,
@@ -126,7 +122,6 @@ const SMS_COPY_SOURCES = [
   // what makes a NEW French sentence with a `ç` or a `ê` in it a failing test.
   'lib/channel/coparent/copy.ts',
   'lib/channel/join/copy.ts',
-  'lib/channel/connect/copy.ts',
   'lib/channel/connect/text-connect.ts',
   'lib/channel/inbound-copy.ts',
   'lib/channel/founder/copy.ts',
@@ -379,43 +374,6 @@ describe('the co-parent join copy stays GSM-7 and inside two segments', () => {
 });
 
 /**
- * The connector offer, rendered — the other deterministic body that carries a URL Hale
- * did not write. The link is the payload (a single-use, 15-minute sign-in token), so the
- * gates are GSM-7 once rendered and the WHOLE link present. The unverified-app line
- * sits in front of the link, which is why the ceiling is two segments rather than one.
- */
-describe('the connector offer stays GSM-7 and inside two segments, twins in lockstep', () => {
-  // Representative of the real mint: 16 bytes base64url is 22 characters, plus the
-  // `&to=` deep link the redeem page needs to skip Settings.
-  const URL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ&to=gmail';
-  const PROVIDERS = ['gcal', 'gmail', 'gdrive'] as const;
-  const LANGUAGES = ['en', 'fr'] as const;
-
-  it.each(
-    LANGUAGES.flatMap((language) => PROVIDERS.map((provider) => [language, provider] as const)),
-  )('%s / %s', (language, provider) => {
-    const body = connectorOfferReply(language, provider, URL);
-    expect({
-      encoding: smsEncoding(body),
-      overBudget: smsSegments(body) > 2,
-      carriesWholeLink: body.includes(URL),
-    }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeLink: true });
-  });
-
-  /** The twins are twins: same link, same window, different words — so a copy edit that
-   * touches one language and forgets the other fails here rather than in a thread. */
-  it('keeps the EN and FR twins in lockstep on the facts', () => {
-    for (const provider of PROVIDERS) {
-      const en = connectorOfferReply('en', provider, URL);
-      const fr = connectorOfferReply('fr', provider, URL);
-      expect(en).not.toBe(fr);
-      expect(en).toContain('15');
-      expect(fr).toContain('15');
-    }
-  });
-});
-
-/**
  * The day-one connector offer intake sends behind the consent acknowledgment — two
  * links, a longer sentence, and therefore a different ceiling.
  *
@@ -506,9 +464,6 @@ describe('the intake connector offer stays GSM-7 and inside three segments', () 
       expect(body).toMatch(/&to=gcal\b/);
       expect(body).toMatch(/&to=gmail\b/);
     }
-    // The words still work for a parent who ignored the message and asks later.
-    expect(matchConnectorRequest('connect my gmail')).toBe('gmail');
-    expect(matchConnectorRequest('connecter mon Gmail')).toBe('gmail');
   });
 
   /** The characters the French twin may not use, named — the same refusals the rest of
@@ -555,67 +510,10 @@ describe('the connector receipt stays one GSM-7 segment and says how to undo it'
 });
 
 /**
- * THE DISCONNECT RECEIPTS, both twins, all three outcomes.
- *
- * Two gates in one suite. The alphabet, because the French twins carry the accents
- * GSM-7 does have and one circumflex would halve the segment (70 characters instead of
- * 160) on the longest sentence Hale sends about custody. And the CONTENT, because the
- * removal URL is the only defence against the failure this copy exists for: a parent
- * who disconnects by text, checks their Google account, sees Hale still listed and
- * concludes nothing happened. Hale does not call Google's revoke endpoint, so a receipt
- * that dropped that clause would be claiming something untrue.
- *
- * The French 'revoked' twin has SIX characters of headroom at the longest provider
- * noun. That is not slack — it is the reason this suite renders the copy rather than
- * scanning the file: a word added in review is a second segment on every French
- * disconnect, forever.
+ * The disconnect receipts themselves are the model's now (connect/voice.ts, judged by
+ * the connect-voice eval); what stays locked here is the card copy around the door.
  */
-describe('the disconnect receipts stay one GSM-7 segment and say what Google still holds', () => {
-  const OUTCOMES = ['revoked', 'not_connected', 'revoke_failed'] as const;
-  const PROVIDERS = ['gcal', 'gmail', 'gdrive'] as const;
-  const RENDERED = (['en', 'fr'] as const).flatMap((language) =>
-    OUTCOMES.flatMap((outcome) =>
-      PROVIDERS.map(
-        (provider) =>
-          [
-            `${language}/${outcome}/${provider}`,
-            connectorRevokeReply(language, provider, outcome),
-          ] as const,
-      ),
-    ),
-  );
-
-  it.each(RENDERED)('%s', (_name, body) => {
-    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
-      encoding: 'gsm7',
-      segments: 1,
-    });
-  });
-
-  it.each(['en', 'fr'] as const)('the %s revoked twin carries the removal URL', (language) => {
-    for (const provider of PROVIDERS) {
-      expect(connectorRevokeReply(language, provider, 'revoked')).toContain(
-        'myaccount.google.com/permissions',
-      );
-    }
-    // Positive control for the absence below: the revoked twin really is the one that
-    // carries it, so "the others do not" is a fact about them.
-    expect(connectorRevokeReply(language, 'gcal', 'not_connected')).not.toContain(
-      'myaccount.google.com',
-    );
-  });
-
-  /** The failure twin exists in French, and is not the English one. `failureReply()`
-   * takes no language, so without a local twin the French parent would read an English
-   * sentence at the worst moment of the turn. */
-  it('answers a failed disconnect in the language the parent wrote in', () => {
-    const en = connectorRevokeReply('en', 'gcal', 'revoke_failed');
-    const fr = connectorRevokeReply('fr', 'gcal', 'revoke_failed');
-    expect(fr).not.toBe(en);
-    expect(fr).toContain('rien');
-    expect(en).toContain('nothing was changed');
-  });
-
+describe('the connect card around the disconnect door', () => {
   /** The trust line is not a command. A parent can still disconnect by saying so. */
   it('does not teach a disconnect phrase on the connect card', () => {
     expect(CONNECTOR_TRUST_LINE.gcal).toBe(

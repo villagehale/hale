@@ -4,8 +4,10 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { connectorDisconnectHandler } from '~/lib/channel/router/handlers';
 import type { HandlerContext, HandlerVerdict } from '~/lib/channel/router/route';
+import { fakeSpokenLineBody, fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { saveConnection } from '~/lib/integrations/store';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { type ConnectLineRequest, GOOGLE_PERMISSIONS_URL, connectLineInput } from './line-input';
 
 /**
  * DISCONNECT BY TEXT, against the real DDL — the one deterministic turn in the product
@@ -77,8 +79,13 @@ function turn(body: string): HandlerContext {
   };
 }
 
-function text(body: string): Promise<HandlerVerdict> {
-  return connectorDisconnectHandler().handle(db.database, turn(body));
+function text(body: string, voice = fakeSpokenLineComposer()): Promise<HandlerVerdict> {
+  return connectorDisconnectHandler({ voice }).handle(db.database, turn(body));
+}
+
+/** The fake voice's exact prose for a request (rule #8: the real model's is the eval's job). */
+function spoken(request: ConnectLineRequest, language: 'en' | 'fr' = 'en'): string {
+  return fakeSpokenLineBody(connectLineInput(request, language));
 }
 
 async function rowFor(userId: string, provider: 'gcal' | 'gmail' = 'gcal') {
@@ -117,7 +124,10 @@ describe('disconnect by text, end to end', () => {
     const verdict = await text('disconnect my calendar');
 
     expect(verdict).toMatchObject({ claimed: true, outcome: 'revoked' });
-    expect(verdict.claimed && verdict.reply).toContain('myaccount.google.com/permissions');
+    // The model's line, then the one URL code owns: where Google still lists Hale.
+    expect(verdict.claimed && verdict.reply).toBe(
+      `${spoken({ kind: 'revoked', account: 'gcal' })}\n${GOOGLE_PERMISSIONS_URL}`,
+    );
     expect(await rowFor(family.parentUserId)).toEqual({ status: 'revoked', enc: null });
 
     const rows = await revokeRows();
@@ -181,7 +191,7 @@ describe('disconnect by text, end to end', () => {
     const again = await text('disconnect my calendar');
 
     expect(again).toMatchObject({ claimed: true, outcome: 'not_connected' });
-    expect(again.claimed && again.reply).toContain('nothing to disconnect');
+    expect(again.claimed && again.reply).toBe(spoken({ kind: 'not_connected', account: 'gcal' }));
     expect(await revokeRows()).toHaveLength(1);
   });
 
@@ -198,7 +208,25 @@ describe('disconnect by text, end to end', () => {
     const verdict = await text('deconnectez mon agenda svp');
 
     expect(verdict).toMatchObject({ claimed: true, outcome: 'revoked' });
-    expect(verdict.claimed && verdict.reply).toContain('Google Agenda est déconnecté');
+    expect(verdict.claimed && verdict.reply).toContain(
+      spoken({ kind: 'revoked', account: 'gcal' }, 'fr'),
+    );
+    expect(verdict.claimed && verdict.reply).toContain('Google Agenda');
+  });
+
+  /**
+   * THE ACT STILL HAPPENS WHEN THE WORDS CANNOT. A voice outage must not stop a parent
+   * ending their own grant; it only stops the receipt. Nothing is texted — no English
+   * template, no "Done" — the outcome is named and #ops is paged by the engine.
+   */
+  it('revokes even when the line cannot be written, and sends nothing (voice_unsent)', async () => {
+    await connect(family.parentUserId);
+
+    const verdict = await text('disconnect my calendar', fakeSpokenLineComposer({ fail: true }));
+
+    expect(verdict).toEqual({ claimed: true, outcome: 'voice_unsent', reply: null });
+    expect(await rowFor(family.parentUserId)).toEqual({ status: 'revoked', enc: null });
+    expect(await revokeRows()).toHaveLength(1);
   });
 
   /**
@@ -209,9 +237,9 @@ describe('disconnect by text, end to end', () => {
    * column nobody fills. That detector needs two distinct French markers before it will
    * say 'fr', and a disconnect instruction is short: "arrete de synchroniser mon
    * calendrier" is unmistakably French to a human and reads as English to the detector,
-   * so the act is right and the words are the English twin. The fix belongs in
-   * language.ts, where it would change every deterministic reply at once, and not in
-   * this handler - a second language source for one surface is how two of them drift.
+   * so the act is right and the model is asked for English. The fix belongs in
+   * language.ts, where it would change every reply at once, and not in this handler -
+   * a second language source for one surface is how two of them drift.
    */
   it('still ACTS on a French instruction the shared detector reads as English', async () => {
     await connect(family.parentUserId);
@@ -220,7 +248,9 @@ describe('disconnect by text, end to end', () => {
 
     expect(verdict).toMatchObject({ claimed: true, outcome: 'revoked' });
     expect(await rowFor(family.parentUserId)).toEqual({ status: 'revoked', enc: null });
-    expect(verdict.claimed && verdict.reply).toContain('Google Calendar is disconnected');
+    expect(verdict.claimed && verdict.reply).toContain(
+      spoken({ kind: 'revoked', account: 'gcal' }),
+    );
   });
 
   /** A command, not an answer: it consults no open question and reads no bare word, so

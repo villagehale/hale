@@ -17,16 +17,26 @@ import {
   handleEveningCheckInReply,
 } from '~/lib/channel/checkin/reply';
 import type { CheckInVoice } from '~/lib/channel/checkin/voice';
-import { connectorOfferReply, connectorRevokeReply } from '~/lib/channel/connect/copy';
 import {
   type ConnectOfferTarget,
   connectOfferTarget,
   matchConnectorDisconnectRequest,
-  matchConnectorRequest,
   matchFreshConnectorFollowUp,
 } from '~/lib/channel/connect/detect';
 import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
+import {
+  PROVIDER_OF_INTENT,
+  type RequestIntentReader,
+  isConnectIntent,
+  readRequestIntent,
+} from '~/lib/channel/connect/request-intent';
 import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
+import {
+  type ConnectLineRequest,
+  type ConnectVoice,
+  GOOGLE_PERMISSIONS_URL,
+  speakConnectLine,
+} from '~/lib/channel/connect/voice';
 import { type EmailCaptureDeps, handleEmailCaptureReply } from '~/lib/channel/email-capture/reply';
 import { emailInboundConfig } from '~/lib/channel/email/config';
 import {
@@ -55,7 +65,6 @@ import {
   type ParentCallNameVoice,
   handleParentCallNameReply,
 } from '~/lib/channel/identity/parent-call-name';
-import { intakeConnectorOffer } from '~/lib/channel/intake/copy';
 import { replyLanguage } from '~/lib/channel/language';
 import {
   type CoParentNumberDeps,
@@ -70,6 +79,7 @@ import {
   handleEmailAlertOfferReply,
   resolveEmailAlertOffer,
 } from '~/lib/integrations/email-alert-offer';
+import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
 import {
   type PrepareReplyDeps,
@@ -83,7 +93,7 @@ import {
   handleVillageIntroReply,
 } from '~/lib/village/intros/reply';
 import { type ApprovalSpine, resolveApproval } from './approval';
-import { checkupDraftedReply, failureReply, healthDoneReply } from './copy';
+import { checkupDraftedReply, healthDoneReply } from './copy';
 import { matchFastPath } from './fast-path';
 import { type OpenQuestion, type OpenQuestionKind, soleOpenKind } from './open-questions';
 import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './route';
@@ -297,29 +307,35 @@ export function emailCaptureHandler(deps: EmailCaptureDeps): DeterministicHandle
 /**
  * A plain ask to connect Google Calendar, Gmail or Drive (the connector handoff).
  *
- * PLACED AFTER the email capture and BEFORE the three bare-affirmative claimers, and
- * the position costs nothing either way: it claims only a message carrying an explicit
- * connect-verb + provider-noun pair (connect/detect.ts), a shape no other handler's
- * vocabulary contains and no bare word can be. What the position buys is the same
- * thing every deterministic handler buys — the model never sees the ask, so the answer
- * is a REAL link minted this turn rather than a composed sentence about one (the
- * registration-context failure class, closed the way the referral tool closed its own:
- * with a fact instead of an instruction).
+ * PLACED AFTER the email capture and BEFORE the three bare-affirmative claimers. It
+ * claims only a message the MODEL reads as a connect request (connect/request-intent.ts,
+ * VIL-413 / VIL-417 — the verb+noun regex is gone), through a verbatim guard and a 0.7
+ * confidence floor, and a bare word can never be one. What the position buys is the same
+ * thing every deterministic handler buys — the answer is a REAL link minted this turn
+ * rather than a composed sentence about one (the registration-context failure class,
+ * closed with a fact instead of an instruction).
+ *
+ * THE READ COSTS ONE CLASSIFY-LANE CALL PER INBOUND that reaches this handler. The
+ * fresh-link follow-up ("new link", "it expired") is still a cheap shape match run first,
+ * and a prior offer found that way skips the read. A reader with no key names
+ * `reader_unavailable` (paged once per family per day) and the coach keeps the turn.
  *
  * BEFORE FLOOD by construction (the whole chain is), so a parent whose hour is spent
  * still gets their link.
  *
- * Rule #11, all three ways out named: `sent` claims with the locked offer line (EN/FR
- * twin, one segment, link inside it); `not_enrolled` — unreachable from the router,
- * which does not reach the chain without a verified parent channel, but re-proven by
- * the mint — declines to claim and says why in the log; `mint_failed` claims with the
- * honest failure line rather than deferring the turn into hours of queue backoff.
- *
- * A follow-up that does not name the provider ("give me a fresh one", "new link",
- * "it expired") mints the same way when the previous Hale message was already a
- * Gmail or calendar connect link. A later sentence that is not that link is not
- * this ask, and the coach keeps the turn.
+ * Rule #11, every way out named: `sent` claims with the model-written offer and the real
+ * link under it; `not_enrolled` — unreachable from the router, which does not reach the
+ * chain without a verified parent channel, but re-proven by the mint — declines to claim
+ * and says why in the log; `mint_failed` claims with a model-written line that nothing
+ * changed; `voice_unsent` claims with NO reply (the engine paged #ops; the minted token
+ * expires unused) rather than a template, which is the founder rule of 2026-10-04.
  */
+export interface ConnectorHandlerDeps {
+  /** Reads what the message asks for. `undefined` is the named no-key state: nothing is claimed, #ops is paged once a day. */
+  intentReader: RequestIntentReader | undefined;
+  /** Writes the line the link rides under. `undefined` likewise: the mint still happens, nothing is sent. */
+  voice: ConnectVoice | undefined;
+}
 async function latestConnectOfferTarget(
   database: Database,
   conversationId: string,
@@ -347,17 +363,29 @@ async function latestConnectOfferTarget(
   }
 }
 
-export function connectorLinkHandler(log: Pick<Console, 'error'> = console): DeterministicHandler {
+export function connectorLinkHandler(
+  deps: ConnectorHandlerDeps,
+  log: Pick<Console, 'error'> = console,
+): DeterministicHandler {
   return {
     name: 'connector_link',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const named = matchConnectorRequest(ctx.body);
-      const fresh = named
-        ? null
-        : matchFreshConnectorFollowUp(ctx.body)
-          ? await latestConnectOfferTarget(database, ctx.conversationId)
-          : null;
-      if (!named && !fresh) return { claimed: false };
+      if (ctx.body.trim() === '') return { claimed: false };
+      const language = replyLanguage(ctx.body);
+      const fresh = matchFreshConnectorFollowUp(ctx.body)
+        ? await latestConnectOfferTarget(database, ctx.conversationId)
+        : null;
+      let named: ConnectorProvider | null = null;
+      if (!fresh) {
+        const read = await readRequestIntent(
+          deps.intentReader,
+          { message: ctx.body, language, setting: 'own_thread' },
+          { scope: { familyId: ctx.familyId, database } },
+        );
+        named = isConnectIntent(read.intent) ? PROVIDER_OF_INTENT[read.intent] : null;
+      }
+      const target = named ?? fresh;
+      if (!target) return { claimed: false };
       if (
         await declinePrivilegedGroupSeat(database, {
           familyId: ctx.familyId,
@@ -368,9 +396,22 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
         return { claimed: true, outcome: 'group_member_not_authorized', reply: null };
       }
 
-      const language = replyLanguage(ctx.body);
-      const target = named ?? fresh;
-      if (!target) return { claimed: false };
+      const speak = (request: ConnectLineRequest, urls: readonly string[] = []) =>
+        speakConnectLine(deps.voice, request, language, {
+          urls,
+          parentWords: ctx.body,
+          scope: { familyId: ctx.familyId, database },
+        });
+      const spokenOrUnsent = async (
+        request: ConnectLineRequest,
+        urls: readonly string[],
+        outcome: string,
+      ): Promise<HandlerVerdict> => {
+        const line = await speak(request, urls);
+        if (line.body === null) return { claimed: true, outcome: 'voice_unsent', reply: null };
+        return { claimed: true, outcome, reply: line.body };
+      };
+
       if (target === 'both') {
         const outcome = await offerConnectorLinks(database, {
           familyId: ctx.familyId,
@@ -380,11 +421,11 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
         });
         switch (outcome.status) {
           case 'minted':
-            return {
-              claimed: true,
-              outcome: 'sent',
-              reply: intakeConnectorOffer(language, outcome.urls[0], outcome.urls[1]),
-            };
+            return spokenOrUnsent(
+              { kind: 'offer_both', first: 'gcal', second: 'gmail' },
+              outcome.urls,
+              'sent',
+            );
           case 'not_enrolled':
             log.error(
               { familyId: ctx.familyId, provider: target, outcome: 'not_enrolled' },
@@ -396,7 +437,7 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
               { familyId: ctx.familyId, provider: target, outcome: 'mint_failed' },
               'connector link: mint failed',
             );
-            return { claimed: true, outcome: 'mint_failed', reply: failureReply() };
+            return spokenOrUnsent({ kind: 'mint_failed', account: 'gcal' }, [], 'mint_failed');
         }
       }
 
@@ -408,11 +449,7 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
       });
       switch (outcome.status) {
         case 'minted':
-          return {
-            claimed: true,
-            outcome: 'sent',
-            reply: connectorOfferReply(language, target, outcome.url),
-          };
+          return spokenOrUnsent({ kind: 'offer', account: target }, [outcome.url], 'sent');
         case 'not_enrolled':
           // Ids and the named outcome only, never the body (rule #1). The coach takes
           // the turn, and its skill knows this branch exists.
@@ -426,7 +463,7 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
             { familyId: ctx.familyId, provider: target, outcome: 'mint_failed' },
             'connector link: mint failed',
           );
-          return { claimed: true, outcome: 'mint_failed', reply: failureReply() };
+          return spokenOrUnsent({ kind: 'mint_failed', account: target }, [], 'mint_failed');
       }
     },
   };
@@ -448,11 +485,14 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
  * instruction they gave, not a proactive send, so the dark-launch reasoning does not
  * reach it.
  *
- * Rule #11, all three ways out named and all three answered in the parent's own reply
- * language: `revoked`, `not_connected` (nothing of theirs matched — never a false
- * success), `revoke_failed` (nothing changed, said in French to a French parent).
+ * Rule #11, every way out named and answered in the parent's own reply language by the
+ * model (connect/voice.ts): `revoked` (Hale's keys are gone, and the line that follows is
+ * where Google still lists Hale), `not_connected` (nothing of theirs matched — never a
+ * false success), `revoke_failed` (nothing changed). A line the model could not write is
+ * `voice_unsent`: the revoke still happened, nothing is texted, #ops is paged.
  */
 export function connectorDisconnectHandler(
+  deps: Pick<ConnectorHandlerDeps, 'voice'>,
   log: Pick<Console, 'error'> = console,
 ): DeterministicHandler {
   return {
@@ -482,11 +522,18 @@ export function connectorDisconnectHandler(
           'connector disconnect: revoke did not land - nothing was changed',
         );
       }
-      return {
-        claimed: true,
-        outcome: outcome.status,
-        reply: connectorRevokeReply(replyLanguage(ctx.body), provider, outcome.status),
-      };
+      const line = await speakConnectLine(
+        deps.voice,
+        { kind: outcome.status, account: provider },
+        replyLanguage(ctx.body),
+        {
+          urls: outcome.status === 'revoked' ? [GOOGLE_PERMISSIONS_URL] : [],
+          parentWords: ctx.body,
+          scope: { familyId: ctx.familyId, database },
+        },
+      );
+      if (line.body === null) return { claimed: true, outcome: 'voice_unsent', reply: null };
+      return { claimed: true, outcome: outcome.status, reply: line.body };
     },
   };
 }

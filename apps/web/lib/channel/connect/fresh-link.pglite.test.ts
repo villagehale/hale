@@ -3,14 +3,17 @@ import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mintChannelSigninTokens } from '~/lib/auth/channel-signin';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { fakeSpokenLineBody, fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { textFreshConnectorLink } from './fresh-link';
+import { connectLineInput } from './line-input';
 
 /**
  * A failed connect texts a new link for the provider the parent was already
- * opening. Gmail stays Gmail. The body does not tell them a phrase to type.
+ * opening. Gmail stays Gmail. The line over the link is the model's (a fake here,
+ * rule #8); when it cannot be written nothing is texted and the outcome says so.
  */
 
 const NOW = new Date('2026-09-17T15:00:00.000Z');
@@ -59,14 +62,19 @@ describe('textFreshConnectorLink', () => {
       {
         transport,
         threadMessage: async () => 'conversation-id',
+        voice: fakeSpokenLineComposer(),
       },
     );
 
     expect(outcome).toBe('sent');
     expect(transport.sent).toHaveLength(1);
     const body = transport.sent[0]?.body ?? '';
-    expect(body).toContain('to=gmail');
-    expect(body).toContain('unverified app');
+    const [prose, link, ...rest] = body.split('\n');
+    expect(prose).toBe(
+      fakeSpokenLineBody(connectLineInput({ kind: 'offer', account: 'gmail' }, 'en')),
+    );
+    expect(link).toContain('to=gmail');
+    expect(rest).toEqual([]);
     expect(body).not.toMatch(/connect my calendar/i);
     expect(body).not.toContain('to=gcal');
     const [spent] = await db.database
@@ -74,5 +82,24 @@ describe('textFreshConnectorLink', () => {
       .from(schema.channelSigninTokens)
       .where(eq(schema.channelSigninTokens.id, oldLink.tokenId));
     expect(spent?.consumedAt).not.toBeNull();
+  });
+
+  it('texts nothing when the line cannot be written - no template under the link (voice_unsent)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const outcome = await textFreshConnectorLink(
+      db.database,
+      { familyId, parentUserId, provider: 'gmail', now: NOW },
+      {
+        transport,
+        threadMessage: async () => 'conversation-id',
+        voice: fakeSpokenLineComposer({ fail: true }),
+      },
+    );
+
+    expect(outcome).toBe('voice_unsent');
+    expect(transport.sent).toHaveLength(0);
+    // Nothing was claimed in the ledger either: the send never started.
+    expect(await db.database.select().from(schema.channelMessages)).toHaveLength(0);
+    vi.restoreAllMocks();
   });
 });

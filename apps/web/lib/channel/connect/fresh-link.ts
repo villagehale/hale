@@ -1,8 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { connectorOfferReply } from '~/lib/channel/connect/copy';
 import { offerConnectorLink } from '~/lib/channel/connect/offer';
 import type { TextConnectProvider } from '~/lib/channel/connect/text-connect';
+import {
+  type ConnectVoice,
+  defaultConnectVoice,
+  speakConnectLine,
+} from '~/lib/channel/connect/voice';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -23,7 +27,9 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
  * not tell them a phrase to type.
  *
  * Rule #11: every way this ends is named. A missing number is `no_send_target`,
- * never a sentence that claims a text left.
+ * never a sentence that claims a text left. The line over the link is the model's
+ * (connect/voice.ts); when it could not write one, `voice_unsent` — nothing is texted,
+ * #ops is paged, the minted token expires unused.
  */
 
 export const FRESH_CONNECTOR_LINK_TEMPLATE_KEY = 'connector:fresh_link';
@@ -32,6 +38,8 @@ export interface FreshLinkPorts {
   transport: ChannelTransport;
   imessage?: (input: { chatId: string; body: string }) => Promise<{ providerMessageId: string }>;
   threadMessage: typeof threadProactiveMessage;
+  /** `undefined` is the named no-key state: nothing is sent and #ops is paged. */
+  voice: ConnectVoice | undefined;
 }
 
 export type FreshLinkOutcome =
@@ -40,6 +48,7 @@ export type FreshLinkOutcome =
   | 'mint_failed'
   | 'no_send_target'
   | 'no_chat'
+  | 'voice_unsent'
   | 'send_failed'
   | 'errored';
 
@@ -48,6 +57,7 @@ export function defaultFreshLinkPorts(): FreshLinkPorts {
     transport: createOutboundTransport(),
     imessage: (input) => sendLinqChatMessage({ chatId: input.chatId, text: input.body }),
     threadMessage: threadProactiveMessage,
+    voice: defaultConnectVoice(),
   };
 }
 
@@ -127,7 +137,20 @@ async function sendFresh(
   }
 
   const language = await familyLanguage(database, args.familyId);
-  const body = connectorOfferReply(language, args.provider, minted.url);
+  const line = await speakConnectLine(
+    ports.voice,
+    { kind: 'offer', account: args.provider },
+    language,
+    { urls: [minted.url], scope: { familyId: args.familyId, database } },
+  );
+  if (line.body === null) {
+    console.info(
+      { familyId: args.familyId, provider: args.provider },
+      'connector link: fresh link not sent - no line could be written',
+    );
+    return 'voice_unsent';
+  }
+  const body = line.body;
   const channel = door.channel === 'imessage' ? 'imessage' : 'sms';
   const [claimed] = await database
     .insert(schema.channelMessages)

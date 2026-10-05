@@ -21,6 +21,8 @@ import { defaultCheckInIntentReader } from '~/lib/channel/checkin/intent';
 import { answeredOnTheSameChannel, eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
 import { defaultCheckInVoice } from '~/lib/channel/checkin/voice';
 import { productionChannelCoach } from '~/lib/channel/coach/runtime';
+import { defaultRequestIntentReader } from '~/lib/channel/connect/request-intent';
+import { defaultConnectVoice } from '~/lib/channel/connect/voice';
 import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
 import { forwardRevokeAsk } from '~/lib/channel/email/forward-request';
 import { productionEmailReply } from '~/lib/channel/email/reply-send';
@@ -73,6 +75,7 @@ import { createTurnApology } from './apology';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { createDisambiguationStore } from './disambiguation';
 import {
+  type ConnectorHandlerDeps,
   type EveningCheckInHandlerDeps,
   approvalHandler,
   coParentAssentHandler,
@@ -370,6 +373,16 @@ function refused(error: string): SpineOutcome {
  */
 export interface DefaultHandlersOptions {
   eveningCheckIn?: Partial<EveningCheckInHandlerDeps>;
+  connector?: Partial<ConnectorHandlerDeps>;
+}
+
+/** The option when the caller named it (even as `undefined`), else the production default. */
+function given<T extends object, K extends keyof T>(
+  overrides: Partial<T> | undefined,
+  key: K,
+  fallback: () => T[K],
+): T[K] {
+  return overrides && key in overrides ? (overrides[key] as T[K]) : fallback();
 }
 
 /**
@@ -378,15 +391,22 @@ export interface DefaultHandlersOptions {
  * the name capture is the one thing behind it.
  */
 export function defaultHandlers(options: DefaultHandlersOptions = {}): DeterministicHandler[] {
+  // The connector pair's reader and voice, built lazily from the environment like the
+  // evening lane's: a missing key is a named outcome inside the handler (nothing claimed
+  // or nothing sent, #ops paged once a day), never a thrown route.
+  const connector: ConnectorHandlerDeps = {
+    intentReader: given(options.connector, 'intentReader', defaultRequestIntentReader),
+    voice: given(options.connector, 'voice', defaultConnectVoice),
+  };
   return [
     villageIntroHandler(defaultVillageIntroReplyDeps()),
     approvalHandler(defaultApprovalSpine()),
     emailCaptureHandler(defaultEmailCaptureDeps()),
-    connectorLinkHandler(),
+    connectorLinkHandler(connector),
     // Beside the connect half, and the position is free rather than load-bearing: the
-    // two matchers are disjoint by construction (connect/detect.ts), so neither can
+    // disconnect half reads only its own explicit verb+noun shape, so neither can
     // shadow the other wherever they sit. It is here so the pair reads as a pair.
-    connectorDisconnectHandler(),
+    connectorDisconnectHandler(connector),
     // Beside the connector pair, and free for their reason: all three matchers require a
     // noun no other handler's vocabulary contains, and detect.test.ts / the forwarding
     // matcher's own table assert the three are disjoint over the whole phrase list.
@@ -436,14 +456,8 @@ export function defaultHandlers(options: DefaultHandlersOptions = {}): Determini
     // both built lazily from the environment: a missing key is a named outcome inside
     // the lane (nothing claimed, #ops paged), never a thrown route.
     eveningCheckInHandler({
-      intentReader:
-        options.eveningCheckIn && 'intentReader' in options.eveningCheckIn
-          ? options.eveningCheckIn.intentReader
-          : defaultCheckInIntentReader(),
-      voice:
-        options.eveningCheckIn && 'voice' in options.eveningCheckIn
-          ? options.eveningCheckIn.voice
-          : defaultCheckInVoice(),
+      intentReader: given(options.eveningCheckIn, 'intentReader', defaultCheckInIntentReader),
+      voice: given(options.eveningCheckIn, 'voice', defaultCheckInVoice),
     }),
     // LAST, and that placement is the mechanism rather than a tidy tail: the
     // probe turn is only evidence if it runs every handler's decline path

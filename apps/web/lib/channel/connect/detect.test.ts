@@ -2,71 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   connectOfferTarget,
   matchConnectorDisconnectRequest,
-  matchConnectorRequest,
   matchFreshConnectorFollowUp,
 } from './detect';
 
 /**
- * The connector-request detector — the deterministic pre-coach branch that answers
- * "connect my calendar" with a real link instead of a composed refusal.
- *
- * CONSERVATIVE BY DESIGN: a miss costs one coach turn (whose skill now names the
- * branch), a false claim mints a sign-in link nobody asked for. So every ambiguous
- * shape below is asserted NOT to match, and the positives are anchored on an explicit
- * connect-verb + provider-noun pair — never a bare noun.
+ * The connect door's two shape matchers. The CONNECT ask itself is the model's reading
+ * now (connect/request-intent.ts, proved by its cached eval); what is tested here is
+ * the fresh-link follow-up, the disconnect instruction, and the link reader.
  */
-describe('matchConnectorRequest', () => {
-  // The two live sightings this branch exists for (founder screenshots, 2026-08).
-  it('claims "I want you to connect my Google Calendar"', () => {
-    expect(matchConnectorRequest('I want you to connect my Google Calendar')).toBe('gcal');
-  });
-  it('claims "Read my Gmail for me"', () => {
-    expect(matchConnectorRequest('Read my Gmail for me')).toBe('gmail');
-  });
-
-  it.each([
-    ['can you sync my calendar', 'gcal'],
-    ['connect gmail please', 'gmail'],
-    ['hook up my google drive', 'gdrive'],
-    ['please link my google calendar to hale', 'gcal'],
-    ['CONNECT MY GCAL', 'gcal'],
-  ])('claims %j as %s', (body, provider) => {
-    expect(matchConnectorRequest(body)).toBe(provider);
-  });
-
-  it('claims the French connect ask', () => {
-    expect(matchConnectorRequest('Connecte mon Google Agenda')).toBe('gcal');
-    expect(matchConnectorRequest('peux-tu synchroniser mon calendrier')).toBe('gcal');
-  });
-
-  // A question about the calendar's CONTENTS is the coach's turn, never a mint.
-  it('declines "what\'s on my calendar this week"', () => {
-    expect(matchConnectorRequest("what's on my calendar this week")).toBeNull();
-  });
-
-  it.each([
-    // Bare words and unrelated bodies.
-    ['yes'],
-    ['thanks!'],
-    ['the drive to school takes 20 minutes'],
-    // The verb and the noun both present but not as one ask.
-    ["let's connect after I check the calendar"],
-    // Negations and revocations must never mint.
-    ["don't connect my calendar"],
-    ['disconnect my gmail'],
-    ['stop syncing my calendar'],
-    // Status and capability questions go to the coach, which can ask back.
-    ['is my calendar connected?'],
-    ['did you connect my gmail'],
-    ['do you sync calendars?'],
-    // Reading the calendar is a content ask, not a connect ask.
-    ['read my calendar'],
-    // "drive" without Google is somebody's commute.
-    ['sync my drive'],
-  ])('declines %j', (body) => {
-    expect(matchConnectorRequest(body)).toBeNull();
-  });
-});
 
 /**
  * THE DISCONNECT HALF — the one deterministic branch in the product whose wrong answer
@@ -155,20 +98,18 @@ describe('matchConnectorDisconnectRequest', () => {
   });
 
   /**
-   * THE INVARIANT, not a spot check: no body can be read as both a connect ask and a
-   * disconnect instruction. It holds by construction (every disconnect verb is in the
-   * connect matcher's NEGATION class), and this asserts it over every sentence either
-   * suite names — so a verb added to one half without the other fails here rather than
-   * in a parent's thread.
+   * THE INVARIANT, not a spot check: no body can be read as both a fresh-link follow-up
+   * and a disconnect instruction. It holds by construction (every disconnect verb is in
+   * the follow-up matcher's NEGATION class), and this asserts it over every sentence
+   * either suite names — so a verb added to one half without the other fails here rather
+   * than in a parent's thread.
    */
-  it('never claims the same body as both a connect and a disconnect', () => {
+  it('never claims the same body as both a fresh-link follow-up and a disconnect', () => {
     const bodies = [
-      'connect my google calendar',
-      'I want you to connect my Google Calendar',
-      'Read my Gmail for me',
-      'can you sync my calendar',
-      'hook up my google drive',
-      'Connecte mon Google Agenda',
+      'give me a fresh one',
+      'new link',
+      'it expired',
+      'another link',
       'disconnect my calendar',
       'disconnect gmail',
       'unhook my google drive',
@@ -176,14 +117,15 @@ describe('matchConnectorDisconnectRequest', () => {
       'deconnecte mon Google Agenda',
       'arrete de lire mes courriels',
       'revoke my google calendar',
+      'the link expired, disconnect my calendar',
     ];
     const both = bodies.filter(
-      (b) => matchConnectorRequest(b) !== null && matchConnectorDisconnectRequest(b) !== null,
+      (b) => matchFreshConnectorFollowUp(b) && matchConnectorDisconnectRequest(b) !== null,
     );
     expect(both).toEqual([]);
     // Positive control: this corpus really does exercise both halves, so the empty
     // intersection above is a fact about the matchers and not about the list.
-    expect(bodies.filter((b) => matchConnectorRequest(b) !== null).length).toBeGreaterThan(3);
+    expect(bodies.filter((b) => matchFreshConnectorFollowUp(b)).length).toBeGreaterThan(3);
     expect(
       bodies.filter((b) => matchConnectorDisconnectRequest(b) !== null).length,
     ).toBeGreaterThan(3);
@@ -199,7 +141,6 @@ describe('matchFreshConnectorFollowUp', () => {
     'another link',
   ])('claims the follow-up %j', (body) => {
     expect(matchFreshConnectorFollowUp(body)).toBe(true);
-    expect(matchConnectorRequest(body)).toBeNull();
   });
 
   it.each([
@@ -212,17 +153,22 @@ describe('matchFreshConnectorFollowUp', () => {
     expect(matchFreshConnectorFollowUp(body)).toBe(false);
   });
 
-  it('reads the provider off the link Hale already sent', () => {
+  it('reads the provider off the LINK Hale already sent, never off its prose', () => {
     expect(
-      connectOfferTarget(
-        'Connect Gmail: https://app.villagehale.com/connect?t=abc&to=gmail Good for 15 minutes.',
-      ),
+      connectOfferTarget('Here you go.\nhttps://app.villagehale.com/connect?t=abc&to=gmail'),
     ).toBe('gmail');
     expect(
       connectOfferTarget(
-        'Connect your calendar: https://app.villagehale.com/connect?t=abc&to=gcal Good for 15 minutes.',
+        'Fifteen minutes on this one.\nhttps://app.villagehale.com/connect?t=abc&to=gcal',
       ),
     ).toBe('gcal');
+    expect(
+      connectOfferTarget(
+        'Two links.\nhttps://app.villagehale.com/connect?t=a&to=gcal\nhttps://app.villagehale.com/connect?t=b&to=gmail',
+      ),
+    ).toBe('both');
+    // The old fixed phrases are no longer a signal: the line over the link is the model's.
+    expect(connectOfferTarget('Connect your calendar - tap to connect your Gmail')).toBeNull();
     expect(connectOfferTarget('What should I call you?')).toBeNull();
   });
 });

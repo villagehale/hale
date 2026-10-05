@@ -1,24 +1,20 @@
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 
 /**
- * The connector-request detector — the deterministic branch that reads "connect my
- * Google Calendar" before the coach ever runs, so the answer can be a real link
- * instead of a composed refusal (the registration-context failure class: the refusal
- * shape is trained, and the trigger is the absence of a tool that knows better).
+ * The connect door's two cheap shape matchers — the fresh-link follow-up and the
+ * explicit DISCONNECT instruction — plus the reader of which account a prior Hale offer
+ * carried.
  *
- * CONSERVATIVE BY CONSTRUCTION. A miss costs one coach turn, and the coach's skill
- * now names this branch; a false claim mints a sign-in link nobody asked for. So a
- * claim requires an explicit connect-verb followed closely by a provider noun — never
- * a bare noun, never a question about the calendar's CONTENTS — and any negation,
- * revocation, or leading status-auxiliary sends the turn to the coach instead.
+ * The CONNECT ask itself ("connect my Google Calendar", "can you read my gmail") is no
+ * longer a regex: it is read by the model through connect/request-intent.ts, with a
+ * verbatim guard and a confidence floor, so a parent never has to hit a keyword. What
+ * stays here is only what a regex is the RIGHT tool for: a short follow-up shape that
+ * needs a prior offer to mean anything, and a hard-to-reverse instruction whose
+ * false-positive cost (a deleted grant) argues for the most conservative reader there is.
  */
 
 /** The asks that are the OPPOSITE of a connect ask, or a report about one. The
- * apostrophe class carries U+2019 because iPhones send smart punctuation.
- *
- * Every verb the DISCONNECT matcher below reads is in here, which is what makes the
- * two halves disjoint by construction rather than by careful reading: no body can be
- * claimed by both, so their order in the handler chain cannot matter. */
+ * apostrophe class carries U+2019 because iPhones send smart punctuation. */
 const NEGATION =
   /\b(?:don['’]?t|do not|never|stop|unlink|unhook|disconnect(?:ed)?|remove|revoke|d[ée]connecte|d[ée]lie|arr[êe]te)\b/i;
 
@@ -29,51 +25,19 @@ const NEGATION =
  */
 const STATUS_QUESTION = /^\s*(?:did|do|does|have|has|is|are|was|were|what|when|where|who|why)\b/i;
 
-/** The words between the verb and the noun a real ask actually uses. Anything else —
- * "let's connect after I check the calendar" — is conversation, not a request. */
-const LEAD = String.raw`(?:\s+(?:up|to))?(?:\s+(?:my|our|the|his|her|their|mon|ma|mes|notre|nos|votre|vos|le|la|les))?\s+`;
-
-const CONNECT_VERB =
-  '(?:connect(?:ing)?|link(?:ing)?|sync(?:ing)?|synchroni[sz]e|hook(?:ing)?\\s+up|connecte[rz]?|branche[rz]?|synchronise[rz]?|synchroniser)';
-/** Reading applies to MAIL and FILES only: "read my calendar" is a contents ask. */
-const READ_VERB = '(?:read(?:ing)?|access|lis(?:ez)?|lire)';
-
 const CALENDAR_NOUN =
   '(?:google\\s+calendar|google\\s+agenda|gcal|calendars?|calendriers?|agendas?)';
-const GMAIL_NOUN = '(?:gmail)';
 /** Never bare "drive" — that is somebody's commute. */
 const DRIVE_NOUN = '(?:google\\s+drive)';
-
-const PATTERNS: ReadonlyArray<{ provider: ConnectorProvider; pattern: RegExp }> = [
-  { provider: 'gcal', pattern: new RegExp(`\\b${CONNECT_VERB}${LEAD}${CALENDAR_NOUN}\\b`, 'i') },
-  {
-    provider: 'gmail',
-    pattern: new RegExp(`\\b(?:${CONNECT_VERB}|${READ_VERB})${LEAD}${GMAIL_NOUN}\\b`, 'i'),
-  },
-  {
-    provider: 'gdrive',
-    pattern: new RegExp(`\\b(?:${CONNECT_VERB}|${READ_VERB})${LEAD}${DRIVE_NOUN}\\b`, 'i'),
-  },
-];
-
-/** The provider a message plainly asks to connect, or null — and null is the safe
- * answer: an unmatched ask falls through to the coach, which knows this branch exists. */
-export function matchConnectorRequest(body: string): ConnectorProvider | null {
-  if (NEGATION.test(body) || STATUS_QUESTION.test(body)) return null;
-  for (const { provider, pattern } of PATTERNS) {
-    if (pattern.test(body)) return provider;
-  }
-  return null;
-}
 
 /**
  * A short follow-up that asks for another link without naming the provider.
  *
  * "give me a fresh one", "new link", and "it expired" are the live misses: they
- * are not a connect-verb + noun pair, so they used to reach the coach, which
- * told the parent to text the exact words instead of minting. This matcher does
- * not name a provider. The handler mints only when the previous Hale message
- * was already a Gmail or calendar connect link.
+ * carry no account, so even the model reader answers `other` for them. This matcher
+ * does not name a provider. The handler mints only when the previous Hale message
+ * was already a Gmail or calendar connect link, and it runs BEFORE the model read so
+ * a follow-up costs no classify call.
  */
 const FRESH_LINK_FOLLOW_UP: readonly RegExp[] = [
   /\b(?:give|send|get)\s+me\s+(?:a\s+)?(?:fresh|new|another)\s+(?:one|link)\b/i,
@@ -97,17 +61,13 @@ export function matchFreshConnectorFollowUp(body: string): boolean {
 /** Which connector a Hale message already offered, read off the link it carried. */
 export type ConnectOfferTarget = 'gcal' | 'gmail' | 'both';
 
+/**
+ * Read off the LINK, never the prose: the line over it is the model's and has no fixed
+ * phrase to match. The `to=` parameter is what connect/offer.ts mints into every URL.
+ */
 export function connectOfferTarget(body: string): ConnectOfferTarget | null {
-  const gmail =
-    /[?&]to=gmail\b/i.test(body) ||
-    /\bConnect Gmail\b/i.test(body) ||
-    /\btap to connect your Gmail\b/i.test(body);
-  const gcal =
-    /[?&]to=gcal\b/i.test(body) ||
-    /\bConnect your calendar\b/i.test(body) ||
-    /\bConnectez votre agenda\b/i.test(body) ||
-    /\btap to connect your Google Calendar\b/i.test(body) ||
-    /\btap to connect your Google Agenda\b/i.test(body);
+  const gmail = /[?&]to=gmail\b/i.test(body);
+  const gcal = /[?&]to=gcal\b/i.test(body);
   if (gmail && gcal) return 'both';
   if (gmail) return 'gmail';
   if (gcal) return 'gcal';
@@ -117,12 +77,11 @@ export function connectOfferTarget(body: string): ConnectOfferTarget | null {
 /**
  * ── THE OTHER HALF: ending a connection ─────────────────────────────────────────
  *
- * The asymmetry with the connect half above is deliberate and lives here so it is
- * visible rather than accidental. A false CONNECT claim mints a link nobody asked for;
- * a false DISCONNECT claim deletes a token, stops the sweep and writes an immutable
- * audit row. So this half keeps the connect half's whole vocabulary of nouns (a parent
- * ending something says "my calendar", and the connect card tells them to say
- * exactly that — connect/text-connect.ts) and pays for it everywhere else:
+ * The asymmetry with the connect read is deliberate and lives here so it is visible
+ * rather than accidental. A false CONNECT claim mints a link nobody asked for, which is
+ * why that read can be the model's; a false DISCONNECT claim deletes a token, stops the
+ * sweep and writes an immutable audit row, which is why this one stays a shape matcher
+ * that pays for its noun vocabulary everywhere else:
  *
  *  - `remove` is NOT a disconnect verb. It is a content verb — remove the hold, the
  *    invite, the event — and it was the single biggest source of false positives.
@@ -135,9 +94,10 @@ export function connectOfferTarget(body: string): ConnectOfferTarget | null {
  *    you disconnect it"): those are questions the coach answers, and the connect
  *    card tells the parent the plain words that do work.
  *
- * Disjoint from the connect half BY CONSTRUCTION: every verb below is inside the
- * connect matcher's NEGATION class, so no body can claim both. detect.test.ts asserts
- * that over the whole table rather than trusting the reading.
+ * Every verb below is inside the fresh-link matcher's NEGATION class, so a disconnect
+ * can never be mistaken for a "new link" follow-up; the model-side connect reader is
+ * told (request-intent.md) that a disconnect is `other`, and detect.test.ts keeps the
+ * regex half of that promise over the whole table.
  */
 const DISCONNECT_VERB =
   '(?:disconnect(?:ing)?|unlink(?:ing)?|unhook(?:ing)?|revoke|stop\\s+(?:syncing|reading|watching)|d[ée]connecte[rz]?|d[ée]lie[rz]?|arr[êe]te[rz]?\\s+de\\s+(?:synchroniser|lire|surveiller))';

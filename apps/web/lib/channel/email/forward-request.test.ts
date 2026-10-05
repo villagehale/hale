@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { matchConnectorDisconnectRequest } from '~/lib/channel/connect/detect';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
-import {
-  matchConnectorDisconnectRequest,
-  matchConnectorRequest,
-} from '~/lib/channel/connect/detect';
 import {
   type ForwardAddressAsk,
   forwardAddressReply,
@@ -146,19 +143,19 @@ describe('asking for the forwarding address', () => {
   });
 
   /**
-   * Disjoint from the connector pair BY CONSTRUCTION, asserted over the whole table —
-   * claims and declines both — rather than trusted to a reading, the same check
-   * detect.test.ts makes of its own two halves. The chain runs all four matchers on every
-   * turn, so a body two of them claim would make handler ORDER load-bearing, which is the
-   * bug this forbids.
+   * Disjoint from the connector disconnect matcher BY CONSTRUCTION, asserted over the
+   * whole table — claims and declines both — rather than trusted to a reading, the same
+   * check detect.test.ts makes of its own halves. The chain runs every shape matcher on
+   * every turn, so a body two of them claim would make handler ORDER load-bearing, which
+   * is the bug this forbids. (The connect ask is the model's reading now, and its skill
+   * sends a forwarding-address ask to `other`.)
    */
-  it('shares no body with the connector matchers, over the whole table', () => {
+  it('shares no body with the connector disconnect matcher, over the whole table', () => {
     const overlaps = [...CLAIMS.map(([body]) => body), ...DECLINES]
       .map((body) => ({
         body,
         claimedBy: [
           matchForwardAddressRequest(body) ? 'forward' : null,
-          matchConnectorRequest(body) ? 'connect' : null,
           matchConnectorDisconnectRequest(body) ? 'disconnect' : null,
         ].filter((name) => name !== null),
       }))
