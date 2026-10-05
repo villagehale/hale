@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
+import { parentNeedsName } from '~/lib/channel/identity/name-reply';
 import { groupsFromFindBody } from '~/lib/channel/intake/activity-map';
 import { sendYearConnectorCards } from '~/lib/channel/intake/connector-offer';
 import { summarizeChildren } from '~/lib/channel/intake/derive';
@@ -9,6 +10,11 @@ import {
   speakFriend,
 } from '~/lib/channel/intake/friend-voice';
 import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
+import {
+  type OnboardingChecklist,
+  agesAreComplete,
+  kidsAreNamed,
+} from '~/lib/channel/intake/onboarding-turn';
 import {
   type IntakeSession,
   loadOpenSessionByFamily,
@@ -160,13 +166,20 @@ export async function connectedReceiptBody(
     page?: (text: string) => Promise<unknown>;
     /** The open onboarding, so the receipt knows the parent, the kids and the thread. */
     session?: IntakeSession | null;
+    /** The parent's name is already on their row. */
+    nameStored?: boolean;
   },
 ): Promise<string> {
   if (!onboardingFriendVoiceEnabled()) return connectorConnectedText(language, provider);
   const spoken = await speakFriend(
     composer,
     {
-      ...receiptVoiceBase(language, options?.session ?? null),
+      ...receiptVoiceBase(
+        language,
+        options?.session ?? null,
+        provider,
+        options?.nameStored ?? false,
+      ),
       step: 'connected',
       connector: provider,
       granted: null,
@@ -319,7 +332,7 @@ async function sendReceipt(
     provider,
     ports.friendVoice,
     aha,
-    { session },
+    { session, nameStored: await parentNameStored(database, parentUserId) },
   );
   const continuation = {
     familyId,
@@ -621,7 +634,12 @@ async function sendCalendarCardAfterGmailReceipt(
     const spoken = await speakFriend(
       ports.friendVoice,
       {
-        ...receiptVoiceBase(language, session),
+        ...receiptVoiceBase(
+          language,
+          session,
+          'gmail',
+          await parentNameStored(database, args.parentUserId),
+        ),
         step: 'calendar',
       },
       { linkFollows: true },
@@ -730,7 +748,12 @@ async function askAfterCalendarReceipt(
     const spoken = await speakFriend(
       ports.friendVoice,
       {
-        ...receiptVoiceBase(language, session),
+        ...receiptVoiceBase(
+          language,
+          session,
+          'gcal',
+          await parentNameStored(database, args.parentUserId),
+        ),
         step,
         findLines: lines,
         findGroups: progress ? groupsFromFindBody(progress.findBody) : [],
@@ -793,10 +816,52 @@ async function openOnboarding(database: Database, familyId: string): Promise<Int
   return session?.firstTouch?.coldStart ? session : null;
 }
 
-function receiptVoiceBase(language: ReplyLanguage, session: IntakeSession | null) {
+/**
+ * What is already stored, as the in-turn asks see it (machine.ts), so a reply
+ * written off a receipt knows the walk's state. The connector that just landed
+ * counts as answered before `rememberConnected` writes it down.
+ */
+function receiptChecklist(
+  session: IntakeSession | null,
+  connected: TextConnectProvider | null,
+  nameStored: boolean,
+): OnboardingChecklist | undefined {
+  if (!session) return undefined;
+  const given = session.firstTouch?.given ?? null;
+  const children = session.collected.children;
+  const lines = session.firstTouch?.coldStart
+    ? linesOfFind(session.firstTouch.coldStart.findBody)
+    : [];
+  return {
+    postal: session.firstTouch?.place != null,
+    kids: given?.kidsNamesDeclined === true || kidsAreNamed(children),
+    ages: agesAreComplete(children),
+    name: nameStored || Boolean(given?.parentName) || given?.nameDeclined === true,
+    gmail: connected === 'gmail' || given?.connectGmail != null || given?.gmailLater === true,
+    calendar:
+      connected === 'gcal' || given?.connectCalendar != null || given?.calendarLater === true,
+    schedule: lines.length === 0 || given?.scheduleDone === true,
+    coparent: given?.coparentGroup != null,
+  };
+}
+
+/** The parent's name is on their row: the receipt asks are not the name ask. */
+async function parentNameStored(database: Database, userId: string | null): Promise<boolean> {
+  if (!userId) return false;
+  return !(await parentNeedsName(database, userId));
+}
+
+function receiptVoiceBase(
+  language: ReplyLanguage,
+  session: IntakeSession | null,
+  connected: TextConnectProvider | null = null,
+  nameStored = false,
+) {
   const given = session?.firstTouch?.given ?? null;
   const children = session?.collected.children ?? [];
+  const checklist = receiptChecklist(session, connected, nameStored);
   return {
+    ...(checklist ? { checklist } : {}),
     language,
     address: 'tu' as const,
     introduce: false,
