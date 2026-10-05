@@ -86,9 +86,13 @@ const DANGLING_LINK = /\bthis link\b|\bce lien\b/i;
 
 const EMOJI = /\p{Extended_Pictographic}/u;
 
-/** Letter-aware boundaries: ASCII \b would split "êtes" into "ê" + "tes". */
+/**
+ * Letter-aware boundaries: ASCII \b would split "êtes" into "ê" + "tes". The tu family
+ * includes the object pronoun ("je te propose", "ça t'intéresse"): a vous line that
+ * slips into it is the same mixed register as a tu line that says "chez vous".
+ */
 const VOUS_REGISTER = /(?<![\p{L}])(?:vous|votre|vos)(?![\p{L}])/iu;
-const TU_REGISTER = /(?<![\p{L}])(?:tu|toi|ton|ta|tes)(?![\p{L}])/iu;
+const TU_REGISTER = /(?<![\p{L}])(?:tu|te|toi|ton|ta|tes)(?![\p{L}])|(?<![\p{L}])t['’](?=\p{L})/iu;
 
 function scalarStrings(value: SpokenScalar): string[] {
   if (value === null || typeof value === 'boolean') return [];

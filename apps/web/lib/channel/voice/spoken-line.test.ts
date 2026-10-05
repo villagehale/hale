@@ -141,10 +141,28 @@ describe('judgeSpokenLine', () => {
       ok: false,
       reason: 'french',
     });
+    // The object pronoun is the tu family too: "chez vous ... ça t'intéresse" is one mixed line.
+    expect(
+      judgeSpokenLine('Maya a Swim level 2 samedi à 9:00 près de chez vous. Ça t’intéresse?', {
+        ...fr,
+        questions: 1,
+      }),
+    ).toEqual({ ok: false, reason: 'french' });
+    expect(judgeSpokenLine('Maya a Swim level 2 samedi à 9:00. Je te le rappelle.', fr)).toEqual({
+      ok: false,
+      reason: 'french',
+    });
+    // "t" inside a word ("tout", "fait") is not the pronoun.
+    expect(judgeSpokenLine('Maya a Swim level 2 samedi à 9:00, tout est en place.', fr)).toEqual({
+      ok: true,
+    });
     const tu = { ...fr, address: 'tu' as const };
     expect(judgeSpokenLine('Maya a Swim level 2 samedi à 9:00. Votre tour.', tu)).toEqual({
       ok: false,
       reason: 'french',
+    });
+    expect(judgeSpokenLine("Maya a Swim level 2 samedi à 9:00. Je te le rappelle, c'est près de chez toi.", tu)).toEqual({
+      ok: true,
     });
     const englishTitle = {
       ...fr,
