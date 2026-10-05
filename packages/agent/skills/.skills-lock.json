@@ -35,6 +35,14 @@
     "file": "capability-table.md",
     "sha256": "cddbfec3d736e5e46e2fcf4a97167ce2f6d3b22e4a3e92328b859e10cfcc9a6d"
   },
+  "checkin-intent.md": {
+    "file": "checkin-intent.md",
+    "sha256": "e9db073c74108cdc58576b516abab1930bb7a497b3408a8c5df3dbd250b8e2a3"
+  },
+  "checkin-voice.md": {
+    "file": "checkin-voice.md",
+    "sha256": "d9c0ceb2e8263c0b90826ac9f2c85ef9dd88c86b0785f6fa6aaa53f30a9e66c8"
+  },
   "classify-event.md": {
     "file": "classify-event.md",
     "sha256": "0f54e7398a8679da2ed8e8f5cbca1ca5c7fe567359c7e77f12858b41b36d2949"
