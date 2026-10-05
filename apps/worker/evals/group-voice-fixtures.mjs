@@ -156,7 +156,7 @@ export const GROUP_VOICE_FIXTURES = [
     request: { kind: 'both_free', slots: ['Sat Oct 10 9:00-10:30', 'Sun Oct 11 14:00-15:30'] },
     parentWords: 'when are we both free',
     watchFor:
-      'Says they are both free at exactly these two windows, both named as given. ONE question: whether they want the sign-up page for one of them. Must not add a third slot, must not say anything is booked, must not tell them to reply with a number.',
+      'Says they are both free at exactly these two windows, both named as given. ONE question, the last sentence, ending in a question mark: whether they want Hale to find something for one of those. Nothing follows this text but sometimes a poll, so it must NOT mention a link, a page, or signing up, and must not describe a poll. Must not add a third slot, must not say anything is booked, must not tell them to reply with a number.',
   },
   {
     id: 'decision-sync-three-en',
