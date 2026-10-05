@@ -5,9 +5,7 @@ import { linqPhoneOutboundConfigured } from '~/lib/channel/linq/config';
 import {
   type FamilyOutboundTarget,
   deliverFamilyOutbound,
-  familySpeech,
 } from '~/lib/channel/linq/family-outbound';
-import { groupBothReaderFrench } from '~/lib/channel/linq/group-coparent-copy';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import type { Channel } from '../types';
@@ -78,12 +76,9 @@ export function createSmsChannel(deps: SmsChannelDeps): Channel {
           : { channel: 'legacy' as const };
         if (target.channel === 'group') {
           const database = deps.database ?? ({} as Database);
-          const speech = await familySpeech(database, target.familyId, userId);
-          const body =
-            speech.language === 'fr' ? groupBothReaderFrench(rendered.text) : rendered.text;
           const delivered = await deliverFamilyOutbound(database, {
             familyId: target.familyId,
-            body,
+            body: rendered.text,
             to,
             legacy: transport,
             target,
