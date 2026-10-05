@@ -54,12 +54,7 @@ const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'proactive-voi
 const JUDGE_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'voice', 'judge.ts');
 const INPUT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'nudge', 'proactive-line.ts');
 
-/** Mirrors `lineJsonSchema` / MAX_TOKENS in apps/web/lib/channel/voice/spoken-line.ts. */
-const LINE_TOOL_SCHEMA = {
-  type: 'object',
-  properties: { line: { type: 'string' } },
-  required: ['line'],
-};
+/** Same ceiling as MAX_TOKENS in apps/web/lib/channel/voice/spoken-line.ts. */
 const MAX_TOKENS = 400;
 
 /** How many distinct openings the asks must show between them. Low on purpose: it catches
@@ -99,6 +94,15 @@ const JUDGE_SYSTEM = [
   'unsubscribing; a URL; exclamation marks, emoji, hype, "we" for Hale; a corporate or bot',
   'register; padding; a judgement about the family having nothing planned; anything',
   'watchFor says must not happen.',
+  'An offer to look is not a list of options. after_school and weekend_fallback have not',
+  'found anything yet: "I can find one" / "je peux chercher" / "je peux trouver" is the',
+  'moment. Score down a named program, place, day, time, or price, not the offer to look.',
+  '"ça t\'intéresse?" is a real question when it is the one question and it ends with ?.',
+  'weekend_fallback must say the options just sent were weekend ones ("the weekend options',
+  'I just sent" / "ce que je viens de t\'envoyer"). That sentence is the moment, not an',
+  'invented fact. linkFollows false only forbids "this link" and a URL; it does not forbid',
+  'referring to the weekend options Hale just sent.',
+  'First person "I" / "je" is required. The ban is "we" / "on" / "nous", not first person.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -115,7 +119,13 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { judgeSpokenLine, spokenLineContext } = await tsImport(JUDGE_SRC, import.meta.url);
+  const {
+    judgeSpokenLine,
+    spokenLineContext,
+    spokenLineToolSchema,
+    spokenLineToolDescription,
+    assembleSpokenLine,
+  } = await tsImport(JUDGE_SRC, import.meta.url);
   const { proactiveLineInput } = await tsImport(INPUT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
@@ -133,21 +143,24 @@ async function main() {
     const userMessage = JSON.stringify(spokenLineContext(input));
     const raw = broken
       ? BROKEN_LINE
-      : (
-          await cachedToolCall({
-            tag: `proactive-voice:${fixture.id}`,
-            model,
-            system: skill.instructions,
-            userMessage,
-            toolName: 'line',
-            toolSchema: LINE_TOOL_SCHEMA,
-            toolDescription: 'Return the one text message to send.',
-            maxTokens: MAX_TOKENS,
-            cachedOnly,
-            getClient,
-            cost,
-          })
-        ).value.line;
+      : assembleSpokenLine(
+          input.questions,
+          (
+            await cachedToolCall({
+              tag: `proactive-voice:${fixture.id}`,
+              model,
+              system: skill.instructions,
+              userMessage,
+              toolName: 'line',
+              toolSchema: spokenLineToolSchema(input.questions),
+              toolDescription: spokenLineToolDescription(input.questions),
+              maxTokens: MAX_TOKENS,
+              cachedOnly,
+              getClient,
+              cost,
+            })
+          ).value,
+        );
 
     const body = String(raw).trim();
     const failures = [];
