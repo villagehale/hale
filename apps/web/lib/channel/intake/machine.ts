@@ -3716,51 +3716,50 @@ async function provision(
       checklist,
       now,
     };
-    // Step 4: the map, as two or three bubbles with no question. Shown before
-    // the next ask, which is its own message.
-    let thread = gathered.transcript;
-    if (discoveryOn && !empty) {
-      const groups = (
-        radar.groups && radar.groups.length > 0
-          ? radar.groups
-          : [{ category: 'learning_sports_arts', lines: findLines }]
-      ).map((group) => ({ category: group.category, lines: [...group.lines] }));
-      const map = await friendSpeak(
-        deps,
-        thread,
-        friendFields('find_show', language, friendAddress(ctx), {
-          ...common,
-          parentWords: inbound.body,
-          findLines,
-          findGroups: groups,
-        }),
-      );
-      if (map.source !== 'unsent') {
-        for (const bubble of map.bubbles) {
-          if (bubble.trim().length === 0) continue;
-          await sendAndRecord(database, ctx, bubble, deps, []);
-          deps.keepTyping?.();
-          thread = [
-            ...thread,
-            { direction: 'out', body: bubble, providerId: null, at: now.toISOString() },
-          ];
-        }
-      }
-    }
+    // Step 4: the map, as two or three bubbles with no question, then the next
+    // ask as its own message. Both are written at once so this turn costs one
+    // model round-trip, not two; the sends stay in order.
+    const thread = gathered.transcript;
     const step: FriendStep =
       gap === 'name' && empty && discoveryOn ? 'find_empty' : friendStepForGap(gap, false);
-    const spoken = await friendSpeak(
-      deps,
-      thread,
-      friendFields(step, language, friendAddress(ctx), {
-        ...common,
-        introduce: !discoveryOn && step === 'names',
-        parentWords: inbound.body,
-        findLines,
-        listKind: 'none',
-      }),
-      { linkFollows: true },
-    );
+    const groups = (
+      radar.groups && radar.groups.length > 0
+        ? radar.groups
+        : [{ category: 'learning_sports_arts', lines: findLines }]
+    ).map((group) => ({ category: group.category, lines: [...group.lines] }));
+    const [map, spoken] = await Promise.all([
+      discoveryOn && !empty
+        ? friendSpeak(
+            deps,
+            thread,
+            friendFields('find_show', language, friendAddress(ctx), {
+              ...common,
+              parentWords: inbound.body,
+              findLines,
+              findGroups: groups,
+            }),
+          )
+        : Promise.resolve(null),
+      friendSpeak(
+        deps,
+        thread,
+        friendFields(step, language, friendAddress(ctx), {
+          ...common,
+          introduce: !discoveryOn && step === 'names',
+          parentWords: inbound.body,
+          findLines,
+          listKind: 'none',
+        }),
+        { linkFollows: true },
+      ),
+    ]);
+    if (map && map.source !== 'unsent') {
+      for (const bubble of map.bubbles) {
+        if (bubble.trim().length === 0) continue;
+        await sendAndRecord(database, ctx, bubble, deps, []);
+        deps.keepTyping?.();
+      }
+    }
     outboundBody = friendOutbound(spoken) ?? '';
     if (discoveryOn && (step === 'find_empty' || step === 'names')) {
       outboundKey = PARENT_NAME_ASK_TEMPLATE_KEY;
