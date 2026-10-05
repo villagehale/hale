@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { fakeSpokenLineBody, fakeSpokenLineComposer } from './fakes';
 import {
   type SpokenLineInput,
+  assembleSpokenLine,
   judgeSpokenLine,
   speakLine,
   spokenFactSlots,
   spokenLineContext,
+  spokenLineToolSchema,
 } from './spoken-line';
 
 /**
@@ -161,7 +163,12 @@ describe('judgeSpokenLine', () => {
       ok: false,
       reason: 'french',
     });
-    expect(judgeSpokenLine("Maya a Swim level 2 samedi à 9:00. Je te le rappelle, c'est près de chez toi.", tu)).toEqual({
+    expect(
+      judgeSpokenLine(
+        "Maya a Swim level 2 samedi à 9:00. Je te le rappelle, c'est près de chez toi.",
+        tu,
+      ),
+    ).toEqual({
       ok: true,
     });
     const englishTitle = {
@@ -195,6 +202,37 @@ describe('judgeSpokenLine', () => {
       ok: false,
       reason: 'forbidden:booking_claim',
     });
+  });
+});
+
+describe('assembleSpokenLine', () => {
+  it('keeps a statement as the single line field', () => {
+    expect(assembleSpokenLine(0, { line: '  Maya has Swim level 2.  ' })).toBe(
+      'Maya has Swim level 2.',
+    );
+  });
+
+  it('puts the question last and adds no words of its own', () => {
+    expect(
+      assembleSpokenLine(1, {
+        before: 'Sam, this link is just for you.',
+        question: "Want your calendar in the kids' year too?",
+      }),
+    ).toBe("Sam, this link is just for you. Want your calendar in the kids' year too?");
+    expect(assembleSpokenLine(1, { before: '', question: 'Who is taking it?' })).toBe(
+      'Who is taking it?',
+    );
+  });
+
+  it('keeps the questions-0 tool schema stable for the statement evals', () => {
+    expect(JSON.stringify(spokenLineToolSchema(0))).toBe(
+      JSON.stringify({
+        type: 'object',
+        properties: { line: { type: 'string' } },
+        required: ['line'],
+      }),
+    );
+    expect(spokenLineToolSchema(1).required).toEqual(['before', 'question']);
   });
 });
 
@@ -276,6 +314,36 @@ describe('speakLine', () => {
     expect(page.mock.calls[0]?.[0]).toBe(
       'spoken line unsent skill=group-voice kind=kid_event reason=model_failed',
     );
+  });
+
+  it('retries once and hands the refusal back: question mark, a missing name, the register', async () => {
+    const ask: SpokenLineInput = {
+      ...base,
+      questions: 1,
+      mustMention: ['Sam', 'Maya'],
+      language: 'fr',
+      address: 'tu',
+    };
+    let attempts = 0;
+    const voice = fakeSpokenLineComposer({
+      body: (input) => {
+        attempts += 1;
+        // A real question, the names present, and vous inside a tu line: the
+        // register check is what refuses it, and that reason is what the retry sees.
+        return attempts === 1
+          ? 'Sam, Maya has Swim level 2 on Saturday at 9:00. Ça vous intéresse?'
+          : fakeSpokenLineBody(input);
+      },
+    });
+    const page = vi.fn(async (_text: string) => undefined);
+    const result = await speakLine(voice, ask, { page });
+    expect(result.source).toBe('retry');
+    expect(result.fallback).toBeNull();
+    expect(voice.calls[0]?.rejected).toBeUndefined();
+    expect(voice.calls[1]?.prompt).toBe('short');
+    expect(voice.calls[1]?.rejected?.reason).toBe('french');
+    expect(voice.calls[1]?.rejected?.line).toContain('vous');
+    expect(page).not.toHaveBeenCalled();
   });
 
   it('judges every attempt: a leaky line on both prompts is unusable, not sent', async () => {

@@ -1,4 +1,5 @@
 import {
+  type SpokenLineComposeOptions,
   type SpokenLineComposer,
   type SpokenLineInput,
   judgeSpokenLine,
@@ -16,7 +17,11 @@ import {
  * can find the facts in the wire body. It records every request it saw.
  */
 export interface FakeSpokenLineComposer extends SpokenLineComposer {
-  readonly calls: { input: SpokenLineInput; prompt: 'full' | 'short' }[];
+  readonly calls: {
+    input: SpokenLineInput;
+    prompt: 'full' | 'short';
+    rejected: SpokenLineComposeOptions['rejected'];
+  }[];
 }
 
 export function fakeSpokenLineComposer(
@@ -29,12 +34,12 @@ export function fakeSpokenLineComposer(
     failFullPrompt?: boolean;
   } = {},
 ): FakeSpokenLineComposer {
-  const calls: { input: SpokenLineInput; prompt: 'full' | 'short' }[] = [];
+  const calls: FakeSpokenLineComposer['calls'] = [];
   return {
     calls,
     async compose(input, composeOptions) {
       const prompt = composeOptions?.prompt ?? 'full';
-      calls.push({ input, prompt });
+      calls.push({ input, prompt, rejected: composeOptions?.rejected });
       if (options.fail) throw new Error('fake voice: model failed');
       if (options.failFullPrompt && prompt === 'full') {
         throw new Error('fake voice: model failed');

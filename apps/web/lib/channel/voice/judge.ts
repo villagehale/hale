@@ -1,5 +1,5 @@
-import type { ReplyLanguage } from '../language';
 import { findInventedFacts } from '../../loop/voice/facts-lint';
+import type { ReplyLanguage } from '../language';
 
 /**
  * VIL-413 / VIL-417. The red lines code holds on a model-written parent line.
@@ -120,9 +120,93 @@ export function spokenFactSlots(input: SpokenLineInput): string[] {
   return slots.filter((slot) => slot.length > 0);
 }
 
-/** What the model is handed. Facts and direction only: no ids, no phone, no link. */
-export function spokenLineContext(input: SpokenLineInput): unknown {
+/**
+ * Why the previous attempt was refused. Handed back on the one retry so the
+ * model is told the check it failed, not asked to guess.
+ */
+export interface SpokenLineRejection {
+  reason: SpokenLineJudgeFailure;
+  line: string;
+}
+
+/**
+ * The tool the model fills. `questions: 0` stays the single `line` string the
+ * statement evals already cache against. `questions: 1` splits the question
+ * into its own field so a period where a question belongs is a shape error,
+ * not a sentence the model hopes will pass.
+ */
+export function spokenLineToolSchema(questions: 0 | 1): {
+  type: 'object';
+  properties: Record<string, { type: 'string'; description?: string }>;
+  required: readonly string[];
+  additionalProperties?: false;
+} {
+  if (questions === 0) {
+    return {
+      type: 'object',
+      properties: { line: { type: 'string' } },
+      required: ['line'],
+    };
+  }
   return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      before: {
+        type: 'string',
+        description:
+          'Sentences before the question. No question mark. Empty string when the message is only the question.',
+      },
+      question: {
+        type: 'string',
+        description:
+          'The one question: a full sentence whose last character is ?. A period or a statement is invalid.',
+      },
+    },
+    required: ['before', 'question'],
+  };
+}
+
+/** Tool description paired with {@link spokenLineToolSchema}. Statement copy is the historical one. */
+export function spokenLineToolDescription(questions: 0 | 1): string {
+  return questions === 1
+    ? 'Return before and question. question is one sentence and its last character is ?.'
+    : 'Return the one text message to send.';
+}
+
+/** Join the tool fields into the one bubble the parent would read. No words are added here. */
+export function assembleSpokenLine(
+  questions: 0 | 1,
+  value: { line?: string; before?: string; question?: string },
+): string {
+  if (questions === 0) return (value.line ?? '').trim();
+  const before = (value.before ?? '').trim();
+  const question = (value.question ?? '').trim();
+  if (before.length === 0) return question;
+  if (question.length === 0) return before;
+  return `${before} ${question}`;
+}
+
+/** What to tell the model on the one retry. Not a parent-facing sentence. */
+export function spokenLineRefusalFix(reason: SpokenLineJudgeFailure): string {
+  if (reason === 'question') {
+    return 'The last sentence must be exactly one question and its last character must be ?. A period is a refusal. When questions is 0 there is no question mark anywhere.';
+  }
+  if (reason === 'missing') {
+    return 'Every string in mustMention must appear in the line, copied as given. A name in that list is said. you, you two, and vous do not stand in for it.';
+  }
+  if (reason === 'french') {
+    return "address tu forbids vous, votre, vos, and pour vous (use toi, ton, ta). address vous forbids tu, te, toi, ton, ta, tes, and t'. One register for the whole line.";
+  }
+  if (reason === 'link') {
+    return 'Say this link or ce lien only when linkFollows is true. Never write a URL.';
+  }
+  return 'Rewrite so this refusal is gone. Use only the facts you were given.';
+}
+
+/** What the model is handed. Facts and direction only: no ids, no phone, no link. */
+export function spokenLineContext(input: SpokenLineInput, rejected?: SpokenLineRejection): unknown {
+  const context = {
     kind: input.kind,
     language: input.language,
     address: input.address,
@@ -132,6 +216,15 @@ export function spokenLineContext(input: SpokenLineInput): unknown {
     parentWords: input.parentWords ?? null,
     recentTurns: input.recentTurns ?? [],
     facts: input.facts,
+  };
+  if (!rejected) return context;
+  return {
+    ...context,
+    rejected: {
+      reason: rejected.reason,
+      line: rejected.line,
+      fix: spokenLineRefusalFix(rejected.reason),
+    },
   };
 }
 

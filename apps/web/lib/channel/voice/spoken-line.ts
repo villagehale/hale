@@ -7,16 +7,29 @@ import { claimOpsPage } from '~/lib/monitoring/ops-page-claim';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { type SpokenLineInput, judgeSpokenLine, spokenLineContext } from './judge';
+import {
+  type SpokenLineInput,
+  type SpokenLineRejection,
+  assembleSpokenLine,
+  judgeSpokenLine,
+  spokenLineContext,
+  spokenLineToolDescription,
+  spokenLineToolSchema,
+} from './judge';
 
 export {
   DEFAULT_MAX_CHARS,
+  assembleSpokenLine,
   judgeSpokenLine,
   spokenFactSlots,
   spokenLineContext,
+  spokenLineRefusalFix,
+  spokenLineToolDescription,
+  spokenLineToolSchema,
   type SpokenFact,
   type SpokenLineInput,
   type SpokenLineJudgeFailure,
+  type SpokenLineRejection,
   type SpokenScalar,
   type SpokenTurn,
 } from './judge';
@@ -49,10 +62,11 @@ export const SPOKEN_LINE_ATTEMPT_TIMEOUT_MS = 12_000;
 const SHORT_LINE_SYSTEM = [
   'You are Hale, texting a family. Write one short warm message in the given language, as a friend who is good at this.',
   'Use only the facts in the JSON. Do not invent a name, an activity, a date, a weekday, a time, a place, or a price.',
-  'Follow questions exactly: 1 means your last sentence is the one question and ends with a question mark, with everything else before it; 0 means no question mark at all.',
-  'Mention every string in mustMention, copied as given, a name included.',
-  'French: address vous means vous/votre/vos only, address tu means tu/te/toi/ton only; never mix them in one line. Say je for Hale, never on or nous. Real accents.',
+  'Follow questions exactly: 1 means the question field is the one question and its last character is ?, with everything else in before and no question mark there; 0 means the line field and no question mark at all.',
+  'Mention every string in mustMention, copied as given, a name included. you and vous do not stand in for a name.',
+  'French: address vous means vous/votre/vos only, address tu means tu/te/toi/ton/ta only and never vous/votre/vos; never mix them in one line. Say je for Hale, never on or nous. Real accents.',
   'Do not write a URL, a phone number, STOP, unsubscribe, or any compliance wording. No emoji. Two or three short sentences at most.',
+  'If the JSON has rejected, that line already failed for that reason. Rewrite it so the fix is met. Do not repeat the failure.',
 ].join(' ');
 
 export type SpokenLineFallback =
@@ -67,11 +81,14 @@ export interface SpokenLineResult {
   fallback: SpokenLineFallback | null;
 }
 
+export interface SpokenLineComposeOptions {
+  prompt?: 'full' | 'short';
+  /** Set on the one retry after {@link judgeSpokenLine} refused the first line. */
+  rejected?: SpokenLineRejection;
+}
+
 export interface SpokenLineComposer {
-  compose(
-    input: SpokenLineInput,
-    options?: { prompt?: 'full' | 'short' },
-  ): Promise<{ line: string }>;
+  compose(input: SpokenLineInput, options?: SpokenLineComposeOptions): Promise<{ line: string }>;
 }
 
 export interface SpokenLineOptions {
@@ -90,13 +107,8 @@ export interface SpokenLineOptions {
   scope?: { familyId: string; database?: Database };
 }
 
-const lineSchema = z.object({ line: z.string() }).strict();
-
-const lineJsonSchema = {
-  type: 'object',
-  properties: { line: { type: 'string' } },
-  required: ['line'],
-} as const;
+const statementSchema = z.object({ line: z.string() }).strict();
+const askSchema = z.object({ before: z.string(), question: z.string() }).strict();
 
 class SpokenLineTimeout extends Error {
   constructor() {
@@ -172,9 +184,10 @@ export async function speakLine(
 
   const attempt = async (
     prompt: 'full' | 'short',
-  ): Promise<{ body: string } | { fail: SpokenLineFallback }> => {
+    rejected?: SpokenLineRejection,
+  ): Promise<{ body: string } | { fail: SpokenLineFallback; rejected?: SpokenLineRejection }> => {
     try {
-      const composed = await withTimeout(composer.compose(input, { prompt }), timeoutMs);
+      const composed = await withTimeout(composer.compose(input, { prompt, rejected }), timeoutMs);
       const body = composed.line.trim();
       const judged = judgeSpokenLine(body, input);
       if (!judged.ok) {
@@ -182,7 +195,7 @@ export async function speakLine(
           { reason: judged.reason, skill: input.skill, kind: input.kind, prompt, familyId },
           'spoken-line: unusable line',
         );
-        return { fail: 'unusable' };
+        return { fail: 'unusable', rejected: { reason: judged.reason, line: body } };
       }
       console.info(
         { skill: input.skill, kind: input.kind, prompt, familyId, chars: body.length },
@@ -218,7 +231,7 @@ export async function speakLine(
     await page(first.fail);
     return unsent(first.fail);
   }
-  const second = await attempt('short');
+  const second = await attempt('short', first.rejected);
   if ('body' in second) return { body: second.body, source: 'retry', fallback: null };
   await page(second.fail);
   return unsent(second.fail);
@@ -229,20 +242,21 @@ export function createSpokenLineComposer(client: AgentClient | null): SpokenLine
     async compose(input, options) {
       if (!client) throw new Error('spoken-line: voice_unavailable');
       const short = options?.prompt === 'short';
+      const asking = input.questions === 1;
       const skill = short ? null : await loadCronSkill(input.skill);
       const { value } = await forceToolJson({
         client,
         lane: pickLane(skill?.meta.task ?? 'speak'),
         system: skill?.instructions ?? SHORT_LINE_SYSTEM,
-        userMessage: JSON.stringify(spokenLineContext(input)),
+        userMessage: JSON.stringify(spokenLineContext(input, options?.rejected)),
         toolName: 'line',
-        toolDescription: 'Return the one text message to send.',
-        inputJsonSchema: lineJsonSchema,
-        schema: lineSchema,
+        toolDescription: spokenLineToolDescription(input.questions),
+        inputJsonSchema: spokenLineToolSchema(input.questions),
+        schema: asking ? askSchema : statementSchema,
         maxTokens: short ? SHORT_MAX_TOKENS : MAX_TOKENS,
         transport: 'stream',
       });
-      return { line: value.line };
+      return { line: assembleSpokenLine(input.questions, value) };
     },
   };
 }

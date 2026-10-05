@@ -55,12 +55,7 @@ const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'group-voice.m
 const JUDGE_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'voice', 'judge.ts');
 const INPUT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'linq', 'group-line-input.ts');
 
-/** Mirrors `lineJsonSchema` / MAX_TOKENS in apps/web/lib/channel/voice/spoken-line.ts. */
-const LINE_TOOL_SCHEMA = {
-  type: 'object',
-  properties: { line: { type: 'string' } },
-  required: ['line'],
-};
+/** Same ceiling as MAX_TOKENS in apps/web/lib/channel/voice/spoken-line.ts. */
 const MAX_TOKENS = 400;
 
 /** How many distinct openings the asks must show between them. Low on purpose: it catches
@@ -100,6 +95,15 @@ const JUDGE_SYSTEM = [
   'reply with a keyword, a number, YES or NO; mentioning STOP or unsubscribing; a URL;',
   'quoting anything from a mailbox; exclamation marks, emoji, hype, "we" for Hale; a',
   'corporate or bot register; padding; anything watchFor says must not happen.',
+  'Do not invent bans the request does not make. First person "I" / "je" is the required',
+  'voice; the ban is "we" / "on" / "nous" for Hale, not first person, and not Hale saying',
+  "it will keep the kids' things straight across both calendars when that is the receipt.",
+  'When linkFollows is true, "this link" / "ce lien" points at the URL code appends after',
+  'the text. It is not a URL. A URL is an http address, www, or a pasted link. "Must not',
+  'write a URL" means that, so a line that says "this link" with linkFollows true is right.',
+  '"the kids\' year" / "l\'année des enfants" is the name of this thread when the moment is',
+  'about it, not invented jargon. "I am still here" / "je suis toujours là" is the departure',
+  'line when the register matches address (toi when tu, vous when vous), not padding.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -116,7 +120,13 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { judgeSpokenLine, spokenLineContext } = await tsImport(JUDGE_SRC, import.meta.url);
+  const {
+    judgeSpokenLine,
+    spokenLineContext,
+    spokenLineToolSchema,
+    spokenLineToolDescription,
+    assembleSpokenLine,
+  } = await tsImport(JUDGE_SRC, import.meta.url);
   const { groupLineInput } = await tsImport(INPUT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
@@ -136,21 +146,24 @@ async function main() {
     const userMessage = JSON.stringify(spokenLineContext(input));
     const raw = broken
       ? BROKEN_LINE
-      : (
-          await cachedToolCall({
-            tag: `group-voice:${fixture.id}`,
-            model,
-            system: skill.instructions,
-            userMessage,
-            toolName: 'line',
-            toolSchema: LINE_TOOL_SCHEMA,
-            toolDescription: 'Return the one text message to send.',
-            maxTokens: MAX_TOKENS,
-            cachedOnly,
-            getClient,
-            cost,
-          })
-        ).value.line;
+      : assembleSpokenLine(
+          input.questions,
+          (
+            await cachedToolCall({
+              tag: `group-voice:${fixture.id}`,
+              model,
+              system: skill.instructions,
+              userMessage,
+              toolName: 'line',
+              toolSchema: spokenLineToolSchema(input.questions),
+              toolDescription: spokenLineToolDescription(input.questions),
+              maxTokens: MAX_TOKENS,
+              cachedOnly,
+              getClient,
+              cost,
+            })
+          ).value,
+        );
 
     const body = String(raw).trim();
     const failures = [];
