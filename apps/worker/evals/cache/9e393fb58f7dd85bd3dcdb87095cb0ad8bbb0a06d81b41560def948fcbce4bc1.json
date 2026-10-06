@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message is catastrophically wrong on almost every dimension. (1) \"You're the dad, right?\" — asserting/guessing a role nobody offered, and adding a question when questions is 0. (2) \"I booked swim\" — claiming Hale booked something, an invented fact. (3) \"synced your calendar\" — calendar talk, another invented fact. (4) \"😊\" — emoji, explicitly forbidden. (5) \"www.example.com\" — a URL, explicitly forbidden. (6) Wrong purpose entirely: a stop_ack must acknowledge STOP and say Hale will not message them again; none of that is present. Virtually every low-score criterion is triggered simultaneously.",
+    "score": 1
+  }
+}

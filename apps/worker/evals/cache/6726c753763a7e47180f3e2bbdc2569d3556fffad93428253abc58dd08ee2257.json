@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French, uses vous correctly for the group address, includes a warm thank-you, and says back the role word \"nounou\" that the person offered — exactly what role_confirmed requires. No questions, no invented facts, no exclamation marks, no emoji, no padding. It is brief and natural. mustMention requires \"nounou\" and it is present. The only minor note is \"de la famille\" is a small addition not in the request, but it is not an invented fact (it is contextually neutral and not a specific name, count, or time). Overall this is a clean, correct role_confirmed line.",
+    "score": 5
+  }
+}

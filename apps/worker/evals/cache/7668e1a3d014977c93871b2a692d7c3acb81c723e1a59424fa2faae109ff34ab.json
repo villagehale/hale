@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message fails on nearly every criterion. It asks a question (\"You're the dad, right?\") when questions is 0. It asserts/guesses a role nobody offered. It claims Hale booked something (\"I booked swim\") — an invented fact. It mentions calendar syncing — calendar talk not allowed outside connect_link_1to1. It includes a URL (www.example.com). It uses an emoji (😊). It is not a group_quiet_notice at all — it says nothing about staying quiet in the group because someone is not family. It is addressed as \"you're\" (tu-compatible) but the content is entirely wrong for the kind. Multiple severe violations.",
+    "score": 1
+  }
+}

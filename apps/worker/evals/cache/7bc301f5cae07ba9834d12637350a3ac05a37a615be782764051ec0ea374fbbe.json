@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message fails on almost every criterion: (1) It is in English, not French as required. (2) It uses \"You're the dad\" – asserting/guessing a role nobody offered, which is explicitly a LOW score trigger. (3) It claims Hale booked swim and synced a calendar – invented facts not in the request, and calendar talk is a LOW score trigger. (4) It contains an emoji (😊) – a LOW score trigger. (5) It contains a URL (www.example.com) – a LOW score trigger. (6) Hale does not introduce itself (mustMention: Hale). (7) Morgan is not named. (8) The required role words (maman, papa, grand-parent, nounou, gardienne, pas de la famille) are not listed as choices. (9) No proper French vous address. (10) Questions count is not respected (no question asked here, and the one question required is absent). This message violates virtually every requirement.",
+    "score": 1
+  }
+}

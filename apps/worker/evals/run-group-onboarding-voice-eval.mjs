@@ -26,6 +26,7 @@ import { tsImport } from 'tsx/esm/api';
 import { GROUP_ONBOARDING_VOICE_FIXTURES } from './group-onboarding-voice-fixtures.mjs';
 import {
   JUDGE_MIN,
+  JUDGE_SAMPLES_MEDIAN,
   cachedToolCall,
   lazyAnthropic,
   makeCost,
@@ -53,24 +54,48 @@ const INPUT_SRC = join(
 const MAX_TOKENS = 400;
 
 const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text message Hale posts in a family group chat it',
-  'has just joined. Some people in the chat are parents Hale knows; others Hale does not',
-  'know yet, and each of them must say for themselves who they are. Hale wrote the message',
-  'from the facts in the request and nothing else.',
+  'You are a strict reviewer scoring ONE text message Hale sends during a family group',
+  'chat\'s onboarding. Some people in the chat are parents Hale knows; others Hale does not know',
+  'yet, and each of them must say for themselves who they are. Hale is a kids\' year',
+  'planner (in French, planificatrice de l\'année des enfants) and says so when it',
+  'introduces itself: that is its name and job, not an invented fact, and the exact words',
+  'it picks for the job (organisatrice, année scolaire, and so on) are not graded. Every',
+  'other specific comes from the request.',
   'You are given the request (kind, language, address, questions, mustMention, facts, and',
   'what the person just said if anything), the message, and watchFor - fixture-specific',
   'notes on what right and wrong look like. Score 1-5.',
-  'A 5 reads like a friend who is good at this, writing to a group: short, plain, warm,',
-  'first person, two or three sentences at most, exactly the asked number of questions with',
-  'the question last, every role word offered as a choice, and Hale named when the kind is',
-  'an ask or the no-family line. In French a 5 uses vous and real accents.',
-  'A LOW score is any of: telling someone who they are or guessing a role; asking one person',
-  'to say who the others are; a fact not in the request (a name, a child, a time, a count);',
-  'any calendar, email, Gmail, inbox, link, or plans talk; claiming Hale booked or signed',
-  'anyone up; a second question; telling anyone to reply with a keyword, YES or NO;',
-  'mentioning STOP or unsubscribing; a URL or phone number; exclamation marks, emoji, hype,',
-  '"we" for Hale; a corporate or bot register; padding; anything watchFor says must not',
-  'happen. Listing the role words as choices is required, not padding.',
+  'The request says who reads the line. address vous is the group: several people read it,',
+  'even when it names one of them, and in French a 5 uses vous. address tu is 1:1',
+  '(connect_link_1to1, group_quiet_notice): one parent reads it, and in French a 5 uses tu.',
+  'Vous in a tu line or tu in a vous line is a LOW score. Real accents always.',
+  'A 5 reads like a friend who is good at this: short, plain, warm, first person, two or',
+  'three sentences at most, exactly the asked number of questions with the question last,',
+  'and Hale named when Hale is in mustMention. When Hale is not in mustMention the group',
+  'already knows it, and a line that does not name or introduce Hale is correct. In an ask',
+  'every role word',
+  'is offered as a choice inside the one question. In role_confirmed the person has just',
+  'said their role (parentWords, facts.roleWord) and Hale says that word back: that is',
+  'acknowledgement, the point of the kind. After "la nounou" or "I\'m the mom", a line',
+  'such as "vous êtes la nounou" or "you\'re the mom" is the role they gave, said back:',
+  'never a fault, never telling anyone who they are. It is the shortest kind: a thanks',
+  'with the name and the word is complete, with or without one more warm sentence, and',
+  'terseness is not a fault.',
+  'A LOW score is any of: asserting or guessing a role nobody offered (an ask that decides',
+  'for the reader); asking one person to say who the others are; a fact not in the request',
+  '(a name, a child, a time, a count); any calendar, email, Gmail, inbox, link, or plans',
+  'talk outside connect_link_1to1; claiming Hale booked or signed anyone up; a second',
+  'question, or any question when questions is 0; telling anyone to reply with a keyword,',
+  'YES or NO; mentioning STOP or unsubscribing unless the request has wayOut true (then',
+  'STOP wording is allowed, and required only when STOP is in mustMention; a stop_ack',
+  'need not repeat STOP or the word the person used); a URL or phone number;',
+  'exclamation marks, emoji,',
+  'hype, "we" for Hale; a corporate or bot register; padding; anything watchFor says must',
+  'not happen. Listing the role words as choices is required, not padding.',
+  'connect_link_1to1 may and must say what its links connect. text_me_directly is a',
+  'statement that the person\'s private setup happens 1:1, so they should message Hale',
+  'directly: not a question, and "setup" is the kind, not an invented fact.',
+  'group_quiet_notice is one sentence saying Hale is staying quiet in the group and why;',
+  'any suggestion or fix is padding.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -96,7 +121,10 @@ async function main() {
   const { groupOnboardingLineInput } = await tsImport(INPUT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
-  const judgeModel = await readJudgeModel();
+  // SONNET, NOT HAIKU, as in run-activity-finder-eval: Haiku scored role_confirmed lines
+  // that say back the role the person gave as "telling them who they are", which the rubric
+  // says in so many words is the point of the kind.
+  const judgeModel = await readJudgeModel('sonnet');
   const judge = makeJudge(
     judgeModel,
     JUDGE_SYSTEM,
@@ -104,6 +132,7 @@ async function main() {
     cachedOnly,
     getClient,
     cost,
+    { samples: JUDGE_SAMPLES_MEDIAN },
   );
 
   console.log(
@@ -148,7 +177,9 @@ async function main() {
       message: body,
       watchFor: fixture.watchFor,
     });
-    if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
+    if (verdict.score < JUDGE_MIN) {
+      failures.push(`judge:${verdict.score} of ${verdict.samples.join('/')} (${verdict.reason})`);
+    }
 
     results.push({ fixture, body, failures });
   }

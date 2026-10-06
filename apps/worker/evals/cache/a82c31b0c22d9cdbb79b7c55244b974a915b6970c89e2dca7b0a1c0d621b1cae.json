@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French, uses vous correctly for a group address, thanks the person, and echoes back the exact role word \"nounou\" that the person offered. No questions, no invented facts, no emoji, no exclamation marks, no padding. It is warm and brief. The only minor issue is \"de la famille\" — a small addition not in the request — but it is not a fabricated fact (it adds no name, count, time, or calendar detail) and does not violate any listed LOW-score rule. mustMention requires \"nounou\" and it is present. This reads naturally and meets all criteria for a high score.",
+    "score": 5
+  }
+}

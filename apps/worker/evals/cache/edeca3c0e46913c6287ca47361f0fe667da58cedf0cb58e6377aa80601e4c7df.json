@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message has numerous critical faults: 1) It is in English, not French as required. 2) It uses an exclamation-adjacent emoji (😊). 3) It asserts a wrong role (\"dad\") instead of saying back the offered role \"grand-parent\". 4) It asks a question (\"right?\") when questions is 0. 5) It claims Hale booked swim and synced a calendar — invented facts not in the request. 6) It includes a URL (www.example.com). 7) It does not mention Pat by name. 8) It does not use the word \"grand-parent\" from the confirmed role. Virtually every rule is violated.",
+    "score": 1
+  }
+}

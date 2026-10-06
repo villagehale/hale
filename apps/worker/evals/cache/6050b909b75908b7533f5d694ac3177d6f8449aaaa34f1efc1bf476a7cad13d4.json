@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly identifies Hale by name and its role (kids' year planner), is warm and plain, addresses the group (vous context, though in English address doesn't apply the tu/vous distinction), includes exactly one question with all required role words listed as choices (\"mom, dad, grandparent, nanny, babysitter, or not family\"), and places the question last. All mustMention items are present: Hale, mom, dad, grandparent, nanny, babysitter, not family. No invented facts, no extra questions, no forbidden elements (no exclamation marks, emoji, URLs, hype, calendar talk, etc.). The message is short, friendly, and first-person. It reads naturally and meets every criterion.",
+    "score": 5
+  }
+}

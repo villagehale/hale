@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message thanks Pat by name and echoes back \"grand-parent\" as required by role_confirmed. Both mustMention items (Pat and grand-parent) are present. No questions, no invented facts, no exclamation marks, no emoji, no hype, no padding. It is warm, short, and plain. The address is vous (group chat), which is correct. The only minor note is that \"c'est parfait\" is a slight flourish but not prohibited hype or an exclamation mark, and it reads naturally friendly. Overall this is a clean, correct role_confirmed acknowledgement.",
+    "score": 5
+  }
+}

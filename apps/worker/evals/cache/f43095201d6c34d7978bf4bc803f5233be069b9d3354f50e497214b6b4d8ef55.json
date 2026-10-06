@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has multiple critical failures: 1) It is in English, not French as required. 2) It asserts/guesses a role (\"You're the dad, right?\") that nobody offered — a LOW score trigger. 3) It claims Hale booked something (\"I booked swim\") — a LOW score trigger for claiming Hale booked or signed anyone up. 4) It mentions calendar syncing — calendar talk is explicitly a LOW score trigger. 5) It contains a URL (www.example.com) — a LOW score trigger. 6) It contains an emoji (😊) — a LOW score trigger. 7) It asks a question (\"right?\") when questions is 0. 8) Hale is not introduced/named, yet Hale is in mustMention. Every possible fault is present simultaneously.",
+    "score": 1
+  }
+}

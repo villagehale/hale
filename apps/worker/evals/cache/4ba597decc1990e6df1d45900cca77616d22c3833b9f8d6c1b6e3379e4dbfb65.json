@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has an enormous number of critical faults: 1) It guesses a role (\"You're the dad, right?\") which is asserting/guessing a role nobody offered — a clear LOW score trigger. 2) It claims Hale booked something (\"I booked swim\") — fabricated fact and forbidden action. 3) It claims calendar syncing (\"synced your calendar\") — forbidden calendar talk and fabricated fact. 4) It contains an emoji (😊) — forbidden. 5) It contains a URL (www.example.com) — forbidden. 6) It asks a question (\"right?\") when questions is 0. 7) Hale never introduces itself as Hale — mustMention requires it. 8) The message does not fulfill the no_family_yet kind at all: it doesn't say Hale is a kids' year planner, doesn't say parents should text Hale directly, doesn't say Hale stays quiet. Every single requirement of the kind is missed, and nearly every LOW score condition is triggered.",
+    "score": 1
+  }
+}

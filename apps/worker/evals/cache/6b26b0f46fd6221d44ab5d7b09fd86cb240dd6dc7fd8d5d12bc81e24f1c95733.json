@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a vous address (correct for group), warm and short, names Riley (from mustMention/facts), presents all role words as choices in a single question, does not guess the new member's role, does not mention other group members, no emoji or exclamation marks, no invented facts, no calendar/link/plans talk, no second question. However, Hale is in mustMention but the message does not name Hale — that is a fault. Also, \"mom, dad, grandparent, nanny, babysitter, or not family\" correctly lists all role words. The only real issue is the missing self-introduction of Hale, which mustMention requires. This brings the score down but the rest is clean.",
+    "score": 3
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has an enormous number of critical faults: 1) It is in English, not French as required. 2) It asserts/guesses a role (\"You're the dad, right?\") that nobody offered — a LOW score trigger. 3) It claims Hale booked something (\"I booked swim\") — a LOW score trigger. 4) It mentions calendar syncing — calendar talk is a LOW score trigger. 5) It contains a URL (www.example.com) — a LOW score trigger. 6) It contains an emoji (😊) — a LOW score trigger. 7) It ends with a question (\"right?\") when questions must be 0 — a LOW score trigger. 8) Hale is not named despite being in mustMention. 9) The message utterly fails to do what the kind requires: introduce Hale, say a parent should write directly, and stay quiet in the group. Every dimension is wrong.",
+    "score": 1
+  }
+}

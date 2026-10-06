@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message hits all required points: Hale introduces itself, names Sam and Riley (both in mustMention), says the links connect Google Calendar and Gmail (linkFollows, providers), notes nothing will appear in the group, and includes STOP wording (required since STOP is in mustMention and wayOut is true). No questions (questions is 0). Uses tu throughout (correct for address tu). Real accents present. No invented facts, no emoji, no exclamation marks, no URL, no padding. One small grammatical slip: \"Réponde\" should be \"Réponds\" (imperative tu form), but this is a minor error that slightly mars an otherwise strong line.",
+    "score": 4
+  }
+}

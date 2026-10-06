@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Multiple critical failures: (1) The message is in English, but the request requires French. (2) It says \"You're the dad\" — asserting a role nobody offered; the person said \"la nounou\" and the message must say \"nounou\" back, not \"dad.\" (3) \"I booked swim\" — Hale claims to have booked something, which is forbidden. (4) \"synced your calendar\" — calendar talk is forbidden outside connect_link_1to1. (5) A URL (www.example.com) is present, which is forbidden. (6) An emoji (😊) is present, which is forbidden. (7) A question (\"right?\") is present, but questions is 0. (8) mustMention requires \"nounou\" and it is absent. (9) Address should be vous but the line uses \"your\" (tu-register in English, though the whole language is wrong). Nearly every rule is violated.",
+    "score": 1
+  }
+}

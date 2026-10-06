@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is one clean sentence, uses tu register (no explicit tu/vous pronoun issue since it's first person \"I'm\"), correctly explains Hale is staying quiet in the group because one person asked it to stop writing there, matches facts.reason=\"stopped\" and facts.count=1, no invented names, no suggestion or fix, no question, no blame, no exclamation marks or emoji, no hype. It reads warm and plain. The only minor issue is it says \"stop writing there\" rather than something closer to \"asked me to stop writing to them there\" — it doesn't specify it was addressed to that person individually, but this is a negligible nuance. Overall this is a solid, compliant group_quiet_notice in a 1:1 address context.",
+    "score": 5
+  }
+}

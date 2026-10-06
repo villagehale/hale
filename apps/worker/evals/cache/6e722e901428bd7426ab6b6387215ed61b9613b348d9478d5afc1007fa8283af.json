@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is one sentence, in French, with no question, no suggestion, no fix, no emoji, no exclamation mark, no URL, no padding. It correctly states the reason Hale is staying quiet (2 people haven't said who they are) and uses \"je reste silencieuse\" — first person, plain, warm enough. However, the address requirement is tu, and group_quiet_notice is a 1:1 message. The sentence itself contains no tu/vous form directed at the reader, so there is no address violation. \"silencieuse\" is a feminine adjective for Hale, which is acceptable. The facts used (count 2, reason unconfirmed) are both in the request. No invented facts, no extra content. This is a clean, minimal, correct group_quiet_notice.",
+    "score": 5
+  }
+}

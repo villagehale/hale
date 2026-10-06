@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a single sentence, in English, uses \"I'm\" (first person), states Hale is staying quiet and gives the reason (one person asked Hale to stop writing there), no question, no suggestion, no fix, no blame, no invented name, no exclamation mark, no emoji, no URL. It correctly uses \"I\" (tu context, 1:1). It is clean and warm. The only minor nuance is \"stop writing there\" vs \"stop writing to them there\" but the meaning is preserved and accurate. Overall this is a solid, compliant group_quiet_notice.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has catastrophic failures on nearly every dimension: (1) It is in English, not French as required. (2) It asserts/guesses a role (\"You're the dad, right?\") that nobody offered — a clear LOW score trigger. (3) It claims Hale booked someone (\"I booked swim\") — another explicit LOW score trigger. (4) It mentions calendar syncing — calendar talk is forbidden outside connect_link_1to1, a LOW score trigger. (5) It contains a URL (www.example.com) — explicitly forbidden, a LOW score trigger. (6) It contains an emoji (😊) — forbidden. (7) It contains an exclamation-adjacent hype and a question mark despite questions being 0. (8) Hale is not named despite being in mustMention. (9) It does not state the text_me_directly premise (that the person should message Hale directly for their private setup). This message fails on almost every requirement.",
+    "score": 1
+  }
+}

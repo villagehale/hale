@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fails on almost every criterion: (1) It is in English, not French as required. (2) It uses the wrong role entirely — it says \"the dad\" when the person said \"la nounou\" (the nanny); the role word \"nounou\" is never echoed back. (3) It asserts and guesses a role nobody offered (\"the dad\"). (4) It claims Hale booked something (\"I booked swim\") — an invented fact and forbidden action. (5) It mentions calendar syncing — calendar talk is forbidden outside connect_link_1to1. (6) It includes a URL (www.example.com) — forbidden. (7) It contains an emoji (😊) — forbidden. (8) There is a question (\"right?\") when questions is 0. (9) mustMention requires \"nounou\" and it is absent. Every single requirement is violated.",
+    "score": 1
+  }
+}

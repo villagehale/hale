@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in English, so the vous/tu register issue doesn't apply. It's a statement (no question mark), names Hale and Sam as required by mustMention, correctly frames the private setup as a 1:1 direct message to Hale, is short and warm, uses first person, no links, no numbers, no calendar/email talk, no exclamation marks, no emoji, no hype, no \"we\". It reads naturally like a friendly planner addressing Sam in the group. One minor thing: \"I'll take it from there\" is a natural, warm closer that adds slight padding but is not egregious. Overall this is a clean, compliant text_me_directly message.",
+    "score": 5
+  }
+}

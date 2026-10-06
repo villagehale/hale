@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message has catastrophic failures on almost every axis: 1) It is in English, not French as required. 2) It asserts a role (\"You're the dad\") that nobody offered — a clear low-score trigger. 3) It claims Hale booked something (\"I booked swim\") — another explicit low-score trigger. 4) It contains a URL (www.example.com) — forbidden. 5) It contains an emoji (😊) — forbidden. 6) It does not mention Hale, Sam, Riley, or STOP — all four mustMention items are missing. 7) It does not say what the links connect (Google Calendar and Gmail). 8) It does not say these messages are private (not in the group). 9) STOP wording is required (wayOut true, STOP in mustMention) and absent. 10) \"I booked … synced your calendar\" are invented facts not in the request. There is virtually nothing correct in this message.",
+    "score": 1
+  }
+}

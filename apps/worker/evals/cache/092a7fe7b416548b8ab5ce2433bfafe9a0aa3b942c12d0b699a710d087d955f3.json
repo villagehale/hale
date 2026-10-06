@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is short, warm, and in plain English. It does not guess the role, does not repeat their words as a guess, lists every required role word as a choice inside one question, uses \"you\" (vous context but English address, so not a French tu/vous issue), has no hype, emoji, exclamation marks, invented facts, or forbidden elements. The light preamble \"Just to make sure I get it right\" is gentle and does not make the person feel wrong. The one question is last. Hale is not in mustMention so not naming itself is correct. All role words from mustMention are present. This is clean and meets all criteria.",
+    "score": 5
+  }
+}

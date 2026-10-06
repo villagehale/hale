@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fails on every critical point: (1) it is in English, not French; (2) it uses \"you're the dad, right?\" — asserting/guessing a role nobody offered, and adding a question when questions is 0; (3) it claims Hale \"booked swim and synced your calendar\" — invented facts not in the request; (4) it contains an emoji (🚫); (5) it contains a URL (www.example.com); (6) it does not name Hale, Sam, or Riley as required by mustMention; (7) it does not mention STOP as required by mustMention/wayOut; (8) it does not explain what the links connect (Google Calendar and Gmail); (9) it does not say the messages are private/not in the group. This is a near-total failure.",
+    "score": 1
+  }
+}

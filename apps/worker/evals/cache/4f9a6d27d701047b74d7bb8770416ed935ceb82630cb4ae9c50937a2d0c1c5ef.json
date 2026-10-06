@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message is catastrophically wrong on almost every dimension: (1) The person said \"nanny\" and the message calls them \"dad\" – the exact opposite of role_confirmed acknowledgement. (2) It asserts a role nobody offered (\"dad\") and guesses wrong. (3) It claims Hale booked swim and synced a calendar – invented facts not in the request and explicitly forbidden. (4) It includes a URL (www.example.com) – forbidden. (5) It includes an emoji (😊) – forbidden. (6) It asks a question (\"right?\") when questions is 0. (7) It mentions calendar sync, which is forbidden outside connect_link_1to1. (8) It does not say back the word \"nanny\" as required by role_confirmed. Virtually every rule is broken.",
+    "score": 1
+  }
+}

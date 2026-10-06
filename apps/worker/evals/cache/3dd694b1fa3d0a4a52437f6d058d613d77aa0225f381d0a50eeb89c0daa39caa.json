@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message fails on almost every requirement: (1) It is in English, not French. (2) It uses tu-address but that is the only correct element. (3) It guesses/asserts a role (\"You're the dad, right?\") — a cardinal fault for a group_quiet_notice and in general. (4) It asks a question (\"right?\") when questions=0. (5) It claims Hale booked something (\"I booked swim\") — an invented fact. (6) It mentions calendar syncing — forbidden calendar talk. (7) It contains a URL (www.example.com) — forbidden. (8) It contains an emoji (😊) — forbidden. (9) It is not one sentence, not quiet, and not limited to saying why Hale is staying quiet. It is essentially the opposite of what was requested.",
+    "score": 1
+  }
+}

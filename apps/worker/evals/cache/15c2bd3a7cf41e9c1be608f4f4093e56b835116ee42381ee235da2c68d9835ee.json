@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message fails on almost every criterion. (1) It misidentifies Pat as \"the dad\" when Pat just said \"grandma here!\" — the role to echo back is grandparent/grandma, not dad; asserting the wrong role is a severe fault. (2) It claims Hale \"booked swim and synced your calendar\" — invented facts not in the request, and calendar/plans talk is explicitly prohibited. (3) It contains an emoji (😊), which is disallowed. (4) It contains a URL (www.example.com), which is explicitly prohibited. (5) It does not say Pat's name, required by mustMention. (6) It does not say back \"grandparent,\" required by mustMention and the role_confirmed kind. (7) It ends with \"see www.example.com?\" which is both a URL and an implicit question when questions must be 0. Essentially every rule is broken.",
+    "score": 1
+  }
+}

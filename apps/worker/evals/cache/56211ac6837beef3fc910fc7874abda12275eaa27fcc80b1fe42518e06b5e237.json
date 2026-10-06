@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names Hale (required by mustMention), uses vous (correct for group address), contains no question (questions is 0), no link, no phone number, no invented names, no emoji or exclamation marks. It correctly states that the private setup happens 1:1 and directs the person to message Hale directly — the core job of text_me_directly. The word \"setup\" appears in French as \"setup\" (acceptable anglicism in French context). It is short, warm, first person, and reads naturally. No forbidden elements are present. A clean, correct execution.",
+    "score": 5
+  }
+}

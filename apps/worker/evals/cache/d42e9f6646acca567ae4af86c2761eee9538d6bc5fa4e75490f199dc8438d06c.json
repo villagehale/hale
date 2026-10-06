@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has catastrophic failures on nearly every axis: (1) It is in English, not French as required. (2) It addresses the person as \"the dad\" when they just said \"c'est la maman\" — mustMention is \"maman\" and the role_confirmed kind requires saying the role back; instead it invents and asserts the wrong role entirely. (3) It claims Hale \"booked swim and synced your calendar\" — invented facts not in the request, and calendar talk is explicitly a LOW score trigger. (4) It includes an emoji (😊), which is a LOW score trigger. (5) It includes a URL (www.example.com), which is a LOW score trigger. (6) It contains an exclamation-adjacent hype register. (7) It is in the wrong language throughout. Essentially every rule is violated.",
+    "score": 1
+  }
+}

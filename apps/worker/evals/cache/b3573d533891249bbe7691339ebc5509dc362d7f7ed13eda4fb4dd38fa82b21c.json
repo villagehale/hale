@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has numerous critical faults: 1) It is in English, not French as required. 2) It uses \"you're the dad, right?\" — asserting/guessing a role nobody offered, which is a LOW score trigger. 3) It claims Hale \"booked swim and synced your calendar\" — invented facts not in the request, and claiming Hale booked/signed someone up is explicitly a LOW score trigger. 4) It contains a URL (www.example.com), which is forbidden. 5) It contains an exclamation-adjacent emoji (😊), which is forbidden. 6) It contains a question (\"right?\"), but questions is 0. 7) Hale is not named, but Hale is in mustMention. 8) It does not state that the person should message Hale directly (the core purpose of text_me_directly). 9) Calendar talk is forbidden outside connect_link_1to1. Every single requirement is violated.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Multiple critical failures: (1) Asserts \"You're the dad\" — completely wrong role, Pat said \"grandma here!\" and the roleWord is grandparent, so Hale must say grandparent/grandma back, not dad. (2) Claims Hale \"booked swim\" — invented fact, asserting a booking nobody requested. (3) \"Synced your calendar\" — calendar talk is explicitly prohibited. (4) Includes a URL (www.example.com) — prohibited. (5) Emoji (😊) — prohibited. (6) Asks a question (\"right?\") — questions must be 0. This message fails on nearly every dimension.",
+    "score": 1
+  }
+}

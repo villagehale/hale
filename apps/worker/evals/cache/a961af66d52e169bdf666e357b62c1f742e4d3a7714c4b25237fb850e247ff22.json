@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has multiple critical failures: 1) It is in English, not French as required. 2) It uses vous correctly but the language is wrong. 3) It guesses/asserts the role (\"You're the dad, right?\") — a LOW score trigger, as no role was offered and Hale must ask, not decide. 4) It claims Hale booked something (\"I booked swim\") — an invented fact and a LOW score trigger. 5) It mentions calendar syncing — calendar talk is explicitly forbidden outside connect_link_1to1. 6) It contains a URL (www.example.com) — a LOW score trigger. 7) It contains an emoji (😊) — a LOW score trigger. 8) It does not list all required role words as choices in the question. 9) mustMention items (Riley, maman, papa, grand-parent, nounou, gardienne, pas de la famille) are absent. This message fails on nearly every dimension.",
+    "score": 1
+  }
+}

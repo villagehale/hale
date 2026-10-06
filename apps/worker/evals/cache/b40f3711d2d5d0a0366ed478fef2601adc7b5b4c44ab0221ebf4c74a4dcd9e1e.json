@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has numerous critical faults: 1) It asserts/guesses a role (\"You're the dad, right?\") that nobody offered – a major LOW score trigger. 2) It claims Hale booked something (\"I booked swim\") – a fabricated fact and a LOW score trigger. 3) It claims Hale synced a calendar (\"synced your calendar\") – calendar talk and a fabricated fact, LOW score trigger. 4) It includes a URL (www.example.com) – explicitly forbidden, LOW score trigger. 5) It contains an emoji (😊) – forbidden. 6) Hale is not named anywhere despite being in mustMention. 7) It does not say Hale is a kids' year planner. 8) It does not tell parents to text Hale directly. 9) It does not say Hale will stay quiet in the group. 10) It is completely wrong in tone, content, and structure for the no_family_yet kind. Virtually nothing is correct.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French, uses vous correctly (group address), is a single short sentence, confirms receipt and that Hale will no longer write to them in the group, no question, no emoji, no exclamation mark, no hype, no padding, no mention of STOP (not required since STOP is not in mustMention), no invented facts. Perfectly clean stop_ack. The only minor note is that it doesn't name Hale, but Hale is not in mustMention so that is correct. This is an ideal response.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly introduces Hale as a kids' year planner for Riley's family, names Hale (mustMention), names Riley (mustMention), and asks exactly one question listing all six role words (mom, dad, grandparent, nanny, babysitter, not family — all mustMention). It uses \"you\" naturally for the group (address vous in English), does not guess anyone's role, does not ask Riley to identify others, mentions no calendars/email/links/plans, has no exclamation marks or emoji, no invented facts, no second question, no URL or phone number, no hype or padding. It is short, warm, first-person, and reads like a friendly human. This is a textbook 5.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a clean, one-sentence stop acknowledgement: it confirms the request was heard and states Hale will no longer write to the person in the group. No question, no pitch, no exclamation marks, no emoji, no URL, no extra padding. STOP is not in mustMention so repeating it is not required. wayOut is true and the spirit of the stop is honoured. The only minor note is \"you\" is used (address is \"vous\"), but in English stop_ack this is natural and \"vous\" vs \"tu\" is a French-register concern; in English there is no register mismatch. Overall the message meets every criterion for a 5.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has numerous critical faults: 1) It is in English, not French as required. 2) It asks a question (\"You're the dad, right?\") when questions is 0. 3) It asserts/guesses a role (\"the dad\") that nobody offered. 4) It claims Hale booked something (\"I booked swim\") — an invented fact. 5) It mentions calendar syncing — calendar talk is explicitly forbidden outside connect_link_1to1. 6) It includes a URL (www.example.com) — explicitly forbidden. 7) It uses an emoji (😊) — explicitly forbidden. 8) It is not one sentence as required by group_quiet_notice. 9) It does not say Hale is staying quiet in the group and why. Essentially nothing about this message is correct.",
+    "score": 1
+  }
+}

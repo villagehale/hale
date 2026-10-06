@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has multiple fatal flaws: (1) It asserts/guesses a role (\"You're the dad, right?\") rather than asking everyone to identify themselves with the role words as choices — a clear LOW score trigger. (2) It claims Hale \"booked swim\" — an invented fact not in the request, and claiming Hale booked something is explicitly prohibited. (3) It mentions syncing a calendar — calendar talk is prohibited outside connect_link_1to1. (4) It includes a URL (www.example.com) — prohibited. (5) It contains an emoji (😊) — prohibited. (6) It does not ask the group who they are with all role words listed as choices, which is required for roster_ask. (7) It addresses \"You're\" as if to one person when address is \"vous\" (group). (8) The single required question is not the role-ask with all role choices. Nearly every rule is violated.",
+    "score": 1
+  }
+}

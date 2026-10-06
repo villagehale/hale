@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French with vous address, correctly matching the group context. It says \"maman\" back (mustMention satisfied), acknowledging the role the person offered. No questions (questions is 0). No invented facts, no hype, no emoji, no exclamation marks, no calendar/link/email talk. It is short, warm, and plain. The phrase \"Je suis là pour l'année de vos enfants\" is a natural, friendly follow-up sentence. This is a clean role_confirmed: thanks + the role word + one warm sentence. A near-perfect execution.",
+    "score": 5
+  }
+}

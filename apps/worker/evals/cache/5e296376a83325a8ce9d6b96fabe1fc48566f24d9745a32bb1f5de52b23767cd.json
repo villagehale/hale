@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has multiple serious faults: 1) It guesses \"you're the dad\" — the worst possible error for a role_reask, directly contradicting the watchFor instruction not to guess the role; 2) It claims Hale booked swim and synced a calendar — invented facts not in the request (LOW score triggers: asserting a fact not in the request, claiming Hale booked or signed anyone up, calendar talk); 3) It includes a URL (www.example.com) — explicitly a LOW score trigger; 4) It includes an emoji (😊) — explicitly a LOW score trigger; 5) It does not list all required role words as choices in the question; 6) It does not ask the one required question with all role words listed. This is about as poor as a message can be.",
+    "score": 1
+  }
+}

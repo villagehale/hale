@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French with correct accents, uses vous correctly for a group address, introduces Hale by name and job, names Riley's family thread, and asks exactly one question listing all six role words as choices. mustMention items covered: Riley ✓, maman ✓, papa ✓, grand-parent ✓, nounou ✓, gardienne ✓, pas de la famille ✓. It is short, warm, plain, first-person, no emoji, no exclamation marks, no invented facts, no second question, no forbidden topics. This is essentially a perfect execution of the member_ask kind.",
+    "score": 5
+  }
+}

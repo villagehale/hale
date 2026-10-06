@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has multiple critical faults: (1) It asserts a role (\"You're the dad, right?\") rather than asking the group to each say their own role — a direct violation of the ask kind, which requires every role word offered as a choice. (2) It claims Hale booked something (\"I booked swim\") — an invented fact not in the request. (3) It mentions syncing a calendar — calendar talk is explicitly prohibited outside connect_link_1to1. (4) It includes a URL (www.example.com) — forbidden. (5) It uses an emoji (😊) — forbidden. (6) It does not name Morgan or Hale, both required by mustMention. (7) None of the required role words (mom, dad, grandparent, nanny, babysitter, not family) are offered as choices in a single question. (8) It has no proper single question with all role words as choices. This message fails on nearly every dimension.",
+    "score": 1
+  }
+}

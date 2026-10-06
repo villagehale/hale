@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names Hale (required by mustMention), gives its role as kids' year planner, tells the group that one of the parents needs to text Hale directly to set up, and says it will stay quiet until then. No question is asked (questions=0 ✓), no exclamation marks or emoji, no link or number, no invented facts, no \"we\", plain warm first-person register. Address is vous (group) and the message uses \"you\" generically for the group, which is appropriate. It is concise and reads naturally. No watchFor violations. This is a strong message that meets all criteria.",
+    "score": 5
+  }
+}

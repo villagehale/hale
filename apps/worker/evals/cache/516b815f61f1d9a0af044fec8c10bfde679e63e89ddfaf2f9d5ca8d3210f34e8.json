@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message introduces Hale by name and job (kids' year planner), references Riley's family, and asks exactly one question listing all six required role words (mom, dad, grandparent, nanny, babysitter, not family) as choices — all mustMention items are present. It does not guess anyone's role, does not ask Riley to identify others, mentions no calendars/email/links/plans, has no exclamation marks or emoji, no second question, no forbidden content. It is short, warm, first-person, and ends with the question. Uses \"you\" appropriately for a group (vous) context in English. This is a clean, correct execution.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message is catastrophically wrong on nearly every dimension: (1) It is in English, not French as required. (2) It uses a question (\"You're the dad, right?\") when questions must be 0. (3) It claims Hale booked something (\"I booked swim\") — an invented fact not in the request. (4) It claims Hale synced a calendar — calendar talk is explicitly forbidden. (5) It contains an exclamation-mark-adjacent emoji 😊. (6) It contains a URL (www.example.com), which is explicitly forbidden. (7) It does not acknowledge the STOP/ARRET word at all — the whole point of stop_ack is to confirm Hale will stop messaging. (8) It asserts a role (\"You're the dad\") that the person did not offer in this turn. (9) The address is completely wrong (English, no vous). Essentially nothing in this message is correct.",
+    "score": 1
+  }
+}

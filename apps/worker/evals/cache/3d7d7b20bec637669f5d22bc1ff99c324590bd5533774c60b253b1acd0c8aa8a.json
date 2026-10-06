@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message thanks Pat by name, says back the roleWord \"grandparent\" as required, has no question (questions is 0), is warm and short, uses no exclamation marks beyond the period, no invented facts, no hype, no plans/calendar talk, and both mustMention items (Pat and grandparent) are present. The address is \"vous\" but this is a group chat context — the message doesn't use \"you\" in a tu/vous-distinguishable way in English, so no pronoun conflict. It's clean, friendly, and exactly what role_confirmed asks for.",
+    "score": 5
+  }
+}

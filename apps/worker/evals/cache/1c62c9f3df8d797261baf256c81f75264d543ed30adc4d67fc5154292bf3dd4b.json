@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message covers all required elements: Hale names itself, names Sam and Riley (both in mustMention), says the links connect Google Calendar and Gmail (linkFollows, providers), notes nothing appears in the group, and includes STOP wording (wayOut true, STOP in mustMention). Address is tu throughout (never vous). Accents are real. No questions (questions is 0). No invented facts, no hype, no emoji, no exclamation marks. Warm and concise. The only minor issue is \"Réponde\" — the correct imperative for \"tu\" in French is \"Réponds\" (not \"Réponde\"), which is a grammatical error with a real accent word. This is a meaningful language error in a French message but does not affect the substance. It merits a small deduction.",
+    "score": 4
+  }
+}

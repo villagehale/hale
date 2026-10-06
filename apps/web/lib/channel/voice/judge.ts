@@ -48,6 +48,11 @@ export interface SpokenLineInput {
   maxChars?: number;
   /** Code appends a real URL after the prose. The model may say "this link". */
   linkFollows?: boolean;
+  /**
+   * The line carries the way out (a first 1:1 message, a STOP acknowledgement), so
+   * STOP wording is allowed. `mustMention` is what requires it.
+   */
+  wayOut?: boolean;
   /** Per-kind red lines, named. A hit is `unusable` and is logged by name. */
   forbidden?: readonly { name: string; pattern: RegExp }[];
 }
@@ -258,6 +263,7 @@ export function spokenLineContext(input: SpokenLineInput, rejected?: SpokenLineR
     questions: input.questions,
     mustMention: input.mustMention ?? [],
     linkFollows: input.linkFollows ?? false,
+    ...(input.wayOut ? { wayOut: true } : {}),
     parentWords: input.parentWords ?? null,
     recentTurns: input.recentTurns ?? [],
     facts: input.facts,
@@ -314,7 +320,7 @@ export function judgeSpokenLine(
   if (input.questions === 1 && !questionIsLast(trimmed)) return { ok: false, reason: 'question' };
 
   if (BANNED_PHRASE.test(trimmed)) return { ok: false, reason: 'banned' };
-  if (COMPLIANCE.test(trimmed)) return { ok: false, reason: 'compliance' };
+  if (!input.wayOut && COMPLIANCE.test(trimmed)) return { ok: false, reason: 'compliance' };
   if (EMOJI.test(trimmed)) return { ok: false, reason: 'emoji' };
   if (URL_OR_PHONE.test(trimmed)) return { ok: false, reason: 'invented' };
 

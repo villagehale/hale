@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message thanks Pat by name, echoes the confirmed role (\"grandparent\"), uses no question, makes no promises about kids or plans, and is warm and concise. mustMention items (Pat, grandparent) are both present. No exclamation marks, emoji, hype, invented facts, or forbidden content. The address is \"vous\" but this is a group chat context; the message is addressed to the group and names Pat, which is appropriate. All criteria are met cleanly.",
+    "score": 5
+  }
+}

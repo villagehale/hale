@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French, uses vous correctly for a group address, lists all six required role words as choices within a single question, and does not assert or guess any role from \"c'est moi lol\". It ends with the question as required. However, it is entirely bare — no warmth, no acknowledgement that the previous reply was unclear, no friendly framing. A 5 reads \"like a friend who is good at this: short, plain, warm.\" This line is short and plain but not warm at all; it reads like a cold form. It also lacks any gentle re-ask framing (e.g., a brief acknowledgement or soft lead-in). Still, it hits every factual and structural requirement (correct address, all roles listed, exactly one question, no invented facts, no forbidden elements). Minor warmth deficit keeps it from a 5, but the structure is fully correct, so it lands at 4.",
+    "score": 4
+  }
+}

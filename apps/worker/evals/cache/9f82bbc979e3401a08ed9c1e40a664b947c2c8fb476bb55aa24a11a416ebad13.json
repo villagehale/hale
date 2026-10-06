@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French, uses vous correctly (group address), is a single short sentence, has no questions, no exclamation marks, no emoji, no URL, no mention of STOP or the keyword (not required since STOP is not in mustMention), no invented facts, no padding, and cleanly acknowledges that Hale will no longer write to them in the group. It satisfies all stop_ack requirements. The only minor note is that Hale is not named, but Hale is not in mustMention so that is correct. A clean, warm, minimal acknowledgement.",
+    "score": 5
+  }
+}

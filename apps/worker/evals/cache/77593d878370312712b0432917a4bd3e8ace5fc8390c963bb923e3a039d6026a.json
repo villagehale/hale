@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is one sentence, states the reason (not_family), explains Hale is staying quiet in the group, no suggestion/fix/next step/question/blame/invented name, no exclamation marks or emoji, plain and warm. It correctly uses \"I'm\" (first person). Address is tu (1:1), and in English tu/vous distinction doesn't apply. No forbidden elements present. The only minor issue is it says \"one person in the chat is not family\" which aligns with facts.count:1 and reason:not_family — that's fine. Clean, correct execution.",
+    "score": 5
+  }
+}

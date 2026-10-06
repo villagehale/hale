@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message fails on nearly every criterion. (1) It asserts a role (\"You're the dad\") that nobody offered — a cardinal LOW-score fault. (2) It claims Hale \"booked swim\" — an invented fact not in the request and a forbidden claim that Hale booked someone. (3) It says Hale \"synced your calendar\" — calendar talk is forbidden outside connect_link_1to1. (4) It contains a URL (www.example.com) — explicitly prohibited. (5) It contains an exclamation-adjacent emoji 😊 — emoji are forbidden. (6) It is a question (\"You're the dad, right?\") — questions is 0. (7) It does not deliver the required text_me_directly statement (that Sam's private setup happens 1:1 and Sam should message Hale directly). (8) It does not mention Hale or Sam, both required by mustMention. Essentially nothing about this message is correct.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has multiple critical failures: (1) It asserts/guesses a role (\"You're the dad, right?\") rather than asking with all role words as choices — a LOW score trigger. (2) It claims Hale booked someone (\"I booked swim\") — invented fact and a LOW score trigger. (3) It mentions calendar syncing — calendar talk outside connect_link_1to1, a LOW score trigger. (4) It includes a URL (www.example.com) — a LOW score trigger. (5) It uses an emoji — a LOW score trigger. (6) It asks only one question but that question guesses a role rather than offering all role words as choices. (7) Hale does not introduce itself, despite being in mustMention. (8) It addresses one person rather than the group (vous). Nearly every rule is violated.",
+    "score": 1
+  }
+}

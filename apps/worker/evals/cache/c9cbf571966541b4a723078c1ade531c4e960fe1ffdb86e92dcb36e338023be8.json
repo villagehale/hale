@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a connect_link_1to1 addressed tu (1:1). Let me check all requirements:\n\n- address tu: the message uses no tu/vous form at all (no verb conjugation that reveals address), so no violation there. It reads naturally in 1:1 context.\n- mustMention: Hale ✓, Riley ✓, STOP ✓ (wayOut true, STOP required and present).\n- Hale introduces itself as \"the kids' year planner for Riley's family\" ✓\n- Links connect Google Calendar and Gmail ✓ (both providers from facts)\n- States what the links connect (required for connect_link_1to1) ✓\n- \"nothing from you is shown in the group\" ✓ (privacy note)\n- \"Replying STOP stops these messages\" ✓\n- questions is 0, no question asked ✓\n- No URL ✓, no phone ✓, no booking claim ✓, no role guess ✓, no exclamation marks ✓, no emoji ✓, no \"we\" ✓\n- No second question ✓\n- Warm, short, plain, first person ✓\n- Three sentences, concise ✓\n- linkFollows true: the message says \"The links that follow\" ✓\n\nEverything checks out perfectly. This is a clean, complete, warm, appropriately brief message that hits every required element and avoids all prohibited ones.",
+    "score": 5
+  }
+}

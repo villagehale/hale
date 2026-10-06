@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French, uses vous (correct for group address), names Hale (required by mustMention), states that the person's private setup happens 1:1 and they should message Hale directly (correct for text_me_directly), asks no questions (questions=0 respected), contains no link, no phone number, no exclamation marks, no emoji, no invented facts, no hype, no question mark. It is short, warm, and first person. The word \"setup\" appears naturally. The only minor issue is \"je prendrai tout en charge de là\" which is slightly casual but acceptable and not a fault. This is a clean, compliant message scoring at the top.",
+    "score": 5
+  }
+}

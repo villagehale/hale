@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has numerous critical faults: 1) It is in English, not French as required. 2) It uses 'You're' (tu register effectively, not vous). 3) It asserts a role ('You're the dad') without the person offering it — a direct violation. 4) It claims Hale booked something ('I booked swim') — an invented fact not in the request. 5) It claims calendar syncing ('synced your calendar') — another invented fact and forbidden calendar talk. 6) It contains a URL ('www.example.com') — explicitly prohibited. 7) It contains an emoji (😊) — prohibited. 8) It names none of: Hale, Morgan, maman, papa, grand-parent, nounou, gardienne, pas de la famille — all mustMention items are absent. 9) It asks no question at all, yet questions=1 is required. 10) There is no self-introduction of Hale. Essentially every requirement is violated.",
+    "score": 1
+  }
+}

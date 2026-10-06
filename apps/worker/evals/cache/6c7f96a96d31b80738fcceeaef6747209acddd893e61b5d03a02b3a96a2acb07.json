@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message covers all mustMention items (Hale, Sam, Riley, STOP), uses tu throughout, has real accents, names what the links connect (Google Calendar and Gmail), mentions the private/group separation, and includes STOP wording as required by wayOut+mustMention. No questions (questions is 0). No invented facts, no emoji, no exclamation marks, no hype. Warm and direct. One small grammatical slip: \"Réponde\" should be \"Réponds\" (imperative of répondre for tu), but that is a minor error that does not affect comprehension or scoring criteria. Otherwise fully compliant with the request and watchFor.",
+    "score": 4
+  }
+}

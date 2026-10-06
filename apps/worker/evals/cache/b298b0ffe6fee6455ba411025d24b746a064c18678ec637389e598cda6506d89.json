@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message fails on nearly every critical requirement: (1) It asks a question (\"You're the dad, right?\") when questions is 0. (2) It guesses/asserts a role (\"the dad\") that nobody offered — a direct LOW score trigger. (3) It claims Hale booked something (\"I booked swim\") — an invented fact not in the request and a prohibited claim. (4) It mentions calendar syncing (\"synced your calendar\") — calendar talk is explicitly prohibited. (5) It includes a URL (www.example.com) — prohibited. (6) It includes an emoji (😊) — prohibited. (7) It does not identify itself as Hale — Hale is in mustMention. (8) It does not name Sam — Sam is in mustMention. (9) It does not deliver the core text_me_directly statement (that Sam's private setup happens 1:1 and Sam should message Hale directly). Virtually nothing is correct.",
+    "score": 1
+  }
+}

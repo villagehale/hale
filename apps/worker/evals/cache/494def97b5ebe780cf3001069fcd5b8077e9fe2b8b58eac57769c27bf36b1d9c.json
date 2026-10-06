@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is short, warm, and says \"mom\" back — the exact word the person used — which is the core requirement of role_confirmed. No question, no next steps, no calendar, no invented facts, no emoji or exclamation marks, no hype. \"You're the mom\" is the acknowledgement. The address is vous-context (group), and the English line is neutral/natural — no vous/tu issue in English. It does not name Hale, but Hale is not in mustMention (only \"mom\" is). One slight note: mustMention includes \"mom\" and the message does say \"mom\", so that is satisfied. Clean, minimal, friendly. A near-perfect role_confirmed line.",
+    "score": 5
+  }
+}

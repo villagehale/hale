@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message introduces Hale (required by mustMention), names Riley (required), uses vous (correct for group address), real accents are present, and asks exactly one question. The question lists all required role words as choices: maman, papa, grand-parent, nounou, gardienne, pas de la famille — all present. The phrasing \"Qui êtes-vous parmi vous\" is slightly awkward but understandable. No invented facts, no calendar/email talk, no exclamation marks or emoji, no second question, no keyword instruction, no URL. The message is short and warm. The only minor issue is \"parmi vous\" which is a bit redundant/odd but not a scoring fault per the rules. Overall this is a clean, correct roster_ask in French with vous, all mustMention items covered, and the single question with all role choices listed last.",
+    "score": 5
+  }
+}

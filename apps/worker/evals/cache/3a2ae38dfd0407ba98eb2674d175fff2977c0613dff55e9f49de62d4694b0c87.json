@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a clean, warm, one-sentence stop acknowledgement: it confirms receipt (\"Heard you\") and states Hale will not write to them in the group anymore. No question, no pitch, no hype, no emoji, no exclamation marks, no URL, no mention of STOP keyword (not required since STOP is not in mustMention), no invented facts, no padding. \"Vous\" address is correct for a group chat. Fits perfectly within watchFor criteria.",
+    "score": 5
+  }
+}

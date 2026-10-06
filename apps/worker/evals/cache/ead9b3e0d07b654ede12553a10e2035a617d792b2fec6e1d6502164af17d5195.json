@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message is catastrophically wrong on almost every axis: (1) It asserts \"dad\" when the parent just said \"I'm the mom\" — the exact opposite of acknowledging the role they offered; (2) It claims Hale booked swim (\"I booked swim\") — an invented fact not in the request; (3) It mentions syncing a calendar — explicitly forbidden outside connect_link_1to1; (4) It includes a URL (www.example.com) — forbidden; (5) It includes an emoji (😊) — forbidden; (6) It asks a question (\"right?\") when questions is 0; (7) \"mustMention\" requires \"mom\" but instead says \"dad\". Essentially every rule is violated.",
+    "score": 1
+  }
+}

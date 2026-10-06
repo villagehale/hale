@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Multiple critical failures: (1) Message is in English, not French as required. (2) Uses no address form at all (neither tu nor vous, but it's moot given the language error). (3) Asserts/guesses a role (\"You're the dad, right?\") — the parentWords \"c'est moi lol\" gave no role, and Hale must not assume one. (4) Claims Hale booked swim (\"I booked swim\") — an invented fact not in the request. (5) Mentions calendar sync — calendar talk is prohibited outside connect_link_1to1. (6) Contains a URL (www.example.com) — explicitly prohibited. (7) Contains an emoji (😊) — prohibited. (8) Does not list the required role choices (maman, papa, grand-parent, nounou, gardienne, pas de la famille) as options in the question. (9) The question is not last. This message fails on nearly every dimension.",
+    "score": 1
+  }
+}

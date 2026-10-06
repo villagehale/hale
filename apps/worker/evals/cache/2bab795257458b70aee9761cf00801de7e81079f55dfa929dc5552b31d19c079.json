@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French with correct vous address, names Hale (required by mustMention), introduces Hale's role, tells the group that a parent needs to contact Hale directly to set up the year, and says Hale will stay quiet in the meantime. No questions (questions is 0), no exclamation marks, no emoji, no invented facts, no URLs or phone numbers, no hype. Two sentences, warm and plain. This is a clean, well-formed no_family_yet message that hits every required note.",
+    "score": 5
+  }
+}

@@ -135,4 +135,79 @@ export const GROUP_ONBOARDING_VOICE_FIXTURES = [
     watchFor:
       "French, vous. Hale se présente, dit qu'un des parents doit lui écrire directement pour préparer l'année des enfants, et que d'ici là il reste discret ici. Aucune question, aucun numéro.",
   },
+  {
+    id: 'connect-link-1to1-en',
+    language: 'en',
+    request: {
+      kind: 'connect_link_1to1',
+      name: null,
+      knownParentName: 'Riley',
+      providers: ['Google Calendar', 'Gmail'],
+    },
+    watchFor:
+      "1:1, the first thing Hale says to this parent directly. Hale says who it is (a kids' year planner for Riley's family), that the links below connect their own Google Calendar and Gmail so Hale can keep the kids' dates straight, that nothing of theirs shows in the group, and that replying STOP stops these messages. No question, no URL, no booking claim, no guess at their role.",
+  },
+  {
+    id: 'connect-link-1to1-fr',
+    language: 'fr',
+    request: {
+      kind: 'connect_link_1to1',
+      name: 'Sam',
+      knownParentName: 'Riley',
+      providers: ['Google Calendar', 'Gmail'],
+    },
+    watchFor:
+      "French, tu (never vous), real accents. Hale salue Sam, se présente (planificateur de l'année des enfants pour la famille de Riley), dit que les liens qui suivent connectent son Google Calendar et son Gmail, que rien de cela ne s'affiche dans le groupe, et que répondre STOP arrête ces messages. Aucune question.",
+  },
+  {
+    id: 'text-me-directly-en',
+    language: 'en',
+    request: { kind: 'text_me_directly', name: 'Sam' },
+    watchFor:
+      "In the group, vous register if it were French. Hale tells Sam, as a statement, that Sam's private setup goes to Sam directly, so Sam should send Hale a message. Says it is Hale. No link, no number, no calendar or email talk, no question mark.",
+  },
+  {
+    id: 'text-me-directly-fr',
+    language: 'fr',
+    request: { kind: 'text_me_directly', name: null },
+    watchFor:
+      "French, vous (never tu, even though one person is meant: the group reads it). Hale se nomme et dit, sans poser de question, que la personne qui vient de répondre doit lui écrire directement. Aucun lien, aucun numéro, aucun point d'interrogation, aucun nom inventé.",
+  },
+  {
+    id: 'group-quiet-not-family-en',
+    language: 'en',
+    request: { kind: 'group_quiet_notice', reason: 'not_family', count: 1 },
+    watchFor:
+      '1:1 to the parent who set Hale up. ONE sentence: someone in the family group is not family, so Hale is staying quiet there. No suggestion, no fix, no next step, no question, no blame, no name invented. Must not say that person asked Hale to stop.',
+  },
+  {
+    id: 'group-quiet-stopped-en',
+    language: 'en',
+    request: { kind: 'group_quiet_notice', reason: 'stopped', count: 1 },
+    watchFor:
+      '1:1 to the parent who set Hale up. ONE sentence: someone in the family group asked Hale to stop writing to them there, so Hale is staying quiet in that group. Never says that person is not family. No suggestion, no fix, no question, no blame, no name invented.',
+  },
+  {
+    id: 'group-quiet-unconfirmed-fr',
+    language: 'fr',
+    request: { kind: 'group_quiet_notice', reason: 'unconfirmed', count: 2 },
+    watchFor:
+      "French, tu (never vous: one parent reads this). UNE phrase : deux personnes du groupe n'ont pas dit qui elles sont, alors Hale reste discret dans ce groupe. Aucune suggestion, aucune solution, aucune question.",
+  },
+  {
+    id: 'stop-ack-en',
+    language: 'en',
+    request: { kind: 'stop_ack' },
+    parentWords: 'STOP',
+    watchFor:
+      'In the group, threaded to the person who said STOP. One short sentence: heard, and Hale will not write to them in this group anymore. Nothing else, no question, no pitch.',
+  },
+  {
+    id: 'stop-ack-fr',
+    language: 'fr',
+    request: { kind: 'stop_ack' },
+    parentWords: 'ARRET',
+    watchFor:
+      "French, vous. Une phrase courte : compris, Hale ne leur écrira plus dans ce groupe. Rien d'autre, aucune question.",
+  },
 ];

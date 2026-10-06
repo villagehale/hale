@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message fails on nearly every criterion: 1) It asserts \"dad\" when the parent said \"mom\" — directly contradicting the stated role instead of echoing it back. 2) It claims Hale \"booked swim and synced your calendar\" — fabricated facts not in the request, and calendar talk is explicitly forbidden. 3) It includes a URL (www.example.com), which is prohibited. 4) It contains an emoji (😊), which is not allowed. 5) It asks a question (\"right?\") when questions is 0. 6) \"mustMention\" requires \"mom\" to be said back — instead \"dad\" is used. This message gets nearly everything wrong.",
+    "score": 1
+  }
+}

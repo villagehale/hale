@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in English, uses \"you\" implicitly (no vous/tu issue in English), is short and warm, names Riley (mustMention), mentions all six role words as choices in one question, states this is Riley's family thread, does not guess anyone's role, does not mention other group members, has no emoji or exclamation marks, no invented facts, no calendar/link/URL talk, no second question. It reads naturally and friendly. However, Hale is in mustMention but the message does not name or introduce Hale — that is a fault. \"Riley\" in mustMention refers to the known parent name, not Hale, so Hale is not separately in mustMention here. Re-reading: mustMention lists [\"Riley\",\"mom\",\"dad\",\"grandparent\",\"nanny\",\"babysitter\",\"not family\"] — these are all present. Hale is not in mustMention, so no introduction needed. The message ticks every box: correct greeting, thread context, all role words listed, single question last, no padding, no invented facts. This is a clean 5.",
+    "score": 5
+  }
+}

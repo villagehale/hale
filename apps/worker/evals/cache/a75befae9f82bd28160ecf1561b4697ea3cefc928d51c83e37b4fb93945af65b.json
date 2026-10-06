@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has a cascade of critical faults: (1) It guesses \"You're the dad, right?\" — this is exactly what watchFor forbids: asserting/guessing a role nobody offered, and making the person feel wrong. (2) \"I booked swim\" — invented fact not in the request (no booking was mentioned). (3) \"synced your calendar\" — calendar talk is explicitly forbidden outside connect_link_1to1. (4) A URL (www.example.com) is present — URLs are explicitly forbidden. (5) An emoji (😊) is present — forbidden. (6) It does not list any of the required role words as choices. (7) The question is not the one required (re-ask with all role words). This message fails on almost every criterion.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French, uses vous correctly throughout, introduces Hale by name (required in mustMention), names Morgan (required), and lists all six role words as choices in a single question including \"pas de la famille\". It is short, warm, first person, uses no exclamation marks or emoji, invents no facts, makes no calendar/link/plans references, and does not use \"on\" for Hale. The question is last and is the only question. The phrasing \"parmi vous\" naturally invites each person to answer for themselves without asking one person to speak for others. No padding, no bot register. All mustMention items are present: Hale, Morgan, maman, papa, grand-parent, nounou, gardienne, pas de la famille. This is a clean, compliant 5.",
+    "score": 5
+  }
+}

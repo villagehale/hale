@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message is disastrous on multiple counts: (1) It says \"You're the dad\" when the person just said \"I'm the mom\" — directly contradicting and misidentifying the role they offered, the opposite of acknowledgement; (2) It claims Hale booked swim and synced a calendar — invented facts and forbidden actions; (3) It includes a URL (www.example.com) which is explicitly banned; (4) It includes an emoji (😊) which is banned; (5) There is no acknowledgement of \"mom\" at all, which is the entire point of role_confirmed; (6) \"mustMention\" requires the word \"mom\" to appear, and it does not. Essentially every rule is violated.",
+    "score": 1
+  }
+}
