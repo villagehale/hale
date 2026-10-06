@@ -4,6 +4,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, type Skill, runAgent } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { groupCapResetsAt } from '~/lib/channel/linq/family-outbound';
 import { OPT_OUT_LINE, OPT_OUT_SHORT } from '~/lib/channel/opt-out';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import {
@@ -15,7 +16,7 @@ import {
   runWorkstreamFollowupSweep,
   workstreamHoldUntil,
 } from './workstream-followup';
-import { WORKSTREAMS_ENABLED_ENV, activeWorkstreamBlock } from './workstreams';
+import { WORKSTREAMS_ENABLED_ENV, activeWorkstreamBlock, haleActionNextStep } from './workstreams';
 
 /** 11:00 in Toronto, 00:00 in Tokyo. Quiet hours are 21:00–08:00 local. */
 const NOW = new Date('2026-08-12T15:00:00.000Z');
@@ -230,7 +231,11 @@ describe('workstream follow-up sweep', () => {
       targetFor: async () => ({ channel: 'legacy' }),
       deliver: vi
         .fn()
-        .mockResolvedValueOnce({ status: 'held', reason: 'group_cap' })
+        .mockResolvedValueOnce({
+          status: 'held',
+          reason: 'group_cap',
+          until: new Date('2026-08-12T18:00:00.001Z'),
+        })
         .mockResolvedValueOnce({ status: 'held', reason: 'quiet_hours' }),
     });
     expect(result.held.group_cap).toBe(1);
@@ -241,7 +246,7 @@ describe('workstream follow-up sweep', () => {
       {
         id: due.id,
         reason: 'group_cap',
-        until: workstreamHoldUntil('group_cap', NOW, 'America/Toronto').toISOString(),
+        until: '2026-08-12T18:00:00.001Z',
         attempt: 0,
       },
       {
@@ -325,13 +330,79 @@ describe('workstream follow-up sweep', () => {
     expect(stamp).toHaveBeenCalledTimes(1);
     expect(pages).toHaveLength(1);
   });
+
+  it('backs off a thrown send the same way, and pages once', async () => {
+    vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
+    const pages: string[] = [];
+    const stamp = vi.fn(async () => undefined);
+    const deferred: number[] = [];
+    const compose = vi.fn(async () => ({
+      ok: true as const,
+      body: 'The camp has not written back.',
+    }));
+    const base = {
+      now: () => NOW,
+      listDue: async () => [due],
+      f14: () => true,
+      linkedTeen: async () => false,
+      parentFor: async () => 'user-1',
+      dedupeActive: async () => false,
+      buildGate: () => gate('America/Toronto'),
+      compose,
+      resolvePhone: async () => '+14165550199',
+      targetFor: async () => ({ channel: 'legacy' as const }),
+      deliver: async () => {
+        throw new Error('linq down');
+      },
+      stamp,
+      alreadyPaged: async () => false,
+      noteUnsent: async () => undefined,
+      page: async (text: string) => {
+        pages.push(text);
+      },
+    };
+    const first = await runWorkstreamFollowupSweep({} as Database, {
+      ...base,
+      pendingDeferral: async () => null,
+      defer: async (_db, input) => {
+        deferred.push(input.attempt);
+      },
+    });
+    expect(first.failed).toBe(1);
+    expect(stamp).not.toHaveBeenCalled();
+    expect(deferred).toEqual([1]);
+    expect(pages).toEqual([`workstream followup unsent family=${FAMILY} reason=send_failed`]);
+
+    compose.mockClear();
+    const quiet = await runWorkstreamFollowupSweep({} as Database, {
+      ...base,
+      pendingDeferral: async () => ({
+        until: new Date(NOW.getTime() + 60_000),
+        attempt: 1,
+        reason: 'send_failed',
+      }),
+    });
+    expect(quiet.skipped.deferred).toBe(1);
+    expect(compose).not.toHaveBeenCalled();
+
+    const last = await runWorkstreamFollowupSweep({} as Database, {
+      ...base,
+      alreadyPaged: async () => true,
+      pendingDeferral: async () => ({
+        until: new Date(NOW.getTime() - 1000),
+        attempt: 2,
+        reason: 'send_failed',
+      }),
+      defer: vi.fn(),
+    });
+    expect(last.failed).toBe(1);
+    expect(stamp).toHaveBeenCalledTimes(1);
+    expect(pages).toHaveLength(1);
+  });
 });
 
 describe('workstream hold windows', () => {
-  it('waits out a group cap until local midnight and quiet hours until 08:00', () => {
-    expect(workstreamHoldUntil('group_cap', NOW, 'America/Toronto').toISOString()).toBe(
-      '2026-08-13T04:00:00.000Z',
-    );
+  it('waits out quiet hours until 08:00 and a co-parent ask until local midnight', () => {
     expect(workstreamHoldUntil('coparent_ask', NOW, 'America/Toronto').toISOString()).toBe(
       '2026-08-13T04:00:00.000Z',
     );
@@ -342,6 +413,40 @@ describe('workstream hold windows', () => {
     expect(workstreamHoldUntil('quiet_hours', early, 'America/Toronto').toISOString()).toBe(
       '2026-08-12T12:00:00.000Z',
     );
+  });
+
+  it('holds a group cap until the rolling window resets, not local midnight', () => {
+    const sent = new Date('2026-08-13T14:00:00.000Z');
+    const fridayMorning = new Date('2026-08-14T12:00:00.000Z');
+    const until = groupCapResetsAt(
+      'discretionary',
+      {
+        discretionaryDay: 1,
+        discretionaryWeek: 1,
+        ceilingToday: 1,
+        discretionaryDayAt: [sent],
+        discretionaryWeekAt: [sent],
+        ceilingTodayAt: [sent],
+      },
+      fridayMorning,
+    );
+    expect(until.toISOString()).toBe('2026-08-14T14:00:00.001Z');
+
+    const oldest = new Date('2026-08-08T12:00:00.000Z');
+    const recent = new Date('2026-08-14T10:00:00.000Z');
+    const both = groupCapResetsAt(
+      'discretionary',
+      {
+        discretionaryDay: 1,
+        discretionaryWeek: 3,
+        ceilingToday: 1,
+        discretionaryDayAt: [recent],
+        discretionaryWeekAt: [oldest, sent, recent],
+        ceilingTodayAt: [recent],
+      },
+      fridayMorning,
+    );
+    expect(both.toISOString()).toBe('2026-08-15T12:00:00.001Z');
   });
 });
 
@@ -482,7 +587,10 @@ describe('workstream follow-up voice', () => {
     expect(skill).toContain('parent_news');
     expect(skill).toContain('il faut');
     expect(skill).toContain('tu dois');
+    expect(skill).toContain('`order`');
+    expect(skill).toContain('Do not attribute');
     expect(skill).toContain('must not come out as the same sentence');
+    expect(skill).toContain('must not share an opening shape');
   });
 
   it('treats a promised weekday that has passed as past, and a later one as still ahead', () => {
@@ -532,6 +640,106 @@ describe('workstream follow-up voice', () => {
       followupRefusal('Any news on your end about the swim?', thursday, zone, 'waiting_on_parent'),
     ).toBeNull();
     expect(followupRefusal('The camp still has not written back.', thursday, zone)).toBeNull();
+    expect(followupRefusal('Let me know which Saturday works.', thursday, zone)).toBeNull();
+
+    expect(
+      followupRefusal(
+        'We will reach out to the camp Thursday.',
+        thursday,
+        zone,
+        'waiting_on_third_party',
+      ),
+    ).toBe('past_weekday');
+    expect(followupRefusal("Hale's going to call the desk tomorrow.", thursday, zone)).toBe(
+      'invented_promise',
+    );
+    expect(followupRefusal('Let me check with the studio Friday.', thursday, zone)).toBe(
+      'invented_promise',
+    );
+    expect(followupRefusal('On relance le centre lundi.', thursday, zone)).toBe('past_weekday');
+    expect(
+      followupRefusal('Je te tiens au courant dès que le centre répond.', thursday, zone),
+    ).toBe('invented_promise');
+
+    expect(
+      followupRefusal('Did you hear back from the camp?', thursday, zone, 'waiting_on_third_party'),
+    ).toBe('parent_news');
+    expect(
+      followupRefusal('Any update from the school?', thursday, zone, 'waiting_on_third_party'),
+    ).toBe('parent_news');
+    expect(
+      followupRefusal('Le centre t’a-t-il répondu?', thursday, zone, 'waiting_on_third_party'),
+    ).toBe('parent_news');
+
+    expect(followupRefusal('Hey! Just wanted to check in on the jersey.', thursday, zone)).toBe(
+      'stock_opener',
+    );
+    expect(followupRefusal('Following up on the jersey order.', thursday, zone)).toBe(
+      'stock_opener',
+    );
+    expect(followupRefusal('Circling back on the jersey order.', thursday, zone)).toBe(
+      'stock_opener',
+    );
+    expect(followupRefusal('Hope you had a good weekend!', thursday, zone)).toBe('stock_opener');
+    expect(followupRefusal('Petit suivi: le maillot.', thursday, zone)).toBe('stock_opener');
+    expect(followupRefusal('Still need to know the size.', thursday, zone)).toBe('stock_opener');
+
+    expect(
+      followupRefusal(
+        'Tu dois décider si tu apportes une salade ou un dessert pour la fete de demain?',
+        thursday,
+        zone,
+      ),
+    ).toBe('order');
+    expect(followupRefusal('Tu dois choisir entre les deux.', thursday, zone)).toBe('order');
+    expect(followupRefusal('Faut juste que tu décides entre les deux.', thursday, zone)).toBe(
+      'order',
+    );
+    expect(followupRefusal('Il faut que tu décides entre les deux.', thursday, zone)).toBe('order');
+    expect(followupRefusal('Il faut choisir entre les deux.', thursday, zone)).toBe('order');
+  });
+
+  it('keeps a parent step and drops only a step Hale would perform', () => {
+    expect(haleActionNextStep('Parent to call the dentist')).toBe(false);
+    expect(haleActionNextStep('Parent to email the coach')).toBe(false);
+    expect(haleActionNextStep('Sam to email the coach')).toBe(false);
+    expect(haleActionNextStep('Parent to reach out to the school')).toBe(false);
+    expect(haleActionNextStep('Parent to text the babysitter')).toBe(false);
+    expect(haleActionNextStep('I need to call the dentist and want a reminder Thursday')).toBe(
+      false,
+    );
+    expect(haleActionNextStep('Follow up with Camp Kawartha registration desk Thursday')).toBe(
+      true,
+    );
+    expect(haleActionNextStep('Hale will call the desk Thursday')).toBe(true);
+  });
+
+  it('spaces an em dash between words and leaves a range and an edge dash alone', async () => {
+    const folded = async (body: string) => {
+      const client = {
+        messages: { create: vi.fn(async () => toolMessage(body)) },
+      } as unknown as AgentClient;
+      const result = await composeWorkstreamFollowup({
+        client,
+        title: 'lane',
+        status: 'waiting_on_parent',
+        nextStep: 'which lane',
+        now: NOW,
+        timeZone: 'America/Toronto',
+      });
+      if (!result.ok) throw new Error(result.reason);
+      return result.body;
+    };
+    expect(await folded('Need to confirm\u2014are you in for 9\u201310.')).toBe(
+      'Need to confirm - are you in for 9-10.',
+    );
+    expect(await folded('Saturday\u2014Wallace has the lane.')).toBe(
+      'Saturday - Wallace has the lane.',
+    );
+    expect(await folded('Sessions run Mon\u2013Fri this month.')).toBe(
+      'Sessions run Mon-Fri this month.',
+    );
+    expect(await folded('\u2014hello from the desk.')).toBe('-hello from the desk.');
   });
 });
 

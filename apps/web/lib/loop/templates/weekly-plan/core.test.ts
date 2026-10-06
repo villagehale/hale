@@ -54,8 +54,13 @@ function item(partial: Partial<WeekPlanItem>): WeekPlanItem {
 describe('gsmSafe normalizes SMS copy into the GSM-7 alphabet', () => {
   it('maps typographic punctuation to GSM equivalents', () => {
     expect(gsmSafe(`a ${EM_DASH} b`)).toBe('a - b');
-    expect(gsmSafe('Need to confirm\u2014are you')).toBe('Need to confirm - are you');
-    expect(gsmSafe('Saturday\u2014Wallace Emerson')).toBe('Saturday - Wallace Emerson');
+    // Unspaced dashes stay glued. Spacing them changes segment counts on reminders
+    // and plans. A follow-up spaces a word-bounded em dash before this fold.
+    expect(gsmSafe('Need to confirm\u2014are you')).toBe('Need to confirm-are you');
+    expect(gsmSafe('9\u201310')).toBe('9-10');
+    expect(gsmSafe('Mon\u2013Fri')).toBe('Mon-Fri');
+    expect(gsmSafe('\u2014hello')).toBe('-hello');
+    expect(gsmSafe('hello\u2014')).toBe('hello-');
     expect(gsmSafe('a · b')).toBe('a - b');
     expect(gsmSafe('it’s')).toBe("it's");
     expect(gsmSafe('wait…')).toBe('wait...');

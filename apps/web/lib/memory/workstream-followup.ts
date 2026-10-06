@@ -117,13 +117,26 @@ const WEEKDAY_ISO: Record<string, number> = {
 
 const WEEKDAY_WORD = String.raw`\b(?:(next|prochain(?:e)?)\s+)?(mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|mon|tues|tue|wed|thurs|thur|thu|fri|sat|sun|lun|jeu|ven)\b`;
 
-/** A first-person plan to act later. The sweep does not perform any of these. */
+/**
+ * A future action whose subject is Hale: first person, first-person plural
+ * (we / on / nous), or Hale by name. "Let me know" asks the parent; "let me
+ * check" is Hale offering to act. The sweep does not perform any of these.
+ */
 const COMMITMENT =
-  /\b(i['’]ll|i will|i['’]m going to|i am going to|je vais|je relance|je rappelle|j['’](?:é|e)cris|je contacte|je v(?:é|e)rifie)\b/i;
+  /\b(?:i['’]ll|i will|i['’]m going to|i am going to|let me (?!know\b)|we['’]ll|we will|we['’]re going to|we are going to|hale(?:['’]s| is) going to|hale will|je vais|je relance|je rappelle|j['’](?:é|e)cris|je contacte|je v(?:é|e)rifie|je te tiens|on va|on relance|nous allons)\b/i;
 
-const STOCK_OPENER = /^\s*(?:just checking\b|checking in\b|quick check-?in\b|hope your week\b)/i;
+const GREETING = /^(?:hey|hi|hello|bonjour|salut)\b[!,.]*\s*/i;
+
+const STOCK_OPENER =
+  /^(?:just (?:checking|wanted to check)|checking in\b|quick check-?in\b|hope your\b|hope you had\b|following up\b|circling back\b|petit suivi\b|still need to know\b)/i;
 
 const PARENT_NEWS = /\b(?:any news|on your end|heard anything|des nouvelles|de ton c[oô]t[eé])\b/i;
+
+/** A question about whether a third party has answered. A status is not one. */
+const THIRD_PARTY_REPLY =
+  /\b(?:hear back|heard back|update from|any update|news from|r[eé]pondu|r[eé]ponse)\b/i;
+
+const FRENCH_ORDER = /\b(?:tu dois|il faut que tu|faut(?:\s+juste)?\s+que tu|il faut choisir)\b/i;
 
 /**
  * A promised weekday that is today or earlier this week. "next Thursday" is
@@ -142,16 +155,41 @@ export function promisedPassedWeekday(text: string, now: Date, timeZone: string)
   return false;
 }
 
-/** Any first-person plan, including one with no day attached. */
+/** Any Hale-subject plan, including one with no day attached. */
 export function inventedHalePromise(text: string): boolean {
   return COMMITMENT.test(text);
 }
 
+function stockOpener(text: string): boolean {
+  const trimmed = text.trim();
+  return STOCK_OPENER.test(trimmed) || STOCK_OPENER.test(trimmed.replace(GREETING, ''));
+}
+
 /**
- * The body that may be sent, after the same GSM fold the other French sends
- * use (`gsmSafe`: an unspaced em dash to a spaced hyphen, an accent the
- * alphabet cannot carry to its base letter). What is left must still be GSM-7.
- * An empty body is the model declining, not a failure.
+ * A question that asks the parent what a third party did. "Any news" and
+ * "des nouvelles" count even without a question mark, which is how the
+ * earlier lines were written. A statement that the camp has not written
+ * back is not a question.
+ */
+function asksParentForThirdPartyNews(text: string): boolean {
+  if (PARENT_NEWS.test(text)) return true;
+  if (!text.includes('?')) return false;
+  return THIRD_PARTY_REPLY.test(text);
+}
+
+/**
+ * An em dash between two letters becomes a spaced hyphen. Ranges (9—10) and
+ * an edge dash stay for `gsmSafe`, which folds every dash to a bare hyphen
+ * the way the other sends do. Spacing those changed their segment counts.
+ */
+function spaceFollowupEmDash(text: string): string {
+  return text.replace(/([A-Za-zÀ-ÿ])\u2014([A-Za-zÀ-ÿ])/g, '$1 - $2');
+}
+
+/**
+ * The body that may be sent. A follow-up spaces a word-bounded em dash, then
+ * uses the same GSM fold as the other sends (`gsmSafe`). What is left must
+ * still be GSM-7. An empty body is the model declining, not a failure.
  */
 function prepareBody(
   body: string,
@@ -161,7 +199,7 @@ function prepareBody(
 ): { ok: true; body: string } | { ok: false; reason: string } {
   const text = body.trim();
   if (!text) return { ok: false, reason: 'empty' };
-  const folded = gsmSafe(text).trim();
+  const folded = gsmSafe(spaceFollowupEmDash(text)).trim();
   if (!folded) return { ok: false, reason: 'empty' };
   if (folded.length > BODY_MAX) return { ok: false, reason: 'too_long' };
   if (!isGsm7(folded)) return { ok: false, reason: 'encoding' };
@@ -176,10 +214,11 @@ function prepareBody(
   ) {
     return { ok: false, reason: 'keyword_ask' };
   }
-  if (STOCK_OPENER.test(folded)) return { ok: false, reason: 'stock_opener' };
+  if (stockOpener(folded)) return { ok: false, reason: 'stock_opener' };
+  if (FRENCH_ORDER.test(folded)) return { ok: false, reason: 'order' };
   if (promisedPassedWeekday(folded, now, timeZone)) return { ok: false, reason: 'past_weekday' };
   if (inventedHalePromise(folded)) return { ok: false, reason: 'invented_promise' };
-  if (status === 'waiting_on_third_party' && PARENT_NEWS.test(folded)) {
+  if (status === 'waiting_on_third_party' && asksParentForThirdPartyNews(folded)) {
     return { ok: false, reason: 'parent_news' };
   }
   return { ok: true, body: folded };
@@ -565,12 +604,15 @@ function nextLocalClock(now: Date, timeZone: string, hour: number, minute: numbe
 }
 
 /**
- * How long a held group send stays quiet. Quiet hours wait until 08:00 local.
- * A group cap or a co-parent ask waits until the next local midnight, which is
- * when the day's ceiling resets.
+ * How long a held send stays quiet when the clock is local. Quiet hours wait
+ * until 08:00. A co-parent ask waits until the next local midnight.
+ *
+ * A group cap does not. That budget is a rolling 24h (and 7d) counted in
+ * `family-outbound`, and the hold uses the `until` on the held result: the
+ * moment the binding message leaves the window. Midnight was a day late.
  */
 export function workstreamHoldUntil(
-  reason: 'group_cap' | 'quiet_hours' | 'coparent_ask',
+  reason: 'quiet_hours' | 'coparent_ask',
   now: Date,
   timeZone: string,
 ): Date {
@@ -760,15 +802,28 @@ export async function runWorkstreamFollowupSweep(
       }
       const target = await targetFor(database, row.familyId);
       const transport = deps.transport ?? createOutboundTransport();
-      const delivered = await deliver(database, {
-        familyId: row.familyId,
-        body: composed.body,
-        to,
-        legacy: transport,
-        target,
-        now,
-        bubbleKind: 'discretionary',
-      });
+      let delivered: Awaited<ReturnType<typeof deliver>>;
+      try {
+        delivered = await deliver(database, {
+          familyId: row.familyId,
+          body: composed.body,
+          to,
+          legacy: transport,
+          target,
+          now,
+          bubbleKind: 'discretionary',
+        });
+      } catch (err) {
+        // Linq and Twilio throw a transient failure. A returned skip and a
+        // throw are the same miss: backoff, one page, then stop.
+        result.failed += 1;
+        console.error(
+          { err: err instanceof Error ? err.name : 'unknown', familyId: row.familyId },
+          'workstream followup: send failed',
+        );
+        await backOff('send_failed');
+        continue;
+      }
       if (delivered.status === 'held') {
         result.held[delivered.reason] += 1;
         const timeZone = await zoneFor(database, row.familyId);
@@ -776,7 +831,10 @@ export async function runWorkstreamFollowupSweep(
           familyId: row.familyId,
           workstreamId: row.id,
           checkBackAt: row.checkBackAt,
-          until: workstreamHoldUntil(delivered.reason, now, timeZone),
+          until:
+            delivered.reason === 'group_cap'
+              ? delivered.until
+              : workstreamHoldUntil(delivered.reason, now, timeZone),
           reason: delivered.reason,
           attempt: waiting?.attempt ?? 0,
           now,

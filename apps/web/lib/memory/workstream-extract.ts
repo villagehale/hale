@@ -201,9 +201,11 @@ function normalizeOp(op: WorkstreamOp, ctx: ExtractContext, now: Date): Workstre
 }
 
 /**
- * A next step that says Hale will chase someone is not a plan. Drop it. The
- * wait, when the model had not already scheduled the occasion, is the outside
- * party's, with nothing promised on Hale's side.
+ * A next step Hale would perform is not a plan. Drop that step only. A parent
+ * or co-parent step stays, and so does its status: rewriting it into a
+ * third-party wait is what merged a dentist call into a pickup thread.
+ * When the dropped step had not already scheduled the occasion, the wait is
+ * the outside party's, with nothing promised on Hale's side.
  */
 function withoutHalePromise(op: WorkstreamOp): WorkstreamOp {
   if (op.action !== 'open' && op.action !== 'update') return op;

@@ -1,5 +1,6 @@
 import { type Database, type UnmetIntentLane, schema } from '@hale/db';
 import type { DeepResearchPayload } from '@hale/tools-contracts';
+import { waitUntil } from '@vercel/functions';
 import { eq } from 'drizzle-orm';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import { maybeOfferYearRetention } from '~/lib/billing/upgrade-ask';
@@ -621,8 +622,15 @@ export interface RouterResult {
 /**
  * The extract starts when the reply is already out. It is not part of the
  * turn, and the job does not wait for it: waiting would hold this parent's
- * queue on a model call that cannot change the text they already have. A
- * failure is logged on the task itself and does not re-drive the turn.
+ * queue on a model call that cannot change the text they already have.
+ *
+ * The drain runs inside `after()` on Vercel. When that callback returns, the
+ * invocation can be suspended and a detached promise is lost. `waitUntil`
+ * from `@vercel/functions` registers the same task on the request context, so
+ * the platform keeps the function alive until the extract settles. Outside a
+ * request the context has no `waitUntil` and the call is a no-op; the promise
+ * still runs. A failure is logged on the task itself and does not re-drive
+ * the turn.
  */
 function detachWorkstream(deps: ChannelRouterDeps, trailed: Promise<unknown>[]): ChannelRouterDeps {
   if (!deps.rememberWorkstream) return deps;
@@ -637,6 +645,7 @@ function detachWorkstream(deps: ChannelRouterDeps, trailed: Promise<unknown>[]):
         );
       });
       trailed.push(task);
+      waitUntil(task);
       return Promise.resolve();
     },
   };

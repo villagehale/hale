@@ -321,9 +321,7 @@ export function timeLabel(startsAt: string | null): string | null {
 // gets folded against one alphabet and billed against another.
 
 const GSM_NORMALIZE: ReadonlyArray<readonly [RegExp, string]> = [
-  // Spaced, so "confirm—are" stays two words. A dash that already had spaces
-  // collapses back to one space on each side below.
-  [/[–—]/g, ' - '],
+  [/[–—]/g, '-'], // en / em dash
   [/[‘’‛]/g, "'"], // curly single quotes
   [/[“”]/g, '"'], // curly double quotes
   [/…/g, '...'], // ellipsis

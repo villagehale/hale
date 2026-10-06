@@ -1,6 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
+
+const waitUntil = vi.hoisted(() => vi.fn());
+vi.mock('@vercel/functions', () => ({ waitUntil }));
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
@@ -3990,6 +3993,7 @@ describe('turn deadline (VIL-400)', () => {
   });
 
   it('returns the reply without waiting for the workstream extract', async () => {
+    waitUntil.mockClear();
     let release: () => void = () => undefined;
     const extracted = new Promise<void>((resolve) => {
       release = resolve;
@@ -4011,8 +4015,12 @@ describe('turn deadline (VIL-400)', () => {
     expect(result.status).toBe('agent_replied');
     expect(started).toBe(true);
     expect(h.transport.sent).toHaveLength(1);
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+    const pending = waitUntil.mock.calls[0]?.[0];
+    expect(pending).toBeInstanceOf(Promise);
     release();
     await extracted;
+    await pending;
   });
 
   it('treats a stalled stated-state read as nothing stated and still answers', async () => {

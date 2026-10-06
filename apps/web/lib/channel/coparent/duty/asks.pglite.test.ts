@@ -115,7 +115,14 @@ function sendPorts(send: DutySendPorts['send']): DutySendPorts {
       parentTimeZone: async () => 'America/Toronto',
     }),
     send,
-    spend: async () => ({ discretionaryDay: 0, discretionaryWeek: 0, ceilingToday: 0 }),
+    spend: async () => ({
+      discretionaryDay: 0,
+      discretionaryWeek: 0,
+      ceilingToday: 0,
+      discretionaryDayAt: [],
+      discretionaryWeekAt: [],
+      ceilingTodayAt: [],
+    }),
   };
 }
 

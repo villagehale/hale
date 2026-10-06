@@ -647,6 +647,43 @@ describe('a swim search carried across turns', () => {
     expect(row?.status).toBe('waiting_on_third_party');
   });
 
+  it('keeps a parent-owned next step and its status', async () => {
+    const { familyId } = await seedFamily(db.database, 'Dentist');
+    const opened = await rememberWorkstreamTurn({
+      database: db.database,
+      familyId,
+      parentText: 'I need to call the dentist. Remind me Thursday. You or Sam?',
+      haleText: 'Thursday. You or Sam?',
+      provenance: 'msg-dentist',
+      now: NOW,
+      client: toolClient({
+        ops: [
+          {
+            action: 'open',
+            title: 'Call the dentist',
+            status: 'waiting_on_parent',
+            nextStep: 'I need to call the dentist and want a reminder Thursday',
+            checkBackAt: '2026-08-13T15:00:00.000Z',
+          },
+        ],
+      }),
+    });
+    expect(opened.applied[0]).toMatchObject({
+      outcome: 'opened',
+      status: 'waiting_on_parent',
+    });
+    const id = opened.applied[0] && 'id' in opened.applied[0] ? opened.applied[0].id : '';
+    const [row] = await db.database
+      .select({
+        nextStep: schema.familyWorkstreams.nextStep,
+        status: schema.familyWorkstreams.status,
+      })
+      .from(schema.familyWorkstreams)
+      .where(eq(schema.familyWorkstreams.id, id));
+    expect(row?.nextStep).toBe('I need to call the dentist and want a reminder Thursday');
+    expect(row?.status).toBe('waiting_on_parent');
+  });
+
   it('retries a failed check-back after the backoff, then stops', async () => {
     const { familyId } = await seedFamily(db.database, 'Backoff');
     const opened = await applyWorkstreamOp(db.database, {

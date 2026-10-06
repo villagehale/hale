@@ -66,13 +66,32 @@ export interface WorkstreamOp {
  * A next step Hale would have to perform. Nothing in this system calls a desk,
  * emails a centre, or follows up with a camp, so that sentence is not stored
  * and is not handed back to the check-back as if it were a plan.
+ *
+ * A step the parent or a co-parent owns is theirs. "Parent to call the dentist"
+ * and "Sam to email the coach" stay, with the status they were given.
  */
 const HALE_ACTION_NEXT =
   /\b(follow up|email the|e-mail the|call the|check back|reach out|relancer|écrire (?:au|à)|ecrire (?:au|a)|contacter|write to|text the)\b/i;
 
+const PARENT_OWNED_STEP = /^(?:parent|the parent|co-?parent|mom|dad|mum|maman|papa|i|we)\b/i;
+
+const HALE_WE = /^we(?:['’]ll| will|['’]re| are going)\b/i;
+
+const NAMED_TO_ACT = /^([\p{Lu}][\p{L}'’-]*)\s+to\b/u;
+
+function parentOwnedStep(text: string): boolean {
+  if (HALE_WE.test(text)) return false;
+  if (PARENT_OWNED_STEP.test(text)) return true;
+  if (/\bremind me\b/i.test(text)) return true;
+  const named = NAMED_TO_ACT.exec(text);
+  if (!named) return false;
+  return !/^hale$/i.test(named[1] ?? '');
+}
+
 export function haleActionNextStep(nextStep: string | null | undefined): boolean {
   const text = nextStep?.trim();
   if (!text) return false;
+  if (parentOwnedStep(text)) return false;
   return HALE_ACTION_NEXT.test(text);
 }
 

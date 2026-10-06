@@ -115,10 +115,14 @@ export async function familyOutboundTargetForUser(
   return familyOutboundTarget(database, seat.familyId);
 }
 
-interface GroupSpend {
+export interface GroupSpend {
   discretionaryDay: number;
   discretionaryWeek: number;
   ceilingToday: number;
+  /** Instants inside each window, oldest-first is not required. */
+  discretionaryDayAt: Date[];
+  discretionaryWeekAt: Date[];
+  ceilingTodayAt: Date[];
 }
 
 export async function readGroupBubbleSpend(
@@ -126,7 +130,14 @@ export async function readGroupBubbleSpend(
   input: { familyId: string; chatId: string; now: Date },
 ): Promise<GroupSpend> {
   if (typeof database.select !== 'function') {
-    return { discretionaryDay: 0, discretionaryWeek: 0, ceilingToday: 0 };
+    return {
+      discretionaryDay: 0,
+      discretionaryWeek: 0,
+      ceilingToday: 0,
+      discretionaryDayAt: [],
+      discretionaryWeekAt: [],
+      ceilingTodayAt: [],
+    };
   }
   const since = new Date(input.now.getTime() - WEEK_MS);
   const rows = await database
@@ -163,10 +174,15 @@ export async function readGroupBubbleSpend(
   const ceiling = sent.filter(
     (row) => row.category !== 'reply' || row.templateKey === SYNC_TEMPLATE,
   );
+  const discretionaryDayRows = discretionary.filter((row) => row.createdAt.getTime() >= dayAgo);
+  const ceilingTodayRows = ceiling.filter((row) => row.createdAt.getTime() >= dayAgo);
   return {
-    discretionaryDay: discretionary.filter((row) => row.createdAt.getTime() >= dayAgo).length,
+    discretionaryDay: discretionaryDayRows.length,
     discretionaryWeek: discretionary.length,
-    ceilingToday: ceiling.filter((row) => row.createdAt.getTime() >= dayAgo).length,
+    ceilingToday: ceilingTodayRows.length,
+    discretionaryDayAt: discretionaryDayRows.map((row) => row.createdAt),
+    discretionaryWeekAt: discretionary.map((row) => row.createdAt),
+    ceilingTodayAt: ceilingTodayRows.map((row) => row.createdAt),
   };
 }
 
@@ -212,6 +228,40 @@ async function householdQuiet(database: Database, familyId: string, now: Date): 
   return isWithinQuietHours(now, timeZone, QUIET_START, QUIET_END);
 }
 
+/**
+ * When a rolling cap releases. The pivot is the message that has to age out
+ * before the count drops below the max (`inWindow[count - max]`). Several
+ * caps can bind at once; the send stays held until the latest of them.
+ * `+ 1ms` is the first instant `createdAt >= now - window` no longer holds.
+ */
+function windowResetsAt(timestamps: readonly Date[], max: number, windowMs: number): Date | null {
+  if (max <= 0 || timestamps.length < max) return null;
+  const ordered = [...timestamps].sort((a, b) => a.getTime() - b.getTime());
+  const pivot = ordered[ordered.length - max];
+  if (!pivot) return null;
+  return new Date(pivot.getTime() + windowMs + 1);
+}
+
+export function groupCapResetsAt(kind: GroupBubbleKind, spend: GroupSpend, now: Date): Date {
+  const resets: Date[] = [];
+  const push = (at: Date | null) => {
+    if (at) resets.push(at);
+  };
+  if (kind !== 'uncapped' && kind !== 'rec_morning' && spend.ceilingToday >= GROUP_HARD_DAY_MAX) {
+    push(windowResetsAt(spend.ceilingTodayAt, GROUP_HARD_DAY_MAX, DAY_MS));
+  }
+  if (kind === 'discretionary') {
+    if (spend.discretionaryDay >= GROUP_DISCRETIONARY_DAY_MAX) {
+      push(windowResetsAt(spend.discretionaryDayAt, GROUP_DISCRETIONARY_DAY_MAX, DAY_MS));
+    }
+    if (spend.discretionaryWeek >= GROUP_DISCRETIONARY_WEEK_MAX) {
+      push(windowResetsAt(spend.discretionaryWeekAt, GROUP_DISCRETIONARY_WEEK_MAX, WEEK_MS));
+    }
+  }
+  if (resets.length === 0) return new Date(now.getTime() + DAY_MS + 1);
+  return resets.reduce((latest, at) => (at.getTime() > latest.getTime() ? at : latest));
+}
+
 function kindHeld(kind: GroupBubbleKind, spend: GroupSpend): 'group_cap' | null {
   if (kind === 'uncapped') return null;
   const ceiling = spend.ceilingToday >= GROUP_HARD_DAY_MAX;
@@ -235,7 +285,8 @@ export type FamilyOutboundDelivery =
       chatId: string | null;
       linkOmitted?: 'link_on_new_chat';
     }
-  | { status: 'held'; reason: 'group_cap' | 'quiet_hours' | 'coparent_ask' }
+  | { status: 'held'; reason: 'group_cap'; until: Date }
+  | { status: 'held'; reason: 'quiet_hours' | 'coparent_ask' }
   | { status: 'skipped'; reason: string };
 
 function skippedRefusal(familyId: string, err: unknown): FamilyOutboundDelivery | null {
@@ -317,7 +368,7 @@ export async function deliverFamilyOutbound(
         { familyId: input.familyId, kind },
         'family outbound: group cap reached — not sent, and not retried on SMS',
       );
-      return { status: 'held', reason: held };
+      return { status: 'held', reason: held, until: groupCapResetsAt(kind, spend, now) };
     }
     if (kind === 'rec_morning' && spend.ceilingToday >= GROUP_HARD_DAY_MAX) {
       console.warn(
