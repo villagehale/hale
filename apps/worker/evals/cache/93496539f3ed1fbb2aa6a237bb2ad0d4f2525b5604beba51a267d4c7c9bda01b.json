@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "Sam can you grab milk on the way home",
+    "rationale": "message to a third party (Sam), not a reply to Hale about the day or cadence",
+    "confidence": 0.85
+  },
+  "latencyMs": 1576
+}

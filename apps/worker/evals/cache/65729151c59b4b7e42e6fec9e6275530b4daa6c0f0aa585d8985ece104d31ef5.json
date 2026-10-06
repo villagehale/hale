@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "day_note",
+    "verbatim": "Long day. Park then early bed, both asleep by 7.",
+    "rationale": "describes the day's events and outcome",
+    "confidence": 0.97
+  },
+  "latencyMs": 1519
+}

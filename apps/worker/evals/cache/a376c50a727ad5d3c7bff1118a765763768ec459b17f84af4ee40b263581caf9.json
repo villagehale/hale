@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "👍",
+    "rationale": "bare thumbs-up with no open question, nothing to answer",
+    "confidence": 0.9
+  },
+  "latencyMs": 1462
+}

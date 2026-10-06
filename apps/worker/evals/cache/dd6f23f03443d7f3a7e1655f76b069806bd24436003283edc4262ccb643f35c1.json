@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "hi",
+    "rationale": "bare greeting with no open question, no content",
+    "confidence": 0.9
+  },
+  "latencyMs": 1421
+}

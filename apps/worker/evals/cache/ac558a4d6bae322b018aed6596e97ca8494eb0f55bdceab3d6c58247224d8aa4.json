@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "request",
+    "verbatim": "can you find a swim class for Mia",
+    "rationale": "Parent is asking Hale to find a swim class, a direct request",
+    "confidence": 0.97
+  },
+  "latencyMs": 1492
+}

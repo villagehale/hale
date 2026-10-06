@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "day_note",
+    "verbatim": "less chaos than yesterday",
+    "rationale": "\"less\" describes the day's chaos level, not a request to change asking frequency",
+    "confidence": 0.95
+  },
+  "latencyMs": 1583
+}

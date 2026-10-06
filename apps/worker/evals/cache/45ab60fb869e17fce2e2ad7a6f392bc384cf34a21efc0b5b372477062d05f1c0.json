@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "day_note",
+    "verbatim": "every day she asks for the park",
+    "rationale": "describes kid's daily behavior, not a cadence request",
+    "confidence": 0.95
+  },
+  "latencyMs": 1564
+}

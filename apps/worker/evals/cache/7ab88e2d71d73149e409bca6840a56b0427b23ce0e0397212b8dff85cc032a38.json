@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "day_note",
+    "verbatim": "swim went great, she did a whole length",
+    "rationale": "Shares a specific detail about the day's swim activity",
+    "confidence": 0.9
+  },
+  "latencyMs": 1561
+}

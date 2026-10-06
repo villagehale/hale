@@ -1,0 +1,9 @@
+{
+  "value": {
+    "verbatim": "every night please",
+    "intent": "other",
+    "rationale": "cadence already daily, so wish for 'every night' is not a change",
+    "confidence": 0.85
+  },
+  "latencyMs": 1612
+}

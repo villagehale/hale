@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "cadence_off",
+    "verbatim": "no more of these",
+    "rationale": "explicit wish to stop evening questions",
+    "confidence": 0.95
+  },
+  "latencyMs": 1458
+}

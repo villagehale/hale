@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "cadence_daily",
+    "verbatim": "every night please",
+    "rationale": "explicit request for nightly check-ins, cadence not already daily",
+    "confidence": 0.9
+  },
+  "latencyMs": 1481
+}

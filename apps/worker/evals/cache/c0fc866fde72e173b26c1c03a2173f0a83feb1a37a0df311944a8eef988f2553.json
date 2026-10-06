@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "day_note",
+    "verbatim": "fine",
+    "rationale": "short answer to open evening question counts as a day note",
+    "confidence": 0.85
+  },
+  "latencyMs": 1486
+}

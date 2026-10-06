@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "day_note",
+    "verbatim": "no, it was fine actually",
+    "rationale": "\"no\" followed by reason about the day, not about asking frequency",
+    "confidence": 0.95
+  },
+  "latencyMs": 1462
+}

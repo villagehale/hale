@@ -1,0 +1,9 @@
+{
+  "value": {
+    "verbatim": "less often please",
+    "intent": "cadence_weekly",
+    "rationale": "explicit wish to be asked less often",
+    "confidence": 0.95
+  },
+  "latencyMs": 1459
+}

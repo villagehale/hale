@@ -1,0 +1,9 @@
+{
+  "value": {
+    "verbatim": "please stop asking every night",
+    "intent": "cadence_off",
+    "rationale": "explicit request to stop nightly asking",
+    "confidence": 0.97
+  },
+  "latencyMs": 1438
+}

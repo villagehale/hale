@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "cadence_weekly",
+    "verbatim": "less",
+    "rationale": "\"less\" on its own signals wanting fewer check-ins, not a day detail",
+    "confidence": 0.85
+  },
+  "latencyMs": 1654
+}

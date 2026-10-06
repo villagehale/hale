@@ -1,0 +1,9 @@
+{
+  "value": {
+    "confidence": 0.9,
+    "intent": "other",
+    "rationale": "Bare \"ok\" with no open question (questionStanding false) has nothing to answer",
+    "verbatim": "ok"
+  },
+  "latencyMs": 1640
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "request",
+    "verbatim": "good day, swim went well. can you add dentist to the calendar for next week",
+    "rationale": "Contains a day note but also an explicit calendar request, which takes priority",
+    "confidence": 0.95
+  },
+  "latencyMs": 1639
+}

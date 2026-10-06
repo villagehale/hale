@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "day_note",
+    "verbatim": "bof, journée difficile, mais elle a adoré la natation",
+    "rationale": "describes how the day went and a highlight (swim), no request or cadence wish",
+    "confidence": 0.97
+  },
+  "latencyMs": 1651
+}

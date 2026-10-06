@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "day_note",
+    "verbatim": "so tired tonight",
+    "rationale": "shares mood/state of the evening, answering the open check-in question",
+    "confidence": 0.85
+  },
+  "latencyMs": 1644
+}

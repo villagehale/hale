@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "cadence_off",
+    "verbatim": "No thanks",
+    "rationale": "explicit decline of evening question, not an answer about the day",
+    "confidence": 0.92
+  },
+  "latencyMs": 1562
+}

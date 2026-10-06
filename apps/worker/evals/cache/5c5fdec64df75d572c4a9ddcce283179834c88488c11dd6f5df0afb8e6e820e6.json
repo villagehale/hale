@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "cadence_weekly",
+    "verbatim": "une fois par semaine ça irait",
+    "rationale": "explicit wish for weekly frequency",
+    "confidence": 0.97
+  },
+  "latencyMs": 1416
+}

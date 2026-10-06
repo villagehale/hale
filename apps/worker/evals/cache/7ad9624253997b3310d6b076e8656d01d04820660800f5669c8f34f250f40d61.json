@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "cadence_weekly",
+    "verbatim": "could you not ask every night? once a week is fine",
+    "rationale": "explicitly asks for weekly instead of nightly",
+    "confidence": 0.97
+  },
+  "latencyMs": 1531
+}

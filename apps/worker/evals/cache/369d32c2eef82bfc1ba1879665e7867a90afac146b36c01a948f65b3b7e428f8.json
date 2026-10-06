@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "request",
+    "verbatim": "peux-tu trouver un cours de natation",
+    "rationale": "asking Hale to find a swim class",
+    "confidence": 0.95
+  },
+  "latencyMs": 1387
+}

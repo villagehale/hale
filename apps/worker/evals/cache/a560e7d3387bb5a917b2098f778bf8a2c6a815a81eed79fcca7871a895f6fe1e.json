@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "STOP",
+    "rationale": "STOP is handled by carrier layer; if it reaches here, classify as other",
+    "confidence": 0.95
+  },
+  "latencyMs": 1530
+}

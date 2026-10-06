@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "cadence_daily",
+    "verbatim": "I miss these, can you go back to asking every day",
+    "rationale": "explicit wish to resume nightly asking, cadence is currently off",
+    "confidence": 0.97
+  },
+  "latencyMs": 1562
+}

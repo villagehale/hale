@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "cadence_off",
+    "verbatim": "non",
+    "rationale": "bare \"non\" to evening question with no yes/no content implies stop asking",
+    "confidence": 0.85
+  },
+  "latencyMs": 1613
+}
