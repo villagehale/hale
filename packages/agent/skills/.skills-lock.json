@@ -151,10 +151,6 @@
     "file": "nudge-voice.md",
     "sha256": "0058da39817bb85138bf334ab1b2e4f17cea042fb2de46cba4a82af95471a11c"
   },
-  "onboarding-coparent-choice.md": {
-    "file": "onboarding-coparent-choice.md",
-    "sha256": "3dd738d9c1915a81f6aa9e3e974f70166daa6d26af36f1a59d2f47eb38f78b59"
-  },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
     "sha256": "18e9a6845972e3f3ea08eb7d7fa1b9e6e5451b7d518038df79ae441f1b9f6607"

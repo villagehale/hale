@@ -46,6 +46,7 @@ import {
   haleContactCardDay,
   shareHaleContactCardOnce,
 } from '~/lib/channel/linq/contact-card';
+import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import {
   LINQ_GROUP_LINE_MISSING_TEXT,
   LINQ_GROUP_TRIGGER_PHRASE,
@@ -53,6 +54,7 @@ import {
   linqCoParentAsk,
 } from '~/lib/channel/linq/group';
 import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
+import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
 import { offerYearFindPoll } from '~/lib/channel/linq/poll';
 import {
   EMERGENCY_REPLY,
@@ -1369,6 +1371,37 @@ function coparentTrailer(
   if (!join) return null;
   if (!linqGroupOnboardingV2Enabled()) return `${join.line}\n${join.phrase}`;
   return mode === 'existing' ? join.line : null;
+}
+
+/**
+ * Flag on and the model chose a new group. Opens the household thread when a
+ * co-parent phone is already confirmed, or starts the existing co-parent invite
+ * when this message names a number that is not. Flag off returns before either.
+ */
+async function pursueNewHouseholdGroup(
+  database: Database,
+  args: {
+    mode: CoparentGroupMode | null;
+    familyId: string;
+    parentUserId: string;
+    parentPhoneE164: string;
+    now: Date;
+    inboundBody: string;
+  },
+  send: (body: string) => Promise<void>,
+): Promise<void> {
+  try {
+    const outcome = await openChosenHouseholdGroup(database, {
+      ...args,
+      namedPhone: parseCoParentNumberReply(args.inboundBody),
+    });
+    if (outcome.status === 'invite_started') await send(outcome.reply);
+  } catch (err) {
+    console.warn(
+      { familyId: args.familyId, code: err instanceof Error ? err.name : 'unknown' },
+      'linq group: choosing a new group threw',
+    );
+  }
 }
 
 function scheduledForModel(given: FirstTouchGiven | null, language: ReplyLanguage) {
@@ -2818,6 +2851,20 @@ async function friendColdTurn(
   };
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   let voiced = friendOutbound(spoken);
+  await pursueNewHouseholdGroup(
+    database,
+    {
+      mode: spoken.capture.coparentGroupMode,
+      familyId,
+      parentUserId: userId,
+      parentPhoneE164: session.phoneE164,
+      now,
+      inboundBody: inbound.body,
+    },
+    async (body) => {
+      await sendAndRecord(database, ctx, body, deps, recorded.transcript);
+    },
+  );
   if (!voiced) {
     await saveSession(
       database,

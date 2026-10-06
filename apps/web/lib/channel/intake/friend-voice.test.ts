@@ -755,14 +755,14 @@ describe('the co-parent step: their group, or a new one', () => {
     expect(plain.capture.coparentGroupMode).toBeNull();
   });
 
-  it('with the flag on, drops an existing group when this chat cannot hold the number', async () => {
+  it('with the flag on, an existing group this chat cannot hold becomes a new one', async () => {
     vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
     const spoken = await read(
       'add you to our group',
       { coparentGroup: true, coparentGroupMode: 'existing' },
       false,
     );
-    expect(spoken.capture.coparentGroupMode).toBeNull();
+    expect(spoken.capture.coparentGroupMode).toBe('new');
   });
 
   it('keeps a no as a no', async () => {

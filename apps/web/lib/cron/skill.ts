@@ -61,14 +61,6 @@ export function loadOnboardingFriendShortSkill(): Promise<Skill> {
   return loadCronSkill('onboarding-friend-short');
 }
 
-/**
- * The co-parent choice, appended only while group onboarding v2 is on and the
- * step is coparent. The base onboarding skills stay today's words.
- */
-export function loadOnboardingCoparentChoiceSkill(): Promise<Skill> {
-  return loadCronSkill('onboarding-coparent-choice');
-}
-
 /** Which calendar and mail items are about the kids, before a wow moment is written. */
 export function loadKidItemClassifierSkill(): Promise<Skill> {
   return loadCronSkill('kid-item-classifier');

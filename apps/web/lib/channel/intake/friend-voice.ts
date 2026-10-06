@@ -12,7 +12,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import {
-  loadOnboardingCoparentChoiceSkill,
+  loadCronSkill,
   loadOnboardingFriendShortSkill,
   loadOnboardingFriendSkill,
 } from '~/lib/cron/skill';
@@ -752,7 +752,8 @@ function readingForModel(input: FriendVoiceInput): string | null {
  * The group the model read. Flag off clears it, so a yes stays today's new-group
  * claim. Flag on keeps the model's enum and never a regex, and never defaults a
  * plain yes to the group they already have. An existing group only counts when
- * this chat can hold the iMessage number.
+ * this chat can hold the iMessage number. MMS and a green bubble cannot, so an
+ * existing-group reading becomes a new group Hale starts.
  */
 function withGroupMode(capture: OnboardingCapture, input: FriendVoiceInput): OnboardingCapture {
   if (!linqGroupOnboardingV2Enabled() || capture.coparentGroup !== true) {
@@ -763,7 +764,7 @@ function withGroupMode(capture: OnboardingCapture, input: FriendVoiceInput): Onb
       ? capture.coparentGroupMode
       : null;
   if (mode === 'existing' && input.coparentJoin == null) {
-    return { ...capture, coparentGroupMode: null };
+    return { ...capture, coparentGroupMode: 'new' };
   }
   return { ...capture, coparentGroupMode: mode };
 }
@@ -2344,7 +2345,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
         : await loadOnboardingFriendSkill();
       const choice =
         linqGroupOnboardingV2Enabled() && input.step === 'coparent'
-          ? await loadOnboardingCoparentChoiceSkill()
+          ? await loadCronSkill('group-onboarding-voice')
           : null;
       const { value } = await forceToolJson({
         client,
