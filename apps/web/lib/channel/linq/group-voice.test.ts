@@ -23,6 +23,7 @@ const EVERY_KIND: GroupLineRequest[] = [
   { kind: 'name_ack', name: 'Sam' },
   { kind: 'calendar_ask', name: 'Sam' },
   { kind: 'calendar_link', name: 'Sam' },
+  { kind: 'calendar_heads_up', name: 'Sam' },
   { kind: 'calendar_receipt', name: 'Sam' },
   { kind: 'gmail_ask', name: 'Sam' },
   { kind: 'gmail_receipt', name: 'Sam' },
@@ -67,8 +68,17 @@ describe('groupLineInput', () => {
         expect(input.skill).toBe(GROUP_VOICE_SKILL);
         expect(input.kind).toBe(request.kind);
         expect(input.language).toBe(language);
+        const oneParent =
+          request.kind === 'calendar_ask' ||
+          request.kind === 'calendar_link' ||
+          request.kind === 'calendar_heads_up' ||
+          request.kind === 'gmail_ask';
         expect(input.address).toBe(
-          request.kind === 'departure' && request.address ? request.address : 'vous',
+          request.kind === 'departure' && request.address
+            ? request.address
+            : oneParent
+              ? 'tu'
+              : 'vous',
         );
         // The fake writes from the same facts, so a kind the judge cannot pass is caught here.
         expect(() => fakeSpokenLineBody(input)).not.toThrow();
@@ -234,14 +244,67 @@ describe('the judge on group lines', () => {
     ).toEqual({ ok: false, reason: 'question' });
   });
 
-  it('refuses a French group line that slips into tu', () => {
+  it('keeps one French register, and a stored vous wins over the tu default', () => {
     const fr = groupLineInput({ kind: 'gmail_ask', name: 'Sam' }, 'fr');
+    expect(fr.address).toBe('tu');
+    expect(judgeSpokenLine('Sam, ton calendrier aide. Tu veux ce lien?', fr)).toEqual({ ok: true });
     expect(
       judgeSpokenLine('Sam, votre calendrier aide à voir les semaines. Vous voulez ce lien?', fr),
+    ).toEqual({ ok: false, reason: 'french' });
+    expect(
+      groupLineInput({ kind: 'calendar_ask', name: 'Sam', address: 'vous' }, 'fr').address,
+    ).toBe('vous');
+  });
+
+  it('ends the calendar ask on the question and refuses the kids year', () => {
+    const ask = groupLineInput({ kind: 'calendar_ask', name: 'Sam' }, 'en');
+    expect(
+      judgeSpokenLine(
+        "Sam, would you want the kids' stuff on your calendar? That way I can keep it in sync.",
+        ask,
+      ),
+    ).toEqual({ ok: false, reason: 'question' });
+    expect(
+      judgeSpokenLine(
+        "Sam, that way I can keep the kids' stuff in sync. Would you want it on your calendar?",
+        ask,
+      ),
     ).toEqual({ ok: true });
-    expect(judgeSpokenLine('Sam, ton calendrier aide. Tu veux ce lien?', fr)).toEqual({
+    const fr = groupLineInput({ kind: 'calendar_ask', name: 'Sam' }, 'fr');
+    expect(
+      judgeSpokenLine("Sam, ça te dit d'avoir l'année des enfants sur ton calendrier?", fr),
+    ).toEqual({ ok: false, reason: 'forbidden:kids_year' });
+  });
+
+  it('splits the link note from the heads-up and refuses we, no worries, and coaching', () => {
+    const link = groupLineInput({ kind: 'calendar_link', name: 'Sam' }, 'en');
+    expect(link.maxChars).toBe(220);
+    expect(link.linkFollows).toBe(true);
+    expect(judgeSpokenLine('Sam, this link is just for you.', link)).toEqual({ ok: true });
+    const heads = groupLineInput({ kind: 'calendar_heads_up', name: 'Sam' }, 'en');
+    expect(heads.maxChars).toBe(220);
+    expect(heads.linkFollows).toBeUndefined();
+    expect(
+      judgeSpokenLine(
+        "Google may say Hale is not verified yet, because I'm still in review. No problem if you'd rather wait.",
+        heads,
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      judgeSpokenLine(
+        "Google may say Hale is not verified yet, because we are still in Google's review.",
+        heads,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:we_for_hale' });
+    expect(
+      judgeSpokenLine(
+        'Google may say Hale is not verified yet. No worries if you would rather wait.',
+        heads,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:soft_safe' });
+    expect(judgeSpokenLine('If Google warns you, tap Advanced and carry on.', heads)).toEqual({
       ok: false,
-      reason: 'french',
+      reason: 'forbidden:google_coaching',
     });
   });
 
@@ -281,6 +344,25 @@ describe('the judge on group lines', () => {
     });
     expect(
       judgeSpokenLine("Sam left. The kids' schedule and the reminders stay. I'm still here.", en),
+    ).toEqual({ ok: true });
+    expect(
+      judgeSpokenLine(
+        "Sam's moving on. The kids' schedule and the reminders stay. I'm still here.",
+        en,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:breakup' });
+    const fr = groupLineInput({ kind: 'departure', name: 'Sam', remaining: 1 }, 'fr');
+    expect(
+      judgeSpokenLine(
+        "Sam s'en va. L'horaire des enfants et les rappels restent. Je suis toujours là.",
+        fr,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:breakup' });
+    expect(
+      judgeSpokenLine(
+        "Sam a quitté le groupe. L'horaire des enfants et les rappels restent. Je suis toujours là.",
+        fr,
+      ),
     ).toEqual({ ok: true });
   });
 

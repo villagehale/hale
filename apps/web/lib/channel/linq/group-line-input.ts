@@ -1,18 +1,22 @@
 import type { ReplyLanguage } from '../language';
+import { frenchAddress } from '../voice/address';
 import type { SpokenLineInput, SpokenTurn } from '../voice/judge';
 
 /**
  * VIL-413 / VIL-417. What the model is handed for each line Hale says in the
  * Linq household group: the facts, what it must carry, how many questions it
  * may ask, and which red lines code holds. Hale never says it booked,
- * registered, or reserved anything, because it did not. The group is always
- * vous.
+ * registered, or reserved anything, because it did not. A line both parents
+ * read is vous. A line to one parent uses the family's stored register, or tu.
  *
  * Pure, relative imports only: the worker eval loads this module through tsx
  * so the real request shape is what gets judged, not a replica.
  */
 
 export const GROUP_VOICE_SKILL = 'group-voice';
+
+/** About two or three lines. A link note and a Google heads-up are each a bubble. */
+export const BUBBLE_MAX_CHARS = 220;
 
 export type GroupLineKind =
   | 'welcome'
@@ -21,6 +25,7 @@ export type GroupLineKind =
   | 'name_ack'
   | 'calendar_ask'
   | 'calendar_link'
+  | 'calendar_heads_up'
   | 'calendar_receipt'
   | 'gmail_ask'
   | 'gmail_receipt'
@@ -58,10 +63,11 @@ export type GroupLineRequest =
   | { kind: 'member_welcome'; adder: string | null }
   | { kind: 'stranger_hold'; parentA: string }
   | { kind: 'name_ack'; name: string }
-  | { kind: 'calendar_ask'; name: string }
-  | { kind: 'calendar_link'; name: string }
+  | { kind: 'calendar_ask'; name: string; address?: 'tu' | 'vous' }
+  | { kind: 'calendar_link'; name: string; address?: 'tu' | 'vous' }
+  | { kind: 'calendar_heads_up'; name: string; address?: 'tu' | 'vous' }
   | { kind: 'calendar_receipt'; name: string }
-  | { kind: 'gmail_ask'; name: string }
+  | { kind: 'gmail_ask'; name: string; address?: 'tu' | 'vous' }
   | { kind: 'gmail_receipt'; name: string }
   | { kind: 'kid_event'; events: readonly GroupKidEventFact[] }
   | { kind: 'conflict'; kid: string; event: string; day: string; time: string }
@@ -91,6 +97,32 @@ export const BOTH_WHEN_NOT_TWO = {
   name: 'both',
   pattern: /\byou both\b|\byou two\b|vous deux/i,
 };
+
+/** Coaching a parent past Google's warning. The heads-up names the screen and stops. */
+export const GOOGLE_COACHING = {
+  name: 'google_coaching',
+  pattern: /tap advanced|carry on|it(?:'|’)s safe|paramètres avancés/i,
+};
+
+/** Hale speaks as itself. "we" is a company, and it fails. */
+export const NO_WE_FOR_HALE = {
+  name: 'we_for_hale',
+  pattern: /\bwe(?:'re|'ll|’re|’ll)?\b/i,
+};
+
+/** "No worries" right after "not verified" reads as "it's safe". */
+export const NO_SOFT_SAFE = {
+  name: 'soft_safe',
+  pattern: /no worries|pas de souci|aucun souci/i,
+};
+
+/** A departure is a fact. "Moving on" and "s'en va" read like a breakup. */
+export const NO_BREAKUP = {
+  name: 'breakup',
+  pattern: /moving on|s['’]en va/i,
+};
+
+const GOOGLE_HEADS_UP_FORBIDDEN = [GOOGLE_COACHING, NO_WE_FOR_HALE, NO_SOFT_SAFE];
 
 function unique(values: readonly string[]): string[] {
   return [...new Set(values.filter((value) => value.trim().length > 0))];
@@ -136,6 +168,7 @@ function groupLineFields(
     case 'calendar_ask':
       return {
         ...base,
+        address: frenchAddress(request.address),
         facts: { name: request.name },
         questions: 1,
         mustMention: [request.name],
@@ -143,18 +176,32 @@ function groupLineFields(
     case 'calendar_link':
       return {
         ...base,
+        address: frenchAddress(request.address),
         facts: { name: request.name },
         questions: 0,
         mustMention: [request.name],
         linkFollows: true,
+        maxChars: BUBBLE_MAX_CHARS,
+        forbidden: GOOGLE_HEADS_UP_FORBIDDEN,
+      };
+    case 'calendar_heads_up':
+      return {
+        ...base,
+        address: frenchAddress(request.address),
+        facts: { name: request.name },
+        questions: 0,
+        maxChars: BUBBLE_MAX_CHARS,
+        forbidden: GOOGLE_HEADS_UP_FORBIDDEN,
       };
     case 'gmail_ask':
       return {
         ...base,
+        address: frenchAddress(request.address),
         facts: { name: request.name },
         questions: 1,
         mustMention: [request.name],
         linkFollows: true,
+        forbidden: GOOGLE_HEADS_UP_FORBIDDEN,
       };
     case 'calendar_receipt':
     case 'gmail_receipt':
@@ -233,7 +280,7 @@ function groupLineFields(
         facts: { name: request.name, remaining: request.remaining ?? null },
         questions: 0,
         mustMention: request.name ? [request.name] : [],
-        forbidden: request.remaining === 2 ? [] : [BOTH_WHEN_NOT_TWO],
+        forbidden: [NO_BREAKUP, ...(request.remaining === 2 ? [] : [BOTH_WHEN_NOT_TWO])],
       };
     case 'empty_saturday': {
       // The day is a fact the model must be handed, or the judge would refuse the

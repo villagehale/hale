@@ -101,7 +101,7 @@ describe('group asks hand the model the parent and a link to follow', () => {
   it('names the parent, asks one question, and lets the model say "this link"', () => {
     for (const language of ['en', 'fr'] as const) {
       const ask = groupLineInput({ kind: 'calendar_ask', name: 'Sam' }, language);
-      expect(ask.address).toBe('vous');
+      expect(ask.address).toBe('tu');
       expect(ask.questions).toBe(1);
       expect(ask.linkFollows).toBeUndefined();
       expect(ask.mustMention).toEqual(['Sam']);
@@ -112,7 +112,13 @@ describe('group asks hand the model the parent and a link to follow', () => {
       const link = groupLineInput({ kind: 'calendar_link', name: 'Sam' }, language);
       expect(link.questions).toBe(0);
       expect(link.linkFollows).toBe(true);
+      expect(link.maxChars).toBe(220);
       expect(link.mustMention).toEqual(['Sam']);
+      const heads = groupLineInput({ kind: 'calendar_heads_up', name: 'Sam' }, language);
+      expect(heads.questions).toBe(0);
+      expect(heads.linkFollows).toBeUndefined();
+      expect(heads.maxChars).toBe(220);
+      expect(heads.address).toBe('tu');
     }
     // The receipts ask nothing and may not claim a booking.
     const receipt = groupLineInput({ kind: 'gmail_receipt', name: 'Sam' }, 'en');

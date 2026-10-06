@@ -53,6 +53,7 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
 const WELCOME_KEY = 'linq:coparent_welcome';
 const CALENDAR_ASK_KEY = 'linq:coparent_calendar_ask';
 const CALENDAR_LINK_KEY = 'linq:coparent_calendar_link';
+const CALENDAR_HEADS_UP_KEY = 'linq:coparent_calendar_heads_up';
 const GMAIL_ASK_KEY = 'linq:coparent_gmail_ask';
 const GMAIL_RECEIPT_KEY = 'linq:coparent_gmail_receipt';
 const UNCLAIMED_KEY = 'linq:coparent_unclaimed';
@@ -493,11 +494,19 @@ async function answerCalendarConsent(
       body: { outcome: 'group_coparent_calendar_passed' },
     };
   }
-  const link = await groupLine(ports, { kind: 'calendar_link', name }, language, message.text, {
-    familyId: sender.familyId,
-    database,
-  });
-  if (!link) {
+  const scope = { familyId: sender.familyId, database };
+  const link = await groupLine(
+    ports,
+    { kind: 'calendar_link', name },
+    language,
+    message.text,
+    scope,
+  );
+  // Both bubbles are written before either is sent. A failed read sends nothing.
+  const headsUp = link
+    ? await groupLine(ports, { kind: 'calendar_heads_up', name }, language, message.text, scope)
+    : null;
+  if (!link || !headsUp) {
     return {
       type: 'done',
       outcome: 'group_coparent_link_held',
@@ -517,6 +526,27 @@ async function answerCalendarConsent(
     now: ports.now,
     fetch: ports.fetch,
   });
+  if (sent === 'not_sent') {
+    return {
+      type: 'done',
+      outcome: 'group_coparent_link_held',
+      count: 'intake',
+      body: { outcome: 'group_coparent_link_held' },
+    };
+  }
+  const headsSent = await sendLine(database, {
+    familyId: sender.familyId,
+    parentUserId: sender.userId,
+    chatId: message.chatId,
+    text: headsUp,
+    templateKey: CALENDAR_HEADS_UP_KEY,
+    dedupeKey: `${CALENDAR_HEADS_UP_KEY}:${sender.userId}`,
+    now: ports.now,
+    fetch: ports.fetch,
+  });
+  if (headsSent === 'not_sent') {
+    console.warn({ familyId: sender.familyId }, 'linq group coparent: calendar heads-up unsent');
+  }
   if (sent === 'sent') await setStep(database, sender.userId, 'awaiting_gmail', ports.now);
   const outcome = sent === 'sent' ? 'group_coparent_gcal' : 'group_coparent_link_held';
   return {

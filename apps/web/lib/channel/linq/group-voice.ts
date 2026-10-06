@@ -25,8 +25,9 @@ export {
  *
  * This module decides, per kind, what the model must say (mustMention), how
  * many questions it may ask, and which red lines code holds: Hale never says
- * it booked, registered, or reserved anything, because it did not. The group
- * is always vous. The calendar card and the Linq name card stay code-built.
+ * it booked, registered, or reserved anything, because it did not. A line
+ * both parents read is vous. A line to one parent uses their stored register,
+ * or tu. The calendar card and the Linq name card stay code-built.
  */
 
 export type GroupVoice = SpokenLineComposer;

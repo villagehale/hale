@@ -445,7 +445,10 @@ describe('group co-parent seating', () => {
     );
     expect(yes).toMatchObject({ type: 'done', outcome: 'group_coparent_gcal' });
     const afterCalendar = wire.groupTexts();
-    const calendarBubble = afterCalendar.at(-1) ?? '';
+    const calendarBubble = afterCalendar.at(-2) ?? '';
+    const headsUp = afterCalendar.at(-1) ?? '';
+    expect(headsUp).toBe(spoken({ kind: 'calendar_heads_up', name: 'Sam' }));
+    expect(headsUp).not.toContain('http');
     expect(calendarBubble.startsWith(spoken({ kind: 'calendar_link', name: 'Sam' }))).toBe(true);
     expect(calendarBubble).toContain('\n');
     expect(calendarBubble).toContain('to=gcal');
