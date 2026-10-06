@@ -9,7 +9,7 @@
 //     (apps/web/lib/channel/voice/judge.ts, loaded live): inside the length cap, exactly
 //     the asked number of questions with the question last, every mustMention string
 //     carried, no time / weekday / price / URL / phone the facts did not hand over, no
-//     compliance or keyword-reply wording, vous and real accents in French, and no claim
+//     compliance or keyword-reply wording, the French register address asks for, real accents, and no claim
 //     that Hale booked anything. A beautiful line that trips the judge is a line two
 //     parents never get.
 //
@@ -223,6 +223,6 @@ export const GROUP_VOICE_FIXTURES = [
     request: { kind: 'empty_saturday', name: null, kid: 'Maya' },
     parentWords: null,
     watchFor:
-      'French, vous, to both parents (no name known). Samedi looks open for Maya. One question: whether they want one nearby find that is running that day. No activity, place, or time named.',
+      'French, tu, never vous. No parent name is known, so do not invent one. Samedi looks open for Maya. One question: whether they want one nearby find that is running that day, près de chez toi. No activity, place, or time named. Hale is je, never on.',
   },
 ];

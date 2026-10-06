@@ -78,7 +78,9 @@ describe('groupLineInput', () => {
             ? request.address
             : oneParent
               ? 'tu'
-              : 'vous',
+              : request.kind === 'empty_saturday' && language === 'fr'
+                ? 'tu'
+                : 'vous',
         );
         // The fake writes from the same facts, so a kind the judge cannot pass is caught here.
         expect(() => fakeSpokenLineBody(input)).not.toThrow();
@@ -171,7 +173,11 @@ describe('groupLineInput', () => {
       mustMention: ['Sat 9', 'Sun 10'],
     });
     expect(groupLineInput({ kind: 'empty_saturday', name: null, kid: 'Maya' }, 'fr')).toMatchObject(
-      { facts: { name: null, kid: 'Maya', day: 'samedi' }, mustMention: ['Maya', 'samedi'] },
+      {
+        facts: { name: null, kid: 'Maya', day: 'samedi' },
+        mustMention: ['Maya', 'samedi'],
+        address: 'tu',
+      },
     );
     expect(groupLineInput({ kind: 'departure', name: null }, 'en')).toMatchObject({
       facts: { name: null },
@@ -354,17 +360,24 @@ describe('the judge on group lines', () => {
     });
   });
 
-  it('refuses French on for Hale on an empty Saturday', () => {
+  it('refuses French on for Hale on an empty Saturday, and keeps the weekend line in tu', () => {
     const fr = groupLineInput({ kind: 'empty_saturday', name: null, kid: 'Maya' }, 'fr');
+    expect(fr.address).toBe('tu');
     expect(
       judgeSpokenLine(
-        "Le samedi de Maya a l'air libre. Vous voulez qu'on cherche quelque chose près de chez vous qui tourne ce jour-là?",
+        "Le samedi de Maya a l'air libre. Tu veux qu'on cherche quelque chose près de chez toi?",
         fr,
       ),
     ).toEqual({ ok: false, reason: 'forbidden:on_for_hale' });
     expect(
       judgeSpokenLine(
         "Le samedi de Maya a l'air libre. Vous voulez que je cherche quelque chose près de chez vous?",
+        fr,
+      ),
+    ).toEqual({ ok: false, reason: 'french' });
+    expect(
+      judgeSpokenLine(
+        "Le samedi de Maya a l'air libre. Tu veux que je cherche quelque chose près de chez toi?",
         fr,
       ),
     ).toEqual({ ok: true });

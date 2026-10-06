@@ -332,9 +332,12 @@ function groupLineFields(
     case 'empty_saturday': {
       // The day is a fact the model must be handed, or the judge would refuse the
       // only weekday this line exists to name.
+      // French empty Saturday is the weekend line: tu, including when no parent
+      // name is known. English keeps the group default; address is a French register.
       const day = language === 'fr' ? 'samedi' : 'Saturday';
       return {
         ...base,
+        address: language === 'fr' ? 'tu' : base.address,
         facts: { name: request.name, kid: request.kid, day },
         questions: 1,
         mustMention: unique([request.kid, request.name ?? '', day]),
