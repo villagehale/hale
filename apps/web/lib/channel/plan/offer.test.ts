@@ -197,14 +197,26 @@ describe('the offer sentence gates', () => {
     const offers: unknown[] = [];
     const tool = offerFullPlanTool((offer) => offers.push(offer));
 
-    // The refusal is thrown as a sentence the model reads mid-turn and answers by
-    // calling again — the agent loop IS the recompose loop, with no extra machinery.
+    // The first refusal is thrown as a sentence the model reads mid-turn and answers
+    // by calling once more. The agent loop is that one retry, not an open budget.
     await expect(
       tool.handler(
         { topic: 'sleep', offer: 'More detail available.' },
         { familyId: FAMILY, actor: 'parent-1' },
       ),
-    ).rejects.toThrow(/cannot be sent/);
+    ).rejects.toThrow(/once more/);
+    expect(offers).toEqual([]);
+  });
+
+  it('stops the offer after one retry so the turn can still answer', async () => {
+    const offers: unknown[] = [];
+    const tool = offerFullPlanTool((offer) => offers.push(offer));
+    const bad = { topic: 'sleep' as const, offer: 'More detail available.' };
+    const ctx = { familyId: FAMILY, actor: 'parent-1' };
+
+    await expect(tool.handler(bad, ctx)).rejects.toThrow(/once more/);
+    await expect(tool.handler(bad, ctx)).rejects.toThrow(/Do not call offer_full_plan again/);
+    await expect(tool.handler(bad, ctx)).resolves.toEqual({ offered: false, reason: 'stopped' });
     expect(offers).toEqual([]);
   });
 });

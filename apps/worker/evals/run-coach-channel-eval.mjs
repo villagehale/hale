@@ -376,24 +376,38 @@ function fitToBudget(body, max, suffix = '') {
 /**
  * Mirrors `offerViolations` in apps/web/lib/channel/plan/offer.ts.
  *
- * The offer used to be a constant this harness appended. It is now COMPOSED by the model
- * and handed in as a tool argument, gated here exactly as the tool gates it — which is
- * what keeps "no preset bodies" true without giving the trim a chance to eat the half
- * that names the magic word.
+ * The offer used to be a constant this harness appended, and the constant had to say
+ * YES. It is now COMPOSED by the model and gated the same way the tool gates it: one
+ * question, no keyword, plain ASCII, one segment. A replica that still required the
+ * word YES refused every offer the skill now tells the model to write, and the model
+ * spent the step budget calling the tool again.
  */
+const EVAL_KEYWORD_INSTRUCTION = /\b(reply|say|text)\s+(yes|no)\b/i;
 function offerViolations(sentence) {
   const violations = [];
   const text = String(sentence).trim();
   if (text === '') return ['The offer was empty.'];
   if (text.length > 160) {
-    violations.push(`The offer is ${text.length} characters; it must be at most 160.`);
+    violations.push(
+      `The offer is ${text.length} characters; it must be at most 160 so the answer still fits.`,
+    );
   }
   const questions = (text.match(/\?/g) ?? []).length;
-  if (questions !== 1)
+  if (questions !== 1) {
     violations.push(`The offer asks ${questions} questions; it must ask exactly one.`);
-  if (!/\byes\b/i.test(text)) violations.push('The offer never says YES.');
-  if (smsEncoding(text) !== 'gsm7') violations.push('The offer is not plain ASCII.');
-  if (smsSegments(text) > 1) violations.push('The offer is longer than one SMS segment.');
+  }
+  if (EVAL_KEYWORD_INSTRUCTION.test(text)) {
+    violations.push(
+      'The offer tells them to reply with a keyword. Ask in a sentence, like "Want me to send it?"',
+    );
+  }
+  if (smsEncoding(text) !== 'gsm7') {
+    violations.push(
+      'The offer contains a character that doubles the cost to send. Use plain ASCII.',
+    );
+  }
+  if (smsSegments(text) > 1)
+    violations.push('The offer is longer than one SMS segment. Shorten it.');
   return violations;
 }
 
@@ -652,6 +666,7 @@ function refuseMismatchedWeekday(input, timeZone, tool) {
 
 function buildFixtureTools(agent, calls, village, spots) {
   let draftsThisTurn = 0;
+  let offerRefusals = 0;
 
   const claimDraftBudget = () => {
     if (draftsThisTurn >= MAX_DRAFTS_PER_TURN) {
@@ -837,17 +852,26 @@ function buildFixtureTools(agent, calls, village, spots) {
     ],
     monetary: false,
     touchesChildContent: true,
+    // Production sets this. Without it the eval keeps looping after a successful
+    // offer and throws away the advice written beside the call (agent.ts).
+    registersOnly: true,
     description:
       'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters. Ask like a person ("Want me to send it?"). Do not say Reply YES or name a keyword. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
     handler: async (input) => {
-      // The gate IS the recompose loop: a refused offer throws a sentence the model
-      // reads mid-turn and answers by calling again. Replicated from
-      // apps/web/lib/channel/plan/offer.ts offerViolations.
+      // One retry, then stop. Replicated from apps/web/lib/channel/plan/offer.ts.
+      // An unbounded "call again" is how a coaching turn spends six steps and
+      // sends the parent nothing.
       const violations = offerViolations(input.offer ?? '');
       if (violations.length > 0) {
-        throw new Error(
-          `That offer cannot be sent. ${violations.join(' ')} Call offer_full_plan again with a fixed one.`,
-        );
+        offerRefusals += 1;
+        if (offerRefusals >= 3) {
+          return { offered: false, reason: 'stopped' };
+        }
+        const next =
+          offerRefusals === 1
+            ? 'Call offer_full_plan once more with a fixed one.'
+            : 'Do not call offer_full_plan again. Your next message is the advice only, with no offer in it.';
+        throw new Error(`That offer cannot be sent. ${violations.join(' ')} ${next}`);
       }
       record('offer_full_plan', { topic: input.topic, offer: input.offer.trim() });
       return { offered: true, topic: input.topic };

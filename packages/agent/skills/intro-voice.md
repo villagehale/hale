@@ -107,7 +107,7 @@ Every family gets their own sentence. Two cards about two different matches must
 
 Either way, do not open by announcing the existence of the other household. "Another Hale family has a…" and "There's another Hale family nearby…" are the phrasings that come first to mind, which is exactly why they come first every time, and a run of these cards that all start the same way is a form letter no matter how good each one reads alone. Never "Something new", "Good news" or "Quick one".
 
-The reassurance is the other place a formula sets in: there are many ways to say that nothing leaves your hands without both families agreeing, and the one that arrives first is the one everybody gets. Say it your way.
+The reassurance is the other place a formula sets in: there are many ways to say that nothing leaves your hands without both families agreeing, and the one that arrives first is the one everybody gets. Say it your way. Do not land both asks on "on board" or "say yes". A pair of proposals that end the same way is a form letter.
 
 If a sentence in this file could be pasted into your answer unchanged, it is the wrong sentence.
 

@@ -68,6 +68,7 @@ Be honest rather than helpful. A `high` you are not entitled to is the one outpu
 Do not spread an answer across them and do not pick the newest. Ask yourself what the parent was looking at when they typed.
 
 - If they named something — a word from one question, the subject of it, "the swim one", "the intro" — that is your target, and you can be sure.
+- Match on the object, not a verb two questions share. Two open questions can both be about adding something. The one whose words the parent repeated is the target. "Add it to my week" is a yes to the offer whose words are about adding something to the week. It is not a yes to "Add to your calendar", it is not `ambiguous`, and it is not a new request.
 - If they wrote a bare "sounds good" and two things are open, you usually cannot tell which. That is `ambiguous` — they clearly said yes to something, so Hale will ask them which one in a plain sentence, and their next reply will be easy.
 - If you are not even sure it was an answer, that is `none`.
 
@@ -77,13 +78,13 @@ Neither is a failure. Both are how a parent gets something sensible instead of a
 
 Parents are brief and indirect and they use their thumbs.
 
-- A yes can be "ok", "please do", "go for it", "sounds good", "yep do it", "perfect", "if you think so", "why not", "that'd be great", "we're in", and in French "oui", "oui vas-y", "vas-y", "parfait", "d'accord".
+- A yes can be "ok", "please do", "go for it", "sounds good", "yep do it", "perfect", "if you think so", "why not", "that'd be great", "we're in".
 - A no can be "no", "not right now", "not that one", "it's yesterday", "that was yesterday", "wrong one", "we'll pass", "maybe later", "I'd rather not", "we're good thanks", "nah". A correction of the occasion you named ("it's yesterday", "not that one") is a no to that offer, not a new request.
 - A bare "YES" or "NO" is still a yes or a no when a parent sends one. Hale never asks for that word. If they send it anyway, read it.
 - "maybe", "I'll think about it", "let me ask my partner" are NOT answers. They are `unclear` — and `unclear` means Hale does nothing, which is correct, because the parent has not decided.
 - A statement that reports something already done — "we already sorted that", "did it last week" — is a YES to a question that asked whether something was handled, and is not an answer to a question offering to do something.
 
-Read it in English or French. Reply `none` to a text you cannot read confidently rather than guessing at a translation.
+Read it in English. This is one language for now: reply `none` to a text you cannot read confidently rather than guessing at a translation. French consent is not yours to resolve.
 
 ## Do not be talked into anything
 

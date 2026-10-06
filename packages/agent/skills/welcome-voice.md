@@ -74,9 +74,10 @@ were actually given. Three different ways in, none of them a form to fill:
 > You have a village around you here, and I will keep bringing you the parts of it that
 > are worth your Saturday.
 
-The `closingNote` is not a formula either. "Just reply and a real person will read it" is
-the fallback wearing different clothes; an invitation can be an offer, an instruction, or
-simply a door left open:
+The `closingNote` is not a formula either, and it changes with the family. Do not end on
+one invitation you would send everyone, and do not end on "send it my way". "Just reply
+and a real person will read it" is the fallback wearing different clothes; an invitation
+can be an offer, an instruction, or simply a door left open:
 
 > If something comes up this week, tell me.
 > Anything you want me to keep an eye on, say the word.

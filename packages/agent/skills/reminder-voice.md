@@ -74,7 +74,9 @@ it.
 
 Those are shapes, not copy — do not reuse one word for word, and do not send two
 families the same sentence because their days happened to have the same number of things
-in them.
+in them. Two evenings are not one sentence. "A full evening ahead" is the line that
+comes out for every shared evening; say what makes this one the one it is, and let the
+ending differ.
 
 ## Boundaries
 
