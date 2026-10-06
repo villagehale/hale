@@ -131,7 +131,7 @@ const WEEKDAY_WORD = String.raw`${WB}(?:(next|prochain(?:e)?)\s+)?(mondays?|tues
  * check" is Hale offering to act. The sweep does not perform any of these.
  */
 const COMMITMENT = new RegExp(
-  `${WB}(?:i['’]ll|i will|i['’]m going to|i am going to|i['’]d (?:follow up|check|call|email|reach out|look|ask)|i can (?:check|call|email|reach out|look|follow up|ask)|we['’]ll|we will|we['’]re going to|we are going to|hale(?:['’]s| is) going to|hale will|je vais|je relance|je rappelle|j['’](?:é|e)cris|je contacte|je v(?:é|e)rifie|je te tiens|je (?:te )?(?:redis|reviens|regarde|rev(?:é|e)rifie|m['’]en occupe|m['’]informe)|je reviens vers toi|on va|on relance|on (?:te )?revient|nous allons|qu['’]on (?:voie|v[ée]rifie|regarde|relance|appelle))${WE}|${WB}let me (?!know${WE})`,
+  `${WB}(?:i['’]ll|i will|i['’]m going to|i am going to|i['’]d (?:follow up|check|call|email|reach out|look|ask)|i can (?:check|call|email|reach out|look|follow up|ask)|we['’]ll|we will|we['’]re going to|we are going to|hale(?:['’]s| is) going to|hale will|je vais|je relance|je rappelle|j['’](?:é|e)cris|je contacte|je v(?:é|e)rifie|je te tiens|je (?:te )?(?:redis|reviens|regarde|rev(?:é|e)rifie|m['’]en occupe|m['’]informe)|je reviens vers toi|on va|on relance|on (?:te )?revient|nous allons|qu['’]on (?:voie|v[ée]rifie|regarde|relance|appelle)|tu veux que je|veux-tu que je|want me to)${WE}|${WB}let me (?!know${WE})`,
   'iu',
 );
 
@@ -162,13 +162,28 @@ const THIRD_PARTY_REPLY = new RegExp(
 /** An order. "Faut-il …?" is a question and is not one of these. */
 const FRENCH_ORDER = new RegExp(
   [
-    `${WB}(?:tu dois|vous devez|il faut que tu|il faudrait que tu|faudrait que tu|faut(?:\\s+juste)?\\s+que tu|il te faut|il faut choisir|il te reste [àa]|t['’]as (?:juste )?[àa]|n['’]oublie pas|(?:il )?faut qu['’]on)${WE}`,
+    `${WB}(?:tu dois|tu devrais|vous devez|vous devriez|il faut que tu|il faudrait que tu|faudrait que tu|faut(?:\\s+juste)?\\s+que tu|il te faut|il faut choisir|il te reste [àa]|t['’]as (?:juste )?[àa]|n['’]oublie pas|(?:il )?faut qu['’]on)${WE}`,
     `${WB}il faudrait\\s+\\p{L}+(?:er|ir|re)${WE}`,
     `${WB}il faut(?!-il)\\s+\\p{L}+(?:er|ir|re)${WE}`,
     `^faut\\s+\\p{L}+(?:er|ir|re)${WE}`,
   ].join('|'),
   'iu',
 );
+
+/** A reminder that opens the text. "Do you still need to…" does not. */
+const ENGLISH_ORDER_START = new RegExp(
+  `^(?:time to|need to|gotta|don['’]t forget|make sure|remember to|be sure to)${WE}`,
+  'iu',
+);
+
+/** An order aimed at the parent, wherever it sits in the line. */
+const ENGLISH_ORDER_ANY = new RegExp(
+  `${WB}(?:you need to|you have to|you['’]ve got to|you should|you must|don['’]t forget to|make sure (?:to|you))${WE}`,
+  'giu',
+);
+
+/** A real question may contain "you need to". An order that starts with "you" may not. */
+const ORDER_QUESTION_START = /^(?:do|does|did|would|should|are|is|have|has)(?![\p{L}\p{N}])/iu;
 
 const BOOKED_CLAIM = new RegExp(
   `${WB}(?:booked|is confirmed|you signed up|all set|c['’]est r[eé]gl[eé]|r[ée]servée?|confirmée?|inscrite?)${WE}`,
@@ -391,11 +406,39 @@ function explicitDateContradicts(
   );
 }
 
-/** A booking word inside a question ("est-elle inscrite?") is not a claim. */
+/**
+ * A booking word is a question only when its own clause ends in "?".
+ * The comma in "inscrite au CPE, tu veux que je…?" closes the claim.
+ */
 function inQuestion(text: string, index: number): boolean {
   const rest = text.slice(index);
-  const next = rest.search(/[.!?]/);
+  const next = rest.search(/[,;.!?]| - /);
   return next >= 0 && rest[next] === '?';
+}
+
+/**
+ * "Do you need to call?" asks. "You should confirm." tells. The sentence
+ * that holds the order has to be a question and start with the asking word.
+ */
+function exemptOrderQuestion(text: string, index: number): boolean {
+  const before = text.slice(0, index);
+  let start = 0;
+  for (const mark of before.matchAll(/[.!?]/g)) {
+    start = (mark.index ?? 0) + mark[0].length;
+  }
+  const sentence = text.slice(start).trim();
+  const end = sentence.search(/[.!?]/);
+  if (end < 0 || sentence[end] !== '?') return false;
+  return ORDER_QUESTION_START.test(sentence);
+}
+
+function englishOrder(text: string): boolean {
+  if (ENGLISH_ORDER_START.test(text)) return true;
+  for (const match of text.matchAll(ENGLISH_ORDER_ANY)) {
+    if (match.index === undefined) continue;
+    if (!exemptOrderQuestion(text, match.index)) return true;
+  }
+  return false;
 }
 
 /**
@@ -506,7 +549,7 @@ function prepareBody(
     return { ok: false, reason: 'keyword_ask' };
   }
   if (stockOpener(folded)) return { ok: false, reason: 'stock_opener' };
-  if (FRENCH_ORDER.test(folded)) return { ok: false, reason: 'order' };
+  if (FRENCH_ORDER.test(folded) || englishOrder(folded)) return { ok: false, reason: 'order' };
   if (promisedPassedWeekday(folded, now, timeZone)) return { ok: false, reason: 'past_weekday' };
   if (inventedHalePromise(folded)) return { ok: false, reason: 'invented_promise' };
   if (thirdPartyNewsBlocked(status) && asksParentForThirdPartyNews(folded)) {

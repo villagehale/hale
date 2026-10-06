@@ -647,8 +647,11 @@ describe('workstream follow-up voice', () => {
     expect(skill).toContain('tu dois');
     expect(skill).toContain('Tu as pu');
     expect(skill).toContain('Tu préfères');
+    expect(skill).toContain('In English and French');
     expect(skill).toContain('never an instruction');
     expect(skill).toContain('never vous');
+    expect(skill).toContain('Still deciding');
+    expect(skill).toContain('time to');
     expect(skill).toContain('`order`');
     expect(skill).toContain('invented_claim');
     expect(skill).toContain('not "you"');
@@ -836,8 +839,8 @@ describe('workstream follow-up voice', () => {
       if (!result.ok) throw new Error(result.reason);
       return result.body;
     };
-    expect(await folded('Need to confirm\u2014are you in for 9\u201310.')).toBe(
-      'Need to confirm - are you in for 9-10.',
+    expect(await folded('Please confirm\u2014are you in for 9\u201310.')).toBe(
+      'Please confirm - are you in for 9-10.',
     );
     expect(await folded('Saturday\u2014Wallace has the lane.')).toBe(
       'Saturday - Wallace has the lane.',
@@ -924,7 +927,17 @@ describe('workstream follow-up voice', () => {
     expect(refuse("Il faut qu'on décide si on apporte une salade ou un dessert.")).toBe('order');
     expect(refuse("N'oublie pas d'appeler le CPE.")).toBe('order');
     expect(refuse("T'as juste à appeler le CPE.")).toBe('order');
+    expect(refuse('Tu devrais confirmer avant samedi.')).toBe('order');
+    expect(refuse('Vous devriez confirmer avant samedi.')).toBe('order');
     expect(refuse("Tu veux qu'on voie si c'est fait?")).toBe('invented_promise');
+    expect(refuse("Time to call the dentist and rebook Maya's cleaning.")).toBe('order');
+    expect(refuse('Need to pick a gift under $30 before Saturday.')).toBe('order');
+    expect(refuse('You should confirm before Saturday.')).toBe('order');
+    expect(refuse("Don't forget to call the dentist.")).toBe('order');
+    expect(refuse('Make sure you send the form.')).toBe('order');
+    expect(refuse('Do you still need to call the dentist?')).toBeNull();
+    expect(refuse('Do you need to call the dentist?')).toBeNull();
+    expect(refuse('Did you get a chance to send the deposit form?')).toBeNull();
 
     expect(refuse('Great that you booked the 9:30 swim!')).toBe('invented_claim');
     expect(refuse("Maya's spot is confirmed.")).toBe('invented_claim');
@@ -932,6 +945,8 @@ describe('workstream follow-up voice', () => {
     expect(refuse('Tu as dit que tu nous dirais.')).toBe('invented_claim');
     expect(refuse('Super que la place soit réservée!')).toBe('invented_claim');
     expect(refuse('Léa est inscrite au CPE.')).toBe('invented_claim');
+    expect(refuse('Léa est inscrite au CPE, et ensuite?')).toBe('invented_claim');
+    expect(refuse('Léa est inscrite au CPE, tu veux que je le note?')).toBe('invented_promise');
     expect(refuse("Theo's camp spot is all set for March break.", third)).toBe('invented_claim');
     expect(refuse("C'est réglé pour la place de Léa.")).toBe('invented_claim');
     expect(refuse('Zoé est-elle inscrite pour mardi ou jeudi?')).toBeNull();
