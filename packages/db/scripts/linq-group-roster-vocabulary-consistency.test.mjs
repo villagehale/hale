@@ -119,6 +119,6 @@ describe('0158_linq_group_roster is additive and protected', () => {
     const journal = readJournal(drizzleDir);
     const tail = journal[journal.length - 1];
     expect(tail.tag).toBe(TAG);
-    expect(tail.when).toBeGreaterThanOrEqual(1781469701000);
+    expect(tail.when).toBeGreaterThanOrEqual(1781469751000);
   });
 });

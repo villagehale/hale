@@ -16,7 +16,8 @@ import { users } from './users.js';
  * Group onboarding v2 — who is in a family's Linq group, read from GET /chats/{id}.
  *
  * One roster per chat. `family_id` is null until a parent Hale already knows is
- * matched: a `no_family`, `mixed_family` or `roster_pending` roster belongs to nobody.
+ * matched: a `no_family`, `mixed_family`, `not_group` or `roster_pending` roster belongs
+ * to nobody.
  * Nothing here is a seat. A seat is still a `linq_group_members` row, written only on
  * the person's own reply; a member row records what was read and asked.
  */
@@ -32,6 +33,7 @@ export const LINQ_GROUP_ROSTER_STATUSES = [
   'confirmed',
   'refused',
   'ejected',
+  'not_group',
 ] as const;
 export type LinqGroupRosterStatus = (typeof LINQ_GROUP_ROSTER_STATUSES)[number];
 
@@ -94,7 +96,7 @@ export const linqGroupRosters = pgTable(
     ),
     statusCheck: check(
       'linq_group_rosters_status_check',
-      sql`${table.status} in ('roster_pending', 'no_family', 'mixed_family', 'roles_proposed', 'partial', 'confirmed', 'refused', 'ejected')`,
+      sql`${table.status} in ('roster_pending', 'no_family', 'mixed_family', 'roles_proposed', 'partial', 'confirmed', 'refused', 'ejected', 'not_group')`,
     ),
     chatUniq: uniqueIndex('linq_group_rosters_chat_uniq').on(table.chatId),
     familyIdx: index('linq_group_rosters_family_idx').on(table.familyId),

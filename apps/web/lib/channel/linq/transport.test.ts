@@ -238,6 +238,7 @@ describe('listLinqParticipantHandles', () => {
     expect(await listLinqParticipantHandles({ chatId: CHAT, fetch: fetchMock })).toEqual({
       status: 'ok',
       handles: ['+14165550101', '+14165550102'],
+      isGroup: true,
     });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -245,6 +246,29 @@ describe('listLinqParticipantHandles', () => {
     );
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('GET');
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined();
+  });
+
+  it('says when the chat is not a group, and when the payload does not say', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const oneToOne = jsonFetch(200, {
+      id: CHAT,
+      is_group: false,
+      handles: [
+        { handle: '+14165550100', is_me: true },
+        { handle: '+14165550101', is_me: false },
+      ],
+    });
+    expect(await listLinqParticipantHandles({ chatId: CHAT, fetch: oneToOne })).toEqual({
+      status: 'ok',
+      handles: ['+14165550101'],
+      isGroup: false,
+    });
+    const unsaid = jsonFetch(200, { id: CHAT, handles: [{ handle: '+14165550101' }] });
+    expect(await listLinqParticipantHandles({ chatId: CHAT, fetch: unsaid })).toEqual({
+      status: 'ok',
+      handles: ['+14165550101'],
+      isGroup: null,
+    });
   });
 
   it('names a refusal with its Linq code and does not throw', async () => {

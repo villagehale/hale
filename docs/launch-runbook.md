@@ -118,7 +118,7 @@ Redeploy steps, same for every flag:
 | `LINQ_POLLS` | empty | Year-find polls are not sent. `on` is the only value that sends them. |
 | `LINQ_GROUP_COPARENT` | `off` | In-group co-parent seating stops. Any other value, including empty, leaves it on. |
 | `LINQ_GROUP_MEMBERS_ENABLED` | empty | Extra household seats stay dark. Trimmed `true` enables them. |
-| `LINQ_GROUP_ONBOARDING_V2_ENABLED` | empty | Hale's own add to a group is acknowledged and nothing else happens (`signal_from_me`). No roster is read and no chat is claimed. Rosters and claims already written stay. Trimmed `true` enables it. |
+| `LINQ_GROUP_ONBOARDING_V2_ENABLED` | empty | Hale's own add to a group is acknowledged and nothing else happens (`signal_from_me`; a `chat.created` answers `chat.created`). No roster is read and no chat is claimed. Rosters and claims already written stay. Trimmed `true` enables it. |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | empty | Shared groups that hold more than one family stay dark. Trimmed `true` enables them. |
 
 To close the Linq door, clear `LINQ_API_KEY` or `LINQ_WEBHOOK_SECRET` on hale-web Production and redeploy with the steps above. The route returns 503 `linq_not_configured` and writes nothing. Linq retries that 503, so put the secret back and redeploy to accept the retries.

@@ -56,11 +56,11 @@ afterEach(async () => {
   await db.exec('truncate table families, users cascade');
 });
 
-function handlesOk(handles: string[]) {
+function handlesOk(handles: string[], isGroup: boolean | null = true) {
   const calls: string[] = [];
   const list: ListChatHandles = async ({ chatId }) => {
     calls.push(chatId);
-    return { status: 'ok', handles };
+    return { status: 'ok', handles, isGroup };
   };
   return { list, calls };
 }
@@ -344,7 +344,7 @@ describe('startGroupRoster', () => {
     const { familyId } = await seedHousehold(PARENT, 'Parent');
     const { list, calls } = handlesOk([PARENT, UNKNOWN_A, UNKNOWN_B]);
 
-    const [fromCreated, fromAdded] = await Promise.all([
+    const [fromCreated, fromAdded] = await Promise.allSettled([
       startGroupRoster(db.database, {
         chatId: CHAT,
         source: 'added_to_existing',
@@ -360,8 +360,14 @@ describe('startGroupRoster', () => {
       }),
     ]);
 
-    expect(fromCreated).toMatchObject({ outcome: 'roster_matched', familyId });
-    expect(fromAdded).toEqual({ outcome: 'roster_already', status: 'roster_pending' });
+    expect(fromCreated).toMatchObject({
+      status: 'fulfilled',
+      value: { outcome: 'roster_matched', familyId },
+    });
+    expect(fromAdded).toEqual({
+      status: 'fulfilled',
+      value: { outcome: 'roster_already', status: 'roster_pending' },
+    });
     expect(calls).toEqual([]);
     expect(await rosters()).toHaveLength(1);
     expect((await membersOf(CHAT)).size).toBe(3);
@@ -435,6 +441,67 @@ describe('startGroupRoster', () => {
       'linq_group_roster_fetched',
     ]);
   });
+
+  it('claims a refused chat when Hale is added again after the family let go of its first group', async () => {
+    const { familyId } = await seedHousehold(PARENT, 'Parent', { linqGroupChatId: 'chat-first' });
+    const { list, calls } = handlesOk([PARENT, UNKNOWN_A]);
+    const addAgain = () =>
+      startGroupRoster(db.database, {
+        chatId: CHAT,
+        source: 'added_to_existing',
+        now: NOW,
+        listHandles: list,
+      });
+
+    expect(await addAgain()).toEqual({ outcome: 'roster_family_has_other_chat', familyId });
+    expect(await addAgain()).toEqual({ outcome: 'roster_family_has_other_chat', familyId });
+    expect(calls).toEqual([CHAT, CHAT]);
+    expect(await chatOf(familyId)).toBe('chat-first');
+
+    expect(
+      await ejectHouseholdGroup(db.database, { chatId: 'chat-first', now: NOW }),
+    ).toMatchObject({ outcome: 'ejected', familyId });
+    expect(await addAgain()).toMatchObject({
+      outcome: 'roster_matched',
+      status: 'roles_proposed',
+      familyId,
+    });
+    expect(await chatOf(familyId)).toBe(CHAT);
+    const [roster] = await rosters();
+    expect(roster).toMatchObject({ chatId: CHAT, status: 'roles_proposed', familyId });
+    expect((await membersOf(CHAT)).size).toBe(2);
+    await nothingSentOrSeated();
+  });
+
+  it('names a chat that is not a group and claims nothing', async () => {
+    const { familyId } = await seedHousehold(PARENT, 'Parent');
+    const { list, calls } = handlesOk([PARENT], false);
+
+    expect(
+      await startGroupRoster(db.database, {
+        chatId: CHAT,
+        source: 'added_to_existing',
+        now: NOW,
+        listHandles: list,
+      }),
+    ).toEqual({ outcome: 'roster_not_group' });
+    const [roster] = await rosters();
+    expect(roster).toMatchObject({ status: 'not_group', familyId: null });
+    expect((await membersOf(CHAT)).size).toBe(0);
+    expect(await chatOf(familyId)).toBeNull();
+    expect(await auditVerbs(familyId)).toEqual([]);
+
+    expect(
+      await startGroupRoster(db.database, {
+        chatId: CHAT,
+        source: 'added_to_existing',
+        now: NOW,
+        listHandles: list,
+      }),
+    ).toEqual({ outcome: 'roster_already', status: 'not_group' });
+    expect(calls).toEqual([CHAT]);
+    await nothingSentOrSeated();
+  });
 });
 
 describe('ensureRoster', () => {
@@ -485,6 +552,32 @@ describe('ensureRoster', () => {
     ).toMatchObject({ outcome: 'roster_matched', status: 'confirmed', proposed: 0 });
     const [roster] = await rosters();
     expect(roster).toMatchObject({ status: 'confirmed', confirmedAt: NOW });
+  });
+
+  it('retries a refused roster on a group inbound only once the block is gone', async () => {
+    const { familyId } = await seedHousehold(PARENT, 'Parent', { linqGroupChatId: 'chat-first' });
+    const { list, calls } = handlesOk([PARENT, UNKNOWN_A]);
+    await startGroupRoster(db.database, {
+      chatId: CHAT,
+      source: 'added_to_existing',
+      now: NOW,
+      listHandles: list,
+    });
+    expect(calls).toEqual([CHAT]);
+
+    expect(await ensureRoster(db.database, { chatId: CHAT, now: NOW, listHandles: list })).toEqual({
+      outcome: 'roster_already',
+      status: 'refused',
+    });
+    expect(calls).toEqual([CHAT]);
+    expect(await auditVerbs(familyId)).toHaveLength(1);
+
+    await ejectHouseholdGroup(db.database, { chatId: 'chat-first', now: NOW });
+    expect(
+      await ensureRoster(db.database, { chatId: CHAT, now: NOW, listHandles: list }),
+    ).toMatchObject({ outcome: 'roster_matched', familyId });
+    expect(calls).toEqual([CHAT, CHAT]);
+    expect(await chatOf(familyId)).toBe(CHAT);
   });
 
   it('leaves an unclaimed chat with no roster alone', async () => {
@@ -733,7 +826,7 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
   });
 });
 
-describe('before migration 0157 reaches the database', () => {
+describe('before migration 0158 reaches the database', () => {
   let bare: TestDb;
 
   beforeAll(async () => {

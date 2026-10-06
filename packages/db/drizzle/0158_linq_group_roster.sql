@@ -10,7 +10,7 @@
 --
 -- One roster per chat, built from GET /chats/{id} when Hale is added to a group.
 -- family_id stays null until a parent Hale already knows is matched (no_family,
--- mixed_family and roster_pending rosters hold no family). A member row holds the
+-- mixed_family, not_group and roster_pending rosters hold no family). A member row holds the
 -- encrypted number and its blind index; nobody is seated from this table — a seat
 -- still lives in linq_group_members and is written only on the person's own reply.
 -- A phone has one live row per chat; a member who leaves or is removed keeps the row.
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS "linq_group_rosters" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "linq_group_rosters_source_check" CHECK ("source" IN ('added_to_existing', 'new_group', 'backfill')),
-	CONSTRAINT "linq_group_rosters_status_check" CHECK ("status" IN ('roster_pending', 'no_family', 'mixed_family', 'roles_proposed', 'partial', 'confirmed', 'refused', 'ejected'))
+	CONSTRAINT "linq_group_rosters_status_check" CHECK ("status" IN ('roster_pending', 'no_family', 'mixed_family', 'roles_proposed', 'partial', 'confirmed', 'refused', 'ejected', 'not_group'))
 );--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "linq_group_rosters_chat_uniq" ON "linq_group_rosters" ("chat_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "linq_group_rosters_family_idx" ON "linq_group_rosters" ("family_id");--> statement-breakpoint

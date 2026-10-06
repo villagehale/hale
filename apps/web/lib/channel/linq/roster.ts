@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNotNull, isNull, notInArray } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, notInArray, or } from 'drizzle-orm';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -21,7 +21,7 @@ import { listLinqParticipantHandles } from './transport';
  * here and nothing is sent: a seat is written only on the person's own reply, and the
  * lines that ask are a later step. Every path returns a named outcome.
  *
- * The roster tables are read on the group hot path. Until migration 0157 reaches the
+ * The roster tables are read on the group hot path. Until migration 0158 reaches the
  * database, every entry point answers `not_migrated` (42P01) rather than failing the
  * webhook.
  */
@@ -56,10 +56,15 @@ export type GroupRosterOutcome =
   | { outcome: 'not_migrated' }
   | { outcome: 'roster_already'; status: RosterStatus }
   | { outcome: 'roster_fetch_failed'; reason: RosterFetchFailure }
+  | { outcome: 'roster_not_group' }
   | RosterSettled;
 
-/** Statuses a new add or a retry may (re)build from. Everything else is settled. */
-const REBUILDABLE: readonly RosterStatus[] = ['roster_pending', 'ejected'];
+/**
+ * Statuses a new add may (re)build from. Everything else is settled. A `refused` roster is
+ * claimed again through the same IS NULL guard, so a chat that is still blocked is refused
+ * again and nothing is sent.
+ */
+const REBUILDABLE: readonly RosterStatus[] = ['roster_pending', 'ejected', 'refused'];
 const GONE: MemberStatus[] = ['left', 'removed'];
 const TERMINAL: readonly MemberStatus[] = [
   'known_parent',
@@ -173,6 +178,14 @@ export async function startGroupRoster(
       );
       return { outcome: 'roster_fetch_failed', reason: listed.status };
     }
+    if (listed.isGroup === false) {
+      await database
+        .update(schema.linqGroupRosters)
+        .set({ status: 'not_group', familyId: null, updatedAt: input.now })
+        .where(eq(schema.linqGroupRosters.id, rosterId));
+      console.warn({ outcome: 'roster_not_group' }, 'linq roster: chat is not a group');
+      return { outcome: 'roster_not_group' };
+    }
     handles = listed.handles;
   }
 
@@ -196,9 +209,11 @@ export async function startGroupRoster(
 }
 
 /**
- * The roster step on an inbound in a group. A `roster_pending` roster fetches again; a
- * chat a family already claimed with no roster yet is backfilled (its seated co-parent
- * confirmed, not re-asked). An unclaimed chat with no roster is left to the triggers.
+ * The roster step on an inbound in a group. A `roster_pending` roster fetches again, and
+ * so does a `refused` one once nothing blocks the claim any more (Hale stays in a refused
+ * chat, so no new add will come); a chat a family already claimed with no roster yet is
+ * backfilled (its seated co-parent confirmed, not re-asked). An unclaimed chat with no
+ * roster is left to the triggers.
  */
 export async function ensureRoster(
   database: Database,
@@ -208,9 +223,10 @@ export async function ensureRoster(
   const existing = await readRoster(database, input.chatId);
   if (existing === 'not_migrated') return notMigrated();
   if (existing) {
-    if (existing.status !== 'roster_pending') {
-      return { outcome: 'roster_already', status: existing.status };
-    }
+    const retry =
+      existing.status === 'roster_pending' ||
+      (existing.status === 'refused' && !(await claimStillBlocked(database, existing)));
+    if (!retry) return { outcome: 'roster_already', status: existing.status };
     return startGroupRoster(database, {
       chatId: input.chatId,
       source: existing.source,
@@ -231,6 +247,27 @@ export async function ensureRoster(
     now: input.now,
     listHandles: input.listHandles,
   });
+}
+
+/** A family holds this chat, or the refused roster's family still holds another one. */
+async function claimStillBlocked(database: Database, roster: RosterRow): Promise<boolean> {
+  const holdsThisChat = eq(schema.families.linqGroupChatId, roster.chatId);
+  const [blocker] = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(
+      roster.familyId
+        ? or(
+            holdsThisChat,
+            and(
+              eq(schema.families.id, roster.familyId),
+              isNotNull(schema.families.linqGroupChatId),
+            ),
+          )
+        : holdsThisChat,
+    )
+    .limit(1);
+  return blocker !== undefined;
 }
 
 interface HandleMatch {
