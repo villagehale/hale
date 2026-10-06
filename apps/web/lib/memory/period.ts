@@ -69,7 +69,8 @@ export function weekStartMonday(date: string): string {
   return addCalendarDays(date, delta);
 }
 
-function timezoneOffsetMs(instant: Date, timeZone: string): number {
+/** Local wall clock minus the instant, in milliseconds. Toronto in summer is −4h. */
+export function timezoneOffsetMs(instant: Date, timeZone: string): number {
   const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone,
     year: 'numeric',

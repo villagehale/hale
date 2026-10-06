@@ -10,8 +10,9 @@ import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, or } from 'drizzle-or
  * It does not read the parent's words. A declined activity is stored as
  * `dropped`, never as an open or scheduled plan.
  *
- * Prompt injection and proactive follow-ups stay behind {@link WORKSTREAMS_ENABLED_ENV}.
- * Writing a row does not.
+ * Prompt injection, extraction, writes, and proactive follow-ups stay behind
+ * {@link WORKSTREAMS_ENABLED_ENV}. Exactly `true`. Anything else does not call
+ * the model and does not write a row.
  */
 
 export const WORKSTREAMS_ENABLED_ENV = 'WORKSTREAMS_ENABLED';
@@ -75,6 +76,18 @@ function parseInstant(value: string | null | undefined): Date | null {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * A check-back that is already due would ride the next hourly sweep. A missing
+ * value stays missing (an update keeps the row's time). A past or unreadable
+ * value is stored as null.
+ */
+function storedCheckBack(value: string | null | undefined, now: Date): Date | null | undefined {
+  if (value === undefined) return undefined;
+  const parsed = parseInstant(value);
+  if (!parsed || parsed.getTime() <= now.getTime()) return null;
+  return parsed;
 }
 
 function isStatus(value: string | null | undefined): value is WorkstreamStatus {
@@ -270,7 +283,7 @@ export async function applyWorkstreamOp(
     parseInstant(op.expiresAt) ??
     (existing?.expiresAt && existing.expiresAt > now ? existing.expiresAt : null) ??
     new Date(now.getTime() + DEFAULT_WORKSTREAM_EXPIRY_MS);
-  const checkBackAt = op.checkBackAt === undefined ? undefined : parseInstant(op.checkBackAt);
+  const checkBackAt = storedCheckBack(op.checkBackAt, now);
   const nextStep =
     op.nextStep === undefined || op.nextStep === null ? op.nextStep : clip(op.nextStep, 240);
 

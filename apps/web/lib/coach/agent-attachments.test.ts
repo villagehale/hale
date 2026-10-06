@@ -2,6 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { WORKSTREAMS_ENABLED_ENV } from '~/lib/memory/workstreams';
 import { askHale } from './agent';
 import { AttachmentConsumptionError } from './attachments';
 
@@ -205,6 +206,7 @@ describe('askHale — atomic attachment consumption (rule #1)', () => {
 
     // Winner: claims the attachment, so the send proceeds and the model is called with
     // the image block (the bytes reach the model).
+    vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
     const winner = fakeClient();
     const won = await askHale(input(), db, winner.client);
     expect(won.answer).toBe('here is what I see in the photo.');

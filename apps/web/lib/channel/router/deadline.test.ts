@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DeadlineError, runTurn, withTimeout } from './deadline';
+import { DeadlineError, runTurn, runTurnThen, withTimeout } from './deadline';
 
 describe('withTimeout', () => {
   it('rejects with the named reason when the work does not settle', async () => {
@@ -19,5 +19,21 @@ describe('runTurn', () => {
     const signal = AbortSignal.timeout(20);
     const pending = runTurn(signal, () => new Promise(() => {}));
     await expect(pending).rejects.toBeInstanceOf(DeadlineError);
+  });
+});
+
+describe('runTurnThen', () => {
+  it('returns the turn even when the deadline fires while trailed work is still going', async () => {
+    const signal = AbortSignal.timeout(30);
+    let finished = false;
+    const trailed = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        finished = true;
+        resolve();
+      }, 60);
+    });
+    await expect(runTurnThen(signal, async () => 'sent', [trailed])).resolves.toBe('sent');
+    expect(finished).toBe(true);
+    expect(signal.aborted).toBe(true);
   });
 });

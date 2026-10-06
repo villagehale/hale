@@ -84,7 +84,7 @@ import {
   assertTurnLive,
   isCallTimeout,
   isTurnTimeout,
-  runTurn,
+  runTurnThen,
   turnSignalAborted,
   withTimeout,
 } from './deadline';
@@ -534,8 +534,10 @@ export interface ChannelRouterDeps {
    * After the reply is on its way, ask the model whether this turn opened,
    * moved, or closed a workstream (VIL-419). Optional so a router assembled
    * for a test that never reaches the coach does not grow a dependency.
-   * Production always sets it. A miss is logged inside the implementation
-   * and never fails the turn: the parent already has the text.
+   * Production always sets it. The router starts it and does not await it
+   * inside the turn deadline: a slow extract must not log "nothing sent"
+   * or defer a turn whose reply already went out. A miss is logged inside
+   * the implementation and never fails the turn.
    */
   rememberWorkstream?(input: {
     familyId: string;
@@ -616,14 +618,39 @@ export interface RouterResult {
   lane: UnmetIntentLane | null;
 }
 
+/**
+ * The extract starts when the reply is already out. Awaiting it inside the
+ * turn would let a 20s model call trip the 90s deadline and record a
+ * re-drive of a turn that already answered.
+ */
+function detachWorkstream(deps: ChannelRouterDeps, trailed: Promise<unknown>[]): ChannelRouterDeps {
+  if (!deps.rememberWorkstream) return deps;
+  const remember = deps.rememberWorkstream;
+  return {
+    ...deps,
+    rememberWorkstream: (input) => {
+      const task = remember(input).catch((err: unknown) => {
+        deps.log.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'channel router: workstream extract failed',
+        );
+      });
+      trailed.push(task);
+      return Promise.resolve();
+    },
+  };
+}
+
 export async function routeChannelMessage(
   deps: ChannelRouterDeps,
   job: ChannelMessageReceivedJob,
 ): Promise<RouterResult> {
   const deadlineMs = deps.turnDeadlineMs ?? TURN_DEADLINE_MS;
   const signal = AbortSignal.timeout(deadlineMs);
+  const trailed: Promise<unknown>[] = [];
+  const turnDeps = detachWorkstream(deps, trailed);
   try {
-    return await runTurn(signal, () => routeChannelMessageInner(deps, job));
+    return await runTurnThen(signal, () => routeChannelMessageInner(turnDeps, job), trailed);
   } catch (err) {
     if (!isTurnTimeout(err) && !signal.aborted) throw err;
     // Nothing goes out. The job fails so the per-parent key is free for the

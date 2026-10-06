@@ -1,12 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { askHale } from '~/lib/coach/agent';
 import {
   MAX_ATTACHMENTS_PER_REQUEST,
-  loadUnlinkedAttachments,
   type OwnedChatAttachment,
+  loadUnlinkedAttachments,
 } from '~/lib/coach/attachments';
 import { NOTE_KEY_RE } from '~/lib/coach/note-key';
 import { db } from '~/lib/db';
@@ -122,6 +122,7 @@ export async function POST(req: Request) {
       const send = (event: unknown) =>
         controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
       try {
+        const trailed: Array<() => Promise<void>> = [];
         const { conversationId, actionIntents } = await askHale(
           {
             familyId,
@@ -149,9 +150,20 @@ export async function POST(req: Request) {
             // raw output. Forwarded verbatim from the harness, which built it.
             onToolResult: ({ name, ok, preview, card }) =>
               send({ type: 'tool_result', name, ok, preview, ...(card ? { card } : {}) }),
+            // Extraction is a second model call. It is queued here and started
+            // only after `done` is on the wire, via after() so the function
+            // stays alive for it.
+            defer: (work) => {
+              trailed.push(work);
+            },
           },
         );
         send({ type: 'done', conversationId, actionIntents });
+        if (trailed.length > 0) {
+          after(async () => {
+            for (const work of trailed) await work();
+          });
+        }
       } catch {
         send({ type: 'error' });
       } finally {
