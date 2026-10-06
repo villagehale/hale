@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text is unambiguous: there is exactly one swim lesson on Thursday (5:15pm at East pool), and they want it moved to 17h45. The correct handling is to draft the move and ask for YES to confirm — not to ask a clarifying question. Hale drafted the move (`drafted: [\"calendar_move\"]`) but then asked a question instead of presenting the draft and requesting YES confirmation. The reply turns a clear instruction into a question the parent already answered (\"déplace la natation de jeudi\"), handing the job back. It should read something like \"Natation de jeudi déplacée à 17h45 à East pool — YES pour confirmer.\" instead of a question. That said, it does name the right event and the right venue, so the information is correct; the shape is simply wrong (question instead of draft confirmation with YES).",
+    "score": 2
+  }
+}

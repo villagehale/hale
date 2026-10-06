@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M487VSF5PSGMMQGJJAC9W7QV",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Try a short, predictable step-down: let him fall asleep in his own bed with you sitting nearby each night, then move your chair a little farther away every few nights until you're out of the room."
+      }
+    ],
+    "usage": {
+      "input_tokens": 981,
+      "output_tokens": 59,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20323,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 9929
+}

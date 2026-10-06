@@ -100,6 +100,8 @@ export function offerViolations(sentence: string): string[] {
  * nothing about this turn has been sent yet.
  */
 export function offerFullPlanTool(onOffer: (offer: PlanOffer) => void): RegisteredTool {
+  // Per turn. The tool is built once per reply, so a later text starts at zero.
+  let refusals = 0;
   return defineTool({
     name: 'offer_full_plan',
     description:
@@ -122,23 +124,33 @@ export function offerFullPlanTool(onOffer: (offer: PlanOffer) => void): Register
     monetary: false,
     // `{offered:true}` and the topic back — nothing the answer waits on, so the loop
     // ends on the turn that calls this and the short advice beside it survives
-    // (tool.ts registersOnly). A refused offer still costs a turn, which is right:
-    // the model has a sentence to fix.
+    // (tool.ts registersOnly). One refused offer still costs a turn, so the model
+    // can fix the sentence. A second refusal tells it to stop. A third returns
+    // without throwing: another throw is another step, and a turn that spends
+    // every step on the offer sends the parent nothing.
     registersOnly: true,
     // A child-scoped offer names a child, so the guarded invoker's teen check runs
     // BEFORE this handler — the same refusal propose_calendar_add gets. A 13+ child's
     // routine is not a thing Hale writes a parent a plan about (rule #1/#5).
     touchesChildContent: true,
     handler: async (input) => {
-      // The gate, and the recompose loop in one: a refusal is thrown as a sentence the
-      // model reads mid-turn and answers by calling again with a better offer. Nothing
-      // is registered until one passes, so the runtime can only ever append an offer
-      // that cleared every check.
+      // One retry, then the advice goes out alone. A refusal is thrown as a sentence
+      // the model reads mid-turn. The second refusal tells it to stop calling and
+      // answer. The third does not throw: the step budget is six, and a parent whose
+      // turn is spent on a sentence the tool will not send gets silence. Nothing is
+      // registered until an offer passes, so the runtime can only append one that
+      // cleared every check.
       const violations = offerViolations(input.offer);
       if (violations.length > 0) {
-        throw new Error(
-          `That offer cannot be sent. ${violations.join(' ')} Call offer_full_plan again with a fixed one.`,
-        );
+        refusals += 1;
+        if (refusals >= 3) {
+          return { offered: false as const, reason: 'stopped' as const };
+        }
+        const next =
+          refusals === 1
+            ? 'Call offer_full_plan once more with a fixed one.'
+            : 'Do not call offer_full_plan again. Your next message is the advice only, with no offer in it.';
+        throw new Error(`That offer cannot be sent. ${violations.join(' ')} ${next}`);
       }
       const offer: PlanOffer = {
         topic: input.topic,

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draft cap is 2, so Hale correctly drafts the first two (Monday swim and Thursday swim) and says it will handle soccer and the Wednesday item next. The reply names both drafted cancellations with their times and venues, ends with an implicit confirmation prompt (though it doesn't carry the literal \"YES to confirm.\" required by the contract), and correctly defers the remaining two without itemising them or sending the parent to the app. The Wednesday appointment is a private calendar item — Hale correctly handles it as \"the Wednesday item\" without revealing content. The soccer practice is correctly identified as the one Saturday event. The only meaningful blemish is the missing \"YES to confirm.\" — the reply tells the parent what it drafted but never tells them to reply YES, meaning the confirmation mechanism is broken. That is a notable failure of the contract shape, not just a cosmetic one. The reply is otherwise well-formed: no greeting, no sign-off, no markdown, no invented details, correct cap handling. This lands at a 3.",
+    "score": 3
+  }
+}

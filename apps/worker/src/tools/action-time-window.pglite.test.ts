@@ -99,13 +99,18 @@ describe('check_action_time_window — the acting instant clears the family cloc
     } as unknown as { messages: { create: () => Promise<Anthropic.Message> } };
   }
 
-  async function review(draftedAt: string) {
+  async function review(draftedAt: string, awaitsParentApproval = false, now?: Date) {
     return runReviewer(
-      { familyId, draft: placementDraft(draftedAt) },
+      {
+        familyId,
+        draft: placementDraft(draftedAt),
+        ...(awaitsParentApproval ? { awaitsParentApproval: true } : {}),
+      },
       {
         client: approvingClient() as never,
         invokeTool: (name, input) => invokeReviewerTool(name, input, db.database),
         loadChildNames: async () => [],
+        ...(now ? { now } : {}),
       },
     );
   }
@@ -149,5 +154,31 @@ describe('check_action_time_window — the acting instant clears the family cloc
     const window = verdict.toolResults.find((r) => r.tool === 'check_action_time_window');
     expect(window?.ok).toBe(false);
     expect(window?.result).toMatchObject({ withinWindow: false, observedHour: 3 });
+  });
+
+  it('approves on an injected daytime clock when the draft stamp is quiet hours', async () => {
+    // draftedAt is 03:00 America/Toronto. The injected clock is 12:00 there.
+    // The process wall clock is not what the door reads.
+    const { verdict } = await review(
+      '2026-07-12T07:00:00.000Z',
+      false,
+      new Date('2026-07-12T16:00:00.000Z'),
+    );
+
+    expect(verdict.kind).toBe('approve');
+    const window = verdict.toolResults.find((r) => r.tool === 'check_action_time_window');
+    expect(window?.ok).toBe(true);
+    expect(window?.result).toMatchObject({ withinWindow: true, observedHour: 12 });
+  });
+
+  it('does not apply quiet hours to a draft the parent just asked for', async () => {
+    // The same 03:00 stamp as the case above. This draft waits for the parent's
+    // yes; nothing executes at 03:00. The Sunday-loop placement does not set the flag.
+    const { verdict } = await review('2026-07-12T07:00:00.000Z', true);
+
+    expect(verdict.kind).toBe('approve');
+    const window = verdict.toolResults.find((r) => r.tool === 'check_action_time_window');
+    expect(window?.ok).toBe(true);
+    expect(window?.result).toMatchObject({ skipped: 'awaits_parent_approval' });
   });
 });

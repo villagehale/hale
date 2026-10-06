@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply does the job: it hands Sam the referral link (which is real, runtime-appended) and gives a sentence to forward. The link is correct and present. However, the reply has a few blemishes: it opens with a full greeting-style lead (\"Here's a line you can forward to a friend, and their link is below\"), adds an unnecessary clause about \"nothing for them to sign,\" and uses \"our family's week\" which reads oddly as Hale speaking for the family. It also starts with what reads like a preamble rather than getting straight to the forward text and link. The core job is done correctly — link is present, attributed to the runtime feature, no invented URLs, no app redirect — but the shape is slightly padded and the framing is a touch off.",
+    "score": 4
+  }
+}

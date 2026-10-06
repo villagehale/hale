@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that there is no piano event on the visible calendar this week and cannot move something that isn't there. However, there are two issues. First, the reply asks two questions in one message (\"Want me to add piano for Wednesday instead, and at what time?\") — the \"want me to add\" and \"at what time\" are two separate asks bundled together, which violates the one-question rule. Second, the reply could have simply said it doesn't see piano on the schedule and asked if they'd like it added (one question), then asked for the time only after confirmation. Structurally it's doing the right thing by not guessing a private item is piano and by not drafting a move for a non-existent event, but the double question is a shape problem. It also doesn't consider whether one of the private items might be piano — but per the rules, Hale cannot guess a private item is the thing the parent named, so ignoring them is correct. The core answer is right but the two-question structure is a blemish worth a 3.",
+    "score": 3
+  }
+}

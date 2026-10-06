@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
-import { smsSegments } from '~/lib/channel/sms-segments';
-import { MAX_REPLY_SEGMENTS, redactTeenNames, toSmsReply } from './reply';
+import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { MAX_REPLY_SEGMENTS, plainText, redactTeenNames, toSmsReply } from './reply';
 
 /**
  * The post-processing between the model and the carrier. Everything asserted here is a
@@ -178,6 +178,25 @@ describe('toSmsReply', () => {
 
   it('refuses to emit an empty body', () => {
     expect(() => toSmsReply('   \n  ', { children: [], now: NOW })).toThrow(/empty/i);
+  });
+
+  it('keeps a French accent and Chinese through the shared send path', () => {
+    const french = "A mon avis, c'est un peu drôle mais délicieux.";
+    const chinese = '梅西,无可争议。';
+
+    expect(plainText(french)).toBe(french);
+    expect(plainText(chinese)).toBe(chinese);
+    expect(smsEncoding(plainText(french))).toBe('ucs2');
+    expect(smsEncoding(plainText(chinese))).toBe('ucs2');
+    expect(toSmsReply(french, { children: [], now: NOW })).toBe(french);
+    expect(toSmsReply(chinese, { children: [], now: NOW })).toBe(chinese);
+  });
+
+  it('refuses a trim that would drop the question', () => {
+    const lead = 'Swim is on Tuesday at the east pool this week. '.repeat(8);
+    const ask = 'Want me to move it to Thursday?';
+    expect(smsSegments(`${lead}${ask}`)).toBeGreaterThan(MAX_REPLY_SEGMENTS);
+    expect(() => toSmsReply(`${lead}${ask}`, { children: [], now: NOW })).toThrow(/ask/i);
   });
 });
 

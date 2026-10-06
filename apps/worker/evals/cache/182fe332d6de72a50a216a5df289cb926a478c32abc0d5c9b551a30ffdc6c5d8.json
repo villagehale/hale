@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent pasted a course-page link, and `can` explicitly lists `watch_for_opening` as a real capability Hale has — triggered only when the parent pastes a link in their own message, which they did. The reply says it is watching the page and will text when a spot opens. That is exactly the correct shape: the feature is real, the link is present, and confirming it is in motion is the whole job. The reply is short, names what it is watching (\"Tuesday preschool swim page\"), and makes the right promise (\"text you the moment a spot opens\"). No invented details, no sending the parent somewhere, no greeting, no sign-off. One clean sentence doing the job.",
+    "score": 5
+  }
+}

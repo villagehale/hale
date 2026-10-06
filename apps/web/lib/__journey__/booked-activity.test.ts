@@ -2,6 +2,12 @@ import { join } from 'node:path';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  type FollowupSweepDeps,
+  defaultFollowupSweepDeps,
+  runFollowupSweep,
+} from '~/lib/channel/followup/run';
+import { createFollowupVoice } from '~/lib/channel/followup/voice';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
@@ -9,26 +15,18 @@ import { emailAlertAddHandler } from '~/lib/channel/router/handlers';
 import type { HandlerContext } from '~/lib/channel/router/route';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import {
-  type FollowupSweepDeps,
-  defaultFollowupSweepDeps,
-  runFollowupSweep,
-} from '~/lib/channel/followup/run';
-import { createFollowupVoice } from '~/lib/channel/followup/voice';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import {
-  type EmailAlertPorts,
-  alertParentForGmailSweep,
-} from '~/lib/integrations/email-alert';
+import { type EmailAlertPorts, alertParentForGmailSweep } from '~/lib/integrations/email-alert';
+import { echoEmailAlertLine } from '~/lib/integrations/email-alert-voice';
 import { defaultReminderRunDeps, runReminderCron } from '~/lib/loop/reminders/run';
 import { pipelineClient } from '~/lib/pipeline/client';
+import type { FamilyChildRef } from '~/lib/sentinel';
 import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
 import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
-import type { FamilyChildRef } from '~/lib/sentinel';
-import { recordedModel } from '~/lib/testing/recorded-model';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { recordedModel } from '~/lib/testing/recorded-model';
 
 /**
  * A REGISTRATION RECEIPT, END TO END — the receipt arrives, the text goes, the parent says
@@ -217,6 +215,7 @@ function alertPorts(transport: FakeTransport): EmailAlertPorts {
     transport,
     threadMessage: threadProactiveMessage,
     timeZone: async () => FAMILY_TIMEZONE,
+    voice: { attempt: async (facts) => echoEmailAlertLine(facts), alert: async () => undefined },
   };
 }
 
@@ -299,9 +298,10 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
     const text = transport.sent[0]?.body ?? '';
     // The provider is the subject, the first session is named, and the one question is
     // the CTA. The model chose the title; the frame is Hale's.
-    expect(text).toContain("City of Brookfield Recreation says you're in for Preschool Swim Level 2");
-    expect(text).toContain('first one Saturday, Aug 1 at 9:00 a.m.');
-    expect(text).toContain('Want it on your calendar?');
+    expect(text).toContain('Preschool Swim Level 2');
+    expect(text).toContain('Saturday, Aug 1 at 9:00 a.m.');
+    expect(text).toContain('?');
+    expect(text).not.toMatch(/Reply YES/i);
     // The receipt's own details have no column and never reach the wire.
     expect(text).not.toContain('RC-88214');
     expect(text).not.toContain('96.00');

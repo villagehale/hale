@@ -352,7 +352,12 @@ function clippedToolUseMessage(u: Anthropic.Usage): Anthropic.Message {
     stop_sequence: null,
     content: [
       { type: 'thinking', thinking: '', signature: 'sig' } as Anthropic.ContentBlock,
-      { type: 'tool_use', id: 'call-1', name: 'get_child_profile', input: {} } as Anthropic.ToolUseBlock,
+      {
+        type: 'tool_use',
+        id: 'call-1',
+        name: 'get_child_profile',
+        input: {},
+      } as Anthropic.ToolUseBlock,
     ],
     usage: u,
   };
@@ -522,9 +527,9 @@ describe('runAgent when a step is truncated before it says anything', () => {
     expect(result.truncatedRetries).toBe(0);
   });
 
-  it('does not retry a step that was truncated AFTER it had started speaking', async () => {
-    // Text present means the budget was spent on the answer, not swallowed by thinking.
-    // Re-asking there would pay twice for a reply the post-processor can already trim.
+  it('re-asks a sentence cut off at the ceiling instead of shipping the partial', async () => {
+    // A move proposal cut mid-clause is not an answer the trim can save. The
+    // partial text is discarded and the step is asked again with thinking off.
     const clipped: Anthropic.Message = {
       id: 'msg-clipped',
       type: 'message',
@@ -532,16 +537,46 @@ describe('runAgent when a step is truncated before it says anything', () => {
       model: 'claude-sonnet-4-6',
       stop_reason: 'max_tokens',
       stop_sequence: null,
-      content: [{ type: 'text', text: 'Around 18 months, once he', citations: null } as Anthropic.TextBlock],
+      content: [
+        { type: 'text', text: 'Around 18 months, once he', citations: null } as Anthropic.TextBlock,
+      ],
       usage: usage(1_000, 400),
     };
-    const { client, requests } = capturing([clipped]);
+    const { client, requests } = capturing([
+      clipped,
+      textMessage('Around 18 months, once he is walking outside.', usage(1_000, 40)),
+    ]);
 
     const result = await runAgent(args(client));
 
-    expect(requests).toHaveLength(1);
-    expect(result.answer).toBe('Around 18 months, once he');
-    expect(result.truncatedRetries).toBe(0);
+    expect(requests).toHaveLength(2);
+    expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'disabled' });
+    expect(result.answer).toBe('Around 18 months, once he is walking outside.');
+    expect(result.truncatedRetries).toBe(1);
+    expect(result.truncated).toBe(false);
+  });
+
+  it('does not ship the partial sentence when the re-ask is cut off too', async () => {
+    const clipped: Anthropic.Message = {
+      id: 'msg-clipped',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-sonnet-4-6',
+      stop_reason: 'max_tokens',
+      stop_sequence: null,
+      content: [
+        { type: 'text', text: 'Around 18 months, once he', citations: null } as Anthropic.TextBlock,
+      ],
+      usage: usage(1_000, 400),
+    };
+    const { client, requests } = capturing([clipped, clipped]);
+
+    const result = await runAgent(args(client));
+
+    expect(requests).toHaveLength(2);
+    expect(result.answer).toBeNull();
+    expect(result.truncated).toBe(true);
+    expect(result.truncatedRetries).toBe(1);
   });
 
   it('gives up after one re-ask rather than escalating forever', async () => {
@@ -669,7 +704,7 @@ describe('runAgent keeps the answer written beside a registering tool call', () 
   it('still discards the preamble written before a tool it is about to READ', async () => {
     const client = fakeClient([
       textAndToolUseMessage(
-        "Let me pull up the profile and check.",
+        'Let me pull up the profile and check.',
         'tu-1',
         'get_child_profile',
         { childId: 'kid-1' },
@@ -981,7 +1016,12 @@ describe('runAgentStreaming', () => {
     expect(events).toEqual([
       { hook: 'step', step: 1 },
       { hook: 'tool_call', name: 'get_child_profile' },
-      { hook: 'tool_result', name: 'get_child_profile', ok: true, preview: 'Ran get_child_profile' },
+      {
+        hook: 'tool_result',
+        name: 'get_child_profile',
+        ok: true,
+        preview: 'Ran get_child_profile',
+      },
       { hook: 'step', step: 2 },
     ]);
 
@@ -1031,7 +1071,10 @@ describe('runAgentStreaming', () => {
       instructions: 'You answer.',
     };
     const client = fakeStreamingClient([
-      { chunks: [], final: toolUseMessage('tu-1', 'drive_search', { query: 'permission' }, usage(50, 10)) },
+      {
+        chunks: [],
+        final: toolUseMessage('tu-1', 'drive_search', { query: 'permission' }, usage(50, 10)),
+      },
       { chunks: ['found ', 'it.'], final: textMessage('found it.', usage(60, 15)) },
     ]);
     const { deps } = guardDeps();
@@ -1104,7 +1147,10 @@ describe('runAgentStreaming', () => {
       instructions: 'You answer.',
     };
     const client = fakeStreamingClient([
-      { chunks: [], final: toolUseMessage('tu-1', 'drive_search', { query: 'permission' }, usage(50, 10)) },
+      {
+        chunks: [],
+        final: toolUseMessage('tu-1', 'drive_search', { query: 'permission' }, usage(50, 10)),
+      },
       { chunks: ['found ', 'it.'], final: textMessage('found it.', usage(60, 15)) },
     ]);
     const { deps } = guardDeps();
@@ -1157,7 +1203,10 @@ describe('runAgentStreaming', () => {
       handler: async () => ({ card: { kind: 'evil', payload: 'leak-me' } }),
     });
     const client = fakeStreamingClient([
-      { chunks: [], final: toolUseMessage('t', 'get_child_profile', { childId: 'k' }, usage(10, 5)) },
+      {
+        chunks: [],
+        final: toolUseMessage('t', 'get_child_profile', { childId: 'k' }, usage(10, 5)),
+      },
       { chunks: ['ok.'], final: textMessage('ok.', usage(10, 5)) },
     ]);
     const { deps } = guardDeps();
@@ -1518,10 +1567,10 @@ describe('prompt cache prefix', () => {
   const FAMILY_SECRET = 'Ella naps at 12:30';
 
   function systemsFrom(client: AgentClient): unknown[] {
-    const mock = (client.messages as unknown as {
+    const mock = client.messages as unknown as {
       create?: { mock: { calls: Array<[{ system: unknown }]> } };
       stream?: { mock: { calls: Array<[{ system: unknown }]> } };
-    });
+    };
     const calls = (mock.create ?? mock.stream)?.mock.calls ?? [];
     return calls.map(([params]) => params.system);
   }

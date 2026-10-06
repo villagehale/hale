@@ -4,8 +4,8 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import type {
   ExtractedEvent,
   ExtractionKind,
@@ -25,6 +25,7 @@ import {
 } from './booking';
 import { type EmailAlertPorts, alertParentForEmail, alertParentForGmailSweep } from './email-alert';
 import { handleEmailAlertOfferReply, loadOpenEmailAlertOffers } from './email-alert-offer';
+import { echoEmailAlertLine } from './email-alert-voice';
 
 /**
  * THE BOOKING — the decision, the write, and the two things that must not happen.
@@ -187,6 +188,7 @@ function harness(
         return 'conv-1';
       },
       timeZone: async () => 'America/Toronto',
+      voice: { attempt: async (facts) => echoEmailAlertLine(facts), alert: async () => undefined },
     },
   };
 }
@@ -584,8 +586,8 @@ describe('a provider cancellation closes what it cancelled', () => {
 
   it('takes the standing calendar offer down with it', async () => {
     // THE LATE YES. The offer stands for 24 hours; the cancellation arrives in hour three.
-    // Without this, a parent who reads their texts at bedtime says YES to the morning's
-    // "Want it on your calendar?" and Hale places - and then reminds twice about, and puts
+    // Without this, a parent who reads their texts at bedtime agrees to the morning's
+    // calendar question and Hale places - and then reminds twice about, and puts
     // in the week plan - a class its OWN text said was called off. The offer is the last
     // live path from a cancelled booking to the family's calendar.
     //
@@ -1064,8 +1066,8 @@ describe('the booking write', () => {
     const h = harness();
     await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'booked_dark', going: null });
     await expect(bookingRows()).resolves.toHaveLength(0);
-    expect(h.transport.sent[0]?.body).toContain('Want me to add it to your week?');
-    expect(h.transport.sent[0]?.body).not.toContain('Want it on your calendar?');
+    expect(h.transport.sent[0]?.body).toContain('Want this on your week?');
+    expect(h.transport.sent[0]?.body).not.toContain('Want this saved?');
   });
 
   it('counts a booking that never reached the decision as null, not as a refusal', async () => {
@@ -1231,7 +1233,8 @@ describe('the offer that must not be made twice', () => {
       going: 'going_dark',
     });
 
-    expect(h.transport.sent[0]?.body).toContain('Want it on your calendar?');
+    expect(h.transport.sent[0]?.body).toContain('Want this saved?');
+    expect(h.transport.sent[0]?.body).toContain('Swim Level 2');
     await expect(offerRows()).resolves.toHaveLength(1);
     const rows = await bookingRows();
     expect(rows[0]?.eventId).toBeNull();

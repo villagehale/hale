@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Piano is not in the visible week, so \"I don't see piano this week\" is the complete and correct answer. The reply gets that right. However, the reply then asks a two-part question (\"Want me to add piano for Wednesday instead, and at what time?\") which turns one question into two embedded questions in a single sentence, and also offers a course of action (adding an event) that wasn't asked for — the parent asked to move piano, not create a new one. The private items on Tue 3:45 and Wed 9:00 are not candidates (correctly not raised). The shape is slightly off: two questions in one message is the classic 3-territory flaw, and the reply restates the situation before asking, adding length. Still, it doesn't mislead, doesn't send the parent to the app, and the core denial is correct. A 3 fits: does the job but shape is off.",
+    "score": 3
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a parenting question about solids/baby food for a 5-month-old. The reply correctly identifies the age window (5 months is borderline — most guidance says 6 months, but some say 4-6), gives concrete readiness signs the parent can check tonight (sitting with support, head steady), and appends the one-clause provider note which is appropriate for a developmental milestone question rather than a handback. However, it does NOT end with the required fixed line: \"Want the full plan? Reply YES and I'll send it.\" — the reply instead uses \"Want me to send the full first-foods plan?\" which is a paraphrase that drops the word YES and would not be recognised as the trigger for the plan. Per the rubric, \"A warmer paraphrase that drops the word YES is WORSE: the answer would not be recognised as consent.\" This is a meaningful flaw. Otherwise the reply is well-shaped: no greeting, no sign-off, no markdown, advice is actionable, attribution is appropriate. The failure on the YES trigger word is the primary deduction.",
+    "score": 3
+  }
+}

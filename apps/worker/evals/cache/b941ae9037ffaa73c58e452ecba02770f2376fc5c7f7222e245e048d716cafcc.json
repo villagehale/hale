@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the Thursday swim (5:15pm, East pool) — one event, no ambiguity, so drafting and confirming is right. But it frames it as a question (\"Want me to cancel...?\") rather than telling Sam it has been drafted and asking for YES to confirm, which is the contract shape required. The offerable indoor Saturday option (Central Library story time) is correctly named and correctly placed. However, Saturday already has Soccer practice at Cedarvale Park, and the reply says nothing about it — Sam asked for something indoors on Saturday without saying to cancel soccer, so the library option is additive and that is fine, but the reply should probably have flagged the existing soccer commitment so Sam has full context. Also the reply doesn't end with \"YES to confirm\" for the cancel draft, which is the required consent trigger. The draft cap is 2 and only one draft was made (the cancel), so the offerable is correctly offered rather than drafted. The reply is short and on-task but the missing YES-confirmation instruction and the unmentioned Saturday soccer are real blemishes — the parent doesn't know they need to text YES to confirm the cancel.",
+    "score": 3
+  }
+}

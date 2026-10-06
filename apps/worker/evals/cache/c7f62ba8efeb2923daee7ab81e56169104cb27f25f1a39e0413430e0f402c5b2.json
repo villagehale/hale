@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply hands over the referral link correctly — `knows.referralLinkAppended` is set, so including the URL is right, and telling Sam to forward it themselves is exactly the contract. The link text and the forwarding instruction are both correct. However, the reply has a few blemishes: it opens with a soft preamble (\"Here's a line you can forward to a friend, and their link is below - texting in is their own call to start, nothing for them to sign...\") that is a bit long and slightly self-absorbed in explaining Hale's own onboarding flow rather than just handing over the link. The suggested forwarding blurb is a nice touch and within scope. Overall it does the job correctly — link present, forward-it-yourself framing — but the preamble adds unnecessary words and the explanation of \"nothing for them to sign\" is machinery-adjacent. A small blemish but not a serious failure.",
+    "score": 4
+  }
+}

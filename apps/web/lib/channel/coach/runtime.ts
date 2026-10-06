@@ -39,6 +39,7 @@ import { buildGuardDeps } from '~/lib/coach/guards';
 import { type OfferedCandidate, searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import type { CoachCalendarToolSignal } from '~/lib/integrations/email-alert-offer';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import { createFetchBody } from '~/lib/registration/verify-sweep';
 import {
@@ -115,22 +116,33 @@ const MAX_STEPS = 6;
  * gym" follow-up, whose antecedent was in the transcript at index 17 of 20 the whole
  * time. The context was never the problem on that turn. The budget was.
  *
- * THE FIX IS NOT A BIGGER NUMBER HERE, and the corpus is what settled that. Raising this
- * to 1,024 does cure the truncation, and it also makes the model reason its way past its
- * second source: across live re-records `registration-window-plus-a-find` went from 0/3
- * to 2/4 failures on "never called find_activities", and `village-one-verified-one-not`
- * from 2/3 to 4/4 on "never called search_village". 700 splits the difference and gets
- * neither — it still truncated `yes-with-nothing-open` on the full corpus run. Room given
- * to every turn is room the model finds something to do with.
+ * 400 was not enough once turns started writing the reply. A live daytime sample
+ * cut 3 of 20 coach steps mid-proposal: the move was half a sentence and the
+ * trim then kept only the first one. 1,024 is the ceiling that stopped that
+ * cut on the earlier corpus. It also gives the model room to reason past a
+ * second tool — measured then on `registration-window-plus-a-find` and
+ * `village-one-verified-one-not` — which is why this number stayed at 400 for
+ * so long. The live cuts are the worse failure, so the ceiling is 1,024.
  *
- * So the room goes to the turn that PROVED it needed it: `runAgent` re-asks a step that
- * hit the ceiling before saying anything, once, with thinking OFF at this same budget
- * (packages/agent/src/agent.ts `isTruncatedBeforeSpeaking`, model.ts `withoutThinking`)
- * — the one request shape on which 400 is a reply ceiling again, because no field on
- * Sonnet 5 bounds the thinking half. Ordinary turns keep the ceiling — and their
- * prompt-cache keys — untouched.
+ * A step that still hits the ceiling, including one that already started a
+ * sentence, is re-asked once with thinking OFF at this same budget
+ * (packages/agent/src/agent.ts). The partial text is not the answer. Ordinary
+ * turns that finish inside the ceiling are unchanged.
  */
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 1024;
+
+/**
+ * One rewrite when the composed answer does not fit in two texts.
+ *
+ * `toSmsReply` can drop the tail and send the prefix, and the parent then never
+ * sees the sentence the model actually wrote. A five-year-old co-sleeping answer
+ * did that: the method fit, the sentence about the first week made a third
+ * segment, and the segment gate failed on the unsent tail. Ask once for a
+ * shorter whole answer. If that one is still long, send the prefix that fits.
+ */
+const MAX_LENGTH_ATTEMPTS = 2;
+const LENGTH_REWRITE =
+  'The last reply was longer than two texts. Everything past the cut is never sent. Write the whole answer again so it fits in two texts. A coaching reply with no offer is one sentence under 250 characters. An answer listing what is on may be two short sentences inside that same budget.';
 
 /** The agent_runs name for a texted turn (migration 0075). Separate from 'ask-hale'
  * because the two surfaces have different latency and cost shapes over one brain. */
@@ -182,6 +194,9 @@ export interface ChannelCoachPorts {
      * nearby count read the same list. */
     offered: TurnOfferLedger,
     onGmailNotice?: (notice: GmailDraftNoticeBox) => void,
+    /** Told which calendar verb drafted. Optional so a test port that only
+     * counts drafts still typechecks; production always passes it. */
+    onCalendar?: (signal: CoachCalendarToolSignal) => void,
   ): RegisteredTool[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about one of the activities this turn offered, or
@@ -247,6 +262,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // read about is the one in the sentence it ended up writing.
       let spotWatch: SpotWatchIntent | null = null;
       let gmailNotice: GmailDraftNoticeBox | null = null;
+      const calendarIntents: CoachCalendarToolSignal[] = [];
       const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
@@ -336,33 +352,46 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               if (gmailNotice?.status === 'unsent') return;
               gmailNotice = notice;
             },
+            (signal) => {
+              calendarIntents.push(signal);
+            },
           );
           // A tool that throws, a provider that times out, a step that runs long: the
           // loop can break anywhere, and by then the drafts it made are already rows.
           // Re-thrown rather than handled — the router owns what a parent is told.
-          const result = await ports
-            .runAgent({
-              skill,
-              context,
-              tools,
-              client: ports.client(),
-              maxSteps: MAX_STEPS,
-              maxTokens: MAX_TOKENS,
-              toolContext: { familyId: turn.familyId, actor: turn.parentUserId },
-              guardDeps: ports.guardDeps,
-            })
-            .catch((err: unknown) => {
-              throw failed(
-                err instanceof Error ? err.message : 'channel coach: agent loop failed',
-                err,
-              );
-            });
+          // The same tool set is reused if the answer has to be rewritten shorter, so
+          // the two-draft cap still counts the first pass.
+          const runOnce = (lengthNotes: readonly string[]): Promise<RunAgentResult> => {
+            const rejection = [...rejectedLastAttempt, ...lengthNotes];
+            const attemptContext =
+              lengthNotes.length === 0 ? context : { ...context, rejectedLastAttempt: rejection };
+            return ports
+              .runAgent({
+                skill,
+                context: attemptContext,
+                tools,
+                client: ports.client(),
+                maxSteps: MAX_STEPS,
+                maxTokens: MAX_TOKENS,
+                toolContext: { familyId: turn.familyId, actor: turn.parentUserId },
+                guardDeps: ports.guardDeps,
+              })
+              .catch((err: unknown) => {
+                throw failed(
+                  err instanceof Error ? err.message : 'channel coach: agent loop failed',
+                  err,
+                );
+              });
+          };
+          let result = await runOnce([]);
 
           const modelUsed = pickModel(skill.meta.task);
-          trace.recordGeneration(`${CHANNEL_AGENT_NAME}-loop`, {
-            model: modelUsed,
-            usage: result.usage,
-          });
+          const recordGeneration = (): void => {
+            trace.recordGeneration(`${CHANNEL_AGENT_NAME}-loop`, {
+              model: modelUsed,
+              usage: result.usage,
+            });
+          };
 
           const record = (status: 'completed' | 'failed'): ChannelRunRecord => ({
             familyId: turn.familyId,
@@ -377,6 +406,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           });
 
           if (gmailNotice?.status === 'unsent') {
+            recordGeneration();
             await ports.recordRun(record('failed'));
             throw failed(
               'channel coach: gmail draft notice was not sent',
@@ -385,6 +415,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           }
 
           if (result.answer === null && gmailNotice?.status !== 'ready') {
+            recordGeneration();
             await ports.recordRun(record('failed'));
             throw failed(
               result.hitMaxSteps
@@ -398,55 +429,81 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             );
           }
 
-          const share = referral as ReferralShare | null;
-          const offer = planOffer as PlanOffer | null;
-          // PRECEDENCE: a promise or a link wins, and the count is not even looked up.
-          // A count is the least important thing in any message that also carries one of
-          // those — and a turn that offered nothing has nothing to count about.
-          const nearby =
-            offer === null && share === null
-              ? await ports.nearbySaid(turn.familyId, offeredThisTurn.read())
-              : null;
-          // What the trim threw away, reported HERE rather than from inside the string
-          // function: an answer past the two-segment ceiling is work this turn already
-          // paid a model (and sometimes a 50s web search) for, and nothing downstream can
-          // tell a trimmed reply from one that fit. A count makes it a rate.
-          let trimmedOverBy: number | null = null;
-          const noticeReady = gmailNotice !== null && gmailNotice.status === 'ready';
-          const spoken =
-            gmailNotice !== null && gmailNotice.status === 'ready'
-              ? gmailNotice.text
-              : result.answer;
-          if (!spoken) {
-            await ports.recordRun(record('failed'));
-            throw failed(
-              'channel coach: gmail draft notice was not sent',
-              new GmailDraftNoticeUnsent(),
-            );
-          }
-          const reply = toSmsReply(spoken, {
-            children,
-            now,
-            ...(noticeReady
-              ? {}
-              : {
-                  planOffer: offer?.sentence,
-                  referral: share ? referralBlock(share) : undefined,
-                  nearby: nearby ?? undefined,
-                  onTrimmed: (overBy: number) => {
-                    trimmedOverBy = overBy;
+          let reply = '';
+          for (let attempt = 1; attempt <= MAX_LENGTH_ATTEMPTS; attempt += 1) {
+            if (attempt > 1) {
+              const again = await runOnce([LENGTH_REWRITE]);
+              // A rewrite that says nothing leaves the long answer to be fitted.
+              // Sending nothing here would drop a reply the parent is waiting on.
+              if (again.answer !== null || gmailNotice?.status === 'ready') {
+                result = {
+                  ...again,
+                  steps: result.steps + again.steps,
+                  truncatedRetries: result.truncatedRetries + again.truncatedRetries,
+                  usage: {
+                    promptTokens: result.usage.promptTokens + again.usage.promptTokens,
+                    cacheCreationTokens:
+                      result.usage.cacheCreationTokens + again.usage.cacheCreationTokens,
+                    cacheReadTokens: result.usage.cacheReadTokens + again.usage.cacheReadTokens,
+                    completionTokens: result.usage.completionTokens + again.usage.completionTokens,
                   },
-                }),
-          });
-          if (trimmedOverBy !== null) {
-            await captureAgentError({
-              lane: 'reply_budget',
-              overBy: trimmedOverBy,
-              familyId: turn.familyId,
+                };
+              }
+            }
+            const share = referral as ReferralShare | null;
+            const offer = planOffer as PlanOffer | null;
+            // PRECEDENCE: a promise or a link wins, and the count is not even looked up.
+            // A count is the least important thing in any message that also carries one of
+            // those — and a turn that offered nothing has nothing to count about.
+            const nearby =
+              offer === null && share === null
+                ? await ports.nearbySaid(turn.familyId, offeredThisTurn.read())
+                : null;
+            // What the trim threw away, reported HERE rather than from inside the string
+            // function: an answer past the two-segment ceiling is work this turn already
+            // paid a model (and sometimes a 50s web search) for, and nothing downstream can
+            // tell a trimmed reply from one that fit. A count makes it a rate.
+            let trimmedOverBy: number | null = null;
+            const noticeReady = gmailNotice !== null && gmailNotice.status === 'ready';
+            const spoken =
+              gmailNotice !== null && gmailNotice.status === 'ready'
+                ? gmailNotice.text
+                : result.answer;
+            if (!spoken) {
+              recordGeneration();
+              await ports.recordRun(record('failed'));
+              throw failed(
+                'channel coach: gmail draft notice was not sent',
+                new GmailDraftNoticeUnsent(),
+              );
+            }
+            reply = toSmsReply(spoken, {
+              children,
+              now,
+              ...(noticeReady
+                ? {}
+                : {
+                    planOffer: offer?.sentence,
+                    referral: share ? referralBlock(share) : undefined,
+                    nearby: nearby ?? undefined,
+                    onTrimmed: (overBy: number) => {
+                      trimmedOverBy = overBy;
+                    },
+                  }),
             });
+            if (trimmedOverBy !== null) {
+              await captureAgentError({
+                lane: 'reply_budget',
+                overBy: trimmedOverBy,
+                familyId: turn.familyId,
+              });
+            }
+            // The first miss is asked again. The second is fitted and sent.
+            if (trimmedOverBy === null || attempt === MAX_LENGTH_ATTEMPTS || noticeReady) break;
           }
+          recordGeneration();
           await ports.recordRun(record('completed'));
-          return { reply, planOffer, activityPromise, spotWatch };
+          return { reply, planOffer, activityPromise, spotWatch, calendarIntents };
         },
       );
     },
@@ -490,7 +547,17 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         DEFAULT_TIMEZONE,
         now,
       ),
-    buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch, offered, onGmailNotice) => {
+    buildTools: (
+      turn,
+      onDraft,
+      onOffer,
+      onShare,
+      onPromise,
+      onWatch,
+      offered,
+      onGmailNotice,
+      onCalendar,
+    ) => {
       return buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database, turn.now),
@@ -529,6 +596,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         gmailDrafts: productionGmailDraftPorts(database, anthropicClient),
         onGmailNotice,
         parentUserId: turn.parentUserId,
+        onCalendar,
         now: turn.now,
       });
     },

@@ -1,0 +1,27 @@
+{
+  "response": {
+    "id": "gen_01M481VW75H4QNYP5TFSCSJ8FK",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "```json\n{\n  \"greeting\": \"Here's your week.\",\n  \"weekFraming\": \"The big one this week is Sadie's 2-year checkup, with a separate appointment for Rowan the following day.\",\n  \"itemLines\": {\n    \"0\": \"A good milestone — hope it goes smoothly for everyone.\",\n    \"1\": \"Wishing Rowan a straightforward visit.\"\n  },\n  \"signOff\": \"Take care, and have a good week.\"\n}\n```"
+      }
+    ],
+    "usage": {
+      "input_tokens": 70,
+      "output_tokens": 121,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2510,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard"
+    }
+  }
+}

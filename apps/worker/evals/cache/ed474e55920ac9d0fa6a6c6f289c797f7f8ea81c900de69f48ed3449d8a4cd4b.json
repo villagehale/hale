@@ -1,0 +1,41 @@
+{
+  "response": {
+    "id": "gen_01M4887DKAWC375XKVNTWR2HPZ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EoQDCsQBCBIYAipAbasu9NrNrQpfQtV92ElJ/cbYJbREZMx4M91cjucp8ejSjT2gJiMYDpe6kh0lG8nA6UgCgt7YlN1eor7geBaq+jIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzYjkzYTVkZC03MzAyLTQ4M2YtYWVhZS0zNjIwNzU1NDhhZTF6HnVwcm9mXzAxMUNma1NibmJZZEV1SDZ5Uk1Ta01RUJoBEQoPY2xhdWRlLXNvbm5ldC01qAHf+pLWBhIMEpBy3/2ztGEM4PF2GgxkEDLYoTQf4a98GOsiMF5YJzsYVyswy7IoqgRGJheUfq5vYJ1uTUEPyTHcEW0esmaUNzP0VGm3nxE8WISjZiptjOnuYwvnei/ReCNv6DlLJPsA0kZSsh+VcdzNdmA1SjT9sYAxEsp7QwCfOpnAiT1EKwfbVZw5wndts0S4pLmd6mcyS3cjB3dOISaie2Svq4svKoFD6QLDcJ1uIAOVbd5ok2hd+9V+0a+T22g+VhgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_018Z6Q7GdMAwbWJnAiVGaNbK",
+        "name": "watch_for_opening",
+        "input": {
+          "url": "https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&redirectedFromEmbededMode=False&courseId=85770d4d-bce9-4e53-b969-cf7e88775180",
+          "label": "Tuesday preschool swim"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 509,
+      "output_tokens": 229,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20323,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 32
+      }
+    }
+  },
+  "latencyMs": 2950
+}

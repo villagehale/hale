@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent named exactly one event (\"thursday swim\") and one target (\"friday 5:15\"). The reference is fully resolved — no ambiguity. The correct handling is to draft the move and present it for YES confirmation. `drafted` is non-empty (calendar_move), so the reply should name the change and end with \"...? YES to confirm.\" Instead, the reply asks a clarifying question (\"Want me to move...?\") as if it hasn't drafted anything, and never presents the YES confirmation prompt. It hands the decision back to the parent rather than acting on a clear instruction and seeking consent in the required form. It's not a 2 (no app referral, no invented detail, no misleading info), but it misses the contract shape: it should say \"I've drafted moving Thursday swim (East pool, 5:15pm) to Friday 5:15pm at East pool — YES to confirm.\" instead of posing it as an open question. That's a meaningful shape failure.",
+    "score": 3
+  }
+}

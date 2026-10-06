@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the one offerable activity (Riverdale storytime, with name, place, and date) and the existing Saturday event (soccer at Cedarvale Park, 10am). Both details are grounded: soccer is in `week`, storytime is in `offerable`. The nearby-families count is appended by the runtime and correctly relayed. No drafts were needed, no questions were required, no app mention, no invented details, no greeting or sign-off. It's concise and directly answers Sam's question. The only very minor issue is the reply is slightly longer than the absolute minimum (two sentences), but both sentences carry distinct, necessary information. This is the product working correctly.",
+    "score": 5
+  }
+}

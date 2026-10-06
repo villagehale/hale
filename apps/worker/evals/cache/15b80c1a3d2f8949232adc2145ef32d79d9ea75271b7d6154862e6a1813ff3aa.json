@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says \"cancel swim\" and there are exactly TWO swim lessons in the week (Mon 4:30 West pool, Thu 5:15 East pool). With two matching events, ambiguity is genuine — Hale must ask which one before drafting. The reply correctly identifies both and asks which to cancel. That is the right shape: no draft, one question, all details traceable to the week. No greeting, no sign-off, no markdown. Clean and correct.",
+    "score": 5
+  }
+}

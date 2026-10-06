@@ -1,0 +1,27 @@
+{
+  "response": {
+    "id": "gen_01M481W1S4WN718ZSTBVDCHENK",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "```json\n{\n  \"greeting\": \"Hi Barton, really glad you're here.\",\n  \"villageLine\": \"The toddler years around Toronto are full — more happening than any one parent should have to track alone, and tracking it alongside you is what I'm here for.\",\n  \"closingNote\": \"If something comes up, just reply.\"\n}\n```"
+      }
+    ],
+    "usage": {
+      "input_tokens": 26,
+      "output_tokens": 86,
+      "cache_creation_input_tokens": 2974,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 2974,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The draft is a calendar_move, so the reply should name the change and end with \"...? YES to confirm.\" — that's the contract. But instead of presenting the drafted move and asking for YES to confirm, Hale asks \"Want me to move...?\" as if it hasn't drafted anything yet. The draft is already in place; the reply should say \"Moving Saturday soccer from 10:00am to 11:00am at Cedarvale Park — YES to confirm.\" The text names exactly one event (Saturday soccer = \"Soccer practice, Sat 10:00am, Cedarvale Park\"), so the reference is fully resolved — no clarifying question needed, just present the draft and ask for YES. Asking \"Want me to?\" is treating a clear instruction as ambiguous and handing the parent back a question they already answered. It's not catastrophically wrong (it names the right event and the right time), but it fails the contract shape: it doesn't present the drafted move as done and waiting for YES, and it drops the word YES entirely.",
+    "score": 3
+  }
+}

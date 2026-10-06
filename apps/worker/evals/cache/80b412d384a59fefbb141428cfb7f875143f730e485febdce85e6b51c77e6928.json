@@ -1,0 +1,40 @@
+{
+  "response": {
+    "id": "gen_01M487ZGFN84YGTDMJ31A4A7Q5",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EsgCCsQBCBIYAipAmqy1ha6L5tegFtvFOGvgP6FGyt6Gx5UOWAarmqoPLTfe+eEweLqDGR8VDl2lyw0yDDkuTCsyzaXbW9wzeVcAAjIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzYjkzYTVkZC03MzAyLTQ4M2YtYWVhZS0zNjIwNzU1NDhhZTF6HnVwcm9mXzAxMUNma1NibmJZZEV1SDZ5Uk1Ta01RUJoBEQoPY2xhdWRlLXNvbm5ldC01qAHc+JLWBhIMIsPIZ3tJOokugxQKGgwsWzy/67EAPkysF2YiMMCjFEfYkYpph5JMb8tYiOwisJwvTQqc7lY5lJ3u1zw3oTnRZu9o8rQ4bs+duDuxryoxRiGtAM9+kiWxRgsqeNGFiyS9fBF/S5tLfSzCr+a2EBrv03rSY8Nyc0yxnIPEv6pwwhgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_012U4btjXjH2ATiHYNMzFCbW",
+        "name": "share_referral_link",
+        "input": {
+          "forward": "Hale is the text line that tracks our family's week - schedules, activities, and parenting questions, all by text."
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 376,
+      "output_tokens": 99,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20323,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 13
+      }
+    }
+  },
+  "latencyMs": 2078
+}

@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M4883CDQSXCY4KTRBKQ7G095",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Want me to add Tiny Gym at Cartwheels for Sun, Sept 13 at 9:30am?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2595,
+      "output_tokens": 39,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20323,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 1377
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the Thursday swim (5:15pm, East pool) — the only Thursday swim in the week, so no ambiguity. It asks for confirmation before cancelling (drafted but awaiting YES), which is the contract. However, it never asks Sam to reply YES to confirm the cancel — the word YES is missing, which means the confirmation mechanism won't work. The indoor Saturday option is correctly drawn from offerable (Central Library story time, Bloor/Gladstone, Sat Aug 8), which is good. But the reply doesn't address the Saturday Soccer practice at Cedarvale Park at all — Sam asked for something indoors on Saturday and there's already an outdoor event (Soccer) that may be a conflict or the reason for the ask. More critically, the cancel draft is presented as a question (\"Want me to cancel…?\") without the required \"YES to confirm\" trigger, so the parent has no clear path to approve it. That's a meaningful shape failure — the contract says the reply must end with \"…? YES to confirm.\" A warmer paraphrase that drops YES is explicitly noted as worse. This is a 3: does the job roughly but the shape is off — missing the YES trigger and omitting mention of the Saturday soccer already on the calendar.",
+    "score": 3
+  }
+}

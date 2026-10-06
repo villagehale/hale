@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent said \"cancel the thursday swim\" — there is exactly one Thursday swim in the week (Thu 5:15pm, East pool). The reference is fully resolved: one event, one match. Hale should have drafted the cancel and asked for YES to confirm, per the contract. Instead, Hale drafted `calendar_cancel` but then replied with a clarifying question (\"Want me to cancel…?\") rather than naming the change and ending with \"YES to confirm.\" The drafted array shows the cancel was prepared, so the reply should have presented it for confirmation. Asking \"want me to?\" when the instruction was unambiguous hands the job back to the parent and breaks the contract shape. It's not a 1 (no invented detail, no wrong fact), but it fails the required pattern for a drafted change.",
+    "score": 3
+  }
+}

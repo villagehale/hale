@@ -1,6 +1,7 @@
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
+import type { CoachCalendarToolSignal } from '~/lib/integrations/email-alert-offer';
 import { capabilityReply } from './copy';
 
 /**
@@ -83,6 +84,12 @@ export interface ChannelTurnResult {
    * "I'm watching that" and never reached a transport arms nothing at all.
    */
   spotWatch: SpotWatchIntent | null;
+  /**
+   * Calendar verbs this turn actually drafted. Empty when none ran. Absent on
+   * a stub that never drafts. The offer row follows an add here; a move or a
+   * cancel with no add writes none, whatever the sentence says.
+   */
+  calendarIntents?: readonly CoachCalendarToolSignal[];
 }
 
 export interface ChannelCoachRuntime {
@@ -118,10 +125,7 @@ export interface ChannelCoachRuntime {
 export class ChannelTurnFailed extends Error {
   readonly draftedActionIds: readonly string[];
 
-  constructor(
-    message: string,
-    options: { cause?: unknown; draftedActionIds: readonly string[] },
-  ) {
+  constructor(message: string, options: { cause?: unknown; draftedActionIds: readonly string[] }) {
     super(message, { cause: options.cause });
     this.name = 'ChannelTurnFailed';
     this.draftedActionIds = options.draftedActionIds;

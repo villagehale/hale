@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly reports no verified park, and offers Riverdale Farm from `offerable` as the closest outdoor match — that's honest and useful. However, it leaves the other offerable item (the library story time) on the table without mentioning it, which is fine since it's indoor and not park-adjacent. The real issue is that Sam's own week already shows soccer practice at Cedarvale Park on Saturday — a named park that is right there in `week`. Hale had that in recall and didn't mention it at all. That's a meaningful omission: the parent asked \"is there a good park to play nearby\" and Hale already knows of a park this family visits this week. Not surfacing it is a missed beat that makes the reply less useful than it should be. The reply itself is clean in shape — no sign-off, no markdown, no invented detail — but the Cedarvale Park miss is a real gap.",
+    "score": 3
+  }
+}

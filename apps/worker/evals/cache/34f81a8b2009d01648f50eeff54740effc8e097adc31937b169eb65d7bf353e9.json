@@ -1,0 +1,43 @@
+{
+  "response": {
+    "id": "gen_01M487Q8R8TZETMHYCG1HAH2RH",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EoIDCsQBCBIYAipA1Vctsztm8mp5zi9bX5KaNgKkKYl82OBEQOd2JjKHUci2Wd2Ig61342/DjN0buj2tELEay2UF4jSZ4XrqWRf5vjIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzYjkzYTVkZC03MzAyLTQ4M2YtYWVhZS0zNjIwNzU1NDhhZTF6HnVwcm9mXzAxMUNma1NibmJZZEV1SDZ5Uk1Ta01RUJoBEQoPY2xhdWRlLXNvbm5ldC01qAHO9pLWBhIMb5xFII/vsxnRTz/yGgwr+bXFvKB8fYlIQmEiMOWPQt4g26wfU/VnGU/qXdi9DfrZmZ8/MPnlpLHx41CU0yeIZmOiF4nogscK6YajPCprYBAk9rovzvlE1ZIvs7dScV6XJFMyrsIeE6QvmbTL9BB9Zhj74eB+25CKZRTPpuEDxRs8/dlAjGKPr+8TC5FCQX2xt8fQmaNSZ0X03fQg4++xdwBaZdT3KeoUrKnGLBRSV2uCCbmIYnXBj5IYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01XETUms54YS9taR3tCzk1DV",
+        "name": "propose_calendar_move",
+        "input": {
+          "eventId": "evt-swim-thu",
+          "date": "2026-08-06",
+          "weekday": "thu",
+          "time": "17:45"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 889,
+      "output_tokens": 187,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20323,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 52
+      }
+    }
+  },
+  "latencyMs": 2786
+}

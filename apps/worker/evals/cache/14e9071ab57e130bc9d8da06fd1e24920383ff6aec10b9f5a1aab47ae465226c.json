@@ -1,0 +1,36 @@
+{
+  "response": {
+    "id": "gen_01M487TQZ2PB5P3GJJ8D7BH8CG",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_01H6qQjGkRyTC36gpQVNf6Dz",
+        "name": "promise_activity_followup",
+        "input": {
+          "childId": "kid-remy",
+          "subject": "Cartwheels Tiny Gym fall dates"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 537,
+      "output_tokens": 95,
+      "cache_creation_input_tokens": 20323,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 20323,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 1800
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the Saturday soccer practice from the week, correctly names High Park as the standing place (with its verified details — name, area, what's there, cadence), and correctly notes it is a free drop-in with no fabricated times or days. It also correctly notes nothing else has been verified for Saturday yet (reflecting stillBeingChecked: 2 without naming them). No app referral, no invented URL, no markdown, no greeting or sign-off, one natural message. The only small blemish is \"open daily year-round\" — that's accurate for the park generally but the cadence note says water play is seasonal, and the reply implies splash pads are open daily year-round too, which slightly overstates. Otherwise this is clean, complete, and exactly the right shape.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a parenting question about a 19-month-old toddler's night wakings. Hale gives concrete, actionable advice (an extra settling check before bed so Remy falls asleep fully in the crib, which supports solo resettling at wake-ups) grounded in the child's age and the habit-loop framing appropriate for a toddler. The advice is something Sam could try tonight. The reply then appends the fixed \"Want me to send the full night-wakings plan?\" offer, which is the correct product shape for a raising-kids question. No greeting, no sign-off, no markdown, no handback, no referral, no invented detail. The reply is concise and actionable. The one small issue is it says \"Want me to send the full plan?\" rather than the exact fixed line \"Want the full plan? Reply YES and I'll send it.\" — the rubric specifies a FIXED line that the parent can trigger with YES, and the reply's wording (\"Want me to send the full night-wakings plan?\") doesn't include \"Reply YES\" which is needed so the YES reply is recognised as consent. This is a small but real blemish — the parent might not know to reply YES.",
+    "score": 4
+  }
+}

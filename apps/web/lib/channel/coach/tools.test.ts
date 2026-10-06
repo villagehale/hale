@@ -65,7 +65,7 @@ function scheduleEvent(overrides: Partial<ScheduleEventRow> = {}): ScheduleEvent
   );
 }
 
-function fakeReader(events: ScheduleEvent[]): ChannelScheduleReader {
+function fakeReader(events: ScheduleEvent[], held = false): ChannelScheduleReader {
   return {
     async timeZone() {
       return TZ;
@@ -90,15 +90,21 @@ function fakeReader(events: ScheduleEvent[]): ChannelScheduleReader {
         trips: [],
       };
     },
+    async heldOnCalendar() {
+      return held;
+    },
   };
 }
 
-function fakePort(): ChannelDraftPort & { drafts: ChannelDraftInput[] } {
+function fakePort(reviewerApproved?: boolean): ChannelDraftPort & { drafts: ChannelDraftInput[] } {
   const port = {
     drafts: [] as ChannelDraftInput[],
     async draft(input: ChannelDraftInput) {
       port.drafts.push(input);
-      return { actionId: `action-${port.drafts.length}` };
+      return {
+        actionId: `action-${port.drafts.length}`,
+        ...(reviewerApproved === false ? { reviewerApproved: false as const } : {}),
+      };
     },
   };
   return port;
@@ -126,6 +132,8 @@ interface Harness {
   audit: unknown[];
   /** Every actionId the turn committed, in order — what a failed turn reports. */
   minted: string[];
+  /** Calendar verbs that actually drafted. A refusal must not appear here. */
+  signals: { verb: string; title: string; startsAt: Date }[];
   call(name: string, input: unknown): Promise<unknown>;
 }
 
@@ -133,20 +141,24 @@ function harness(
   events: ScheduleEvent[] = [scheduleEvent()],
   teenChildIds: ReadonlySet<string> = new Set(),
   offered: readonly OfferedCandidate[] = [],
+  heldOnCalendar = false,
+  reviewerApproved?: boolean,
 ): Harness {
-  const port = fakePort();
+  const port = fakePort(reviewerApproved);
   const audit: unknown[] = [];
   const minted: string[] = [];
+  const signals: { verb: string; title: string; startsAt: Date }[] = [];
   const deps = guardDeps(audit, teenChildIds);
   const tools = buildChannelCoachTools({
     familyId: FAMILY,
-    reader: fakeReader(events),
+    reader: fakeReader(events, heldOnCalendar),
     draftPort: port,
     villageTool: null,
     offeredThisTurn: () => offered,
     activity: null,
     spots: null,
     onDraft: (actionId) => minted.push(actionId),
+    onCalendar: (signal) => signals.push(signal),
     now: NOW,
   });
   return {
@@ -154,6 +166,7 @@ function harness(
     port,
     audit,
     minted,
+    signals,
     call(name, input) {
       const tool = tools.find((t) => t.name === name);
       if (!tool) throw new Error(`no tool named ${name}`);
@@ -287,6 +300,24 @@ describe('propose_calendar_move', () => {
     expect(draft?.payload.reversalHandle).toBe(MON_SWIM);
     // 4:30pm Toronto on 2026-08-04 (EDT, UTC-4) is 20:30Z.
     expect(draft?.payload.startsAt).toBe('2026-08-04T20:30:00.000Z');
+    expect(h.signals).toEqual([
+      { verb: 'move', title: 'Swim lesson', startsAt: new Date('2026-08-04T20:30:00.000Z') },
+    ]);
+  });
+
+  it('does not hand the model a draft the reviewer rejected', async () => {
+    const h = harness([scheduleEvent()], new Set(), [], false, false);
+
+    const result = (await h.call('propose_calendar_move', {
+      eventId: MON_SWIM,
+      date: '2026-08-04',
+      time: '16:30',
+      weekday: 'tue',
+    })) as { drafted: boolean; reason?: string };
+
+    expect(result).toEqual({ drafted: false, reason: 'not_drafted' });
+    expect(h.minted).toEqual([]);
+    expect(h.signals).toEqual([]);
   });
 
   it('refuses an eventId the reader never handed out — no draft, no invention', async () => {
@@ -331,6 +362,7 @@ describe('propose_calendar_cancel', () => {
 
     expect(h.port.drafts[0]?.actionType).toBe('calendar_cancel');
     expect(h.port.drafts[0]?.payload.reversalHandle).toBe(MON_SWIM);
+    expect(h.signals.map((signal) => signal.verb)).toEqual(['cancel']);
   });
 
   it('refuses an unknown eventId — the destructive verb never guesses', async () => {
@@ -438,6 +470,35 @@ describe('propose_calendar_add', () => {
     ).rejects.toThrow(/guardrail/i);
     expect(h.port.drafts).toEqual([]);
   });
+
+  it('refuses an add whose start has already passed, and drafts nothing', async () => {
+    const h = harness();
+
+    await expect(
+      h.call('propose_calendar_add', {
+        title: 'Gymnastics',
+        date: '2026-07-29',
+        time: '16:15',
+        weekday: 'wed',
+      }),
+    ).rejects.toThrow(/already passed/i);
+    expect(h.port.drafts).toEqual([]);
+    expect(h.signals).toEqual([]);
+  });
+
+  it('refuses an add that is already on the calendar', async () => {
+    const h = harness([scheduleEvent()], new Set(), [], true);
+
+    await expect(
+      h.call('propose_calendar_add', {
+        title: 'Gymnastics',
+        date: '2026-08-05',
+        time: '10:00',
+        weekday: 'wed',
+      }),
+    ).rejects.toThrow(/already on the calendar/i);
+    expect(h.port.drafts).toEqual([]);
+  });
 });
 
 /**
@@ -532,6 +593,8 @@ describe('the weekday a draft claims must be the weekday its date is', () => {
     expect(result.drafted).toBe(true);
     expect(result.when).toContain('Thu');
     expect(result.when).toContain('Aug 20');
+    expect(h.signals.map((signal) => signal.verb)).toEqual(['add']);
+    expect(h.signals[0]?.title).toBe('Swim lessons');
   });
 });
 

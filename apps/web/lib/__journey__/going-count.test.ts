@@ -11,13 +11,14 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type EmailAlertPorts, alertParentForGmailSweep } from '~/lib/integrations/email-alert';
+import { echoEmailAlertLine } from '~/lib/integrations/email-alert-voice';
 import { GOING_COUNT_ENABLED_ENV } from '~/lib/integrations/going';
 import { pipelineClient } from '~/lib/pipeline/client';
+import type { FamilyChildRef } from '~/lib/sentinel';
 import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
 import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
-import type { FamilyChildRef } from '~/lib/sentinel';
-import { recordedModel } from '~/lib/testing/recorded-model';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { recordedModel } from '~/lib/testing/recorded-model';
 
 /**
  * WHO ELSE IS GOING, END TO END — three households register for one class, and only the
@@ -195,11 +196,7 @@ async function household(displayName: string): Promise<Household> {
 
 /** The real alert ports: the REAL sentinel over a recorded model, the REAL gate, the REAL
  * phone read, the REAL thread. Only the wire and Gmail's body endpoint are stand-ins. */
-function alertPorts(
-  who: Household,
-  transport: FakeTransport,
-  body: string,
-): EmailAlertPorts {
+function alertPorts(who: Household, transport: FakeTransport, body: string): EmailAlertPorts {
   const recorded = recordedModel(RECORDINGS, pipelineClient);
   return {
     classify: async (envelope, familyTimezone) =>
@@ -216,6 +213,7 @@ function alertPorts(
     transport,
     threadMessage: threadProactiveMessage,
     timeZone: async () => FAMILY_TIMEZONE,
+    voice: { attempt: async (facts) => echoEmailAlertLine(facts), alert: async () => undefined },
   };
 }
 
@@ -320,7 +318,10 @@ describe('the third family into the class hears a number', () => {
       .select()
       .from(schema.auditLog)
       .where(
-        and(eq(schema.auditLog.familyId, c.familyId), eq(schema.auditLog.actionTaken, 'email_alert_sent')),
+        and(
+          eq(schema.auditLog.familyId, c.familyId),
+          eq(schema.auditLog.actionTaken, 'email_alert_sent'),
+        ),
       );
     // EXACTLY the number and the two flags. `toEqual`, not `toMatchObject`: the rule for
     // this row is enums and flags only, and a subset match would pass with the provider's

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent said \"cancel the thursday swim\" — there is exactly one Thursday swim in the week (Thu 5:15pm, East pool). The reference is fully resolved. Hale should have drafted the cancel and asked \"Cancel Thursday's swim lesson at East pool, 5:15pm? YES to confirm.\" Instead, Hale drafted the cancel internally (drafted: [\"calendar_cancel\"]) but then asked a clarifying question as if the event were ambiguous. That hands the job back to the parent unnecessarily — they named one event, Hale found one event, and the correct move is to present the draft for YES confirmation, not to ask whether that is what they meant. The reply reads like a clarifying question (\"Want me to cancel…?\") rather than the contract shape (\"...? YES to confirm.\"). It omits the YES confirmation mechanic entirely, which means the parent's next \"yes\" would not be recognised as consent. One clear instruction, one matching event, clarifying question is the failure here.",
+    "score": 2
+  }
+}

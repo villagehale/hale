@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text names exactly one event — Saturday soccer — and gives a clear instruction: move it to 11am. The reference is fully resolved. The correct handling is to draft the move and ask for YES to confirm, per the contract. Instead, the reply asks a clarifying question (\"Want me to move…?\") as if the instruction were ambiguous, handing the job back to the parent. The draft is noted in `drafted`, so a move was prepared, but the reply doesn't end with \"YES to confirm\" — it ends with a question that functions as a confirmation request without the required YES trigger word. The parent now has to text back something and it's unclear what word will be recognised as consent. That said, it does name the correct event, the correct time, and the correct venue (Cedarvale Park, recalled from the week), so it's not wrong on facts. The main failure is the shape: it should have stated the draft and ended \"YES to confirm\" rather than asking whether to proceed — the instruction was unambiguous and the clarifying question is the failure mode the rubric describes (\"a parent who has to answer a question the calendar already answered was handed the job back\"). The drop of YES is also a contract failure.",
+    "score": 3
+  }
+}

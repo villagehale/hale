@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M488960RYE5K76PD71GYEYEN",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Saturday already has soccer practice at 10am at Cedarvale Park, and there's also Riverdale storytime, a free indoor drop-in at Riverdale Library that day."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1051,
+      "output_tokens": 60,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20323,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 2105
+}

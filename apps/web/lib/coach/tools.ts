@@ -24,6 +24,7 @@ import {
 } from '~/lib/reviews/aggregate';
 import { biasFindOrder, readHouseholdFindBias } from '~/lib/reviews/household-bias';
 import { toVillageCandidateView } from '~/lib/village/mappers';
+import { filterVillageRows } from '~/lib/village/query-match';
 import { type StandingOption, selectStandingOption } from '~/lib/village/standing-option';
 import { visibleCandidates } from '~/lib/village/visibility';
 import { buildConnectorTools } from './connector-tools';
@@ -250,7 +251,7 @@ export function searchVillageTool(
   return defineTool({
     name: 'search_village',
     description:
-      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
+      "Local classes, groups, and activities already discovered for THIS family's area. An optional `query` narrows them: a named day is matched against each candidate's date, and any other meaningful word may match the title or summary. Day, time, and generic words (kids, activities, anything) do not have to appear in the text. A query that matches no title still returns the finds in that date window rather than an empty list. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
     inputSchema: z.object({ query: z.string().optional() }),
     // Invented values only — examples are compiled into a cached grammar that sits
     // outside the protections message content gets (rule #1). See EXAMPLE_CHILD_ID.
@@ -277,15 +278,12 @@ export function searchVillageTool(
         )
         .limit(MEMORY_RESULT_LIMIT);
 
-      const needle = input.query?.toLowerCase();
-      const views = visibleCandidates(currentRunRows, now, timeZone)
-        .map((row) => toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds)))
-        .filter(
-          (c) =>
-            !needle ||
-            c.title.toLowerCase().includes(needle) ||
-            c.summary.toLowerCase().includes(needle),
-        );
+      const views = filterVillageRows(
+        visibleCandidates(currentRunRows, now, timeZone).map((row) =>
+          toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds)),
+        ),
+        input.query,
+      );
 
       const rowsById = new Map(currentRunRows.map((row) => [row.id, row]));
       const offerable: OfferableEntry[] = [];

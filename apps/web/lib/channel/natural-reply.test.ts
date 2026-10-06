@@ -12,7 +12,20 @@ import { matchFastPath } from './router/fast-path';
  * via readAffirmative). STOP, HELP, and START stay on the keyword matcher.
  */
 
-const YES = ['yes', 'yeah', 'sure', 'please do', 'go ahead', 'Yes!', 'PLEASE DO'] as const;
+const YES = [
+  'yes',
+  'yeah',
+  'sure',
+  'please do',
+  'go ahead',
+  'Yes!',
+  'PLEASE DO',
+  'sounds good',
+  'yep do it',
+  'ok',
+  'perfect',
+  'oui vas-y',
+] as const;
 const NO = ['no thanks', 'not now', 'No thanks.', 'NOT NOW'] as const;
 
 describe('natural replies to a pending ask', () => {

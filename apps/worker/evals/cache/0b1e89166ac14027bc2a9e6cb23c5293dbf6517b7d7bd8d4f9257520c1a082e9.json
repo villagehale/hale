@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "yes",
+    "confidence": "low",
+    "reason": "Text is in French. Cannot confidently resolve without translation certainty."
+  },
+  "latencyMs": 1258
+}

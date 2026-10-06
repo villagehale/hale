@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "gen_01M48868V919HMCE9FDRFYWQXJ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "ErEJCsQBCBIYAipAZSYLpfiYrzA/38sp8o+HU+kMWDD81zfrMQHh1sRed/ZbQ5pGdpp8E/6MYHxmbglgnITHUV7w/uLmmRtmnGqTHTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzYjkzYTVkZC03MzAyLTQ4M2YtYWVhZS0zNjIwNzU1NDhhZTF6HnVwcm9mXzAxMUNma1NibmJZZEV1SDZ5Uk1Ta01RUJoBEQoPY2xhdWRlLXNvbm5ldC01qAG7+pLWBhIMy0rLYproRXXO3I5HGgwRMxP45kBH4XhDII8iMJ+6teoyX63/ts01DidLD6NloPKOUIw+Xlb6SfSb2HMru2xg+VFNefvzSQU7LOyq1CqZBw7PN+LctAA09xIIzRjfSvzwRX7mTX67I3k40ysvfgozKTyThi/kk0LR240yzDG4Eki2imi4My4+OKVDBpaqssvUueRZyjjbsx/twbG5rkNu4XNDQqcj3vSVwW7UIaxwJDN/c4GS37zYCOdAXD9nTDEEN15PQFWKHrWdUyZ5WjiVhOuQoTmAM+IPaGKuHpD1J9L7ZDXzsiWWrfJBz818vN9iI4rgrrfwGXiquSrKJ7hdC2mM5HU85zT542IG5n/0NKK5q3Wpwo67LdshONVZSsQQv1eu9ODS59G7jXtGNemI1jUOzV8oU6uvtPvv4i17xaIBfLS7lZjbIhPtAtDyPCpy0zPPnzI+Xj7IVoYgLQolfJG9YFAfYyX1+mCY3ad6mcFmDieWe4rGhBAbW4aSHxYY+sX/lBFWPyC8PxjKlPRTfQgM2DzA4gof1ktvlg9gKDhdzYkQM/qZ3wegoFgcGUdr1Z8wTrfZEm7/2LFQuRmOn68oPXp1levuTcTQXqJ2ikq+LcDKAfAOKX3Ed+GGjLt9d3c3Um2w3ivWPYVlpJFNSMm8S3EzG00H7ZZ5tTWHPRcXhoQ/kyECo8mlMGYqGA/J9dveJBhamsTQrw0BFwu5RxvSMRK8Z7H7/J4nOQ2i9DwHjU45Nb6Fihiu4DGjtt63yTBcuiuT23aO4sE8ZmyR4KTCCwzn1Qnp/9g3ViBhpNyrWEo3wvSH/Kvi4aa7ThIs6WSLwD84q0or/AxbUU9j++O3m7U0IFddQCRDDGgkg96yVo4o/6hwSQ/HD3v5Qzb6A3BYUVEbwLmHNdlRpxLLZUhsOBsx6UHcOs/ZW131i/VEacU4nKVOnrzybGda1HvlbrzuftAvOL98gKyMvlAgcPVJIxhT1jKzOigBGKdXjXrlqKp05P1r/Zh88ZXEv1fLTG+K83hstmygn90bjrfdXhEXtuFPxrch6fj/SAV5vpM7Mo8lZtqxn9rpwgvjCkP8vxVk95dvELIiWYw2/ubbNMIM5TrTCnXJ64tNjh/axdkrKl37gvkZtcqzkUWM/UgV1wHTG0mmzYGoQCxrPdhO3eXkcJUKjwb2y2Y03z5lmkuQDoQmE9Yu/Juq1CTQM58NewWffQH19n6aN6LrCaXlIjMX7hfWdfMd/dmgLUX+oDN/dZPZIhUdb+uhniuZkTlCAlR1zPXdtVLyEaAhgF+8EXBhUsVJfUmzze1uUnRGJtJ1dMPQnjLR3xgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01XbgmCgXbHHJ6caizx5N2LB",
+        "name": "search_village",
+        "input": {}
+      }
+    ],
+    "usage": {
+      "input_tokens": 372,
+      "output_tokens": 303,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20323,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 275
+      }
+    }
+  },
+  "latencyMs": 3828
+}

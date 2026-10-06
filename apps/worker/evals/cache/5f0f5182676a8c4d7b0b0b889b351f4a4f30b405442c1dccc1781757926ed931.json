@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that `watch_for_opening` requires a course-page link that the parent pasted in their own message, and asks for it. The parent gave no link, so asking for it is exactly right per the rules (\"With no link there is nothing to watch, and asking for the link is the right answer rather than a stall\"). The reply is clean, one question, no sign-off, no app mention, no invented detail. It does the job in the shape the product requires.",
+    "score": 5
+  }
+}

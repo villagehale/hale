@@ -14,6 +14,8 @@ import { type SpotWatchPorts, watchForOpeningTool } from '~/lib/channel/spots/to
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { EXAMPLE_CHILD_ID, type OfferedCandidate } from '~/lib/coach/tools';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { occasionAlreadyHeld } from '~/lib/integrations/calendar-mirror';
+import type { CoachCalendarToolSignal } from '~/lib/integrations/email-alert-offer';
 import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-flag';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
@@ -172,6 +174,11 @@ export interface ChannelScheduleReader {
     end: Date,
     dayKeys: readonly string[],
   ): Promise<ConnectedWeekRead>;
+  /**
+   * Whether this title and start are already on the connected calendar or on
+   * family_events. An add is refused when they are — the calendar is the week.
+   */
+  heldOnCalendar(familyId: string, title: string, startsAt: Date): Promise<boolean>;
 }
 
 export interface ChannelCoachToolArgs {
@@ -208,6 +215,12 @@ export interface ChannelCoachToolArgs {
    * the tool returns, so a turn that fails LATER has still changed the family's queue —
    * and the router can only be honest about that if something counted (VIL-260). */
   onDraft?: (actionId: string) => void;
+  /**
+   * Told which calendar verb actually drafted, with the title and start it
+   * used. The offer row follows this rather than a regex over the sentence.
+   * Absent in a test that is not collecting it; the draft still happens.
+   */
+  onCalendar?: (signal: CoachCalendarToolSignal) => void;
   /**
    * Told when the turn OFFERS a full coaching plan. The mirror image of `onDraft`: a
    * draft is a row the tool already wrote, while an offer is a row that cannot be
@@ -411,11 +424,14 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const { familyId, reader, draftPort, onDraft, now } = args;
   let draftsThisTurn = 0;
 
-  /** The one place a draft is minted, so the turn's ledger cannot miss one. */
-  async function mint(input: ChannelDraftInput): Promise<string> {
-    const { actionId } = await draftPort.draft(input);
-    onDraft?.(actionId);
-    return actionId;
+  /** The one place a draft is minted, so the turn's ledger cannot miss one.
+   * A reviewer rejection is not a draft the parent can approve: the tool
+   * says so, and nothing is signalled for the reply to ask about. */
+  async function mint(input: ChannelDraftInput): Promise<string | null> {
+    const result = await draftPort.draft(input);
+    if (result.reviewerApproved === false) return null;
+    onDraft?.(result.actionId);
+    return result.actionId;
   }
 
   /** Spend one unit of the turn's budget, or refuse. Counted only where a draft is
@@ -447,7 +463,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const lookupWeek = defineTool({
     name: 'lookup_week',
     description:
-      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and the week's items merged from Hale's calendar and the connected Google Calendar, de-duplicated and sorted. A family event has an `eventId` — the ONLY handle the propose_* tools accept. A kid-related Google block has a title and no `eventId` (you cannot move or cancel it). Any other Google block is `kind: \"busy\"` with no title: never invent a name, and never mention attendees or notes. `calendarSync` and `mail.sync` are `connected`, `paused`, or `not_connected`. When one is `connected`, you HAVE that access — an empty list is an empty week, not a missing connection, and you must not say you cannot see the calendar or email. When `mail.sync` is `paused`, say that mail sync is currently paused (`mail.note`). `mail.items` are activities and trips already extracted from mail; `mail.processedCount` and `mail.since` are how many Gmail messages have been processed. Name only what this result contains. weekOffset 0 is the current week, 1 is next week.",
+      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and the week's items merged from Hale's calendar and the connected Google Calendar, de-duplicated and sorted. A family event has an `eventId` — the ONLY handle the propose_* tools accept. An event already in this result is already on the week: do not offer to add it. A kid-related Google block has a title and no `eventId` (you cannot move or cancel it). Any other Google block is `kind: \"busy\"` with no title: never invent a name, and never mention attendees or notes. `calendarSync` and `mail.sync` are `connected`, `paused`, or `not_connected`. When one is `connected`, you HAVE that access — an empty list is an empty week, not a missing connection, and you must not say you cannot see the calendar or email. When `mail.sync` is `paused`, say that mail sync is currently paused (`mail.note`). `mail.items` are activities and trips already extracted from mail; `mail.processedCount` and `mail.since` are how many Gmail messages have been processed. Name only what this result contains. weekOffset 0 is the current week, 1 is next week.",
     inputSchema: z.object({ weekOffset }),
     inputExamples: [{}, { weekOffset: 1 }],
     monetary: false,
@@ -548,6 +564,8 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: move to ${localWhen(startsAt, timeZone)}`,
         teenContent: event.teen,
       });
+      if (actionId === null) return { drafted: false as const, reason: 'not_drafted' as const };
+      args.onCalendar?.({ verb: 'move', title: event.title, startsAt });
       return {
         drafted: true as const,
         actionId,
@@ -587,6 +605,8 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: cancel the ${localWhen(event.startsAt, timeZone)} item`,
         teenContent: event.teen,
       });
+      if (actionId === null) return { drafted: false as const, reason: 'not_drafted' as const };
+      args.onCalendar?.({ verb: 'cancel', title: event.title, startsAt: event.startsAt });
       return { drafted: true as const, actionId };
     },
   });
@@ -594,7 +614,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const proposeAdd = defineTool({
     name: 'propose_calendar_add',
     description:
-      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
+      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id. Do not call this for a time that has already passed, or for a title and start already on the calendar — both refuse, and neither is an add.",
     inputSchema: z.object({
       title: z.string().min(1).max(120),
       date: dayKey,
@@ -627,6 +647,16 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
       const timeZone = await reader.timeZone(familyId);
       refuseMismatchedWeekday(input, timeZone, 'propose_calendar_add');
       const startsAt = zonedLocalInstant(input.date, input.time, timeZone);
+      if (startsAt.getTime() <= now.getTime()) {
+        throw new Error(
+          'That start has already passed. Do not offer to add it. Ask what time the next one is.',
+        );
+      }
+      if (await reader.heldOnCalendar(familyId, input.title, startsAt)) {
+        throw new Error(
+          'That event is already on the calendar. Do not offer to add it. Move or cancel it with the eventId lookup_week returned.',
+        );
+      }
       claimDraftBudget();
 
       const matched = matchOfferedTitle(args.offeredThisTurn?.() ?? [], input.title);
@@ -656,6 +686,8 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: add "${input.title}" on ${localWhen(startsAt, timeZone)}`,
         teenContent: false,
       });
+      if (actionId === null) return { drafted: false as const, reason: 'not_drafted' as const };
+      args.onCalendar?.({ verb: 'add', title: input.title, startsAt });
       return { drafted: true as const, actionId, when: longWhen(startsAt, timeZone) };
     },
   });
@@ -675,8 +707,8 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
    *   + save_memory, no skill prose                      3/3                     2/3
    *   + save_memory, 6-line section at the end           2/3                     1/3
    *
-   * That is the budget this lane already runs at (MAX_TOKENS 400, thinking and text
-   * sharing it — see runtime.ts), and a turn that stops reaching for the live web is a
+   * That is the budget this lane already runs at (MAX_TOKENS in runtime.ts, thinking
+   * and text sharing it), and a turn that stops reaching for the live web is a
    * parent handed nothing about the fall.
    *
    * The gap it would have closed is smaller than it looks: a durable fact stated over
@@ -812,6 +844,9 @@ export function channelScheduleReader(database: Database, now: Date): ChannelSch
 
     connectedWeek: (familyId, start, end, dayKeys) =>
       readConnectedWeek(database, familyId, start, end, dayKeys, now),
+
+    heldOnCalendar: (familyId, title, startsAt) =>
+      occasionAlreadyHeld(database, { familyId, title, startsAt }),
   };
 }
 

@@ -166,11 +166,18 @@ const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel
  */
 const SPOTS_URL_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots', 'url.ts');
 const SPOTS_READ_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots', 'availability.ts');
+/**
+ * The REAL `search_village` query filter (apps/web/lib/village/query-match.ts).
+ * Imported rather than copied: this file reaches for no `~/` alias, and a
+ * hand-rolled copy is what let `village-one-verified-one-not` pass while
+ * production returned an empty list for "Saturday kids activities".
+ */
+const VILLAGE_QUERY_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'village', 'query-match.ts');
 const SPOTS_FIXTURES = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots', 'fixtures');
 
 /** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 1024;
 /** Mirrors MAX_REPLY_SEGMENTS in apps/web/lib/channel/coach/reply.ts. */
 const MAX_REPLY_SEGMENTS = 2;
 /** Mirrors MAX_DRAFTS_PER_TURN in apps/web/lib/channel/coach/tools.ts. */
@@ -274,6 +281,30 @@ function smsEncoding(text) {
   return 'gsm7';
 }
 
+/**
+ * Segments of the model's own prose, with an appended offer or referral taken off.
+ * The same cut the composed-segment gate uses. A coaching answer with nothing
+ * appended is counted whole.
+ */
+function authoredSegments(answer, calls) {
+  const referralForward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
+  const appended = [
+    calls.find((call) => call.tool === 'offer_full_plan')?.offer,
+    referralForward ? `${referralForward} ${FIXTURE_REFERRAL_LINK}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const composedPlain = plainText(String(answer ?? ''));
+  const composedAuthored =
+    appended && composedPlain.toLowerCase().endsWith(appended.toLowerCase())
+      ? composedPlain.slice(0, -appended.length).trim()
+      : composedPlain;
+  return smsSegments(composedAuthored);
+}
+
+const LENGTH_REWRITE =
+  'The last reply was longer than two texts. Everything past the cut is never sent. Write the whole answer again so it fits in two texts. A coaching reply with no offer is one sentence under 250 characters. An answer listing what is on may be two short sentences inside that same budget.';
+
 function smsSegments(text) {
   let gsm7 = true;
   for (const char of text) {
@@ -312,6 +343,9 @@ const GSM7_SUBSTITUTIONS = [
   [/[•·]/g, ''],
 ];
 
+/** Mirrors plainText in apps/web/lib/channel/coach/reply.ts. Curly quotes and
+ * dashes become ASCII. Accents and Chinese stay; the GSM fold is receipts and
+ * email alerts only. */
 function plainText(text) {
   let out = text;
   out = out.replace(/```[\s\S]*?```/g, ' ');
@@ -360,15 +394,22 @@ function sentences(body) {
 function fitToBudget(body, max, suffix = '') {
   const withSuffix = (text) => (suffix === '' ? text : `${text} ${suffix}`);
   if (smsSegments(withSuffix(body)) <= max) return body;
+  const dropsAsk = (candidate) => body.includes('?') && !candidate.includes('?');
   const parts = sentences(body);
   for (let count = parts.length - 1; count >= 1; count -= 1) {
     const candidate = parts.slice(0, count).join(' ');
-    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) {
+      if (dropsAsk(candidate)) return null;
+      return candidate;
+    }
   }
   const words = (parts[0] ?? body).split(' ');
   for (let count = words.length - 1; count >= 1; count -= 1) {
     const candidate = `${words.slice(0, count).join(' ')}...`;
-    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) {
+      if (dropsAsk(candidate)) return null;
+      return candidate;
+    }
   }
   return null;
 }
@@ -376,24 +417,38 @@ function fitToBudget(body, max, suffix = '') {
 /**
  * Mirrors `offerViolations` in apps/web/lib/channel/plan/offer.ts.
  *
- * The offer used to be a constant this harness appended. It is now COMPOSED by the model
- * and handed in as a tool argument, gated here exactly as the tool gates it — which is
- * what keeps "no preset bodies" true without giving the trim a chance to eat the half
- * that names the magic word.
+ * The offer used to be a constant this harness appended, and the constant had to say
+ * YES. It is now COMPOSED by the model and gated the same way the tool gates it: one
+ * question, no keyword, plain ASCII, one segment. A replica that still required the
+ * word YES refused every offer the skill now tells the model to write, and the model
+ * spent the step budget calling the tool again.
  */
+const EVAL_KEYWORD_INSTRUCTION = /\b(reply|say|text)\s+(yes|no)\b/i;
 function offerViolations(sentence) {
   const violations = [];
   const text = String(sentence).trim();
   if (text === '') return ['The offer was empty.'];
   if (text.length > 160) {
-    violations.push(`The offer is ${text.length} characters; it must be at most 160.`);
+    violations.push(
+      `The offer is ${text.length} characters; it must be at most 160 so the answer still fits.`,
+    );
   }
   const questions = (text.match(/\?/g) ?? []).length;
-  if (questions !== 1)
+  if (questions !== 1) {
     violations.push(`The offer asks ${questions} questions; it must ask exactly one.`);
-  if (!/\byes\b/i.test(text)) violations.push('The offer never says YES.');
-  if (smsEncoding(text) !== 'gsm7') violations.push('The offer is not plain ASCII.');
-  if (smsSegments(text) > 1) violations.push('The offer is longer than one SMS segment.');
+  }
+  if (EVAL_KEYWORD_INSTRUCTION.test(text)) {
+    violations.push(
+      'The offer tells them to reply with a keyword. Ask in a sentence, like "Want me to send it?"',
+    );
+  }
+  if (smsEncoding(text) !== 'gsm7') {
+    violations.push(
+      'The offer contains a character that doubles the cost to send. Use plain ASCII.',
+    );
+  }
+  if (smsSegments(text) > 1)
+    violations.push('The offer is longer than one SMS segment. Shorten it.');
   return violations;
 }
 
@@ -650,8 +705,40 @@ function refuseMismatchedWeekday(input, timeZone, tool) {
   );
 }
 
-function buildFixtureTools(agent, calls, village, spots) {
+/** Sat, Aug 8 of the fixture week — the mixed village's only dated find. */
+const MIXED_VILLAGE_EVENT_DATE = '2026-08-08';
+
+function usesVillageQueryFilter(fixture) {
+  return (
+    fixture.id === 'village-one-verified-one-not' ||
+    fixture.baseScenarioId === 'village-one-verified-one-not'
+  );
+}
+
+/**
+ * The offerable rows plus the nameless find the count stands for, run through
+ * the production matcher. `eventDate` is the row's date for the day filter; it
+ * is stripped before the model sees the candidate, matching the tool's return.
+ */
+function villageMixedForQuery(village, query, filterVillageRows) {
+  const offerable = village.candidates.map((candidate) => ({
+    ...candidate,
+    eventDate: MIXED_VILLAGE_EVENT_DATE,
+  }));
+  const unverified = { title: '', summary: '', eventDate: null, unverified: true };
+  const kept = filterVillageRows([...offerable, unverified], query);
+  return {
+    candidates: kept
+      .filter((row) => !row.unverified)
+      .map(({ eventDate: _date, unverified: _flag, ...candidate }) => candidate),
+    inVerification: kept.filter((row) => row.unverified).length,
+    standingOption: village.standingOption,
+  };
+}
+
+function buildFixtureTools(agent, calls, village, spots, filterVillageRows) {
   let draftsThisTurn = 0;
+  let offerRefusals = 0;
 
   const claimDraftBudget = () => {
     if (draftsThisTurn >= MAX_DRAFTS_PER_TURN) {
@@ -757,11 +844,15 @@ function buildFixtureTools(agent, calls, village, spots) {
   const searchVillage = agent.defineTool({
     name: 'search_village',
     description:
-      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
+      "Local classes, groups, and activities already discovered for THIS family's area. An optional `query` narrows them: a named day is matched against each candidate's date, and any other meaningful word may match the title or summary. Day, time, and generic words (kids, activities, anything) do not have to appear in the text. A query that matches no title still returns the finds in that date window rather than an empty list. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
     inputSchema: passthrough(),
-    handler: async () => {
+    handler: async (input) => {
       record('search_village');
-      return village;
+      // Every other fixture returns its village unchanged. This one applies the
+      // production query filter, so a literal "Saturday kids activities" match
+      // comes back empty here the same way it did in the tool.
+      if (!filterVillageRows) return village;
+      return villageMixedForQuery(village, input?.query, filterVillageRows);
     },
   });
 
@@ -828,26 +919,35 @@ function buildFixtureTools(agent, calls, village, spots) {
     // model has to fill. Omitting them here made this replica a different tool from the
     // one that ships, which is exactly what a replicated fixture must not be.
     inputExamples: [
-      { topic: 'sleep', offer: "Want the full plan? Reply YES and I'll send it." },
+      { topic: 'sleep', offer: 'Want me to send the full plan?' },
       {
         topic: 'solids',
         childId: 'child_0000000000example',
-        offer: 'Want the whole first-foods plan? Say YES and it is yours.',
+        offer: 'Should I send the whole first-foods plan?',
       },
     ],
     monetary: false,
     touchesChildContent: true,
+    // Production sets this. Without it the eval keeps looping after a successful
+    // offer and throws away the advice written beside the call (agent.ts).
+    registersOnly: true,
     description:
-      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters, and it must say YES, because that is the word the parent replies with. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
+      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters. Ask like a person ("Want me to send it?"). Do not say Reply YES or name a keyword. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
     handler: async (input) => {
-      // The gate IS the recompose loop: a refused offer throws a sentence the model
-      // reads mid-turn and answers by calling again. Replicated from
-      // apps/web/lib/channel/plan/offer.ts offerViolations.
+      // One retry, then stop. Replicated from apps/web/lib/channel/plan/offer.ts.
+      // An unbounded "call again" is how a coaching turn spends six steps and
+      // sends the parent nothing.
       const violations = offerViolations(input.offer ?? '');
       if (violations.length > 0) {
-        throw new Error(
-          `That offer cannot be sent. ${violations.join(' ')} Call offer_full_plan again with a fixed one.`,
-        );
+        offerRefusals += 1;
+        if (offerRefusals >= 3) {
+          return { offered: false, reason: 'stopped' };
+        }
+        const next =
+          offerRefusals === 1
+            ? 'Call offer_full_plan once more with a fixed one.'
+            : 'Do not call offer_full_plan again. Your next message is the advice only, with no offer in it.';
+        throw new Error(`That offer cannot be sent. ${violations.join(' ')} ${next}`);
       }
       record('offer_full_plan', { topic: input.topic, offer: input.offer.trim() });
       return { offered: true, topic: input.topic };
@@ -1787,6 +1887,7 @@ async function main() {
   const { _internal: contextInternal } = await tsImport(CONTEXT_SRC, import.meta.url);
   const { sanitizeSpotUrl } = await tsImport(SPOTS_URL_SRC, import.meta.url);
   const { readSpot } = await tsImport(SPOTS_READ_SRC, import.meta.url);
+  const { filterVillageRows } = await tsImport(VILLAGE_QUERY_SRC, import.meta.url);
   const spots = {
     sanitizeSpotUrl,
     readSpot,
@@ -1898,7 +1999,13 @@ async function main() {
       reply = toSmsReply(stand.reply, children);
     } else {
       const tools = [
-        ...buildFixtureTools(agent, calls, villageFor(fixture), spots),
+        ...buildFixtureTools(
+          agent,
+          calls,
+          villageFor(fixture),
+          spots,
+          usesVillageQueryFilter(fixture) ? filterVillageRows : null,
+        ),
         recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
       ];
       const client = makeCachedAgentClient(
@@ -1910,7 +2017,7 @@ async function main() {
         anthropicModel,
         subjectLatencies,
       );
-      const run = await agent.runAgent({
+      let run = await agent.runAgent({
         skill,
         context: turnContext,
         tools,
@@ -1938,6 +2045,24 @@ async function main() {
         continue;
       }
       truncatedRetries = run.truncatedRetries;
+      // The composed-segment gate grades this text, not the trimmed send. A
+      // five-year-old co-sleeping answer wrote a second sentence that became a
+      // third segment and was never sent. Ask once for a shorter whole answer.
+      // A rewrite that says nothing leaves the long one to fail that gate.
+      if (authoredSegments(run.answer, calls) > MAX_REPLY_SEGMENTS) {
+        const again = await agent.runAgent({
+          skill,
+          context: { ...turnContext, rejectedLastAttempt: [LENGTH_REWRITE] },
+          tools,
+          client,
+          maxSteps: MAX_STEPS,
+          maxTokens: MAX_TOKENS,
+          toolContext: { familyId: 'fixture-family', actor: 'fixture-parent' },
+          guardDeps: makeGuardDeps(auditLog, children),
+        });
+        truncatedRetries += again.truncatedRetries;
+        if (again.answer !== null) run = again;
+      }
       const forward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
       composed = run.answer;
       reply = toSmsReply(

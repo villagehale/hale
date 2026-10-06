@@ -72,6 +72,13 @@ export interface ReconcileView {
    * which fails closed: the claim simply goes unbacked and the gate drops the sentence.
    */
   statedBookings: readonly string[];
+  /**
+   * This turn already drafted a calendar change the parent can approve.
+   * Absent is the same as false: a confirmation ask with no draft behind it
+   * is a question a later yes cannot answer. A reviewer rejection is false
+   * too — the row exists, and it is not approvable.
+   */
+  pendingCalendarDraft?: boolean;
 }
 
 export interface MintableWindow {
@@ -106,7 +113,15 @@ export type RefusalReason =
   /** A booking claim with nothing on the calendar it could be about. */
   | 'no_scheduled_row'
   /** "I'll send an invite" — the invite path is the only thing that may say that. */
-  | 'no_coparent_invite';
+  | 'no_coparent_invite'
+  /** "Want me to move swim?" with no draft waiting, or a draft the reviewer rejected. */
+  | 'no_calendar_draft'
+  /** "(it needs another look before it's cleared)" — the gate, narrated. */
+  | 'internal_wording'
+  /** "Tuesday de cette semaine" — an English weekday inside a French reply. */
+  | 'mixed_weekday'
+  /** "I'll take care of cancelling soccer too" — that change was not drafted. */
+  | 'undrafted_perform';
 
 export type ClaimResolution =
   | {
@@ -146,6 +161,14 @@ const VIOLATION: Record<RefusalReason, string> = {
     "The message says something is booked or on the calendar. Nothing on this family's calendar matches and the parent has not told you it is booked, so that is a claim about a row that does not exist. Say what would need to happen instead.",
   no_coparent_invite:
     'The message says an invite was sent or will be sent. Only the co-parent invite path may say that, and only after the message has actually left. Do not say you will invite someone or that you already have.',
+  no_calendar_draft:
+    'The message asks them to confirm a move, an add, or a cancel, but no draft is waiting for their yes. Do not ask them to confirm it, and do not say it is already done. Do not offer a different day or time. Say what is true, with no question about doing the change.',
+  internal_wording:
+    'The message talks about a review, an approval, quiet hours, or another look. The parent does not see that. Do not mention approval, clearing, another look, or quiet hours. Do not offer a different day or time for a change that was not drafted. Say what is true, in one sentence, with no question about doing the change.',
+  mixed_weekday:
+    'A French reply named an English weekday. Name the day in French, from the date the tool resolved. Do not write Tuesday, Wednesday, or Thursday inside a French sentence.',
+  undrafted_perform:
+    'The message promises to cancel, move, or take care of a change that was not drafted. Line the rest up once these are settled, as a next ask that still needs approval. Do not say you will perform it.',
 };
 
 /** What a `watched_spots` row is a row ABOUT: one place in one class. The words the
@@ -237,6 +260,21 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
       status: 'refused',
       reason: watchingOneClass ? 'spot_watch_unshaped' : 'no_registration_watch',
     };
+  }
+  if (kind === 'calendar_confirm') {
+    if (view.pendingCalendarDraft === true) {
+      return { claim, status: 'matched', matchedBy: 'pending_commitment' };
+    }
+    return { claim, status: 'refused', reason: 'no_calendar_draft' };
+  }
+  if (kind === 'reviewer_narration') {
+    return { claim, status: 'refused', reason: 'internal_wording' };
+  }
+  if (kind === 'french_weekday') {
+    return { claim, status: 'refused', reason: 'mixed_weekday' };
+  }
+  if (kind === 'undrafted_perform') {
+    return { claim, status: 'refused', reason: 'undrafted_perform' };
   }
   if (kind === 'activity_followup') {
     if (view.pendingKinds.has('activity_followup')) {

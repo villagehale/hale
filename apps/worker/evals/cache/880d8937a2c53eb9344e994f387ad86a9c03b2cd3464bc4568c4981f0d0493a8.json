@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "gen_01M4883A87S3TABT8098EZ89H1",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_01NjuZLJ5KbAHfH3JP1qWyGH",
+        "name": "propose_calendar_add",
+        "input": {
+          "date": "2026-09-13",
+          "weekday": "sun",
+          "time": "09:30",
+          "title": "Tiny Gym at Cartwheels"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2421,
+      "output_tokens": 138,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20323,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 2201
+}

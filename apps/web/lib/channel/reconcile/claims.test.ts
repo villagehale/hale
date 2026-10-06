@@ -31,6 +31,18 @@ describe('extractStateClaims — the audit sentences', () => {
     expect(kinds('Your well-baby visit is booked.')).toEqual(['scheduled_event']);
   });
 
+  it('reads a promise to perform an undrafted change, and not the next ask', () => {
+    expect(
+      kinds(
+        "Want me to cancel Monday swim at 4:30pm and Thursday swim at 5:15pm? I'll take care of cancelling soccer and the Wednesday appointment too.",
+      ),
+    ).toEqual(['calendar_confirm', 'undrafted_perform']);
+    expect(kinds("I'll line the rest up once these are settled.")).toEqual([]);
+    expect(claimsNoLedgerCanBack("I'll take care of cancelling soccer too.")).toEqual([
+      expect.objectContaining({ kind: 'undrafted_perform' }),
+    ]);
+  });
+
   it('carries the sentence span so a lane that cannot re-ask can drop it', () => {
     const body = "Swim runs Tuesdays at 4. I'll cut the one sec messages and just answer.";
     const [claim] = extractStateClaims(body);
@@ -97,6 +109,33 @@ describe('extractStateClaims — the false positives that would break production
 
   it('leaves an offer-shaped question alone', () => {
     expect(kinds('Want me to watch that morning and text you before it opens?')).toEqual([]);
+  });
+
+  it('reads a confirmation ask as a claim a draft has to back', () => {
+    expect(kinds('Want me to move swim to Tue 4:30?')).toEqual(['calendar_confirm']);
+    expect(kinds('Veux-tu la déplacer à mardi prochain (13 oct.) à 16h30 ?')).toEqual([
+      'calendar_confirm',
+    ]);
+    expect(kinds('Want me to check next week?')).toEqual([]);
+    expect(kinds('Want me to watch that morning and text you before it opens?')).toEqual([]);
+    expect(kinds('Should I go ahead?')).toEqual(['calendar_confirm']);
+    expect(kinds("C'est ça que tu veux?")).toEqual(['calendar_confirm']);
+    expect(kinds('Je la déplace à jeudi?')).toEqual(['calendar_confirm']);
+    expect(kinds('Want me to try a different day or time for swim?')).toEqual(['calendar_confirm']);
+  });
+
+  it('reads reviewer wording and an English weekday in French as claims', () => {
+    expect(kinds("(it needs another look before it's cleared).")).toEqual(['reviewer_narration']);
+    expect(kinds("Le changement n'a pas été approuvé.")).toEqual(['reviewer_narration']);
+    expect(kinds('Tuesday de cette semaine (le 6 octobre) est déjà passé.')).toEqual([
+      'french_weekday',
+    ]);
+  });
+
+  it('reads a done-claim as a scheduled event, not as a draft', () => {
+    expect(kinds("I've set it up for next Tuesday.")).toEqual(['scheduled_event']);
+    expect(kinds("C'est fait.")).toEqual(['scheduled_event']);
+    expect(kinds("Je l'ai déplacé.")).toEqual(['scheduled_event']);
   });
 
   it('leaves an absence assertion alone', () => {

@@ -1,0 +1,27 @@
+{
+  "response": {
+    "id": "gen_01M481VR7WN2YY4FZAN904EJ28",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "```json\n{\n  \"greeting\": \"Here's your week ahead.\",\n  \"weekFraming\": \"Nothing's on the schedule yet — a quiet week, or one still taking shape.\",\n  \"itemLines\": {},\n  \"signOff\": \"Enjoy the breathing room.\"\n}\n```"
+      }
+    ],
+    "usage": {
+      "input_tokens": 11,
+      "output_tokens": 69,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2510,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard"
+    }
+  }
+}

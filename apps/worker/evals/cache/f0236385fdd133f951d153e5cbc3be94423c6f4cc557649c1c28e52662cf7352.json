@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers a parenting question about solids for a 5-month-old. It gives a concrete readiness cue the parent can act on tonight (sitting with support, head steady), correctly frames 5 months as the edge of the window, and appends the one-clause provider note without handing the question back. However, the closing line is not the fixed product line (\"Want the full plan? Reply YES and I'll send it.\") — it asks a question in different words that would not be recognised as the YES trigger, and it drops the word YES entirely, which makes the consent mechanism not work. That is a meaningful shape error but the core advice is sound and actionable. Score: 4.",
+    "score": 4
+  }
+}

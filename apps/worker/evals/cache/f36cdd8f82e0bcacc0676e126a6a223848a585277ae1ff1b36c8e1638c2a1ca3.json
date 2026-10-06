@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply says Hale is \"watching that Tuesday preschool swim page now\" — this matches the `watch_for_opening` capability exactly, and Sam pasted a course-page link in their own message, which is the required condition for that feature. The reply correctly confirms the watch is active and promises to text when a spot opens. It is short, direct, no greeting, no sign-off, no markdown, no invented details, no URL written out, no app referral. The only very minor issue is the phrase \"I'm watching\" rather than a slightly more precise framing, but it is accurate and the product is working. This is a clean, correct, complete reply.",
+    "score": 5
+  }
+}

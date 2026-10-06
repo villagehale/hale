@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "unclear",
+    "confidence": "high",
+    "reason": "Parent has not decided; they are deferring to their partner. Per instructions, 'let me ask my partner' is not an answer but a statement that no decision has been made yet."
+  },
+  "latencyMs": 1480
+}

@@ -25,6 +25,57 @@ function view(overrides: Partial<ReconcileView> = {}): ReconcileView {
 
 const verdictFor = (body: string, v: ReconcileView) => reconcile(extractStateClaims(body), v);
 
+describe('reconcile — a confirmation ask needs a draft', () => {
+  const ask = 'Want me to move swim to Tue 4:30?';
+
+  it('refuses the ask when nothing was drafted', () => {
+    expect(verdictFor(ask, view()).refused.map((refusal) => refusal.reason)).toEqual([
+      'no_calendar_draft',
+    ]);
+  });
+
+  it('matches the ask when this turn drafted one', () => {
+    expect(verdictFor(ask, view({ pendingCalendarDraft: true })).refused).toEqual([]);
+  });
+
+  it('refuses a French ask with no draft, and a done-claim that only asked', () => {
+    expect(
+      verdictFor('Veux-tu la déplacer à mardi prochain (13 oct.) à 16h30 ?', view()).refused.map(
+        (refusal) => refusal.reason,
+      ),
+    ).toEqual(['no_calendar_draft']);
+    expect(
+      verdictFor("I've set it up for next Tuesday.", view()).refused.map(
+        (refusal) => refusal.reason,
+      ),
+    ).toEqual(['no_scheduled_row']);
+  });
+
+  it('refuses a proposal that does not say want-me-to, when nothing was drafted', () => {
+    for (const ask of ["C'est ça que tu veux?", 'Je la déplace à jeudi?', 'Should I go ahead?']) {
+      expect(verdictFor(ask, view()).refused.map((refusal) => refusal.reason)).toEqual([
+        'no_calendar_draft',
+      ]);
+    }
+    expect(verdictFor('Should I go ahead?', view({ pendingCalendarDraft: true })).refused).toEqual(
+      [],
+    );
+  });
+
+  it('refuses reviewer wording and an English weekday inside French', () => {
+    expect(
+      verdictFor("(it needs another look before it's cleared).", view()).refused.map(
+        (refusal) => refusal.reason,
+      ),
+    ).toEqual(['internal_wording']);
+    expect(
+      verdictFor('Tuesday de cette semaine (le 6 octobre) est déjà passé.', view()).refused.map(
+        (refusal) => refusal.reason,
+      ),
+    ).toEqual(['mixed_weekday']);
+  });
+});
+
 describe('reconcile — the registration watch', () => {
   const body = "I'm watching that morning and I'll text you before it goes live.";
 
@@ -369,6 +420,25 @@ describe('reconcile — the booking claim', () => {
       }),
     );
     expect(verdict.resolutions[0]).toMatchObject({ status: 'matched', matchedBy: 'scheduled_row' });
+  });
+});
+
+describe('reconcile — a promise to perform an undrafted change', () => {
+  it('refuses it even when a draft is already waiting', () => {
+    const verdict = verdictFor(
+      "I'll take care of cancelling soccer and the Wednesday appointment too.",
+      view({ pendingCalendarDraft: true, scheduledTitles: ['Soccer practice'] }),
+    );
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['undrafted_perform']);
+    expect(reconcileViolations(verdict)[0]).toContain('was not drafted');
+  });
+
+  it('leaves the next ask that still needs approval', () => {
+    const body =
+      "Want me to cancel Mon and Thu swim? I'll line the rest up once these are settled.";
+    const verdict = verdictFor(body, view({ pendingCalendarDraft: true }));
+    expect(verdict.refused.map((r) => r.reason)).toEqual([]);
+    expect(withoutRefusedClaims(body, verdict)).toBe(body);
   });
 });
 

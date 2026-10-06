@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "b8e4d1f7-6a29-4c05-9d31-3f7c2e08a45b",
+    "polarity": "yes",
+    "confidence": "high",
+    "reason": "Parent repeated \"add to my week\" — exact language from the checkup_offer question. Matches the object, not the generic \"add to calendar\" verb."
+  },
+  "latencyMs": 2076
+}

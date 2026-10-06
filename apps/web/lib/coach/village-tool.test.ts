@@ -85,10 +85,11 @@ async function search(
   children: Array<Record<string, unknown>> = [],
   families: Array<Record<string, unknown>> = [],
   reviews: Array<Record<string, unknown>> = [],
+  query?: string,
 ): Promise<VillageToolResult> {
   return (await invokeTool(
     toolByName(fakeDb(candidates, children, families, reviews), 'search_village'),
-    {},
+    query === undefined ? {} : { query },
     { familyId: FAMILY_ID, actor: 'user-1' },
     guardDeps,
   )) as VillageToolResult;
@@ -392,5 +393,91 @@ describe('search_village — this household’s own verdict reorders the next fi
       ],
     );
     expect(result.candidates.map((row) => row.title)).toEqual(['Prefer me']);
+  });
+});
+
+/**
+ * A what's-on question arrives as a phrase ("Saturday kids activities"), not as a
+ * title. The literal substring of that phrase matched nothing, so the tool
+ * answered {candidates: [], inVerification: 0} while the same rows with no query
+ * returned the Saturday story time.
+ */
+describe("search_village — a what's-on query is not a literal title search", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const saturdayStory = candidate({
+    id: 'story',
+    title: 'Central Library story time',
+    summary: 'Free indoor drop-in, all ages welcome.',
+    venueName: 'Bloor/Gladstone branch',
+    eventDate: '2026-07-11',
+  });
+  const sundayFarm = candidate({
+    id: 'farm',
+    title: 'Riverdale Farm visit',
+    summary: 'Free outdoor farm, open daily.',
+    eventDate: '2026-07-12',
+  });
+  const unchecked = candidate({
+    id: 'open',
+    title: 'Unplaced find',
+    summary: 'Place and day not checked yet.',
+    venueName: null,
+    eventDate: null,
+    cadence: 'ongoing',
+  });
+
+  it('returns the Saturday story time and counts the find still being checked', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+
+    const result = await search(
+      [saturdayStory, sundayFarm, unchecked],
+      [],
+      [],
+      [],
+      'Saturday kids activities',
+    );
+
+    expect(result.candidates.map((row) => row.title)).toEqual(['Central Library story time']);
+    expect(result.inVerification).toBe(1);
+  });
+
+  it('falls back to the date window when the content words match nothing', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+
+    const result = await search([saturdayStory, sundayFarm], [], [], [], 'pottery');
+
+    expect(result.candidates.map((row) => row.title)).toEqual([
+      'Central Library story time',
+      'Riverdale Farm visit',
+    ]);
+    expect(result.inVerification).toBe(0);
+  });
+
+  it('still narrows when a content word actually hits', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+
+    const result = await search(
+      [
+        saturdayStory,
+        candidate({
+          id: 'swim',
+          title: 'Parent and tot swim',
+          summary: 'Indoor lane.',
+          eventDate: '2026-07-11',
+        }),
+      ],
+      [],
+      [],
+      [],
+      'swim',
+    );
+
+    expect(result.candidates.map((row) => row.title)).toEqual(['Parent and tot swim']);
   });
 });
