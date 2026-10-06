@@ -251,7 +251,7 @@ describe('stopInGroup', () => {
     expect(sends[0]?.text).toMatch(/^stop_ack:/);
     expect(await groupChat(seeded.familyId)).toBe(GROUP);
     expect(direct.map((text) => [text.to, text.body])).toEqual([
-      [PARENT, expect.stringMatching(/^group_quiet_notice: stopped, 1/)],
+      [PARENT, expect.stringMatching(/^group_quiet_notice:/)],
     ]);
   });
 

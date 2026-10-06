@@ -8,6 +8,7 @@ import { groupAudienceAllows } from '~/lib/channel/linq/group-audience';
 import { fakeGroupOnboardingComposer } from '~/lib/channel/linq/group-onboarding-voice-fake';
 import { rememberAndNarrateCalendar } from '~/lib/channel/linq/household-calendar';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
+import type { RosterReading } from '~/lib/channel/linq/roster-reading';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -24,10 +25,10 @@ import { type TestDb, createTestDb } from '~/lib/testing/pglite';
  * seat when she says STOP in the group.
  *
  * WHAT IS FAKED, and only this: Linq's HTTP API (GET /chats/{id}, POST sends, POST /chats
- * for a 1:1) behind one stubbed `fetch`, and the spoken-line composer (the cached eval
- * proves the words; this proves the plumbing). The webhook door, the roster, the reading,
- * the seat, the consent, the audience gate, the household narration, the STOP and the
- * ledger are production code over real Postgres.
+ * for a 1:1) behind one stubbed `fetch`, the group composer, and the roster reader.
+ * Production reads a reply with the model; this test hands that reading in. The webhook
+ * door, the roster, the seat, the consent, the audience gate, the household narration,
+ * the STOP and the ledger are production code over real Postgres.
  *
  * SIX MUTATIONS, each run and each red (recorded in the PR):
  *   (a) drop the consent insert in seatConfirmedMember
@@ -186,6 +187,18 @@ function door() {
     },
     now: () => NOW,
     groupVoice: fakeGroupOnboardingComposer(),
+    readGroupReply: async (text: string): Promise<RosterReading> => {
+      if (text === "I'm his dad") {
+        return { kind: 'role', role: 'parent', parentRole: 'father', relation: null };
+      }
+      if (text === 'grandma here') {
+        return { kind: 'role', role: 'grandparent', parentRole: null, relation: null };
+      }
+      if (text === 'not family') {
+        return { kind: 'role', role: 'not_family', parentRole: null, relation: null };
+      }
+      return { kind: 'unclear' };
+    },
   } as unknown as Parameters<typeof handleLinqInboundRequest>[1];
   const post = async (body: unknown) => {
     const response = await handleLinqInboundRequest(signed(body), deps);
