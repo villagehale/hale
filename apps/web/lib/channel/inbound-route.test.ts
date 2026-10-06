@@ -541,6 +541,34 @@ describe('handoff to C1', () => {
 
     expect(outcome).toBe('handed_off');
   });
+
+  it.each(['what can you do', 'set me up'])(
+    'hands an enrolled parent asking "%s" to the coach, with the cold-start ladder on',
+    async (body) => {
+      vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+      const h = harness();
+      const { familyId, userId } = enrol(h.fake);
+      closeIntake(h.fake);
+
+      const outcome = await routeInboundText(h.deps, inbound({ body }), 0);
+
+      expect(outcome).toBe('handed_off');
+      const message = h.fake
+        .rows(schema.channelMessages)
+        .find((r) => r.providerMessageId === 'SM11111111111111111111111111111111');
+      expect(message).toMatchObject({ familyId, parentUserId: userId, direction: 'in', body });
+      expect(h.jobs).toEqual([
+        {
+          family_id: familyId,
+          parent_user_id: userId,
+          channel_message_id: message?.id,
+          provider_message_id: 'SM11111111111111111111111111111111',
+          received_at: NOW.toISOString(),
+        },
+      ]);
+      expect(h.transport.bodies()).toEqual([]);
+    },
+  );
 });
 
 describe('iMessage first-touch door', () => {
