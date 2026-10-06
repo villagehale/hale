@@ -129,6 +129,23 @@ describe('composeDeliveryAlert', () => {
     expect(body).not.toMatch(/\d{7,}/);
   });
 
+  it('a provider code is clamped to a short enum-shaped token before it reaches the page', () => {
+    // Linq relays `data.code` as whatever string the provider sent. The page must never
+    // carry free text or a digit run that could be a number a parent owns.
+    const body = composeDeliveryAlert({
+      kind: 'failure_rate',
+      failed: 10,
+      attempted: 10,
+      codes: [{ code: 'recipient 4165551234 blocked: see https://x.test/a?b=c', count: 10 }],
+    });
+
+    expect(body).not.toMatch(/\d{7,}/);
+    expect(body).not.toContain('https://');
+    expect(body).not.toContain(' blocked');
+    expect(body).toMatch(/Codes: [A-Za-z0-9_.:-]{1,32} x10\./);
+    expect(gsm7SingleSegment(body)).toBe(true);
+  });
+
   it('both pages point ops at Linq and the receipts ledger, not Twilio', () => {
     const bodies = [
       composeDeliveryAlert({ kind: 'registration_error', code: '30034', count: 1 }),

@@ -124,15 +124,24 @@ export async function loadDeliveryStats(database: Database, since: Date): Promis
  * one GSM-7 segment whatever the counts. */
 const ALERT_TOP_CODES = 2;
 
+/** A provider code is relayed as whatever string the provider sent (Linq passes
+ * `data.code` through), so the page keeps only an enum-shaped token: no spaces, no
+ * URLs, and never a digit run long enough to be a number a parent owns. */
+const ALERT_CODE_MAX_CHARS = 32;
+function alertCode(code: string): string {
+  const token = code.replace(/[^A-Za-z0-9_.:-]+/g, '_').slice(0, ALERT_CODE_MAX_CHARS);
+  return token.replace(/\d{7,}/g, (digits) => digits.slice(0, 6));
+}
+
 /** The Slack #ops page. Counts and provider error codes only — an error code is
  * a provider enum, never a parent's number or words (rule #1). ASCII on purpose. */
 export function composeDeliveryAlert(incident: DeliveryIncident): string {
   if (incident.kind === 'registration_error') {
-    return `Hale: text delivery failing. A2P/registration error ${incident.code} on ${incident.count} send(s) in 24h - sender registration broken. Check Linq dashboard, channel_messages receipts.`;
+    return `Hale: text delivery failing. A2P/registration error ${alertCode(incident.code)} on ${incident.count} send(s) in 24h - sender registration broken. Check Linq dashboard, channel_messages receipts.`;
   }
   const top = incident.codes
     .slice(0, ALERT_TOP_CODES)
-    .map((c) => `${c.code} x${c.count}`)
+    .map((c) => `${alertCode(c.code)} x${c.count}`)
     .join(', ');
   const codesPart = top ? ` Codes: ${top}.` : '';
   return `Hale: text delivery failing. ${incident.failed} of ${incident.attempted} sends failed in 24h.${codesPart} Check Linq dashboard, channel_messages receipts.`;
