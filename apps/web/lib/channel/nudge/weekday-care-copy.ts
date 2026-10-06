@@ -16,7 +16,7 @@ export type WeekdayFinderAsk =
   | { prompt: 'after_school_named'; childId: string; name: string }
   | { prompt: 'after_school_household' }
   | { prompt: 'verified_break'; eventKey: string; label: string }
-  | { prompt: 'weekend_fallback' };
+  | { prompt: 'weekend_fallback'; optionsSent?: boolean };
 
 /**
  * The longest name or break label a one-text ask can carry word for word and still

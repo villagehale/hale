@@ -43,7 +43,7 @@ export type ProactiveWeekdayAsk =
   | { prompt: 'after_school_named'; childId: string; name: string }
   | { prompt: 'after_school_household' }
   | { prompt: 'verified_break'; eventKey: string; label: string }
-  | { prompt: 'weekend_fallback' };
+  | { prompt: 'weekend_fallback'; optionsSent?: boolean };
 
 export type ProactiveLineRequest =
   | { kind: 'empty_saturday'; kid: string }
@@ -121,7 +121,13 @@ export function proactiveLineInput(
             mustMention: [ask.label],
           };
         case 'weekend_fallback':
-          return { ...base, facts: { prompt: 'weekend_fallback' } };
+          // `optionsSent` is the only record of a weekend send this round. The
+          // decide path sets it when that send happened. A request that does not
+          // is nothing found, and the model must not claim a send.
+          return {
+            ...base,
+            facts: { prompt: 'weekend_fallback', optionsSent: ask.optionsSent === true },
+          };
       }
     }
   }

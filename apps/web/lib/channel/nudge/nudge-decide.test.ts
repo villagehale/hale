@@ -777,7 +777,7 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
   it('asks a toddler the fallback, and names nobody', () => {
     const nudge = decide(READY);
     if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-    expect(nudge.ask).toEqual({ prompt: 'weekend_fallback' });
+    expect(nudge.ask).toEqual({ prompt: 'weekend_fallback', optionsSent: true });
     expect(handed({ kind: 'weekday_care', ask: nudge.ask })).toEqual(['weekend_fallback']);
   });
 
@@ -831,7 +831,7 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
         healthChildren: [{ ...TODDLER, id: 'child-jk', name: 'Ada', ageMonths: 52 }],
       });
       if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-      expect(nudge.ask).toEqual({ prompt: 'weekend_fallback' });
+      expect(nudge.ask).toEqual({ prompt: 'weekend_fallback', optionsSent: true });
       expect(handed({ kind: 'weekday_care', ask: nudge.ask })).not.toContain('Ada');
     });
 
@@ -845,7 +845,7 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
         ],
       });
       if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-      expect(nudge.ask).toEqual({ prompt: 'weekend_fallback' });
+      expect(nudge.ask).toEqual({ prompt: 'weekend_fallback', optionsSent: true });
       const words = handed({ kind: 'weekday_care', ask: nudge.ask });
       expect(words).not.toContain('Sam');
       expect(words).not.toContain('Leo');
@@ -903,7 +903,7 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
         teenChildIds: ['teen-1'],
       });
       if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-      expect(nudge.ask).toEqual({ prompt: 'weekend_fallback' });
+      expect(nudge.ask).toEqual({ prompt: 'weekend_fallback', optionsSent: true });
       const words = handed({ kind: 'weekday_care', ask: nudge.ask });
       expect(words).not.toContain('Mia');
       expect(words).not.toContain('Ava');

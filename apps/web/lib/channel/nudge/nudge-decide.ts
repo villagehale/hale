@@ -747,7 +747,13 @@ export function decideWeekdayCareAsk(input: DecideNudgeInput): LegOutcome<Weekda
     if (context.askedBefore) return { nudge: null, skips: [...skips, 'already_asked'] };
     if (!context.weekendFindSent) return { nudge: null, skips: [...skips, 'no_weekend_find_sent'] };
     if (context.stated.length > 0) return { nudge: null, skips: [...skips, 'already_stated'] };
-    return { nudge: { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } }, skips };
+    return {
+      nudge: {
+        kind: 'weekday_care',
+        ask: { prompt: 'weekend_fallback', optionsSent: true },
+      },
+      skips,
+    };
   }
 
   if (context.askedAfterSchool) return { nudge: null, skips: [...skips, 'already_asked'] };

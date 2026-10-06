@@ -1366,7 +1366,7 @@ describe('runNudgeCron — the weekday-care ask', () => {
       kind: 'weekday_care',
       address: 'tu',
       questions: 1,
-      facts: { prompt: 'weekend_fallback' },
+      facts: { prompt: 'weekend_fallback', optionsSent: true },
     });
     expect(h.transport.sent[0]?.body).toContain('weekend_fallback');
     expect(h.transport.sent[0]?.body).not.toContain('Mia');
@@ -1395,7 +1395,10 @@ describe('runNudgeCron — the weekday-care ask', () => {
     await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
     const body = h.transport.sent[0]?.body ?? '';
-    expect(h.voice.calls.at(-1)?.input.facts).toEqual({ prompt: 'weekend_fallback' });
+    expect(h.voice.calls.at(-1)?.input.facts).toEqual({
+      prompt: 'weekend_fallback',
+      optionsSent: true,
+    });
     expect(body).not.toContain('Mia');
     expect(body).not.toContain('Ava');
   });

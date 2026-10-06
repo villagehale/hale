@@ -283,7 +283,7 @@ describe('the weekday-care arc', () => {
     expect(askVoice.calls.at(-1)?.input).toMatchObject({
       skill: 'proactive-voice',
       kind: 'weekday_care',
-      facts: { prompt: 'weekend_fallback' },
+      facts: { prompt: 'weekend_fallback', optionsSent: true },
     });
     expect(askBody).toContain('weekend_fallback');
     expect(askBody).not.toContain('Mia');

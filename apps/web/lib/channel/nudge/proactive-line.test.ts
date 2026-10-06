@@ -67,8 +67,13 @@ describe('proactiveLineInput', () => {
     expect(household.mustMention).toBeUndefined();
 
     const fallback = proactiveLineInput(EVERY_ASK[4] as ProactiveLineRequest, 'en');
-    expect(fallback.facts).toEqual({ prompt: 'weekend_fallback' });
+    expect(fallback.facts).toEqual({ prompt: 'weekend_fallback', optionsSent: false });
     expect(spokenFactSlots(fallback)).toEqual(['weekend_fallback']);
+    const sent = proactiveLineInput(
+      { kind: 'weekday_care', ask: { prompt: 'weekend_fallback', optionsSent: true } },
+      'en',
+    );
+    expect(sent.facts).toEqual({ prompt: 'weekend_fallback', optionsSent: true });
   });
 
   it('carries a verified break label word for word and not its event key', () => {
