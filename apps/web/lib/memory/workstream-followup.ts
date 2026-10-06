@@ -172,7 +172,7 @@ const FRENCH_ORDER = new RegExp(
     `${WB}il faut(?!-il)\\s+\\p{L}+(?:er|ir|re)${WE}`,
     `^faut\\s+\\p{L}+(?:er|ir|re)${WE}`,
   ].join('|'),
-  'iu',
+  'giu',
 );
 
 /** A reminder that opens the text. "Do you still need to…" does not. */
@@ -219,6 +219,19 @@ const RELATIVE_DAY = new RegExp(
 const PARENT_ADDRESS = new RegExp(
   `${WB}(?:did you|have you|do you|you get a chance|can you|could you|as-tu|t['’]as|tu peux|peux-tu|pourrais-tu)${WE}`,
   'iu',
+);
+
+/**
+ * The line treats a step as already done. "When you called" and "what did
+ * the dentist say" are that. "Have you called yet?" asks, and is not.
+ */
+const PRESUMED_DONE = new RegExp(
+  [
+    `${WB}(?:when|since|after|now that|quand|depuis que|maintenant que)\\s+(?:you(?:['’]ve)?|tu as|t['’]as)\\s+(called|emailed|sent|spoke|talked|heard|booked|signed|appel[ée]|[ée]crit|envoy[ée]|parl[ée]|sign[ée])${WE}`,
+    `${WB}what did (?:the\\s+\\p{L}+|they|he|she) say${WE}`,
+    `${WB}qu['’]est-ce qu(?:['’](?:ils|elles|il|elle)|e\\s+(?:l['’]\\p{L}+|(?:le|la|les)\\s+\\p{L}+))\\s+(?:t['’]a dit|(?:ont|a) dit)${WE}`,
+  ].join('|'),
+  'giu',
 );
 
 const WEEKDAY_BY_ISO: Record<number, readonly string[]> = {
@@ -286,6 +299,31 @@ function thirdPartyNewsBlocked(status: string): boolean {
 function threadHas(term: string, title: string, nextStep: string | null | undefined): boolean {
   const haystack = `${title}\n${nextStep ?? ''}`.toLowerCase();
   return haystack.includes(term.toLowerCase());
+}
+
+/** The term as its own word. "called" is not "call", and "sent" is not "consent". */
+function threadHasWord(term: string, title: string, nextStep: string | null | undefined): boolean {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`${WB}${escaped}${WE}`, 'iu').test(`${title}\n${nextStep ?? ''}`);
+}
+
+/**
+ * A step the line treats as finished, when the title and the next step do
+ * not already say that. The captured verb is the step. "What did they say"
+ * needs "say" or "said". "Qu'est-ce qu'il a dit" needs "dit".
+ */
+function presumedDone(text: string, title: string, nextStep: string | null | undefined): boolean {
+  for (const match of text.matchAll(PRESUMED_DONE)) {
+    const verb = match[1];
+    if (verb) {
+      if (!threadHasWord(verb, title, nextStep)) return true;
+      continue;
+    }
+    const said = match[0].toLowerCase().includes('dit');
+    const tokens = said ? ['dit'] : ['say', 'says', 'said'];
+    if (!tokens.some((token) => threadHasWord(token, title, nextStep))) return true;
+  }
+  return false;
 }
 
 /**
@@ -458,18 +496,62 @@ function inQuestion(text: string, index: number): boolean {
   if (endRel < 0 || after[endRel] !== '?') return false;
   const sentence = text.slice(start, index + endRel + 1).trim();
   if (QUESTION_SENTENCE.test(sentence)) return true;
-  return INVERTED_SUBJECT.test(clauseHolding(text, index));
+  if (INVERTED_SUBJECT.test(clauseHolding(text, index))) return true;
+  return orAlternativeQuestion(text, index);
+}
+
+/**
+ * "C'est réglé, ou t'hésites encore?" asks. "Inscrite au CPE, tu veux que
+ * je le note?" states the booking and then asks something else.
+ */
+function orAlternativeQuestion(text: string, index: number): boolean {
+  const rest = text.slice(index);
+  const next = nextBreak(text, index);
+  if (next < 0 || rest[next] !== ',') return false;
+  const after = rest.slice(next + 1).trimStart();
+  if (!/^(?:ou|or)(?![\p{L}\p{N}])/iu.test(after)) return false;
+  const endRel = rest.search(/[.!?]/);
+  return endRel >= 0 && rest[endRel] === '?';
 }
 
 /**
  * "What do you need to bring?" asks. "You should confirm." tells. The
- * auxiliary has to sit immediately before the order, and that clause has to
- * end in "?". An order that opens the line is decided before this runs.
+ * auxiliary has to sit immediately before the order, and the sentence that
+ * holds it has to end in "?". A comma does not end that sentence. An order
+ * that opens the line is decided before this runs.
  */
 function exemptOrderQuestion(text: string, index: number): boolean {
   if (!ORDER_QUESTION_AUX.test(text.slice(0, index))) return false;
-  const next = nextBreak(text, index);
-  return next >= 0 && text.slice(index)[next] === '?';
+  const after = text.slice(index);
+  const endRel = after.search(/[.!?]/);
+  return endRel >= 0 && after[endRel] === '?';
+}
+
+/**
+ * "Est-ce que tu dois…?" and "Tu dois…, ou c'est déjà fait?" ask. "Tu dois
+ * appeler." tells. The sentence has to end in "?".
+ */
+function exemptFrenchOrder(text: string, index: number): boolean {
+  const before = text.slice(0, index);
+  let start = 0;
+  for (const mark of before.matchAll(/[.!?]/g)) {
+    start = (mark.index ?? 0) + mark[0].length;
+  }
+  const after = text.slice(index);
+  const endRel = after.search(/[.!?]/);
+  if (endRel < 0 || after[endRel] !== '?') return false;
+  const sentence = text.slice(start, index + endRel + 1).trim();
+  if (/^est-ce que(?![\p{L}\p{N}])/iu.test(sentence)) return true;
+  const ou = after.search(/,\s+ou(?![\p{L}\p{N}])/iu);
+  return ou >= 0 && ou < endRel;
+}
+
+function frenchOrder(text: string): boolean {
+  for (const match of text.matchAll(FRENCH_ORDER)) {
+    if (match.index === undefined) continue;
+    if (!exemptFrenchOrder(text, match.index)) return true;
+  }
+  return false;
 }
 
 function englishOrder(text: string): boolean {
@@ -545,6 +627,7 @@ function inventedClaim(
     }
   }
   if (addressedWrongOwner(text, nextStep)) return true;
+  if (presumedDone(text, title, nextStep)) return true;
   return false;
 }
 
@@ -597,7 +680,7 @@ function prepareBody(
     return { ok: false, reason: 'keyword_ask' };
   }
   if (stockOpener(folded)) return { ok: false, reason: 'stock_opener' };
-  if (FRENCH_ORDER.test(folded) || englishOrder(folded)) return { ok: false, reason: 'order' };
+  if (frenchOrder(folded) || englishOrder(folded)) return { ok: false, reason: 'order' };
   if (promisedPassedWeekday(folded, now, timeZone)) return { ok: false, reason: 'past_weekday' };
   if (inventedHalePromise(folded)) return { ok: false, reason: 'invented_promise' };
   if (thirdPartyNewsBlocked(status) && asksParentForThirdPartyNews(folded)) {
@@ -609,6 +692,13 @@ function prepareBody(
       ok: false,
       reason: 'invented_claim',
       note: `invented_claim. The next step belongs to ${owner}. Ask about ${owner}, not you`,
+    };
+  }
+  if (presumedDone(folded, title, nextStep)) {
+    return {
+      ok: false,
+      reason: 'invented_claim',
+      note: "invented_claim. The next step isn't done yet. Ask whether it happened",
     };
   }
   if (inventedClaim(folded, status, title, nextStep, now, timeZone)) {

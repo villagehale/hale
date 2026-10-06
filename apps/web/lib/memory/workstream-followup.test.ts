@@ -640,6 +640,40 @@ describe('workstream follow-up voice', () => {
     expect(seen[1]).not.toContain('?');
   });
 
+  it('says the step is not done yet when a line assumes it happened', async () => {
+    const seen: string[] = [];
+    const bodies = [
+      "Maya's cleaning is still down for rebook - what did the dentist say when you called?",
+      "Maya's cleaning is still down for rebook - what did the dentist say when you called?",
+    ];
+    const client = {
+      messages: {
+        create: vi.fn(async (params: { messages?: Array<{ content?: unknown }> }) => {
+          const content = params.messages?.[0]?.content;
+          if (typeof content === 'string') seen.push(content);
+          return toolMessage(bodies.shift() ?? '');
+        }),
+      },
+    } as unknown as AgentClient;
+    const result = await composeWorkstreamFollowup({
+      client,
+      title: "Maya's cleaning",
+      status: 'scheduled',
+      nextStep: "Call the dentist Thursday to rebook Maya's cleaning",
+      now: new Date('2026-08-13T15:00:00.000Z'),
+      timeZone: 'America/Toronto',
+      language: 'en',
+    });
+    expect(result).toEqual({ ok: false, reason: 'invented_claim' });
+    expect(seen).toHaveLength(2);
+    expect(seen[1]).toContain(
+      "previous attempt refused: invented_claim. The next step isn't done yet. Ask whether it happened",
+    );
+    expect(seen[1]).not.toContain('Have you');
+    expect(seen[1]).not.toContain("T'as");
+    expect(seen[1]).not.toContain('?');
+  });
+
   it('leaves a claim retry unnamed when the next step has no owner', async () => {
     const seen: string[] = [];
     const bodies = ['Léa est inscrite au CPE.', 'Léa est inscrite au CPE.'];
@@ -717,6 +751,10 @@ describe('workstream follow-up voice', () => {
     expect(skill).toContain('Do not attribute');
     expect(skill).toContain('must not come out as the same sentence');
     expect(skill).toContain('must not share an opening shape');
+    expect(skill).toContain('already happened');
+    expect(skill).toContain('the event it belongs to');
+    expect(skill).toContain('avant vendredi');
+    expect(skill).toContain('pour vendredi');
   });
 
   it('treats a promised weekday that has passed as past, and a later one as still ahead', () => {
@@ -1291,6 +1329,88 @@ describe('workstream follow-up voice', () => {
     for (const line of v5Miss) {
       expect(refuse(line.body, line.status, line.thread), line.body).toBe(line.reason);
     }
+
+    const dentist = {
+      title: "Maya's cleaning",
+      nextStep: "Call the dentist Thursday to rebook Maya's cleaning",
+    };
+    expect(
+      refuse(
+        "Maya's cleaning is still down for rebook - what did the dentist say when you called?",
+        'scheduled',
+        dentist,
+      ),
+    ).toBe('invented_claim');
+    expect(refuse('Have you called the dentist yet?')).toBeNull();
+    expect(refuse("T'as eu le temps de contacter le dentiste ?")).toBeNull();
+    expect(refuse('Did you get a chance to call the dentist?')).toBeNull();
+    expect(refuse('Since you heard from the school, which day works?')).toBe('invented_claim');
+    expect(refuse("Qu'est-ce que le dentiste a dit?")).toBe('invented_claim');
+    expect(refuse("Qu'est-ce qu'il t'a dit?")).toBe('invented_claim');
+    expect(refuse('Maintenant que tu as appelé, c’est bon?')).toBe('invented_claim');
+    expect(refuse('Depuis que tu as écrit au CPE, ça avance?')).toBe('invented_claim');
+    expect(refuse('Quand tu as parlé au dentiste, c’était pour quand?')).toBe('invented_claim');
+    expect(refuse('After you emailed the coach, what changed?')).toBe('invented_claim');
+    expect(
+      refuse('When you called, which time worked?', 'waiting_on_parent', {
+        nextStep: 'You called the dentist',
+      }),
+    ).toBeNull();
+    expect(
+      refuse('What did the dentist say when you called?', 'scheduled', {
+        nextStep: 'You called the dentist and she said Thursday',
+      }),
+    ).toBeNull();
+    expect(
+      refuse('What did the dentist say when you called?', 'scheduled', {
+        nextStep: 'You called the dentist',
+      }),
+    ).toBe('invented_claim');
+
+    const fresh: Array<{
+      body: string;
+      reason: string | null;
+      thread?: { title?: string; nextStep?: string | null };
+    }> = [
+      {
+        body: 'Is Sam still planning to email the coach, or do you want to take it?',
+        reason: null,
+        thread: sam,
+      },
+      {
+        body: 'Did Sam email the coach yet, or do you need to nudge him?',
+        reason: null,
+        thread: sam,
+      },
+      { body: 'Should Maya be booked into the 9:30 or the 11:00?', reason: null },
+      { body: 'Is Theo all set for camp, or is the deposit form still out?', reason: null },
+      { body: 'What time do you have to drop Ben off at the rink?', reason: null },
+      { body: "Où en est l'inscription de Zoé, elle est confirmée?", reason: null },
+      { body: 'Zoé est inscrite ou pas encore?', reason: null },
+      { body: 'Time slots are 9:30 or 11:00 - which one for Maya?', reason: null },
+      { body: 'Need any help choosing between size 2 and 3 for Ben?', reason: null },
+      { body: 'Tu veux que je note mardi 17 h pour la gym de Zoé?', reason: null },
+      {
+        body: 'Do you have to call the dentist before Friday, or is the cleaning rebooked?',
+        reason: null,
+      },
+      { body: 'Est-ce que tu dois encore appeler le CPE?', reason: null },
+      { body: 'Est-ce que tu devrais rappeler le CPE pour la place de Léa?', reason: null },
+      { body: "Tu dois encore appeler le CPE, ou c'est déjà fait?", reason: null },
+      { body: "C'est réglé pour la gym de Zoé, ou t'hésites encore?", reason: null },
+      {
+        body: "Sam's emailing the coach about Omar's test - did you want to add anything?",
+        reason: 'invented_claim',
+        thread: sam,
+      },
+    ];
+    expect(fresh).toHaveLength(16);
+    for (const line of fresh) {
+      expect(refuse(line.body, 'waiting_on_parent', line.thread), line.body).toBe(line.reason);
+    }
+    expect(refuse('Tu dois appeler le CPE.')).toBe('order');
+    expect(refuse('You should confirm before Saturday.')).toBe('order');
+    expect(refuse('Léa est inscrite au CPE, tu veux que je le note?')).toBe('invented_claim');
   });
 });
 
