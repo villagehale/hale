@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has numerous critical faults: 1) It is in English, not French as required. 2) It uses \"you're the dad, right?\" — asserting/guessing a role nobody offered, which is explicitly a LOW score trigger. 3) It claims Hale booked swim (\"I booked swim\") — an invented fact not in the request and a LOW score trigger. 4) It claims Hale synced a calendar (\"synced your calendar\") — calendar talk outside connect_link_1to1 and another invented fact, LOW score. 5) It contains a URL (www.example.com), which is a LOW score trigger. 6) It contains an emoji (😊), which is a LOW score trigger. 7) It is entirely in English while the request requires French. 8) It does not list the role words as choices in a single question. 9) It does not use vous. Essentially every requirement is violated.",
+    "score": 1
+  }
+}

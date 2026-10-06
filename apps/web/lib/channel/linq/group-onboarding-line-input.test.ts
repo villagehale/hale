@@ -51,6 +51,25 @@ describe('group onboarding lines that carry the way out', () => {
 });
 
 /**
+ * Someone added to an existing iMessage group does not see the messages before they
+ * joined, so the ask they get is from a stranger unless it names Hale, and their answer
+ * to it is the consent that seats them. A re-ask follows Hale's own line, so it does not.
+ */
+describe('who is asking', () => {
+  it('names Hale in the ask to a newly added member, not in the re-ask', () => {
+    for (const language of ['en', 'fr'] as const) {
+      expect(
+        groupOnboardingLineInput({ kind: 'member_ask', knownParentName: 'Riley' }, language)
+          .mustMention,
+      ).toContain('Hale');
+      expect(groupOnboardingLineInput({ kind: 'role_reask' }, language).mustMention).not.toContain(
+        'Hale',
+      );
+    }
+  });
+});
+
+/**
  * "Vous êtes maman, papa, grand-parent, nounou, gardienne ou pas de la famille ?" offers
  * every role; "vous êtes la maman" and "you're the mom, right?" decide for someone. Only
  * the second shape is a role asserted.

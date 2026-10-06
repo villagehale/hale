@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French with correct vous address throughout. Real accents are present. Hale is named (in mustMention). Riley is named (in mustMention). All six role words are listed as choices in the one question: maman, papa, grand-parent, nounou, gardienne, pas de la famille — all present (all in mustMention). There is exactly one question, placed last. No invented facts, no emoji, no exclamation marks, no URLs, no padding, no second question, no asserting a role, no calendar/link talk, no corporate register. The message is short, warm, and plain. It introduces Hale, situates the family (Riley), and asks who the reader is with all roles offered as choices. This is a textbook-clean member_ask.",
+    "score": 5
+  }
+}

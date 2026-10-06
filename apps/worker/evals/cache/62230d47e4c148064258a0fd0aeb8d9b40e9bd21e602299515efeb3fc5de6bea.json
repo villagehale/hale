@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has multiple serious violations:\n1. It guesses/asserts a role (\"You're the dad, right?\") that nobody offered — a major LOW score trigger.\n2. It claims Hale booked someone (\"I booked swim\") — invented fact, LOW score trigger.\n3. It mentions calendar syncing — calendar talk outside connect_link_1to1, LOW score trigger.\n4. It includes a URL (www.example.com) — LOW score trigger.\n5. It includes an emoji (😊) — LOW score trigger.\n6. Hale is in mustMention but is not named/introduced.\n7. The one question allowed is used to guess the role rather than ask an open choice question listing all role options (mom, dad, grandparent, nanny, babysitter, not family).\n8. No warm greeting, no mention that this is Riley's family thread.\nThis message fails on nearly every criterion.",
-    "score": 1
-  }
-}

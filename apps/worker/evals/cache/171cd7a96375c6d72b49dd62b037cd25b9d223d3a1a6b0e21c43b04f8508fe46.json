@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has multiple critical failures: (1) It guesses/asserts the role (\"You're the dad, right?\") — a major fault explicitly prohibited; (2) It claims Hale booked something (\"I booked swim\") — an invented fact not in the request; (3) It mentions calendar syncing — calendar talk is prohibited; (4) It includes a URL (www.example.com) — prohibited; (5) It includes an emoji (😊) — prohibited; (6) Hale is in mustMention but is not named; (7) The role list (mom, dad, grandparent, nanny, babysitter, not family) is not offered as choices in the question; (8) The question is a yes/no guess rather than an open role ask. Nearly every rule is violated.",
-    "score": 1
-  }
-}

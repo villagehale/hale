@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French with vous, real accents, and names Hale as required by mustMention. It introduces Hale, mentions Riley's family, and asks exactly one question listing all six role words as choices (maman, papa, grand-parent, nounou, gardienne, pas de la famille) — all items in mustMention are present. It makes no assumptions about the reader's role, invents no facts, has no exclamation marks, emoji, URLs, hype, or forbidden elements. It is short, warm, and first-person. The question is placed last. This is essentially a perfect execution of member_ask in French with vous address.",
+    "score": 5
+  }
+}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is warm, short, and in the correct address register (vous/group). It names Riley (mustMention), correctly identifies this as Riley's family thread, and asks exactly one question listing all required role words (mom, dad, grandparent, nanny, babysitter, not family) as choices. No invented facts, no extra questions, no emoji or exclamation marks, no calendar/link/plans talk, no guessing of roles, no bot register. Hale is not in mustMention so not introducing itself is fine. The only minor issue is the lack of Hale's name/intro, but since Hale is not in mustMention that is correct. Overall this is a near-perfect member_ask line.",
-    "score": 5
-  }
-}

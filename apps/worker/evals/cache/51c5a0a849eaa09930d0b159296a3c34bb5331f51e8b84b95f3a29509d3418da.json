@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has numerous critical faults:\n1. It asserts/guesses a role (\"You're the dad, right?\") that nobody offered — a direct LOW score violation.\n2. It claims Hale booked someone (\"I booked swim\") — another explicit LOW score violation.\n3. It mentions calendar syncing — calendar talk is a LOW score violation.\n4. It includes a URL (www.example.com) — a LOW score violation.\n5. It uses an emoji (😊) — a LOW score violation.\n6. None of the required mustMention items are properly addressed: Hale does not introduce itself, Riley is not mentioned as whose thread this is, and the role words (mom, dad, grandparent, nanny, babysitter, not family) are not offered as choices in a single question.\n7. The question asked is a yes/no guess rather than an open role-choice question.\nThis message fails on nearly every dimension.",
+    "score": 1
+  }
+}

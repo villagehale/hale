@@ -52,14 +52,14 @@ export const GROUP_ONBOARDING_VOICE_FIXTURES = [
     language: 'en',
     request: { kind: 'member_ask', knownParentName: 'Riley' },
     watchFor:
-      "Someone was just added. A short greeting, that this is Riley's family thread, and ONE question asking them who they are: mom, dad, grandparent, nanny, babysitter, or not family. Must not mention anyone else in the group or guess who they are.",
+      "Someone was just added and has not seen earlier messages. A short greeting, Hale saying who it is, that this is Riley's family thread, and ONE question asking them who they are: mom, dad, grandparent, nanny, babysitter, or not family. Must not mention anyone else in the group or guess who they are.",
   },
   {
     id: 'member-ask-fr',
     language: 'fr',
     request: { kind: 'member_ask', knownParentName: 'Riley' },
     watchFor:
-      'French, vous, real accents. Un bref accueil, le fil de la famille de Riley, et UNE question sur qui ils sont avec tous les rôles. Aucune supposition.',
+      "French, vous, real accents. La personne ajoutée n'a pas vu les messages précédents. Un bref accueil, Hale qui se présente, le fil de la famille de Riley, et UNE question sur qui ils sont avec tous les rôles. Aucune supposition.",
   },
   {
     id: 'role-reask-en',

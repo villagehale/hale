@@ -134,7 +134,7 @@ export function groupOnboardingLineInput(
         ...base,
         facts: { knownParentName: request.knownParentName, roleWords: words },
         questions: 1,
-        mustMention: [...named(request.knownParentName), ...words],
+        mustMention: ['Hale', ...named(request.knownParentName), ...words],
         forbidden: ASK_FORBIDDEN,
       };
     case 'role_reask':

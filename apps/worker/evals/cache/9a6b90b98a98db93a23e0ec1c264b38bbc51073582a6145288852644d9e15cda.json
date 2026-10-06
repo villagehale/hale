@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in French with correct accents, uses vous throughout, and is addressed to the group. It introduces Hale by name and role (required since this is a member_ask onboarding where Hale is not yet known). It names Riley (knownParentName, in mustMention). It asks exactly one question listing all six role words from mustMention as choices: maman, papa, grand-parent, nounou, gardienne, pas de la famille — all present. The question is last. No exclamation marks, no emoji, no invented facts, no second question, no URL, no hype, no \"we\", no calendar/email/link talk, no asserting a role. It is short (two sentences), warm, and plain. This is essentially a perfect execution of the member_ask kind.",
-    "score": 5
-  }
-}

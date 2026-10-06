@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in French, uses vous correctly, has real accents, introduces Hale by name and role (required since Hale is in mustMention via the role words list — actually mustMention lists the role words plus Riley, and Hale is not in mustMention, but introducing Hale here is fine as it's a new group onboarding). It names Riley's family thread, asks exactly one question listing all six role words as choices, makes no guesses, no invented facts, no emoji, no exclamation marks, no second question. It is short, warm, and plain. The only minor issue is that Hale is not in mustMention but introduces itself, which is acceptable (not penalized). All role words from mustMention are present in the question. The message reads naturally, friend-like, and meets all criteria cleanly. This is a near-perfect response.",
-    "score": 5
-  }
-}

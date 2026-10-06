@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message has numerous critical faults: 1) It is in English, not French as required. 2) It uses \"you're the dad, right?\" — asserting/guessing a role nobody offered, which is explicitly a LOW score trigger. 3) It claims Hale booked swim and synced a calendar — fabricated facts not in the request, and calendar talk is forbidden. 4) It contains an exclamation-adjacent emoji (😊). 5) It contains a URL (www.example.com), which is forbidden. 6) The address is vous but it reads as a 1:1 message. 7) Hale is not introduced/named despite being in mustMention. 8) Riley is not mentioned. 9) The required role-choice question (maman, papa, grand-parent, nounou, gardienne, pas de la famille) is completely absent. 10) \"Booked\" and \"synced your calendar\" are both explicitly forbidden. Almost every rule is violated.",
+    "score": 1
+  }
+}
