@@ -292,7 +292,7 @@ describe('deliverConnectLinkOneToOne', () => {
         return { providerMessageId: `link-${links.length}` };
       },
     };
-    const voice = fakeSpokenLineComposer();
+    const voice = fakeGroupOnboardingComposer();
 
     const first = await deliverConnectLinkOneToOne(db.database, {
       familyId,
@@ -331,7 +331,7 @@ describe('deliverConnectLinkOneToOne', () => {
   it('sends no link when the chat Linq opened for the 1:1 is the family group', async () => {
     const { familyId, userId } = await seedConfirmedGroup();
     const resolvedToGroup = oneToOne({ chatId: GROUP });
-    const voice = fakeSpokenLineComposer();
+    const voice = fakeGroupOnboardingComposer();
 
     const result = await deliverConnectLinkOneToOne(db.database, {
       familyId,
@@ -358,7 +358,7 @@ describe('deliverConnectLinkOneToOne', () => {
         userId,
         groupChatId: null,
         now: NOW,
-        voice: fakeSpokenLineComposer(),
+        voice: fakeGroupOnboardingComposer(),
         oneToOne: resolvedToGroup.send,
       });
 
@@ -376,7 +376,7 @@ describe('deliverConnectLinkOneToOne', () => {
         userId,
         groupChatId: null,
         now: NOW,
-        voice: fakeSpokenLineComposer(),
+        voice: fakeGroupOnboardingComposer(),
         oneToOne: direct.send,
       });
 
