@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to move Thursday's swim to 17h45. There is exactly one swim on Thursday (Thu 5:15pm at East pool), so the reference is fully resolved — no clarifying question needed. The draft cap is 2 and `drafted` is non-empty (calendar_move), which means Hale correctly drafted it. However, the CONTRACT requires that when `drafted` is non-empty, the reply must end \"...? YES to confirm.\" so the parent's reply of YES is recognised as consent. This reply asks a question (\"Tu veux que je déplace...?\") but does NOT end with \"YES to confirm\" — the confirmation trigger word is absent, so the parent's reply would not be recognised as consent. That is a meaningful shape failure. Additionally, the reply is asking a clarifying question about something already resolved (one swim on Thursday), which is handing the job back. These two issues together — missing the YES trigger and unnecessary clarifying question — bring the score to 3.",
+    "score": 3
+  }
+}

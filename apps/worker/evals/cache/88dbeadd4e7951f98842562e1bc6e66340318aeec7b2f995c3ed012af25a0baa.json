@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The offerable list contains \"Riverdale Farm visit at Riverdale Farm, Sun, Aug 9 — Free outdoor farm, open daily.\" — this is a verified, offerable candidate that Hale should surface whole (name, place, day). The reply does name Riverdale Farm, which is good. However, the reply opens with \"No verified park in what I've got for your area,\" which frames the answer as a near-miss and hedges unnecessarily — Riverdale Farm IS exactly the kind of outdoor space a parent asking about a park to play would want, and it is fully offerable. The phrasing \"while we keep an eye out for an actual park nearby\" undersells the find and implies Hale is continuing to search when stillBeingChecked is 0, meaning there is nothing left being checked. That trailing clause is both inaccurate and buries the answer. The reply also omits the day (Sun, Aug 9) which is part of the offerable entry and should be included. The core information is there but the framing is off and there's a false implication of ongoing search.",
+    "score": 3
+  }
+}

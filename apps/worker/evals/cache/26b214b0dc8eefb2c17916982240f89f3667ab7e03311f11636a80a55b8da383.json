@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent pasted a course-page link and asked to be told when a spot opens. The `can` list confirms `watch_for_opening` is a real capability, and it requires exactly what the parent provided: a course-page link in their own message. The reply correctly activates the watch and promises to text when a spot appears — that is the full correct answer. No invented details, no URL written out, no machinery explained, no app referral, no greeting or sign-off. Short, exact, and confirms the watch is live. Minor blemish: \"genuinely full\" is a small redundant filler word, but it doesn't distort anything. The core is correct and the shape is right.",
+    "score": 4
+  }
+}

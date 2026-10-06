@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands over the referral link that was appended by the runtime, explains what to do with it (send to a friend), and gives a brief accurate description of what Hale does. The URL matches `knows.referralLinkAppended` exactly — not invented. No greeting, no sign-off, no markdown. The one small blemish is the description of Hale runs a little long and slightly promotional in tone (\"so you don't have to\"), but the core job is done correctly and completely. This is a 4 rather than a 5 because the extra explanatory clause is a word or two more than strictly needed.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly names the one visible Saturday event (soccer practice, 10am, Cedarvale Park) and then offers the verified offerable activity (Riverdale storytime, free drop-in, Riverdale Library, same day) — both details are grounded in `week` and `offerable` respectively. No invention, no markdown, no greeting or sign-off, no question, no app referral. Exactly the shape the product requires.",
+    "score": 5
+  }
+}

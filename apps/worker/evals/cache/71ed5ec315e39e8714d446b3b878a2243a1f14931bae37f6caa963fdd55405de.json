@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked for four cancellations. The draft cap is 2. Hale correctly drafted the two swims and said it will line up soccer and Wednesday's appointment next — exactly the right handling of overflow. The reply names what was drafted (Mon 4:30pm swim, Thu 5:15pm swim) and signals the queue, without sending the parent to the app, without inventing details, and ending with the YES-to-confirm shape implied by the drafts. One small issue: the reply is missing the explicit \"YES to confirm\" prompt that the contract requires when drafted is non-empty — it asks \"Want me to cancel...\" as if seeking fresh permission rather than confirming the drafts it already holds. That framing could confuse the parent about what YES will do. Otherwise the reply is correct and concise.",
-    "score": 3
-  }
-}

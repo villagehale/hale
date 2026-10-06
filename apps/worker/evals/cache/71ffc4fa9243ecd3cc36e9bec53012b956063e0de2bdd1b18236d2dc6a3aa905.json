@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked what \"Nora\" has on Tuesday. \"Nora\" matches no listed child by name — Milo and Ada are named, and the teenager's name is redacted (null). The Tuesday event is \"A private calendar item\" at 3:45pm. Per the rules, the correct reply is to give the day and time while saying the content is not Hale's to share — which is exactly what this reply does. It does not name the child, does not guess at the content, does not surface a website, and does not ask a clarifying question. The reply is short, exact, and correct. The only tiny imperfection is the opening \"There's\" which is a mild conversational filler, but it doesn't add noise or confusion. This is the product working correctly.",
+    "score": 5
+  }
+}

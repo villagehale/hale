@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked about a good nearby park. Hale has two offerable items from search_village: a library story time and a Riverdale Farm visit. Neither is a \"park\" strictly, but Riverdale Farm is an outdoor, free, open-daily venue — the closest match. The reply correctly surfaces it as the verified outdoor option. It doesn't invent anything, doesn't send the parent to the app, and doesn't hedge with unverified finds (stillBeingChecked is 0). It's honest that there's no verified park per se. The reply is concise and actionable. Minor issue: it could have been slightly warmer or more natural in phrasing (\"No park in what I've got verified\" is a bit mechanical), and it doesn't mention that soccer is already at Cedarvale Park on Saturday which is a real park on the family's own schedule — a missed beat that would have been genuinely useful. That's a small but real miss. Otherwise the shape is correct.",
-    "score": 4
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked which of the two Cartwheels classes Remy would be in. Hale's earlier message named both: Tiny Gym (under 3.5, with a parent) and Mini Gym (3.5+, solo). The answer is clear from Remy's age (19 months) — Tiny Gym. The reply correctly identifies Tiny Gym and gives the age-based reason. It is concise, accurate, grounded in `knows.children`, and stops cleanly. No invented detail, no unnecessary machinery, no sign-off. Nearly perfect; the small redundancy is \"the parent-and-me class\" since \"with a parent\" was already in the prior message, but it is a helpful reminder in context, not a flaw. A tight, correct answer.",
-    "score": 5
-  }
-}

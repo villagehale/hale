@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly hands over the referral link (which is real, appended by the runtime, and traceable to knows.referralLinkAppended), tells Sam to forward it themselves, and gives a brief description of what Hale does so the friend knows what they're getting. No invented URLs, no app referral, no greeting or sign-off, no markdown. The link is present and correct. The only minor issue is the brief description of Hale's capabilities adds a small amount of padding that wasn't strictly necessary — Sam asked how to refer, and the answer is just \"forward this link\" — but it's a natural and useful addition when sharing a referral, not a real blemish. This is the product working correctly.",
-    "score": 5
-  }
-}

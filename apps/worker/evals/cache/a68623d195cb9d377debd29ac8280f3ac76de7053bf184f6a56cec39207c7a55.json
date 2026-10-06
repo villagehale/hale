@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly names both Saturday items: the verified calendar event (soccer practice, 10am, Cedarvale Park) and the offerable activity (Riverdale storytime at Riverdale Library, Aug 8, free indoor drop-in). Both details are traceable to `week` and `offerable` respectively. No greeting, no sign-off, no markdown, no unnecessary machinery, no app referral, no invented details, no clarifying question where none was needed. Short, complete, and actionable. This is the product working exactly as intended.",
-    "score": 5
-  }
-}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event (soccer) and one target time (11am Saturday). The reference is fully resolved — no ambiguity. Hale correctly drafts the move and presents it for confirmation. The reply names the event, the venue, and the new time, then asks for confirmation. However, the contract requires ending with \"YES to confirm.\" so the parent's next text of YES is recognised as consent. \"does that work?\" is a warmer paraphrase that drops the literal word YES, which per the rubric is WORSE than the required shape — the answer would not be recognised as consent. That's a meaningful flaw but the substance is otherwise correct.",
+    "score": 3
+  }
+}

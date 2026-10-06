@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly handles two separate pieces of information: (1) the registration window — states the resident-first date flat (correct, as it's Hale's own verified fact, not from a site), says it's already watching (true, watching:true), and (2) the webFind — names Tiny Tumblers with day/cadence, notes price isn't posted yet, which is honest. However, there's one blemish: \"Their site lists\" is used for the webFind, which is correct attribution per the rules. But \"Their site lists\" is slightly ambiguous — it doesn't quite say \"the venue's own program page says\" as clearly as it could, though it does attribute to a site. More notably, the registration window date is stated correctly without hedging (\"Their site says\"), which is right. The reply is concise, no greeting, no sign-off, no markdown, no app referral, no invented URL. The webFind attribution is present (\"Their site lists\"), the price caveat is there. The only minor issue is that \"Their site lists\" could be read as the registration site rather than the venue's program page — a small ambiguity in attribution. Overall this is a clean, correct reply that does the job well with only a very minor clarity issue on whose site is being referenced.",
+    "score": 4
+  }
+}

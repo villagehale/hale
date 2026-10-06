@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly handles a Google Calendar connection request that wasn't caught by the automated branch. It tells Sam the link is a text away, hands them the exact words to send (\"connect my Google Calendar\"), and explains the link is good for 15 minutes — all of which matches the rubric's description of the correct shape for this case. No URL invented, no app referral, no refusal. Clean and complete.",
-    "score": 5
-  }
-}

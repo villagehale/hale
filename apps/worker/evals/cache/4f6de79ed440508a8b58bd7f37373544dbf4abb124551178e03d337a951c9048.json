@@ -1,0 +1,51 @@
+{
+  "response": {
+    "id": "gen_01M484DPYQCGW0TZG63F2NSHBX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EsoECsQBCBIYAipAb1lQmlLAfXkJNL7sOATd5QAYj7nuaEVhStmljbn374XJeLySLFREAh7Xy9BHieiQHWlY60Mh1iw9tftrgwSVmjIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzYjkzYTVkZC03MzAyLTQ4M2YtYWVhZS0zNjIwNzU1NDhhZTF6HnVwcm9mXzAxMUNma1NibmJZZEV1SDZ5Uk1Ta01RUJoBEQoPY2xhdWRlLXNvbm5ldC01qAHL25LWBhIMEgbv0+CsatGWmbebGgxXj5Fo/tXtxbzAk1AiMMSAJjfiL1PspIlEl14YP1Yd+3R+ovOoinWKEBbTyl6FFamwcNIlWooK5Yjpv6YLniqyAqIY4lnqSp1JBMV1KX9tcuKkpglLJIeXtdsjvf7APRRfAS0mBM86NFW7KbuLUhGJTWT8Tcqq3M0xcW73HiwHRRnXUlSHV2lX1V0fR6cdDKW3dXvIfOipEOmxqwf61FqeLaanBLzagHy6EGaVzSoN3Dt9sEtURbdVDHdFdV86cOIkIjNdtZBSkJTkdxAu0p929OaUPldyB0C3Im+d7pDtrVV1yRjY/MCoe//RO1uv3npzaXzxcZelUMGIjLY7jokeclno9SkHwcvdwun6RH++ESdEkPcxLUYSFgz1l+vJrqQCZpNu5HSjo2b7iX2edfU6LBvNX95Lokd8xxPjUXObvCaH/1e9YhASJQF3LWRcyGoF8sn2YBX+Mj0cRC7N/4jczwgok0fefIhgCRnr0t/TjVNSwRgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01XuhqAkz84XNaTh9ygFtWur",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "newborn",
+          "ageMonths": 5
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01V2u36NzfFbrJ1jJSBThGjY",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "solids",
+          "childId": "kid-theo",
+          "offer": "Want me to send the full starting-solids plan?"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 427,
+      "output_tokens": 300,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19539,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 107
+      }
+    }
+  },
+  "latencyMs": 3653
+}

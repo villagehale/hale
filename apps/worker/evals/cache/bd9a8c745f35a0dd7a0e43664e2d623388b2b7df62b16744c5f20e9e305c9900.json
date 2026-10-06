@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply does two things correctly: it states the registration window flat as Hale's own verified fact (Sep 1, 7:00 a.m., residents first), confirms it is already watching — both accurate per `registrationWindows` with `watching: true` — and surfaces the webFind (Tiny Tumblers, Saturday mornings this fall, fit for Remy at 19 months). It attributes it to the venue's program page with \"Their site lists,\" which is exactly what the webFind rule requires, and notes no price is posted yet, which is the honest web-find caveat. It does not hedge the registration date, does not invent a URL, does not send the parent to the app. The one small issue: \"Their site lists\" is slightly ambiguous — the rubric says the attribution should make clear it came from the web source, which \"Their site lists\" does capture, though \"the venue's program page lists\" would have been crisper. But this is at most a minor wording choice, not a substantive failure. The reply is tight, accurate, and complete. A 5.",
+    "score": 5
+  }
+}

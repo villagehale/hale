@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply drafts the gymnastics class and correctly names the venue (Tiny Gym at Cartwheels, Sunday Sep 13 at 9:30am) that Hale itself surfaced earlier in the thread — that is recall, not invention. `drafted` is non-empty (calendar_add), so the reply must name the change and end with \"YES to confirm.\" The reply does name the change, but it asks \"Want me to add…?\" rather than presenting the draft as done and ending with \"YES to confirm.\" The contract requires: state what was drafted and invite YES, not ask permission a second time. That said, it does not invent anything, does not send the parent anywhere, and does contain all the right details. The failure is that it should say \"I've drafted adding Tiny Gym at Cartwheels, Sun Sep 13 at 9:30am — YES to confirm.\" instead of posing another question. A question where a draft-and-confirm was needed is a shape error, dropping it from a 5 to a 3-4. It's a mild but real contract violation since the draft is already made and the reply should be presenting it for YES, not re-asking permission. I'll score it a 3.",
-    "score": 3
-  }
-}

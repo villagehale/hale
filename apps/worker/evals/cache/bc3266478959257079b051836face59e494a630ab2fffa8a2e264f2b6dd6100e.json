@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent pasted a course-page link in their message, which is exactly the condition required for `watch_for_opening`. The reply correctly says it has started watching and will text when a spot appears — that is the right shape. The reply is concise, names the class, and makes the promise clearly. No greeting, no sign-off, no markdown, no mention of the app. The one small issue: \"with registration open\" is an interpretation Hale has no basis for — the parent said the class is full, not that registration is open. That clause adds a detail not grounded in anything Hale knows. It's a minor invention but still an invention. That drops it from a 5 to a 4.",
-    "score": 4
-  }
-}

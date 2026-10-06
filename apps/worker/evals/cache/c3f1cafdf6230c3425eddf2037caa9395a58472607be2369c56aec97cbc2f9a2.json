@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the gymnastics class from the thread (Tiny Gym at Cartwheels, Sundays at 9:30, starting Sep 13 — named by Hale in an earlier message, so recall not invention), drafts a calendar_add, and asks for YES confirmation in the correct shape. However, it ends with a question mark rather than the required \"YES to confirm.\" format. The contract requires the literal word YES so the system can recognise consent — a warmer or softer paraphrase that drops YES is explicitly scored as worse. The reply asks \"Want me to add…?\" which is close but does not tell Sam to reply YES to confirm, meaning the consent signal would be unrecognised. That is a real blemish but the core handling is correct.",
+    "score": 3
+  }
+}

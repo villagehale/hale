@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M484FBDD7ZM34QYBJ42PZRC5",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "No park in what I've got verified. The checked outdoor option nearby is a Riverdale Farm visit, open daily and free, which is close but not a park."
+      }
+    ],
+    "usage": {
+      "input_tokens": 596,
+      "output_tokens": 50,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19539,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 1783
+}

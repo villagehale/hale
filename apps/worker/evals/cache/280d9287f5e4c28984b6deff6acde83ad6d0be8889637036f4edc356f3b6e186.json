@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO events in the week (Monday swim at West pool and Thursday swim at East pool). Per the rules, ambiguity about which event is only resolved when exactly one event matches — here there are two, so Hale must ask which before drafting anything. The reply correctly identifies both swim lessons with their times and asks which one to cancel. No draft is made, no clarification question is dangling about anything else, no app referral, no sign-off, no markdown. This is exactly the right shape: one question, the two candidates named, nothing more. A 5.",
+    "score": 5
+  }
+}

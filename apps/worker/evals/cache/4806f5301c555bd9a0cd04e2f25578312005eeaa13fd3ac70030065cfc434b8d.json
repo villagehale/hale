@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply hands over the referral link correctly — it is the runtime-appended link, not invented. It tells Sam to forward it, briefly describes what Hale does for the friend's benefit, and stops. The URL is the one in `knows.referralLinkAppended`, so it is right to include it. One small blemish: the description of Hale (\"schedules, activities, parenting questions\") adds a clause that wasn't needed — the parent asked how to refer others, and the link plus \"they just text in\" is the complete answer. That extra sentence is a minor redundancy but doesn't mislead or break shape. Solid 4.",
+    "score": 4
+  }
+}

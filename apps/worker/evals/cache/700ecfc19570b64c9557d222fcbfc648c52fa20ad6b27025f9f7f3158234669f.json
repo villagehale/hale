@@ -1,0 +1,40 @@
+{
+  "response": {
+    "id": "gen_01M484ABVZGZFRK28HS8NJ2YG9",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EuAICsQBCBIYAipAN4mgpsBFlEI3XHlTCxPphQc1Xgt79Mv8DqJutwtXV1rlzLEhQpd03l3NIbSaw6DMeB5tHIcxK1GaXGE1DRk7STIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzYjkzYTVkZC03MzAyLTQ4M2YtYWVhZS0zNjIwNzU1NDhhZTF6HnVwcm9mXzAxMUNma1NibmJZZEV1SDZ5Uk1Ta01RUJoBEQoPY2xhdWRlLXNvbm5ldC01qAHg2pLWBhIMZ9ap0QRZ/oKlVRCdGgxT04PRu+DN2t3uox8iMHWLx9vBmFUum/afqAXK58ZbKjA2tOnGErEJy30J6R44vSy74IGWQg50H2DwsGC3cirIBmUSD00aU7UfJBUgcIyEkWEGNctyisaWhRJeX0/fgKSr3nFV0nEwkmnpdYaUG26/MHweAV5Ui8rSefdZgoOpBQl4tnr/wx+vrM8o1U30aCP5Y6Ht3rj69G8YaYkoF6fKLpvNxTLXSwp4NnBIDX4JwJEjYGzeJ4lPrSsKN+Li3hLwcFxBAf0DIOtDOZnnMbCltbDykPbzpZINi0c9LP+orQW40soLg4ktnhsVU79idpovT6wYsMhL1RHFY1gYJMWls3SmFegVVKOzqjkFNJBvEt569XJIOb+eOFH1Yp2x5/UnqNAqcR116USLab2JjmRZCvVmRBNFAma9GzW6I6oTnXFOxNE2xkcxEpohaxVOCIgk+gfx+QsZfGT91skNS6JRs/M0Me7cFoXpxrRZTdWdkb2aTucp3nh8Hd9tSOs3uGkj1ItJ05Ptyqa1oQiqrP/BxYAuqU/2XNDuMLuZkXVjtpV8P9AhzV7fcvltH33JFH9tOwgReR8kGF+X4x9Sx+SXeT3PI/yM1xT9JwIFwnOF+dcj8ZKudYEeXZw2NYYCs2x4Z90rwIBaD24hiUugDODZGWsYqSDKdRewgLnTKjdKFK58zb5827MKuAoVblrmtCLJxZChpTpVfT/dwcBVzmMTFxloACk/IItTLzFNgKgQ3ApYjtXJPYvJlDJkrKIlvW1qrs9HD65nNyrD4kfkCGSwpt+k1rAy+fQ3Yiw2ZgpOEJpF3Eq2xkPTxdptaPG6fA4ED115XRl/1sYFbGwitpoyP0c6r8pzQ7ZVg1gWq9WoqgzkDFkmwJroGb1iGuCtdITlggTVhQceujLHKfvxBKJGsvNn8eDCDZEV0hps6Y5jAEOzH4pnIifLSYWt4IcOZeCmKf/YN77s1NlRgxIzB1Ob11ke0oapl7/yPaQ/eg5Zt8ByKYNWj04XF/ZDK8Yur2+nv6I0PQY9bdxcGcxZTcKGBGBUvYaXWR50sXZJ5ctjhTbO/X2ww4ErFUGfnP59amkwe6Bb0W6bki4pWb37lsl0u6xxGDajUK+RI8AgUSt37dDmgGZANtLa7G53ICT+m7rwwi/7V9TJZJ8NLtoAHlCzJ+NudWIP744jYyjTtyxcJnhkYlpQpd+SdxgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_0152enc82VWaUfXrAirm4Uh2",
+        "name": "find_activities",
+        "input": {
+          "subject": "fall kids programs"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 728,
+      "output_tokens": 300,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19539,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 245
+      }
+    }
+  },
+  "latencyMs": 4834
+}

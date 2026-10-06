@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply gives Sam a concrete, actionable beat (watch for sitting with support and reaching for food rather than going by the calendar) grounded in Theo's age (5 months). It correctly notes the 6-month benchmark, adds the \"confirm with your provider\" one-clause note (appropriate here as timing guidance), and does not hand the question back. However, it ends with \"Want me to send the full first-foods plan?\" instead of the required fixed line \"Want the full plan? Reply YES and I'll send it.\" — the YES keyword is missing, so the parent's reply would not be recognised as consent to trigger the plan. That is a meaningful shape failure but the advice itself is solid and actionable.",
+    "score": 3
+  }
+}

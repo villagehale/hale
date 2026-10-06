@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text is unambiguous: there is exactly one swim lesson on Thursday (Thu 5:15pm, East pool). The instruction is to move it to 17:45 (5:45pm). The draft cap is 2 and `drafted` contains `calendar_move`, so a change was drafted. The correct reply should name the change and end \"...? YES to confirm.\" However, Hale's reply asks \"Tu veux que je déplace...\" — a clarifying question — when no clarification was needed. The event, the day, and the new time are all unambiguous. Hale also has a draft in `drafted`, meaning it did draft something, but the reply text reads as if it is still asking permission to act rather than presenting the draft for YES confirmation. The reply also omits the required \"YES to confirm\" trigger word — the parent texting back \"oui\" or any other word won't be recognised as consent. Asking a clarifying question on a clear instruction and dropping the YES confirmation word are both meaningful failures.",
+    "score": 2
+  }
+}

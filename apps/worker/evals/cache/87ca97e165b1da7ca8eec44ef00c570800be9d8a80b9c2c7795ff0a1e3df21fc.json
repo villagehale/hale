@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked for four cancellations. The draft cap is 2. Hale drafted the two swims and said it will line up soccer and Wednesday's appointment next — that is exactly the correct handling of an overflow request. The Wednesday \"appointment\" matches the private item at Wed 9:00am, which Hale is correctly treating as a candidate (the parent named it; the shape fits). The reply names both drafted changes, invokes YES to confirm, and flags the remainder without itemising or sending the parent anywhere. One issue: the reply does not end with \"...? YES to confirm.\" or equivalent — it says \"Want me to cancel...\" which is a question but does not include the word YES as the required consent trigger. That is a meaningful miss per the contract rule. Otherwise the reply is tight, accurate, and correctly scoped.",
-    "score": 3
-  }
-}

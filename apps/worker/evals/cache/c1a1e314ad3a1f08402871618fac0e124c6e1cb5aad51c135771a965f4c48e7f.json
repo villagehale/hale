@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly names the scheduled Saturday event (soccer at 10am, Cedarvale Park) from the week, and then correctly surfaces the one offerable find (Central Library story time) with its full details — name, venue, date, free drop-in — as required for an `offerable` item. No invented details, no app referral, no sign-off, no greeting, no markdown, no unnecessary questions. The `stillBeingChecked` count is appropriately not mentioned (no names known for it). The reply is clean, complete, and does exactly the job. One very minor point: it could be slightly tighter, but nothing is wrong or missing.",
-    "score": 5
-  }
-}

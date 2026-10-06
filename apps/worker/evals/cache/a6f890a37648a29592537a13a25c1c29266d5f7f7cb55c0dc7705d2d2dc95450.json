@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M4847M5WC3WZHJKVS5AE4B78",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Regular 2am wakings at 8 aren't typical and are worth a closer look — try asking Ada what's happening when she wakes (worry, noise, a dream) and keep her room cool and dark, since fear or anxiety is a common cause at this age. If it keeps up or she seems distressed, that's worth mentioning to her doctor — confirm with your provider."
+      }
+    ],
+    "usage": {
+      "input_tokens": 947,
+      "output_tokens": 119,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19539,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 2829
+}

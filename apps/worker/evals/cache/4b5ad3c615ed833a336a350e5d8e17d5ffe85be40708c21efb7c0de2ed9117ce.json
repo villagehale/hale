@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly handles the Google Calendar connection ask. The branch that sends the one-tap link is triggered by specific plain words, and Sam's text (\"can you get hooked into my google calendar\") didn't land in that branch. So Hale correctly tells Sam the exact phrase to text to trigger it — \"connect my Google Calendar\" — and says a link will follow. This is precisely the described correct shape: \"the correct reply says the link is a text away and hands the parent the plain words that send it.\" No URL is written out, no app referral, no refusal. It's concise, no greeting, no sign-off, one clear instruction. A very clean answer.",
-    "score": 5
-  }
-}

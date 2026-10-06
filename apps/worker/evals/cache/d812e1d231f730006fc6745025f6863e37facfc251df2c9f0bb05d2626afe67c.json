@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply identifies Milo's age correctly (5, matching 63 months), gives a concrete actionable step (walk him back every time, calmly, minimal talking), adds a motivational tool (sticker chart), and notes the timeframe (a few weeks). It is grounded in child-development guidance for this age. It does not hand the parent back to a doctor, does not diagnose, does not invent details, and does not reference the app. It is missing the fixed closing line \"Want the full plan? Reply YES and I'll send it.\" that parenting questions require — that line is the product working and its absence is a blemish, not a catastrophic failure. The advice itself is actionable enough that a parent could act tonight. No greeting, no sign-off, no markdown. Slightly longer than it needs to be (three sentences where two would suffice), but the content is solid. The missing YES-plan hook is the main deduction.",
+    "score": 4
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M483XWYYDAWDE63XVJNJ7GKD",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Anytime, Sam."
+      }
+    ],
+    "usage": {
+      "input_tokens": 379,
+      "output_tokens": 11,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19539,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 1199
+}

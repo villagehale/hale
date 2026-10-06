@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly surfaces the one scheduled Saturday event (soccer practice, 10am, Cedarvale Park) from the week, and the one offerable activity (Riverdale storytime at Riverdale Library, free drop-in). It correctly appends the nearby-family social proof sentence, which was composed and appended by the runtime, not invented. No URL is written, no app mention, no greeting or sign-off, no markdown. The reply is concise and fully answers the parent's question. The only very minor issue is \"that same day\" is a slightly clunky connector that adds a word or two without adding value, but this is a trivial stylistic blemish at most. Overall this is a clean, correct, complete answer.",
-    "score": 4
-  }
-}

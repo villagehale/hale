@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent's text names exactly one event — \"the thursday swim\" — and the week shows exactly one swim on Thursday (Thu 5:15pm at East pool). The reference is fully resolved: the correct handling is to draft the cancel and ask for YES to confirm, per the contract. Instead, Hale drafted the cancel (good) but then asks a clarifying question (\"Want me to cancel…?\") as if the event were ambiguous — it is not. The parent now has to answer a question the calendar already answered, which is the job handed back. The reply should have said something like \"Cancel Thursday's swim at 5:15pm, East pool — YES to confirm.\" The shape is wrong: a question where a YES-confirmation prompt was required.",
-    "score": 2
-  }
-}

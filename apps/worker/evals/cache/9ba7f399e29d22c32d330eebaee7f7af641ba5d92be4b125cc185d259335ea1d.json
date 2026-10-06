@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent's text names exactly one event — \"thursday swim\" — and the week shows exactly one swim on Thursday (Thu 5:15pm, East pool). The reference is fully resolved; the correct handling is to draft the cancel and ask for YES to confirm, not to ask a clarifying question. The reply asks \"Want me to cancel…?\" as if it needs permission to even draft, when it should have said something like \"I'll cancel Thursday's swim at East pool — reply YES to confirm.\" The draft is present in `drafted`, so Hale did generate the cancel internally, but the reply text never uses the required \"YES to confirm\" phrasing that triggers consent recognition. It's a clarifying question on an unambiguous instruction, which hands the job back to the parent unnecessarily, and it drops the YES confirmation mechanic entirely.",
-    "score": 2
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly surfaces both Saturday items: the soccer practice from the week (correct time and venue) and the offerable Riverdale storytime (verified, name + place + day). The nearby-family count is runtime-appended and correctly included. No invented details, no app referral, no greeting/sign-off, no markdown, one sentence per item. Clean and complete.",
-    "score": 5
-  }
-}

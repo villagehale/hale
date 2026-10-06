@@ -1,0 +1,51 @@
+{
+  "response": {
+    "id": "gen_01M4846SGYV1XRM9A0WJJDSBAP",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "ErYDCsQBCBIYAipACNvUJsRX1dWU/dkWQR5/aSiEPicPCvptf6Liii/o8C1Swzx3TszE3+JSCaXLYazxuFpnPDoJMCyOH3dkw+DsajIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzYjkzYTVkZC03MzAyLTQ4M2YtYWVhZS0zNjIwNzU1NDhhZTF6HnVwcm9mXzAxMUNma1NibmJZZEV1SDZ5Uk1Ta01RUJoBEQoPY2xhdWRlLXNvbm5ldC01qAHo2ZLWBhIMGwZYh9H73LB2kejEGgzQPqVBMuTT+iwYw1wiMNKEjB/XYb/GaxhMBgCl925km27X4bs+qwCuaubB8xWOCVvyuiR/NackDbeSlMoRRiqeAfqzTCjyt5L/WGeM4I/vE8D5BYcGrz/9h+kh+LWZzuXvIObMN464dIYXiW1QcWjxX61Np6xhJWYjbegnwlqfBhR7sLkf+vd14kuiQbyvc0X2M4qxDr+KjeLDMX7sz99MAuFQPcILlY7zHA5GE7l9h71jpmvFcy57QrL6O9zdEx2chGBXM3sV1eCpv60D+4ldU5+WpNMg6zP5VUUGrwdFGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01F26VuS1uY7nYpwjDr8zPQ3",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "toddler",
+          "ageMonths": 19
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01VHMnSpcZLEtyhGh4QWHWqc",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-remy",
+          "offer": "Want the full night-wakings plan for Remy?"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 432,
+      "output_tokens": 249,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19539,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 54
+      }
+    }
+  },
+  "latencyMs": 3000
+}

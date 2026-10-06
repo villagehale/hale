@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M4846WF1CNQKVH7C55NZ4KAX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "For night wakings at this age, try holding a consistent, brief response each time she wakes so she learns to resettle without extra stimulation or feeding. Want the full night-wakings plan for Remy?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 1240,
+      "output_tokens": 64,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19539,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 1943
+}
