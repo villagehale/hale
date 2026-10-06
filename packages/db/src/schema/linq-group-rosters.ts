@@ -61,12 +61,16 @@ export const LINQ_ROSTER_MEMBER_STATUSES = [
 ] as const;
 export type LinqRosterMemberStatus = (typeof LINQ_ROSTER_MEMBER_STATUSES)[number];
 
-/** The scoped roles of role-scope.ts; `extended`/`service` are never granted here. */
+/**
+ * Scoped seats, plus `extended` for an aunt, uncle, or cousin who said they are
+ * family. `service` is never granted. `extended` is family, not `not_family`.
+ */
 export const LINQ_ROSTER_CONFIRMED_ROLES = [
   'co_parent',
   'grandparent',
   'nanny',
   'babysitter',
+  'extended',
 ] as const;
 export type LinqRosterConfirmedRole = (typeof LINQ_ROSTER_CONFIRMED_ROLES)[number];
 
@@ -138,7 +142,7 @@ export const linqGroupRosterMembers = pgTable(
     ),
     confirmedRoleCheck: check(
       'linq_group_roster_members_confirmed_role_check',
-      sql`${table.confirmedRole} in ('co_parent', 'grandparent', 'nanny', 'babysitter')`,
+      sql`${table.confirmedRole} in ('co_parent', 'grandparent', 'nanny', 'babysitter', 'extended')`,
     ),
     connectStepCheck: check(
       'linq_group_roster_members_connect_step_check',

@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS "linq_group_roster_members" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "linq_group_roster_members_proposed_role_check" CHECK ("proposed_role" IN ('parent', 'grandparent', 'nanny', 'babysitter', 'unknown')),
 	CONSTRAINT "linq_group_roster_members_status_check" CHECK ("status" IN ('known_parent', 'proposed', 'asked', 'reasked', 'confirmed', 'declined', 'not_family', 'refused', 'left', 'removed')),
-	CONSTRAINT "linq_group_roster_members_confirmed_role_check" CHECK ("confirmed_role" IN ('co_parent', 'grandparent', 'nanny', 'babysitter')),
+	CONSTRAINT "linq_group_roster_members_confirmed_role_check" CHECK ("confirmed_role" IN ('co_parent', 'grandparent', 'nanny', 'babysitter', 'extended')),
 	CONSTRAINT "linq_group_roster_members_connect_step_check" CHECK ("connect_step" IN ('none', 'link_sent', 'unreachable', 'done'))
 );--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "linq_group_roster_members_live_uniq" ON "linq_group_roster_members" ("chat_id","phone_e164_hash") WHERE "status" NOT IN ('left', 'removed');--> statement-breakpoint

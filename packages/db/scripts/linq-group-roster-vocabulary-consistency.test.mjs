@@ -64,13 +64,15 @@ describe('0158_linq_group_roster vocabulary · SQL CHECK ↔ TypeScript source',
     expect(checkedValues(sql, constraint)).toEqual(sourceValues(ts, source));
   });
 
-  it('never seats an extended/service role — the confirmed roles are the scoped ones', () => {
+  it('seats aunt, uncle, and cousin as extended family, and never seats service', () => {
     expect(sourceValues(ts, 'LINQ_ROSTER_CONFIRMED_ROLES')).toEqual([
       'babysitter',
       'co_parent',
+      'extended',
       'grandparent',
       'nanny',
     ]);
+    expect(sourceValues(ts, 'LINQ_ROSTER_CONFIRMED_ROLES')).not.toContain('service');
   });
 });
 
