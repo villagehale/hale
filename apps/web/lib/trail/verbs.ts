@@ -179,6 +179,12 @@ export const AUDIT_VERBS = [
   'linq_group_stranger_held',
   'linq_group_roster_fetched',
   'linq_group_ejected',
+  'linq_group_roster_asked',
+  'linq_group_role_confirmed',
+  'linq_group_role_declined',
+  'linq_group_role_reasked',
+  'group_line_unsent',
+  'group_line_locked_fallback',
   'linq_multi_family_joined',
   'linq_multi_family_left',
   'linq_multi_family_unseated',
@@ -696,6 +702,30 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   linq_group_ejected: {
     sentence: 'Hale left your family group and went back to texting you directly',
+    family: 'note',
+  },
+  linq_group_roster_asked: {
+    sentence: 'Hale asked the people in your family group who they are',
+    family: 'awaiting',
+  },
+  linq_group_role_confirmed: {
+    sentence: 'Someone in your family group said who they are, and Hale added them',
+    family: 'done',
+  },
+  linq_group_role_declined: {
+    sentence: 'Someone in your family group asked not to be included',
+    family: 'note',
+  },
+  linq_group_role_reasked: {
+    sentence: 'Hale asked someone in your family group again who they are',
+    family: 'note',
+  },
+  group_line_unsent: {
+    sentence: 'Hale held a message for your family group because it could not write it well',
+    family: 'problem',
+  },
+  group_line_locked_fallback: {
+    sentence: 'Hale used its standard wording to ask who is who in your family group',
     family: 'note',
   },
   linq_multi_family_joined: {

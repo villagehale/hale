@@ -260,6 +260,32 @@ describe('the watch gate, for a seat that never saw the watch offer', () => {
     expect(await ports.channelEnrolled(coParentUserId)).toBe(true);
   });
 
+  it('lets a co-parent seated on their own group reply through on that reply', async () => {
+    const seeded = await seedFamily();
+    await grantWatch(seeded);
+    const [user] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:${phoneBlindIndex(PARTNER_PHONE)}` })
+      .returning({ id: schema.users.id });
+    const coParentUserId = user?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: seeded.familyId, userId: coParentUserId, role: 'co_parent' });
+    await db.database.insert(schema.consentRecords).values({
+      userId: coParentUserId,
+      familyId: seeded.familyId,
+      consentType: 'sms_service_messages',
+      granted: true,
+      consentScope: 'linq_group_role_reply',
+      policyVersion: POLICY_VERSION,
+      evidence: { verbatimReply: "I'm his dad", channel: 'imessage' },
+    });
+
+    expect(await buildOutboundGatePorts(db.database).watchConsentGranted(coParentUserId)).toBe(
+      true,
+    );
+  });
+
   it('refuses a co-parent who has left — departure withdrew the very row it reads', async () => {
     const seeded = await seedFamily();
     const coParentUserId = await seatCoParent(seeded);

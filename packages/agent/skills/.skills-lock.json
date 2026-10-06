@@ -91,6 +91,14 @@
     "file": "gmail-draft-notice.md",
     "sha256": "bbc089b1b8eda41ced0e4b6d8f0e209d101046fd6a05636d62efbb1fcab4d44b"
   },
+  "group-onboarding-voice.md": {
+    "file": "group-onboarding-voice.md",
+    "sha256": "1d9ba11f1e8c99debdd0c2ae308243e11992d39c78453dc17a27db6abcaf015a"
+  },
+  "group-roster-reading.md": {
+    "file": "group-roster-reading.md",
+    "sha256": "6a9301d78fcc8ea6ef799c4b11165941aeaed56cb95aed02ffc5dd7ceea7265f"
+  },
   "identity-ask.md": {
     "file": "identity-ask.md",
     "sha256": "85602f9dcaedf34dc490c99f42bf272ebc3555c40efddf2ef1eb553d1224c36c"
