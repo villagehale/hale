@@ -19,7 +19,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { fakeSpokenLineComposer } from '../voice/fakes';
+import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
 import { handleLinqInboundRequest } from './inbound';
 import type { ListChatHandles } from './roster';
 
@@ -192,7 +192,7 @@ function door() {
       outcomes.push(outcome);
     },
     now: () => NOW,
-    groupVoice: fakeSpokenLineComposer(),
+    groupVoice: fakeGroupOnboardingComposer(),
     listChatHandles: listHandles,
     groupLimiter: new PostgresRateLimiter(db.database),
     sendGroupText: async (input: { chatId: string; text: string }) => {
