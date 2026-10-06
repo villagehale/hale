@@ -115,7 +115,8 @@ export const linqGroupRosterMembers = pgTable(
       .notNull()
       .references(() => linqGroupRosters.id, { onDelete: 'cascade' }),
     chatId: text('chat_id').notNull(),
-    phoneE164Encrypted: text('phone_e164_encrypted').notNull(),
+    /** Null once the retention sweep released it (0159); the hash is kept. */
+    phoneE164Encrypted: text('phone_e164_encrypted'),
     phoneE164Hash: text('phone_e164_hash').notNull(),
     knownUserId: uuid('known_user_id').references(() => users.id, { onDelete: 'set null' }),
     userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),

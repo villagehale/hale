@@ -329,7 +329,7 @@ async function settleRoster(
     source: schema.LinqGroupRosterSource;
     familyHint: string | null;
     /** One per real phone in the chat; Hale's line and non-phone handles already dropped. */
-    members: ReadonlyArray<{ hash: string; encrypted: string }>;
+    members: ReadonlyArray<{ hash: string; encrypted: string | null }>;
     skippedHandles: number;
     now: Date;
   },
@@ -382,7 +382,7 @@ async function settleRoster(
           .update(schema.linqGroupRosterMembers)
           .set(fields)
           .where(eq(schema.linqGroupRosterMembers.id, row.id));
-      } else {
+      } else if (member.encrypted) {
         await tx
           .insert(schema.linqGroupRosterMembers)
           .values({

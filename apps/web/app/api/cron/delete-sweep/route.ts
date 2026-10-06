@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
+import { purgeExpiredCheckInNotes } from '~/lib/channel/checkin/notes';
+import { sweepRosterRetention } from '~/lib/channel/linq/roster-retention';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
-import { purgeExpiredCheckInNotes } from '~/lib/channel/checkin/notes';
 import { runDeletionSweep } from '~/lib/rights/delete';
 
 // Node runtime: the sweep deletes via the postgres driver (not edge).
@@ -18,7 +19,11 @@ export const runtime = 'nodejs';
  * (Law 25: destroy once the purpose is achieved). The evening check-in's day notes carry
  * a thirty-day stamp and are purged here rather than on their own feature's cron for one
  * reason: that cron is behind the F14 dark-launch flag, and a retention promise that
- * stops being kept when a feature flag flips is not a retention promise.
+ * stops being kept when a feature flag flips is not a retention promise. The Linq group
+ * roster's numbers ride on this same cron, but only while group onboarding v2 is on.
+ * Flag off the call returns `flag_off` and releases nothing, which is today's sweep.
+ * 0158 and 0159 have to be applied together before that flag goes on: 0159 is what
+ * makes the number column nullable, and the release UPDATE throws if it is still NOT NULL.
  *
  * Cron-secret gated like every cron route: a request without the matching
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and does NOTHING — no DB read,
@@ -29,6 +34,7 @@ export const runtime = 'nodejs';
 export const GET = cronRoute('delete-sweep', async () => {
   const summary = await runDeletionSweep(db());
   const checkInNotesPurged = await purgeExpiredCheckInNotes(db());
+  const groupRosterRetention = await sweepRosterRetention(db());
   if (summary.erased > 0) {
     console.info(
       { erased: summary.erased, purgedObjects: summary.purgedObjects },
@@ -41,5 +47,15 @@ export const GET = cronRoute('delete-sweep', async () => {
     // sweep above answers a REQUEST, and this one closes doors nobody asked about.
     console.info(summary.orphans, 'cron/delete-sweep: closed accounts no household holds');
   }
-  return NextResponse.json({ ok: true, ...summary, checkInNotesPurged }, { status: 200 });
+  if (
+    groupRosterRetention.outcome === 'swept' &&
+    (groupRosterRetention.familylessRostersDeleted > 0 || groupRosterRetention.numbersReleased > 0)
+  ) {
+    // Counts only (rule #1). The family-less deletions have no audit row to live in.
+    console.info(groupRosterRetention, 'cron/delete-sweep: released group roster numbers');
+  }
+  return NextResponse.json(
+    { ok: true, ...summary, checkInNotesPurged, groupRosterRetention },
+    { status: 200 },
+  );
 });
