@@ -249,6 +249,27 @@ describe('assembleSpokenLine', () => {
     ).toBe('Ton coparent a quitté Hale. Tu veux que je reste?');
   });
 
+  it('does not insert a full stop through a question the model split across the two fields', () => {
+    expect(
+      assembleSpokenLine(1, {
+        before: "Comment ça s'est passé",
+        question: 'la gymnastique?',
+      }),
+    ).toBe("Comment ça s'est passé la gymnastique?");
+    expect(
+      assembleSpokenLine(1, {
+        before: 'How was the day at Rainbow Room PA day camp',
+        question: 'What stood out?',
+      }),
+    ).toBe('How was the day at Rainbow Room PA day camp What stood out?');
+    expect(
+      assembleSpokenLine(1, {
+        before: 'Sam, how was gymnastics',
+        question: 'today?',
+      }),
+    ).toBe('Sam, how was gymnastics today?');
+  });
+
   it('keeps a question the model wrote in both fields once', () => {
     expect(
       assembleSpokenLine(1, {

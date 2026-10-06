@@ -155,12 +155,12 @@ export function spokenLineToolSchema(questions: 0 | 1): {
       before: {
         type: 'string',
         description:
-          'Sentences before the question. No question mark. Empty string when the message is only the question.',
+          'Non-question sentences before the one question. No question mark, and not the start of that question. Empty string when the message is only the question.',
       },
       question: {
         type: 'string',
         description:
-          'The one question: a full sentence whose last character is ?. A period or a statement is invalid.',
+          'Exactly one question, and it is the whole final sentence, first word through the last. Last character is ?. Do not leave its start in before. A period, a fragment, or a second question is invalid.',
       },
     },
     required: ['before', 'question'],
@@ -170,7 +170,7 @@ export function spokenLineToolSchema(questions: 0 | 1): {
 /** Tool description paired with {@link spokenLineToolSchema}. Statement copy is the historical one. */
 export function spokenLineToolDescription(questions: 0 | 1): string {
   return questions === 1
-    ? 'Return before and question. question is one sentence and its last character is ?. before does not repeat that question. No space before ?.'
+    ? 'Return before and question. question is the one full question, the final sentence, first word through last, and its last character is ?. before holds only non-question context and does not start that question. No second question. No space before ?.'
     : 'Return the one text message to send.';
 }
 
@@ -216,9 +216,33 @@ function closeSentence(before: string): string {
 }
 
 /**
+ * Interrogative openers. A period after one of these turns a question the model
+ * wrote into a statement ("How was the day." / "Comment ça s'est passé.").
+ */
+const QUESTION_OPENER =
+  /^(?:how|what|when|where|who|why|which|whose|do|does|did|can|could|would|will|shall|is|are|was|were|comment|pourquoi|quand|où|qui|quel|quelle|quels|quelles|est-ce|voulez|veux|peux)\b/iu;
+
+/** A lowercase first letter means `question` continues the clause in `before`. */
+function continuesSentence(question: string): boolean {
+  const first = question[0];
+  return first !== undefined && /\p{Ll}/u.test(first);
+}
+
+/**
+ * True when inserting a full stop would close a question the model left
+ * unpunctuated, including after a leading name ("Sam, how was today").
+ */
+function wouldBreakAQuestion(before: string): boolean {
+  if (SENTENCE_END.test(before)) return false;
+  const body = before.replace(/^[\p{L}][\p{L}'’.-]{0,40},\s+/u, '');
+  return QUESTION_OPENER.test(body);
+}
+
+/**
  * Join the tool fields into the one bubble the parent would read.
- * A missing period between the two fields is added. No words are added.
- * A question the model wrote in both fields is kept once.
+ * A missing period is added only between a statement and a new sentence.
+ * A question the model wrote is not closed with a full stop, and a question
+ * written in both fields is kept once. No words are added.
  */
 export function assembleSpokenLine(
   questions: 0 | 1,
@@ -229,13 +253,16 @@ export function assembleSpokenLine(
   const before = withoutRepeatedQuestion((value.before ?? '').trim(), question);
   if (before.length === 0) return question;
   if (question.length === 0) return before;
+  if (continuesSentence(question) || wouldBreakAQuestion(before)) {
+    return `${before} ${question}`;
+  }
   return `${closeSentence(before)} ${question}`;
 }
 
 /** What to tell the model on the one retry. Not a parent-facing sentence. */
 export function spokenLineRefusalFix(reason: SpokenLineJudgeFailure): string {
   if (reason === 'question') {
-    return 'The last sentence must be exactly one question and its last character must be ?. A period is a refusal. When questions is 0 there is no question mark anywhere.';
+    return 'The last sentence must be exactly one question and its last character must be ?. Put that whole question in question, first word included. A period is a refusal, and so is a second question. When questions is 0 there is no question mark anywhere.';
   }
   if (reason === 'missing') {
     return 'Every string in mustMention must appear in the line, copied as given. A name in that list is said. you, you two, and vous do not stand in for it.';
