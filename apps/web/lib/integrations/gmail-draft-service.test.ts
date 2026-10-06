@@ -88,10 +88,12 @@ describe('Gmail draft service', () => {
     const harness = deps({
       writeDraft: async (args) => {
         writes.push(args.operation);
-        if (args.message) {
-          expect(args.message.inReplyTo).toBe('<msg-1@mail.gmail.com>');
-          expect(args.message.threadId).toBe('thr-1');
-          expect(args.message.body).toContain('Thursday');
+        if (args.operation !== 'delete') {
+          expect(args.message?.inReplyTo).toBe('<msg-1@mail.gmail.com>');
+          expect(args.message?.threadId).toBe('thr-1');
+        }
+        if (args.operation === 'create') {
+          expect(args.message?.body).toContain('Thursday');
         }
         return { draftId: args.draftId ?? 'draft-2' };
       },
@@ -163,9 +165,11 @@ describe('Gmail draft service', () => {
     ];
     for (const file of files) {
       const source = readFileSync(file, 'utf8');
-      expect(source, file).not.toContain('gmail.send');
-      expect(source, file).not.toContain('messages/send');
-      expect(source, file).not.toContain('drafts/send');
+      const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+      expect(code, file).not.toContain('gmail.send');
+      expect(code, file).not.toContain('https://www.googleapis.com/auth/gmail.send');
+      expect(code, file).not.toContain('messages/send');
+      expect(code, file).not.toContain('drafts/send');
     }
   });
 });

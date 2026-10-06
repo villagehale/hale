@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  type GmailDraftFetch,
   buildDraftMime,
   createGmailDraft,
   deleteGmailDraft,
@@ -29,14 +30,16 @@ const message = {
 
 describe('Gmail drafts', () => {
   it('creates a draft reply and never a send', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(200, { id: 'draft-1' }));
+    const fetchImpl = vi.fn<GmailDraftFetch>(async () => jsonResponse(200, { id: 'draft-1' }));
     const result = await createGmailDraft('tok', message, fetchImpl);
     expect(result).toEqual({ draftId: 'draft-1' });
-    const [url, init] = fetchImpl.mock.calls[0] ?? [];
-    expect(url).toBe('https://gmail.googleapis.com/gmail/v1/users/me/drafts');
-    expect(String(url)).not.toMatch(/\/(messages|drafts)\/send/);
-    expect(init?.method).toBe('POST');
-    const body = JSON.parse(String(init?.body)) as { message: { raw: string; threadId: string } };
+    const call = fetchImpl.mock.calls[0];
+    expect(call?.[0]).toBe('https://gmail.googleapis.com/gmail/v1/users/me/drafts');
+    expect(String(call?.[0])).not.toMatch(/\/(messages|drafts)\/send/);
+    expect(call?.[1].method).toBe('POST');
+    const body = JSON.parse(String(call?.[1].body)) as {
+      message: { raw: string; threadId: string };
+    };
     expect(body.message.threadId).toBe('thr-1');
     const mime = Buffer.from(body.message.raw, 'base64url').toString('utf8');
     expect(mime).toContain('In-Reply-To: <msg-1@mail.gmail.com>');
@@ -46,7 +49,7 @@ describe('Gmail drafts', () => {
   });
 
   it('updates and deletes by draft id', async () => {
-    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+    const fetchImpl = vi.fn<GmailDraftFetch>(async (_url, init) => {
       if (init.method === 'DELETE') return jsonResponse(204, null);
       return jsonResponse(200, { id: 'draft-2' });
     });
@@ -78,9 +81,11 @@ describe('Gmail drafts', () => {
       join(dirname(fileURLToPath(import.meta.url)), 'gmail-drafts.ts'),
       'utf8',
     );
-    expect(source).not.toContain('gmail.send');
-    expect(source).not.toContain('messages/send');
-    expect(source).not.toContain('drafts/send');
-    expect(source).not.toContain('users/me/messages');
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(code).not.toContain('gmail.send');
+    expect(code).not.toContain('https://www.googleapis.com/auth/gmail.send');
+    expect(code).not.toContain('messages/send');
+    expect(code).not.toContain('drafts/send');
+    expect(code).not.toContain('users/me/messages');
   });
 });

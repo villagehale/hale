@@ -131,7 +131,7 @@ async function ready(
 
   const connections = await deps.listGmail(request.familyId);
   const selected = selectGmailConnection({ actorUserId: request.actorUserId, connections });
-  if (!selected.ok) return selected;
+  if (!selected.ok) return { status: 'skipped', reason: selected.reason };
 
   if (request.operation !== 'create') {
     const draftId = request.draftId ?? '';

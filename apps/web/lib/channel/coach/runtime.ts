@@ -181,7 +181,7 @@ export interface ChannelCoachPorts {
     /** The turn's offer ledger, owned by the runtime so the provenance match and the
      * nearby count read the same list. */
     offered: TurnOfferLedger,
-    onGmailNotice: (notice: GmailDraftNoticeBox) => void,
+    onGmailNotice?: (notice: GmailDraftNoticeBox) => void,
   ): RegisteredTool[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about one of the activities this turn offered, or
@@ -412,8 +412,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           // paid a model (and sometimes a 50s web search) for, and nothing downstream can
           // tell a trimmed reply from one that fit. A count makes it a rate.
           let trimmedOverBy: number | null = null;
-          const noticeReady = gmailNotice?.status === 'ready';
-          const spoken = noticeReady ? gmailNotice.text : result.answer;
+          const noticeReady = gmailNotice !== null && gmailNotice.status === 'ready';
+          const spoken =
+            gmailNotice !== null && gmailNotice.status === 'ready'
+              ? gmailNotice.text
+              : result.answer;
           if (!spoken) {
             await ports.recordRun(record('failed'));
             throw failed(
