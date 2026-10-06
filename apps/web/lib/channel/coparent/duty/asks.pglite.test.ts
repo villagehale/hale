@@ -20,6 +20,7 @@ import {
   dutyStopAskingActive,
   emailDutyInGroup,
   planFamilyDutyAsks,
+  renderDutyLines,
   sweepDutyAsks,
 } from './asks';
 import { DUTY_NIGHT_BEFORE_COPY_EN } from './copy';
@@ -205,6 +206,41 @@ describe('duty ask sweep', () => {
     expect(questions).toHaveLength(1);
     expect(questions[0]?.mode).toBe('which_kid');
     expect(view.plan.foldLines.some((row) => row.mode === 'week_overview')).toBe(true);
+  });
+
+  it("never names a 13+ child or their event in a group duty line, while a younger child's still asks", async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
+    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
+    const family = await seedFamily(db.database, 'Teen in house');
+    await secondParent(family.familyId, 'Alex');
+    await claimGroup(family.familyId, 'chat-teen');
+    await seedChild(db.database, family.familyId, 'Noor', 14 * 12, undefined, SUNDAY_AFTERNOON);
+    await seedChild(db.database, family.familyId, 'Maya', 36, undefined, SUNDAY_AFTERNOON);
+    await seedChild(db.database, family.familyId, 'Leo', 48, undefined, SUNDAY_AFTERNOON);
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-teen-hockey',
+      title: 'Noor hockey',
+      start: new Date('2026-09-30T19:00:00.000Z'),
+    });
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-unnamed-swim',
+      title: 'Swim',
+      start: MONDAY,
+    });
+    const view = await planFamilyDutyAsks(db.database, {
+      familyId: family.familyId,
+      now: SUNDAY_AFTERNOON,
+      bubbleLeaving: true,
+    });
+    if (!('plan' in view)) throw new Error('expected a duty plan');
+    const text = renderDutyLines(view.plan.foldLines, view.render) ?? '';
+    expect(text).toContain('Maya');
+    expect(text).not.toContain('Noor');
+    expect(text).not.toMatch(/hockey/i);
   });
 
   it('asks when both parents claim and does not pick a winner', async () => {

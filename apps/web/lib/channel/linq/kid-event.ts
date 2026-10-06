@@ -89,6 +89,11 @@ export function splitKidEvent(
   return null;
 }
 
+/** True when the text names one of these teens as a whole word (rule #1). */
+export function namesTeen(text: string, teenNames: readonly string[]): boolean {
+  return teenNames.some((name) => name.trim().length >= 2 && hasWord(text, name.trim()));
+}
+
 /**
  * A block about a teen keeps its time — its parent is still busy then — and loses its
  * title, so no group line can name the teen or the event (rule #1). A title that names

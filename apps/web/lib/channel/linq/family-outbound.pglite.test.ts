@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CO_PARENT_ASK } from '~/lib/channel/intake/copy';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedChild } from '~/lib/testing/pglite';
 import { queueActivityDecisionFromReply } from './activity-decision';
 import {
   deliverFamilyOutbound,
@@ -303,6 +303,55 @@ describe('a 1:1 decision syncs the group', () => {
       now: NOW,
     });
     expect(skipped).toBe('skipped');
+  });
+
+  it("never names a 13+ child in the group, at queue or at flush, while a younger child's pick still goes", async () => {
+    const seeded = await seed(GROUP);
+    await seedChild(db.database, seeded.familyId, 'Noor', 14 * 12, undefined, NOW);
+    await seedChild(db.database, seeded.familyId, 'Maya', 4 * 12, undefined, NOW);
+    const http = wire();
+    const teen = await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'picked',
+        activity: 'hockey',
+        kid: 'Noor',
+        day: 'Monday',
+        time: '6:00',
+      },
+      now: NOW,
+    });
+    expect(teen).toBe('skipped');
+    // A row already waiting — queued before the gate, or before a birthday — is still held back.
+    await db.database.insert(schema.groupDecisionSync).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: 'passed',
+      activity: 'debate',
+      kid: 'Noor',
+      flushAfter: NOW,
+      createdAt: NOW,
+    });
+    const younger = await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: { decision: 'picked', activity: 'swim', kid: 'Maya', day: 'Tuesday', time: '4:00' },
+      now: NOW,
+    });
+    expect(younger).toBe('queued');
+    const flushed = await flushGroupDecisionSyncs(db.database, {
+      now: new Date(NOW.getTime() + 10 * 60 * 1000),
+      fetch: http.fetch,
+    });
+    expect(flushed.sent).toBe(1);
+    const body = http.bodies();
+    expect(body).toContain('Quick sync: Barton picked swim for Maya, Tuesday at 4:00.');
+    expect(body).not.toContain('Noor');
+    expect(body).not.toMatch(/hockey|debate/);
   });
 
   it('queues one row for a repeated pick, and does not sync it again the same day', async () => {

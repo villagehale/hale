@@ -39,7 +39,7 @@ import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { linqFromE164, linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
+import { linqFromE164 } from '~/lib/channel/linq/config';
 import {
   deliverHaleLinqContactCard,
   finishCardWithinReplyBudget,
@@ -402,7 +402,7 @@ export type IntakeOutcome =
    * about the group (linq/roster-stop.ts answers it), so it revokes no channel here and
    * nothing is acknowledged into the group from this door.
    */
-  | { status: 'ignored'; reason: 'invalid_number' | 'no_open_conversation' | 'group_stop' }
+  | { status: 'ignored'; reason: 'invalid_number' | 'no_open_conversation' }
   // VIL-241 · M6 — the caregiver branches. They share this entry point because a
   // caregiver texts the SAME number a parent does; what differs is who the number
   // belongs to, which is a lookup, not a second inbox.
@@ -4952,13 +4952,9 @@ async function handleStop(
 ): Promise<IntakeOutcome> {
   const { phoneE164, inbound, session, now, language, providerAnswered } = args;
 
-  if (inbound.isGroup === true && linqGroupOnboardingV2Enabled()) {
-    console.warn(
-      { outcome: 'group_stop' },
-      'intake: a STOP in the family group is answered by the roster',
-    );
-    return { status: 'ignored', reason: 'group_stop' };
-  }
+  // A group STOP the roster answered (roster-stop.ts) never reaches here. One it could
+  // not answer — no roster yet, a roster that is not open, an unclaimed chat — takes this
+  // path, so a STOP never does less than it did before the roster existed.
 
   // VIL-241 · "Reply STOP anytime" is printed on the invite, so it has to reach the
   // invite: a STOP from someone we asked but who never accepted closes the invitation

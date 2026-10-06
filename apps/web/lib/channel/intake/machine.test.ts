@@ -1476,12 +1476,11 @@ describe('intake · CASL keywords', () => {
     expect(withdrawal).toBeDefined();
   });
 
-  it('with group onboarding v2 on, a STOP that arrives as a group turn revokes nothing and acks nothing here', async () => {
+  it('with group onboarding v2 on, a group STOP the roster did not answer still revokes and acks, as with v2 off', async () => {
     vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
     const { fake, transport, deps } = harness({});
     await text(fake, transport, deps, 'hi');
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
-    const sentBefore = transport.bodies().length;
 
     const result = await handleInboundSms(
       fake.db,
@@ -1493,25 +1492,13 @@ describe('intake · CASL keywords', () => {
       deps,
     );
 
-    expect(result).toEqual({ status: 'ignored', reason: 'group_stop' });
-    expect(transport.bodies()).toHaveLength(sentBefore);
+    expect(result).toEqual({ status: 'stopped', ack: 'sent' });
+    expect(transport.bodies().at(-1)).toBe(STOP_ACK);
     expect(
       fake.writes.some(
         (w) => w.op === 'update' && w.table === schema.parentChannels && w.payload.revokedAt,
       ),
-    ).toBe(false);
-
-    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'false');
-    const control = await handleInboundSms(
-      fake.db,
-      transport.inbound(PHONE, 'STOP', {
-        transport: 'imessage',
-        chatId: 'chat-group',
-        isGroup: true,
-      }),
-      deps,
-    );
-    expect(control).toEqual({ status: 'stopped', ack: 'sent' });
+    ).toBe(true);
     vi.unstubAllEnvs();
   });
 

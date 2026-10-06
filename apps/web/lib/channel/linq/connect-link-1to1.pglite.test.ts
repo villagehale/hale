@@ -52,14 +52,14 @@ afterEach(async () => {
   await db.exec('truncate table families, users cascade');
 });
 
-function oneToOne(options: { refuseText?: string } = {}) {
+function oneToOne(options: { refuseText?: string; chatId?: string } = {}) {
   const texts: Array<{ to: string; body: string }> = [];
   const links: Array<{ chatId: string; url: string }> = [];
   const send: OneToOneSend = {
     text: async (input) => {
       if (options.refuseText) throw new LinqSendError(options.refuseText, 403, true);
       texts.push(input);
-      return { providerMessageId: `text-${texts.length}`, chatId: DIRECT };
+      return { providerMessageId: `text-${texts.length}`, chatId: options.chatId ?? DIRECT };
     },
     link: async (input) => {
       links.push(input);
@@ -326,6 +326,26 @@ describe('deliverConnectLinkOneToOne', () => {
       expect(recalled?.usable).toBe(true);
     }
     expect(await connectStep()).toBe('link_sent');
+  });
+
+  it('sends no link when the chat Linq opened for the 1:1 is the family group', async () => {
+    const { familyId, userId } = await seedConfirmedGroup();
+    const resolvedToGroup = oneToOne({ chatId: GROUP });
+    const voice = fakeSpokenLineComposer();
+
+    const result = await deliverConnectLinkOneToOne(db.database, {
+      familyId,
+      userId,
+      groupChatId: GROUP,
+      now: NOW,
+      voice,
+      oneToOne: resolvedToGroup.send,
+    });
+
+    expect(result).toEqual({ outcome: 'link_not_sent', code: 'chat_is_group' });
+    expect(resolvedToGroup.links).toEqual([]);
+    expect(await connectStep()).toBe('none');
+    expect(await verbs(familyId)).not.toContain('linq_group_connect_link_sent');
   });
 
   it('names a missing Linq key without asking anyone in the group, and tries again later', async () => {

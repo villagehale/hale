@@ -10,12 +10,13 @@ import {
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
-import type { ContentClass } from '~/lib/channel/role-scope';
+import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { linqApiKey, linqGroupCoparentEnabled } from './config';
 import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
 import { type GroupHoldReason, groupAudienceAllows } from './group-audience';
 import { groupPassedSyncLine, groupPickedSyncLine } from './group-coparent-copy';
+import { namesTeen } from './kid-event';
 import { LinqSendError, sendLinqChatMessage } from './transport';
 
 /**
@@ -507,10 +508,25 @@ export async function familySpeech(
   return { name, language };
 }
 
+/** The names of this family's 13+ children as of `now`: never said in a group line (rule #1). */
+async function familyTeenNames(database: Database, familyId: string, now: Date): Promise<string[]> {
+  const children = await database
+    .select({
+      id: schema.children.id,
+      name: schema.children.name,
+      dateOfBirth: schema.children.dateOfBirth,
+    })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  const teens = teenChildIds(children, now);
+  return children.filter((child) => teens.has(child.id)).map((child) => child.name);
+}
+
 /**
  * Queue one picked or passed activity from a 1:1 thread. The group hears it
  * only after the thread has been quiet. A question, a piece of advice, or a
- * decision this template does not cover is not queued.
+ * decision this template does not cover is not queued, and neither is one about a
+ * 13+ child.
  */
 export async function queueGroupActivityDecision(
   database: Database,
@@ -535,6 +551,8 @@ export async function queueGroupActivityDecision(
   if (decision.decision === 'duty' && !dutyTitleMayBeSpoken(decision.activity)) return 'skipped';
   const activity = decision.activity.trim();
   const kid = decision.kid.trim();
+  const teens = await familyTeenNames(database, input.familyId, input.now);
+  if (namesTeen(`${activity} ${kid}`, teens)) return 'skipped';
   const day = timed ? (decision.day?.trim() ?? null) : null;
   const time = timed ? (decision.time?.trim() ?? null) : null;
   const flushAfter = new Date(input.now.getTime() + SETTLE_MS);
@@ -626,7 +644,8 @@ export async function noteGroupSyncConversation(
 /**
  * Send the waiting decisions whose 1:1 has been quiet. One bubble, at most
  * three lines, never a second bubble for the same sitting. Quiet hours hold
- * the bubble; the rows stay queued.
+ * the bubble; the rows stay queued. A row about a child who is 13+ by now is
+ * withheld: marked flushed and never said.
  */
 export async function flushGroupDecisionSyncs(
   database: Database,
@@ -660,7 +679,7 @@ export async function flushGroupDecisionSyncs(
   }
   let sent = 0;
   let held = 0;
-  for (const [familyId, rows] of byFamily) {
+  for (const [familyId, queued] of byFamily) {
     const target = await familyOutboundTarget(database, familyId, {
       contentClass: DECISION_SYNC_CLASS,
     });
@@ -676,6 +695,19 @@ export async function flushGroupDecisionSyncs(
         );
       continue;
     }
+    const teens = await familyTeenNames(database, familyId, input.now);
+    const withheld = queued
+      .filter((row) => namesTeen(`${row.activity} ${row.kid}`, teens))
+      .map((row) => row.id);
+    if (withheld.length > 0) {
+      await database
+        .update(schema.groupDecisionSync)
+        .set({ flushedAt: input.now })
+        .where(inArray(schema.groupDecisionSync.id, withheld));
+      console.info({ familyId, withheld: withheld.length }, 'family outbound: teen sync withheld');
+    }
+    const rows = queued.filter((row) => !withheld.includes(row.id));
+    if (rows.length === 0) continue;
     if (await householdQuiet(database, familyId, input.now)) {
       held += 1;
       continue;
