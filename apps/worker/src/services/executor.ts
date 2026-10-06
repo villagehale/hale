@@ -8,6 +8,12 @@ import {
   realCalendarClient,
 } from './calendar-client.js';
 import {
+  type GoogleCalendarOp,
+  type GoogleCalendarPlacement,
+  type GoogleCalendarSyncReport,
+  unwiredGoogleCalendar,
+} from './google-calendar-placement.js';
+import {
   type CalendarCancelInput,
   type CalendarMoveInput,
   type CalendarPlacementInput,
@@ -29,6 +35,8 @@ interface ExecutorRunInput {
   familyId: string;
   /** Branded — only `mintApprovedAction` can produce this; a hand-spread literal won't typecheck. */
   approved: ApprovedAction;
+  /** The parent who approved. Null when the pass has no single actor (autonomous, resume). */
+  actorUserId?: string | null;
 }
 
 interface SendResult {
@@ -171,6 +179,12 @@ export interface ExecutorDeps {
   cancelCalendarEvent: (input: CalendarCancelInput) => Promise<CalendarWriteResult>;
   /** Emails each parent the placement's iTIP object through the A2 dispatch. */
   sendCalendarInvites: CalendarInviteSender;
+  /**
+   * Writes the same placement to the parent's Google Calendar when the web
+   * drain has bound one. Absent in a test that does not care: the placement
+   * still names the skip (`not_configured`) rather than omitting it.
+   */
+  googleCalendar?: GoogleCalendarPlacement;
   /** Google Calendar transport (create/update). Real impl throws until OAuth exists. */
   calendar: CalendarClient;
 }
@@ -191,6 +205,7 @@ export function defaultExecutorDeps(): ExecutorDeps {
     moveCalendarEvent: (input) => moveCalendarEventDb(input),
     cancelCalendarEvent: (input) => cancelCalendarEventDb(input),
     sendCalendarInvites: unwiredCalendarInvites,
+    googleCalendar: unwiredGoogleCalendar,
     calendar: realCalendarClient,
   };
 }
@@ -444,6 +459,7 @@ async function calendarPlacement(
       actionId: input.approved.id,
       reversalHandle: requirePayloadString(payload.reversalHandle, 'reversalHandle', actionType),
     });
+    const google = await syncGoogle(input, deps, result, 'delete');
     const invites = await inviteUnlessAlreadyWritten(input, deps, result, 'CANCEL');
     return {
       ok: true,
@@ -453,6 +469,7 @@ async function calendarPlacement(
         outcome: result.outcome,
         reversalHandle: result.familyEventId,
         invites,
+        google,
       },
       reversible: false,
     };
@@ -470,6 +487,7 @@ async function calendarPlacement(
       startsAt,
       endsAt,
     });
+    const google = await syncGoogle(input, deps, result, 'update');
     const invites = await inviteUnlessAlreadyWritten(input, deps, result, 'REQUEST');
     return {
       ok: true,
@@ -481,6 +499,7 @@ async function calendarPlacement(
         outcome: result.outcome,
         reversalHandle: result.familyEventId,
         invites,
+        google,
       },
       reversible: false,
     };
@@ -498,6 +517,7 @@ async function calendarPlacement(
     childId: typeof payload.childId === 'string' ? payload.childId : null,
     sensitive: payload.privacySensitive === true,
   });
+  const google = await syncGoogle(input, deps, result, 'create');
   const invites = await inviteUnlessAlreadyWritten(input, deps, result, 'REQUEST');
   return {
     ok: true,
@@ -507,9 +527,44 @@ async function calendarPlacement(
       outcome: result.outcome,
       reversalHandle: result.familyEventId,
       invites,
+      google,
     },
     reversible: true,
   };
+}
+
+/**
+ * The Google leg of a placement. It runs for an `already_written` row too, so a
+ * pass that lost the claim can still attach an id the winner never stored. It
+ * cannot fail the placement: a throw is named `google_error` and the iTIP invite
+ * still goes out. The port itself refuses events Hale did not create.
+ */
+async function syncGoogle(
+  input: ExecutorRunInput,
+  deps: ExecutorDeps,
+  result: CalendarWriteResult,
+  op: GoogleCalendarOp,
+): Promise<GoogleCalendarSyncReport> {
+  const port = deps.googleCalendar ?? unwiredGoogleCalendar;
+  try {
+    return await port.sync({
+      familyId: input.familyId,
+      familyEventId: result.familyEventId,
+      op,
+      actorUserId: input.actorUserId ?? null,
+    });
+  } catch (err) {
+    logger.error(
+      {
+        familyId: input.familyId,
+        familyEventId: result.familyEventId,
+        op,
+        err: err instanceof Error ? err.name : 'unknown',
+      },
+      'executor: google calendar sync threw — placement stands, Google was not changed',
+    );
+    return { status: 'failed', reason: 'google_error' };
+  }
 }
 
 /**
@@ -551,7 +606,10 @@ async function inviteFor(
       { familyId: input.familyId, familyEventId, method, err },
       'executor: calendar invite send threw — placement stands, invite did not go out',
     );
-    return { status: 'errored', message: err instanceof Error ? err.message : 'unknown invite error' };
+    return {
+      status: 'errored',
+      message: err instanceof Error ? err.message : 'unknown invite error',
+    };
   }
 }
 

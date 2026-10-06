@@ -1,5 +1,13 @@
 # Calendar integration (not built — honest boundary)
 
+`calendar_add` / `calendar_move` / `calendar_cancel` can also write the parent's
+primary Google Calendar when that parent is armed — `GOOGLE_WRITE_SCOPES_ENABLED`
+is exactly `true`, or their Hale user id is on `GOOGLE_WRITE_SCOPES_ALLOWLIST` —
+and their gcal grant includes `calendar.events` (VIL-93). The flag is off in
+production. A parent who is not allowlisted is unchanged. A miss or a Google
+error leaves today's behavior: a `family_events` row and an iTIP invite. That
+path does not implement the action types below.
+
 `create_calendar_event` / `update_calendar_event` are **wired to an interface but
 not implemented**. The executor calls `deps.calendar.createEvent/updateEvent`
 (`apps/worker/src/services/calendar-client.ts`), and the default production client

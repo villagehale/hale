@@ -367,6 +367,10 @@ export const AUDIT_VERBS = [
   'connector_link_signed_in',
   'integration_connected',
   'integration_revoked',
+  'integration.google_calendar_written',
+  'integration.google_calendar_failed',
+  'integration.gmail_draft_written',
+  'integration.gmail_draft_failed',
   'user_preferences_updated',
   'billing_checkout_started',
   'upgrade_ask_sent',
@@ -1270,6 +1274,22 @@ const VERBS: Record<AuditVerb, Verb> = {
   integration_revoked: {
     sentence: 'you disconnected an account and Hale deleted its keys',
     family: 'done',
+  },
+  'integration.google_calendar_written': {
+    sentence: 'added it to your Google Calendar',
+    family: 'done',
+  },
+  'integration.google_calendar_failed': {
+    sentence: 'could not update your Google Calendar',
+    family: 'problem',
+  },
+  'integration.gmail_draft_written': {
+    sentence: 'prepared a draft in your Gmail for you to send',
+    family: 'done',
+  },
+  'integration.gmail_draft_failed': {
+    sentence: 'could not prepare a Gmail draft',
+    family: 'problem',
   },
   user_preferences_updated: { sentence: 'you updated your preferences', family: 'done' },
   // Started, not finished: the row is written before checkout completes.

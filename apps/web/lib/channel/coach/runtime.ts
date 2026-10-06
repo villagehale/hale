@@ -1,5 +1,4 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import {
   type AgentClient,
   type GuardDeps,
@@ -16,25 +15,32 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
 import { captureAgentError } from '~/lib/analytics/server-capture';
-import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
-import {
-  type ChannelCoachRuntime,
-  type ChannelTurn,
-  type ChannelTurnResult,
-  ChannelTurnFailed,
-} from '~/lib/channel/router/coach-runtime';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { type ReferralShare, referralBlock } from '~/lib/channel/referral/share';
+import {
+  type ChannelCoachRuntime,
+  type ChannelTurn,
+  ChannelTurnFailed,
+  type ChannelTurnResult,
+} from '~/lib/channel/router/coach-runtime';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import { MINT_FETCH_TIMEOUT_MS } from '~/lib/channel/spots/tool';
-import { type AgentContext, type LoadAgentContextInput, loadAgentContext } from '~/lib/coach/context';
+import {
+  type AgentContext,
+  type LoadAgentContextInput,
+  loadAgentContext,
+} from '~/lib/coach/context';
 import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation';
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { type OfferedCandidate, searchVillageTool } from '~/lib/coach/tools';
+import { loadCronSkill } from '~/lib/cron/skill';
+import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
+import { createFetchBody } from '~/lib/registration/verify-sweep';
 import {
   activityReviewsSurfaceEnabled,
   familyAreaKey,
@@ -42,10 +48,14 @@ import {
   offeredSubject,
   readSubjectVerdicts,
 } from '~/lib/reviews/aggregate';
-import { loadCronSkill } from '~/lib/cron/skill';
-import { createFetchBody } from '~/lib/registration/verify-sweep';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { productionChannelDraftPort } from './draft';
+import { GmailDraftNoticeUnsent } from './gmail-draft-notice';
+import {
+  type GmailDraftNoticeBox,
+  augmentCoachSkillForGoogleDrafts,
+  productionGmailDraftPorts,
+} from './gmail-draft-tool';
 import {
   type RegistrationWindowContext,
   loadRegistrationWindows,
@@ -146,7 +156,7 @@ export interface ChannelRunRecord {
  * touch. There is no write port here, and that is the point.
  */
 export interface ChannelCoachPorts {
-  loadSkill(): Promise<Skill>;
+  loadSkill(parentUserId?: string): Promise<Skill>;
   loadTranscript(conversationId: string): Promise<TranscriptMessage[]>;
   loadContext(input: LoadAgentContextInput): Promise<AgentContext>;
   /** Every child of the family, un-redacted — the redactor needs the real names to
@@ -171,6 +181,7 @@ export interface ChannelCoachPorts {
     /** The turn's offer ledger, owned by the runtime so the provenance match and the
      * nearby count read the same list. */
     offered: TurnOfferLedger,
+    onGmailNotice?: (notice: GmailDraftNoticeBox) => void,
   ): RegisteredTool[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about one of the activities this turn offered, or
@@ -235,12 +246,13 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // call is a model that changed its mind mid-compose, and the page the parent can
       // read about is the one in the sentence it ended up writing.
       let spotWatch: SpotWatchIntent | null = null;
+      let gmailNotice: GmailDraftNoticeBox | null = null;
       const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
       const now = ports.now();
       const [skill, transcript, children, registrationWindows] = await Promise.all([
-        ports.loadSkill(),
+        ports.loadSkill(turn.parentUserId),
         ports.loadTranscript(turn.conversationId),
         ports.loadChildren(turn.familyId),
         ports.loadRegistrationWindows(turn.familyId, now),
@@ -320,6 +332,10 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               spotWatch = watch;
             },
             offeredThisTurn,
+            (notice) => {
+              if (gmailNotice?.status === 'unsent') return;
+              gmailNotice = notice;
+            },
           );
           // A tool that throws, a provider that times out, a step that runs long: the
           // loop can break anywhere, and by then the drafts it made are already rows.
@@ -360,7 +376,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             langfuseTraceId: trace.traceId,
           });
 
-          if (result.answer === null) {
+          if (gmailNotice?.status === 'unsent') {
+            await ports.recordRun(record('failed'));
+            throw failed(
+              'channel coach: gmail draft notice was not sent',
+              new GmailDraftNoticeUnsent(),
+            );
+          }
+
+          if (result.answer === null && gmailNotice?.status !== 'ready') {
             await ports.recordRun(record('failed'));
             throw failed(
               result.hitMaxSteps
@@ -388,15 +412,31 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           // paid a model (and sometimes a 50s web search) for, and nothing downstream can
           // tell a trimmed reply from one that fit. A count makes it a rate.
           let trimmedOverBy: number | null = null;
-          const reply = toSmsReply(result.answer, {
+          const noticeReady = gmailNotice !== null && gmailNotice.status === 'ready';
+          const spoken =
+            gmailNotice !== null && gmailNotice.status === 'ready'
+              ? gmailNotice.text
+              : result.answer;
+          if (!spoken) {
+            await ports.recordRun(record('failed'));
+            throw failed(
+              'channel coach: gmail draft notice was not sent',
+              new GmailDraftNoticeUnsent(),
+            );
+          }
+          const reply = toSmsReply(spoken, {
             children,
             now,
-            planOffer: offer?.sentence,
-            referral: share ? referralBlock(share) : undefined,
-            nearby: nearby ?? undefined,
-            onTrimmed: (overBy) => {
-              trimmedOverBy = overBy;
-            },
+            ...(noticeReady
+              ? {}
+              : {
+                  planOffer: offer?.sentence,
+                  referral: share ? referralBlock(share) : undefined,
+                  nearby: nearby ?? undefined,
+                  onTrimmed: (overBy: number) => {
+                    trimmedOverBy = overBy;
+                  },
+                }),
           });
           if (trimmedOverBy !== null) {
             await captureAgentError({
@@ -438,7 +478,8 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
 export function productionChannelCoachPorts(database: Database): ChannelCoachPorts {
   return {
     client: anthropicClient,
-    loadSkill: () => loadCronSkill('coach-channel-sms'),
+    loadSkill: async (parentUserId) =>
+      augmentCoachSkillForGoogleDrafts(await loadCronSkill('coach-channel-sms'), parentUserId),
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
     loadContext: (input) => loadAgentContext(input, database),
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
@@ -449,7 +490,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         DEFAULT_TIMEZONE,
         now,
       ),
-    buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch, offered) => {
+    buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch, offered, onGmailNotice) => {
       return buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database, turn.now),
@@ -485,6 +526,9 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         onShare,
         onPromise,
         onWatch,
+        gmailDrafts: productionGmailDraftPorts(database, anthropicClient),
+        onGmailNotice,
+        parentUserId: turn.parentUserId,
         now: turn.now,
       });
     },

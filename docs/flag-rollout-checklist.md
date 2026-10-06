@@ -56,6 +56,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `FOLLOWUP_ASKS_ENABLED` | `true` | off | `false` | Noah |
 | `GOING_COUNT_ENABLED` | `true` | off | `false` | Noah |
 | `GOOGLE_PUSH_SYNC_ENABLED` | `true` | off | `false` | Noah |
+| `GOOGLE_WRITE_SCOPES_ENABLED` | `true` | off | unset, or anything except `true` | Noah |
 | `IMESSAGE_UPGRADE_ASK` | `on` | off | empty, or `off` | Sloane |
 | `LINQ_GROUP_MEMBERS_ENABLED` | `true` | off | `false` | Noah |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | `true` | off | `false` | Noah |
@@ -83,6 +84,7 @@ Allowlists are separate reads. Empty in `.env.example`. A non-empty list turns t
 | `FOLLOWUP_ASKS_FAMILY_ALLOWLIST` | `FOLLOWUP_ASKS_ENABLED` |
 | `MEMORY_DIGEST_FAMILY_ALLOWLIST` | `MEMORY_DIGEST_APPLY` (apply also needs this list) |
 | `TRAVEL_BRIEF_FAMILY_ALLOWLIST` | `TRAVEL_BRIEF_ENABLED` |
+| `GOOGLE_WRITE_SCOPES_ALLOWLIST` | `GOOGLE_WRITE_SCOPES_ENABLED` (Hale user ids, not family ids; a listed user is armed while the flag is unset) |
 | `VILLAGE_INTROS_FAMILY_ALLOWLIST` | `VILLAGE_INTROS_ENABLED` |
 | `METRICS_EXCLUDED_FAMILY_IDS` | none (drops those families from digest metrics) |
 
@@ -177,6 +179,7 @@ These stay off for the first families. The kill value is in the inventory table.
 - `SOCIAL_WATCHLIST`: the watchlist poll stays off.
 - `VILLAGE_INTROS_ENABLED`: cross-household intros stay off. A non-empty allowlist narrows the flag. It does not add families while the flag is off.
 - `IMESSAGE_UPGRADE_ASK`: the later year-retention ask stays off.
+- `GOOGLE_WRITE_SCOPES_ENABLED`: stays unset in production. Linq delivers inbound texts to the production webhook, so a preview URL cannot receive a parent text. `GOOGLE_WRITE_SCOPES_ALLOWLIST` is comma-separated Hale user ids: only those accounts are asked for `calendar.events` and `gmail.compose`, and only their placements and Gmail drafts write to Google. Everyone else keeps today's readonly consent, and a placement still writes `family_events` and sends the iTIP invite. Preview may set the flag to `true` with an empty allowlist. Flip the global flag in production only after Google verification approves those scopes.
 
 ## First five families
 

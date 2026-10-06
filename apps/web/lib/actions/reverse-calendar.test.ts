@@ -52,7 +52,9 @@ function fakeDb(row: ActionRow | null) {
     }),
   };
 
-  const transaction = vi.fn().mockImplementation((cb: (t: typeof tx) => Promise<unknown>) => cb(tx));
+  const transaction = vi
+    .fn()
+    .mockImplementation((cb: (t: typeof tx) => Promise<unknown>) => cb(tx));
 
   return { db: { select, transaction } as never, sets, inserts, transaction };
 }
@@ -91,6 +93,7 @@ describe('reverseExecutedCalendarAction — the UNDO primitive', () => {
       status: 200,
       familyEventId: FAMILY_EVENT_ID,
       invites: { status: 'reported', parents: [], ask: 'not_needed' },
+      google: { status: 'skipped', reason: 'flag_off' },
     });
 
     // The placement soft-delete: an update setting deleted_at.
@@ -105,7 +108,10 @@ describe('reverseExecutedCalendarAction — the UNDO primitive', () => {
     );
     // Both halves audited (rule #6): the cancel and the transition.
     expect(inserts).toContainEqual(
-      expect.objectContaining({ actionTaken: 'action.calendar_placement_reverted', targetId: FAMILY_EVENT_ID }),
+      expect.objectContaining({
+        actionTaken: 'action.calendar_placement_reverted',
+        targetId: FAMILY_EVENT_ID,
+      }),
     );
     expect(inserts).toContainEqual(
       expect.objectContaining({ actionTaken: 'action.reverted_by_human', targetId: ACTION_ID }),
@@ -272,6 +278,7 @@ describe('reverseExecutedCalendarAction — withdrawing the invite', () => {
       status: 200,
       familyEventId: FAMILY_EVENT_ID,
       invites: { status: 'reported', parents: [], ask: 'not_needed' },
+      google: { status: 'skipped', reason: 'flag_off' },
     });
   });
 

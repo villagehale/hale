@@ -198,6 +198,16 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'upgrade_already_paid',
   ],
   'apps/web/lib/integrations/store.ts': ['integration_connected', 'integration_revoked'],
+  // The placement and draft services forward the verb they already chose. The
+  // literals above the insert are scanned directly; this line is the pass-through.
+  'apps/web/lib/integrations/google-calendar-placement.ts': [
+    'integration.google_calendar_written',
+    'integration.google_calendar_failed',
+  ],
+  'apps/web/lib/integrations/gmail-draft-service.ts': [
+    'integration.gmail_draft_written',
+    'integration.gmail_draft_failed',
+  ],
   // A revive writes calendar_mirror_added; a start-time change writes calendar_mirror_moved.
   // The insert and the soft-delete are string literals and are scanned directly.
   'apps/web/lib/integrations/calendar-mirror.ts': [

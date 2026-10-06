@@ -8,7 +8,10 @@
     "./orchestrator": "./src/orchestrator/index.ts",
     "./reviewer": "./src/agents/reviewer.ts",
     "./redaction": "./src/redaction/redact.ts",
-    "./executor": "./src/services/executor.ts"
+    "./executor": "./src/services/executor.ts",
+    "./google-calendar-api": "./src/services/google-calendar-api.ts",
+    "./google-calendar-placement": "./src/services/google-calendar-placement.ts",
+    "./gmail-drafts": "./src/services/gmail-drafts.ts"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
