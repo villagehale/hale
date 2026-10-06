@@ -18,7 +18,6 @@ import {
   steerNotedCoparentOneToOne,
 } from './group-coparent';
 import {
-  GROUP_WELCOME,
   groupCalendarAsk,
   groupCalendarReceipt,
   groupGmailAsk,
@@ -230,6 +229,33 @@ async function noteCoparent(
   });
 }
 
+/** A co-parent already seated in the group, at the name step (how a pre-v2 seat looks). */
+async function seedSeatedCoparent(seeded: { familyId: string }): Promise<string> {
+  const [user] = await db.database
+    .insert(schema.users)
+    .values({ externalAuthId: `sms:${phoneBlindIndex(COPARENT_PHONE)}`, name: null })
+    .returning({ id: schema.users.id });
+  const userId = user?.id as string;
+  await db.database
+    .insert(schema.familyMembers)
+    .values({ familyId: seeded.familyId, userId, role: 'co_parent' });
+  await db.database.insert(schema.parentChannels).values({
+    userId,
+    familyId: seeded.familyId,
+    kind: 'sms',
+    phoneE164Encrypted: encryptString(COPARENT_PHONE),
+    phoneE164Hash: phoneBlindIndex(COPARENT_PHONE),
+    verifiedAt: NOW,
+  });
+  await db.database.insert(schema.linqGroupOnboarding).values({
+    familyId: seeded.familyId,
+    userId,
+    providerChatId: GROUP,
+    step: 'awaiting_name',
+  });
+  return userId;
+}
+
 async function familyCount(): Promise<number> {
   const rows = await db.database.select({ id: schema.families.id }).from(schema.families);
   return rows.length;
@@ -350,7 +376,7 @@ describe('group co-parent seating', () => {
     expect(members.some((row) => row.role === 'co_parent')).toBe(false);
   });
 
-  it('seats the noted number on the same family and asks only for a name', async () => {
+  it('does not seat the noted number on its first text in a claimed group', async () => {
     const seeded = await seedHousehold();
     await noteCoparent(seeded);
     await db.database
@@ -363,35 +389,27 @@ describe('group co-parent seating', () => {
       inbound({ messageId: 'm-seat', senderHandle: COPARENT_PHONE, text: 'hi there' }),
       { now: NOW, fetch: wire.fetch, recordInbound },
     );
-    expect(effect).toMatchObject({ type: 'done', outcome: 'group_coparent_seated' });
-    expect(wire.groupTexts()).toEqual([GROUP_WELCOME.en]);
-    expect(wire.texts().join('\n')).not.toContain('Maya');
-    expect(await familyCount()).toBe(1);
-    expect(await childNames()).toEqual(['Maya']);
-    const [family] = await db.database
-      .select({ postalCode: schema.families.postalCode })
-      .from(schema.families);
-    expect(family?.postalCode).toBe(POSTAL);
+    expect(effect).toEqual({ type: 'none' });
+    expect(wire.texts()).toEqual([]);
     const members = await db.database
-      .select({
-        userId: schema.familyMembers.userId,
-        role: schema.familyMembers.role,
-        familyId: schema.familyMembers.familyId,
-      })
+      .select({ role: schema.familyMembers.role })
       .from(schema.familyMembers);
-    const coparent = members.find((row) => row.role === 'co_parent');
-    expect(coparent?.familyId).toBe(seeded.familyId);
-    expect(members).toHaveLength(2);
+    expect(members.map((row) => row.role)).toEqual(['primary_parent']);
+    expect(await db.database.select().from(schema.consentRecords)).toEqual([]);
     const [invite] = await db.database
-      .select({ state: schema.caregiverInvites.state, closedAt: schema.caregiverInvites.closedAt })
+      .select({ state: schema.caregiverInvites.state })
       .from(schema.caregiverInvites);
-    expect(invite?.state).toBe('accepted');
-    expect(invite?.closedAt).not.toBeNull();
-    for (const text of wire.texts()) {
-      expect(text).not.toContain(POSTAL);
-      expect(text.toLowerCase()).not.toContain('postal');
-      expect(text.toLowerCase()).not.toContain('how old');
-    }
+    expect(invite?.state).toBe('identity_noted');
+  });
+
+  it('walks a seated co-parent through the name step, then the calendar and Gmail asks', async () => {
+    const seeded = await seedHousehold();
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, seeded.familyId));
+    const coparent = { userId: await seedSeatedCoparent(seeded) };
+    const wire = linqFetch();
 
     const named = await considerGroupCoparent(
       db.database,
@@ -564,7 +582,7 @@ describe('group co-parent seating', () => {
     expect(await childNames()).toEqual(['Maya']);
   });
 
-  it('seats a real phone in a claimed group with no live note, and not another family', async () => {
+  it('seats no unknown phone in a claimed group, with or without a live note, nor in another family', async () => {
     const seeded = await seedHousehold();
     await noteCoparent(seeded, new Date(NOW.getTime() - 1000));
     await db.database
@@ -577,8 +595,13 @@ describe('group co-parent seating', () => {
       inbound({ messageId: 'm-expired', senderHandle: COPARENT_PHONE, text: 'hi' }),
       { now: NOW, fetch: wire.fetch, recordInbound },
     );
-    expect(expired).toMatchObject({ type: 'done', outcome: 'group_coparent_seated' });
-    expect(wire.groupTexts()).toEqual([GROUP_WELCOME.en]);
+    expect(expired).toEqual({ type: 'none' });
+    expect(wire.texts()).toEqual([]);
+    expect(
+      (
+        await db.database.select({ role: schema.familyMembers.role }).from(schema.familyMembers)
+      ).map((row) => row.role),
+    ).toEqual(['primary_parent']);
     const [invite] = await db.database
       .select({ state: schema.caregiverInvites.state })
       .from(schema.caregiverInvites);
@@ -717,11 +740,7 @@ describe('group co-parent seating', () => {
       .set({ linqGroupChatId: GROUP })
       .where(eq(schema.families.id, seeded.familyId));
     const open = linqFetch();
-    await considerGroupCoparent(
-      db.database,
-      inbound({ messageId: 'm-seat', senderHandle: COPARENT_PHONE, text: 'hi there' }),
-      { now: NOW, fetch: open.fetch, recordInbound },
-    );
+    await seedSeatedCoparent(seeded);
     await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-name', senderHandle: COPARENT_PHONE, text: 'Sam' }),

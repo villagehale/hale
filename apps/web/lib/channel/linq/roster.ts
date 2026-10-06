@@ -8,6 +8,7 @@ import { linqGroupOnboardingV2Enabled } from './config';
 import { claimHouseholdLinqGroup } from './group';
 import { realHumanPhone } from './group-coparent';
 import type { LinqSignal } from './payload';
+import { TERMINAL } from './roster-seat';
 import { listLinqParticipantHandles } from './transport';
 
 /**
@@ -66,15 +67,6 @@ export type GroupRosterOutcome =
  */
 const REBUILDABLE: readonly RosterStatus[] = ['roster_pending', 'ejected', 'refused'];
 const GONE: MemberStatus[] = ['left', 'removed'];
-const TERMINAL: readonly MemberStatus[] = [
-  'known_parent',
-  'confirmed',
-  'declined',
-  'not_family',
-  'refused',
-  'left',
-  'removed',
-];
 
 function isUndefinedTable(err: unknown): boolean {
   const fields = err as { code?: unknown; cause?: { code?: unknown } } | null;

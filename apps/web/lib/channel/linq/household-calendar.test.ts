@@ -8,7 +8,6 @@ import {
   GROUP_GMAIL_RECEIPT,
   GROUP_HANDOFF,
   GROUP_KID_EVENT,
-  GROUP_WELCOME,
   absorbHowItWentLines,
   groupActivityHowItWent,
   groupAddressedLine,
@@ -211,12 +210,6 @@ describe('two-reader group lines', () => {
 
 describe('design-locked group strings', () => {
   it('matches Sloane byte for byte', () => {
-    expect(GROUP_WELCOME.en).toBe(
-      "Hi, I'm Hale. This thread is your kids' year — both of you, and me. What should I call you?",
-    );
-    expect(GROUP_WELCOME.fr).toBe(
-      "Salut, c'est Hale. Ce fil, c'est l'annee des enfants: vous deux, et moi. Comment je t'appelle?",
-    );
     expect(GROUP_CALENDAR_RECEIPT.en).toBe(
       "{name}'s calendar is connected. I'll keep the kids' stuff straight across both.",
     );
