@@ -251,12 +251,16 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
       const now = ports.now();
-      const [skill, transcript, children, registrationWindows] = await Promise.all([
+      const [loadedSkill, transcript, children, registrationWindows] = await Promise.all([
         ports.loadSkill(turn.parentUserId),
         ports.loadTranscript(turn.conversationId),
         ports.loadChildren(turn.familyId),
         ports.loadRegistrationWindows(turn.familyId, now),
       ]);
+      // The 1:1 skill stays byte-identical. The group section is a second file,
+      // loaded only when this turn is the family group.
+      const skill =
+        turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill;
 
       const familyContext = await ports.loadContext({
         familyId: turn.familyId,
@@ -454,6 +458,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       );
     },
   };
+}
+
+async function appendGroupCoachSkill(skill: Skill): Promise<Skill> {
+  const group = await loadCronSkill('coach-channel-group');
+  return { ...skill, instructions: `${skill.instructions}\n\n${group.instructions}` };
 }
 
 let defaultClient: Anthropic | undefined;
