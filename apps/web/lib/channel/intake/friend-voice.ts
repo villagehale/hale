@@ -86,6 +86,14 @@ export const SCHEDULE_DAYS_AHEAD = 21;
 /** One model attempt. A hang past this retries on the smaller prompt. */
 export const FRIEND_ATTEMPT_TIMEOUT_MS = 12_000;
 
+/**
+ * One model attempt on a new parent's opening turn. Both attempts together stay under
+ * ten seconds, so a parent texting Hale for the first time is not left holding the
+ * phone for two full attempts; a turn that still sends nothing is owed its reply by the
+ * first-reply sweep a minute later (first-reply-recovery.ts), which has the full budget.
+ */
+export const OPENING_ATTEMPT_TIMEOUT_MS = 4_500;
+
 export const FRIEND_STEPS = [
   'place',
   'place_card',
@@ -257,7 +265,8 @@ export interface SpeakOptions {
   prompt?: 'full' | 'short';
   /** Test hook. Production pages Slack #ops. */
   page?: (text: string) => Promise<unknown>;
-  /** Test hook. Production uses {@link FRIEND_ATTEMPT_TIMEOUT_MS}. */
+  /** Per attempt. Absent is {@link FRIEND_ATTEMPT_TIMEOUT_MS}; the opening turn passes
+   * {@link OPENING_ATTEMPT_TIMEOUT_MS}. */
   attemptTimeoutMs?: number;
   /**
    * The exact title or subject the model chose to mention. Null means the

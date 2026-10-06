@@ -110,6 +110,10 @@ export type InboundRouteOutcome =
   | 'duplicate'
   /** The machine handled it; its own outcome is the detail. */
   | 'intake'
+  /** A new parent's opening turn sent NOTHING: the model could not write it. Never
+   * folded into `intake`, which says Hale replied. The session stays owed a reply, and
+   * the first-reply sweep (intake/first-reply-recovery.ts) sends it within minutes. */
+  | 'intake_unsent'
   /** VIL-348 — a CASL keyword turn the machine did in full while sending NOTHING,
    * because the provider's own keyword handling had already answered the sender. Kept
    * out of `intake` because that value says Hale replied: the rate of this one is the
@@ -200,6 +204,13 @@ export async function routeInboundText(
       return handOffToConversation(deps, inbound);
     }
     if (outcome.status === 'ignored') return 'ignored';
+    if (outcome.status === 'first_touch_unsent') {
+      deps.log.error(
+        { providerMessageId: inbound.providerId, reason: outcome.reason },
+        'inbound: a first text got no reply; the first-reply sweep owes it one',
+      );
+      return 'intake_unsent';
+    }
     if (
       outcome.status === 'stopped' ||
       outcome.status === 'helped' ||

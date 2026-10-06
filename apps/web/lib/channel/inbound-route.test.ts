@@ -627,3 +627,37 @@ describe('iMessage first-touch door', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('a first text that got no reply', () => {
+  beforeEach(() => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
+  });
+
+  function withComposer(h: Harness, compose: () => Promise<{ reply: string }>): void {
+    const intake = h.deps.intake('sms');
+    intake.friendVoice = { compose };
+  }
+
+  it('is counted intake_unsent, never folded into intake', async () => {
+    const h = harness();
+    withComposer(h, async () => {
+      throw new Error('model down');
+    });
+
+    const outcome = await routeInboundText(h.deps, inbound(), 0);
+
+    expect(outcome).toBe('intake_unsent');
+    expect(h.transport.bodies()).toEqual([]);
+  });
+
+  it('stays intake when the opening reply was sent', async () => {
+    const h = harness();
+    withComposer(h, async () => ({ reply: "Hey, it's Hale. What's your postal code?" }));
+
+    const outcome = await routeInboundText(h.deps, inbound(), 0);
+
+    expect(outcome).toBe('intake');
+    expect(h.transport.bodies()).toHaveLength(1);
+  });
+});

@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { KNOWN_VENUE_HELLO } from './cold-start/copy';
 import {
   FIRST_TOUCH_SMS_BY_LANGUAGE,
@@ -12,7 +13,7 @@ import {
 import { type FakeDb, makeFakeDb } from './fakes';
 import {
   type FirstReplyRecoveryDeps,
-  defaultFirstReplyRecoveryDeps,
+  firstReplyRecoveryDeps,
   firstReplyRecoveryEligible,
   runFirstReplyRecoveryCron,
 } from './first-reply-recovery';
@@ -30,6 +31,16 @@ const OTHER = '+14165555678';
 const INBOUND_SID = 'SM11111111111111111111111111111111';
 /** Friday 28 Aug 2026, 12:28 p.m. America/Toronto (EDT, UTC-4). */
 const SAME_DAY_NOON_ET = new Date('2026-08-28T16:28:00.000Z');
+/** The first text, ten minutes before the tick — past the sweep's minimum age. */
+const FIRST_TEXT_AT = new Date(SAME_DAY_NOON_ET.getTime() - 10 * 60_000);
+const FIRST_TEXT = [
+  {
+    direction: 'in' as const,
+    body: 'hi',
+    providerId: INBOUND_SID,
+    at: FIRST_TEXT_AT.toISOString(),
+  },
+];
 
 function dataBlob(
   transcript: Array<{
@@ -71,8 +82,9 @@ function seedSession(
     phoneEncrypted: encryptString(phoneE164),
     state: over.state ?? 'awaiting_details',
     sourceCode: over.sourceCode === undefined ? null : over.sourceCode,
-    dataEncrypted: dataBlob(over.transcript ?? []),
-    createdAt: over.createdAt ?? SAME_DAY_NOON_ET,
+    dataEncrypted: dataBlob(over.transcript ?? FIRST_TEXT),
+    createdAt: over.createdAt ?? FIRST_TEXT_AT,
+    updatedAt: over.createdAt ?? FIRST_TEXT_AT,
     lastProviderId: over.lastProviderId === undefined ? INBOUND_SID : over.lastProviderId,
     firstReplyRecoveredAt:
       over.firstReplyRecoveredAt === undefined ? null : over.firstReplyRecoveredAt,
@@ -86,7 +98,11 @@ function seedSession(
 }
 
 function deps(transport: FakeTransport): FirstReplyRecoveryDeps {
-  return { transport };
+  return {
+    transport,
+    limiter: new FakeRateLimiter(() => SAME_DAY_NOON_ET.getTime()),
+    preflight: async () => ({ proceed: true, health: null }),
+  };
 }
 
 describe('firstReplyRecoveryEligible', () => {
@@ -96,11 +112,21 @@ describe('firstReplyRecoveryEligible', () => {
     firstReplyRecoveredAt: null,
     familyId: null,
     lastProviderId: INBOUND_SID,
+    hasInbound: true,
     hasOutbound: false,
   };
 
-  it('accepts awaiting_details + SID + no outbound', () => {
+  it('accepts awaiting_details + SID + an inbound and no outbound', () => {
     expect(firstReplyRecoveryEligible(open)).toBe(true);
+  });
+
+  it('accepts the states an opening turn can leave, so a silent turn stays owed', () => {
+    expect(firstReplyRecoveryEligible({ ...open, state: 'awaiting_place' })).toBe(true);
+    expect(firstReplyRecoveryEligible({ ...open, state: 'awaiting_ages' })).toBe(true);
+  });
+
+  it('refuses a session whose inbound is not on the transcript yet', () => {
+    expect(firstReplyRecoveryEligible({ ...open, hasInbound: false })).toBe(false);
   });
 
   it('refuses a session that already has outbound', () => {
@@ -135,7 +161,7 @@ describe('runFirstReplyRecoveryCron', () => {
     seedSession(fake);
 
     const first = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
-    expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0 });
+    expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0, deferred: 0 });
     expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
     expect(transport.bodies()[0]).not.toBe(HALE_GREETING_EN);
     expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
@@ -193,7 +219,7 @@ describe('runFirstReplyRecoveryCron', () => {
     await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
     const second = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
 
-    expect(second).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });
+    expect(second).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0, deferred: 0 });
     expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
   });
 
@@ -227,7 +253,7 @@ describe('runFirstReplyRecoveryCron', () => {
   });
 
   it('wires the shared outbound leg into the default deps', async () => {
-    const { transport } = defaultFirstReplyRecoveryDeps();
+    const { transport } = firstReplyRecoveryDeps(makeFakeDb().db);
     vi.stubEnv('LINQ_API_KEY', '');
     vi.stubEnv('LINQ_FROM_E164', '');
     await expect(transport.send({ to: PHONE, body: greeting(null, 'en') })).rejects.toThrow(
