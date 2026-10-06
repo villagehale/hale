@@ -176,6 +176,8 @@ export const AUDIT_VERBS = [
   'linq_group_member_unseated',
   'linq_group_member_refused',
   'linq_group_stranger_held',
+  'linq_group_roster_fetched',
+  'linq_group_ejected',
   'linq_multi_family_joined',
   'linq_multi_family_left',
   'linq_multi_family_unseated',
@@ -679,6 +681,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   linq_group_stranger_held: {
     sentence: 'Hale answered a number that is not in this household',
+    family: 'note',
+  },
+  linq_group_roster_fetched: {
+    sentence: 'Hale read who is in your family group',
+    family: 'note',
+  },
+  linq_group_ejected: {
+    sentence: 'Hale left your family group and went back to texting you directly',
     family: 'note',
   },
   linq_multi_family_joined: {

@@ -21,6 +21,7 @@ import {
   linqFromE164,
   linqGroupCoparentEnabled,
   linqGroupMembersEnabled,
+  linqGroupOnboardingV2Enabled,
   linqInboundConfigured,
   linqMissingInboundEnv,
   linqMultiFamilyGroupsEnabled,
@@ -67,6 +68,7 @@ import {
   parseLinqWebhook,
 } from './payload';
 import { isYearFindPollNone, lookupLinqPollOption } from './poll';
+import { groupRosterTrigger, startGroupRoster } from './roster';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
 import { type LinqEffectResult, markLinqChatRead } from './transport';
 
@@ -730,6 +732,16 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     },
     'linq signal',
   );
+  const rosterTrigger = groupRosterTrigger(signal);
+  if (rosterTrigger && linqGroupOnboardingV2Enabled()) {
+    const roster = await startGroupRoster(deps.database, {
+      ...rosterTrigger,
+      now: deps.now?.() ?? new Date(),
+    });
+    deps.log.info({ outcome: roster.outcome, chatId: rosterTrigger.chatId }, 'linq roster');
+    await deps.countOutcome('ignored');
+    return json({ outcome: roster.outcome });
+  }
   if (signal.isFromMe) {
     await deps.countOutcome('ignored');
     return json({ outcome: 'signal_from_me' });
