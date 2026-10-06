@@ -276,7 +276,7 @@ export async function askHale(
           }
         };
         if (streamHooks?.defer) streamHooks.defer(extract);
-        else void extract();
+        else await extract();
       }
 
       // Surface gated action chips the answer implied — these create DRAFTS the
