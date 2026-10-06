@@ -1,8 +1,8 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
-import { type Database, schema } from '@hale/db';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
-import { and, desc, eq, gt, isNull, lt } from 'drizzle-orm';
+import { and, desc, eq, gt, lt } from 'drizzle-orm';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
@@ -13,6 +13,7 @@ import {
   type WorkstreamApplyResult,
   type WorkstreamOp,
   applyWorkstreamOps,
+  haleActionNextStep,
   listOpenWorkstreams,
   workstreamsEnabled,
 } from './workstreams';
@@ -191,12 +192,24 @@ function normalizeOp(op: WorkstreamOp, ctx: ExtractContext, now: Date): Workstre
     if (!childId || !teenIds.has(childId) || childIds.includes(childId)) continue;
     childIds.push(childId);
   }
-  return {
+  return withoutHalePromise({
     ...op,
     childIds,
     eventIds,
     checkBackAt: asCheckBackIso(op.checkBackAt, now, ctx.timeZone),
-  };
+  });
+}
+
+/**
+ * A next step Hale would perform is not a plan. Drop that step only.
+ * The status stays as the model gave it: turning a parent task into a
+ * third-party wait is what merged a dentist call into a pickup thread.
+ */
+function withoutHalePromise(op: WorkstreamOp): WorkstreamOp {
+  if (op.action !== 'open' && op.action !== 'update') return op;
+  if (op.declined === true) return op;
+  if (!haleActionNextStep(op.nextStep, op.status)) return op;
+  return { ...op, nextStep: null };
 }
 
 async function loadExtractContext(
@@ -239,7 +252,7 @@ async function loadExtractContext(
     .where(
       and(
         eq(schema.familyEvents.familyId, familyId),
-        isNull(schema.familyEvents.deletedAt),
+        householdFamilyEvent(),
         eq(schema.familyEvents.sensitive, false),
         gt(schema.familyEvents.startsAt, new Date(now.getTime() - EVENT_WINDOW_PAST_MS)),
         lt(schema.familyEvents.startsAt, new Date(now.getTime() + EVENT_WINDOW_FUTURE_MS)),

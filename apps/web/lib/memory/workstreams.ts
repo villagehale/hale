@@ -62,6 +62,34 @@ export interface WorkstreamOp {
   declined?: boolean | null;
 }
 
+/**
+ * A next step Hale would have to perform. Nothing in this system calls a desk,
+ * emails a centre, or follows up with a camp, so that sentence is not stored
+ * and is not handed back to the check-back as if it were a plan.
+ *
+ * Drop only when Hale is clearly the subject, or when a subjectless chase
+ * ("follow up with", "relancer", "ping") is already a third-party wait.
+ * A parent task ("Call the dentist", "Contacter le dentiste") stays, and so
+ * does a step whose subject is a person, a role, or the outside party.
+ * The status is never rewritten here.
+ */
+const HALE_SUBJECT =
+  /^(?:hale|i['’]ll|i will|i['’]m going to|je vais|je (?:re)?(?:regarde|v[ée]rifie|rev[ée]rifie|relance|rappelle|[ée]cris|ecris|contacte)|we['’]ll|we will|on va|nous allons)(?![\p{L}\p{N}])/iu;
+
+/** A chase with no subject. "Call the dentist" is not one of these. */
+const HALE_CHASE =
+  /^(?:follow up with|check back with|relancer|rev[ée]rifier|reverifier|ping|[ée]crire au|ecrire au|[ée]crire [àa]|ecrire a)(?![\p{L}\p{N}])/iu;
+
+export function haleActionNextStep(
+  nextStep: string | null | undefined,
+  status?: string | null,
+): boolean {
+  const text = nextStep?.trim();
+  if (!text) return false;
+  if (HALE_SUBJECT.test(text)) return true;
+  return status === 'waiting_on_third_party' && HALE_CHASE.test(text);
+}
+
 export type WorkstreamApplyResult =
   | { outcome: 'ignored' }
   | { outcome: 'opened' | 'updated' | 'closed' | 'dropped'; id: string; status: WorkstreamStatus }

@@ -1,13 +1,13 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { loadAgentContext } from '~/lib/coach/context';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { rememberWorkstreamTurn, renderWorkstreamExtractInput } from './workstream-extract';
-import { runWorkstreamFollowupSweep } from './workstream-followup';
+import { followupBackoffUntil, runWorkstreamFollowupSweep } from './workstream-followup';
 import {
   MAX_OPEN_WORKSTREAMS,
   WORKSTREAMS_ENABLED_ENV,
@@ -581,6 +581,7 @@ describe('a swim search carried across turns', () => {
       'utf8',
     );
     expect(skill).toContain('A confirmed booking is never `waiting_on_parent`.');
+    expect(skill).toContain('It is never a step Hale will perform.');
 
     const { familyId } = await seedFamily(db.database, 'Booked');
     const opened = await rememberWorkstreamTurn({
@@ -609,7 +610,115 @@ describe('a swim search carried across turns', () => {
     expect(booked.applied[0]).toMatchObject({ outcome: 'updated', status: 'scheduled' });
   });
 
-  it('backs a failed check-back off so the next sweep does not call the model again', async () => {
+  it('drops a Hale chase on a third-party wait and keeps a parent task', async () => {
+    const { familyId } = await seedFamily(db.database, 'Camp desk');
+    const chase = await rememberWorkstreamTurn({
+      database: db.database,
+      familyId,
+      parentText: 'Camp Kawartha has not confirmed the week.',
+      haleText: 'Nothing new from them.',
+      provenance: 'msg-camp',
+      now: NOW,
+      client: toolClient({
+        ops: [
+          {
+            action: 'open',
+            title: 'Camp Kawartha',
+            status: 'waiting_on_third_party',
+            nextStep: 'Follow up with Camp Kawartha registration desk Thursday',
+            checkBackAt: '2026-08-13T15:00:00.000Z',
+          },
+        ],
+      }),
+    });
+    expect(chase.applied[0]).toMatchObject({
+      outcome: 'opened',
+      status: 'waiting_on_third_party',
+    });
+    const chaseId = chase.applied[0] && 'id' in chase.applied[0] ? chase.applied[0].id : '';
+    const [chaseRow] = await db.database
+      .select({
+        nextStep: schema.familyWorkstreams.nextStep,
+        status: schema.familyWorkstreams.status,
+      })
+      .from(schema.familyWorkstreams)
+      .where(eq(schema.familyWorkstreams.id, chaseId));
+    expect(chaseRow?.nextStep).toBeNull();
+    expect(chaseRow?.status).toBe('waiting_on_third_party');
+
+    const dentist = await rememberWorkstreamTurn({
+      database: db.database,
+      familyId,
+      parentText: 'Je vais contacter le dentiste de Zoé pour reprendre le rendez-vous.',
+      haleText: 'Je note jeudi.',
+      provenance: 'msg-dentist-live',
+      now: NOW,
+      client: toolClient({
+        ops: [
+          {
+            action: 'open',
+            title: 'Dentiste de Zoé',
+            status: 'waiting_on_parent',
+            nextStep: 'Contacter le dentiste pour reprendre le rendez-vous',
+            checkBackAt: '2026-08-13T15:00:00.000Z',
+          },
+        ],
+      }),
+    });
+    expect(dentist.applied[0]).toMatchObject({
+      outcome: 'opened',
+      status: 'waiting_on_parent',
+    });
+    const dentistId = dentist.applied[0] && 'id' in dentist.applied[0] ? dentist.applied[0].id : '';
+    const [dentistRow] = await db.database
+      .select({
+        nextStep: schema.familyWorkstreams.nextStep,
+        status: schema.familyWorkstreams.status,
+      })
+      .from(schema.familyWorkstreams)
+      .where(eq(schema.familyWorkstreams.id, dentistId));
+    expect(dentistRow?.nextStep).toBe('Contacter le dentiste pour reprendre le rendez-vous');
+    expect(dentistRow?.status).toBe('waiting_on_parent');
+  });
+
+  it('keeps a parent-owned next step and its status', async () => {
+    const { familyId } = await seedFamily(db.database, 'Dentist');
+    const opened = await rememberWorkstreamTurn({
+      database: db.database,
+      familyId,
+      parentText: 'I need to call the dentist. Remind me Thursday. You or Sam?',
+      haleText: 'Thursday. You or Sam?',
+      provenance: 'msg-dentist',
+      now: NOW,
+      client: toolClient({
+        ops: [
+          {
+            action: 'open',
+            title: 'Call the dentist',
+            status: 'waiting_on_parent',
+            nextStep: 'I need to call the dentist and want a reminder Thursday',
+            checkBackAt: '2026-08-13T15:00:00.000Z',
+          },
+        ],
+      }),
+    });
+    expect(opened.applied[0]).toMatchObject({
+      outcome: 'opened',
+      status: 'waiting_on_parent',
+    });
+    const id = opened.applied[0] && 'id' in opened.applied[0] ? opened.applied[0].id : '';
+    const [row] = await db.database
+      .select({
+        nextStep: schema.familyWorkstreams.nextStep,
+        status: schema.familyWorkstreams.status,
+      })
+      .from(schema.familyWorkstreams)
+      .where(eq(schema.familyWorkstreams.id, id));
+    expect(row?.nextStep).toBe('I need to call the dentist and want a reminder Thursday');
+    expect(row?.status).toBe('waiting_on_parent');
+  });
+
+  it('retries a failed check-back after the backoff, then stops', async () => {
     const { familyId } = await seedFamily(db.database, 'Backoff');
     const opened = await applyWorkstreamOp(db.database, {
       familyId,
@@ -652,8 +761,63 @@ describe('a swim search carried across turns', () => {
         pages.push(text);
       },
     });
-    expect(second.considered).toBe(0);
+    expect(second.considered).toBe(1);
+    expect(second.skipped.deferred).toBe(1);
     expect(compose).toHaveBeenCalledTimes(1);
+    expect(pages).toHaveLength(1);
+
+    const afterBackoff = new Date(followupBackoffUntil(1, later).getTime() + 1000);
+    const third = await runWorkstreamFollowupSweep(db.database, {
+      now: () => afterBackoff,
+      listDue,
+      f14: () => true,
+      compose,
+      buildGate: () => allowGate('America/Toronto'),
+      page: async (text) => {
+        pages.push(text);
+      },
+    });
+    expect(third.skipped.compose_failed).toBe(1);
+    expect(compose).toHaveBeenCalledTimes(2);
+    expect(pages).toHaveLength(1);
+
+    const afterSecondWait = new Date(followupBackoffUntil(2, afterBackoff).getTime() + 1000);
+    const fourth = await runWorkstreamFollowupSweep(db.database, {
+      now: () => afterSecondWait,
+      listDue,
+      f14: () => true,
+      compose,
+      buildGate: () => allowGate('America/Toronto'),
+      page: async (text) => {
+        pages.push(text);
+      },
+    });
+    expect(fourth.skipped.compose_failed).toBe(1);
+    expect(compose).toHaveBeenCalledTimes(3);
+    expect(pages).toHaveLength(1);
+    const gaveUp = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, familyId),
+          eq(schema.auditLog.actionTaken, 'workstream_followup_gave_up'),
+        ),
+      );
+    expect(gaveUp).toHaveLength(1);
+
+    const fifth = await runWorkstreamFollowupSweep(db.database, {
+      now: () => afterSecondWait,
+      listDue,
+      f14: () => true,
+      compose,
+      buildGate: () => allowGate('America/Toronto'),
+      page: async (text) => {
+        pages.push(text);
+      },
+    });
+    expect(fifth.considered).toBe(0);
+    expect(compose).toHaveBeenCalledTimes(3);
     expect(pages).toHaveLength(1);
   });
 });

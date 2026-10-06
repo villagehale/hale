@@ -102,6 +102,7 @@ export const AUDIT_VERBS = [
   'child_removed',
   'family_location_updated',
   'family_plan_updated',
+  'family_plan_change_refused',
   'family_plan_comped',
   'family_intents_updated',
   'parent_name_updated',
@@ -456,6 +457,8 @@ export const AUDIT_VERBS = [
   'workstream_refused',
   'workstream_followed_up',
   'workstream_followup_unsent',
+  'workstream_followup_deferred',
+  'workstream_followup_gave_up',
 ] as const;
 
 export type AuditVerb = (typeof AUDIT_VERBS)[number];
@@ -573,6 +576,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   child_removed: { sentence: 'you removed a child', family: 'done' },
   family_location_updated: { sentence: 'you updated your family’s location', family: 'done' },
   family_plan_updated: { sentence: 'you changed your plan', family: 'done' },
+  family_plan_change_refused: {
+    sentence: 'a paid plan starts at checkout, so your plan did not change',
+    family: 'problem',
+  },
   family_plan_comped: {
     sentence: 'your family got the Family plan, free for life',
     family: 'done',
@@ -1543,6 +1550,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   workstream_followup_unsent: {
     sentence: 'could not write a check-back, so nothing was sent',
+    family: 'problem',
+  },
+  workstream_followup_deferred: {
+    sentence: 'left a check-back until it could send',
+    family: 'note',
+  },
+  workstream_followup_gave_up: {
+    sentence: 'stopped a check-back after it could not be sent',
     family: 'problem',
   },
 };

@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { CONNECTOR_PROVIDERS, type ConnectorProvider, connectorClientSource } from './google-oauth';
 import type { ConnectorErrorCode } from './sync-error';
 import { type OAuthTokens, decryptTokens, encryptTokens, tokenCustody } from './token-vault';
@@ -417,6 +417,22 @@ export async function revokeConnection(
       )
       .returning({ id: schema.integrations.id });
     if (revoked.length === 0) return 0;
+    // The integrations row outlives a revoke, so its ON DELETE CASCADE never reaches
+    // the mirrors. They end here; the reminder cron cancels what they had scheduled.
+    const mirrors = await tx
+      .update(schema.familyEvents)
+      .set({ deletedAt: new Date() })
+      .where(
+        and(
+          inArray(
+            schema.familyEvents.integrationId,
+            revoked.map((row) => row.id),
+          ),
+          isNotNull(schema.familyEvents.googleEventId),
+          isNull(schema.familyEvents.deletedAt),
+        ),
+      )
+      .returning({ id: schema.familyEvents.id });
     await tx.insert(schema.auditLog).values({
       familyId,
       actor: userId,
@@ -425,7 +441,7 @@ export async function revokeConnection(
       targetId: revoked[0]?.id,
       // The custody the tokens HAD, kept on the row that ended it: "Hale deleted its
       // keys" is only checkable if the row says which keys and where they were.
-      after: { provider, custody: tokenCustody(), via },
+      after: { provider, custody: tokenCustody(), via, calendarMirrorsRemoved: mirrors.length },
     });
     return revoked.length;
   });
