@@ -17,7 +17,7 @@
   },
   "ask-hale.md": {
     "file": "ask-hale.md",
-    "sha256": "6b76d9825fd6f058886b4c5f0eda49901a4550ad1ee5fc1d9aea2aee35613daa"
+    "sha256": "548f83bf76d5edf936483853120809b4e3fb6569211eae32d292a5cb55e181b2"
   },
   "calendar-email-ask.md": {
     "file": "calendar-email-ask.md",
@@ -89,7 +89,7 @@
   },
   "infer-memory.md": {
     "file": "infer-memory.md",
-    "sha256": "3b109380a92a89e184cc8f336080460e544aa316d365d377bdc9bc68b964fa05"
+    "sha256": "c47f74f71e4c69138cf2bdca5673598697973daed2370fb04e549f358ba95790"
   },
   "intake-answer.md": {
     "file": "intake-answer.md",
@@ -115,6 +115,10 @@
     "file": "intro-voice.md",
     "sha256": "bc6fe6af049867f0e7c0e99c0a546d64a429c61c002e5c86ccf15f3561b63cf5"
   },
+  "kid-item-classifier.md": {
+    "file": "kid-item-classifier.md",
+    "sha256": "1016838c5b44d65457d0cd4b93d88676997925cad9b8d395c7e3ebbd8fb06b4d"
+  },
   "medical-sanitize.md": {
     "file": "medical-sanitize.md",
     "sha256": "21584bd7ec574c64b27e2507c833d4b11dbfb0af41ff2522889ecc9cedd58d0c"
@@ -126,6 +130,14 @@
   "nudge-voice.md": {
     "file": "nudge-voice.md",
     "sha256": "0058da39817bb85138bf334ab1b2e4f17cea042fb2de46cba4a82af95471a11c"
+  },
+  "onboarding-friend-short.md": {
+    "file": "onboarding-friend-short.md",
+    "sha256": "6d01b7450609b15339e0bd3c96dde424f6dea673032e73f0740dabd5ea58e842"
+  },
+  "onboarding-friend.md": {
+    "file": "onboarding-friend.md",
+    "sha256": "1bef58e091e2274decf2105a0aa603098467b820a84b8f9e0f9eed1dd9a23959"
   },
   "parse-civic-hours.md": {
     "file": "parse-civic-hours.md",

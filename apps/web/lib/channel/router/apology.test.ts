@@ -28,16 +28,8 @@ describe('what may not be sent as an apology', () => {
 
   it.each([
     ['nothing at all', '', 'empty'],
-    [
-      'two sentences',
-      'That broke on my end. Nothing was changed.',
-      'not_one_sentence',
-    ],
-    [
-      'a question',
-      'That one broke on my end - want to try again?',
-      'carries_question',
-    ],
+    ['two sentences', 'That broke on my end. Nothing was changed.', 'not_one_sentence'],
+    ['a question', 'That one broke on my end - want to try again?', 'carries_question'],
     ['a typographic dash', 'That one broke on my end — nothing changed.', 'not_gsm7'],
     [
       'a link',
@@ -186,10 +178,7 @@ describe('composing the apology', () => {
     quiet();
     const seen: Captured[] = [];
     const outcome = await createTurnApology(
-      clientSaying(
-        ['Broke. Try again in 5?', 'That one broke on my end - nothing changed.'],
-        seen,
-      ),
+      clientSaying(['Broke. Try again in 5?', 'That one broke on my end - nothing changed.'], seen),
     ).compose();
 
     expect(outcome).toEqual({
@@ -234,12 +223,33 @@ describe('composing the apology', () => {
     expect(outcome).toEqual({ status: 'unreachable' });
   });
 
+  it('names a billing refusal as model_failed with the class and not the provider sentence', async () => {
+    quiet();
+    const credit =
+      'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.';
+    const outcome = await createTurnApology(
+      throwingClient(
+        Anthropic.APIError.generate(
+          400,
+          { type: 'error', error: { type: 'invalid_request_error', message: credit } },
+          undefined,
+          {},
+        ),
+      ),
+    ).compose();
+
+    expect(outcome).toEqual({
+      status: 'unavailable',
+      reason: 'model_failed',
+      providerFailure: 'billing',
+    });
+    expect(JSON.stringify(outcome)).not.toContain(credit);
+  });
+
   it('separates a defect in the apology request from an outage', async () => {
     quiet();
     const outcome = await createTurnApology(
-      throwingClient(
-        new Anthropic.APIError(400, { type: 'error' }, 'invalid request', undefined),
-      ),
+      throwingClient(new Anthropic.APIError(400, { type: 'error' }, 'invalid request', undefined)),
     ).compose();
 
     expect(outcome).toEqual({ status: 'unavailable', reason: 'model_failed' });

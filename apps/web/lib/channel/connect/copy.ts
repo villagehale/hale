@@ -2,18 +2,19 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { failureReply } from '~/lib/channel/router/copy';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 import type { ConnectorRevokeOutcome } from './revoke';
+import { withGoogleConnectCaution } from './text-connect';
 
 /**
  * The connector offer — the one deterministic line that hands a parent their sign-in
  * link. Locked copy (scanned by sms-copy-encoding.test.ts): plain hyphens, straight
- * quotes, GSM-7 throughout, one segment WITH the link inside it, and an FR twin per
+ * quotes, GSM-7 throughout, and an FR twin per
  * the `_BY_LANGUAGE` convention — written inside GSM-7's French subset (é è à ù yes;
  * â ê î ô û ç no).
  *
  * The register is the Instinct one: short, zero ceremony, no exclamation marks. The
  * fifteen-minute clause is the TTL said out loud — CHANNEL_SIGNIN_TTL_MS is the number
- * this sentence promises, and the segment test holds both twins to one segment so the
- * link can never be split off its sentence.
+ * this sentence promises. The unverified-app line sits in front of the link, so the
+ * segment test holds both twins to two segments and the link stays whole.
  */
 
 /** What each connector is called to a parent, per language. 'Google Agenda' is the
@@ -35,7 +36,10 @@ export function connectorOfferReply(
   provider: ConnectorProvider,
   url: string,
 ): string {
-  return OFFER_BY_LANGUAGE[language](PROVIDER_NOUN[language][provider], url);
+  return withGoogleConnectCaution(
+    language,
+    OFFER_BY_LANGUAGE[language](PROVIDER_NOUN[language][provider], url),
+  );
 }
 
 /**
@@ -67,15 +71,16 @@ const REVOKE_BY_LANGUAGE: Record<
     revoked: (noun) =>
       `Done - your ${noun} is disconnected and Hale deleted its keys. Google still lists Hale until you remove it at myaccount.google.com/permissions`,
     not_connected: (noun) =>
-      `Hale has no keys for your ${noun} - nothing to disconnect. Text connect my ${noun} if you want to link it.`,
+      `Hale has no keys for your ${noun} - nothing to disconnect. Ask in this thread if you want to link it.`,
     revoke_failed: () => failureReply(),
   },
   fr: {
     revoked: (noun) =>
       `Fait - votre ${noun} est déconnecté, Hale a supprimé ses clés. Google garde Hale jusqu'à ce que vous l'enleviez sur myaccount.google.com/permissions`,
     not_connected: (noun) =>
-      `Hale n'a pas de clés pour votre ${noun} - rien à déconnecter. Textez connecter mon ${noun} pour le lier.`,
-    revoke_failed: () => `Quelque chose s'est mal passé chez moi - rien n'a changé. Réessayez dans une minute.`,
+      `Hale n'a pas de clés pour votre ${noun} - rien à déconnecter. Demandez dans ce fil si vous voulez le lier.`,
+    revoke_failed: () =>
+      `Quelque chose s'est mal passé chez moi - rien n'a changé. Réessayez dans une minute.`,
   },
 };
 

@@ -29,24 +29,28 @@ describe('classifyEvent rollout', () => {
   beforeEach(() => vi.stubEnv('HALE_CLASSIFY_EVENT_MODEL_MODE', ''));
   afterEach(() => vi.unstubAllEnvs());
 
-  it('keeps Sonnet 5 by default', async () => {
-    const create = vi.fn(async () => response());
-    const result = await classifyEvent(
-      {
-        source: 'email',
-        payload: { subject: 'School update' },
-        childNames: [],
-      },
-      { messages: { create } } as unknown as AgentClient,
-    );
+  it.each([undefined, '', ' \t\n ', 'invalid', 'shadow', 'current'])(
+    'keeps Sonnet 5 for model mode %j',
+    async (raw) => {
+      vi.stubEnv('HALE_CLASSIFY_EVENT_MODEL_MODE', raw);
+      const create = vi.fn(async () => response());
+      const result = await classifyEvent(
+        {
+          source: 'email',
+          payload: { subject: 'School update' },
+          childNames: [],
+        },
+        { messages: { create } } as unknown as AgentClient,
+      );
 
-    expect(result.model).toBe(SONNET5_MODEL);
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        model: SONNET5_MODEL,
-      }),
-    );
-  });
+      expect(result.model).toBe(SONNET5_MODEL);
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: SONNET5_MODEL,
+        }),
+      );
+    },
+  );
 
   it('falls back to Sonnet 5 when the candidate fails', async () => {
     const create = vi.fn().mockRejectedValueOnce(new Error('candidate unavailable'));

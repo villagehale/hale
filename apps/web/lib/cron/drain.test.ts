@@ -623,10 +623,12 @@ describe('channel.message.received', () => {
    */
   it('names an expired turn on the log and sends nothing', async () => {
     const channelMessage = vi.fn(async () => undefined);
+    const pageExpiredTurn = vi.fn(async () => undefined);
     const { boss, completed } = makeFakeBoss({
       [DEAD]: [{ id: 'd1', data: inbound('SM9') }],
     });
     const deps = makeDeps(boss, { channelMessage });
+    deps.pageExpiredTurn = pageExpiredTurn;
 
     const summary = await drainHotQueues(deps);
 
@@ -641,6 +643,15 @@ describe('channel.message.received', () => {
       }),
       expect.stringContaining('never answered'),
     );
+    expect(pageExpiredTurn).toHaveBeenCalledTimes(1);
+    expect(pageExpiredTurn).toHaveBeenCalledWith({
+      jobId: 'd1',
+      familyId: FAMILY,
+      channelMessageId: inbound('SM9').channel_message_id,
+    });
+    const pageArgs = JSON.stringify(pageExpiredTurn.mock.calls);
+    expect(pageArgs).not.toContain('SM9');
+    expect(pageArgs).not.toContain('+1');
   });
 
   /**

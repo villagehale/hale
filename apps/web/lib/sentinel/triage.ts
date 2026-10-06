@@ -2,6 +2,7 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { type JevChoiceEvaluator, evaluateJevChoice, meetsJevConfidence } from '~/lib/pipeline/jev';
 import { recordModelFallback } from '~/lib/pipeline/model-fallback';
+import { parseModelMode } from '~/lib/pipeline/model-mode';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { loadTriageChildEventSkill } from './skill';
 import type { InboxEnvelope } from './types';
@@ -53,13 +54,6 @@ const JEV_CRITERIA = {
   no: 'The envelope is not worth a full-body fetch under the complete triage policy.',
 } as const;
 
-function rolloutMode(raw: string | undefined): 'current' | 'candidate' {
-  const mode = raw?.trim() || 'current';
-  if (mode === 'current' || mode === 'candidate') return mode;
-  console.error({ mode }, 'sentinel triage: invalid model mode; using current');
-  return 'current';
-}
-
 async function runCurrentTriage(
   envelope: Pick<InboxEnvelope, 'subject' | 'from' | 'snippet'>,
   childNames: readonly string[],
@@ -103,7 +97,8 @@ export async function triageEmail(
   client: AgentClient,
   deps: TriageRolloutDeps = {},
 ): Promise<TriageResult> {
-  const mode = deps.modelMode ?? rolloutMode(process.env.HALE_TRIAGE_MODEL_MODE);
+  const mode =
+    deps.modelMode ?? parseModelMode(process.env.HALE_TRIAGE_MODEL_MODE, 'sentinel triage');
   if (mode === 'candidate') {
     try {
       const skill = await loadTriageChildEventSkill();

@@ -26,10 +26,15 @@ import {
  */
 
 interface Seen {
-  system?: string;
+  system?: string | Array<{ type?: string; text?: string }>;
   toolChoice?: string;
   tools?: Array<{ type?: string; name?: string }>;
   userMessage?: string;
+}
+
+function systemText(system: Seen['system']): string {
+  if (typeof system === 'string') return system;
+  return (system ?? []).map((block) => block.text ?? '').join('');
 }
 
 const sanitizeResult = (input: unknown) => ({
@@ -611,14 +616,14 @@ describe('de-identification before search', () => {
     expect(seen[0]?.toolChoice).toBe('sanitize');
     expect(seen[0]?.userMessage).toBe(sanitizeUserMessage(raw));
     expect(seen[0]?.userMessage).toContain('Emma');
-    expect(seen[0]?.system).toContain('Strip the identity');
+    expect(systemText(seen[0]?.system)).toContain('Strip the identity');
 
     // The search sees the de-identified query alone, on the BLIND medical skill.
     const ground = seen.find((s) => Array.isArray(s.tools) && s.tools[0]?.type === 'web_search_20250305');
     expect(ground?.userMessage).toContain('fever'); // positive control: the query reached search
     expect(ground?.userMessage).not.toContain('Emma');
     expect(ground?.userMessage).not.toContain('2 years');
-    expect(ground?.system).toContain('A grounded answer to a worried parent');
+    expect(systemText(ground?.system)).toContain('A grounded answer to a worried parent');
 
     // Compose is blind too.
     const compose = seen.find((s) => s.toolChoice === 'medical_answer');

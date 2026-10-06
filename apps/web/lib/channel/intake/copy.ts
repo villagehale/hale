@@ -1,4 +1,4 @@
-import { CONNECTOR_TRUST_LINE } from '~/lib/channel/connect/text-connect';
+import { CONNECTOR_TRUST_LINE, withGoogleConnectCaution } from '~/lib/channel/connect/text-connect';
 import { isJoinCode } from '~/lib/channel/join/code';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { isReferralCode } from '~/lib/channel/referral/code';
@@ -527,8 +527,10 @@ export const HALE_GREETING_EN =
   'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.';
 
 /**
- * VIL-385 · Sloane lock. The iMessage first bubble, then the location card
- * alone. Byte-stable. ASCII apostrophes. French is ASCII, tu.
+ * VIL-385 · Sloane lock. Sent only after Linq accepts the location card.
+ * VIL-412 leaves that card off unless FIRST_TOUCH_LOCATION_CARD_ENABLED is
+ * exactly `true`; the postal sentence is the first bubble otherwise.
+ * Byte-stable. ASCII apostrophes. French is ASCII, tu.
  */
 export const FIRST_TOUCH_IMESSAGE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: "Hey, it's Hale. I find what's on for kids near you. Tap to share where you are and I'll show you what's on this week.",
@@ -691,16 +693,16 @@ export const WATCH_OFFER_BY_LANGUAGE: Record<ReplyLanguage, string> = {
 };
 
 /**
- * The yes. Names the restraint (only when it matters) and keeps the CASL escape hatch
- * visible. Fixed, because both of those are promises and a promise a model paraphrased
- * is a promise nobody made.
+ * The yes. Names the restraint (only when it matters). STOP, HELP, and START still
+ * work as carrier keywords; this receipt does not teach them.
  *
  * IT DOES NOT ASK ANYTHING. One text, one ask. The name, the inbox, and the co-parent
  * each go out as their own later message after a real find (machine.ts). This sentence
  * stays whole so a yes is a receipt, not a second question stapled to the first.
+ * Friend voice, when it is on, writes the live text. This line is the flag-off copy
+ * and the length budget the identity tail still measures against.
  */
-export const ASSENT_ACK =
-  "Done - you're covered. I only text when something actually matters, and STOP always works.";
+export const ASSENT_ACK = "Done. You're covered. I'll text when something actually matters.";
 export const DECLINE_ACK =
   'No problem - text me whenever you like. The dates and finds are here when you want them.';
 export const AMBIGUOUS_CLARIFY =
@@ -716,13 +718,14 @@ export const AMBIGUOUS_CLARIFY =
  * failing anywhere. The test in copy.test.ts holds it to one segment WITH a full-budget
  * tail; the words below were cut to fit that, not the other way round.
  *
- * `tout est couvert` rather than `vous etes couvert`: GSM-7 has no ê, and the fold would
- * be visible in the most prominent word of the most important message. It also sidesteps
- * a gender agreement Hale has no business guessing about the parent.
+ * `tout est couvert` rather than `vous etes couvert` was the old line. GSM-7 has no ê,
+ * and the fold would be visible. This shorter twin also sidesteps a gender agreement
+ * Hale has no business guessing about the parent. It stays no longer than the English
+ * line, because the identity tail budget is sized from the English constant.
  */
 export const ASSENT_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: ASSENT_ACK,
-  fr: "C'est fait - tout est couvert. Je texte juste quand il le faut, et STOP marche toujours.",
+  fr: "C'est fait. Je texte quand il le faut.",
 };
 
 export const DECLINE_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
@@ -777,7 +780,10 @@ export function intakeConnectorOffer(
   calendarUrl: string,
   gmailUrl: string,
 ): string {
-  return CONNECTOR_OFFER_BY_LANGUAGE[language](calendarUrl, gmailUrl);
+  return withGoogleConnectCaution(
+    language,
+    CONNECTOR_OFFER_BY_LANGUAGE[language](calendarUrl, gmailUrl),
+  );
 }
 
 /**
@@ -789,16 +795,15 @@ export function intakeConnectorOffer(
  */
 export const INTAKE_CALENDAR_CARD_TEMPLATE_KEY = 'intake:calendar_card';
 
-const CALENDAR_TRUST_FR =
-  'Je ne vois jamais votre mot de passe. Déconnectez mon agenda à tout moment.';
+const TRUST_FR = 'Je ne vois jamais votre mot de passe. Vous pouvez déconnecter à tout moment.';
 
 const CALENDAR_CARD_BY_LANGUAGE: Record<ReplyLanguage, (url: string) => string> = {
   en: (url) => `Connect your calendar: ${url} Good for 15 minutes. ${CONNECTOR_TRUST_LINE.gcal}`,
-  fr: (url) => `Connectez votre agenda : ${url} Bon pour 15 minutes. ${CALENDAR_TRUST_FR}`,
+  fr: (url) => `Connectez votre agenda : ${url} Bon pour 15 minutes. ${TRUST_FR}`,
 };
 
 export function intakeCalendarCard(language: ReplyLanguage, url: string): string {
-  return CALENDAR_CARD_BY_LANGUAGE[language](url);
+  return withGoogleConnectCaution(language, CALENDAR_CARD_BY_LANGUAGE[language](url));
 }
 
 /**
@@ -809,28 +814,15 @@ export function intakeCalendarCard(language: ReplyLanguage, url: string): string
  */
 export const INTAKE_GMAIL_CARD_TEMPLATE_KEY = 'intake:gmail_card';
 
-const GMAIL_TRUST_FR = 'Je ne vois jamais votre mot de passe. Déconnectez mon Gmail à tout moment.';
-
 const GMAIL_CARD_BY_LANGUAGE: Record<ReplyLanguage, (url: string) => string> = {
   en: (url) =>
     `Connect Gmail: ${url} Good for 15 minutes - ignore this to skip. ${CONNECTOR_TRUST_LINE.gmail}`,
-  fr: (url) =>
-    `Connectez Gmail : ${url} Bon pour 15 minutes - ignorez pour passer. ${GMAIL_TRUST_FR}`,
+  fr: (url) => `Connectez Gmail : ${url} Bon pour 15 minutes - ignorez pour passer. ${TRUST_FR}`,
 };
 
 export function intakeGmailCard(language: ReplyLanguage, url: string): string {
-  return GMAIL_CARD_BY_LANGUAGE[language](url);
+  return withGoogleConnectCaution(language, GMAIL_CARD_BY_LANGUAGE[language](url));
 }
-
-/**
- * The parent's call-name, its own text, after the turtle card and before the inbox.
- *
- * Locked with PR #689: `What should I call you?` The Google confirm
- * (`Can I call you {first}?`) belongs to that PR once a given name is already on
- * file. This moment is before the inbox ask, so there is no Google name to confirm.
- * A French watch reply does not get this English line.
- */
-export const PARENT_CALL_NAME_ASK = 'What should I call you?';
 
 /**
  * Last ask of intake on SMS, its own text, after the Gmail card.

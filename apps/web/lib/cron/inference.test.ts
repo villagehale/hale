@@ -1,7 +1,7 @@
 import { type AgentClient, DEEPSEEK_MODEL, SONNET_MODEL } from '@hale/agent';
 import { schema } from '@hale/db';
-import { describe, expect, it, vi } from 'vitest';
-import { runInferenceForFamily } from './inference';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { defaultInferenceDeps, runInferenceForFamily } from './inference';
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const NOW = new Date('2026-06-17T06:00:00Z');
@@ -114,6 +114,25 @@ function fakeClient(confidence: number): AgentClient {
 }
 
 describe('runInferenceForFamily', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([undefined, '', ' \t\n ', 'invalid', 'shadow', 'current'])(
+    'keeps Sonnet 4.6 for model mode %j',
+    async (raw) => {
+      vi.stubEnv('HALE_MEMORY_INFER_MODEL_MODE', raw);
+      vi.stubEnv('ANTHROPIC_API_KEY', 'test-key-no-network');
+      const deps = defaultInferenceDeps();
+      expect(deps.modelMode).toBe('current');
+      const capture: Capture = { auditLog: [], factInserts: [], factSupersedes: 0, agentRuns: [] };
+      const client = fakeClient(0.9);
+      await runInferenceForFamily(FAMILY_ID, fakeDb(capture), { ...deps, client }, NOW);
+      expect(client.messages.create).toHaveBeenCalledWith(
+        expect.objectContaining({ model: SONNET_MODEL }),
+      );
+      expect(capture.agentRuns[0]?.modelUsed).toBe(SONNET_MODEL);
+    },
+  );
+
   it('saves a high-confidence inferred fact through the guarded tool and audits it (rule #6)', async () => {
     const capture: Capture = { auditLog: [], factInserts: [], factSupersedes: 0, agentRuns: [] };
     const db = fakeDb(capture);

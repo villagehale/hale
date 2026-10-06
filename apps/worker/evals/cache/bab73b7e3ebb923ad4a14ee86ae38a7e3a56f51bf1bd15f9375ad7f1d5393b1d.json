@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CfjumDb74brRdeY6D9www",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "Es4CCqQBCBIYAipAF9eEGyD/mEZQjqbjRW0UJOZlseAoDXQwLAlpVCKFCxospjM5fmNF0q0yJhR6ByqxIWT7ul+YNmb2O2uW0rMZYTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagBotSQ1gYSDMtyHr4J0zBw4epQ5BoMp23hGWPLESSDSSVBIjBg3NaFp7wU24ppW6SCdf350UUWz1l3TC8womrQ25lI2Or2TVsb/hn8upZUlPDg72cqV+BWq7tHswLNw+NyaFVesoslbLk97IlgQdVuB2nLYfKlpAabVyZ31L0/qGMgrpifXTyWPMaLqY4IvnS7v1cj2XbR6TnNdC1wnebbYhrPDCl4EPgAaXECkBgB"
+      },
+      {
+        "type": "text",
+        "text": "Mira's comfort item is her blue elephant — she uses it for naps and when you're travelling. Worth tucking a spare in the diaper bag if you've got one, in case it goes missing on an outing."
+      }
+    ],
+    "usage": {
+      "input_tokens": 5655,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 3944,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 93,
+      "output_tokens_details": {
+        "thinking_tokens": 26
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 1956,
+  "firstInputTokens": 5655
+}

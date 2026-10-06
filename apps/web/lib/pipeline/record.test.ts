@@ -90,6 +90,56 @@ describe('pipeline cost accounting', () => {
 
     expect(runs).toHaveLength(1);
     expect(runs[0]?.costUsd).toBe('6.000000');
+    expect(runs[0]?.promptCacheHit).toBe(false);
+  });
+
+  it('records a classifier cache read as a hit', async () => {
+    const runs: Record<string, unknown>[] = [];
+    await recordEvent(fakeDb(runs), {
+      familyId: FAMILY_ID,
+      source: 'email',
+      eventType: 'appointment',
+      payload: {},
+      classifierConfidence: 0.9,
+      dedupHash: 'hash-hit',
+      suggestion: { kind: 'autonomous_action', actionType: 'send_email' },
+      teenContent: false,
+      childId: null,
+      usage: {
+        promptTokens: 100_000,
+        completionTokens: 1_000,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 900_000,
+      },
+      model: HAIKU_MODEL,
+    });
+
+    expect(runs[0]?.promptCacheHit).toBe(true);
+  });
+
+  it('does not count a deterministic pre-filter as a cache measurement', async () => {
+    const runs: Record<string, unknown>[] = [];
+    await recordEvent(fakeDb(runs), {
+      familyId: FAMILY_ID,
+      source: 'calendar',
+      eventType: 'appointment',
+      payload: {},
+      classifierConfidence: 1,
+      dedupHash: 'hash-det',
+      suggestion: { kind: 'autonomous_action', actionType: 'send_email' },
+      teenContent: false,
+      childId: null,
+      usage: {
+        promptTokens: 0,
+        completionTokens: 0,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+      },
+      model: 'deterministic',
+    });
+
+    expect(runs[0]?.costUsd).toBe('0.000000');
+    expect(runs[0]?.promptCacheHit).toBeUndefined();
   });
 
   it('bills the drafter run for its cache tiers instead of dropping them', async () => {
@@ -113,6 +163,7 @@ describe('pipeline cost accounting', () => {
 
     expect(runs).toHaveLength(1);
     expect(runs[0]?.costUsd).toBe('2.010000');
+    expect(runs[0]?.promptCacheHit).toBe(true);
   });
 
   it('records the cost the reviewer loop measured, never a re-derivation', async () => {

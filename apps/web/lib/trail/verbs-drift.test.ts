@@ -198,6 +198,12 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'upgrade_already_paid',
   ],
   'apps/web/lib/integrations/store.ts': ['integration_connected', 'integration_revoked'],
+  // A revive writes calendar_mirror_added; a start-time change writes calendar_mirror_moved.
+  // The insert and the soft-delete are string literals and are scanned directly.
+  'apps/web/lib/integrations/calendar-mirror.ts': [
+    'calendar_mirror_added',
+    'calendar_mirror_moved',
+  ],
   'apps/web/lib/village/intros/consent.ts': [
     'village_intro_discoverability_granted',
     'village_intro_discoverability_revoked',

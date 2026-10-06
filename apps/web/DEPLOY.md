@@ -11,9 +11,10 @@ the production build fails. Preview builds do not connect.
 
 The Deploy workflow's `migrate` leg runs the same apply-and-check
 (`pnpm --filter @hale/db migrate:guard`, then `pnpm db:check-migrations`) after
-CI on `main`, and fails the workflow if `DATABASE_DIRECT_URL` is unset. That
-leg is what the worker waits on. It is not the web promotion gate: Vercel does
-not wait for CI, and a cancelled CI run used to skip migrations entirely.
+CI on `main`, and fails the workflow if `DATABASE_DIRECT_URL` is unset. It is
+not the web promotion gate: Vercel does not wait for CI, and a cancelled CI run
+used to skip migrations entirely. There is no separate worker deploy in that
+workflow.
 
 Incident (2026-07-05): the Vercel trigger for this project stopped firing after
 Jul 2, so ~a dozen merges never deployed and prod served stale code (Village

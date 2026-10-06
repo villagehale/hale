@@ -1,9 +1,8 @@
 # Deployment pipeline — runs ONLY after the CI workflow ("CI") succeeds on main.
 # Keeps deploy concerns out of ci.yml (CI gates correctness; this gates release).
 #
-# TWO independent legs, each gated on ITS secret being present:
+# ONE leg:
 #   - migrate : DB migrations against Supabase Toronto     (needs DATABASE_DIRECT_URL)
-#   - fly     : apps/worker to Fly.io yyz                  (needs FLY_API_TOKEN)
 #
 # VERCEL IS NOT DEPLOYED HERE. Both `site` (marketing) and `hale-web` (the app)
 # are GitHub-connected Vercel projects that auto-deploy on main pushes via the
@@ -12,27 +11,22 @@
 # was a redundant SECOND prod deploy that failed on a stale VERCEL_TOKEN, so
 # every Deploy run went red for a step that did nothing; removed 2026-07-05.
 # (Manual redeploy if ever needed: `vercel deploy --prod` with a valid token.)
+# Scheduled work is Vercel Cron on hale-web (`/api/cron/*`), not a worker deploy.
 #
 # GATING CONTRACT (see preflight job):
 #   - DATABASE_DIRECT_URL absent FAILS the workflow. A green deploy that skipped
 #     migrations is how production served code against a stale schema (VIL-330).
 #     The secret name is DATABASE_DIRECT_URL (Supabase direct, port 5432).
-#   - FLY_API_TOKEN absent SKIPS the worker leg with a notice.
 #   - A leg that DOES run but finds its required secret empty FAILS LOUD.
-#
-# ORDER: migrate runs first (schema must exist before the worker hits it), then
-# fly deploys. A failed migration blocks the worker deploy.
 #
 # WEB (Vercel) does not wait for this workflow. hale-web's production build
 # applies migrations itself, before the deployment is aliased — see
-# packages/db/scripts/vercel-production-migrate.mjs. This leg still runs so the
-# worker cannot ship against a schema the web build did not migrate, and so a
+# packages/db/scripts/vercel-production-migrate.mjs. This leg still runs so a
 # cancelled CI (which skips this workflow) is not the only apply path.
 #
 # ROLLBACK (manual — see docs/deploy/README.md for full procedure):
 #   - Vercel : `vercel promote <previous-prod-url> --token=$VERCEL_TOKEN`
-#   - Fly    : `fly releases --app hale-worker` then `fly deploy --image <prev>`
-#              or `fly releases rollback <version> --app hale-worker`
+#              (app and `/api/cron/*` handlers roll back together)
 #   - DB     : migrations are additive (CLAUDE.md #9) — no auto down-migration;
 #              restore from Supabase PITR if a migration is bad.
 
@@ -52,32 +46,26 @@ permissions:
   contents: read
 
 jobs:
-  # Gate the whole pipeline on CI success, and resolve which legs have secrets.
-  # Secrets can't be read in job-level `if:`, so we map presence to outputs here.
+  # Gate the whole pipeline on CI success. Secrets can't be read in job-level
+  # `if:`, so presence is asserted here. An absent DATABASE_DIRECT_URL fails
+  # the workflow instead of skipping the migrate leg.
   preflight:
     name: Preflight (CI gate + secret presence)
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     outputs:
       has_db: ${{ steps.check.outputs.has_db }}
-      has_fly: ${{ steps.check.outputs.has_fly }}
     steps:
       - id: check
         env:
           DATABASE_DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           set -euo pipefail
           if [ -z "$DATABASE_DIRECT_URL" ]; then
             echo "::error::DATABASE_DIRECT_URL is not set. Refusing to deploy: production would ship code whose Drizzle migrations were never applied. Add the Supabase direct (port 5432, non-pooled) connection string as the Actions secret DATABASE_DIRECT_URL. The hale-web Vercel project needs the same name on the Production environment so the production build can migrate before the deployment is aliased."
             exit 1
           fi
-          fly=false
-          [ -n "$FLY_API_TOKEN" ] && fly=true || echo "::notice::FLY_API_TOKEN absent — Fly worker leg will be SKIPPED."
-          {
-            echo "has_db=true"
-            echo "has_fly=$fly"
-          } >> "$GITHUB_OUTPUT"
+          echo "has_db=true" >> "$GITHUB_OUTPUT"
 
   # ── DB migrations → Supabase Toronto ──────────────────────────────────────
   migrate:
@@ -117,31 +105,3 @@ jobs:
         env:
           DATABASE_DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
         run: pnpm db:check-migrations
-
-  # ── Worker → Fly.io Toronto (yyz) ─────────────────────────────────────────
-  fly:
-    name: Fly deploy (hale-worker yyz)
-    needs: [preflight, migrate]
-    if: |
-      always() &&
-      needs.preflight.outputs.has_fly == 'true' &&
-      (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-      # Pinned to commit SHA (ed8efb3 = master @ 2026-06) for supply-chain safety.
-      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
-      - name: Deploy worker to Fly (yyz)
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${FLY_API_TOKEN:-}" ]; then
-            echo "::error::Fly leg ran without FLY_API_TOKEN — refusing to proceed."; exit 1
-          fi
-          # --remote-only builds on Fly's builders (no local Docker in CI).
-          # App secrets (DATABASE_URL, ANTHROPIC_API_KEY, LANGFUSE_*, RESEND_*)
-          # are set out-of-band via `fly secrets set` — see docs/deploy/README.md.
-          flyctl deploy --config infra/fly.toml --remote-only

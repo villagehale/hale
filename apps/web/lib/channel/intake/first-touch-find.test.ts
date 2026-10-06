@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
-import { WEEK_FIND_SUBJECT, findThisWeek, renderWeekFind } from './first-touch-find';
+import {
+  WEEK_FIND_BUDGET_MS,
+  WEEK_FIND_SUBJECT,
+  findThisWeek,
+  findThisWeekWithin,
+  renderWeekFind,
+} from './first-touch-find';
 import type { FirstTouchPlace } from './first-touch-place';
 
 const TORONTO: FirstTouchPlace = {
@@ -52,6 +58,20 @@ describe('findThisWeek', () => {
       '1. Storytime (all ages) - Saturday',
     );
     expect(renderWeekFind(['Storytime (all ages) - Saturday'])).not.toContain(WEEK_FIND_SUBJECT);
+  });
+
+  it('names a search that outlasts the budget and does not wait it out', async () => {
+    vi.useFakeTimers();
+    const finder: ActivityFinder = {
+      async find() {
+        await new Promise((resolve) => setTimeout(resolve, WEEK_FIND_BUDGET_MS * 5));
+        return { found: true, picks: [STORY] };
+      },
+    };
+    const pending = findThisWeekWithin({ finder, place: TORONTO });
+    await vi.advanceTimersByTimeAsync(WEEK_FIND_BUDGET_MS);
+    await expect(pending).resolves.toEqual({ lines: [], outcome: 'budget' });
+    vi.useRealTimers();
   });
 
   it('drops a pick that has no name', async () => {

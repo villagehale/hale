@@ -6,9 +6,9 @@ import { z } from 'zod';
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { dayKeyOf, formatCalendarDayLabel } from '~/lib/format/datetime';
-import { CONFIDENCE_FLOOR, writeFact } from '~/lib/memory/facts';
+import { commitClassifiedMemory, modelClassificationShape } from '~/lib/memory/classify-write';
+import { CONFIDENCE_FLOOR } from '~/lib/memory/facts';
 import { forgetFamilyFact } from '~/lib/memory/forget';
-import { memoryTypingForWrite } from '~/lib/memory/store';
 import {
   getFamilyMemoryFact,
   listMemoryBuckets,
@@ -398,7 +398,7 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
   const searchMemory = defineTool({
     name: 'search_memory',
     description:
-      'Lexical recall for THIS family. Matches fact keys, a closed alias list (daycare matches childcare; a typo matches nothing), and fact values. Live facts only unless includeHistory is true. Teen-attributed rows are omitted.',
+      'Lexical recall for THIS family. Matches fact keys, a closed alias list (daycare matches childcare; a typo matches nothing), and fact values. Each fact includes kind (enduring, obligation, curiosity), disposition (confirmed, declined, asked), and source. Live facts only unless includeHistory is true. Teen-attributed rows are omitted.',
     inputSchema: z.object({
       query: z.string().min(1),
       factType: memoryFactType.optional(),
@@ -453,12 +453,14 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
   const saveMemory = defineTool({
     name: 'save_memory',
     description:
-      'Persist a durable fact the parent STATED about THIS family (a settled routine, a stated preference, a logistic), so Hale recalls it next turn. Upserts on (factType, factKey). Never store inferences — only what the parent actually said. `confidence` is how sure you are the parent actually SAID this: 1 when they stated it in these words, lower when you are reading an implication. Below 0.7 is refused — do not file a hunch.',
+      'Persist a fact the parent STATED about THIS family, so Hale recalls it next turn. Classify it: memoryClass enduring (who they are, names, ages, home, a settled routine), obligation (a one-off event or a declined activity), or curiosity (a passing question). disposition is confirmed, declined, or asked. A declined or rejected activity is declined, never confirmed, and observedAt is the event time. A passing question is curiosity and asked, not a preference. Upserts on (factType, factKey). When the parent corrects a fact, pass the same factKey, or correctsKey when the old key differs — the old fact is superseded. Never store inferences. confidence is how sure you are the parent SAID this. Below 0.7 is refused.',
     inputSchema: z.object({
       factType: memoryFactType,
       factKey: z.string().min(1),
       factValue: z.unknown(),
       confidence: z.number().min(0).max(1),
+      observedAt: z.string().optional(),
+      ...modelClassificationShape,
     }),
     // `confidence` is required by the schema, so the API validates it in every
     // example: 1 is the parent's own words, 0.8 a clear implication.
@@ -486,15 +488,7 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
         return { saved: false as const, reason: 'below_confidence_floor' };
       }
 
-      const typing = await memoryTypingForWrite(database, {
-        familyId: ctx.familyId,
-        childId: null,
-        factType: input.factType,
-        factKey: input.factKey,
-        source: 'parent_message',
-        now,
-      });
-      const { factId } = await writeFact(database, {
+      const { factId } = await commitClassifiedMemory(database, {
         familyId: ctx.familyId,
         childId: null,
         factType: input.factType,
@@ -502,9 +496,16 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
         factValue: input.factValue,
         confidence: input.confidence,
         inferredBy: 'ask-hale',
-        // The parent said it in this turn, so the turn clock IS the event time.
-        validFrom: now,
-        ...typing,
+        source: 'parent_message',
+        // An omitted class on this tool is identity: the parent stated it.
+        // A declined activity or a passing question still has to be named.
+        now,
+        omittedClass: 'enduring',
+        memoryClass: input.memoryClass,
+        disposition: input.disposition,
+        observedAt: input.observedAt,
+        expiresAt: input.expiresAt,
+        correctsKey: input.correctsKey,
       });
       return { saved: true as const, factId };
     },

@@ -660,6 +660,7 @@ async function runToddlerJourney(): Promise<Journey> {
       alreadyAsked: false,
       googleGivenName: null,
     }),
+    composeNameAsk: async () => null,
   };
 
   vi.stubEnv('F14_ENABLED', 'true');
@@ -1192,7 +1193,7 @@ describe('6 · the registration sequence claims the window and prepares the morn
       .find((body) => body.includes('a Markham portal account')) as string;
     expect(checklist).toContain('added with their birthday(s)');
     expect(checklist).toContain('a card saved');
-    expect(checklist).toContain('Reply YES when that is done, or NO if not.');
+    expect(checklist).toContain('Want me to know when that is done?');
     expect(checklist).not.toMatch(/filled in|staged|held for you|all set/i);
     expect(journey.readiness.read).toBe(0);
   });

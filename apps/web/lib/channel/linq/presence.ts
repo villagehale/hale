@@ -5,7 +5,9 @@ import { startLinqTyping, stopLinqTyping } from './transport';
  * VIL-335 — the typing bubble on an iMessage turn.
  *
  * Linq holds one start for about 85 seconds and asks the caller to refresh
- * every 60 while composing is still going. A send clears the bubble on its
+ * every 60 while composing is still going. A turn that crosses a slow step
+ * (a search, a model call) re-arms at that step so the hold starts over.
+ * A send clears the bubble on its
  * own; we stop first anyway, so a parent never sees typing land on top of the
  * reply, and we stop again when a turn thought and then sent nothing.
  *
@@ -15,6 +17,112 @@ import { startLinqTyping, stopLinqTyping } from './transport';
 
 /** Linq's own refresh interval. One start lasts ~85s; this keeps it up. */
 export const LINQ_TYPING_REFRESH_MS = 60_000;
+
+/**
+ * How long a new-parent turn waits before painting the bubble. A reply that
+ * leaves sooner never starts it, so a postal ask does not flash typing and
+ * then the text in the same instant.
+ */
+export const LINQ_TYPING_SHOW_DELAY_MS = 500;
+
+/**
+ * Arm the bubble for one iMessage turn. SMS and a missing chat id arm nothing.
+ * `stop` cancels a bubble that has not appeared, or clears one that has.
+ * `rearm` sends another start while the turn is still in a slow step.
+ * A Linq miss is logged inside {@link signalImessageTyping} and never thrown.
+ */
+export function armDelayedImessageTyping(input: {
+  channel: string;
+  chatId: string | null;
+  log: Pick<Console, 'warn'>;
+  delayMs?: number;
+}): { stop: () => Promise<void>; rearm: () => void } {
+  if (input.channel !== 'imessage' || !input.chatId) {
+    return { stop: async () => undefined, rearm: () => undefined };
+  }
+  // `to` is unused: the typing call is the chat id. replyTo stays null so the
+  // indicator itself does not draw a connector.
+  const route: ReplyRoute = {
+    channel: 'imessage',
+    to: '',
+    chatId: input.chatId,
+    replyToMessageId: null,
+  };
+  let phase: 'wait' | 'live' | 'done' = 'wait';
+  let starting: Promise<void> | null = null;
+  let refresh: ReturnType<typeof setInterval> | null = null;
+  const delayMs = input.delayMs ?? LINQ_TYPING_SHOW_DELAY_MS;
+
+  const startOnce = () => {
+    const pulse = signalImessageTyping(route, 'start', input.log).catch((err: unknown) => {
+      input.log.warn(
+        { err: err instanceof Error ? err.name : 'unknown' },
+        'linq: typing indicator did not start',
+      );
+    });
+    starting = pulse;
+    return pulse;
+  };
+
+  const armRefresh = () => {
+    if (refresh) clearInterval(refresh);
+    refresh = setInterval(() => {
+      if (phase !== 'live') return;
+      void startOnce();
+    }, LINQ_TYPING_REFRESH_MS);
+    if (typeof refresh.unref === 'function') refresh.unref();
+  };
+
+  const begin = () => {
+    if (phase === 'done') return;
+    phase = 'live';
+    void startOnce();
+    armRefresh();
+  };
+
+  let timer: ReturnType<typeof setTimeout> | null =
+    delayMs <= 0 ? null : setTimeout(begin, delayMs);
+  if (timer && typeof timer.unref === 'function') timer.unref();
+  if (delayMs <= 0) begin();
+
+  return {
+    /**
+     * Send another start. Linq holds one start for about 85s, and one onboarding
+     * turn can outlive that across a search and a model call. Each slow step
+     * re-arms so the bubble does not drop in the middle of the turn.
+     */
+    rearm: () => {
+      if (phase === 'done') return;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (phase === 'wait') {
+        begin();
+        return;
+      }
+      void startOnce();
+      armRefresh();
+    },
+    stop: async () => {
+      if (phase === 'done') return;
+      const live = phase === 'live';
+      phase = 'done';
+      if (timer) clearTimeout(timer);
+      if (refresh) clearInterval(refresh);
+      if (starting) await starting;
+      if (!live && !starting) return;
+      try {
+        await signalImessageTyping(route, 'stop', input.log);
+      } catch (err) {
+        input.log.warn(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'linq: typing indicator did not stop',
+        );
+      }
+    },
+  };
+}
 
 export async function signalImessageTyping(
   route: ReplyRoute,

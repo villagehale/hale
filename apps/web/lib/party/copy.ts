@@ -35,7 +35,7 @@ export function rsvpUrl(publicToken: string): string {
  */
 export function partyRecorded(when: string, title: string, location: string | null): string {
   const where = location === null ? '' : ` at ${location}`;
-  return `Got it - ${title}, ${when}${where}. Want a link guests can RSVP to? Reply YES and I'll make one.`;
+  return `Got it - ${title}, ${when}${where}. Want me to make a link guests can RSVP to?`;
 }
 
 /**

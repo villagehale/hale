@@ -4,6 +4,7 @@ import type { ClassifierSuggestion, EventType } from '@hale/types';
 import { redactEventPayload } from '@hale/worker/redaction';
 import { z } from 'zod';
 import { recordModelFallback } from './model-fallback';
+import { parseModelMode } from './model-mode';
 import { loadClassifyEventSkill } from './skill';
 import { forceToolJson } from './structured';
 
@@ -132,13 +133,6 @@ interface ClassifyDeps {
   modelMode?: 'current' | 'candidate';
 }
 
-function modelMode(raw: string | undefined): 'current' | 'candidate' {
-  const mode = raw?.trim() || 'current';
-  if (mode === 'current' || mode === 'candidate') return mode;
-  console.error({ mode }, 'classify event: invalid model mode; using current');
-  return 'current';
-}
-
 export async function classifyEvent(
   input: ClassifyInput,
   client: AgentClient,
@@ -167,7 +161,10 @@ export async function classifyEvent(
 
   let lane = currentLane;
   let call: Awaited<ReturnType<typeof run>> | undefined;
-  if ((deps.modelMode ?? modelMode(process.env.HALE_CLASSIFY_EVENT_MODEL_MODE)) === 'candidate') {
+  if (
+    (deps.modelMode ??
+      parseModelMode(process.env.HALE_CLASSIFY_EVENT_MODEL_MODE, 'classify event')) === 'candidate'
+  ) {
     try {
       lane = CANDIDATE_LANE;
       call = await run(lane);

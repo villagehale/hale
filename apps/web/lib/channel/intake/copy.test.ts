@@ -25,7 +25,6 @@ import {
   HELP_REPLY_BY_LANGUAGE,
   IDENTITY_ACCOUNTABILITY_LINE,
   IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE,
-  PARENT_CALL_NAME_ASK,
   REGION_UNAVAILABLE_REPLY,
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
   SITTING_SESSION_REMINDER,
@@ -322,10 +321,9 @@ describe('the consent moment', () => {
     expect(WATCH_OFFER).toContain('https://www.villagehale.com/privacy');
   });
 
-  it('confirms coverage and names the STOP escape, asking nothing itself', () => {
-    expect(ASSENT_ACK).toBe(
-      "Done - you're covered. I only text when something actually matters, and STOP always works.",
-    );
+  it('confirms coverage without a keyword, asking nothing itself', () => {
+    expect(ASSENT_ACK).toBe("Done. You're covered. I'll text when something actually matters.");
+    expect(ASSENT_ACK).not.toMatch(/\bSTOP\b|unsubscribe/i);
   });
 
   /**
@@ -334,7 +332,7 @@ describe('the consent moment', () => {
    */
   it('ends without a question, so the call-name can be its own text', () => {
     expect(ASSENT_ACK).not.toContain('?');
-    expect(ASSENT_ACK).not.toContain(PARENT_CALL_NAME_ASK);
+    expect(ASSENT_ACK).not.toMatch(/call you/i);
   });
 
   it('takes a no without friction and leaves the door open', () => {
@@ -343,10 +341,9 @@ describe('the consent moment', () => {
     );
   });
 
-  // CASL: the unsubscribe instruction must survive any copy revision. It is the one
-  // sentence in the consent turn that is not ours to soften.
-  it('keeps STOP visible in the acknowledgment a consenting parent reads', () => {
-    expect(ASSENT_ACK).toContain('STOP');
+  // STOP, HELP, and START stay on the keyword matcher. This receipt does not teach them.
+  it('does not teach STOP in the acknowledgment a consenting parent reads', () => {
+    expect(ASSENT_ACK).not.toMatch(/\bSTOP\b|unsubscribe/i);
   });
 });
 
@@ -424,19 +421,21 @@ describe('the French script', () => {
     expect(greeting(null, 'fr').toLowerCase()).not.toContain('activity finder');
   });
 
-  it('asks what to call the parent in its own line, the words PR #689 locked', () => {
-    expect(PARENT_CALL_NAME_ASK).toBe('What should I call you?');
-    expect(PARENT_CALL_NAME_ASK).not.toContain('activity finder');
-    expect(PARENT_CALL_NAME_ASK).not.toContain('excited');
+  it('has no fixed call-name line any more — the onboarding model writes that ask (VIL-417)', async () => {
+    const copy = await import('./copy');
+    expect(Object.keys(copy).some((key) => /CALL_NAME/.test(key))).toBe(false);
+    for (const value of Object.values(copy)) {
+      if (typeof value === 'string') expect(value).not.toMatch(/What should I call you/i);
+    }
   });
 
   it('says the calendar is how the year stays together, and names the trust', () => {
     const url = 'https://app.villagehale.com/connect?t=token&to=gcal';
     expect(intakeCalendarCard('en', url)).toBe(
-      `Connect your calendar: ${url} Good for 15 minutes. I never see your password. Disconnect my calendar anytime.`,
+      `Google may show an "unverified app" screen. Tap Advanced, then continue.\nConnect your calendar: ${url} Good for 15 minutes. I never see your password. You can disconnect any time.`,
     );
     expect(intakeCalendarCard('fr', url)).toBe(
-      `Connectez votre agenda : ${url} Bon pour 15 minutes. Je ne vois jamais votre mot de passe. Déconnectez mon agenda à tout moment.`,
+      `Google peut afficher un ecran "application non verifiee". Touchez Avance, puis continuez.\nConnectez votre agenda : ${url} Bon pour 15 minutes. Je ne vois jamais votre mot de passe. Vous pouvez déconnecter à tout moment.`,
     );
     for (const body of [intakeCalendarCard('en', url), intakeCalendarCard('fr', url)]) {
       expect(body.toLowerCase()).not.toContain('ollie');
@@ -448,10 +447,10 @@ describe('the French script', () => {
   it('says Gmail is how notices get into the year, and that ignoring it skips', () => {
     const url = 'https://app.villagehale.com/connect?t=token&to=gmail';
     expect(intakeGmailCard('en', url)).toBe(
-      `Connect Gmail: ${url} Good for 15 minutes - ignore this to skip. I never see your password. Disconnect my gmail anytime.`,
+      `Google may show an "unverified app" screen. Tap Advanced, then continue.\nConnect Gmail: ${url} Good for 15 minutes - ignore this to skip. I never see your password. You can disconnect any time.`,
     );
     expect(intakeGmailCard('fr', url)).toBe(
-      `Connectez Gmail : ${url} Bon pour 15 minutes - ignorez pour passer. Je ne vois jamais votre mot de passe. Déconnectez mon Gmail à tout moment.`,
+      `Google peut afficher un ecran "application non verifiee". Touchez Avance, puis continuez.\nConnectez Gmail : ${url} Bon pour 15 minutes - ignorez pour passer. Je ne vois jamais votre mot de passe. Vous pouvez déconnecter à tout moment.`,
     );
     for (const body of [intakeGmailCard('en', url), intakeGmailCard('fr', url)]) {
       expect(body.toLowerCase()).not.toContain('ollie');
@@ -494,13 +493,9 @@ describe('the French script', () => {
     expect(WATCH_OFFER_BY_LANGUAGE.fr).toContain(PRIVACY_URL);
   });
 
-  it('confirms coverage in French, names the STOP escape, and asks nothing itself', () => {
-    expect(ASSENT_ACK_BY_LANGUAGE.fr).toBe(
-      "C'est fait - tout est couvert. Je texte juste quand il le faut, et STOP marche toujours.",
-    );
-    // CASL: the unsubscribe instruction survives translation, and it survives as the
-    // LITERAL token, because that is the only word `matchKeyword` acts on today.
-    expect(ASSENT_ACK_BY_LANGUAGE.fr).toContain('STOP');
+  it('confirms coverage in French without a keyword, and asks nothing itself', () => {
+    expect(ASSENT_ACK_BY_LANGUAGE.fr).toBe("C'est fait. Je texte quand il le faut.");
+    expect(ASSENT_ACK_BY_LANGUAGE.fr).not.toMatch(/\bSTOP\b|désabonner/i);
     // Same reason as the English twin: the turn's one question is the composed identity
     // ask the machine appends, so this half must carry none of its own.
     expect(ASSENT_ACK_BY_LANGUAGE.fr).not.toContain('?');
@@ -717,7 +712,6 @@ describe('VIL-385 first-touch ladder copy', () => {
       en: 'How old are the kids?',
       fr: 'Quel age ont les enfants?',
     });
-    expect(PARENT_CALL_NAME_ASK).toBe('What should I call you?');
   });
 
   it('stays GSM-7, ASCII in French, and free of signup or booking claims', () => {

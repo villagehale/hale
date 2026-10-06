@@ -27,6 +27,12 @@ export interface ConnectState {
    * of a decode error.
    */
   surface?: 'mobile' | 'text';
+  /**
+   * The channel sign-in token the parent presented, when this consent started from
+   * a texted link. Carried inside the signature so the callback can burn THAT token
+   * once consent succeeds, and not a sibling link from the same ask.
+   */
+  channelSigninTokenId?: string;
 }
 
 interface SignedPayload extends ConnectState {

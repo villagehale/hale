@@ -50,7 +50,7 @@ describe('buildVCard — envelope and fields', () => {
 
   it('names the contact Hale — the display name, the structured name, and the org', () => {
     const lines = unfold(card);
-    expect(lines).toContain('FN:Hale');
+    expect(lines).toContain('FN:Hale \u{1F33A}');
     expect(lines).toContain('N:Hale;;;;');
     expect(lines).toContain('ORG:Hale');
   });

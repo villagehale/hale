@@ -252,6 +252,7 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
       alreadyAsked: false,
       googleGivenName: null,
     }),
+    composeNameAsk: async () => null,
   };
 }
 

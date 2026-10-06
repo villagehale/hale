@@ -62,6 +62,8 @@ function liveEvent(over: Partial<LiveEvent> = {}): LiveEvent {
     childId: 'c1',
     sensitive: false,
     location: null,
+    googleEventId: null,
+    createdBy: null,
     ...over,
   };
 }
@@ -136,6 +138,42 @@ describe('runReminderCron — Phase A converge', () => {
       '2026-07-24T22:00:00.000Z',
     );
     expect(result.converged).toBe(2);
+  });
+
+  it('reminds only the calendar owner about a Google mirror, and still reminds the household about a Hale event', async () => {
+    const owner = { familyId: 'fam-1', userId: 'p1', timezone: TZ };
+    const coparent = { familyId: 'fam-1', userId: 'p2', timezone: TZ };
+    const caregiver = {
+      familyId: 'fam-1',
+      userId: 'g1',
+      role: 'nanny' as const,
+      timezone: TZ,
+      weekStartDay: 0,
+    };
+    const mirror = liveEvent({
+      id: 'gcal-1',
+      title: 'Swim',
+      googleEventId: 'ev-swim',
+      createdBy: 'p1',
+      childId: null,
+    });
+    const hale = liveEvent({ id: 'hale-1', title: 'Checkup', childId: 'c1' });
+    const { deps, upserts } = makeDeps({
+      selectReminderParents: async () => [owner, coparent],
+      selectReminderCaregivers: async () => [caregiver],
+      loadHorizonEvents: async () => [mirror, hale],
+    });
+
+    await runReminderCron({} as never, deps, new Date('2026-07-20T12:00:00Z'));
+
+    const who = (eventRef: string) =>
+      [
+        ...new Set(
+          upserts.filter((row) => row.eventRef === eventRef).map((row) => row.parentUserId),
+        ),
+      ].sort();
+    expect(who('gcal-1')).toEqual(['p1']);
+    expect(who('hale-1').sort()).toEqual(['g1', 'p1', 'p2']);
   });
 });
 
@@ -230,27 +268,21 @@ describe('runReminderCron — batching + compose-not-send', () => {
     const events = new Map<string, LiveEvent>([
       [
         'e1',
-        {
+        liveEvent({
           id: 'e1',
           startsAt: new Date('2026-07-25T14:00:00Z'),
-          deletedAt: null,
           title: 'Checkup',
           childId: 'c1',
-          sensitive: false,
-          location: null,
-        },
+        }),
       ],
       [
         'e2',
-        {
+        liveEvent({
           id: 'e2',
           startsAt: new Date('2026-07-25T18:00:00Z'),
-          deletedAt: null,
           title: 'Swim',
           childId: 'c2',
-          sensitive: false,
-          location: null,
-        },
+        }),
       ],
     ]);
     const { deps, enqueued, marked, captured } = makeDeps({
@@ -281,7 +313,11 @@ describe('runReminderCron — batching + compose-not-send', () => {
       { id: 'r2', status: 'sent', reason: null },
     ]);
     expect(captured).toEqual([
-      { event: 'reminder_sent', distinctId: 'p1', props: { offset: '-P1D', events: 2, audience: 'parent' } },
+      {
+        event: 'reminder_sent',
+        distinctId: 'p1',
+        props: { offset: '-P1D', events: 2, audience: 'parent' },
+      },
     ]);
     expect(result).toMatchObject({ fired: 2 });
   });
@@ -306,7 +342,11 @@ describe('runReminderCron — batching + compose-not-send', () => {
     expect((payload.events as unknown[]).length).toBe(1);
     expect(marked).toEqual([{ id: 'r1', status: 'sent', reason: null }]);
     expect(captured).toEqual([
-      { event: 'reminder_sent', distinctId: 'p1', props: { offset: '-PT1H', events: 1, audience: 'parent' } },
+      {
+        event: 'reminder_sent',
+        distinctId: 'p1',
+        props: { offset: '-PT1H', events: 1, audience: 'parent' },
+      },
     ]);
     expect(result).toMatchObject({ due: 1, fired: 1 });
   });
@@ -316,7 +356,8 @@ describe('runReminderCron — batching + compose-not-send', () => {
     const { deps, enqueued } = makeDeps({
       loadDueReminders: async () => [dueRow()],
       // A non-teen child's HEALTH placement — sensitive on family_events.
-      loadEvent: async () => liveEvent({ title: 'Therapy session', childId: 'c1', sensitive: true }),
+      loadEvent: async () =>
+        liveEvent({ title: 'Therapy session', childId: 'c1', sensitive: true }),
     });
     await runReminderCron({} as never, deps, NOW_T1H);
     const payload = enqueued[0]?.payload as Record<string, unknown>;

@@ -57,7 +57,7 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/linq/location-share.ts':
     'reads a shared locality after the parent accepts the location card; retrieveLinqLocation drops the street before return, and the next bubble is the intake transport, not a send from this file',
   'apps/web/lib/channel/linq/contact-card.ts':
-    'one-shot Hale Name and Photo share after a finished 1:1 onboard; the claim and the linq_contact_card_shared audit sit beside the share',
+    'Hale Name and Photo share at most once per Toronto day per chat after the first outbound; the claim and the linq_contact_card_shared audit sit beside the share',
   'apps/web/lib/channel/linq/tapback.ts':
     'a tapback that replaces a throwaway ack; the ledger row is written by moments.ts when the reaction is accepted',
   'apps/web/lib/channel/linq/link-preview.ts':
@@ -86,6 +86,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'iMessage arm of the router reply transport; every send ledgered in router route.ts sendReply',
   'apps/web/lib/channel/connect/connected-notice.ts':
     'records its own row BEFORE the send and claims the dedupe key with it (reply category, connector:connected) — the connect callback awaits this inside the redirect Google hands back',
+  'apps/web/lib/channel/connect/fresh-link.ts':
+    'records its own channel_messages row BEFORE the send (reply category, template connector:fresh_link) and writes providerMessageId after the Linq or SMS send lands; a refused send patches that same row with failedSendPatch',
 };
 
 /** The trees a send could hide in. Worker is scanned even though it has no Twilio

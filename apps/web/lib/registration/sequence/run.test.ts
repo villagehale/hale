@@ -545,7 +545,7 @@ describe('the legs', () => {
 
     // The same leg, a different sentence: this one invites an approval, in the thread.
     // Recording a debt against it would report a broken promise Hale never made.
-    expect(h.transport.bodies()[0]).toContain("Reply YES and I'll run the morning with you.");
+    expect(h.transport.bodies()[0]).toContain("Want me to run the morning with you?");
     expect(h.promised).toEqual([]);
   });
 

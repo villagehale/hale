@@ -3,12 +3,13 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { LinqSendError } from '~/lib/channel/linq/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import type { KidItemsInput } from './aha-kids';
 import {
   CONNECTOR_CONNECTED_TEMPLATE_KEY,
   type ConnectedNoticePorts,
@@ -88,7 +89,10 @@ describe('sendConnectorConnectedText', () => {
     const outcome = await send('gcal');
 
     expect(connectedNoticeLabel(outcome)).toBe('sent');
-    expect(transport.sent).toEqual([{ to: PHONE, body: CONNECTOR_CONNECTED_TEXT.gcal }]);
+    expect(transport.sent[0]).toEqual({ to: PHONE, body: CONNECTOR_CONNECTED_TEXT.gcal });
+    expect(transport.sent[1]?.body).toContain('to=gmail');
+    expect(transport.sent[1]?.body).toContain('unverified app');
+    expect(transport.sent).toHaveLength(2);
   });
 
   it('writes the ledger row the dedupe key hangs on, and threads what it said', async () => {
@@ -137,8 +141,8 @@ describe('sendConnectorConnectedText', () => {
       'sent',
       'already_sent',
     ]);
-    expect(transport.sent).toHaveLength(1);
-    expect(threaded).toHaveLength(1);
+    expect(transport.sent).toHaveLength(2);
+    expect(threaded).toHaveLength(2);
   });
 
   /**
@@ -159,8 +163,9 @@ describe('sendConnectorConnectedText', () => {
       'sent',
       'sent',
     ]);
-    expect(transport.sent).toHaveLength(2);
-    expect(threaded).toHaveLength(2);
+    // The Gmail card is one per family. The reconnect texts the receipt again.
+    expect(transport.sent).toHaveLength(3);
+    expect(threaded).toHaveLength(3);
   });
 
   it('names the missing number rather than pretending it sent (rule #11)', async () => {
@@ -216,6 +221,38 @@ describe('sendConnectorConnectedText', () => {
     // claiming nothing was sent would be a guess the operator would act on.
     expect(connectedNoticeLabel(outcome)).toBe('errored');
     expect(transport.sent).toHaveLength(1);
+  });
+
+  it('sends the Gmail card in the same iMessage chat as the calendar receipt', async () => {
+    await seedChannel();
+    const chatId = '8f392755-6865-4b18-880a-227f9d8b458f';
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerMessageId: 'msg-in-parent',
+      providerChatId: chatId,
+      status: 'delivered',
+      body: 'hello',
+      sentAt: new Date('2026-09-23T22:40:00.000Z'),
+    });
+    const imessage = vi.fn(async () => ({ providerMessageId: 'msg-out-linq' }));
+    ports = { ...ports, imessage };
+
+    const outcome = await send('gcal');
+
+    expect(connectedNoticeLabel(outcome)).toBe('sent');
+    expect(transport.sent).toEqual([]);
+    expect(imessage).toHaveBeenCalledTimes(2);
+    const calls = imessage.mock.calls as unknown as Array<[{ chatId: string; body: string }]>;
+    expect(calls[0]?.[0]).toMatchObject({
+      chatId,
+      body: CONNECTOR_CONNECTED_TEXT.gcal,
+    });
+    expect(calls[1]?.[0]?.body).toContain('to=gmail');
+    expect(calls[1]?.[0]?.chatId).toBe(chatId);
   });
 
   it('sends an iMessage family the receipt in the stored Linq chat, not over Twilio', async () => {
@@ -323,6 +360,226 @@ describe('sendConnectorConnectedText', () => {
       .from(schema.channelMessages)
       .where(eq(schema.channelMessages.direction, 'out'));
     expect(rows).toEqual([]);
+  });
+
+  function calendarItem(title: string, start: string, end: string) {
+    return { title, start, end, allDay: false, location: null, declined: false };
+  }
+
+  /** The classifier port, scripted: kid items are the ones naming Maya or a swim. */
+  function scriptedKidItems(asked: KidItemsInput[]) {
+    return {
+      async classify(input: KidItemsInput) {
+        asked.push(input);
+        return {
+          kidItemIds: input.items
+            .filter((item) => /\bmaya\b|\bswim\b/i.test(item.text))
+            .map((item) => item.id),
+        };
+      },
+    };
+  }
+
+  it('hands the model only kid items: a clash between two kid activities is kept, the parent appointment is not', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    await seedChannel();
+    await seedChild(db.database, familyId, 'Maya', 48, undefined, NOW);
+    const seen: Array<{ titles: string[]; overlaps: Array<{ earlier: string; later: string }> }> =
+      [];
+    const asked: KidItemsInput[] = [];
+    ports = {
+      ...ports,
+      kidItems: scriptedKidItems(asked),
+      friendVoice: {
+        async compose(input) {
+          if (input.step === 'email') {
+            return { reply: 'Want me to watch school and camp email for the dates?' };
+          }
+          const synced = input.synced;
+          seen.push({
+            titles: (synced?.calendar ?? []).map((item) => item.title),
+            overlaps: synced?.overlaps ?? [],
+          });
+          const clash = synced?.overlaps[0];
+          return {
+            reply: clash
+              ? `${clash.earlier} runs into ${clash.later} that Saturday. I can remind you the evening before.`
+              : 'Your calendar is connected.',
+            ahaMention: clash?.earlier ?? null,
+          };
+        },
+      },
+    };
+
+    const outcome = await sendConnectorConnectedText(
+      db.database,
+      {
+        familyId,
+        parentUserId,
+        provider: 'gcal',
+        connectId,
+        now: NOW,
+        aha: {
+          provider: 'gcal',
+          read: 'ok',
+          calendar: [
+            calendarItem(
+              'Swim at the rec centre',
+              '2026-09-12T13:00:00.000Z',
+              '2026-09-12T14:00:00.000Z',
+            ),
+            calendarItem('Maya soccer', '2026-09-12T13:30:00.000Z', '2026-09-12T14:30:00.000Z'),
+            calendarItem('Dentist', '2026-09-12T13:45:00.000Z', '2026-09-12T14:45:00.000Z'),
+            calendarItem('Budget review', '2026-09-14T13:00:00.000Z', '2026-09-14T14:00:00.000Z'),
+          ],
+          email: [],
+          overlaps: [
+            { earlier: 'Swim at the rec centre', later: 'Maya soccer' },
+            { earlier: 'Maya soccer', later: 'Dentist' },
+          ],
+        },
+      },
+      ports,
+    );
+
+    expect(connectedNoticeLabel(outcome)).toBe('sent');
+    // The classifier was handed the kids by name and age, and every item once.
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.children).toEqual([{ name: 'Maya', ageMonths: 48 }]);
+    expect(asked[0]?.items.map((item) => item.text)).toEqual([
+      'Swim at the rec centre',
+      'Maya soccer',
+      'Dentist',
+      'Budget review',
+    ]);
+    expect(seen).toEqual([
+      {
+        titles: ['Swim at the rec centre', 'Maya soccer'],
+        overlaps: [{ earlier: 'Swim at the rec centre', later: 'Maya soccer' }],
+      },
+    ]);
+    const receipt = transport.sent[0]?.body ?? '';
+    expect(receipt).toContain('Swim at the rec centre');
+    expect(receipt).toContain('Maya soccer');
+    expect(receipt).not.toContain('Dentist');
+    expect(receipt).not.toContain('Budget review');
+    expect(receipt).not.toMatch(/\?/);
+  });
+
+  it('says nothing from a calendar that holds only the parent: no wow, a plain receipt', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    await seedChannel();
+    await seedChild(db.database, familyId, 'Maya', 48, undefined, NOW);
+    const reads: string[] = [];
+    ports = {
+      ...ports,
+      kidItems: scriptedKidItems([]),
+      friendVoice: {
+        async compose(input) {
+          if (input.step === 'email') {
+            return { reply: 'Want me to watch school and camp email for the dates?' };
+          }
+          reads.push(input.synced?.read ?? 'missing');
+          expect(input.synced?.calendar).toEqual([]);
+          expect(input.synced?.overlaps).toEqual([]);
+          return { reply: 'Your calendar is connected.', ahaMention: null };
+        },
+      },
+    };
+
+    const outcome = await sendConnectorConnectedText(
+      db.database,
+      {
+        familyId,
+        parentUserId,
+        provider: 'gcal',
+        connectId,
+        now: NOW,
+        aha: {
+          provider: 'gcal',
+          read: 'ok',
+          calendar: [
+            calendarItem('Dentist', '2026-09-12T13:00:00.000Z', '2026-09-12T14:00:00.000Z'),
+            calendarItem('Team standup', '2026-09-12T13:30:00.000Z', '2026-09-12T14:00:00.000Z'),
+            calendarItem('Budget review', '2026-09-14T13:00:00.000Z', '2026-09-14T14:00:00.000Z'),
+          ],
+          email: [],
+          overlaps: [{ earlier: 'Dentist', later: 'Team standup' }],
+        },
+      },
+      ports,
+    );
+
+    expect(connectedNoticeLabel(outcome)).toBe('sent');
+    expect(reads).toEqual(['none_for_kids']);
+    const receipt = transport.sent[0]?.body ?? '';
+    expect(receipt).toBe('Your calendar is connected.');
+    expect(receipt).not.toMatch(/Dentist|standup|Budget/);
+  });
+
+  it('says nothing from a mailbox that holds only the parent: receipts and work mail never reach the model', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    await seedChannel();
+    await seedChild(db.database, familyId, 'Maya', 48, undefined, NOW);
+    const reads: string[] = [];
+    ports = {
+      ...ports,
+      kidItems: scriptedKidItems([]),
+      friendVoice: {
+        async compose(input) {
+          if (input.step === 'calendar') {
+            return { reply: 'Want me to check your calendar?' };
+          }
+          reads.push(input.synced?.read ?? 'missing');
+          expect(input.synced?.email).toEqual([]);
+          return { reply: 'Gmail is connected.', ahaMention: null };
+        },
+      },
+    };
+
+    const outcome = await sendConnectorConnectedText(
+      db.database,
+      {
+        familyId,
+        parentUserId,
+        provider: 'gmail',
+        connectId,
+        now: NOW,
+        aha: {
+          provider: 'gmail',
+          read: 'ok',
+          calendar: [],
+          email: [
+            {
+              subject: 'Your Amazon order has shipped',
+              fromName: 'Amazon',
+              receivedAt: '2026-09-11T12:00:00.000Z',
+              snippet: 'Arriving Thursday.',
+            },
+            {
+              subject: 'Q3 planning deck',
+              fromName: 'Priya (work)',
+              receivedAt: '2026-09-11T13:00:00.000Z',
+              snippet: 'Comments by Friday please.',
+            },
+            {
+              subject: 'Your lab results are ready',
+              fromName: 'Clinic',
+              receivedAt: '2026-09-11T14:00:00.000Z',
+              snippet: 'Log in to view.',
+            },
+          ],
+          overlaps: [],
+        },
+      },
+      ports,
+    );
+
+    expect(connectedNoticeLabel(outcome)).toBe('sent');
+    expect(reads).toEqual(['none_for_kids']);
+    const receipt = transport.sent[0]?.body ?? '';
+    expect(receipt).toBe('Gmail is connected.');
+    expect(receipt).not.toMatch(/Amazon|planning deck|lab results/);
   });
 
   it('wires a real transport in production, not just in the tests that inject one', () => {

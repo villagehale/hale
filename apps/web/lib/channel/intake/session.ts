@@ -3,6 +3,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
+import { haleContactCardDay } from '../linq/contact-card';
 import type { IntakeCollected } from './extract';
 
 /**
@@ -91,10 +92,12 @@ interface IntakeData {
   /** Language of the kids-and-postal text. Later replies must not re-pick it. */
   ladderLanguage?: ReplyLanguage | null;
   /**
-   * Pre-family one-shot for the Linq Name and Photo share. Parent channels do
-   * not exist yet, so the claim lives here until provisioning copies it onto
-   * parent_channels.linq_contact_card_shared_at. Absent means unclaimed.
-   * `share_refused` stays consumed so a retry cannot push the card twice.
+   * Pre-family record of the Linq Name and Photo share. Parent channels do
+   * not exist yet, so it lives here until provisioning copies a held claim
+   * onto parent_channels.linq_contact_card_shared_at. Absent means unclaimed.
+   * `share_refused` stays consumed for that Toronto day so a retry cannot
+   * push the card twice. `unreachable` never reached the chat: it is kept so
+   * the failure is still on the session, and it does not consume the day.
    */
   linqContactCardClaim?: LinqContactCardClaim | null;
   /** VIL-385. Absent means this session is not on the ladder. */
@@ -119,7 +122,8 @@ export interface FirstTouchPersisted {
       | 'not_configured'
       | 'unreachable'
       | 'skipped_group'
-      | 'not_a_moment';
+      | 'not_a_moment'
+      | 'skipped';
     code?: string;
   } | null;
   /**
@@ -127,6 +131,49 @@ export interface FirstTouchPersisted {
    * a number. `logistics` waits for who is taking them.
    */
   coldStart?: ColdStartProgress | null;
+  /** Re-asks on the open place or ages step. Absent means zero. */
+  clarify?: FirstTouchClarify | null;
+  /**
+   * Facts the onboarding model already took from a message, before the step
+   * that would have asked for them. Absent means nothing extra is stored.
+   */
+  given?: FirstTouchGiven | null;
+}
+
+/** One activity written to the calendar during onboarding. */
+export interface FirstTouchScheduled {
+  /** 1-based line on the stored map. */
+  line: number;
+  title: string;
+  cadence: 'once' | 'weekly';
+  /** First occurrence, YYYY-MM-DD. */
+  date: string;
+  time: string | null;
+}
+
+/** Name, role, connector, schedule and co-parent answers captured ahead of the ask that would have used them. */
+export interface FirstTouchGiven {
+  parentName: string | null;
+  /** Legacy. The pick step is gone; kept so an older stored session decodes. */
+  activityPick: number | null;
+  connectCalendar: boolean | null;
+  connectGmail: boolean | null;
+  /** VIL-417. The model's soft read of mother / father / unknown. */
+  parentRole?: { role: 'mother' | 'father' | 'unknown'; basis: 'stated' | 'guessed' } | null;
+  /** True once they declined the parent-name ask. Absent on older sessions. */
+  nameDeclined?: boolean;
+  /** True once they declined the kids'-names ask. */
+  kidsNamesDeclined?: boolean;
+  /** True once they said later to the calendar. */
+  calendarLater?: boolean;
+  /** True once they said later to email. */
+  gmailLater?: boolean;
+  /** True once the schedule step is finished: declined, or everything wanted is on. */
+  scheduleDone?: boolean;
+  /** What this onboarding already wrote to the calendar. */
+  scheduled?: FirstTouchScheduled[];
+  /** Their answer to the group chat. Absent until asked and answered. */
+  coparentGroup?: boolean | null;
 }
 
 export interface ColdStartProgress {
@@ -143,13 +190,63 @@ export interface ColdStartProgress {
   calendarAsked: boolean;
   emailAsked: boolean;
   schoolMentioned: boolean;
+  /** The calendar link has already gone out. A later reply does not send it again. */
+  calendarOffered?: boolean;
+  /** The email link has already gone out. */
+  emailOffered?: boolean;
 }
 
-/** Held when the share was attempted. Setup that never reached the chat stays null. */
+/** How many times this ladder step was asked again after a non-answer. */
+export interface FirstTouchClarify {
+  place: number;
+  ages: number;
+}
+
+/**
+ * The last Name and Photo attempt on this pre-family session.
+ * `unreachable` did not reach share — see {@link linqContactCardClaimHeld}.
+ * A `shared` or `share_refused` claim blocks only that chat for that Toronto
+ * day — see {@link linqContactCardShareBlocked}.
+ */
 export interface LinqContactCardClaim {
   at: string;
-  outcome: 'shared' | 'share_refused';
+  outcome: 'shared' | 'share_refused' | 'unreachable';
+  /** The iMessage chat this attempt was for. Absent on a claim written before per-chat days. */
+  chatId?: string;
   code?: string;
+  /**
+   * Pre-family setup failures so far this Toronto day. The first hello counts
+   * as one, including its in-turn retry. The next outbound is the second.
+   */
+  attempts?: number;
+}
+
+/**
+ * True when a share was attempted, so provisioning can copy the timestamp.
+ * A failed setup did not. This is not the once-per-day gate.
+ */
+export function linqContactCardClaimHeld(claim: LinqContactCardClaim | null): boolean {
+  return claim != null && claim.outcome !== 'unreachable';
+}
+
+/**
+ * True when this chat should not be shared again today.
+ * A claim with no chat id blocks every chat for that day (an older share
+ * that did not record which chat).
+ * Two unreachable setups today wait until tomorrow. A previous day does not block.
+ */
+export function linqContactCardShareBlocked(
+  claim: LinqContactCardClaim | null,
+  chatId: string,
+  now: Date,
+): boolean {
+  if (!claim) return false;
+  const at = new Date(claim.at);
+  if (Number.isNaN(at.getTime())) return false;
+  if (haleContactCardDay(at) !== haleContactCardDay(now)) return false;
+  if (claim.chatId && claim.chatId !== chatId) return false;
+  if (claim.outcome === 'unreachable') return (claim.attempts ?? 1) >= 2;
+  return true;
 }
 
 export interface IntakeSession {
@@ -171,7 +268,7 @@ export interface IntakeSession {
   /** Null until the year-find turn parks the conversation on the ladder. */
   ladderNext: IntakeLadderStep | null;
   ladderLanguage: ReplyLanguage | null;
-  /** Null until a pre-family iMessage share holds the one-shot. */
+  /** Null until a pre-family iMessage share records the last attempt time. */
   linqContactCardClaim: LinqContactCardClaim | null;
   /**
    * VIL-385. Absent on a session that started before the ladder, which decodes
@@ -198,13 +295,31 @@ function encodeData(data: IntakeData): string {
 
 function decodeLinqContactCardClaim(value: unknown): LinqContactCardClaim | null {
   if (!value || typeof value !== 'object') return null;
-  const row = value as { at?: unknown; outcome?: unknown; code?: unknown };
-  if (row.outcome !== 'shared' && row.outcome !== 'share_refused') return null;
+  const row = value as {
+    at?: unknown;
+    outcome?: unknown;
+    code?: unknown;
+    attempts?: unknown;
+    chatId?: unknown;
+  };
+  if (
+    row.outcome !== 'shared' &&
+    row.outcome !== 'share_refused' &&
+    row.outcome !== 'unreachable'
+  ) {
+    return null;
+  }
   if (typeof row.at !== 'string' || row.at.length === 0) return null;
+  const attempts =
+    typeof row.attempts === 'number' && Number.isFinite(row.attempts) && row.attempts > 0
+      ? row.attempts
+      : null;
   return {
     at: row.at,
     outcome: row.outcome,
+    ...(typeof row.chatId === 'string' && row.chatId.length > 0 ? { chatId: row.chatId } : {}),
     ...(typeof row.code === 'string' ? { code: row.code } : {}),
+    ...(attempts != null ? { attempts } : {}),
   };
 }
 
@@ -241,6 +356,7 @@ const LOCATION_REQUEST_OUTCOMES = [
   'unreachable',
   'skipped_group',
   'not_a_moment',
+  'skipped',
 ] as const;
 
 function decodeFirstTouch(value: unknown): FirstTouchPersisted | null {
@@ -250,6 +366,8 @@ function decodeFirstTouch(value: unknown): FirstTouchPersisted | null {
     place?: unknown;
     locationRequest?: unknown;
     coldStart?: unknown;
+    clarify?: unknown;
+    given?: unknown;
   };
   const language = row.language === 'fr' ? 'fr' : row.language === 'en' ? 'en' : null;
   if (!language) return null;
@@ -258,7 +376,117 @@ function decodeFirstTouch(value: unknown): FirstTouchPersisted | null {
     place: decodeFirstTouchPlace(row.place),
     locationRequest: decodeLocationRequest(row.locationRequest),
     coldStart: decodeColdStart(row.coldStart),
+    clarify: decodeFirstTouchClarify(row.clarify),
+    given: decodeFirstTouchGiven(row.given),
   };
+}
+
+function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as {
+    parentName?: unknown;
+    activityPick?: unknown;
+    connectCalendar?: unknown;
+    connectGmail?: unknown;
+    parentRole?: unknown;
+    nameDeclined?: unknown;
+    kidsNamesDeclined?: unknown;
+    calendarLater?: unknown;
+    gmailLater?: unknown;
+    scheduleDone?: unknown;
+    scheduled?: unknown;
+    coparentGroup?: unknown;
+  };
+  const parentName =
+    typeof row.parentName === 'string' && row.parentName.trim() ? row.parentName : null;
+  const activityPick =
+    typeof row.activityPick === 'number' &&
+    Number.isInteger(row.activityPick) &&
+    row.activityPick > 0
+      ? row.activityPick
+      : null;
+  const connectCalendar =
+    row.connectCalendar === true || row.connectCalendar === false ? row.connectCalendar : null;
+  const connectGmail =
+    row.connectGmail === true || row.connectGmail === false ? row.connectGmail : null;
+  const nameDeclined = row.nameDeclined === true;
+  const kidsNamesDeclined = row.kidsNamesDeclined === true;
+  const calendarLater = row.calendarLater === true;
+  const gmailLater = row.gmailLater === true;
+  const scheduleDone = row.scheduleDone === true;
+  const parentRole = decodeParentRole(row.parentRole);
+  const scheduled = decodeScheduled(row.scheduled);
+  const coparentGroup =
+    row.coparentGroup === true || row.coparentGroup === false ? row.coparentGroup : null;
+  if (
+    !parentName &&
+    activityPick == null &&
+    connectCalendar == null &&
+    connectGmail == null &&
+    !parentRole &&
+    !nameDeclined &&
+    !kidsNamesDeclined &&
+    !calendarLater &&
+    !gmailLater &&
+    !scheduleDone &&
+    scheduled.length === 0 &&
+    coparentGroup == null
+  ) {
+    return null;
+  }
+  return {
+    parentName,
+    activityPick,
+    connectCalendar,
+    connectGmail,
+    ...(parentRole ? { parentRole } : {}),
+    ...(nameDeclined ? { nameDeclined } : {}),
+    ...(kidsNamesDeclined ? { kidsNamesDeclined } : {}),
+    ...(calendarLater ? { calendarLater } : {}),
+    ...(gmailLater ? { gmailLater } : {}),
+    ...(scheduleDone ? { scheduleDone } : {}),
+    ...(scheduled.length > 0 ? { scheduled } : {}),
+    ...(coparentGroup != null ? { coparentGroup } : {}),
+  };
+}
+
+function decodeParentRole(value: unknown): FirstTouchGiven['parentRole'] {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as { role?: unknown; basis?: unknown };
+  if (row.role !== 'mother' && row.role !== 'father' && row.role !== 'unknown') return null;
+  return { role: row.role, basis: row.basis === 'stated' ? 'stated' : 'guessed' };
+}
+
+function decodeScheduled(value: unknown): FirstTouchScheduled[] {
+  if (!Array.isArray(value)) return [];
+  const out: FirstTouchScheduled[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row = raw as Record<string, unknown>;
+    if (typeof row.line !== 'number' || !Number.isInteger(row.line) || row.line < 1) continue;
+    if (typeof row.title !== 'string' || typeof row.date !== 'string') continue;
+    out.push({
+      line: row.line,
+      title: row.title,
+      cadence: row.cadence === 'weekly' ? 'weekly' : 'once',
+      date: row.date,
+      time: typeof row.time === 'string' ? row.time : null,
+    });
+  }
+  return out;
+}
+
+function decodeCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+function decodeFirstTouchClarify(value: unknown): FirstTouchClarify | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as { place?: unknown; ages?: unknown };
+  const place = decodeCount(row.place);
+  const ages = decodeCount(row.ages);
+  if (place === 0 && ages === 0) return null;
+  return { place, ages };
 }
 
 function decodeColdStart(value: unknown): ColdStartProgress | null {
@@ -275,6 +503,8 @@ function decodeColdStart(value: unknown): ColdStartProgress | null {
     calendarAsked?: unknown;
     emailAsked?: unknown;
     schoolMentioned?: unknown;
+    calendarOffered?: unknown;
+    emailOffered?: unknown;
   };
   if (
     row.step !== 'pick' &&
@@ -297,6 +527,8 @@ function decodeColdStart(value: unknown): ColdStartProgress | null {
     calendarAsked: row.calendarAsked === true,
     emailAsked: row.emailAsked === true,
     schoolMentioned: row.schoolMentioned === true,
+    ...(row.calendarOffered === true ? { calendarOffered: true } : {}),
+    ...(row.emailOffered === true ? { emailOffered: true } : {}),
   };
 }
 
@@ -355,6 +587,48 @@ export async function loadOpenSession(
     .limit(1);
   if (!row) return null;
 
+  const data = decodeData(row.dataEncrypted);
+  return {
+    id: row.id,
+    phoneHash: row.phoneHash,
+    phoneE164: decryptString(row.phoneEncrypted),
+    state: row.state as IntakeState,
+    sourceCode: row.sourceCode,
+    collected: data.collected,
+    transcript: data.transcript,
+    followUpCount: row.followUpCount,
+    clarifyCount: row.clarifyCount,
+    familyId: row.familyId,
+    userId: row.userId,
+    lastProviderId: row.lastProviderId,
+    findWon: data.findWon === true,
+    ladderNext: data.ladderNext ?? null,
+    ladderLanguage: data.ladderLanguage ?? null,
+    linqContactCardClaim: data.linqContactCardClaim ?? null,
+    firstTouch: data.firstTouch ?? null,
+  };
+}
+
+/**
+ * The open session that already belongs to this family, or null. The connect
+ * receipt uses it to pick onboarding back up once a connector lands.
+ */
+export async function loadOpenSessionByFamily(
+  database: Database,
+  familyId: string,
+): Promise<IntakeSession | null> {
+  const rows = await database
+    .select()
+    .from(schema.smsIntakeSessions)
+    .where(
+      and(
+        eq(schema.smsIntakeSessions.familyId, familyId),
+        isNull(schema.smsIntakeSessions.closedAt),
+      ),
+    )
+    .limit(1);
+  const row = rows.find((candidate) => candidate.familyId === familyId && !candidate.closedAt);
+  if (!row) return null;
   const data = decodeData(row.dataEncrypted);
   return {
     id: row.id,

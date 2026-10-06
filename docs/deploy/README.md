@@ -1,12 +1,13 @@
 # Hale — Deployment Runbook
 
-How Hale ships to production: **Vercel** (web + marketing site) + **Fly.io
-Toronto/yyz** (the agent worker) + **Supabase Toronto** (Postgres). All
-residency-sensitive compute and data stay in Canada (CLAUDE.md hard rule #1:
-PIPEDA + Quebec Law 25 + CASL).
+How Hale ships to production: **Vercel** (`hale-web` for the app, plus the
+marketing site) and **Supabase Toronto** (Postgres). Scheduled work runs as
+Vercel Cron jobs hitting `/api/cron/*` on `hale-web`. There is no separate
+production worker host. All residency-sensitive compute and data stay in Canada
+(CLAUDE.md hard rule #1: PIPEDA + Quebec Law 25 + CASL).
 
 > **Status:** deploy-READY config. The live deploy is **credential-gated** — no
-> Fly auth, no Supabase project, no Vercel prod token are wired yet. Everything
+> Supabase project, no Vercel prod token are wired yet. Everything
 > below is verifiable without secrets (config validity, Docker build, scratch-DB
 > migration test); see [Verification status](#verification-status). See
 > [Release blockers](#release-blockers) for historical provisioning blockers (B1
@@ -18,42 +19,35 @@ PIPEDA + Quebec Law 25 + CASL).
 
 ```
                       ┌──────────────────────────────────────────────┐
-        parent's      │  VERCEL  (global edge; functions pinned yyz1) │
-        browser ─────▶│                                              │
+        parent's      │  VERCEL  (hale-web + marketing site)          │
+        browser ─────▶│  functions pinned yul1 (Montreal)             │
+                      │                                              │
                       │  apps/web   (@hale/web)   — app, API routes   │
+                      │  apps/web   /api/cron/*   — scheduled agents  │
                       │  apps/site  (@hale/site)  — marketing site    │
                       └───────────────┬──────────────────────────────┘
-                                      │  enqueue: queue.send('events.ingested'),
-                                      │           queue.send('actions.approved')
-                                      │  read:    Drizzle SELECTs
+                                      │  Drizzle reads and writes
+                                      │  Vercel Cron → /api/cron/*
                                       ▼
                       ┌──────────────────────────────────────────────┐
                       │  SUPABASE  Postgres 16  — ca-central-1 (yyz)  │
                       │  app tables + pgboss schema (the job queue)   │
-                      └───────────────┬──────────────────────────────┘
-                                      │  pg-boss poll (LISTEN/poll)
-                                      ▼
-                      ┌──────────────────────────────────────────────┐
-                      │  FLY.IO  primary_region = yyz (Toronto)       │
-                      │  apps/worker (@hale/worker) — pg-boss consumer │
-                      │  consumes: events.ingested, actions.approved,  │
-                      │            memory.inference.due, digest.daily  │
-                      │  calls: Anthropic, Langfuse, Resend            │
                       └──────────────────────────────────────────────┘
 ```
 
-**The web/worker split is a process boundary, not a folder split.** `apps/web`
-*enqueues* and *reads*; the long-running agent compute (LLM calls over newborn
-data) runs only on the Fly worker. The async contract between them is the
-pg-boss `events.ingested` / `actions.approved` queues in Postgres.
+**Production compute is `hale-web`.** The app and the `/api/cron/*` handlers
+run on Vercel. Cron routes read and write Supabase, including the pg-boss
+schema (`/api/cron/drain` and `/api/cron/queue-maintenance` keep that queue
+moving). `apps/worker` remains the local and durable pg-boss process. It is
+not a production host.
 
 ### Data-residency rationale
 
 | Concern | Placement | Why |
 |---|---|---|
 | Newborn data at rest | Supabase **ca-central-1 (Toronto)** | PIPEDA / Law 25 — data must not leave Canada. |
-| Agent compute over that data | Fly **yyz (Toronto)** | The worker reads families/children/events and calls the LLM; it runs in-region so sensitive payloads are processed in Canada. |
-| Web layer (Vercel) | **Global edge**, functions pinned `yyz1` | Vercel functions are best-effort region-pinned, and the CDN/edge is global. This is acceptable **because the web layer only enqueues + reads** — it is not where agent reasoning over newborn data happens. `regions: ["yyz1"]` keeps the serverless functions in Toronto where the plan allows; the residency guarantee rests on Supabase + Fly, not Vercel. |
+| Agent compute over that data | Vercel functions on **hale-web**, region **`yul1` (Montreal)** | Cron routes and request handlers run the agent harness in Canada. `apps/web/vercel.json` sets `regions: ["yul1"]`. |
+| Web layer (Vercel) | **Global edge**, functions pinned `yul1` | The CDN/edge is global. Serverless functions, including `/api/cron/*`, are pinned to Montreal. The residency guarantee rests on Supabase (Toronto) plus that Canadian function region. |
 | Object storage | Supabase Storage ca-central-1 | Same residency rule as Postgres. |
 
 ---
@@ -62,19 +56,6 @@ pg-boss `events.ingested` / `actions.approved` queues in Postgres.
 
 Names only — never commit values. `.env.example` is the source of truth for the
 full app env; the table below is the **deploy-time** subset per platform.
-
-### Fly.io — worker (`fly secrets set <NAME>=...`)
-
-| Secret | Purpose | Required? |
-|---|---|---|
-| `DATABASE_URL` | Postgres connection (pooled) — pg-boss + Drizzle | **Yes** (worker won't boot without it — `config.ts` zod `.url()`). |
-| `ANTHROPIC_API_KEY` | Claude API for the agent pipeline | Yes (prod). |
-| `LANGFUSE_PUBLIC_KEY` | Prompt fetch + tracing (prompts live in Langfuse — rule #2) | Yes (prod). |
-| `LANGFUSE_SECRET_KEY` | Langfuse server auth | Yes (prod). |
-| `LANGFUSE_HOST` | Langfuse instance URL | Yes (prod). |
-| `RESEND_API_KEY` | Outbound email sends (executor) | Yes (any email action). |
-| `RESEND_FROM` | Verified sender (default `hello@villagehale.com`) | Yes (any email action). |
-| `INTERNAL_API_SHARED_SECRET` | web↔worker internal auth | If used. |
 
 ### Vercel — web + site (Project → Settings → Environment Variables, Production)
 
@@ -94,16 +75,17 @@ full app env; the table below is the **deploy-time** subset per platform.
 
 ### GitHub Actions — CI/CD deploy (`Settings → Secrets → Actions`)
 
-These drive `.github/workflows/deploy.yml` (which has exactly two legs —
-`migrate` and `fly`; Vercel deploys via its own native integration, and the
-hale-web production build migrates before alias).
-**`DATABASE_DIRECT_URL` absent fails the workflow. `FLY_API_TOKEN` absent skips
-the worker leg. A leg that runs without its required secret fails loud.**
+These drive `.github/workflows/deploy.yml` (which has one leg, `migrate`;
+Vercel deploys `hale-web`, its `/api/cron/*` handlers, and the marketing site
+via its own native integration, not here). The hale-web production build also
+applies migrations before the deployment is aliased.
+
+**`DATABASE_DIRECT_URL` absent fails the workflow.** A leg that runs without
+its required secret fails loud.
 
 | Secret | Gates leg | Notes |
 |---|---|---|
 | `DATABASE_DIRECT_URL` | `migrate` (and the hale-web production build) | Supabase direct (port 5432) URL. Unset fails Deploy preflight and fails the Vercel production build. See [Migration drift guard](#migration-drift-guard). |
-| `FLY_API_TOKEN` | `fly` | `fly auth token`. Absent skips the worker leg. |
 
 ---
 
@@ -148,8 +130,9 @@ except memory inference, whose tool loop is not retried because that could dupli
    DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hale/db drift-check  # asserts in sync
    ```
    In production the hale-web build applies this before the deployment is
-   aliased, and the Deploy `migrate` leg applies it again before the worker
-   ships, once `DATABASE_DIRECT_URL` is set
+   aliased, and the Deploy `migrate` leg applies it again
+   (`pnpm --filter @hale/db migrate:guard`, then `pnpm db:check-migrations`)
+   once `DATABASE_DIRECT_URL` is set
    ([Migration drift guard](#migration-drift-guard)).
 
 ### 2. Vercel (web + site = two projects)
@@ -201,23 +184,13 @@ hard-stopped by the harness (`maxSteps × maxTokens` token ceiling) with every
 monetary tool gated by the spending-cap guard (rule #7). So one cron tick can
 never fan out across the whole table or blow the budget.
 
-### 3. Fly.io worker (Toronto)
+### 3. Scheduled work (no separate worker)
 
-```bash
-fly launch --config infra/fly.toml --no-deploy   # creates the hale-worker app, region yyz
-fly secrets set \
-  DATABASE_URL=... ANTHROPIC_API_KEY=... \
-  LANGFUSE_PUBLIC_KEY=... LANGFUSE_SECRET_KEY=... LANGFUSE_HOST=... \
-  RESEND_API_KEY=... RESEND_FROM=... \
-  --app hale-worker
-fly deploy --config infra/fly.toml --remote-only
-fly logs --app hale-worker     # expect: "pg-boss started" → "consumers registered" → "Hale worker ready"
-```
-
-The worker is a **non-HTTP** process (a pure pg-boss poller). `infra/fly.toml`
-has no `[http_service]` and no HTTP health check — liveness is the Fly restart
-policy (`policy = "always"`), and `min` machines is held at 1 so the queue is
-always drained.
+Production does not deploy `apps/worker`. The schedule is the `crons` array in
+`apps/web/vercel.json`; the handlers are `apps/web/app/api/cron/*`. Set
+`CRON_SECRET` on the hale-web Production environment (see
+[Scheduled agents (cron)](#scheduled-agents-cron)). `apps/worker` stays in the
+repo for local and durable pg-boss runs. It is not part of the production deploy.
 
 ---
 
@@ -226,26 +199,25 @@ always drained.
 There are **two independent delivery paths** — this is the crucial topology to
 understand:
 
-1. **Web → Vercel, via the native GitHub integration.** `hale-web` and `site`
-   are GitHub-connected Vercel projects; `vercel[bot]` builds a Production
-   deployment on every `main` merge. The hale-web **production build applies
-   migrations before the deployment can be aliased**
+1. **Web + marketing site → Vercel, via the native GitHub integration.** `hale-web`
+   and `site` are GitHub-connected Vercel projects; `vercel[bot]` builds a
+   Production deployment on every `main` merge. The hale-web **production build
+   applies migrations before the deployment can be aliased**
    (`packages/db/scripts/vercel-production-migrate.mjs`). A failed migrate or a
    failed hash check fails the build, and the previous production deployment
    keeps serving. Preview builds do not connect. `site` has no schema.
-2. **DB migrations + worker → `.github/workflows/deploy.yml`**, triggered on **CI
+2. **DB migrations → `.github/workflows/deploy.yml`**, triggered on **CI
    success on `main`** (`workflow_run`):
    - **preflight** — gates on CI success. `DATABASE_DIRECT_URL` **absent fails
      the workflow** (it used to skip, and the pipeline stayed green).
-     `FLY_API_TOKEN` absent still skips the worker leg.
    - **migrate** — `pnpm --filter @hale/db migrate:guard` (advisory lock, drizzle
      migrate, hash check) against Supabase, then `pnpm db:check-migrations`.
-     Runs first; a failure blocks the worker deploy.
-   - **fly** (worker) — runs after a successful migrate.
 
    This workflow is not the web promotion gate. Vercel does not wait for CI, and
    a cancelled CI run skips the workflow. The production build is what stops a
    new hale-web deployment from taking traffic while migrations are unapplied.
+   There is no worker deploy in this workflow. Scheduled agents ship with the
+   `hale-web` Vercel deployment (`/api/cron/*`).
 
 > The web build and this workflow both use `DATABASE_DIRECT_URL` (Supabase
 > direct, port 5432). See [Migration drift guard](#migration-drift-guard).
@@ -316,15 +288,8 @@ vercel ls <project> --token=$VERCEL_TOKEN          # list deployments, find last
 vercel promote <previous-prod-url> --token=$VERCEL_TOKEN
 ```
 `promote` re-points the production domain to a prior deployment (no rebuild).
-
-### Fly (worker)
-```bash
-fly releases --app hale-worker                     # list versions
-fly releases rollback <version> --app hale-worker  # roll to a prior release image
-# or: fly deploy --image <previous-image-ref> --app hale-worker
-```
-The worker is stateless (state lives in Postgres), so rollback is just swapping
-the image; in-flight jobs are retried by pg-boss.
+That rolls back `hale-web` and its `/api/cron/*` handlers together. There is no
+separate worker image to roll back; queue state lives in Supabase.
 
 ### Database
 Migrations are **additive only** (CLAUDE.md #9) — there is no automated
@@ -394,8 +359,8 @@ crash is purely the package-entrypoint defect.
 
 | Item | Verifiable now (no secrets) | Credential-gated |
 |---|---|---|
-| `infra/fly.toml` | TOML parses; correct non-HTTP poller shape (no `http_service`, `restart=always`, `yyz`) | `fly config validate` (needs `fly auth login`) |
-| Worker Docker image | **Builds** end-to-end from repo root; fails loud without `DATABASE_URL` | Runtime needs B2 fixed + secrets |
+| `infra/fly.toml` | Still in the repo. Not used by `.github/workflows/deploy.yml`. Production does not deploy a Fly worker. | — |
+| Worker Docker image | **Builds** end-to-end from repo root; fails loud without `DATABASE_URL` | Not part of the production deploy (`apps/worker` is local/durable only) |
 | `apps/web/vercel.json` | Valid JSON; `yul1` pinned; crons defined | `vercel deploy --prod` (needs token + linked project) |
 | Migration provisioning | `drizzle-kit migrate` applies all 37 migrations to a fresh DB and `drift-check` reports in sync (verified on the local Supabase DB) | Real prod run needs `DATABASE_DIRECT_URL` set (see guard) |
 | Migration ledger guard | `pnpm db:check-migrations` — hash comparison; unit tests cover a missing table, a watermark-skipped file, and the historical exemptions | Prod gate needs `DATABASE_DIRECT_URL` set on Vercel Production and in GitHub Actions |

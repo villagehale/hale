@@ -25,6 +25,8 @@ export interface OptionalAskGate {
   askKey: string;
   timeZone?: string;
   env?: Record<string, string | undefined>;
+  /** Name, calendar, and email in one sitting. Skips the one-a-day cap. */
+  onboardingSequence?: boolean;
 }
 
 export async function gateOptionalAsk(
@@ -63,6 +65,7 @@ export async function gateOptionalAsk(
       ...(input.timeZone ? { timeZone: input.timeZone } : {}),
     },
     { sendClass: input.sendClass, askKey: input.askKey },
+    input.onboardingSequence ? { onboardingSequence: true } : undefined,
   );
 }
 

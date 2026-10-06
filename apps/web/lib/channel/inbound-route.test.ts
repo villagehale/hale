@@ -3,18 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
 import { STOP_ACK } from '~/lib/channel/intake/copy';
 import {
+  type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  type FakeDb,
   fakeAckComposer,
-  fakeRadar,
   fakeNoOpenQuestions,
+  fakeRadar,
   fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { LINQ_TYPING_SHOW_DELAY_MS } from '~/lib/channel/linq/presence';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
@@ -45,6 +46,8 @@ interface Harness {
   intakeBuilds: number;
   /** The transport each intake build was told the message arrived on. */
   intakeTransports: string[];
+  /** The Linq bind each intake build received. Undefined is SMS. */
+  linqBinds: Array<{ chatId: string; replyToMessageId?: string | null } | undefined>;
 }
 
 function harness(): Harness {
@@ -83,6 +86,7 @@ function harness(): Harness {
     counted,
     intakeBuilds: 0,
     intakeTransports: [],
+    linqBinds: [],
     deps: {
       database: fake.db,
       log: {
@@ -99,10 +103,14 @@ function harness(): Harness {
       countOutcome: async (outcome) => {
         counted.push(outcome);
       },
-      intake: (inboundTransport?: string) => {
+      intake: (
+        inboundTransport?: string,
+        linq?: { chatId: string; replyToMessageId?: string | null },
+      ) => {
         state.intakeBuilds += 1;
         h.intakeBuilds = state.intakeBuilds;
         if (inboundTransport !== undefined) h.intakeTransports.push(inboundTransport);
+        h.linqBinds.push(linq);
         return intake;
       },
       enqueue: async (job) => {
@@ -483,7 +491,6 @@ describe('handoff to C1', () => {
     expect(line).not.toContain(PHONE);
   });
 
-
   /**
    * The P2 race. Twilio resends when the handler exceeds its 15s budget, and the resend
    * can land while attempt #1 is still executing. Select-then-insert let both attempts
@@ -533,5 +540,90 @@ describe('handoff to C1', () => {
     const outcome = await routeInboundText(h.deps, inbound({ body: 'CANARY' }), 0);
 
     expect(outcome).toBe('handed_off');
+  });
+});
+
+describe('iMessage first-touch door', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('does not thread a 1:1 reply, and does thread a group reply', async () => {
+    const h = harness();
+    await routeInboundText(
+      h.deps,
+      {
+        ...inbound({ providerId: 'msg-1' }),
+        transport: 'imessage',
+        chatId: 'chat-1',
+        isGroup: false,
+      },
+      0,
+    );
+    expect(h.linqBinds[0]).toEqual({ chatId: 'chat-1' });
+    expect(h.linqBinds[0]).not.toHaveProperty('replyToMessageId');
+
+    const group = harness();
+    await routeInboundText(
+      group.deps,
+      {
+        ...inbound({ providerId: 'msg-g' }),
+        transport: 'imessage',
+        chatId: 'chat-group',
+        isGroup: true,
+      },
+      0,
+    );
+    expect(group.linqBinds[0]).toEqual({
+      chatId: 'chat-group',
+      replyToMessageId: 'msg-g',
+    });
+  });
+
+  it('starts typing as soon as the inbound arrives and stops when the turn ends', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => {
+      return new Response(null, { status: 204 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const h = harness();
+    await routeInboundText(h.deps, { ...inbound(), transport: 'imessage', chatId: 'chat-1' }, 0);
+    const typing = fetchMock.mock.calls.filter((call) => String(call[0]).includes('/typing'));
+    expect(typing.length).toBeGreaterThan(0);
+    vi.unstubAllGlobals();
+  });
+
+  it('starts typing when the turn is still working after the delay, and a failure does not drop the reply', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('LINQ_API_KEY', '');
+    const h = harness();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const intake = h.deps.intake;
+    h.deps.intake = (transport, linq) => {
+      const built = intake(transport, linq);
+      return {
+        ...built,
+        limiter: {
+          check: async () => {
+            await gate;
+            return { allowed: true, retryAfterSec: 0 };
+          },
+        },
+      };
+    };
+    const pending = routeInboundText(
+      h.deps,
+      { ...inbound(), transport: 'imessage', chatId: 'chat-1' },
+      0,
+    );
+    await vi.advanceTimersByTimeAsync(LINQ_TYPING_SHOW_DELAY_MS);
+    expect(h.warns.some((call) => String(call[1]).includes('did not start'))).toBe(true);
+    release();
+    await pending;
+    expect(h.transport.bodies().length).toBeGreaterThan(0);
+    vi.unstubAllGlobals();
   });
 });

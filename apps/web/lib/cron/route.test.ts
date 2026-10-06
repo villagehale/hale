@@ -55,6 +55,15 @@ vi.mock('~/lib/channel/nudge/run', () => ({
 }));
 vi.mock('~/lib/channel/intake/sitting-reminder', () => ({
   runSittingReminderCron: (...a: unknown[]) => runSittingReminderCronMock(...a),
+  defaultSittingReminderDeps: () => ({ transport: {} }),
+}));
+// The sitting-reminder route imports these to build friend-voice deps when the
+// flag is on. Stub them so the gate never loads the model client.
+vi.mock('~/lib/channel/intake/friend-voice', () => ({
+  createFriendVoiceComposer: () => ({}),
+}));
+vi.mock('~/lib/channel/intake/friend-voice-flag', () => ({
+  onboardingFriendVoiceEnabled: () => false,
 }));
 vi.mock('~/lib/channel/intake/first-reply-recovery', () => ({
   runFirstReplyRecoveryCron: (...a: unknown[]) => runFirstReplyRecoveryCronMock(...a),

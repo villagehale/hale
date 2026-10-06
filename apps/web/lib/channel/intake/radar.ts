@@ -10,6 +10,7 @@ import { voiceClient } from '~/lib/loop/voice/compose';
 import { activityClient } from '~/lib/pipeline/client';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
+import { type ActivityMapGroup, collectActivityMap, renderActivityMapBody } from './activity-map';
 import type { ExtractedChild } from './extract';
 import { type RadarCandidate, type RadarChild, decideYearFinds } from './radar-decide';
 import { type RadarMessage, promisesFirstFind } from './radar-voice';
@@ -126,6 +127,12 @@ export interface RadarInput {
   areaCoarse: string | null;
   /** The kids-and-postal text. The empty year-find has a French twin. */
   language?: ReplyLanguage;
+  /**
+   * Onboarding step 4: run one search per age-fit category and return the
+   * grouped map instead of the single three-line year find. The message is
+   * the stored body (category markers plus numbered lines), never sent as is.
+   */
+  activityMap?: boolean;
 }
 
 /**
@@ -189,6 +196,8 @@ export interface RadarPayload {
    * not invent a title when it is missing.
    */
   titles?: readonly string[];
+  /** The grouped map when {@link RadarInput.activityMap} asked for one. */
+  groups?: readonly ActivityMapGroup[];
   /**
    * The three rule #11 outcomes of the one turn, carried so a test and any future
    * caller can read what the log line below says. See {@link RadarMessage}: an
@@ -401,6 +410,31 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
         now,
         timeZone,
       });
+      const language = input.language ?? 'en';
+      if (input.activityMap) {
+        const map = await collectActivityMap({
+          finder: deps.yearFinder ?? null,
+          children,
+          areaCoarse: area,
+          civic,
+          familyId: input.familyId,
+        });
+        const won = map.lines.length > 0;
+        return {
+          message: renderActivityMapBody(map),
+          itemCount: map.lines.length,
+          titles: map.titles,
+          groups: map.groups,
+          followUpNeeded: !won,
+          checkpointTold: null,
+          weekendPickOffered: false,
+          firstFindPromised: false,
+          findWon: won,
+          actionMove: null,
+          actionHeld: 'no_move',
+          voiceFallback: 'no_client',
+        };
+      }
       const opened = await collectYearOpenLines({
         civic,
         children,
@@ -408,7 +442,6 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
         finder: deps.yearFinder ?? null,
         familyId: input.familyId,
       });
-      const language = input.language ?? 'en';
       const message =
         opened.lines.length > 0 ? renderYearOpen(opened.lines) : yearOpenEmptyMessage(language);
       const findWon = opened.lines.length > 0;

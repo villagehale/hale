@@ -16,6 +16,7 @@ import {
   FIRST_TOUCH_IMESSAGE_BY_LANGUAGE,
   FIRST_TOUCH_SMS_BY_LANGUAGE,
 } from '../copy';
+import { firstTouchLocationCardEnabled } from '../first-touch-flag';
 import { calendarAsk, emailAsk, signupOffer, whatCanYouDo } from './copy';
 import { coldStartLadderEnabled } from './flags';
 import type { ColdStartIntent } from './intent';
@@ -39,12 +40,15 @@ export function planFollowAsk(input: {
   activity: string | null;
   day?: string | null;
   env?: Record<string, string | undefined>;
+  /** Calendar, then email, then the sign-up offer. The machine writes the words. */
+  friendVoice?: boolean;
 }): {
   kind: 'signup' | 'calendar' | 'email' | 'none';
   body: string;
   mayLeave: boolean;
   skipped?: 'not_due' | 'copy_unlocked' | 'unfilled';
 } {
+  if (input.friendVoice) return planFriendFollow(input);
   const offer = signupOfferForResult(input);
   if (offer) return offer;
   const emailWanted =
@@ -66,6 +70,38 @@ export function planFollowAsk(input: {
   }
   if (calendarDue) {
     return finishConnector('calendar', calendarAsk(input.language, input.activity, input.env));
+  }
+  return { kind: 'none', body: '', mayLeave: false, skipped: 'not_due' };
+}
+
+/** One connector at a time, email even when nobody said school, then sign-up. */
+function planFriendFollow(input: {
+  nameLineSent: boolean;
+  calendarAlreadyAsked: boolean;
+  emailAlreadyAsked: boolean;
+  signupAsked?: boolean;
+  signupDateKnown?: boolean;
+  activity: string | null;
+  day?: string | null;
+}): {
+  kind: 'signup' | 'calendar' | 'email' | 'none';
+  body: string;
+  mayLeave: boolean;
+  skipped?: 'not_due';
+} {
+  if (!input.calendarAlreadyAsked && input.nameLineSent) {
+    return { kind: 'calendar', body: '', mayLeave: true };
+  }
+  if (!input.emailAlreadyAsked && input.calendarAlreadyAsked) {
+    return { kind: 'email', body: '', mayLeave: true };
+  }
+  if (!input.signupAsked) {
+    const activity = input.activity?.trim() ?? '';
+    const day = input.day?.trim() ?? '';
+    if (input.signupDateKnown && activity) return { kind: 'signup', body: activity, mayLeave: true };
+    if (!input.signupDateKnown && day && day !== 'then') {
+      return { kind: 'signup', body: day, mayLeave: true };
+    }
   }
   return { kind: 'none', body: '', mayLeave: false, skipped: 'not_due' };
 }
@@ -155,7 +191,8 @@ export function planPull(input: {
     return { kind: 'later', body: '', mayLeave: false, skipped: 'not_pull' };
   }
   if (!input.hasPlace) {
-    const card = input.channel === 'imessage' && !input.group;
+    const card =
+      firstTouchLocationCardEnabled(input.env) && input.channel === 'imessage' && !input.group;
     const body = card
       ? FIRST_TOUCH_IMESSAGE_BY_LANGUAGE[input.language]
       : input.group && input.language === 'fr'

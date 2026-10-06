@@ -192,13 +192,22 @@ test('the dial rides the URL: ?w=365 deep-loads and survives a tab switch', asyn
   const { page, errors } = await openPage(browser, 'admin');
   const response = await page.goto('/admin/operations?w=365');
   expect(response?.status()).toBe(200);
-  // Cold load: the dial thumb sits on 365, not the 30 default.
+  // Cold load: the dial thumb sits on 365, not the 30 default. That thumb is
+  // in the server HTML, so it can be true before the client tab bar has hydrated.
   await expect(page.getByRole('button', { name: '365d' })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
-  // Tab switch preserves the window.
-  await page.getByRole('link', { name: 'Engagement' }).click();
+  // Tab switch preserves the window. Wait until the tab bar has finished
+  // hydrating — a click before `data-ready` is dropped and the URL stays put.
+  const tabs = page.getByRole('navigation', { name: 'Admin sections' });
+  await expect(tabs).toHaveAttribute('data-ready', 'true');
+  const engagement = tabs.getByRole('link', { name: 'Engagement' });
+  await expect(engagement).toHaveAttribute('href', '/admin/engagement?w=365');
+  // App Router applies the click with history.pushState. waitForURL defaults to
+  // the document `load` event, which that navigation never fires, so the test
+  // budget dies on a URL that already moved. Poll the URL instead.
+  await engagement.click();
   await expect(page).toHaveURL(/\/admin\/engagement\?w=365$/);
   await expect(page.getByRole('button', { name: '365d' })).toHaveAttribute(
     'aria-pressed',

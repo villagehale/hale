@@ -30,7 +30,10 @@ describe('/connect — the texted redeem page', () => {
     const html = await render({ t: 'tok', to: 'gcal' });
 
     expect(html).toContain('Connect your calendar');
-    expect(html).toContain('I never see your password. Disconnect my calendar anytime.');
+    expect(html).toContain('I never see your password. You can disconnect any time.');
+    expect(html).toContain('Tap Advanced, then continue.');
+    expect(html).toContain('unverified app');
+    expect(html).not.toContain('connect my calendar');
     expect(html).toContain('Connect Google Calendar');
     expect(html).not.toContain('Continue');
     expect(html).not.toContain('tok');
@@ -40,7 +43,8 @@ describe('/connect — the texted redeem page', () => {
     const html = await render({ t: 'tok', to: 'gmail' });
 
     expect(html).toContain('Connect Gmail');
-    expect(html).toContain('Disconnect my gmail anytime.');
+    expect(html).toContain('You can disconnect any time.');
+    expect(html).toContain('Tap Advanced, then continue.');
     expect(html).not.toContain('tok');
   });
 
@@ -54,11 +58,9 @@ describe('/connect — the texted redeem page', () => {
     });
 
     expect(calendar.title).toBe('Connect your calendar');
-    expect(calendar.description).toBe(
-      'I never see your password. Disconnect my calendar anytime.',
-    );
+    expect(calendar.description).toBe('I never see your password. You can disconnect any time.');
     expect(gmail.title).toBe('Connect Gmail');
-    expect(gmail.description).toBe('I never see your password. Disconnect my gmail anytime.');
+    expect(gmail.description).toBe('I never see your password. You can disconnect any time.');
     expect(calendar.openGraph?.title).toBe(calendar.title);
     expect(gmail.openGraph?.description).toBe(gmail.description);
     expect(JSON.stringify(calendar)).not.toContain('secret-token');
@@ -94,6 +96,7 @@ describe('/connect — the texted redeem page', () => {
     const html = await render({ to: 'gcal' });
 
     expect(html).toContain('missing or incomplete');
+    expect(html).not.toContain('connect my calendar');
     expect(html).not.toContain('Connect Google Calendar');
   });
 });

@@ -12,6 +12,7 @@ import type { InboundMessage } from '~/lib/channel/intake/transport';
 import { replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { liveMemberMayTalk } from '~/lib/channel/linq/group-members';
+import { armDelayedImessageTyping } from '~/lib/channel/linq/presence';
 import { sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { isParentRole } from '~/lib/channel/role-scope';
 import type { MessageTransport } from '~/lib/channel/transport-address';
@@ -152,36 +153,64 @@ export type InboundRouteOutcome =
  * Route one authenticated inbound text. Exported so the routing decisions are testable
  * without building an HTTP request. Linq's webhook is the request shell.
  */
+/**
+ * 1:1 intake and cold-start replies are plain bubbles. A reply_to target makes
+ * iMessage draw a curved connector under the inbound, which reads as a quote
+ * of a first hello. Groups keep the connector: several people are in the thread
+ * and the line shows which message Hale is answering.
+ */
+function linqTurnBind(
+  inbound: InboundMessage,
+): { chatId: string; replyToMessageId?: string | null } | undefined {
+  if (!inbound.chatId) return undefined;
+  if (inbound.isGroup === true) {
+    return { chatId: inbound.chatId, replyToMessageId: inbound.providerId };
+  }
+  return { chatId: inbound.chatId };
+}
+
 export async function routeInboundText(
   deps: InboundRouteDeps,
   inbound: InboundMessage,
   media: number,
 ): Promise<InboundRouteOutcome> {
-  const intake = deps.intake(
-    inbound.transport ?? 'sms',
-    inbound.chatId ? { chatId: inbound.chatId, replyToMessageId: inbound.providerId } : undefined,
-  );
+  const typing = armDelayedImessageTyping({
+    channel: inbound.transport ?? 'sms',
+    chatId: inbound.chatId ?? null,
+    log: deps.log,
+    delayMs: 0,
+  });
+  try {
+    const intake = {
+      ...deps.intake(inbound.transport ?? 'sms', linqTurnBind(inbound)),
+      stopTyping: typing.stop,
+      keepTyping: typing.rearm,
+    };
 
-  // Media is answered here, but never before the CASL keywords: see the module note.
-  if (media > 0 && !matchKeyword(inbound.body)) {
-    return replyMediaUnsupported(deps.database, inbound, intake);
-  }
+    // Media is answered here, but never before the CASL keywords: see the module note.
+    if (media > 0 && !matchKeyword(inbound.body)) {
+      return replyMediaUnsupported(deps.database, inbound, intake);
+    }
 
-  const outcome = await handleInboundSms(deps.database, inbound, intake);
-  if (outcome.status === 'ignored' && outcome.reason === 'no_open_conversation') {
-    const pulled = await maybeColdStartPull(deps, inbound);
-    if (pulled === 'sent') return 'intake';
-    return handOffToConversation(deps, inbound);
+    const outcome = await handleInboundSms(deps.database, inbound, intake);
+    if (outcome.status === 'ignored' && outcome.reason === 'no_open_conversation') {
+      await typing.stop();
+      const pulled = await maybeColdStartPull(deps, inbound);
+      if (pulled === 'sent') return 'intake';
+      return handOffToConversation(deps, inbound);
+    }
+    if (outcome.status === 'ignored') return 'ignored';
+    if (
+      outcome.status === 'stopped' ||
+      outcome.status === 'helped' ||
+      outcome.status === 'restarted'
+    ) {
+      return keywordOutcome(deps, inbound, outcome.ack);
+    }
+    return 'intake';
+  } finally {
+    await typing.stop();
   }
-  if (outcome.status === 'ignored') return 'ignored';
-  if (
-    outcome.status === 'stopped' ||
-    outcome.status === 'helped' ||
-    outcome.status === 'restarted'
-  ) {
-    return keywordOutcome(deps, inbound, outcome.ack);
-  }
-  return 'intake';
 }
 
 /**
@@ -245,6 +274,16 @@ async function replyMediaUnsupported(
   );
   if (!decision.allowed) return 'rate_limited';
 
+  if (intake.stopTyping) {
+    try {
+      await intake.stopTyping();
+    } catch (err) {
+      console.warn(
+        { err: err instanceof Error ? err.name : 'unknown' },
+        'linq: typing indicator did not stop',
+      );
+    }
+  }
   const { providerMessageId } = await intake.transport.send({
     to: phoneE164,
     body: mediaUnsupportedReply(),
@@ -357,10 +396,7 @@ async function maybeColdStartPull(
     );
     return 'skip';
   }
-  const intake = deps.intake(
-    inbound.transport ?? 'sms',
-    inbound.chatId ? { chatId: inbound.chatId, replyToMessageId: inbound.providerId } : undefined,
-  );
+  const intake = deps.intake(inbound.transport ?? 'sms', linqTurnBind(inbound));
   try {
     await sendResolvingNewChat(intake.transport, { to: phoneE164, body: plan.body });
   } catch (err) {

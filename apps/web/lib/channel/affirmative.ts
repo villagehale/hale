@@ -64,6 +64,7 @@ const AFFIRMATIVE = new Set([
   'do that',
   'yes do it',
   'go ahead',
+  'please do',
   'go for it',
   'lets do it',
   'make it',
@@ -122,6 +123,8 @@ const NEGATIVE = new Set([
   'never mind',
   'nevermind',
   'dont',
+  'not now',
+  'no thanks',
   // French.
   'non',
   'pas maintenant',
@@ -198,6 +201,11 @@ export function normalizeReply(body: string): string {
 }
 
 function stripFiller(words: string[]): string[] {
+  // "please do" is the affirmative. Stripping "please" would leave "do", which is not.
+  if (words.length === 2 && words[0] === 'please' && words[1] === 'do') return words;
+  // "no thanks" is the refusal. Stripping "thanks" would also leave "no", which is
+  // already a refusal; keeping the pair lets the table name the phrase parents send.
+  if (words.length === 2 && words[0] === 'no' && words[1] === 'thanks') return words;
   let start = 0;
   let end = words.length;
   while (start < end && FILLER.has(words[start] as string)) start += 1;
@@ -206,9 +214,7 @@ function stripFiller(words: string[]): string[] {
 }
 
 function collapseRepeats(words: string[]): string[] {
-  return words.filter(
-    (word, i) => i === 0 || word !== words[i - 1] || /\d/.test(word),
-  );
+  return words.filter((word, i) => i === 0 || word !== words[i - 1] || /\d/.test(word));
 }
 
 export type Affirmation = 'yes' | 'no' | 'unclear';

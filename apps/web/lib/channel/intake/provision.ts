@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
+import { HALE_CONTACT_FIRST_NAME, haleContactCardDay } from '~/lib/channel/linq/contact-card';
 import { resolveReferrerFamilyId } from '~/lib/channel/referral/attribution';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
@@ -10,7 +10,11 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { INTAKE_COUNTRY, type PostalContext, deriveDateOfBirth, intakeFamilyName } from './derive';
 import type { AgePrecision } from './extract';
 import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
-import type { LinqContactCardClaim, TranscriptEntry } from './session';
+import {
+  type LinqContactCardClaim,
+  type TranscriptEntry,
+  linqContactCardClaimHeld,
+} from './session';
 
 /**
  * VIL-237 · M2 — provisioning a family from a text conversation. Mirrors
@@ -75,8 +79,10 @@ export interface ProvisionInput {
   language?: ReplyLanguage;
   /**
    * A Name and Photo share that already happened, before this channel existed.
-   * Stamped onto the new parent_channels row so the year-find turn does not
-   * share the card again. Null when the first outbound has not held the claim.
+   * A held claim is stamped onto the new parent_channels row so a later turn
+   * does not share the card again. An `unreachable` record is the failed
+   * setup: it is audited and does not stamp the row, so a later turn can
+   * still share. Null when the first outbound has not tried.
    */
   linqContactCardClaim?: LinqContactCardClaim | null;
 }
@@ -210,7 +216,7 @@ export async function provisionFromIntake(
         phoneE164Hash: phoneHash,
         verifiedAt: now,
         consentRecordId: consentId,
-        ...(input.linqContactCardClaim
+        ...(input.linqContactCardClaim && linqContactCardClaimHeld(input.linqContactCardClaim)
           ? { linqContactCardSharedAt: new Date(input.linqContactCardClaim.at) }
           : {}),
       })
@@ -324,13 +330,27 @@ export async function provisionFromIntake(
               actionTaken: 'linq_contact_card_shared',
               targetTable: 'parent_channels',
               targetId: channelId,
-              after:
-                input.linqContactCardClaim.outcome === 'shared'
+              occurredAt: new Date(input.linqContactCardClaim.at),
+              after: {
+                ...(input.linqContactCardClaim.chatId
+                  ? { chatId: input.linqContactCardClaim.chatId }
+                  : {}),
+                sharedOn: haleContactCardDay(new Date(input.linqContactCardClaim.at)),
+                ...(input.linqContactCardClaim.outcome === 'shared'
                   ? { outcome: 'shared', firstName: HALE_CONTACT_FIRST_NAME }
-                  : {
-                      outcome: 'share_refused',
-                      code: input.linqContactCardClaim.code ?? 'unknown',
-                    },
+                  : input.linqContactCardClaim.outcome === 'share_refused'
+                    ? {
+                        outcome: 'share_refused',
+                        code: input.linqContactCardClaim.code ?? 'unknown',
+                      }
+                    : {
+                        outcome: 'unreachable',
+                        code: input.linqContactCardClaim.code ?? 'unreachable',
+                        ...(input.linqContactCardClaim.attempts
+                          ? { attempts: input.linqContactCardClaim.attempts }
+                          : {}),
+                      }),
+              },
             },
           ]
         : []),

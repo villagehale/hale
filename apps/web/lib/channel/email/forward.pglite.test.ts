@@ -705,7 +705,8 @@ describe('the forwarding door · the ask and the ref it hands out', () => {
     const body = sent[0]?.text as string;
     const askLine = body.split('\n')[0] as string;
     expect(askLine).toContain('from bcs.on.ca');
-    expect(askLine).toContain('Reply YES');
+    expect(askLine).toContain('Want me to read what bcs.on.ca sends you?');
+    expect(askLine).not.toMatch(/Reply YES/i);
     expect(body).not.toMatch(/[\u200b\u202e]/);
     // Exactly one quoted span, and it is the sender's: the subject could not close it.
     expect(askLine.split('"')).toHaveLength(3);

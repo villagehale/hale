@@ -14,6 +14,7 @@ async function render(searchParams: {
   status?: string;
   who?: string;
   lang?: string;
+  fresh?: string;
 }): Promise<string> {
   return renderToStaticMarkup(await ConnectedPage({ searchParams: Promise.resolve(searchParams) }));
 }
@@ -38,7 +39,7 @@ describe('/connected — the done page', () => {
     const html = await render({ provider: 'gcal', status: 'denied' });
 
     expect(html).toContain('No changes made.');
-    expect(html).toContain('connect my calendar');
+    expect(html).not.toContain('connect my calendar');
   });
 
   it('tells the wrong parent this link is for someone else, in the locked sentence', async () => {
@@ -63,6 +64,14 @@ describe('/connected — the done page', () => {
     expect(html).toContain('Deja connecte');
   });
 
+  it('says a fresh link is in the texts only when one was sent', async () => {
+    const html = await render({ provider: 'gmail', status: 'denied', fresh: 'sent' });
+
+    expect(html).toContain('No changes made. A fresh link is in your texts.');
+    expect(html).not.toContain('connect my calendar');
+    expect(html).not.toContain('connect my Gmail');
+  });
+
   it('tells an expired link from a connect that broke', async () => {
     // Two different things went wrong and the parent is told which, because only one of
     // them is worth retrying immediately. (Apostrophes come back HTML-escaped.)
@@ -78,7 +87,8 @@ describe('/connected — the done page', () => {
     for (const params of [{}, { status: 'ok' }, { provider: 'gdrive', status: 'ok' }]) {
       const html = await render(params);
       expect(html).not.toContain('is connected.');
-      expect(html).toContain('connect my calendar');
+      expect(html).not.toContain('connect my calendar');
+      expect(html).toContain('t go through.');
     }
   });
 

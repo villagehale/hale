@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cfjuh8dLj3CeuK1mrjjSe",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "ErwCCqQBCBIYAipAP5wpkZxCGcszhJq/hbKMeqy5ezPdWEate0RKfuUdAB8+M91//ciR+DllMnf3gmCGvsK03lXeaFnXqcwSlD7HbDIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagB6tOQ1gYSDN6E9lOEaI3k3kpfNBoMv4GWSOByvYR9Rz9GIjAGc178a4Eaum0cc5RmlSKX0dchmKWX8PvuCWNCFXVPg+kkS/+eXSZ8rV0dLd2PmRgqRfjY4XwrQj/2/jh526Z/VXa0dS/T8tEIbs9/LN5N9oV9yjTnWfUKj4eTHnfCkGTRPDLcprbWHJ8iA/8mmAN5FFq4uztv5BgB"
+      },
+      {
+        "type": "text",
+        "text": "You use **Riverdale Pediatrics**, and you've mentioned you prefer booking evening appointments. Want me to note anything else for your next visit with Mira?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 1099,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 3944,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 73,
+      "output_tokens_details": {
+        "thinking_tokens": 18
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 1759,
+  "firstInputTokens": 1099
+}

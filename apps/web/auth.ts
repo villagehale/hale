@@ -1,12 +1,12 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { authConfig } from '~/auth.config';
+import { requireEmailVerification } from '~/lib/auth-config';
+import { presentChannelSigninToken } from '~/lib/auth/channel-signin';
 import { authorizeClaimByPhone } from '~/lib/auth/claim-phone-authorize';
-import { consumeChannelSigninToken } from '~/lib/auth/channel-signin';
 import { authenticateCredential } from '~/lib/auth/credentials';
 import { consumeMagicLinkToken } from '~/lib/auth/magic-link';
 import { authRateLimited } from '~/lib/auth/rate-limit';
-import { requireEmailVerification } from '~/lib/auth-config';
 import { db } from '~/lib/db';
 
 // Full Auth.js v5 config for the Node API route (app/api/auth/[...nextauth]).
@@ -109,6 +109,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // lives here to throttle token guessing on both paths. Null on ANY failure
       // (limited, malformed, unknown / expired / already consumed) so Auth.js surfaces
       // one generic CredentialsSignin (rule #1: never which gate closed).
+      //
+      // This does NOT burn the token. Google consent success does, so closing the
+      // Google screen leaves the same link usable until it expires.
       async authorize(raw) {
         const token = typeof raw?.token === 'string' ? raw.token : '';
         if (!token) {
@@ -117,7 +120,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (await authRateLimited()) {
           return null;
         }
-        const result = await consumeChannelSigninToken(token, db());
+        const result = await presentChannelSigninToken(token, db());
         if (!result.ok) {
           // The label only — the token never reaches a log line (rule #1).
           console.info({ reason: result.reason }, 'channel-link: sign-in refused');

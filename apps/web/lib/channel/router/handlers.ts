@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { imessageUpgradeAskEnabled, prepareYearRetentionAnswer } from '~/lib/billing/upgrade-ask';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import type { CheckInCadence } from '~/lib/channel/checkin/cadence';
@@ -13,10 +13,13 @@ import {
 } from '~/lib/channel/checkin/reply';
 import { connectorOfferReply, connectorRevokeReply } from '~/lib/channel/connect/copy';
 import {
+  type ConnectOfferTarget,
+  connectOfferTarget,
   matchConnectorDisconnectRequest,
   matchConnectorRequest,
+  matchFreshConnectorFollowUp,
 } from '~/lib/channel/connect/detect';
-import { offerConnectorLink } from '~/lib/channel/connect/offer';
+import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
 import { type EmailCaptureDeps, handleEmailCaptureReply } from '~/lib/channel/email-capture/reply';
 import { emailInboundConfig } from '~/lib/channel/email/config';
@@ -42,7 +45,11 @@ import {
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { type FounderReplyDeps, handleFounderWelcomeReply } from '~/lib/channel/founder/reply';
 import { type NameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/identity/name-reply';
-import { handleParentCallNameReply } from '~/lib/channel/identity/parent-call-name';
+import {
+  type ParentCallNameVoice,
+  handleParentCallNameReply,
+} from '~/lib/channel/identity/parent-call-name';
+import { intakeConnectorOffer } from '~/lib/channel/intake/copy';
 import { replyLanguage } from '~/lib/channel/language';
 import {
   type CoParentNumberDeps,
@@ -301,13 +308,50 @@ export function emailCaptureHandler(deps: EmailCaptureDeps): DeterministicHandle
  * which does not reach the chain without a verified parent channel, but re-proven by
  * the mint — declines to claim and says why in the log; `mint_failed` claims with the
  * honest failure line rather than deferring the turn into hours of queue backoff.
+ *
+ * A follow-up that does not name the provider ("give me a fresh one", "new link",
+ * "it expired") mints the same way when the previous Hale message was already a
+ * Gmail or calendar connect link. A later sentence that is not that link is not
+ * this ask, and the coach keeps the turn.
  */
+async function latestConnectOfferTarget(
+  database: Database,
+  conversationId: string,
+): Promise<ConnectOfferTarget | null> {
+  try {
+    const rows = await database
+      .select({ role: schema.messages.role, content: schema.messages.content })
+      .from(schema.messages)
+      .where(
+        and(eq(schema.messages.conversationId, conversationId), isNull(schema.messages.deletedAt)),
+      )
+      .orderBy(desc(schema.messages.createdAt))
+      .limit(6);
+    for (const row of rows) {
+      if (row.role !== 'assistant') continue;
+      return connectOfferTarget(row.content);
+    }
+    return null;
+  } catch (err) {
+    console.error(
+      { err: err instanceof Error ? err.name : 'unknown' },
+      'connector link: could not read the prior offer',
+    );
+    return null;
+  }
+}
+
 export function connectorLinkHandler(log: Pick<Console, 'error'> = console): DeterministicHandler {
   return {
     name: 'connector_link',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const provider = matchConnectorRequest(ctx.body);
-      if (!provider) return { claimed: false };
+      const named = matchConnectorRequest(ctx.body);
+      const fresh = named
+        ? null
+        : matchFreshConnectorFollowUp(ctx.body)
+          ? await latestConnectOfferTarget(database, ctx.conversationId)
+          : null;
+      if (!named && !fresh) return { claimed: false };
       if (
         await declinePrivilegedGroupSeat(database, {
           familyId: ctx.familyId,
@@ -318,10 +362,42 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
         return { claimed: true, outcome: 'group_member_not_authorized', reply: null };
       }
 
+      const language = replyLanguage(ctx.body);
+      const target = named ?? fresh;
+      if (!target) return { claimed: false };
+      if (target === 'both') {
+        const outcome = await offerConnectorLinks(database, {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          providers: ['gcal', 'gmail'],
+          now: ctx.now,
+        });
+        switch (outcome.status) {
+          case 'minted':
+            return {
+              claimed: true,
+              outcome: 'sent',
+              reply: intakeConnectorOffer(language, outcome.urls[0], outcome.urls[1]),
+            };
+          case 'not_enrolled':
+            log.error(
+              { familyId: ctx.familyId, provider: target, outcome: 'not_enrolled' },
+              'connector link: mint refused for an unenrolled turn',
+            );
+            return { claimed: false };
+          case 'mint_failed':
+            log.error(
+              { familyId: ctx.familyId, provider: target, outcome: 'mint_failed' },
+              'connector link: mint failed',
+            );
+            return { claimed: true, outcome: 'mint_failed', reply: failureReply() };
+        }
+      }
+
       const outcome = await offerConnectorLink(database, {
         familyId: ctx.familyId,
         parentUserId: ctx.parentUserId,
-        provider,
+        provider: target,
         now: ctx.now,
       });
       switch (outcome.status) {
@@ -329,19 +405,19 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
           return {
             claimed: true,
             outcome: 'sent',
-            reply: connectorOfferReply(replyLanguage(ctx.body), provider, outcome.url),
+            reply: connectorOfferReply(language, target, outcome.url),
           };
         case 'not_enrolled':
           // Ids and the named outcome only, never the body (rule #1). The coach takes
           // the turn, and its skill knows this branch exists.
           log.error(
-            { familyId: ctx.familyId, provider, outcome: 'not_enrolled' },
+            { familyId: ctx.familyId, provider: target, outcome: 'not_enrolled' },
             'connector link: mint refused for an unenrolled turn',
           );
           return { claimed: false };
         case 'mint_failed':
           log.error(
-            { familyId: ctx.familyId, provider, outcome: 'mint_failed' },
+            { familyId: ctx.familyId, provider: target, outcome: 'mint_failed' },
             'connector link: mint failed',
           );
           return { claimed: true, outcome: 'mint_failed', reply: failureReply() };
@@ -362,9 +438,9 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
  *
  * UNGATED, like the connect half it mirrors. Connect-by-text is live for every family,
  * so gating the undo behind the F14 allowlist would leave most parents able to connect
- * by text and unable to un-connect the same way — and the connected receipt tells all
- * of them the words. A parent ending their own grant is an instruction they gave, not a
- * proactive send, so the dark-launch reasoning does not reach it.
+ * by text and unable to un-connect the same way. A parent ending their own grant is an
+ * instruction they gave, not a proactive send, so the dark-launch reasoning does not
+ * reach it.
  *
  * Rule #11, all three ways out named and all three answered in the parent's own reply
  * language: `revoked`, `not_connected` (nothing of theirs matched — never a false
@@ -640,31 +716,31 @@ async function bareWordAsk(
  * race is settled by Postgres rather than by the order two texts arrived in.
  */
 /**
- * "Can I call you {first}?" — yes keeps the held Google name, no asks what to call
- * them, and a name-shaped reply stores that preference instead.
+ * The reply to the confirm of a held Google name — yes keeps it, no asks what to
+ * call them, and a different name stores that preference instead. The model reads
+ * the answer and writes the receipt; code stores only what passes the shape check.
  *
  * IMMEDIATELY BEFORE the name capture. A bare yes is not a name, so the capture
  * would decline it; this handler has to see it first when a confirm is the latest
- * ask. It declines when the latest ask is the open "What should I call you?",
- * which is the capture's question. A yes that belongs to an approval, a plan, or
+ * ask. It declines when the latest ask is the open name question, which is the
+ * capture's. A yes that belongs to an approval, a plan, or
  * a health nudge is claimed by those handlers, which sit ahead of this one.
  */
-export function parentCallNameHandler(): DeterministicHandler {
+export function parentCallNameHandler(voice: ParentCallNameVoice): DeterministicHandler {
   return {
     name: 'parent_call_name',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const outcome = await handleParentCallNameReply(database, {
-        familyId: ctx.familyId,
-        parentUserId: ctx.parentUserId,
-        body: ctx.body,
-      });
+      const outcome = await handleParentCallNameReply(
+        database,
+        {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          body: ctx.body,
+        },
+        voice,
+      );
       if (outcome.status === 'declined') return { claimed: false };
-      return {
-        claimed: true,
-        outcome: 'parent_call_name',
-        reply: outcome.reply,
-        templateKey: outcome.templateKey,
-      };
+      return { claimed: true, outcome: 'parent_call_name', reply: outcome.reply };
     },
   };
 }

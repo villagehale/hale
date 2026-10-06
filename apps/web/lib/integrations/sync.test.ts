@@ -6,6 +6,7 @@ import {
   BOOKED_BACKFILL_MAX_PER_SWEEP,
   BOOKED_BACKFILL_QUERY,
   type CalendarAlertBatch,
+  type CalendarMirrorBatch,
   type GmailAlertBatch,
   type GoogleFetch,
   syncConnection,
@@ -14,7 +15,11 @@ import type { OAuthTokens } from './token-vault';
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 const USER = '22222222-2222-4222-8222-222222222222';
-const FRESH: OAuthTokens = { accessToken: 'ya29.fresh', refreshToken: '1//refresh', expiresAt: Date.now() + 3600_000 };
+const FRESH: OAuthTokens = {
+  accessToken: 'ya29.fresh',
+  refreshToken: '1//refresh',
+  expiresAt: Date.now() + 3600_000,
+};
 
 /** Build a GoogleFetch that answers each requested URL from a route table (first
  * substring match), recording the bearer token it was called with. */
@@ -50,6 +55,8 @@ interface Captured {
   /** Every gmail batch handed to the TRAVEL detect port, in order. The third alert-shaped
    * port on SyncDeps, and non-nullable for the reason the other two are. */
   travelDetected: GmailAlertBatch[];
+  /** Every upcoming window handed to the reminder mirror. */
+  mirrored: CalendarMirrorBatch[];
 }
 
 /** The single enqueued event, asserting exactly one was emitted (narrows away the
@@ -69,11 +76,16 @@ function stubDeps(overrides: Partial<Parameters<typeof syncConnection>[1]> = {})
     alerted: [],
     calendarAlerted: [],
     travelDetected: [],
+    mirrored: [],
   };
   const deps: Parameters<typeof syncConnection>[1] = {
     googleFetch: overrides.googleFetch ?? routedFetch([]).fetchImpl,
     enqueue: async (event) => {
-      cap.enqueued.push({ source: event.source, payload: event.payload, familyId: event.family_id });
+      cap.enqueued.push({
+        source: event.source,
+        payload: event.payload,
+        familyId: event.family_id,
+      });
     },
     childNames: overrides.childNames ?? ['Mila'],
     saveCursor: async (_id, meta) => {
@@ -99,6 +111,17 @@ function stubDeps(overrides: Partial<Parameters<typeof syncConnection>[1]> = {})
       cap.travelDetected.push(batch);
       return batch.envelopes.map(() => 'dark' as const);
     },
+    mirrorCalendarWindow: async (batch) => {
+      cap.mirrored.push(batch);
+      return {
+        mirrored: 0,
+        updated: 0,
+        removed: 0,
+        alreadyKnown: 0,
+        skipped: 0,
+        held: !batch.trustWindow && batch.items.length === 0,
+      };
+    },
     ...overrides,
   };
   return { deps, cap };
@@ -122,7 +145,11 @@ function onlyEnvelope(cap: Captured): GmailAlertEnvelope {
   return envelope;
 }
 
-function connection(provider: ActiveConnectorConnection['provider'], meta: Record<string, unknown> = {}, tokens = FRESH): ActiveConnectorConnection {
+function connection(
+  provider: ActiveConnectorConnection['provider'],
+  meta: Record<string, unknown> = {},
+  tokens = FRESH,
+): ActiveConnectorConnection {
   return { id: 'i1', familyId: FAMILY, userId: USER, provider, providerMetadata: meta, tokens };
 }
 
@@ -161,12 +188,16 @@ describe('syncConnection — Calendar', () => {
         return { ok: false, status: 410, json: async () => ({ error: 'gone' }) };
       }
       // Full resync (no syncToken) succeeds.
-      return { ok: true, status: 200, json: async () => ({ items: [], nextSyncToken: 'SYNC-FULL' }) };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [], nextSyncToken: 'SYNC-FULL' }),
+      };
     };
     const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
     await syncConnection(connection('gcal', { syncToken: 'STALE' }), deps);
 
-    expect(calls).toBe(2); // stale (410) then full resync
+    expect(calls).toBe(3); // stale (410), full resync, then the upcoming window
     expect(cap.errored).toBe(false);
     expect(cap.cursor).toEqual({ syncToken: 'SYNC-FULL' });
   });
@@ -178,7 +209,10 @@ describe('syncConnection — Calendar', () => {
     // with nextSyncToken ... iCalUID, orderBy, privateExtendedProperty, q,
     // sharedExtendedProperty, timeMin, timeMax, updatedMin."
     const { fetchImpl, calls } = routedFetch([
-      { match: 'calendar/v3/calendars/primary/events', body: { items: [], nextSyncToken: 'SYNC-2' } },
+      {
+        match: 'calendar/v3/calendars/primary/events',
+        body: { items: [], nextSyncToken: 'SYNC-2' },
+      },
     ]);
     const { deps } = stubDeps({ googleFetch: fetchImpl });
     await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
@@ -198,6 +232,46 @@ describe('syncConnection — Calendar', () => {
       expect(query.has(forbidden)).toBe(false);
     }
     expect(query.get('showDeleted')).not.toBe('false');
+  });
+
+  it('lists the upcoming window on its own request, with no syncToken', async () => {
+    const { fetchImpl, calls } = routedFetch([
+      {
+        match: 'calendar/v3/calendars/primary/events',
+        body: { items: [], nextSyncToken: 'SYNC-2' },
+      },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    const window = calls.map((call) => call.url).find((url) => url.includes('timeMin='));
+    expect(window).toBeDefined();
+    const query = new URLSearchParams(new URL(window ?? 'https://x.invalid/').search);
+    expect(query.get('syncToken')).toBeNull();
+    expect(query.get('orderBy')).toBe('startTime');
+    expect(query.get('singleEvents')).toBe('true');
+    expect(query.get('maxResults')).toBe('250');
+    expect(query.get('timeMin')).toBeTruthy();
+    expect(query.get('timeMax')).toBeTruthy();
+    expect(query.has('showDeleted')).toBe(false);
+    expect(cap.mirrored).toHaveLength(1);
+    expect(cap.mirrored[0]?.trustWindow).toBe(true);
+    expect(cap.errored).toBe(false);
+  });
+
+  it('a window quota leaves the connection healthy and does not trust the window', async () => {
+    const fetchImpl: GoogleFetch = async (url) => {
+      if (url.includes('timeMin=')) {
+        return { ok: false, status: 429, json: async () => ({ error: 'rate' }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ items: [], nextSyncToken: 'SYNC-2' }) };
+    };
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    expect(cap.errored).toBe(false);
+    expect(cap.cursor).toEqual({ syncToken: 'SYNC-2' });
+    expect(cap.mirrored).toEqual([expect.objectContaining({ trustWindow: false, items: [] })]);
   });
 
   it('survives a Google that enforces the syncToken contract (the full sync is legal, the incremental must be too)', async () => {
@@ -407,7 +481,7 @@ describe('syncConnection — Calendar', () => {
     expect(stamps).toEqual(['"3181161784712000"', '"3181161784712000"']);
   });
 
-  it('keys an item with neither `updated` nor etag on the run\'s own clock rather than dropping it', async () => {
+  it("keys an item with neither `updated` nor etag on the run's own clock rather than dropping it", async () => {
     const before = Date.now();
     const { fetchImpl } = routedFetch([
       {
@@ -561,7 +635,11 @@ describe('syncConnection — Gmail', () => {
     // must not advance {historyId: undefined}; throw so the cursor holds.
     const fetchImpl: GoogleFetch = async (url) => {
       if (url.includes('/messages/m5')) {
-        return { ok: true, status: 200, json: async () => ({ id: 'm5', snippet: 'x', payload: { headers: [] } }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: 'm5', snippet: 'x', payload: { headers: [] } }),
+        };
       }
       // history.list returns a change but omits historyId (no terminal cursor).
       return {
@@ -584,7 +662,11 @@ describe('syncConnection — Gmail', () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ id: 'm2', snippet: 'hello', payload: { headers: [{ name: 'Subject', value: 'Hi' }] } }),
+          json: async () => ({
+            id: 'm2',
+            snippet: 'hello',
+            payload: { headers: [{ name: 'Subject', value: 'Hi' }] },
+          }),
         };
       }
       // history.list from startHistoryId
@@ -848,7 +930,7 @@ describe('syncConnection — the gmail alert hand-off', () => {
     expect(cap.alerted).toEqual([]);
   });
 
-  it('returns the port\'s outcomes to the caller, and alerts only AFTER the cursor advanced', async () => {
+  it("returns the port's outcomes to the caller, and alerts only AFTER the cursor advanced", async () => {
     // Ordering is the invariant: the ingest contract is what this sweep owes, and a text
     // is a bonus on top of it. A throw from the alert port must therefore find the cursor
     // already saved — otherwise a slow alert pass would re-enqueue the whole batch next run.
@@ -934,7 +1016,9 @@ describe('syncConnection — Drive', () => {
         ok: true,
         status: 200,
         json: async () => ({
-          changes: [{ file: { id: 'f1', name: 'Mila report card.pdf', mimeType: 'application/pdf' } }],
+          changes: [
+            { file: { id: 'f1', name: 'Mila report card.pdf', mimeType: 'application/pdf' } },
+          ],
           newStartPageToken: 'P2',
         }),
       };
@@ -954,7 +1038,10 @@ describe('syncConnection — pagination (drain all pages before advancing)', () 
   it('Calendar drains every page; the terminal nextSyncToken arrives only on the last', async () => {
     const { fetchImpl } = routedFetch([
       // page 2 (matched first): terminal nextSyncToken, no nextPageToken
-      { match: 'pageToken=PAGE2', body: { items: [{ id: 'ev2', summary: 'park' }], nextSyncToken: 'SYNC-2' } },
+      {
+        match: 'pageToken=PAGE2',
+        body: { items: [{ id: 'ev2', summary: 'park' }], nextSyncToken: 'SYNC-2' },
+      },
       // page 1: items + nextPageToken, NO nextSyncToken
       {
         match: 'calendar/v3/calendars/primary/events',
@@ -987,16 +1074,27 @@ describe('syncConnection — pagination (drain all pages before advancing)', () 
   it('Gmail drains all history pages before advancing historyId (later-page messages are not skipped)', async () => {
     const fetchImpl: GoogleFetch = async (url) => {
       if (url.includes('/messages/m1')) {
-        return { ok: true, status: 200, json: async () => ({ id: 'm1', snippet: 'a', payload: { headers: [] } }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: 'm1', snippet: 'a', payload: { headers: [] } }),
+        };
       }
       if (url.includes('/messages/m2')) {
-        return { ok: true, status: 200, json: async () => ({ id: 'm2', snippet: 'b', payload: { headers: [] } }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: 'm2', snippet: 'b', payload: { headers: [] } }),
+        };
       }
       if (url.includes('pageToken=H2')) {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ history: [{ messagesAdded: [{ message: { id: 'm2' } }] }], historyId: '9200' }),
+          json: async () => ({
+            history: [{ messagesAdded: [{ message: { id: 'm2' } }] }],
+            historyId: '9200',
+          }),
         };
       }
       // history page 1: m1 + nextPageToken H2 (no terminal historyId advance yet)
@@ -1050,8 +1148,14 @@ describe('syncConnection — failure isolation & token refresh', () => {
   });
 
   it('a rejected refresh grant is named apart from a failed request', async () => {
-    const expired: OAuthTokens = { accessToken: 'ya29.old', refreshToken: '1//revoked', expiresAt: Date.now() - 1000 };
-    const { fetchImpl } = routedFetch([{ match: 'calendar/v3', body: { items: [], nextSyncToken: 'S' } }]);
+    const expired: OAuthTokens = {
+      accessToken: 'ya29.old',
+      refreshToken: '1//revoked',
+      expiresAt: Date.now() - 1000,
+    };
+    const { fetchImpl } = routedFetch([
+      { match: 'calendar/v3', body: { items: [], nextSyncToken: 'S' } },
+    ]);
     const { deps, cap } = stubDeps({
       googleFetch: fetchImpl,
       refreshTokens: async () => {
@@ -1064,7 +1168,11 @@ describe('syncConnection — failure isolation & token refresh', () => {
   });
 
   it('refreshes an expired access token before fetching, then persists it', async () => {
-    const expired: OAuthTokens = { accessToken: 'ya29.old', refreshToken: '1//refresh', expiresAt: Date.now() - 1000 };
+    const expired: OAuthTokens = {
+      accessToken: 'ya29.old',
+      refreshToken: '1//refresh',
+      expiresAt: Date.now() - 1000,
+    };
     const { fetchImpl, calls } = routedFetch([
       { match: 'calendar/v3', body: { items: [], nextSyncToken: 'S' } },
     ]);
@@ -1087,7 +1195,9 @@ describe('syncConnection — failure isolation & token refresh', () => {
   });
 
   it('does NOT refresh a still-valid token', async () => {
-    const { fetchImpl } = routedFetch([{ match: 'calendar/v3', body: { items: [], nextSyncToken: 'S' } }]);
+    const { fetchImpl } = routedFetch([
+      { match: 'calendar/v3', body: { items: [], nextSyncToken: 'S' } },
+    ]);
     let refreshCalled = false;
     const { deps } = stubDeps({
       googleFetch: fetchImpl,
@@ -1146,7 +1256,9 @@ describe('syncConnection — booked-detection backfill', () => {
     },
   };
 
-  function backfillFetch(pages: Array<{ messages: Array<{ id: string }>; nextPageToken?: string }>): {
+  function backfillFetch(
+    pages: Array<{ messages: Array<{ id: string }>; nextPageToken?: string }>,
+  ): {
     fetchImpl: GoogleFetch;
     urls: string[];
   } {
@@ -1266,7 +1378,9 @@ describe('syncConnection — booked-detection backfill', () => {
     vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
     vi.stubEnv('BOOKED_DETECTION_BACKFILL_ENABLED', 'true');
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { fetchImpl } = backfillFetch([{ messages: [{ id: 'old-receipt' }], nextPageToken: 'PAGE2' }]);
+    const { fetchImpl } = backfillFetch([
+      { messages: [{ id: 'old-receipt' }], nextPageToken: 'PAGE2' },
+    ]);
     const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
     deps.alertGmailEnvelopes = async (batch) => {
       cap.alerted.push(batch);
@@ -1277,8 +1391,91 @@ describe('syncConnection — booked-detection backfill', () => {
     await syncConnection(connection('gmail', { historyId: '9002' }), deps);
 
     expect(cap.errored).toBe(false);
-    expect(cap.cursor).toEqual({ historyId: '9100' });
+    expect(cap.cursor).toEqual({
+      historyId: '9100',
+      bookedBackfill: { pendingIds: ['old-receipt'], pageToken: 'PAGE2' },
+    });
     expect(logged).toHaveBeenCalled();
     logged.mockRestore();
+  });
+
+  it('stops at the time budget and keeps the unread ids for the next sweep', async () => {
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+    vi.stubEnv('BOOKED_DETECTION_BACKFILL_ENABLED', 'true');
+    const { fetchImpl, urls } = backfillFetch([
+      { messages: [{ id: 'old-receipt' }, { id: 'older' }], nextPageToken: 'PAGE2' },
+    ]);
+    const { deps, cap } = stubDeps({
+      googleFetch: fetchImpl,
+      backfillBudgetMs: 0,
+      backfillNow: () => 5_000,
+    });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    expect(urls.filter((url) => url.includes('/messages/'))).toEqual([]);
+    expect(cap.errored).toBe(false);
+    expect(cap.cursor).toEqual({
+      historyId: '9100',
+      bookedBackfill: { pendingIds: ['old-receipt', 'older'], pageToken: 'PAGE2' },
+    });
+
+    const resumed = stubDeps({
+      googleFetch: fetchImpl,
+      backfillNow: () => 0,
+    });
+    const before = urls.length;
+    await syncConnection(connection('gmail', cap.cursor ?? {}), resumed.deps);
+    expect(urls.slice(before).filter((url) => url.includes('/messages?'))).toEqual([]);
+    expect(urls.slice(before).filter((url) => url.includes('/messages/'))).toHaveLength(2);
+    expect(resumed.cap.cursor?.bookedBackfill).toEqual({ pageToken: 'PAGE2' });
+    expect(resumed.cap.errored).toBe(false);
+  });
+
+  it('a list quota does not stamp the backfill cursor or error the mailbox', async () => {
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+    vi.stubEnv('BOOKED_DETECTION_BACKFILL_ENABLED', 'true');
+    const fetchImpl: GoogleFetch = async (url) => {
+      if (url.includes('/history')) {
+        return { ok: true, status: 200, json: async () => ({ history: [], historyId: '9100' }) };
+      }
+      if (url.includes('/messages?')) {
+        return { ok: false, status: 429, json: async () => ({ error: 'rate' }) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    };
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    expect(cap.errored).toBe(false);
+    expect(cap.cursor).toEqual({ historyId: '9100' });
+  });
+
+  it('a message quota keeps that id pending and leaves the mailbox healthy', async () => {
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+    vi.stubEnv('BOOKED_DETECTION_BACKFILL_ENABLED', 'true');
+    const fetchImpl: GoogleFetch = async (url) => {
+      if (url.includes('/history')) {
+        return { ok: true, status: 200, json: async () => ({ history: [], historyId: '9100' }) };
+      }
+      if (url.includes('/messages?')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ messages: [{ id: 'old-receipt' }], nextPageToken: 'PAGE2' }),
+        };
+      }
+      if (url.includes('/messages/')) {
+        return { ok: false, status: 429, json: async () => ({}) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    };
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    expect(cap.errored).toBe(false);
+    expect(cap.cursor).toEqual({
+      historyId: '9100',
+      bookedBackfill: { pendingIds: ['old-receipt'], pageToken: 'PAGE2' },
+    });
   });
 });
