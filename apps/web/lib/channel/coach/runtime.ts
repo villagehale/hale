@@ -39,6 +39,7 @@ import { buildGuardDeps } from '~/lib/coach/guards';
 import { type OfferedCandidate, searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import type { CoachCalendarToolSignal } from '~/lib/integrations/email-alert-offer';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import { createFetchBody } from '~/lib/registration/verify-sweep';
 import {
@@ -182,6 +183,9 @@ export interface ChannelCoachPorts {
      * nearby count read the same list. */
     offered: TurnOfferLedger,
     onGmailNotice?: (notice: GmailDraftNoticeBox) => void,
+    /** Told which calendar verb drafted. Optional so a test port that only
+     * counts drafts still typechecks; production always passes it. */
+    onCalendar?: (signal: CoachCalendarToolSignal) => void,
   ): RegisteredTool[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about one of the activities this turn offered, or
@@ -247,6 +251,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // read about is the one in the sentence it ended up writing.
       let spotWatch: SpotWatchIntent | null = null;
       let gmailNotice: GmailDraftNoticeBox | null = null;
+      const calendarIntents: CoachCalendarToolSignal[] = [];
       const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
@@ -335,6 +340,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             (notice) => {
               if (gmailNotice?.status === 'unsent') return;
               gmailNotice = notice;
+            },
+            (signal) => {
+              calendarIntents.push(signal);
             },
           );
           // A tool that throws, a provider that times out, a step that runs long: the
@@ -446,7 +454,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             });
           }
           await ports.recordRun(record('completed'));
-          return { reply, planOffer, activityPromise, spotWatch };
+          return { reply, planOffer, activityPromise, spotWatch, calendarIntents };
         },
       );
     },
@@ -490,7 +498,17 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         DEFAULT_TIMEZONE,
         now,
       ),
-    buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch, offered, onGmailNotice) => {
+    buildTools: (
+      turn,
+      onDraft,
+      onOffer,
+      onShare,
+      onPromise,
+      onWatch,
+      offered,
+      onGmailNotice,
+      onCalendar,
+    ) => {
       return buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database, turn.now),
@@ -529,6 +547,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         gmailDrafts: productionGmailDraftPorts(database, anthropicClient),
         onGmailNotice,
         parentUserId: turn.parentUserId,
+        onCalendar,
         now: turn.now,
       });
     },

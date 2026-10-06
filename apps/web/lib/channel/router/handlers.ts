@@ -65,6 +65,7 @@ import {
   isEmailAlertOfferCorrection,
   resolveEmailAlertOffer,
 } from '~/lib/integrations/email-alert-offer';
+import type { OfferReceiptPorts } from '~/lib/integrations/offer-receipt';
 import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
 import {
   type PrepareReplyDeps,
@@ -930,7 +931,7 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
  * which has no inbound row, would cost this handler nothing even if the kind were ever
  * added to SPOKEN_QUESTION_KINDS (it is not).
  */
-export function emailAlertAddHandler(): DeterministicHandler {
+export function emailAlertAddHandler(receipt?: OfferReceiptPorts): DeterministicHandler {
   return {
     name: 'email_alert_add',
     resolves: new Set<OpenQuestionKind>(['email_alert_add']),
@@ -973,8 +974,15 @@ export function emailAlertAddHandler(): DeterministicHandler {
         polarity,
         language: replyLanguage(ctx.body),
         now: ctx.now,
+        receipt,
       });
       if (outcome.status === 'no_open_offer') return { claimed: false };
+      // The model could not write a line that names this occasion. Nothing is
+      // sent, and the offer stays open so a later turn can try the receipt
+      // again. The placement, when there was one, is already claimed.
+      if (outcome.reply === null) {
+        return { claimed: true, outcome: outcome.status, reply: null };
+      }
       if (outcome.status === 'already_added') {
         return { claimed: true, outcome: outcome.status, reply: outcome.reply };
       }

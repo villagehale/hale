@@ -73,7 +73,7 @@ import {
   partialFailureReply,
   whichOneReply,
 } from '~/lib/channel/router/copy';
-import { emailAlertOfferReplies } from '~/lib/integrations/email-alert-offer';
+import { offerReceiptAccepts } from '~/lib/integrations/offer-receipt';
 import { PRIVACY_URL } from '~/lib/legal-links';
 import { smsEncoding, smsSegments } from './sms-segments';
 
@@ -318,24 +318,59 @@ describe('the intake script stays GSM-7 once rendered', () => {
 });
 
 /**
- * The email alert's receipts, rendered in both twins.
- *
- * The file scan cannot see these: the occasion's title comes from a school's subject line
- * (already folded by the alert's own `gsm7`, and pinned here as the assertion that it
- * stays folded), and the French twin carries the accents GSM-7 does have. One segment,
- * because these are replies to a text the parent just answered and nothing about an
- * acknowledgement is worth two.
+ * The offer receipt is written by the model. The guard is the verifier, not a
+ * canned twin: the line has to name this occasion and this rendered instant,
+ * stay GSM-7 in one segment, and not tell the parent which word to type.
  */
-describe('the email-alert offer receipts stay GSM-7 and inside one segment', () => {
-  const RENDERED = (['en', 'fr'] as const).flatMap((language) =>
-    emailAlertOfferReplies(language).map((body, index) => [`${language}[${index}]`, body] as const),
-  );
+describe('an offer receipt is sent only when it names this occasion', () => {
+  const facts = {
+    kind: 'added' as const,
+    title: 'Picture day',
+    whenLabel: 'Sunday, Oct 4 at 9:00 a.m.',
+    language: 'en' as const,
+  };
 
-  it.each(RENDERED)('%s', (_name, body) => {
-    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
+  it('accepts one GSM-7 segment that copies the title and the rendered instant', () => {
+    const line =
+      'Picture day is on your week for Sunday, Oct 4 at 9:00 a.m. Say if you want it off.';
+    expect(offerReceiptAccepts(line, facts)).toBe(true);
+    expect({ encoding: smsEncoding(line), segments: smsSegments(line) }).toEqual({
       encoding: 'gsm7',
       segments: 1,
     });
+  });
+
+  it('accepts a French line whose accents are in GSM-7', () => {
+    const line = "C'est noté, Picture day, Sunday, Oct 4 at 9:00 a.m. Dis-moi pour l'enlever.";
+    expect(offerReceiptAccepts(line, { ...facts, language: 'fr' })).toBe(true);
+    expect(smsEncoding(line)).toBe('gsm7');
+  });
+
+  it('refuses a different or past date', () => {
+    expect(
+      offerReceiptAccepts(
+        'Added Picture day Thursday, Oct 1 at 4:15 p.m. Sunday, Oct 4 at 9:00 a.m.',
+        facts,
+      ),
+    ).toBe(false);
+    expect(offerReceiptAccepts('Picture day is on Thursday, Oct 1 at 4:15 p.m.', facts)).toBe(
+      false,
+    );
+  });
+
+  it('refuses a line that drops the title or the rendered instant', () => {
+    expect(offerReceiptAccepts('On your week, Sunday, Oct 4 at 9:00 a.m.', facts)).toBe(false);
+    expect(offerReceiptAccepts('Picture day is on your week.', facts)).toBe(false);
+  });
+
+  it('refuses UCS-2, a second segment, and a keyword instruction', () => {
+    expect(offerReceiptAccepts('Picture day 👍 Sunday, Oct 4 at 9:00 a.m.', facts)).toBe(false);
+    const novel = `Picture day on Sunday, Oct 4 at 9:00 a.m. ${'word '.repeat(80)}`;
+    expect(smsSegments(novel)).toBeGreaterThan(1);
+    expect(offerReceiptAccepts(novel, facts)).toBe(false);
+    expect(
+      offerReceiptAccepts('Reply YES to keep Picture day on Sunday, Oct 4 at 9:00 a.m.', facts),
+    ).toBe(false);
   });
 });
 

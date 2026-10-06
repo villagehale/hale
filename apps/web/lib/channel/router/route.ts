@@ -1586,11 +1586,8 @@ async function runAgentTurn(
       familyId: args.turn.familyId,
       now: args.turn.now,
     });
-    const { reply, planOffer, activityPromise, spotWatch, mints } = await composeReconciledReply(
-      deps,
-      args,
-      view,
-    );
+    const reconciled = await composeReconciledReply(deps, args, view);
+    const { reply, planOffer, activityPromise, spotWatch, mints } = reconciled;
     // A coach sentence that names a specific future event has to land on an
     // offer row, or a later yes answers whatever older alert is still open
     // (VIL-410). A past occasion and one already on the calendar get no row.
@@ -1602,6 +1599,7 @@ async function runAgentTurn(
         parentUserId: args.turn.parentUserId,
         body: reply,
         now: args.turn.now,
+        intents: reconciled.calendarIntents,
       });
       if (prepared.outcome === 'offer') coachOffer = prepared.offer;
       if (prepared.outcome !== 'not_an_offer' && prepared.outcome !== 'unparsed') {

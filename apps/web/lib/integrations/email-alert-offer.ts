@@ -9,6 +9,12 @@ import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
 import { occasionAlreadyHeld } from './calendar-mirror';
+import {
+  type OfferReceiptFacts,
+  type OfferReceiptPorts,
+  productionOfferReceiptPorts,
+  writeOfferReceipt,
+} from './offer-receipt';
 
 /**
  * THE YES AT THE END OF AN EMAIL ALERT — the row it lands in, and what it does.
@@ -244,9 +250,9 @@ export function emailAlertOfferSubject(offer: OpenEmailAlertOffer): string {
 /** What answering an offer did. Every ending is named (rule #11) — `no_open_offer` is the
  * handler declining to claim, not a silent skip. */
 export type EmailAlertOfferReplyOutcome =
-  | { status: 'added'; offerId: string; reply: string }
-  | { status: 'declined'; offerId: string; reply: string }
-  | { status: 'already_added'; reply: string }
+  | { status: 'added'; offerId: string; reply: string | null }
+  | { status: 'declined'; offerId: string; reply: string | null }
+  | { status: 'already_added'; reply: string | null }
   | { status: 'no_open_offer' };
 
 /**
@@ -281,8 +287,29 @@ export async function handleEmailAlertOfferReply(
     polarity: 'yes' | 'no';
     language: ReplyLanguage;
     now: Date;
+    /** The voice that writes the receipt. Absent in production wiring, which
+     * uses the offer-receipt skill. A test hands a port so the suite never
+     * calls a model. */
+    receipt?: OfferReceiptPorts;
   },
 ): Promise<EmailAlertOfferReplyOutcome> {
+  const receipt = input.receipt ?? productionOfferReceiptPorts(database, input.familyId);
+  const say = async (
+    kind: OfferReceiptFacts['kind'],
+    title: string,
+    startsAt: Date,
+  ): Promise<string | null> => {
+    const timeZone = await parentTimeZone(database, input.parentUserId);
+    return writeOfferReceipt(
+      {
+        kind,
+        title,
+        whenLabel: when(startsAt, timeZone, input.now),
+        language: input.language,
+      },
+      receipt,
+    );
+  };
   const open = await loadOpenEmailAlertOffers(database, input);
   const offer = input.offerId === null ? open[0] : open.find((row) => row.id === input.offerId);
   // A named id that is not open is a closed question, never an invitation to pick another
@@ -292,18 +319,18 @@ export async function handleEmailAlertOfferReply(
     if (input.polarity === 'no') return { status: 'no_open_offer' };
     const repeat = await loadRecentlyAddedOffer(database, input);
     if (!repeat) return { status: 'no_open_offer' };
-    const timeZone = await parentTimeZone(database, input.parentUserId);
     return {
       status: 'already_added',
-      reply: ALREADY_ADDED[input.language](
-        repeat.title,
-        when(repeat.startsAt, timeZone, input.now),
-      ),
+      reply: await say('already_added', repeat.title, repeat.startsAt),
     };
   }
 
   if (input.polarity === 'no') {
-    return { status: 'declined', offerId: offer.id, reply: DECLINED[input.language]() };
+    return {
+      status: 'declined',
+      offerId: offer.id,
+      reply: await say('declined', offer.title, offer.startsAt),
+    };
   }
 
   // The open-list filter is the ordinary refusal. This is the one that still
@@ -313,7 +340,6 @@ export async function handleEmailAlertOfferReply(
     return { status: 'no_open_offer' };
   }
 
-  const timeZone = await parentTimeZone(database, input.parentUserId);
   // Already on the calendar (Google or family_events). Do not write a second
   // copy, and stop the offer standing so the next yes is not about it.
   // A redrive of a placement this offer already claimed is not that case:
@@ -329,7 +355,7 @@ export async function handleEmailAlertOfferReply(
     await expireEmailAlertOffer(database, offer.id, input.now);
     return {
       status: 'already_added',
-      reply: ALREADY_ADDED[input.language](offer.title, when(offer.startsAt, timeZone, input.now)),
+      reply: await say('already_added', offer.title, offer.startsAt),
     };
   }
 
@@ -337,7 +363,7 @@ export async function handleEmailAlertOfferReply(
   return {
     status: 'added',
     offerId: offer.id,
-    reply: ADDED[input.language](offer.title, when(offer.startsAt, timeZone, input.now)),
+    reply: await say('added', offer.title, offer.startsAt),
   };
 }
 
@@ -589,8 +615,10 @@ async function parentTimeZone(database: Database, parentUserId: string): Promise
   return rows.find((row) => row.id === parentUserId)?.timezone ?? DEFAULT_TIMEZONE;
 }
 
-/** `Saturday, Sep 19 at 9:00 a.m.` — the SAME rendering the alert used for the same
- * instant, so the receipt names the occasion in the words the parent is holding. */
+/** `Saturday, Sep 19 at 9:00 a.m.` — the exact instant the receipt must name.
+ * One renderer, in the parent's zone. The model copies this string and writes
+ * the rest of the line; a French month such as août is not GSM-7, so the
+ * rendered form stays the one the alert already used. */
 function when(startsAt: Date, timeZone: string, now: Date): string {
   const clock = new Intl.DateTimeFormat('en-CA', {
     hour: 'numeric',
@@ -598,55 +626,6 @@ function when(startsAt: Date, timeZone: string, now: Date): string {
     timeZone,
   }).format(startsAt);
   return `${formatDayHeading(startsAt, timeZone, now)} at ${clock}`;
-}
-
-/**
- * The three receipts, per language.
- *
- * "say remove it anytime" is a promise this product can keep: a `family_events` row with
- * `source = 'parent'` is visible to the coach's `lookup_week` and removable through
- * `propose_calendar_cancel`, which drafts the removal for the parent's approval.
- *
- * THE DATE IS RENDERED IN ENGLISH IN BOTH TWINS, and it is parenthesised in the French
- * one so no English preposition leaks into a French sentence. The product has exactly one
- * date renderer, the alert these answer is English-only (an outbound-first path has no
- * language signal to read), and the French month names that would need one are not all
- * spellable in GSM-7 — `août` alone would flip the whole reply to UCS-2. Quoting the
- * occasion back in the words the parent is holding is the honest version of that
- * constraint rather than a gap.
- */
-const ADDED: Record<ReplyLanguage, (title: string, at: string) => string> = {
-  en: (title, at) =>
-    `${end(`Added - ${title} on ${at}`)} It's on your week; say remove it anytime.`,
-  fr: (title, at) =>
-    `${end(`Ajouté - ${title}, ${at}`)} C'est sur votre semaine; dites-le-moi pour l'enlever.`,
-};
-
-const ALREADY_ADDED: Record<ReplyLanguage, (title: string, at: string) => string> = {
-  en: (title, at) => end(`Already on your week - ${title} on ${at}`),
-  fr: (title, at) => end(`Déjà sur votre semaine - ${title}, ${at}`),
-};
-
-/** `9:00 a.m.` already ends the clause; a second period is the kind of thing nobody
- * notices in review and everybody notices on a phone. The alert's renderer keeps the same
- * rule for the same reason, one file over. */
-function end(sentence: string): string {
-  return sentence.endsWith('.') ? sentence : `${sentence}.`;
-}
-
-const DECLINED: Record<ReplyLanguage, () => string> = {
-  en: () => 'Okay - left it off.',
-  fr: () => "Entendu - je ne l'ai pas ajouté.",
-};
-
-/** The three, exported for the encoding guard that holds every fixed line Hale sends to
- * GSM-7 (sms-copy-encoding.test.ts). */
-export function emailAlertOfferReplies(language: ReplyLanguage): string[] {
-  return [
-    ADDED[language]('Swim class', 'Saturday, Sep 19 at 9:00 a.m.'),
-    ALREADY_ADDED[language]('Swim class', 'Saturday, Sep 19 at 9:00 a.m.'),
-    DECLINED[language](),
-  ];
 }
 
 /**
@@ -680,8 +659,10 @@ const MOVE_OR_CANCEL = /\b(move|cancel|reschedule|deplace|déplace|annule)\b/i;
 const EXPLICIT_ADD =
   /want me to add|want it on your (calendar|week)|i can add|\badd it\b|\bput it on\b|je l'ajoute|tu veux que je l'ajoute/i;
 
-/** A coach sentence offering to put a specific occasion on the week. A move or
- * a cancel is not one — those already have a draft. */
+/** A coach sentence offering to put a specific occasion on the week, read only
+ * when no calendar tool ran. A move or a cancel is not one — those already
+ * have a draft. When a tool did run, {@link prepareCoachCalendarReply} follows
+ * that signal and does not consult this. */
 export function isCoachAddAsk(body: string): boolean {
   if (MOVE_OR_CANCEL.test(body) && !/\badd\b/i.test(body)) return false;
   return EXPLICIT_ADD.test(body);
@@ -788,6 +769,15 @@ function cleanCoachTitle(chunk: string): string | null {
     .join(' ');
 }
 
+/** What a propose_calendar_* tool already decided this turn. When any signal
+ * is present it decides whether an offer row exists. The sentence regex is
+ * only the fallback for a prose offer that called no calendar tool. */
+export interface CoachCalendarToolSignal {
+  verb: 'add' | 'move' | 'cancel';
+  title: string;
+  startsAt: Date;
+}
+
 export type CoachCalendarReply =
   | { outcome: 'not_an_offer'; body: string; offer: null }
   | { outcome: 'unparsed'; body: string; offer: null }
@@ -802,6 +792,11 @@ export type CoachCalendarReply =
  * already on the calendar produce no offer row — a yes must not add either.
  * A future event that is not already held keeps the sentence and returns the
  * draft the caller writes after the send.
+ *
+ * A calendar tool that already ran is the decider. A move or a cancel, with
+ * no add, writes no offer row even when the sentence also matches an add
+ * phrase. An add carries the tool's title and start, not a parse of the
+ * sentence. The regex runs only when no calendar tool spoke.
  */
 export async function prepareCoachCalendarReply(
   database: Database,
@@ -810,8 +805,36 @@ export async function prepareCoachCalendarReply(
     parentUserId: string;
     body: string;
     now: Date;
+    intents?: readonly CoachCalendarToolSignal[];
   },
 ): Promise<CoachCalendarReply> {
+  const signals = input.intents ?? [];
+  if (signals.length > 0) {
+    const adds = signals.filter((signal) => signal.verb === 'add');
+    if (adds.length === 0) return { outcome: 'not_an_offer', body: input.body, offer: null };
+    const add = adds[adds.length - 1];
+    if (!add) return { outcome: 'not_an_offer', body: input.body, offer: null };
+    const drafted: EmailAlertOfferDraft = {
+      kind: 'new_event',
+      title: add.title,
+      startsAt: add.startsAt,
+      location: null,
+    };
+    if (drafted.startsAt.getTime() <= input.now.getTime()) {
+      return { outcome: 'past', body: input.body, offer: null };
+    }
+    if (
+      await occasionAlreadyHeld(database, {
+        familyId: input.familyId,
+        title: drafted.title,
+        startsAt: drafted.startsAt,
+      })
+    ) {
+      return { outcome: 'already_on_calendar', body: input.body, offer: null };
+    }
+    return { outcome: 'offer', body: input.body, offer: drafted };
+  }
+
   const timeZone = await parentTimeZone(database, input.parentUserId);
   const parsed = parseCoachEventOffer(input.body, input.now, timeZone);
   const asking = isCoachAddAsk(input.body);

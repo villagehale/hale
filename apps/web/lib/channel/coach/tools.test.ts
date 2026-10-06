@@ -129,6 +129,8 @@ interface Harness {
   audit: unknown[];
   /** Every actionId the turn committed, in order — what a failed turn reports. */
   minted: string[];
+  /** Calendar verbs that actually drafted. A refusal must not appear here. */
+  signals: { verb: string; title: string; startsAt: Date }[];
   call(name: string, input: unknown): Promise<unknown>;
 }
 
@@ -141,6 +143,7 @@ function harness(
   const port = fakePort();
   const audit: unknown[] = [];
   const minted: string[] = [];
+  const signals: { verb: string; title: string; startsAt: Date }[] = [];
   const deps = guardDeps(audit, teenChildIds);
   const tools = buildChannelCoachTools({
     familyId: FAMILY,
@@ -151,6 +154,7 @@ function harness(
     activity: null,
     spots: null,
     onDraft: (actionId) => minted.push(actionId),
+    onCalendar: (signal) => signals.push(signal),
     now: NOW,
   });
   return {
@@ -158,6 +162,7 @@ function harness(
     port,
     audit,
     minted,
+    signals,
     call(name, input) {
       const tool = tools.find((t) => t.name === name);
       if (!tool) throw new Error(`no tool named ${name}`);
@@ -291,6 +296,9 @@ describe('propose_calendar_move', () => {
     expect(draft?.payload.reversalHandle).toBe(MON_SWIM);
     // 4:30pm Toronto on 2026-08-04 (EDT, UTC-4) is 20:30Z.
     expect(draft?.payload.startsAt).toBe('2026-08-04T20:30:00.000Z');
+    expect(h.signals).toEqual([
+      { verb: 'move', title: 'Swim lesson', startsAt: new Date('2026-08-04T20:30:00.000Z') },
+    ]);
   });
 
   it('refuses an eventId the reader never handed out — no draft, no invention', async () => {
@@ -335,6 +343,7 @@ describe('propose_calendar_cancel', () => {
 
     expect(h.port.drafts[0]?.actionType).toBe('calendar_cancel');
     expect(h.port.drafts[0]?.payload.reversalHandle).toBe(MON_SWIM);
+    expect(h.signals.map((signal) => signal.verb)).toEqual(['cancel']);
   });
 
   it('refuses an unknown eventId — the destructive verb never guesses', async () => {
@@ -455,6 +464,7 @@ describe('propose_calendar_add', () => {
       }),
     ).rejects.toThrow(/already passed/i);
     expect(h.port.drafts).toEqual([]);
+    expect(h.signals).toEqual([]);
   });
 
   it('refuses an add that is already on the calendar', async () => {
@@ -564,6 +574,8 @@ describe('the weekday a draft claims must be the weekday its date is', () => {
     expect(result.drafted).toBe(true);
     expect(result.when).toContain('Thu');
     expect(result.when).toContain('Aug 20');
+    expect(h.signals.map((signal) => signal.verb)).toEqual(['add']);
+    expect(h.signals[0]?.title).toBe('Swim lessons');
   });
 });
 

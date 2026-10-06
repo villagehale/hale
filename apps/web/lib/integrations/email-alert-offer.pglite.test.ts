@@ -14,6 +14,7 @@ import {
   recordCoachEventOffer,
   recordEmailAlertOffer,
 } from './email-alert-offer';
+import type { OfferReceiptFacts, OfferReceiptPorts } from './offer-receipt';
 
 /**
  * THE YES AT THE END OF AN EMAIL ALERT, against the real DDL.
@@ -47,8 +48,34 @@ afterAll(async () => {
   await db.close();
 });
 
+const spoken: OfferReceiptFacts[] = [];
+const paged: string[] = [];
+
+/** A port that writes a line from the facts. Not a model, and not a template
+ * the product sends — the product sends whatever the offer-receipt skill writes
+ * once the verifier accepts it. */
+function receiptPorts(attempt?: OfferReceiptPorts['attempt']): OfferReceiptPorts {
+  return {
+    attempt:
+      attempt ??
+      (async (facts) => {
+        spoken.push(facts);
+        return `Noted ${facts.title} on ${facts.whenLabel}`;
+      }),
+    alert: async (text) => {
+      paged.push(text);
+    },
+  };
+}
+
+function handler(ports: OfferReceiptPorts = receiptPorts()) {
+  return emailAlertAddHandler(ports);
+}
+
 beforeEach(async () => {
   family = await seedFamily(db.database);
+  spoken.length = 0;
+  paged.length = 0;
   // The voice stage is an LLM call and this suite is about the week, not the wording.
   vi.stubEnv('VOICE_DISABLED', 'true');
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -162,7 +189,7 @@ async function turn(
 }
 
 function reply(body: string, over?: Parameters<typeof turn>[1]): Promise<HandlerVerdict> {
-  return turn(body, over).then((ctx) => emailAlertAddHandler().handle(db.database, ctx));
+  return turn(body, over).then((ctx) => handler().handle(db.database, ctx));
 }
 
 /** A drafted change waiting for this family's approval — the other open question. */
@@ -209,9 +236,9 @@ describe('a YES puts the occasion on the family week', () => {
 
     expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
     if (!verdict.claimed) throw new Error('unreachable');
-    expect(verdict.reply).toBe(
-      "Added - Picture day on Saturday, Sep 19 at 9:00 a.m. It's on your week; say remove it anytime.",
-    );
+    expect(spoken.at(-1)).toMatchObject({ kind: 'added', title: TITLE });
+    expect(spoken.at(-1)?.whenLabel).toBe('Saturday, Sep 19 at 9:00 a.m.');
+    expect(verdict.reply).toBe(`Noted ${TITLE} on ${spoken.at(-1)?.whenLabel}`);
 
     const rows = await events();
     expect(rows).toHaveLength(1);
@@ -375,7 +402,12 @@ describe('a YES puts the occasion on the family week', () => {
 
     expect(verdict).toMatchObject({ claimed: true, outcome: 'declined' });
     if (!verdict.claimed) throw new Error('unreachable');
-    expect(verdict.reply).toBe('Okay - left it off.');
+    expect(spoken.at(-1)).toMatchObject({
+      kind: 'declined',
+      title: TITLE,
+      whenLabel: 'Saturday, Sep 19 at 9:00 a.m.',
+    });
+    expect(verdict.reply).toBe(`Noted ${TITLE} on Saturday, Sep 19 at 9:00 a.m.`);
     await expect(events()).resolves.toHaveLength(0);
 
     await verdict.afterSend?.(await receipt());
@@ -394,9 +426,8 @@ describe('a YES puts the occasion on the family week', () => {
 
     expect(repeat).toMatchObject({ claimed: true, outcome: 'already_added' });
     if (!repeat.claimed) throw new Error('unreachable');
-    expect(repeat.reply).toBe(
-      'Already on your week - Picture day on Saturday, Sep 19 at 9:00 a.m.',
-    );
+    expect(spoken.at(-1)?.kind).toBe('already_added');
+    expect(repeat.reply).toBe(`Noted ${TITLE} on Saturday, Sep 19 at 9:00 a.m.`);
     await expect(events()).resolves.toHaveLength(1);
     expect(offerId).toBeTruthy();
   });
@@ -411,7 +442,7 @@ describe('a YES puts the occasion on the family week', () => {
     await first.afterSend?.(await receipt());
 
     const late = await turn('yes');
-    const verdict = await emailAlertAddHandler().handle(db.database, {
+    const verdict = await handler().handle(db.database, {
       ...late,
       now: new Date(NOW.getTime() + 11 * 60 * 1000),
     });
@@ -432,7 +463,7 @@ describe('a YES puts the occasion on the family week', () => {
     await sentOut(new Date(NOW.getTime() + 60 * 1000));
 
     const ctx = await turn('yes');
-    const verdict = await emailAlertAddHandler().handle(db.database, {
+    const verdict = await handler().handle(db.database, {
       ...ctx,
       now: new Date(NOW.getTime() + 2 * 60 * 1000),
     });
@@ -456,7 +487,7 @@ describe('a YES puts the occasion on the family week', () => {
     if (!coParent) throw new Error('no co-parent');
     const ctx = await turn('yes');
 
-    const verdict = await emailAlertAddHandler().handle(db.database, {
+    const verdict = await handler().handle(db.database, {
       ...ctx,
       parentUserId: coParent.id,
     });
@@ -484,7 +515,7 @@ describe('a bare YES is never stolen from another open question', () => {
       'email_alert_add',
     ]);
 
-    await expect(emailAlertAddHandler().handle(db.database, ctx)).resolves.toEqual({
+    await expect(handler().handle(db.database, ctx)).resolves.toEqual({
       claimed: false,
     });
     await expect(events()).resolves.toHaveLength(0);
@@ -763,6 +794,9 @@ describe('VIL-410 the Oct 2 transcript', () => {
     const verdict = await reply('sounds good', { now: OCT2 });
     expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
     if (!verdict.claimed) throw new Error('unreachable');
+    expect(spoken.at(-1)).toMatchObject({ kind: 'added', title: 'Gymnastics' });
+    expect(spoken.at(-1)?.whenLabel).toContain('Sunday, Oct 4');
+    expect(spoken.at(-1)?.whenLabel).not.toContain('Oct 1');
     expect(verdict.reply).toContain('Sunday, Oct 4');
     expect(verdict.reply).toContain('9:00 a.m.');
     expect(verdict.reply).not.toContain('Oct 1');
@@ -820,7 +854,8 @@ describe('VIL-410 the Oct 2 transcript', () => {
       const verdict = await reply(phrase);
       expect(verdict, phrase).toMatchObject({ claimed: true, outcome: 'declined' });
       if (!verdict.claimed) throw new Error('unreachable');
-      expect(verdict.reply).toBe('Okay - left it off.');
+      expect(verdict.reply).toBe(`Noted ${TITLE} on Saturday, Sep 19 at 9:00 a.m.`);
+      expect(spoken.at(-1)?.kind).toBe('declined');
     }
     await expect(events()).resolves.toEqual([]);
   });
@@ -901,5 +936,45 @@ describe('VIL-410 the Oct 2 transcript', () => {
     expect(held).toMatchObject({ outcome: 'already_on_calendar', offer: null, body: SUNDAY_ASK });
     await expect(offers()).resolves.toEqual([]);
     await expect(events()).resolves.toHaveLength(1);
+  });
+
+  it('sends nothing and pages ops when the receipt cannot name the occasion', async () => {
+    await seedOffer();
+    const verdict = await handler(receiptPorts(async () => 'Okay - left it off.')).handle(
+      db.database,
+      await turn('yes'),
+    );
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added', reply: null });
+    if (!verdict.claimed) throw new Error('unreachable');
+    expect(verdict.afterSend).toBeUndefined();
+    expect(paged).toHaveLength(1);
+    expect(paged[0]).toContain('unsent after retry');
+    await expect(events()).resolves.toHaveLength(1);
+    await expect(offers()).resolves.toMatchObject([{ resolvedAt: null, resolution: null }]);
+  });
+
+  it('follows an add tool even when the sentence reads as a move', async () => {
+    const prepared = await prepareCoachCalendarReply(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: 'Want me to move swim to Tue 4:30?',
+      now: OCT2,
+      intents: [{ verb: 'add', title: 'Gymnastics', startsAt: SUN_OCT4 }],
+    });
+    expect(prepared.outcome).toBe('offer');
+    if (prepared.outcome !== 'offer') throw new Error('unreachable');
+    expect(prepared.offer).toMatchObject({ title: 'Gymnastics', startsAt: SUN_OCT4 });
+  });
+
+  it('writes no offer row when the tool said move, even if the sentence says add', async () => {
+    const prepared = await prepareCoachCalendarReply(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: SUNDAY_ASK,
+      now: OCT2,
+      intents: [{ verb: 'move', title: 'Swim lesson', startsAt: SUN_OCT4 }],
+    });
+    expect(prepared).toMatchObject({ outcome: 'not_an_offer', offer: null });
   });
 });

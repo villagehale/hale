@@ -143,6 +143,10 @@
     "file": "nudge-voice.md",
     "sha256": "0058da39817bb85138bf334ab1b2e4f17cea042fb2de46cba4a82af95471a11c"
   },
+  "offer-receipt.md": {
+    "file": "offer-receipt.md",
+    "sha256": "e2e3c6d55744de61ecc03689cf63397ac58fa65e6a041f41a24a0b37dc07b084"
+  },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
     "sha256": "6d01b7450609b15339e0bd3c96dde424f6dea673032e73f0740dabd5ea58e842"

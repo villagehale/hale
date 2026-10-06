@@ -15,6 +15,7 @@ import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { EXAMPLE_CHILD_ID, type OfferedCandidate } from '~/lib/coach/tools';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { occasionAlreadyHeld } from '~/lib/integrations/calendar-mirror';
+import type { CoachCalendarToolSignal } from '~/lib/integrations/email-alert-offer';
 import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-flag';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
@@ -214,6 +215,12 @@ export interface ChannelCoachToolArgs {
    * the tool returns, so a turn that fails LATER has still changed the family's queue —
    * and the router can only be honest about that if something counted (VIL-260). */
   onDraft?: (actionId: string) => void;
+  /**
+   * Told which calendar verb actually drafted, with the title and start it
+   * used. The offer row follows this rather than a regex over the sentence.
+   * Absent in a test that is not collecting it; the draft still happens.
+   */
+  onCalendar?: (signal: CoachCalendarToolSignal) => void;
   /**
    * Told when the turn OFFERS a full coaching plan. The mirror image of `onDraft`: a
    * draft is a row the tool already wrote, while an offer is a row that cannot be
@@ -554,6 +561,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: move to ${localWhen(startsAt, timeZone)}`,
         teenContent: event.teen,
       });
+      args.onCalendar?.({ verb: 'move', title: event.title, startsAt });
       return {
         drafted: true as const,
         actionId,
@@ -593,6 +601,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: cancel the ${localWhen(event.startsAt, timeZone)} item`,
         teenContent: event.teen,
       });
+      args.onCalendar?.({ verb: 'cancel', title: event.title, startsAt: event.startsAt });
       return { drafted: true as const, actionId };
     },
   });
@@ -672,6 +681,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: add "${input.title}" on ${localWhen(startsAt, timeZone)}`,
         teenContent: false,
       });
+      args.onCalendar?.({ verb: 'add', title: input.title, startsAt });
       return { drafted: true as const, actionId, when: longWhen(startsAt, timeZone) };
     },
   });
