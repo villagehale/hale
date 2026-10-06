@@ -69,7 +69,7 @@ import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
 import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
-import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { reportTurnFailures } from '~/lib/monitoring/failure-page';
 import { classifyChainedProviderFailure } from '~/lib/monitoring/provider-health';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -192,6 +192,12 @@ export interface InboundContext {
   /** Who a caregiver is pointed at (M6's copy), null when it cannot be resolved. */
   primaryParentName: string | null;
   reply: ReplyRoute | null;
+  /**
+   * The message arrived in this family's claimed Linq group, with group onboarding v2
+   * lit (wiring.ts). The coach is told its audience, the group gets its own thread, and
+   * a flood line goes 1:1 rather than into the group.
+   */
+  inGroup: boolean;
 }
 
 /**
@@ -207,7 +213,7 @@ export interface InboundContext {
  * answering an email by text. Non-null by construction: the router does not reach the
  * handlers without a route.
  */
-export interface HandlerContext extends Omit<ChannelTurn, 'standingQuestions'> {
+export interface HandlerContext extends Omit<ChannelTurn, 'standingQuestions' | 'audience'> {
   send(body: string): Promise<ReplySent>;
   /**
    * A decision the natural-reply stage already made about this message (resolve.ts), or
@@ -813,7 +819,9 @@ async function routeChannelMessageInner(
   // partial unique index so two texts arriving together cannot fork it.
   const conversationId = await resolveOrCreateNoteConversation(
     job.family_id,
-    channelSmsNoteKey(job.parent_user_id),
+    context.inGroup && route.channel === 'imessage'
+      ? channelGroupNoteKey(route.chatId)
+      : channelSmsNoteKey(job.parent_user_id),
     deps.database,
   );
   // Once per TEXT, not once per attempt. A deferred turn already put these words in the
@@ -1100,7 +1108,19 @@ async function routeChannelMessageInner(
       AGENT_TURN_LIMIT,
     );
     if (!decision.allowed) {
-      await answer(FLOOD_REPLY);
+      if (context.inGroup) {
+        // The parent's own budget is spent, which is no one else's news: the line goes
+        // to their phone, outside the group and outside the group's thread.
+        await sendReply(deps, {
+          route: { channel: 'sms', to: route.to },
+          body: FLOOD_REPLY,
+          job,
+          conversationId: null,
+          claim: claimAnswer,
+        });
+      } else {
+        await answer(FLOOD_REPLY);
+      }
       return done(deps, job, { status: 'flood_held', handler: null, conversationId, lane: null });
     }
   }
@@ -1191,6 +1211,7 @@ async function routeChannelMessageInner(
       // silence-plus-an-apology would read as Hale ignoring a decision the parent made.
       questions: natural.questions,
       unplacedAnswer: natural.status === 'unplaced' ? natural.answer : null,
+      audience: context.inGroup ? 'group' : 'direct',
     });
   } finally {
     await stopTyping();
@@ -1583,6 +1604,7 @@ async function runAgentTurn(
      * actually goes out — see {@link UnplacedAnswer}.
      */
     unplacedAnswer: UnplacedAnswer | null;
+    audience: ChannelTurn['audience'];
   },
 ): Promise<RouterResult> {
   try {
@@ -1849,6 +1871,7 @@ async function composeReconciledReply(
   args: {
     turn: HandlerContext;
     questions: readonly OpenQuestion[];
+    audience: ChannelTurn['audience'];
   },
   view: Promise<ReconcileView>,
 ): Promise<ChannelTurnResult & { mints: readonly RegistrationWatchMint[] }> {
@@ -1858,7 +1881,10 @@ async function composeReconciledReply(
   let verdict: ReconcileVerdict | null = null;
 
   for (let attempt = 1; attempt <= MAX_RECONCILE_ATTEMPTS; attempt += 1) {
-    result = await deps.coach.respond({ ...args.turn, standingQuestions }, rejected);
+    result = await deps.coach.respond(
+      { ...args.turn, standingQuestions, audience: args.audience },
+      rejected,
+    );
     verdict = reconcile(extractStateClaims(result.reply), {
       ...(await view),
       // What THIS turn's tools already registered. A promise the router is about to write

@@ -35,6 +35,10 @@
     "file": "classify-event.md",
     "sha256": "0f54e7398a8679da2ed8e8f5cbca1ca5c7fe567359c7e77f12858b41b36d2949"
   },
+  "coach-channel-group.md": {
+    "file": "coach-channel-group.md",
+    "sha256": "1268847e1b4f3e3b66de39437232c1c1aeff72fb3dd1d53c417a910ea9ba38f9"
+  },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
     "sha256": "86c425e7c5615b6ec71537d54d373a2deaffcc0bf1a9e59eb1fa53730a086594"

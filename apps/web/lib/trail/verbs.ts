@@ -187,6 +187,7 @@ export const AUDIT_VERBS = [
   'linq_group_connect_link_sent',
   'linq_group_sends_held',
   'linq_group_stop',
+  'linq_group_coach_held',
   'group_line_unsent',
   'group_line_locked_fallback',
   'linq_multi_family_joined',
@@ -739,6 +740,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   linq_group_stop: {
     sentence: 'Someone in your family group asked Hale to stop writing to them there',
     family: 'note',
+  },
+  linq_group_coach_held: {
+    sentence: 'Hale kept an answer out of your family group until everyone there may hear it',
+    family: 'awaiting',
   },
   group_line_unsent: {
     sentence: 'Hale held a message for your family group because it could not write it well',

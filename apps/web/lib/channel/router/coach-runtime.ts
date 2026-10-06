@@ -56,6 +56,13 @@ export interface ChannelTurn {
    * Empty is the ordinary case and means exactly what it says: Hale is waiting on nothing.
    */
   standingQuestions: readonly string[];
+  /**
+   * Who will read the reply. `group` is the family group chat (group onboarding v2):
+   * everyone in it sees the answer, so the skill's group rules apply. `direct` is every
+   * other turn. Context like `standingQuestions`, and decided in code (wiring.ts), never
+   * guessed by the model.
+   */
+  audience: 'direct' | 'group';
 }
 
 /**
@@ -118,10 +125,7 @@ export interface ChannelCoachRuntime {
 export class ChannelTurnFailed extends Error {
   readonly draftedActionIds: readonly string[];
 
-  constructor(
-    message: string,
-    options: { cause?: unknown; draftedActionIds: readonly string[] },
-  ) {
+  constructor(message: string, options: { cause?: unknown; draftedActionIds: readonly string[] }) {
     super(message, { cause: options.cause });
     this.name = 'ChannelTurnFailed';
     this.draftedActionIds = options.draftedActionIds;

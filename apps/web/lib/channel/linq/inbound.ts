@@ -1,5 +1,5 @@
-import { schema } from '@hale/db';
-import { sql } from 'drizzle-orm';
+import { type Database, schema } from '@hale/db';
+import { eq, sql } from 'drizzle-orm';
 import { answerParentDutyAsk } from '~/lib/channel/coparent/duty/asks';
 import { coparentDutyAsksArmed } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
@@ -15,6 +15,9 @@ import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { loadOpenSession } from '~/lib/channel/intake/session';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { RATE_LIMITS } from '~/lib/rate-limit/config';
+import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { socialWatchlistEnabled } from '~/lib/social/flag';
 import { considerSocialForward } from '~/lib/social/forward';
 import {
@@ -44,6 +47,7 @@ import {
   mapGroupHandlesToFamily,
   matchLinqGroupTrigger,
 } from './group';
+import { type GroupLineClass, groupAudienceAllows } from './group-audience';
 import {
   type GroupCoparentPorts,
   considerGroupCoparent,
@@ -59,6 +63,7 @@ import {
   unseatParticipantRemoved,
 } from './group-members';
 import type { GroupOnboardingComposer } from './group-onboarding-voice';
+import { decideGroupTurn } from './group-turn-policy';
 import { captureLogisticsText } from './household-calendar';
 import { readSharedLocality } from './location-share';
 import { isLogisticsPollKind, recordLogisticsVote } from './logistics-poll';
@@ -147,6 +152,8 @@ export async function handleLinqInboundRequest(
     listChatHandles?: ListChatHandles;
     /** Test seam for group onboarding v2's 1:1 lines. Production calls Linq. */
     oneToOne?: OneToOneSend;
+    /** Test seam for the family group's per-chat budget. Production is Postgres. */
+    groupLimiter?: RateLimiter;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -606,6 +613,60 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
       );
     }
   }
+  let budget: 'sender' | 'chat' = 'sender';
+  if (linqGroupOnboardingV2Enabled()) {
+    const turn = decideGroupTurn({
+      text: message.text,
+      kidNames:
+        mapped.status === 'same_family' ? await kidFirstNames(deps.database, mapped.familyId) : [],
+    });
+    if (turn.route === 'duty' || turn.route === 'ignore') {
+      const outcome = turn.route === 'duty' ? 'group_duty_statement' : turn.outcome;
+      deps.log.info({ outcome, providerMessageId: message.messageId }, 'linq inbound: group turn');
+      await deps.countOutcome('ignored');
+      return json({ outcome });
+    }
+    if (turn.route === 'coach') {
+      const audience = await groupAudienceAllows(deps.database, message.chatId, GROUP_COACH_LINE);
+      if (!audience.allowed) {
+        if (mapped.status === 'same_family') {
+          await deps.database.insert(schema.auditLog).values({
+            familyId: mapped.familyId,
+            actor: 'system',
+            actionTaken: 'linq_group_coach_held',
+            targetTable: 'families',
+            targetId: mapped.familyId,
+            after: { reason: audience.reason },
+          });
+        }
+        deps.log.info(
+          {
+            outcome: 'group_coach_refused',
+            reason: audience.reason,
+            providerMessageId: message.messageId,
+          },
+          'linq inbound: group turn',
+        );
+        await deps.countOutcome('ignored');
+        return json({ outcome: 'group_coach_refused', reason: audience.reason });
+      }
+      const limiter = deps.groupLimiter ?? new PostgresRateLimiter(deps.database);
+      const spent = await limiter.check(
+        message.chatId,
+        GROUP_INBOUND_ROUTE,
+        RATE_LIMITS[GROUP_INBOUND_ROUTE],
+      );
+      if (!spent.allowed) {
+        deps.log.info(
+          { outcome: 'group_rate_limited', providerMessageId: message.messageId },
+          'linq inbound: group turn',
+        );
+        await deps.countOutcome('rate_limited');
+        return json({ outcome: 'group_rate_limited' });
+      }
+      budget = 'chat';
+    }
+  }
   const outcome = await routeInboundText(
     deps,
     {
@@ -617,12 +678,31 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
       chatId: message.chatId,
       isGroup: true,
       providerAnsweredKeyword: null,
+      budget,
     },
     message.mediaCount,
   );
   deps.log.info({ outcome, providerMessageId: message.messageId }, 'linq inbound: group routed');
   await deps.countOutcome(outcome);
   return json({ outcome });
+}
+
+const GROUP_INBOUND_ROUTE = 'linq-group-inbound';
+
+/** A coach answer carries household facts, so it is gated as a kid line, not as a bare
+ * `reply`: a group may hear it only once its roster is confirmed and its audience is not
+ * empty. Every scoped role holds all of `GROUP_CONTENT`, so the class chosen among them
+ * does not change the verdict. */
+const GROUP_COACH_LINE: GroupLineClass = 'schedule';
+
+/** The family's kids' first names, read only to tell a question about one of them from
+ * chatter. Never logged and never sent. */
+async function kidFirstNames(database: Database, familyId: string): Promise<string[]> {
+  const rows = await database
+    .select({ name: schema.children.name })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  return rows.map((row) => row.name);
 }
 
 async function claimGroupFromTrigger(

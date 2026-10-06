@@ -402,7 +402,13 @@ export type IntakeOutcome =
    * about the group (linq/roster-stop.ts answers it), so it revokes no channel here and
    * nothing is acknowledged into the group from this door.
    */
-  | { status: 'ignored'; reason: 'invalid_number' | 'no_open_conversation' }
+  | {
+      status: 'ignored';
+      // `group_turn_during_intake` (group onboarding v2): a family-group message from a
+      // number whose own 1:1 intake is still open. Onboarding is a 1:1 conversation, so
+      // nothing of it is answered into the group.
+      reason: 'invalid_number' | 'no_open_conversation' | 'group_turn_during_intake';
+    }
   // VIL-241 · M6 — the caregiver branches. They share this entry point because a
   // caregiver texts the SAME number a parent does; what differs is who the number
   // belongs to, which is a lookup, not a second inbox.
@@ -430,6 +436,8 @@ interface Inbound {
   chatId?: string;
   /** A Linq group turn. The Name and Photo card is 1:1 only and never shares here. */
   isGroup?: boolean;
+  /** See `InboundMessage.budget` (intake/transport.ts). Absent is the sender's. */
+  budget?: 'sender' | 'chat';
   /** VIL-348 — the provider already answered this keyword itself; see
    * `InboundMessage.providerAnsweredKeyword` (intake/transport.ts) for what that means
    * and what it does NOT suppress. Optional here for the same reason it is optional
@@ -464,9 +472,12 @@ export async function handleInboundSms(
   // itself an outbound SMS, so answering a flood would hand an SMS-pumping attacker
   // exactly the amplification they came for. Keywords are the one exemption, and they
   // are still COUNTED — the flood budget is spent either way, only the drop is skipped.
-  const decision = await deps.limiter.check(phoneHash, INTAKE_ROUTE, RATE_LIMITS[INTAKE_ROUTE]);
-  if (!decision.allowed && !match) {
-    return { status: 'rate_limited' };
+  // A family-group turn the Linq door already charged to the chat spends nothing here.
+  if (inbound.budget !== 'chat') {
+    const decision = await deps.limiter.check(phoneHash, INTAKE_ROUTE, RATE_LIMITS[INTAKE_ROUTE]);
+    if (!decision.allowed && !match) {
+      return { status: 'rate_limited' };
+    }
   }
 
   const session = await loadOpenSession(database, phoneE164);
@@ -491,6 +502,18 @@ export async function handleInboundSms(
   // trading a rare double courtesy-ack for a CASL instruction that cannot be lost.
   if (match) {
     return handleKeyword(database, { match, phoneE164, inbound, session, now }, deps);
+  }
+
+  // 5b. Group onboarding v2 — onboarding is this number's 1:1 conversation. A message they
+  // send in the family group while it is open is not an onboarding turn, and its reply
+  // must not land in front of the whole group. Named, and nothing is sent.
+  if (
+    inbound.isGroup === true &&
+    session &&
+    session.state !== 'stopped' &&
+    linqGroupOnboardingV2Enabled()
+  ) {
+    return { status: 'ignored', reason: 'group_turn_during_intake' };
   }
 
   // 6. A live join code outranks whatever conversation this number is already in.

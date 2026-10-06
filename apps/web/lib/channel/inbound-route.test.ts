@@ -152,12 +152,15 @@ function closeIntake(fake: FakeDb): void {
   } as never);
 }
 
-function inbound(overrides: Partial<{ body: string; providerId: string; from: string }> = {}) {
+function inbound(
+  overrides: Partial<{ body: string; providerId: string; from: string; budget: 'chat' }> = {},
+) {
   return {
     from: overrides.from ?? PHONE,
     body: overrides.body ?? 'hi',
     providerId: overrides.providerId ?? 'SM11111111111111111111111111111111',
     receivedAt: NOW,
+    ...(overrides.budget ? { budget: overrides.budget } : {}),
   };
 }
 
@@ -274,6 +277,18 @@ describe('routing', () => {
 
     expect(outcome).toBe('rate_limited');
     expect(h.transport.sent).toHaveLength(0);
+  });
+
+  it('answers a group attachment the door already charged to the chat, without the sender budget', async () => {
+    const h = harness();
+    const limiter = h.deps.intake('sms').limiter as FakeRateLimiter;
+    const spy = vi.spyOn(limiter, 'check').mockResolvedValue({ allowed: false, retryAfterSec: 60 });
+
+    const outcome = await routeInboundText(h.deps, inbound({ body: '', budget: 'chat' }), 1);
+
+    expect(outcome).toBe('media_unsupported');
+    expect(spy).not.toHaveBeenCalled();
+    expect(h.transport.sent).toHaveLength(1);
   });
 
   it('drops a message from a number we cannot parse', async () => {
