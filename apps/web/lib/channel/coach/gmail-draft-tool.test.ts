@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { GOOGLE_WRITE_SCOPES_ENABLED_ENV } from '~/lib/integrations/google-write-flag';
+import {
+  GOOGLE_WRITE_SCOPES_ALLOWLIST_ENV,
+  GOOGLE_WRITE_SCOPES_ENABLED_ENV,
+} from '~/lib/integrations/google-write-flag';
 import { augmentCoachSkillForGoogleDrafts, prepareGmailDraftTool } from './gmail-draft-tool';
 import { buildChannelCoachTools } from './tools';
 
@@ -8,12 +11,15 @@ const ctx = { familyId: 'fam', actor: 'user-a' };
 
 describe('prepare_gmail_draft — flag gate', () => {
   const prev = process.env[GOOGLE_WRITE_SCOPES_ENABLED_ENV];
+  const prevAllow = process.env[GOOGLE_WRITE_SCOPES_ALLOWLIST_ENV];
   afterEach(() => {
     if (prev === undefined) delete process.env[GOOGLE_WRITE_SCOPES_ENABLED_ENV];
     else process.env[GOOGLE_WRITE_SCOPES_ENABLED_ENV] = prev;
+    if (prevAllow === undefined) delete process.env[GOOGLE_WRITE_SCOPES_ALLOWLIST_ENV];
+    else process.env[GOOGLE_WRITE_SCOPES_ALLOWLIST_ENV] = prevAllow;
   });
 
-  const built = () =>
+  const built = (parentUserId?: string) =>
     buildChannelCoachTools({
       familyId: 'f',
       reader: {} as never,
@@ -27,6 +33,7 @@ describe('prepare_gmail_draft — flag gate', () => {
         composeNotice: async () => null,
       },
       onGmailNotice: () => {},
+      parentUserId,
       now: new Date(),
     }).map((tool) => tool.name);
 
@@ -48,6 +55,20 @@ describe('prepare_gmail_draft — flag gate', () => {
     expect(skill.instructions).toContain('prepare_gmail_draft');
     expect(skill.instructions).toContain('Do not ask them to reply YES');
     expect(built()).toContain('prepare_gmail_draft');
+  });
+
+  it('arms only the allowlisted parent while the flag is unset', async () => {
+    delete process.env[GOOGLE_WRITE_SCOPES_ENABLED_ENV];
+    process.env[GOOGLE_WRITE_SCOPES_ALLOWLIST_ENV] = 'parent-demo';
+    const disk = await loadCronSkill('coach-channel-sms');
+    const armed = await augmentCoachSkillForGoogleDrafts(disk, 'parent-demo');
+    const other = await augmentCoachSkillForGoogleDrafts(disk, 'parent-other');
+    expect(armed.meta.tools).toContain('prepare_gmail_draft');
+    expect(other.instructions).toBe(disk.instructions);
+    expect(other.meta.tools).not.toContain('prepare_gmail_draft');
+    expect(built('parent-demo')).toContain('prepare_gmail_draft');
+    expect(built('parent-other')).not.toContain('prepare_gmail_draft');
+    expect(built()).not.toContain('prepare_gmail_draft');
   });
 });
 

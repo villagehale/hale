@@ -194,13 +194,14 @@ export async function GET(req: NextRequest) {
     const scopes = (tokens.scope ?? '').split(' ').filter(Boolean);
     const expected = CONNECTOR_SCOPES[bound.provider];
     // Profile is optional. The two write scopes are optional too, and only when
-    // the flag asked for them: a parent who deselects calendar.events still
-    // connects, and a grant that carries them while the flag is off is broader
-    // than what we asked and is stored nowhere. gmail.send is never in this set.
+    // this user was armed (global flag, or their id on the allowlist): a parent
+    // who deselects calendar.events still connects, and a grant that carries
+    // them for anyone else is broader than what we asked and is stored nowhere.
+    // gmail.send is never in this set.
     const allowed = new Set<string>([
       ...Object.values(CONNECTOR_SCOPES).flat(),
       GOOGLE_PROFILE_SCOPE,
-      ...grantedWriteScopesAllowed(),
+      ...grantedWriteScopesAllowed(process.env, bound.userId),
     ]);
     const grantedOk =
       expected.every((sc) => scopes.includes(sc)) && scopes.every((sc) => allowed.has(sc));

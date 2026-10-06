@@ -80,6 +80,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
     provider,
     state,
     redirectUri: connectorRedirectUri(),
+    userId,
   });
   // WHICH Google project is about to be asked for this grant, said once per connect
   // and in one place (rule #11). Ids and the named source only — never a client id,

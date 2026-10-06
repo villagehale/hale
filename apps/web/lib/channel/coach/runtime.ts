@@ -156,7 +156,7 @@ export interface ChannelRunRecord {
  * touch. There is no write port here, and that is the point.
  */
 export interface ChannelCoachPorts {
-  loadSkill(): Promise<Skill>;
+  loadSkill(parentUserId?: string): Promise<Skill>;
   loadTranscript(conversationId: string): Promise<TranscriptMessage[]>;
   loadContext(input: LoadAgentContextInput): Promise<AgentContext>;
   /** Every child of the family, un-redacted — the redactor needs the real names to
@@ -252,7 +252,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
 
       const now = ports.now();
       const [skill, transcript, children, registrationWindows] = await Promise.all([
-        ports.loadSkill(),
+        ports.loadSkill(turn.parentUserId),
         ports.loadTranscript(turn.conversationId),
         ports.loadChildren(turn.familyId),
         ports.loadRegistrationWindows(turn.familyId, now),
@@ -478,8 +478,8 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
 export function productionChannelCoachPorts(database: Database): ChannelCoachPorts {
   return {
     client: anthropicClient,
-    loadSkill: async () =>
-      augmentCoachSkillForGoogleDrafts(await loadCronSkill('coach-channel-sms')),
+    loadSkill: async (parentUserId) =>
+      augmentCoachSkillForGoogleDrafts(await loadCronSkill('coach-channel-sms'), parentUserId),
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
     loadContext: (input) => loadAgentContext(input, database),
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
@@ -528,6 +528,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         onWatch,
         gmailDrafts: productionGmailDraftPorts(database, anthropicClient),
         onGmailNotice,
+        parentUserId: turn.parentUserId,
         now: turn.now,
       });
     },

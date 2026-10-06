@@ -112,6 +112,29 @@ describe('applyPlacedGoogleCalendar', () => {
     expect(loadEvent).not.toHaveBeenCalled();
   });
 
+  it('does no work when the allowlist read says this actor is not armed', async () => {
+    const loadEvent = vi.fn();
+    const seen: Array<string | null> = [];
+    const report = await applyPlacedGoogleCalendar(
+      { familyId: 'fam', familyEventId: 'fe-1', op: 'create', actorUserId: 'user-other' },
+      {
+        flagOn: (actorUserId) => {
+          seen.push(actorUserId);
+          return false;
+        },
+        loadEvent,
+        listGcal: async () => [],
+        accessToken: async () => 'tok',
+        write: async () => ({ googleEventId: 'g' }),
+        storePlaced: async () => {},
+        audit: async () => {},
+      },
+    );
+    expect(report).toEqual({ status: 'skipped', reason: 'flag_off' });
+    expect(seen).toEqual(['user-other']);
+    expect(loadEvent).not.toHaveBeenCalled();
+  });
+
   it('stores the id Hale created and does not call Google again when that id is already there', async () => {
     const write = vi.fn(async () => ({ googleEventId: 'g-new' }));
     const storePlaced = vi.fn(async () => {});

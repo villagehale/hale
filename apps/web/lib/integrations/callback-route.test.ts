@@ -485,6 +485,42 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     expect(saveConnectionMock).not.toHaveBeenCalled();
   });
 
+  it('accepts calendar.events for an allowlisted user while the flag is unset', async () => {
+    vi.stubEnv('GOOGLE_WRITE_SCOPES_ENABLED', '');
+    vi.stubEnv('GOOGLE_WRITE_SCOPES_ALLOWLIST', MINTER);
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+    });
+    const accepted = await callCallback(await minterState());
+    expect(location(accepted)).toContain('connect=gcal');
+    expect(saveConnectionMock).toHaveBeenCalled();
+
+    saveConnectionMock.mockClear();
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/gmail.send',
+    });
+    const denied = await callCallback(await minterState());
+    expect(location(denied)).toContain('connect=denied');
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects calendar.events for a user who is not on the allowlist while the flag is unset', async () => {
+    vi.stubEnv('GOOGLE_WRITE_SCOPES_ENABLED', '');
+    vi.stubEnv('GOOGLE_WRITE_SCOPES_ALLOWLIST', '11111111-1111-4111-8111-111111111111');
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+    });
+    const res = await callCallback(await minterState());
+    expect(location(res)).toContain('connect=denied');
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+  });
+
   it('accepts calendar.events when the write-scope flag is on, and still rejects gmail.send', async () => {
     vi.stubEnv('GOOGLE_WRITE_SCOPES_ENABLED', 'true');
     exchangeMock.mockResolvedValue({

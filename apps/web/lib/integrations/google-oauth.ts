@@ -3,7 +3,7 @@ import {
   CALENDAR_EVENTS_SCOPE,
   GMAIL_COMPOSE_SCOPE,
   type WriteScopeEnv,
-  googleWriteScopesEnabled,
+  googleWriteScopesEnabledFor,
 } from './google-write-flag';
 import type { OAuthTokens } from './token-vault';
 
@@ -14,8 +14,9 @@ import type { OAuthTokens } from './token-vault';
  * for the per-connector scope.
  *
  * {@link CONNECTOR_SCOPES} stay read-only. Calendar writes and Gmail drafts are
- * requested only when `GOOGLE_WRITE_SCOPES_ENABLED` is exactly `true` (VIL-93),
- * and only on the connector they belong to. Drive is never asked for a write.
+ * requested only when this user is armed (VIL-93) — the global flag is exactly
+ * `true`, or their Hale user id is on `GOOGLE_WRITE_SCOPES_ALLOWLIST` — and only
+ * on the connector they belong to. Drive is never asked for a write.
  */
 
 export type ConnectorProvider = 'gcal' | 'gmail' | 'gdrive';
@@ -44,16 +45,17 @@ export function isConnectorProvider(value: string): value is ConnectorProvider {
 
 /**
  * The scopes this consent screen asks for, not including the optional profile
- * scope. Flag off returns the readonly array itself, so the consent URL is
- * byte-for-byte today's. Flag on appends `calendar.events` or `gmail.compose`
- * to that connector only.
+ * scope. A user who is not armed returns the readonly array itself, so the
+ * consent URL is byte-for-byte today's. An armed user appends `calendar.events`
+ * or `gmail.compose` to that connector only.
  */
 export function requestedConnectorScopes(
   provider: ConnectorProvider,
   env: WriteScopeEnv = process.env,
+  userId?: string | null,
 ): readonly string[] {
   const base = CONNECTOR_SCOPES[provider];
-  if (!googleWriteScopesEnabled(env)) return base;
+  if (!googleWriteScopesEnabledFor(userId, env)) return base;
   if (provider === 'gcal') return [...base, CALENDAR_EVENTS_SCOPE];
   if (provider === 'gmail') return [...base, GMAIL_COMPOSE_SCOPE];
   return base;
@@ -129,12 +131,17 @@ export function buildGoogleAuthUrl(opts: {
   provider: ConnectorProvider;
   state: string;
   redirectUri: string;
+  /** The connecting Hale user. Omitted, the allowlist cannot arm this URL. */
+  userId?: string | null;
 }): string {
   const params = new URLSearchParams({
     client_id: clientId(),
     redirect_uri: opts.redirectUri,
     response_type: 'code',
-    scope: [...requestedConnectorScopes(opts.provider), GOOGLE_PROFILE_SCOPE].join(' '),
+    scope: [
+      ...requestedConnectorScopes(opts.provider, process.env, opts.userId),
+      GOOGLE_PROFILE_SCOPE,
+    ].join(' '),
     access_type: 'offline', // issue a refresh token for background sync
     prompt: 'consent', // force re-consent so the refresh token is (re)issued
     // Deliberately NOT include_granted_scopes: each connector's grant must be scoped

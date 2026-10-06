@@ -14,7 +14,7 @@ import { type SpotWatchPorts, watchForOpeningTool } from '~/lib/channel/spots/to
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { EXAMPLE_CHILD_ID, type OfferedCandidate } from '~/lib/coach/tools';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
-import { googleWriteScopesEnabled } from '~/lib/integrations/google-write-flag';
+import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-flag';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
@@ -262,6 +262,8 @@ export interface ChannelCoachToolArgs {
    */
   gmailDrafts?: GmailDraftToolPorts;
   onGmailNotice?: (box: GmailDraftNoticeBox) => void;
+  /** The texting parent. The allowlist arms this user while the global flag is unset. */
+  parentUserId?: string | null;
   now: Date;
 }
 
@@ -745,9 +747,9 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   if (args.spots && args.onWatch) {
     tools.push(watchForOpeningTool({ ...args.spots, onWatch: args.onWatch }));
   }
-  // Off in production, so the skill file the evals cache stays byte-identical.
-  // Preview sets the flag; loadSkill adds the same name to the allowlist.
-  if (args.gmailDrafts && args.onGmailNotice && googleWriteScopesEnabled()) {
+  // Off for everyone who is not armed, so the skill file the evals cache stays
+  // byte-identical. An armed parent (global flag, or their user id) gets the verb.
+  if (args.gmailDrafts && args.onGmailNotice && googleWriteScopesEnabledFor(args.parentUserId)) {
     tools.push(prepareGmailDraftTool(args.gmailDrafts, args.onGmailNotice));
   }
   return tools;

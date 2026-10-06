@@ -6,7 +6,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { productionChannels } from '~/lib/channel/adapters/production';
 import { createGoogleCalendarPlacement } from '~/lib/integrations/google-calendar-placement';
-import { googleWriteScopesEnabled } from '~/lib/integrations/google-write-flag';
+import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-flag';
 import { createCalendarInviteSender } from '~/lib/loop/calendar-invite';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
 import { productionCalendarVoice } from '~/lib/loop/voice/calendar-invite-voice';
@@ -86,7 +86,7 @@ export async function reverseExecutedCalendarAction(
   const withdrawInvites = args.withdrawInvites ?? defaultWithdrawInvites(database);
   const googleCalendar =
     args.googleCalendar ??
-    (googleWriteScopesEnabled() ? createGoogleCalendarPlacement(database) : null);
+    (googleWriteScopesEnabledFor(args.revertedBy) ? createGoogleCalendarPlacement(database) : null);
 
   const rows = await database
     .select({

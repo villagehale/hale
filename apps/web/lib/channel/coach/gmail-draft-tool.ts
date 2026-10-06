@@ -11,7 +11,7 @@ import {
   commitProductionGmailDraft,
   gateProductionGmailDraft,
 } from '~/lib/integrations/gmail-draft-service';
-import { googleWriteScopesEnabled } from '~/lib/integrations/google-write-flag';
+import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-flag';
 import { composeGmailDraftNotice } from './gmail-draft-notice';
 
 export type GmailDraftNoticeBox = { status: 'ready'; text: string } | { status: 'unsent' };
@@ -87,12 +87,15 @@ export function prepareGmailDraftTool(
 /**
  * The coach skill on disk does not name this tool. That file is the cache key
  * for the channel eval, and production leaves the flag unset, so those bytes
- * stay put. Preview turns the flag on and this appends the loaded addendum
- * plus the allowlist entry. Both or neither: a listed tool nobody registered
- * throws mid-turn.
+ * stay put for anyone who is not armed. An armed parent (global flag, or their
+ * user id on the allowlist) gets the loaded addendum plus the tool name. Both
+ * or neither: a listed tool nobody registered throws mid-turn.
  */
-export async function augmentCoachSkillForGoogleDrafts(skill: Skill): Promise<Skill> {
-  if (!googleWriteScopesEnabled()) return skill;
+export async function augmentCoachSkillForGoogleDrafts(
+  skill: Skill,
+  userId?: string | null,
+): Promise<Skill> {
+  if (!googleWriteScopesEnabledFor(userId)) return skill;
   const extra = await loadCronSkill('gmail-draft-coach');
   const tools = skill.meta.tools.includes('prepare_gmail_draft')
     ? skill.meta.tools

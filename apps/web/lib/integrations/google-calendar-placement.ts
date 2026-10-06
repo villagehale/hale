@@ -13,7 +13,7 @@ import type {
 } from '@hale/worker/google-calendar-placement';
 import { and, eq } from 'drizzle-orm';
 import { refreshAccessToken } from './google-oauth';
-import { CALENDAR_EVENTS_SCOPE, googleWriteScopesEnabled } from './google-write-flag';
+import { CALENDAR_EVENTS_SCOPE, googleWriteScopesEnabledFor } from './google-write-flag';
 import { saveConnectionTokensById } from './store';
 import { type OAuthTokens, decryptTokens } from './token-vault';
 
@@ -83,7 +83,8 @@ export function selectGcalConnection(input: {
 }
 
 export interface GooglePlacementDeps {
-  flagOn: boolean;
+  /** A boolean, or a per-actor read so an allowlist can arm one user. */
+  flagOn: boolean | ((actorUserId: string | null) => boolean);
   loadEvent: (familyId: string, familyEventId: string) => Promise<PlacedEventRow | null>;
   listGcal: (familyId: string) => Promise<readonly GcalCandidate[]>;
   accessToken: (integrationId: string) => Promise<string | null>;
@@ -111,7 +112,8 @@ export async function applyPlacedGoogleCalendar(
   request: GoogleCalendarPlacementRequest,
   deps: GooglePlacementDeps,
 ): Promise<GoogleCalendarSyncReport> {
-  if (!deps.flagOn) return { status: 'skipped', reason: 'flag_off' };
+  const armed = typeof deps.flagOn === 'function' ? deps.flagOn(request.actorUserId) : deps.flagOn;
+  if (!armed) return { status: 'skipped', reason: 'flag_off' };
 
   const event = await deps.loadEvent(request.familyId, request.familyEventId);
   if (!event) return { status: 'skipped', reason: 'event_missing' };
@@ -190,7 +192,7 @@ export function createGoogleCalendarPlacement(database: Database): GoogleCalenda
   return {
     sync: (request) =>
       applyPlacedGoogleCalendar(request, {
-        flagOn: googleWriteScopesEnabled(),
+        flagOn: (actorUserId) => googleWriteScopesEnabledFor(actorUserId),
         loadEvent: async (familyId, familyEventId) => {
           const rows = await database
             .select({

@@ -61,6 +61,19 @@ describe('Gmail draft service', () => {
     expect(listGmail).not.toHaveBeenCalled();
   });
 
+  it('does not open a mailbox when the allowlist read says this actor is not armed', async () => {
+    const listGmail = vi.fn();
+    const report = await gateGmailDraft(
+      request(),
+      deps({
+        flagOn: (actorUserId) => actorUserId === 'user-allow',
+        listGmail,
+      }),
+    );
+    expect(report).toEqual({ status: 'skipped', reason: 'flag_off' });
+    expect(listGmail).not.toHaveBeenCalled();
+  });
+
   it('names a missing compose scope and does not write', async () => {
     const writeDraft = vi.fn();
     const report = await commitGmailDraft(

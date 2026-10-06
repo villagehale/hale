@@ -1,6 +1,6 @@
 ---
 name: gmail-draft-coach
-whenToUse: Appended to the SMS coach only when GOOGLE_WRITE_SCOPES_ENABLED is exactly true. Tells the coach how to prepare a Gmail draft the parent sends themselves.
+whenToUse: Appended to the SMS coach only for a parent armed by GOOGLE_WRITE_SCOPES_ENABLED or GOOGLE_WRITE_SCOPES_ALLOWLIST. Tells the coach how to prepare a Gmail draft the parent sends themselves.
 task: speak
 tools: []
 ---

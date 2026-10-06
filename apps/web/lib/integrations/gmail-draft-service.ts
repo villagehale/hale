@@ -7,7 +7,7 @@ import {
 } from '@hale/worker/gmail-drafts';
 import { and, desc, eq } from 'drizzle-orm';
 import { refreshAccessToken } from './google-oauth';
-import { GMAIL_COMPOSE_SCOPE, googleWriteScopesEnabled } from './google-write-flag';
+import { GMAIL_COMPOSE_SCOPE, googleWriteScopesEnabledFor } from './google-write-flag';
 import { saveConnectionTokensById } from './store';
 import { type OAuthTokens, decryptTokens } from './token-vault';
 
@@ -85,7 +85,8 @@ export function selectGmailConnection(input: {
 }
 
 export interface GmailDraftDeps {
-  flagOn: boolean;
+  /** A boolean, or a per-actor read so an allowlist can arm one user. */
+  flagOn: boolean | ((actorUserId: string | null) => boolean);
   listGmail: (familyId: string) => Promise<readonly GmailCandidate[]>;
   accessToken: (integrationId: string) => Promise<string | null>;
   loadReply: (accessToken: string, request: GmailDraftRequest) => Promise<GmailReplyContext | null>;
@@ -120,7 +121,8 @@ async function ready(
   | { status: 'skipped'; reason: GmailDraftSkipReason }
   | { status: 'ready'; connection: GmailCandidate; reply: GmailReplyContext | null }
 > {
-  if (!deps.flagOn) return { status: 'skipped', reason: 'flag_off' };
+  const armed = typeof deps.flagOn === 'function' ? deps.flagOn(request.actorUserId) : deps.flagOn;
+  if (!armed) return { status: 'skipped', reason: 'flag_off' };
   if (!request.actorUserId) return { status: 'skipped', reason: 'not_connected' };
   if (needsBody(request.operation) && !request.body?.trim()) {
     return { status: 'skipped', reason: 'missing_body' };
@@ -326,7 +328,7 @@ export async function loadGmailReply(
 
 function productionDeps(database: Database): GmailDraftDeps {
   return {
-    flagOn: googleWriteScopesEnabled(),
+    flagOn: (actorUserId) => googleWriteScopesEnabledFor(actorUserId),
     listGmail: async (familyId) => {
       const rows = await database
         .select({
