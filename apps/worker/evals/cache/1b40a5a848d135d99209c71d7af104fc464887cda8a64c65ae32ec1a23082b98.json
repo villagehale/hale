@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent's text names exactly one event (soccer) and one target time (11am Saturday). The reference is fully resolved — no ambiguity. Hale correctly drafted the move and named the event, location, and new time clearly. The reply ends with a confirmation prompt, but it uses \"does that work?\" instead of the required \"YES to confirm.\" The contract requires the literal word YES so the parent's reply is recognised as consent. A warmer paraphrase that drops YES is explicitly called out as worse in the rubric. Otherwise the reply is clean: no greeting, no sign-off, no app mention, no invented details, correct draft cap usage. One clear blemish (missing the YES trigger word) brings it to a 4.",
-    "score": 4
-  }
-}

@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M4862VBZ7XJKB3GY34CEQNZV",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "No verified picks for Saturday yet, but High Park (Bloor St W / Parkside Dr) is a free standing option year-round, with the playground, animal display, and splash pads running seasonally. Worth double checking current hours before you head out."
+      }
+    ],
+    "usage": {
+      "input_tokens": 574,
+      "output_tokens": 79,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19980,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 5607
+}

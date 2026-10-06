@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly names the one offerable activity (Central Library story time, Bloor/Gladstone, Sat Aug 8, free drop-in) and also implicitly covers the scheduled event (soccer practice Sat 10am at Cedarvale Park) — actually, it does NOT mention soccer practice, which is a visible Saturday event. The week shows \"Soccer practice, Sat 10:00am, Cedarvale Park\" and the parent asked \"anything on for the kids saturday?\" — that is a direct question about the schedule, so the soccer practice should have been included. However, the reply does give the offerable find correctly. Missing the scheduled Saturday event (soccer) is a notable omission when the parent's question is specifically about Saturday. The reply is otherwise clean — no greeting, no sign-off, no markdown, no app mention, correct attribution shape for an offerable item. The stillBeingChecked:1 item is not named, which is correct. But failing to mention the confirmed soccer practice on Saturday is a meaningful miss for a question explicitly about Saturday.",
+    "score": 3
+  }
+}

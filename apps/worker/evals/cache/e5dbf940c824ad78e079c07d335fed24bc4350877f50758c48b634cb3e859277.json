@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M486B0SKX78NJKTP5387X7G9",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Halton Hills fall registration opens Sep 1, 7:00 a.m. for residents and I'm already watching it. For something for Remy, Tiny Tumblers parent & tot runs Saturday mornings this fall, per the venue's own page."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1019,
+      "output_tokens": 83,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19980,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 1752
+}

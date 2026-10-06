@@ -1,0 +1,42 @@
+{
+  "response": {
+    "id": "gen_01M486H5D1J1YX2NNC0ZBYQSYC",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EscHCsQBCBIYAipABAVmAEkbskgD1xIUPqiEj55LOfJPZ9ujnnxhRWH9JAy3xsBirQz5W4Ka42SFjc2U4LUqceaRlgSYmFTOBoVThDIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzYjkzYTVkZC03MzAyLTQ4M2YtYWVhZS0zNjIwNzU1NDhhZTF6HnVwcm9mXzAxMUNma1NibmJZZEV1SDZ5Uk1Ta01RUJoBEQoPY2xhdWRlLXNvbm5ldC01qAHv7JLWBhIMiB0exqbyRW/k4FDqGgy8n9ERBgsqhCT3LnYiMPX4/K0Bl4QjhV5472KnHEshGIa32xzeA+5JPZWvCGKQZKtTgU9nGBCnimN6kWFXJiqvBU8JTI8DLd0mfIcRDSOoTTku8fY1aLvIu1P6QqieX1Bg8KIWxjj+fPRSBbXjnFk9Q37Vj9hS1mQkTGznnLI04qf5kbXe6GCUJeRWGbfWPU7NbfX5tLMDWVMANfxZz/9OrBRMa/QKuv1zvwh1cSE3Cw5IDri98EPo7wBoR66YfhR9RdZf0up7r1CJnQ/Vs0SyzrKYI84WTo0tMGEB+iaIdnFb7DC8sSUZUQk+bLUoAFzv3CvSWrTJRHIkn8erkYRcm3UhWYM6r2GLfpV5FY1/jZT4C6Q4oRfYTokuVSmeKz9rN4UR6N9eKy6Nll5Wmh1fgAhghHa+yZo8QwQgzbHH3WFwtfdKyDllCr4rs3PldaoGrSro0MYcQTlcwFk27qZHguEH8jtJeiiBIAUSYU2FrJ+HvN1Sf33skNIYYkgzDY2nTT4X1h7wvzlJumg9j1xpnrLhXgi2pIXoiADR5FzpnsfKsiQmi2aY9yT5K9Y8wBlzabjsylGLeKCWjZwd+mxX9DNk112W0RkjZAvAOWiQ403KlsAQMZmRT39iSOePIPECT6jNKaceCw1uYaN+sU04yrdogqNuJ3rTNoJnzY4DRPTigEgPK40+8F0B0wLxpu0usxpoUsWPzDSJEyh+fAiTjAxPj4dGGAudwZ8NBWbhENo+ehaG0WpVHNw78g1fS71+A5V+8nJ8kHLq3SO3CGUOKEWH76BXMmJAcGh2hDjRGU5yeCoBwxOxZlSdrJvOftVwj0U20Btw3H+y7iZzqDlXl5noJKWJiw4Ip4W2SNSkNAZQfYO//eBLf6XWOBDEY9Pom6bdvXtvdj6KrPjFRFa5pRiaRiS47Wmp4a/vL/3iFgLAFUAenbkV5tbfdnrMOARVQujL31OB6kTDVWAaiLsTlfPBNJWs+6XnQfYW4cCC/BgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01MgWc7woFA26aMEZk21Qp29",
+        "name": "watch_for_opening",
+        "input": {
+          "url": "https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&redirectedFromEmbededMode=False&courseId=85770d4d-bce9-4e53-b969-cf7e88775180",
+          "label": "Tuesday preschool swim",
+          "childId": "kid-milo"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 509,
+      "output_tokens": 454,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19980,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 231
+      }
+    }
+  },
+  "latencyMs": 5210
+}

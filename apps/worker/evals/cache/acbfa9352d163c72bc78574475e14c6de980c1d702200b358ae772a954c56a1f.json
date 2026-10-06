@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands Sam the referral link (which is appended by the runtime and present in knows.referralLinkAppended) and tells them to forward it themselves — exactly the right shape. It gives a brief description of what Hale does so the friend understands what they're being invited to, which is useful context for a referral message. The link matches exactly. No app mention, no machinery exposed, no invented URL. The reply is a touch long (three sentences where two would do) and the opening \"Here's your line to pass along, link's attached at the end\" is slightly redundant since the link is right there in the message, but these are minor blemishes. Overall it does the job correctly.",
+    "score": 4
+  }
+}

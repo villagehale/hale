@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "gen_01M486AT1CCY4CMKX96G0PKPHS",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "Es4HCsQBCBIYAipAv28rNq71P+L4sTzu8/5U2+lrd1C+Pee7tW8mLwMUBNcQQ644zpamJGp7Ty+/mb1EWrDtsNcWZTbNOepeRTIQEzIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzYjkzYTVkZC03MzAyLTQ4M2YtYWVhZS0zNjIwNzU1NDhhZTF6HnVwcm9mXzAxMUNma1NibmJZZEV1SDZ5Uk1Ta01RUJoBEQoPY2xhdWRlLXNvbm5ldC01qAGf65LWBhIMp9PWWIpAnq9VyfemGgwT+c2ozHZ30t72GfIiMHMFLL50eVTSLtpSvouySyEunwpntFRnc4/iU3R26aybnMG7ih+RgeIGMMskrTqznSq2BV+tpe1c+pyJLl0VJILtrO/Vo169m/DNvtIY7FOeinKDc06YZ4o8zGLZ1zM5EkUoqH1OPsjr307ZrR463KFgR+BdsHgTpVraWWP5tbb7JfHX33KQ8eagGAwqNGxNHGldgwO8SEiLw9+2gBVFGf6vuEkOtANgsEa33ZDchRbGSacV0/IxfWDKhYDFjAs5xggD25ExtyTuT+II0xWkWIPkC0Q6g2BGJmN3fnwj9cfTFZ7/hNx4xSlRMyHbW9qyBw1G1W9ZYIXJXiEe3KZmrCUXXDyo9UBDfvD/gRwkuJeEONY1Q4Dc4Yi/2Vxl0zykos8cMYmJZ5ode03Hd8S8lojSLTX9gZoBQckB7kAPeO6obIFNB4eWpIId9qVUw4MsMLbQbfJxblzB7AmKNjL0GWzbgZDlCgGpY92Ck7/HZBy9ZViZDigVdfMDgu529h9u5QW4gXwEDAiNskrKhDjA7yhsF5CIvK1W9dNMtojiUftaJs6TNjtxZ220zUv1hOKjO2iRzB8fkUIvmo+SJEs1hrJkDlnefnSOmJAjFiJ1Ql4jaoVYBTKlSAPw9L7mo0YviTYRRM0JTBegkET8lndX73auiX5grwYz81YZMLdPT/Xq2QMXCZMTCQlPh0B/E7j49T3hh1E5tqgL6X3fVN8+DeU1AuQNGc/1syG6GMqRlnQRxz+aNkyza7LmPqMMScPGqp+dJN1oDyMomXrsRBiZSKodPRKBV5k4tlSx3meJlur39bGYgUnvgG/dMxTV3oMVtnng5cXUYQPrtM7D81zWkgcSsOlCdrRt4uruCp+r+jAa3yaUIcPaNvUGi+Xz+8A6nzg3Ikak6/YxULkh1RyWLsS749+Dv+T0ilxnXYthVkjtXHIKNKQ2Oqgv3eEYuvHcyLoj5Ot8Vdchig3BE0l5A/r3SgQmKI03nfoYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01KkpJMyaWnNBrhfnMersV9d",
+        "name": "search_village",
+        "input": {}
+      }
+    ],
+    "usage": {
+      "input_tokens": 526,
+      "output_tokens": 216,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19980,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 188
+      }
+    }
+  },
+  "latencyMs": 3803
+}

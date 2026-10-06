@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The text \"cancel swim\" matches TWO swim lessons in the week (Mon 4:30pm at West pool and Thu 5:15pm at East pool). Ambiguity is about which event, and here there are genuinely two matching events, so asking which one is the correct handling — not a failure. The reply correctly identifies both swims with their times and asks which to cancel. It does not draft anything (correct, since the reference is ambiguous), does not send the parent to the app, and asks exactly one question. The reply is clean, short, and does exactly what the rules require for a multi-match ambiguity. This is the product working correctly.",
-    "score": 5
-  }
-}

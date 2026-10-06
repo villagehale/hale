@@ -1,0 +1,43 @@
+{
+  "response": {
+    "id": "gen_01M486CTD7D5NFYYK55KM9REMC",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "Eu0MCsQBCBIYAipAu/vp23LGruXcQcg0GoWytkrrQ196+It+3v6tI8pi2+ogxnjS+dyipusDYadI7cPXx65ud+QA3TwMoTeUz1zWsTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzYjkzYTVkZC03MzAyLTQ4M2YtYWVhZS0zNjIwNzU1NDhhZTF6HnVwcm9mXzAxMUNma1NibmJZZEV1SDZ5Uk1Ta01RUJoBEQoPY2xhdWRlLXNvbm5ldC01qAHj65LWBhIM7rGZogTLcEGYm+8cGgwRdHK9+D9+pVKYFtYiMA/7cGREadTIY+auYk/ZtbJ4CPLl9+71cpkD3P1L17KQ+gjIR5LZ2MESu7W3IathryrVCpoADlIiAbqOKRyt4rUBdiFvEOtGNBb9uoDBw9g4IpwK5VSlnQ9lF+zF/yqFNo0dKMN+hYFafE24g4tDlIuS8CALhV4oPmenFgkUhoz63VX4jcfh6jA4LUJUGLq2B7ex4AN9mhWo3vQrj+hQVImXV4CmA7FEnZTnqdd66ZvdcFUw30Cl/loLdJFS/uH3KFltd067WJJxHs4Uw1a/jj5mQsNiNVSSaN/pcRELAwNBjxuJX+lDxnW4OXt3zxkXZf+9tTkgAqHSdC534dqQtRlgmqlHZgdmDa0oB48UOLmsE0KvPxJNAHoQJRHt+bFTY7JFnaoaiKP/GxOS8A7Fk+XjSbz0dWmxKGezXa8cOkm/6uRAw4wl5mS5VFP2P/oq/VolzWrXVEVcoP5TDlFRfif5IXdj8vY5UB/leYJcY3H4Dk/9M2ES73qlV7yVMzYimfWUlpqJjQ6wJr+rXvVu8eeGDmzttQlf7I6GKU7pqN6xiNFPd+q/6I1GaTkw+uadcgW1IcHOcO/CpMjsVH19wjDhlkM6ItlT8++TrZTW0EWaLqBzE3v06Rmet1vmjRc8sA6Gif8UUzg9jDvDmI8XytxyUOZbTOfJioIYY8kFwVpjhX6O00R/J4NFxFWFPKP5qLVXWEC1jTREwHbaqAMNO9n0mPuFeIBvXNMI4Uc/oOoUcrW8UoTGfelfHSir+E7xfOp+eIEA4COT8FUuMEVOdp/HbVstAmXl4b+64q0WXO21CQsxi+RK/ydwxCDL83tJc03MY9P00bZMY/8gHDZbjBC9xA3yjT3ufVrILNiJ5/982tJBqVjnEiLR0wPFpsgMgacPpqmKQidQhGKlQ3xNrOgV4WC8NMeL3B8FLVLWtof4H8P32oFHjjXf36C75p48bDrBUn9wBlfOM+u3M0xUp64jqTfSlPfenLydbjJCLCGZHg5KsBfylFIU1dxezLTZ1WfQaSVRljwNwjU+pJbH5sBJzjiJmUbN7N4gOUzDvNi1PzNTi7qTMoAkFYBL6UFsrkGsCykqQei92cSkBkoIALXvsJ8wFbXl3jGkF1dCf5QaogNjOC2G6RteQS+szjLns6LO0sAtfaYBM+spUIKP3dIX0ZKcxQ8MyICqghhkjRoMdOmJsB5ejfijBuX3rhR/ceSTELeiUnmBK/XTvKM87l+OHg/o6n6fdFW2IZN2SsLZ4wruOrNxce58IKhU1qfAFuwE6kWfBayzp4DCWdlbZZqLESGx2S3Ft19otFKVIBINetGJDqQLDyJH5GZtEx5D6RuDtJOCPUqgj9UCml3vOYzX29bwXpLespBL2fg3nX2VswV73IRSULqi2koifZEt+Xgg75X2WHGoBB02E69sHmQJxN4PlfPu0WIWgvto7g2GbotXZqr7A0sI5kQYIZ3jggOPULwP2zl79XUIhr+q/F7UA2G0t6OGjdL6GpSh5QieJcXnTb4cMPRF9RYlVgGZkDWUUjEHKKA2zFmldjamW7p4XzxwFjJVTv8TQbZ91qyUQa8Kr9f16rB+0Cl9kWuBeKJHnffg7qP6BQIqtn+KS2VZ92kIz/PuQMugY2NBXO25eyVTIALEjWG3HEMy5NYnrkvCA4gtCgQWDTGlw7DPUYK81kw2kYtlyCUPfloBA45DbqjSTsAuvJOyvk/Mb7CenUFRLDq2q9+GBEjDJ5YsZisFk0D27v5/sFYlhVgf4yxKREnXM6pwdghnzlE40ypAD1VkciqxbRyRhTKddB9wC5yghP+Mm53qmbhAFWoW/I5z3EFVEPYNdxGPc4KO5oKXHFf20cKTyUHiQzS/ToLKx/CRNiACZwpBChgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01NtV2gpaCYxoFwRiXVGaWf2",
+        "name": "propose_calendar_add",
+        "input": {
+          "date": "2026-09-13",
+          "weekday": "Sunday",
+          "time": "09:30",
+          "title": "Tiny Gym at Cartwheels"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1319,
+      "output_tokens": 774,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19980,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 632
+      }
+    }
+  },
+  "latencyMs": 7265
+}

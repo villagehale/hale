@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply answers the question directly: it names the one visible Saturday event from the week (soccer practice, 10am, Cedarvale Park) and then offers the offerable activity (Riverdale storytime, free drop-in at Riverdale Library). Both details are grounded in `week` and `offerable` respectively. No greeting, no sign-off, no markdown, no questions, no app referral, no invented details. Clean and complete.",
-    "score": 5
-  }
-}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to add the gymnastics class to the calendar. Hale has already drafted a calendar_add. The reply correctly names the item (Tiny Gym at Cartwheels, Sunday September 13 at 9:30am) drawn from the earlier thread message where Hale itself stated those details — that is recall, not invention. However, the reply asks a question (\"Want me to add...?\") rather than presenting the draft and asking for YES to confirm. With `drafted` non-empty, the contract requires naming the change and ending \"...? YES to confirm.\" This reply does name the change but frames it as a question about intent rather than a confirmation request for an already-drafted change. It doesn't end with \"YES to confirm\" as the contract specifies. That's a small but real shape failure — the parent needs to know to reply YES, not just answer yes/no to a want question. It's close but misses the required YES-confirmation framing.",
+    "score": 4
+  }
+}

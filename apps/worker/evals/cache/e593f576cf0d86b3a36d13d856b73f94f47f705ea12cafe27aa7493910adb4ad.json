@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked for four cancellations. The draft cap is 2, so Hale correctly drafted two (Monday swim, Thursday swim). The reply names both drafted items correctly with their times and says it will take care of the other two (soccer, Wednesday appointment) — but that second part is wrong in two ways. First, saying \"I'll take care of cancelling soccer and the Wednesday appointment too\" implies those cancellations will happen without further confirmation, which violates the contract (drafts need a YES). Second, and more critically, it cannot draft them in this message (cap is 2) and has no mechanism to auto-queue them — so promising to take care of them is an overclaim. The correct handling is to draft the first two, ask for YES to confirm those, and say it will line the rest up itself next. Additionally, the reply is missing the \"YES to confirm\" instruction for the two drafted items, which is the contract shape. The Wednesday appointment is a private calendar item (Wed 9:00am), so Hale can draft its cancellation — that's fine to reference. But the reply doesn't end with \"YES to confirm\" and instead makes a promise it cannot keep about the overflow items.",
-    "score": 2
-  }
-}

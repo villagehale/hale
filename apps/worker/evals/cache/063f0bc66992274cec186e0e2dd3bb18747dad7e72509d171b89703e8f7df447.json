@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The draft is set (calendar_move is in `drafted`), so the reply should name the change and end with \"YES to confirm.\" instead it asks a question as if no draft exists. The contract requires: draft is non-empty → name the change and end \"...? YES to confirm.\" A warmer paraphrase that drops YES is worse because the answer would not be recognised as consent. This reply drops the YES trigger entirely, meaning the parent cannot confirm by texting back YES. That is a meaningful failure of the product's confirmation contract, though the core content (naming the right event, right time, right venue) is correct. That earns a 3 — does the job informationally but the shape is wrong (missing the YES confirmation prompt).",
+    "score": 3
+  }
+}

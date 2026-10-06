@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M485XAGVZH4JNPX7KPH1WKST",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Want me to move Thursday swim to Friday 5:15pm at East pool?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 1053,
+      "output_tokens": 28,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19980,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 1519
+}

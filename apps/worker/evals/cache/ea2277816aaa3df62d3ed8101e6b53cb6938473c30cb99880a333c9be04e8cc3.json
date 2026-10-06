@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that connecting Google Calendar is a real feature triggered by a specific phrase, hands the parent the exact words to send (\"connect my Google Calendar\"), and explains what follows (a one-tap link, good for 15 minutes). This is precisely the correct shape per the rubric: recall of a real feature, the plain ask quoted verbatim so the branch catches it, no URL invented, no app referral, no machinery explained beyond what the parent needs. It is concise, no greeting, no sign-off, one clear instruction. A near-perfect reply.",
+    "score": 5
+  }
+}

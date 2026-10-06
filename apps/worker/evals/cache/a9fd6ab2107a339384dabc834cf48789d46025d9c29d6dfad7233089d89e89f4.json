@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly identifies that no piano event is visible in the week and declines to move something that isn't there. It then offers the natural next step — adding piano on Wednesday — which is appropriate and helpful. The private calendar items are correctly not raised as possible candidates. The reply is concise, no greeting/sign-off, one question, no markdown. This is the right shape and the right content. A minor point: it could be slightly more direct, but there's nothing wrong with the question at the end since no event exists to draft. This is the product working correctly.",
-    "score": 5
-  }
-}

@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M486E04RNW6WB1B6WKKKV295",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Common at this age - try a consistent \"bedtime pass\": one walk-back to his room each night, calm and brief, so he builds the habit of falling back asleep there rather than in your bed."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1007,
+      "output_tokens": 61,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19980,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 2407
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that `watching` is true for the Halton Hills fall registration window, states the exact resident-priority open date and time as a flat fact (correct recall, no hedging), confirms it is already watching, and promises to text before it opens — all three are exactly right per the rules. It does not send Sam to the app, does not invent anything, does not ask a clarifying question, has no greeting or sign-off, and stops cleanly. One very minor blemish: it doesn't name Milo, which the parent asked about specifically — though since there is only one registration window and it covers fall programs generally, this is a trivial omission rather than a real error. Otherwise the reply is exactly the shape the product requires.",
+    "score": 4
+  }
+}

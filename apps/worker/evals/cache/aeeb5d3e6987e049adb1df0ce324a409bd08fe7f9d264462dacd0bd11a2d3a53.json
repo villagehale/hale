@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the one offerable activity (Riverdale storytime, Sat Aug 8, Riverdale Library, free, all ages) and includes the nearby-families social proof that was runtime-appended. It also implicitly covers the on-schedule Saturday item (soccer practice at Cedarvale Park at 10am) — though notably it does not mention soccer, which is actually on the family's own calendar for Saturday. That's a small gap: Sam asked \"anything going on for the kids this Saturday\" and there IS something already on the schedule (soccer at 10am, Sat), which Hale could have noted alongside the storytime offering. However, the reply is clean, correct on what it does say, no invented details, no app referral, no URL, no greeting/sign-off, no markdown. The omission of the scheduled soccer practice is a real miss — a parent asking what's going on Saturday deserves to know about their own kid's soccer practice too. That said, the reply is short, accurate, and actionable on what it includes. The miss on the existing scheduled event is a meaningful blemish but not a serious error.",
+    "score": 3
+  }
+}

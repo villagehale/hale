@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asks which of the two programs Remy would be in, referring back to the earlier message where Hale named Tiny Gym (under 3.5s with parent) and Mini Gym (3.5+ solo). The reply correctly identifies Tiny Gym as the right fit for Remy at 19 months, grounding it in Remy's age. It's concise, directly answers the question, traces back to the information already in the thread, and doesn't add unnecessary padding. This is the product working correctly.",
-    "score": 5
-  }
-}

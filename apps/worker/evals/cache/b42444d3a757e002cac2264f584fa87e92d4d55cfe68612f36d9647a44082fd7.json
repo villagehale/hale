@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains a previous Hale message: \"Update on the gymnastics: Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13.\" That is the only gymnastics class named anywhere — it was stated by Hale in a prior message, so it is recall, not invention. The parent's text asks to get that gymnastics class on the calendar, naming exactly one event. The correct handling is to draft it (which `drafted` shows was done: `calendar_add`) and present it for YES confirmation per the contract. The reply does name the class, day, and time, and asks for confirmation — but it ends with a question mark and no \"YES to confirm.\" instruction. The contract requires the literal word YES so the parent's reply is recognised as consent. A warmer paraphrase that drops YES is explicitly called out as WORSE. So the reply does the right thing (drafts, names the item, seeks confirmation) but fails to include \"YES to confirm.\" which is the required shape. That is a meaningful blemish — the parent texting back \"yes\" or \"sure\" instead of the literal word YES risks not being recognised. This is more than a small redundant word; it's a structural omission that could break the confirmation flow. That puts it at a 3 rather than a 4.",
+    "score": 3
+  }
+}

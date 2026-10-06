@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces two things for Saturday: the verified calendar event (Soccer practice at Cedarvale Park, Sat 10:00am) and the offerable find (Central Library story time). However, it only mentions the story time and completely omits the soccer practice that is clearly visible in the week. That's a meaningful miss — Sam asked \"anything on for the kids Saturday?\" and soccer practice is right there. The story time is handled correctly (name, place, day, free drop-in). No invented details, no app referral, no URL. But leaving out the scheduled soccer practice is a real failure to answer the question completely. Also, `stillBeingChecked` is 1, meaning there is one more find still being verified — the reply should have noted Hale is still checking one more thing. These two omissions together bring it down noticeably.",
+    "score": 2
+  }
+}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The text names exactly one event (soccer) and one target time (11am Saturday). The reference is resolved — no ambiguity. The correct handling is to draft the move and present it for YES confirmation. A draft was made, which is right. However, the reply ends with \"does that work?\" instead of \"YES to confirm.\" — the contract requires the literal word YES so the consent is recognised. A warmer paraphrase that drops YES is explicitly called out as worse than correct. That's the one blemish here, but it's a meaningful one per the rubric. Otherwise the reply is clean: names the event, names the new time, no greeting, no sign-off, no app mention, no invented detail. One small but specific failure on the confirmation word.",
-    "score": 4
-  }
-}

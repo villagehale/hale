@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draft cap is 2. Hale drafted the two swims and told Sam it will line the rest up once these are settled — exactly the correct handling. The two drafted cancellations are named with their times and venues (all traceable to the week). The reply ends with \"YES to confirm\" implicitly by naming what needs confirming (\"Want me to cancel…\"), and the contract shape is right. No app mention, no invention, no greeting, no sign-off, no markdown. One small blemish: the reply doesn't explicitly say \"YES to confirm\" — the product contract requires the literal word YES to be called out so the parent's next text is recognised as consent. A warmer paraphrase that omits the YES trigger is described as WORSE in the rubric. That drops it from a 5 to a 4.",
+    "score": 4
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M4861BN6ZREYR2WFNVFN1PS7",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Want me to cancel Monday swim at 4:30pm (West pool) and Thursday swim at 5:15pm (East pool)? I'll line up soccer and the Wednesday appointment once these are settled."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1358,
+      "output_tokens": 70,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19980,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 1728
+}

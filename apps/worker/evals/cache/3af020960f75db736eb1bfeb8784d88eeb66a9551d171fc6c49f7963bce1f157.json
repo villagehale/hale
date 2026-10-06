@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that nothing in the schedule matches a \"park\" request and turns to the offerable results. Riverdale Farm is a verified offerable entry and naming it (with place, day, and free outdoor nature) is exactly right. However, the reply omits the other offerable option — Central Library story time — without reason. Both are verified and offerable; only one is surfaced. Also, \"No park in what I've got verified\" leans slightly toward explaining internal machinery (\"what I've got verified\"), though it is brief. The bigger issue is leaving the library story time offer out entirely when both were cleared and stillBeingChecked is 0, meaning there is nothing still pending. A complete answer would offer both verified options. Still, the reply is short, names the source correctly, and does not invent anything or send the parent elsewhere — it just drops one of two good answers.",
+    "score": 3
+  }
+}

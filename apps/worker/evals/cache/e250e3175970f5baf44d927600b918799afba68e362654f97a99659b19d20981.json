@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly recalls the verified registration window (Sep 1, 7:00 a.m. for residents), correctly states that watching is already active (`watching: true`), and correctly promises to text before it opens — which matches the feature's actual behavior (a week out, the evening before, and fifteen minutes before). It does not hedge with \"their site says,\" does not send Sam to the app, does not invent anything, and does not claim to be starting a watch (it correctly treats watching as an already-set fact). It is concise, names the relevant detail (Milo is implicitly covered since this is the family's window), and stops. One minor note: it doesn't name Milo explicitly, but the parent asked about Milo and the window covers the family's fall programs, so that's not a real gap. This is the product working exactly as designed.",
+    "score": 5
+  }
+}

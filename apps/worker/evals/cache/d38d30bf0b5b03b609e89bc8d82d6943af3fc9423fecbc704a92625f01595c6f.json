@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly uses `watch_for_opening` on the course-page link Sam pasted, which is exactly the capability described in `can`. It names what it is watching (Tuesday preschool swim), states the action (watching for an opening), and promises to text when a spot shows. No invented details, no app redirect, no URL written out, no greeting or sign-off. This is the product working exactly as designed — short, accurate, and complete.",
+    "score": 5
+  }
+}

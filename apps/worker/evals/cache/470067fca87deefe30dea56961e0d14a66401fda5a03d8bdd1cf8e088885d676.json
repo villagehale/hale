@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that there is no verified park in the offerable results and pivots to the closest matching offerable item (Riverdale Farm, a free outdoor venue, open daily). However, it omits the day and venue detail that was provided (\"Riverdale Farm at Riverdale Farm, Sun, Aug 9\"), and it also skips the Central Library story time which is also offerable and could be relevant. More importantly, the reply undersells the Riverdale Farm find — it doesn't give the full verified details (location name, day) that were handed to Hale as offerable. It does correctly not invent anything and doesn't send the parent to the app. It's a reasonable answer but incomplete in not giving the full offerable item details (day, location). Still, it answers the question without handing it back, and the shape is mostly right. A small blemish for dropping the day/venue detail from the offerable item and ignoring the second offerable entirely.",
+    "score": 3
+  }
+}

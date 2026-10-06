@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly identifies the Google Calendar connect feature as real, tells Sam the exact words to send (\"connect my Google Calendar\") so the deterministic branch catches it, and explains the one-tap link and its 15-minute window — all accurate recall. It does not write out a URL, does not refuse the request, does not send the parent to the app, and does not explain internal machinery beyond what the parent needs to act. It is concise, actionable, and shaped correctly. A small blemish: the opening \"Yes - I can hook into your Google Calendar\" is a slight restatement of the parent's own words before getting to the point, adding a sentence that wasn't strictly needed. Still very clean overall.",
-    "score": 4
-  }
-}

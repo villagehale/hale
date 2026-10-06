@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply is handling a calendar add draft correctly. The gymnastics class (Tiny Gym at Cartwheels, Sundays at 9:30, September 13) was named in the thread by Hale itself — so using it is recall, not invention. `drafted` contains `calendar_add`, so Hale has drafted the change and is seeking confirmation. The reply names the change and should end with \"YES to confirm.\" but instead ends with a bare question mark. The word YES — which is the literal confirmation trigger — is missing. That is a meaningful blemish: the parent's \"yes\" reply might not be recognised as consent without the explicit prompt. Otherwise the reply is short, names exactly the right item, and does nothing extraneous. One clear flaw: missing the \"YES to confirm.\" closer that the contract requires.",
-    "score": 3
-  }
-}

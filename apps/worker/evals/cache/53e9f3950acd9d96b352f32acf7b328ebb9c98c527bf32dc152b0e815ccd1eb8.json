@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M486C9PZK3SVADE9597PE969",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Tiny Gym at Cartwheels was $124 for the term, Sundays at 9:30."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1544,
+      "output_tokens": 34,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19980,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 1748
+}

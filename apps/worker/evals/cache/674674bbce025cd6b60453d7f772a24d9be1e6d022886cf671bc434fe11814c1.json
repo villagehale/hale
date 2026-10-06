@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event (Thursday swim at 5:15) and gives a clear instruction: move it to Friday 5:15. This is unambiguous — one event matches. Hale should have drafted the move and asked for YES to confirm, per the contract. Instead, Hale asks a clarifying question (\"Want me to move...?\") when none was needed, handing the job back to the parent. The `drafted` field shows `calendar_move` was drafted, but the reply text doesn't reflect that — it reads as a question seeking permission to act rather than presenting a draft for YES confirmation. The correct reply would have been something like \"Moving Thursday swim (East pool, 5:15pm) to Friday 5:15pm — YES to confirm.\" The reply fails the contract by not presenting the draft and requesting YES, instead asking whether Hale should proceed at all, which is the clarifying-question failure mode on a resolved reference.",
+    "score": 3
+  }
+}

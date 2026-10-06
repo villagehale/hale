@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M486477GK3XJXA0FXKF7MF95",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Got it, I'll keep checking Cartwheels for the Tiny Gym fall dates and text you as soon as they're posted."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1276,
+      "output_tokens": 44,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19980,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 1848
+}

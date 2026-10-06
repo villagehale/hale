@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the one offerable activity (Riverdale storytime, Sat Aug 8, Riverdale Library, free, all ages) and appends the nearby-family count sentence — both are runtime-appended facts, so naming them is correct recall. It also implicitly covers the scheduled Saturday item (soccer practice at Cedarvale Park at 10am) by... wait, it does NOT mention the soccer practice that is already on the calendar. The parent asked \"anything going on for the kids this Saturday\" — the week shows Soccer practice Sat 10:00am at Cedarvale Park, which is directly relevant and should have been included. Omitting it is a meaningful gap; the parent asked what's happening and Hale only answered half. That said, the reply is otherwise clean: no markdown, no greeting, no sign-off, no invented details, no app referral, correct shape. The omission of the existing Saturday event is a real failure — the parent needed to know both what is already on the calendar AND what nearby options exist. This is closer to a 3 (does the job but shape is off / incomplete answer) than a 4, because leaving out the scheduled Saturday event means the parent doesn't get the full picture of their own week.",
+    "score": 3
+  }
+}

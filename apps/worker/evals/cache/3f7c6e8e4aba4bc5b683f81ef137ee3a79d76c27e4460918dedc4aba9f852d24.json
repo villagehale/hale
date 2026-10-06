@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply gives concrete, actionable advice (wait a few minutes, keep the response calm and consistent) grounded in the child's age (19 months toddler), which is exactly the right beat for a parenting question. It correctly identifies the pattern as habit-driven, which is developmentally accurate for a 19-month-old. However, the ending line \"Want me to send the full sleep plan?\" is not the fixed product line (\"Want the full plan? Reply YES and I'll send it.\") — it drops the literal YES instruction, which means the parent's reply of \"yes\" or \"sure\" would not be recognised as the trigger for the plan. That is a meaningful blemish: the contract requires the word YES to appear so the parent knows exactly what to text back. Otherwise the reply is short, direct, no greeting, no sign-off, no markdown, one question, no invented details — the shape is right. Minor but real flaw on the YES word.",
+    "score": 4
+  }
+}

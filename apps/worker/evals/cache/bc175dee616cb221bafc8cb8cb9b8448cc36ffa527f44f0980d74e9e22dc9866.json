@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M4867BBFFJ998Q7J8KCB5310",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Repeated 2am wakings at 8 aren't unusual, but worth a quick check for something keeping her up (a worry, noise, needing the bathroom, screens before bed). Try asking her gently at breakfast what happens when she wakes, and keep her bedtime routine and wake time steady for a week to see if it settles.\n\nIf it keeps up or she seems anxious or unwell, that's worth mentioning to her doctor."
+      }
+    ],
+    "usage": {
+      "input_tokens": 945,
+      "output_tokens": 139,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19980,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 3627
+}

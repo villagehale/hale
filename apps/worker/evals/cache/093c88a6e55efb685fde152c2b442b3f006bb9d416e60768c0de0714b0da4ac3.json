@@ -1,0 +1,48 @@
+{
+  "response": {
+    "id": "gen_01M48617PKYMG8D9FA99W0AN2Z",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EqcGCsQBCBIYAipAGLuT3WL2gOfsxYfrG3gUadKU2NloaNrcFFiBbliMfF4EHR130so27VFE14aEuvZPSvuAckvVzUzok/Tg/iX1YDIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzYjkzYTVkZC03MzAyLTQ4M2YtYWVhZS0zNjIwNzU1NDhhZTF6HnVwcm9mXzAxMUNma1NibmJZZEV1SDZ5Uk1Ta01RUJoBEQoPY2xhdWRlLXNvbm5ldC01qAHl6JLWBhIM9kyqubaL4BAvX7YRGgwnyCup5E92d+oa+PIiMGjuk9IY34uLq18MC76zmziIZES/nv66IdrGFz1e0HgbdyO8pYILPfAHOLk0Z7fJ1CqPBLd5gC1qNPw8mUQRv8DSfprUKWT4oRLGWoiXbyN4G6/VmdVEq4RVNRkg67jmUfoxbI8tbiLsbyzqoFPM+FAp20/rNQrDPcrRPipK1QPvtZ9V/eTGm4LM4X6dy845S3Yb6I5+LNXu3lsHgxK/RWk/9QzA6szqYE6Hfdf9bz1uhItQXuNf8YaPOsAPVu/NODYCs2TyhNNv9v01fGHUioRhXEK3xRyq19x4J7vcjvBA/U4Oj66jZwArKzGNEQKYqK+tsp3BVBn3JxIs4GeiH2jfgOKYHcTa+Nvrudghg45H0GvPDxjGUfjmqmECC0KGji4AmkowuI/SXjlF5MV2daW5luhJdWjC1afJMrxD3UlEh5uVMgzcuoi6yQcbkD5/IzitDG3X9SNFM0idT8TQoc9nrok/j8fUoG9KY7jaElrbEnJFNCFcWL90/3FBRpTImknuhLUwUYi7XZjErcxsqQF564Mrn8bdQaP82sRrgLGF4JTPYTY/d/H/WolhnF3ASREa69k1E9/Z8rSygHL2D9vTNp3vhJI9JjkR20Wn7W37pS+fMoDLpev7LbdjLwFKq7Gf+ZSoOWVSsYBBvT+QYPsz5hn5DICofC49Tuw2GmQ+FUCyzzGOzDd6VVslQK58FPEv6bSxEqo8bpwEzUAYNi6aUFsnXqDj8O+fdKQ7IWfbzcC8zqHmDb7lJ4eVJPkcaNEDGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01UMSEFfahhpdmd6wSzwim94",
+        "name": "propose_calendar_cancel",
+        "input": {
+          "eventId": "evt-swim-mon"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01U8LkwqFS8jVG2gJQr6fqFq",
+        "name": "propose_calendar_cancel",
+        "input": {
+          "eventId": "evt-swim-thu"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 936,
+      "output_tokens": 314,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19980,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 190
+      }
+    }
+  },
+  "latencyMs": 4029
+}

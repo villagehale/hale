@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text names exactly one event (Thursday swim, 5:15pm at East pool) and asks to move it to Friday at the same time. This is unambiguous — one event matches. Hale should have drafted the move and asked for YES to confirm, per the contract. Instead, Hale drafted it (drafted is non-empty with \"calendar_move\") but then asks \"Want me to move…?\" — a clarifying question on a resolved reference. The reply should have said something like \"Moving Thursday's swim lesson (East pool, 5:15pm) to Friday 5:15pm at East pool — YES to confirm.\" Asking \"want me to?\" when the parent just said \"move it\" hands the job back and wastes a round-trip. This is the failure mode of asking which event when the text named exactly one. Score: 2.",
+    "score": 2
+  }
+}

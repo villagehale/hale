@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly identifies Theo's age (5 months) from knows.children, gives concrete actionable guidance (wait another month, watch feeding cues), correctly names the 6-month threshold from standard child-development guidance, and ends with the fixed plan-offer line. It does not diagnose, does not hand back, does not invent, and does not send the parent anywhere. The one small issue: the closing line is \"Want me to send the full starting-solids plan?\" rather than the canonical \"Want the full plan? Reply YES and I'll send it.\" — the YES trigger word is missing, which means the parent's natural \"yes please\" response may not be recognised as consent. That is a real functional gap, not just style. Otherwise the reply is clean and correct.",
-    "score": 4
-  }
-}

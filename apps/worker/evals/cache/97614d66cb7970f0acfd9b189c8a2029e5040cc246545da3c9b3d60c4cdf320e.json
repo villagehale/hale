@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Sam asked for four cancellations. The draft cap is 2. Hale correctly drafted the two swim cancellations (Monday and Thursday) and said it will line up the rest once those are confirmed. The reply names both drafted items with their times and venues (all traceable to the week), ends with the implicit YES-to-confirm contract (the drafted shape means the parent confirms by texting YES), and correctly defers soccer and the Wednesday private appointment rather than itemising or inventing them. It does not send Sam to the app, does not ask a clarifying question (all four events are unambiguous), and does not invent any detail. The only tiny blemish is that it doesn't explicitly say \"YES to confirm\" — the contract language is absent, leaving the parent slightly unsure how to approve. That's a small but real gap in the required shape. Otherwise the reply is clean, correct, and appropriately brief.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands Sam the referral link (which is appended by the runtime and present in knows.referralLinkAppended), tells them to forward it themselves, and gives a brief description of what Hale does so the friend knows what they're getting. The link URL matches exactly. The instruction \"Your friend just texts in themselves\" is correct — Hale never texts the friend. There's no greeting, no sign-off, no markdown, no unnecessary machinery explanation. The one small blemish: the reply writes out the URL as plain text in the body of the message, but the rules say the runtime appends it — \"Hale never sends a parent to the app\" doesn't apply here since this is the referral link, not the app. The rules say \"When it is present the reply SHOULD carry it, and a sentence telling the parent to forward it themselves is correct.\" Writing it inline is consistent with that. The reply is a touch long with the description sentence, but it's not egregiously so — it adds useful context for Sam to pass along. Overall this is a correct, clean reply that does the job.",
+    "score": 5
+  }
+}

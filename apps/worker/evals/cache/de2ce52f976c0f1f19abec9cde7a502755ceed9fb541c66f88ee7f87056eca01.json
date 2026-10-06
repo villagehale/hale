@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asks about a gym price Hale mentioned earlier. The threadDigest shows Hale quoted \"Tiny Gym at Cartwheels is $124 for the term, Sundays at 9:30.\" The parent's text says \"the gym one\" — this matches the gymnastics item in the digest exactly. The reply correctly recalls that figure from the thread (not inventing it) and gives it cleanly. No greeting, no sign-off, no markdown, no unnecessary detail. This is exactly the job done correctly.",
+    "score": 5
+  }
+}

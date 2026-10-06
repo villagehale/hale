@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply hands Sam the referral link (appended by the runtime, so recall not invention), explains what a friend does with it (texts in themselves), and gives a one-line description of what Hale is so the forwarded message makes sense. That is exactly the job: hand the parent their own link to forward, with enough context to make it useful. The link matches `knows.referralLinkAppended` exactly — no invented URL. No greeting, no sign-off, no markdown, no internal machinery explained. The one small blemish is the opening filler phrase \"Here's your line to pass along\" — it restates what is about to happen and costs a clause. A tighter opener (\"Forward this to anyone you'd like to invite — they just text in to get started.\") would have used the space better. Otherwise clean and correct.",
+    "score": 4
+  }
+}

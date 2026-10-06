@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly identifies this as a Google Calendar connection request that the deterministic branch handles. It accurately tells Sam the link is a text away and gives the exact words to send (\"connect my Google Calendar\") so the branch will catch it — which is precisely the correct shape for this scenario. No URL is invented, no app referral, no refusal. Clean, actionable, stops when it should. A textbook correct handling.",
-    "score": 5
-  }
-}

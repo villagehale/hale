@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly identifies the event (Thursday swim at East pool, 5:15pm) and drafts the move. However, the contract requires the reply to end with \"YES to confirm.\" so the parent's next text \"YES\" is recognised as consent. Instead, the reply asks \"does that work?\" — a warmer paraphrase that drops the literal word YES. Per the rubric, this is explicitly called out as worse because the answer would not be recognised as consent. Otherwise the reply is clean: no invention, correct event identified, no extra machinery, no app reference. One clear blemish: missing the required YES prompt.",
-    "score": 3
-  }
-}

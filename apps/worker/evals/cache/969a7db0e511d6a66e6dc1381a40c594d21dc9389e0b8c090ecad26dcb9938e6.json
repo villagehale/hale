@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply drafts the move correctly — one event matches \"Thursday swim\" unambiguously (Thu 5:15pm swim lesson at East pool), so acting on it rather than asking for clarification is right. The drafted array shows calendar_move, which is correct. However, the reply ends with \"does that work?\" instead of the required \"YES to confirm.\" phrasing. The contract requires the literal word YES so the parent's reply is recognised as consent. A warmer paraphrase that drops YES is explicitly called out as worse than the correct shape. That is a meaningful flaw but the reply otherwise does the job — correct event identified, correct time carried over, draft acknowledged.",
-    "score": 3
-  }
-}

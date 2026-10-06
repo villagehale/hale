@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply hands over the referral link (which is the appended runtime link, not invented), explains briefly what Hale is so Sam can forward it with context, and tells Sam to send it themselves — all correct. The link is real and properly included. The description is accurate and concise. No greeting, no sign-off, no markdown, no app redirect. One small blemish: the explanatory sentence (\"Hale is a text line that tracks your family's week - schedules, activities, parenting questions - so you don't have to.\") adds a little more than strictly needed, but it serves the forwarding purpose and is not wrong. Overall this is very close to ideal.",
-    "score": 4
-  }
-}

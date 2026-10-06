@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies no verified park but offers Riverdale Farm as a nearby free outdoor option from `offerable`. However, it omits the second offerable item (Central Library story time) which isn't a park but the reply's framing is \"closest checked outdoor option\" which is reasonable. The bigger issue: the reply says \"No park in what I've got verified\" — this explains Hale's internal machinery/limits rather than just answering helpfully. It also skips the Central Library story time entirely with no reason. More importantly, Riverdale Farm IS offerable and is correctly named with its venue and cadence. The reply is honest and useful, but the phrasing \"in what I've got verified\" leans into explaining its own limits, which is a mild self-absorption issue. It also doesn't mention the soccer practice already scheduled at Cedarvale Park on Saturday — a real park already on the family's week — which would have been the most direct and relevant answer. Missing Cedarvale Park (a park Sam's own family is already going to on Saturday) is a meaningful omission when the parent asks \"is there a good park nearby.\" That's a detail traceable to `week` that directly answers the question. That said, the reply isn't wrong about what it says, just incomplete in a way that matters.",
+    "score": 3
+  }
+}

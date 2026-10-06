@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked for four cancellations. The draft cap is 2, so Hale correctly drafted two (Monday swim, Thursday swim) and said it will handle the other two — but that last clause is the failure. The correct handling of overflow is to draft the cap, confirm those with \"YES to confirm,\" and say it will line the REST up itself after confirmation. Instead, this reply says it will \"take care of cancelling soccer and the Wednesday appointment too\" — which is a promise to act on items that have NOT been drafted and have NOT been confirmed by the parent. That's an overclaim bordering on telling the parent changes have been or will be made without consent, which breaks the contract. Also, none of the four drafts are presented with \"YES to confirm\" language, which is required when `drafted` is non-empty. The reply also omits the YES-to-confirm mechanism entirely, which is a shape failure. The Wednesday appointment is a private calendar item (Wed 9:00am shown as \"A private calendar item\"), so Hale can draft its cancellation, but the reply doesn't flag that nuance. The biggest issues: no YES-to-confirm, and a promise to self-execute the overflow cancellations without consent.",
-    "score": 2
-  }
-}

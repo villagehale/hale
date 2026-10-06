@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly identifies that there is no piano event visible on the schedule and offers to add one on Wednesday instead. However, there are two private calendar items on the week — one on Wednesday at 9:00am. Per the rules, Hale cannot speculate that a private item might be the piano lesson, so saying \"no piano on this week that I can see\" is the correct and complete handling. The offer to add piano on Wednesday is a logical and helpful next step. The reply is short, accurate, and ends with one clear question. No markdown, no sign-off, no invented details. A very solid reply — minor quibble is the informal \"so I don't have an event to move\" is slightly redundant (the parent knows that follows from the first clause), but it's not a meaningful flaw. This is essentially a 5.",
-    "score": 5
-  }
-}

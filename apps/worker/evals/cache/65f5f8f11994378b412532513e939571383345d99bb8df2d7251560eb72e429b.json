@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent pasted a course-page link directly in their message and asked Hale to watch for a spot opening. Per the rules, `watch_for_opening` is a real capability Hale has, triggered specifically when the parent pastes a course-page link. The reply correctly uses that capability — saying it is watching the page and will text when a spot opens. The URL came from the parent's own message, so this is the exact scenario the rule describes. The reply is short, correct, names what it is watching, and makes the right promise. No invented details, no app referral, no greeting or sign-off, no markdown. One small note: \"genuinely full\" is a slight filler phrase, but it doesn't cause any harm and is barely worth noting. This is essentially the product working correctly.",
-    "score": 5
-  }
-}
