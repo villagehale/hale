@@ -15,7 +15,7 @@ export {
   type ConnectAccount,
   type ConnectLineKind,
   type ConnectLineRequest,
-  GOOGLE_ADVANCED_BUTTON,
+  GOOGLE_COACHING,
   GOOGLE_PERMISSIONS_URL,
   connectLineInput,
   withConnectLinks,

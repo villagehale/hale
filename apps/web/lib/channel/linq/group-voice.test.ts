@@ -200,7 +200,9 @@ describe('groupLineInput', () => {
     const ask = groupLineInput({ kind: 'calendar_ask', name: 'Sam' }, 'en');
     expect(ask.facts).toEqual({ name: 'Sam' });
     expect(ask.linkFollows).toBeUndefined();
-    expect(judgeSpokenLine('Sam, this link is just for you. Want the kids on your calendar?', ask)).toEqual({
+    expect(
+      judgeSpokenLine('Sam, this link is just for you. Want the kids on your calendar?', ask),
+    ).toEqual({
       ok: false,
       reason: 'link',
     });
@@ -212,7 +214,10 @@ describe('groupLineInput', () => {
       ),
     ).toEqual({ ok: true });
     expect(
-      judgeSpokenLine('Sam, this link is just for you. If Google warns you, tap Advanced and carry on.', link),
+      judgeSpokenLine(
+        'Sam, this link is just for you. If Google warns you, tap Advanced and carry on.',
+        link,
+      ),
     ).toEqual({ ok: false, reason: 'forbidden:google_coaching' });
   });
 });

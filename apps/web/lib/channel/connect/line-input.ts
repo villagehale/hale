@@ -8,7 +8,7 @@ import type { SpokenLineInput } from '../voice/judge';
  * Until this change these were locked sentences in connect/copy.ts (the offer with its
  * "Good for 15 minutes", the fixed Google "unverified app" caution in front of it, and
  * three disconnect receipts). They are gone. Code supplies the facts (which account, how
- * long the link lives, what Google's button is called), appends the real URL after the
+ * long the link lives), appends the real URL after the
  * prose, and the judge holds the limits.
  *
  * Pure, relative imports only: the worker eval loads this module through tsx.
@@ -16,7 +16,7 @@ import type { SpokenLineInput } from '../voice/judge';
 
 export const CONNECT_VOICE_SKILL = 'connect-voice';
 
-/** Two short sentences with a product name and a button word in them. */
+/** Two short sentences with a product name in them. */
 export const CONNECT_MAX_CHARS = 220;
 
 /** CHANNEL_SIGNIN_TTL_MS, said out loud. The number the line promises. */
@@ -30,10 +30,10 @@ export const CONNECT_ACCOUNT_NAME: Record<ReplyLanguage, Record<ConnectAccount, 
   fr: { gcal: 'Google Agenda', gmail: 'Gmail', gdrive: 'Google Drive' },
 };
 
-/** The word on Google's unverified-app screen, per language. A fact the model must carry. */
-export const GOOGLE_ADVANCED_BUTTON: Record<ReplyLanguage, string> = {
-  en: 'Advanced',
-  fr: 'Paramètres avancés',
+/** Coaching a parent past Google's warning. The heads-up names the screen and stops. */
+export const GOOGLE_COACHING = {
+  name: 'google_coaching',
+  pattern: /tap advanced|carry on|it(?:'|’)s safe|paramètres avancés/i,
 };
 
 export type ConnectLineRequest =
@@ -80,7 +80,6 @@ export function connectLineInput(
     forbidden: [NO_CONNECT_KEYWORD_ASK, NO_GOOGLE_SIDE_CLAIM],
   };
   const name = (account: ConnectAccount) => CONNECT_ACCOUNT_NAME[language][account];
-  const button = GOOGLE_ADVANCED_BUTTON[language];
   const minutes = String(CONNECT_LINK_MINUTES);
 
   switch (request.kind) {
@@ -91,9 +90,9 @@ export function connectLineInput(
         facts: {
           account: name(request.account),
           goodForMinutes: CONNECT_LINK_MINUTES,
-          googleButton: button,
         },
-        mustMention: [name(request.account), minutes, button],
+        mustMention: [name(request.account), minutes],
+        forbidden: [...(base.forbidden ?? []), GOOGLE_COACHING],
       };
     case 'offer_both':
       return {
@@ -103,9 +102,9 @@ export function connectLineInput(
           first: name(request.first),
           second: name(request.second),
           goodForMinutes: CONNECT_LINK_MINUTES,
-          googleButton: button,
         },
-        mustMention: [name(request.first), name(request.second), minutes, button],
+        mustMention: [name(request.first), name(request.second), minutes],
+        forbidden: [...(base.forbidden ?? []), GOOGLE_COACHING],
       };
     case 'revoked':
       return {

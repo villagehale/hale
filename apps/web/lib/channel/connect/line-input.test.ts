@@ -39,10 +39,12 @@ describe('connectLineInput', () => {
         expect(input.questions).toBe(0);
         expect(input.maxChars).toBe(CONNECT_MAX_CHARS);
         expect(input.parentWords).toBe('connect it');
-        expect(input.forbidden?.map((rule) => rule.name)).toEqual([
-          'keyword_ask',
-          'google_side_claim',
-        ]);
+        const coaching = request.kind === 'offer' || request.kind === 'offer_both';
+        expect(input.forbidden?.map((rule) => rule.name)).toEqual(
+          coaching
+            ? ['keyword_ask', 'google_side_claim', 'google_coaching']
+            : ['keyword_ask', 'google_side_claim'],
+        );
         // The fake passes the judge the real model is held to, so the facts can be
         // carried by the kind's slots alone.
         expect(() => fakeSpokenLineBody(input)).not.toThrow();
@@ -50,40 +52,34 @@ describe('connectLineInput', () => {
     }
   });
 
-  it('hands the offer the account name, the minutes and the Google button word, and makes it carry all three', () => {
+  it('hands the offer the account name and the minutes, and refuses coaching past the warning', () => {
     const en = connectLineInput({ kind: 'offer', account: 'gcal' }, 'en');
     expect(en.facts).toEqual({
       account: 'Google Calendar',
       goodForMinutes: 15,
-      googleButton: 'Advanced',
     });
-    expect(en.mustMention).toEqual(['Google Calendar', '15', 'Advanced']);
+    expect(en.mustMention).toEqual(['Google Calendar', '15']);
     expect(en.linkFollows).toBe(true);
     expect(
       judgeSpokenLine(
-        'Here you go - this link connects your Google Calendar and is good for 15 minutes. If Google warns you about an unverified app, tap Advanced and carry on.',
+        'Here you go - this link connects your Google Calendar and is good for 15 minutes. Google may say Hale is not verified yet, because the review is still open.',
         en,
       ),
     ).toEqual({ ok: true });
-    // Without the button word the parent is left alone on Google's warning screen.
     expect(
       judgeSpokenLine(
-        'Here you go - this link connects your Google Calendar and is good for 15 minutes.',
+        'Here you go - this link connects your Google Calendar and is good for 15 minutes. If Google warns you, tap Advanced and carry on.',
         en,
       ),
-    ).toEqual({ ok: false, reason: 'missing' });
+    ).toEqual({ ok: false, reason: 'forbidden:google_coaching' });
 
     const fr = connectLineInput({ kind: 'offer', account: 'gcal' }, 'fr');
     expect(fr.facts).toEqual({
       account: 'Google Agenda',
       goodForMinutes: 15,
-      googleButton: 'Paramètres avancés',
     });
     expect(
-      judgeSpokenLine(
-        'Voilà - ce lien relie ton Google Agenda, bon pour 15 minutes. Si Google te prévient, touche Paramètres avancés et continue.',
-        fr,
-      ),
+      judgeSpokenLine('Voilà - ce lien relie ton Google Agenda, bon pour 15 minutes.', fr),
     ).toEqual({ ok: true });
   });
 
@@ -93,9 +89,8 @@ describe('connectLineInput', () => {
       first: 'Google Calendar',
       second: 'Gmail',
       goodForMinutes: 15,
-      googleButton: 'Advanced',
     });
-    expect(both.mustMention).toEqual(['Google Calendar', 'Gmail', '15', 'Advanced']);
+    expect(both.mustMention).toEqual(['Google Calendar', 'Gmail', '15']);
     expect(
       withConnectLinks('First link is Google Calendar, second is Gmail.', [
         'https://x/connect?t=a&to=gcal',
