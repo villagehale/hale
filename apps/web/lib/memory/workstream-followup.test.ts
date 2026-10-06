@@ -576,6 +576,37 @@ describe('workstream follow-up voice', () => {
     expect(seen[2]).toBeUndefined();
   });
 
+  it('asks an order retry to become a question, then sends nothing', async () => {
+    const seen: string[] = [];
+    const bodies = ['Il faut choisir entre les deux.', "Faut qu'on choisisse entre les deux."];
+    const client = {
+      messages: {
+        create: vi.fn(async (params: { messages?: Array<{ content?: unknown }> }) => {
+          const content = params.messages?.[0]?.content;
+          if (typeof content === 'string') seen.push(content);
+          return toolMessage(bodies.shift() ?? '');
+        }),
+      },
+    } as unknown as AgentClient;
+    const result = await composeWorkstreamFollowup({
+      client,
+      title: 'natation de Lea',
+      status: 'waiting_on_parent',
+      nextStep: 'choisir un creneau',
+      now: new Date('2026-08-13T15:00:00.000Z'),
+      timeZone: 'America/Toronto',
+      language: 'fr',
+    });
+    expect(result).toEqual({ ok: false, reason: 'order' });
+    expect(seen).toHaveLength(2);
+    expect(seen[1]).toContain(
+      'previous attempt refused: order. Rewrite it as a question about where things stand',
+    );
+    expect(seen[1]).not.toContain('Tu préfères');
+    expect(seen[1]).not.toContain('Tu as pu');
+    expect(seen[1]).not.toContain('As-tu');
+  });
+
   it('returns no sentence when both attempts fail', async () => {
     const bodies = [OPT_OUT_LINE, `check back. ${OPT_OUT_SHORT}`];
     const client = {
@@ -614,6 +645,10 @@ describe('workstream follow-up voice', () => {
     expect(skill).toContain('parent_news');
     expect(skill).toContain('il faut');
     expect(skill).toContain('tu dois');
+    expect(skill).toContain('Tu as pu');
+    expect(skill).toContain('Tu préfères');
+    expect(skill).toContain('never an instruction');
+    expect(skill).toContain('never vous');
     expect(skill).toContain('`order`');
     expect(skill).toContain('invented_claim');
     expect(skill).toContain('not "you"');
@@ -857,6 +892,10 @@ describe('workstream follow-up voice', () => {
       'Je fais un petit suivi sur le maillot.',
       'Un petit suivi: le maillot.',
       'Hey, just circling back on the jersey.',
+      'Hey following up on the swim class.',
+      'Hi checking in about piano.',
+      'Bonjour petit suivi pour la natation.',
+      'Hello circling back on the jersey.',
     ]) {
       expect(refuse(line), line).toBe('stock_opener');
     }
@@ -871,12 +910,32 @@ describe('workstream follow-up voice', () => {
     expect(refuse('Il faut confirmer la place.')).toBe('order');
     expect(refuse('Faut choisir entre Pierre-Charbonneau 9 h et Rosemont 10 h 30?')).toBe('order');
     expect(refuse('Faut-il appeler le CPE pour la place?')).toBeNull();
+    expect(
+      refuse("Il faudrait choisir un cadeau de moins de 30 $ pour l'anniversaire de Zoé."),
+    ).toBe('order');
+    expect(refuse('Il faudrait appeler le CPE pour confirmer la place de Léa.')).toBe('order');
+    expect(refuse('Il faudrait contacter le dentiste de Zoé pour reprendre le rendez-vous.')).toBe(
+      'order',
+    );
+    expect(
+      refuse('Il te reste à contacter le dentiste de Zoé pour reprendre le rendez-vous.'),
+    ).toBe('order');
+    expect(refuse("Faut qu'on reprenne le rendez-vous chez le dentiste de Zoé.")).toBe('order');
+    expect(refuse("Il faut qu'on décide si on apporte une salade ou un dessert.")).toBe('order');
+    expect(refuse("N'oublie pas d'appeler le CPE.")).toBe('order');
+    expect(refuse("T'as juste à appeler le CPE.")).toBe('order');
+    expect(refuse("Tu veux qu'on voie si c'est fait?")).toBe('invented_promise');
 
     expect(refuse('Great that you booked the 9:30 swim!')).toBe('invented_claim');
     expect(refuse("Maya's spot is confirmed.")).toBe('invented_claim');
     expect(refuse('You said you would pick Saturday.')).toBe('invented_claim');
     expect(refuse('Tu as dit que tu nous dirais.')).toBe('invented_claim');
     expect(refuse('Super que la place soit réservée!')).toBe('invented_claim');
+    expect(refuse('Léa est inscrite au CPE.')).toBe('invented_claim');
+    expect(refuse("Theo's camp spot is all set for March break.", third)).toBe('invented_claim');
+    expect(refuse("C'est réglé pour la place de Léa.")).toBe('invented_claim');
+    expect(refuse('Zoé est-elle inscrite pour mardi ou jeudi?')).toBeNull();
+    expect(refuse('La place de Léa au CPE est-elle réservée?')).toBeNull();
     expect(refuse('Your swim is confirmed.', 'scheduled')).toBeNull();
     expect(
       refuse("Maya's swim at Annette Pool starts this Sunday at 10:00.", 'scheduled', {
@@ -896,6 +955,48 @@ describe('workstream follow-up voice', () => {
         nextStep: 'signé et renvoyé avant vendredi',
       }),
     ).toBe('invented_claim');
+    expect(
+      refuse(
+        'Wallace Emerson at 9:30 or Annette Pool at 11:00 for Maya this Saturday?',
+        'scheduled',
+        {
+          title: 'Saturday swim lessons',
+        },
+      ),
+    ).toBeNull();
+    expect(
+      refuse("Who's grabbing Maya for the dentist tomorrow, you or Sam?", 'waiting_on_parent', {
+        title: "Friday's dentist",
+      }),
+    ).toBeNull();
+    expect(
+      refuse('Ce samedi, salade ou dessert pour la fête?', 'waiting_on_parent', {
+        nextStep: 'fête de samedi',
+      }),
+    ).toBeNull();
+    expect(
+      refuse("Maya's swim starts this Sunday at 10:00.", 'scheduled', {
+        title: 'Sunday session starts Oct 18',
+      }),
+    ).toBe('invented_claim');
+    const oct15 = new Date('2026-10-15T15:00:00.000Z');
+    expect(
+      followupRefusal("Maya's swim starts this Sunday at 10:00.", oct15, zone, 'scheduled', {
+        title: 'Sunday session starts Oct 18',
+      }),
+    ).toBeNull();
+    expect(
+      refuse(
+        "Sam needs to email the coach about Omar's level test—can you send that over?",
+        'waiting_on_parent',
+        { nextStep: 'Sam to email the coach' },
+      ),
+    ).toBe('invented_claim');
+    expect(
+      refuse('Did Sam get a chance to email the coach?', 'waiting_on_parent', {
+        nextStep: 'Sam to email the coach',
+      }),
+    ).toBeNull();
 
     const controls: Array<{
       body: string;
@@ -922,12 +1023,43 @@ describe('workstream follow-up voice', () => {
       { body: 'No word from the coach yet.', status: 'open' },
       { body: 'Still holding that Saturday swim if you want to pick one.' },
       {
-        body: 'Which works better for you this Saturday, Wallace or Annette?',
-        thread: { title: 'Wallace or Annette this Saturday' },
+        body: 'Which works better for you this Saturday—Wallace Emerson at 9:30 or Annette Pool at 11:00?',
+        thread: { title: 'Saturday swim lessons' },
       },
       { body: 'The form is in and nothing else is owed.' },
     ];
     expect(controls).toHaveLength(18);
+    const extras: Array<{
+      body: string;
+      status?: string;
+      thread?: { title?: string; nextStep?: string | null };
+    }> = [
+      { body: 'Zoé est-elle inscrite pour mardi ou jeudi?' },
+      { body: 'La place de Léa au CPE est-elle réservée?' },
+      {
+        body: "Who's grabbing Maya for the dentist tomorrow, you or Sam?",
+        thread: { title: "Friday's dentist" },
+      },
+      {
+        body: 'Ce samedi, salade ou dessert pour la fête?',
+        thread: { nextStep: 'fête de samedi' },
+      },
+      {
+        body: "Sam was going to email the coach about Omar's level test—did that go out?",
+        thread: { nextStep: 'Sam to email the coach' },
+      },
+      { body: 'What size skates does Ben need — a 2 or a 3?' },
+      { body: "Maya's swim at Annette Pool starts Oct 18, Sundays at 10:00." },
+      { body: 'Which works better for Ivy — Tuesday at 4 or Wednesday at 5?' },
+      { body: 'Tu vas apporter une salade ou un dessert à la fête de samedi?' },
+      {
+        body: 'Le formulaire de sortie de Léa à signer et renvoyer avant vendredi — tu as pu le trouver?',
+      },
+    ];
+    expect(extras).toHaveLength(10);
+    for (const line of extras) {
+      expect(refuse(line.body, line.status, line.thread), line.body).toBeNull();
+    }
     for (const line of controls) {
       expect(refuse(line.body, line.status, line.thread), line.body).toBeNull();
     }

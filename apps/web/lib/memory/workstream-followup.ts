@@ -131,13 +131,17 @@ const WEEKDAY_WORD = String.raw`${WB}(?:(next|prochain(?:e)?)\s+)?(mondays?|tues
  * check" is Hale offering to act. The sweep does not perform any of these.
  */
 const COMMITMENT = new RegExp(
-  `${WB}(?:i['’]ll|i will|i['’]m going to|i am going to|i['’]d (?:follow up|check|call|email|reach out|look|ask)|i can (?:check|call|email|reach out|look|follow up|ask)|we['’]ll|we will|we['’]re going to|we are going to|hale(?:['’]s| is) going to|hale will|je vais|je relance|je rappelle|j['’](?:é|e)cris|je contacte|je v(?:é|e)rifie|je te tiens|je (?:te )?(?:redis|reviens|regarde|rev(?:é|e)rifie|m['’]en occupe|m['’]informe)|je reviens vers toi|on va|on relance|on (?:te )?revient|nous allons)${WE}|${WB}let me (?!know${WE})`,
+  `${WB}(?:i['’]ll|i will|i['’]m going to|i am going to|i['’]d (?:follow up|check|call|email|reach out|look|ask)|i can (?:check|call|email|reach out|look|follow up|ask)|we['’]ll|we will|we['’]re going to|we are going to|hale(?:['’]s| is) going to|hale will|je vais|je relance|je rappelle|j['’](?:é|e)cris|je contacte|je v(?:é|e)rifie|je te tiens|je (?:te )?(?:redis|reviens|regarde|rev(?:é|e)rifie|m['’]en occupe|m['’]informe)|je reviens vers toi|on va|on relance|on (?:te )?revient|nous allons|qu['’]on (?:voie|v[ée]rifie|regarde|relance|appelle))${WE}|${WB}let me (?!know${WE})`,
   'iu',
 );
 
-/** A short greeting, including a name, "there", French spacing, or a dash. Runs after gsmSafe, so an em dash is already "-". */
-const GREETING =
-  /^(?:hey|hi|hello|bonjour|salut|coucou|allo)(?:\s+(?:there|[\p{Lu}][\p{L}'’–-]*))?\s*[!,.:-]*\s*/iu;
+/**
+ * The greeting word is case-insensitive. The name that may follow is not:
+ * with the `i` flag, `\p{Lu}` matches any letter, and "following" gets eaten
+ * as a name. Runs after gsmSafe, so an em dash is already "-".
+ */
+const GREETING_WORD = new RegExp(`^(?:hey|hi|hello|bonjour|salut|coucou|allo)${WE}`, 'iu');
+const GREETING_TAIL = /^(?:\s+(?:there|[\p{Lu}][\p{Ll}][\p{L}'’–-]*))?\s*[!,.:-]*\s*/u;
 
 const STOCK_OPENER = new RegExp(
   `^(?:just (?:checking|wanted to check|following up|circling back|a quick check-?in)|checking in${WE}|checking back${WE}|quick (?:follow-?up|check-?in)|hope your${WE}|hope you had${WE}|following up${WE}|circling back${WE}|touching base${WE}|(?:je fais )?(?:un )?petit suivi${WE}|juste un suivi${WE}|petit rappel${WE}|still need to know${WE})`,
@@ -157,12 +161,17 @@ const THIRD_PARTY_REPLY = new RegExp(
 
 /** An order. "Faut-il …?" is a question and is not one of these. */
 const FRENCH_ORDER = new RegExp(
-  `${WB}(?:tu dois|vous devez|il faut que tu|il faudrait que tu|faudrait que tu|faut(?:\\s+juste)?\\s+que tu|il te faut|il faut choisir)${WE}|${WB}il faut(?!-il)\\s+\\p{L}+(?:er|ir|re)${WE}|^faut\\s+\\p{L}+(?:er|ir|re)${WE}`,
+  [
+    `${WB}(?:tu dois|vous devez|il faut que tu|il faudrait que tu|faudrait que tu|faut(?:\\s+juste)?\\s+que tu|il te faut|il faut choisir|il te reste [àa]|t['’]as (?:juste )?[àa]|n['’]oublie pas|(?:il )?faut qu['’]on)${WE}`,
+    `${WB}il faudrait\\s+\\p{L}+(?:er|ir|re)${WE}`,
+    `${WB}il faut(?!-il)\\s+\\p{L}+(?:er|ir|re)${WE}`,
+    `^faut\\s+\\p{L}+(?:er|ir|re)${WE}`,
+  ].join('|'),
   'iu',
 );
 
 const BOOKED_CLAIM = new RegExp(
-  `${WB}(?:booked|is confirmed|you signed up|r[ée]servée?|confirmée?|inscrite?)${WE}`,
+  `${WB}(?:booked|is confirmed|you signed up|all set|c['’]est r[eé]gl[eé]|r[ée]servée?|confirmée?|inscrite?)${WE}`,
   'giu',
 );
 
@@ -172,14 +181,27 @@ const ATTRIBUTED = new RegExp(
 );
 
 const RELATIVE_DAY = new RegExp(
-  `${WB}(?:this\\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|ce\\s+(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)|tomorrow|demain)${WE}`,
+  `${WB}(?:this\\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)|ce\\s+(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)|tomorrow|demain)${WE}`,
   'giu',
 );
 
 const PARENT_ADDRESS = new RegExp(
-  `${WB}(?:did you|have you|do you|you get a chance|as-tu|t['’]as)${WE}`,
+  `${WB}(?:did you|have you|do you|you get a chance|can you|could you|as-tu|t['’]as|tu peux|peux-tu|pourrais-tu)${WE}`,
   'iu',
 );
+
+const WEEKDAY_BY_ISO: Record<number, readonly string[]> = {
+  0: ['monday', 'lundi'],
+  1: ['tuesday', 'mardi'],
+  2: ['wednesday', 'mercredi'],
+  3: ['thursday', 'jeudi'],
+  4: ['friday', 'vendredi'],
+  5: ['saturday', 'samedi'],
+  6: ['sunday', 'dimanche'],
+};
+
+const MONTH_NAME =
+  'janvier|february|fevrier|février|january|septembre|september|novembre|november|decembre|décembre|december|octobre|october|juillet|august|avril|april|march|mars|juin|june|july|aout|août|sept|mai|may|jan|feb|mar|apr|jun|jul|aug|oct|nov|dec';
 
 /**
  * A promised weekday that is today or earlier this week. "next Thursday" is
@@ -205,7 +227,12 @@ export function inventedHalePromise(text: string): boolean {
 
 function stockOpener(text: string): boolean {
   const trimmed = text.trim();
-  return STOCK_OPENER.test(trimmed) || STOCK_OPENER.test(trimmed.replace(GREETING, ''));
+  if (STOCK_OPENER.test(trimmed)) return true;
+  const word = GREETING_WORD.exec(trimmed);
+  if (!word?.[0]) return false;
+  const afterWord = trimmed.slice(word[0].length);
+  const tail = GREETING_TAIL.exec(afterWord);
+  return STOCK_OPENER.test(afterWord.slice(tail?.[0].length ?? 0));
 }
 
 /**
@@ -254,31 +281,188 @@ function stepOwner(nextStep: string | null | undefined): string | null {
   return name;
 }
 
+/** The weekday of "this <day>" in the family's zone, including today. */
+function thisWeekdayMonthDay(
+  now: Date,
+  timeZone: string,
+  iso: number,
+): { month: number; day: number } {
+  const todayIso = isoWeekdayIndex(now, timeZone);
+  const delta = (iso - todayIso + 7) % 7;
+  const date = addCalendarDays(localDate(now, timeZone), delta);
+  const [, month, day] = date.split('-').map(Number) as [number, number, number];
+  return { month, day };
+}
+
+function tomorrowIso(now: Date, timeZone: string): number {
+  const next = addCalendarDays(localDate(now, timeZone), 1);
+  const [year, month, day] = next.split('-').map(Number) as [number, number, number];
+  return (new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 6) % 7;
+}
+
+/**
+ * "avant vendredi" names a deadline, not the day itself, so it does not make
+ * "demain" true. "Friday's dentist" does.
+ */
+function threadNamesEventWeekday(haystack: string, iso: number): boolean {
+  return (WEEKDAY_BY_ISO[iso] ?? []).some((name) =>
+    new RegExp(`${WB}(?<!avant\\s|before\\s)${name}${WE}`, 'iu').test(haystack),
+  );
+}
+
+function monthNumber(name: string): number | undefined {
+  const key = name
+    .toLowerCase()
+    .replace(/\./g, '')
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '');
+  const months: Record<string, number> = {
+    jan: 1,
+    january: 1,
+    janvier: 1,
+    feb: 2,
+    february: 2,
+    fevrier: 2,
+    mar: 3,
+    march: 3,
+    mars: 3,
+    apr: 4,
+    april: 4,
+    avril: 4,
+    may: 5,
+    mai: 5,
+    jun: 6,
+    june: 6,
+    juin: 6,
+    jul: 7,
+    july: 7,
+    juillet: 7,
+    aug: 8,
+    august: 8,
+    aout: 8,
+    sep: 9,
+    sept: 9,
+    september: 9,
+    septembre: 9,
+    oct: 10,
+    october: 10,
+    octobre: 10,
+    nov: 11,
+    november: 11,
+    novembre: 11,
+    dec: 12,
+    december: 12,
+    decembre: 12,
+  };
+  return months[key];
+}
+
+function explicitDates(haystack: string): Array<{ month: number; day: number }> {
+  const found: Array<{ month: number; day: number }> = [];
+  const push = (monthName: string, dayText: string) => {
+    const month = monthNumber(monthName);
+    const day = Number(dayText);
+    if (month && day >= 1 && day <= 31) found.push({ month, day });
+  };
+  for (const match of haystack.matchAll(
+    new RegExp(`${WB}(${MONTH_NAME})\\.?\\s+(\\d{1,2})${WE}`, 'giu'),
+  )) {
+    if (match[1] && match[2]) push(match[1], match[2]);
+  }
+  for (const match of haystack.matchAll(
+    new RegExp(`${WB}(\\d{1,2})\\s+(${MONTH_NAME})\\.?${WE}`, 'giu'),
+  )) {
+    if (match[1] && match[2]) push(match[2], match[1]);
+  }
+  for (const match of haystack.matchAll(new RegExp(`${WB}\\d{4}-(\\d{2})-(\\d{2})${WE}`, 'gu'))) {
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) found.push({ month, day });
+  }
+  return found;
+}
+
+function explicitDateContradicts(
+  haystack: string,
+  target: { month: number; day: number },
+): boolean {
+  return explicitDates(haystack).some(
+    (date) => date.month !== target.month || date.day !== target.day,
+  );
+}
+
+/** A booking word inside a question ("est-elle inscrite?") is not a claim. */
+function inQuestion(text: string, index: number): boolean {
+  const rest = text.slice(index);
+  const next = rest.search(/[.!?]/);
+  return next >= 0 && rest[next] === '?';
+}
+
+/**
+ * The named owner is who the question is about. Mentioning them elsewhere
+ * ("Sam needs to… — can you send that") does not make the ask theirs.
+ */
+function ownerIsQuestionSubject(text: string, owner: string): boolean {
+  const name = owner.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(
+    `${WB}(?:(?:did|has|have|does|do|will|is|was|can|could)\\s+${name}|do you know if\\s+${name}|${name}\\s+a(?:\\s+pu|\\s+eu)?)${WE}`,
+    'iu',
+  ).test(text);
+}
+
+function relativeDayAllowed(
+  term: string,
+  weekday: string | undefined,
+  title: string,
+  nextStep: string | null | undefined,
+  now: Date,
+  timeZone: string,
+): boolean {
+  if (threadHas(term, title, nextStep)) return true;
+  const haystack = `${title}\n${nextStep ?? ''}`;
+  const lower = term.toLowerCase();
+  if (lower === 'tomorrow' || lower === 'demain') {
+    return threadNamesEventWeekday(haystack, tomorrowIso(now, timeZone));
+  }
+  if (!weekday) return false;
+  const iso = WEEKDAY_ISO[weekday.toLowerCase()];
+  if (iso === undefined) return false;
+  if (!threadNamesEventWeekday(haystack, iso)) return false;
+  return !explicitDateContradicts(haystack, thisWeekdayMonthDay(now, timeZone, iso));
+}
+
 /**
  * A fact the line states that the thread does not. A scheduled thread may
- * say the plan is booked. A relative day, a "you said", or a booking word
- * has to already be in the title or the next step.
+ * say the plan is booked. A question about a booking is not a claim. A
+ * relative day is allowed when the thread names that weekday and no explicit
+ * date disagrees, and tomorrow when tomorrow's weekday is named.
  */
 function inventedClaim(
   text: string,
   status: string,
   title: string,
   nextStep: string | null | undefined,
+  now: Date,
+  timeZone: string,
 ): boolean {
   if (status !== 'scheduled') {
     for (const match of text.matchAll(BOOKED_CLAIM)) {
       const claim = match[0];
-      if (claim && !threadHas(claim, title, nextStep)) return true;
+      if (!claim || inQuestion(text, match.index)) continue;
+      if (!threadHas(claim, title, nextStep)) return true;
     }
   }
   const attributed = ATTRIBUTED.exec(text);
   if (attributed?.[0] && !threadHas(attributed[0], title, nextStep)) return true;
   for (const match of text.matchAll(RELATIVE_DAY)) {
     const term = match[0];
-    if (term && !threadHas(term, title, nextStep)) return true;
+    if (!term) continue;
+    if (!relativeDayAllowed(term, match[1] ?? match[2], title, nextStep, now, timeZone)) {
+      return true;
+    }
   }
   const owner = stepOwner(nextStep);
-  if (owner && PARENT_ADDRESS.test(text) && !new RegExp(owner, 'i').test(text)) return true;
+  if (owner && PARENT_ADDRESS.test(text) && !ownerIsQuestionSubject(text, owner)) return true;
   return false;
 }
 
@@ -328,7 +512,7 @@ function prepareBody(
   if (thirdPartyNewsBlocked(status) && asksParentForThirdPartyNews(folded)) {
     return { ok: false, reason: 'parent_news' };
   }
-  if (inventedClaim(folded, status, title, nextStep)) {
+  if (inventedClaim(folded, status, title, nextStep, now, timeZone)) {
     return { ok: false, reason: 'invented_claim' };
   }
   return { ok: true, body: folded };
@@ -353,6 +537,14 @@ export function followupRefusal(
   return prepared.ok ? null : prepared.reason;
 }
 
+/** An order retry asks for a question. No sample sentence: that becomes the next draft. */
+function refusalLine(reason: string): string {
+  if (reason === 'order') {
+    return 'order. Rewrite it as a question about where things stand';
+  }
+  return reason;
+}
+
 function whoseMove(status: string): 'parent' | 'third_party' | 'scheduled' | 'open' {
   if (status === 'waiting_on_parent') return 'parent';
   if (status === 'waiting_on_third_party') return 'third_party';
@@ -373,7 +565,7 @@ async function oneAttempt(
   },
 ): Promise<WorkstreamComposeResult> {
   const skill = await loadCronSkill('workstream-followup');
-  const refusal = input.refusal ? `\nprevious attempt refused: ${input.refusal}` : '';
+  const refusal = input.refusal ? `\nprevious attempt refused: ${refusalLine(input.refusal)}` : '';
   const userMessage = [
     `today: ${localDate(input.now, input.timeZone)}`,
     `weekday: ${localWeekday(input.now, input.timeZone, input.language)}`,
