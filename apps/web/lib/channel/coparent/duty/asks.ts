@@ -13,7 +13,7 @@ import {
   readGroupBubbleSpend,
 } from '~/lib/channel/linq/family-outbound';
 import { dutyAssigneeIds } from '~/lib/channel/linq/group-members';
-import { splitKidEvent } from '~/lib/channel/linq/kid-event';
+import { splitKidEvent, withoutTeenTitles } from '~/lib/channel/linq/kid-event';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -26,6 +26,7 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
+import { teenChildIds } from '~/lib/channel/role-scope';
 import { isWithinQuietHours, localParts } from '~/lib/loop/prefs';
 import { closeFacts, writeFact } from '~/lib/memory/facts';
 import {
@@ -102,7 +103,8 @@ export interface DutySendPorts {
 
 export function defaultDutySendPorts(): DutySendPorts {
   return {
-    target: familyOutboundTarget,
+    target: (database, familyId) =>
+      familyOutboundTarget(database, familyId, { contentClass: 'pickup_duty' }),
     gate: assertProactiveSendAllowed,
     gatePorts: buildOutboundGatePorts,
     send: (input) =>
@@ -249,13 +251,15 @@ interface Household {
   parentNames: Record<string, string>;
   primaryUserId: string | null;
   childNames: string[];
+  /** The first names a group line may say: never a 13+ child's (rule #1). */
   childFirstNames: string[];
+  teenNames: string[];
   timeZone: string;
   language: 'en' | 'fr';
   chatId: string | null;
 }
 
-async function loadHousehold(database: Database, familyId: string): Promise<Household> {
+async function loadHousehold(database: Database, familyId: string, now: Date): Promise<Household> {
   const members = await database
     .select({
       userId: schema.familyMembers.userId,
@@ -288,13 +292,20 @@ async function loadHousehold(database: Database, familyId: string): Promise<Hous
       .limit(1);
     if (user?.timezone) timeZone = user.timezone;
   }
-  const children = await database
-    .select({ name: schema.children.name, familyId: schema.children.familyId })
-    .from(schema.children)
-    .where(eq(schema.children.familyId, familyId));
-  const childNames = children
-    .filter((row) => row.familyId === familyId && row.name)
-    .map((row) => row.name);
+  const children = (
+    await database
+      .select({
+        id: schema.children.id,
+        name: schema.children.name,
+        dateOfBirth: schema.children.dateOfBirth,
+        familyId: schema.children.familyId,
+      })
+      .from(schema.children)
+      .where(eq(schema.children.familyId, familyId))
+  ).filter((row) => row.familyId === familyId && row.name);
+  const teens = teenChildIds(children, now);
+  const childNames = children.map((row) => row.name);
+  const teenNames = children.filter((row) => teens.has(row.id)).map((row) => row.name);
   const named =
     parentIds.length === 0
       ? []
@@ -312,9 +323,11 @@ async function loadHousehold(database: Database, familyId: string): Promise<Hous
     parentNames,
     primaryUserId: primary,
     childNames,
-    childFirstNames: childNames
-      .map((name) => spokenFirstName(name))
+    childFirstNames: children
+      .filter((row) => !teens.has(row.id))
+      .map((row) => spokenFirstName(row.name))
       .filter((name): name is string => name !== null),
+    teenNames,
     timeZone,
     language: family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en',
     chatId: family?.linqGroupChatId ?? null,
@@ -373,7 +386,7 @@ function occasionFor(input: {
 }): DutyOccasion {
   const state = input.state;
   const split = input.title ? splitKidEvent(input.title, input.childNames) : null;
-  const onlyKid = input.childFirstNames.length === 1 ? input.childFirstNames[0] : null;
+  const onlyKid = input.childNames.length === 1 ? (input.childFirstNames[0] ?? null) : null;
   return {
     eventKey: input.eventKey,
     role: input.role,
@@ -398,7 +411,10 @@ function occasionFor(input: {
 async function buildOccasions(
   database: Database,
   familyId: string,
-  home: Pick<Household, 'childNames' | 'childFirstNames' | 'parentNames' | 'language'>,
+  home: Pick<
+    Household,
+    'childNames' | 'childFirstNames' | 'teenNames' | 'parentNames' | 'language'
+  >,
   now: Date,
 ): Promise<{
   occasions: DutyOccasion[];
@@ -429,7 +445,11 @@ async function buildOccasions(
     })
     .from(schema.parentCalendarBlocks)
     .where(eq(schema.parentCalendarBlocks.familyId, familyId));
-  const kidBlocks = blocks.filter((row) => row.familyId === familyId && row.kidRelated);
+  const kidBlocks = withoutTeenTitles(
+    blocks.filter((row) => row.familyId === familyId),
+    home.childNames,
+    home.teenNames,
+  ).filter((row) => row.kidRelated);
   const byEvent = new Map<string, typeof kidBlocks>();
   for (const block of kidBlocks) {
     const list = byEvent.get(block.eventId) ?? [];
@@ -516,7 +536,7 @@ export async function planFamilyDutyAsks(
   },
 ): Promise<FamilyDutyView> {
   if (!coparentDutySendsActive(input.familyId)) return { skipped: 'flag_off' };
-  const home = await loadHousehold(database, input.familyId);
+  const home = await loadHousehold(database, input.familyId, input.now);
   if (home.parentIds.length < 2 || !home.primaryUserId) return { skipped: 'single_parent' };
   const built = await buildOccasions(database, input.familyId, home, input.now);
   const local = localParts(input.now, home.timeZone);

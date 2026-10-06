@@ -50,6 +50,7 @@ export function familyMemoryKindsHandler(env?: MemoryKindEnv): DeterministicHand
             now: ctx.now,
             dedupeKey: `linq:memory_kinds:${inbound}`,
             templateKey: 'linq:memory_kinds',
+            contentClass: 'family_settings',
           });
         },
       });

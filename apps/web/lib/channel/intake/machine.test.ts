@@ -1476,6 +1476,32 @@ describe('intake · CASL keywords', () => {
     expect(withdrawal).toBeDefined();
   });
 
+  it('with group onboarding v2 on, a group STOP the roster did not answer still revokes and acks, as with v2 off', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const { fake, transport, deps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const result = await handleInboundSms(
+      fake.db,
+      transport.inbound(PHONE, 'STOP', {
+        transport: 'imessage',
+        chatId: 'chat-group',
+        isGroup: true,
+      }),
+      deps,
+    );
+
+    expect(result).toEqual({ status: 'stopped', ack: 'sent' });
+    expect(transport.bodies().at(-1)).toBe(STOP_ACK);
+    expect(
+      fake.writes.some(
+        (w) => w.op === 'update' && w.table === schema.parentChannels && w.payload.revokedAt,
+      ),
+    ).toBe(true);
+    vi.unstubAllEnvs();
+  });
+
   it('records the STOP even when Twilio permanently refuses the ack (21610 — the carrier already told them)', async () => {
     const { fake, transport, deps } = harness({});
     await text(fake, transport, deps, 'hi');

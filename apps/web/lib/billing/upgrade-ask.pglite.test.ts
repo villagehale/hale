@@ -274,6 +274,85 @@ describe('year retention on postgres', () => {
     expect(stored).toEqual({ stripeCustomerId: 'cus_test', stripeSubscriptionId: 'sub_test' });
   });
 
+  it('with group onboarding v2 on, neither the ask nor the decision goes into the group, even one of parents', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const seeded = await family();
+    const group = `group-${seeded.familyId}`;
+    const [roster] = await db.database
+      .insert(schema.linqGroupRosters)
+      .values({
+        chatId: group,
+        familyId: seeded.familyId,
+        source: 'added_to_existing',
+        status: 'confirmed',
+      })
+      .returning({ id: schema.linqGroupRosters.id });
+    await db.database.insert(schema.linqGroupRosterMembers).values([
+      {
+        rosterId: roster?.id as string,
+        chatId: group,
+        phoneE164Encrypted: 'enc-parent',
+        phoneE164Hash: `hash-parent-${seeded.familyId}`,
+        knownUserId: seeded.parentUserId,
+        status: 'known_parent',
+      },
+      {
+        rosterId: roster?.id as string,
+        chatId: group,
+        phoneE164Encrypted: 'enc-coparent',
+        phoneE164Hash: `hash-coparent-${seeded.familyId}`,
+        status: 'confirmed',
+        confirmedRole: 'co_parent',
+      },
+    ]);
+    const log: Array<{ chatId: string; text: string }> = [];
+    const asked = await maybeOfferYearRetention(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        parentChatId: DIRECT,
+        channel: 'imessage',
+        templateKey: null,
+        excludeMessageId: null,
+        now: NOW,
+      },
+      { send: sender(log) },
+    );
+    expect(asked).toEqual({ action: 'asked', channel: 'direct', chatId: DIRECT });
+
+    const [inbound] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        channel: 'imessage',
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        providerChatId: DIRECT,
+        providerMessageId: `in-v2-${seeded.familyId}`,
+        body: 'no',
+        sentAt: NOW,
+      })
+      .returning({ id: schema.channelMessages.id });
+    const answer = await prepareYearRetentionAnswer(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        inboundChannelMessageId: inbound?.id ?? null,
+        now: NOW,
+        polarity: 'no',
+      },
+      { send: sender(log) },
+    );
+    if (!answer.claimed) throw new Error('expected the answer to bind to the open ask');
+    await answer.afterSend?.('msg-declined');
+    expect(log.map((message) => message.chatId)).toEqual([DIRECT]);
+    vi.unstubAllEnvs();
+  });
+
   it('on no leaves the free plan and does not include a url', async () => {
     const seeded = await family({ group: null });
     await maybeOfferYearRetention(

@@ -384,6 +384,8 @@ export async function declineRosterMember(
  * Take back a grandparent, nanny or babysitter seat this group granted: the seat closes,
  * the family role goes, and the caregiver consent is withdrawn on the same scope. A
  * co-parent leaves through the departure flow instead. Their 1:1 channel is untouched.
+ * Someone who said STOP is still in the chat, so they stay on the roster as `declined`;
+ * a removal or an eject takes them off it.
  */
 export async function unseatCaregiverSeat(
   database: Database,
@@ -391,7 +393,7 @@ export async function unseatCaregiverSeat(
     familyId: string;
     userId: string;
     chatId: string;
-    via: 'participant_removed' | 'group_stop';
+    via: 'participant_removed' | 'group_stop' | 'group_ejected';
     now: Date;
   },
 ): Promise<
@@ -453,7 +455,7 @@ export async function unseatCaregiverSeat(
     });
     await tx
       .update(schema.linqGroupRosterMembers)
-      .set({ status: 'removed', updatedAt: input.now })
+      .set({ status: input.via === 'group_stop' ? 'declined' : 'removed', updatedAt: input.now })
       .where(eq(schema.linqGroupRosterMembers.id, granted.id));
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,

@@ -68,7 +68,7 @@ export type GroupRosterOutcome =
 const REBUILDABLE: readonly RosterStatus[] = ['roster_pending', 'ejected', 'refused'];
 const GONE: MemberStatus[] = ['left', 'removed'];
 
-function isUndefinedTable(err: unknown): boolean {
+export function isUndefinedTable(err: unknown): boolean {
   const fields = err as { code?: unknown; cause?: { code?: unknown } } | null;
   return fields?.code === '42P01' || fields?.cause?.code === '42P01';
 }

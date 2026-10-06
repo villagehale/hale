@@ -7,6 +7,7 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { linqGroupOnboardingV2Enabled } from './config';
+import type { OneToOneSend } from './connect-link-1to1';
 import type { RoleWordKey } from './group-onboarding-line-input';
 import {
   type GroupLineOutcome,
@@ -34,6 +35,8 @@ export interface RosterVoicePorts {
   now: Date;
   voice: GroupOnboardingComposer | undefined;
   send?: GroupLineSend;
+  /** The flow's 1:1 lines (connect links, the quiet notice). Absent is the real Linq door. */
+  oneToOne?: OneToOneSend;
 }
 
 const GONE: schema.LinqRosterMemberStatus[] = ['left', 'removed'];
@@ -73,7 +76,7 @@ export async function liveRosterMember(
   return row ?? null;
 }
 
-async function familyLanguage(database: Database, familyId: string): Promise<ReplyLanguage> {
+export async function familyLanguage(database: Database, familyId: string): Promise<ReplyLanguage> {
   const [row] = await database
     .select({ primaryLanguage: schema.families.primaryLanguage })
     .from(schema.families)
@@ -81,7 +84,10 @@ async function familyLanguage(database: Database, familyId: string): Promise<Rep
   return row?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
 }
 
-async function primaryParentId(database: Database, familyId: string): Promise<string | null> {
+export async function primaryParentId(
+  database: Database,
+  familyId: string,
+): Promise<string | null> {
   const [row] = await database
     .select({ userId: schema.familyMembers.userId })
     .from(schema.familyMembers)
