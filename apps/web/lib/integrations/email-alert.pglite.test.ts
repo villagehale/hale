@@ -811,6 +811,29 @@ describe('the facts the voice is given', () => {
     expect(facts.withheld.join(' ')).toContain('Sep 19');
   });
 
+  it('folds an accent onto the letter under it', () => {
+    const school = factsOf({
+      ...RENDER,
+      kind: 'reminder_only',
+      event: { ...RENDER.event, title: 'École Côte-des-Neiges' },
+    });
+    expect(school.title).toBe('École Cote-des-Neiges');
+    const fete = factsOf({
+      ...RENDER,
+      kind: 'reminder_only',
+      event: { ...RENDER.event, title: "Fête de l'automne" },
+    });
+    expect(fete.title).toBe("Fete de l'automne");
+  });
+
+  it('shortens a long sender at the comma, not mid-phrase', () => {
+    const facts = factsOf({
+      ...RENDER,
+      from: '"City of Toronto Parks, Forestry & Recreation" <parks@toronto.example>',
+    });
+    expect(facts.sender).toBe('City of Toronto Parks');
+  });
+
   it('folds a typographic subject line into GSM-7', () => {
     const facts = factsOf({
       ...RENDER,

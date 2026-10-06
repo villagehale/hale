@@ -1,9 +1,20 @@
 import type { Database } from '@hale/db';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { composeVoice, firstJsonObject, voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import type { ExtractionKind } from '~/lib/sentinel';
+import {
+  asksForKeyword,
+  foldOutboundLine,
+  foldedGsmLine,
+  inventedName,
+  mentionsOtherPerson,
+  mentionsSender,
+  namesHale,
+  stockOpener,
+  straySchedule,
+} from './outbound-line';
 
 /**
  * The words of an email alert.
@@ -58,79 +69,56 @@ export interface EmailAlertVoicePorts {
 
 const ATTEMPTS = 2;
 
-const KEYWORD_INSTRUCTION =
-  /\b(reply|respond|text|send|type|reponds|réponds)\b[^.?!]{0,24}\b(yes|no|oui|non)\b|\byes to confirm\b|\bpour confirmer\b/i;
-
-const MONTH_DAY =
-  /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}\b/gi;
-
-const CLOCK = /\b\d{1,2}:\d{2}\b/g;
-
-const WEEKDAYS = [
-  'sunday',
-  'monday',
-  'tuesday',
-  'wednesday',
-  'thursday',
-  'friday',
-  'saturday',
-] as const;
-
 /** Why a line may not be sent, or null when it may. `segments` is the one reason
- * the retry may drop the going clause — the count is the first thing that goes. */
+ * the retry may drop the going clause — the count is the first thing that goes.
+ * Accents are folded before any of these checks, and the title, the date, and
+ * the sender are compared after that same fold. */
 export function emailAlertRejection(
   text: string | null,
   facts: EmailAlertVoiceFacts,
 ): string | null {
   if (!text) return 'empty';
-  const line = text.trim();
+  if (text.includes('\n') || text.includes('\r')) return 'newline';
+  const line = foldedGsmLine(text);
   if (!line) return 'empty';
-  if (line.includes('\n') || line.includes('\r')) return 'newline';
-  if (smsEncoding(line) !== 'gsm7') return 'encoding';
   if (smsSegments(line) > 2) return 'segments';
-  if (KEYWORD_INSTRUCTION.test(line)) return 'keyword';
+  if (asksForKeyword(line, allowedFacts(facts))) return 'keyword';
   if (facts.offer === null) {
     if (line.includes('?')) return 'question';
   } else if (!line.endsWith('?')) {
     return 'no_question';
   }
-  if (facts.title && !line.toLowerCase().includes(facts.title.trim().toLowerCase())) return 'title';
-  if (facts.whenLabel && !line.includes(facts.whenLabel)) return 'when';
-  if (facts.wasLabel && !line.includes(facts.wasLabel)) return 'was';
-  if (facts.sender && !line.toLowerCase().includes(facts.sender.trim().toLowerCase())) {
-    return 'sender';
+  if (mentionsOtherPerson(line)) return 'person';
+  if (namesHale(withoutGoing(line, facts.going))) return 'hale';
+  if (stockOpener(line)) return 'opener';
+  if (facts.title && !line.toLowerCase().includes(foldOutboundLine(facts.title).toLowerCase())) {
+    return 'title';
   }
-  if (facts.place && !line.includes(facts.place)) return 'place';
+  if (facts.whenLabel && !line.includes(foldOutboundLine(facts.whenLabel))) return 'when';
+  if (facts.wasLabel && !line.includes(foldOutboundLine(facts.wasLabel))) return 'was';
+  if (facts.sender && !mentionsSender(line, facts.sender)) return 'sender';
+  if (facts.place && !line.includes(foldOutboundLine(facts.place))) return 'place';
   if (facts.going && !line.includes(facts.going)) return 'going';
   const lower = line.toLowerCase();
   for (const hidden of facts.withheld) {
-    if (hidden.length >= 4 && lower.includes(hidden.toLowerCase())) return 'withheld';
+    const folded = foldOutboundLine(hidden);
+    if (folded.length >= 4 && lower.includes(folded.toLowerCase())) return 'withheld';
   }
-
-  const allowed = [
-    facts.title,
-    facts.whenLabel,
-    facts.wasLabel,
-    facts.sender,
-    facts.place,
-    facts.going,
-  ]
-    .filter((slot): slot is string => slot !== null && slot !== '')
-    .join(' ')
-    .toLowerCase()
-    .replace(/\./g, '');
-  for (const mention of line.matchAll(MONTH_DAY)) {
-    const token = mention[0].toLowerCase().replace(/\./g, '');
-    if (!allowed.includes(token)) return 'stray_date';
-  }
-  for (const clock of line.matchAll(CLOCK)) {
-    if (!allowed.includes(clock[0])) return 'stray_clock';
-  }
-  for (const day of WEEKDAYS) {
-    const named = new RegExp(`\\b${day}\\b`, 'i');
-    if (named.test(line) && !named.test(allowed)) return 'stray_weekday';
-  }
+  const stray = straySchedule(line, allowedFacts(facts));
+  if (stray) return stray;
+  if (inventedName(line, allowedFacts(facts))) return 'stray_name';
   return null;
+}
+
+function allowedFacts(facts: EmailAlertVoiceFacts): string {
+  return [facts.title, facts.whenLabel, facts.wasLabel, facts.sender, facts.place, facts.going]
+    .filter((slot): slot is string => slot !== null && slot !== '')
+    .join(' ');
+}
+
+function withoutGoing(line: string, going: string | null): string {
+  if (!going) return line;
+  return line.split(going).join(' ');
 }
 
 export function emailAlertAccepts(text: string, facts: EmailAlertVoiceFacts): boolean {
@@ -191,7 +179,7 @@ export async function writeEmailAlert(
       continue;
     }
     const reject = emailAlertRejection(text, factsForTry);
-    if (reject === null && text) return { line: text.trim(), going: factsForTry.going };
+    if (reject === null && text) return { line: foldOutboundLine(text), going: factsForTry.going };
     reason = reject ?? 'empty';
     if (tryIndex === 0 && facts.going && reject === 'segments') {
       factsForTry = { ...facts, going: null };
@@ -267,7 +255,7 @@ async function composeEmailAlertLine(
       ...(tryIndex > 0
         ? {
             refused:
-              'The previous line was not sent. Copy when and was exactly, name the title, stay in two GSM-7 segments, and do not tell them which word to type. Leave the other-families clause out only if it was what made the line too long.',
+              'The previous line was not sent. Copy the facts exactly. Speak as I, about your week. Do not open with Just a heads-up or Just a reminder, and do not say Hale did something. Do not name a person, amount, day, or time you were not given. Stay in two segments, and do not tell them which word to type. Leave the other-families clause out only if it was what made the line too long.',
           }
         : {}),
     },

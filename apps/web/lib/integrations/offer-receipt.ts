@@ -1,9 +1,19 @@
 import type { Database } from '@hale/db';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { composeVoice, firstJsonObject, voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
+import {
+  asksForKeyword,
+  foldOutboundLine,
+  foldedGsmLine,
+  inventedName,
+  mentionsOtherPerson,
+  namesHale,
+  stockReceiptCloser,
+  straySchedule,
+} from './outbound-line';
 
 /**
  * The words after an offer is answered.
@@ -11,7 +21,9 @@ import { postOpsSlack } from '~/lib/monitoring/ops-slack';
  * The facts are the code's: what happened, the title, and the exact rendered
  * date-time. The line is the model's, through the same voice seam the other
  * parent-facing copy uses. A line that names a different occasion, leaves the
- * GSM-7 alphabet, or tells the parent which word to type is not sent. One
+ * date, or tells the parent which word to type is not sent. Accents are
+ * folded onto GSM-7 before that check, the same way every other outbound SMS
+ * is. One
  * retry, then nothing goes to the parent and #ops is told (VIL-404). There is
  * no canned sentence waiting underneath.
  */
@@ -35,52 +47,28 @@ export interface OfferReceiptPorts {
 
 const ATTEMPTS = 2;
 
-const KEYWORD_INSTRUCTION =
-  /\b(reply|respond|text|send|type|reponds|réponds)\b[^.?!]{0,24}\b(yes|no|oui|non)\b|\byes to confirm\b|\bpour confirmer\b/i;
-
-const MONTH_DAY =
-  /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}\b/gi;
-
-const CLOCK = /\b\d{1,2}:\d{2}\b/g;
-
-const WEEKDAYS = [
-  'sunday',
-  'monday',
-  'tuesday',
-  'wednesday',
-  'thursday',
-  'friday',
-  'saturday',
-] as const;
-
 /**
  * Whether this line may be sent for these facts.
  *
  * It has to name the occasion and the exact rendered instant — a receipt that
- * says Thursday when the row is Sunday is the bug — stay in one GSM-7 segment,
- * and not instruct a keyword.
+ * says Thursday when the row is Sunday is the bug — stay in one GSM-7 segment
+ * after the outbound fold, and not instruct a keyword. The title and the date
+ * are compared after that same fold, so Fête matches the Fete the facts hold.
  */
 export function offerReceiptAccepts(text: string, facts: OfferReceiptFacts): boolean {
-  const line = text.trim();
-  if (!line) return false;
-  if (line.includes('\n') || line.includes('\r')) return false;
-  if (smsEncoding(line) !== 'gsm7' || smsSegments(line) !== 1) return false;
-  if (!line.toLowerCase().includes(facts.title.trim().toLowerCase())) return false;
-  if (!line.includes(facts.whenLabel)) return false;
-  if (KEYWORD_INSTRUCTION.test(line)) return false;
-
-  const allowed = `${facts.title} ${facts.whenLabel}`.toLowerCase().replace(/\./g, '');
-  for (const mention of line.matchAll(MONTH_DAY)) {
-    const token = mention[0].toLowerCase().replace(/\./g, '');
-    if (!allowed.includes(token)) return false;
-  }
-  for (const clock of line.matchAll(CLOCK)) {
-    if (!facts.whenLabel.includes(clock[0]) && !facts.title.includes(clock[0])) return false;
-  }
-  for (const day of WEEKDAYS) {
-    const named = new RegExp(`\\b${day}\\b`, 'i');
-    if (named.test(line) && !named.test(`${facts.title} ${facts.whenLabel}`)) return false;
-  }
+  const line = foldedGsmLine(text);
+  if (!line || smsSegments(line) !== 1) return false;
+  const allowed = `${facts.title} ${facts.whenLabel}`;
+  const title = foldOutboundLine(facts.title).toLowerCase();
+  const when = foldOutboundLine(facts.whenLabel);
+  if (!title || !line.toLowerCase().includes(title)) return false;
+  if (!when || !line.includes(when)) return false;
+  if (asksForKeyword(line, allowed)) return false;
+  if (mentionsOtherPerson(line)) return false;
+  if (namesHale(line)) return false;
+  if (stockReceiptCloser(line)) return false;
+  if (straySchedule(line, allowed) !== null) return false;
+  if (inventedName(line, allowed) !== null) return false;
   return true;
 }
 
@@ -103,7 +91,7 @@ export async function writeOfferReceipt(
       reason = 'threw';
       continue;
     }
-    if (text && offerReceiptAccepts(text, facts)) return text.trim();
+    if (text && offerReceiptAccepts(text, facts)) return foldOutboundLine(text);
     reason = text ? 'rejected' : 'empty';
   }
   await ports.alert(`offer receipt: unsent after retry (${facts.kind}, ${reason})`);
@@ -157,7 +145,7 @@ async function composeOfferReceiptLine(
       ...(tryIndex > 0
         ? {
             refused:
-              'The previous line was not sent. Copy when exactly, name the title, one GSM-7 segment, and do not tell them which word to type.',
+              "The previous line was not sent. Copy title and when exactly, in the language given. It is this parent's own week: say your week, ta semaine, or votre semaine. Never say their week, a co-parent, or l'autre parent. One segment. Do not tell them which word to type, and do not name any other day, time, amount, or person.",
           }
         : {}),
     },

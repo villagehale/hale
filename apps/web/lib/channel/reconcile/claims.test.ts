@@ -99,6 +99,20 @@ describe('extractStateClaims — the false positives that would break production
     expect(kinds('Want me to watch that morning and text you before it opens?')).toEqual([]);
   });
 
+  it('reads a confirmation ask as a claim a draft has to back', () => {
+    expect(kinds('Want me to move swim to Tue 4:30?')).toEqual(['calendar_confirm']);
+    expect(kinds('Veux-tu la déplacer à mardi prochain (13 oct.) à 16h30 ?')).toEqual([
+      'calendar_confirm',
+    ]);
+    expect(kinds('Want me to check next week?')).toEqual([]);
+  });
+
+  it('reads a done-claim as a scheduled event, not as a draft', () => {
+    expect(kinds("I've set it up for next Tuesday.")).toEqual(['scheduled_event']);
+    expect(kinds("C'est fait.")).toEqual(['scheduled_event']);
+    expect(kinds("Je l'ai déplacé.")).toEqual(['scheduled_event']);
+  });
+
   it('leaves an absence assertion alone', () => {
     expect(
       kinds(

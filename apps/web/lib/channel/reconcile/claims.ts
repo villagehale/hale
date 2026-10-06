@@ -12,7 +12,7 @@
  * gate that catches a hallucinated promise itself capable of hallucinating. So it is
  * text in, spans out, no client, no await.
  *
- * FIVE CLAIM FAMILIES, and the taxonomy is closed on purpose (see {@link ClaimKind}).
+ * SIX CLAIM FAMILIES, and the taxonomy is closed on purpose (see {@link ClaimKind}).
  * "I'll let you know once it's done" is not in it, and that is not an oversight: every
  * family here names a question the database can answer, plus the one family whose answer
  * is always no. A wider net would refuse the deterministic templates that have said
@@ -31,9 +31,9 @@
  */
 
 /**
- * The five things a message can claim that this primitive knows how to check.
+ * The six things a message can claim that this primitive knows how to check.
  *
- * Each maps to exactly one question in reconcile.ts, and three of the five can be
+ * Each maps to exactly one question in reconcile.ts, and four of the six can be
  * answered yes. `self_referential` never can — a promise about how Hale behaves has no
  * table. `co_parent_invite` never can either: the invite path sends, then says so, and
  * a model sentence is not that path.
@@ -45,6 +45,11 @@ export type ClaimKind =
   | 'activity_followup'
   /** "Your well-baby visit is booked." — an assertion that a placement exists. */
   | 'scheduled_event'
+  /**
+   * "Want me to move swim to Tue 4:30?" — a confirmation ask. True only when a
+   * draft is already waiting for the yes. A question with no draft approves nothing.
+   */
+  | 'calendar_confirm'
   /** "I'll cut the one sec messages and just answer." — a promise about Hale itself. */
   | 'self_referential'
   /**
@@ -152,9 +157,22 @@ const CEASE_VERB =
 const OWN_OUTPUT =
   /\b(?:messages?|texts?|texting|replies|reply|replying|one\s+sec|updates?|notifications?|pings?|check[-\s]?ins?|nudges?)\b/i;
 
-/** An assertion that a placement EXISTS. */
+/** An assertion that a placement EXISTS. "I've set it up" is this, not a draft:
+ * a draft is still a question, and saying it is done is a claim about a row. */
 const SCHEDULED_ASSERTION =
-  /\b(?:is|are|'s|'re)\s+(?:booked|scheduled|confirmed|on\s+your\s+calendar|in\s+your\s+calendar)\b|\bi'?(?:ve|\s+have)\s+(?:booked|added|scheduled|put)\b|\byou'?re\s+(?:booked|registered|signed\s+up|all\s+set)\b/i;
+  /\b(?:is|are|'s|'re)\s+(?:booked|scheduled|confirmed|on\s+your\s+calendar|in\s+your\s+calendar)\b|\bi'?(?:ve|\s+have)\s+(?:booked|added|scheduled|put|moved|cancelled|canceled|set\s+it\s+up)\b|\byou'?re\s+(?:booked|registered|signed\s+up|all\s+set)\b|\bc'est\s+fait\b|\bje\s+l'ai\s+(?:d[eé]plac[eé]e?|ajout[eé]e?|annul[eé]e?|mis(?:e)?)(?![a-zà-ÿ])/i;
+
+/** A question that asks to move, add, or cancel. Permission Hale does not have
+ * yet — unless a draft is already waiting, in which case the question is the ask. */
+const CALENDAR_ASK = /\b(?:want me to|shall i|should i|veux-tu|veux tu|tu veux que je)\b/i;
+const CALENDAR_VERB =
+  /\b(?:moves?|moving|cancels?|cancel(?:l)?ing|reschedules?|adds?|adding|puts?|plac(?:e|es|ing)|d[eé]plac(?:e|es|er)|annul(?:e|es|er)|ajout(?:e|es|er))\b/i;
+
+function isCalendarConfirmAsk(sentence: string): boolean {
+  const text = sentence.trimEnd();
+  if (!text.endsWith('?')) return false;
+  return CALENDAR_ASK.test(text) && CALENDAR_VERB.test(text);
+}
 
 /** Words that carry no subject — dropped before a `scheduled_event` is matched against
  * what is actually on the family's calendar. */
@@ -225,8 +243,11 @@ function isCoParentInviteClaim(text: string): boolean {
 }
 
 function kindOf(sentence: string): ClaimKind | null {
-  // A question is a proposal, not a claim. "Want me to watch that morning?" asks for
-  // permission Hale does not yet have, and refusing it would refuse the honest move.
+  // A confirmation ask is a claim about a draft. "Want me to move swim?" with
+  // nothing drafted approves nothing on the next yes. Every other question is
+  // still a proposal: "Want me to watch that morning?" asks for permission Hale
+  // does not yet have, and refusing it would refuse the honest move.
+  if (isCalendarConfirmAsk(sentence)) return 'calendar_confirm';
   if (sentence.trimEnd().endsWith('?')) return null;
 
   const text = withoutQuotedSpans(sentence);

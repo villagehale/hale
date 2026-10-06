@@ -25,6 +25,33 @@ function view(overrides: Partial<ReconcileView> = {}): ReconcileView {
 
 const verdictFor = (body: string, v: ReconcileView) => reconcile(extractStateClaims(body), v);
 
+describe('reconcile — a confirmation ask needs a draft', () => {
+  const ask = 'Want me to move swim to Tue 4:30?';
+
+  it('refuses the ask when nothing was drafted', () => {
+    expect(verdictFor(ask, view()).refused.map((refusal) => refusal.reason)).toEqual([
+      'no_calendar_draft',
+    ]);
+  });
+
+  it('matches the ask when this turn drafted one', () => {
+    expect(verdictFor(ask, view({ pendingCalendarDraft: true })).refused).toEqual([]);
+  });
+
+  it('refuses a French ask with no draft, and a done-claim that only asked', () => {
+    expect(
+      verdictFor('Veux-tu la déplacer à mardi prochain (13 oct.) à 16h30 ?', view()).refused.map(
+        (refusal) => refusal.reason,
+      ),
+    ).toEqual(['no_calendar_draft']);
+    expect(
+      verdictFor("I've set it up for next Tuesday.", view()).refused.map(
+        (refusal) => refusal.reason,
+      ),
+    ).toEqual(['no_scheduled_row']);
+  });
+});
+
 describe('reconcile — the registration watch', () => {
   const body = "I'm watching that morning and I'll text you before it goes live.";
 

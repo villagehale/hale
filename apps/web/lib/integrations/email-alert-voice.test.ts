@@ -115,4 +115,102 @@ describe('emailAlertAccepts', () => {
       emailAlertAccepts('Riverside Pool says Gymnastics. Details stay out of this text.', teen),
     ).toBe(false);
   });
+
+  it('folds an accent and a curly apostrophe instead of refusing the line', async () => {
+    const titled = {
+      ...FACTS,
+      title: 'Fete de la rentrée',
+    };
+    const raw =
+      'Riverside Pool, Fête de la rentrée is on Sunday, Oct 4 at 9:00 a.m. Want this on your week?';
+    expect(emailAlertRejection(raw, titled)).toBeNull();
+    const written = await writeEmailAlert(titled, {
+      attempt: async () => raw,
+      alert: async () => undefined,
+    });
+    expect(written?.line).toContain('Fete de la rentrée');
+    expect(written?.line).not.toContain('ê');
+
+    const theatre = { ...FACTS, title: "Children's Theatre" };
+    const curly =
+      'Riverside Pool, Children\u2019s Theatre is on Sunday, Oct 4 at 9:00 a.m. Want this on your week?';
+    const sent = await writeEmailAlert(theatre, {
+      attempt: async () => curly,
+      alert: async () => undefined,
+    });
+    expect(sent?.line).toContain("Children's Theatre");
+  });
+
+  it('refuses a keyword, a stray date, an amount, a person, and a stock opener', () => {
+    expect(emailAlertRejection(`${GOOD} Écris OUI.`, FACTS)).toBe('keyword');
+    expect(emailAlertRejection(`Say STOP. ${GOOD}`, FACTS)).toBe('keyword');
+    expect(
+      emailAlertRejection(
+        'Riverside Pool, Gymnastics is on Sunday, Oct 4 at 9:00 a.m., aussi jeudi. Want this on your week?',
+        FACTS,
+      ),
+    ).toBe('stray_weekday');
+    expect(
+      emailAlertRejection(
+        'Riverside Pool, Gymnastics is on Sunday, Oct 4 at 9:00 a.m. and le 5 octobre. Want this on your week?',
+        FACTS,
+      ),
+    ).toBe('stray_date');
+    expect(
+      emailAlertRejection(
+        'Riverside Pool will refund you $40 for Gymnastics on Sunday, Oct 4 at 9:00 a.m. Want this on your week?',
+        FACTS,
+      ),
+    ).toBe('stray_money');
+    expect(
+      emailAlertRejection(
+        'Riverside Pool, Gymnastics is on Sunday, Oct 4 at 9:00 a.m. at 16h30. Want this on your week?',
+        FACTS,
+      ),
+    ).toBe('stray_clock');
+    expect(
+      emailAlertRejection(
+        'Riverside Pool says Maya is free and Gymnastics is on Sunday, Oct 4 at 9:00 a.m. Want this on your week?',
+        FACTS,
+      ),
+    ).toBe('stray_name');
+    expect(
+      emailAlertRejection(
+        'Hale got a booking confirmation: Riverside Pool, Gymnastics is on Sunday, Oct 4 at 9:00 a.m. Want this on your week?',
+        FACTS,
+      ),
+    ).toBe('hale');
+    expect(
+      emailAlertRejection(
+        'Just a heads-up: Riverside Pool, Gymnastics is on Sunday, Oct 4 at 9:00 a.m. Want this on your week?',
+        FACTS,
+      ),
+    ).toBe('opener');
+    expect(
+      emailAlertRejection(
+        'Riverside Pool, Gymnastics is on Sunday, Oct 4 at 9:00 a.m. Want this on their week?',
+        FACTS,
+      ),
+    ).toBe('person');
+  });
+
+  it('accepts a sender shortened at a word boundary, and still requires the place', () => {
+    const facts: EmailAlertVoiceFacts = {
+      ...FACTS,
+      sender: 'City of Toronto Parks',
+      place: 'High Park',
+    };
+    expect(
+      emailAlertRejection(
+        'City of Toronto, Gymnastics is on Sunday, Oct 4 at 9:00 a.m. at High Park. Want this on your week?',
+        facts,
+      ),
+    ).toBeNull();
+    expect(
+      emailAlertRejection(
+        'City of Toronto Parks, Gymnastics is on Sunday, Oct 4 at 9:00 a.m. Want this on your week?',
+        facts,
+      ),
+    ).toBe('place');
+  });
 });

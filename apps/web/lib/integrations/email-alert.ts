@@ -56,6 +56,7 @@ import {
   goingOutcome,
   readSessionGoing,
 } from './going';
+import { foldOutboundLine } from './outbound-line';
 
 /**
  * A parenting email in a connected Gmail becomes ONE text to the parent.
@@ -1355,10 +1356,7 @@ export function emailAlertVoiceFacts(input: EmailAlertRenderInput): {
 } {
   const kind = effectiveKind(input.kind, input.booked);
   const sanitized = sanitizedTitle(input.event.title);
-  const senderFull = clamp(gsm7(senderLabel(input.from)), SENDER_MAX).replace(
-    TRAILING_PUNCTUATION,
-    '',
-  );
+  const senderFull = clampPhrase(gsm7(senderLabel(input.from)), SENDER_MAX);
   const domain = domainOf(input.from);
   const calendarNotice =
     fromParentsCalendar(input.from) && (kind === 'new_event' || kind === 'reminder_only');
@@ -1658,40 +1656,19 @@ function senderLabel(from: string): string {
   return address.split('@')[1]?.trim() ?? '';
 }
 
-/** The typographic characters a mail client emits that GSM-7 has no septet for. One
- * curly apostrophe in a subject line flips the WHOLE body to UCS-2 and halves the
- * segment budget, for a difference nobody reading it can see. */
-const GSM7_FOLDS: Record<string, string> = {
-  '‘': "'",
-  '’': "'",
-  '‚': "'",
-  '“': '"',
-  '”': '"',
-  '–': '-',
-  '—': '-',
-  '−': '-',
-  '…': '...',
-  ' ': ' ',
-  ' ': ' ',
-  ' ': ' ',
-  '•': '-',
-};
-
 /**
- * Vendor text, made safe to put on a wire Hale is billed for: folded where there is an
- * obvious ASCII equivalent, dropped where there is not, whitespace collapsed to single
- * spaces so a subject line cannot open a second line under Hale's name.
+ * Vendor text, made safe to put on a wire Hale is billed for.
  *
- * The strict printable-basic test rather than {@link isGsm7}: the basic alphabet
- * contains LF and CR, and the extension table costs two septets, so neither belongs in a
- * string whose length is being budgeted one septet per character.
+ * The fold is the one the rest of outbound SMS uses: an accent the alphabet
+ * cannot carry becomes the letter under it (ô → o, ê → e, ç → c), and a curly
+ * quote becomes a straight one. Deleting the letter is how "Côte" left as
+ * "Cte". After that fold, a newline or an extension-table glyph is dropped,
+ * because a fact's length is budgeted one septet per character.
  */
 function gsm7(text: string): string {
   let out = '';
-  for (const char of text) {
-    for (const folded of GSM7_FOLDS[char] ?? char) {
-      if (isPrintableGsm7Basic(folded)) out += folded;
-    }
+  for (const char of foldOutboundLine(text)) {
+    if (isPrintableGsm7Basic(char)) out += char;
   }
   return out.replace(/\s+/g, ' ').trim();
 }
@@ -1703,4 +1680,31 @@ function clamp(text: string, max: number): string {
   const cut = text.slice(0, max);
   const space = cut.lastIndexOf(' ');
   return (space > max / 2 ? cut.slice(0, space) : cut).trimEnd();
+}
+
+/** A sender, cut at the first comma when that keeps a real name, else at an
+ * "&", an "and", or a word inside the budget. Never mid-word, and never with
+ * a trailing join left on. The comma is the name; everything after it is the
+ * department that was landing as "Forestry &". */
+function clampPhrase(text: string, max: number): string {
+  const stripped = text.replace(TRAILING_PUNCTUATION, '').trimEnd();
+  if (stripped.length <= max) return stripped;
+  const firstComma = stripped.indexOf(', ');
+  if (firstComma >= 12) return stripped.slice(0, firstComma).trimEnd();
+  const window = stripped.slice(0, max);
+  const phraseAt = Math.max(
+    window.lastIndexOf(', '),
+    window.lastIndexOf(' & '),
+    window.toLowerCase().lastIndexOf(' and '),
+  );
+  let cut = window;
+  if (phraseAt >= 12) cut = window.slice(0, phraseAt);
+  else {
+    const space = window.lastIndexOf(' ');
+    cut = space > max / 2 ? window.slice(0, space) : window;
+  }
+  return cut
+    .replace(/[\s&,;]+$/g, '')
+    .replace(TRAILING_PUNCTUATION, '')
+    .trimEnd();
 }

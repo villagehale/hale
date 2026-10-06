@@ -96,12 +96,15 @@ function fakeReader(events: ScheduleEvent[], held = false): ChannelScheduleReade
   };
 }
 
-function fakePort(): ChannelDraftPort & { drafts: ChannelDraftInput[] } {
+function fakePort(reviewerApproved?: boolean): ChannelDraftPort & { drafts: ChannelDraftInput[] } {
   const port = {
     drafts: [] as ChannelDraftInput[],
     async draft(input: ChannelDraftInput) {
       port.drafts.push(input);
-      return { actionId: `action-${port.drafts.length}` };
+      return {
+        actionId: `action-${port.drafts.length}`,
+        ...(reviewerApproved === false ? { reviewerApproved: false as const } : {}),
+      };
     },
   };
   return port;
@@ -139,8 +142,9 @@ function harness(
   teenChildIds: ReadonlySet<string> = new Set(),
   offered: readonly OfferedCandidate[] = [],
   heldOnCalendar = false,
+  reviewerApproved?: boolean,
 ): Harness {
-  const port = fakePort();
+  const port = fakePort(reviewerApproved);
   const audit: unknown[] = [];
   const minted: string[] = [];
   const signals: { verb: string; title: string; startsAt: Date }[] = [];
@@ -299,6 +303,21 @@ describe('propose_calendar_move', () => {
     expect(h.signals).toEqual([
       { verb: 'move', title: 'Swim lesson', startsAt: new Date('2026-08-04T20:30:00.000Z') },
     ]);
+  });
+
+  it('does not hand the model a draft the reviewer rejected', async () => {
+    const h = harness([scheduleEvent()], new Set(), [], false, false);
+
+    const result = (await h.call('propose_calendar_move', {
+      eventId: MON_SWIM,
+      date: '2026-08-04',
+      time: '16:30',
+      weekday: 'tue',
+    })) as { drafted: boolean; reason?: string };
+
+    expect(result).toEqual({ drafted: false, reason: 'not_approved' });
+    expect(h.minted).toEqual([]);
+    expect(h.signals).toEqual([]);
   });
 
   it('refuses an eventId the reader never handed out — no draft, no invention', async () => {

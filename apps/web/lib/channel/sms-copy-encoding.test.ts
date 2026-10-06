@@ -340,10 +340,14 @@ describe('an offer receipt is sent only when it names this occasion', () => {
     });
   });
 
-  it('accepts a French line whose accents are in GSM-7', () => {
-    const line = "C'est noté, Picture day, Sunday, Oct 4 at 9:00 a.m. Dis-moi pour l'enlever.";
-    expect(offerReceiptAccepts(line, { ...facts, language: 'fr' })).toBe(true);
+  it('accepts a French line that copies the French date', () => {
+    const line = "C'est noté, Picture day, dimanche 4 oct. à 9 h. Dis-moi pour l'enlever.";
+    const fr = { ...facts, language: 'fr' as const, whenLabel: 'dimanche 4 oct. à 9 h' };
+    expect(offerReceiptAccepts(line, fr)).toBe(true);
     expect(smsEncoding(line)).toBe('gsm7');
+    expect(offerReceiptAccepts("C'est noté, Picture day, Sunday, Oct 4 at 9:00 a.m.", fr)).toBe(
+      false,
+    );
   });
 
   it('refuses a different or past date', () => {
@@ -363,8 +367,8 @@ describe('an offer receipt is sent only when it names this occasion', () => {
     expect(offerReceiptAccepts('Picture day is on your week.', facts)).toBe(false);
   });
 
-  it('refuses UCS-2, a second segment, and a keyword instruction', () => {
-    expect(offerReceiptAccepts('Picture day 👍 Sunday, Oct 4 at 9:00 a.m.', facts)).toBe(false);
+  it('folds an emoji out, and still refuses a second segment and a keyword instruction', () => {
+    expect(offerReceiptAccepts('Picture day 👍 Sunday, Oct 4 at 9:00 a.m.', facts)).toBe(true);
     const novel = `Picture day on Sunday, Oct 4 at 9:00 a.m. ${'word '.repeat(80)}`;
     expect(smsSegments(novel)).toBeGreaterThan(1);
     expect(offerReceiptAccepts(novel, facts)).toBe(false);

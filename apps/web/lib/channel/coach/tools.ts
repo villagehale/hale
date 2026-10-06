@@ -424,11 +424,14 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const { familyId, reader, draftPort, onDraft, now } = args;
   let draftsThisTurn = 0;
 
-  /** The one place a draft is minted, so the turn's ledger cannot miss one. */
-  async function mint(input: ChannelDraftInput): Promise<string> {
-    const { actionId } = await draftPort.draft(input);
-    onDraft?.(actionId);
-    return actionId;
+  /** The one place a draft is minted, so the turn's ledger cannot miss one.
+   * A reviewer rejection is not a draft the parent can approve: the tool
+   * says so, and nothing is signalled for the reply to ask about. */
+  async function mint(input: ChannelDraftInput): Promise<string | null> {
+    const result = await draftPort.draft(input);
+    if (result.reviewerApproved === false) return null;
+    onDraft?.(result.actionId);
+    return result.actionId;
   }
 
   /** Spend one unit of the turn's budget, or refuse. Counted only where a draft is
@@ -561,6 +564,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: move to ${localWhen(startsAt, timeZone)}`,
         teenContent: event.teen,
       });
+      if (actionId === null) return { drafted: false as const, reason: 'not_approved' as const };
       args.onCalendar?.({ verb: 'move', title: event.title, startsAt });
       return {
         drafted: true as const,
@@ -601,6 +605,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: cancel the ${localWhen(event.startsAt, timeZone)} item`,
         teenContent: event.teen,
       });
+      if (actionId === null) return { drafted: false as const, reason: 'not_approved' as const };
       args.onCalendar?.({ verb: 'cancel', title: event.title, startsAt: event.startsAt });
       return { drafted: true as const, actionId };
     },
@@ -681,6 +686,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: add "${input.title}" on ${localWhen(startsAt, timeZone)}`,
         teenContent: false,
       });
+      if (actionId === null) return { drafted: false as const, reason: 'not_approved' as const };
       args.onCalendar?.({ verb: 'add', title: input.title, startsAt });
       return { drafted: true as const, actionId, when: longWhen(startsAt, timeZone) };
     },

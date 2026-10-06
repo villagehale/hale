@@ -54,6 +54,13 @@ export interface ChannelDraftInput {
 
 export interface ChannelDraftResult {
   actionId: string;
+  /**
+   * Whether the reviewer cleared this draft. Absent means cleared — a test
+   * port that only returns `{ actionId }` still counts. False means the
+   * reviewer rejected it (quiet hours, or any other refusal), so the tool
+   * must not tell the model a yes has something to approve.
+   */
+  reviewerApproved?: boolean;
 }
 
 /**
@@ -174,5 +181,5 @@ export async function mintChannelCalendarDraft(
     model: verdict.model,
   });
 
-  return { actionId };
+  return { actionId, reviewerApproved: verdict.verdict.kind === 'approve' };
 }

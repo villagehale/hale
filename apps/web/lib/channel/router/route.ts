@@ -1903,6 +1903,9 @@ async function composeReconciledReply(
           result.spotWatch ? ('spot_watch' as const) : null,
         ].filter((kind) => kind !== null),
       ),
+      // A confirmation ask is backed only by a draft this turn actually
+      // handed the model. A reviewer rejection never lands in this list.
+      pendingCalendarDraft: (result.calendarIntents?.length ?? 0) > 0,
     });
     if (verdict.refused.length === 0) {
       return { ...result, mints: verdict.mints };

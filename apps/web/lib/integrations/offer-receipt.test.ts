@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type OfferReceiptFacts, offerReceiptAccepts, writeOfferReceipt } from './offer-receipt';
+import { foldOutboundLine } from './outbound-line';
 
 const FACTS: OfferReceiptFacts = {
   kind: 'added',
@@ -49,5 +50,69 @@ describe('writeOfferReceipt', () => {
     expect(pages).toHaveLength(1);
     expect(pages[0]).toContain('unsent after retry');
     expect(pages[0]).not.toContain('Gymnastics');
+  });
+
+  it('folds an accent and a curly apostrophe, then sends that line', async () => {
+    const raw = "J'ai ajouté Gymnastics de côté, Sunday, Oct 4 at 9:00 a.m.";
+    const line = await writeOfferReceipt(FACTS, {
+      attempt: async () => raw,
+      alert: async () => undefined,
+    });
+    expect(line).toBe("J'ai ajouté Gymnastics de coté, Sunday, Oct 4 at 9:00 a.m.");
+    expect(foldOutboundLine('Fête')).toBe('Fete');
+    expect(foldOutboundLine('Children\u2019s Theatre')).toBe("Children's Theatre");
+  });
+});
+
+const FR: OfferReceiptFacts = {
+  ...FACTS,
+  language: 'fr',
+  whenLabel: 'dimanche 4 oct. à 9 h',
+};
+
+describe('offerReceiptAccepts', () => {
+  it('accepts a French line that copies the French date', () => {
+    expect(
+      offerReceiptAccepts(
+        "C'est noté, Gymnastics, dimanche 4 oct. à 9 h. Dis-moi pour l'enlever.",
+        FR,
+      ),
+    ).toBe(true);
+  });
+
+  it('refuses an English date, another weekday, and another calendar day', () => {
+    expect(offerReceiptAccepts("J'ai ajouté Gymnastics le Sunday, Oct 4 at 9:00 a.m.", FR)).toBe(
+      false,
+    );
+    expect(offerReceiptAccepts('Gymnastics, dimanche 4 oct. à 9 h, aussi jeudi.', FR)).toBe(false);
+    expect(offerReceiptAccepts('Gymnastics, dimanche 4 oct. à 9 h et le 5 octobre.', FR)).toBe(
+      false,
+    );
+  });
+
+  it('refuses a French keyword ask, an all-caps token, and a co-parent', () => {
+    const base = 'Gymnastics, dimanche 4 oct. à 9 h.';
+    expect(offerReceiptAccepts(`${base} Écris OUI pour le garder.`, FR)).toBe(false);
+    expect(offerReceiptAccepts(`${base} Texte NON.`, FR)).toBe(false);
+    expect(offerReceiptAccepts(`${base} Dis NON.`, FR)).toBe(false);
+    expect(
+      offerReceiptAccepts('Say STOP REMOVE. Gymnastics is on Sunday, Oct 4 at 9:00 a.m.', FACTS),
+    ).toBe(false);
+    expect(
+      offerReceiptAccepts(
+        'Gymnastics was already on their week, Sunday, Oct 4 at 9:00 a.m.',
+        FACTS,
+      ),
+    ).toBe(false);
+    expect(
+      offerReceiptAccepts("Gymnastics, dimanche 4 oct. à 9 h, la semaine de l'autre parent.", FR),
+    ).toBe(false);
+    expect(offerReceiptAccepts('Gymnastics, dimanche 4 oct. à 9 h, leur semaine.', FR)).toBe(false);
+    expect(
+      offerReceiptAccepts(
+        'Gymnastics was already on your week, Sunday, Oct 4 at 9:00 a.m. - let me know if you want it removed.',
+        FACTS,
+      ),
+    ).toBe(false);
   });
 });

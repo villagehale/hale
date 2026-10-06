@@ -4,7 +4,7 @@ import { and, desc, eq, gt, inArray, isNull, ne } from 'drizzle-orm';
 import { normalizeReply } from '~/lib/channel/affirmative';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
-import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
+import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
@@ -15,6 +15,7 @@ import {
   productionOfferReceiptPorts,
   writeOfferReceipt,
 } from './offer-receipt';
+import { offerWhenLabel } from './offer-when-label';
 
 /**
  * THE YES AT THE END OF AN EMAIL ALERT — the row it lands in, and what it does.
@@ -305,7 +306,7 @@ export async function handleEmailAlertOfferReply(
       {
         kind,
         title,
-        whenLabel: when(startsAt, timeZone, input.now),
+        whenLabel: when(startsAt, timeZone, input.now, input.language),
         language: input.language,
       },
       receipt,
@@ -616,17 +617,11 @@ async function parentTimeZone(database: Database, parentUserId: string): Promise
   return rows.find((row) => row.id === parentUserId)?.timezone ?? DEFAULT_TIMEZONE;
 }
 
-/** `Saturday, Sep 19 at 9:00 a.m.` — the exact instant the receipt must name.
- * One renderer, in the parent's zone. The model copies this string and writes
- * the rest of the line; a French month such as août is not GSM-7, so the
- * rendered form stays the one the alert already used. */
-function when(startsAt: Date, timeZone: string, now: Date): string {
-  const clock = new Intl.DateTimeFormat('en-CA', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone,
-  }).format(startsAt);
-  return `${formatDayHeading(startsAt, timeZone, now)} at ${clock}`;
+/** The exact instant the receipt must name, in the parent's language.
+ * English stays `Saturday, Sep 19 at 9:00 a.m.`. French is fr-CA, folded
+ * onto GSM-7 (`dimanche 4 oct. à 9 h`). The model copies this string. */
+function when(startsAt: Date, timeZone: string, now: Date, language: ReplyLanguage): string {
+  return offerWhenLabel(startsAt, timeZone, now, language);
 }
 
 /**
