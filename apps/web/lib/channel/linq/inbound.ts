@@ -47,6 +47,7 @@ import {
   mapGroupHandlesToFamily,
   matchLinqGroupTrigger,
 } from './group';
+import { type GroupLineClass, groupAudienceAllows } from './group-audience';
 import {
   type GroupCoparentPorts,
   considerGroupCoparent,
@@ -626,6 +627,29 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
       return json({ outcome });
     }
     if (turn.route === 'coach') {
+      const audience = await groupAudienceAllows(deps.database, message.chatId, GROUP_COACH_LINE);
+      if (!audience.allowed) {
+        if (mapped.status === 'same_family') {
+          await deps.database.insert(schema.auditLog).values({
+            familyId: mapped.familyId,
+            actor: 'system',
+            actionTaken: 'linq_group_coach_held',
+            targetTable: 'families',
+            targetId: mapped.familyId,
+            after: { reason: audience.reason },
+          });
+        }
+        deps.log.info(
+          {
+            outcome: 'group_coach_refused',
+            reason: audience.reason,
+            providerMessageId: message.messageId,
+          },
+          'linq inbound: group turn',
+        );
+        await deps.countOutcome('ignored');
+        return json({ outcome: 'group_coach_refused', reason: audience.reason });
+      }
       const limiter = deps.groupLimiter ?? new PostgresRateLimiter(deps.database);
       const spent = await limiter.check(
         message.chatId,
@@ -664,6 +688,12 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
 }
 
 const GROUP_INBOUND_ROUTE = 'linq-group-inbound';
+
+/** A coach answer carries household facts, so it is gated as a kid line, not as a bare
+ * `reply`: a group may hear it only once its roster is confirmed and its audience is not
+ * empty. Every scoped role holds all of `GROUP_CONTENT`, so the class chosen among them
+ * does not change the verdict. */
+const GROUP_COACH_LINE: GroupLineClass = 'schedule';
 
 /** The family's kids' first names, read only to tell a question about one of them from
  * chatter. Never logged and never sent. */

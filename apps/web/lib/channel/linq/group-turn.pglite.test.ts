@@ -36,6 +36,7 @@ const HALE = '+14165550100';
 const PARENT = '+14165550111';
 const NOW = new Date('2026-10-06T18:00:00.000Z');
 const TS = String(Math.floor(NOW.getTime() / 1000));
+const OTHER = '+14165550122';
 const CHAT = 'chat-family-group';
 
 let db: TestDb;
@@ -89,6 +90,36 @@ async function seedClaimedHousehold(): Promise<{ familyId: string; userId: strin
     .insert(schema.children)
     .values({ familyId, name: 'Maya', dateOfBirth: '2021-05-02' });
   return { familyId, userId };
+}
+
+async function seedRoster(
+  familyId: string,
+  userId: string,
+  status: schema.LinqGroupRosterStatus,
+  other: Pick<typeof schema.linqGroupRosterMembers.$inferInsert, 'status' | 'confirmedRole'>,
+): Promise<void> {
+  const [roster] = await db.database
+    .insert(schema.linqGroupRosters)
+    .values({ chatId: CHAT, familyId, source: 'new_group', status })
+    .returning({ id: schema.linqGroupRosters.id });
+  const rosterId = roster?.id as string;
+  await db.database.insert(schema.linqGroupRosterMembers).values([
+    {
+      rosterId,
+      chatId: CHAT,
+      phoneE164Encrypted: encryptString(PARENT),
+      phoneE164Hash: phoneBlindIndex(PARENT),
+      knownUserId: userId,
+      status: 'known_parent',
+    },
+    {
+      rosterId,
+      chatId: CHAT,
+      phoneE164Encrypted: encryptString(OTHER),
+      phoneE164Hash: phoneBlindIndex(OTHER),
+      ...other,
+    },
+  ]);
 }
 
 function signed(body: unknown): Request {
@@ -230,6 +261,68 @@ describe('a message in the family group', () => {
 
     expect(await response.json()).toEqual({ outcome: 'handed_off' });
     expect(jobs).toHaveLength(1);
+  });
+
+  it('answers nothing into a confirmed group whose audience may hear no household facts', async () => {
+    const { familyId, userId } = await seedClaimedHousehold();
+    await seedRoster(familyId, userId, 'confirmed', { status: 'not_family', confirmedRole: null });
+    const { deps, jobs, outcomes, sends, transport } = door();
+
+    const response = await handleLinqInboundRequest(
+      signed(groupMessage('Hale, is swim still on tomorrow', 'in-empty-audience')),
+      deps,
+    );
+
+    expect(await response.json()).toEqual({
+      outcome: 'group_coach_refused',
+      reason: 'group_audience_empty',
+    });
+    expect(outcomes).toEqual(['ignored']);
+    expect(jobs).toEqual([]);
+    expect(await inboundRows(familyId)).toEqual([]);
+    expect(await budgetRows()).toEqual([]);
+    expect(sends).toEqual([]);
+    expect(transport.bodies()).toEqual([]);
+    const audit = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'linq_group_coach_held'));
+    expect(audit).toEqual([{ after: { reason: 'group_audience_empty' } }]);
+  });
+
+  it('answers nothing while someone in the group has not yet said who they are', async () => {
+    const { familyId, userId } = await seedClaimedHousehold();
+    await seedRoster(familyId, userId, 'roles_proposed', { status: 'asked', confirmedRole: null });
+    const { deps, jobs } = door();
+
+    const response = await handleLinqInboundRequest(
+      signed(groupMessage('Hale, is swim still on tomorrow', 'in-asking')),
+      deps,
+    );
+
+    expect(await response.json()).toEqual({
+      outcome: 'group_coach_refused',
+      reason: 'group_roles_unconfirmed',
+    });
+    expect(jobs).toEqual([]);
+  });
+
+  it('goes to the coach in a confirmed group of parents', async () => {
+    const { familyId, userId } = await seedClaimedHousehold();
+    await seedRoster(familyId, userId, 'confirmed', {
+      status: 'confirmed',
+      confirmedRole: 'co_parent',
+    });
+    const { deps, jobs } = door();
+
+    const response = await handleLinqInboundRequest(
+      signed(groupMessage('Hale, is swim still on tomorrow', 'in-parents')),
+      deps,
+    );
+
+    expect(await response.json()).toEqual({ outcome: 'handed_off' });
+    expect(jobs).toHaveLength(1);
+    expect(await budgetRows()).toEqual([{ identifier: CHAT, route: 'linq-group-inbound' }]);
   });
 
   it(`holds the chat at ${RATE_LIMITS['linq-group-inbound'].limit} coach turns an hour, silently`, async () => {
