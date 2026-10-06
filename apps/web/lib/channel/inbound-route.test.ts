@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
 import { STOP_ACK } from '~/lib/channel/intake/copy';
 import {
-  FakeAddThemYourself,
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
@@ -74,7 +73,6 @@ function harness(): Harness {
     answerComposer: fakeSilentAnswerComposer,
     openQuestions: fakeNoOpenQuestions,
     identityAsk: new FakeIdentityAsk(),
-    addThemYourself: new FakeAddThemYourself(),
     limiter: new FakeRateLimiter(() => NOW.getTime()),
     now: NOW,
   };

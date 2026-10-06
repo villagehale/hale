@@ -3,7 +3,6 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { parentNeedsName } from '~/lib/channel/identity/name-reply';
 import { groupsFromFindBody } from '~/lib/channel/intake/activity-map';
 import { sendYearConnectorCards } from '~/lib/channel/intake/connector-offer';
-import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
 import { summarizeChildren } from '~/lib/channel/intake/derive';
 import {
   type FriendVoiceComposer,
@@ -725,8 +724,7 @@ async function askAfterCalendarReceipt(
     }
     // One ask per session off this receipt. A reconnect does not ask again;
     // the walk continues from the parent's next text.
-    const templateKey =
-      step === 'schedule' ? 'onboarding:schedule_ask' : INTAKE_COPARENT_ASK_TEMPLATE_KEY;
+    const templateKey = step === 'schedule' ? 'onboarding:schedule_ask' : 'onboarding:coparent_ask';
     const [claimed] = await database
       .insert(schema.channelMessages)
       .values({

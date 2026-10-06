@@ -2,9 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FIRST_REPLY_ACTION_LINE_ENV } from '~/lib/channel/intake/action-line';
-import { YEAR_OPEN_LEAD } from '~/lib/channel/intake/year-open';
 import {
-  FakeAddThemYourself,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
@@ -13,14 +11,15 @@ import {
 } from '~/lib/channel/intake/fakes';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
-import { FakeTransport } from '~/lib/channel/intake/transport';
 import { MAX_PAYLOAD_SEGMENTS } from '~/lib/channel/intake/radar-voice';
+import { FakeTransport } from '~/lib/channel/intake/transport';
+import { YEAR_OPEN_LEAD } from '~/lib/channel/intake/year-open';
+import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
-import { REGISTRATION_WINDOWS } from '~/lib/registration/registration-windows-data';
-import { toRegistrationWindowRow } from '~/lib/registration/registration-windows';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { toRegistrationWindowRow } from '~/lib/registration/registration-windows';
+import { REGISTRATION_WINDOWS } from '~/lib/registration/registration-windows-data';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
@@ -141,7 +140,10 @@ describe('the first reply says what to do about the find', () => {
       threadMessage: threadProactiveMessage,
       openQuestions: (db2, input) => defaultOpenQuestionReader().open(db2, input),
       extractor: new FakeExtractor([
-        { children: [{ name: 'Maya', ageMonths: 30, agePrecision: 'months' }], postalCode: TORONTO_FSA },
+        {
+          children: [{ name: 'Maya', ageMonths: 30, agePrecision: 'months' }],
+          postalCode: TORONTO_FSA,
+        },
       ]),
       intentReader: new FakeIntentReader([
         { intent: 'assent', verbatim: 'yes', interpretation: 'a clear yes' },
@@ -157,7 +159,6 @@ describe('the first reply says what to do about the find', () => {
       ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
       identityAsk: new FakeIdentityAsk(),
-      addThemYourself: new FakeAddThemYourself(),
       // `seedCivic` is DELIBERATELY not injected: the real projectCivicCandidates runs,
       // so this journey pins the write of `access`/`when_label` and not a stand-in.
       resolveCenter: async () => null,

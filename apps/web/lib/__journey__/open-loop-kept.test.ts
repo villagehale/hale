@@ -1,7 +1,6 @@
 import { schema } from '@hale/db';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
-  FakeAddThemYourself,
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
@@ -14,8 +13,8 @@ import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { createRadarComposer, readCandidates, readWindows } from '~/lib/channel/intake/radar';
 import { FIRST_FIND_DUE_HOURS } from '~/lib/channel/intake/radar-voice';
-import { yearOpenEmptyMessage } from '~/lib/channel/intake/year-open';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { yearOpenEmptyMessage } from '~/lib/channel/intake/year-open';
 import { type NudgeRunDeps, type NudgeRunResult, runNudgeCron } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -119,7 +118,6 @@ async function runIntakeRadar(): Promise<Intake> {
     answerComposer: fakeSilentAnswerComposer,
     openQuestions: fakeNoOpenQuestions,
     identityAsk: new FakeIdentityAsk(),
-    addThemYourself: new FakeAddThemYourself(),
     limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
     now: INTAKE_AT,
   };

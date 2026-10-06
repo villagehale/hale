@@ -49,7 +49,6 @@ import {
 } from './copy';
 import type { IntakeCollected } from './extract';
 import {
-  FakeAddThemYourself,
   FakeAnswerComposer,
   type FakeDb,
   FakeExtractor,
@@ -161,7 +160,6 @@ function harness(options: {
       ackComposer: fakeAckComposer,
       answerComposer: options.answerComposer ?? fakeSilentAnswerComposer,
       identityAsk,
-      addThemYourself: new FakeAddThemYourself(),
       seedCivic: async (_db, familyId, areaCoarse, center) => {
         const placed = center === null ? 'unplaced' : `${center.lat},${center.lng}`;
         steps.push(`civic:${familyId ? 'family' : 'none'}:${areaCoarse}:${placed}`);
@@ -1682,7 +1680,6 @@ describe('intake · CASL keywords', () => {
       answerComposer: fakeSilentAnswerComposer,
       openQuestions: fakeNoOpenQuestions,
       identityAsk: new FakeIdentityAsk(),
-      addThemYourself: new FakeAddThemYourself(),
       limiter: new FakeRateLimiter(() => NOW.getTime()),
       now: NOW,
     };

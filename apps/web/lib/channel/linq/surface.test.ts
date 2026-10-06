@@ -12,8 +12,12 @@ import {
   linqContactCardMoment,
   shareHaleContactCardOnce,
 } from './contact-card';
-import * as groupModule from './group';
-import { mapGroupHandlesToFamily } from './group';
+import {
+  LINQ_GROUP_OPEN_TEXT,
+  LINQ_GROUP_UNREACHABLE_TEXT,
+  mapGroupHandlesToFamily,
+  openHouseholdLinqGroup,
+} from './group';
 import { linkPreviewUrl, sendLinqLinkPreview } from './link-preview';
 import { considerLinqReply } from './moments';
 import {
@@ -915,15 +919,64 @@ describe('Linq household group', () => {
     ).resolves.toEqual({ status: 'mixed_family' });
   });
 
-  /**
-   * Hale never texts a number first, so it never opens a group to two numbers either:
-   * the parent adds Hale to their group. The claim path that answers a parent's own
-   * group is still here (the positive control).
-   */
-  it('has no door that opens a group to the co-parent', () => {
-    expect('openHouseholdLinqGroup' in groupModule).toBe(false);
-    expect('LINQ_GROUP_UNREACHABLE_TEXT' in groupModule).toBe(false);
-    expect(typeof groupModule.claimHouseholdLinqGroup).toBe('function');
+  it('creates the group from the co-parent invite, and names a sandbox refusal', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fake = makeFakeDb();
+    enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
+    await fake.db.insert(schema.families).values({ id: FAMILY, displayName: 'Fixture' } as never);
+    await fake.db.insert(schema.channelMessages).values({
+      familyId: FAMILY,
+      parentUserId: USER,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerChatId: CHAT,
+      providerMessageId: 'in-1',
+    } as never);
+
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/chats') && init?.method === 'POST') {
+        return Response.json(
+          { chat: { id: 'group-1', message: { id: 'open-1' } } },
+          { status: 201 },
+        );
+      }
+      return Response.json({}, { status: 200 });
+    });
+    const opened = await openHouseholdLinqGroup(fake.db, {
+      familyId: FAMILY,
+      parentUserId: USER,
+      parentPhoneE164: PARENT,
+      coParentPhoneE164: COPARENT,
+      now: NOW,
+      fetch: fetchMock,
+    });
+    expect(opened).toEqual({ status: 'opened', chatId: 'group-1' });
+    const created = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(created.from).toBe('+15555550100');
+    expect(created.to).toEqual([PARENT, COPARENT]);
+    expect(created.message.parts[0].value).toBe(LINQ_GROUP_OPEN_TEXT);
+    expect(created.message.parts[0].value).not.toMatch(/https?:\/\//);
+    expect(fake.rows(schema.families).find((row) => row.id === FAMILY)?.linqGroupChatId).toBe(
+      'group-1',
+    );
+
+    const refused = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ error: { code: 1002 } }, { status: 400 }),
+    );
+    const again = await openHouseholdLinqGroup(fake.db, {
+      familyId: FAMILY,
+      parentUserId: USER,
+      parentPhoneE164: PARENT,
+      coParentPhoneE164: '+14165550109',
+      now: NOW,
+      fetch: refused,
+    });
+    expect(again.status).toBe('degraded');
+    const degrade = JSON.parse(String(refused.mock.calls.at(-1)?.[1]?.body));
+    expect(degrade.message.parts[0].value).toBe(LINQ_GROUP_UNREACHABLE_TEXT);
   });
 });
 

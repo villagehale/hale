@@ -9,8 +9,13 @@ import {
 } from '~/lib/channel/connect/aha-read';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
-import { loadOnboardingFriendShortSkill, loadOnboardingFriendSkill } from '~/lib/cron/skill';
+import {
+  loadOnboardingCoparentChoiceSkill,
+  loadOnboardingFriendShortSkill,
+  loadOnboardingFriendSkill,
+} from '~/lib/cron/skill';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { forceToolJson, llmTransport } from '~/lib/pipeline/structured';
@@ -18,7 +23,6 @@ import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { HALE_IDENTITY, NAMES_HALE_COMPANY, isIdentityChallenge } from './identity-challenge';
 import {
-  type CoparentGroupMode,
   ONBOARDING_ORDER,
   type OnboardingCapture,
   type OnboardingChecklist,
@@ -460,6 +464,19 @@ const replyJsonSchema = {
   required: ['reply'],
 } as const;
 
+/** Flag off omits the choice field, so the tool the model fills is today's. */
+function replyToolSchema(): {
+  type: 'object';
+  properties: Record<string, unknown>;
+  required: readonly ['reply'];
+} {
+  if (!linqGroupOnboardingV2Enabled()) {
+    const { coparentGroupMode: _choice, ...properties } = replyJsonSchema.properties;
+    return { ...replyJsonSchema, properties };
+  }
+  return replyJsonSchema;
+}
+
 const BANNED_PHRASE =
   /reply with the number you want|text me if that changes|i['’]ll note it|i['’]ll keep track|je le note|reponds avec le numero|réponds avec le numéro/i;
 
@@ -661,17 +678,19 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
       today: today ? { date: today, label: dayLabel(today, input.language) } : null,
       upcomingDays: input.step === 'schedule' && now ? upcomingDays(now, input.language) : null,
       scheduled: input.scheduled ?? [],
-      // Code puts the number, and a sentence or the phrase, under the reply; the model
-      // only knows they are there.
+      // Code puts the join data under the reply; the model only knows it is there.
+      // Flag off is today's phrase. Flag on names the choice and never a phrase to text.
       coparentJoin: input.coparentJoin
-        ? {
-            below:
-              'the number on its own line, then a short line: for their own group, a sentence to add it; for a new group, a phrase to send',
-            how: {
-              existing: 'add the number below to the family group chat they already have',
-              new: 'start a group text with the other parent and the number below, then send the phrase below in it',
-            },
-          }
+        ? linqGroupOnboardingV2Enabled()
+          ? {
+              below:
+                'when coparentGroupMode is existing, the number on its own line under the reply',
+              how: 'they add Hale to the iMessage group they already have, or Hale starts a new one. A plain yes names neither. An MMS, Android, or green-bubble group cannot add this number.',
+            }
+          : {
+              below: 'the number and a short phrase, on their own lines',
+              how: 'start a group text with the other parent and the number below, then send the phrase below in it',
+            }
         : null,
       coparentGroup: input.coparentGroup ?? null,
       // Who runs Hale is for when they ask; otherwise the founder's name is
@@ -722,55 +741,30 @@ export function parentReading(
 }
 
 function readingForModel(input: FriendVoiceInput): string | null {
-  const cue = groupModeCue(input);
-  if (cue) return `if parentWords is a yes to coparent, it is for ${GROUP_MODE_WORDS[cue]}`;
   const reading = parentReading(input);
   if (!reading) return null;
-  if (reading.kind === 'name') {
-    return `parentWords is their name (${reading.name}): it answers the name ask`;
-  }
-  return reading.item === 'coparent'
-    ? `parentWords is a yes to coparent, for ${GROUP_MODE_WORDS.existing}`
+  return reading.kind === 'name'
+    ? `parentWords is their name (${reading.name}): it answers the name ask`
     : `parentWords is a yes to ${reading.item}`;
 }
 
-const GROUP_MODE_WORDS: Record<CoparentGroupMode, string> = {
-  existing: 'the family group they already have',
-  new: 'a new group with the other parent',
-};
-
-const EXISTING_GROUP_CUE =
-  /\badd (?:you|yourself|hale)\b|\bajoute[- ]?toi\b|\b(?:our|my|the family) (?:family )?group\b|\bexisting\b|\bnotre groupe\b|\bgroupe (?:existant|de famille)\b/i;
-const NEW_GROUP_CUE =
-  /\bnew (?:group|one|chat)\b|\bstart (?:one|a group)\b|\bnouveau\b|\bnouvelle?\b/i;
-// "pas" also catches "pas de problème": that yes names no group, and the model's reading stands.
-const NEGATION = /\b(?:no|nope|nah|not|non|pas|don['’]?t)\b/i;
-
 /**
- * Which group the parent's words name, when they name one: "add you to our group"
- * is theirs, "start a new group" is new. A no, a question, or both cues at once
- * name nothing, and the model's reading stands.
- */
-export function coparentGroupModeCue(words: string): CoparentGroupMode | null {
-  if (words.includes('?') || NEGATION.test(words)) return null;
-  const existing = EXISTING_GROUP_CUE.test(words);
-  const fresh = NEW_GROUP_CUE.test(words);
-  if (existing === fresh) return null;
-  return existing ? 'existing' : 'new';
-}
-
-function groupModeCue(input: FriendVoiceInput): CoparentGroupMode | null {
-  return answeringItem(input) === 'coparent' ? coparentGroupModeCue(input.parentWords) : null;
-}
-
-/**
- * The group a yes means, held to the parent's words. A cue decides the group over
- * the model but never makes a yes; a yes that names no group means the one they
- * already have.
+ * The group the model read. Flag off clears it, so a yes stays today's new-group
+ * claim. Flag on keeps the model's enum and never a regex, and never defaults a
+ * plain yes to the group they already have. An existing group only counts when
+ * this chat can hold the iMessage number.
  */
 function withGroupMode(capture: OnboardingCapture, input: FriendVoiceInput): OnboardingCapture {
-  if (capture.coparentGroup !== true) return { ...capture, coparentGroupMode: null };
-  const mode = groupModeCue(input) ?? capture.coparentGroupMode ?? 'existing';
+  if (!linqGroupOnboardingV2Enabled() || capture.coparentGroup !== true) {
+    return { ...capture, coparentGroupMode: null };
+  }
+  const mode =
+    capture.coparentGroupMode === 'existing' || capture.coparentGroupMode === 'new'
+      ? capture.coparentGroupMode
+      : null;
+  if (mode === 'existing' && input.coparentJoin == null) {
+    return { ...capture, coparentGroupMode: null };
+  }
   return { ...capture, coparentGroupMode: mode };
 }
 
@@ -1849,14 +1843,16 @@ export async function speakFriend(
         judgeInput.step,
         yesToLink(input, capture) || capture.scheduleAdds.length > 0,
       );
-      // The number and phrase ride below: a sentence that ends "send this phrase: Hale"
-      // points at them and stops there.
+      // Flag off: the number and phrase ride below, so a sentence that ends
+      // "send this phrase: Hale" points at them and stops there. Flag on writes
+      // the choice itself and does not get that rewrite.
+      const v2 = linqGroupOnboardingV2Enabled();
       const prose =
-        input.coparentJoin != null && capture.coparentGroup === true
+        !v2 && input.coparentJoin != null && capture.coparentGroup === true
           ? tidied.replace(/:\s*[^.?!:\n]{0,24}$/u, '.')
           : tidied;
       // Under a yes to the group, code adds the number and phrase: the reply says they are below.
-      const joinBelow = input.coparentJoin != null && capture.coparentGroup === true;
+      const joinBelow = !v2 && input.coparentJoin != null && capture.coparentGroup === true;
       // The number below is Hale's, never the other parent's.
       const wrongOwner =
         /\b(?:her|his|their|(?:mom|mum|dad|mother|father)['’]?s) (?:number|phone)\b/i;
@@ -2085,7 +2081,9 @@ function retryProblem(
     case 'long':
       return `Too long. Keep the reply under ${MAX_PROSE_CHARS} characters.`;
     case 'join':
-      return "Under their yes, code puts Hale's number, and the sentence or the phrase, on their own lines right below. Say they are below and how to use them (coparentJoin.how for the group they chose), without writing them. Hale does not start or join the group; they add it.";
+      return linqGroupOnboardingV2Enabled()
+        ? 'When coparentGroupMode is existing, code places the number on its own line under the reply. Say it is below and do not write the digits or a phrase to text. When it is new, say you will start the group. A plain yes leaves coparentGroupMode null.'
+        : "Under their yes, code puts Hale's number and the phrase on their own lines right below. Say they are below and how to use them (coparentJoin.how), without writing them. Hale does not start the group; they do.";
     case 'schedule':
       return 'A scheduleAdd pointed at a line that does not fit that child or is not on the map. Use the n of the line that matches, for a child its ages suit.';
     case 'question':
@@ -2344,14 +2342,18 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
       const skill = short
         ? await loadOnboardingFriendShortSkill()
         : await loadOnboardingFriendSkill();
+      const choice =
+        linqGroupOnboardingV2Enabled() && input.step === 'coparent'
+          ? await loadOnboardingCoparentChoiceSkill()
+          : null;
       const { value } = await forceToolJson({
         client,
         lane: pickLane(skill.meta.task),
-        system: skill.instructions,
+        system: choice ? `${skill.instructions}\n\n${choice.instructions}` : skill.instructions,
         userMessage: JSON.stringify(friendVoiceContext(input)),
         toolName: 'reply',
         toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
-        inputJsonSchema: replyJsonSchema,
+        inputJsonSchema: replyToolSchema(),
         schema: replySchema,
         maxTokens: short ? SHORT_MAX_TOKENS : MAX_TOKENS,
         transport: llmTransport(),

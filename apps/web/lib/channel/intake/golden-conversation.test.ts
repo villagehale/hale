@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AHA_TIME_ZONE,
@@ -17,7 +16,7 @@ import {
   HALE_CONTACT_FIRST_NAME,
   LINQ_CARD_REPLY_BUDGET_MS,
 } from '~/lib/channel/linq/contact-card';
-import { LINQ_GROUP_ADD_THIS_NUMBER, LINQ_GROUP_TRIGGER_PHRASE } from '~/lib/channel/linq/group';
+import { LINQ_GROUP_TRIGGER_PHRASE } from '~/lib/channel/linq/group';
 import { LINQ_TYPING_REFRESH_MS } from '~/lib/channel/linq/presence';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { DISCOVERY_NEXT_STEP, KNOWN_VENUE_HELLO } from './cold-start/copy';
@@ -30,11 +29,9 @@ import {
   FIRST_TOUCH_SMS_BY_LANGUAGE,
   HALE_GREETING_EN,
   HELP_REPLY,
-  INTAKE_COPARENT_ASK_TEMPLATE_KEY,
   SITTING_SESSION_REMINDER,
 } from './copy';
 import {
-  FakeAddThemYourself,
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
@@ -218,11 +215,17 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
   if (capture.scheduleAdds.length > 0) {
     return { reply: 'Done, a weekly reminder for the swim.', capture };
   }
-  // A yes to the group: the number, and the sentence or the phrase, ride below the reply.
+  // The test double is the model. Production does not read these phrases.
   if (input.step === 'coparent' && /\bnew group\b/i.test(words)) {
     return {
-      reply: 'Start a group text with them and the number below, then send the phrase below.',
+      reply: 'The number is below whenever you want.',
       capture: { ...capture, coparentGroup: true, coparentGroupMode: 'new' },
+    };
+  }
+  if (input.step === 'coparent' && /\bour group\b/i.test(words)) {
+    return {
+      reply: 'The number is below whenever you want to add me.',
+      capture: { ...capture, coparentGroup: true, coparentGroupMode: 'existing' },
     };
   }
   if (input.step === 'coparent' && capture.coparentGroup === true) {
@@ -371,7 +374,6 @@ function conversation(options?: {
     ackComposer: fakeAckComposer,
     answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
-    addThemYourself: new FakeAddThemYourself(),
     limiter: new FakeRateLimiter(() => NOW.getTime()),
     seedCivic: async () => 0,
     resolveCenter: async () => ({ lat: 43.6426, lng: -79.3871 }),
@@ -520,24 +522,13 @@ describe('golden onboarding conversation', () => {
     expect(coparent.bodies.join('\n')).not.toMatch(/reminder/);
     assertTypingUntilSend(coparent.marks);
 
-    const asks = talk.fake
-      .rows(schema.channelMessages)
-      .filter((row) => row.templateKey === INTAKE_COPARENT_ASK_TEMPLATE_KEY);
-    expect(asks).toHaveLength(1);
-    expect(asks[0]?.direction).toBe('out');
-
-    // A plain yes is the group they already have: Hale's number and the one locked
-    // sentence under the model's prose, and no phrase.
+    // Flag off: a yes is today's claim. The phrase rides under the model's prose.
+    // It is never an instruction to add Hale to a group this flag will not claim.
     const joined = await talk.say('yes');
     const [joinProse, ...joinLines] = (joined.bodies[0] ?? '').split('\n');
     expect(joinProse).toMatch(/below/);
-    expect(joinLines).toEqual(['+1 555-555-0100', LINQ_GROUP_ADD_THIS_NUMBER.en]);
-    expect(joined.bodies.join('\n')).not.toContain(LINQ_GROUP_TRIGGER_PHRASE.en);
-    expect(
-      talk.fake
-        .rows(schema.channelMessages)
-        .filter((row) => row.templateKey === INTAKE_COPARENT_ASK_TEMPLATE_KEY),
-    ).toHaveLength(1);
+    expect(joinLines.join('\n')).toContain(LINQ_GROUP_TRIGGER_PHRASE.en);
+    expect(joined.bodies.join('\n')).not.toMatch(/add this number to your group/i);
 
     expect(joined.outcome).toBe('intake');
 
@@ -549,7 +540,7 @@ describe('golden onboarding conversation', () => {
     expectNoCanned(talk.transport.bodies());
   });
 
-  it('puts the phrase under a yes to a new group, and only then', async () => {
+  it('puts the phrase under a yes while the flag is off, including words about a new group', async () => {
     const talk = conversation();
     for (const words of [
       'hi',
@@ -569,10 +560,55 @@ describe('golden onboarding conversation', () => {
     expect(ask.bodies.join('\n')).toMatch(/other parent\?$/);
 
     const joined = await talk.say("let's start a new group");
-    const [joinProse, ...joinLines] = (joined.bodies[0] ?? '').split('\n');
-    expect(joinProse).toMatch(/below/);
-    expect(joinLines).toEqual(['+1 555-555-0100', LINQ_GROUP_TRIGGER_PHRASE.en]);
-    expect(joined.bodies.join('\n')).not.toContain(LINQ_GROUP_ADD_THIS_NUMBER.en);
+    expect(joined.bodies.join('\n')).toContain(LINQ_GROUP_TRIGGER_PHRASE.en);
+    expect(joined.bodies.join('\n')).not.toMatch(/add this number to your group/i);
+  });
+
+  it('with the flag on, puts only the number under an existing group and nothing under a plain yes', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const talk = conversation();
+    for (const words of [
+      'hi',
+      'M5V 2T6',
+      'Maya',
+      "she's 4",
+      'Dana',
+      'yes',
+      'ok',
+      'yes',
+      'ok',
+      'yes',
+    ]) {
+      await talk.say(words);
+    }
+    await talk.say('sounds good');
+
+    const plain = await talk.say('yes');
+    expect(plain.bodies.join('\n')).not.toContain(LINQ_GROUP_TRIGGER_PHRASE.en);
+    expect(plain.bodies.join('\n')).not.toContain('+1 555-555-0100');
+    expect(plain.bodies.join('\n')).not.toMatch(/add this number to your group/i);
+
+    const talk2 = conversation();
+    for (const words of [
+      'hi',
+      'M5V 2T6',
+      'Maya',
+      "she's 4",
+      'Dana',
+      'yes',
+      'ok',
+      'yes',
+      'ok',
+      'yes',
+      'sounds good',
+    ]) {
+      await talk2.say(words);
+    }
+    const existing = await talk2.say('add you to our group');
+    const lines = (existing.bodies[0] ?? '').split('\n');
+    expect(lines.at(-1)).toBe('+1 555-555-0100');
+    expect(existing.bodies.join('\n')).not.toContain(LINQ_GROUP_TRIGGER_PHRASE.en);
+    expect(existing.bodies.join('\n')).not.toMatch(/add this number to your group/i);
   });
 
   it('takes postal, kids, ages, a name, and both connections from the first message', async () => {

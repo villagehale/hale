@@ -51,6 +51,11 @@ export function inviteBody(inviterName: string | null, role: CaregiverRole): str
   return `Hi - ${who} as ${ROLE_LABEL[role]}. I'm Hale - I keep their family's week straight. If you say yes I'll text you ${GETS_YOU}. ${NEVER} Reply YES to accept. Reply STOP anytime.`;
 }
 
+/** Said to the parent once the invite is on its way. */
+export function inviteSentAck(name: string): string {
+  return `Sent - I've texted ${name}. They're in as soon as they say yes.`;
+}
+
 /** Said to the parent when they answer the confirmation with a no. */
 export function inviteDroppedAck(name: string): string {
   return `Okay - I haven't texted ${name}.`;
@@ -63,6 +68,11 @@ export const CAREGIVER_DECLINE_ACK = "No problem - I won't text you again.";
 
 /** The one nudge a caregiver gets when their reply was neither yes nor STOP. */
 export const CAREGIVER_ANSWER_PROMPT = "Reply YES to accept, or STOP if you'd rather not.";
+
+/** The example shown when a parent clearly meant to add someone but we couldn't read
+ * it. States the shape AND the three roles, so the next try succeeds. */
+export const ADD_EXAMPLE =
+  'Tell me who, their number, and what they are - like: add grandma 647-555-0199 as grandparent. I can do grandparent, nanny or babysitter.';
 
 /**
  * A co-parent sees the whole family surface, so Hale will not text a number the other
@@ -77,6 +87,10 @@ export const CAREGIVER_ANSWER_PROMPT = "Reply YES to accept, or STOP if you'd ra
  */
 export const CO_PARENT_REDIRECT =
   "A co-parent sees everything I show you, so I won't add one from a number you typed. Text me add my partner and I'll send you a link to forward to them.";
+
+/** The number already has its own Hale account or an active caregiver slot. */
+export const NUMBER_IN_USE =
+  "That number is already set up with Hale, so I can't add it as a caregiver - they'd need to reply STOP there first.";
 
 export const OWN_NUMBER = "That's your own number - you're already here.";
 

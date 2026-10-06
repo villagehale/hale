@@ -3,7 +3,6 @@ import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelMessageReceivedJob, InboundRouteDeps } from '~/lib/channel/inbound-route';
 import {
-  FakeAddThemYourself,
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
@@ -133,7 +132,6 @@ function harness(): {
     answerComposer: fakeSilentAnswerComposer,
     openQuestions: fakeNoOpenQuestions,
     identityAsk: new FakeIdentityAsk(),
-    addThemYourself: new FakeAddThemYourself(),
     limiter: new FakeRateLimiter(() => NOW.getTime()),
     now: NOW,
   };

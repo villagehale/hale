@@ -2,13 +2,19 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
+import { linqFromE164 } from './config';
+import { haleContactImageUrl } from './contact-card';
 import {
   LinqSendError,
+  addLinqParticipant,
+  createLinqChat,
   listLinqParticipantHandles,
   removeLinqParticipant,
   sendLinqChatMessage,
+  updateLinqGroupChat,
 } from './transport';
 
 /**
@@ -26,6 +32,16 @@ import {
  */
 export const LINQ_GROUP_OPEN_TEXT = "This thread is your kids' year — both of you, and me.";
 
+/** DESIGN LOCK PENDING (Sloane). Group icon / name. Household dad+mom only, not a logistics brand. */
+export const LINQ_GROUP_DISPLAY_NAME = "Kids' year";
+
+/**
+ * DESIGN LOCK PENDING (Sloane). Sent in the 1:1 when Linq will not open the
+ * group. The sandbox requires the co-parent to have texted the line first.
+ */
+export const LINQ_GROUP_UNREACHABLE_TEXT =
+  "I couldn't open the group yet. Ask them to text this number once, then tell me to try again.";
+
 /**
  * An unclaimed group has no parent to name. Hale sends nothing about the
  * family into that thread. The claimed-group hold lives on group members.
@@ -40,16 +56,6 @@ export const LINQ_GROUP_OPEN_TEXT = "This thread is your kids' year — both of 
 export const LINQ_GROUP_TRIGGER_PHRASE: Record<ReplyLanguage, string> = {
   en: 'this is our year',
   fr: 'cest notre annee',
-};
-
-/**
- * Locked (group onboarding v2). The line under Hale's number when a parent says yes to
- * Hale joining the family group they already have. They add the number; Hale texts
- * nobody.
- */
-export const LINQ_GROUP_ADD_THIS_NUMBER: Record<ReplyLanguage, string> = {
-  en: 'Add this number to your group',
-  fr: 'Ajoute ce numéro à ton groupe',
 };
 
 /**
@@ -273,6 +279,171 @@ export async function deliverLinqGroupNotice(
       'linq group: the household-thread notice did not land',
     );
     return 'not_sent';
+  }
+}
+
+export type OpenHouseholdGroupOutcome =
+  | { status: 'opened'; chatId: string }
+  | { status: 'added'; chatId: string }
+  | {
+      status: 'skipped';
+      reason:
+        | 'not_imessage'
+        | 'no_from'
+        | 'no_chat'
+        | 'not_configured'
+        | 'same_number'
+        | 'unavailable';
+    }
+  | { status: 'degraded'; reason: 'coparent_not_reachable'; code: string; httpStatus: number };
+
+/**
+ * Parent is live 1:1 on Linq. Open a group with Hale's line, that parent, and
+ * the co-parent — or add the co-parent when the household group already exists.
+ * A partner refusal is a named degrade in the 1:1, not a failed invite.
+ */
+export async function openHouseholdLinqGroup(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    parentPhoneE164: string;
+    coParentPhoneE164: string;
+    now: Date;
+    fetch?: typeof fetch;
+  },
+): Promise<OpenHouseholdGroupOutcome> {
+  const parent = normalizePhoneE164(args.parentPhoneE164);
+  const coParent = normalizePhoneE164(args.coParentPhoneE164);
+  if (!parent || !coParent || parent === coParent) {
+    return { status: 'skipped', reason: 'same_number' };
+  }
+
+  let chatIdForDegrade: string | null = null;
+  try {
+    const door = await resolveMessagingDoor(database, args.parentUserId);
+    if (door.channel !== 'imessage' || !door.chatId) {
+      return {
+        status: 'skipped',
+        reason: door.channel === 'imessage' ? 'no_chat' : 'not_imessage',
+      };
+    }
+    chatIdForDegrade = door.chatId;
+    const from = linqFromE164();
+    if (!from) {
+      console.warn(
+        { familyId: args.familyId },
+        'linq group: LINQ_FROM_E164 is unset — the co-parent group was not opened',
+      );
+      return { status: 'skipped', reason: 'no_from' };
+    }
+
+    const existing = await database
+      .select({ id: schema.families.id, linqGroupChatId: schema.families.linqGroupChatId })
+      .from(schema.families)
+      .where(eq(schema.families.id, args.familyId));
+    const groupId = existing.find((row) => row.id === args.familyId)?.linqGroupChatId ?? null;
+
+    if (groupId) {
+      await addLinqParticipant({ chatId: groupId, handle: coParent, fetch: args.fetch });
+      await database.insert(schema.auditLog).values({
+        familyId: args.familyId,
+        actor: args.parentUserId,
+        actionTaken: 'linq_group_opened',
+        targetTable: 'families',
+        targetId: args.familyId,
+        after: { outcome: 'added' },
+      });
+      return { status: 'added', chatId: groupId };
+    }
+
+    const created = await createLinqChat({
+      from,
+      to: [parent, coParent],
+      text: LINQ_GROUP_OPEN_TEXT,
+      fetch: args.fetch,
+    });
+    await updateLinqGroupChat({
+      chatId: created.chatId,
+      displayName: LINQ_GROUP_DISPLAY_NAME,
+      iconUrl: haleContactImageUrl(),
+      fetch: args.fetch,
+    });
+    await database
+      .update(schema.families)
+      .set({ linqGroupChatId: created.chatId, updatedAt: args.now })
+      .where(eq(schema.families.id, args.familyId));
+    await database.insert(schema.channelMessages).values({
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reply',
+      templateKey: 'linq:group_open',
+      providerMessageId: created.providerMessageId,
+      providerChatId: created.chatId,
+      status: acceptedStatus('imessage'),
+      sentAt: args.now,
+    });
+    await database.insert(schema.auditLog).values({
+      familyId: args.familyId,
+      actor: args.parentUserId,
+      actionTaken: 'linq_group_opened',
+      targetTable: 'families',
+      targetId: args.familyId,
+      after: { outcome: 'opened' },
+    });
+    return { status: 'opened', chatId: created.chatId };
+  } catch (err) {
+    if (err instanceof LinqSendError && err.code === 'not_configured') {
+      return { status: 'skipped', reason: 'not_configured' };
+    }
+    const code = err instanceof LinqSendError ? err.code : 'unknown';
+    const httpStatus = err instanceof LinqSendError ? err.httpStatus : 0;
+    console.warn(
+      { familyId: args.familyId, code, httpStatus },
+      'linq group: the co-parent group was not opened',
+    );
+    if (!chatIdForDegrade) return { status: 'skipped', reason: 'unavailable' };
+    await tellParentTheGroupDidNotOpen(database, args, chatIdForDegrade);
+    return { status: 'degraded', reason: 'coparent_not_reachable', code, httpStatus };
+  }
+}
+
+async function tellParentTheGroupDidNotOpen(
+  database: Database,
+  args: { familyId: string; parentUserId: string; now: Date; fetch?: typeof fetch },
+  chatId: string,
+): Promise<void> {
+  try {
+    const sent = await sendLinqChatMessage({
+      chatId,
+      text: LINQ_GROUP_UNREACHABLE_TEXT,
+      fetch: args.fetch,
+    });
+    await database.insert(schema.channelMessages).values({
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reply',
+      templateKey: 'linq:group_unreachable',
+      providerMessageId: sent.providerMessageId,
+      providerChatId: chatId,
+      status: acceptedStatus('imessage'),
+      sentAt: args.now,
+    });
+    await database.insert(schema.auditLog).values({
+      familyId: args.familyId,
+      actor: args.parentUserId,
+      actionTaken: 'linq_group_held',
+      targetTable: 'families',
+      targetId: args.familyId,
+      after: { outcome: 'coparent_not_reachable' },
+    });
+  } catch (err) {
+    const code = err instanceof LinqSendError ? err.code : 'unknown';
+    console.warn({ familyId: args.familyId, code }, 'linq group: the degrade text did not land');
   }
 }
 

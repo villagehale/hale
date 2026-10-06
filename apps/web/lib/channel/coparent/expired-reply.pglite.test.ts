@@ -11,7 +11,6 @@ import {
   startCoParentInvite,
 } from '~/lib/channel/caregiver/invites';
 import { handleLapsedInviteReply } from '~/lib/channel/caregiver/route';
-import { FakeAddThemYourself } from '~/lib/channel/intake/fakes';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { INVITE_EXPIRED_BY_LANGUAGE } from './copy';
@@ -114,7 +113,6 @@ function deps(transport: FakeTransport) {
         return 'conv-1';
       },
       openQuestions,
-      addThemYourself: new FakeAddThemYourself(),
     },
   };
 }

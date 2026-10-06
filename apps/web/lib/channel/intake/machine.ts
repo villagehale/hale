@@ -4,14 +4,12 @@ import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { readAffirmative } from '~/lib/channel/affirmative';
-import type { AddThemYourselfVoice } from '~/lib/channel/caregiver/add-them-yourself';
 import {
   declineOpenInviteOnStop,
   loadLapsedInviteByPhone,
   loadOpenInviteByPhone,
 } from '~/lib/channel/caregiver/invites';
 import {
-  type AddThemYourselfOutcome,
   type CaregiverOutcome,
   type CoParentOutcome,
   type LapsedInviteOutcome,
@@ -41,7 +39,7 @@ import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { linqFromE164 } from '~/lib/channel/linq/config';
+import { linqFromE164, linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import {
   deliverHaleLinqContactCard,
   finishCardWithinReplyBudget,
@@ -49,7 +47,6 @@ import {
   shareHaleContactCardOnce,
 } from '~/lib/channel/linq/contact-card';
 import {
-  LINQ_GROUP_ADD_THIS_NUMBER,
   LINQ_GROUP_LINE_MISSING_TEXT,
   LINQ_GROUP_TRIGGER_PHRASE,
   formatLinqLineForParent,
@@ -278,8 +275,6 @@ export interface IntakeDeps {
    * this turn exists to stop. The dep stays required so a missing composer is a
    * wiring error, not a silent skip of the later ask. */
   identityAsk: IdentityAskVoice;
-  /** The reply to an add-by-number (caregiver/route.ts). Required (rule #11). */
-  addThemYourself: AddThemYourselfVoice;
   limiter: RateLimiter;
   /** Places this family near the free civic sessions already on file, INLINE — pure DB
    * work over rows the civic sweep wrote days ago, so it is fast enough to run before
@@ -412,8 +407,6 @@ export type IntakeOutcome =
   // VIL-355 follow-up · a late answer to an invitation that lapsed. Its own outcome
   // because it is neither lane's: nothing was invited, refused or seated.
   | LapsedInviteOutcome
-  // A parent's add-by-number. Hale texts nobody first; the reply says how they get in.
-  | AddThemYourselfOutcome
   // The co-parent join link's two ends. Kept OUT of `ignored` deliberately: that
   // outcome's `no_open_conversation` reason is what hands the turn to C1
   // (inbound-route.ts), and a redemption has already been answered.
@@ -1365,18 +1358,17 @@ function coparentJoinFor(ctx: SendContext, language: ReplyLanguage) {
 
 /**
  * The real join data, appended under the model's prose like a URL. Never model-written.
- * Their own group gets the number and the one locked sentence; a new group, or an ask
- * not yet answered, gets the number and the phrase.
+ * Flag off is today's claim: the number and the phrase. Flag on appends the number
+ * only after the model reads an existing iMessage group, and never a locked sentence
+ * or a phrase to text.
  */
 function coparentTrailer(
   join: { line: string; phrase: string } | null,
   mode: CoparentGroupMode | null,
-  language: ReplyLanguage,
 ): string | null {
   if (!join) return null;
-  return mode === 'existing'
-    ? `${join.line}\n${LINQ_GROUP_ADD_THIS_NUMBER[language]}`
-    : `${join.line}\n${join.phrase}`;
+  if (!linqGroupOnboardingV2Enabled()) return `${join.line}\n${join.phrase}`;
+  return mode === 'existing' ? join.line : null;
 }
 
 function scheduledForModel(given: FirstTouchGiven | null, language: ReplyLanguage) {
@@ -2839,14 +2831,12 @@ async function friendColdTurn(
     );
     return { status: 'first_touch', step: 'find_sent' };
   }
-  // The number, and the sentence or the phrase, go under the yes to the group chat,
-  // never under the ask.
-  const trailer = coparentTrailer(join, spoken.capture.coparentGroupMode, language);
+  // Flag off: the number and phrase go under a yes. Flag on: the number alone, and
+  // only when the model read an existing iMessage group. Never under the ask.
+  const trailer = coparentTrailer(join, spoken.capture.coparentGroupMode);
   if (trailer && spoken.capture.coparentGroup === true) {
     voiced = `${voiced}\n${trailer}`;
   }
-  // The one tag every co-parent ask carries, whichever path sends it.
-  const askKey = spoken.step === 'coparent' ? INTAKE_COPARENT_ASK_TEMPLATE_KEY : undefined;
   // A card rides this reply only when the reply is about that connector: a
   // yes whose card has not gone out yet, or the ask itself. A reply written
   // for another step (the name, the schedule) carries no link.
@@ -2893,9 +2883,9 @@ async function friendColdTurn(
     } else {
       console.info({ reason: gate.reason, ask }, 'onboarding-friend: connector held');
     }
-    if (!carried) await sendAndRecord(database, ctx, voiced, deps, recorded.transcript, askKey);
+    if (!carried) await sendAndRecord(database, ctx, voiced, deps, recorded.transcript);
   } else {
-    await sendAndRecord(database, ctx, voiced, deps, recorded.transcript, askKey);
+    await sendAndRecord(database, ctx, voiced, deps, recorded.transcript);
   }
   // A connector card is its own turn. The next ask rides the receipt or the next text.
   const complete = next == null && !pending;
@@ -4470,7 +4460,7 @@ async function handleLadder(
         parentWords: inbound.body,
         coparentJoin: join,
       }),
-      { trailer: coparentTrailer(join, null, language) },
+      { trailer: coparentTrailer(join, null) },
     );
     const voiced = friendOutbound(spoken);
     if (voiced) {

@@ -51,7 +51,10 @@ import {
 } from '~/lib/channel/identity/parent-call-name';
 import { intakeConnectorOffer } from '~/lib/channel/intake/copy';
 import { replyLanguage } from '~/lib/channel/language';
-import { deliverCoParentNumberInvite } from '~/lib/channel/linq/coparent-invite';
+import {
+  type CoParentNumberDeps,
+  deliverCoParentNumberInvite,
+} from '~/lib/channel/linq/coparent-invite';
 import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
@@ -1204,13 +1207,12 @@ export function coParentAssentHandler(): DeterministicHandler {
 /**
  * The intake co-parent ask's answer: a phone number, and nothing else.
  *
- * Hale never texts the number: SMS answers with the redirect, and Linq leaves
- * the turn alone because the ask already said how to start the group. A turn
- * that is not that number is declined so the name capture and the coach still
- * hear it. A turn that is the number never falls through to a model that can
- * say an invite left when it did not.
+ * SMS sends the locked invite. Linq tells the parent how to start the group
+ * and does not text the number. A turn that is not that number is declined
+ * so the name capture and the coach still hear it. A turn that is the number
+ * never falls through to a model that can say an invite left when it did not.
  */
-export function coParentNumberHandler(): DeterministicHandler {
+export function coParentNumberHandler(deps: CoParentNumberDeps): DeterministicHandler {
   return {
     name: 'co_parent_number',
     async handle(database, ctx): Promise<HandlerVerdict> {
@@ -1220,6 +1222,7 @@ export function coParentNumberHandler(): DeterministicHandler {
         body: ctx.body,
         now: ctx.now,
         inboundChannelMessageId: ctx.inboundChannelMessageId,
+        sendSms: deps.sendSms,
       });
       if (outcome.status === 'not_pending') return { claimed: false };
       return {

@@ -22,7 +22,6 @@ import {
 } from './copy';
 import type { IntakeCollected } from './extract';
 import {
-  FakeAddThemYourself,
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
@@ -283,7 +282,6 @@ function harness(
     ackComposer: fakeAckComposer,
     answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
-    addThemYourself: new FakeAddThemYourself(),
     limiter: new FakeRateLimiter(() => NOW.getTime()),
     seedCivic: async () => 0,
     resolveCenter: async () => ({ lat: 43.6426, lng: -79.3871 }),
