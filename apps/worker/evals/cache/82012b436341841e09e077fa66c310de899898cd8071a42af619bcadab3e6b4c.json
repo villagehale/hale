@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message has critical issues: (1) It asks a yes/no question (\"should they be in the group?\") which violates the rule against telling anyone to reply with YES or NO; (2) It describes the newcomer as \"someone\" and \"this person,\" which violates the watchFor requirement to \"must not name or describe the newcomer\"; (3) While it does address Barton by name and asks whether they share the load, the yes/no framing and the description of the newcomer are disqualifying errors."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message contains multiple violations: (1) \"I'm still in review\" is not the required departure line (\"I am still here\" / \"je suis toujours là\" when register matches address tu); (2) the message is too long and padded with extra explanation about Google verification that goes beyond what the moment calls for; (3) it mentions the calendar indirectly through \"catch the kids' school and camp emails\" context; (4) the tone is corporate/explanatory rather than plain and warm like a friend; (5) while it does address Sam, mention Sam, ask one question, and reference the link correctly, the excessive padding and wrong departing statement significantly undermine the response."
+  }
+}

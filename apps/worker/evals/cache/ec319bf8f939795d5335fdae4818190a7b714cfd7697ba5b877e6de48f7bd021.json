@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message correctly identifies this as a kind conflict (both parents busy), states it plainly without guessing which parent or why they're busy, mentions all required elements (Maya, Swim level 2, 9:00, Saturday), asks exactly one question (\"Who's taking Maya to Swim level 2 on Saturday at 9:00?\"), and doesn't pick a parent, suggest cancelling, or describe a poll. It's short, warm, first person implied, and addresses both parents as required. The question is last."
+  }
+}

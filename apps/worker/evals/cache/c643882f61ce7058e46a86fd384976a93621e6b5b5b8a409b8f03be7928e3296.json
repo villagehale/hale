@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The message correctly addresses Sam by name, asks one question about wanting the kids' events on their calendar, uses first person appropriately, and is short and plain. However, it doesn't fully align with the watchFor guidance which specifies the question should be \"whether they want their calendar in the kids' year too\" - the message uses \"on your calendar\" which is slightly different phrasing. The message avoids all the major bans (no URL, no Gmail mention, no claiming Hale will change events, no \"we\" for Hale, no exclamation marks or emoji). The phrasing is natural and warm but could be more precisely aligned with the specific framing about \"the kids' year.\""
+  }
+}
