@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message perfectly matches the travel_brief kind requirements. It includes both must-mention facts (\"Montreal\" and \"the 3rd\") exactly as given, uses \"the kids\" without naming anyone, leads into a list with a colon, asks no questions, and names no place, activity, price, or time of its own. It's plain, warm, and in first person (\"here are\"). The vous address is appropriate for the household group context. This is exactly the opening Hale should write before code appends the actual list of options."
+  }
+}
