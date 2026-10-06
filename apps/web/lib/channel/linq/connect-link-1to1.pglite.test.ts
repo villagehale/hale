@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { recallChannelSigninParent } from '~/lib/auth/channel-signin';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -270,6 +271,61 @@ describe('deliverConnectLinkOneToOne', () => {
     expect(direct.texts).toHaveLength(1);
     expect(await connectStep()).toBe('link_sent');
     expect(group.sends).toHaveLength(1);
+  });
+
+  it('a refused second link resends the whole set on the next message, and every link in the chat that counts still works', async () => {
+    const { familyId, userId } = await seedConfirmedGroup();
+    const texts: Array<{ to: string; body: string }> = [];
+    const links: Array<{ chatId: string; url: string }> = [];
+    let refuseNextGmail = true;
+    const flaky: OneToOneSend = {
+      text: async (input) => {
+        texts.push(input);
+        return { providerMessageId: `text-${texts.length}`, chatId: DIRECT };
+      },
+      link: async (input) => {
+        if (refuseNextGmail && new URL(input.url).searchParams.get('to') === 'gmail') {
+          refuseNextGmail = false;
+          throw new LinqSendError('rate_limited', 429, false);
+        }
+        links.push(input);
+        return { providerMessageId: `link-${links.length}` };
+      },
+    };
+    const voice = fakeSpokenLineComposer();
+
+    const first = await deliverConnectLinkOneToOne(db.database, {
+      familyId,
+      userId,
+      groupChatId: GROUP,
+      now: NOW,
+      voice,
+      oneToOne: flaky,
+    });
+    expect(first).toEqual({ outcome: 'link_not_sent', code: 'rate_limited' });
+    expect(links.map((link) => new URL(link.url).searchParams.get('to'))).toEqual(['gcal']);
+    expect(await connectStep()).toBe('none');
+
+    const resumed = await resumeConnectLink(db.database, {
+      phone: DAD,
+      now: NOW,
+      voice,
+      oneToOne: flaky,
+    });
+
+    expect(resumed).toEqual({ outcome: 'sent', links: 2 });
+    expect(links).toHaveLength(3);
+    const latest = links.slice(-2);
+    expect(latest.map((link) => new URL(link.url).searchParams.get('to'))).toEqual([
+      'gcal',
+      'gmail',
+    ]);
+    for (const link of latest) {
+      const token = new URL(link.url).searchParams.get('t') as string;
+      const recalled = await recallChannelSigninParent(token, db.database, { now: NOW });
+      expect(recalled?.usable).toBe(true);
+    }
+    expect(await connectStep()).toBe('link_sent');
   });
 
   it('names a missing Linq key without asking anyone in the group, and tries again later', async () => {

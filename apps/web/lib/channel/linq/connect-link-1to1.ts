@@ -310,11 +310,22 @@ export async function deliverConnectLinkOneToOne(
     return { outcome: '1to1_unreachable', code: said.code, groupNotice };
   }
 
+  // The retry mints fresh links, which spends these. Every part is released so the
+  // retry sends the whole set again rather than skipping a link that no longer works.
   const releaseText = async (code: string): Promise<ConnectLinkOutcome> => {
     await database
       .update(schema.channelMessages)
       .set({ dedupeKey: null })
       .where(eq(schema.channelMessages.id, said.rowId));
+    await database
+      .update(schema.channelMessages)
+      .set({ dedupeKey: null })
+      .where(
+        inArray(
+          schema.channelMessages.dedupeKey,
+          PROVIDERS.map((provider) => `${dedupeKey}:${provider}`),
+        ),
+      );
     console.warn({ outcome: 'link_not_sent', code }, 'linq connect link: link part refused');
     return { outcome: 'link_not_sent', code };
   };
@@ -416,7 +427,7 @@ export type GroupQuietOutcome =
   | { outcome: 'already_sent' }
   | { outcome: 'not_sent'; code: string };
 
-const SILENT: readonly schema.LinqRosterMemberStatus[] = ['not_family', 'declined', 'refused'];
+const NOT_FAMILY: readonly schema.LinqRosterMemberStatus[] = ['not_family', 'refused'];
 
 /**
  * Everyone has answered, and someone still in the chat is not family (or stopped), so the
@@ -450,13 +461,14 @@ export async function noticeIfGroupQuiet(
     .where(eq(schema.channelMessages.dedupeKey, dedupeKey));
   if (prior) return { outcome: 'already_sent' };
 
-  const silent = roster.members.filter((member) => SILENT.includes(member.status)).length;
+  const notFamily = roster.members.filter((member) => NOT_FAMILY.includes(member.status)).length;
+  const stopped = roster.members.filter((member) => member.status === 'declined').length;
   const composed = await composeOnboardingLine(database, {
     familyId,
     request: {
       kind: 'group_quiet_notice',
-      reason: silent > 0 ? 'not_family' : 'unconfirmed',
-      count: Math.max(silent, 1),
+      reason: notFamily > 0 ? 'not_family' : stopped > 0 ? 'stopped' : 'unconfirmed',
+      count: Math.max(notFamily || stopped, 1),
     },
     language: await familyLanguage(database, familyId),
     templateKey: QUIET_TEMPLATE,

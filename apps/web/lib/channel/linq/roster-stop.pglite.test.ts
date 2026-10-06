@@ -145,8 +145,10 @@ async function seedConfirmedGroup(seated: Seated[], notFamily: string | null = n
 
 function ports() {
   const sends: Array<{ chatId: string; text: string; replyTo?: string }> = [];
+  const direct: Array<{ to: string; body: string }> = [];
   return {
     sends,
+    direct,
     ports: {
       now: NOW,
       voice: fakeGroupOnboardingComposer(),
@@ -155,7 +157,10 @@ function ports() {
         return { providerMessageId: `out-${sends.length}` };
       },
       oneToOne: {
-        text: async () => ({ providerMessageId: 'direct-1', chatId: 'chat-direct' }),
+        text: async (input: { to: string; body: string }) => {
+          direct.push(input);
+          return { providerMessageId: 'direct-1', chatId: 'chat-direct' };
+        },
         link: async () => ({ providerMessageId: 'direct-link' }),
       },
       recordInbound: async () => 'in-row',
@@ -217,7 +222,7 @@ describe('stopInGroup', () => {
     ]);
     const granId = seeded.users[GRAN] as string;
     expect((await groupAudienceAllows(db.database, GROUP, 'schedule')).allowed).toBe(true);
-    const { ports: p, sends } = ports();
+    const { ports: p, sends, direct } = ports();
 
     const turn = await stopInGroup(db.database, stop(GRAN, 'in-gran-stop'), p);
 
@@ -245,6 +250,9 @@ describe('stopInGroup', () => {
     expect(sends[0]).toMatchObject({ chatId: GROUP, replyTo: 'in-gran-stop' });
     expect(sends[0]?.text).toMatch(/^stop_ack:/);
     expect(await groupChat(seeded.familyId)).toBe(GROUP);
+    expect(direct.map((text) => [text.to, text.body])).toEqual([
+      [PARENT, expect.stringMatching(/^group_quiet_notice: stopped, 1/)],
+    ]);
   });
 
   it("closes a co-parent's group seat on their STOP but keeps them a parent of the family", async () => {
@@ -414,5 +422,33 @@ describe('the Linq door', () => {
 
     expect(await response.json()).toMatchObject({ outcome: 'roster_member_removed' });
     expect(await memberStatus(FRIEND)).toEqual(['removed']);
+  });
+
+  it('closes a legacy group seat the roster never listed when that person is taken out', async () => {
+    vi.stubEnv('LINQ_GROUP_MEMBERS_ENABLED', 'true');
+    const seeded = await seedConfirmedGroup([]);
+    const [user] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:${phoneBlindIndex(FRIEND)}`, name: null })
+      .returning({ id: schema.users.id });
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: seeded.familyId,
+      chatId: GROUP,
+      userId: user?.id as string,
+      phoneE164Encrypted: encryptString(FRIEND),
+      phoneE164Hash: phoneBlindIndex(FRIEND),
+      role: 'other_family',
+      seatedAt: NOW,
+    });
+    const { deps: d } = deps();
+
+    const response = await handleLinqInboundRequest(signed(removed(FRIEND, false)), d);
+
+    expect(await response.json()).toMatchObject({ outcome: 'group_member_unseated' });
+    const seats = await db.database
+      .select({ removedAt: schema.linqGroupMembers.removedAt })
+      .from(schema.linqGroupMembers)
+      .where(eq(schema.linqGroupMembers.phoneE164Hash, phoneBlindIndex(FRIEND)));
+    expect(seats).toEqual([{ removedAt: NOW }]);
   });
 });

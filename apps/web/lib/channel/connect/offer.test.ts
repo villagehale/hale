@@ -430,4 +430,96 @@ describe('connectorLinkHandler', () => {
     expect(wire.some((call) => call.url.includes(GROUP))).toBe(false);
     vi.unstubAllGlobals();
   });
+
+  async function inboundIn(chatId: string, at: Date): Promise<string> {
+    const [row] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId,
+        parentUserId,
+        channel: 'imessage',
+        direction: 'in',
+        category: 'reply',
+        providerMessageId: `in-${chatId}`,
+        providerChatId: chatId,
+        status: 'delivered',
+        body: 'give me a fresh one',
+        sentAt: at,
+        createdAt: at,
+      })
+      .returning({ id: schema.channelMessages.id });
+    return row?.id as string;
+  }
+
+  it('asked again for both links in the group: one 1:1 text carries both, and both still work', async () => {
+    const GROUP = 'chat-family-group';
+    const PERSONAL = 'chat-parent-direct';
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, familyId));
+    await inboundIn(PERSONAL, new Date('2026-08-31T14:00:00.000Z'));
+    const groupRow = await inboundIn(GROUP, new Date('2026-08-31T14:59:00.000Z'));
+    const conversationId = await threadOffer(
+      'Calendar: https://app.villagehale.com/connect?t=old-gcal&to=gcal Gmail: https://app.villagehale.com/connect?t=old-gmail&to=gmail',
+    );
+    const wire: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        wire.push({ url: String(url), body: String(init?.body ?? '') });
+        return Response.json({ message: { id: `out-${wire.length}` } });
+      }),
+    );
+
+    const verdict = await connectorLinkHandler().handle(db.database, {
+      ...turn('give me a fresh one', conversationId),
+      inboundChannelMessageId: groupRow,
+    });
+
+    expect(verdict).toEqual({ claimed: true, outcome: 'sent_1to1', reply: null });
+    expect(wire).toHaveLength(1);
+    expect(wire[0]?.url).toContain(`/chats/${PERSONAL}/messages`);
+    expect(wire[0]?.body).toContain('to=gcal');
+    expect(wire[0]?.body).toContain('to=gmail');
+    const tokens = await db.database
+      .select({ consumedAt: schema.channelSigninTokens.consumedAt })
+      .from(schema.channelSigninTokens);
+    expect(tokens.map((row) => row.consumedAt)).toEqual([null, null]);
+    vi.unstubAllGlobals();
+  });
+
+  it('a parent whose only thread with Hale is the group gets no_chat, not a link-less text called sent', async () => {
+    const GROUP = 'chat-family-group';
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+14165550100');
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, familyId));
+    const groupRow = await inboundIn(GROUP, new Date('2026-08-31T14:59:00.000Z'));
+    const wire: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        wire.push(String(url));
+        return Response.json({ chat: { id: 'direct-new', message: { id: 'out-1' } } });
+      }),
+    );
+
+    const verdict = await connectorLinkHandler().handle(db.database, {
+      ...turn('connect my google calendar'),
+      inboundChannelMessageId: groupRow,
+    });
+
+    expect(verdict).toEqual({ claimed: true, outcome: 'group_1to1_no_chat', reply: null });
+    expect(wire).toEqual([]);
+    const outbound = await db.database
+      .select({ channel: schema.channelMessages.channel })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.direction, 'out'));
+    expect(outbound).toEqual([]);
+    vi.unstubAllGlobals();
+  });
 });

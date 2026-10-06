@@ -22,10 +22,7 @@ import {
 import { textFreshConnectorLink } from '~/lib/channel/connect/fresh-link';
 import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
-import {
-  type TextConnectProvider,
-  asTextConnectProvider,
-} from '~/lib/channel/connect/text-connect';
+import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
 import { type EmailCaptureDeps, handleEmailCaptureReply } from '~/lib/channel/email-capture/reply';
 import { emailInboundConfig } from '~/lib/channel/email/config';
 import {
@@ -389,36 +386,25 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
       const target = named ?? fresh;
       if (!target) return { claimed: false };
       if (await familyGroupTurn(database, ctx)) {
-        const providers: TextConnectProvider[] =
-          target === 'both'
-            ? ['gcal', 'gmail']
-            : [asTextConnectProvider(target)].filter(
-                (provider): provider is TextConnectProvider => provider !== null,
-              );
-        if (providers.length === 0) {
+        const provider = target === 'both' ? 'both' : asTextConnectProvider(target);
+        if (!provider) {
           return { claimed: true, outcome: 'group_link_withheld', reply: null };
         }
-        const outcomes = [];
-        for (const provider of providers) {
-          outcomes.push(
-            await textFreshConnectorLink(database, {
-              familyId: ctx.familyId,
-              parentUserId: ctx.parentUserId,
-              provider,
-              now: ctx.now,
-            }),
-          );
-        }
-        const failed = outcomes.find((outcome) => outcome !== 'sent');
-        if (failed) {
+        const outcome = await textFreshConnectorLink(database, {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          provider,
+          now: ctx.now,
+        });
+        if (outcome !== 'sent') {
           log.error(
-            { familyId: ctx.familyId, provider: target, outcome: failed },
+            { familyId: ctx.familyId, provider: target, outcome },
             'connector link: asked in the group, 1:1 link not sent',
           );
         }
         return {
           claimed: true,
-          outcome: failed ? `group_1to1_${failed}` : 'sent_1to1',
+          outcome: outcome === 'sent' ? 'sent_1to1' : `group_1to1_${outcome}`,
           reply: null,
         };
       }

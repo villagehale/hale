@@ -1074,6 +1074,15 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
       participantHandle: signal.participantHandle,
       now,
     });
+    // A seat from before the roster existed is not on it; it still ends here.
+    const legacy =
+      removed.outcome === 'roster_member_absent'
+        ? await unseatParticipantRemoved(deps.database, {
+            chatId: signal.chatId,
+            participantHandle: signal.participantHandle,
+            now,
+          })
+        : null;
     const multi = linqMultiFamilyGroupsEnabled()
       ? await unseatMultiFamilyMember(deps.database, {
           chatId: signal.chatId,
@@ -1083,7 +1092,12 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
       : null;
     await deps.countOutcome('ignored');
     return json({
-      outcome: multi?.outcome === 'linq_multi_family_unseated' ? multi.outcome : removed.outcome,
+      outcome:
+        multi?.outcome === 'linq_multi_family_unseated'
+          ? multi.outcome
+          : legacy?.outcome === 'group_member_unseated'
+            ? legacy.outcome
+            : removed.outcome,
     });
   }
   if (

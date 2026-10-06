@@ -4,12 +4,17 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
-import type { ContentClass } from '~/lib/channel/role-scope';
+import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
 import { linqGroupCoparentEnabled, linqPollsEnabled } from './config';
 import { groupProactiveCapReached } from './family-outbound';
 import { groupAudienceAllows } from './group-audience';
-import { classifyKidCalendarItem, splitKidEvent, titleForStorage } from './kid-event';
+import {
+  classifyKidCalendarItem,
+  splitKidEvent,
+  titleForStorage,
+  withoutTeenTitles,
+} from './kid-event';
 
 export { classifyKidCalendarItem, splitKidEvent, titleForStorage };
 import {
@@ -806,6 +811,7 @@ async function loadFamilyCalendarContext(
   language: ReplyLanguage;
   chatId: string | null;
   childNames: string[];
+  children: Array<{ id: string; name: string; dateOfBirth: string }>;
 }> {
   const members = await database
     .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
@@ -844,7 +850,11 @@ async function loadFamilyCalendarContext(
   const gcal = new Set(active.filter((row) => row.provider === 'gcal').map((row) => row.userId));
   const gmail = new Set(active.filter((row) => row.provider === 'gmail').map((row) => row.userId));
   const children = await database
-    .select({ name: schema.children.name })
+    .select({
+      id: schema.children.id,
+      name: schema.children.name,
+      dateOfBirth: schema.children.dateOfBirth,
+    })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
   const ids = parents.map((row) => row.userId).filter((id): id is string => Boolean(id));
@@ -862,6 +872,7 @@ async function loadFamilyCalendarContext(
     language: family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en',
     chatId: family?.linqGroupChatId ?? null,
     childNames: children.map((row) => row.name),
+    children,
   };
 }
 
@@ -880,20 +891,25 @@ export async function narrateHouseholdCalendar(
     .select()
     .from(schema.parentCalendarBlocks)
     .where(eq(schema.parentCalendarBlocks.familyId, input.familyId));
-  const blocks: BusyBlock[] = rows.map((row) => ({
-    integrationId: row.integrationId,
-    userId: row.userId,
-    eventId: row.eventId,
-    start: row.startAt,
-    end: row.endAt,
-    allDay: row.allDay,
-    kidRelated: row.kidRelated,
-    title: row.title,
-    status: row.status,
-    announced: row.announcedAt !== null,
-    followupSent: row.followupAt !== null,
-    recurringEventId: row.recurringEventId,
-  }));
+  const teens = teenChildIds(context.children, input.now);
+  const blocks: BusyBlock[] = withoutTeenTitles(
+    rows.map((row) => ({
+      integrationId: row.integrationId,
+      userId: row.userId,
+      eventId: row.eventId,
+      start: row.startAt,
+      end: row.endAt,
+      allDay: row.allDay,
+      kidRelated: row.kidRelated,
+      title: row.title,
+      status: row.status,
+      announced: row.announcedAt !== null,
+      followupSent: row.followupAt !== null,
+      recurringEventId: row.recurringEventId,
+    })),
+    context.childNames,
+    context.children.filter((child) => teens.has(child.id)).map((child) => child.name),
+  );
   const names = await database
     .select({ id: schema.users.id, name: schema.users.name })
     .from(schema.users)

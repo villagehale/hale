@@ -81,7 +81,7 @@ afterEach(async () => {
 type Sent = { chatId: string; parts: Array<{ type: string; value: string }>; replyTo?: string };
 
 /** Linq, as seen from Hale's side: the members of CHAT, and every bubble Hale posted. */
-function linq() {
+function linq(members: readonly string[] = [HALE, PARENT, DAD, GRAN, FRIEND]) {
   const group: Sent[] = [];
   const direct: Sent[] = [];
   const opened: Array<{ to: string[]; text: string }> = [];
@@ -92,7 +92,7 @@ function linq() {
       return Response.json({
         id: CHAT,
         is_group: true,
-        handles: [HALE, PARENT, DAD, GRAN, FRIEND].map((handle) => ({
+        handles: members.map((handle) => ({
           handle,
           is_me: handle === HALE,
         })),
@@ -476,5 +476,40 @@ describe('group onboarding v2 — Hale joins a family group', () => {
     expect(wire.opened).toHaveLength(2);
     expect(wire.direct).toHaveLength(2);
     expect(jobs).toEqual([]);
+  });
+
+  it("never names a teen or their event in the group, while a younger child's event still goes", async () => {
+    const household = await seedHousehold();
+    await db.database
+      .insert(schema.children)
+      .values({ familyId: household.familyId, name: 'Kestrel', dateOfBirth: '2012-05-01' });
+    const wire = linq([HALE, PARENT, DAD, GRAN]);
+    const { post } = door();
+
+    await post(participant('participant.added', HALE));
+    await post(groupMessage(DAD, "I'm his dad", 'in-dad'));
+    await post(groupMessage(GRAN, 'grandma here', 'in-gran'));
+    expect((await rosterState()).roster?.status).toBe('confirmed');
+    const before = wire.group.length;
+
+    await rememberAndNarrateCalendar(db.database, {
+      integrationId: household.integrationId,
+      familyId: household.familyId,
+      userId: household.primaryId,
+      changes: [
+        calendarChange('hockey', 'Kestrel hockey', '2026-10-08T22:00:00.000Z'),
+        calendarChange('swim', 'Maya swim lessons', '2026-10-09T22:00:00.000Z'),
+      ],
+      seeding: false,
+      now: NOW,
+    });
+
+    // Positive control: the same narration did reach the group, with the younger child's event.
+    expect(wire.group).toHaveLength(before + 1);
+    const kidLine = wire.groupText().at(-1) ?? '';
+    expect(kidLine).toContain('Maya');
+    expect(kidLine).toContain('swim lessons');
+    expect(wire.groupText().join('\n')).not.toContain('Kestrel');
+    expect(wire.groupText().join('\n')).not.toMatch(/hockey/i);
   });
 });
