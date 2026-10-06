@@ -128,10 +128,15 @@ const WEEKDAY_WORD = String.raw`${WB}(?:(next|prochain(?:e)?)\s+)?(mondays?|tues
 /**
  * A future action whose subject is Hale: first person, first-person plural
  * (we / on / nous), or Hale by name. "Let me know" asks the parent; "let me
- * check" is Hale offering to act. The sweep does not perform any of these.
+ * check" is Hale offering to act. "Want me to" / "tu veux que je" is a Hale
+ * promise only when an outreach verb follows ("call", "vérifie"), not when
+ * the offer is to note something the parent already decided. The sweep does
+ * not perform any of these.
  */
+const OFFER_OUTREACH =
+  'follow up|reach out|contacte|contact|appelle|[ée]crive|v[ée]rifie|relance|demande|email|text|check|call|ask|chase';
 const COMMITMENT = new RegExp(
-  `${WB}(?:i['’]ll|i will|i['’]m going to|i am going to|i['’]d (?:follow up|check|call|email|reach out|look|ask)|i can (?:check|call|email|reach out|look|follow up|ask)|we['’]ll|we will|we['’]re going to|we are going to|hale(?:['’]s| is) going to|hale will|je vais|je relance|je rappelle|j['’](?:é|e)cris|je contacte|je v(?:é|e)rifie|je te tiens|je (?:te )?(?:redis|reviens|regarde|rev(?:é|e)rifie|m['’]en occupe|m['’]informe)|je reviens vers toi|on va|on relance|on (?:te )?revient|nous allons|qu['’]on (?:voie|v[ée]rifie|regarde|relance|appelle)|tu veux que je|veux-tu que je|want me to)${WE}|${WB}let me (?!know${WE})`,
+  `${WB}(?:i['’]ll|i will|i['’]m going to|i am going to|i['’]d (?:follow up|check|call|email|reach out|look|ask)|i can (?:check|call|email|reach out|look|follow up|ask)|we['’]ll|we will|we['’]re going to|we are going to|hale(?:['’]s| is) going to|hale will|je vais|je relance|je rappelle|j['’](?:é|e)cris|je contacte|je v(?:é|e)rifie|je te tiens|je (?:te )?(?:redis|reviens|regarde|rev(?:é|e)rifie|m['’]en occupe|m['’]informe)|je reviens vers toi|on va|on relance|on (?:te )?revient|nous allons|qu['’]on (?:voie|v[ée]rifie|regarde|relance|appelle)|(?:want me to|tu veux que je|veux-tu que je)\\s+(?:${OFFER_OUTREACH}))${WE}|${WB}let me (?!know${WE})`,
   'iu',
 );
 
@@ -182,8 +187,19 @@ const ENGLISH_ORDER_ANY = new RegExp(
   'giu',
 );
 
-/** A real question may contain "you need to". An order that starts with "you" may not. */
-const ORDER_QUESTION_START = /^(?:do|does|did|would|should|are|is|have|has)(?![\p{L}\p{N}])/iu;
+/**
+ * The auxiliary that turns "you need to" into a question: "do you need to",
+ * "will you need to", "what do you need to". It has to sit immediately
+ * before the order.
+ */
+const ORDER_QUESTION_AUX =
+  /(?<![\p{L}\p{N}])(?:do|does|did|will|would|can|could|should|might|may)\s+$/iu;
+
+/** A sentence that opens as a question, including "Est-ce que". */
+const QUESTION_SENTENCE = /^(?:is|are|was|were|has|have|did|does|do|est-ce que)(?![\p{L}\p{N}])/iu;
+
+/** "est-elle", "a-t-il", "sont-elles". Longer forms before the shorter ones. */
+const INVERTED_SUBJECT = /-(?:elles|elle|ils|il|on|tu)(?![\p{L}\p{N}])/iu;
 
 const BOOKED_CLAIM = new RegExp(
   `${WB}(?:booked|is confirmed|you signed up|all set|c['’]est r[eé]gl[eé]|r[ée]servée?|confirmée?|inscrite?)${WE}`,
@@ -406,30 +422,54 @@ function explicitDateContradicts(
   );
 }
 
-/**
- * A booking word is a question only when its own clause ends in "?".
- * The comma in "inscrite au CPE, tu veux que je…?" closes the claim.
- */
-function inQuestion(text: string, index: number): boolean {
-  const rest = text.slice(index);
-  const next = rest.search(/[,;.!?]| - /);
-  return next >= 0 && rest[next] === '?';
+/** The next comma, stop, or spaced hyphen after `index`, or -1. */
+function nextBreak(text: string, index: number): number {
+  return text.slice(index).search(/[,;.!?]| - /);
+}
+
+/** The clause that holds `index`, split on a comma, a stop, or " - ". */
+function clauseHolding(text: string, index: number): string {
+  const before = text.slice(0, index);
+  let start = 0;
+  for (const mark of before.matchAll(/[,;.!?]| - /g)) {
+    start = (mark.index ?? 0) + mark[0].length;
+  }
+  const next = nextBreak(text, index);
+  const end = next < 0 ? text.length : index + next;
+  return text.slice(start, end);
 }
 
 /**
- * "Do you need to call?" asks. "You should confirm." tells. The sentence
- * that holds the order has to be a question and start with the asking word.
+ * A booking word is a question when its own clause ends in "?", or when the
+ * sentence ends in "?" and either opens as a question or inverts the subject
+ * in that clause. The comma in "inscrite au CPE, tu veux que je…?" still
+ * closes the claim: that sentence does not open as a question.
  */
-function exemptOrderQuestion(text: string, index: number): boolean {
+function inQuestion(text: string, index: number): boolean {
+  const next = nextBreak(text, index);
+  if (next >= 0 && text.slice(index)[next] === '?') return true;
   const before = text.slice(0, index);
   let start = 0;
   for (const mark of before.matchAll(/[.!?]/g)) {
     start = (mark.index ?? 0) + mark[0].length;
   }
-  const sentence = text.slice(start).trim();
-  const end = sentence.search(/[.!?]/);
-  if (end < 0 || sentence[end] !== '?') return false;
-  return ORDER_QUESTION_START.test(sentence);
+  const after = text.slice(index);
+  const endRel = after.search(/[.!?]/);
+  if (endRel < 0 || after[endRel] !== '?') return false;
+  const sentence = text.slice(start, index + endRel + 1).trim();
+  if (QUESTION_SENTENCE.test(sentence)) return true;
+  return INVERTED_SUBJECT.test(clauseHolding(text, index));
+}
+
+/**
+ * "What do you need to bring?" asks. "You should confirm." tells. The
+ * auxiliary has to sit immediately before the order, and that clause has to
+ * end in "?". An order that opens the line is decided before this runs.
+ */
+function exemptOrderQuestion(text: string, index: number): boolean {
+  if (!ORDER_QUESTION_AUX.test(text.slice(0, index))) return false;
+  const next = nextBreak(text, index);
+  return next >= 0 && text.slice(index)[next] === '?';
 }
 
 function englishOrder(text: string): boolean {
@@ -504,9 +544,15 @@ function inventedClaim(
       return true;
     }
   }
-  const owner = stepOwner(nextStep);
-  if (owner && PARENT_ADDRESS.test(text) && !ownerIsQuestionSubject(text, owner)) return true;
+  if (addressedWrongOwner(text, nextStep)) return true;
   return false;
+}
+
+/** The named owner, when the line asks the parent to do that person's step. */
+function addressedWrongOwner(text: string, nextStep: string | null | undefined): string | null {
+  const owner = stepOwner(nextStep);
+  if (!owner || !PARENT_ADDRESS.test(text) || ownerIsQuestionSubject(text, owner)) return null;
+  return owner;
 }
 
 /**
@@ -523,6 +569,8 @@ function spaceFollowupEmDash(text: string): string {
  * uses the same GSM fold as the other sends (`gsmSafe`). What is left must
  * still be GSM-7. An empty body is the model declining, not a failure.
  */
+type PreparedBody = { ok: true; body: string } | { ok: false; reason: string; note?: string };
+
 function prepareBody(
   body: string,
   now: Date,
@@ -530,7 +578,7 @@ function prepareBody(
   status: string,
   title = '',
   nextStep: string | null = null,
-): { ok: true; body: string } | { ok: false; reason: string } {
+): PreparedBody {
   const text = body.trim();
   if (!text) return { ok: false, reason: 'empty' };
   const folded = gsmSafe(spaceFollowupEmDash(text)).trim();
@@ -554,6 +602,14 @@ function prepareBody(
   if (inventedHalePromise(folded)) return { ok: false, reason: 'invented_promise' };
   if (thirdPartyNewsBlocked(status) && asksParentForThirdPartyNews(folded)) {
     return { ok: false, reason: 'parent_news' };
+  }
+  const owner = addressedWrongOwner(folded, nextStep);
+  if (owner) {
+    return {
+      ok: false,
+      reason: 'invented_claim',
+      note: `invented_claim. The next step belongs to ${owner}. Ask about ${owner}, not you`,
+    };
   }
   if (inventedClaim(folded, status, title, nextStep, now, timeZone)) {
     return { ok: false, reason: 'invented_claim' };
@@ -602,13 +658,16 @@ async function oneAttempt(
     status: string;
     nextStep: string | null;
     refusal: string | null;
+    refusalNote?: string;
     now: Date;
     timeZone: string;
     language: 'en' | 'fr';
   },
-): Promise<WorkstreamComposeResult> {
+): Promise<PreparedBody> {
   const skill = await loadCronSkill('workstream-followup');
-  const refusal = input.refusal ? `\nprevious attempt refused: ${refusalLine(input.refusal)}` : '';
+  const refusal = input.refusal
+    ? `\nprevious attempt refused: ${input.refusalNote ?? refusalLine(input.refusal)}`
+    : '';
   const userMessage = [
     `today: ${localDate(input.now, input.timeZone)}`,
     `weekday: ${localWeekday(input.now, input.timeZone, input.language)}`,
@@ -669,8 +728,19 @@ export async function composeWorkstreamFollowup(input: {
     language: input.language ?? 'en',
   };
   const first = await oneAttempt(attempt.client, { ...attempt, refusal: null });
-  if (first.ok || first.reason === 'empty') return first;
-  return oneAttempt(attempt.client, { ...attempt, refusal: first.reason });
+  if (first.ok || first.reason === 'empty') return publish(first);
+  const second = await oneAttempt(attempt.client, {
+    ...attempt,
+    refusal: first.reason,
+    refusalNote: first.note,
+  });
+  return publish(second);
+}
+
+/** The note stays on the retry. Callers only see the short reason. */
+function publish(result: PreparedBody): WorkstreamComposeResult {
+  if (result.ok) return { ok: true, body: result.body };
+  return { ok: false, reason: result.reason };
 }
 
 /** Group-level holds are not the per-parent follow-up cap. */

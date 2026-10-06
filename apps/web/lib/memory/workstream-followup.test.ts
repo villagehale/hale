@@ -607,6 +607,65 @@ describe('workstream follow-up voice', () => {
     expect(seen[1]).not.toContain('As-tu');
   });
 
+  it('names the step owner on a wrong-person retry, with no sample sentence', async () => {
+    const seen: string[] = [];
+    const bodies = [
+      "Have you had a chance to email the coach about Omar's level test?",
+      "Have you had a chance to email the coach about Omar's level test?",
+    ];
+    const client = {
+      messages: {
+        create: vi.fn(async (params: { messages?: Array<{ content?: unknown }> }) => {
+          const content = params.messages?.[0]?.content;
+          if (typeof content === 'string') seen.push(content);
+          return toolMessage(bodies.shift() ?? '');
+        }),
+      },
+    } as unknown as AgentClient;
+    const result = await composeWorkstreamFollowup({
+      client,
+      title: "Omar's level test",
+      status: 'waiting_on_parent',
+      nextStep: 'Sam to email the coach',
+      now: new Date('2026-08-13T15:00:00.000Z'),
+      timeZone: 'America/Toronto',
+      language: 'en',
+    });
+    expect(result).toEqual({ ok: false, reason: 'invented_claim' });
+    expect(seen).toHaveLength(2);
+    expect(seen[1]).toContain(
+      'previous attempt refused: invented_claim. The next step belongs to Sam. Ask about Sam, not you',
+    );
+    expect(seen[1]).not.toContain('Has Sam');
+    expect(seen[1]).not.toContain('?');
+  });
+
+  it('leaves a claim retry unnamed when the next step has no owner', async () => {
+    const seen: string[] = [];
+    const bodies = ['Léa est inscrite au CPE.', 'Léa est inscrite au CPE.'];
+    const client = {
+      messages: {
+        create: vi.fn(async (params: { messages?: Array<{ content?: unknown }> }) => {
+          const content = params.messages?.[0]?.content;
+          if (typeof content === 'string') seen.push(content);
+          return toolMessage(bodies.shift() ?? '');
+        }),
+      },
+    } as unknown as AgentClient;
+    const result = await composeWorkstreamFollowup({
+      client,
+      title: 'place au CPE',
+      status: 'waiting_on_parent',
+      nextStep: 'appeler le CPE',
+      now: new Date('2026-08-13T15:00:00.000Z'),
+      timeZone: 'America/Toronto',
+      language: 'fr',
+    });
+    expect(result).toEqual({ ok: false, reason: 'invented_claim' });
+    expect(seen[1]?.endsWith('previous attempt refused: invented_claim')).toBe(true);
+    expect(seen[1]).not.toContain('belongs to');
+  });
+
   it('returns no sentence when both attempts fail', async () => {
     const bodies = [OPT_OUT_LINE, `check back. ${OPT_OUT_SHORT}`];
     const client = {
@@ -946,7 +1005,7 @@ describe('workstream follow-up voice', () => {
     expect(refuse('Super que la place soit réservée!')).toBe('invented_claim');
     expect(refuse('Léa est inscrite au CPE.')).toBe('invented_claim');
     expect(refuse('Léa est inscrite au CPE, et ensuite?')).toBe('invented_claim');
-    expect(refuse('Léa est inscrite au CPE, tu veux que je le note?')).toBe('invented_promise');
+    expect(refuse('Léa est inscrite au CPE, tu veux que je le note?')).toBe('invented_claim');
     expect(refuse("Theo's camp spot is all set for March break.", third)).toBe('invented_claim');
     expect(refuse("C'est réglé pour la place de Léa.")).toBe('invented_claim');
     expect(refuse('Zoé est-elle inscrite pour mardi ou jeudi?')).toBeNull();
@@ -1077,6 +1136,160 @@ describe('workstream follow-up voice', () => {
     }
     for (const line of controls) {
       expect(refuse(line.body, line.status, line.thread), line.body).toBeNull();
+    }
+    expect(refuse('Want me to add it to the calendar once you pick?')).toBeNull();
+  });
+
+  it('passes the English questions, the booking questions, and the v5 misses', () => {
+    const thursday = new Date('2026-08-13T15:00:00.000Z');
+    const zone = 'America/Toronto';
+    const refuse = (
+      body: string,
+      status = 'waiting_on_parent',
+      thread: { title?: string; nextStep?: string | null } = {},
+    ) => followupRefusal(body, thursday, zone, status, thread);
+    const sam = { nextStep: 'Sam to email the coach' };
+
+    const englishOrders: Array<{ body: string; reason: string | null; thread?: typeof sam }> = [
+      { body: "Time to call the dentist and rebook Maya's cleaning.", reason: 'order' },
+      {
+        body: "Time to call the dentist about getting Maya's cleaning back on the books.",
+        reason: 'order',
+      },
+      {
+        body: "Need to pick Leo's gift for his friend's birthday before Saturday.",
+        reason: 'order',
+      },
+      {
+        body: 'Need to pick out something under $30 for Leo’s friend before Saturday.',
+        reason: 'order',
+      },
+      { body: 'Need to pick a gift under $30 before Saturday.', reason: 'order' },
+      { body: 'You should confirm before Saturday.', reason: 'order' },
+      { body: 'You need to pick a swim class for Maya.', reason: 'order' },
+      { body: "Don't forget to call the dentist.", reason: 'order' },
+      { body: 'Make sure you pick a gift.', reason: 'order' },
+      { body: 'Remember to choose a class.', reason: 'order' },
+      { body: 'Gotta pick a gift before Saturday.', reason: 'order' },
+      {
+        body: 'The Saturday swim is still open - you have to choose 9:30 or 11.',
+        reason: 'order',
+      },
+      { body: 'Tu devrais confirmer avant samedi.', reason: 'order' },
+      { body: 'Vous devriez appeler le CPE.', reason: 'order' },
+      { body: 'Do you still need to call the dentist?', reason: null },
+      { body: 'Did you get a chance to send the deposit form?', reason: null },
+      { body: 'Has Sam had a chance to email the coach?', reason: null, thread: sam },
+      {
+        body: "Do you still need to rebook Maya's cleaning, or is that sorted?",
+        reason: null,
+      },
+      { body: "Is a gift under $30 still the plan for Leo's friend?", reason: null },
+    ];
+    expect(englishOrders).toHaveLength(19);
+    for (const line of englishOrders) {
+      expect(refuse(line.body, 'waiting_on_parent', line.thread), line.body).toBe(line.reason);
+    }
+    for (const line of [
+      'What do you need to bring for the dentist?',
+      'Which gift do you have to grab before Saturday?',
+      'Can you still make the dentist, or do you need to rebook?',
+      "When do you need to call the dentist about Maya's cleaning?",
+      'Will you need to rebook the cleaning?',
+      'Need a hand picking between the fox and the astronaut?',
+    ]) {
+      expect(refuse(line), line).toBeNull();
+    }
+
+    const booking: Array<{ body: string; reason: string | null }> = [
+      { body: 'Léa est inscrite au CPE, tu veux que je le note?', reason: 'invented_claim' },
+      { body: 'La place de Léa est réservée - tu veux que je le note?', reason: 'invented_claim' },
+      {
+        body: "Theo's camp spot is booked, want me to add it to the calendar?",
+        reason: 'invented_claim',
+      },
+      {
+        body: 'Zoé est inscrite pour mardi, tu as reçu la confirmation?',
+        reason: 'invented_claim',
+      },
+      { body: 'Zoé est-elle inscrite pour mardi ou jeudi?', reason: null },
+      { body: 'La place de Léa au CPE est-elle réservée?', reason: null },
+      { body: 'La place de Léa au CPE est-elle réservée, ou pas encore?', reason: null },
+      { body: 'Est-ce que Zoé est inscrite, finalement?', reason: null },
+      { body: "Is Theo's camp spot booked, or still pending?", reason: null },
+      { body: "Is Theo's spot booked - or still waiting on the deposit?", reason: null },
+    ];
+    expect(booking).toHaveLength(10);
+    for (const line of booking) {
+      expect(refuse(line.body), line.body).toBe(line.reason);
+    }
+    expect(refuse('Want me to call the camp?')).toBe('invented_promise');
+    expect(refuse('Tu veux que je vérifie avec le CPE?')).toBe('invented_promise');
+    expect(refuse('Veux-tu que je relance le centre?')).toBe('invented_promise');
+
+    const v5Miss: Array<{
+      body: string;
+      reason: string | null;
+      status?: string;
+      thread?: { title?: string; nextStep?: string | null };
+    }> = [
+      {
+        body: 'Il faudrait contacter le dentiste de Zoé pour reprendre le rendez-vous.',
+        reason: 'order',
+      },
+      {
+        body: 'Il te reste à contacter le dentiste de Zoé pour reprendre le rendez-vous.',
+        reason: 'order',
+      },
+      { body: "Faut qu'on reprenne le rendez-vous chez le dentiste de Zoé.", reason: 'order' },
+      {
+        body: "Il faudrait choisir un cadeau de moins de 30 $ pour l'anniversaire de Zoé.",
+        reason: 'order',
+      },
+      {
+        body: 'Il faudrait appeler le dentiste, tu veux qu’on voie les disponibilités?',
+        reason: 'order',
+      },
+      { body: "Il faut qu'on décide si on apporte une salade ou un dessert.", reason: 'order' },
+      {
+        body: 'Il faudrait appeler le dentiste pour voir si vous pouvez reprendre le rendez-vous.',
+        reason: 'order',
+      },
+      { body: "T'as juste à confirmer avant samedi.", reason: 'order' },
+      { body: "N'oublie pas de signer le formulaire de sortie.", reason: 'order' },
+      {
+        body: "Sam needs to email the coach about Omar's level test—can you send that over?",
+        reason: 'invented_claim',
+        thread: sam,
+      },
+      {
+        body: 'Dentist tomorrow: you or Sam?',
+        reason: 'invented_claim',
+        thread: { title: 'Saturday dentist' },
+      },
+      {
+        body: 'Le formulaire de sortie de Léa à signer et renvoyer demain.',
+        reason: 'invented_claim',
+        thread: { nextStep: 'signé et renvoyé avant vendredi' },
+      },
+      {
+        body: "Sam was going to email the coach about Omar's level test—did that go out?",
+        reason: null,
+        thread: sam,
+      },
+      { body: 'Faut-il toujours appeler le CPE pour la place?', reason: null },
+      { body: 'Tu as pu appeler le CPE pour confirmer la place de Léa?', reason: null },
+      { body: 'Tu vas apporter une salade ou un dessert à la fête de samedi?', reason: null },
+      {
+        body: 'Hi Barton! Which swim class works, Wallace at 9:30 or Annette at 11:00?',
+        reason: null,
+      },
+      { body: "Maya's swim at Annette Pool starts Oct 18, Sundays at 10:00.", reason: null },
+      { body: 'Choisis le cours de 9 h.', reason: null },
+    ];
+    expect(v5Miss).toHaveLength(19);
+    for (const line of v5Miss) {
+      expect(refuse(line.body, line.status, line.thread), line.body).toBe(line.reason);
     }
   });
 });
