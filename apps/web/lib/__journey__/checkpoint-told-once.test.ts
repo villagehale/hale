@@ -1,27 +1,27 @@
 import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import {
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeSilentAnswerComposer,
   fakeNoOpenQuestions,
+  fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
-import { yearOpenEmptyMessage } from '~/lib/channel/intake/year-open';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
+import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { createRadarComposer, readCandidates, readWindows } from '~/lib/channel/intake/radar';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { threadProactiveMessage } from '~/lib/channel/thread';
-import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { yearOpenEmptyMessage } from '~/lib/channel/intake/year-open';
 import { type NudgeRunDeps, type NudgeRunResult, runNudgeCron } from '~/lib/channel/nudge/run';
-import { checkpointById, checkpointRef } from '~/lib/health/checkpoints';
-import { checkpointToldKey, checkpointToldKeyPrefix } from '~/lib/health/told';
-import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
+import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
+import { checkpointById, checkpointRef } from '~/lib/health/checkpoints';
+import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
+import { checkpointToldKey, checkpointToldKeyPrefix } from '~/lib/health/told';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
@@ -209,7 +209,11 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
       );
     },
     loadClaimedWindowIds: async () => new Set<string>(),
-    loadWeekdayCareContext: async () => ({ stated: [], askedBefore: false, weekendFindSent: false }),
+    loadWeekdayCareContext: async () => ({
+      stated: [],
+      askedBefore: false,
+      weekendFindSent: false,
+    }),
     loadSaturdayPlans: async () => 'unread' as const,
     loadHouseholdBias: async () => ({ prefer: new Set<string>(), avoid: new Set<string>() }),
     weather: fakeWeather([]),

@@ -32,6 +32,8 @@ export interface ScheduleAdd {
  * of each field and stores what passes. It does not read the parent's words to
  * decide which fields are present.
  */
+export type CoparentGroupMode = 'existing' | 'new';
+
 export interface OnboardingCapture {
   postalCode: string | null;
   city: string | null;
@@ -57,6 +59,11 @@ export interface OnboardingCapture {
   scheduleDone: boolean;
   /** Whether to set up the group chat with the co-parent. Null until they answer. */
   coparentGroup: boolean | null;
+  /**
+   * Which group a yes means: the family group they already have (`existing`), or a
+   * new one with the other parent (`new`). Code holds it to the parent's words.
+   */
+  coparentGroupMode: CoparentGroupMode | null;
   /** They do not want to give a parent name. Do not ask it again. */
   nameDeclined: boolean;
   /** They do not want to give the kids' names. Do not ask that again. */
@@ -80,6 +87,7 @@ export const EMPTY_ONBOARDING_CAPTURE: OnboardingCapture = {
   scheduleAdds: [],
   scheduleDone: false,
   coparentGroup: null,
+  coparentGroupMode: null,
   nameDeclined: false,
   kidsNamesDeclined: false,
   calendarLater: false,
@@ -190,6 +198,10 @@ function acceptName(value: unknown): string | null {
 function acceptBool(value: unknown): boolean | null {
   if (value === true || value === false) return value;
   return null;
+}
+
+function acceptGroupMode(value: unknown): CoparentGroupMode | null {
+  return value === 'existing' || value === 'new' ? value : null;
 }
 
 function validDayKey(value: string): boolean {
@@ -419,6 +431,7 @@ export function acceptOnboardingCapture(
     scheduleAdds,
     scheduleDone: row.scheduleDone === true,
     coparentGroup: acceptBool(row.coparentGroup),
+    coparentGroupMode: acceptGroupMode(row.coparentGroupMode),
     nameDeclined: row.nameDeclined === true,
     kidsNamesDeclined: row.kidsNamesDeclined === true,
     calendarLater: row.calendarLater === true,
@@ -470,6 +483,7 @@ export function mergeCaptures(
     scheduleAdds,
     scheduleDone: next.scheduleDone || prior.scheduleDone,
     coparentGroup: next.coparentGroup ?? prior.coparentGroup,
+    coparentGroupMode: next.coparentGroupMode ?? prior.coparentGroupMode,
     nameDeclined: next.nameDeclined || prior.nameDeclined,
     kidsNamesDeclined: next.kidsNamesDeclined || prior.kidsNamesDeclined,
     calendarLater: next.calendarLater || prior.calendarLater,

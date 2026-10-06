@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadOnboardingFriendShortSkill, loadOnboardingFriendSkill } from '~/lib/cron/skill';
 import {
   type FriendVoiceInput,
@@ -681,6 +681,95 @@ describe('speakFriend', () => {
         { ahaMention: 'Mia swim' },
       ),
     ).toEqual({ ok: true });
+  });
+});
+
+describe('the co-parent step: their group, or a new one', () => {
+  const join = { line: '+1 555-555-0100', phrase: 'this is our year' };
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function coparentTurn(parentWords: string, withJoin = true): FriendVoiceInput {
+    return blank({
+      step: 'coparent',
+      parentWords,
+      recentTurns: [
+        {
+          role: 'hale',
+          body: 'Want me in your family group, or a new group with the other parent?',
+        },
+      ],
+      coparentJoin: withJoin ? join : null,
+      checklist: {
+        postal: true,
+        kids: true,
+        ages: true,
+        name: true,
+        gmail: true,
+        calendar: true,
+        schedule: true,
+        coparent: false,
+      },
+    });
+  }
+
+  async function read(parentWords: string, capture: Record<string, unknown>, withJoin = true) {
+    return speakFriend(
+      {
+        async compose() {
+          return { reply: 'Great, the number is below for whenever you want.', capture };
+        },
+      },
+      coparentTurn(parentWords, withJoin),
+      { page: async () => undefined },
+    );
+  }
+
+  it('with the flag off, a yes is not their existing group, even when the words name one', async () => {
+    const spoken = await read('yes add you to our group', {
+      coparentGroup: true,
+      coparentGroupMode: 'existing',
+    });
+    expect(spoken.capture.coparentGroup).toBe(true);
+    expect(spoken.capture.coparentGroupMode).toBeNull();
+    const plain = await read('yes', { coparentGroup: true, coparentGroupMode: 'existing' });
+    expect(plain.capture.coparentGroupMode).toBeNull();
+  });
+
+  it('with the flag on, keeps the model reading and does not default a plain yes', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const existing = await read('yes add you to our group', {
+      coparentGroup: true,
+      coparentGroupMode: 'new',
+    });
+    expect(existing.capture.coparentGroupMode).toBe('new');
+    const fresh = await read("let's start a new group", {
+      coparentGroup: true,
+      coparentGroupMode: 'existing',
+    });
+    expect(fresh.capture.coparentGroupMode).toBe('existing');
+    const plain = await read('yes', { coparentGroup: true, coparentGroupMode: null });
+    expect(plain.capture.coparentGroup).toBe(true);
+    expect(plain.capture.coparentGroupMode).toBeNull();
+  });
+
+  it('with the flag on, an existing group this chat cannot hold becomes a new one', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const spoken = await read(
+      'add you to our group',
+      { coparentGroup: true, coparentGroupMode: 'existing' },
+      false,
+    );
+    expect(spoken.capture.coparentGroupMode).toBe('new');
+  });
+
+  it('keeps a no as a no', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const no = await read('no thanks', { coparentGroup: false, coparentGroupMode: 'new' });
+    expect(no.capture.coparentGroup).toBe(false);
+    expect(no.capture.coparentGroupMode).toBeNull();
   });
 });
 

@@ -174,6 +174,8 @@ export interface FirstTouchGiven {
   scheduled?: FirstTouchScheduled[];
   /** Their answer to the group chat. Absent until asked and answered. */
   coparentGroup?: boolean | null;
+  /** Which group their yes meant: theirs or a new one. Absent on older sessions. */
+  coparentGroupMode?: 'existing' | 'new' | null;
 }
 
 export interface ColdStartProgress {
@@ -396,6 +398,7 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     scheduleDone?: unknown;
     scheduled?: unknown;
     coparentGroup?: unknown;
+    coparentGroupMode?: unknown;
   };
   const parentName =
     typeof row.parentName === 'string' && row.parentName.trim() ? row.parentName : null;
@@ -418,6 +421,10 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
   const scheduled = decodeScheduled(row.scheduled);
   const coparentGroup =
     row.coparentGroup === true || row.coparentGroup === false ? row.coparentGroup : null;
+  const coparentGroupMode =
+    row.coparentGroupMode === 'existing' || row.coparentGroupMode === 'new'
+      ? row.coparentGroupMode
+      : null;
   if (
     !parentName &&
     activityPick == null &&
@@ -430,7 +437,8 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     !gmailLater &&
     !scheduleDone &&
     scheduled.length === 0 &&
-    coparentGroup == null
+    coparentGroup == null &&
+    coparentGroupMode == null
   ) {
     return null;
   }
@@ -447,6 +455,7 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     ...(scheduleDone ? { scheduleDone } : {}),
     ...(scheduled.length > 0 ? { scheduled } : {}),
     ...(coparentGroup != null ? { coparentGroup } : {}),
+    ...(coparentGroupMode != null ? { coparentGroupMode } : {}),
   };
 }
 
@@ -810,4 +819,30 @@ export function decodeIntakeForRecovery(dataEncrypted: string): {
     firstTouch: data.firstTouch ?? null,
     ladderLanguage: data.ladderLanguage ?? null,
   };
+}
+
+/** The newest stored co-parent group choice for this parent, including a closed session. */
+export async function latestCoparentGroupMode(
+  database: Database,
+  userId: string,
+): Promise<'existing' | 'new' | null> {
+  const rows = await database
+    .select({
+      userId: schema.smsIntakeSessions.userId,
+      dataEncrypted: schema.smsIntakeSessions.dataEncrypted,
+      updatedAt: schema.smsIntakeSessions.updatedAt,
+    })
+    .from(schema.smsIntakeSessions);
+  const mine = rows
+    .filter((row) => row.userId === userId && row.dataEncrypted)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  for (const row of mine) {
+    try {
+      const mode = decodeData(row.dataEncrypted).firstTouch?.given?.coparentGroupMode;
+      if (mode === 'existing' || mode === 'new') return mode;
+    } catch {
+      // A session blob that will not decrypt is not this choice.
+    }
+  }
+  return null;
 }

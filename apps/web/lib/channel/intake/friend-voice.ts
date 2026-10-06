@@ -9,8 +9,13 @@ import {
 } from '~/lib/channel/connect/aha-read';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
-import { loadOnboardingFriendShortSkill, loadOnboardingFriendSkill } from '~/lib/cron/skill';
+import {
+  loadCronSkill,
+  loadOnboardingFriendShortSkill,
+  loadOnboardingFriendSkill,
+} from '~/lib/cron/skill';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { forceToolJson, llmTransport } from '~/lib/pipeline/structured';
@@ -389,6 +394,7 @@ const replySchema = z.object({
   scheduleAdds: z.array(scheduleAddSchema).optional().default([]),
   scheduleDone: z.boolean().optional().default(false).catch(false),
   coparentGroup: z.boolean().nullable().optional().default(null).catch(null),
+  coparentGroupMode: z.enum(['existing', 'new']).nullable().optional().default(null).catch(null),
   nameDeclined: z.boolean().optional().default(false).catch(false),
   kidsNamesDeclined: z.boolean().optional().default(false).catch(false),
   calendarLater: z.boolean().optional().default(false).catch(false),
@@ -447,6 +453,7 @@ const replyJsonSchema = {
     },
     scheduleDone: { type: 'boolean' },
     coparentGroup: { type: ['boolean', 'null'] },
+    coparentGroupMode: { type: ['string', 'null'], enum: ['existing', 'new', null] },
     nameDeclined: { type: 'boolean' },
     kidsNamesDeclined: { type: 'boolean' },
     calendarLater: { type: 'boolean' },
@@ -456,6 +463,19 @@ const replyJsonSchema = {
   },
   required: ['reply'],
 } as const;
+
+/** Flag off omits the choice field, so the tool the model fills is today's. */
+function replyToolSchema(): {
+  type: 'object';
+  properties: Record<string, unknown>;
+  required: readonly ['reply'];
+} {
+  if (!linqGroupOnboardingV2Enabled()) {
+    const { coparentGroupMode: _choice, ...properties } = replyJsonSchema.properties;
+    return { ...replyJsonSchema, properties };
+  }
+  return replyJsonSchema;
+}
 
 const BANNED_PHRASE =
   /reply with the number you want|text me if that changes|i['’]ll note it|i['’]ll keep track|je le note|reponds avec le numero|réponds avec le numéro/i;
@@ -658,12 +678,19 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
       today: today ? { date: today, label: dayLabel(today, input.language) } : null,
       upcomingDays: input.step === 'schedule' && now ? upcomingDays(now, input.language) : null,
       scheduled: input.scheduled ?? [],
-      // Code puts the number and phrase under the reply; the model only knows they are there.
+      // Code puts the join data under the reply; the model only knows it is there.
+      // Flag off is today's phrase. Flag on names the choice and never a phrase to text.
       coparentJoin: input.coparentJoin
-        ? {
-            below: 'the number and a short phrase, on their own lines',
-            how: 'start a group text with the other parent and the number below, then send the phrase below in it',
-          }
+        ? linqGroupOnboardingV2Enabled()
+          ? {
+              below:
+                'when coparentGroupMode is existing, the number on its own line under the reply',
+              how: 'they add Hale to the iMessage group they already have, or Hale starts a new one. A plain yes names neither. An MMS, Android, or green-bubble group cannot add this number.',
+            }
+          : {
+              below: 'the number and a short phrase, on their own lines',
+              how: 'start a group text with the other parent and the number below, then send the phrase below in it',
+            }
         : null,
       coparentGroup: input.coparentGroup ?? null,
       // Who runs Hale is for when they ask; otherwise the founder's name is
@@ -719,6 +746,27 @@ function readingForModel(input: FriendVoiceInput): string | null {
   return reading.kind === 'name'
     ? `parentWords is their name (${reading.name}): it answers the name ask`
     : `parentWords is a yes to ${reading.item}`;
+}
+
+/**
+ * The group the model read. Flag off clears it, so a yes stays today's new-group
+ * claim. Flag on keeps the model's enum and never a regex, and never defaults a
+ * plain yes to the group they already have. An existing group only counts when
+ * this chat can hold the iMessage number. MMS and a green bubble cannot, so an
+ * existing-group reading becomes a new group Hale starts.
+ */
+function withGroupMode(capture: OnboardingCapture, input: FriendVoiceInput): OnboardingCapture {
+  if (!linqGroupOnboardingV2Enabled() || capture.coparentGroup !== true) {
+    return { ...capture, coparentGroupMode: null };
+  }
+  const mode =
+    capture.coparentGroupMode === 'existing' || capture.coparentGroupMode === 'new'
+      ? capture.coparentGroupMode
+      : null;
+  if (mode === 'existing' && input.coparentJoin == null) {
+    return { ...capture, coparentGroupMode: 'new' };
+  }
+  return { ...capture, coparentGroupMode: mode };
 }
 
 /**
@@ -1752,9 +1800,12 @@ export async function speakFriend(
       const capture =
         input.parentWords.trim().length > 0
           ? settleSchedule(
-              withReading(
-                noYesInAQuestion(
-                  ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
+              withGroupMode(
+                withReading(
+                  noYesInAQuestion(
+                    ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
+                    input,
+                  ),
                   input,
                 ),
                 input,
@@ -1793,14 +1844,16 @@ export async function speakFriend(
         judgeInput.step,
         yesToLink(input, capture) || capture.scheduleAdds.length > 0,
       );
-      // The number and phrase ride below: a sentence that ends "send this phrase: Hale"
-      // points at them and stops there.
+      // Flag off: the number and phrase ride below, so a sentence that ends
+      // "send this phrase: Hale" points at them and stops there. Flag on writes
+      // the choice itself and does not get that rewrite.
+      const v2 = linqGroupOnboardingV2Enabled();
       const prose =
-        input.coparentJoin != null && capture.coparentGroup === true
+        !v2 && input.coparentJoin != null && capture.coparentGroup === true
           ? tidied.replace(/:\s*[^.?!:\n]{0,24}$/u, '.')
           : tidied;
       // Under a yes to the group, code adds the number and phrase: the reply says they are below.
-      const joinBelow = input.coparentJoin != null && capture.coparentGroup === true;
+      const joinBelow = !v2 && input.coparentJoin != null && capture.coparentGroup === true;
       // The number below is Hale's, never the other parent's.
       const wrongOwner =
         /\b(?:her|his|their|(?:mom|mum|dad|mother|father)['’]?s) (?:number|phone)\b/i;
@@ -2029,7 +2082,9 @@ function retryProblem(
     case 'long':
       return `Too long. Keep the reply under ${MAX_PROSE_CHARS} characters.`;
     case 'join':
-      return "Under their yes, code puts Hale's number and the phrase on their own lines right below. Say they are below and how to use them (coparentJoin.how), without writing them. Hale does not start the group; they do.";
+      return linqGroupOnboardingV2Enabled()
+        ? 'When coparentGroupMode is existing, code places the number on its own line under the reply. Say it is below and do not write the digits or a phrase to text. When it is new, say you will start the group. A plain yes leaves coparentGroupMode null.'
+        : "Under their yes, code puts Hale's number and the phrase on their own lines right below. Say they are below and how to use them (coparentJoin.how), without writing them. Hale does not start the group; they do.";
     case 'schedule':
       return 'A scheduleAdd pointed at a line that does not fit that child or is not on the map. Use the n of the line that matches, for a child its ages suit.';
     case 'question':
@@ -2288,14 +2343,18 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
       const skill = short
         ? await loadOnboardingFriendShortSkill()
         : await loadOnboardingFriendSkill();
+      const choice =
+        linqGroupOnboardingV2Enabled() && input.step === 'coparent'
+          ? await loadCronSkill('group-onboarding-voice')
+          : null;
       const { value } = await forceToolJson({
         client,
         lane: pickLane(skill.meta.task),
-        system: skill.instructions,
+        system: choice ? `${skill.instructions}\n\n${choice.instructions}` : skill.instructions,
         userMessage: JSON.stringify(friendVoiceContext(input)),
         toolName: 'reply',
         toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
-        inputJsonSchema: replyJsonSchema,
+        inputJsonSchema: replyToolSchema(),
         schema: replySchema,
         maxTokens: short ? SHORT_MAX_TOKENS : MAX_TOKENS,
         transport: llmTransport(),
@@ -2316,6 +2375,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
           scheduleAdds: value.scheduleAdds,
           scheduleDone: value.scheduleDone,
           coparentGroup: value.coparentGroup,
+          coparentGroupMode: value.coparentGroupMode,
           nameDeclined: value.nameDeclined,
           kidsNamesDeclined: value.kidsNamesDeclined,
           calendarLater: value.calendarLater,

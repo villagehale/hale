@@ -1229,7 +1229,7 @@ export function coParentNumberHandler(deps: CoParentNumberDeps): DeterministicHa
         claimed: true,
         outcome: outcome.status,
         reply: outcome.reply,
-        templateKey: outcome.templateKey,
+        ...('templateKey' in outcome ? { templateKey: outcome.templateKey } : {}),
       };
     },
   };

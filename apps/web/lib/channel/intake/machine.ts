@@ -39,13 +39,14 @@ import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { linqFromE164 } from '~/lib/channel/linq/config';
+import { linqFromE164, linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import {
   deliverHaleLinqContactCard,
   finishCardWithinReplyBudget,
   haleContactCardDay,
   shareHaleContactCardOnce,
 } from '~/lib/channel/linq/contact-card';
+import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import {
   LINQ_GROUP_LINE_MISSING_TEXT,
   LINQ_GROUP_TRIGGER_PHRASE,
@@ -53,6 +54,7 @@ import {
   linqCoParentAsk,
 } from '~/lib/channel/linq/group';
 import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
+import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
 import { offerYearFindPoll } from '~/lib/channel/linq/poll';
 import {
   EMERGENCY_REPLY,
@@ -167,6 +169,7 @@ import {
 } from './live-lookup';
 import { isOfficialPageAsk, officialPageFallbackReply } from './official-page';
 import {
+  type CoparentGroupMode,
   type OnboardingCapture,
   type OnboardingChecklist,
   type OnboardingItem,
@@ -1355,9 +1358,50 @@ function coparentJoinFor(ctx: SendContext, language: ReplyLanguage) {
   return { line: formatLinqLineForParent(from), phrase: LINQ_GROUP_TRIGGER_PHRASE[language] };
 }
 
-/** The real join data, appended under the model's prose like a URL. Never model-written. */
-function coparentTrailer(join: { line: string; phrase: string } | null): string | null {
-  return join ? `${join.line}\n${join.phrase}` : null;
+/**
+ * The real join data, appended under the model's prose like a URL. Never model-written.
+ * Flag off is today's claim: the number and the phrase. Flag on appends the number
+ * only after the model reads an existing iMessage group, and never a locked sentence
+ * or a phrase to text.
+ */
+function coparentTrailer(
+  join: { line: string; phrase: string } | null,
+  mode: CoparentGroupMode | null,
+): string | null {
+  if (!join) return null;
+  if (!linqGroupOnboardingV2Enabled()) return `${join.line}\n${join.phrase}`;
+  return mode === 'existing' ? join.line : null;
+}
+
+/**
+ * Flag on and the model chose a new group. Opens the household thread when a
+ * co-parent phone is already confirmed, or starts the existing co-parent invite
+ * when this message names a number that is not. Flag off returns before either.
+ */
+async function pursueNewHouseholdGroup(
+  database: Database,
+  args: {
+    mode: CoparentGroupMode | null;
+    familyId: string;
+    parentUserId: string;
+    parentPhoneE164: string;
+    now: Date;
+    inboundBody: string;
+  },
+  send: (body: string) => Promise<void>,
+): Promise<void> {
+  try {
+    const outcome = await openChosenHouseholdGroup(database, {
+      ...args,
+      namedPhone: parseCoParentNumberReply(args.inboundBody),
+    });
+    if (outcome.status === 'invite_started') await send(outcome.reply);
+  } catch (err) {
+    console.warn(
+      { familyId: args.familyId, code: err instanceof Error ? err.name : 'unknown' },
+      'linq group: choosing a new group threw',
+    );
+  }
 }
 
 function scheduledForModel(given: FirstTouchGiven | null, language: ReplyLanguage) {
@@ -1395,6 +1439,7 @@ function givenFromStored(
     gmailLater: boolean;
     scheduleDone: boolean;
     coparentGroup: boolean | null;
+    coparentGroupMode: CoparentGroupMode | null;
   },
   extra: { scheduled?: FirstTouchScheduled[] } = {},
 ): FirstTouchGiven | null {
@@ -1412,6 +1457,7 @@ function givenFromStored(
     scheduleDone: prior?.scheduleDone === true || capture.scheduleDone,
     scheduled,
     coparentGroup: capture.coparentGroup ?? prior?.coparentGroup ?? null,
+    coparentGroupMode: capture.coparentGroupMode ?? prior?.coparentGroupMode ?? null,
   };
   if (
     !given.parentName &&
@@ -2805,6 +2851,20 @@ async function friendColdTurn(
   };
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   let voiced = friendOutbound(spoken);
+  await pursueNewHouseholdGroup(
+    database,
+    {
+      mode: spoken.capture.coparentGroupMode,
+      familyId,
+      parentUserId: userId,
+      parentPhoneE164: session.phoneE164,
+      now,
+      inboundBody: inbound.body,
+    },
+    async (body) => {
+      await sendAndRecord(database, ctx, body, deps, recorded.transcript);
+    },
+  );
   if (!voiced) {
     await saveSession(
       database,
@@ -2818,8 +2878,9 @@ async function friendColdTurn(
     );
     return { status: 'first_touch', step: 'find_sent' };
   }
-  // The number and phrase go under the yes to the group chat, never under the ask.
-  const trailer = coparentTrailer(join);
+  // Flag off: the number and phrase go under a yes. Flag on: the number alone, and
+  // only when the model read an existing iMessage group. Never under the ask.
+  const trailer = coparentTrailer(join, spoken.capture.coparentGroupMode);
   if (trailer && spoken.capture.coparentGroup === true) {
     voiced = `${voiced}\n${trailer}`;
   }
@@ -4446,7 +4507,7 @@ async function handleLadder(
         parentWords: inbound.body,
         coparentJoin: join,
       }),
-      { trailer: coparentTrailer(join) },
+      { trailer: coparentTrailer(join, null) },
     );
     const voiced = friendOutbound(spoken);
     if (voiced) {

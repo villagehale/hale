@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical violations: (1) The message is in English, not French as required; (2) It explicitly says Hale will text them (\"I'll text them\"), which is a fundamental violation - Hale never texts a number first; (3) It includes a phone number (647-555-0199) which should never be in the message; (4) It includes a link (www.example.com) which is not appropriate; (5) For SMS, the message should simply direct the person to text Hale themselves, with no group chat mention; (6) The message is entirely in the wrong register and format."
+  }
+}

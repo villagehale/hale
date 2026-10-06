@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: (1) Says Hale will text them (\"I'll text them\"), which is explicitly forbidden—Hale never texts a number first. (2) Includes a phone number (647-555-0199), which must not appear. (3) Includes a link (www.example.com), which must not appear. (4) Not in French despite the request requiring French with tu and real accents. (5) Contains \"I'll\" (first person) combined with the forbidden action of texting someone. This violates the core instruction that Hale doesn't initiate contact with a new number."
+  }
+}
