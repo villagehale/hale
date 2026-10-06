@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message fails several key requirements: (1) It does not include the required statements about the link being just for Sam and how to handle Google's app verification warning (tap \"Advanced\"). (2) The question asks if Sam would \"want\" the kids' events on their calendar, but the watchFor specifies the question should be whether they want \"their calendar in the kids year too\" - a different framing. (3) The message is too short and lacks the instructional content about app verification that must precede the question. (4) Sam is correctly addressed by name, and the question is correctly positioned last, but the content and scope of what must be said is incomplete."
+  }
+}
