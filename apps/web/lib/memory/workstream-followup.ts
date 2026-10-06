@@ -57,6 +57,7 @@ const TOOL_NAME = 'write_followup';
 const BODY_MAX = 160;
 const PAGE_ACTION = 'workstream_followup_unsent';
 const DEFER_ACTION = 'workstream_followup_deferred';
+const GAVE_UP_ACTION = 'workstream_followup_gave_up';
 
 /** Three real misses, then this check-back stops. The gaps are 6h and 24h. */
 export const FOLLOWUP_ATTEMPT_CAP = 3;
@@ -115,28 +116,70 @@ const WEEKDAY_ISO: Record<string, number> = {
   ven: 4,
 };
 
-const WEEKDAY_WORD = String.raw`\b(?:(next|prochain(?:e)?)\s+)?(mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|mon|tues|tue|wed|thurs|thur|thu|fri|sat|sun|lun|jeu|ven)\b`;
+/**
+ * JS `\b` is ASCII-only, so it never fires beside é, à, or ô. Every check
+ * below uses a Unicode letter/number lookaround instead.
+ */
+const WB = String.raw`(?<![\p{L}\p{N}])`;
+const WE = String.raw`(?![\p{L}\p{N}])`;
+
+const WEEKDAY_WORD = String.raw`${WB}(?:(next|prochain(?:e)?)\s+)?(mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|mon|tues|tue|wed|thurs|thur|thu|fri|sat|sun|lun|jeu|ven)${WE}`;
 
 /**
  * A future action whose subject is Hale: first person, first-person plural
  * (we / on / nous), or Hale by name. "Let me know" asks the parent; "let me
  * check" is Hale offering to act. The sweep does not perform any of these.
  */
-const COMMITMENT =
-  /\b(?:i['’]ll|i will|i['’]m going to|i am going to|let me (?!know\b)|we['’]ll|we will|we['’]re going to|we are going to|hale(?:['’]s| is) going to|hale will|je vais|je relance|je rappelle|j['’](?:é|e)cris|je contacte|je v(?:é|e)rifie|je te tiens|on va|on relance|nous allons)\b/i;
+const COMMITMENT = new RegExp(
+  `${WB}(?:i['’]ll|i will|i['’]m going to|i am going to|i['’]d (?:follow up|check|call|email|reach out|look|ask)|i can (?:check|call|email|reach out|look|follow up|ask)|we['’]ll|we will|we['’]re going to|we are going to|hale(?:['’]s| is) going to|hale will|je vais|je relance|je rappelle|j['’](?:é|e)cris|je contacte|je v(?:é|e)rifie|je te tiens|je (?:te )?(?:redis|reviens|regarde|rev(?:é|e)rifie|m['’]en occupe|m['’]informe)|je reviens vers toi|on va|on relance|on (?:te )?revient|nous allons)${WE}|${WB}let me (?!know${WE})`,
+  'iu',
+);
 
-const GREETING = /^(?:hey|hi|hello|bonjour|salut)\b[!,.]*\s*/i;
+/** A short greeting, including a name, "there", French spacing, or a dash. Runs after gsmSafe, so an em dash is already "-". */
+const GREETING =
+  /^(?:hey|hi|hello|bonjour|salut|coucou|allo)(?:\s+(?:there|[\p{Lu}][\p{L}'’–-]*))?\s*[!,.:-]*\s*/iu;
 
-const STOCK_OPENER =
-  /^(?:just (?:checking|wanted to check)|checking in\b|quick check-?in\b|hope your\b|hope you had\b|following up\b|circling back\b|petit suivi\b|still need to know\b)/i;
+const STOCK_OPENER = new RegExp(
+  `^(?:just (?:checking|wanted to check|following up|circling back|a quick check-?in)|checking in${WE}|checking back${WE}|quick (?:follow-?up|check-?in)|hope your${WE}|hope you had${WE}|following up${WE}|circling back${WE}|touching base${WE}|(?:je fais )?(?:un )?petit suivi${WE}|juste un suivi${WE}|petit rappel${WE}|still need to know${WE})`,
+  'iu',
+);
 
-const PARENT_NEWS = /\b(?:any news|on your end|heard anything|des nouvelles|de ton c[oô]t[eé])\b/i;
+const PARENT_NEWS = new RegExp(
+  `${WB}(?:any news|on your end|heard anything|des nouvelles|de ton c[oô]t[eé])${WE}`,
+  'iu',
+);
 
 /** A question about whether a third party has answered. A status is not one. */
-const THIRD_PARTY_REPLY =
-  /\b(?:hear back|heard back|update from|any update|news from|r[eé]pondu|r[eé]ponse)\b/i;
+const THIRD_PARTY_REPLY = new RegExp(
+  `${WB}(?:hear back|heard back|update from|any update|news from|r[eé]pondu|r[eé]ponse|get back to you|got back to you|replied|answer(?:ed)?|any word|say anything|recontact[ée]|t['’]est revenu|revenu vers toi)${WE}`,
+  'iu',
+);
 
-const FRENCH_ORDER = /\b(?:tu dois|il faut que tu|faut(?:\s+juste)?\s+que tu|il faut choisir)\b/i;
+/** An order. "Faut-il …?" is a question and is not one of these. */
+const FRENCH_ORDER = new RegExp(
+  `${WB}(?:tu dois|vous devez|il faut que tu|il faudrait que tu|faudrait que tu|faut(?:\\s+juste)?\\s+que tu|il te faut|il faut choisir)${WE}|${WB}il faut(?!-il)\\s+\\p{L}+(?:er|ir|re)${WE}|^faut\\s+\\p{L}+(?:er|ir|re)${WE}`,
+  'iu',
+);
+
+const BOOKED_CLAIM = new RegExp(
+  `${WB}(?:booked|is confirmed|you signed up|r[ée]servée?|confirmée?|inscrite?)${WE}`,
+  'giu',
+);
+
+const ATTRIBUTED = new RegExp(
+  `${WB}(?:you said|you mentioned|tu as dit|tu m['’]as dit|comme tu disais)${WE}`,
+  'iu',
+);
+
+const RELATIVE_DAY = new RegExp(
+  `${WB}(?:this\\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|ce\\s+(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)|tomorrow|demain)${WE}`,
+  'giu',
+);
+
+const PARENT_ADDRESS = new RegExp(
+  `${WB}(?:did you|have you|do you|you get a chance|as-tu|t['’]as)${WE}`,
+  'iu',
+);
 
 /**
  * A promised weekday that is today or earlier this week. "next Thursday" is
@@ -146,7 +189,7 @@ const FRENCH_ORDER = /\b(?:tu dois|il faut que tu|faut(?:\s+juste)?\s+que tu|il 
 export function promisedPassedWeekday(text: string, now: Date, timeZone: string): boolean {
   if (!COMMITMENT.test(text)) return false;
   const today = isoWeekdayIndex(now, timeZone);
-  for (const match of text.matchAll(new RegExp(WEEKDAY_WORD, 'gi'))) {
+  for (const match of text.matchAll(new RegExp(WEEKDAY_WORD, 'giu'))) {
     if (match[1]) continue;
     const raw = match[2]?.toLowerCase() ?? '';
     const iso = WEEKDAY_ISO[raw] ?? WEEKDAY_ISO[raw.replace(/s$/, '')];
@@ -177,6 +220,68 @@ function asksParentForThirdPartyNews(text: string): boolean {
   return THIRD_PARTY_REPLY.test(text);
 }
 
+/** Open and scheduled threads ask the parent for outside news just as often. */
+function thirdPartyNewsBlocked(status: string): boolean {
+  return status === 'waiting_on_third_party' || status === 'open' || status === 'scheduled';
+}
+
+function threadHas(term: string, title: string, nextStep: string | null | undefined): boolean {
+  const haystack = `${title}\n${nextStep ?? ''}`.toLowerCase();
+  return haystack.includes(term.toLowerCase());
+}
+
+/**
+ * The person a next step names as the one who acts, when that person is not
+ * the parent. "Sam to email" is Sam. "Parent to call" and "Le parent doit"
+ * are the parent.
+ */
+function stepOwner(nextStep: string | null | undefined): string | null {
+  const text = nextStep?.trim() ?? '';
+  if (!text) return null;
+  if (
+    /^(?:parent|the parent|co-?parent|mom|dad|mum|maman|papa|le parent|l['’]autre parent|hale)(?![\p{L}\p{N}])/iu.test(
+      text,
+    )
+  ) {
+    return null;
+  }
+  const named =
+    /^([\p{Lu}][\p{L}–-]*)(?:['’]s\s+\p{L}+)?\s+(?:to|will|is going to|needs to|doit|va)(?![\p{L}\p{N}])/u.exec(
+      text,
+    );
+  const name = named?.[1];
+  if (!name || /^(?:hale|parent|mom|dad|mum)$/i.test(name)) return null;
+  return name;
+}
+
+/**
+ * A fact the line states that the thread does not. A scheduled thread may
+ * say the plan is booked. A relative day, a "you said", or a booking word
+ * has to already be in the title or the next step.
+ */
+function inventedClaim(
+  text: string,
+  status: string,
+  title: string,
+  nextStep: string | null | undefined,
+): boolean {
+  if (status !== 'scheduled') {
+    for (const match of text.matchAll(BOOKED_CLAIM)) {
+      const claim = match[0];
+      if (claim && !threadHas(claim, title, nextStep)) return true;
+    }
+  }
+  const attributed = ATTRIBUTED.exec(text);
+  if (attributed?.[0] && !threadHas(attributed[0], title, nextStep)) return true;
+  for (const match of text.matchAll(RELATIVE_DAY)) {
+    const term = match[0];
+    if (term && !threadHas(term, title, nextStep)) return true;
+  }
+  const owner = stepOwner(nextStep);
+  if (owner && PARENT_ADDRESS.test(text) && !new RegExp(owner, 'i').test(text)) return true;
+  return false;
+}
+
 /**
  * An em dash between two letters becomes a spaced hyphen. Ranges (9—10) and
  * an edge dash stay for `gsmSafe`, which folds every dash to a bare hyphen
@@ -196,6 +301,8 @@ function prepareBody(
   now: Date,
   timeZone: string,
   status: string,
+  title = '',
+  nextStep: string | null = null,
 ): { ok: true; body: string } | { ok: false; reason: string } {
   const text = body.trim();
   if (!text) return { ok: false, reason: 'empty' };
@@ -218,8 +325,11 @@ function prepareBody(
   if (FRENCH_ORDER.test(folded)) return { ok: false, reason: 'order' };
   if (promisedPassedWeekday(folded, now, timeZone)) return { ok: false, reason: 'past_weekday' };
   if (inventedHalePromise(folded)) return { ok: false, reason: 'invented_promise' };
-  if (status === 'waiting_on_third_party' && asksParentForThirdPartyNews(folded)) {
+  if (thirdPartyNewsBlocked(status) && asksParentForThirdPartyNews(folded)) {
     return { ok: false, reason: 'parent_news' };
+  }
+  if (inventedClaim(folded, status, title, nextStep)) {
+    return { ok: false, reason: 'invented_claim' };
   }
   return { ok: true, body: folded };
 }
@@ -230,8 +340,16 @@ export function followupRefusal(
   now: Date,
   timeZone: string,
   status = 'waiting_on_parent',
+  thread: { title?: string; nextStep?: string | null } = {},
 ): string | null {
-  const prepared = prepareBody(body, now, timeZone, status);
+  const prepared = prepareBody(
+    body,
+    now,
+    timeZone,
+    status,
+    thread.title ?? '',
+    thread.nextStep ?? null,
+  );
   return prepared.ok ? null : prepared.reason;
 }
 
@@ -264,7 +382,7 @@ async function oneAttempt(
     `whose_move: ${whoseMove(input.status)}`,
     `title: ${input.title}`,
     `status: ${input.status}`,
-    `next: ${haleActionNextStep(input.nextStep) ? 'none' : (input.nextStep ?? 'none')}`,
+    `next: ${haleActionNextStep(input.nextStep, input.status) ? 'none' : (input.nextStep ?? 'none')}`,
   ].join('\n');
   try {
     const { value } = await forceToolJson({
@@ -279,7 +397,14 @@ async function oneAttempt(
       maxTokens: 256,
       transport: 'create',
     });
-    return prepareBody(value.body, input.now, input.timeZone, input.status);
+    return prepareBody(
+      value.body,
+      input.now,
+      input.timeZone,
+      input.status,
+      input.title,
+      input.nextStep,
+    );
   } catch {
     return { ok: false, reason: 'model_failed' };
   }
@@ -412,6 +537,15 @@ export interface WorkstreamFollowupDeps {
     workstreamId: string,
     checkBackAt: Date,
   ) => Promise<void>;
+  noteGaveUp?: (
+    database: Database,
+    familyId: string,
+    reason: string,
+    now: Date,
+    workstreamId: string,
+    checkBackAt: Date,
+    attempt: number,
+  ) => Promise<void>;
   pendingDeferral?: (
     database: Database,
     workstream: { id: string; familyId: string; checkBackAt: Date },
@@ -496,6 +630,26 @@ async function alreadyPaged(
 
 function unsentPage(familyId: string, reason: string): string {
   return `workstream followup unsent family=${familyId} reason=${reason}`;
+}
+
+async function noteGaveUp(
+  database: Database,
+  familyId: string,
+  reason: string,
+  now: Date,
+  workstreamId: string,
+  checkBackAt: Date,
+  attempt: number,
+): Promise<void> {
+  await database.insert(schema.auditLog).values({
+    familyId,
+    actor: 'system',
+    actionTaken: GAVE_UP_ACTION,
+    targetTable: 'family_workstreams',
+    targetId: workstreamId,
+    after: { reason, attempt, checkBackAt: checkBackAt.toISOString() },
+    occurredAt: now,
+  });
 }
 
 async function noteUnsent(
@@ -696,6 +850,7 @@ export async function runWorkstreamFollowupSweep(
   const page = deps.page ?? postOpsSlack;
   const paged = deps.alreadyPaged ?? alreadyPaged;
   const recordMiss = deps.noteUnsent ?? noteUnsent;
+  const recordGaveUp = deps.noteGaveUp ?? noteGaveUp;
   const readDeferral = deps.pendingDeferral ?? pendingDeferral;
   const defer = deps.defer ?? noteDeferred;
   const zoneFor =
@@ -760,6 +915,7 @@ export async function runWorkstreamFollowupSweep(
         }
         if (attempt >= FOLLOWUP_ATTEMPT_CAP) {
           await stamp(database, row.id, now);
+          await recordGaveUp(database, row.familyId, reason, now, row.id, row.checkBackAt, attempt);
           return;
         }
         await defer(database, {

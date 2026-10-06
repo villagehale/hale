@@ -284,6 +284,7 @@ describe('workstream follow-up sweep', () => {
     vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
     const pages: string[] = [];
     const stamp = vi.fn(async () => undefined);
+    const gaveUp: number[] = [];
     const deferred: number[] = [];
     const base = {
       now: () => NOW,
@@ -300,6 +301,17 @@ describe('workstream follow-up sweep', () => {
       stamp,
       alreadyPaged: async () => false,
       noteUnsent: async () => undefined,
+      noteGaveUp: async (
+        _db: Database,
+        _family: string,
+        _reason: string,
+        _now: Date,
+        _id: string,
+        _at: Date,
+        attempt: number,
+      ) => {
+        gaveUp.push(attempt);
+      },
       page: async (text: string) => {
         pages.push(text);
       },
@@ -328,6 +340,7 @@ describe('workstream follow-up sweep', () => {
     });
     expect(last.failed).toBe(1);
     expect(stamp).toHaveBeenCalledTimes(1);
+    expect(gaveUp).toEqual([3]);
     expect(pages).toHaveLength(1);
   });
 
@@ -335,6 +348,7 @@ describe('workstream follow-up sweep', () => {
     vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
     const pages: string[] = [];
     const stamp = vi.fn(async () => undefined);
+    const gaveUp: number[] = [];
     const deferred: number[] = [];
     const compose = vi.fn(async () => ({
       ok: true as const,
@@ -357,6 +371,17 @@ describe('workstream follow-up sweep', () => {
       stamp,
       alreadyPaged: async () => false,
       noteUnsent: async () => undefined,
+      noteGaveUp: async (
+        _db: Database,
+        _family: string,
+        _reason: string,
+        _now: Date,
+        _id: string,
+        _at: Date,
+        attempt: number,
+      ) => {
+        gaveUp.push(attempt);
+      },
       page: async (text: string) => {
         pages.push(text);
       },
@@ -370,6 +395,7 @@ describe('workstream follow-up sweep', () => {
     });
     expect(first.failed).toBe(1);
     expect(stamp).not.toHaveBeenCalled();
+    expect(gaveUp).toEqual([]);
     expect(deferred).toEqual([1]);
     expect(pages).toEqual([`workstream followup unsent family=${FAMILY} reason=send_failed`]);
 
@@ -397,6 +423,7 @@ describe('workstream follow-up sweep', () => {
     });
     expect(last.failed).toBe(1);
     expect(stamp).toHaveBeenCalledTimes(1);
+    expect(gaveUp).toEqual([3]);
     expect(pages).toHaveLength(1);
   });
 });
@@ -588,6 +615,8 @@ describe('workstream follow-up voice', () => {
     expect(skill).toContain('il faut');
     expect(skill).toContain('tu dois');
     expect(skill).toContain('`order`');
+    expect(skill).toContain('invented_claim');
+    expect(skill).toContain('not "you"');
     expect(skill).toContain('Do not attribute');
     expect(skill).toContain('must not come out as the same sentence');
     expect(skill).toContain('must not share an opening shape');
@@ -699,19 +728,61 @@ describe('workstream follow-up voice', () => {
     expect(followupRefusal('Il faut choisir entre les deux.', thursday, zone)).toBe('order');
   });
 
-  it('keeps a parent step and drops only a step Hale would perform', () => {
-    expect(haleActionNextStep('Parent to call the dentist')).toBe(false);
-    expect(haleActionNextStep('Parent to email the coach')).toBe(false);
-    expect(haleActionNextStep('Sam to email the coach')).toBe(false);
-    expect(haleActionNextStep('Parent to reach out to the school')).toBe(false);
-    expect(haleActionNextStep('Parent to text the babysitter')).toBe(false);
-    expect(haleActionNextStep('I need to call the dentist and want a reminder Thursday')).toBe(
-      false,
-    );
-    expect(haleActionNextStep('Follow up with Camp Kawartha registration desk Thursday')).toBe(
-      true,
-    );
-    expect(haleActionNextStep('Hale will call the desk Thursday')).toBe(true);
+  it('drops a step only when Hale is the subject', () => {
+    const keep = [
+      'Alex will call the dentist',
+      'Sam is going to email the coach',
+      "Sam's dad to call the coach",
+      'Barton needs to call the dentist',
+      "Call the dentist to rebook Maya's cleaning",
+      'Email the coach about jersey size (Sam)',
+      'Contacter le CPE pour confirmer la place (parent)',
+      'Le parent doit contacter le CPE',
+      'Waiting on the camp to email the schedule',
+      'Studio will call the parent back',
+      'The school will reach out by Monday',
+      'Parent to call the dentist',
+      'Parent to email the coach',
+      'Sam to email the coach',
+      'Parent to reach out to the school',
+      'Parent to text the babysitter',
+      'I need to call the dentist and want a reminder Thursday',
+    ];
+    for (const step of keep) {
+      expect(haleActionNextStep(step, 'waiting_on_parent'), step).toBe(false);
+      expect(haleActionNextStep(step, 'scheduled'), step).toBe(false);
+    }
+    expect(
+      haleActionNextStep(
+        'Contacter le dentiste pour reprendre le rendez-vous',
+        'waiting_on_parent',
+      ),
+    ).toBe(false);
+    expect(
+      haleActionNextStep("Call the dentist to rebook Maya's cleaning", 'waiting_on_third_party'),
+    ).toBe(false);
+
+    const drop = [
+      'Hale checks back Friday',
+      "I'll look again Thursday",
+      "I'll email the camp again Thursday",
+      'Je regarde de nouveau jeudi',
+      "We'll call the camp Thursday",
+      'On va relancer le centre',
+    ];
+    for (const step of drop) {
+      expect(haleActionNextStep(step, 'waiting_on_parent'), step).toBe(true);
+    }
+    const chase = [
+      'Écrire au camp lundi',
+      'Ping the camp Thursday',
+      "Revérifier jeudi si l'entraîneur a répondu",
+      'Follow up with Camp Kawartha registration desk Thursday',
+    ];
+    for (const step of chase) {
+      expect(haleActionNextStep(step, 'waiting_on_third_party'), step).toBe(true);
+      expect(haleActionNextStep(step, 'waiting_on_parent'), step).toBe(false);
+    }
   });
 
   it('spaces an em dash between words and leaves a range and an edge dash alone', async () => {
@@ -740,6 +811,126 @@ describe('workstream follow-up voice', () => {
       'Sessions run Mon-Fri this month.',
     );
     expect(await folded('\u2014hello from the desk.')).toBe('-hello from the desk.');
+  });
+
+  it('rejects the close variants, openers, orders, and invented claims from the live check', () => {
+    const thursday = new Date('2026-08-13T15:00:00.000Z');
+    const zone = 'America/Toronto';
+    const third = 'waiting_on_third_party';
+    const refuse = (
+      body: string,
+      status = 'waiting_on_parent',
+      thread: { title?: string; nextStep?: string | null } = {},
+    ) => followupRefusal(body, thursday, zone, status, thread);
+
+    expect(refuse("I'd follow up with the camp if you want.", third)).toBe('invented_promise');
+    expect(refuse('I can check with the camp Friday.')).toBe('invented_promise');
+    expect(refuse('Je te redis ça jeudi.', third)).toBe('past_weekday');
+    expect(refuse('Je te reviens là-dessus demain.')).toBe('invented_promise');
+    expect(refuse("Je m'en occupe demain.")).toBe('invented_promise');
+    expect(refuse('On te revient vendredi.')).toBe('invented_promise');
+    expect(refuse('Je regarde de nouveau jeudi.', third)).toBe('past_weekday');
+    expect(refuse('Je revérifie jeudi.', third)).toBe('past_weekday');
+    expect(refuse('Je reviens vers toi vendredi.')).toBe('invented_promise');
+    expect(refuse('Rien de ton côté pour le camp?', third)).toBe('parent_news');
+
+    expect(refuse('Did the camp get back to you?', third)).toBe('parent_news');
+    expect(refuse('Has the studio replied yet?', 'open')).toBe('parent_news');
+    expect(refuse('Did they ever answer the desk?', 'scheduled')).toBe('parent_news');
+    expect(refuse('Any word from the coach?', third)).toBe('parent_news');
+    expect(refuse('Did they say anything yet?', third)).toBe('parent_news');
+    expect(refuse('Le centre t’a recontacté?', third)).toBe('parent_news');
+    expect(refuse("Est-ce que l'entraîneur t'est revenu?", 'open')).toBe('parent_news');
+    expect(refuse('Did you hear back from the camp?', 'waiting_on_parent')).toBeNull();
+
+    for (const line of [
+      'Hey there, just checking in on the jersey.',
+      'Hi Barton, following up on the jersey.',
+      'Bonjour ! Petit suivi sur le maillot.',
+      'Coucou, petit suivi sur le maillot.',
+      'Hello — following up on the jersey.',
+      'Quick follow-up on the jersey.',
+      'Just following up on the jersey.',
+      'Just a quick check-in on the jersey.',
+      'Checking back on the jersey.',
+      'Touching base on the jersey.',
+      'Je fais un petit suivi sur le maillot.',
+      'Un petit suivi: le maillot.',
+      'Hey, just circling back on the jersey.',
+    ]) {
+      expect(refuse(line), line).toBe('stock_opener');
+    }
+
+    expect(refuse('Il faudrait que tu signes le formulaire.')).toBe('order');
+    expect(refuse('Faudrait que tu signes le formulaire.')).toBe('order');
+    expect(refuse('Vous devez signer le formulaire.')).toBe('order');
+    expect(refuse('Il te faut signer le formulaire.')).toBe('order');
+    expect(refuse("Il faut trouver un cadeau de moins de 30 $ pour l'anniversaire de Zoé.")).toBe(
+      'order',
+    );
+    expect(refuse('Il faut confirmer la place.')).toBe('order');
+    expect(refuse('Faut choisir entre Pierre-Charbonneau 9 h et Rosemont 10 h 30?')).toBe('order');
+    expect(refuse('Faut-il appeler le CPE pour la place?')).toBeNull();
+
+    expect(refuse('Great that you booked the 9:30 swim!')).toBe('invented_claim');
+    expect(refuse("Maya's spot is confirmed.")).toBe('invented_claim');
+    expect(refuse('You said you would pick Saturday.')).toBe('invented_claim');
+    expect(refuse('Tu as dit que tu nous dirais.')).toBe('invented_claim');
+    expect(refuse('Super que la place soit réservée!')).toBe('invented_claim');
+    expect(refuse('Your swim is confirmed.', 'scheduled')).toBeNull();
+    expect(
+      refuse("Maya's swim at Annette Pool starts this Sunday at 10:00.", 'scheduled', {
+        title: 'starts Oct 18',
+        nextStep: 'first class Oct 18 at 10:00',
+      }),
+    ).toBe('invented_claim');
+    expect(
+      refuse('Did you get a chance to email the coach about the level test?', 'waiting_on_parent', {
+        title: "Omar's level test",
+        nextStep: 'Sam to email the coach',
+      }),
+    ).toBe('invented_claim');
+    expect(
+      refuse('Le formulaire doit être signé et renvoyé demain.', 'waiting_on_parent', {
+        title: 'formulaire de sortie',
+        nextStep: 'signé et renvoyé avant vendredi',
+      }),
+    ).toBe('invented_claim');
+
+    const controls: Array<{
+      body: string;
+      status?: string;
+      thread?: { title?: string; nextStep?: string | null };
+    }> = [
+      { body: 'The camp still has not written back.', status: third },
+      { body: 'Let me know which Saturday works.' },
+      { body: 'Any news on your end about the swim?', status: 'waiting_on_parent' },
+      { body: 'The camp said Thursday is when they decide.', status: third },
+      { body: 'Did you land on youth M or youth L for Ava’s jersey?' },
+      {
+        body: "Has Sam had a chance to email the coach about Omar's level test?",
+        thread: { nextStep: 'Sam to email the coach' },
+      },
+      { body: 'Have you had a chance to send that deposit form to Camp Kawartha?' },
+      { body: 'Pour la fête de samedi, ça te tente plutôt une salade ou un dessert à apporter?' },
+      { body: 'As-tu pu appeler le CPE pour confirmer la place pour Léa ?' },
+      { body: 'Le premier cours de piano de Jules est mardi à 16 h chez Mme Roy.' },
+      { body: 'Faut-il appeler le CPE pour la place?' },
+      { body: 'Léa attend juste que tu appelles le CPE.' },
+      { body: 'The camp will call the parent back Thursday.', status: third },
+      { body: 'Studio has not replied yet.', status: third },
+      { body: 'No word from the coach yet.', status: 'open' },
+      { body: 'Still holding that Saturday swim if you want to pick one.' },
+      {
+        body: 'Which works better for you this Saturday, Wallace or Annette?',
+        thread: { title: 'Wallace or Annette this Saturday' },
+      },
+      { body: 'The form is in and nothing else is owed.' },
+    ];
+    expect(controls).toHaveLength(18);
+    for (const line of controls) {
+      expect(refuse(line.body, line.status, line.thread), line.body).toBeNull();
+    }
   });
 });
 

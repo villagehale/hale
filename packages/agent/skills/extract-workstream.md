@@ -44,7 +44,7 @@ If the parent declined or rejected the activity this thread is about, set `decli
 
 ## What Hale will not do
 
-A next step is someone else's move, or null. It is never a step Hale will perform. Hale does not call a desk, email a centre, or follow up with a camp on a later day. Nothing stores that promise and then does it. Do not record it. If someone outside the family owes the answer, the status is `waiting_on_third_party` and `nextStep` describes that wait, or is null. A step the parent or a co-parent owns stays, with the status you were given. Do not drop it, and do not rewrite it as `waiting_on_third_party`.
+A next step is someone else's move, or null. It is never a step Hale will perform. Hale does not call a desk, email a centre, or follow up with a camp on a later day. Nothing stores that promise and then does it. Do not record it. If someone outside the family owes the answer, the status is `waiting_on_third_party` and `nextStep` describes that wait, or is null. A step the parent, a co-parent, or a named person owns stays, including a subjectless task such as calling or contacting someone, and so does its status. Do not drop it, and do not rewrite `waiting_on_parent` as `waiting_on_third_party`.
 
 ## Fields
 

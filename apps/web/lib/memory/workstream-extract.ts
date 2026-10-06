@@ -201,21 +201,15 @@ function normalizeOp(op: WorkstreamOp, ctx: ExtractContext, now: Date): Workstre
 }
 
 /**
- * A next step Hale would perform is not a plan. Drop that step only. A parent
- * or co-parent step stays, and so does its status: rewriting it into a
+ * A next step Hale would perform is not a plan. Drop that step only.
+ * The status stays as the model gave it: turning a parent task into a
  * third-party wait is what merged a dentist call into a pickup thread.
- * When the dropped step had not already scheduled the occasion, the wait is
- * the outside party's, with nothing promised on Hale's side.
  */
 function withoutHalePromise(op: WorkstreamOp): WorkstreamOp {
   if (op.action !== 'open' && op.action !== 'update') return op;
   if (op.declined === true) return op;
-  if (!haleActionNextStep(op.nextStep)) return op;
-  const status =
-    op.status === 'scheduled' || op.status === 'waiting_on_third_party'
-      ? op.status
-      : 'waiting_on_third_party';
-  return { ...op, nextStep: null, status };
+  if (!haleActionNextStep(op.nextStep, op.status)) return op;
+  return { ...op, nextStep: null };
 }
 
 async function loadExtractContext(

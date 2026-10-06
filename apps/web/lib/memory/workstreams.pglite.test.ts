@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { loadAgentContext } from '~/lib/coach/context';
@@ -610,13 +610,13 @@ describe('a swim search carried across turns', () => {
     expect(booked.applied[0]).toMatchObject({ outcome: 'updated', status: 'scheduled' });
   });
 
-  it('drops a next step that promises Hale will chase a third party', async () => {
+  it('drops a Hale chase on a third-party wait and keeps a parent task', async () => {
     const { familyId } = await seedFamily(db.database, 'Camp desk');
-    const opened = await rememberWorkstreamTurn({
+    const chase = await rememberWorkstreamTurn({
       database: db.database,
       familyId,
       parentText: 'Camp Kawartha has not confirmed the week.',
-      haleText: 'I will keep an eye on it.',
+      haleText: 'Nothing new from them.',
       provenance: 'msg-camp',
       now: NOW,
       client: toolClient({
@@ -624,27 +624,61 @@ describe('a swim search carried across turns', () => {
           {
             action: 'open',
             title: 'Camp Kawartha',
-            status: 'waiting_on_parent',
+            status: 'waiting_on_third_party',
             nextStep: 'Follow up with Camp Kawartha registration desk Thursday',
             checkBackAt: '2026-08-13T15:00:00.000Z',
           },
         ],
       }),
     });
-    expect(opened.applied[0]).toMatchObject({
+    expect(chase.applied[0]).toMatchObject({
       outcome: 'opened',
       status: 'waiting_on_third_party',
     });
-    const id = opened.applied[0] && 'id' in opened.applied[0] ? opened.applied[0].id : '';
-    const [row] = await db.database
+    const chaseId = chase.applied[0] && 'id' in chase.applied[0] ? chase.applied[0].id : '';
+    const [chaseRow] = await db.database
       .select({
         nextStep: schema.familyWorkstreams.nextStep,
         status: schema.familyWorkstreams.status,
       })
       .from(schema.familyWorkstreams)
-      .where(eq(schema.familyWorkstreams.id, id));
-    expect(row?.nextStep).toBeNull();
-    expect(row?.status).toBe('waiting_on_third_party');
+      .where(eq(schema.familyWorkstreams.id, chaseId));
+    expect(chaseRow?.nextStep).toBeNull();
+    expect(chaseRow?.status).toBe('waiting_on_third_party');
+
+    const dentist = await rememberWorkstreamTurn({
+      database: db.database,
+      familyId,
+      parentText: 'Je vais contacter le dentiste de Zoé pour reprendre le rendez-vous.',
+      haleText: 'Je note jeudi.',
+      provenance: 'msg-dentist-live',
+      now: NOW,
+      client: toolClient({
+        ops: [
+          {
+            action: 'open',
+            title: 'Dentiste de Zoé',
+            status: 'waiting_on_parent',
+            nextStep: 'Contacter le dentiste pour reprendre le rendez-vous',
+            checkBackAt: '2026-08-13T15:00:00.000Z',
+          },
+        ],
+      }),
+    });
+    expect(dentist.applied[0]).toMatchObject({
+      outcome: 'opened',
+      status: 'waiting_on_parent',
+    });
+    const dentistId = dentist.applied[0] && 'id' in dentist.applied[0] ? dentist.applied[0].id : '';
+    const [dentistRow] = await db.database
+      .select({
+        nextStep: schema.familyWorkstreams.nextStep,
+        status: schema.familyWorkstreams.status,
+      })
+      .from(schema.familyWorkstreams)
+      .where(eq(schema.familyWorkstreams.id, dentistId));
+    expect(dentistRow?.nextStep).toBe('Contacter le dentiste pour reprendre le rendez-vous');
+    expect(dentistRow?.status).toBe('waiting_on_parent');
   });
 
   it('keeps a parent-owned next step and its status', async () => {
@@ -761,6 +795,16 @@ describe('a swim search carried across turns', () => {
     expect(fourth.skipped.compose_failed).toBe(1);
     expect(compose).toHaveBeenCalledTimes(3);
     expect(pages).toHaveLength(1);
+    const gaveUp = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, familyId),
+          eq(schema.auditLog.actionTaken, 'workstream_followup_gave_up'),
+        ),
+      );
+    expect(gaveUp).toHaveLength(1);
 
     const fifth = await runWorkstreamFollowupSweep(db.database, {
       now: () => afterSecondWait,

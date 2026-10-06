@@ -67,32 +67,27 @@ export interface WorkstreamOp {
  * emails a centre, or follows up with a camp, so that sentence is not stored
  * and is not handed back to the check-back as if it were a plan.
  *
- * A step the parent or a co-parent owns is theirs. "Parent to call the dentist"
- * and "Sam to email the coach" stay, with the status they were given.
+ * Drop only when Hale is clearly the subject, or when a subjectless chase
+ * ("follow up with", "relancer", "ping") is already a third-party wait.
+ * A parent task ("Call the dentist", "Contacter le dentiste") stays, and so
+ * does a step whose subject is a person, a role, or the outside party.
+ * The status is never rewritten here.
  */
-const HALE_ACTION_NEXT =
-  /\b(follow up|email the|e-mail the|call the|check back|reach out|relancer|écrire (?:au|à)|ecrire (?:au|a)|contacter|write to|text the)\b/i;
+const HALE_SUBJECT =
+  /^(?:hale|i['’]ll|i will|i['’]m going to|je vais|je (?:re)?(?:regarde|v[ée]rifie|rev[ée]rifie|relance|rappelle|[ée]cris|ecris|contacte)|we['’]ll|we will|on va|nous allons)(?![\p{L}\p{N}])/iu;
 
-const PARENT_OWNED_STEP = /^(?:parent|the parent|co-?parent|mom|dad|mum|maman|papa|i|we)\b/i;
+/** A chase with no subject. "Call the dentist" is not one of these. */
+const HALE_CHASE =
+  /^(?:follow up with|check back with|relancer|rev[ée]rifier|reverifier|ping|[ée]crire au|ecrire au|[ée]crire [àa]|ecrire a)(?![\p{L}\p{N}])/iu;
 
-const HALE_WE = /^we(?:['’]ll| will|['’]re| are going)\b/i;
-
-const NAMED_TO_ACT = /^([\p{Lu}][\p{L}'’-]*)\s+to\b/u;
-
-function parentOwnedStep(text: string): boolean {
-  if (HALE_WE.test(text)) return false;
-  if (PARENT_OWNED_STEP.test(text)) return true;
-  if (/\bremind me\b/i.test(text)) return true;
-  const named = NAMED_TO_ACT.exec(text);
-  if (!named) return false;
-  return !/^hale$/i.test(named[1] ?? '');
-}
-
-export function haleActionNextStep(nextStep: string | null | undefined): boolean {
+export function haleActionNextStep(
+  nextStep: string | null | undefined,
+  status?: string | null,
+): boolean {
   const text = nextStep?.trim();
   if (!text) return false;
-  if (parentOwnedStep(text)) return false;
-  return HALE_ACTION_NEXT.test(text);
+  if (HALE_SUBJECT.test(text)) return true;
+  return status === 'waiting_on_third_party' && HALE_CHASE.test(text);
 }
 
 export type WorkstreamApplyResult =
