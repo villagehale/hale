@@ -89,3 +89,12 @@ export function linqGroupMembersEnabled(): boolean {
 export function linqMultiFamilyGroupsEnabled(): boolean {
   return trimmed('LINQ_MULTI_FAMILY_GROUPS_ENABLED') === 'true';
 }
+
+/**
+ * Group onboarding v2: Hale reads who is in a group it was added to and asks who is
+ * who. Exactly `true` enables it. Unset, empty, `on`, and `false` stay dark. Default
+ * off. Off means no roster step runs and the door answers as it did before.
+ */
+export function linqGroupOnboardingV2Enabled(): boolean {
+  return trimmed('LINQ_GROUP_ONBOARDING_V2_ENABLED') === 'true';
+}
