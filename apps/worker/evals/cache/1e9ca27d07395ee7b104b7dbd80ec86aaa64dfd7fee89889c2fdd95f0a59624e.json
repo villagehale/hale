@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message contains \"on cherche\" (Hale claiming to search) and \"qu'on cherche\" which violates the \"we\" ban for Hale - first person \"je\" is required. The phrasing should be \"Vous voulez que je cherche quelque chose\" instead. Additionally, \"chez vous\" presumes facts not in the request (knowing the parents' location). The message also uses informal suggestions rather than the plain, direct tone expected. While it does address both parents with vous, mention Maya and samedi, and ask one question, the \"on\" violations and location presumption are significant errors."
+  }
+}

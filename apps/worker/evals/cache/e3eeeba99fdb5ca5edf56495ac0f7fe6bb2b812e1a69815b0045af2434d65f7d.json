@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The message contains multiple critical violations: (1) It includes padding and unnecessary explanation (\"Google may say Hale is not verified yet - I'm still in review. No problem if you'd rather wait\") that goes beyond what the moment calls for. (2) It uses \"I\" for Hale's verification status, which suggests Hale claiming something about the setup process. (3) The message is three sentences long when the instruction is to be \"two or three sentences at most,\" but more importantly, the first two sentences are padding that should not be there. (4) While the receipt statement about the inbox is correct (\"nothing from your inbox shows up in this thread\"), wrapping it in extra explanation violates the \"exactly what the moment calls for\" standard. A 5 would state the receipt cleanly and ask the one question directly."
+  }
+}

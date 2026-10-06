@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message asks two questions (\"would it help to see the kids' events on your calendar?\" and \"That way you can keep an eye on what's coming up for reminders?\") when exactly 1 question is required. Additionally, the message uses \"would\" and \"can\" constructions that soften the ask rather than a direct single question about whether Sam wants their calendar in the kids' year. The watchFor specifies the one question should be whether they want their calendar in the kids' year, but this message doesn't ask that directly. The message also includes speculative language about Hale's intentions (\"keep an eye on what's coming up for reminders\") which ventures beyond the stated facts."
+  }
+}
