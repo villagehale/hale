@@ -271,12 +271,16 @@ async function replyMediaUnsupported(
     return 'unsubscribed';
   }
 
-  const decision = await intake.limiter.check(
-    phoneBlindIndex(phoneE164),
-    'sms-inbound',
-    RATE_LIMITS['sms-inbound'],
-  );
-  if (!decision.allowed) return 'rate_limited';
+  // A family-group turn the Linq door already charged to the chat spends nothing here,
+  // exactly as in the machine.
+  if (inbound.budget !== 'chat') {
+    const decision = await intake.limiter.check(
+      phoneBlindIndex(phoneE164),
+      'sms-inbound',
+      RATE_LIMITS['sms-inbound'],
+    );
+    if (!decision.allowed) return 'rate_limited';
+  }
 
   if (intake.stopTyping) {
     try {

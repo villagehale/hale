@@ -36,6 +36,13 @@ export interface InboundMessage {
    * 1:1 only and does not fire into a group. */
   isGroup?: boolean;
   /**
+   * Whose hourly inbound budget this text spends. Absent is `sender`: the per-number
+   * `sms-inbound` cap, which every caller written before group onboarding v2 means.
+   * `chat` says the Linq door has already charged a family-group turn to that chat's
+   * `linq-group-inbound` budget, so a busy group cannot use up a parent's 1:1 hour.
+   */
+  budget?: 'sender' | 'chat';
+  /**
    * VIL-348 — the provider's OWN keyword handling already matched this message AND
    * already replied to the sender, so Hale's acknowledgment would be the second one.
    *

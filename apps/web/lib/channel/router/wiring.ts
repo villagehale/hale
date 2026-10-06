@@ -32,6 +32,7 @@ import {
 } from '~/lib/channel/identity/call-name-voice';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
+import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
@@ -154,7 +155,7 @@ export async function loadInboundContext(
   // household.
   if (!message?.body || message.familyId !== job.family_id) return null;
 
-  const [role, primaryParentName, reply] = await Promise.all([
+  const [role, primaryParentName, reply, inGroup] = await Promise.all([
     memberRole(database, job.family_id, job.parent_user_id),
     primaryParentDisplayName(database, job.family_id),
     resolveReplyRoute(
@@ -164,9 +165,32 @@ export async function loadInboundContext(
       message.providerMessageId,
       message.providerChatId,
     ),
+    arrivedInFamilyGroup(database, job.family_id, message.channel, message.providerChatId),
   ]);
 
-  return { body: message.body, role, primaryParentName, reply };
+  return { body: message.body, role, primaryParentName, reply, inGroup };
+}
+
+/**
+ * Group onboarding v2 — the row's chat IS this family's claimed group. Read off the same
+ * ledger row as the route, so the audience and the destination cannot disagree. Dark
+ * flag: false, and the turn routes as it always has.
+ */
+async function arrivedInFamilyGroup(
+  database: Database,
+  familyId: string,
+  channel: typeof schema.channelMessages.$inferSelect.channel,
+  providerChatId: string | null,
+): Promise<boolean> {
+  if (channel !== 'imessage' || providerChatId === null || !linqGroupOnboardingV2Enabled()) {
+    return false;
+  }
+  const [family] = await database
+    .select({ chatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  return family?.chatId === providerChatId;
 }
 
 /**

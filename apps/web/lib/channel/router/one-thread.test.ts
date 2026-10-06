@@ -3,7 +3,7 @@ import { asc, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
-import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
@@ -39,6 +39,8 @@ describe('one parent, two doors, one conversation', () => {
   let transport: FakeReplyTransport;
   /** What the coach was shown, per turn — the memory assertion reads this. */
   let transcripts: string[][];
+  /** Who each turn told the coach it was talking to. */
+  let audiences: string[];
 
   beforeEach(async () => {
     db = await createTestDb();
@@ -68,6 +70,7 @@ describe('one parent, two doors, one conversation', () => {
     });
     transport = new FakeReplyTransport();
     transcripts = [];
+    audiences = [];
   });
 
   afterEach(async () => {
@@ -85,6 +88,7 @@ describe('one parent, two doors, one conversation', () => {
           .where(eq(schema.messages.conversationId, turn.conversationId))
           .orderBy(asc(schema.messages.createdAt));
         transcripts.push(rows.map((row) => row.content));
+        audiences.push(turn.audience);
         return { reply, planOffer: null, activityPromise: null, spotWatch: null };
       },
     };
@@ -134,9 +138,10 @@ describe('one parent, two doors, one conversation', () => {
 
   /** File an inbound the way its webhook does, and hand back C1's job for it. */
   async function inbound(
-    channel: 'sms' | 'email',
+    channel: 'sms' | 'email' | 'imessage',
     body: string,
     providerMessageId: string,
+    providerChatId: string | null = null,
   ): Promise<ChannelMessageReceivedJob> {
     const [row] = await db.database
       .insert(schema.channelMessages)
@@ -147,6 +152,7 @@ describe('one parent, two doors, one conversation', () => {
         direction: 'in',
         category: 'reply',
         providerMessageId,
+        providerChatId,
         status: 'delivered',
         body,
         sentAt: NOW,
@@ -198,6 +204,54 @@ describe('one parent, two doors, one conversation', () => {
       .select({ noteKey: schema.conversations.noteKey })
       .from(schema.conversations);
     expect(conversations).toEqual([{ noteKey: channelSmsNoteKey(parentUserId) }]);
+  });
+
+  describe('a turn from the family group', () => {
+    const GROUP = 'chat-family-group';
+    const DIRECT = 'chat-direct';
+
+    beforeEach(async () => {
+      vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+      await db.database
+        .update(schema.families)
+        .set({ linqGroupChatId: GROUP })
+        .where(eq(schema.families.id, familyId));
+    });
+
+    it('tells the coach it is in the group and keeps the group thread apart from the 1:1', async () => {
+      const direct = await inbound('imessage', 'is swim on thursday?', 'in-direct', DIRECT);
+      const first = await routeChannelMessage(deps('Yes, 5:15.'), direct);
+      const grouped = await inbound('imessage', 'Hale what time is pickup?', 'in-group', GROUP);
+      const second = await routeChannelMessage(deps('Pickup is at 3:30.'), grouped);
+
+      expect([first.status, second.status]).toEqual(['agent_replied', 'agent_replied']);
+      expect(audiences).toEqual(['direct', 'group']);
+      expect(first.conversationId).not.toBe(second.conversationId);
+      const keys = await db.database
+        .select({ noteKey: schema.conversations.noteKey })
+        .from(schema.conversations);
+      expect(keys.map((row) => row.noteKey).sort()).toEqual(
+        [channelSmsNoteKey(parentUserId), channelGroupNoteKey(GROUP)].sort(),
+      );
+      // The group turn never read the parent's 1:1 history.
+      expect(transcripts[1]).toEqual(['Hale what time is pickup?']);
+      expect(transport.sent.map((sent) => sent.route)).toEqual([
+        { channel: 'imessage', to: PHONE, chatId: DIRECT, replyToMessageId: 'in-direct' },
+        { channel: 'imessage', to: PHONE, chatId: GROUP, replyToMessageId: 'in-group' },
+      ]);
+    });
+
+    it('routes a group turn as today when the flag is dark', async () => {
+      vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
+      const grouped = await inbound('imessage', 'Hale what time is pickup?', 'in-dark', GROUP);
+      await routeChannelMessage(deps('Pickup is at 3:30.'), grouped);
+
+      expect(audiences).toEqual(['direct']);
+      const keys = await db.database
+        .select({ noteKey: schema.conversations.noteKey })
+        .from(schema.conversations);
+      expect(keys).toEqual([{ noteKey: channelSmsNoteKey(parentUserId) }]);
+    });
   });
 
   it('goes silent on an email from a parent who has stopped email, and says so', async () => {

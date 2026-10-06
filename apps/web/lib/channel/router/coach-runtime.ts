@@ -56,6 +56,13 @@ export interface ChannelTurn {
    * Empty is the ordinary case and means exactly what it says: Hale is waiting on nothing.
    */
   standingQuestions: readonly string[];
+  /**
+   * Who will read the reply. `group` is the family group chat (group onboarding v2):
+   * everyone in it sees the answer, so the skill's group rules apply. `direct` is every
+   * other turn. Context like `standingQuestions`, and decided in code (wiring.ts), never
+   * guessed by the model.
+   */
+  audience: 'direct' | 'group';
 }
 
 /**

@@ -105,6 +105,7 @@ function productionTools(seeded: Seeded, ledger: ReturnType<typeof createTurnOff
       body: 'what is on this weekend?',
       now: NOW,
       standingQuestions: [],
+      audience: 'direct',
     },
     noop,
     noop,

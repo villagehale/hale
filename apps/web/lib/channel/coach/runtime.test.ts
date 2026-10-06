@@ -37,6 +37,7 @@ function turn(body = 'move swim to tuesday'): ChannelTurn {
     body,
     now: NOW,
     standingQuestions: [],
+    audience: 'direct',
   };
 }
 
@@ -143,6 +144,22 @@ describe('channelCoachRuntime', () => {
         question: 'move swim to tuesday',
       }),
     );
+  });
+
+  it('tells the loop it is in the family group, and leaves a 1:1 context byte-identical', async () => {
+    const seen: Record<string, unknown>[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push(args.context as Record<string, unknown>);
+        return answering('ok.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    await channelCoachRuntime(p).respond(turn(), []);
+
+    expect(seen[0]).toHaveProperty('audience', 'group');
+    expect(seen[1]).not.toHaveProperty('audience');
   });
 
   /**

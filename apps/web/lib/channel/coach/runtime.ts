@@ -298,6 +298,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         // first attempt — the key does not appear at all rather than appearing empty, so
         // the ordinary turn's prompt bytes, and its cache prefix, are untouched.
         ...(rejectedLastAttempt.length > 0 ? { rejectedLastAttempt } : {}),
+        // THE FAMILY GROUP (group onboarding v2). Absent on a 1:1 turn for the reason the
+        // key above is: the ordinary turn's prompt bytes and cache prefix stay untouched.
+        ...(turn.audience === 'group' ? { audience: 'group' as const } : {}),
         // The hand-verified municipal open dates this family must act on, soonest
         // first, each saying whether Hale's ladder is already on it. Empty for a family
         // outside the covered set — and then the skill has nothing to claim.

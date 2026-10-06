@@ -88,6 +88,9 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
       // signing out must not buy a fresh allowance.
       'claim-phone-send',
       'sms-inbound',
+      // The family group's own inbound budget: the same per-message spend as
+      // sms-inbound, keyed by the chat instead of the sender.
+      'linq-group-inbound',
       'email-inbound',
       // The forwarding door: a genuine per-family spend cap (a triage plus an extraction
       // per allowed forward), not a bot guard, so it carries the hour budget its inbound

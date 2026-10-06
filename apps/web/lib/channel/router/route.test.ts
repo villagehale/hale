@@ -434,6 +434,7 @@ function harness(
           role: 'primary_parent',
           primaryParentName: 'Sam',
           reply: SMS_ROUTE,
+          inGroup: false,
           ...options.context,
         };
 
@@ -1106,6 +1107,35 @@ describe('flood control', () => {
     expect(overflow.status).toBe('flood_held');
     expect(coach.calls).toBe(AGENT_TURNS_PER_HOUR);
     expect(h.transport.bodies().at(-1)).toBe(FLOOD_REPLY);
+  });
+
+  it('sends the flood line 1:1 on a family-group turn, never into the group', async () => {
+    const groupRoute: ReplyRoute = {
+      channel: 'imessage',
+      to: PHONE,
+      chatId: 'chat-family-group',
+      replyToMessageId: 'in-1',
+    };
+    const spent = async (inGroup: boolean) => {
+      const limiter = flooded();
+      for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
+        await limiter.check(PARENT, 'sms-agent-turn', { limit: AGENT_TURNS_PER_HOUR, windowSec: 3600 });
+      }
+      const coach = fakeCoach();
+      const h = harness({ coach, limiter, context: { reply: groupRoute, inGroup } });
+      const result = await routeChannelMessage(h.deps, job());
+      return { result, coach, h };
+    };
+
+    const group = await spent(true);
+    expect(group.result.status).toBe('flood_held');
+    expect(group.coach.calls).toBe(0);
+    expect(group.h.transport.sent).toEqual([{ route: SMS_ROUTE, body: FLOOD_REPLY }]);
+
+    // Positive control: the same over-budget turn outside the group answers where it came from.
+    const direct = await spent(false);
+    expect(direct.result.status).toBe('flood_held');
+    expect(direct.h.transport.sent).toEqual([{ route: groupRoute, body: FLOOD_REPLY }]);
   });
 
   /**
@@ -3364,6 +3394,7 @@ describe('the disambiguation a clarifier owns', () => {
       role: 'primary_parent',
       primaryParentName: 'Sam',
       reply: SMS_ROUTE,
+      inGroup: false,
     });
     return {
       h,
