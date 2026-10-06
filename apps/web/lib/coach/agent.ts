@@ -1,25 +1,26 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import {
   type AgentClient,
+  type ToolCallEvent,
+  type ToolResultEvent,
   agentRunCostUsd,
   pickModel,
   runAgent,
   runAgentStreaming,
-  type ToolCallEvent,
-  type ToolResultEvent,
 } from '@hale/agent';
 import type { Database } from '@hale/db';
+import { rememberWorkstreamTurn } from '~/lib/memory/workstream-extract';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { type ActionIntent, detectActionIntents } from './action-intent';
 import {
   AttachmentConsumptionError,
+  type OwnedChatAttachment,
   buildAttachmentBlocks,
   linkAttachmentsToMessage,
-  type OwnedChatAttachment,
 } from './attachments';
 import type { CoachRunMetrics } from './coach';
-import { loadAgentContext, type SourceNoteContext } from './context';
+import { type SourceNoteContext, loadAgentContext } from './context';
 import {
   appendMessage,
   createConversation,
@@ -126,11 +127,7 @@ export async function askHale(
   // their transcript into the model context and append this parent's turn to it.
   let conversationId: string;
   if (input.noteKey) {
-    conversationId = await resolveOrCreateNoteConversation(
-      input.familyId,
-      input.noteKey,
-      database,
-    );
+    conversationId = await resolveOrCreateNoteConversation(input.familyId, input.noteKey, database);
   } else {
     const existing = input.conversationId
       ? await resolveConversationForParent(
@@ -157,10 +154,12 @@ export async function askHale(
   // turn keeps the plain insert (no transaction).
   const turnAttachments = input.attachments ?? [];
   let attachmentBlocks: Anthropic.ContentBlockParam[] = [];
+  let provenance = 'ask-hale';
   if (turnAttachments.length > 0) {
     const ids = turnAttachments.map((a) => a.id);
     await database.transaction(async (tx) => {
       const userMessageId = await appendMessage(conversationId, 'user', input.question, tx, scope);
+      provenance = userMessageId;
       const linked = await linkAttachmentsToMessage(
         tx,
         input.familyId,
@@ -175,7 +174,7 @@ export async function askHale(
     // Bytes are fetched (and reach the MODEL only) after the consume commits (rule #1).
     attachmentBlocks = await buildAttachmentBlocks(turnAttachments);
   } else {
-    await appendMessage(conversationId, 'user', input.question, database, scope);
+    provenance = await appendMessage(conversationId, 'user', input.question, database, scope);
   }
 
   const context = await loadAgentContext(
@@ -250,6 +249,22 @@ export async function askHale(
         topic: tagTopic(result.answer) ?? tagTopic(input.question),
       });
       await recordCoachRun(input.familyId, metrics, database, 'completed', trace.traceId);
+      try {
+        await rememberWorkstreamTurn({
+          database,
+          familyId: input.familyId,
+          parentText: input.question,
+          haleText: result.answer,
+          provenance,
+          now: new Date(),
+          client,
+        });
+      } catch (err) {
+        console.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'askHale: workstream extract failed',
+        );
+      }
 
       // Surface gated action chips the answer implied — these create DRAFTS the
       // parent must approve (rule #4); the agent never auto-acts.

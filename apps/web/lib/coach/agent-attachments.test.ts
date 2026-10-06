@@ -67,9 +67,7 @@ function makeFake(unlinkedIds: string[]) {
   const unlinked = new Set(unlinkedIds);
 
   const rowsFor = (t: unknown): unknown[] =>
-    t === schema.families
-      ? [{ planTier: 'free', city: null, province: null, country: null }]
-      : [];
+    t === schema.families ? [{ planTier: 'free', city: null, province: null, country: null }] : [];
 
   const emptyChain = (rows: unknown[]) =>
     Object.assign(Promise.resolve(rows), {
@@ -210,11 +208,14 @@ describe('askHale — atomic attachment consumption (rule #1)', () => {
     const winner = fakeClient();
     const won = await askHale(input(), db, winner.client);
     expect(won.answer).toBe('here is what I see in the photo.');
-    expect(winner.create).toHaveBeenCalledTimes(1);
+    // The answer call carries the photo. The later call is the workstream
+    // extract, which sees only the turn text.
+    expect(winner.create).toHaveBeenCalledTimes(2);
     const firstUser = winner.create.mock.calls[0]?.[0]?.messages?.[0];
     const content = firstUser?.content as Anthropic.ContentBlockParam[];
     expect(Array.isArray(content)).toBe(true);
     expect(content.some((b) => b.type === 'image')).toBe(true);
+    expect(JSON.stringify(winner.create.mock.calls[1]?.[0]?.messages)).not.toContain('"image"');
     expect(committed.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
 
     // Loser: the same attachment id is now linked, so its atomic UPDATE claims 0 → the
