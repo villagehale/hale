@@ -35,6 +35,7 @@ import {
   familyHoldsLiveBooking,
   recordActivityBooking,
 } from './booking';
+import { occasionAlreadyHeld } from './calendar-mirror';
 import {
   type EmailAlertOfferDraft,
   recordEmailAlertOffer,
@@ -386,6 +387,24 @@ export async function alertParentForEmail(
   // dark-booked family's sweep must never read other families' bookings for a sentence
   // that cannot exist.
   const counted = await readGoingFor(database, familyId, draft);
+  // One look at the calendar, shared by the sentence and the row. A school
+  // mail about an occasion already on the week is not an offer (VIL-410).
+  const candidate = emailAlertOfferDraft({
+    kind: extraction.kind,
+    event: extraction.event,
+    teenContent: extraction.teenContent,
+    matchedEventRef: extraction.matchedEventRef,
+    booked,
+    from: input.envelope.from,
+    now,
+  });
+  const onConnectedCalendar =
+    candidate !== null &&
+    (await occasionAlreadyHeld(database, {
+      familyId,
+      title: candidate.title,
+      startsAt: candidate.startsAt,
+    }));
   const { body: message, going } = renderEmailAlert({
     from: input.envelope.from,
     kind: extraction.kind,
@@ -396,18 +415,21 @@ export async function alertParentForEmail(
     going: counted,
     timeZone: input.timeZone,
     now,
+    onConnectedCalendar,
   });
-  // The same pure decision the sentence above just made. Two calls of one function rather
-  // than a flag threaded between them: the CTA and the row it promises cannot disagree.
-  const offer = emailAlertOfferDraft({
-    kind: extraction.kind,
-    event: extraction.event,
-    teenContent: extraction.teenContent,
-    matchedEventRef: extraction.matchedEventRef,
-    booked,
-    from: input.envelope.from,
-    now,
-  });
+  // The same decision the sentence above just made, including the calendar hold.
+  const offer = onConnectedCalendar
+    ? null
+    : emailAlertOfferDraft({
+        kind: extraction.kind,
+        event: extraction.event,
+        teenContent: extraction.teenContent,
+        matchedEventRef: extraction.matchedEventRef,
+        booked,
+        from: input.envelope.from,
+        now,
+        onConnectedCalendar,
+      });
 
   // CLAIM FIRST, by the insert rather than by a read a concurrent sweep can race. The
   // dedupe read above is the cost guard; this is the correctness one.
@@ -1132,6 +1154,12 @@ export interface EmailAlertRenderInput {
   going: GoingCount | null;
   timeZone: string;
   now: Date;
+  /**
+   * The calendar or a live family event already holds this occasion. Decided
+   * once by the caller so the sentence and the offer row cannot disagree.
+   * Absent is the same as false.
+   */
+  onConnectedCalendar?: boolean;
 }
 
 /** The sentence, and what the count ACTUALLY did — which is not always what it was handed,
@@ -1212,6 +1240,8 @@ const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
  *     is the week speaking about an event that is on it; "Want me to add it to your
  *     week?" asks them to add what they already have. The text is a plain notice instead
  *     ({@link calendarNotice}).
+ *   · The same title and start must not already sit on the connected calendar or on
+ *     `family_events`, even when the mail came from a school. The calendar is the week.
  *
  * Everything else ends with today's sentence, and that is still the common case.
  */
@@ -1224,8 +1254,15 @@ export function emailAlertOfferDraft(input: {
   /** The envelope's From. A Google Calendar notification is not an offer. */
   from: string;
   now: Date;
+  /** True when the calendar or family_events already holds this title and start. */
+  onConnectedCalendar?: boolean;
 }): EmailAlertOfferDraft | null {
-  if (input.teenContent || input.matchedEventRef !== null || fromParentsCalendar(input.from)) {
+  if (
+    input.teenContent ||
+    input.matchedEventRef !== null ||
+    fromParentsCalendar(input.from) ||
+    input.onConnectedCalendar === true
+  ) {
     return null;
   }
   const kind = effectiveKind(input.kind, input.booked);

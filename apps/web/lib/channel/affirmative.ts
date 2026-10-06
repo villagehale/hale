@@ -73,6 +73,8 @@ const AFFIRMATIVE = new Set([
   'looks good',
   'that works',
   'works for me',
+  'perfect',
+  'yep do it',
   // French, spelled as the normalizer leaves it: the apostrophe closes up ("d'accord" →
   // daccord), the hyphen opens out ("allons-y" → allons y), and the circumflex is folded.
   'oui',
@@ -82,6 +84,7 @@ const AFFIRMATIVE = new Set([
   'parfait',
   'allons y',
   'vas y',
+  'oui vas y',
   'absolument',
   'certainement',
   'bien sur',

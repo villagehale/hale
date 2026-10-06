@@ -36,7 +36,7 @@ Eleven of them. Ten were the register as first written; rule 11 was added when t
 
 7. **Dates and times.** The way a person says them: `Tue 7:00 a.m.`, `tomorrow`, `Saturday morning`. Family-local always. Never an ISO stamp, never a UTC offset, never `09/01`. The existing helpers are the only source — `formatWhenPhrase` wrapped in `asciiSpaces` (the wrapper exists because `Intl` emits a narrow no-break space, which is not GSM-7) and `localTimeLabel` (`apps/web/lib/loop/templates/reminder/core.ts`).
 
-8. **How to end.** If there is an action, one question they can answer in one word. If there is not, the useful sentence and **stop** — no `let me know`, no `feel free`, no `happy to help`, no offer to help again (`packages/agent/skills/coach-channel-sms.md`; the deterministic tells in `apps/worker/evals/run-coach-channel-eval.mjs`).
+8. **How to end.** If there is an action, one question they can answer in their own words. Never tell them to reply YES, NO, or any other token. If there is not, the useful sentence and **stop** — no `let me know`, no `feel free`, no `happy to help`, no offer to help again (`packages/agent/skills/coach-channel-sms.md`; the deterministic tells in `apps/worker/evals/run-coach-channel-eval.mjs`).
 
 9. **No URL, ever, that Hale composed.** The only URLs Hale texts are deterministic echoes of a parent-supplied or dataset-verified string. The 2026-08-15 fabricated-referral-link incident is recorded in the coach skill itself and is the reason the exception that used to exist does not.
 

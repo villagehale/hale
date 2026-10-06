@@ -65,7 +65,7 @@ function scheduleEvent(overrides: Partial<ScheduleEventRow> = {}): ScheduleEvent
   );
 }
 
-function fakeReader(events: ScheduleEvent[]): ChannelScheduleReader {
+function fakeReader(events: ScheduleEvent[], held = false): ChannelScheduleReader {
   return {
     async timeZone() {
       return TZ;
@@ -89,6 +89,9 @@ function fakeReader(events: ScheduleEvent[]): ChannelScheduleReader {
         activities: [],
         trips: [],
       };
+    },
+    async heldOnCalendar() {
+      return held;
     },
   };
 }
@@ -133,6 +136,7 @@ function harness(
   events: ScheduleEvent[] = [scheduleEvent()],
   teenChildIds: ReadonlySet<string> = new Set(),
   offered: readonly OfferedCandidate[] = [],
+  heldOnCalendar = false,
 ): Harness {
   const port = fakePort();
   const audit: unknown[] = [];
@@ -140,7 +144,7 @@ function harness(
   const deps = guardDeps(audit, teenChildIds);
   const tools = buildChannelCoachTools({
     familyId: FAMILY,
-    reader: fakeReader(events),
+    reader: fakeReader(events, heldOnCalendar),
     draftPort: port,
     villageTool: null,
     offeredThisTurn: () => offered,
@@ -436,6 +440,34 @@ describe('propose_calendar_add', () => {
         childId: TEEN_KID,
       }),
     ).rejects.toThrow(/guardrail/i);
+    expect(h.port.drafts).toEqual([]);
+  });
+
+  it('refuses an add whose start has already passed, and drafts nothing', async () => {
+    const h = harness();
+
+    await expect(
+      h.call('propose_calendar_add', {
+        title: 'Gymnastics',
+        date: '2026-07-29',
+        time: '16:15',
+        weekday: 'wed',
+      }),
+    ).rejects.toThrow(/already passed/i);
+    expect(h.port.drafts).toEqual([]);
+  });
+
+  it('refuses an add that is already on the calendar', async () => {
+    const h = harness([scheduleEvent()], new Set(), [], true);
+
+    await expect(
+      h.call('propose_calendar_add', {
+        title: 'Gymnastics',
+        date: '2026-08-05',
+        time: '10:00',
+        weekday: 'wed',
+      }),
+    ).rejects.toThrow(/already on the calendar/i);
     expect(h.port.drafts).toEqual([]);
   });
 });

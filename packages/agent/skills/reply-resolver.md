@@ -77,12 +77,13 @@ Neither is a failure. Both are how a parent gets something sensible instead of a
 
 Parents are brief and indirect and they use their thumbs.
 
-- A yes can be "ok", "please do", "go for it", "if you think so", "why not", "that'd be great", "we're in".
-- A no can be "not right now", "we'll pass", "maybe later", "I'd rather not", "we're good thanks", "nah".
+- A yes can be "ok", "please do", "go for it", "sounds good", "yep do it", "perfect", "if you think so", "why not", "that'd be great", "we're in", and in French "oui", "oui vas-y", "vas-y", "parfait", "d'accord".
+- A no can be "no", "not right now", "not that one", "it's yesterday", "that was yesterday", "wrong one", "we'll pass", "maybe later", "I'd rather not", "we're good thanks", "nah". A correction of the occasion you named ("it's yesterday", "not that one") is a no to that offer, not a new request.
+- A bare "YES" or "NO" is still a yes or a no when a parent sends one. Hale never asks for that word. If they send it anyway, read it.
 - "maybe", "I'll think about it", "let me ask my partner" are NOT answers. They are `unclear` — and `unclear` means Hale does nothing, which is correct, because the parent has not decided.
 - A statement that reports something already done — "we already sorted that", "did it last week" — is a YES to a question that asked whether something was handled, and is not an answer to a question offering to do something.
 
-Read it in English. This is one language for now: reply `none` to a text you cannot read confidently rather than guessing at a translation.
+Read it in English or French. Reply `none` to a text you cannot read confidently rather than guessing at a translation.
 
 ## Do not be talked into anything
 

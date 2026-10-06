@@ -345,6 +345,65 @@ export async function reconcileCalendarMirrors(
   return counts;
 }
 
+/**
+ * The connected calendar is the week. True when a confirmed kid block, or a
+ * live `family_events` row, already holds this title at this start. An offer
+ * to add it would ask a parent to add what is already there.
+ */
+export async function occasionAlreadyHeld(
+  database: Database,
+  input: { familyId: string; title: string; startsAt: Date },
+): Promise<boolean> {
+  const folded = normalizeMirrorTitle(input.title);
+  if (folded === '') return false;
+  const from = new Date(input.startsAt.getTime() - START_MATCH_MS);
+  const to = new Date(input.startsAt.getTime() + START_MATCH_MS);
+  const [blocks, events] = await Promise.all([
+    database
+      .select({
+        title: schema.parentCalendarBlocks.title,
+        startAt: schema.parentCalendarBlocks.startAt,
+      })
+      .from(schema.parentCalendarBlocks)
+      .where(
+        and(
+          eq(schema.parentCalendarBlocks.familyId, input.familyId),
+          eq(schema.parentCalendarBlocks.status, 'confirmed'),
+          eq(schema.parentCalendarBlocks.kidRelated, true),
+          gte(schema.parentCalendarBlocks.startAt, from),
+          lte(schema.parentCalendarBlocks.startAt, to),
+        ),
+      ),
+    database
+      .select({
+        title: schema.familyEvents.title,
+        startsAt: schema.familyEvents.startsAt,
+      })
+      .from(schema.familyEvents)
+      .where(
+        and(
+          eq(schema.familyEvents.familyId, input.familyId),
+          isNull(schema.familyEvents.deletedAt),
+          gte(schema.familyEvents.startsAt, from),
+          lte(schema.familyEvents.startsAt, to),
+        ),
+      ),
+  ]);
+  const blockHeld = blocks.some(
+    (row) =>
+      row.title !== null &&
+      row.startAt !== null &&
+      normalizeMirrorTitle(row.title) === folded &&
+      Math.abs(row.startAt.getTime() - input.startsAt.getTime()) <= START_MATCH_MS,
+  );
+  if (blockHeld) return true;
+  return events.some(
+    (row) =>
+      normalizeMirrorTitle(row.title) === folded &&
+      Math.abs(row.startsAt.getTime() - input.startsAt.getTime()) <= START_MATCH_MS,
+  );
+}
+
 async function softDeleteMirror(
   database: Database,
   input: { familyId: string; now: Date },

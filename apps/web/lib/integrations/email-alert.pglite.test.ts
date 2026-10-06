@@ -9,7 +9,7 @@ import { PROACTIVE_CAP, PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import {
   EMAIL_ALERT_MAX_PER_SWEEP,
   EMAIL_ALERT_TEMPLATE_KEY,
@@ -1203,7 +1203,48 @@ describe('the offer at the end', () => {
     if (!offer) throw new Error('no offer row');
     expect(offer.startsAt.toISOString()).toBe('2026-10-02T13:00:00.000Z');
     // 24h from the send, applied at the reader rather than by a sweep.
+    // This start is more than a day out, so the start cap does not bind.
     expect(offer.expiresAt.getTime() - NOW.getTime()).toBe(EMAIL_ALERT_OFFER_TTL_MS);
+  });
+
+  it('caps the offer at the occasion start when that is inside a day', async () => {
+    const startsAt = new Date(NOW.getTime() + 6 * 60 * 60 * 1000);
+    const h = harness({
+      classification: future({ newTime: startsAt.toISOString(), location: 'the gym' }),
+    });
+
+    await expect(alert(h)).resolves.toBe('sent');
+
+    const offers = await offerRows();
+    expect(offers).toHaveLength(1);
+    expect(offers[0]?.startsAt.toISOString()).toBe(startsAt.toISOString());
+    expect(offers[0]?.expiresAt.toISOString()).toBe(startsAt.toISOString());
+  });
+
+  it('does not offer an occasion the connected calendar already holds', async () => {
+    const gcal = await seedIntegration(db.database, family.familyId, family.parentUserId, 'gcal');
+    const startsAt = new Date('2026-10-02T13:00:00.000Z');
+    await db.database.insert(schema.parentCalendarBlocks).values({
+      integrationId: gcal,
+      eventId: 'evt-picture-day',
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      startAt: startsAt,
+      endAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
+      kidRelated: true,
+      title: 'Picture day',
+      status: 'confirmed',
+      updatedStamp: '1',
+    });
+    const h = harness({ classification: future({ location: 'the gym' }) });
+
+    await expect(alert(h)).resolves.toBe('sent');
+
+    const body = h.transport.sent[0]?.body ?? '';
+    expect(body).toContain('Picture day');
+    expect(body).not.toContain('Want me to add');
+    expect(body).not.toMatch(/Reply YES/i);
+    await expect(offerRows()).resolves.toEqual([]);
   });
 
   it('holds the CTA and the row to the same decision, shape by shape', async () => {

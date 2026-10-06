@@ -828,17 +828,17 @@ function buildFixtureTools(agent, calls, village, spots) {
     // model has to fill. Omitting them here made this replica a different tool from the
     // one that ships, which is exactly what a replicated fixture must not be.
     inputExamples: [
-      { topic: 'sleep', offer: "Want the full plan? Reply YES and I'll send it." },
+      { topic: 'sleep', offer: 'Want me to send the full plan?' },
       {
         topic: 'solids',
         childId: 'child_0000000000example',
-        offer: 'Want the whole first-foods plan? Say YES and it is yours.',
+        offer: 'Should I send the whole first-foods plan?',
       },
     ],
     monetary: false,
     touchesChildContent: true,
     description:
-      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters, and it must say YES, because that is the word the parent replies with. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
+      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters. Ask like a person ("Want me to send it?"). Do not say Reply YES or name a keyword. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
     handler: async (input) => {
       // The gate IS the recompose loop: a refused offer throws a sentence the model
       // reads mid-turn and answers by calling again. Replicated from

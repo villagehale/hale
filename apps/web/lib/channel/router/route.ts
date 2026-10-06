@@ -69,6 +69,11 @@ import type { StatedStateOutcome } from '~/lib/channel/stated-state';
 import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import {
+  type EmailAlertOfferDraft,
+  prepareCoachCalendarReply,
+  recordCoachEventOffer,
+} from '~/lib/integrations/email-alert-offer';
 import { reportTurnFailures } from '~/lib/monitoring/failure-page';
 import { classifyChainedProviderFailure } from '~/lib/monitoring/provider-health';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -1586,6 +1591,28 @@ async function runAgentTurn(
       args,
       view,
     );
+    // A coach sentence that names a specific future event has to land on an
+    // offer row, or a later yes answers whatever older alert is still open
+    // (VIL-410). A past occasion and one already on the calendar get no row.
+    // The sentence the parent reads stays the coach's own words.
+    let coachOffer: EmailAlertOfferDraft | null = null;
+    try {
+      const prepared = await prepareCoachCalendarReply(deps.database, {
+        familyId: args.turn.familyId,
+        parentUserId: args.turn.parentUserId,
+        body: reply,
+        now: args.turn.now,
+      });
+      if (prepared.outcome === 'offer') coachOffer = prepared.offer;
+      if (prepared.outcome !== 'not_an_offer' && prepared.outcome !== 'unparsed') {
+        deps.log.info({ outcome: prepared.outcome }, 'channel router: coach calendar reply');
+      }
+    } catch (err) {
+      deps.log.error(
+        { err: err instanceof Error ? err.message : 'unknown' },
+        'channel router: coach calendar check failed',
+      );
+    }
     const channelMessageId = await args.answer(reply);
     // THE MENU THE COACH JUST OFFERED (VIL-304). This turn was an answer Hale could not
     // place, so the coach was handed the candidates and asked which — in its own words,
@@ -1605,6 +1632,25 @@ async function runAgentTurn(
     // deliver it promised nobody anything, and must not leave a debt behind. The writer
     // never throws: the parent already has the message, so an exception here would buy a
     // carrier retry and a duplicate reply.
+    if (coachOffer) {
+      try {
+        const recorded = await recordCoachEventOffer(deps.database, {
+          familyId: args.turn.familyId,
+          parentUserId: args.turn.parentUserId,
+          channelMessageId,
+          draft: coachOffer,
+          now: args.turn.now,
+        });
+        deps.log.info({ recorded }, 'channel router: coach event offer recorded');
+      } catch (err) {
+        // The parent already has the text. Throwing here would redrive the
+        // turn and send it again.
+        deps.log.error(
+          { err: err instanceof Error ? err.message : 'unknown' },
+          'channel router: coach event offer record failed',
+        );
+      }
+    }
     if (planOffer) {
       await deps.recordPlanOffer(deps.database, {
         familyId: args.turn.familyId,

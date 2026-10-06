@@ -81,4 +81,14 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
 
     expect(skill.instructions).toContain(`${budget} characters`);
   });
+
+  it('asks a confirmation as a question and never requests a keyword (VIL-410)', async () => {
+    const skill = await loadCronSkill('coach-channel-sms');
+
+    expect(skill.instructions).toContain('Want me to move swim to Tue 4:30?');
+    expect(skill.instructions).toContain('Tu veux que je déplace la natation de jeudi à 17h45?');
+    expect(skill.instructions).not.toContain('YES to confirm');
+    expect(skill.instructions).not.toContain("Reply YES and I'll send it");
+    expect(skill.instructions).not.toContain('Réponds YES pour confirmer');
+  });
 });

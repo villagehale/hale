@@ -37,7 +37,7 @@
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "86c425e7c5615b6ec71537d54d373a2deaffcc0bf1a9e59eb1fa53730a086594"
+    "sha256": "41d69bb8e2be6bc549d83c8d9e9d04373aab742a70e4df1ad2963d568546bdba"
   },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
@@ -45,7 +45,7 @@
   },
   "coach-plan.md": {
     "file": "coach-plan.md",
-    "sha256": "51c69fa3664adb0ea2d497f226813437cf155be00399c059688e729266c70190"
+    "sha256": "7e1e483f3b39b6a7ad8b57e4e1d3355d05e8fc217501f2c1f3bf5da886b659f3"
   },
   "curate-shortlist.md": {
     "file": "curate-shortlist.md",
@@ -185,7 +185,7 @@
   },
   "reply-resolver.md": {
     "file": "reply-resolver.md",
-    "sha256": "83fec3c09426b2c2a8b811ee00266fe2f12a0ff5b2a26752644a181e95a8890c"
+    "sha256": "d2ea99e00a0c3e7cdf5656e7dd6dbb9225b5210e92ae236d790ec9d1a19ea672"
   },
   "triage-child-event.md": {
     "file": "triage-child-event.md",
@@ -201,7 +201,7 @@
   },
   "voice-register.md": {
     "file": "voice-register.md",
-    "sha256": "30fa3a658249ac041d8899d54836e36a9a88177bf5219e564c973d807b77f4f3"
+    "sha256": "6da62796f24ba6b6bc65ee5361ba9356a3820318b30fc146dd21df906443aa84"
   },
   "week-summary.md": {
     "file": "week-summary.md",
