@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The message contains multiple critical violations: (1) it explicitly states \"I'll text them at 647-555-0199 now\" which implies Hale will text/message them first (forbidden); (2) it includes a phone number; (3) it includes a link (www.example.com); (4) it uses \"I'll\" (first person is acceptable but here combined with texting them, which is not). On SMS, the message must simply convey that the person texts Hale themselves, not that Hale will contact them."
+  }
+}
