@@ -9,6 +9,7 @@ import {
 } from '@hale/types';
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
+import { activeWorkstreamBlock } from '../memory/workstreams';
 import type { TranscriptMessage } from './conversation';
 
 /**
@@ -266,6 +267,13 @@ export interface AgentContext {
   intent: string | null;
   /** The Hale note this reply is grounding on, or null for the general thread. */
   sourceNote: SourceNoteContext | null;
+  /**
+   * Open threads Hale is in the middle of, compact. Present only when
+   * WORKSTREAMS_ENABLED is exactly `true`. Omitted otherwise so the serialized
+   * turn does not grow a field, and it rides the user message, after the
+   * cached skill prefix.
+   */
+  activeWorkstreams?: string;
 }
 
 function toChildContext(
@@ -431,6 +439,7 @@ export async function loadAgentContext(
   );
 
   const memoryBrief = await assembleMemoryBrief(database, input.familyId, now);
+  const activeWorkstreams = await activeWorkstreamBlock(database, input.familyId, now);
 
   return {
     parentName: parentRows[0]?.name ?? null,
@@ -464,6 +473,7 @@ export async function loadAgentContext(
     question: input.question,
     intent: input.intent,
     sourceNote: input.sourceNote,
+    ...(activeWorkstreams === null ? {} : { activeWorkstreams }),
   };
 }
 

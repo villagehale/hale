@@ -54,6 +54,7 @@ import {
   loadOpenEmailAlertOffers,
 } from '~/lib/integrations/email-alert-offer';
 import { familyMemoryKindsHandler } from '~/lib/memory/handler';
+import { rememberWorkstreamTurn, workstreamExtractClient } from '~/lib/memory/workstream-extract';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
@@ -737,6 +738,13 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     limiter: new PostgresRateLimiter(database),
     now: () => new Date(),
     log: console,
+    rememberWorkstream: async (input) => {
+      await rememberWorkstreamTurn({
+        database,
+        ...input,
+        client: workstreamExtractClient(),
+      });
+    },
   };
 }
 

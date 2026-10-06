@@ -530,6 +530,20 @@ export interface ChannelRouterDeps {
   turnDeadlineMs?: number;
   /** Test seam for GATE 2c / 2c-bis. Production uses {@link CALL_TIMEOUT_MS}. */
   callTimeoutMs?: number;
+  /**
+   * After the reply is on its way, ask the model whether this turn opened,
+   * moved, or closed a workstream (VIL-419). Optional so a router assembled
+   * for a test that never reaches the coach does not grow a dependency.
+   * Production always sets it. A miss is logged inside the implementation
+   * and never fails the turn: the parent already has the text.
+   */
+  rememberWorkstream?(input: {
+    familyId: string;
+    parentText: string;
+    haleText: string;
+    provenance: string;
+    now: Date;
+  }): Promise<void>;
 }
 
 /** Why a turn went back to the queue instead of answering. `model_unreachable` is the
@@ -1633,6 +1647,22 @@ async function runAgentTurn(
         { arm: armed.status, host: spotWatch.host },
         'channel router: watched spot armed after the send',
       );
+    }
+    if (deps.rememberWorkstream) {
+      try {
+        await deps.rememberWorkstream({
+          familyId: args.turn.familyId,
+          parentText: args.turn.body,
+          haleText: reply,
+          provenance: args.job.channel_message_id,
+          now: args.turn.now,
+        });
+      } catch (err) {
+        deps.log.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'channel router: workstream extract failed',
+        );
+      }
     }
     return done(deps, args.job, {
       status: 'agent_replied',

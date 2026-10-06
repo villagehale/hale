@@ -7,7 +7,8 @@ Hale keeps family memory in Postgres in the Canadian region. This note is the pr
 - **Facts** stay on `family_memory_facts` (bi-temporal, with confidence, writer, source event, and supersede links). No new fact types. VIL-391 adds `memory_kind`, `memory_source`, `sourced_at`, `expires_at`, and `signal_count`. Existing rows are `lasting` / `legacy`. The columns are ignored unless `FAMILY_MEMORY_KINDS_ENABLED` is exactly `true`. Parent-facing sentences for that path are locked copy and still do not send unless `FAMILY_MEMORY_KINDS_COPY_LOCKED` is exactly `true`.
 - **Aliases** (`family_memory_aliases`) are normalized tokens from a fact's key plus a fixed synonym list in the repo (`daycare` / `childcare`, relationship words, and similar). Message text cannot add an alias.
 - **Digests** (`family_memory_digests`) are one row per family, grain (`day` or `week`), and local period start. The JSON is counts and closed labels (channel category, conversation topic, commitment kind). It does not store a message body.
-- **Workstreams** are the existing `agent_commitments` rows. The brief shows kind, topic, and due time, not the commitment sentence.
+- **Workstreams** in the memory brief are the existing `agent_commitments` rows. The brief shows kind, topic, and due time, not the commitment sentence.
+- **Active workstreams** (`family_workstreams`, VIL-419) are a separate list: threads Hale is in the middle of (a search still waiting on a pick, a wait for a third party, a reminder). They are not identity facts. A declined or rejected activity is stored as `dropped`, never as a confirmed plan. The reply context and the proactive check-back stay off unless `WORKSTREAMS_ENABLED` is exactly `true`. Storing a row the model extracted does not require the flag. A thread linked to a 13+ child is left out of the prompt and is not followed up by text.
 
 Deleting a family cascades these rows. Deleting a fact cascades its aliases.
 
@@ -25,6 +26,7 @@ Both default off.
 | --- | --- |
 | `MEMORY_DIGEST_APPLY` | Must be exactly `true`. Anything else, including `true` with a trailing newline, stays observe-only. |
 | `MEMORY_DIGEST_FAMILY_ALLOWLIST` | Comma-separated family ids. Apply does nothing unless this is non-empty, and then only those families are written. |
+| `WORKSTREAMS_ENABLED` | Must be exactly `true`. Anything else, including `true` with a trailing newline, leaves the prompt block and the check-back sweep off. |
 
 Observe mode writes an audit row (`memory_digest_planned`, `applied: false`) when a digest would be added or updated. It does not insert digest or alias rows and does not close facts.
 

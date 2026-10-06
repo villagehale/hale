@@ -71,6 +71,10 @@
     "file": "extract-travel-booking.md",
     "sha256": "093b7bc5296211420219f72cb09d29cc84166854913360b3e3b5cb814b39a7dd"
   },
+  "extract-workstream.md": {
+    "file": "extract-workstream.md",
+    "sha256": "243539be0176f2de14b05fd4503217a0f8cd619df7385f4248e4fdcc4221bdf8"
+  },
   "followup-voice.md": {
     "file": "followup-voice.md",
     "sha256": "a40250614e7e1db958d96f55362ae1c46c6ca418b717e2ac9f842c7068837b79"
@@ -206,5 +210,9 @@
   "welcome-voice.md": {
     "file": "welcome-voice.md",
     "sha256": "de89851d9163a632d8b4dc0c0662f0f78b8d815df80862b13f5796b33a38d302"
+  },
+  "workstream-followup.md": {
+    "file": "workstream-followup.md",
+    "sha256": "11e1b7999a00594e115b281a1fa6e7bcc3fe358cb9f7295d5486e2fa478a6576"
   }
 }
