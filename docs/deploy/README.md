@@ -246,9 +246,11 @@ Once set, both paths:
   `__drizzle_migrations.hash` and **exits non-zero, listing every unrecorded
   file**. A watermark-only "in sync" is not success: drizzle will not apply a
   file whose `when` is already covered, so the hash check fails the build
-  instead of shipping the code. Historical files whose bytes changed after
-  apply are listed in `packages/db/scripts/ledger-exemptions.json`; an exemption
-  counts only when that `when` is already a `created_at` in the ledger.
+  instead of shipping the code. Documented gaps live in
+  `packages/db/scripts/ledger-exemptions.json`. A missing hash is accepted only
+  when that file's `when` is already a `created_at`, when `supersededBy` names
+  a later migration whose hash is in the ledger, or when a schema entry's
+  column (and index, when named) is present. None of those is a blanket skip.
 
 ### The incident this prevents
 

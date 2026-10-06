@@ -23,7 +23,7 @@ import postgres from 'postgres';
 import {
   computeLedgerDrift,
   describeLedgerDrift,
-  readExemptionTags,
+  readExemptions,
   readJournalWithHashes,
 } from './migration-drift.mjs';
 
@@ -81,16 +81,38 @@ async function readLedger(sql) {
 }
 
 /**
- * @param {{ tag: string, when: number, hash: string }} entry
- * @param {Set<string>} recorded
- * @param {Set<number>} recordedWhens
- * @param {Set<string>} exemptTags
- * @returns {string}
+ * Schema exemptions are not a skip. The column (and the index, when the
+ * exemption names one) must exist in `public` before the missing hash is accepted.
+ * @param {import('postgres').Sql} sql
+ * @param {import('./migration-drift.mjs').Exemption[]} exemptions
+ * @returns {Promise<Set<string>>}
  */
-function statusMark(entry, recorded, recordedWhens, exemptTags) {
-  if (recorded.has(entry.hash)) return 'applied ';
-  if (exemptTags.has(entry.tag) && recordedWhens.has(entry.when)) return 'exempt  ';
-  return 'PENDING ';
+async function proveSchemaExemptions(sql, exemptions) {
+  /** @type {Set<string>} */
+  const proof = new Set();
+  for (const entry of exemptions) {
+    if (!entry.schema) continue;
+    const columns = await sql`
+      select 1
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = ${entry.schema.table}
+        and column_name = ${entry.schema.column}
+      limit 1
+    `;
+    if (columns.length === 0) continue;
+    if (entry.schema.index) {
+      const indexes = await sql`
+        select 1
+        from pg_indexes
+        where schemaname = 'public' and indexname = ${entry.schema.index}
+        limit 1
+      `;
+      if (indexes.length === 0) continue;
+    }
+    proof.add(entry.tag);
+  }
+  return proof;
 }
 
 /**
@@ -116,7 +138,7 @@ export async function runMigrationCheck(options = {}) {
   }
 
   const journal = readJournalWithHashes(drizzleDir);
-  const exemptTags = readExemptionTags(exemptionsPath);
+  const exemptions = readExemptions(exemptionsPath);
   const sql = postgres(dbUrl, {
     max: 1,
     idle_timeout: 5,
@@ -127,15 +149,18 @@ export async function runMigrationCheck(options = {}) {
 
   try {
     const ledger = await readLedger(sql);
-    const drift = computeLedgerDrift(journal, ledger, exemptTags);
+    const schemaProof = await proveSchemaExemptions(sql, exemptions);
+    const drift = computeLedgerDrift(journal, ledger, exemptions, schemaProof);
     if (statusMode) {
-      const recorded = new Set((ledger ?? []).map((row) => row.hash));
-      const recordedWhens = new Set((ledger ?? []).map((row) => row.createdAt));
+      const exempted = new Set(drift.exempted.map((entry) => entry.tag));
+      const pending = new Set(drift.pending.map((entry) => entry.tag));
       console.info(
         `Migration status — ${drift.appliedCount} hash(es) recorded, ${drift.exempted.length} exempt, ${drift.pending.length} pending, ${drift.journalCount} in the journal.`,
       );
       for (const entry of journal) {
-        const mark = statusMark(entry, recorded, recordedWhens, exemptTags);
+        let mark = 'applied ';
+        if (exempted.has(entry.tag)) mark = 'exempt  ';
+        else if (pending.has(entry.tag)) mark = 'PENDING ';
         console.info(`  ${mark} ${entry.tag}  (${entry.hash.slice(0, 12)})`);
       }
     }

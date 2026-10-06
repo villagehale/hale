@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computeLedgerDrift,
   describeLedgerDrift,
-  readExemptionTags,
+  readExemptions,
   readJournal,
   readJournalWithHashes,
 } from './migration-drift.mjs';
@@ -98,6 +98,98 @@ describe('computeLedgerDrift', () => {
     expect(result.unknownExemptions).toEqual(['not_a_migration']);
     expect(describeLedgerDrift(result).ok).toBe(false);
   });
+
+  it('keeps a superseded file pending until the later migration hash is recorded', () => {
+    const withSuccessor = [...journal, { tag: '0155_repair', when: 5000, hash: 'h155' }];
+    const rules = [
+      { tag: '0144_replaced', reason: 'tables ship later', supersededBy: '0155_repair' },
+    ];
+    const before = computeLedgerDrift(
+      withSuccessor,
+      [
+        { hash: 'h0', createdAt: 1000 },
+        { hash: 'h149', createdAt: 3000 },
+        { hash: 'h150', createdAt: 4000 },
+      ],
+      rules,
+    );
+    expect(before.behind).toBe(true);
+    expect(before.pending.map((entry) => entry.tag)).toEqual(['0144_replaced', '0155_repair']);
+    expect(before.blockedBySuccessor).toEqual(['0144_replaced']);
+    expect(before.exempted).toEqual([]);
+    expect(describeLedgerDrift(before).lines.join('\n')).toContain('superseded_by');
+
+    const after = computeLedgerDrift(
+      withSuccessor,
+      [
+        { hash: 'h0', createdAt: 1000 },
+        { hash: 'h149', createdAt: 3000 },
+        { hash: 'h150', createdAt: 4000 },
+        { hash: 'h155', createdAt: 5000 },
+      ],
+      rules,
+    );
+    expect(after.behind).toBe(false);
+    expect(after.exempted.map((entry) => entry.tag)).toEqual(['0144_replaced']);
+    expect(after.pending).toEqual([]);
+  });
+
+  it('does not accept superseded_by when the named file is missing or not later', () => {
+    const rules = [{ tag: '0144_replaced', reason: 'bad pointer', supersededBy: '0000_baseline' }];
+    const ledger = journal
+      .filter((entry) => entry.tag !== '0144_replaced')
+      .map((entry) => ({ hash: entry.hash, createdAt: entry.when }));
+    const earlier = computeLedgerDrift(journal, ledger, rules);
+    expect(earlier.behind).toBe(true);
+    expect(earlier.invalidSupersessions).toEqual(['0144_replaced']);
+    expect(earlier.pending.map((entry) => entry.tag)).toContain('0144_replaced');
+    expect(describeLedgerDrift(earlier).lines.join('\n')).toContain('later journal migration');
+
+    const missing = computeLedgerDrift(journal, ledger, [
+      { tag: '0144_replaced', reason: 'bad pointer', supersededBy: 'no_such_file' },
+    ]);
+    expect(missing.invalidSupersessions).toEqual(['0144_replaced']);
+    expect(missing.behind).toBe(true);
+  });
+
+  it('accepts a schema gap only when the caller proved the column', () => {
+    const rules = [
+      {
+        tag: '0144_replaced',
+        reason: 'column already exists',
+        schema: { table: 'conversations', column: 'note_key', index: 'conversations_note_idx' },
+      },
+    ];
+    const ledger = [
+      { hash: 'h0', createdAt: 1000 },
+      { hash: 'h149', createdAt: 3000 },
+      { hash: 'h150', createdAt: 4000 },
+    ];
+    const unproven = computeLedgerDrift(journal, ledger, rules, new Set());
+    expect(unproven.behind).toBe(true);
+    expect(unproven.unprovenSchema).toEqual(['0144_replaced']);
+    expect(unproven.pending.map((entry) => entry.tag)).toEqual(['0144_replaced']);
+    expect(describeLedgerDrift(unproven).lines.join('\n')).toContain('not a blanket skip');
+
+    const proven = computeLedgerDrift(journal, ledger, rules, new Set(['0144_replaced']));
+    expect(proven.behind).toBe(false);
+    expect(proven.exempted.map((entry) => entry.tag)).toEqual(['0144_replaced']);
+  });
+
+  it('ignores superseded_by and schema proof when the ledger is empty', () => {
+    const rules = [
+      { tag: '0144_replaced', reason: 'later file', supersededBy: '0150_pending' },
+      {
+        tag: '0000_baseline',
+        reason: 'column exists',
+        schema: { table: 'conversations', column: 'note_key' },
+      },
+    ];
+    const result = computeLedgerDrift(journal, [], rules, new Set(['0000_baseline']));
+    expect(result.behind).toBe(true);
+    expect(result.exempted).toEqual([]);
+    expect(result.pending).toHaveLength(journal.length);
+  });
 });
 
 describe('journal hashes match drizzle-orm', () => {
@@ -110,16 +202,48 @@ describe('journal hashes match drizzle-orm', () => {
 });
 
 describe('ledger exemptions file', () => {
-  it('names only the historical hash mismatches, each with a reason, each in the journal', () => {
-    const tags = readExemptionTags(exemptionsPath);
-    expect([...tags].sort()).toEqual([
+  it('documents the historical when-recorded gaps plus the 0127 and 0049 proofs', () => {
+    const entries = readExemptions(exemptionsPath);
+    expect(entries.map((entry) => entry.tag).sort()).toEqual([
+      '0049_conversation_note_key',
+      '0055_family_events',
+      '0063_event_reminders',
+      '0098_coparent_join_link',
+      '0105_channel_signin_token',
+      '0127_instinct_memory',
+      '0144_family_trips_no_picks_backoff',
+    ]);
+    const journalEntries = readJournal(drizzleDir);
+    const byTag = new Map(journalEntries.map((entry) => [entry.tag, entry]));
+    for (const entry of entries) expect(byTag.has(entry.tag)).toBe(true);
+
+    const historical = [
       '0055_family_events',
       '0063_event_reminders',
       '0098_coparent_join_link',
       '0105_channel_signin_token',
       '0144_family_trips_no_picks_backoff',
-    ]);
-    const journalTags = new Set(readJournal(drizzleDir).map((entry) => entry.tag));
-    for (const tag of tags) expect(journalTags.has(tag)).toBe(true);
+    ];
+    for (const tag of historical) {
+      const entry = entries.find((item) => item.tag === tag);
+      expect(entry?.supersededBy).toBeUndefined();
+      expect(entry?.schema).toBeUndefined();
+    }
+
+    const instinct = entries.find((entry) => entry.tag === '0127_instinct_memory');
+    expect(instinct?.supersededBy).toBe('0155_instinct_memory_tables');
+    const repair = byTag.get('0155_instinct_memory_tables');
+    const original = byTag.get('0127_instinct_memory');
+    expect(repair).toBeDefined();
+    expect(original).toBeDefined();
+    expect(repair.when).toBeGreaterThan(original.when);
+    expect(repair.when).toBeGreaterThan(1781469648000);
+
+    const noteKey = entries.find((entry) => entry.tag === '0049_conversation_note_key');
+    expect(noteKey?.schema).toEqual({
+      table: 'conversations',
+      column: 'note_key',
+      index: 'conversations_family_note_key_idx',
+    });
   });
 });
