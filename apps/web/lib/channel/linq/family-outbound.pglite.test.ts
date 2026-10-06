@@ -676,3 +676,131 @@ describe('a family without a group does not sync', () => {
     expect(http.linqUrls()).toEqual([]);
   });
 });
+
+describe('group onboarding v2: the roster decides what the group may hear', () => {
+  type MemberSeed = {
+    status: (typeof schema.linqGroupRosterMembers.$inferInsert)['status'];
+    confirmedRole?: (typeof schema.linqGroupRosterMembers.$inferInsert)['confirmedRole'];
+  };
+
+  async function seedRoster(
+    familyId: string,
+    status: (typeof schema.linqGroupRosters.$inferInsert)['status'],
+    members: MemberSeed[],
+  ): Promise<string> {
+    const [roster] = await db.database
+      .insert(schema.linqGroupRosters)
+      .values({ chatId: GROUP, familyId, source: 'added_to_existing', status })
+      .returning({ id: schema.linqGroupRosters.id });
+    const rosterId = roster?.id as string;
+    let n = 0;
+    for (const member of members) {
+      n += 1;
+      await db.database.insert(schema.linqGroupRosterMembers).values({
+        rosterId,
+        chatId: GROUP,
+        phoneE164Encrypted: `enc-${n}`,
+        phoneE164Hash: `hash-${n}`,
+        status: member.status,
+        confirmedRole: member.confirmedRole ?? null,
+      });
+    }
+    return rosterId;
+  }
+
+  async function heldAudits(familyId: string) {
+    const rows = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken, targetId: schema.auditLog.targetId })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, familyId));
+    return rows.filter((row) => row.actionTaken === 'linq_group_sends_held');
+  }
+
+  beforeEach(() => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+  });
+
+  it('keeps a proactive send 1:1 while anyone in the chat has not said who they are, and audits the hold once', async () => {
+    const seeded = await seed(GROUP);
+    const rosterId = await seedRoster(seeded.familyId, 'partial', [
+      { status: 'known_parent' },
+      { status: 'confirmed', confirmedRole: 'co_parent' },
+      { status: 'asked' },
+    ]);
+
+    const first = await familyOutboundTarget(db.database, seeded.familyId, {
+      contentClass: 'schedule',
+    });
+    const second = await familyOutboundTarget(db.database, seeded.familyId, {
+      contentClass: 'pickup_duty',
+    });
+
+    expect(first).toEqual({ channel: 'legacy', reason: 'group_roles_unconfirmed' });
+    expect(second).toEqual({ channel: 'legacy', reason: 'group_roles_unconfirmed' });
+    expect(await heldAudits(seeded.familyId)).toEqual([
+      { actionTaken: 'linq_group_sends_held', targetId: rosterId },
+    ]);
+  });
+
+  it('with a grandparent confirmed, lets schedule into the group and keeps registration 1:1', async () => {
+    const seeded = await seed(GROUP);
+    await seedRoster(seeded.familyId, 'confirmed', [
+      { status: 'known_parent' },
+      { status: 'confirmed', confirmedRole: 'grandparent' },
+    ]);
+
+    await expect(
+      familyOutboundTarget(db.database, seeded.familyId, { contentClass: 'schedule' }),
+    ).resolves.toEqual({ channel: 'group', chatId: GROUP, familyId: seeded.familyId });
+    await expect(
+      familyOutboundTarget(db.database, seeded.familyId, { contentClass: 'registration' }),
+    ).resolves.toEqual({ channel: 'legacy', reason: 'group_audience_refused' });
+    await expect(
+      familyOutboundTarget(db.database, seeded.familyId, { contentClass: 'health' }),
+    ).resolves.toEqual({ channel: 'legacy', reason: 'group_audience_refused' });
+    expect(await heldAudits(seeded.familyId)).toEqual([]);
+  });
+
+  it('keeps a send that names no content class out of a confirmed group', async () => {
+    const seeded = await seed(GROUP);
+    await seedRoster(seeded.familyId, 'confirmed', [
+      { status: 'known_parent' },
+      { status: 'confirmed', confirmedRole: 'co_parent' },
+    ]);
+
+    await expect(familyOutboundTarget(db.database, seeded.familyId)).resolves.toEqual({
+      channel: 'legacy',
+      reason: 'group_audience_refused',
+    });
+    await expect(
+      familyOutboundTarget(db.database, seeded.familyId, { contentClass: 'event_logistics' }),
+    ).resolves.toEqual({ channel: 'group', chatId: GROUP, familyId: seeded.familyId });
+  });
+
+  it('goes quiet when someone who is not family stays in a confirmed chat', async () => {
+    const seeded = await seed(GROUP);
+    await seedRoster(seeded.familyId, 'confirmed', [
+      { status: 'known_parent' },
+      { status: 'confirmed', confirmedRole: 'grandparent' },
+      { status: 'not_family' },
+    ]);
+
+    await expect(
+      familyOutboundTarget(db.database, seeded.familyId, { contentClass: 'schedule' }),
+    ).resolves.toEqual({ channel: 'legacy', reason: 'group_audience_empty' });
+  });
+
+  it('flag off: the chat id alone still decides, whatever the roster says', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'false');
+    const seeded = await seed(GROUP);
+    await seedRoster(seeded.familyId, 'roles_proposed', [
+      { status: 'known_parent' },
+      { status: 'asked' },
+    ]);
+
+    await expect(
+      familyOutboundTarget(db.database, seeded.familyId, { contentClass: 'registration' }),
+    ).resolves.toEqual({ channel: 'group', chatId: GROUP, familyId: seeded.familyId });
+    expect(await heldAudits(seeded.familyId)).toEqual([]);
+  });
+});

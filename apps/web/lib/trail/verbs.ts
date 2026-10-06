@@ -183,6 +183,9 @@ export const AUDIT_VERBS = [
   'linq_group_role_confirmed',
   'linq_group_role_declined',
   'linq_group_role_reasked',
+  'linq_group_connect_link_sent',
+  'linq_group_sends_held',
+  'linq_group_stop',
   'group_line_unsent',
   'group_line_locked_fallback',
   'linq_multi_family_joined',
@@ -718,6 +721,18 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   linq_group_role_reasked: {
     sentence: 'Hale asked someone in your family group again who they are',
+    family: 'note',
+  },
+  linq_group_connect_link_sent: {
+    sentence: 'Hale sent a parent in your family group their calendar and email links, one to one',
+    family: 'done',
+  },
+  linq_group_sends_held: {
+    sentence: 'Hale is keeping news out of your family group until everyone has said who they are',
+    family: 'awaiting',
+  },
+  linq_group_stop: {
+    sentence: 'Someone in your family group asked Hale to stop writing to them there',
     family: 'note',
   },
   group_line_unsent: {

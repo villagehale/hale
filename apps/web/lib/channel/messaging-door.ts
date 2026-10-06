@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm';
 
 /**
  * Which pipe an async parent text should leave on.
@@ -15,6 +15,9 @@ import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm';
  * No inbound phone row yet means SMS: that is the historical door, and a
  * connect receipt for someone we have never heard from on iMessage has no
  * chat to enter.
+ *
+ * `excludeChatId` is a chat that must never be the door — the family group,
+ * for a message meant for one person.
  */
 
 const PHONE_CHANNELS = ['sms', 'imessage'] as const;
@@ -29,7 +32,9 @@ export type MessagingDoor =
 export async function resolveMessagingDoor(
   database: Database,
   parentUserId: string,
+  options: { excludeChatId?: string | null } = {},
 ): Promise<MessagingDoor> {
+  const excluded = options.excludeChatId;
   const [latest] = await database
     .select({
       channel: schema.channelMessages.channel,
@@ -41,6 +46,12 @@ export async function resolveMessagingDoor(
         eq(schema.channelMessages.parentUserId, parentUserId),
         eq(schema.channelMessages.direction, 'in'),
         inArray(schema.channelMessages.channel, [...PHONE_CHANNELS]),
+        excluded
+          ? or(
+              isNull(schema.channelMessages.providerChatId),
+              ne(schema.channelMessages.providerChatId, excluded),
+            )
+          : undefined,
       ),
     )
     .orderBy(desc(schema.channelMessages.createdAt))
@@ -60,6 +71,7 @@ export async function resolveMessagingDoor(
         eq(schema.channelMessages.parentUserId, parentUserId),
         eq(schema.channelMessages.channel, 'imessage'),
         isNotNull(schema.channelMessages.providerChatId),
+        excluded ? ne(schema.channelMessages.providerChatId, excluded) : undefined,
       ),
     )
     .orderBy(desc(schema.channelMessages.createdAt))

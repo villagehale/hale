@@ -17,7 +17,6 @@ import {
 } from '~/lib/channel/connect/text-connect';
 import { holdGoogleGivenName } from '~/lib/channel/identity/parent-call-name';
 import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
-import { sendCoparentGroupCalendarReceipt } from '~/lib/channel/linq/group-coparent';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { googleAccountBlindIndex } from '~/lib/crypto/blind-index';
 import { db } from '~/lib/db';
@@ -372,24 +371,6 @@ export async function GET(req: NextRequest) {
       { familyId: bound.familyId, provider: textProvider, receipt: connectedNoticeLabel(receipt) },
       'connector connected from a text - the done page is up; this is what the receipt did',
     );
-    try {
-      const groupReceipt = await sendCoparentGroupCalendarReceipt(database, {
-        familyId: bound.familyId,
-        userId: bound.userId,
-        provider: textProvider,
-        connectId,
-        now: new Date(),
-      });
-      console.info(
-        { familyId: bound.familyId, provider: textProvider, groupReceipt },
-        'connector connected: group calendar receipt',
-      );
-    } catch (err) {
-      console.warn(
-        { familyId: bound.familyId, err: err instanceof Error ? err.name : 'unknown' },
-        'connector connected: group calendar receipt failed',
-      );
-    }
     return back('ok', 'text', textProvider);
   }
 

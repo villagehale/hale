@@ -335,7 +335,9 @@ export async function alertParentForCalendarChanges(
   // notice. The SMS sentence names whatever title Google stored, including
   // events that are not the kids', so it does not move to the group and it
   // does not stay on Twilio.
-  const outbound = await familyOutboundTarget(database, familyId);
+  const outbound = await familyOutboundTarget(database, familyId, {
+    contentClass: 'event_logistics',
+  });
   if (outbound.channel === 'group') {
     await rememberOnly(database, input, parentUserId, ports);
     console.info(

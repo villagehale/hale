@@ -75,4 +75,50 @@ describe('textFreshConnectorLink', () => {
       .where(eq(schema.channelSigninTokens.id, oldLink.tokenId));
     expect(spent?.consumedAt).not.toBeNull();
   });
+
+  it('texts the link into their own 1:1 chat when their last message was in the family group', async () => {
+    const GROUP = 'chat-family-group';
+    const PERSONAL = 'chat-parent-direct';
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, familyId));
+    for (const [chatId, at] of [
+      [PERSONAL, new Date('2026-09-17T14:00:00.000Z')],
+      [GROUP, new Date('2026-09-17T14:30:00.000Z')],
+    ] as const) {
+      await db.database.insert(schema.channelMessages).values({
+        familyId,
+        parentUserId,
+        channel: 'imessage',
+        direction: 'in',
+        category: 'reply',
+        providerMessageId: `in-${chatId}`,
+        providerChatId: chatId,
+        status: 'delivered',
+        body: 'hi',
+        sentAt: at,
+        createdAt: at,
+      });
+    }
+    const imessage: Array<{ chatId: string; body: string }> = [];
+
+    const outcome = await textFreshConnectorLink(
+      db.database,
+      { familyId, parentUserId, provider: 'gcal', now: NOW },
+      {
+        transport,
+        imessage: async (input) => {
+          imessage.push(input);
+          return { providerMessageId: 'out-1' };
+        },
+        threadMessage: async () => 'conversation-id',
+      },
+    );
+
+    expect(outcome).toBe('sent');
+    expect(imessage.map((send) => send.chatId)).toEqual([PERSONAL]);
+    expect(imessage[0]?.body).toContain('to=gcal');
+    expect(transport.sent).toEqual([]);
+  });
 });

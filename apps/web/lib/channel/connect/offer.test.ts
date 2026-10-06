@@ -377,4 +377,57 @@ describe('connectorLinkHandler', () => {
     expect(verdict.outcome).toBe('mint_failed');
     expect(verdict.reply).toContain('nothing was changed');
   });
+
+  it('sends the link 1:1 and says nothing in the group when the ask came from the family group', async () => {
+    const GROUP = 'chat-family-group';
+    const PERSONAL = 'chat-parent-direct';
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, familyId));
+    const rows: Record<string, string> = {};
+    for (const [chatId, at] of [
+      [PERSONAL, new Date('2026-08-31T14:00:00.000Z')],
+      [GROUP, new Date('2026-08-31T14:59:00.000Z')],
+    ] as const) {
+      const [row] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          familyId,
+          parentUserId,
+          channel: 'imessage',
+          direction: 'in',
+          category: 'reply',
+          providerMessageId: `in-${chatId}`,
+          providerChatId: chatId,
+          status: 'delivered',
+          body: 'connect my google calendar',
+          sentAt: at,
+          createdAt: at,
+        })
+        .returning({ id: schema.channelMessages.id });
+      rows[chatId] = row?.id as string;
+    }
+    const wire: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        wire.push({ url: String(url), body: String(init?.body ?? '') });
+        return Response.json({ message: { id: 'out-1' } });
+      }),
+    );
+
+    const verdict = await connectorLinkHandler().handle(db.database, {
+      ...turn('connect my google calendar'),
+      inboundChannelMessageId: rows[GROUP] as string,
+    });
+
+    expect(verdict).toEqual({ claimed: true, outcome: 'sent_1to1', reply: null });
+    expect(wire).toHaveLength(1);
+    expect(wire[0]?.url).toContain(`/chats/${PERSONAL}/messages`);
+    expect(wire[0]?.body).toContain('to=gcal');
+    expect(wire.some((call) => call.url.includes(GROUP))).toBe(false);
+    vi.unstubAllGlobals();
+  });
 });

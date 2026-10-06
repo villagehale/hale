@@ -4,9 +4,11 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
+import type { ContentClass } from '~/lib/channel/role-scope';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
 import { linqGroupCoparentEnabled, linqPollsEnabled } from './config';
 import { groupProactiveCapReached } from './family-outbound';
+import { groupAudienceAllows } from './group-audience';
 import { classifyKidCalendarItem, splitKidEvent, titleForStorage } from './kid-event';
 
 export { classifyKidCalendarItem, splitKidEvent, titleForStorage };
@@ -119,6 +121,15 @@ export interface HouseholdNotice {
   /** Set when this bubble may be followed by a who-takes poll. */
   whoTakes?: WhoTakesAsk;
 }
+
+/** Who-takes-it lines are pickup duty; a kid event or how-it-went is that event's logistics. */
+const NOTICE_CLASS: Record<HouseholdNotice['kind'], ContentClass> = {
+  kid_event: 'event_logistics',
+  followup: 'event_logistics',
+  conflict: 'pickup_duty',
+  handoff: 'pickup_duty',
+  who_takes: 'pickup_duty',
+};
 
 export interface HandoffStatement {
   userId: string;
@@ -920,6 +931,14 @@ export async function narrateHouseholdCalendar(
   if (!notice) return;
   if (linqPollsEnabled() && notice.kind === 'conflict' && notice.whoTakes) {
     notice = { ...notice, text: whoTakesPrompt(context.language, notice.whoTakes) };
+  }
+  const audience = await groupAudienceAllows(database, context.chatId, NOTICE_CLASS[notice.kind]);
+  if (!audience.allowed) {
+    console.warn(
+      { familyId: input.familyId, kind: notice.kind, reason: audience.reason },
+      'household calendar: not for this group',
+    );
+    return;
   }
   if (
     await groupProactiveCapReached(database, {

@@ -27,6 +27,7 @@ import {
   linqMultiFamilyGroupsEnabled,
   linqWebhookSecret,
 } from './config';
+import { type OneToOneSend, resumeConnectLink } from './connect-link-1to1';
 import {
   LINQ_GROUP_CLAIMED_TEMPLATE_KEY,
   LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY,
@@ -72,6 +73,7 @@ import { isYearFindPollNone, lookupLinqPollOption } from './poll';
 import { type ListChatHandles, ensureRoster, groupRosterTrigger, startGroupRoster } from './roster';
 import { askParticipantAdded, askRoster, sayNoFamilyYet } from './roster-ask';
 import type { RosterReading } from './roster-reading';
+import { ejectWithGroupSeats, removeRosterParticipant, stopInGroup } from './roster-stop';
 import { type RosterTurnPorts, takeRosterTurn } from './roster-turn';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
 import { type LinqEffectResult, markLinqChatRead } from './transport';
@@ -143,6 +145,8 @@ export async function handleLinqInboundRequest(
     readGroupReply?: (text: string) => Promise<RosterReading>;
     /** Test seam for GET /chats/{id}. Production calls Linq. */
     listChatHandles?: ListChatHandles;
+    /** Test seam for group onboarding v2's 1:1 lines. Production calls Linq. */
+    oneToOne?: OneToOneSend;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -250,6 +254,19 @@ export async function handleLinqInboundRequest(
           outcome = await routeOneToOne(deps, message);
         }
       } else {
+        if (linqGroupOnboardingV2Enabled()) {
+          const ports = rosterPorts(deps);
+          const resumed = await resumeConnectLink(deps.database, {
+            phone: message.senderHandle,
+            now: ports.now,
+            voice: ports.voice,
+            oneToOne: ports.oneToOne,
+            groupSend: ports.send,
+          });
+          if (resumed.outcome !== 'nothing_owed' && resumed.outcome !== 'flag_off') {
+            deps.log.info({ outcome: resumed.outcome }, 'linq inbound: connect link resumed 1:1');
+          }
+        }
         outcome = await routeOneToOne(deps, message);
       }
     }
@@ -406,6 +423,7 @@ function rosterPorts(deps: LinqDoorDeps): RosterTurnPorts {
     voice: deps.groupVoice,
     readReply: deps.readGroupReply,
     send: deps.sendGroupText,
+    oneToOne: deps.oneToOne,
     listHandles: deps.listChatHandles,
     recordInbound: (message, owner) => recordHandledInbound(deps, message, owner),
   };
@@ -419,6 +437,12 @@ function rosterPorts(deps: LinqDoorDeps): RosterTurnPorts {
  */
 async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
   if (linqGroupOnboardingV2Enabled()) {
+    const stopped = await stopInGroup(deps.database, message, rosterPorts(deps));
+    if (stopped.handled) {
+      deps.log.info({ outcome: stopped.outcome }, 'linq inbound: group STOP');
+      await deps.countOutcome(stopped.count);
+      return json(stopped.body);
+    }
     const turn = await takeRosterTurn(deps.database, message, rosterPorts(deps));
     if (turn.handled) {
       deps.log.info({ outcome: turn.outcome }, 'linq inbound: group roster');
@@ -813,6 +837,20 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
       ...(said && 'notice' in said ? { notice: said.notice } : {}),
     });
   }
+  if (
+    signal.event === 'participant.removed' &&
+    signal.isFromMe &&
+    signal.chatId &&
+    linqGroupOnboardingV2Enabled()
+  ) {
+    const ejected = await ejectWithGroupSeats(deps.database, {
+      chatId: signal.chatId,
+      now: deps.now?.() ?? new Date(),
+    });
+    deps.log.info({ outcome: ejected.outcome }, 'linq inbound: Hale removed from the group');
+    await deps.countOutcome('ignored');
+    return json({ outcome: ejected.outcome });
+  }
   if (signal.isFromMe) {
     await deps.countOutcome('ignored');
     return json({ outcome: 'signal_from_me' });
@@ -999,6 +1037,13 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
       participantHandle: signal.participantHandle,
       now,
     });
+    const rosterRemoved = linqGroupOnboardingV2Enabled()
+      ? await removeRosterParticipant(deps.database, {
+          chatId: signal.chatId,
+          participantHandle: signal.participantHandle,
+          now,
+        })
+      : null;
     const multi = linqMultiFamilyGroupsEnabled()
       ? await unseatMultiFamilyMember(deps.database, {
           chatId: signal.chatId,
@@ -1008,7 +1053,37 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
       : null;
     await deps.countOutcome('ignored');
     return json({
-      outcome: multi?.outcome === 'linq_multi_family_unseated' ? multi.outcome : unseated.outcome,
+      outcome:
+        multi?.outcome === 'linq_multi_family_unseated'
+          ? multi.outcome
+          : rosterRemoved?.outcome === 'roster_member_removed'
+            ? rosterRemoved.outcome
+            : unseated.outcome,
+    });
+  }
+  if (
+    signal.event === 'participant.removed' &&
+    signal.chatId &&
+    signal.participantHandle &&
+    linqGroupOnboardingV2Enabled() &&
+    !linqGroupMembersEnabled()
+  ) {
+    const now = deps.now?.() ?? new Date();
+    const removed = await removeRosterParticipant(deps.database, {
+      chatId: signal.chatId,
+      participantHandle: signal.participantHandle,
+      now,
+    });
+    const multi = linqMultiFamilyGroupsEnabled()
+      ? await unseatMultiFamilyMember(deps.database, {
+          chatId: signal.chatId,
+          participantHandle: signal.participantHandle,
+          now,
+        })
+      : null;
+    await deps.countOutcome('ignored');
+    return json({
+      outcome: multi?.outcome === 'linq_multi_family_unseated' ? multi.outcome : removed.outcome,
     });
   }
   if (

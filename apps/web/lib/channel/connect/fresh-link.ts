@@ -109,7 +109,9 @@ async function sendFresh(
     return 'no_send_target';
   }
 
-  const door = await resolveMessagingDoor(database, args.parentUserId);
+  const door = await resolveMessagingDoor(database, args.parentUserId, {
+    excludeChatId: await familyGroupChatId(database, args.familyId),
+  });
   const chatId = door.channel === 'imessage' ? door.chatId : null;
   if (door.channel === 'imessage' && !chatId) {
     console.info(
@@ -181,6 +183,15 @@ async function sendFresh(
     'connector link: fresh link sent',
   );
   return 'sent';
+}
+
+/** A link is one person's: the family group is never its door. */
+async function familyGroupChatId(database: Database, familyId: string): Promise<string | null> {
+  const [row] = await database
+    .select({ linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  return row?.linqGroupChatId ?? null;
 }
 
 async function familyLanguage(database: Database, familyId: string): Promise<ReplyLanguage> {

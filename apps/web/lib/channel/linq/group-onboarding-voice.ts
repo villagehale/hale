@@ -219,6 +219,48 @@ async function deliver(
   });
 }
 
+/** Write one line and audit when the model could not. Does not send. */
+export async function composeOnboardingLine(
+  database: Database,
+  input: {
+    familyId: string;
+    request: GroupOnboardingRequest;
+    language: ReplyLanguage;
+    parentWords?: string | null;
+    templateKey: string;
+    voice: GroupOnboardingComposer | undefined;
+  },
+): Promise<
+  | { body: string; source: GroupLineSource }
+  | { outcome: 'group_line_unsent'; fallback: GroupLineFallback }
+> {
+  const kind = input.request.kind;
+  const spoken = await speak(
+    input.voice,
+    input.request,
+    input.language,
+    input.parentWords ?? null,
+    {
+      familyId: input.familyId,
+      database,
+    },
+  );
+  if (spoken.source === 'unsent') {
+    const fallback = spoken.fallback ?? 'unusable';
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'group_line_unsent',
+      targetTable: 'channel_messages',
+      targetId: input.familyId,
+      after: { kind, fallback, templateKey: input.templateKey },
+    });
+    console.warn({ kind, fallback }, 'linq group onboarding: line not sent');
+    return { outcome: 'group_line_unsent', fallback };
+  }
+  return { body: spoken.body, source: spoken.source };
+}
+
 export async function sendGroupOnboardingLine(
   database: Database,
   input: {
@@ -244,29 +286,8 @@ export async function sendGroupOnboardingLine(
   if (prior) return { outcome: 'already_sent' };
 
   const kind = input.request.kind;
-  const spoken = await speak(
-    input.voice,
-    input.request,
-    input.language,
-    input.parentWords ?? null,
-    {
-      familyId: input.familyId,
-      database,
-    },
-  );
-  if (spoken.source === 'unsent') {
-    const fallback = spoken.fallback ?? 'unusable';
-    await database.insert(schema.auditLog).values({
-      familyId: input.familyId,
-      actor: 'system',
-      actionTaken: 'group_line_unsent',
-      targetTable: 'channel_messages',
-      targetId: input.familyId,
-      after: { kind, fallback, templateKey: input.templateKey },
-    });
-    console.warn({ kind, fallback }, 'linq group onboarding: line not sent');
-    return { outcome: 'group_line_unsent', fallback };
-  }
+  const spoken = await composeOnboardingLine(database, input);
+  if ('outcome' in spoken) return spoken;
   const [claimed] = await database
     .insert(schema.channelMessages)
     .values({

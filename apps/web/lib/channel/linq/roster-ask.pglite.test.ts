@@ -175,13 +175,25 @@ function turnPorts(
   send: ReturnType<typeof wire>['send'],
 ) {
   const recorded: Array<{ messageId: string; userId: string }> = [];
+  const direct: string[] = [];
   return {
     recorded,
+    direct,
     ports: {
       now: NOW,
       voice,
       readReply: async (text: string) => fixtureReading(text),
       send,
+      oneToOne: {
+        text: async (input: { to: string; body: string }) => {
+          direct.push(input.body);
+          return { providerMessageId: `direct-${direct.length}`, chatId: 'chat-direct' };
+        },
+        link: async (input: { chatId: string; url: string }) => {
+          direct.push(input.url);
+          return { providerMessageId: `direct-${direct.length}` };
+        },
+      },
       recordInbound: async (
         message: LinqInboundText,
         owner: { familyId: string; userId: string },
@@ -427,11 +439,17 @@ describe('takeRosterTurn', () => {
     await askedFamily();
     const voice = fakeGroupOnboardingComposer();
     const { send, sent } = wire();
-    const { ports, recorded } = turnPorts(voice, send);
+    const { ports, recorded, direct } = turnPorts(voice, send);
 
     const turn = await takeRosterTurn(db.database, inbound(DAD, "I'm his dad", 'in-dad'), ports);
-    expect(turn).toMatchObject({ handled: true, outcome: 'role_confirmed', count: 'intake' });
+    expect(turn).toMatchObject({
+      handled: true,
+      outcome: 'role_confirmed',
+      count: 'intake',
+      body: { links: 'sent' },
+    });
     expect(await memberStatus(DAD)).toBe('confirmed');
+    expect(direct).toHaveLength(3);
     expect(sent).toHaveLength(1);
     expect(sent[0]?.replyTo).toBe('in-dad');
     expect(voice.calls[0]?.input).toMatchObject({

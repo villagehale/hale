@@ -102,7 +102,8 @@ export interface DutySendPorts {
 
 export function defaultDutySendPorts(): DutySendPorts {
   return {
-    target: familyOutboundTarget,
+    target: (database, familyId) =>
+      familyOutboundTarget(database, familyId, { contentClass: 'pickup_duty' }),
     gate: assertProactiveSendAllowed,
     gatePorts: buildOutboundGatePorts,
     send: (input) =>

@@ -19,8 +19,13 @@ import {
   matchConnectorRequest,
   matchFreshConnectorFollowUp,
 } from '~/lib/channel/connect/detect';
+import { textFreshConnectorLink } from '~/lib/channel/connect/fresh-link';
 import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
+import {
+  type TextConnectProvider,
+  asTextConnectProvider,
+} from '~/lib/channel/connect/text-connect';
 import { type EmailCaptureDeps, handleEmailCaptureReply } from '~/lib/channel/email-capture/reply';
 import { emailInboundConfig } from '~/lib/channel/email/config';
 import {
@@ -341,6 +346,24 @@ async function latestConnectOfferTarget(
   }
 }
 
+/**
+ * The family group's chat, when THIS message arrived in it. A connect link is one
+ * parent's: asked for in the group, it goes to their own 1:1 instead.
+ */
+async function familyGroupTurn(database: Database, ctx: HandlerContext): Promise<boolean> {
+  if (!ctx.inboundChannelMessageId) return false;
+  const [family] = await database
+    .select({ linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, ctx.familyId));
+  if (!family?.linqGroupChatId) return false;
+  const [message] = await database
+    .select({ providerChatId: schema.channelMessages.providerChatId })
+    .from(schema.channelMessages)
+    .where(eq(schema.channelMessages.id, ctx.inboundChannelMessageId));
+  return message?.providerChatId === family.linqGroupChatId;
+}
+
 export function connectorLinkHandler(log: Pick<Console, 'error'> = console): DeterministicHandler {
   return {
     name: 'connector_link',
@@ -365,6 +388,40 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
       const language = replyLanguage(ctx.body);
       const target = named ?? fresh;
       if (!target) return { claimed: false };
+      if (await familyGroupTurn(database, ctx)) {
+        const providers: TextConnectProvider[] =
+          target === 'both'
+            ? ['gcal', 'gmail']
+            : [asTextConnectProvider(target)].filter(
+                (provider): provider is TextConnectProvider => provider !== null,
+              );
+        if (providers.length === 0) {
+          return { claimed: true, outcome: 'group_link_withheld', reply: null };
+        }
+        const outcomes = [];
+        for (const provider of providers) {
+          outcomes.push(
+            await textFreshConnectorLink(database, {
+              familyId: ctx.familyId,
+              parentUserId: ctx.parentUserId,
+              provider,
+              now: ctx.now,
+            }),
+          );
+        }
+        const failed = outcomes.find((outcome) => outcome !== 'sent');
+        if (failed) {
+          log.error(
+            { familyId: ctx.familyId, provider: target, outcome: failed },
+            'connector link: asked in the group, 1:1 link not sent',
+          );
+        }
+        return {
+          claimed: true,
+          outcome: failed ? `group_1to1_${failed}` : 'sent_1to1',
+          reply: null,
+        };
+      }
       if (target === 'both') {
         const outcome = await offerConnectorLinks(database, {
           familyId: ctx.familyId,

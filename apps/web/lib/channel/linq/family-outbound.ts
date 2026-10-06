@@ -10,9 +10,11 @@ import {
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import type { ContentClass } from '~/lib/channel/role-scope';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { linqApiKey, linqGroupCoparentEnabled } from './config';
 import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
+import { type GroupHoldReason, groupAudienceAllows } from './group-audience';
 import { groupPassedSyncLine, groupPickedSyncLine } from './group-coparent-copy';
 import { LinqSendError, sendLinqChatMessage } from './transport';
 
@@ -24,10 +26,14 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * kill switch `LINQ_GROUP_COPARENT=off`, leaves the caller's current door.
  * A parent who texts Hale 1:1 is answered in that thread; this resolver is not
  * the reply door.
+ *
+ * With `LINQ_GROUP_ONBOARDING_V2_ENABLED`, a claimed chat is the target only for
+ * a `contentClass` everyone in it may see (group-audience.ts); otherwise the
+ * caller's 1:1 door, with the hold named in `reason`.
  */
 export type FamilyOutboundTarget =
   | { channel: 'group'; chatId: string; familyId: string }
-  | { channel: 'legacy' };
+  | { channel: 'legacy'; reason?: GroupHoldReason };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
@@ -54,6 +60,9 @@ const DISCRETIONARY_TEMPLATES = [
 
 const SYNC_TEMPLATE = 'linq:group_sync';
 
+/** A picked, passed or duty decision about a kid's activity: the household's schedule. */
+const DECISION_SYNC_CLASS: ContentClass = 'schedule';
+
 /**
  * How a group send spends the household budget.
  *
@@ -77,6 +86,7 @@ export type GroupBubbleKind =
 export async function familyOutboundTarget(
   database: Database,
   familyId: string,
+  options: { contentClass?: ContentClass } = {},
 ): Promise<FamilyOutboundTarget> {
   if (!linqGroupCoparentEnabled()) return { channel: 'legacy' };
   // A unit double with no query surface has no group to claim. Production
@@ -89,6 +99,12 @@ export async function familyOutboundTarget(
     .limit(1);
   const chatId = rows[0]?.linqGroupChatId;
   if (!chatId) return { channel: 'legacy' };
+  const audience = await groupAudienceAllows(
+    database,
+    chatId,
+    options.contentClass ?? 'unclassified',
+  );
+  if (!audience.allowed) return { channel: 'legacy', reason: audience.reason };
   return { channel: 'group', chatId, familyId };
 }
 
@@ -506,7 +522,9 @@ export async function queueGroupActivityDecision(
     now: Date;
   },
 ): Promise<'queued' | 'skipped'> {
-  const target = await familyOutboundTarget(database, input.familyId);
+  const target = await familyOutboundTarget(database, input.familyId, {
+    contentClass: DECISION_SYNC_CLASS,
+  });
   if (target.channel !== 'group') return 'skipped';
   if (input.originChatId !== null && input.originChatId === target.chatId) return 'skipped';
   const { decision } = input;
@@ -589,7 +607,9 @@ export async function noteGroupSyncConversation(
   input: { familyId: string; originChatId: string | null; now: Date },
 ): Promise<void> {
   if (typeof database.update !== 'function') return;
-  const target = await familyOutboundTarget(database, input.familyId);
+  const target = await familyOutboundTarget(database, input.familyId, {
+    contentClass: DECISION_SYNC_CLASS,
+  });
   if (target.channel !== 'group') return;
   if (input.originChatId !== null && input.originChatId === target.chatId) return;
   await database
@@ -641,7 +661,9 @@ export async function flushGroupDecisionSyncs(
   let sent = 0;
   let held = 0;
   for (const [familyId, rows] of byFamily) {
-    const target = await familyOutboundTarget(database, familyId);
+    const target = await familyOutboundTarget(database, familyId, {
+      contentClass: DECISION_SYNC_CLASS,
+    });
     if (target.channel !== 'group') {
       await database
         .update(schema.groupDecisionSync)
@@ -773,8 +795,16 @@ export async function sendClaimedGroupLine(
     now: Date;
     dedupeKey: string;
     templateKey: string;
+    contentClass: ContentClass;
   },
-): Promise<'sent' | 'not_configured' | 'not_the_group' | 'already_sent' | 'not_sent'> {
+): Promise<
+  | 'sent'
+  | 'not_configured'
+  | 'not_the_group'
+  | 'already_sent'
+  | 'not_sent'
+  | 'group_audience_refused'
+> {
   if (!linqApiKey()) return 'not_configured';
   const [family] = await database
     .select({ linqGroupChatId: schema.families.linqGroupChatId })
@@ -783,6 +813,9 @@ export async function sendClaimedGroupLine(
     .limit(1);
   if (!family?.linqGroupChatId || family.linqGroupChatId !== input.chatId) {
     return 'not_the_group';
+  }
+  if (!(await groupAudienceAllows(database, input.chatId, input.contentClass)).allowed) {
+    return 'group_audience_refused';
   }
   const [claimed] = await database
     .insert(schema.channelMessages)

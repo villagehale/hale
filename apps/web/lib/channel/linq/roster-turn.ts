@@ -2,6 +2,11 @@ import type { Database } from '@hale/db';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import {
+  deliverConnectLinkOneToOne,
+  noticeIfGroupQuiet,
+  resumeConnectLink,
+} from './connect-link-1to1';
 import { realHumanPhone } from './group-coparent';
 import type { RoleWordKey } from './group-onboarding-line-input';
 import type { LinqInboundText } from './payload';
@@ -27,7 +32,9 @@ import { declineRosterMember, seatConfirmedMember } from './roster-seat';
  * code cannot read them, or recorded as not family. Someone the roster never saw is
  * asked, not read. A chat Hale knows nobody in gets its one line and then silence. A
  * known parent's message, a confirmed member's, and STOP/HELP/START are not this
- * module's: they go on to the household router.
+ * module's: they go on to the household router (STOP first through roster-stop.ts).
+ * A parent seated here gets their connect links 1:1 right after the acknowledgement;
+ * a decline that leaves the group quiet tells the primary parent, once, 1:1.
  */
 
 export interface RosterTurnPorts extends RosterVoicePorts {
@@ -126,7 +133,17 @@ export async function takeRosterTurn(
     askedNow = asked.outcome === 'roster_asked';
   }
   const member = await liveRosterMember(database, roster.id, phoneBlindIndex(phone));
-  if (member?.status === 'known_parent' || member?.status === 'confirmed') return NOT_HANDLED;
+  if (member?.status === 'confirmed') {
+    await resumeConnectLink(database, {
+      phone,
+      now: ports.now,
+      voice: ports.voice,
+      oneToOne: ports.oneToOne,
+      groupSend: ports.send,
+    });
+    return NOT_HANDLED;
+  }
+  if (member?.status === 'known_parent') return NOT_HANDLED;
   if (askedNow) return handled('roster_asked', 'intake');
   if (!member || member.status === 'proposed') {
     const asked = await askMember(database, { chatId: message.chatId, phone, ...ports });
@@ -152,8 +169,15 @@ export async function takeRosterTurn(
       status: reading.role === 'not_family' ? 'not_family' : 'declined',
       now: ports.now,
     });
+    const quiet = await noticeIfGroupQuiet(database, {
+      chatId: message.chatId,
+      now: ports.now,
+      voice: ports.voice,
+      oneToOne: ports.oneToOne,
+    });
     return handled('role_declined', 'ignored', {
       status: declined.outcome === 'declined' ? declined.status : null,
+      quiet: quiet.outcome,
     });
   }
 
@@ -190,5 +214,21 @@ export async function takeRosterTurn(
     reply,
     ...ports,
   });
-  return handled('role_confirmed', 'intake', { role: seated.role, notice });
+  const links =
+    seated.role === 'co_parent' && roster.familyId
+      ? await deliverConnectLinkOneToOne(database, {
+          familyId: roster.familyId,
+          userId: seated.userId,
+          groupChatId: message.chatId,
+          now: ports.now,
+          voice: ports.voice,
+          oneToOne: ports.oneToOne,
+          groupSend: ports.send,
+        })
+      : null;
+  return handled('role_confirmed', 'intake', {
+    role: seated.role,
+    notice,
+    ...(links ? { links: links.outcome } : {}),
+  });
 }

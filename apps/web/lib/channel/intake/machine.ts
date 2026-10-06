@@ -397,7 +397,12 @@ export type IntakeOutcome =
   | { status: 'region_unavailable' }
   | { status: 'rate_limited' }
   | { status: 'duplicate' }
-  | { status: 'ignored'; reason: 'invalid_number' | 'no_open_conversation' }
+  /**
+   * `group_stop` — a STOP inside the family group, with group onboarding v2 on. It is
+   * about the group (linq/roster-stop.ts answers it), so it revokes no channel here and
+   * nothing is acknowledged into the group from this door.
+   */
+  | { status: 'ignored'; reason: 'invalid_number' | 'no_open_conversation' | 'group_stop' }
   // VIL-241 · M6 — the caregiver branches. They share this entry point because a
   // caregiver texts the SAME number a parent does; what differs is who the number
   // belongs to, which is a lookup, not a second inbox.
@@ -4946,6 +4951,14 @@ async function handleStop(
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
   const { phoneE164, inbound, session, now, language, providerAnswered } = args;
+
+  if (inbound.isGroup === true && linqGroupOnboardingV2Enabled()) {
+    console.warn(
+      { outcome: 'group_stop' },
+      'intake: a STOP in the family group is answered by the roster',
+    );
+    return { status: 'ignored', reason: 'group_stop' };
+  }
 
   // VIL-241 · "Reply STOP anytime" is printed on the invite, so it has to reach the
   // invite: a STOP from someone we asked but who never accepted closes the invitation
