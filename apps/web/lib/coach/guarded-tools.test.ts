@@ -324,7 +324,14 @@ describe('Ask Hale guard rails + family scoping', () => {
 
     const result = await invokeTool(
       toolByName(db, 'save_memory'),
-      { factType: 'routine', factKey: 'bedtime', factValue: '7:30pm', confidence: 1 },
+      {
+        factType: 'routine',
+        factKey: 'bedtime',
+        factValue: '7:30pm',
+        confidence: 1,
+        memoryClass: 'enduring',
+        disposition: 'confirmed',
+      },
       { familyId: FAMILY_ID, actor: 'user-1' },
       buildGuardDeps(db),
     );

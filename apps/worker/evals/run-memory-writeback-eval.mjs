@@ -16,13 +16,19 @@
 // the REAL tools (guarded invoker included), against a REAL Postgres, and then
 // reads back through the REAL loadAgentContext.
 //
+// The NIGHTLY arm runs the web-side memory inferencer (runInferenceForFamily, the
+// live text surface's only memory writer) over a short synthetic transcript, and
+// scores what it stored: every save names memoryClass and disposition, a settled
+// routine is enduring, a declined activity is declined (never confirmed), and a
+// passing question is curiosity.
+//
 // Rule #8: no LLM mocking. The agent loop talks to real Claude once per fixture,
 // then replays from a content-addressed cache. A --cached-only miss FAILS LOUDLY.
 //
 // Run from repo root:
 //   node --env-file=.env apps/worker/evals/run-memory-writeback-eval.mjs   # live, then caches
 //   node apps/worker/evals/run-memory-writeback-eval.mjs --cached-only     # CI: replay only
-//   node apps/worker/evals/run-memory-writeback-eval.mjs --broken          # calibration: model never saves
+//   node apps/worker/evals/run-memory-writeback-eval.mjs --broken          # calibration: model never saves; nightly saves unlabelled or mislabelled
 //   node apps/worker/evals/run-memory-writeback-eval.mjs --unranked        # calibration: pre-MEM-1 select
 
 import { createHash } from 'node:crypto';
@@ -40,6 +46,8 @@ const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
 const WEB_TSCONFIG = join(WEB_ROOT, 'tsconfig.json');
 const CACHE_DIR = join(HERE, 'cache');
 const FIXTURE_PATH = join(HERE, 'fixtures', 'memory-writeback', 'turns.json');
+const NIGHTLY_FIXTURE_PATH = join(HERE, 'fixtures', 'memory-writeback', 'nightly.json');
+const SAVE_TOOLS = new Set(['save_memory', 'save_child_fact']);
 
 const PRICE = { input: 3.0, output: 15.0 }; // Sonnet list, USD per 1M tokens.
 
@@ -152,6 +160,85 @@ function forgetfulClient() {
         content: [{ type: 'text', text: "Got it — I'll remember that for you." }],
         usage: { input_tokens: 0, output_tokens: 0 },
       }),
+    },
+  };
+}
+
+/**
+ * Nightly calibration arm: the inferencer's omission habit and its mislabel, with no
+ * API call. The routine is saved with no class at all, and the decline and the
+ * question are both filed as confirmed identity. The gate must reject all three.
+ */
+function mislabelingNightlyClient(fixture) {
+  const childId = fixture.children[0].id;
+  let turn = 0;
+  return {
+    messages: {
+      create: async () => {
+        turn += 1;
+        const usage = { input_tokens: 0, output_tokens: 0 };
+        if (turn > 1) {
+          return {
+            id: 'msg_mislabel_done',
+            type: 'message',
+            role: 'assistant',
+            model: 'broken',
+            stop_reason: 'end_turn',
+            content: [{ type: 'text', text: 'Saved three facts.' }],
+            usage,
+          };
+        }
+        const save = (id, input) => ({ type: 'tool_use', id, name: 'save_child_fact', input });
+        return {
+          id: 'msg_mislabel',
+          type: 'message',
+          role: 'assistant',
+          model: 'broken',
+          stop_reason: 'tool_use',
+          content: [
+            save('toolu_nap', {
+              childId,
+              category: 'routines',
+              factKey: 'nap_schedule',
+              summary: 'one nap, 12:30 to 2:30',
+              confidence: 0.95,
+            }),
+            save('toolu_hockey', {
+              childId,
+              category: 'preferences',
+              factKey: 'hockey',
+              summary: 'hockey this winter',
+              confidence: 0.95,
+              memoryClass: 'enduring',
+              disposition: 'confirmed',
+            }),
+            save('toolu_music', {
+              category: 'preferences',
+              factKey: 'music_classes',
+              summary: 'toddler music classes',
+              confidence: 0.8,
+              memoryClass: 'enduring',
+              disposition: 'confirmed',
+            }),
+          ],
+          usage,
+        };
+      },
+    },
+  };
+}
+
+/** Every tool_use the model emitted, as the loop received it, cached or live. */
+function recordingClient(inner, calls) {
+  return {
+    messages: {
+      create: async (request) => {
+        const response = await inner.messages.create(request);
+        for (const block of response.content) {
+          if (block.type === 'tool_use') calls.push({ name: block.name, input: block.input });
+        }
+        return response;
+      },
     },
   };
 }
@@ -335,6 +422,101 @@ async function runTurn({ fixture, mode, cachedOnly, cost, modules, factLimit }) 
   }
 }
 
+// --- the nightly arm -----------------------------------------------------------
+
+async function runNightly({ fixture, mode, cachedOnly, cost, modules }) {
+  const { pglite, inference, db, drizzle } = modules;
+
+  const test = await pglite.createTestDb();
+  try {
+    const { familyId } = await pglite.seedFamily(
+      test.database,
+      fixture.familyName,
+      fixture.familyId,
+    );
+    const now = new Date(fixture.runAt);
+    for (const child of fixture.children) {
+      await pglite.seedChild(test.database, familyId, child.name, child.ageMonths, child.id, now);
+    }
+
+    const [conversation] = await test.database
+      .insert(db.schema.conversations)
+      .values({ familyId })
+      .returning({ id: db.schema.conversations.id });
+    // Explicit times: the read orders by created_at, and the request is the cache key.
+    await test.database.insert(db.schema.messages).values(
+      fixture.transcript.map((turn) => ({
+        conversationId: conversation.id,
+        role: turn.role,
+        content: turn.content,
+        childId: turn.childId ?? null,
+        createdAt: new Date(now.getTime() - turn.minutesBefore * 60_000),
+      })),
+    );
+
+    const calls = [];
+    const inner =
+      mode === 'broken' ? mislabelingNightlyClient(fixture) : cachingClient({ cachedOnly, cost });
+    await inference.runInferenceForFamily(
+      familyId,
+      test.database,
+      { client: recordingClient(inner, calls) },
+      now,
+    );
+
+    const rows = (
+      await test.database
+        .select()
+        .from(db.schema.familyMemoryFacts)
+        .where(drizzle.eq(db.schema.familyMemoryFacts.familyId, familyId))
+    ).filter((row) => row.validUntil === null);
+
+    return { calls, rows };
+  } finally {
+    await test.close();
+  }
+}
+
+/**
+ * Scored from the fixture's own expectations (rule #7): which item each stored
+ * row is about is read from its key and value, and the class and disposition
+ * are read back through the same helpers the brief and the ranker use.
+ */
+function checkNightly(fixture, { calls, rows }, classify) {
+  const failures = [];
+
+  const saves = calls.filter((call) => SAVE_TOOLS.has(call.name));
+  if (saves.length === 0) failures.push('the nightly inferencer called no save tool');
+  for (const save of saves) {
+    for (const field of ['memoryClass', 'disposition']) {
+      if (!save.input?.[field]) {
+        failures.push(`${save.name}('${save.input?.factKey}') omitted ${field}`);
+      }
+    }
+  }
+
+  for (const expected of fixture.expect) {
+    const about = rows.filter((row) => {
+      const text = JSON.stringify([row.factKey, row.factValue]).toLowerCase();
+      return expected.terms.some((term) => text.includes(term));
+    });
+    if (expected.required && about.length === 0) {
+      failures.push(`${expected.item}: nothing stored`);
+    }
+    for (const row of about) {
+      const kind = classify.promptKind(row.memoryKind, row.factValue);
+      const disposition = classify.readDisposition(row.factValue);
+      if (kind !== expected.kind || disposition !== expected.disposition) {
+        failures.push(
+          `${expected.item} ('${row.factKey}') stored ${kind}/${disposition}, expected ${expected.kind}/${expected.disposition}`,
+        );
+      }
+    }
+  }
+
+  return failures;
+}
+
 // --- main ----------------------------------------------------------------------
 
 async function main() {
@@ -351,19 +533,25 @@ async function main() {
     coachSkill: await importWeb('lib/coach/skill.ts'),
     coachGuards: await importWeb('lib/coach/guards.ts'),
     context: await importWeb('lib/coach/context.ts'),
+    inference: await importWeb('lib/cron/inference.ts'),
+    classify: await importWeb('lib/memory/classify-write.ts'),
     agent: await importTs(join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts')),
     db: await import('@hale/db'),
     drizzle: await import('drizzle-orm'),
   };
 
   const fixtures = JSON.parse(await readFile(FIXTURE_PATH, 'utf8'));
+  // The retrieval calibration arm says nothing about classification.
+  const nightlyFixtures =
+    mode === 'unranked' ? [] : JSON.parse(await readFile(NIGHTLY_FIXTURE_PATH, 'utf8'));
+  const total = fixtures.length + nightlyFixtures.length;
   const cost = { liveCalls: 0, input: 0, output: 0 };
   // Read from context.ts rather than hardcoded, so a cap change re-tunes the eval
   // instead of silently making the distractor set too small to prove anything.
   const { factLimit } = await readMemoryLimits();
 
   console.log(
-    `memory-writeback-eval | mode=${mode}${cachedOnly ? ' (cached-only)' : ''} | fixtures: ${fixtures.length}`,
+    `memory-writeback-eval | mode=${mode}${cachedOnly ? ' (cached-only)' : ''} | fixtures: ${fixtures.length} coach + ${nightlyFixtures.length} nightly`,
   );
   console.log(
     `distractor facts per family: ${DISTRACTOR_FACTS} (fact cap ${factLimit}) | cache: evals/cache/`,
@@ -383,6 +571,24 @@ async function main() {
     }
   }
 
+  for (const fixture of nightlyFixtures) {
+    const result = await runNightly({ fixture, mode, cachedOnly, cost, modules });
+    const failures = checkNightly(fixture, result, modules.classify);
+    if (failures.length) {
+      failedFixtures.push({ id: fixture.id, failures });
+      console.log(`  FAIL ${fixture.id}`);
+      for (const f of failures) console.log(`       - ${f}`);
+    } else {
+      const stored = result.rows
+        .map(
+          (row) =>
+            `${row.factKey}=${modules.classify.promptKind(row.memoryKind, row.factValue)}/${modules.classify.readDisposition(row.factValue)}`,
+        )
+        .join(', ');
+      console.log(`  pass ${fixture.id} (${stored})`);
+    }
+  }
+
   const estUsd = (cost.input / 1e6) * PRICE.input + (cost.output / 1e6) * PRICE.output;
   console.log('');
   console.log('--- cost ---');
@@ -393,7 +599,7 @@ async function main() {
   const allPass = failedFixtures.length === 0;
   console.log('');
   console.log('--- gate ---');
-  console.log(`fixtures failing checks: ${failedFixtures.length}/${fixtures.length}`);
+  console.log(`fixtures failing checks: ${failedFixtures.length}/${total}`);
   console.log(`overall (${mode}): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
 
   // Calibration is the contract that this gate has teeth. The real (cached) run

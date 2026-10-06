@@ -1,0 +1,68 @@
+[
+  {
+    "id": "nightly-classifies-every-save",
+    "familyId": "aaaaaaa1-0000-4000-8000-000000000004",
+    "familyName": "Writeback Family D",
+    "children": [{ "id": "ccccccc1-0000-4000-8000-000000000004", "name": "Pip", "ageMonths": 26 }],
+    "runAt": "2026-10-06T06:00:00.000Z",
+    "transcript": [
+      {
+        "role": "user",
+        "childId": "ccccccc1-0000-4000-8000-000000000004",
+        "minutesBefore": 2880,
+        "content": "Pip's nap has been the same for over a month now: one nap, 12:30 to 2:30, every single day. That's just how our afternoons work now."
+      },
+      {
+        "role": "assistant",
+        "childId": "ccccccc1-0000-4000-8000-000000000004",
+        "minutesBefore": 2879,
+        "content": "Got it, one nap from 12:30 to 2:30. I'll keep afternoons clear of anything that runs into it."
+      },
+      {
+        "role": "user",
+        "childId": "ccccccc1-0000-4000-8000-000000000004",
+        "minutesBefore": 1500,
+        "content": "Also, we're not doing hockey this winter. We talked it over and it's a no."
+      },
+      {
+        "role": "assistant",
+        "childId": "ccccccc1-0000-4000-8000-000000000004",
+        "minutesBefore": 1499,
+        "content": "Understood, no hockey this winter."
+      },
+      {
+        "role": "user",
+        "minutesBefore": 600,
+        "content": "Random question, are there any toddler music classes around here?"
+      },
+      {
+        "role": "assistant",
+        "minutesBefore": 599,
+        "content": "There are a couple of drop-in music circles nearby. Want me to look at times?"
+      }
+    ],
+    "expect": [
+      {
+        "item": "settled nap routine",
+        "terms": ["nap"],
+        "required": true,
+        "kind": "enduring",
+        "disposition": "confirmed"
+      },
+      {
+        "item": "declined hockey",
+        "terms": ["hockey"],
+        "required": true,
+        "kind": "obligation",
+        "disposition": "declined"
+      },
+      {
+        "item": "passing music question",
+        "terms": ["music"],
+        "required": false,
+        "kind": "curiosity",
+        "disposition": "asked"
+      }
+    ]
+  }
+]

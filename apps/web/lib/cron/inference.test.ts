@@ -99,6 +99,8 @@ function fakeClient(confidence: number): AgentClient {
               factKey: 'bedtime',
               factValue: { time: '19:30' },
               confidence,
+              memoryClass: 'enduring',
+              disposition: 'confirmed',
             },
           },
         ],
