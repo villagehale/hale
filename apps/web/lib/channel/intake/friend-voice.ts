@@ -18,6 +18,7 @@ import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { HALE_IDENTITY, NAMES_HALE_COMPANY, isIdentityChallenge } from './identity-challenge';
 import {
+  type CoparentGroupMode,
   ONBOARDING_ORDER,
   type OnboardingCapture,
   type OnboardingChecklist,
@@ -389,6 +390,7 @@ const replySchema = z.object({
   scheduleAdds: z.array(scheduleAddSchema).optional().default([]),
   scheduleDone: z.boolean().optional().default(false).catch(false),
   coparentGroup: z.boolean().nullable().optional().default(null).catch(null),
+  coparentGroupMode: z.enum(['existing', 'new']).nullable().optional().default(null).catch(null),
   nameDeclined: z.boolean().optional().default(false).catch(false),
   kidsNamesDeclined: z.boolean().optional().default(false).catch(false),
   calendarLater: z.boolean().optional().default(false).catch(false),
@@ -447,6 +449,7 @@ const replyJsonSchema = {
     },
     scheduleDone: { type: 'boolean' },
     coparentGroup: { type: ['boolean', 'null'] },
+    coparentGroupMode: { type: ['string', 'null'], enum: ['existing', 'new', null] },
     nameDeclined: { type: 'boolean' },
     kidsNamesDeclined: { type: 'boolean' },
     calendarLater: { type: 'boolean' },
@@ -658,11 +661,16 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
       today: today ? { date: today, label: dayLabel(today, input.language) } : null,
       upcomingDays: input.step === 'schedule' && now ? upcomingDays(now, input.language) : null,
       scheduled: input.scheduled ?? [],
-      // Code puts the number and phrase under the reply; the model only knows they are there.
+      // Code puts the number, and a sentence or the phrase, under the reply; the model
+      // only knows they are there.
       coparentJoin: input.coparentJoin
         ? {
-            below: 'the number and a short phrase, on their own lines',
-            how: 'start a group text with the other parent and the number below, then send the phrase below in it',
+            below:
+              'the number on its own line, then a short line: for their own group, a sentence to add it; for a new group, a phrase to send',
+            how: {
+              existing: 'add the number below to the family group chat they already have',
+              new: 'start a group text with the other parent and the number below, then send the phrase below in it',
+            },
           }
         : null,
       coparentGroup: input.coparentGroup ?? null,
@@ -714,11 +722,55 @@ export function parentReading(
 }
 
 function readingForModel(input: FriendVoiceInput): string | null {
+  const cue = groupModeCue(input);
+  if (cue) return `parentWords is a yes to coparent, for ${GROUP_MODE_WORDS[cue]}`;
   const reading = parentReading(input);
   if (!reading) return null;
-  return reading.kind === 'name'
-    ? `parentWords is their name (${reading.name}): it answers the name ask`
+  if (reading.kind === 'name') {
+    return `parentWords is their name (${reading.name}): it answers the name ask`;
+  }
+  return reading.item === 'coparent'
+    ? `parentWords is a yes to coparent, for ${GROUP_MODE_WORDS.existing}`
     : `parentWords is a yes to ${reading.item}`;
+}
+
+const GROUP_MODE_WORDS: Record<CoparentGroupMode, string> = {
+  existing: 'the family group they already have',
+  new: 'a new group with the other parent',
+};
+
+const EXISTING_GROUP_CUE =
+  /\badd (?:you|yourself|hale)\b|\bajoute[- ]?toi\b|\b(?:our|my|the family) (?:family )?group\b|\bexisting\b|\bnotre groupe\b|\bgroupe (?:existant|de famille)\b/i;
+const NEW_GROUP_CUE =
+  /\bnew (?:group|one|chat)\b|\bstart (?:one|a group)\b|\bnouveau\b|\bnouvelle?\b/i;
+const NEGATION = /\b(?:no|nope|nah|not|non|pas|don['’]?t)\b/i;
+
+/**
+ * Which group the parent's words name, when they name one: "add you to our group"
+ * is theirs, "start a new group" is new. A no, a question, or both cues at once
+ * name nothing, and the model's reading stands.
+ */
+export function coparentGroupModeCue(words: string): CoparentGroupMode | null {
+  if (words.includes('?') || NEGATION.test(words)) return null;
+  const existing = EXISTING_GROUP_CUE.test(words);
+  const fresh = NEW_GROUP_CUE.test(words);
+  if (existing === fresh) return null;
+  return existing ? 'existing' : 'new';
+}
+
+function groupModeCue(input: FriendVoiceInput): CoparentGroupMode | null {
+  return answeringItem(input) === 'coparent' ? coparentGroupModeCue(input.parentWords) : null;
+}
+
+/**
+ * The group a yes means, held to the parent's words. A cue decides over the model;
+ * a yes that names no group means the one they already have.
+ */
+function withGroupMode(capture: OnboardingCapture, input: FriendVoiceInput): OnboardingCapture {
+  const cue = groupModeCue(input);
+  if (cue) return { ...capture, coparentGroup: true, coparentGroupMode: cue };
+  if (capture.coparentGroup !== true) return { ...capture, coparentGroupMode: null };
+  return capture.coparentGroupMode ? capture : { ...capture, coparentGroupMode: 'existing' };
 }
 
 /**
@@ -1752,9 +1804,12 @@ export async function speakFriend(
       const capture =
         input.parentWords.trim().length > 0
           ? settleSchedule(
-              withReading(
-                noYesInAQuestion(
-                  ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
+              withGroupMode(
+                withReading(
+                  noYesInAQuestion(
+                    ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
+                    input,
+                  ),
                   input,
                 ),
                 input,
@@ -2029,7 +2084,7 @@ function retryProblem(
     case 'long':
       return `Too long. Keep the reply under ${MAX_PROSE_CHARS} characters.`;
     case 'join':
-      return "Under their yes, code puts Hale's number and the phrase on their own lines right below. Say they are below and how to use them (coparentJoin.how), without writing them. Hale does not start the group; they do.";
+      return "Under their yes, code puts Hale's number, and the sentence or the phrase, on their own lines right below. Say they are below and how to use them (coparentJoin.how for the group they chose), without writing them. Hale does not start or join the group; they add it.";
     case 'schedule':
       return 'A scheduleAdd pointed at a line that does not fit that child or is not on the map. Use the n of the line that matches, for a child its ages suit.';
     case 'question':
@@ -2316,6 +2371,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
           scheduleAdds: value.scheduleAdds,
           scheduleDone: value.scheduleDone,
           coparentGroup: value.coparentGroup,
+          coparentGroupMode: value.coparentGroupMode,
           nameDeclined: value.nameDeclined,
           kidsNamesDeclined: value.kidsNamesDeclined,
           calendarLater: value.calendarLater,

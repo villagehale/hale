@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
+  FakeAddThemYourself,
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
@@ -118,6 +119,7 @@ async function runIntakeRadar(): Promise<Intake> {
     answerComposer: fakeSilentAnswerComposer,
     openQuestions: fakeNoOpenQuestions,
     identityAsk: new FakeIdentityAsk(),
+    addThemYourself: new FakeAddThemYourself(),
     limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
     now: INTAKE_AT,
   };

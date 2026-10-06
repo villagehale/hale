@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FIRST_REPLY_ACTION_LINE_ENV } from '~/lib/channel/intake/action-line';
 import { YEAR_OPEN_LEAD } from '~/lib/channel/intake/year-open';
 import {
+  FakeAddThemYourself,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
@@ -156,6 +157,7 @@ describe('the first reply says what to do about the find', () => {
       ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
       identityAsk: new FakeIdentityAsk(),
+      addThemYourself: new FakeAddThemYourself(),
       // `seedCivic` is DELIBERATELY not injected: the real projectCivicCandidates runs,
       // so this journey pins the write of `access`/`when_label` and not a stand-in.
       resolveCenter: async () => null,

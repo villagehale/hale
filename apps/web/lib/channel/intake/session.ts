@@ -174,6 +174,8 @@ export interface FirstTouchGiven {
   scheduled?: FirstTouchScheduled[];
   /** Their answer to the group chat. Absent until asked and answered. */
   coparentGroup?: boolean | null;
+  /** Which group their yes meant: theirs or a new one. Absent on older sessions. */
+  coparentGroupMode?: 'existing' | 'new' | null;
 }
 
 export interface ColdStartProgress {

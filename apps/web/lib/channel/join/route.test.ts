@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import type { FamilyRole } from '~/lib/channel/role-scope';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  FakeAddThemYourself,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
@@ -19,6 +20,7 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { seedTextedInvite } from '~/lib/testing/texted-invite';
 import { joinTokenHash } from './code';
 import { JOIN_LINK_TTL_MS } from './invites';
 
@@ -93,6 +95,7 @@ function harness(): Harness {
       answerComposer: fakeSilentAnswerComposer,
       openQuestions: fakeNoOpenQuestions,
       identityAsk: new FakeIdentityAsk(),
+      addThemYourself: new FakeAddThemYourself(),
       limiter: new FakeRateLimiter(() => now.getTime()),
       now,
     }),
@@ -542,13 +545,19 @@ describe('a live link outranks whatever conversation is already open', () => {
 describe('a live link outranks an OPEN CAREGIVER INVITE on the same number', () => {
   it('closes the invite as it seats them, so their next text is an ordinary turn', async () => {
     const h = harness();
-    await seedFamily(h.fake);
     // The same number is in both flows at once — a household described it as a sitter
     // and Hale texted it the invite, and it is also the number the forwarded co-parent
     // link reaches. Nothing prevents that: the invite is opened while the number still
     // has no channel, which is exactly the state a redemption walks into.
-    await text(h, PARENT_PHONE, 'add Sam 647-555-0199 as babysitter');
-    await text(h, PARENT_PHONE, 'yes');
+    const { familyId, parentUserId } = await seedFamily(h.fake);
+    await seedTextedInvite(h.fake.db, {
+      familyId,
+      invitedByUserId: parentUserId,
+      role: 'babysitter',
+      displayName: 'Sam',
+      phoneE164: PARTNER_PHONE,
+      now: NOW,
+    });
     expect(h.fake.rows(schema.caregiverInvites)[0]?.state).toBe('awaiting_caregiver_reply');
 
     await text(h, PARENT_PHONE, 'add my partner');

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import {
+  FakeAddThemYourself,
   FakeIdentityAsk,
   FakeExtractor,
   FakeIntentReader,
@@ -145,6 +146,7 @@ describe("the founder's welcome note", () => {
       ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
       identityAsk: new FakeIdentityAsk(),
+      addThemYourself: new FakeAddThemYourself(),
       seedCivic: async () => 0,
       resolveCenter: async () => null,
       discoveryTrigger: () => {},

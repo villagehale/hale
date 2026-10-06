@@ -5,23 +5,17 @@ import { acceptCoParentInvite } from '~/lib/channel/coparent/accept';
 import {
   CO_PARENT_ANSWER_PROMPT_BY_LANGUAGE,
   CO_PARENT_DECLINE_ACK_BY_LANGUAGE,
-  CO_PARENT_REFUSAL_COPY,
   CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE,
   INVITE_EXPIRED_BY_LANGUAGE,
-  REFERRER_UNNAMED_BY_LANGUAGE,
   coParentInviteDroppedAck,
-  coParentInviteSentAck,
   coParentWelcome,
-  inviterNameIsAffordable,
 } from '~/lib/channel/coparent/copy';
-import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport, InboundMessage } from '~/lib/channel/intake/transport';
 import { JOIN_ACCEPTED_ACK } from '~/lib/channel/join/copy';
 import { looksLikeJoinRequest } from '~/lib/channel/join/parse';
 import { type JoinOutcome, handleJoinRequest } from '~/lib/channel/join/route';
 import { replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { openHouseholdLinqGroup } from '~/lib/channel/linq/group';
 import { liveMemberMayTalk } from '~/lib/channel/linq/group-members';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { type FamilyRole, isCaregiverRole, isParentRole } from '~/lib/channel/role-scope';
@@ -29,37 +23,24 @@ import { type OpenQuestion, soleOpenKind } from '~/lib/channel/router/open-quest
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import type { AddThemYourselfUnsent, AddThemYourselfVoice } from './add-them-yourself';
 import {
-  ADD_EXAMPLE,
-  ALREADY_INVITED,
-  CANNOT_TEXT_THAT_NUMBER,
   CAREGIVER_ANSWER_PROMPT,
   CAREGIVER_DECLINE_ACK,
   CAREGIVER_WELCOME,
-  CO_PARENT_REDIRECT,
-  NUMBER_IN_USE,
-  OWN_NUMBER,
-  TOO_MANY_INVITES,
   inviteDroppedAck,
-  inviteSentAck,
   scopedReply,
 } from './copy';
 import {
   type CaregiverInvite,
   type CaregiverLaneInvite,
   type CoParentInvite,
-  type CoParentRefusal,
   acceptInvite,
   declineInvite,
   loadPendingAssent,
-  recordCoParentAssent,
-  recordInviteRefusal,
   recordLapsedInviteAnswered,
-  recordParentAssent,
-  startCaregiverInvite,
-  startCoParentInvite,
 } from './invites';
-import { looksLikeAddCommand, parseAddCaregiver } from './parse';
+import { type AddRole, looksLikeAddCommand, parseAddCaregiver } from './parse';
 
 /**
  * VIL-241 · M6 — where a caregiver-shaped inbound is routed, and the only place a
@@ -111,6 +92,9 @@ export interface CaregiverDeps {
    * caregiver's side deliberately does not. */
   threadMessage: typeof threadProactiveMessage;
   openQuestions: OpenQuestionsForParent;
+  /** Writes the one reply to an add-by-number. Required (rule #11): with no composer
+   * the parent would be met with silence, and an unsent reply is named in the outcome. */
+  addThemYourself: AddThemYourselfVoice;
 }
 
 /**
@@ -123,23 +107,20 @@ export type LapsedInviteOutcome = {
   role: CaregiverInvite['role'];
 };
 
+/**
+ * The parent asked Hale to add someone by their number. Hale texts nobody first, so
+ * nobody was texted: the parent was told to add them to the family group with Hale in
+ * it, or to have them text Hale. `reply` names a reply the composer could not write;
+ * then nothing went out.
+ */
+export type AddThemYourselfOutcome = {
+  status: 'add_them_yourself';
+  role: AddRole | null;
+  reply: 'sent' | AddThemYourselfUnsent;
+};
+
 export type CaregiverOutcome =
-  | { status: 'caregiver_invite_started' }
-  | { status: 'caregiver_invite_sent' }
   | { status: 'caregiver_invite_dropped' }
-  | {
-      status: 'caregiver_add_refused';
-      reason:
-        | 'own_number'
-        | 'number_in_use'
-        | 'already_invited'
-        | 'too_many'
-        /** The number has told Hale no before, on either lane (VIL-355) — the promise
-         * "Reply STOP anytime" has to hold against the command next door. */
-        | 'previously_declined'
-        | 'unsupported_role'
-        | 'unparseable';
-    }
   | { status: 'caregiver_accepted' }
   | { status: 'caregiver_declined' }
   | { status: 'caregiver_prompted' }
@@ -152,12 +133,7 @@ export type CaregiverOutcome =
  * operator the wrong story about which person Hale declined to text.
  */
 export type CoParentOutcome =
-  | { status: 'co_parent_invite_started' }
-  | { status: 'co_parent_invite_sent' }
   | { status: 'co_parent_invite_dropped' }
-  /** `dark` is the flag, and it is a refusal like any other: the parent asked and Hale
-   * answered with the forwardable link instead. It is NOT silence. */
-  | { status: 'co_parent_add_refused'; reason: CoParentRefusal | 'dark' }
   | {
       status: 'co_parent_accepted';
       /** Whether the inviting parent's confirmation actually went out, and why it did
@@ -179,12 +155,6 @@ export type CoParentOutcome =
    * sentence saying why the answer bought them nothing.
    */
   | { status: 'co_parent_seat_taken' }
-  /**
-   * The parent's YES arrived at an invite that was no longer awaiting one — the losing
-   * half of two affirmatives in the same moment. Nothing was sent and nothing was
-   * written; the turn that won did both.
-   */
-  | { status: 'co_parent_assent_already_claimed' }
   /** Also the answer to a LOST race for one invite: nobody was seated twice, and the
    * loser is answered with the same one nudge any unreadable reply gets. */
   | { status: 'co_parent_prompted' };
@@ -678,7 +648,7 @@ export async function handleKnownNumberInbound(
     now: Date;
   },
   deps: CaregiverDeps,
-): Promise<CaregiverOutcome | CoParentOutcome | JoinOutcome | null> {
+): Promise<CaregiverOutcome | CoParentOutcome | JoinOutcome | AddThemYourselfOutcome | null> {
   const { owner, inbound, now } = args;
   const role = await memberRole(database, owner.familyId, owner.userId);
 
@@ -727,9 +697,24 @@ export async function handleKnownNumberInbound(
       pending.role !== 'co_parent' ||
       (await coParentAssentIsSoleQuestion(database, owner, now, deps));
     if (answer === 'yes' && claimable) {
-      return pending.role === 'co_parent'
-        ? sendCoParentInvite(database, { pending, owner, inbound, parentPhoneE164, now }, deps)
-        : sendInvite(database, { pending, owner, inbound, parentPhoneE164, now }, deps);
+      // An add Hale asked about before it stopped texting people first. The invite is
+      // left to lapse on its own clock; nobody is texted.
+      const lane: Lane = pending.role === 'co_parent' ? 'co_parent' : 'caregiver';
+      await record(database, {
+        familyId: owner.familyId,
+        parentUserId: owner.userId,
+        lane,
+        direction: 'in',
+        providerId: inbound.providerId,
+        body: inbound.body,
+        now,
+      });
+      return askThemToJoin(
+        database,
+        { owner, inbound, parentPhoneE164, now, lane },
+        { role: pending.role, name: pending.displayName },
+        deps,
+      );
     }
     if (answer === 'no' && claimable) {
       return pending.role === 'co_parent'
@@ -765,147 +750,6 @@ async function coParentAssentIsSoleQuestion(
     now,
   });
   return soleOpenKind(questions, 'co_parent_assent');
-}
-
-/**
- * The parent's YES: their authorisation recorded, then the ONE message, then their own
- * acknowledgment. In that order, because each step is the licence for the next.
- */
-async function sendCoParentInvite(
-  database: Database,
-  args: {
-    pending: CoParentInvite;
-    owner: { userId: string; familyId: string };
-    inbound: InboundMessage;
-    parentPhoneE164: string;
-    now: Date;
-  },
-  deps: CaregiverDeps,
-): Promise<CoParentOutcome> {
-  const { pending, owner, inbound, now } = args;
-  // The AUTHORISING reply is what the language is read from, here and for the invite it
-  // licenses: the person being texted has written nothing yet, so there is nothing else
-  // to read (language.ts is per message, never per family).
-  const language = replyLanguage(inbound.body);
-  const channelMessageId = await record(database, {
-    familyId: owner.familyId,
-    parentUserId: owner.userId,
-    lane: 'co_parent',
-    direction: 'in',
-    providerId: inbound.providerId,
-    body: inbound.body,
-    now,
-  });
-
-  // THE FLAG IS RE-READ AT THE SEND, not only at the ask (D21). An invite lives for 72
-  // hours, so a gate on the start command alone leaves every invite opened before a flip
-  // still able to cold-text a stranger afterwards — and the send is the thing the flag
-  // exists to hold back. The invitee's own reply is deliberately NOT gated: Hale already
-  // texted them, and refusing to read their yes or their STOP would punish them for a
-  // switch somebody else threw.
-  if (!f14EnabledFor(owner.familyId)) {
-    return refuseAfterAssent(database, { ...args, reason: 'dark', body: CO_PARENT_REDIRECT }, deps);
-  }
-
-  const inviterName = await userName(database, owner.userId);
-  // Re-asked at the last moment rather than trusted from the start: the name is free text
-  // a parent can clear between the ask and the yes, and an anonymous cold text is the one
-  // message this feature exists not to send. The invite stays open and lapses on its own
-  // clock — nothing here closes a question the parent answered correctly.
-  if (!inviterNameIsAffordable(inviterName)) {
-    return refuseAfterAssent(
-      database,
-      { ...args, reason: 'referrer_unnamed', body: REFERRER_UNNAMED_BY_LANGUAGE[language] },
-      deps,
-    );
-  }
-
-  const body = await recordCoParentAssent(database, {
-    invite: pending,
-    inviterName,
-    language,
-    verbatimReply: inbound.body,
-    channelMessageId,
-    now,
-  });
-  // Null means another turn already claimed this assent and already sent the one message.
-  // Nothing to send here, and deliberately nothing said: the parent's own ack went out on
-  // the turn that won, and a second one would read as a second invite.
-  if (body === null) return { status: 'co_parent_assent_already_claimed' };
-
-  await reply(database, deps, {
-    to: pending.phoneE164,
-    body,
-    familyId: owner.familyId,
-    parentUserId: owner.userId,
-    lane: 'co_parent',
-    now,
-  });
-  await replyToParent(database, deps, {
-    to: args.parentPhoneE164,
-    body: coParentInviteSentAck(pending.displayName, language),
-    familyId: owner.familyId,
-    parentUserId: owner.userId,
-    lane: 'co_parent',
-    now,
-  });
-  try {
-    await openHouseholdLinqGroup(database, {
-      familyId: owner.familyId,
-      parentUserId: owner.userId,
-      parentPhoneE164: args.parentPhoneE164,
-      coParentPhoneE164: pending.phoneE164,
-      now,
-    });
-  } catch (err) {
-    console.warn(
-      { familyId: owner.familyId, code: err instanceof Error ? err.name : 'unknown' },
-      'linq group: opener threw — the SMS invite still went out',
-    );
-  }
-  return { status: 'co_parent_invite_sent' };
-}
-
-/**
- * The parent said YES and Hale is still not going to text anybody — the flag came down,
- * or their name went away between the ask and the answer.
- *
- * ON THE RECORD, both halves (rule #6). The refusals at the ASK write their row inside
- * `startCoParentInvite`; this one happens after an authorisation the parent actually
- * gave, and without a row the durable record would say they never answered a question
- * they did answer. The invite is deliberately left open to lapse on its own clock:
- * nothing here closes a question the parent answered correctly.
- */
-async function refuseAfterAssent(
-  database: Database,
-  args: {
-    pending: CoParentInvite;
-    owner: { userId: string; familyId: string };
-    parentPhoneE164: string;
-    now: Date;
-    reason: CoParentRefusal | 'dark';
-    body: string;
-  },
-  deps: CaregiverDeps,
-): Promise<CoParentOutcome> {
-  const { owner, pending, now } = args;
-  await recordInviteRefusal(database, {
-    familyId: owner.familyId,
-    actorUserId: owner.userId,
-    role: 'co_parent',
-    reason: args.reason,
-    phoneE164: pending.phoneE164,
-    targetId: pending.id,
-  });
-  await replyToParent(database, deps, {
-    to: args.parentPhoneE164,
-    body: args.body,
-    familyId: owner.familyId,
-    parentUserId: owner.userId,
-    lane: 'co_parent',
-    now,
-  });
-  return { status: 'co_parent_add_refused', reason: args.reason };
 }
 
 /** The parent's NO, before anybody was contacted. The invite closes; nothing was sent to
@@ -944,55 +788,6 @@ async function dropCoParentInvite(
   return { status: 'co_parent_invite_dropped' };
 }
 
-async function sendInvite(
-  database: Database,
-  args: {
-    pending: CaregiverLaneInvite;
-    owner: { userId: string; familyId: string };
-    inbound: InboundMessage;
-    parentPhoneE164: string;
-    now: Date;
-  },
-  deps: CaregiverDeps,
-): Promise<CaregiverOutcome> {
-  const { pending, owner, inbound, now } = args;
-  const channelMessageId = await record(database, {
-    familyId: owner.familyId,
-    parentUserId: owner.userId,
-    lane: 'caregiver',
-    direction: 'in',
-    providerId: inbound.providerId,
-    body: inbound.body,
-    now,
-  });
-
-  const body = await recordParentAssent(database, {
-    invite: pending,
-    inviterName: await userName(database, owner.userId),
-    verbatimReply: inbound.body,
-    channelMessageId,
-    now,
-  });
-
-  await reply(database, deps, {
-    to: pending.phoneE164,
-    body,
-    familyId: owner.familyId,
-    parentUserId: owner.userId,
-    lane: 'caregiver',
-    now,
-  });
-  await replyToParent(database, deps, {
-    to: args.parentPhoneE164,
-    body: inviteSentAck(pending.displayName),
-    familyId: owner.familyId,
-    parentUserId: owner.userId,
-    lane: 'caregiver',
-    now,
-  });
-  return { status: 'caregiver_invite_sent' };
-}
-
 async function dropInvite(
   database: Database,
   args: {
@@ -1026,6 +821,42 @@ async function dropInvite(
   return { status: 'caregiver_invite_dropped' };
 }
 
+/**
+ * The one reply to an add-by-number, written by the model. Hale texts nobody first: the
+ * parent adds the person to the family group with Hale in it, or has them text Hale.
+ */
+async function askThemToJoin(
+  database: Database,
+  args: {
+    owner: { userId: string; familyId: string };
+    inbound: InboundMessage;
+    parentPhoneE164: string;
+    now: Date;
+    lane: Lane;
+  },
+  person: { role: AddRole | null; name: string | null },
+  deps: CaregiverDeps,
+): Promise<AddThemYourselfOutcome> {
+  const composed = await deps.addThemYourself.compose({
+    language: replyLanguage(args.inbound.body),
+    name: person.name,
+    role: person.role,
+    channel: args.inbound.transport === 'imessage' ? 'imessage' : 'sms',
+  });
+  if (composed.status === 'unsent') {
+    return { status: 'add_them_yourself', role: person.role, reply: composed.reason };
+  }
+  await replyToParent(database, deps, {
+    to: args.parentPhoneE164,
+    body: composed.body,
+    familyId: args.owner.familyId,
+    parentUserId: args.owner.userId,
+    lane: args.lane,
+    now: args.now,
+  });
+  return { status: 'add_them_yourself', role: person.role, reply: 'sent' };
+}
+
 async function startFromCommand(
   database: Database,
   args: {
@@ -1035,21 +866,17 @@ async function startFromCommand(
     now: Date;
   },
   deps: CaregiverDeps,
-): Promise<CaregiverOutcome | CoParentOutcome | null> {
+): Promise<AddThemYourselfOutcome | null> {
   const { owner, inbound, now } = args;
   if (!looksLikeAddCommand(inbound.body)) return null;
   const role = await memberRole(database, owner.familyId, owner.userId);
   if (!role || !isParentRole(role)) return null;
 
-  // Read before the ledger row so the row lands in the right LANE. Parsing acts on
-  // nothing and sends nothing; what must not happen before the row exists is a decision,
-  // and the first of those is still below.
   const parsed = parseAddCaregiver(inbound.body);
   const lane: Lane = parsed.ok && parsed.role === 'co_parent' ? 'co_parent' : 'caregiver';
 
-  // Ledgered before anything acts on it: the parent's instruction is the first link in
-  // the chain that ends with a stranger being texted, so it is recorded whether or not
-  // we end up able to read it.
+  // Ledgered before the reply: the parent's instruction is on the record whether or not
+  // a reply could be written.
   await record(database, {
     familyId: owner.familyId,
     parentUserId: owner.userId,
@@ -1060,81 +887,10 @@ async function startFromCommand(
     now,
   });
 
-  const answer = async <O>(body: string, outcome: O): Promise<O> => {
-    await replyToParent(database, deps, {
-      to: args.parentPhoneE164,
-      body,
-      familyId: owner.familyId,
-      parentUserId: owner.userId,
-      lane,
-      now,
-    });
-    return outcome;
-  };
-
-  if (!parsed.ok) {
-    return parsed.reason === 'unsupported_role'
-      ? answer(CO_PARENT_REDIRECT, {
-          status: 'caregiver_add_refused',
-          reason: 'unsupported_role',
-        })
-      : answer(ADD_EXAMPLE, { status: 'caregiver_add_refused', reason: 'unparseable' });
-  }
-
-  if (parsed.role === 'co_parent') {
-    // DARK BY DEFAULT (D21). The refusal that VIL-355 reverses is kept as the flag-off
-    // answer rather than deleted: without it an un-armed family's "add Sam 647… as my
-    // partner" falls through to ADD_EXAMPLE, which offers them grandparent, nanny or
-    // babysitter — a worse answer than the boundary it replaced. It goes at the flip.
-    if (!f14EnabledFor(owner.familyId)) {
-      return answer(CO_PARENT_REDIRECT, { status: 'co_parent_add_refused', reason: 'dark' });
-    }
-    const language = replyLanguage(inbound.body);
-    const opened = await startCoParentInvite(database, {
-      familyId: owner.familyId,
-      invitedByUserId: owner.userId,
-      inviterPhoneE164: args.parentPhoneE164,
-      inviterName: await userName(database, owner.userId),
-      parsed,
-      language,
-      now,
-    });
-    return opened.status === 'refused'
-      ? answer(CO_PARENT_REFUSAL_COPY[opened.reason][language], {
-          status: 'co_parent_add_refused',
-          reason: opened.reason,
-        })
-      : answer(opened.reply, { status: 'co_parent_invite_started' });
-  }
-
-  const started = await startCaregiverInvite(database, {
-    familyId: owner.familyId,
-    invitedByUserId: owner.userId,
-    inviterPhoneE164: args.parentPhoneE164,
-    parsed,
-    now,
-  });
-
-  if (started.status === 'own_number') {
-    return answer(OWN_NUMBER, { status: 'caregiver_add_refused', reason: 'own_number' });
-  }
-  if (started.status === 'number_in_use') {
-    return answer(NUMBER_IN_USE, { status: 'caregiver_add_refused', reason: 'number_in_use' });
-  }
-  if (started.status === 'already_invited') {
-    return answer(ALREADY_INVITED, {
-      status: 'caregiver_add_refused',
-      reason: 'already_invited',
-    });
-  }
-  if (started.status === 'too_many') {
-    return answer(TOO_MANY_INVITES, { status: 'caregiver_add_refused', reason: 'too_many' });
-  }
-  if (started.status === 'previously_declined') {
-    return answer(CANNOT_TEXT_THAT_NUMBER, {
-      status: 'caregiver_add_refused',
-      reason: 'previously_declined',
-    });
-  }
-  return answer(started.reply, { status: 'caregiver_invite_started' });
+  return askThemToJoin(
+    database,
+    { ...args, lane },
+    { role: parsed.ok ? parsed.role : null, name: parsed.ok ? parsed.name : null },
+    deps,
+  );
 }

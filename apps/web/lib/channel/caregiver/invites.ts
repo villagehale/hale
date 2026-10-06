@@ -738,11 +738,6 @@ async function openInviteRow<R extends AddRole>(
  * one transaction, and the body to text the person they named returned from it — so a
  * caller cannot advance the state without holding something to send.
  *
- * ITS OWN FUNCTION rather than a branch inside {@link recordParentAssent}, because almost
- * nothing about it is the same record: a different consent type, a different scope, a
- * different question in the evidence, and a different verb. The one thing the two share
- * is the shape of the promise — the row and the advance stand or fall together.
- *
  * THE ADVANCE IS THE CLAIM, AND IT GOES FIRST — the discipline `acceptCoParentInvite` and
  * `redeemJoinInvite` already keep. The invite was read outside this transaction and
  * nothing upstream serialises a parent's turn, so two affirmatives arriving together both
@@ -823,63 +818,6 @@ export async function recordCoParentAssent(
   });
 
   return claimed ? coParentInviteBody(input.inviterName, input.language) : null;
-}
-
-/**
- * The parent's confirmation: the authorisation row, then the state advance, in one
- * transaction. The caregiver's clock restarts here — they have their own 72 hours.
- * Returns the body to text the caregiver, so the caller cannot advance the state
- * without having something to send.
- */
-export async function recordParentAssent(
-  database: Database,
-  input: {
-    invite: CaregiverLaneInvite;
-    inviterName: string | null;
-    verbatimReply: string;
-    channelMessageId: string | null;
-    now: Date;
-  },
-): Promise<string> {
-  const { invite, now } = input;
-  await database.transaction(async (rawTx) => {
-    const tx = rawTx as unknown as Database;
-    await tx.insert(schema.consentRecords).values({
-      userId: invite.invitedByUserId,
-      familyId: invite.familyId,
-      consentType: 'caregiver_access_grant',
-      granted: true,
-      consentScope: `caregiver:${invite.role}`,
-      policyVersion: POLICY_VERSION,
-      evidence: {
-        question: scopeConfirm(invite.displayName, invite.role),
-        verbatimReply: input.verbatimReply,
-        interpretation: `parent confirmed disclosing the ${ROLE_LABEL[invite.role]} scope to ${invite.displayName}`,
-        channelMessageId: input.channelMessageId,
-        maskedPhone: maskPhoneE164(invite.phoneE164),
-      },
-    });
-
-    await tx
-      .update(schema.caregiverInvites)
-      .set({
-        state: 'awaiting_caregiver_reply',
-        expiresAt: new Date(now.getTime() + INVITE_SILENCE_MS),
-        updatedAt: now,
-      })
-      .where(eq(schema.caregiverInvites.id, invite.id));
-
-    await tx.insert(schema.auditLog).values({
-      familyId: invite.familyId,
-      actor: invite.invitedByUserId,
-      actionTaken: 'caregiver_access_granted',
-      targetTable: 'caregiver_invites',
-      targetId: invite.id,
-      after: { role: invite.role, maskedPhone: maskPhoneE164(invite.phoneE164) },
-    });
-  });
-
-  return inviteBody(input.inviterName, invite.role);
 }
 
 /** Close an invite in a terminal state, with its audit row. */

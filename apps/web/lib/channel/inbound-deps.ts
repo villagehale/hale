@@ -3,6 +3,7 @@ import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { type QueueCreateOptions, createQueueWithPolicy } from '@hale/tools-contracts';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
+import { createAddThemYourselfVoice } from '~/lib/channel/caregiver/add-them-yourself';
 import {
   CHANNEL_MESSAGE_RECEIVED_DLQ,
   CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
@@ -92,6 +93,7 @@ export function buildIntakeDeps(
     friendVoice: createFriendVoiceComposer(client),
     answerComposer: createIntakeAnswerComposer(client),
     identityAsk: createIdentityAskVoice(() => client),
+    addThemYourself: createAddThemYourselfVoice(() => client),
     limiter: new PostgresRateLimiter(database),
     // The week search stays unwired until friend voice is on. Off, the ladder
     // still sends the locked empty line (the current production behaviour).

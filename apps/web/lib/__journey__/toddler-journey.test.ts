@@ -10,6 +10,7 @@ import { isUndoable } from '~/lib/actions/undo-window';
 import { deriveDateOfBirth } from '~/lib/channel/intake/derive';
 import type { IntakeCollected } from '~/lib/channel/intake/extract';
 import {
+  FakeAddThemYourself,
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
@@ -64,6 +65,7 @@ import {
 } from '~/lib/registration/sequence/run';
 import { runRegistrationSequenceCron } from '~/lib/registration/sequence/run';
 import { buildShortlist } from '~/lib/registration/sequence/shortlist';
+import { seedTextedInvite } from '~/lib/testing/texted-invite';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
 /**
@@ -477,6 +479,7 @@ async function runToddlerJourney(): Promise<Journey> {
     ackComposer: createIntakeAckComposer(null),
     answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
+    addThemYourself: new FakeAddThemYourself(),
     limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
     now: INTAKE_AT,
   };
@@ -878,8 +881,15 @@ async function runToddlerJourney(): Promise<Journey> {
   const battlePlan = await runRegistrationSequenceCron(fake.db, sequenceDeps, BATTLE_PLAN_AT);
 
   // ── STAGE 8 · a grandparent joins, scoped ─────────────────────────────────
-  await text('add Grandma 647-555-0199 as grandparent');
-  await text('yes');
+  // Hale texts nobody first: this is the invite Hale sent before that, still answerable.
+  await seedTextedInvite(fake.db, {
+    familyId,
+    invitedByUserId: parentUser.id,
+    role: 'grandparent',
+    displayName: 'Grandma',
+    phoneE164: GRANDPARENT_PHONE,
+    now: INTAKE_AT,
+  });
   const granText = (body: string) =>
     handleInboundSms(fake.db, transport.inbound(GRANDPARENT_PHONE, body), intakeDeps);
   const accepted = await granText('yes');

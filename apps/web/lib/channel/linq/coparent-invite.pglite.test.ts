@@ -1,9 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
+import { sendConnectorConnectedText } from '~/lib/channel/connect/connected-notice';
 import { coParentInviteBody, coParentInviteSentAck } from '~/lib/channel/coparent/copy';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
+import { createSession, saveSession } from '~/lib/channel/intake/session';
+import { FakeTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -280,6 +284,94 @@ describe('a number on the SMS door', () => {
     expect(outcome).toEqual({ status: 'not_pending' });
     expect(sendSms).not.toHaveBeenCalled();
     expect(await inviteStates()).toEqual(['awaiting_parent_assent']);
+  });
+
+  it('reads a number after the calendar-receipt ask as its answer: one ask tag on every path', async () => {
+    vi.stubEnv('F14_ENABLED', '');
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    const seeded = await seedHousehold();
+    const session = await createSession(db.database, {
+      phoneE164: PARENT_PHONE,
+      state: 'awaiting_ladder',
+      sourceCode: null,
+    });
+    await saveSession(
+      db.database,
+      session,
+      {
+        familyId: seeded.familyId,
+        userId: seeded.parentUserId,
+        collected: {
+          children: [{ name: 'Kid', ageMonths: 48, agePrecision: 'years' }],
+          postalCode: 'M5V 2T6',
+        },
+        firstTouch: {
+          language: 'en',
+          place: {
+            kind: 'postal',
+            areaCoarse: 'M5V',
+            postalCode: 'M5V 2T6',
+            municipality: 'toronto',
+            city: 'Toronto',
+          },
+          locationRequest: null,
+          coldStart: {
+            step: 'follow',
+            group: false,
+            findBody: '',
+            activity: null,
+            day: null,
+            nameLineSent: true,
+            signupDateKnown: false,
+            signupAsked: false,
+            calendarAsked: true,
+            emailAsked: true,
+            schoolMentioned: false,
+          },
+          given: {
+            parentName: 'Jimmy',
+            activityPick: null,
+            connectCalendar: true,
+            connectGmail: true,
+            scheduleDone: true,
+          },
+        },
+      },
+      NOW,
+    );
+    const transport = new FakeTransport();
+    await sendConnectorConnectedText(
+      db.database,
+      { ...seeded, provider: 'gcal', connectId: randomUUID(), now: NOW },
+      {
+        transport,
+        threadMessage: async () => 'conversation-id',
+        friendVoice: {
+          async compose(input) {
+            return input.step === 'coparent'
+              ? { reply: 'Would a group chat with the other parent help?' }
+              : { reply: 'Your calendar is hooked up now.' };
+          },
+        },
+      },
+    );
+    const asks = await db.database
+      .select({ templateKey: schema.channelMessages.templateKey })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.direction, 'out'));
+    expect(asks.map((row) => row.templateKey)).toContain(INTAKE_COPARENT_ASK_TEMPLATE_KEY);
+    expect(transport.bodies().at(-1)).toBe('Would a group chat with the other parent help?');
+
+    const sendSms = vi.fn();
+    const outcome = await deliverCoParentNumberInvite(db.database, {
+      ...seeded,
+      body: '9059629821',
+      now: NOW,
+      inboundChannelMessageId: null,
+      sendSms,
+    });
+    expect(outcome).toMatchObject({ status: 'refused', reply: CO_PARENT_REDIRECT });
+    expect(sendSms).not.toHaveBeenCalled();
   });
 
   it('redirects and does not text when the SMS flag is dark', async () => {

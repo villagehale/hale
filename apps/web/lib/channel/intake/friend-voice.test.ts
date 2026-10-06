@@ -684,6 +684,80 @@ describe('speakFriend', () => {
   });
 });
 
+describe('the co-parent step: their group, or a new one', () => {
+  const join = { line: '+1 555-555-0100', phrase: 'this is our year' };
+
+  function coparentTurn(parentWords: string): FriendVoiceInput {
+    return blank({
+      step: 'coparent',
+      parentWords,
+      recentTurns: [
+        {
+          role: 'hale',
+          body: 'Want me in your family group, or a new group with the other parent?',
+        },
+      ],
+      coparentJoin: join,
+      checklist: {
+        postal: true,
+        kids: true,
+        ages: true,
+        name: true,
+        gmail: true,
+        calendar: true,
+        schedule: true,
+        coparent: false,
+      },
+    });
+  }
+
+  async function read(parentWords: string, capture: Record<string, unknown>) {
+    return speakFriend(
+      {
+        async compose() {
+          return { reply: 'Great, the number is below for whenever you want.', capture };
+        },
+      },
+      coparentTurn(parentWords),
+      { page: async () => undefined },
+    );
+  }
+
+  it('reads "add you to our group" as their own group, over the model', async () => {
+    const spoken = await read('yes add you to our group', {
+      coparentGroup: true,
+      coparentGroupMode: 'new',
+    });
+    expect(spoken.source).toBe('composed');
+    expect(spoken.capture.coparentGroup).toBe(true);
+    expect(spoken.capture.coparentGroupMode).toBe('existing');
+  });
+
+  it('reads "a new group" as a new one, over the model', async () => {
+    const spoken = await read("let's start a new group", {
+      coparentGroup: true,
+      coparentGroupMode: 'existing',
+    });
+    expect(spoken.capture.coparentGroup).toBe(true);
+    expect(spoken.capture.coparentGroupMode).toBe('new');
+  });
+
+  it('reads a plain yes as the group they already have', async () => {
+    const spoken = await read('yes', { coparentGroup: null, coparentGroupMode: null });
+    expect(spoken.capture.coparentGroup).toBe(true);
+    expect(spoken.capture.coparentGroupMode).toBe('existing');
+  });
+
+  it('keeps a no as a no, even when it names a new group', async () => {
+    const no = await read('no thanks', { coparentGroup: false });
+    expect(no.capture.coparentGroup).toBe(false);
+    expect(no.capture.coparentGroupMode).toBeNull();
+    const notNew = await read('no, not a new group', { coparentGroup: false });
+    expect(notNew.capture.coparentGroup).toBe(false);
+    expect(notNew.capture.coparentGroupMode).toBeNull();
+  });
+});
+
 describe('repairedProse', () => {
   it('folds offered choices into one question and leaves a clean draft alone', () => {
     expect(

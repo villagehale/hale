@@ -12,6 +12,7 @@ import { sendConnectorConnectedText } from '~/lib/channel/connect/connected-noti
 import { routeInboundText } from '~/lib/channel/inbound-route';
 import { type ActivityMapGroup, renderActivityMapBody } from '~/lib/channel/intake/activity-map';
 import {
+  FakeAddThemYourself,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
@@ -267,6 +268,7 @@ export async function runOnboardingReplay(
     ackComposer: fakeAckComposer,
     answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
+    addThemYourself: new FakeAddThemYourself(),
     limiter: new FakeRateLimiter(() => now.getTime()),
     seedCivic: async () => 0,
     resolveCenter: async () => ({ lat: 43.6471, lng: -79.9303 }),
