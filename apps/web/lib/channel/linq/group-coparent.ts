@@ -529,7 +529,6 @@ async function answerCalendarConsent(
     parentUserId: sender.userId,
     groupChatId: message.chatId,
     text: link,
-    language,
     templateKey: CALENDAR_LINK_KEY,
     dedupeKey: `${CALENDAR_LINK_KEY}:${sender.userId}`,
     provider: 'gcal',
