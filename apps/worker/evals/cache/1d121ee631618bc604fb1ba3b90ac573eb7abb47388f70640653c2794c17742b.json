@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly identifies that connecting Google Calendar is a real feature handled by a deterministic branch, and gives Sam the exact plain-text phrase to send (\"connect my Google Calendar\") so that branch fires and delivers the one-tap link. It names the 15-minute validity, which is accurate recall. No URL is invented, no app referral, no internal machinery exposed. The shape is clean: one sentence, no greeting, no sign-off, no markdown, one clear action for the parent. This is the correct and complete handling of a connecting ask that arrived in words the branch did not catch.",
-    "score": 5
-  }
-}

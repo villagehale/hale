@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent said \"cancel the thursday swim\" — there is exactly one swim on Thursday (Thu 5:15pm, East pool), so the reference is fully resolved. The correct handling is to draft the cancel and ask for YES to confirm. Instead, the reply asks a clarifying question (\"Want me to cancel…?\") as if the event were ambiguous, handing the job back to the parent. The draft IS present in `drafted`, but the reply doesn't present it as a drafted action awaiting YES — it frames it as a question about whether to proceed at all. The reply also lacks the required \"YES to confirm\" confirmation prompt that signals to the parent how to approve. This is a clear case of asking a question the calendar already answered.",
+    "score": 2
+  }
+}

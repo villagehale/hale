@@ -1,0 +1,41 @@
+{
+  "response": {
+    "id": "gen_01M4881BXP6GH86Y7VC8287RD5",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EuMICsQBCBIYAipAbYeOnGAVbC6+Jv9F3zFIQfYB7SXTKEGfXsaNQe3VWhY7xoYSK9yGZiVsSPiPZ/Tsk/guqq2Z2qGLSd5iOSqMvzIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzYjkzYTVkZC03MzAyLTQ4M2YtYWVhZS0zNjIwNzU1NDhhZTF6HnVwcm9mXzAxMUNma1NibmJZZEV1SDZ5Uk1Ta01RUJoBEQoPY2xhdWRlLXNvbm5ldC01qAGc+ZLWBhIM7RxmIj05HjdxNrcXGgyszpFp9ZZEKTg5zYYiMETKi8rlBrWfta0HHR6fRbvzwlXRgwJ2mKpVU/Gz5P0tL1Yp8jXykP+TjKJUOYT32CrLBma3+qb4IZ6oDMmdErGIzlFsfdEEJJ746cKv+NgVoEqKSugmQXLL9npBDnnErWEaJjp4fGJZaxZrMug0gb0Q2GM8O9AhZsErHy6e1Pk4edZmf7IC0U0YFnp5/gBKjsuYNRPZC/cNtHHh0+CRD/stFhw+czS5MqE7gVtUdey+foixpS9XHv46iX8uCZYGqTVfQCWh4rtQHOhta5YNe1VvgXWtNI3QESkRHgtIq23fc1lyCkPEYckAvE7cEtYE9+2uxCrfvMJThgtsg2qdMeArMRbAcslZdIlAz4XUDMlgwwyXOOMmrTUUTSHVgIvcz/U9SmxT/xwOfvlcZgB9iD135mz21cw/fDUXSgqAjXuIrZ9nBya/xQJFKMLzQL2c6wlep/qWE2tpk+86DOvheatDbvgnzVzqnbICOqWs+viTa52WaqE+1Ebnma0PzDMIuwSABkD+fu6tMMAAoHvC6dAZ9NMjm7875W6OLeTm8sSdEDagJ5AJL/Bdgby6/dKUP6zgLnzJSvHBFL4zKbv2O4xmBsKYIbzLjOO1C2SwUw86Ex0rU88XzDTWBlWOG29/09K6zp8RxIWlPHBds4uubrv6YdXQEslPmUNwywLS75adzkK6cJi5W8wJ/7LSJEBFmuBE/feZT/D1Na5usbdKjwZpEE5zEfUIMZeAT8sXlb84Av7mxK6nM6fmLTHlW6mENNyqQDodCAIk8+uQdCriZUKPkNGY2b+Wv7UuJIY6aMdv37zgOHFT5BSkmymEEJuy2v9caJ21MvTqhHMPQ4n1uax93wZj25O3dYelw0LcJuzr+2bUn3QDS7QjWtWnadOB8ik+lvahA7OZL0UzrmrQddPxwV/FYAN9+Tu9xRD6RD9DYr0+QRJOnjPwnu3s+7gzIoXreDAioBSRtpT9mxZiCKKqz1eYkN4V3YOhXLYZuR7sQ3U6KGnlEfS+z6hboqOkM5UQqf5EqMPCLnoVo9nkc44TwC9vB9BTpTfz7e4vYmc5KgUqn0vUR7FVHOwTqcLYHSGOAzIa4psxHMz3wz5/hzKZFy75eOvqSc8AL8O1t9orvoLMdM/C54+Z++6iiR6fBl4RaUgqFTBj69W4Z1gGS33sQj/qITxWlB4aFrn9JRgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01UWtFiQgLcT53B9WTgzjyc8",
+        "name": "find_activities",
+        "input": {
+          "subject": "fall kids activities",
+          "window": "fall"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 769,
+      "output_tokens": 310,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20323,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 233
+      }
+    }
+  },
+  "latencyMs": 5171
+}

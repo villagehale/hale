@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M48843KY0T1KPHKFASB2RDB8",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Try a consistent walk-back routine: sit with him in his room for a few minutes at bedtime, then a brief middle-of-night \"ticket\" where you walk him back to his own bed each time rather than letting him stay, so the pattern doesn't re-set each night."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1022,
+      "output_tokens": 86,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20323,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 2556
+}

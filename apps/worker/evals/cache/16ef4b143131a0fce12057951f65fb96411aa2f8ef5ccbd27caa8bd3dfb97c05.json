@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Sam asked to cancel four things. The draft cap is 2. Hale drafted both swim lessons (Monday 4:30pm West pool, Thursday 5:15pm East pool), named them correctly with their times and venues, and correctly stated it will handle soccer and the Wednesday appointment once these are confirmed — exactly the right handling of a cap overflow. The reply ends with an implicit YES prompt (it asks \"Want me to cancel…?\" which signals the YES-to-confirm contract). The Wednesday appointment maps to the private calendar item at 9:00am — Hale correctly deferred it to the next round rather than surfacing its private content. No invented details, no app referral, no markdown, no sign-off. One small blemish: the question form \"Want me to cancel…?\" is slightly softer than the standard \"…? YES to confirm.\" ending, but it still names the changes and signals confirmation is needed, so it functions correctly. Overall this is a clean, correct reply that handles the cap exactly right.",
-    "score": 5
-  }
-}

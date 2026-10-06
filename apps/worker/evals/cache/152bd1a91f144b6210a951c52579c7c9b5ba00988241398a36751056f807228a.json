@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Sam pasted a course-page link in their own message and asked Hale to watch it for an opening. The `can` list confirms `watch_for_opening` is a real capability, and the condition is met: the parent pasted the link themselves. So Hale watching it and saying so is the correct and complete answer. The reply does exactly that — no greeting, no sign-off, no markdown, no app referral, no invented detail. It names the class, confirms the watch, and promises to text when a spot opens. That is the whole job, done cleanly in one sentence.",
+    "score": 5
+  }
+}

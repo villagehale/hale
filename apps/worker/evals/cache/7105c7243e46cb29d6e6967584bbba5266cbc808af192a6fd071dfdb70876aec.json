@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread shows Hale itself named \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\" in an earlier message — that is recall, not invention. The parent's text names exactly one gymnastics class (the one Hale already surfaced), so the reference is resolved. A draft has already been made (`drafted: [\"calendar_add\"]`). The correct reply names the change and ends \"YES to confirm.\" Instead, the reply asks a clarifying question (\"Want me to add...?\") when it should be presenting the draft for YES confirmation. That said, it does name the right event, right venue, right day and time, and ends with an implicit ask for approval — it just uses the wrong confirmation shape. The contract requires \"...? YES to confirm.\" not a yes/no question framed as a query. Still, it is close to correct: one question, right details, no invented info, no app referral, no machinery exposed. The failure is purely the missing \"YES to confirm.\" framing that the draft contract requires.",
+    "score": 4
+  }
+}

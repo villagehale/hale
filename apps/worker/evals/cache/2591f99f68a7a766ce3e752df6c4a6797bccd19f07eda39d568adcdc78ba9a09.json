@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked to cancel the Thursday swim. There is exactly one Thursday swim in the week (Thu 5:15pm, East pool), so the reference is fully resolved — no ambiguity exists. Hale should have drafted the cancel and asked for YES confirmation, not asked a clarifying question. The draft IS in `drafted` (calendar_cancel), but the reply phrases it as a question (\"Want me to cancel...?\") rather than presenting the draft and asking \"YES to confirm.\" This is the wrong shape: the instruction was clear and unambiguous, the draft was made, but the reply presents it as if Hale is checking whether to proceed rather than presenting the drafted change for approval. A warmer paraphrase that drops \"YES to confirm\" is explicitly called out as worse than the required contract shape. The reply reads as a clarifying question on a resolved reference, which the rubric says is the failure, not the safeguard. That said, it does name the correct event details (5:15pm, East pool) and doesn't invent anything or send the parent anywhere. It's close to right but the shape is off — it should say something like \"Cancelling Thursday swim at 5:15pm at East pool — YES to confirm.\" instead of asking if they want it done.",
-    "score": 3
-  }
-}

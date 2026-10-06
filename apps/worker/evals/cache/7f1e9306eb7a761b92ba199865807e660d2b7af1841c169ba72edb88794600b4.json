@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M487V058DQX2QS0R87RH2ESP",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Most babies are ready around 6 months, when he can sit with support and shows interest in food - at 5 months he's close but not quite there yet. Confirm timing with your provider too."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1527,
+      "output_tokens": 58,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20323,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 1554
+}

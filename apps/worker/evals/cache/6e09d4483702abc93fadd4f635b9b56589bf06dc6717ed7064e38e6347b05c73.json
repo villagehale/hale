@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent's text names exactly one event — the Thursday swim — and the week shows exactly one match: Swim lesson, Thu 5:15pm, East pool. The reference is fully resolved; Hale should have drafted the cancel and asked for YES to confirm, not asked a clarifying question. Instead the reply re-asks the parent whether to do what they already plainly said to do, handing the job back. The draft is present in `drafted`, so the machinery worked, but the reply text squanders it by treating a clear instruction as ambiguous. The correct reply would have been: \"Cancelling Thursday's swim lesson at East pool (5:15pm) — YES to confirm.\" This is the failure of hedging instead of acting on a clear instruction.",
-    "score": 2
-  }
-}

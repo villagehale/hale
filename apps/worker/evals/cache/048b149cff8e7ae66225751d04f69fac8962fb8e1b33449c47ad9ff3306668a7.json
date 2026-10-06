@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply drafts a calendar add (consistent with `drafted: [\"calendar_add\"]`) for the gymnastics class Hale itself named in the thread (\"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\"). That is recall, not invention. The parent asked to get the gymnastics class on the calendar — exactly one event matches (the one Hale previously surfaced), so no ambiguity question is needed. However, the reply asks a question (\"Want me to add...?\") rather than drafting the item and asking for YES to confirm, which is the contract shape. The parent gave a clear instruction; the correct handling is to draft it and say \"...? YES to confirm.\" The reply does name the draft and ask for confirmation, but it uses \"Want me to add\" rather than presenting the drafted change and requesting YES. This is close to the correct shape but slightly off — it reads more like a clarifying question than a draft-awaiting-confirmation. Still, it names the right item, the right venue, the right day and time (all recalled from the thread), and ends seeking consent. The blemish is the phrasing that makes it sound like Hale hasn't acted yet rather than \"I've drafted this — YES to confirm.\" Minor shape issue, not a substantive failure.",
-    "score": 4
-  }
-}

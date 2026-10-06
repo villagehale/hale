@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO events in the week — Monday swim at West pool and Thursday swim at East pool. With more than one match, ambiguity is real and Hale must ask which before drafting. The reply correctly identifies both events with their times and venues, then asks which to cancel. No draft is made, which is correct. The reply is clean, names both matches precisely, and asks exactly one question. This is the correct handling of genuine ambiguity.",
+    "score": 5
+  }
+}

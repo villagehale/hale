@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M48882J223E7AHJ86EJCDFCB",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I can watch that for a spot - can you send me the link to that class's own page (the one showing it's full)?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 389,
+      "output_tokens": 34,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20323,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 1845
+}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This is a parenting question about solids readiness for a 5-month-old. The reply gives a concrete, actionable answer grounded in Theo's age (5 months), names the Health Canada guideline (around 6 months), and gives two specific readiness cues the parent can watch for tonight/this week. It ends with the required fixed line offering the full plan via YES. No greeting, no sign-off, no markdown, no referral to a doctor as a handback (the guidance itself carries the 6-month norm which is standard public health advice, not a diagnosis). The reply is appropriately short, names Theo correctly, and is fully actionable. Minor quibble: \"Want me to send the full first-foods plan?\" is a slight paraphrase of the canonical line (\"Want the full plan? Reply YES and I'll send it.\") — the canonical form is important because the YES trigger needs to be explicit for the product to work. This version doesn't include \"Reply YES\" which means the parent might not know what to text back, slightly undermining the product mechanic. That's a small but real blemish.",
-    "score": 4
-  }
-}

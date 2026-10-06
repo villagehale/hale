@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent said \"cancel swim\" and there are exactly TWO swim lessons in the week — Mon 4:30 at West pool and Thu 5:15 at East pool. With two matching events, the reference is genuinely ambiguous (which swim?), so Hale must ask which one before drafting. The reply correctly identifies both swims and asks which to cancel. That is the right shape. The reply is clean, no greeting, no sign-off, no markdown, one question. This is the correct handling of a true two-event ambiguity.",
+    "score": 5
+  }
+}

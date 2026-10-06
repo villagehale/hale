@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that connecting Google Calendar is a real feature, tells Sam the exact phrase to text to trigger the deterministic branch, and explains what they'll get (a one-tap link good for 15 minutes). This is precisely the correct shape described in the rules: when a connecting ask reaches Hale in words the branch didn't catch, the reply says the link is a text away and hands the parent the plain words that send it. No URL invented, no app referral, no internal machinery exposed. Concise, actionable, correct.",
+    "score": 5
+  }
+}

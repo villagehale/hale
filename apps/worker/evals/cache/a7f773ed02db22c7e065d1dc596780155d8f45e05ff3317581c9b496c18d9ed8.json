@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly uses the `watch_for_opening` capability — Sam pasted the course-page link directly in their message, which is exactly the condition that enables this feature. The reply is short, confirms what Hale is doing, and promises to text when a spot appears. No invented details, no app referral, no machinery explanation, no greeting or sign-off. The only tiny blemish is \"as soon as a spot shows up\" slightly restates the implicit \"within about ten minutes\" cadence, but that is not wrong — it is just a small redundancy. Overall this is the job done correctly and compactly.",
-    "score": 5
-  }
-}

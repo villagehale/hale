@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly handles a Google Calendar connection request. It doesn't write out a URL (correct), doesn't refuse the feature (correct), and gives Sam the exact plain words to text (\"connect my Google Calendar\") that will trigger the deterministic branch sending the one-tap link — which is precisely the correct shape per the rubric. It also accurately states the link is good for 15 minutes, which is the stated fact. No greeting, no sign-off, no markdown, one short instruction. This is the product working exactly as designed.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces both the verified calendar event (soccer practice, Sat 10am, Cedarvale Park) and the offerable activity (Central Library story time at Bloor/Gladstone branch). It also correctly notes one more find is still being checked, which matches `stillBeingChecked: 1`. No invented details, no app referral, no greeting or sign-off, no markdown, concise and actionable. This is exactly the right shape for this message.",
+    "score": 5
+  }
+}

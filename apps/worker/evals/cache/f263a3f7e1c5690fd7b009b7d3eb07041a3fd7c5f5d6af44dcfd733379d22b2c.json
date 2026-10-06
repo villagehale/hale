@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "gen_01M487SJDFRNFECCR6DA68D4P7",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EuECCsQBCBIYAipA9YVxHZcbFwfyc3bX/1gz8KRRhIO9JsMC/PJFxbn1wFWKx2OGkEnW5UmaQEErFcfbvoVNYnWm6v1E3zz2leu2fjIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzYjkzYTVkZC03MzAyLTQ4M2YtYWVhZS0zNjIwNzU1NDhhZTF6HnVwcm9mXzAxMUNma1NibmJZZEV1SDZ5Uk1Ta01RUJoBEQoPY2xhdWRlLXNvbm5ldC01qAGZ95LWBhIMg6n1vI9nnAvTrEjJGgyX51d/GcwLR/GoKAQiMJCNO7zN0hfBrQ+Uj8n48FCVVrxghEJOdpavUx5Ndy+JZX8BUR90iJFHKxmqB+36CCpKEIpdqd6OHShL1D2hNTDriNsIdnTKeHyc92dv3XcTKWEiRs+fhD/Xxwc/LgfEBHqZSj2Ga2Nee+fTz86ENrqGgM5fAg3K1oqoggUYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Pqg84pH7Nmn3KG14thZ6zP",
+        "name": "lookup_week",
+        "input": {}
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01RzJkEqD2w8bTo9sKd2vJHn",
+        "name": "search_village",
+        "input": {}
+      }
+    ],
+    "usage": {
+      "input_tokens": 378,
+      "output_tokens": 74,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20323,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 21
+      }
+    }
+  },
+  "latencyMs": 1959
+}

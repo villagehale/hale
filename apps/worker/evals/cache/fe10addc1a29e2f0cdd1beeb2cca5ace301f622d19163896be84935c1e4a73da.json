@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply names the exact event Hale itself surfaced earlier in the thread (Tiny Gym at Cartwheels, Sundays at 9:30, starting September 13) — that is recall, not invention. A calendar_add is drafted, which is correct. The reply ends with an implicit YES-to-confirm shape (\"Want me to add…\") which captures the contract requirement. The details are traceable to the thread. It is tight and does the job. A minor blemish: the contract requires the literal word YES in the confirmation prompt (\"...? YES to confirm.\") so the parent's next text registers as consent; a softer \"Want me to add…?\" without \"YES to confirm\" risks the reply not being recognised. That is a small but real shape miss.",
+    "score": 4
+  }
+}

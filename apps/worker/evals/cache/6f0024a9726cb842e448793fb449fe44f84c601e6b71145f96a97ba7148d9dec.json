@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly invokes `watch_for_opening` on the course-page link Sam pasted, which is exactly the capability listed in `knows.can`. The reply is concise, names the class, and promises to text when a spot appears — which is precisely what that feature does. No invented details, no app referral, no markdown, no greeting or sign-off. This is the product working exactly as designed.",
-    "score": 5
-  }
-}

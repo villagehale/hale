@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly handles both pieces of information available. For the registration window, it states the resident-first date flat (correct recall, not hedged with \"their site says\") and correctly says it's already on it (watching: true — accurate and not an overclaim). For the web find, it names Tiny Tumblers with the age range and cadence, and correctly attributes it to \"the venue's own program page\" per the webFind rule, while noting price isn't listed yet — exactly the right shape for a webFind. No URL invented (referralLinkAppended is null). No app mention. No standing place to name. The reply is concise, no greeting or sign-off, and covers what the parent asked. One small note: the reply doesn't mention Remy by name or confirm the age fit, but the age range \"walking to 3 years\" implicitly covers a 19-month-old and is drawn from the webFind. This is a tight, correct, well-attributed reply.",
+    "score": 5
+  }
+}

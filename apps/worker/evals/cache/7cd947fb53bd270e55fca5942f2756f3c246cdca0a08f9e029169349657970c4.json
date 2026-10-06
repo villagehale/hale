@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly identifies that `watch_for_opening` requires a course-page link pasted by the parent, and asks for it. This is exactly the right handling per the rules: \"With no link there is nothing to watch, and asking for the link is the right answer rather than a stall.\" The reply is clean, names what it needs and why, and asks exactly one question. No invented details, no app referral, no markdown. A touch long with the two-sentence structure but both sentences are necessary — the first sets the expectation, the second makes the ask. This is essentially correct and tight.",
-    "score": 5
-  }
-}

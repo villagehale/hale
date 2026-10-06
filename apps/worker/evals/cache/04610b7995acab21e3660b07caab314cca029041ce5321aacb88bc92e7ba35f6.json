@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that connecting a Google Calendar is a real feature triggered by a specific phrase, quotes the exact words the parent needs to send (\"connect my Google Calendar\"), and correctly describes the one-tap link as good for 15 minutes. It does not write out a URL, does not refuse the request, does not send the parent to the app, and does not explain internal machinery beyond what's needed. The shape is clean: one sentence of acknowledgment, one sentence with the exact trigger phrase. This is the correct handling as defined by the rubric.",
+    "score": 5
+  }
+}

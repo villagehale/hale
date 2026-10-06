@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "gen_01M48818BMFY265QYAYGJ8Z9NW",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EqMHCsQBCBIYAipAXTBEvgG3KOSOQntarepxUBNlrPP/Rjq6Put74+uWHV33xnMMppr9ZOSshnGb3YsWQjhfat8LOMpnIw/pFq5fODIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzYjkzYTVkZC03MzAyLTQ4M2YtYWVhZS0zNjIwNzU1NDhhZTF6HnVwcm9mXzAxMUNma1NibmJZZEV1SDZ5Uk1Ta01RUJoBEQoPY2xhdWRlLXNvbm5ldC01qAGX+ZLWBhIMw7hoK7oeFBsq6voaGgyIpRrlEhuvvb1YFtQiMEiuHSpq9Y5UFDxQ5j4vsFoKkyCy3CTEhM8uLydOOhNpFX6BnODdNCJZfp+NaizQtyqLBbJD2glfYVIVhMbKhDfg8rrC6OaiuFABiNVR5gsspbJKRghJkWYku+enmPURradyC7TJ8vkyPfXDXJONLi6wqB2HLDR7BkKtuXFIECc5EvbOpxiaVPbTw1oWiOOwewZ5WKY/r5VTjWGcL2VFX3Aabkz3Ps2DPaBSLWFMXj2Fp+eLp0dU9LxKFcsXgxCl4MYy2Z3W4y7CvERjg/ifEAcPMvJaFrP+I8PcuV0kaARxbfpmIjMm+4I5RxbFlbogWBHhdo/S8+45KH79I0dlibtAJxBKSJlNW1Cf7zVotrEi0TGPMMzybwVA1YC8wH/sXdU7sbMly5VT6wd21rJu7sdcPDErsVLfwM/0FEqIKk0esa0S3gAOu2CXJnm9aK6sa3+CWyoxUS+mYIh72DiyGQfre6gScRrngDfo0yRX8xBurRNWYsDDhnDfx/ZXBeNnkSjUjJDv4ODodrCQwi3NuGJM3VkK5kvd+gAw+oXUy8UZydTjXk4V4EP80dAYz/Aw61U8atg+YpiPoRQ+8lAo+43gdXFg5xgYGeEva7lBU4actQUU8TMRh7nmZPbidturV4QwhVi1kTxNWShlVNMEu7Gk+8K9PoIxLajqxtDHS0u653yl8ZN7ZEG6wayKBLK/gFAJaxxPvC+qlFn6eN2bActSGoCM+0LDSyo599kaglxW8HS6mxOEhcwNkbM6NZTtwTDRr2FLJhvIRbEMsskGyJTvA+QhsuWK3MemWMSJSIAOEkWKn5H+SNtPQiafJcqqEtUzCdMbz5juF0fk2z9Kjxrd36+pyBUaO9QPr9XOZ9ZNWpC9F+SU/cWjmoS9Z3LOetLcPQVu2lOCHxRhKVoNu7KRHTTE5xgvia4++ZlR0RgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_017japi6dARN3cvcmTFeo8nf",
+        "name": "search_village",
+        "input": {}
+      }
+    ],
+    "usage": {
+      "input_tokens": 526,
+      "output_tokens": 213,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20323,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 187
+      }
+    }
+  },
+  "latencyMs": 3648
+}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly identifies that connecting Google Calendar is a real feature triggered by a specific phrase, hands the parent the exact words to text (\"connect my Google Calendar\"), explains the one-tap link will follow and that it's good for 15 minutes. This is exactly the right shape per the rubric: it recalls a real capability, gives the parent the plain words that send the triggering text, and doesn't write out a URL or refuse. No greeting, no sign-off, no markdown, one clean instruction. The word \"Yes\" at the start is a minor cosmetic roughness but not a blemish that affects correctness or clarity. This is the product working.",
-    "score": 5
-  }
-}

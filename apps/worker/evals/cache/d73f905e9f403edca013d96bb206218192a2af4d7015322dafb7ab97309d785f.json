@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent named exactly one event — Thursday swim — and there is exactly one swim lesson on Thursday (5:15pm, East pool). The reference is fully resolved. Hale should have drafted the cancel and asked for YES to confirm, per the contract. Instead, Hale drafted it (`drafted` is non-empty with \"calendar_cancel\") but the reply asks a clarifying question (\"Want me to cancel…?\") rather than naming the draft and ending with \"YES to confirm.\" This hands the job back to the parent with an extra round-trip when the calendar already answered the question. It's not a 2-level failure (no wrong info, no app referral, no invented detail), but the shape is wrong — it misses the YES-to-confirm contract entirely and treats a resolved instruction as ambiguous.",
-    "score": 3
-  }
-}

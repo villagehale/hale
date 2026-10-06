@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies this as a parenting question about a 5-year-old (Milo, 63 months) and gives concrete, actionable advice — a consistent bedtime routine plus a walk-back method for middle-of-night visits. It names something the parent could do tonight (the walk-back), which is the required beat. It does not hand the question back, does not diagnose, does not refer to a doctor or app. However, it is missing the required fixed ending line \"Want the full plan? Reply YES and I'll send it.\" for a raising-kids question. That line is mandatory per the rubric and its absence is a real gap — the parent is not offered the depth plan. Otherwise the advice is solid, appropriately brief, and grounded in Milo's age. One meaningful omission drops this from a 5.",
+    "score": 4
+  }
+}

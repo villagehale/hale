@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly surfaces two things on Saturday: the soccer practice from the week and the offerable story time find. However, it only mentions the story time and omits soccer practice at Cedarvale Park at 10am, which is clearly on the schedule and clearly \"for the kids.\" The parent asked what's on for the kids Saturday — soccer practice is the first answer and it's missing entirely. The story time is handled correctly (name, place, day, free drop-in). But missing a confirmed calendar event that directly answers the question is a meaningful failure. It's not wrong about what it says, but it's incomplete in a way that misleads Sam into thinking only the story time is happening. Also, there's still 1 item being checked that Hale could acknowledge briefly. The omission of soccer is the main issue — that's a real event on the family calendar that the parent would want to know about.",
-    "score": 2
-  }
-}

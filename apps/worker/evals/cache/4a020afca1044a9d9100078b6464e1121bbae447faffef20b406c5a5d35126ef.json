@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly identifies that piano is not on the visible calendar. There are two private items (Tue 3:45pm and Wed 9:00am), but per the rules, Hale cannot see what they are and must never suggest they might be the thing the parent named. \"I don't see piano on this week's calendar\" is the complete and correct answer. The reply does exactly that and stops — no hedging about private items, no sending the parent to the app, no machinery explained. It's clean and accurate. The only minor quibble is that \"I can't move it\" is slightly redundant — if it's not on the calendar, that's already implied — but it doesn't mislead or misshape the answer. It's a small extra clause but not a real blemish.",
-    "score": 4
-  }
-}

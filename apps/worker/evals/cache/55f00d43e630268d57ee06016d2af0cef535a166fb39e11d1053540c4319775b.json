@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked what \"Nora\" has on Tuesday. \"Nora\" matches none of the listed children's names (Milo, Ada, and a redacted teenager). Per the rubric, the redacted teenager's name is withheld from Hale and from this rubric, so \"Nora\" is very likely her. Tuesday has one event: a private calendar item at 3:45pm. Hale correctly gives the day and time while refusing to share the content — exactly the required handling for a private item. The reply is short, accurate, and stops. No greeting, no sign-off, no markdown, no invented detail, no app referral. One small note: the reply doesn't address the name \"Nora\" at all (neither confirming nor denying it matches a child), but that omission is correct — Hale cannot confirm or deny the teenager's name, so silence on that point is right. This is a clean, correct answer in the shape the product requires.",
-    "score": 5
-  }
-}

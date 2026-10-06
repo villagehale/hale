@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply does the right thing: it hands Sam the referral link with a forwardable line, correctly noting the friend starts on their own terms. The link matches `knows.referralLinkAppended` exactly — recall, not invention. However, the reply is noticeably long and verbose: it has a preamble sentence, an ellipsis mid-text, and a full two-sentence blurb before the link, where a short forwardable line and the link would have been sufficient. It also has a mild structural issue — it mixes Hale's instructions to Sam (\"Here's a line you can forward\") with what reads like the forwarded message itself, blurring the two. Still, it does the job correctly, carries the right link, and doesn't send Sam to the app or invent anything. A small shape/length blemish puts this at a 4.",
+    "score": 4
+  }
+}
