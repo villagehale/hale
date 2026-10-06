@@ -348,6 +348,43 @@ describe('deliverConnectLinkOneToOne', () => {
     expect(await verbs(familyId)).not.toContain('linq_group_connect_link_sent');
   });
 
+  describe('a legacy group seat (no group chat passed in)', () => {
+    it('sends no link when Linq opens the family group the family claimed', async () => {
+      const { familyId, userId } = await seedConfirmedGroup();
+      const resolvedToGroup = oneToOne({ chatId: GROUP });
+
+      const result = await deliverConnectLinkOneToOne(db.database, {
+        familyId,
+        userId,
+        groupChatId: null,
+        now: NOW,
+        voice: fakeSpokenLineComposer(),
+        oneToOne: resolvedToGroup.send,
+      });
+
+      expect(result).toEqual({ outcome: 'link_not_sent', code: 'chat_is_group' });
+      expect(resolvedToGroup.links).toEqual([]);
+      expect(await verbs(familyId)).not.toContain('linq_group_connect_link_sent');
+    });
+
+    it('still sends both links when Linq opens a direct chat', async () => {
+      const { familyId, userId } = await seedConfirmedGroup();
+      const direct = oneToOne();
+
+      const result = await deliverConnectLinkOneToOne(db.database, {
+        familyId,
+        userId,
+        groupChatId: null,
+        now: NOW,
+        voice: fakeSpokenLineComposer(),
+        oneToOne: direct.send,
+      });
+
+      expect(result).toEqual({ outcome: 'sent', links: 2 });
+      expect(direct.links.map((link) => link.chatId)).toEqual([DIRECT, DIRECT]);
+    });
+  });
+
   it('names a missing Linq key without asking anyone in the group, and tries again later', async () => {
     const { familyId, userId } = await seedConfirmedGroup();
     const unconfigured = oneToOne({ refuseText: 'not_configured' });

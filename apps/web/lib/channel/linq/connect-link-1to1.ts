@@ -330,8 +330,15 @@ export async function deliverConnectLinkOneToOne(
     return { outcome: 'link_not_sent', code };
   };
   if (!said.chatId) return releaseText('missing_chat_id');
-  // A link mints a sign-in; everyone in the family group would hold it.
-  if (said.chatId === input.groupChatId) return releaseText('chat_is_group');
+  // A link mints a sign-in; everyone in the family group would hold it. A legacy seat
+  // passes no group chat, so the family's claimed group is checked too.
+  const [family] = await database
+    .select({ linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, input.familyId));
+  if (said.chatId === input.groupChatId || said.chatId === family?.linqGroupChatId) {
+    return releaseText('chat_is_group');
+  }
   for (const [index, url] of minted.urls.entries()) {
     const part = await sendLinkPart(database, {
       familyId: input.familyId,
