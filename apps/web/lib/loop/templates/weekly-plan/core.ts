@@ -260,7 +260,18 @@ export function provenanceLabel(kind: WeekPlanItem['kind']): string {
 }
 
 const MONTH_ABBREV = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ] as const;
 const EN_DASH = '–';
 
@@ -310,7 +321,9 @@ export function timeLabel(startsAt: string | null): string | null {
 // gets folded against one alphabet and billed against another.
 
 const GSM_NORMALIZE: ReadonlyArray<readonly [RegExp, string]> = [
-  [/[–—]/g, '-'], // en / em dash
+  // Spaced, so "confirm—are" stays two words. A dash that already had spaces
+  // collapses back to one space on each side below.
+  [/[–—]/g, ' - '],
   [/[‘’‛]/g, "'"], // curly single quotes
   [/[“”]/g, '"'], // curly double quotes
   [/…/g, '...'], // ellipsis

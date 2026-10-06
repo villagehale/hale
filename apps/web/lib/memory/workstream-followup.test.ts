@@ -8,8 +8,12 @@ import { OPT_OUT_LINE, OPT_OUT_SHORT } from '~/lib/channel/opt-out';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import {
   composeWorkstreamFollowup,
+  followupBackoffUntil,
+  followupRefusal,
+  inventedHalePromise,
   promisedPassedWeekday,
   runWorkstreamFollowupSweep,
+  workstreamHoldUntil,
 } from './workstream-followup';
 import { WORKSTREAMS_ENABLED_ENV, activeWorkstreamBlock } from './workstreams';
 
@@ -122,6 +126,7 @@ describe('workstream follow-up sweep', () => {
   it('sends nothing and pages #ops when the model fails twice', async () => {
     vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
     const pages: string[] = [];
+    const deferred: Array<{ attempt: number; until: string }> = [];
     const deliver = vi.fn();
     const stamp = vi.fn(async () => undefined);
     const result = await runWorkstreamFollowupSweep({} as Database, {
@@ -135,6 +140,10 @@ describe('workstream follow-up sweep', () => {
       compose: async () => ({ ok: false, reason: 'model_failed' }),
       deliver,
       stamp,
+      pendingDeferral: async () => null,
+      defer: async (_db, input) => {
+        deferred.push({ attempt: input.attempt, until: input.until.toISOString() });
+      },
       alreadyPaged: async () => false,
       noteUnsent: async () => undefined,
       page: async (text) => {
@@ -144,7 +153,8 @@ describe('workstream follow-up sweep', () => {
     expect(result.skipped.compose_failed).toBe(1);
     expect(result.sent).toBe(0);
     expect(deliver).not.toHaveBeenCalled();
-    expect(stamp).toHaveBeenCalledTimes(1);
+    expect(stamp).not.toHaveBeenCalled();
+    expect(deferred).toEqual([{ attempt: 1, until: followupBackoffUntil(1, NOW).toISOString() }]);
     expect(pages).toEqual([`workstream followup unsent family=${FAMILY} reason=model_failed`]);
     expect(pages[0]).not.toContain(TITLE);
     expect(pages[0]).not.toContain('Sebastian');
@@ -163,6 +173,7 @@ describe('workstream follow-up sweep', () => {
       dedupeActive: async () => false,
       buildGate: () => gate('America/Toronto'),
       compose: async () => ({ ok: false, reason: 'empty' }),
+      pendingDeferral: async () => null,
       stamp,
       page,
     });
@@ -184,6 +195,7 @@ describe('workstream follow-up sweep', () => {
       dedupeActive: async () => false,
       buildGate: () => gate('America/Toronto'),
       compose: async () => ({ ok: false, reason: 'not_configured' }),
+      pendingDeferral: async () => null,
       stamp,
       page,
     });
@@ -192,8 +204,9 @@ describe('workstream follow-up sweep', () => {
     expect(page).not.toHaveBeenCalled();
   });
 
-  it('counts a group hold as that hold', async () => {
+  it('counts a group hold as that hold and keeps it quiet until the window resets', async () => {
     vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
+    const deferred: Array<{ id: string; reason: string; until: string; attempt: number }> = [];
     const result = await runWorkstreamFollowupSweep({} as Database, {
       now: () => NOW,
       listDue: async () => [due, { ...due, id: '33333333-3333-4333-8333-333333333333' }],
@@ -202,6 +215,16 @@ describe('workstream follow-up sweep', () => {
       parentFor: async () => 'user-1',
       dedupeActive: async () => false,
       buildGate: () => gate('America/Toronto'),
+      pendingDeferral: async () => null,
+      timeZoneFor: async () => 'America/Toronto',
+      defer: async (_db, input) => {
+        deferred.push({
+          id: input.workstreamId,
+          reason: input.reason,
+          until: input.until.toISOString(),
+          attempt: input.attempt,
+        });
+      },
       compose: async () => ({ ok: true, body: 'The camp has not written back.' }),
       resolvePhone: async () => '+14165550199',
       targetFor: async () => ({ channel: 'legacy' }),
@@ -214,12 +237,120 @@ describe('workstream follow-up sweep', () => {
     expect(result.held.quiet_hours).toBe(1);
     expect(result.held.frequency_cap).toBe(0);
     expect(result.sent).toBe(0);
+    expect(deferred).toEqual([
+      {
+        id: due.id,
+        reason: 'group_cap',
+        until: workstreamHoldUntil('group_cap', NOW, 'America/Toronto').toISOString(),
+        attempt: 0,
+      },
+      {
+        id: '33333333-3333-4333-8333-333333333333',
+        reason: 'quiet_hours',
+        until: workstreamHoldUntil('quiet_hours', NOW, 'America/Toronto').toISOString(),
+        attempt: 0,
+      },
+    ]);
+  });
+
+  it('does not compose again while a hold or a backoff is still in force', async () => {
+    vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
+    const compose = vi.fn();
+    const result = await runWorkstreamFollowupSweep({} as Database, {
+      now: () => NOW,
+      listDue: async () => [due],
+      f14: () => true,
+      linkedTeen: async () => false,
+      parentFor: async () => 'user-1',
+      dedupeActive: async () => false,
+      buildGate: () => gate('America/Toronto'),
+      pendingDeferral: async () => ({
+        until: new Date(NOW.getTime() + 60_000),
+        attempt: 1,
+        reason: 'group_cap',
+      }),
+      compose,
+    });
+    expect(result.skipped.deferred).toBe(1);
+    expect(compose).not.toHaveBeenCalled();
+  });
+
+  it('backs off a failed send, and gives up once the cap is reached', async () => {
+    vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
+    const pages: string[] = [];
+    const stamp = vi.fn(async () => undefined);
+    const deferred: number[] = [];
+    const base = {
+      now: () => NOW,
+      listDue: async () => [due],
+      f14: () => true,
+      linkedTeen: async () => false,
+      parentFor: async () => 'user-1',
+      dedupeActive: async () => false,
+      buildGate: () => gate('America/Toronto'),
+      compose: async () => ({ ok: true as const, body: 'The camp has not written back.' }),
+      resolvePhone: async () => '+14165550199',
+      targetFor: async () => ({ channel: 'legacy' as const }),
+      deliver: async () => ({ status: 'skipped' as const, reason: 'unavailable' }),
+      stamp,
+      alreadyPaged: async () => false,
+      noteUnsent: async () => undefined,
+      page: async (text: string) => {
+        pages.push(text);
+      },
+    };
+    const first = await runWorkstreamFollowupSweep({} as Database, {
+      ...base,
+      pendingDeferral: async () => null,
+      defer: async (_db, input) => {
+        deferred.push(input.attempt);
+      },
+    });
+    expect(first.failed).toBe(1);
+    expect(stamp).not.toHaveBeenCalled();
+    expect(deferred).toEqual([1]);
+    expect(pages).toEqual([`workstream followup unsent family=${FAMILY} reason=unavailable`]);
+
+    const last = await runWorkstreamFollowupSweep({} as Database, {
+      ...base,
+      alreadyPaged: async () => true,
+      pendingDeferral: async () => ({
+        until: new Date(NOW.getTime() - 1000),
+        attempt: 2,
+        reason: 'unavailable',
+      }),
+      defer: vi.fn(),
+    });
+    expect(last.failed).toBe(1);
+    expect(stamp).toHaveBeenCalledTimes(1);
+    expect(pages).toHaveLength(1);
+  });
+});
+
+describe('workstream hold windows', () => {
+  it('waits out a group cap until local midnight and quiet hours until 08:00', () => {
+    expect(workstreamHoldUntil('group_cap', NOW, 'America/Toronto').toISOString()).toBe(
+      '2026-08-13T04:00:00.000Z',
+    );
+    expect(workstreamHoldUntil('coparent_ask', NOW, 'America/Toronto').toISOString()).toBe(
+      '2026-08-13T04:00:00.000Z',
+    );
+    expect(workstreamHoldUntil('quiet_hours', NOW, 'America/Toronto').toISOString()).toBe(
+      '2026-08-13T12:00:00.000Z',
+    );
+    const early = new Date('2026-08-12T06:00:00.000Z');
+    expect(workstreamHoldUntil('quiet_hours', early, 'America/Toronto').toISOString()).toBe(
+      '2026-08-12T12:00:00.000Z',
+    );
   });
 });
 
 describe('workstream follow-up voice', () => {
   it('retries once and keeps the second sentence', async () => {
-    const bodies = ['', 'Still holding that Saturday swim if you want to pick one.'];
+    const bodies = [
+      'Just checking in on the swim.',
+      'Still holding that Saturday swim if you want to pick one.',
+    ];
     const client = {
       messages: {
         create: vi.fn(async () => toolMessage(bodies.shift() ?? '')),
@@ -236,6 +367,24 @@ describe('workstream follow-up voice', () => {
       body: 'Still holding that Saturday swim if you want to pick one.',
     });
     expect(client.messages.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats an empty draft as a skip and does not retry', async () => {
+    const client = {
+      messages: {
+        create: vi.fn(async () => toolMessage('')),
+      },
+    } as unknown as AgentClient;
+    const result = await composeWorkstreamFollowup({
+      client,
+      title: TITLE,
+      status: 'waiting_on_third_party',
+      nextStep: 'the camp has not written back',
+      now: NOW,
+      timeZone: 'America/Toronto',
+    });
+    expect(result).toEqual({ ok: false, reason: 'empty' });
+    expect(client.messages.create).toHaveBeenCalledTimes(1);
   });
 
   it('folds a French sentence the way the other French sends do', async () => {
@@ -329,6 +478,11 @@ describe('workstream follow-up voice', () => {
     }
     expect(skill).toContain('whose_move');
     expect(skill).toContain('empty body');
+    expect(skill).toContain('invented_promise');
+    expect(skill).toContain('parent_news');
+    expect(skill).toContain('il faut');
+    expect(skill).toContain('tu dois');
+    expect(skill).toContain('must not come out as the same sentence');
   });
 
   it('treats a promised weekday that has passed as past, and a later one as still ahead', () => {
@@ -340,6 +494,44 @@ describe('workstream follow-up voice', () => {
     expect(promisedPassedWeekday('The camp said Thursday', thursday, zone)).toBe(false);
     expect(promisedPassedWeekday('Je vais leur écrire jeudi', thursday, zone)).toBe(true);
     expect(promisedPassedWeekday('Je vais écrire vendredi', thursday, zone)).toBe(false);
+    expect(promisedPassedWeekday("I'm going to call the desk Thursday", thursday, zone)).toBe(true);
+    expect(promisedPassedWeekday("I'll check back Thu.", thursday, zone)).toBe(true);
+    expect(promisedPassedWeekday('Je relance le centre jeudi.', thursday, zone)).toBe(true);
+    expect(promisedPassedWeekday("I'll check back tomorrow", thursday, zone)).toBe(false);
+    expect(promisedPassedWeekday("I'll email the registration desk again", thursday, zone)).toBe(
+      false,
+    );
+    expect(inventedHalePromise("I'll check back tomorrow")).toBe(true);
+    expect(inventedHalePromise("I'll email the registration desk again")).toBe(true);
+    expect(inventedHalePromise('The camp still has not written back.')).toBe(false);
+
+    expect(followupRefusal("I'll check back tomorrow", thursday, zone)).toBe('invented_promise');
+    expect(followupRefusal("I'll email the registration desk again", thursday, zone)).toBe(
+      'invented_promise',
+    );
+    expect(followupRefusal('Checking in on the swim.', thursday, zone)).toBe('stock_opener');
+    expect(followupRefusal('Quick check-in: the camp list.', thursday, zone)).toBe('stock_opener');
+    expect(followupRefusal('Hope your week is easy.', thursday, zone)).toBe('stock_opener');
+    expect(
+      followupRefusal(
+        'Any news from Camp Kawartha on your end?',
+        thursday,
+        zone,
+        'waiting_on_third_party',
+      ),
+    ).toBe('parent_news');
+    expect(
+      followupRefusal(
+        'As-tu des nouvelles du centre de ton coté?',
+        thursday,
+        zone,
+        'waiting_on_third_party',
+      ),
+    ).toBe('parent_news');
+    expect(
+      followupRefusal('Any news on your end about the swim?', thursday, zone, 'waiting_on_parent'),
+    ).toBeNull();
+    expect(followupRefusal('The camp still has not written back.', thursday, zone)).toBeNull();
   });
 });
 

@@ -13,6 +13,7 @@ import {
   type WorkstreamApplyResult,
   type WorkstreamOp,
   applyWorkstreamOps,
+  haleActionNextStep,
   listOpenWorkstreams,
   workstreamsEnabled,
 } from './workstreams';
@@ -191,12 +192,28 @@ function normalizeOp(op: WorkstreamOp, ctx: ExtractContext, now: Date): Workstre
     if (!childId || !teenIds.has(childId) || childIds.includes(childId)) continue;
     childIds.push(childId);
   }
-  return {
+  return withoutHalePromise({
     ...op,
     childIds,
     eventIds,
     checkBackAt: asCheckBackIso(op.checkBackAt, now, ctx.timeZone),
-  };
+  });
+}
+
+/**
+ * A next step that says Hale will chase someone is not a plan. Drop it. The
+ * wait, when the model had not already scheduled the occasion, is the outside
+ * party's, with nothing promised on Hale's side.
+ */
+function withoutHalePromise(op: WorkstreamOp): WorkstreamOp {
+  if (op.action !== 'open' && op.action !== 'update') return op;
+  if (op.declined === true) return op;
+  if (!haleActionNextStep(op.nextStep)) return op;
+  const status =
+    op.status === 'scheduled' || op.status === 'waiting_on_third_party'
+      ? op.status
+      : 'waiting_on_third_party';
+  return { ...op, nextStep: null, status };
 }
 
 async function loadExtractContext(

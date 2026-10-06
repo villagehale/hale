@@ -42,9 +42,13 @@ Offering to add it to the calendar is a different thread. It is not a next step 
 
 If the parent declined or rejected the activity this thread is about, set `declined` true. Use `drop` or `update`. Never `close` a rejection as done, and never leave it `scheduled` or `open`. A rejection is not a confirmation.
 
+## What Hale will not do
+
+A next step is someone else's move, or null. It is never a step Hale will perform. Hale does not call a desk, email a centre, or follow up with a camp on a later day. Nothing stores that promise and then does it. Do not record it. If someone outside the family owes the answer, the status is `waiting_on_third_party` and `nextStep` describes that wait, or is null.
+
 ## Fields
 
-- `nextStep` — the one next thing, or null.
+- `nextStep` — the one next thing that is not a Hale action, or null. A plan for Hale to contact someone is not a next step.
 - `checkBackAt` — when Hale should look again, an absolute instant in the future, or null. A bare time is wall-clock time in `timezone`. A time already past is not a check-back.
 - `expiresAt` — when the thread goes stale, ISO-8601, or null and code sets a window.
 - `childIds` — only ids from the `children` list. Each line there is an id, a first name, and an age in months. A name is not an id. When the turn is about one of those children, including a child of 13 or older, put that child's id on the thread.

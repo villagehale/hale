@@ -3989,6 +3989,32 @@ describe('turn deadline (VIL-400)', () => {
     expect(h.turns.deferredReasons).toEqual([expect.objectContaining({ reason: 'turn_timeout' })]);
   });
 
+  it('returns the reply without waiting for the workstream extract', async () => {
+    let release: () => void = () => undefined;
+    const extracted = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started = false;
+    const h = harness({});
+    h.deps.rememberWorkstream = async () => {
+      started = true;
+      await extracted;
+    };
+
+    const result = await Promise.race([
+      routeChannelMessage(h.deps, job()),
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => reject(new Error('extract held the queue')), 2000);
+      }),
+    ]);
+
+    expect(result.status).toBe('agent_replied');
+    expect(started).toBe(true);
+    expect(h.transport.sent).toHaveLength(1);
+    release();
+    await extracted;
+  });
+
   it('treats a stalled stated-state read as nothing stated and still answers', async () => {
     const h = harness({
       callTimeoutMs: 30,

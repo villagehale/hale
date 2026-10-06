@@ -62,6 +62,20 @@ export interface WorkstreamOp {
   declined?: boolean | null;
 }
 
+/**
+ * A next step Hale would have to perform. Nothing in this system calls a desk,
+ * emails a centre, or follows up with a camp, so that sentence is not stored
+ * and is not handed back to the check-back as if it were a plan.
+ */
+const HALE_ACTION_NEXT =
+  /\b(follow up|email the|e-mail the|call the|check back|reach out|relancer|écrire (?:au|à)|ecrire (?:au|a)|contacter|write to|text the)\b/i;
+
+export function haleActionNextStep(nextStep: string | null | undefined): boolean {
+  const text = nextStep?.trim();
+  if (!text) return false;
+  return HALE_ACTION_NEXT.test(text);
+}
+
 export type WorkstreamApplyResult =
   | { outcome: 'ignored' }
   | { outcome: 'opened' | 'updated' | 'closed' | 'dropped'; id: string; status: WorkstreamStatus }

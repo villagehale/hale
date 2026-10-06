@@ -7,7 +7,7 @@ import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { loadAgentContext } from '~/lib/coach/context';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { rememberWorkstreamTurn, renderWorkstreamExtractInput } from './workstream-extract';
-import { runWorkstreamFollowupSweep } from './workstream-followup';
+import { followupBackoffUntil, runWorkstreamFollowupSweep } from './workstream-followup';
 import {
   MAX_OPEN_WORKSTREAMS,
   WORKSTREAMS_ENABLED_ENV,
@@ -581,6 +581,7 @@ describe('a swim search carried across turns', () => {
       'utf8',
     );
     expect(skill).toContain('A confirmed booking is never `waiting_on_parent`.');
+    expect(skill).toContain('It is never a step Hale will perform.');
 
     const { familyId } = await seedFamily(db.database, 'Booked');
     const opened = await rememberWorkstreamTurn({
@@ -609,7 +610,44 @@ describe('a swim search carried across turns', () => {
     expect(booked.applied[0]).toMatchObject({ outcome: 'updated', status: 'scheduled' });
   });
 
-  it('backs a failed check-back off so the next sweep does not call the model again', async () => {
+  it('drops a next step that promises Hale will chase a third party', async () => {
+    const { familyId } = await seedFamily(db.database, 'Camp desk');
+    const opened = await rememberWorkstreamTurn({
+      database: db.database,
+      familyId,
+      parentText: 'Camp Kawartha has not confirmed the week.',
+      haleText: 'I will keep an eye on it.',
+      provenance: 'msg-camp',
+      now: NOW,
+      client: toolClient({
+        ops: [
+          {
+            action: 'open',
+            title: 'Camp Kawartha',
+            status: 'waiting_on_parent',
+            nextStep: 'Follow up with Camp Kawartha registration desk Thursday',
+            checkBackAt: '2026-08-13T15:00:00.000Z',
+          },
+        ],
+      }),
+    });
+    expect(opened.applied[0]).toMatchObject({
+      outcome: 'opened',
+      status: 'waiting_on_third_party',
+    });
+    const id = opened.applied[0] && 'id' in opened.applied[0] ? opened.applied[0].id : '';
+    const [row] = await db.database
+      .select({
+        nextStep: schema.familyWorkstreams.nextStep,
+        status: schema.familyWorkstreams.status,
+      })
+      .from(schema.familyWorkstreams)
+      .where(eq(schema.familyWorkstreams.id, id));
+    expect(row?.nextStep).toBeNull();
+    expect(row?.status).toBe('waiting_on_third_party');
+  });
+
+  it('retries a failed check-back after the backoff, then stops', async () => {
     const { familyId } = await seedFamily(db.database, 'Backoff');
     const opened = await applyWorkstreamOp(db.database, {
       familyId,
@@ -652,8 +690,53 @@ describe('a swim search carried across turns', () => {
         pages.push(text);
       },
     });
-    expect(second.considered).toBe(0);
+    expect(second.considered).toBe(1);
+    expect(second.skipped.deferred).toBe(1);
     expect(compose).toHaveBeenCalledTimes(1);
+    expect(pages).toHaveLength(1);
+
+    const afterBackoff = new Date(followupBackoffUntil(1, later).getTime() + 1000);
+    const third = await runWorkstreamFollowupSweep(db.database, {
+      now: () => afterBackoff,
+      listDue,
+      f14: () => true,
+      compose,
+      buildGate: () => allowGate('America/Toronto'),
+      page: async (text) => {
+        pages.push(text);
+      },
+    });
+    expect(third.skipped.compose_failed).toBe(1);
+    expect(compose).toHaveBeenCalledTimes(2);
+    expect(pages).toHaveLength(1);
+
+    const afterSecondWait = new Date(followupBackoffUntil(2, afterBackoff).getTime() + 1000);
+    const fourth = await runWorkstreamFollowupSweep(db.database, {
+      now: () => afterSecondWait,
+      listDue,
+      f14: () => true,
+      compose,
+      buildGate: () => allowGate('America/Toronto'),
+      page: async (text) => {
+        pages.push(text);
+      },
+    });
+    expect(fourth.skipped.compose_failed).toBe(1);
+    expect(compose).toHaveBeenCalledTimes(3);
+    expect(pages).toHaveLength(1);
+
+    const fifth = await runWorkstreamFollowupSweep(db.database, {
+      now: () => afterSecondWait,
+      listDue,
+      f14: () => true,
+      compose,
+      buildGate: () => allowGate('America/Toronto'),
+      page: async (text) => {
+        pages.push(text);
+      },
+    });
+    expect(fifth.considered).toBe(0);
+    expect(compose).toHaveBeenCalledTimes(3);
     expect(pages).toHaveLength(1);
   });
 });

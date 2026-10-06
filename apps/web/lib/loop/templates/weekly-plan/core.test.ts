@@ -54,6 +54,8 @@ function item(partial: Partial<WeekPlanItem>): WeekPlanItem {
 describe('gsmSafe normalizes SMS copy into the GSM-7 alphabet', () => {
   it('maps typographic punctuation to GSM equivalents', () => {
     expect(gsmSafe(`a ${EM_DASH} b`)).toBe('a - b');
+    expect(gsmSafe('Need to confirm\u2014are you')).toBe('Need to confirm - are you');
+    expect(gsmSafe('Saturday\u2014Wallace Emerson')).toBe('Saturday - Wallace Emerson');
     expect(gsmSafe('a · b')).toBe('a - b');
     expect(gsmSafe('it’s')).toBe("it's");
     expect(gsmSafe('wait…')).toBe('wait...');

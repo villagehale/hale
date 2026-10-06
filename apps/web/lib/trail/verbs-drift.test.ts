@@ -55,6 +55,7 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   'apps/web/lib/memory/workstream-followup.ts': [
     'workstream_followed_up',
     'workstream_followup_unsent',
+    'workstream_followup_deferred',
   ],
   // VIL-399 — one helper writes the shared-group verbs. The literals in the
   // join and leave transactions are scanned directly as well.

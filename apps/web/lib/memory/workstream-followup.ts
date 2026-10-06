@@ -2,7 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
@@ -29,9 +29,11 @@ import { gsmSafe } from '~/lib/loop/templates/weekly-plan/core';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { addCalendarDays, formatLocalDate, localDateParts, timezoneOffsetMs } from './period';
 import { isoWeekdayIndex, localDate, localWeekday, workstreamLanguage } from './workstream-time';
 import {
   type DueWorkstream,
+  haleActionNextStep,
   listDueWorkstreams,
   markWorkstreamFollowedUp,
   workstreamsEnabled,
@@ -42,7 +44,8 @@ import {
  *
  * The model writes the text. This module stores nothing until a send is
  * allowed, and it never substitutes a sentence of its own. A second failure
- * sends nothing and names the miss to #ops.
+ * inside one sweep sends nothing. A real miss is retried on a later sweep,
+ * with backoff, and names the miss to #ops once. The cap is what stops it.
  *
  * Prompt context and this sweep stay behind WORKSTREAMS_ENABLED. The flag
  * check returns before any read.
@@ -53,6 +56,13 @@ export const WORKSTREAM_FOLLOWUP_TEMPLATE_KEY = 'workstream:followup';
 const TOOL_NAME = 'write_followup';
 const BODY_MAX = 160;
 const PAGE_ACTION = 'workstream_followup_unsent';
+const DEFER_ACTION = 'workstream_followup_deferred';
+
+/** Three real misses, then this check-back stops. The gaps are 6h and 24h. */
+export const FOLLOWUP_ATTEMPT_CAP = 3;
+
+/** Group quiet hours end at 08:00 local, the same window family outbound uses. */
+const GROUP_QUIET_END_HOUR = 8;
 
 const bodySchema = z.object({ body: z.string() });
 
@@ -83,6 +93,16 @@ const WEEKDAY_ISO: Record<string, number> = {
   friday: 4,
   saturday: 5,
   sunday: 6,
+  mon: 0,
+  tue: 1,
+  tues: 1,
+  wed: 2,
+  thu: 3,
+  thur: 3,
+  thurs: 3,
+  fri: 4,
+  sat: 5,
+  sun: 6,
   lundi: 0,
   mardi: 1,
   mercredi: 2,
@@ -90,18 +110,28 @@ const WEEKDAY_ISO: Record<string, number> = {
   vendredi: 4,
   samedi: 5,
   dimanche: 6,
+  lun: 0,
+  jeu: 3,
+  ven: 4,
 };
 
-const WEEKDAY_WORD = String.raw`\b(?:(next|prochain(?:e)?)\s+)?(mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b`;
+const WEEKDAY_WORD = String.raw`\b(?:(next|prochain(?:e)?)\s+)?(mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|mon|tues|tue|wed|thurs|thur|thu|fri|sat|sun|lun|jeu|ven)\b`;
 
-const FUTURE_PROMISE = /\b(i['’]ll|i will|je vais)\b/i;
+/** A first-person plan to act later. The sweep does not perform any of these. */
+const COMMITMENT =
+  /\b(i['’]ll|i will|i['’]m going to|i am going to|je vais|je relance|je rappelle|j['’](?:é|e)cris|je contacte|je v(?:é|e)rifie)\b/i;
+
+const STOCK_OPENER = /^\s*(?:just checking\b|checking in\b|quick check-?in\b|hope your week\b)/i;
+
+const PARENT_NEWS = /\b(?:any news|on your end|heard anything|des nouvelles|de ton c[oô]t[eé])\b/i;
 
 /**
  * A promised weekday that is today or earlier this week. "next Thursday" is
  * the following one, and a weekday with no promise attached is a status.
+ * Short forms count: Thu, Thurs, jeu.
  */
 export function promisedPassedWeekday(text: string, now: Date, timeZone: string): boolean {
-  if (!FUTURE_PROMISE.test(text)) return false;
+  if (!COMMITMENT.test(text)) return false;
   const today = isoWeekdayIndex(now, timeZone);
   for (const match of text.matchAll(new RegExp(WEEKDAY_WORD, 'gi'))) {
     if (match[1]) continue;
@@ -112,15 +142,22 @@ export function promisedPassedWeekday(text: string, now: Date, timeZone: string)
   return false;
 }
 
+/** Any first-person plan, including one with no day attached. */
+export function inventedHalePromise(text: string): boolean {
+  return COMMITMENT.test(text);
+}
+
 /**
  * The body that may be sent, after the same GSM fold the other French sends
- * use (`gsmSafe`: em dash to hyphen, an accent the alphabet cannot carry to
- * its base letter). What is left must still be GSM-7.
+ * use (`gsmSafe`: an unspaced em dash to a spaced hyphen, an accent the
+ * alphabet cannot carry to its base letter). What is left must still be GSM-7.
+ * An empty body is the model declining, not a failure.
  */
 function prepareBody(
   body: string,
   now: Date,
   timeZone: string,
+  status: string,
 ): { ok: true; body: string } | { ok: false; reason: string } {
   const text = body.trim();
   if (!text) return { ok: false, reason: 'empty' };
@@ -139,9 +176,24 @@ function prepareBody(
   ) {
     return { ok: false, reason: 'keyword_ask' };
   }
-  if (/^\s*just checking\b/i.test(folded)) return { ok: false, reason: 'stock_opener' };
+  if (STOCK_OPENER.test(folded)) return { ok: false, reason: 'stock_opener' };
   if (promisedPassedWeekday(folded, now, timeZone)) return { ok: false, reason: 'past_weekday' };
+  if (inventedHalePromise(folded)) return { ok: false, reason: 'invented_promise' };
+  if (status === 'waiting_on_third_party' && PARENT_NEWS.test(folded)) {
+    return { ok: false, reason: 'parent_news' };
+  }
   return { ok: true, body: folded };
+}
+
+/** Why a draft cannot be sent, or null when it can. Empty is its own reason. */
+export function followupRefusal(
+  body: string,
+  now: Date,
+  timeZone: string,
+  status = 'waiting_on_parent',
+): string | null {
+  const prepared = prepareBody(body, now, timeZone, status);
+  return prepared.ok ? null : prepared.reason;
 }
 
 function whoseMove(status: string): 'parent' | 'third_party' | 'scheduled' | 'open' {
@@ -173,7 +225,7 @@ async function oneAttempt(
     `whose_move: ${whoseMove(input.status)}`,
     `title: ${input.title}`,
     `status: ${input.status}`,
-    `next: ${input.nextStep ?? 'none'}`,
+    `next: ${haleActionNextStep(input.nextStep) ? 'none' : (input.nextStep ?? 'none')}`,
   ].join('\n');
   try {
     const { value } = await forceToolJson({
@@ -188,15 +240,16 @@ async function oneAttempt(
       maxTokens: 256,
       transport: 'create',
     });
-    return prepareBody(value.body, input.now, input.timeZone);
+    return prepareBody(value.body, input.now, input.timeZone, input.status);
   } catch {
     return { ok: false, reason: 'model_failed' };
   }
 }
 
 /**
- * One friend-voice sentence, then one retry. The second failure is a miss,
- * not a fallback sentence.
+ * One friend-voice sentence, then one retry when the first attempt actually
+ * failed. An empty body is the model declining to send, and is not retried.
+ * The second failure is a miss, not a fallback sentence.
  */
 export async function composeWorkstreamFollowup(input: {
   client: AgentClient;
@@ -217,7 +270,7 @@ export async function composeWorkstreamFollowup(input: {
     language: input.language ?? 'en',
   };
   const first = await oneAttempt(attempt.client, { ...attempt, refusal: null });
-  if (first.ok) return first;
+  if (first.ok || first.reason === 'empty') return first;
   return oneAttempt(attempt.client, { ...attempt, refusal: first.reason });
 }
 
@@ -238,6 +291,7 @@ export interface WorkstreamFollowupResult {
     not_configured: number;
     nothing_to_say: number;
     compose_failed: number;
+    deferred: number;
   };
   failed: number;
 }
@@ -268,6 +322,7 @@ function emptyResult(enabled: boolean): WorkstreamFollowupResult {
       not_configured: 0,
       nothing_to_say: 0,
       compose_failed: 0,
+      deferred: 0,
     },
     failed: 0,
   };
@@ -318,8 +373,32 @@ export interface WorkstreamFollowupDeps {
     workstreamId: string,
     checkBackAt: Date,
   ) => Promise<void>;
+  pendingDeferral?: (
+    database: Database,
+    workstream: { id: string; familyId: string; checkBackAt: Date },
+    now: Date,
+  ) => Promise<FollowupDeferral | null>;
+  defer?: (
+    database: Database,
+    input: {
+      familyId: string;
+      workstreamId: string;
+      checkBackAt: Date;
+      until: Date;
+      reason: string;
+      attempt: number;
+      now: Date;
+    },
+  ) => Promise<void>;
+  timeZoneFor?: (database: Database, familyId: string) => Promise<string>;
   targetFor?: (database: Database, familyId: string) => Promise<FamilyOutboundTarget>;
   transport?: ChannelTransport;
+}
+
+export interface FollowupDeferral {
+  until: Date;
+  attempt: number;
+  reason: string;
 }
 
 async function primaryParent(database: Database, familyId: string): Promise<string | null> {
@@ -399,6 +478,112 @@ async function noteUnsent(
   });
 }
 
+function parseDeferral(after: unknown, checkBackAt: string): FollowupDeferral | null {
+  if (!after || typeof after !== 'object') return null;
+  const row = after as Record<string, unknown>;
+  if (row.checkBackAt !== checkBackAt) return null;
+  if (typeof row.until !== 'string' || typeof row.attempt !== 'number') return null;
+  const until = new Date(row.until);
+  if (Number.isNaN(until.getTime())) return null;
+  return {
+    until,
+    attempt: row.attempt,
+    reason: typeof row.reason === 'string' ? row.reason : 'deferred',
+  };
+}
+
+async function pendingDeferral(
+  database: Database,
+  workstream: { id: string; familyId: string; checkBackAt: Date },
+  _now: Date,
+): Promise<FollowupDeferral | null> {
+  const rows = await database
+    .select({ after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, workstream.familyId),
+        eq(schema.auditLog.actionTaken, DEFER_ACTION),
+        eq(schema.auditLog.targetId, workstream.id),
+      ),
+    )
+    .orderBy(desc(schema.auditLog.occurredAt))
+    .limit(20);
+  const stamp = workstream.checkBackAt.toISOString();
+  for (const row of rows) {
+    const parsed = parseDeferral(row.after, stamp);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+async function noteDeferred(
+  database: Database,
+  input: {
+    familyId: string;
+    workstreamId: string;
+    checkBackAt: Date;
+    until: Date;
+    reason: string;
+    attempt: number;
+    now: Date;
+  },
+): Promise<void> {
+  await database.insert(schema.auditLog).values({
+    familyId: input.familyId,
+    actor: 'system',
+    actionTaken: DEFER_ACTION,
+    targetTable: 'family_workstreams',
+    targetId: input.workstreamId,
+    after: {
+      reason: input.reason,
+      checkBackAt: input.checkBackAt.toISOString(),
+      until: input.until.toISOString(),
+      attempt: input.attempt,
+    },
+    occurredAt: input.now,
+  });
+}
+
+/** The next local clock time strictly after `now`. Midnight is hour 0. */
+function nextLocalClock(now: Date, timeZone: string, hour: number, minute: number): Date {
+  const parts = localDateParts(now, timeZone);
+  const at = (year: number, month: number, day: number) => {
+    const guess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+    const offset = timezoneOffsetMs(guess, timeZone);
+    const instant = new Date(guess.getTime() - offset);
+    const atInstant = timezoneOffsetMs(instant, timeZone);
+    return atInstant === offset ? instant : new Date(guess.getTime() - atInstant);
+  };
+  let when = at(parts.year, parts.month, parts.day);
+  if (when.getTime() <= now.getTime()) {
+    const next = addCalendarDays(formatLocalDate(parts), 1);
+    const [year, month, day] = next.split('-').map(Number) as [number, number, number];
+    when = at(year, month, day);
+  }
+  return when;
+}
+
+/**
+ * How long a held group send stays quiet. Quiet hours wait until 08:00 local.
+ * A group cap or a co-parent ask waits until the next local midnight, which is
+ * when the day's ceiling resets.
+ */
+export function workstreamHoldUntil(
+  reason: 'group_cap' | 'quiet_hours' | 'coparent_ask',
+  now: Date,
+  timeZone: string,
+): Date {
+  if (reason === 'quiet_hours') return nextLocalClock(now, timeZone, GROUP_QUIET_END_HOUR, 0);
+  return nextLocalClock(now, timeZone, 0, 0);
+}
+
+/** Attempt 1 waits 6 hours. Attempt 2 waits 24. The cap gives up before a third wait. */
+export function followupBackoffUntil(attempt: number, now: Date): Date {
+  const hours = attempt <= 1 ? 6 : 24;
+  return new Date(now.getTime() + hours * 60 * 60 * 1000);
+}
+
 async function followupSpeech(
   database: Database,
   familyId: string,
@@ -469,6 +654,10 @@ export async function runWorkstreamFollowupSweep(
   const page = deps.page ?? postOpsSlack;
   const paged = deps.alreadyPaged ?? alreadyPaged;
   const recordMiss = deps.noteUnsent ?? noteUnsent;
+  const readDeferral = deps.pendingDeferral ?? pendingDeferral;
+  const defer = deps.defer ?? noteDeferred;
+  const zoneFor =
+    deps.timeZoneFor ?? (async (db, familyId) => (await followupSpeech(db, familyId)).timeZone);
   const thread = deps.thread ?? threadProactiveMessage;
   const targetFor = deps.targetFor ?? familyOutboundTarget;
   const result = emptyResult(true);
@@ -516,6 +705,31 @@ export async function runWorkstreamFollowupSweep(
         result.held[verdict.reason] += 1;
         continue;
       }
+      const waiting = await readDeferral(database, row, now);
+      if (waiting && waiting.until.getTime() > now.getTime()) {
+        result.skipped.deferred += 1;
+        continue;
+      }
+      const backOff = async (reason: string) => {
+        const attempt = (waiting?.attempt ?? 0) + 1;
+        if (!(await paged(database, row.familyId, now, row))) {
+          await page(unsentPage(row.familyId, reason));
+          await recordMiss(database, row.familyId, reason, now, row.id, row.checkBackAt);
+        }
+        if (attempt >= FOLLOWUP_ATTEMPT_CAP) {
+          await stamp(database, row.id, now);
+          return;
+        }
+        await defer(database, {
+          familyId: row.familyId,
+          workstreamId: row.id,
+          checkBackAt: row.checkBackAt,
+          until: followupBackoffUntil(attempt, now),
+          reason,
+          attempt,
+          now,
+        });
+      };
       const composed = await compose(row);
       if (!composed.ok) {
         if (composed.reason === 'not_configured') {
@@ -523,16 +737,15 @@ export async function runWorkstreamFollowupSweep(
           continue;
         }
         // Empty is the model declining to send. A real failure retries once
-        // inside compose, then this check-back is backed off: one page per
-        // thread, not another pair of model calls on the next sweep.
-        const silent = composed.reason === 'empty';
-        if (silent) result.skipped.nothing_to_say += 1;
-        else result.skipped.compose_failed += 1;
-        if (!silent && !(await paged(database, row.familyId, now, row))) {
-          await page(unsentPage(row.familyId, composed.reason));
-          await recordMiss(database, row.familyId, composed.reason, now, row.id, row.checkBackAt);
+        // inside compose, then waits out a backoff before the next sweep.
+        // One page per check-back. The cap is what drops it.
+        if (composed.reason === 'empty') {
+          result.skipped.nothing_to_say += 1;
+          await stamp(database, row.id, now);
+          continue;
         }
-        await stamp(database, row.id, now);
+        result.skipped.compose_failed += 1;
+        await backOff(composed.reason);
         continue;
       }
       if (!composed.body) {
@@ -558,10 +771,21 @@ export async function runWorkstreamFollowupSweep(
       });
       if (delivered.status === 'held') {
         result.held[delivered.reason] += 1;
+        const timeZone = await zoneFor(database, row.familyId);
+        await defer(database, {
+          familyId: row.familyId,
+          workstreamId: row.id,
+          checkBackAt: row.checkBackAt,
+          until: workstreamHoldUntil(delivered.reason, now, timeZone),
+          reason: delivered.reason,
+          attempt: waiting?.attempt ?? 0,
+          now,
+        });
         continue;
       }
       if (delivered.status !== 'sent') {
         result.failed += 1;
+        await backOff(delivered.reason);
         continue;
       }
       if (deps.recordSend) {
