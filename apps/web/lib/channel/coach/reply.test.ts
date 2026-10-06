@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
-import { MAX_REPLY_SEGMENTS, redactTeenNames, toSmsReply } from './reply';
+import { MAX_REPLY_SEGMENTS, plainText, redactTeenNames, toSmsReply } from './reply';
 
 /**
  * The post-processing between the model and the carrier. Everything asserted here is a
@@ -180,12 +180,16 @@ describe('toSmsReply', () => {
     expect(() => toSmsReply('   \n  ', { children: [], now: NOW })).toThrow(/empty/i);
   });
 
-  it('folds ça before counting segments and keeps the question', () => {
-    const raw = 'Tout ça est déjà passé. Tu veux que je la déplace à jeudi?';
-    const out = toSmsReply(raw, { children: [], now: NOW });
-    expect(out).toBe('Tout ca est déjà passé. Tu veux que je la déplace à jeudi?');
-    expect(smsEncoding(out)).toBe('gsm7');
-    expect(out).toContain('?');
+  it('keeps a French accent and Chinese through the shared send path', () => {
+    const french = "A mon avis, c'est un peu drôle mais délicieux.";
+    const chinese = '梅西,无可争议。';
+
+    expect(plainText(french)).toBe(french);
+    expect(plainText(chinese)).toBe(chinese);
+    expect(smsEncoding(plainText(french))).toBe('ucs2');
+    expect(smsEncoding(plainText(chinese))).toBe('ucs2');
+    expect(toSmsReply(french, { children: [], now: NOW })).toBe(french);
+    expect(toSmsReply(chinese, { children: [], now: NOW })).toBe(chinese);
   });
 
   it('refuses a trim that would drop the question', () => {

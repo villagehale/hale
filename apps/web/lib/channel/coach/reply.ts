@@ -1,7 +1,6 @@
 import { distinctiveWords, mentionsActivity } from '~/lib/channel/followup/screen';
 import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
-import { foldOutboundLine } from '~/lib/integrations/outbound-line';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
 
 /**
@@ -179,10 +178,9 @@ export function plainText(text: string): string {
   for (const [pattern, replacement] of GSM7_SUBSTITUTIONS) {
     out = out.replace(pattern, replacement);
   }
-  // The same fold receipts use. ç is not in GSM-7 (only Ç is), so "ça" would
-  // flip the whole reply to UCS-2 and a two-segment answer would be trimmed
-  // down to its first sentence. é, è, à, and ù stay.
-  return foldOutboundLine(out);
+  // Accents and Chinese stay. The GSM fold belongs to receipts and email alerts
+  // (`foldOutboundLine`), not to this shared send path.
+  return out.replace(/\s+/g, ' ').trim();
 }
 
 /**

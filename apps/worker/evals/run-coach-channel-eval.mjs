@@ -343,14 +343,9 @@ const GSM7_SUBSTITUTIONS = [
   [/[•·]/g, ''],
 ];
 
-/** Mirrors foldToGsm7 in apps/web/lib/loop/templates/weekly-plan/core.ts. ç → c;
- * é stays. A French "ça" must not flip the graded reply to UCS-2. */
-function foldGsmChar(char) {
-  if (GSM7_BASIC.has(char) || GSM7_EXTENDED.has(char)) return char;
-  const base = char.normalize('NFD').replace(/\p{M}+/gu, '');
-  return base !== '' && (GSM7_BASIC.has(base) || GSM7_EXTENDED.has(base)) ? base : '';
-}
-
+/** Mirrors plainText in apps/web/lib/channel/coach/reply.ts. Curly quotes and
+ * dashes become ASCII. Accents and Chinese stay; the GSM fold is receipts and
+ * email alerts only. */
 function plainText(text) {
   let out = text;
   out = out.replace(/```[\s\S]*?```/g, ' ');
@@ -363,7 +358,7 @@ function plainText(text) {
   out = out.replace(/\*([^*]+)\*/g, '$1');
   out = out.replace(/(^|\s)_([^_]+)_(?=\s|$)/g, '$1$2');
   for (const [pattern, replacement] of GSM7_SUBSTITUTIONS) out = out.replace(pattern, replacement);
-  return [...out].map(foldGsmChar).join('').replace(/\s+/g, ' ').trim();
+  return out.replace(/\s+/g, ' ').trim();
 }
 
 /** Teens are age-derived here exactly as resolveChildNameLevel does. */
