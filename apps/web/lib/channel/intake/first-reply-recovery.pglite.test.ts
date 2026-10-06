@@ -6,7 +6,11 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type FirstReplyRecoveryDeps, runFirstReplyRecoveryCron } from './first-reply-recovery';
-import type { FriendVoiceComposer, FriendVoiceInput } from './friend-voice';
+import {
+  type FriendVoiceComposer,
+  type FriendVoiceInput,
+  friendVoiceContext,
+} from './friend-voice';
 import { loadOpenSession } from './session';
 import { FakeTransport } from './transport';
 
@@ -195,6 +199,35 @@ describe('first-reply recovery reads the transcript, not the state', () => {
     expect(result.sent).toBe(0);
     expect(voice.inputs).toEqual([]);
     expect(transport.sent).toEqual([]);
+  });
+
+  it('answers an 11:30 p.m. text at 8:00 a.m., and tells the model how long it waited', async () => {
+    /** 11:30 p.m. America/Toronto, Fri 28 Aug 2026 (EDT). */
+    const late = new Date('2026-08-29T03:30:00.000Z');
+    /** 8:00 a.m. the next morning — quiet hours have just ended, and the text is 8.5h old. */
+    const morning = new Date('2026-08-29T12:00:00.000Z');
+    const { id, phone } = await seed({ createdAt: late, updatedAt: late });
+    const transport = new FakeTransport();
+    const voice = composer();
+
+    const night = await runFirstReplyRecoveryCron(
+      db.database,
+      deps(transport, voice),
+      new Date(late.getTime() + 3 * 60_000),
+    );
+    expect(night.sent).toBe(0);
+    expect(voice.inputs).toEqual([]);
+    expect(await stamp(id)).toBeNull();
+
+    const answered = await runFirstReplyRecoveryCron(db.database, deps(transport, voice), morning);
+    expect(answered.sent).toBe(1);
+    expect(transport.sent.map((message) => message.to)).toEqual([phone]);
+    const brief = voice.inputs[0];
+    expect(brief).toBeDefined();
+    if (!brief) return;
+    expect(friendVoiceContext(brief)).toMatchObject({
+      lastInbound: { minutesAgo: 8 * 60 + 30, overnight: true, yesterday: true },
+    });
   });
 
   it('holds the whole tick while the provider pre-flight reports an incident', async () => {
