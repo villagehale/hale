@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message addresses Sam by name as required. It correctly explains the link is just for them with no inbox privacy concerns shown in the thread. However, the message says \"I'm still in review\" which goes beyond what the watchFor specifies - it should say Google may warn about unverified and that Sam should tap \"Advanced\" and carry on. The message says \"No problem if you'd rather wait\" which is padding and unnecessary. The single question at the end about catching school and camp emails is correctly placed as the last sentence. The message avoids mentioning the calendar, writing a URL, and excessive content after the question. The core issue is the deviation from the specified phrasing about Google verification/Advanced, plus the padding phrase.",
+    "score": 2
+  }
+}

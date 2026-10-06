@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message addresses Sam by name correctly and asks one question as required. However, it fails several critical requirements: it does not explain what the link is for (that it's just for Sam), does not mention what to do if Google warns about an unverified app (tapping \"Advanced\"), and does not include any statement before the question. The message is just a bare question with no context or setup statements. The watchFor explicitly requires statements first, then the question last, and information about the Google warning scenario and that the link is for Sam alone."
+  }
+}

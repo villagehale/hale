@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message correctly identifies this as weekend_fallback where no options have been found yet. It says \"nothing great popped up nearby for the weekend\" (referring to the weekend options context), offers to look on weekdays instead (\"Want me to look on weekdays instead?\"), has exactly one question ending with a question mark, uses first person \"me\", names nobody, has no facts not in the request, no exclamation marks, no emoji, no hype, no corporate register, and lands warmly as a friend texting one parent about the week. It matches the watchFor requirement perfectly: acknowledges the weekend search, offers weekday alternatives, one question, and names nobody."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message invents a fact not in the request: \"the 20th to the 21st\" is listed in mustMention but never appears in the message. The travel_brief kind requires naming the trip dates exactly as written. Additionally, \"Details straight from the venues' own pages - nobody's been to check\" is awkward phrasing that doesn't naturally match \"says in its own words that those details are off the venues' own pages.\" The watchFor specifies the message should carry \"the 20th to the 21st\" along with Ottawa and Noah, but this critical date range is missing entirely."
+  }
+}

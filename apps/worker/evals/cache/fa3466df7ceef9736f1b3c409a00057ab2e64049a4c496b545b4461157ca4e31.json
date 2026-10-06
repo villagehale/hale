@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The message correctly mentions both \"Google Calendar\" and \"15\" as required. It's short, warm, first-person appropriate, and says exactly what the moment calls for. It points at \"this link\" without including a URL. No questions, no exclamation marks, no hype, no corporate register. However, watchFor specifies that the message should also mention what to do if Google warns about an unverified app (tap \"Advanced\" and carry on), which is missing from this message. This is a notable omission from the expected guidance. The message is otherwise well-crafted and friendly."
+  }
+}

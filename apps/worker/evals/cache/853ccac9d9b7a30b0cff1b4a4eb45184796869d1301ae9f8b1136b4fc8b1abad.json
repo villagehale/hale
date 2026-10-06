@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "The message has the right structure and tone, uses first person (\"me\"), and includes one question as required. However, it violates a key requirement: it says \"Nothing great is showing nearby this weekend\" which directly states what was offered, when the watchFor specifies that Hale \"says so plainly\" referring to the weekend options just sent. The phrase \"this weekend\" is vague and doesn't clearly reference that options were already sent. Additionally, it doesn't explicitly say \"the options I just sent were weekend ones\" or equivalent phrasing that would clearly link back to what was already offered. The watchFor expects plain reference to the options already sent, not a generic statement about nothing showing. The offer to look at weekdays is appropriate and doesn't name specifics, but the foundation is unclear."
+  }
+}

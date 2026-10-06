@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This is a travel_brief that executes perfectly. It names New York and \"the 12th to the 15th\" as given. It carries both Mia and Leo. Both picks are named with their exact when and price: \"Brooklyn Children's Museum\" with \"Tue-Sun 10am-5pm\" and \"$15 per person\"; \"Pier 25 Mini Golf\" with \"daily from 11am\" and \"$8 a round\"—no digits changed or added. It says in its own words that details are from the venues' own pages (\"Details are straight from the venues' own pages\") and notes nobody has been to check (\"and nobody has been to check\"). No question is asked. No recommendation, distance, or invented place. Plain ASCII under 500 characters. Meets all requirements for a 5."
+  }
+}
