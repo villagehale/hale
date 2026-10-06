@@ -279,8 +279,28 @@ export async function askMember(
   if (!roster?.familyId || !OPEN.includes(roster.status)) return { outcome: 'roster_absent' };
   const hash = phoneBlindIndex(phone);
 
+  let member = await liveRosterMember(database, roster.id, hash);
+  if (member && member.status !== 'proposed') return { outcome: 'member_already' };
+
   const existing = await resolveVerifiedChannelByPhone(database, phone);
   if (existing && existing.familyId !== roster.familyId) {
+    if (member) {
+      await database
+        .update(schema.linqGroupRosterMembers)
+        .set({ status: 'refused', updatedAt: input.now })
+        .where(eq(schema.linqGroupRosterMembers.id, member.id));
+    } else {
+      await database
+        .insert(schema.linqGroupRosterMembers)
+        .values({
+          rosterId: roster.id,
+          chatId: input.chatId,
+          phoneE164Encrypted: encryptString(phone),
+          phoneE164Hash: hash,
+          status: 'refused',
+        })
+        .onConflictDoNothing();
+    }
     await database.insert(schema.auditLog).values({
       familyId: roster.familyId,
       actor: 'system',
@@ -289,11 +309,10 @@ export async function askMember(
       targetId: roster.id,
       after: { reason: 'other_family' },
     });
+    await settleRosterStatus(database, roster.id, input.now);
     return { outcome: 'group_member_refused', reason: 'other_family' };
   }
 
-  let member = await liveRosterMember(database, roster.id, hash);
-  if (member && member.status !== 'proposed') return { outcome: 'member_already' };
   if (!member) {
     const role = existing
       ? (

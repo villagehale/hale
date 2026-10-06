@@ -69,14 +69,15 @@ function handlesOk(handles: string[], isGroup: boolean | null = true) {
 async function seedHousehold(
   phone: string,
   name: string,
-  options: { linqGroupChatId?: string | null } = {},
+  options: { linqGroupChatId?: string | null; database?: TestDb['database'] } = {},
 ) {
-  const [family] = await db.database
+  const database = options.database ?? db.database;
+  const [family] = await database
     .insert(schema.families)
     .values({ displayName: name, provinceOrState: 'ON', linqGroupChatId: options.linqGroupChatId })
     .returning({ id: schema.families.id });
   const familyId = family?.id as string;
-  const userId = await seedPerson(familyId, phone, name, 'primary_parent');
+  const userId = await seedPerson(familyId, phone, name, 'primary_parent', database);
   return { familyId, userId };
 }
 
@@ -85,14 +86,15 @@ async function seedPerson(
   phone: string,
   name: string,
   role: 'primary_parent' | 'co_parent' | 'nanny',
+  database: TestDb['database'] = db.database,
 ) {
-  const [user] = await db.database
+  const [user] = await database
     .insert(schema.users)
     .values({ externalAuthId: `sms:${name}`, name })
     .returning({ id: schema.users.id });
   const userId = user?.id as string;
-  await db.database.insert(schema.familyMembers).values({ familyId, userId, role });
-  await db.database.insert(schema.parentChannels).values({
+  await database.insert(schema.familyMembers).values({ familyId, userId, role });
+  await database.insert(schema.parentChannels).values({
     userId,
     familyId,
     kind: 'sms',
@@ -743,13 +745,13 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
     };
   }
 
-  function door(list?: ListChatHandles) {
+  function door(list?: ListChatHandles, database: TestDb['database'] = db.database) {
     const outcomes: string[] = [];
     const sends: Array<{ chatId: string; text: string; replyTo?: string }> = [];
     const jobs: unknown[] = [];
     const voice = fakeSpokenLineComposer();
     const deps = {
-      database: db.database,
+      database,
       log: { info: () => {}, warn: () => {}, error: () => {} },
       countOutcome: async (outcome: string) => {
         outcomes.push(outcome);
@@ -964,6 +966,57 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
     expect(await response.json()).toEqual({ outcome: 'signal_from_me' });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(await rosters()).toEqual([]);
+  });
+
+  describe('before migration 0158 reaches the database', () => {
+    let bare: TestDb;
+
+    beforeAll(async () => {
+      bare = await createTestDb();
+      await bare.exec('drop table linq_group_roster_members; drop table linq_group_rosters;');
+    });
+
+    afterEach(async () => {
+      await bare.exec('truncate table families, users cascade');
+    });
+
+    afterAll(async () => {
+      await bare.close();
+    });
+
+    it('names not_migrated for someone added to a claimed group, and asks nobody', async () => {
+      await seedHousehold(PARENT, 'Parent', { linqGroupChatId: CHAT, database: bare.database });
+      const { deps, sends, voice } = door(handlesOk([PARENT]).list, bare.database);
+
+      const response = await handleLinqInboundRequest(signed(addedSomeone(UNKNOWN_A)), deps);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ outcome: 'not_migrated' });
+      expect(voice.calls).toEqual([]);
+      expect(sends).toEqual([]);
+    });
+
+    it('claims a new group from the phrase but names not_migrated instead of asking', async () => {
+      const { familyId } = await seedHousehold(PARENT, 'Parent', { database: bare.database });
+      const { deps, sends, voice } = door(handlesOk([PARENT, UNKNOWN_A]).list, bare.database);
+
+      const response = await handleLinqInboundRequest(
+        signed(groupMessage(PARENT, 'this is our year', 'in-claim-bare')),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        outcome: 'group_claimed',
+        claim: 'claimed',
+        roster: 'not_migrated',
+      });
+      const [family] = await bare.database
+        .select({ chatId: schema.families.linqGroupChatId })
+        .from(schema.families)
+        .where(eq(schema.families.id, familyId));
+      expect(family?.chatId).toBe(CHAT);
+      expect(voice.calls).toEqual([]);
+      expect(sends).toEqual([]);
+    });
   });
 });
 

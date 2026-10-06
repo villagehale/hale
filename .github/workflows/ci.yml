@@ -215,9 +215,6 @@ jobs:
       - name: Group onboarding voice composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:group-onboarding-voice
 
-      - name: Group role reading classifier eval (cached-only)
-        run: pnpm --filter @hale/worker eval:group-role-reading
-
       - name: Reminder voice composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:reminder-voice
 

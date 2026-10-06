@@ -54,7 +54,6 @@
     "eval:registration-verify": "node evals/run-registration-verify-eval.mjs --cached-only",
     "eval:travel-extract": "node evals/run-travel-extract-eval.mjs --cached-only",
     "eval:group-onboarding-voice": "node evals/run-group-onboarding-voice-eval.mjs --cached-only",
-    "eval:group-role-reading": "node evals/run-group-role-reading-eval.mjs --cached-only",
     "eval:gateway-smoke": "node evals/run-gateway-model-smoke.mjs",
     "eval:vil143": "node evals/run-vil143-eval.mjs",
     "clean": "rm -rf dist .turbo *.tsbuildinfo",

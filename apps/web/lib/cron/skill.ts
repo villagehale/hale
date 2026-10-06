@@ -65,8 +65,3 @@ export function loadOnboardingFriendShortSkill(): Promise<Skill> {
 export function loadKidItemClassifierSkill(): Promise<Skill> {
   return loadCronSkill('kid-item-classifier');
 }
-
-/** A group member's reply to "who are you in this family", when code could not read it. */
-export function loadGroupRoleReadingSkill(): Promise<Skill> {
-  return loadCronSkill('group-role-reading');
-}

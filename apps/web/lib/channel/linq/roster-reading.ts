@@ -1,11 +1,9 @@
 /**
  * Group onboarding v2 — what a member said they are, read from their own reply.
  *
- * Pure, with no imports: the worker eval loads it through tsx. Code reads the clear
- * cases with en/fr cues. A reply that names two roles, negates one, or names a step
- * relation is `unclear`, never a guess. Only what the cues could not decide goes to the
- * classifier (skill `group-role-reading`), and only a reading at or above
- * {@link ROSTER_ROLE_CONFIDENCE_MIN} counts. Everything else stays `unclear`.
+ * Pure. Code reads the clear cases with en/fr cues; no model reads a reply, because the
+ * reading decides the seat. A reply that names two roles, negates one, or names a step
+ * relation is `unclear`, never a guess, and gets the one re-ask.
  */
 
 export const ROSTER_ROLES = [
@@ -21,32 +19,8 @@ export type RosterRole = (typeof ROSTER_ROLES)[number];
 export type RosterParentRole = 'mother' | 'father' | null;
 
 export type RosterReading =
-  | { kind: 'role'; role: RosterRole; parentRole: RosterParentRole; via: 'cue' | 'model' }
-  | {
-      kind: 'unclear';
-      via: 'cue' | 'model' | 'low_confidence' | 'classifier_unavailable' | 'classifier_failed';
-    };
-
-/** The classifier's enum. `mom`/`dad` carry the parent's role; `parent` does not. */
-export const ROSTER_ROLE_MODEL_ANSWERS = [
-  'mom',
-  'dad',
-  'parent',
-  'grandparent',
-  'nanny',
-  'babysitter',
-  'not_family',
-  'decline',
-  'unclear',
-] as const;
-export type RosterRoleModelAnswer = (typeof ROSTER_ROLE_MODEL_ANSWERS)[number];
-
-export const ROSTER_ROLE_CONFIDENCE_MIN = 0.8;
-
-export interface RosterRoleClassifier {
-  /** Returns the raw tool value; {@link acceptRosterRoleVerdict} decides what counts. */
-  classify(input: { text: string }): Promise<unknown>;
-}
+  | { kind: 'role'; role: RosterRole; parentRole: RosterParentRole }
+  | { kind: 'unclear' };
 
 const GRANDPARENT =
   /\b(?:grand[- ]?(?:ma|pa|mom|mum|dad|mother|father|parent|maman|papa|mere|pere)s?|grann(?:y|ie)|gran|gramma|grammy|nana|nanna|nonna|nonno|mamie|mamy|papi|papy|meme|pepe)\b/g;
@@ -83,10 +57,10 @@ function normalize(text: string): string {
 }
 
 function role(value: RosterRole, parentRole: RosterParentRole = null): RosterReading {
-  return { kind: 'role', role: value, parentRole, via: 'cue' };
+  return { kind: 'role', role: value, parentRole };
 }
 
-const UNCLEAR: RosterReading = { kind: 'unclear', via: 'cue' };
+const UNCLEAR: RosterReading = { kind: 'unclear' };
 
 export function readRosterReply(text: string): RosterReading {
   const said = normalize(text);
@@ -117,46 +91,4 @@ export function readRosterReply(text: string): RosterReading {
     return role('parent', mother ? 'mother' : father ? 'father' : null);
   }
   return role(only);
-}
-
-/** Only an enum answer at or above the gate counts. Anything else is `unclear`. */
-export function acceptRosterRoleVerdict(raw: unknown): RosterReading {
-  const value = raw as { role?: unknown; confidence?: unknown } | null;
-  const answer = value?.role;
-  if (
-    typeof answer !== 'string' ||
-    !(ROSTER_ROLE_MODEL_ANSWERS as readonly string[]).includes(answer) ||
-    answer === 'unclear'
-  ) {
-    return { kind: 'unclear', via: 'model' };
-  }
-  const confidence = typeof value?.confidence === 'number' ? value.confidence : 0;
-  if (confidence < ROSTER_ROLE_CONFIDENCE_MIN) return { kind: 'unclear', via: 'low_confidence' };
-  if (answer === 'mom' || answer === 'dad') {
-    return {
-      kind: 'role',
-      role: 'parent',
-      parentRole: answer === 'mom' ? 'mother' : 'father',
-      via: 'model',
-    };
-  }
-  return { kind: 'role', role: answer as RosterRole, parentRole: null, via: 'model' };
-}
-
-export async function readRosterReplyWithClassifier(
-  text: string,
-  classifier: RosterRoleClassifier | undefined,
-): Promise<RosterReading> {
-  const cued = readRosterReply(text);
-  if (cued.kind === 'role') return cued;
-  if (!classifier) return { kind: 'unclear', via: 'classifier_unavailable' };
-  try {
-    return acceptRosterRoleVerdict(await classifier.classify({ text }));
-  } catch (err) {
-    console.warn(
-      { err: err instanceof Error ? err.name : 'unknown' },
-      'linq roster: role classifier failed',
-    );
-    return { kind: 'unclear', via: 'classifier_failed' };
-  }
 }

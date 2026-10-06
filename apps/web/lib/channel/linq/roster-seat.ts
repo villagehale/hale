@@ -13,7 +13,8 @@ import type { RosterParentRole } from './roster-reading';
  * is a `co_parent` (scope `linq_group_role_reply`); a grandparent, nanny or babysitter
  * gets that scoped role and the caregiver consent `caregiver:<role>`. `extended` and
  * `service` are never written. A phone already verified in another family is refused
- * and named; nothing about this family is written for it.
+ * and named; nothing about this family is written for it. So is someone this family
+ * already seated in another role: a reply never changes a role the family gave.
  */
 
 export type SeatRole = 'co_parent' | 'grandparent' | 'nanny' | 'babysitter';
@@ -24,7 +25,7 @@ export type SeatReading =
   | { role: 'parent'; parentRole: RosterParentRole }
   | { role: CaregiverRole; parentRole: null };
 
-export type SeatRefusal = 'other_family' | 'other_chat' | 'co_parent_seat_taken';
+export type SeatRefusal = 'other_family' | 'other_chat' | 'co_parent_seat_taken' | 'role_conflict';
 
 export type SeatOutcome =
   | { outcome: 'seated'; userId: string; role: SeatRole; groupRole: GroupSeatRole }
@@ -176,6 +177,18 @@ export async function seatConfirmedMember(
   const existing = await resolveVerifiedChannelByPhone(database, member.phone);
   if (existing && existing.familyId !== member.familyId) {
     return refuse(database, member, 'other_family', input.now);
+  }
+  if (existing) {
+    const [held] = await database
+      .select({ role: schema.familyMembers.role })
+      .from(schema.familyMembers)
+      .where(
+        and(
+          eq(schema.familyMembers.familyId, member.familyId),
+          eq(schema.familyMembers.userId, existing.userId),
+        ),
+      );
+    if (held && held.role !== role) return refuse(database, member, 'role_conflict', input.now);
   }
   const [liveSeat] = await database
     .select({ chatId: schema.linqGroupMembers.chatId })

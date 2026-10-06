@@ -164,7 +164,6 @@ function turnPorts(
     ports: {
       now: NOW,
       voice,
-      classifier: undefined,
       send,
       recordInbound: async (
         message: LinqInboundText,
@@ -384,6 +383,18 @@ describe('askMember', () => {
       }),
     ).toEqual({ outcome: 'group_member_refused', reason: 'other_family' });
     expect(sent).toEqual([]);
+    expect(await memberStatus(OTHER_PARENT)).toBe('refused');
+
+    expect(
+      await askMember(db.database, {
+        chatId: CHAT,
+        phone: OTHER_PARENT,
+        now: NOW,
+        voice: fakeSpokenLineComposer(),
+        send,
+      }),
+    ).toEqual({ outcome: 'member_already' });
+    expect(await audits('linq_group_member_refused')).toHaveLength(1);
   });
 });
 
@@ -431,17 +442,32 @@ describe('takeRosterTurn', () => {
     const { send, sent } = wire();
     const { ports } = turnPorts(voice, send);
 
-    const first = await takeRosterTurn(db.database, inbound(GRAN, "it's me lol", 'in-1'), ports);
+    const first = await takeRosterTurn(
+      db.database,
+      inbound(GRAN, "it's me, I do the school runs", 'in-1'),
+      ports,
+    );
     expect(first).toMatchObject({ handled: true, outcome: 'role_unclear' });
     expect(sent.map((s) => s.replyTo)).toEqual(['in-1']);
     expect(voice.calls[0]?.input.kind).toBe('role_reask');
     expect(await memberStatus(GRAN)).toBe('reasked');
     expect(await audits('linq_group_role_reasked')).toHaveLength(1);
 
-    const second = await takeRosterTurn(db.database, inbound(GRAN, 'haha same', 'in-2'), ports);
+    const second = await takeRosterTurn(
+      db.database,
+      inbound(GRAN, 'the one who carried them lol', 'in-2'),
+      ports,
+    );
     expect(second).toMatchObject({ handled: true, outcome: 'role_unclear_final' });
+    expect(await memberStatus(GRAN)).toBe('reasked');
     expect(sent).toHaveLength(1);
     expect(await db.database.select().from(schema.linqGroupMembers)).toEqual([]);
+    expect(await db.database.select().from(schema.consentRecords)).toEqual([]);
+    expect(
+      (
+        await db.database.select({ role: schema.familyMembers.role }).from(schema.familyMembers)
+      ).map((row) => row.role),
+    ).toEqual(['primary_parent']);
   });
 
   it('asks a sender the roster has never seen before reading anything they said as a role', async () => {

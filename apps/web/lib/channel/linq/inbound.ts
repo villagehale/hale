@@ -65,8 +65,6 @@ import {
 import { isYearFindPollNone, lookupLinqPollOption } from './poll';
 import { type ListChatHandles, ensureRoster, groupRosterTrigger, startGroupRoster } from './roster';
 import { askRoster, sayNoFamilyYet } from './roster-ask';
-import type { RosterRoleClassifier } from './roster-reading';
-import { defaultRosterRoleClassifier } from './roster-role-classifier';
 import { type RosterTurnPorts, takeRosterTurn } from './roster-turn';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
 import { type LinqEffectResult, markLinqChatRead } from './transport';
@@ -133,8 +131,6 @@ export async function handleLinqInboundRequest(
     readSharedLocality?: typeof readSharedLocality;
     /** Test seam for group onboarding v2's lines. Production composes with the model. */
     groupVoice?: SpokenLineComposer;
-    /** Test seam for reading a roster reply code could not. Production asks the model. */
-    roleClassifier?: RosterRoleClassifier;
     /** Test seam for GET /chats/{id}. Production calls Linq. */
     listChatHandles?: ListChatHandles;
   },
@@ -398,7 +394,6 @@ function rosterPorts(deps: LinqDoorDeps): RosterTurnPorts {
   return {
     now: deps.now?.() ?? new Date(),
     voice: deps.groupVoice ?? defaultSpokenLineComposer(),
-    classifier: deps.roleClassifier ?? defaultRosterRoleClassifier(),
     send: deps.sendGroupText,
     listHandles: deps.listChatHandles,
     recordInbound: (message, owner) => recordHandledInbound(deps, message, owner),
@@ -612,6 +607,10 @@ async function claimGroupFromTrigger(
       now,
       listHandles: ports.listHandles,
     });
+    if (roster.outcome === 'not_migrated') {
+      await deps.countOutcome('intake');
+      return json({ outcome: 'group_claimed', claim: claim.status, roster: roster.outcome });
+    }
     const ask = await askRoster(deps.database, { chatId: message.chatId, ...ports });
     deps.log.info(
       { outcome: 'group_claimed', claim: claim.status, roster: roster.outcome, ask: ask.outcome },
@@ -885,11 +884,15 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     linqGroupOnboardingV2Enabled()
   ) {
     const ports = rosterPorts(deps);
-    await ensureRoster(deps.database, {
+    const roster = await ensureRoster(deps.database, {
       chatId: signal.chatId,
       now: ports.now,
       listHandles: ports.listHandles,
     });
+    if (roster.outcome === 'not_migrated') {
+      await deps.countOutcome('ignored');
+      return json({ outcome: roster.outcome });
+    }
     const asked = await askParticipantAdded(deps.database, {
       chatId: signal.chatId,
       participantHandle: signal.participantHandle,

@@ -9,7 +9,7 @@
 //
 // What is NOT tested here: the claim/send/ledger plumbing and the locked fallback
 // (roster-ask.pglite.test.ts, with a fake voice), and reading a member's reply
-// (roster-reading.test.ts, run-group-role-reading-eval.mjs). This eval is only the words.
+// (roster-reading.test.ts; code only, no model). This eval is only the words.
 //
 // Usage (from apps/worker):
 //   node --env-file=../../.env evals/run-group-onboarding-voice-eval.mjs            # live, then caches

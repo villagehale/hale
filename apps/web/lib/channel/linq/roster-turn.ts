@@ -17,11 +17,7 @@ import {
   reaskRole,
   sayNoFamilyYet,
 } from './roster-ask';
-import {
-  type RosterReading,
-  type RosterRoleClassifier,
-  readRosterReplyWithClassifier,
-} from './roster-reading';
+import { type RosterReading, readRosterReply } from './roster-reading';
 import { declineRosterMember, seatConfirmedMember } from './roster-seat';
 
 /**
@@ -35,7 +31,6 @@ import { declineRosterMember, seatConfirmedMember } from './roster-seat';
  */
 
 export interface RosterTurnPorts extends RosterVoicePorts {
-  classifier: RosterRoleClassifier | undefined;
   listHandles?: ListChatHandles;
   recordInbound: (
     message: LinqInboundText,
@@ -133,7 +128,7 @@ export async function takeRosterTurn(
     return handled('roster_member_settled', 'ignored');
   }
 
-  const reading = await readRosterReplyWithClassifier(message.text, ports.classifier);
+  const reading = readRosterReply(message.text);
   const reply = { messageId: message.messageId, text: message.text };
   if (reading.kind === 'unclear') {
     if (member.status === 'reasked') return handled('role_unclear_final', 'ignored');

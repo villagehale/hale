@@ -320,6 +320,43 @@ describe('seatConfirmedMember', () => {
     expect(familyRoles).toEqual([{ role: 'primary_parent' }]);
   });
 
+  it('refuses a caregiver of this family who says they are a parent, and keeps the role the family gave them', async () => {
+    const { familyId } = await seedHousehold(PARENT, 'Parent');
+    const [nanny] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'sms:nanny', name: 'Nanny' })
+      .returning({ id: schema.users.id });
+    const nannyUserId = nanny?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: nannyUserId, role: 'nanny' });
+    await db.database.insert(schema.parentChannels).values({
+      userId: nannyUserId,
+      familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(NANNY),
+      phoneE164Hash: phoneBlindIndex(NANNY),
+      verifiedAt: NOW,
+    });
+    await askedRoster([PARENT, NANNY]);
+
+    const refused = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(NANNY)).id,
+      reading: { role: 'parent', parentRole: 'mother' },
+      verbatimReply: 'mom here',
+      now: NOW,
+    });
+    expect(refused).toEqual({ outcome: 'seat_refused', reason: 'role_conflict' });
+    expect((await memberFor(NANNY)).status).toBe('refused');
+    const [membership] = await db.database
+      .select({ role: schema.familyMembers.role })
+      .from(schema.familyMembers)
+      .where(eq(schema.familyMembers.userId, nannyUserId));
+    expect(membership?.role).toBe('nanny');
+    expect(await db.database.select().from(schema.consentRecords)).toEqual([]);
+    expect(await db.database.select().from(schema.linqGroupMembers)).toEqual([]);
+  });
+
   it('seats nobody who was not asked', async () => {
     await seedHousehold(PARENT, 'Parent');
     await askedRoster([PARENT, DAD]);
