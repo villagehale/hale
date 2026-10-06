@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The cancel instruction is unambiguous — there is exactly one Thursday swim (Thu 5:15pm, East pool). Drafting it and asking for YES to confirm is the correct handling. Instead, Hale turns it into a question (\"Want me to cancel…?\") rather than presenting the draft and asking \"YES to confirm.\" That drops the contract shape: the parent is handed back a yes/no decision instead of a confirmable draft, and there is no \"YES to confirm\" prompt that the system would recognise as consent.\n\nOn the Saturday indoor ask: the offerable list has Central Library story time (Sat, Aug 8) — a verified candidate — so surfacing it is exactly right. However Riverdale Farm (Sun, Aug 9, outdoor) is in offerable too and was wisely not mentioned. Good selection there.\n\nThe draft cap is 2 and only one draft was filed (cancel), leaving room to also draft the new Saturday item, but that is fine — the parent hasn't approved the cancel yet, so queuing only the cancel makes sense.\n\nThe main failure is the contract shape: a drafted cancel should be presented as \"Thursday swim cancelled — YES to confirm\" not as a question about whether to proceed. This is a meaningful shape error (closer to a 3) but not a 2-level problem since the underlying action and information are correct.",
+    "score": 3
+  }
+}

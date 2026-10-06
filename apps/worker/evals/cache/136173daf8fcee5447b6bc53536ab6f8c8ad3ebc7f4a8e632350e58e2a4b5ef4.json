@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that a deterministic branch handles the Google Calendar connection request when the parent uses the exact trigger phrase, and it hands Sam the plain words to send (\"connect my Google Calendar\") so the next text lands correctly. It does not write out a URL, does not refuse the feature, does not send the parent to the app, and does not invent machinery. It is short, accurate, and actionable. The only minor blemish is \"Yep\" as an opener — a tiny informality that adds nothing — but it does not harm the reply. This is the correct shape for this situation.",
+    "score": 5
+  }
+}

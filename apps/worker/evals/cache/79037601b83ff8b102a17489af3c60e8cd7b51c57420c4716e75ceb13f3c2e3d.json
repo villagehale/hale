@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent pasted a course-page link in their message, which is exactly the condition required for `watch_for_opening`. The reply correctly claims it is watching that specific link and will text when a spot appears — that is the correct and complete handling. The reply is concise, names what it is watching (the Tuesday preschool swim), and delivers the one promise the parent needed. No invented details, no app referral, no URL written out, no machinery exposed. One small blemish: \"with registration open\" is a slight inference not directly supported by anything in `knows` or `week`, but it is a minor redundant clause rather than an invented fact. Otherwise the shape is exactly right.",
+    "score": 4
+  }
+}

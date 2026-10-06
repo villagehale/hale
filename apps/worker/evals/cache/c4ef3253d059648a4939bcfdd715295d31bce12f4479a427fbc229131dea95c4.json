@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M482GTKHJKDACY2N89HNZJZY",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Halton Hills fall registration opens Sep 1, 7:00 a.m. for residents - I'm already on it and I'll text you before it opens so you can get Milo's swim spot."
+      }
+    ],
+    "usage": {
+      "input_tokens": 484,
+      "output_tokens": 62,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19146,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 1850
+}

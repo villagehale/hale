@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "ambiguous",
+    "polarity": "yes",
+    "confidence": "medium",
+    "reason": "Plain yes to one of two calendar actions; parent did not name which one"
+  },
+  "latencyMs": 1405
+}

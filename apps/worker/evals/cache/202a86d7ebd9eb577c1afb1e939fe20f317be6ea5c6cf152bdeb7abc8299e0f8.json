@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The subject reuses the summary and time exactly as given. The body stays vague about the appointment type, reuses the summary and time, confirms the .ics attachment is present, and tells the reader their calendar app will offer to add it when opened. Two sentences, no extra details, no child reference, no greeting or sign-off, no exclamation mark."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent pasted a course-page link in their own message, which is exactly the condition that unlocks `watch_for_opening`. The reply correctly says it has started watching and will text when a spot shows — that is the right shape. No invented detail, no app referral, no URL written out, no greeting or sign-off. The one small issue is \"with registration open\" — this is a minor unnecessary clause (the class being full already implies registration is open/being tracked), slightly padding the reply, but it does not mislead. Otherwise clean and correct.",
+    "score": 4
+  }
+}

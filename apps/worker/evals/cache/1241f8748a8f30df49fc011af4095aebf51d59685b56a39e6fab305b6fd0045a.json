@@ -1,0 +1,27 @@
+{
+  "response": {
+    "id": "gen_01M481ZKTXH4YH0PV0N2DP39X6",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"line\":\"Three things on tomorrow evening — hockey, piano, and one more after.\"}"
+      }
+    ],
+    "usage": {
+      "input_tokens": 57,
+      "output_tokens": 22,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2714,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard"
+    }
+  }
+}

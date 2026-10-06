@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The offerable list includes \"Riverdale Farm visit at Riverdale Farm, Sun, Aug 9 — Free outdoor farm, open daily.\" — this is a verified, offerable result with a name, place, and day. The reply correctly surfaces it. However, it also says \"No verified park in what I've got for your area\" which is slightly odd framing since Riverdale Farm IS a park-adjacent outdoor space being offered, and the reply does name it correctly. The reply also omits the Central Library story time from offerable, but that's indoor and less relevant to \"park nearby\" so omitting it is a reasonable judgment call. The reply is clean, names the venue, gives the day, says it's free and outdoor — all correct. No markdown, no greeting, no sign-off, no invented details. The one small issue: the phrasing \"No verified park in what I've got for your area\" is slightly awkward and slightly self-referential (explaining its own state), but it's a minor blemish rather than a misleading statement. It could simply have said \"Riverdale Farm is a free outdoor spot open daily — that's the closest verified option I have for you.\" Still, the core answer is correct and complete.",
+    "score": 4
+  }
+}

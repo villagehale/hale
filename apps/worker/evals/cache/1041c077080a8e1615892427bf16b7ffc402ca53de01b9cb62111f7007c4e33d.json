@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread shows Hale previously surfaced \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\" — that is the only gymnastics class in context, so the reference is unambiguous. The parent asked to get it on the calendar, which means Hale should draft the add and present it with \"YES to confirm.\" Instead, Hale asks a clarifying question (\"Want me to add…?\") when it already has a draft in `drafted` (calendar_add). The correct shape was to name the item and end \"...? YES to confirm.\" Asking \"Want me to?\" when a draft is already in hand and the instruction was clear is returning the decision to the parent unnecessarily. That said, the reply does name the right event, the right venue, and the right time — it is not wrong on facts, just wrong in shape: it treats a clear instruction as a question rather than drafting and asking for YES. This is a moderate shape failure, not a fabrication or a serious misdirection.",
+    "score": 3
+  }
+}

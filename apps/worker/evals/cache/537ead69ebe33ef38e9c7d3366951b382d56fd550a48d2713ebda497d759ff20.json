@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread shows Hale already surfaced \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\" in an earlier message. The parent is now asking to get that gymnastics class on the calendar — one clear event, one clear instruction. `drafted` contains `calendar_add`, so a draft has been made. The correct shape is to name the change and end with \"YES to confirm.\" Instead, the reply asks a question (\"Want me to add…?\") as if no draft exists, when `drafted` is non-empty. The draft should have been presented as pending confirmation (\"Tiny Gym at Cartwheels, Sun Sep 13 at 9:30am — YES to confirm.\"), not as a fresh question. Asking whether to add it when it has already been drafted treats the parent as if they need to give a second instruction before anything happens, handing the job back. However, the information is correct, the venue and time match the thread, and the YES-to-confirm mechanism is implicitly intact (the parent can reply YES). The shape is slightly off — a question where a draft-confirmation line was required — but it is not deeply wrong.",
+    "score": 3
+  }
+}

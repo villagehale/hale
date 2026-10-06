@@ -1,0 +1,27 @@
+{
+  "response": {
+    "id": "gen_01M481VHAAHQKAYEFQP4KW40P3",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "```json\n{\n  \"greeting\": \"Here's your week.\",\n  \"weekFraming\": \"Mira's 18-month checkup is the main appointment to hold space for, and Theo turns 4 on Sunday — a good week to have something small planned. You might also like the nearby toddler music class if the timing works.\",\n  \"itemLines\": {\n    \"1\": \"Four years old — hope the day feels like exactly what he'd want.\",\n    \"2\": \"A family swim is a nice way to land the week before the birthday.\",\n    \"3\": \"Worth holding onto, especially with a checkup and a birthday in the mix.\"\n  },\n  \"signOff\": \"Have a good one.\"\n}\n```"
+      }
+    ],
+    "usage": {
+      "input_tokens": 136,
+      "output_tokens": 171,
+      "cache_creation_input_tokens": 2510,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 2510,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard"
+    }
+  }
+}

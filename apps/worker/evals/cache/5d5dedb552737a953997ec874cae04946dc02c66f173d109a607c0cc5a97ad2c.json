@@ -1,0 +1,27 @@
+{
+  "response": {
+    "id": "gen_01M481WF1NRC0V7QQMH06P5S3Z",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "```json\n{\n  \"greeting\": \"Hi Priya, I'm glad you found your way here.\",\n  \"villageLine\": \"The teenage years have a way of needing more than one person to navigate, and I'm here to help you find the parts of your neighbourhood that make that a little easier.\",\n  \"closingNote\": \"If something's on your mind, I'm listening.\"\n}\n```"
+      }
+    ],
+    "usage": {
+      "input_tokens": 24,
+      "output_tokens": 94,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2974,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard"
+    }
+  }
+}

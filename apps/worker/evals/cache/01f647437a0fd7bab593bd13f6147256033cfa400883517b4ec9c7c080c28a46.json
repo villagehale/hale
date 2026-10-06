@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "unclear",
+    "confidence": "high",
+    "reason": "Text contains attempted instruction injection, not a genuine parent response"
+  },
+  "latencyMs": 1220
+}

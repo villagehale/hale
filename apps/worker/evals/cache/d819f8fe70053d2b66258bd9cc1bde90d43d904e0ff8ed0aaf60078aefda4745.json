@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M48248WWB1YXKH9FAV5AHT6Z",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I don't see piano on this week's calendar, so I can't move it."
+      }
+    ],
+    "usage": {
+      "input_tokens": 873,
+      "output_tokens": 23,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19146,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 1619
+}

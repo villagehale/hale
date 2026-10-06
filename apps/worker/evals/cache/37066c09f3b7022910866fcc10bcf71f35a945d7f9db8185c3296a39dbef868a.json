@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that `watch_for_opening` requires a course-page link pasted by the parent, and asks for it — that is exactly the right answer per the rules (\"asking for the link is the right answer rather than a stall\"). It is one question, no sign-off, no markdown, no invented details, no app referral. Slightly wordy but accurate and complete.",
+    "score": 4
+  }
+}

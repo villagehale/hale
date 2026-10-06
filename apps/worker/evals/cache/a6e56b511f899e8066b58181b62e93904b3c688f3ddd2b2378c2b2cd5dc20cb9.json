@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The cancel instruction names exactly one event — Thursday swim — so it is resolved. The reply correctly drafts it and surfaces the cancellation for Sam to confirm, but it phrases the cancel as a question (\"Want me to cancel…?\") rather than naming the drafted change and ending with \"YES to confirm.\" The contract requires the literal word YES to be present so the reply is recognised as a consent prompt; a warmer phrasing that drops YES is explicitly scored worse than the correct shape. That is the main blemish. The indoor Saturday option is correctly drawn from offerable (Central Library story time, Bloor/Gladstone, Sat Aug 8) — the right one, not the Sunday farm visit. The reply is otherwise clean: no greeting, no sign-off, no app mention, no invented detail, one draft within the cap. Deducting one point for the missing YES confirmation prompt.",
+    "score": 4
+  }
+}

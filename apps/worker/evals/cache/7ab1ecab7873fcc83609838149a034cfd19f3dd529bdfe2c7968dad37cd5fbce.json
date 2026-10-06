@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "no",
+    "confidence": "high",
+    "reason": "This is a question asking for information, not an answer to either open question. It goes to Hale's coach."
+  },
+  "latencyMs": 1560
+}

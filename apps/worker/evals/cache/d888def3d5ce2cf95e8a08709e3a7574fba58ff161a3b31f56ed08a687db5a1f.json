@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text is unambiguous: there is exactly one swim lesson on Thursday (Thu 5:15pm, East pool), and the instruction is clear — move it to 17h45. There is no ambiguity about which event is meant. The correct handling is to draft the move and ask for YES to confirm, which Hale did draft (drafted: [\"calendar_move\"]). However, the reply merely restates the parent's request as a question (\"Tu veux que je deplace…?\") without naming the draft or asking for YES to confirm. It treats a clear instruction as if it were ambiguous, handing the job back to the parent rather than acting on it. The draft exists but the reply never names what was drafted, never gives the new time or the confirmation prompt (\"YES to confirm\"), so the parent has no idea a change is staged or how to approve it. This is a clear failure to close the loop on a resolved instruction.",
+    "score": 2
+  }
+}

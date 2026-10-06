@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent named exactly one event (soccer) and one day (Saturday), so the reference is fully resolved. The correct handling is to draft the move and ask for YES to confirm. The draft is present (`calendar_move`), which is right. However, the reply asks a clarifying question (\"Want me to move…?\") instead of presenting the drafted change and asking \"YES to confirm.\" — it reads as if the draft hasn't been made yet, when it has. The contract requires naming the change and ending with \"…? YES to confirm.\" so the parent's reply of YES is recognised as consent. This reply drops that mechanism entirely, leaving no confirmation path. It's one step off the correct shape but not wrong in content, so it's a 3 — does the job roughly but the shape is off (missing the YES-to-confirm anchor).",
+    "score": 3
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draft cap is 2. Hale drafted the two swims, named them clearly (Mon 4:30pm and Thu 5:15pm), and told Sam it will line up soccer and Wednesday's appointment next — correct handling of overflow without itemising or drafting the rest. However, the reply is missing the required \"YES to confirm\" contract language. The parent must text YES to trigger the cancellations, but the reply ends as a question without telling Sam to reply YES. That omission means the consent mechanism is broken — Sam has no signal that the literal word YES is what confirms it. This is a meaningful shape failure, but the core logic (cap handling, correct events identified, no app referral, no invented details) is right. A 3 fits: does the job but the shape is off — the YES confirmation prompt is absent.",
+    "score": 3
+  }
+}

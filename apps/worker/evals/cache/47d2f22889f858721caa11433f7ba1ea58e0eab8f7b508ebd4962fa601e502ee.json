@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to move soccer to 11 on Saturday. There is exactly one soccer event in the week (Soccer practice, Sat 10:00am, Cedarvale Park), so the reference is fully resolved — no clarifying question needed. The correct handling is to draft the move and ask for YES to confirm. The reply drafts the move (`drafted` is non-empty with \"calendar_move\") but ends with \"Want me to move soccer practice to Sat 11:00am?\" — a question rather than the required \"YES to confirm.\" contract. The product requires naming the change and ending with \"...? YES to confirm.\" so the parent's YES is recognised as consent. Dropping that word means the confirmation mechanism is broken: a reply of \"yes\" from the parent would not be caught as consent. That is a meaningful shape failure. It is not wrong in content — the event is correctly identified, the time is correct — but the contract is missing.",
+    "score": 3
+  }
+}

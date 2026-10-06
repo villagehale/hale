@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text names exactly one event (soccer) and one target time (11am Saturday). The reference is fully resolved — there is only one soccer event in the week. The correct handling is to draft the move and ask for YES to confirm. Instead, the reply asks \"Want me to move...\" as if seeking permission to act, when it should already have drafted and presented the draft for YES-confirmation. The `drafted` field shows a `calendar_move` was indeed drafted, but the reply doesn't name the confirmation word YES, which is required by the contract (\"...? YES to confirm.\"). A warmer paraphrase that drops the word YES is explicitly noted as worse. The reply also doesn't include the current time (10:00am) for clarity, though that's minor. The main failure is the missing YES instruction — without it, the parent's reply won't be recognised as consent.",
+    "score": 3
+  }
+}

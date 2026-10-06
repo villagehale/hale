@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one Thursday swim event and asks to move it to Friday 5:15. The week confirms there is one swim lesson on Thursday at 5:15pm at East pool. This is unambiguous — the correct handling is to draft the move and ask for YES confirmation. Instead, the reply asks a clarifying question (\"Want me to move...?\") as if the instruction were unclear, which hands the job back to the parent. The draft was made (calendar_move is in drafted), so the contract requires naming the change and ending with \"...? YES to confirm.\" — not rephrasing the parent's own request as a question. The reply is also missing the YES confirmation mechanic entirely: it asks \"Want me to?\" rather than stating what was drafted and requesting YES to confirm. This is a clear failure to execute on an unambiguous instruction and to follow the drafting contract.",
+    "score": 2
+  }
+}

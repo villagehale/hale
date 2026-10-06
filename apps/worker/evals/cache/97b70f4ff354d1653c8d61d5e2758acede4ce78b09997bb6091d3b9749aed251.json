@@ -1,0 +1,35 @@
+{
+  "response": {
+    "id": "gen_01M48259QXCEET6KWS1YXSHC88",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_01TqYmKDEPcHm3N4jNHzx4Ld",
+        "name": "propose_calendar_cancel",
+        "input": {
+          "eventId": "evt-swim-thu"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1137,
+      "output_tokens": 63,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19146,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 1212
+}

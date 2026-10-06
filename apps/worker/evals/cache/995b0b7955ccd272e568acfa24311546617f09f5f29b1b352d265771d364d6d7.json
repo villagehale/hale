@@ -1,0 +1,27 @@
+{
+  "response": {
+    "id": "gen_01M481Z9XAA9JR5PXNSMHBEJ37",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"line\":\"A swim afternoon for Maya tomorrow.\"}"
+      }
+    ],
+    "usage": {
+      "input_tokens": 33,
+      "output_tokens": 14,
+      "cache_creation_input_tokens": 2714,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 2714,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard"
+    }
+  }
+}

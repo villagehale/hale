@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply ignores the second offerable candidate — Central Library story time — which is fair since the parent asked about a park, not a library. But it also undersells Riverdale Farm: it is listed as a verified offerable with name, place (Riverdale Farm), and day (Sun, Aug 9), yet the reply drops the day and the venue address and hedges with \"in what I've got for your area,\" making it sound uncertain when it is a fully checked offerable. More critically, Soccer practice on Saturday is at Cedarvale Park — a park already on the family's own calendar. The reply says \"No verified park\" when there is literally a park in the week's events this Saturday. That omission is a real miss: a parent asking \"any park nearby\" would find it directly useful to know Cedarvale Park is already on the schedule this Saturday. The reply also adds \"this weekend\" loosely when the offerable is specifically Sunday Aug 9. Overall: the Cedarvale Park miss is a meaningful inaccuracy (not an invention, but a failure to surface a clear relevant fact from the week), and the hedging on a fully verified offerable is a shape problem. These together warrant a 3.",
+    "score": 3
+  }
+}

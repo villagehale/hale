@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text names exactly one event — Thursday swim — and gives an exact destination (Friday 5:15). The reference is fully resolved; Hale should have drafted the move and asked for YES to confirm, per the contract. Instead, Hale drafted the move (drafted shows calendar_move) but then asked a clarifying question (\"Want me to move…?\") rather than presenting the draft and ending with \"YES to confirm.\" The drafted change exists but the reply treats it as if it hasn't been drafted yet, which is the wrong shape for a non-empty `drafted`. The parent is now being asked to confirm something they'll have to text back an answer to, but without the required YES-to-confirm framing that the contract demands. It also feels like it's asking permission for something already drafted rather than naming the change and asking for YES. That said, it does name the correct event, correct day, correct time, and correct venue — so the information is right and nothing is invented. The shape is slightly off (question instead of \"I'll move Thursday's swim to Fri 5:15 at East pool — YES to confirm\") but it's not badly wrong. This is a 3: does the job but the shape is off — it's a question when it should be a draft-plus-YES-to-confirm statement.",
+    "score": 3
+  }
+}

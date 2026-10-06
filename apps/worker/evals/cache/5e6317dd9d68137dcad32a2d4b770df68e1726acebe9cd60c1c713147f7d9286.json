@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M482DMMSKWC7RSKNWYRGMNQJ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Night wakings at this age are common and often tied to separation anxiety or habit, not hunger. Try a consistent, brief check-in script when Remy wakes - same words, same calm, no picking up - so he learns to resettle in his own bed.\n\nWant me to send the full sleep plan for Remy?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 1244,
+      "output_tokens": 97,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19146,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 2405
+}

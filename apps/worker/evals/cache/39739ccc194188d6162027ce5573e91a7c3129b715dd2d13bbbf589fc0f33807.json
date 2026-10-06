@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "yes",
+    "confidence": "high",
+    "reason": "Answer with a condition: parent says yes but changes the thing (asks for Tuesday instead). Coach must handle the whole sentence, not just the yes."
+  },
+  "latencyMs": 1570
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly recalls the verified registration window (Sep 1, 7:00 a.m. for residents), correctly states that Hale is already watching it (watching: true), and correctly promises to text before it opens — all of which are true facts per the rules. It names Milo, which is right. No URL, no app redirect, no invented detail, no greeting or sign-off, no markdown. Exactly the shape the product requires for a watching:true window.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that piano is not on this week's calendar and declines to move it. There are two private calendar items visible (Tue 3:45pm, Wed 9:00am), but per the rules, Hale cannot guess that either of them might be piano — it must not surface private items as possibilities. \"I don't see piano on this week's calendar\" is the complete and correct answer. The reply is short, accurate, and stops cleanly. No invented details, no app referral, no unnecessary machinery. The phrasing \"so I can't move it\" is a mild redundancy (the fact that it isn't there already implies it can't be moved), but it's not wrong or harmful. This is essentially a clean, correct reply with a very minor redundant clause.",
+    "score": 4
+  }
+}

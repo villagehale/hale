@@ -1,0 +1,41 @@
+{
+  "response": {
+    "id": "gen_01M482MYD9VCZJEFW9QP0WMP51",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EukGCsQBCBIYAipAVsVj5KyICwcLpU/GaezQaEH22pf66BojgzAsDZDBFqz7ILNMXja2RgyVblRIS2uGr3cWIaKNowGVIEE2sPipbTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzYjkzYTVkZC03MzAyLTQ4M2YtYWVhZS0zNjIwNzU1NDhhZTF6HnVwcm9mXzAxMUNma1NibmJZZEV1SDZ5Uk1Ta01RUJoBEQoPY2xhdWRlLXNvbm5ldC01qAGIzZLWBhIMyXpKYExgRTD4ej7HGgy4N7r6dxnZ6ea/hpoiMNDSovLy2fFiuFSGzV5xVzBWHZGq5B5dLmzqA/dGdN5c5pUqchCpPs9l1Jia0CifVCrRBNbHrNvfeMVLvq/NWamAGHhLcV0zd2VWNSK9pXZ6lKK9jeK0ktOJTr20jrpBCbeXATiFurXnQc4FmJGlpdeMA4V4Tf+jDLSaGSZlvQivcz61nGu8Mo3wBTNGNp/w96knuh9BcCCITepiK2rv8/s0+tmYDU2xAER7c5yMX0iVI8zJC5AZI50ZoeTeUnWrJhTAFSlO4yjWhyOp/6LyUwAqY4ncMxwqZLBumqZVMkcS9VL2ku2DrvUzeHfPwsRwMa3Q5bwDXmk6m6Bm0oRFSdxP3kPLqdfuwjp/Xnkv7Z3Ei6mkhKo9eQV9Z8UNUSADlOWzr2znW2BCnzUtT3OdaFhRd9L+ZBog1bYI9QamQS+oy6w8haCT73snuGt/KFD0URcoJP5uk11LAAzrAJRjIZ9IzzjimZU7jTOXr6qDMcY1EufVjsCDC6Pk0LVCZJV44l0EUXTcPwAurldfssX415Eqvk8skrS2IOt+NU7aHWlE3n5JeS9dmIe+S0tQzYhPmY86r4mHVvXara3obKW22lRgl4ndrCR04xv4q61AzYFauU8F4Ci9ZMuRAOTLG2LpfQHCm/C3skSxYxsC9YlreSdQkaErJMe4E9Heh99IfgA0jfDHpm/1ehwJZY7RJ00Z7+x9NxDns5QvY7JokBfO+tvpAKs/4cHYMMFvjvVSExHpfT//dFfVfhQHRcpTuFEXcIUV2bEyNhB7Ha4R95Srv3JJKMJ79JEB2AfnftM0JZOcoWdqXfb10NBicM0nO/MiLdpYNY4md19SE7vLqWl6wihM/657GAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01PiiRn7uXmkCAkohi7X4CTg",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "newborn",
+          "ageMonths": 5
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 427,
+      "output_tokens": 279,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19146,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 198
+      }
+    }
+  },
+  "latencyMs": 4003
+}

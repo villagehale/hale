@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "gen_01M48296HMWDJ94KFXMY5E14B4",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Saturday already has soccer practice at 10am at Cedarvale Park. There's also Central Library story time at Bloor/Gladstone branch, Sat, Aug 8, free drop-in indoors if you want something else that day."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1060,
+      "output_tokens": 76,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19146,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "service_tier": "standard",
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    }
+  },
+  "latencyMs": 2100
+}

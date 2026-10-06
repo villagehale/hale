@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that `watch_for_opening` requires a course-page link pasted by the parent, and asks for it — that is exactly the right answer per the rules (\"asking for the link is the right answer rather than a stall\"). The reply is clean, no greeting, no sign-off, one question, no invented detail, no app referral. The slight redundancy is the phrase \"full class page\" which is a minor extra word, but the message is otherwise precise and correct.",
+    "score": 5
+  }
+}

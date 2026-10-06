@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply ignores the other offerable find — Central Library story time — but more importantly, Riverdale Farm is in `offerable` with a verified day (Sun, Aug 9), and the reply handles it correctly as a checked find with name, place, and day. However, the reply says \"No verified park in what I've got for your area\" which is misleading: Riverdale Farm IS a verified outdoor spot (essentially a park/farm), and soccer practice is already on the schedule at Cedarvale Park — a literal park that is already in the week. The parent asked about a nearby park; Cedarvale Park is on the schedule this week and is a park. The reply misses that entirely. It also drops the second offerable (story time), though that is indoors and less relevant to \"park.\" The opening denial (\"No verified park\") is inaccurate given Riverdale Farm is a verified outdoor open-air location, and the week already contains Cedarvale Park. The answer is partially useful but buries the lead with a false denial and omits a relevant scheduled item.",
+    "score": 3
+  }
+}
