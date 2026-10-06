@@ -20,6 +20,7 @@ export type GroupLineKind =
   | 'stranger_hold'
   | 'name_ack'
   | 'calendar_ask'
+  | 'calendar_link'
   | 'calendar_receipt'
   | 'gmail_ask'
   | 'gmail_receipt'
@@ -58,6 +59,7 @@ export type GroupLineRequest =
   | { kind: 'stranger_hold'; parentA: string }
   | { kind: 'name_ack'; name: string }
   | { kind: 'calendar_ask'; name: string }
+  | { kind: 'calendar_link'; name: string }
   | { kind: 'calendar_receipt'; name: string }
   | { kind: 'gmail_ask'; name: string }
   | { kind: 'gmail_receipt'; name: string }
@@ -68,7 +70,7 @@ export type GroupLineRequest =
   | { kind: 'how_it_went'; name: string | null; activity: string }
   | { kind: 'both_free'; slots: readonly [string, string] }
   | { kind: 'decision_sync'; decisions: readonly GroupDecisionFact[] }
-  | { kind: 'departure'; name: string | null; address?: 'tu' | 'vous' }
+  | { kind: 'departure'; name: string | null; address?: 'tu' | 'vous'; remaining?: number }
   | { kind: 'empty_saturday'; name: string | null; kid: string };
 
 /** Hale recommends and prepares. It never claims it booked. */
@@ -78,12 +80,33 @@ export const NO_BOOKING_CLAIM = {
     /\b(?:i(?:'ve| have)? (?:booked|registered|reserved|signed (?:him|her|them|you) up)|j'ai (?:r[ée]serv[ée]|inscrit)|c'est (?:r[ée]serv[ée]|inscrit))\b/i,
 };
 
+/** An internal name. It does not belong in a line a parent reads. */
+export const KIDS_YEAR_CLAIM = {
+  name: 'kids_year',
+  pattern: /kids['’] year|l['’]ann[ée]e des enfants|l['’]annee des enfants/i,
+};
+
+/** "You both" is a count. It is refused unless two people remain. */
+export const BOTH_WHEN_NOT_TWO = {
+  name: 'both',
+  pattern: /\byou both\b|\byou two\b|vous deux/i,
+};
+
 function unique(values: readonly string[]): string[] {
   return [...new Set(values.filter((value) => value.trim().length > 0))];
 }
 
 /** Facts, limits, and anchors for one kind. The model sees facts; the judge sees the rest. */
 export function groupLineInput(
+  request: GroupLineRequest,
+  language: ReplyLanguage,
+  extra: { parentWords?: string | null; recentTurns?: readonly SpokenTurn[] } = {},
+): SpokenLineInput {
+  const line = groupLineFields(request, language, extra);
+  return { ...line, forbidden: [KIDS_YEAR_CLAIM, ...(line.forbidden ?? [])] };
+}
+
+function groupLineFields(
   request: GroupLineRequest,
   language: ReplyLanguage,
   extra: { parentWords?: string | null; recentTurns?: readonly SpokenTurn[] } = {},
@@ -111,6 +134,20 @@ export function groupLineInput(
     case 'name_ack':
       return { ...base, facts: { name: request.name }, questions: 0 };
     case 'calendar_ask':
+      return {
+        ...base,
+        facts: { name: request.name },
+        questions: 1,
+        mustMention: [request.name],
+      };
+    case 'calendar_link':
+      return {
+        ...base,
+        facts: { name: request.name },
+        questions: 0,
+        mustMention: [request.name],
+        linkFollows: true,
+      };
     case 'gmail_ask':
       return {
         ...base,
@@ -193,9 +230,10 @@ export function groupLineInput(
       return {
         ...base,
         address: request.address ?? 'vous',
-        facts: { name: request.name },
+        facts: { name: request.name, remaining: request.remaining ?? null },
         questions: 0,
         mustMention: request.name ? [request.name] : [],
+        forbidden: request.remaining === 2 ? [] : [BOTH_WHEN_NOT_TWO],
       };
     case 'empty_saturday': {
       // The day is a fact the model must be handed, or the judge would refuse the

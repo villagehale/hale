@@ -2,7 +2,6 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { matchConnectorRequest } from '~/lib/channel/connect/detect';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
-import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
 import { soleGivenName } from '~/lib/channel/identity/name-reply';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
@@ -12,6 +11,7 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { type CalendarConsentReader, defaultCalendarConsentReader } from './calendar-consent';
 import { linqFromE164, linqGroupCoparentEnabled, linqGroupMembersEnabled } from './config';
 import {
   LINQ_GROUP_LINE_MISSING_TEXT,
@@ -42,9 +42,9 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * Children and postal code are not asked again. One welcome carries the name
  * ask. Every line here is model-written from real facts (group-voice.ts); a
  * line the model cannot write is not sent, #ops is paged, and the next inbound
- * tries again. The next beat asks for that parent's calendar. The connect link is a card in the group, bound to that parent,
- * never a 1:1 and never written into the ask. The beat after that asks for
- * Gmail the same way. One ask per turn. A Google account already on the
+ * tries again. The next beat asks, on its own, whether they want the kids'
+ * stuff on their calendar. The link goes out only after a model reading of yes
+ * on their reply. The beat after that asks for Gmail. One ask per turn. A Google account already on the
  * family is still refused at the connect callback.
  *
  * On unless `LINQ_GROUP_COPARENT` is exactly `off`.
@@ -52,6 +52,7 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
 
 const WELCOME_KEY = 'linq:coparent_welcome';
 const CALENDAR_ASK_KEY = 'linq:coparent_calendar_ask';
+const CALENDAR_LINK_KEY = 'linq:coparent_calendar_link';
 const GMAIL_ASK_KEY = 'linq:coparent_gmail_ask';
 const GMAIL_RECEIPT_KEY = 'linq:coparent_gmail_receipt';
 const UNCLAIMED_KEY = 'linq:coparent_unclaimed';
@@ -78,6 +79,8 @@ export interface GroupCoparentPorts {
   fetch?: typeof fetch;
   /** The group's model voice. Absent falls back to the production composer. */
   voice?: GroupVoice;
+  /** Reads a reply to the calendar question. Absent falls back to the production reader. */
+  consentReader?: CalendarConsentReader;
   recordInbound: (
     message: LinqInboundText,
     owner: { familyId: string; userId: string },
@@ -305,6 +308,7 @@ async function advanceSeatedCoparent(
   if (
     step.step !== 'awaiting_name' &&
     step.step !== 'awaiting_calendar' &&
+    step.step !== 'awaiting_calendar_yes' &&
     step.step !== 'awaiting_gmail'
   ) {
     return null;
@@ -378,7 +382,11 @@ async function advanceSeatedCoparent(
     };
   }
 
-  if (step.step === 'awaiting_calendar' || step.step === 'awaiting_gmail') {
+  if (
+    step.step === 'awaiting_calendar' ||
+    step.step === 'awaiting_calendar_yes' ||
+    step.step === 'awaiting_gmail'
+  ) {
     const [named] = await database
       .select({ name: schema.users.name })
       .from(schema.users)
@@ -393,8 +401,11 @@ async function advanceSeatedCoparent(
         body: { outcome: 'group_coparent_link_held' },
       };
     }
+    if (step.step === 'awaiting_calendar_yes') {
+      return answerCalendarConsent(database, message, sender, name, language, ports);
+    }
     if (step.step === 'awaiting_gmail') {
-      // Their reply to the calendar ask. One bubble, and never again if they ignore it.
+      // Their reply to the calendar link, or a pass on the calendar. One bubble.
       const asked = await sendGmailAskOnce(database, {
         familyId: sender.familyId,
         parentUserId: sender.userId,
@@ -425,20 +436,18 @@ async function advanceSeatedCoparent(
         body: { outcome: 'group_coparent_link_held', reason: 'voice_unsent' },
       };
     }
-    const sent = await sendAskWithLink(database, {
+    const sent = await sendLine(database, {
       familyId: sender.familyId,
       parentUserId: sender.userId,
-      groupChatId: message.chatId,
+      chatId: message.chatId,
       text: ask,
-      language,
       templateKey: CALENDAR_ASK_KEY,
       dedupeKey: `${CALENDAR_ASK_KEY}:${sender.userId}`,
-      provider: 'gcal',
       now: ports.now,
       fetch: ports.fetch,
     });
-    if (sent === 'sent') await setStep(database, sender.userId, 'awaiting_gmail', ports.now);
-    const outcome = sent === 'sent' ? 'group_coparent_gcal' : 'group_coparent_link_held';
+    if (sent === 'sent') await setStep(database, sender.userId, 'awaiting_calendar_yes', ports.now);
+    const outcome = sent === 'sent' ? 'group_coparent_calendar_asked' : 'group_coparent_link_held';
     return {
       type: 'done',
       outcome,
@@ -451,8 +460,76 @@ async function advanceSeatedCoparent(
 }
 
 /**
+ * The reply to the calendar question. A model `yes` sends the link. Anything
+ * else does not, and the next inbound is the Gmail ask. A failed read stays
+ * here and sends nothing.
+ */
+async function answerCalendarConsent(
+  database: Database,
+  message: LinqInboundText,
+  sender: { familyId: string; userId: string },
+  name: string,
+  language: ReplyLanguage,
+  ports: GroupCoparentPorts,
+): Promise<GroupCoparentEffect> {
+  const reading = await (ports.consentReader ?? defaultCalendarConsentReader()).read({
+    reply: message.text,
+    scope: { familyId: sender.familyId, database },
+  });
+  if (reading.status === 'unread') {
+    return {
+      type: 'done',
+      outcome: 'group_coparent_link_held',
+      count: 'intake',
+      body: { outcome: 'group_coparent_link_held', reason: 'consent_unread' },
+    };
+  }
+  if (reading.label !== 'yes') {
+    await setStep(database, sender.userId, 'awaiting_gmail', ports.now);
+    return {
+      type: 'done',
+      outcome: 'group_coparent_calendar_passed',
+      count: 'intake',
+      body: { outcome: 'group_coparent_calendar_passed' },
+    };
+  }
+  const link = await groupLine(ports, { kind: 'calendar_link', name }, language, message.text, {
+    familyId: sender.familyId,
+    database,
+  });
+  if (!link) {
+    return {
+      type: 'done',
+      outcome: 'group_coparent_link_held',
+      count: 'intake',
+      body: { outcome: 'group_coparent_link_held', reason: 'voice_unsent' },
+    };
+  }
+  const sent = await sendAskWithLink(database, {
+    familyId: sender.familyId,
+    parentUserId: sender.userId,
+    groupChatId: message.chatId,
+    text: link,
+    language,
+    templateKey: CALENDAR_LINK_KEY,
+    dedupeKey: `${CALENDAR_LINK_KEY}:${sender.userId}`,
+    provider: 'gcal',
+    now: ports.now,
+    fetch: ports.fetch,
+  });
+  if (sent === 'sent') await setStep(database, sender.userId, 'awaiting_gmail', ports.now);
+  const outcome = sent === 'sent' ? 'group_coparent_gcal' : 'group_coparent_link_held';
+  return {
+    type: 'done',
+    outcome,
+    count: 'intake',
+    body: { outcome },
+  };
+}
+
+/**
  * After both asks have gone out, a later "connect my gmail" (or calendar)
- * still gets a fresh 1:1 link. A both-free question is answered here and
+ * still gets a fresh link card. A both-free question is answered here and
  * nowhere else in the sweep.
  */
 async function answerDoneStep(
@@ -602,7 +679,7 @@ async function sendAskWithLink(
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     chatId: input.groupChatId,
-    text: `${input.text}\n${googleUnverifiedAppLine(input.language)}\n${url}`,
+    text: `${input.text}\n${url}`,
     templateKey: input.templateKey,
     dedupeKey: input.dedupeKey,
     now: input.now,

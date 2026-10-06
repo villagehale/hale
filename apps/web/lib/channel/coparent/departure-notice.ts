@@ -39,8 +39,9 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
  * transaction commits first and this runs after it, idempotently, keyed on the departure
  * it is reporting — a retry re-sends nothing.
  *
- * IT NAMES NOBODY (rule #1). Not the parent who left, and no child at all, so the teen
- * redaction question never arises here. See the copy.
+ * It names the parent who left when that name is stored, and no child (rule #1),
+ * so the teen redaction question never arises here. `facts.remaining` is how many
+ * people are still on the family after the seat is gone.
  */
 
 export const DEPARTURE_NOTICE_TEMPLATE_KEY = 'co_parent:departed';
@@ -131,6 +132,15 @@ async function parentLanguage(database: Database, userId: string): Promise<Reply
   return rows.find((row) => row.id === userId)?.locale?.startsWith('fr') ? 'fr' : 'en';
 }
 
+/** Seats still on the family. The leaver's row is already gone when this runs. */
+async function remainingMembers(database: Database, familyId: string): Promise<number> {
+  const rows = await database
+    .select({ userId: schema.familyMembers.userId })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.familyId, familyId));
+  return rows.length;
+}
+
 export async function tellStayingParent(
   database: Database,
   input: { familyId: string; departedUserId: string; now: Date },
@@ -200,25 +210,21 @@ export async function tellStayingParent(
     .returning({ id: schema.channelMessages.id });
   if (!claimed) return 'already_sent';
 
-  // Model-written (group-voice `departure`), from the one fact there is: who left, when
-  // their name is stored. In the group it reads to both (vous); 1:1 it is tu. An
-  // unwritten notice RELEASES the claim, so the next attempt tries again rather than
-  // finding a key spent on a message nobody received.
+  // Model-written (group-voice `departure`). The name is whoever left, when it is
+  // stored. `remaining` is the seats still on the family. In the group it reads
+  // vous; 1:1 it is tu. An unwritten notice RELEASES the claim, so the next attempt
+  // tries again rather than finding a key spent on a message nobody received.
   const target = await familyOutboundTarget(database, familyId);
-  let language: ReplyLanguage;
-  let departedName: string | null = null;
-  if (target.channel === 'group') {
-    const speech = await familySpeech(database, familyId, departedUserId);
-    language = speech.language;
-    departedName = speech.name;
-  } else {
-    language = await parentLanguage(database, parentUserId);
-  }
+  const speech = await familySpeech(database, familyId, departedUserId);
+  const language: ReplyLanguage =
+    target.channel === 'group' ? speech.language : await parentLanguage(database, parentUserId);
+  const remaining = await remainingMembers(database, familyId);
   const spoken = await speakGroupLine(
     ports.voice ?? defaultGroupVoice(),
     {
       kind: 'departure',
-      name: departedName,
+      name: speech.name,
+      remaining,
       address: target.channel === 'group' ? 'vous' : 'tu',
     },
     language,

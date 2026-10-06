@@ -99,15 +99,20 @@ describe('kidMailboxSubject', () => {
 
 describe('group asks hand the model the parent and a link to follow', () => {
   it('names the parent, asks one question, and lets the model say "this link"', () => {
-    for (const kind of ['calendar_ask', 'gmail_ask'] as const) {
-      for (const language of ['en', 'fr'] as const) {
-        const input = groupLineInput({ kind, name: 'Sam' }, language);
-        expect(input.address).toBe('vous');
-        expect(input.questions).toBe(1);
-        expect(input.linkFollows).toBe(true);
-        expect(input.mustMention).toEqual(['Sam']);
-        expect(input.facts).toEqual({ name: 'Sam' });
-      }
+    for (const language of ['en', 'fr'] as const) {
+      const ask = groupLineInput({ kind: 'calendar_ask', name: 'Sam' }, language);
+      expect(ask.address).toBe('vous');
+      expect(ask.questions).toBe(1);
+      expect(ask.linkFollows).toBeUndefined();
+      expect(ask.mustMention).toEqual(['Sam']);
+      expect(ask.facts).toEqual({ name: 'Sam' });
+      const gmail = groupLineInput({ kind: 'gmail_ask', name: 'Sam' }, language);
+      expect(gmail.questions).toBe(1);
+      expect(gmail.linkFollows).toBe(true);
+      const link = groupLineInput({ kind: 'calendar_link', name: 'Sam' }, language);
+      expect(link.questions).toBe(0);
+      expect(link.linkFollows).toBe(true);
+      expect(link.mustMention).toEqual(['Sam']);
     }
     // The receipts ask nothing and may not claim a booking.
     const receipt = groupLineInput({ kind: 'gmail_receipt', name: 'Sam' }, 'en');
@@ -170,7 +175,7 @@ describe('two-reader group lines', () => {
     expect(named.address).toBe('vous');
 
     const unnamed = groupLineInput({ kind: 'departure', name: null, address: 'tu' }, 'fr');
-    expect(unnamed.facts).toEqual({ name: null });
+    expect(unnamed.facts).toEqual({ name: null, remaining: null });
     expect(unnamed.mustMention).toEqual([]);
     expect(unnamed.address).toBe('tu');
     // A departure states; it does not ask.
@@ -311,10 +316,16 @@ describe('group lines are written from facts, inside the red lines', () => {
     expect(welcome.questions).toBe(1);
     expect(
       judgeSpokenLine(
-        "Hi, I'm Hale. This thread is your kids' year. What should I call you?",
+        "Hi, I'm Hale. This thread is for both of you. What should I call you?",
         welcome,
       ),
     ).toEqual({ ok: true });
+    expect(
+      judgeSpokenLine(
+        "Hi, I'm Hale. This thread is your kids' year. What should I call you?",
+        welcome,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:kids_year' });
     expect(
       judgeSpokenLine("Hi, I'm Hale. Reply STOP anytime. What should I call you?", welcome),
     ).toEqual({ ok: false, reason: 'compliance' });

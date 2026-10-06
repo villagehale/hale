@@ -19,6 +19,10 @@
     "file": "ask-hale.md",
     "sha256": "548f83bf76d5edf936483853120809b4e3fb6569211eae32d292a5cb55e181b2"
   },
+  "calendar-consent.md": {
+    "file": "calendar-consent.md",
+    "sha256": "03173da2843f27c7a3f619f504dd5e3a87a180391182118f78c11805e04c8eb0"
+  },
   "calendar-email-ask.md": {
     "file": "calendar-email-ask.md",
     "sha256": "dee39b5ffa124c1ad4426ad8a819be231a7c74e860b99895353da326ade928a6"
@@ -81,7 +85,7 @@
   },
   "group-voice.md": {
     "file": "group-voice.md",
-    "sha256": "cc9eec94de607185957520d7e1ac952e0dc80b5aed3710e5664e419aff3cd6d1"
+    "sha256": "5816b9c77d1052fc63fb2abf54d8dc9a4c5130a43ba27030c225024b7aec4da4"
   },
   "identity-ask.md": {
     "file": "identity-ask.md",

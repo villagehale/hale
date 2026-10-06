@@ -3,15 +3,15 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
-import { OPT_OUT_LINE, OPT_OUT_SHORT } from '~/lib/channel/opt-out';
-import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { encryptString } from '~/lib/crypto/string-cipher';
 import { groupLineInput } from '~/lib/channel/linq/group-voice';
+import { OPT_OUT_LINE, OPT_OUT_SHORT } from '~/lib/channel/opt-out';
 import {
   type FakeSpokenLineComposer,
   fakeSpokenLineBody,
   fakeSpokenLineComposer,
 } from '~/lib/channel/voice/fakes';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { departCoParent } from './depart';
 import {
@@ -36,7 +36,7 @@ const KEY = Buffer.alloc(32, 7).toString('base64');
 const TEEN_NAME = 'Noor';
 /** Their younger sibling — under the teen gate, and still nobody this message names. */
 const SIBLING_NAME = 'Wren';
-/** The parent who left. Their name is not the staying parent's to be handed either. */
+/** The parent who left. The notice uses this name when it is stored. */
 const DEPARTED_NAME = 'Sam';
 /** 10:12 in America/Toronto (EDT, UTC-4) — inside the sendable window. */
 const MORNING = new Date('2026-09-16T14:12:00.000Z');
@@ -152,10 +152,14 @@ async function seedHousehold(options: { locale?: string; watchConsent?: boolean 
   return { familyId, stayingUserId, stayingPhone, departedUserId, departedPhone } as Household;
 }
 
-/** What the fake voice says 1:1 — no name, since the staying parent is told nobody's. */
+/** What the fake voice says 1:1: the leaver's name, one person left, tu. */
 const NOTICE_1TO1 = {
-  en: fakeSpokenLineBody(groupLineInput({ kind: 'departure', name: null, address: 'tu' }, 'en')),
-  fr: fakeSpokenLineBody(groupLineInput({ kind: 'departure', name: null, address: 'tu' }, 'fr')),
+  en: fakeSpokenLineBody(
+    groupLineInput({ kind: 'departure', name: DEPARTED_NAME, address: 'tu', remaining: 1 }, 'en'),
+  ),
+  fr: fakeSpokenLineBody(
+    groupLineInput({ kind: 'departure', name: DEPARTED_NAME, address: 'tu', remaining: 1 }, 'fr'),
+  ),
 };
 
 function ports(
@@ -225,8 +229,8 @@ describe('telling the parent who stayed', () => {
     expect(transport.sent[0]?.body).toBe(NOTICE_1TO1.en);
     expect(transport.sent[0]?.body).not.toContain(OPT_OUT_LINE);
     expect(transport.sent[0]?.body).not.toContain(OPT_OUT_SHORT);
-    // Nobody is named — see the dedicated wire test below for the whole household.
-    expect(transport.sent[0]?.body).not.toContain(DEPARTED_NAME);
+    expect(transport.sent[0]?.body).toContain(DEPARTED_NAME);
+    expect(transport.sent[0]?.body).not.toContain(TEEN_NAME);
 
     expect(await noticeRows(household.familyId)).toEqual([
       {
@@ -373,7 +377,7 @@ describe('telling the parent who stayed', () => {
    * default) and a younger sibling — and in BOTH languages, because the two bodies are
    * built by the same lookup and a leak would ride whichever one was rendered.
    */
-  it('puts no child name and no parent name on the wire, in either language', async () => {
+  it('names the parent who left and no child, in either language', async () => {
     const english = await seedHousehold();
     const french = await seedHousehold({ locale: 'fr-CA' });
     const transport = new FakeTransport();
@@ -403,16 +407,16 @@ describe('telling the parent who stayed', () => {
     expect(seeded.map((c) => c.name).sort()).toEqual([TEEN_NAME, SIBLING_NAME].sort());
 
     for (const sent of transport.sent) {
-      for (const name of [TEEN_NAME, SIBLING_NAME, DEPARTED_NAME]) {
+      expect(sent.body).toContain(DEPARTED_NAME);
+      for (const name of [TEEN_NAME, SIBLING_NAME]) {
         expect(sent.body).not.toContain(name);
       }
     }
-    // The model was handed no name either: 1:1, the staying parent is told nobody's.
     for (const call of voice.calls) {
-      expect(call.input.facts).toEqual({ name: null });
+      expect(call.input.facts).toEqual({ name: DEPARTED_NAME, remaining: 1 });
       expect(call.input.address).toBe('tu');
       expect(JSON.stringify(call.input)).not.toMatch(
-        new RegExp([TEEN_NAME, SIBLING_NAME, DEPARTED_NAME].join('|')),
+        new RegExp([TEEN_NAME, SIBLING_NAME].join('|')),
       );
     }
     // Both languages really were composed — otherwise the loop above proves one body.

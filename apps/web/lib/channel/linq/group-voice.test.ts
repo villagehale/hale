@@ -22,6 +22,7 @@ const EVERY_KIND: GroupLineRequest[] = [
   { kind: 'stranger_hold', parentA: 'Barton' },
   { kind: 'name_ack', name: 'Sam' },
   { kind: 'calendar_ask', name: 'Sam' },
+  { kind: 'calendar_link', name: 'Sam' },
   { kind: 'calendar_receipt', name: 'Sam' },
   { kind: 'gmail_ask', name: 'Sam' },
   { kind: 'gmail_receipt', name: 'Sam' },
@@ -114,7 +115,7 @@ describe('groupLineInput', () => {
   it('lets the asks say "this link" because code appends the card, and nothing else may', () => {
     for (const request of EVERY_KIND) {
       const input = groupLineInput(request, 'en');
-      const ask = request.kind === 'calendar_ask' || request.kind === 'gmail_ask';
+      const ask = request.kind === 'calendar_link' || request.kind === 'gmail_ask';
       expect(input.linkFollows ?? false).toBe(ask);
     }
   });
@@ -234,7 +235,7 @@ describe('the judge on group lines', () => {
   });
 
   it('refuses a French group line that slips into tu', () => {
-    const fr = groupLineInput({ kind: 'calendar_ask', name: 'Sam' }, 'fr');
+    const fr = groupLineInput({ kind: 'gmail_ask', name: 'Sam' }, 'fr');
     expect(
       judgeSpokenLine('Sam, votre calendrier aide à voir les semaines. Vous voulez ce lien?', fr),
     ).toEqual({ ok: true });
@@ -245,35 +246,65 @@ describe('the judge on group lines', () => {
   });
 
   it('lets a 1:1 departure be tu and refuses vous there', () => {
-    const tu = groupLineInput({ kind: 'departure', name: null, address: 'tu' }, 'fr');
+    const tu = groupLineInput(
+      { kind: 'departure', name: 'Sam', address: 'tu', remaining: 1 },
+      'fr',
+    );
     expect(
       judgeSpokenLine(
-        "Ton coparent a quitté Hale. Rien n'a changé pour l'année des enfants. Je suis toujours là.",
+        "Sam est parti. L'horaire des enfants et les rappels restent. Je suis toujours là.",
         tu,
       ),
     ).toEqual({ ok: true });
-    expect(judgeSpokenLine('Votre coparent a quitté Hale. Je suis toujours là.', tu)).toEqual({
+    expect(judgeSpokenLine('Sam, votre coparent a quitté Hale. Je suis toujours là.', tu)).toEqual({
       ok: false,
       reason: 'french',
     });
   });
 
   it('refuses a departure that drops the still-here close', () => {
-    const tu = groupLineInput({ kind: 'departure', name: null, address: 'tu' }, 'fr');
+    const tu = groupLineInput({ kind: 'departure', name: null, address: 'tu', remaining: 1 }, 'fr');
     expect(
-      judgeSpokenLine("Ton coparent s'en va. L'année des enfants continue comme avant.", tu),
-    ).toEqual({ ok: false, reason: 'close' });
-    expect(judgeSpokenLine("Ton coparent s'en va. Je reste là.", tu)).toEqual({
+      judgeSpokenLine("Ton coparent part doucement. L'horaire des enfants reste.", tu),
+    ).toEqual({
       ok: false,
       reason: 'close',
     });
-    const en = groupLineInput({ kind: 'departure', name: 'Sam' }, 'en');
-    expect(judgeSpokenLine("Sam left. The kids' year stays as it is.", en)).toEqual({
+    expect(judgeSpokenLine('Ton coparent part doucement. Je reste là.', tu)).toEqual({
       ok: false,
       reason: 'close',
     });
-    expect(judgeSpokenLine("Sam left. The kids' year stays as it is. I'm still here.", en)).toEqual({
-      ok: true,
+    const en = groupLineInput({ kind: 'departure', name: 'Sam', remaining: 1 }, 'en');
+    expect(judgeSpokenLine('Sam left. The schedule and the reminders stay.', en)).toEqual({
+      ok: false,
+      reason: 'close',
+    });
+    expect(
+      judgeSpokenLine("Sam left. The kids' schedule and the reminders stay. I'm still here.", en),
+    ).toEqual({ ok: true });
+  });
+
+  it('refuses the kids year, and you both unless two people remain', () => {
+    const one = groupLineInput({ kind: 'departure', name: 'Sam', remaining: 1 }, 'en');
+    expect(
+      judgeSpokenLine("Sam left. The kids' year stays as it is. I'm still here.", one),
+    ).toEqual({ ok: false, reason: 'forbidden:kids_year' });
+    expect(
+      judgeSpokenLine("Sam left. You both still have the schedule. I'm still here.", one),
+    ).toEqual({ ok: false, reason: 'forbidden:both' });
+    const two = groupLineInput({ kind: 'departure', name: 'Sam', remaining: 2 }, 'en');
+    expect(
+      judgeSpokenLine(
+        "Sam left. You both still have the schedule and the reminders. I'm still here.",
+        two,
+      ),
+    ).toEqual({ ok: true });
+    const fr = groupLineInput({ kind: 'welcome' }, 'fr');
+    expect(
+      judgeSpokenLine("Je suis Hale. Ce fil, c'est l'année des enfants. Comment vous appeler?", fr),
+    ).toEqual({
+      ok: false,
+      reason: 'forbidden:kids_year',
     });
   });
 });

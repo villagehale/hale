@@ -6,6 +6,7 @@ import { fakeSpokenLineBody, fakeSpokenLineComposer } from '~/lib/channel/voice/
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import type { CalendarConsentReader } from './calendar-consent';
 import {
   LINQ_GROUP_TRIGGER_PHRASE,
   claimHouseholdLinqGroup,
@@ -31,6 +32,14 @@ const voice = fakeSpokenLineComposer();
 
 function spoken(request: GroupLineRequest, language: 'en' | 'fr' = 'en'): string {
   return fakeSpokenLineBody(groupLineInput(request, language));
+}
+
+function consentReader(label: 'yes' | 'no' | 'other' | 'unread'): CalendarConsentReader {
+  return {
+    async read() {
+      return label === 'unread' ? { status: 'unread' } : { status: 'read', label };
+    },
+  };
 }
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
@@ -417,33 +426,46 @@ describe('group co-parent seating', () => {
       inbound({ messageId: 'm-cal', senderHandle: COPARENT_PHONE, text: 'ready' }),
       { now: NOW, fetch: wire.fetch, voice, recordInbound },
     );
-    expect(calendar).toMatchObject({ type: 'done', outcome: 'group_coparent_gcal' });
+    expect(calendar).toMatchObject({ type: 'done', outcome: 'group_coparent_calendar_asked' });
+    const afterAsk = wire.groupTexts();
+    const askBubble = afterAsk.at(-1) ?? '';
+    expect(askBubble).toBe(spoken({ kind: 'calendar_ask', name: 'Sam' }));
+    expect(askBubble).not.toContain('http');
+    expect(askBubble).not.toContain('Tap Advanced');
+    expect(afterAsk.join('\n')).not.toContain(spoken({ kind: 'gmail_ask', name: 'Sam' }));
+    const [askedStep] = await db.database
+      .select({ step: schema.linqGroupOnboarding.step })
+      .from(schema.linqGroupOnboarding);
+    expect(askedStep?.step).toBe('awaiting_calendar_yes');
+
+    const yes = await considerGroupCoparent(
+      db.database,
+      inbound({ messageId: 'm-yes', senderHandle: COPARENT_PHONE, text: 'yes please' }),
+      { now: NOW, fetch: wire.fetch, voice, recordInbound, consentReader: consentReader('yes') },
+    );
+    expect(yes).toMatchObject({ type: 'done', outcome: 'group_coparent_gcal' });
     const afterCalendar = wire.groupTexts();
     const calendarBubble = afterCalendar.at(-1) ?? '';
-    expect(calendarBubble.startsWith(spoken({ kind: 'calendar_ask', name: 'Sam' }))).toBe(true);
-    expect(
-      afterCalendar.filter((text) =>
-        text.startsWith(spoken({ kind: 'calendar_ask', name: 'Sam' })),
-      ),
-    ).toHaveLength(1);
+    expect(calendarBubble.startsWith(spoken({ kind: 'calendar_link', name: 'Sam' }))).toBe(true);
     expect(calendarBubble).toContain('\n');
     expect(calendarBubble).toContain('to=gcal');
+    expect(calendarBubble).not.toContain('Tap Advanced');
     expect(wire.groupLinks()).toEqual([]);
     expect(afterCalendar.join('\n')).not.toContain(spoken({ kind: 'gmail_ask', name: 'Sam' }));
-    expect(spoken({ kind: 'calendar_ask', name: 'Sam' })).not.toContain('/connect?t=');
+    expect(spoken({ kind: 'calendar_link', name: 'Sam' })).not.toContain('/connect?t=');
     expect(wire.createdChats()).toBe(0);
     expect(wire.privateTexts()).toEqual([]);
     const calendarToken = new URL(
       calendarBubble.split('\n').find((line) => line.startsWith('http')) ?? '',
     ).searchParams.get('t');
     expect(calendarToken).toBeTruthy();
-    expect(spoken({ kind: 'calendar_ask', name: 'Sam' })).not.toContain(
+    expect(spoken({ kind: 'calendar_link', name: 'Sam' })).not.toContain(
       calendarToken ?? 'missing-token',
     );
-    const [afterAsk] = await db.database
+    const [afterLink] = await db.database
       .select({ step: schema.linqGroupOnboarding.step })
       .from(schema.linqGroupOnboarding);
-    expect(afterAsk?.step).toBe('awaiting_gmail');
+    expect(afterLink?.step).toBe('awaiting_gmail');
 
     const groupBeforeGmail = wire.groupTexts().length;
     const declined = await considerGroupCoparent(
@@ -456,6 +478,7 @@ describe('group co-parent seating', () => {
     expect(gmailBubbles).toHaveLength(1);
     expect(gmailBubbles[0]?.startsWith(spoken({ kind: 'gmail_ask', name: 'Sam' }))).toBe(true);
     expect(gmailBubbles[0]).toContain('to=gmail');
+    expect(gmailBubbles[0]).not.toContain('Tap Advanced');
     expect(wire.groupLinks()).toEqual([]);
     expect(spoken({ kind: 'gmail_ask', name: 'Sam' })).not.toContain('/connect?t=');
     expect(wire.createdChats()).toBe(0);
@@ -781,6 +804,67 @@ describe('group co-parent seating', () => {
     expect(rows.every((row) => row.channel === 'imessage')).toBe(true);
     expect(rows.every((row) => row.providerChatId === GROUP)).toBe(true);
     expect(rows.some((row) => row.channel === 'sms')).toBe(false);
+  });
+
+  it('sends no calendar link unless the reader says yes', async () => {
+    const seeded = await seedHousehold();
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, seeded.familyId));
+    const [coparent] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `imessage:sam-consent-${seeded.familyId}`, name: 'Sam' })
+      .returning({ id: schema.users.id });
+    const coparentId = coparent?.id as string;
+    await db.database.insert(schema.familyMembers).values({
+      familyId: seeded.familyId,
+      userId: coparentId,
+      role: 'co_parent',
+    });
+    await db.database.insert(schema.parentChannels).values({
+      userId: coparentId,
+      familyId: seeded.familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(COPARENT_PHONE),
+      phoneE164Hash: phoneBlindIndex(COPARENT_PHONE),
+      verifiedAt: NOW,
+    });
+    await db.database.insert(schema.linqGroupOnboarding).values({
+      familyId: seeded.familyId,
+      userId: coparentId,
+      providerChatId: GROUP,
+      step: 'awaiting_calendar_yes',
+    });
+    const wire = linqFetch();
+    const unread = await considerGroupCoparent(
+      db.database,
+      inbound({ messageId: 'm-unread', senderHandle: COPARENT_PHONE, text: 'maybe' }),
+      { now: NOW, fetch: wire.fetch, voice, recordInbound, consentReader: consentReader('unread') },
+    );
+    expect(unread).toMatchObject({
+      type: 'done',
+      outcome: 'group_coparent_link_held',
+      body: { reason: 'consent_unread' },
+    });
+    expect(wire.groupTexts()).toEqual([]);
+    const [still] = await db.database
+      .select({ step: schema.linqGroupOnboarding.step })
+      .from(schema.linqGroupOnboarding);
+    expect(still?.step).toBe('awaiting_calendar_yes');
+
+    const passed = await considerGroupCoparent(
+      db.database,
+      inbound({ messageId: 'm-pass', senderHandle: COPARENT_PHONE, text: 'not now' }),
+      { now: NOW, fetch: wire.fetch, voice, recordInbound, consentReader: consentReader('no') },
+    );
+    expect(passed).toMatchObject({ type: 'done', outcome: 'group_coparent_calendar_passed' });
+    expect(wire.groupTexts()).toEqual([]);
+    expect(wire.groupLinks()).toEqual([]);
+    const [next] = await db.database
+      .select({ step: schema.linqGroupOnboarding.step })
+      .from(schema.linqGroupOnboarding);
+    expect(next?.step).toBe('awaiting_gmail');
   });
 
   it('keeps a later calendar connect as a link card in the group', async () => {

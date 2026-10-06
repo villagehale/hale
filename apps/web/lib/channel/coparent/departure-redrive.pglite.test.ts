@@ -3,14 +3,13 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
+import { groupLineInput } from '~/lib/channel/linq/group-voice';
 import { REDRIVE_HOUR_LOCAL } from '~/lib/channel/redrive-slot';
+import { fakeSpokenLineBody, fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { groupLineInput } from '~/lib/channel/linq/group-voice';
-import { fakeSpokenLineBody, fakeSpokenLineComposer } from '~/lib/channel/voice/fakes';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { departCoParent } from './depart';
-import { runDepartureNoticeRedrive } from './departure-redrive';
 import {
   DEPARTURE_NOTICE_TEMPLATE_KEY,
   type DepartureNoticePorts,
@@ -18,6 +17,7 @@ import {
   departureNoticeReaders,
   tellStayingParent,
 } from './departure-notice';
+import { runDepartureNoticeRedrive } from './departure-redrive';
 
 /**
  * B1 · the 23:00 departure that quiet hours held, and the morning that finishes it.
@@ -126,9 +126,9 @@ function ports(transport: FakeTransport): DepartureNoticePorts {
   };
 }
 
-/** What the fake voice says 1:1 — no name, since the staying parent is told nobody's. */
+/** What the fake voice says 1:1: the leaver's stored name, one person left, tu. */
 const NOTICE_EN = fakeSpokenLineBody(
-  groupLineInput({ kind: 'departure', name: null, address: 'tu' }, 'en'),
+  groupLineInput({ kind: 'departure', name: 'Sam', address: 'tu', remaining: 1 }, 'en'),
 );
 
 /**
