@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message correctly follows all requirements: it's in French with proper tu address and real accents (chez toi). It's a weekend_fallback that says no options worked for the weekend (\"Pas grand-chose qui tient la route près de chez toi ce week-end\"), acknowledges the weekend search just attempted, and offers to look for weekday options instead (\"Ça t'intéresse que je cherche en semaine?\"). It has exactly one question at the end ending with a question mark. It names no child, activity, place, or time. It uses first person \"je\" not \"on/nous\". No facts outside the request, no exclamation marks, no emoji, no hype, no corporate tone. It reads like a friend texting one parent: short, plain, warm, and offering exactly what the moment calls for."
+  }
+}

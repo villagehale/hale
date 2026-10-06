@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message correctly identifies this as a weekend_fallback moment where no options were found yet. It properly says \"Nothing great popped up nearby this weekend\" (referencing that weekend options were searched but nothing good emerged), offers to look on weekdays instead as an alternative, and ends with exactly one real question (\"Want me to look on weekdays instead?\"). It uses first person (\"me\"), names nobody, mentions no invented facts, has no exclamation marks or hype, and reads like a friend texting naturally. It's short, plain, and warm."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "This message violates multiple critical requirements. First, it claims \"the options Hale just sent were weekend ones\" (per watchFor), but the facts show optionsSent is false—no options have actually been sent yet. Second, it should reference \"the weekend options I just sent\" or similar to establish what the message is about, but instead it creates a false premise. Third, the message uses \"we\" (implicit in \"Want me\") when first person \"I\" is required. Most critically, for weekend_fallback when no options have been sent yet, the moment calls for \"I can find one\" / \"that's actually running\"—an offer to look for weekday care—not a question asking the parent if they want Hale to check. The structure and premise are fundamentally misaligned with the request facts and watchFor guidance."
+  }
+}

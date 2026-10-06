@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message perfectly matches the travel_brief moment. It mentions both required facts (Montreal and the 3rd) exactly as given. It uses \"the kids\" without naming anyone, which is appropriate since Hale doesn't know which parent is reading. It says \"the trip\" (implicitly through the structure) rather than \"you're in,\" suitable for a household group where both parents might read it. The colon leads into a list that will follow, no question is asked (questions=0), and no specific place, activity, price, or time is stated. The message is plain, warm, first person implied, and offers exactly what the moment calls for."
+  }
+}
