@@ -125,10 +125,7 @@ export interface ChannelCoachRuntime {
 export class ChannelTurnFailed extends Error {
   readonly draftedActionIds: readonly string[];
 
-  constructor(
-    message: string,
-    options: { cause?: unknown; draftedActionIds: readonly string[] },
-  ) {
+  constructor(message: string, options: { cause?: unknown; draftedActionIds: readonly string[] }) {
     super(message, { cause: options.cause });
     this.name = 'ChannelTurnFailed';
     this.draftedActionIds = options.draftedActionIds;

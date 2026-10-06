@@ -1,9 +1,9 @@
 import { invokeTool } from '@hale/agent';
+import type { GuardDeps } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { GuardDeps } from '@hale/agent';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { productionChannelCoachPorts } from './runtime';
 import { createTurnOfferLedger } from './tools';
 

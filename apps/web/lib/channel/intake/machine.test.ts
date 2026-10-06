@@ -1796,9 +1796,9 @@ describe('intake · guards', () => {
     const group = { transport: 'imessage' as const, chatId: 'chat-group', isGroup: true };
 
     // The control: the same exhausted sender budget silences an ordinary group turn.
-    expect(
-      await handleInboundSms(fake.db, transport.inbound(PHONE, 'hi', group), deps),
-    ).toEqual({ status: 'rate_limited' });
+    expect(await handleInboundSms(fake.db, transport.inbound(PHONE, 'hi', group), deps)).toEqual({
+      status: 'rate_limited',
+    });
 
     const charged = await handleInboundSms(
       fake.db,

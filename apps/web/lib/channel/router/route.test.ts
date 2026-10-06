@@ -1119,7 +1119,10 @@ describe('flood control', () => {
     const spent = async (inGroup: boolean) => {
       const limiter = flooded();
       for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
-        await limiter.check(PARENT, 'sms-agent-turn', { limit: AGENT_TURNS_PER_HOUR, windowSec: 3600 });
+        await limiter.check(PARENT, 'sms-agent-turn', {
+          limit: AGENT_TURNS_PER_HOUR,
+          windowSec: 3600,
+        });
       }
       const coach = fakeCoach();
       const h = harness({ coach, limiter, context: { reply: groupRoute, inGroup } });
