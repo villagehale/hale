@@ -6,7 +6,9 @@ import { FIRST_TOUCH_SMS_BY_LANGUAGE, venueForCode } from '~/lib/channel/intake/
 import { placeFromVenue } from '~/lib/channel/intake/first-touch-place';
 import {
   type FriendVoiceComposer,
+  type LastInboundFact,
   createFriendVoiceComposer,
+  lastInboundFact,
   pageOncePerDay,
   speakFriend,
 } from '~/lib/channel/intake/friend-voice';
@@ -21,6 +23,7 @@ import {
 } from '~/lib/channel/intake/session';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
+import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import {
   createOutboundTransport,
   plainTextWithoutLinks,
@@ -38,7 +41,7 @@ import {
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
-import { FOUNDER_PAIR_SESSION_IDS } from './sitting-reminder';
+import { FOUNDER_PAIR_SESSION_IDS, SITTING_REMINDER_TIMEZONE } from './sitting-reminder';
 
 /**
  * VIL-332 — one first reply for a new parent whose first text got none.
@@ -51,9 +54,14 @@ import { FOUNDER_PAIR_SESSION_IDS } from './sitting-reminder';
  * {@link claimFirstReplyRecovery} writes it.
  *
  * Not VIL-324's 8am Still here: that is next-morning only. This runs every minute from
- * the drain. The reply is the first-touch ladder's own step, written by the model when
+ * the drain, except through proactive quiet hours (21:00–08:00 America/Toronto, the
+ * same window and the same pre-family zone the sitting reminder uses). A row owed a
+ * reply stays owed overnight and is not claimed; the first tick after 08:00 answers
+ * it, and the 24h window still covers a text that arrived late the night before.
+ * The reply is the first-touch ladder's own step, written by the model when
  * friend voice is on: the ages when a place is known (the silent turn stored one, or the
- * venue gives one), otherwise the place.
+ * venue gives one), otherwise the place. The brief tells the model how long ago the
+ * parent's text was when that wait is real.
  *
  * Claim BEFORE send, so two overlapping ticks cannot double; one send per session.
  */
@@ -152,6 +160,16 @@ export function firstReplyRecoveryDeps(
   };
 }
 
+/**
+ * Pre-family sessions have no family timezone. Quiet hours are the proactive
+ * floor, read in the same America/Toronto default the sitting reminder uses.
+ * Inside the window the sweep does nothing: no claim, so the row is still owed
+ * when the window ends.
+ */
+export function firstReplyRecoveryQuiet(now: Date): boolean {
+  return inProactiveQuietHours(now, SITTING_REMINDER_TIMEZONE);
+}
+
 export async function runFirstReplyRecoveryCron(
   database: Database,
   deps: FirstReplyRecoveryDeps,
@@ -165,6 +183,7 @@ export async function runFirstReplyRecoveryCron(
     failed: 0,
     deferred: 0,
   };
+  if (firstReplyRecoveryQuiet(now)) return result;
 
   const owed: Array<FirstReplyCandidate & { recovery: RecoveryView }> = [];
   for (const row of await loadFirstReplyCandidates(database, now)) {
@@ -218,11 +237,15 @@ export async function runFirstReplyRecoveryCron(
       const transcript = row.recovery.transcript;
       const language = row.recovery.ladderLanguage ?? languageFromTranscript(transcript);
       const inbound = [...transcript].reverse().find((entry) => entry.direction === 'in');
+      const waited = inbound?.at
+        ? lastInboundFact(new Date(inbound.at), now, SITTING_REMINDER_TIMEZONE)
+        : null;
       const body = await firstTouchRecoveryBody(deps, row.id, {
         language,
         parentWords: inbound?.body ?? '',
         place: recoveryPlace(row.recovery.firstTouch, row.sourceCode),
         knownVenue: recoveryVenuePlace(row.sourceCode) != null,
+        ...(waited ? { lastInbound: waited } : {}),
       });
       if (!body.trim()) {
         await releaseFirstReplyRecovery(database, row.id);
@@ -270,6 +293,7 @@ async function firstTouchRecoveryBody(
     parentWords: string;
     place: RecoveryPlace;
     knownVenue: boolean;
+    lastInbound?: LastInboundFact;
   },
 ): Promise<string> {
   if (!onboardingFriendVoiceEnabled()) {
@@ -286,6 +310,7 @@ async function firstTouchRecoveryBody(
       address: 'tu',
       introduce: true,
       parentWords: input.parentWords,
+      ...(input.lastInbound ? { lastInbound: input.lastInbound } : {}),
       recentTurns: [],
       placeLabel: input.place ? input.place.city || input.place.areaCoarse : null,
       agesLabel: null,
