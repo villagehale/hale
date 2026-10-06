@@ -35,10 +35,13 @@ export const BROKEN_CA_TINTERESSE = {
  * A travel find is off a venue's own page. Nobody has been; nobody recommends. A body
  * that says otherwise is claiming a review Hale does not hold.
  */
-/** "Both details are straight from" names the pages and drops the check, even in one sentence. */
+/**
+ * "Straight from" names the pages and drops the check, even in one sentence.
+ * "Both details are straight from" and "Details straight from" are the same failure.
+ */
 export const STRAIGHT_FROM_BOTH = {
   name: 'straight_from',
-  pattern: /both details are straight from/i,
+  pattern: /straight from/i,
 };
 
 export const NO_BEEN_THERE_CLAIM = {

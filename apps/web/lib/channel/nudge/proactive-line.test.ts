@@ -195,6 +195,24 @@ describe('the judge on a travel brief', () => {
     expect(
       judgeSpokenLine(
         GOOD_BRIEF.replace(
+          "That's off their own pages, not from anyone who's been.",
+          "Details straight from the venue's own page.",
+        ),
+        input,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:straight_from' });
+    expect(
+      judgeSpokenLine(
+        GOOD_BRIEF.replace(
+          "That's off their own pages, not from anyone who's been.",
+          "Details straight from the venues' own pages.",
+        ),
+        input,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:straight_from' });
+    expect(
+      judgeSpokenLine(
+        GOOD_BRIEF.replace(
           'Central Park Zoo, 10am-5pm',
           'Central Park Zoo, 10am-5pm, last entry 16:30',
         ),

@@ -42,6 +42,7 @@ describe('connectLineInput', () => {
         expect(input.parentWords).toBe('connect it');
         const note = request.kind === 'offer' || request.kind === 'offer_both';
         const heads = request.kind === 'google_heads_up';
+        const revoked = request.kind === 'revoked';
         expect(input.forbidden?.map((rule) => rule.name)).toEqual(
           note
             ? [
@@ -53,8 +54,17 @@ describe('connectLineInput', () => {
                 'heads_up_in_note',
               ]
             : heads
-              ? ['keyword_ask', 'google_side_claim', 'we_for_hale', 'google_coaching', 'soft_safe']
-              : ['keyword_ask', 'google_side_claim', 'we_for_hale'],
+              ? [
+                  'keyword_ask',
+                  'google_side_claim',
+                  'we_for_hale',
+                  'google_coaching',
+                  'soft_safe',
+                  'link_word',
+                ]
+              : revoked
+                ? ['keyword_ask', 'google_side_claim', 'we_for_hale', 'revoked_french']
+                : ['keyword_ask', 'google_side_claim', 'we_for_hale'],
         );
         // The fake passes the judge the real model is held to, so the facts can be
         // carried by the kind's slots alone.
@@ -98,6 +108,12 @@ describe('connectLineInput', () => {
         heads,
       ),
     ).toEqual({ ok: false, reason: 'link' });
+    expect(
+      judgeSpokenLine(
+        'Google may say Hale is not verified yet. The link works while you wait.',
+        heads,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:link_word' });
     expect(
       judgeSpokenLine(
         "Google may say Hale is not verified yet, because we are still in Google's review.",
@@ -174,6 +190,19 @@ describe('connectLineInput', () => {
     expect(withConnectLinks('Done.', [GOOGLE_PERMISSIONS_URL])).toBe(
       `Done.\n${GOOGLE_PERMISSIONS_URL}`,
     );
+    const fr = connectLineInput({ kind: 'revoked', account: 'gmail' }, 'fr');
+    expect(
+      judgeSpokenLine(
+        'Je suis débarrassé de tes clés pour Gmail. Google te liste encore moi sur ton compte, tu peux le faire toi-même à ce lien.',
+        fr,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:revoked_french' });
+    expect(
+      judgeSpokenLine(
+        "Gmail est déconnecté de mon côté. J'ai jeté mes clés. Google te liste encore, jusqu'à ce que tu me retires, et ce lien est l'endroit.",
+        fr,
+      ),
+    ).toEqual({ ok: true });
   });
 
   it('refuses a line that hands the parent a word to type (the founder rule)', () => {

@@ -1,4 +1,5 @@
 import type { ReplyLanguage } from '../language';
+import { NO_LINK_WORD } from '../linq/group-line-input';
 import { frenchAddress } from '../voice/address';
 import type { SpokenLineInput } from '../voice/judge';
 
@@ -47,6 +48,15 @@ export const NO_WE_FOR_HALE = {
 export const NO_SOFT_SAFE = {
   name: 'soft_safe',
   pattern: /no worries|pas de souci|aucun souci/i,
+};
+
+/**
+ * Broken French on a revoke. The keys are Hale's, so "tes clés" fails.
+ * "encore moi" is not a sentence.
+ */
+export const BROKEN_REVOKED_FR = {
+  name: 'revoked_french',
+  pattern: /(?<![\p{L}])tes cl[ée]s(?![\p{L}])|(?<![\p{L}])encore moi(?![\p{L}])/iu,
 };
 
 /** The link note stays a note. The heads-up is the next bubble. */
@@ -131,7 +141,7 @@ export function connectLineInput(
       return {
         ...base,
         facts: {},
-        forbidden: [...(base.forbidden ?? []), GOOGLE_COACHING, NO_SOFT_SAFE],
+        forbidden: [...(base.forbidden ?? []), GOOGLE_COACHING, NO_SOFT_SAFE, NO_LINK_WORD],
       };
     case 'revoked':
       return {
@@ -139,6 +149,7 @@ export function connectLineInput(
         linkFollows: true,
         facts: { account: name(request.account), keysDeleted: true, googleStillListsHale: true },
         mustMention: [name(request.account)],
+        forbidden: [...(base.forbidden ?? []), BROKEN_REVOKED_FR],
       };
     case 'not_connected':
       return {
