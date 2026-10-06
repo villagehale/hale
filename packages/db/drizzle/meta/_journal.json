@@ -1058,6 +1058,13 @@
       "when": 1781469647000,
       "tag": "0153_users_parent_role_guess",
       "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1781469649000,
+      "tag": "0155_instinct_memory_tables",
+      "breakpoints": true
     }
   ]
 }

@@ -42,6 +42,7 @@ Requires Node.js 22 LTS and pnpm 9+.
 pnpm install
 cp .env.example .env.local      # fill in secrets
 pnpm db:migrate                 # run Drizzle migrations
+pnpm db:check-migrations        # exit non-zero if the journal has unapplied hashes
 pnpm dev                        # runs web + worker concurrently via Turbo
 ```
 

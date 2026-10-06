@@ -25,6 +25,8 @@
     "test": "vitest run",
     "generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
+    "migrate:guard": "node scripts/apply-migrations.mjs",
+    "check-migrations": "node scripts/check-migration-drift.mjs --require-url",
     "studio": "drizzle-kit studio",
     "push": "drizzle-kit push",
     "drift-check": "node scripts/check-migration-drift.mjs",
