@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in English, so the vous/tu register issue doesn't apply. It correctly states (not asks) that Sam's private setup happens 1:1 and Sam should message Hale directly. Hale is named (in mustMention), Sam is named (in mustMention). No link, no number, no calendar or email talk, no question mark, no exclamation mark, no emoji, no hype, no \"we.\" It is short, warm, plain, first person, two sentences. text_me_directly is handled correctly as a statement. All requirements met cleanly.",
-    "score": 5
-  }
-}

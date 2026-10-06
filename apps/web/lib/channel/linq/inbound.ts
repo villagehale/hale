@@ -13,16 +13,13 @@ import {
 import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { loadOpenSession } from '~/lib/channel/intake/session';
-import {
-  type SpokenLineComposer,
-  defaultSpokenLineComposer,
-} from '~/lib/channel/voice/spoken-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { socialWatchlistEnabled } from '~/lib/social/flag';
 import { considerSocialForward } from '~/lib/social/forward';
 import {
   linqFromE164,
+  linqGroupCoparentEnabled,
   linqGroupMembersEnabled,
   linqGroupOnboardingV2Enabled,
   linqInboundConfigured,
@@ -49,9 +46,18 @@ import {
 import {
   type GroupCoparentPorts,
   considerGroupCoparent,
+  firstSeatableHandle,
+  seatAppearingCoparent,
   steerNotedCoparentOneToOne,
 } from './group-coparent';
-import { askParticipantAdded, unseatParticipantRemoved } from './group-members';
+import { groupWelcome } from './group-coparent-copy';
+import {
+  holdTrueStrangerOnce,
+  seatParticipantAdded,
+  shouldHoldGroupStranger,
+  unseatParticipantRemoved,
+} from './group-members';
+import type { GroupOnboardingComposer } from './group-onboarding-voice';
 import { captureLogisticsText } from './household-calendar';
 import { readSharedLocality } from './location-share';
 import { isLogisticsPollKind, recordLogisticsVote } from './logistics-poll';
@@ -64,7 +70,8 @@ import {
 } from './payload';
 import { isYearFindPollNone, lookupLinqPollOption } from './poll';
 import { type ListChatHandles, ensureRoster, groupRosterTrigger, startGroupRoster } from './roster';
-import { askRoster, sayNoFamilyYet } from './roster-ask';
+import { askParticipantAdded, askRoster, sayNoFamilyYet } from './roster-ask';
+import type { RosterReading } from './roster-reading';
 import { type RosterTurnPorts, takeRosterTurn } from './roster-turn';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
 import { type LinqEffectResult, markLinqChatRead } from './transport';
@@ -86,10 +93,11 @@ import { type LinqEffectResult, markLinqChatRead } from './transport';
  * `families.linq_group_chat_id`. The parent starts the group and sends the
  * trigger; that write is the claim. A group that is not claimed yet is not
  * handed to the coach. An unknown number is held and not enrolled.
- * Nobody is seated because they appeared in a group. With
- * `LINQ_GROUP_ONBOARDING_V2_ENABLED`, Hale asks who is who and a person is
- * seated only on their own reply (roster-turn.ts), before anything else reads
- * the message. SMS does not read the flag.
+ * With the flag off, the second person in a claimed group is seated the way
+ * they are today. With `LINQ_GROUP_ONBOARDING_V2_ENABLED`, nobody is seated
+ * because they appeared: Hale asks who is who and a person is seated only on
+ * their own reply (roster-turn.ts), before anything else reads the message.
+ * SMS does not read the flag.
  * Reactions, typing, and participant events answer 200. A poll vote for a
  * find title becomes that title and enters the same router a typed reply
  * would. "None of these" is recorded and not routed, so that turn asks nothing.
@@ -130,7 +138,9 @@ export async function handleLinqInboundRequest(
     /** Test seam. Production reads Linq and keeps the street address inside that door. */
     readSharedLocality?: typeof readSharedLocality;
     /** Test seam for group onboarding v2's lines. Production composes with the model. */
-    groupVoice?: SpokenLineComposer;
+    groupVoice?: GroupOnboardingComposer;
+    /** Test seam for reading a roster reply. Production uses the model. */
+    readGroupReply?: (text: string) => Promise<RosterReading>;
     /** Test seam for GET /chats/{id}. Production calls Linq. */
     listChatHandles?: ListChatHandles;
   },
@@ -393,7 +403,8 @@ function coparentPorts(deps: LinqDoorDeps): GroupCoparentPorts {
 function rosterPorts(deps: LinqDoorDeps): RosterTurnPorts {
   return {
     now: deps.now?.() ?? new Date(),
-    voice: deps.groupVoice ?? defaultSpokenLineComposer(),
+    voice: deps.groupVoice,
+    readReply: deps.readGroupReply,
     send: deps.sendGroupText,
     listHandles: deps.listChatHandles,
     recordInbound: (message, owner) => recordHandledInbound(deps, message, owner),
@@ -446,6 +457,26 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
         outcome: shared.outcome,
         ...(shared.notice ? { notice: shared.notice } : {}),
       });
+    }
+  }
+
+  if (!linqGroupOnboardingV2Enabled() && (await shouldHoldGroupStranger(deps.database, message))) {
+    const keyword = matchKeyword(message.text);
+    if (keyword?.keyword === 'stop') {
+      deps.log.info({ outcome: 'group_opt_out' }, 'linq inbound: group opt-out, no reply');
+      await deps.countOutcome('ignored');
+      return json({ outcome: 'group_opt_out' });
+    }
+    const held = await holdTrueStrangerOnce(deps.database, {
+      chatId: message.chatId,
+      senderHandle: message.senderHandle,
+      now: deps.now?.() ?? new Date(),
+      send: deps.sendGroupText,
+    });
+    if (held !== 'no_family') {
+      deps.log.info({ outcome: 'group_unknown_sender', hold: held }, 'linq inbound: group held');
+      await deps.countOutcome('ignored');
+      return json({ outcome: 'group_unknown_sender', hold: held });
     }
   }
 
@@ -624,6 +655,38 @@ async function claimGroupFromTrigger(
       ask: ask.outcome,
       ...('notice' in ask ? { notice: ask.notice } : {}),
     });
+  }
+
+  const appearing =
+    accepted && linqGroupCoparentEnabled()
+      ? firstSeatableHandle(message.otherHandles, message.senderHandle)
+      : null;
+  if (appearing) {
+    const seated = await seatAppearingCoparent(deps.database, {
+      familyId: mapped.familyId,
+      invitedByUserId: mapped.userId,
+      phoneE164: appearing,
+      chatId: message.chatId,
+      verbatim: message.text,
+      now,
+    });
+    if (seated.status === 'seated') {
+      const notice = await deliverLinqGroupNotice(deps.database, {
+        familyId: mapped.familyId,
+        parentUserId: seated.userId,
+        chatId: message.chatId,
+        text: groupWelcome(language),
+        templateKey: 'linq:coparent_welcome',
+        now,
+        send: deps.sendGroupText,
+      });
+      deps.log.info(
+        { outcome: 'group_claimed', claim: claim.status, notice },
+        'linq inbound: group claim',
+      );
+      await deps.countOutcome('intake');
+      return json({ outcome: 'group_claimed', claim: claim.status, notice });
+    }
   }
 
   const notice = await deliverLinqGroupNotice(deps.database, {
@@ -907,12 +970,30 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     });
   }
   if (
-    signal.event === 'participant.removed' &&
+    (signal.event === 'participant.added' || signal.event === 'participant.removed') &&
     signal.chatId &&
     signal.participantHandle &&
-    linqGroupMembersEnabled()
+    linqGroupMembersEnabled() &&
+    !(signal.event === 'participant.added' && linqGroupOnboardingV2Enabled())
   ) {
     const now = deps.now?.() ?? new Date();
+    if (signal.event === 'participant.added') {
+      const seated = await seatParticipantAdded(deps.database, {
+        chatId: signal.chatId,
+        participantHandle: signal.participantHandle,
+        actorHandle: signal.actorHandle,
+        isFromMe: signal.isFromMe,
+        now,
+        send: deps.sendGroupText,
+      });
+      await deps.countOutcome(seated.outcome === 'group_member_seated' ? 'intake' : 'ignored');
+      return json({
+        outcome: seated.outcome,
+        ...(seated.outcome === 'group_member_seated'
+          ? { notice: seated.notice, role: seated.role }
+          : {}),
+      });
+    }
     const unseated = await unseatParticipantRemoved(deps.database, {
       chatId: signal.chatId,
       participantHandle: signal.participantHandle,
@@ -944,6 +1025,39 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     });
     await deps.countOutcome('ignored');
     return json({ outcome: multi.outcome });
+  }
+  if (
+    signal.event === 'participant.added' &&
+    signal.chatId &&
+    signal.participantHandle &&
+    !linqGroupOnboardingV2Enabled() &&
+    linqGroupCoparentEnabled()
+  ) {
+    const familyId = await familyIdForClaimedChat(deps.database, signal.chatId);
+    if (familyId) {
+      const now = deps.now?.() ?? new Date();
+      const seated = await seatAppearingCoparent(deps.database, {
+        familyId,
+        invitedByUserId: null,
+        phoneE164: signal.participantHandle,
+        chatId: signal.chatId,
+        verbatim: '',
+        now,
+      });
+      if (seated.status === 'seated') {
+        const notice = await deliverLinqGroupNotice(deps.database, {
+          familyId,
+          parentUserId: seated.userId,
+          chatId: signal.chatId,
+          text: groupWelcome('en'),
+          templateKey: 'linq:coparent_welcome',
+          now,
+          send: deps.sendGroupText,
+        });
+        await deps.countOutcome('intake');
+        return json({ outcome: 'group_coparent_seated', notice });
+      }
+    }
   }
   if (
     coparentDutyAsksArmed() &&
@@ -990,6 +1104,16 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
   }
   await deps.countOutcome('ignored');
   return json({ outcome: signal.event });
+}
+
+async function familyIdForClaimedChat(
+  database: LinqDoorDeps['database'],
+  chatId: string,
+): Promise<string | null> {
+  const rows = await database
+    .select({ id: schema.families.id, linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families);
+  return rows.find((row) => row.linqGroupChatId === chatId)?.id ?? null;
 }
 
 /** What the HTTP response and the log line call each decline. Finer than the

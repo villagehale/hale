@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message hits every requirement cleanly: Hale introduces itself with its role (kids' year planner), names Morgan, addresses the group with \"you\" (appropriate for a vous line in English), asks exactly one question, and lists every required role word including \"not family.\" It does not number the people, does not state the roster size, does not assert anyone's role, has no second question, no exclamation marks, no emoji, no URL, no hype, no corporate register, no calendar/email talk, no padding. It reads like a warm, plain, short first-person opener. All mustMention items (Hale, Morgan, mom, dad, grandparent, nanny, babysitter, not family) are present. The question is last. Nothing watchFor flags is triggered.",
-    "score": 5
-  }
-}

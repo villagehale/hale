@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in French with vous, which matches the address. It is a role_confirmed kind: the parent said \"c'est la maman\" and Hale says \"maman\" back — that is correct acknowledgement. \"maman\" is in mustMention and is present. There are zero questions, no invented facts, no emoji, no exclamation marks, no hype, no forbidden topics. It is warm, brief, and natural. The second sentence (\"Je suis là pour l'année de vos enfants\") adds a light warm touch without being padding or introducing new facts. Reads like a friendly, competent human. Very close to a 5; the only tiny reservation is that \"Je suis là pour l'année de vos enfants\" is slightly vague as a follow-up but it is not a fault per the rules — terseness is allowed, not required, and this is still short and plain. Overall this is an excellent message.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is one sentence, in French, no question, no suggestion, no fix, no emoji, no exclamation, no URL, no invented facts. It correctly states the reason (2 people haven't said who they are) and that Hale is staying quiet. However, the address requirement is tu, and this is a group_quiet_notice — but the sentence itself is impersonal/third-person and doesn't use tu or vous, so the address issue is neutral here. The reason given matches facts.reason (\"unconfirmed\") and facts.count (2). No hype, no padding, no extra sentences. Hale is not in mustMention so not naming itself is correct. This is clean and accurate. Minor note: \"silencieuse\" implies a feminine form of Hale, which is fine as a planificatrice. Overall this is a strong, compliant one-sentence notice.",
-    "score": 5
-  }
-}

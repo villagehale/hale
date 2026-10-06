@@ -5,8 +5,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { fakeSpokenLineComposer } from '../voice/fakes';
 import { linqGroupOnboardingV2Enabled } from './config';
+import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
 import { handleLinqInboundRequest } from './inbound';
 import {
   type ListChatHandles,
@@ -15,6 +15,7 @@ import {
   ensureRoster,
   startGroupRoster,
 } from './roster';
+import type { RosterReading } from './roster-reading';
 
 /**
  * Group onboarding v2, PR A: the roster ledger. Hale is added to a family's existing
@@ -749,7 +750,7 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
     const outcomes: string[] = [];
     const sends: Array<{ chatId: string; text: string; replyTo?: string }> = [];
     const jobs: unknown[] = [];
-    const voice = fakeSpokenLineComposer();
+    const voice = fakeGroupOnboardingComposer();
     const deps = {
       database,
       log: { info: () => {}, warn: () => {}, error: () => {} },
@@ -761,6 +762,10 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
       },
       now: () => NOW,
       groupVoice: voice,
+      readGroupReply: async (text: string): Promise<RosterReading> =>
+        text === 'grandma here!'
+          ? { kind: 'role', role: 'grandparent', parentRole: null, relation: null }
+          : { kind: 'unclear' },
       listChatHandles: list,
       sendGroupText: async (input: { chatId: string; text: string; replyTo?: string }) => {
         sends.push(input);
@@ -920,14 +925,18 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
 
     vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
     const dark = await handleLinqInboundRequest(signed(addedSomeone(UNKNOWN_B)), deps);
-    expect(await dark.json()).toEqual({ outcome: 'participant.added' });
+    expect(await dark.json()).toMatchObject({ outcome: 'group_coparent_seated' });
     expect(
-      await db.database
-        .select({ role: schema.familyMembers.role })
-        .from(schema.familyMembers)
-        .where(eq(schema.familyMembers.familyId, familyId)),
-    ).toEqual([{ role: 'primary_parent' }]);
-    expect(sends).toHaveLength(1);
+      (
+        await db.database
+          .select({ role: schema.familyMembers.role })
+          .from(schema.familyMembers)
+          .where(eq(schema.familyMembers.familyId, familyId))
+      )
+        .map((row) => row.role)
+        .sort(),
+    ).toEqual(['co_parent', 'primary_parent']);
+    expect(sends).toHaveLength(2);
   });
 
   it('claims a new group from the phrase and asks who is who instead of seating the first phone', async () => {

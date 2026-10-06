@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in French with vous, names Hale (required by mustMention), states its role, explains it cannot help the group until a parent contacts it directly, and says it will stay quiet in the meantime. No questions, no exclamation marks, no emoji, no URL, no phone number, no invented facts, no hype. It is warm, plain, and concise. The only minor issue is \"un des parents\" which slightly singles out one person rather than addressing the group openly, but this is not a listed fault and is natural French for this context. Overall this is a strong, correct message.",
-    "score": 5
-  }
-}

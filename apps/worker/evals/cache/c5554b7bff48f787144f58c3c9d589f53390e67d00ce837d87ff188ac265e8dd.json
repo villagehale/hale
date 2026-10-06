@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message correctly introduces Hale by name (mustMention: Hale ✓), names Riley (mustMention: Riley ✓), offers all six role choices as options in one question (mom, dad, grandparent, nanny, babysitter, not family — all mustMention items ✓), uses \"vous\"-appropriate address (no tu/vous mismatch), asks exactly one question placed last ✓, no exclamation marks or emoji ✓, no invented facts ✓, no calendar/email/link talk ✓, no second question ✓, no keyword/STOP/URL ✓, warm and plain register ✓, first person ✓, short (two sentences) ✓. Everything watchFor requires is present and nothing forbidden appears.",
-    "score": 5
-  }
-}

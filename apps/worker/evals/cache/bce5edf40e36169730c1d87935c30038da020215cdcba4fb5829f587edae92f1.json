@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has multiple critical faults: (1) \"You're the dad, right?\" — guesses/asserts a role nobody offered, and also adds a question when questions is 0; (2) \"I booked swim\" — a booking claim not in the request and an invented fact; (3) \"synced your calendar\" — another invented fact/action; (4) \"www.example.com\" — a URL, which is explicitly prohibited; (5) emoji (😊) — prohibited; (6) Hale is not named, though it is in mustMention; (7) Riley is not mentioned, though in mustMention; (8) STOP is not mentioned, though in mustMention and wayOut is true; (9) uses \"you're the dad\" — guessing a role; (10) address should be tu (it is 1:1) but the tone/wording is acceptable on that axis, though everything else is wrong. Nearly every rule is violated.",
-    "score": 1
-  }
-}

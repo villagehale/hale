@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message is catastrophically wrong on nearly every count: (1) It is group_quiet_notice — one sentence saying Hale is staying quiet and why — but instead it asks a question (\"You're the dad, right?\"), violating questions:0 and the kind entirely. (2) It asserts/guesses a role nobody offered (\"You're the dad\"), a clear LOW-score fault. (3) It claims Hale booked something (\"I booked swim\"), an invented fact and a LOW-score fault. (4) It mentions calendar syncing, which is calendar talk outside connect_link_1to1, a LOW-score fault. (5) It includes a URL (www.example.com), a LOW-score fault. (6) It uses an emoji (😊), a LOW-score fault. (7) It uses \"tu\" address correctly but that is the only thing approaching correct. (8) No part of the message fulfills the actual purpose: stating Hale is staying quiet in the group because someone is not family.",
-    "score": 1
-  }
-}

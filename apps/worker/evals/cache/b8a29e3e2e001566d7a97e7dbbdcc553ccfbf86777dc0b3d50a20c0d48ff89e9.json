@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message correctly introduces Hale by name (mustMention satisfied), mentions Riley (mustMention satisfied), frames it as Riley's family, and asks exactly one question listing all six role words (mom, dad, grandparent, nanny, babysitter, not family — all mustMention items covered). It uses \"you\" which is appropriate for a vous/group address in English. No exclamation marks, no emoji, no invented facts, no second question, no URL, no calendar/link talk, no guessing of role. It is short, warm, and first-person. All mustMention items appear. The single question is last. This is essentially a perfect execution.",
-    "score": 5
-  }
-}

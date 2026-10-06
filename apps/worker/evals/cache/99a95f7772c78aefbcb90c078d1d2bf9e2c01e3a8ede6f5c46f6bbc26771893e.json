@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has numerous critical faults: 1) It is in English, not French as required. 2) It uses \"You're\" (tu/vous ambiguity aside, it is English). 3) It asserts/guesses a role (\"You're the dad, right?\") — a direct LOW score violation. 4) It claims Hale booked something (\"I booked swim\") — a fabricated fact and LOW score violation. 5) It mentions calendar sync — calendar talk is explicitly forbidden outside connect_link_1to1. 6) It contains an emoji (😊) — LOW score violation. 7) It contains a URL (www.example.com) — LOW score violation. 8) Hale is not named anywhere — but Hale is in mustMention. 9) Riley is not mentioned. 10) The role words (maman, papa, grand-parent, nounou, gardienne, pas de la famille) are not listed as choices. 11) The one required question is not properly asked; instead a yes/no guess is made. 12) It is in the wrong language entirely. Essentially every requirement is violated.",
-    "score": 1
-  }
-}

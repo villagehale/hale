@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This is a connect_link_1to1 in English with tu address. Let me check all requirements:\n\n- Address: tu (1:1), and the message uses \"your\" (no vous/tu issue in English, so fine)\n- mustMention: Hale ✓, Riley ✓, STOP ✓ (wayOut is true and STOP is in mustMention)\n- Hale introduces itself as \"the kids' year planner for Riley's family\" ✓\n- Links connect Google Calendar and Gmail ✓ (connect_link_1to1 may and must say what its links connect)\n- linkFollows: true — the message says \"The links that follow\" ✓\n- No question (questions is 0) ✓\n- No URL ✓\n- No booking claim ✓\n- No role guess ✓\n- No emoji, exclamation marks ✓\n- STOP wording present and required (STOP in mustMention, wayOut true) ✓\n- \"nothing from you is shown in the group\" — this is a natural reassurance for a 1:1 connect message, fits the kind\n- No invented facts (no child names, no times, no counts beyond what's in facts) ✓\n- Warm, plain, short, first person ✓\n- No \"we\" for Hale ✓\n- No calendar/email/plans talk outside of what's appropriate — connect_link_1to1 is explicitly allowed to mention what its links connect (Google Calendar, Gmail) ✓\n- No padding ✓\n- Three sentences, concise ✓\n\nEverything checks out. This is a clean, well-constructed message that hits every requirement without fault.",
-    "score": 5
-  }
-}

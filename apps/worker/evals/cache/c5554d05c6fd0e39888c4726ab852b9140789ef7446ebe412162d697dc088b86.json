@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message is catastrophically wrong on multiple dimensions: (1) role_confirmed means the person just said \"nanny\" and Hale must say that word back — instead the message asserts \"You're the dad,\" which is a wrong, invented role never offered by the person; (2) it claims Hale \"booked swim and synced your calendar,\" which are invented facts not in the request and calendar talk is explicitly prohibited; (3) it includes a URL (www.example.com), which is forbidden; (4) it includes an emoji (😊), which is forbidden; (5) it asks a question (\"right?\") when questions is 0; (6) it says \"I booked\" claiming Hale signed someone up, which is forbidden; (7) \"nanny\" (the mustMention word) is never said. Essentially every rule is violated.",
-    "score": 1
-  }
-}

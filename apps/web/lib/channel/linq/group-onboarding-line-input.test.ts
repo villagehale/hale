@@ -1,110 +1,71 @@
 import { describe, expect, it } from 'vitest';
-import { judgeSpokenLine } from '../voice/judge';
 import { groupOnboardingLineInput } from './group-onboarding-line-input';
 
 /**
- * The STOP-wording ban every other voice line keeps is lifted only where the line must
- * carry the way out: the first 1:1 message to a seated parent, and the STOP
- * acknowledgement. Everywhere else in this flow STOP is still refused.
+ * An ask does not hand the parent a list of words to reply with. Hale and a known
+ * parent's name are facts the line must carry. STOP is a fact only where the line
+ * is the way out.
  */
 
-const CONNECT = groupOnboardingLineInput(
-  {
-    kind: 'connect_link_1to1',
-    name: null,
-    knownParentName: 'Riley',
-    providers: ['Google Calendar', 'Gmail'],
-  },
-  'en',
-);
+const ROLE_MENU = ['mom', 'dad', 'grandparent', 'nanny', 'babysitter', 'not family'];
 
-describe('group onboarding lines that carry the way out', () => {
-  it('accepts STOP in the 1:1 link line, and refuses that line when it leaves STOP out', () => {
-    expect(CONNECT).toMatchObject({ address: 'tu', linkFollows: true, wayOut: true });
-    expect(
-      judgeSpokenLine(
-        "I'm Hale, the kids' year planner for Riley's family. These links connect your Google Calendar and Gmail, and nothing of yours shows in the group. Reply STOP to stop these messages.",
-        CONNECT,
-      ),
-    ).toEqual({ ok: true });
-    expect(
-      judgeSpokenLine(
-        "I'm Hale, the kids' year planner for Riley's family. These links connect your Google Calendar and Gmail.",
-        CONNECT,
-      ),
-    ).toEqual({ ok: false, reason: 'missing' });
+describe('group onboarding line facts', () => {
+  it('asks who someone is without listing role words to reply with', () => {
+    for (const kind of ['roster_ask', 'member_ask', 'role_reask'] as const) {
+      const input =
+        kind === 'roster_ask'
+          ? groupOnboardingLineInput({ kind, knownParentName: 'Riley', rosterSize: 3 }, 'en')
+          : kind === 'member_ask'
+            ? groupOnboardingLineInput({ kind, knownParentName: 'Riley' }, 'en')
+            : groupOnboardingLineInput({ kind }, 'en');
+      expect(input.questions).toBe(1);
+      for (const word of ROLE_MENU) {
+        expect(input.mustMention).not.toContain(word);
+      }
+    }
   });
 
-  it('still refuses STOP wording in a group line that is not the acknowledgement', () => {
-    const textMe = groupOnboardingLineInput({ kind: 'text_me_directly', name: 'Sam' }, 'en');
-    expect(
-      judgeSpokenLine(
-        "Sam, I'm Hale. Send me a message directly and I'll set you up there. Reply STOP anytime.",
-        textMe,
-      ),
-    ).toEqual({ ok: false, reason: 'compliance' });
-    const ack = groupOnboardingLineInput({ kind: 'stop_ack' }, 'en');
-    expect(
-      judgeSpokenLine("Got it, you said STOP, so I won't write to you in this group.", ack),
-    ).toEqual({ ok: true });
-  });
-});
-
-/**
- * Someone added to an existing iMessage group does not see the messages before they
- * joined, so the ask they get is from a stranger unless it names Hale, and their answer
- * to it is the consent that seats them. A re-ask follows Hale's own line, so it does not.
- */
-describe('who is asking', () => {
   it('names Hale in the ask to a newly added member, not in the re-ask', () => {
     for (const language of ['en', 'fr'] as const) {
-      expect(
-        groupOnboardingLineInput({ kind: 'member_ask', knownParentName: 'Riley' }, language)
-          .mustMention,
-      ).toContain('Hale');
+      const ask = groupOnboardingLineInput(
+        { kind: 'member_ask', knownParentName: 'Riley' },
+        language,
+      );
+      expect(ask.mustMention).toEqual(['Hale', 'Riley']);
       expect(groupOnboardingLineInput({ kind: 'role_reask' }, language).mustMention).not.toContain(
         'Hale',
       );
     }
   });
-});
 
-/**
- * "Vous êtes maman, papa, grand-parent, nounou, gardienne ou pas de la famille ?" offers
- * every role; "vous êtes la maman" and "you're the mom, right?" decide for someone. Only
- * the second shape is a role asserted.
- */
-describe('role_asserted in an ask', () => {
-  const reaskFr = groupOnboardingLineInput({ kind: 'role_reask' }, 'fr');
-  const reaskEn = groupOnboardingLineInput({ kind: 'role_reask' }, 'en');
+  it('carries STOP only on the 1:1 link line, which is the way out', () => {
+    const connect = groupOnboardingLineInput(
+      {
+        kind: 'connect_link_1to1',
+        name: null,
+        knownParentName: 'Riley',
+        providers: ['Google Calendar', 'Gmail'],
+      },
+      'en',
+    );
+    expect(connect).toMatchObject({ address: 'tu', linkFollows: true, wayOut: true });
+    expect(connect.mustMention).toEqual(expect.arrayContaining(['Hale', 'Riley', 'STOP']));
 
-  it('accepts a choice list that opens with vous êtes / you are', () => {
-    expect(
-      judgeSpokenLine(
-        'Pas de souci. Vous êtes maman, papa, grand-parent, nounou, gardienne, ou pas de la famille?',
-        reaskFr,
-      ),
-    ).toEqual({ ok: true });
-    expect(
-      judgeSpokenLine(
-        "No worries. You're the mom, dad, grandparent, nanny, babysitter, or not family?",
-        reaskEn,
-      ),
-    ).toEqual({ ok: true });
+    const textMe = groupOnboardingLineInput({ kind: 'text_me_directly', name: 'Sam' }, 'en');
+    expect(textMe.wayOut).toBeUndefined();
+    expect(textMe.mustMention).not.toContain('STOP');
+
+    const ack = groupOnboardingLineInput({ kind: 'stop_ack' }, 'en');
+    expect(ack.wayOut).toBe(true);
+    expect(ack.mustMention).not.toContain('STOP');
   });
 
-  it('still refuses a single role decided for the reader', () => {
-    expect(
-      judgeSpokenLine(
-        'Vous êtes la maman, non? Sinon: maman, papa, grand-parent, nounou, gardienne, ou pas de la famille?',
-        reaskFr,
-      ),
-    ).toEqual({ ok: false, reason: 'question' });
-    expect(
-      judgeSpokenLine(
-        "You're the mom, right - or dad, grandparent, nanny, babysitter, or not family?",
-        reaskEn,
-      ),
-    ).toEqual({ ok: false, reason: 'forbidden:role_asserted' });
+  it('echoes the role word someone already gave, and does not ask a question', () => {
+    const confirmed = groupOnboardingLineInput(
+      { kind: 'role_confirmed', name: 'Sam', role: 'aunt' },
+      'en',
+    );
+    expect(confirmed.questions).toBe(0);
+    expect(confirmed.mustMention).toEqual(['Sam', 'aunt']);
   });
 });

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is a clean role_confirmed acknowledgement: it thanks the person and says back their exact word (\"mom\"), which is the mustMention requirement. No question, no next steps, no calendar, no invented facts, no hype, no emoji, no exclamation marks. It is short and warm. Address is \"vous\" but this is English so no French pronoun issue applies. The only minor note is that in a vous-addressed group context the phrasing \"you're the mom\" directed at one person is fine in English. Everything watchFor asks for is satisfied.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is a clean, one-sentence stop acknowledgement in French with vous, no questions, no extra information, no exclamation marks or emoji, no URL, no mention of STOP keyword or unsubscribing explicitly beyond the implied meaning, no invented facts, and it correctly conveys that Hale will no longer write to them in the group. STOP is not in mustMention so it need not repeat the word. The message is short, warm, and does exactly what stop_ack requires. A near-perfect response.",
-    "score": 5
-  }
-}

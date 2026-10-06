@@ -32,6 +32,8 @@ import { declineRosterMember, seatConfirmedMember } from './roster-seat';
 
 export interface RosterTurnPorts extends RosterVoicePorts {
   listHandles?: ListChatHandles;
+  /** Production reads with the model. Tests pass a reader so seating does not call it. */
+  readReply?: (text: string) => Promise<RosterReading>;
   recordInbound: (
     message: LinqInboundText,
     owner: { familyId: string; userId: string },
@@ -66,6 +68,12 @@ function roleWordFor(reading: Extract<RosterReading, { kind: 'role' }>): RoleWor
         : 'parent';
   }
   if (reading.role === 'not_family' || reading.role === 'decline') return null;
+  if (reading.role === 'extended') {
+    if (reading.relation === 'aunt') return 'aunt';
+    if (reading.relation === 'uncle') return 'uncle';
+    if (reading.relation === 'cousin') return 'cousin';
+    return 'family';
+  }
   return reading.role;
 }
 
@@ -128,7 +136,9 @@ export async function takeRosterTurn(
     return handled('roster_member_settled', 'ignored');
   }
 
-  const reading = readRosterReply(message.text);
+  const reading = ports.readReply
+    ? await ports.readReply(message.text)
+    : await readRosterReply(message.text);
   const reply = { messageId: message.messageId, text: message.text };
   if (reading.kind === 'unclear') {
     if (member.status === 'reasked') return handled('role_unclear_final', 'ignored');
@@ -147,12 +157,21 @@ export async function takeRosterTurn(
     });
   }
 
+  const seatReading =
+    reading.role === 'parent'
+      ? { role: 'parent' as const, parentRole: reading.parentRole }
+      : reading.role === 'extended'
+        ? { role: 'extended' as const, parentRole: null }
+        : reading.role === 'grandparent' ||
+            reading.role === 'nanny' ||
+            reading.role === 'babysitter'
+          ? { role: reading.role, parentRole: null }
+          : null;
+  if (!seatReading) return handled('role_unclear_final', 'ignored');
+
   const seated = await seatConfirmedMember(database, {
     rosterMemberId: member.id,
-    reading:
-      reading.role === 'parent'
-        ? { role: 'parent', parentRole: reading.parentRole }
-        : { role: reading.role as 'grandparent' | 'nanny' | 'babysitter', parentRole: null },
+    reading: seatReading,
     verbatimReply: message.text,
     now: ports.now,
   });

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has multiple critical faults: (1) It guesses/asserts a role (\"You're the dad, right?\") that nobody offered — a clear LOW score trigger. (2) It claims Hale booked something (\"I booked swim\") — another explicit LOW score trigger. (3) It contains a URL (www.example.com) — explicitly forbidden. (4) It contains an emoji (😊) — forbidden. (5) It uses \"tu/you\" address correctly for a 1:1, but that is the only thing it does right. (6) It does not introduce Hale by name (mustMention: Hale). (7) It does not mention Riley (mustMention: Riley). (8) It does not mention STOP (mustMention: STOP, wayOut: true). (9) It does not explain what the links connect (Google Calendar, Gmail). (10) It asks a question (\"right?\") when questions is 0. Nearly every requirement is violated and nearly every forbidden element is present.",
-    "score": 1
-  }
-}

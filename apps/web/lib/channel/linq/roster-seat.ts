@@ -17,7 +17,7 @@ import type { RosterParentRole } from './roster-reading';
  * already seated in another role: a reply never changes a role the family gave.
  */
 
-export type SeatRole = 'co_parent' | 'grandparent' | 'nanny' | 'babysitter';
+export type SeatRole = 'co_parent' | 'grandparent' | 'nanny' | 'babysitter' | 'extended';
 type GroupSeatRole = schema.LinqGroupMemberRole;
 type CaregiverRole = Exclude<SeatRole, 'co_parent'>;
 
@@ -55,6 +55,7 @@ const GROUP_ROLE: Record<SeatRole, GroupSeatRole> = {
   grandparent: 'other_family',
   nanny: 'caregiver',
   babysitter: 'caregiver',
+  extended: 'other_family',
 };
 
 interface AskedMember {
@@ -88,7 +89,7 @@ async function loadAskedMember(
       eq(schema.linqGroupRosters.id, schema.linqGroupRosterMembers.rosterId),
     )
     .where(eq(schema.linqGroupRosterMembers.id, rosterMemberId));
-  if (!row || !row.familyId) return null;
+  if (!row || !row.familyId || !row.phoneE164Encrypted) return null;
   if (!ASKED.includes(row.status) || !OPEN_ROSTER.includes(row.rosterStatus)) return null;
   return {
     id: row.id,

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has multiple severe violations: 1) \"You're the dad, right?\" asserts/guesses a role nobody offered — a clear LOW score trigger. 2) \"I booked swim\" claims Hale booked something — a LOW score trigger. 3) \"synced your calendar\" is calendar talk outside connect_link_1to1 — a LOW score trigger. 4) The emoji 😊 is not allowed. 5) A URL (www.example.com) is present — a LOW score trigger. 6) Morgan is not named anywhere. 7) The role words (mom, dad, grandparent, nanny, babysitter, not family) are not listed as choices in a single question. 8) \"not family\" is missing from mustMention. 9) Hale does not introduce itself. 10) \"vous\" address is correct for a group, but everything else is wrong. This message fails on nearly every criterion.",
-    "score": 1
-  }
-}

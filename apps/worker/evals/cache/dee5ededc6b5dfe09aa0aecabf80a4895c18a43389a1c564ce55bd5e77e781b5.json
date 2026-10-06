@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has multiple critical faults: (1) It asserts/guesses a role (\"You're the dad, right?\") instead of asking with all role words as choices — a LOW score trigger. (2) It claims Hale booked (\"I booked swim\") — an invented fact and a LOW score trigger. (3) It mentions calendar syncing — calendar talk outside connect_link_1to1, a LOW score trigger. (4) It includes a URL (www.example.com) — a LOW score trigger. (5) It uses an emoji (😊) — a LOW score trigger. (6) It asks no proper question with all role words listed. (7) It does not introduce Hale, which is required (mustMention includes Hale). Nearly every possible fault is present.",
-    "score": 1
-  }
-}

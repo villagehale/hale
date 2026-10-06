@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in French, uses vous correctly for the group address, echoes \"maman\" back as required by role_confirmed, includes a warm one-liner without any question, no invented facts, no forbidden elements (no exclamation marks, emoji, links, hype, etc.). mustMention \"maman\" is satisfied. It is brief, warm, and complete. A near-perfect role_confirmed line.",
-    "score": 5
-  }
-}

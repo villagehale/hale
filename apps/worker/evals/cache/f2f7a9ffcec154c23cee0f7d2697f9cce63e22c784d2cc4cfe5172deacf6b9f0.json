@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has numerous critical failures: (1) It is in English, not French as required. (2) It guesses/asserts a role (\"You're the dad, right?\") that nobody offered — a clear LOW score trigger. (3) It claims Hale booked something (\"I booked swim\") — an invented fact and forbidden assertion. (4) It mentions calendar syncing — forbidden calendar talk outside connect_link_1to1. (5) It includes a URL (www.example.com) — explicitly forbidden. (6) It uses an emoji (😊) — forbidden. (7) It uses tu/you in what appears to be a single-person framing but the address is vous/group — register issue. (8) It asks a question (\"right?\") when questions is 0. (9) Hale is not named, yet mustMention includes Hale. (10) It is not a statement directing the person to message Hale directly as text_me_directly requires. Virtually every rule is violated.",
-    "score": 1
-  }
-}

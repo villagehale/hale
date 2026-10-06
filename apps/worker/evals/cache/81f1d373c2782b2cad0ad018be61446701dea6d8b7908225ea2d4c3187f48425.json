@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message introduces Hale as a kids' year planner for Riley's family (satisfying mustMention for Hale and Riley), then asks exactly one question listing all six role words (mom, dad, grandparent, nanny, babysitter, not family) as choices — all required mustMention items are present. It uses \"you\" which is appropriate for a vous/group address in English. No guessing of roles, no mention of calendars, email, links, or plans, no exclamation marks or emoji, no invented facts, no second question, no padding. It is short, warm, and first-person. The only very minor issue is it doesn't explicitly ask each person to say for themselves, but the phrasing \"Are you a mom, dad…\" directed at the group implicitly does so, which is standard and acceptable. This is a near-perfect execution.",
-    "score": 5
-  }
-}

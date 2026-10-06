@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has multiple critical failures: (1) It guesses/asserts the reader's role (\"You're the dad, right?\") — a LOW score trigger, as no role was offered. (2) It claims Hale \"booked swim and synced your calendar\" — invented facts not in the request, and explicitly forbidden calendar talk. (3) It includes a URL (www.example.com) — explicitly forbidden. (4) It uses an emoji (😊) — forbidden. (5) It asks zero questions in the correct form — the required single roster question with all role choices is entirely absent. (6) Hale is not introduced (mustMention requires it). (7) Riley is not mentioned. (8) None of the required role words (mom, dad, grandparent, nanny, babysitter, not family) are offered as choices in a proper question. This message fails on nearly every dimension.",
-    "score": 1
-  }
-}

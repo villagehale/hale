@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This is a connect_link_1to1 in English with address tu (1:1), questions=0, mustMention=[Hale, Riley, STOP], wayOut=true, providers=[Google Calendar, Gmail], linkFollows=true. Checking the message: • Uses \"I'm Hale\" (tu context, 1:1, first person — correct). • Names Hale ✓, Riley ✓, STOP ✓ (all mustMention covered). • States what the links connect: Google Calendar and Gmail ✓ (required for connect_link_1to1). • No question ✓. • No URL ✓. • No booking claim ✓. • No role guess ✓. • No exclamation marks, emoji, hype ✓. • No \"we\" ✓. • STOP wording present and wayOut=true ✓. • Nothing about \"setup\" (that's text_me_directly, not applicable here). • \"nothing from you is shown in the group\" — a clean, warm privacy reassurance, not padding or an invented fact. • Two sentences, plain, warm, first person. • linkFollows=true means the links literally follow the message, so \"The links that follow\" is correct. • No second question, no keyword instruction beyond the STOP opt-out (STOP is required and correctly framed). This message hits every requirement precisely, is warm but not hype-laden, and avoids all forbidden elements. A clean 5.",
-    "score": 5
-  }
-}

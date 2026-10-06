@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Let me check this message against the criteria.\n\nKind: no_family_yet — Hale knows nobody in the group, introduces itself, says a parent should text Hale directly to set up, and that it'll stay quiet until then. No question (questions=0). mustMention: Hale. Address: vous (group).\n\nChecking the message: \"I'm Hale, a kids' year planner. I can't help this group until one of you parents texts me directly to set up your kids' year, so I'll stay quiet here until then.\"\n\n- Names itself as Hale ✓\n- Names its role (kids' year planner) ✓\n- Tells a parent to text Hale directly to set up ✓\n- Says it'll stay quiet until then ✓\n- No question ✓\n- No exclamation marks ✓\n- No emoji ✓\n- No URL or phone number ✓\n- No link ✓\n- No invented facts ✓\n- No \"we\" ✓\n- Short and warm ✓\n- No hype/padding ✓\n- Language is English ✓\n- Address is vous (group), written in English with \"you\" which is neutral — no tu/vous distinction in English, so no issue ✓\n- No calendar, email, Gmail, inbox talk ✓\n- No claiming Hale booked or signed anyone ✓\n- No STOP/unsubscribing mention (wayOut not true) ✓\n- No keywords to reply with ✓\n\nThe message is clean, concise, two sentences, hits all the required points, no violations. This is a strong 5.",
-    "score": 5
-  }
-}

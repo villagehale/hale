@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has multiple severe faults: (1) It asserts/guesses the person's role (\"You're the dad, right?\") — a cardinal LOW-score error since nobody offered that role. (2) It claims Hale booked something (\"I booked swim\") — an invented fact not in the request. (3) It mentions calendar syncing — calendar talk is explicitly prohibited outside connect_link_1to1. (4) It includes a URL (www.example.com) — URLs are always prohibited. (5) It uses an emoji (😊) — exclamation marks and emoji are explicitly prohibited. (6) It does not introduce Hale at all — Hale is in mustMention. (7) It does not name Riley — Riley is in mustMention. (8) It does not ask who the person is with all role choices — the one required question is missing entirely. (9) It does not mention any of the required role words (mom, dad as a choice, grandparent, nanny, babysitter, not family) — all are in mustMention. This message fails on nearly every requirement.",
-    "score": 1
-  }
-}

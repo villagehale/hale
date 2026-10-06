@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message fails on almost every criterion. (1) It asks a question (\"You're the dad, right?\") when questions is 0. (2) It asserts/guesses a role (\"the dad\") that nobody offered — a clear LOW score trigger. (3) It claims Hale booked something (\"I booked swim\") — a LOW score trigger. (4) It mentions calendar syncing — calendar talk outside connect_link_1to1 is a LOW score trigger. (5) It includes a URL (www.example.com) — explicitly forbidden. (6) It uses an emoji (😊) — forbidden. (7) It is addressed with \"You\" but the address is tu (1:1), and while English doesn't distinguish, the content is wildly off. (8) It says nothing about staying quiet in the group because someone is not family — the entire purpose of group_quiet_notice is ignored. This message is completely wrong in kind, content, and execution.",
-    "score": 1
-  }
-}

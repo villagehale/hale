@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message introduces Hale by name (required), names Riley (required), lists all six role words as choices in one question (required), uses vous throughout (correct for a group address), carries real French accents, and is warm and short. The only minor awkwardness is \"parmi vous\" after already addressing \"vous,\" which is slightly redundant but not a fault. No invented facts, no second question, no calendar/email talk, no emoji or exclamation marks, no guessed roles, no forbidden elements. All mustMention items are present. This reads like a friendly, competent introduction. It is a clean, near-perfect roster_ask.",
-    "score": 5
-  }
-}

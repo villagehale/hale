@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has numerous critical failures: 1) It is in English, not French as required. 2) It uses a URL (www.example.com), which is explicitly forbidden. 3) It asserts/guesses a role (\"You're the dad, right?\") instead of asking each person to say for themselves — a LOW score trigger. 4) It claims Hale booked something (\"I booked swim\"), which is a LOW score trigger. 5) It mentions calendar syncing (\"synced your calendar\"), forbidden outside connect_link_1to1. 6) It contains an emoji (😊), forbidden. 7) Hale is not named despite being in mustMention. 8) Riley is not mentioned. 9) None of the required role words (maman, papa, grand-parent, nounou, gardienne, pas de la famille) are listed as choices. 10) It is addressed as \"you\" (tu/vous ambiguous but in English, irrelevant since it's entirely wrong language). Virtually every rule is broken.",
-    "score": 1
-  }
-}

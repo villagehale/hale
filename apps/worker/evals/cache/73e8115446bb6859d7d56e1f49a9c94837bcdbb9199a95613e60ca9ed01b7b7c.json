@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in French with correct accents, uses vous throughout (correct for a group address), introduces Hale (required by mustMention), names Riley (required), and lists all six role words as choices inside exactly one question. It is short, warm, first person, and avoids all forbidden elements: no calendar, email, link, emoji, exclamation marks, guessed roles, hype, or second question. The only minor awkwardness is \"parmi vous\" which is slightly redundant in this phrasing but not a fault. Overall this reads naturally and meets every requirement cleanly.",
-    "score": 5
-  }
-}

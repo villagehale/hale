@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has numerous critical faults: (1) It is group_quiet_notice, which must be one sentence saying Hale is staying quiet in the group and why — this message does none of that. (2) It asks a question (\"You're the dad, right?\") when questions is 0. (3) It asserts/guesses a role (\"the dad\") that nobody offered — a clear LOW score trigger. (4) It claims Hale booked something (\"I booked swim\") — an invented fact and a prohibited claim. (5) It claims Hale synced a calendar — calendar talk is prohibited outside connect_link_1to1. (6) It includes a URL (www.example.com) — prohibited. (7) It includes an emoji (😊) — prohibited. (8) It uses \"tu\" address but is directed entirely at the wrong content. (9) None of the actual purpose of the kind (group_quiet_notice: one sentence, Hale staying quiet, reason) is present. This is a complete failure on every dimension.",
-    "score": 1
-  }
-}

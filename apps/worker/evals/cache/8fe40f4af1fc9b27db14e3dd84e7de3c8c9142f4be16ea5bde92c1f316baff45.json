@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has multiple critical failures: (1) It guesses/asserts a role (\"You're the dad, right?\") without anyone offering it — a direct violation. (2) It claims Hale booked something (\"I booked swim\") — an invented fact not in the request. (3) It mentions syncing a calendar — explicitly forbidden. (4) It includes a URL (www.example.com) — forbidden. (5) It includes an emoji (😊) — forbidden. (6) It does not introduce Hale as a kids' year planner, which is in mustMention. (7) It does not ask the required roster question with all role words as choices. (8) It does not mention Riley's family or the other required mustMention items (mom, dad, grandparent, nanny, babysitter, not family) in the correct way. Essentially nothing in this message is correct.",
-    "score": 1
-  }
-}

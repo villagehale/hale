@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message is catastrophically wrong on almost every dimension. (1) It guesses/asserts a role (\"You're the dad, right?\") that nobody offered — a direct LOW score trigger. (2) It claims Hale booked something (\"I booked swim\") — invented fact, LOW. (3) It mentions syncing a calendar — calendar talk outside connect_link_1to1, LOW. (4) It includes a URL (www.example.com) — explicitly forbidden, LOW. (5) It uses an emoji (😊) — LOW. (6) It asks a question (\"You're the dad, right?\") when questions is 0 — LOW. (7) Hale is in mustMention but is never named — LOW. (8) The message does not say Hale is a kids' year planner, does not say to text Hale directly, does not say Hale will stay quiet — all required by the kind and watchFor. (9) \"booked\" implies Hale signed someone up — LOW. Every single requirement is violated and every forbidden element is present.",
-    "score": 1
-  }
-}

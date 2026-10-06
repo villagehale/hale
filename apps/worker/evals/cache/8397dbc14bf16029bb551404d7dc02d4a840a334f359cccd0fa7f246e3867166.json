@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in French using vous throughout — correct for a group address. Hale introduces itself by name (mustMention: Hale ✓), names Morgan (mustMention: Morgan ✓), and lists all six role words as choices in the single question (maman, papa, grand-parent, nounou, gardienne, pas de la famille — all ✓). There is exactly one question (✓). No invented facts, no emoji, no exclamation marks, no hype, no \"we\" for Hale, no forbidden topics. The question is last (✓). The phrasing \"parmi vous\" is slightly odd (asking \"who are you among you\") but is comprehensible and not a rule violation. The tone is warm and plain. \"Qui êtes-vous parmi vous\" is a minor awkwardness but does not break any rule. Overall a very strong message.",
-    "score": 5
-  }
-}

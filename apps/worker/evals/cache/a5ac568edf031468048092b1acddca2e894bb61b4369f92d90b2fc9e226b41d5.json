@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has severe and numerous faults: 1) It is in English, not French as required. 2) It addresses \"you're the dad\" — asserting a role nobody offered, when the person just said they are la nounou. 3) It claims Hale booked swim (invented fact, and claiming Hale booked someone up). 4) It mentions syncing a calendar (calendar talk not allowed here). 5) It contains an exclamation-adjacent emoji (😊). 6) It contains a URL (www.example.com). 7) It is in tu/second-person singular in English but the address is vous. 8) It does not acknowledge the role \"nounou\" at all, which is the entire point of role_confirmed. This message fails on almost every dimension.",
-    "score": 1
-  }
-}

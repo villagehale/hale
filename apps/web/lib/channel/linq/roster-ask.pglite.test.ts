@@ -4,19 +4,19 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { fakeSpokenLineComposer } from '../voice/fakes';
-import { GROUP_ROLE_ASK_LOCKED } from './group-onboarding-copy';
+import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
 import type { LinqInboundText } from './payload';
 import { type ListChatHandles, startGroupRoster } from './roster';
 import { askMember, askRoster, sayNoFamilyYet } from './roster-ask';
+import type { RosterReading } from './roster-reading';
 import { takeRosterTurn } from './roster-turn';
 import { LinqSendError } from './transport';
 
 /**
  * Group onboarding v2, PR B: one model-written ask per roster, a seat only on the
- * member's own reply, one re-ask for a reply code cannot read, and a named outcome for
- * every line the model could not write. The fake voice tests the plumbing; the words are
- * the cached eval's job (rule #8).
+ * member's own reply, one re-ask for a reply the injected reader cannot read, and a named
+ * outcome when the model could not write the line. The fake composer tests the plumbing.
+ * Tests pass the reading; production asks the model.
  */
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
@@ -154,8 +154,24 @@ function inbound(sender: string, text: string, messageId = `in-${text.length}`):
   };
 }
 
+function fixtureReading(text: string): RosterReading {
+  if (text === "I'm his dad") {
+    return { kind: 'role', role: 'parent', parentRole: 'father', relation: null };
+  }
+  if (text === 'grandma here!') {
+    return { kind: 'role', role: 'grandparent', parentRole: null, relation: null };
+  }
+  if (text === 'not family, just a friend') {
+    return { kind: 'role', role: 'not_family', parentRole: null, relation: null };
+  }
+  if (text === "I'm your aunt") {
+    return { kind: 'role', role: 'extended', parentRole: null, relation: 'aunt' };
+  }
+  return { kind: 'unclear' };
+}
+
 function turnPorts(
-  voice: ReturnType<typeof fakeSpokenLineComposer> | undefined,
+  voice: ReturnType<typeof fakeGroupOnboardingComposer> | undefined,
   send: ReturnType<typeof wire>['send'],
 ) {
   const recorded: Array<{ messageId: string; userId: string }> = [];
@@ -164,6 +180,7 @@ function turnPorts(
     ports: {
       now: NOW,
       voice,
+      readReply: async (text: string) => fixtureReading(text),
       send,
       recordInbound: async (
         message: LinqInboundText,
@@ -180,7 +197,7 @@ describe('askRoster', () => {
   it('asks the whole roster once, in a model-written line that names the known parent', async () => {
     const { familyId, userId } = await seedHousehold(PARENT, 'Riley');
     await roster([PARENT, DAD, GRAN]);
-    const voice = fakeSpokenLineComposer();
+    const voice = fakeGroupOnboardingComposer();
     const { send, sent } = wire();
 
     const asked = await askRoster(db.database, { chatId: CHAT, now: NOW, voice, send });
@@ -199,18 +216,7 @@ describe('askRoster', () => {
       questions: 1,
       facts: { knownParentName: 'Riley', rosterSize: 3 },
     });
-    expect(input?.mustMention).toEqual(
-      expect.arrayContaining([
-        'Hale',
-        'Riley',
-        'mom',
-        'dad',
-        'grandparent',
-        'nanny',
-        'babysitter',
-        'not family',
-      ]),
-    );
+    expect(input?.mustMention).toEqual(['Hale', 'Riley']);
     expect(sent[0]?.text).toContain('Riley');
 
     expect(await outbound()).toEqual([
@@ -241,29 +247,34 @@ describe('askRoster', () => {
     expect(sent).toHaveLength(1);
   });
 
-  it('falls back once to the locked bilingual ask when no model can write it, and audits that', async () => {
+  it('sends nothing when the model cannot write the ask, and does not spend the claim', async () => {
     await seedHousehold(PARENT, 'Riley');
     await roster([PARENT, DAD]);
     const { send, sent } = wire();
 
-    const asked = await askRoster(db.database, { chatId: CHAT, now: NOW, voice: undefined, send });
-    expect(asked).toEqual({
-      outcome: 'roster_asked',
-      notice: { outcome: 'sent', source: 'locked' },
+    const asked = await askRoster(db.database, {
+      chatId: CHAT,
+      now: NOW,
+      voice: fakeGroupOnboardingComposer({ fail: true }),
+      send,
     });
-    expect(sent.map((s) => s.text)).toEqual([GROUP_ROLE_ASK_LOCKED]);
-    expect((await audits('group_line_locked_fallback')).map((row) => row.after)).toEqual([
-      { kind: 'roster_ask', fallback: 'voice_unavailable' },
+    expect(asked).toEqual({
+      outcome: 'roster_ask_not_sent',
+      notice: { outcome: 'group_line_unsent', fallback: 'model_failed' },
+    });
+    expect(sent).toEqual([]);
+    expect(await memberStatus(DAD)).toBe('proposed');
+    expect((await audits('group_line_unsent')).map((row) => row.after)).toEqual([
+      { kind: 'roster_ask', fallback: 'model_failed', templateKey: 'linq:roster_ask' },
     ]);
-    expect((await audits('sms_reply_sent')).map((row) => row.after)).toEqual([
-      { templateKey: 'linq:roster_ask', source: 'locked' },
-    ]);
+    expect(await audits('sms_reply_sent')).toEqual([]);
+    expect(await audits('group_line_locked_fallback')).toEqual([]);
   });
 
   it('releases the claim when Linq refuses the send, so the next inbound asks again', async () => {
     await seedHousehold(PARENT, 'Riley');
     await roster([PARENT, DAD]);
-    const voice = fakeSpokenLineComposer();
+    const voice = fakeGroupOnboardingComposer();
     const { send, sent } = wire({ failFirst: true });
 
     const failed = await askRoster(db.database, { chatId: CHAT, now: NOW, voice, send });
@@ -290,7 +301,7 @@ describe('askRoster', () => {
 describe('sayNoFamilyYet', () => {
   it('says one model-written line into a chat with no known parent, then stays quiet', async () => {
     expect(await roster([DAD, GRAN])).toMatchObject({ outcome: 'roster_no_family' });
-    const voice = fakeSpokenLineComposer();
+    const voice = fakeGroupOnboardingComposer();
     const { send, sent } = wire();
 
     const first = await sayNoFamilyYet(db.database, { chatId: CHAT, now: NOW, voice, send });
@@ -315,7 +326,7 @@ describe('sayNoFamilyYet', () => {
     const unsent = await sayNoFamilyYet(db.database, {
       chatId: CHAT,
       now: NOW,
-      voice: fakeSpokenLineComposer({ fail: true }),
+      voice: fakeGroupOnboardingComposer({ fail: true }),
       send,
     });
     expect(unsent).toEqual({
@@ -326,7 +337,7 @@ describe('sayNoFamilyYet', () => {
     const retried = await sayNoFamilyYet(db.database, {
       chatId: CHAT,
       now: NOW,
-      voice: fakeSpokenLineComposer(),
+      voice: fakeGroupOnboardingComposer(),
       send,
     });
     expect(retried).toMatchObject({ outcome: 'roster_no_family', notice: { outcome: 'sent' } });
@@ -337,7 +348,7 @@ describe('askMember', () => {
   it('asks someone added later, once, and does not seat them', async () => {
     await seedHousehold(PARENT, 'Riley');
     await roster([PARENT, DAD]);
-    const voice = fakeSpokenLineComposer();
+    const voice = fakeGroupOnboardingComposer();
     const { send, sent } = wire();
 
     const asked = await askMember(db.database, {
@@ -378,7 +389,7 @@ describe('askMember', () => {
         chatId: CHAT,
         phone: OTHER_PARENT,
         now: NOW,
-        voice: fakeSpokenLineComposer(),
+        voice: fakeGroupOnboardingComposer(),
         send,
       }),
     ).toEqual({ outcome: 'group_member_refused', reason: 'other_family' });
@@ -390,7 +401,7 @@ describe('askMember', () => {
         chatId: CHAT,
         phone: OTHER_PARENT,
         now: NOW,
-        voice: fakeSpokenLineComposer(),
+        voice: fakeGroupOnboardingComposer(),
         send,
       }),
     ).toEqual({ outcome: 'member_already' });
@@ -406,7 +417,7 @@ describe('takeRosterTurn', () => {
     await askRoster(db.database, {
       chatId: CHAT,
       now: NOW,
-      voice: fakeSpokenLineComposer(),
+      voice: fakeGroupOnboardingComposer(),
       send: asking.send,
     });
     return household;
@@ -414,7 +425,7 @@ describe('takeRosterTurn', () => {
 
   it('seats the dad on his own reply and acknowledges him in a threaded group line', async () => {
     await askedFamily();
-    const voice = fakeSpokenLineComposer();
+    const voice = fakeGroupOnboardingComposer();
     const { send, sent } = wire();
     const { ports, recorded } = turnPorts(voice, send);
 
@@ -438,7 +449,7 @@ describe('takeRosterTurn', () => {
 
   it('re-asks once for a reply code cannot read, then stays quiet and seats nobody', async () => {
     await askedFamily();
-    const voice = fakeSpokenLineComposer();
+    const voice = fakeGroupOnboardingComposer();
     const { send, sent } = wire();
     const { ports } = turnPorts(voice, send);
 
@@ -472,7 +483,7 @@ describe('takeRosterTurn', () => {
 
   it('asks a sender the roster has never seen before reading anything they said as a role', async () => {
     await askedFamily();
-    const voice = fakeSpokenLineComposer();
+    const voice = fakeGroupOnboardingComposer();
     const { send, sent } = wire();
     const { ports } = turnPorts(voice, send);
 
@@ -491,7 +502,7 @@ describe('takeRosterTurn', () => {
   it('leaves a known parent’s message to the household router', async () => {
     await askedFamily();
     const { send, sent } = wire();
-    const { ports } = turnPorts(fakeSpokenLineComposer(), send);
+    const { ports } = turnPorts(fakeGroupOnboardingComposer(), send);
     expect(await takeRosterTurn(db.database, inbound(PARENT, 'who has pickup?'), ports)).toEqual({
       handled: false,
     });
@@ -501,7 +512,7 @@ describe('takeRosterTurn', () => {
   it('keeps the seat but sends no acknowledgement when the model cannot write it, and names that', async () => {
     const { familyId } = await askedFamily();
     const { send, sent } = wire();
-    const { ports } = turnPorts(fakeSpokenLineComposer({ fail: true }), send);
+    const { ports } = turnPorts(fakeGroupOnboardingComposer({ fail: true }), send);
 
     const turn = await takeRosterTurn(db.database, inbound(GRAN, 'grandma here!', 'in-g'), ports);
     expect(turn).toMatchObject({
@@ -525,10 +536,34 @@ describe('takeRosterTurn', () => {
     ]);
   });
 
+  it('seats an aunt as extended family, not as not family', async () => {
+    await askedFamily();
+    const voice = fakeGroupOnboardingComposer();
+    const { send } = wire();
+    const { ports } = turnPorts(voice, send);
+
+    const turn = await takeRosterTurn(
+      db.database,
+      inbound(GRAN, "I'm your aunt", 'in-aunt'),
+      ports,
+    );
+    expect(turn).toMatchObject({ handled: true, outcome: 'role_confirmed' });
+    expect(await memberStatus(GRAN)).toBe('confirmed');
+    expect(voice.calls[0]?.input).toMatchObject({
+      kind: 'role_confirmed',
+      facts: { roleWord: 'aunt' },
+    });
+    expect(
+      (
+        await db.database.select({ role: schema.familyMembers.role }).from(schema.familyMembers)
+      ).map((row) => row.role),
+    ).toEqual(expect.arrayContaining(['extended']));
+  });
+
   it('records "not family" and seats nothing', async () => {
     await askedFamily();
     const { send, sent } = wire();
-    const { ports } = turnPorts(fakeSpokenLineComposer(), send);
+    const { ports } = turnPorts(fakeGroupOnboardingComposer(), send);
     const turn = await takeRosterTurn(
       db.database,
       inbound(GRAN, 'not family, just a friend'),

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has an enormous number of critical faults: 1) It is in English, not French as required. 2) It uses \"vous\" address but in English, irrelevant. 3) It asserts/guesses a role (\"You're the dad, right?\") that nobody offered — a clear LOW score trigger. 4) It claims Hale booked something (\"I booked swim\") — a LOW score trigger. 5) It mentions calendar syncing — calendar talk is explicitly forbidden outside connect_link_1to1. 6) It contains a URL (www.example.com) — explicitly forbidden. 7) It contains an emoji (😊) — explicitly forbidden. 8) It asks a question (\"right?\") when questions is 0. 9) Hale is not introduced/named despite being in mustMention. 10) It is entirely the wrong kind of message for no_family_yet. This message fails on nearly every dimension.",
-    "score": 1
-  }
-}

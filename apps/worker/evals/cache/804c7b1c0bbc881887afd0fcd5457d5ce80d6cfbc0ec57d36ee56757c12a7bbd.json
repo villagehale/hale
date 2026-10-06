@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message fails on almost every criterion: 1) It asserts 'dad' when Pat said 'grandma' — guessing/asserting the wrong role entirely, the opposite of acknowledging the confirmed role. 2) It must say 'grandparent' back (mustMention) and name 'Pat' (mustMention) — neither happens correctly. 3) It claims Hale booked swim — an invented fact and a prohibited 'booked' claim. 4) It mentions syncing a calendar — calendar talk is explicitly prohibited. 5) It includes a URL (www.example.com) — prohibited. 6) It ends with an emoji (😊) — prohibited. 7) It ends with a question ('right?') — questions is 0. This message violates nearly every rule.",
-    "score": 1
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is a single sentence, plain, warm, first person, no questions, no hype, no emoji, no exclamation marks, no invented names, no suggestions or fixes, no blame, no calendar/link talk, no URL. It correctly uses \"tu\" implicit address (no vous/tu pronoun conflict in English). It explains the reason (someone asked Hale to stop writing there) and says Hale is staying quiet in the group — matching exactly what group_quiet_notice requires. It does not assert that person is not family. It respects facts.count=1 (\"one person\"). Overall it is concise, on-kind, and correct.",
-    "score": 5
-  }
-}

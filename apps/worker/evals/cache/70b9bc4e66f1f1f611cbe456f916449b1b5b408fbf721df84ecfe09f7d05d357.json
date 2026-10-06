@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message is catastrophically wrong on multiple dimensions:\n1. \"You're the dad, right?\" – asserting/guessing a role nobody offered, plus it's a question when questions must be 0.\n2. \"I booked swim\" – fabricated fact, Hale never books anything.\n3. \"synced your calendar\" – calendar talk is forbidden outside connect_link_1to1; also a fabricated fact.\n4. \"www.example.com\" – a URL is explicitly forbidden.\n5. \"😊\" – emoji is forbidden.\n6. The entire point of stop_ack is a brief acknowledgement that Hale will stop writing to them; none of that appears.\n7. wayOut is true and STOP wording is allowed, but the message never acknowledges the STOP or says Hale will stop messaging them.\nEvery core rule is violated.",
-    "score": 1
-  }
-}

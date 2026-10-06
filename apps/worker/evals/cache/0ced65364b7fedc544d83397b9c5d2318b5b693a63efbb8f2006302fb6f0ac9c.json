@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message correctly introduces Hale by name (mustMention: Hale ✓), mentions Riley (mustMention: Riley ✓), frames this as Riley's family, and asks exactly one question listing all six role options: mom, dad, grandparent, nanny, babysitter, not family (all mustMention items ✓). It uses \"you\" which is appropriate for a vous/group address in English. No invented facts, no extra questions, no emoji, no exclamation marks, no hype, no calendar/link talk, no guessing of roles. It is short, warm, first person, and reads naturally. This is a clean, correct member_ask response.",
-    "score": 5
-  }
-}

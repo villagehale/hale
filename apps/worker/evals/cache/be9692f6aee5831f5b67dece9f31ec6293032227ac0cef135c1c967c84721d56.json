@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has numerous critical faults: (1) It is in English, not French as required. (2) It uses \"You're\" (tu form implied) but the content is otherwise wrong. (3) It asserts a role \"You're the dad, right?\" — an ask/guess of a role nobody offered, which is explicitly a LOW score trigger. (4) It claims Hale booked (\"I booked swim\") — asserting Hale signed someone up, another LOW score trigger. (5) It contains a URL (www.example.com) — explicitly forbidden. (6) It contains an emoji (😊) — explicitly forbidden. (7) mustMention requires Hale, Sam, Riley, and STOP — none of these are present. (8) It does not mention STOP/way out as required by wayOut true and STOP in mustMention. (9) It does not mention Google Calendar or Gmail as required by the connect_link_1to1 kind and the facts. (10) It does not introduce Hale or mention Riley. (11) It contains an invented fact (swim). This message fails on virtually every dimension.",
-    "score": 1
-  }
-}

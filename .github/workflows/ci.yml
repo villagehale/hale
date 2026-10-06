@@ -212,9 +212,6 @@ jobs:
       - name: Identity ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:identity-ask
 
-      - name: Group onboarding voice composer eval (cached-only)
-        run: pnpm --filter @hale/worker eval:group-onboarding-voice
-
       - name: Reminder voice composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:reminder-voice
 

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has catastrophic failures on every dimension: 1) It is in English, not French as required. 2) It uses a wrong role (\"dad\") instead of acknowledging \"grand-parent\" as given. 3) It invents facts (swim booking, calendar sync) not in the request. 4) It contains a URL (www.example.com), which is explicitly forbidden. 5) It contains an emoji (😊), which is forbidden. 6) It asks a question (\"right?\") when questions must be 0. 7) It claims Hale booked and synced things, which is forbidden. 8) It does not name Pat or say \"grand-parent\". 9) It uses \"your calendar\" — calendar talk is forbidden outside connect_link_1to1. Essentially nothing is correct.",
-    "score": 1
-  }
-}

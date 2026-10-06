@@ -10,8 +10,15 @@ import { acceptedStatus } from '~/lib/channel/ledger';
 import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
+import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { linqFromE164, linqGroupCoparentEnabled } from './config';
+import { encryptString } from '~/lib/crypto/string-cipher';
+import {
+  linqFromE164,
+  linqGroupCoparentEnabled,
+  linqGroupMembersEnabled,
+  linqGroupOnboardingV2Enabled,
+} from './config';
 import {
   LINQ_GROUP_LINE_MISSING_TEXT,
   formatLinqLineForParent,
@@ -23,6 +30,7 @@ import {
   groupCalendarReceipt,
   groupGmailAsk,
   groupGmailReceipt,
+  groupWelcome,
   matchBothFreeAsk,
 } from './group-coparent-copy';
 import { liveSeatBlocksPrivileged, nonParentWithoutLiveSeat } from './group-members';
@@ -33,14 +41,14 @@ import { sendChoicePoll } from './poll';
 import { LinqSendError, sendLinqChatMessage } from './transport';
 
 /**
- * A seated co-parent inside a claimed Linq group. SMS is not this module.
+ * Seat a co-parent inside a claimed Linq group. SMS is not this module.
  *
  * No phone is collected in the 1:1. The enrolled parent claims the group.
- * Nobody is seated here: a seat is written only on the person's own reply to
- * the roster ask (roster-seat.ts). An unknown phone speaking in a claimed group
- * is left to the roster. Children and postal code are not asked again. For a
- * co-parent already seated at the name step, the name ack is the locked line.
- * The next beat asks for that parent's
+ * The second real person in that group — not Hale, not a bot, not a handle
+ * that will not parse as a phone — is seated on the SAME family. A legacy
+ * `identity_noted` row is accepted if one still exists; it is not required.
+ * Children and postal code are not asked again. One welcome carries the name
+ * ask. The name ack is the locked line. The next beat asks for that parent's
  * calendar. The connect link is a card in the group, bound to that parent,
  * never a 1:1 and never written into the ask. The beat after that asks for
  * Gmail the same way. One ask per turn. A Google account already on the
@@ -49,6 +57,7 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * On unless `LINQ_GROUP_COPARENT` is exactly `off`.
  */
 
+const WELCOME_KEY = 'linq:coparent_welcome';
 const CALENDAR_ASK_KEY = 'linq:coparent_calendar_ask';
 const GMAIL_ASK_KEY = 'linq:coparent_gmail_ask';
 const GMAIL_RECEIPT_KEY = 'linq:coparent_gmail_receipt';
@@ -127,10 +136,56 @@ export async function considerGroupCoparent(
 
   if (sender) return { type: 'none' };
 
-  if (owner) return { type: 'none' };
-  const noted = await notedInviteForPhone(database, senderPhone, ports.now);
-  if (!noted) return { type: 'none' };
-  return sayUnclaimed(database, message, noted, language, ports);
+  if (!owner) {
+    const noted = await notedInviteForPhone(database, senderPhone, ports.now);
+    if (!noted) return { type: 'none' };
+    return sayUnclaimed(database, message, noted, language, ports);
+  }
+
+  // V2 asks who they are and seats only on their reply. Flag off keeps today's
+  // automatic seat of the second person in the claimed group.
+  if (linqGroupOnboardingV2Enabled()) return { type: 'none' };
+
+  if (linqGroupMembersEnabled()) return { type: 'none' };
+
+  const seated = await seatAppearingCoparent(database, {
+    familyId: owner.familyId,
+    invitedByUserId: await primaryParentId(database, owner.familyId),
+    phoneE164: senderPhone,
+    chatId: message.chatId,
+    verbatim: message.text,
+    now: ports.now,
+  });
+  if (seated.status !== 'seated') return { type: 'none' };
+
+  const recorded = await ports.recordInbound(message, {
+    familyId: owner.familyId,
+    userId: seated.userId,
+  });
+  if (!recorded) {
+    return {
+      type: 'done',
+      outcome: 'duplicate',
+      count: 'duplicate',
+      body: { outcome: 'duplicate' },
+    };
+  }
+  const notice = await sendLine(database, {
+    familyId: owner.familyId,
+    parentUserId: seated.userId,
+    chatId: message.chatId,
+    text: groupWelcome(language),
+    templateKey: WELCOME_KEY,
+    dedupeKey: `linq:coparent_welcome:${seated.userId}`,
+    now: ports.now,
+    fetch: ports.fetch,
+  });
+  return {
+    type: 'done',
+    outcome: 'group_coparent_seated',
+    count: 'intake',
+    body: { outcome: 'group_coparent_seated', notice },
+  };
 }
 
 /**
@@ -744,6 +799,164 @@ async function humansAllowClaim(
     if (member && member.familyId !== familyId) return false;
   }
   return true;
+}
+
+async function primaryParentId(database: Database, familyId: string): Promise<string | null> {
+  const rows = await database
+    .select({
+      userId: schema.familyMembers.userId,
+      role: schema.familyMembers.role,
+      familyId: schema.familyMembers.familyId,
+    })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.familyId, familyId));
+  return (
+    rows.find((row) => row.familyId === familyId && row.role === 'primary_parent')?.userId ?? null
+  );
+}
+
+/**
+ * Seat the second real person in a claimed Linq group. No prior phone.
+ * A legacy `identity_noted` invite for this number is closed when one exists.
+ */
+export async function seatAppearingCoparent(
+  database: Database,
+  input: {
+    familyId: string;
+    invitedByUserId: string | null;
+    phoneE164: string;
+    chatId: string;
+    verbatim: string;
+    now: Date;
+  },
+): Promise<{ status: 'seated'; userId: string } | { status: 'refused' }> {
+  const phone = realHumanPhone(input.phoneE164);
+  if (!phone) return { status: 'refused' };
+  if (await familyHasCoParent(database, input.familyId)) return { status: 'refused' };
+  const existing = await resolveVerifiedChannelByPhone(database, phone);
+  if (existing) return { status: 'refused' };
+
+  const noted = await notedInviteForPhone(database, phone, input.now);
+  // A live note for a different household stays on that household.
+  if (noted && noted.familyId !== input.familyId) return { status: 'refused' };
+  const phoneHash = phoneBlindIndex(phone);
+  const userId = await database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    await tx
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:${phoneHash}`, email: null, name: null })
+      .onConflictDoNothing({ target: schema.users.externalAuthId });
+    const [user] = await tx
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.externalAuthId, `sms:${phoneHash}`))
+      .limit(1);
+    if (!user) throw new Error('seatAppearingCoparent: users insert returned no row');
+
+    await tx
+      .insert(schema.familyMembers)
+      .values({
+        familyId: input.familyId,
+        userId: user.id,
+        role: 'co_parent',
+        invitedByUserId: input.invitedByUserId,
+      })
+      .onConflictDoNothing();
+
+    await tx
+      .insert(schema.loopPrefs)
+      .values({ userId: user.id, loopChannel: 'sms' })
+      .onConflictDoNothing({ target: schema.loopPrefs.userId });
+
+    const [consent] = await tx
+      .insert(schema.consentRecords)
+      .values({
+        userId: user.id,
+        familyId: input.familyId,
+        consentType: 'sms_service_messages',
+        granted: true,
+        consentScope: 'sms_coparent_invite_reply',
+        policyVersion: POLICY_VERSION,
+        evidence: {
+          verbatimReply: input.verbatim,
+          interpretation:
+            'the second person in the household iMessage group the other parent started',
+          channel: 'imessage',
+        },
+      })
+      .returning({ id: schema.consentRecords.id });
+    if (!consent) throw new Error('seatAppearingCoparent: consent insert returned no row');
+
+    await tx.insert(schema.parentChannels).values({
+      userId: user.id,
+      familyId: input.familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(phone),
+      phoneE164Hash: phoneHash,
+      verifiedAt: input.now,
+      consentRecordId: consent.id,
+    });
+
+    await tx.insert(schema.linqGroupOnboarding).values({
+      familyId: input.familyId,
+      userId: user.id,
+      providerChatId: input.chatId,
+      step: 'awaiting_name',
+      createdAt: input.now,
+      updatedAt: input.now,
+    });
+
+    if (noted && noted.familyId === input.familyId) {
+      await tx
+        .update(schema.caregiverInvites)
+        .set({
+          state: 'accepted',
+          caregiverUserId: user.id,
+          closedAt: input.now,
+          updatedAt: input.now,
+        })
+        .where(
+          and(
+            eq(schema.caregiverInvites.id, noted.id),
+            eq(schema.caregiverInvites.state, 'identity_noted'),
+          ),
+        );
+    }
+
+    await tx.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: user.id,
+      actionTaken: 'co_parent_invite_accepted',
+      targetTable: 'family_members',
+      targetId: user.id,
+      after: { via: 'linq_group', priorPhone: noted ? 'noted' : 'none' },
+    });
+    return user.id;
+  });
+
+  return { status: 'seated', userId };
+}
+
+/** The first other phone in the chat that can be a co-parent. Hale's line is not one. */
+export function firstSeatableHandle(
+  handles: readonly string[],
+  senderHandle?: string,
+): string | null {
+  const sender = senderHandle ? normalizePhoneE164(senderHandle) : null;
+  for (const handle of handles) {
+    const phone = realHumanPhone(handle);
+    if (!phone || phone === sender) continue;
+    return phone;
+  }
+  return null;
+}
+
+async function familyHasCoParent(database: Database, familyId: string): Promise<boolean> {
+  const rows = await database
+    .select({ role: schema.familyMembers.role, familyId: schema.familyMembers.familyId })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.familyId, familyId));
+  return rows.some((row) => row.familyId === familyId && row.role === 'co_parent');
 }
 
 async function setStep(database: Database, userId: string, step: string, now: Date): Promise<void> {

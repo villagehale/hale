@@ -2,15 +2,16 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull, notInArray } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { isParentRole } from '~/lib/channel/role-scope';
-import type { SpokenLineComposer } from '~/lib/channel/voice/spoken-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { linqGroupOnboardingV2Enabled } from './config';
 import type { RoleWordKey } from './group-onboarding-line-input';
 import {
   type GroupLineOutcome,
   type GroupLineSend,
+  type GroupOnboardingComposer,
   sendGroupOnboardingLine,
   sendUnledgeredGroupLine,
 } from './group-onboarding-voice';
@@ -31,7 +32,7 @@ type MemberRow = typeof schema.linqGroupRosterMembers.$inferSelect;
 
 export interface RosterVoicePorts {
   now: Date;
-  voice: SpokenLineComposer | undefined;
+  voice: GroupOnboardingComposer | undefined;
   send?: GroupLineSend;
 }
 
@@ -436,4 +437,41 @@ export async function reaskRole(
     targetId: input.member.id,
   });
   return notice;
+}
+
+export type AskParticipantResult =
+  | { outcome: 'flag_off' }
+  | { outcome: 'group_unclaimed' }
+  | MemberAskOutcome;
+
+/**
+ * Someone was added to a claimed group: ask them, once, who they are.
+ * The add itself seats nobody. Flag off is `flag_off` so today's seat path can run.
+ */
+export async function askParticipantAdded(
+  database: Database,
+  input: {
+    chatId: string;
+    participantHandle: string;
+    now: Date;
+    voice: GroupOnboardingComposer | undefined;
+    send?: GroupLineSend;
+  },
+): Promise<AskParticipantResult> {
+  if (!linqGroupOnboardingV2Enabled()) return { outcome: 'flag_off' };
+  const phone = normalizePhoneE164(input.participantHandle);
+  if (!phone) return { outcome: 'ignored' };
+  const [family] = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.linqGroupChatId, input.chatId))
+    .limit(1);
+  if (!family) return { outcome: 'group_unclaimed' };
+  return askMember(database, {
+    chatId: input.chatId,
+    phone,
+    now: input.now,
+    voice: input.voice,
+    send: input.send,
+  });
 }

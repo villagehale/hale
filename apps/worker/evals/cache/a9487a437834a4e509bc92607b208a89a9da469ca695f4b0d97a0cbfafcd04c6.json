@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has multiple critical faults: 1) It asserts/guesses a role (\"You're the dad, right?\") instead of asking the reader to say who they are — a LOW score trigger. 2) It claims Hale booked something (\"I booked swim\") — an invented fact not in the request and a LOW score trigger. 3) It mentions calendar syncing (\"synced your calendar\") — calendar talk outside connect_link_1to1, a LOW score trigger. 4) It includes a URL (www.example.com) — a LOW score trigger. 5) It includes an emoji (😊) — a LOW score trigger. 6) It does not name Hale, which is in mustMention. 7) It does not name Morgan, which is in mustMention. 8) It does not list any role words (mom, dad, grandparent, nanny, babysitter, not family) as choices. 9) There is no proper single question asking everyone to identify themselves. Nearly every rule is violated.",
-    "score": 1
-  }
-}

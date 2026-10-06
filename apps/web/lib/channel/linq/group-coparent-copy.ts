@@ -8,6 +8,11 @@ import { renderEmptySaturdayAsk } from '~/lib/channel/nudge/empty-saturday-copy'
  * name ack stay in their own modules.
  */
 
+export const GROUP_WELCOME: Record<ReplyLanguage, string> = {
+  en: "Hi, I'm Hale. This thread is your kids' year — both of you, and me. What should I call you?",
+  fr: "Salut, c'est Hale. Ce fil, c'est l'annee des enfants: vous deux, et moi. Comment je t'appelle?",
+};
+
 /** Sloane, locked. The card is the next line of this same bubble. */
 export const GROUP_CALENDAR_ASK: Record<ReplyLanguage, string> = {
   en: "{name}, want your calendar in the kids' year too? This link is just for you.",
@@ -77,6 +82,10 @@ export const GROUP_BOTH_FREE: Record<ReplyLanguage, string> = {
 
 function fill(pattern: string, slots: Record<string, string>): string {
   return pattern.replace(/\{(\w+)\}/g, (_, key: string) => slots[key] ?? '');
+}
+
+export function groupWelcome(language: ReplyLanguage): string {
+  return GROUP_WELCOME[language];
 }
 
 export function groupCalendarAsk(language: ReplyLanguage, name: string): string {

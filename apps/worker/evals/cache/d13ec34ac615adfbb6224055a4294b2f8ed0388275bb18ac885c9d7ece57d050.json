@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message fails on almost every criterion: (1) It is in English, not French as required. (2) It says \"dad\" when the person said \"maman\" — asserting the wrong role, the opposite of acknowledgement. (3) It invents a booking (\"I booked swim\") not in the request. (4) It invents calendar syncing, which is calendar talk outside connect_link_1to1. (5) It contains a URL (www.example.com). (6) It contains an emoji (😊). (7) It ends with a question (\"right?\"), but questions is 0. (8) mustMention includes \"maman\" but the word is completely absent. This message is nearly a perfect catalogue of errors.",
-    "score": 1
-  }
-}

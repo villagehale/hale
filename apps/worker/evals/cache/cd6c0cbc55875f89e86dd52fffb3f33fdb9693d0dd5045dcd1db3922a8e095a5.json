@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message commits multiple serious faults: (1) It guesses/asserts a role (\"You're the dad, right?\") that nobody offered — a direct violation of the rules. (2) It claims Hale booked something (\"I booked swim\") — a forbidden booking claim. (3) It contains a URL (www.example.com) — explicitly forbidden. (4) It uses an emoji (😊) — forbidden. (5) It uses \"tu/you\" address which is correct for 1:1, but everything else is wrong. (6) It does not mention Hale by name (required in mustMention). (7) It does not mention Riley (required in mustMention). (8) It does not mention STOP (required in mustMention and wayOut is true). (9) It does not explain what the links connect (Google Calendar and Gmail). (10) It contains a question (\"right?\") when questions is 0. Nearly every requirement is violated.",
-    "score": 1
-  }
-}

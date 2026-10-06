@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message fails on multiple critical grounds: (1) It guesses/asserts the reader's role (\"You're the dad, right?\") — a LOW score trigger. (2) It claims Hale booked something (\"I booked swim\") — invented fact and a LOW score trigger. (3) It mentions syncing a calendar — explicitly forbidden. (4) It includes a URL (www.example.com) — a LOW score trigger. (5) It uses an emoji (😊) — a LOW score trigger. (6) It asks zero questions of the group in the required roster_ask format — the one required question listing all role choices is entirely absent. (7) mustMention items (Hale, Riley, grandparent, nanny, babysitter, not family) are not covered. This message violates nearly every rule.",
-    "score": 1
-  }
-}

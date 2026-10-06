@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in French with vous throughout, introduces Hale by name, names Morgan, lists all six required role words as choices in a single question, ends with the question, is short and warm, uses first person (\"Je m'appelle Hale\"), and avoids all prohibited elements (no exclamation marks, no emoji, no invented facts, no second question, no URL, no hype, no \"we\" for Hale, no calendar/link talk). All mustMention items are present: Hale, Morgan, maman, papa, grand-parent, nounou, gardienne, pas de la famille. The phrasing \"Qui êtes-vous parmi vous\" is slightly awkward but not a fault. Overall a clean, compliant message.",
-    "score": 5
-  }
-}

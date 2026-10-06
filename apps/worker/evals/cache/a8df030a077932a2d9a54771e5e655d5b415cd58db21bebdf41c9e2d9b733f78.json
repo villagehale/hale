@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has catastrophic failures on multiple fronts: 1) It is in English, not French as required. 2) It uses \"you're\" and guesses/asserts a role (\"the dad\") that nobody offered — a clear LOW score trigger. 3) It claims Hale booked something (\"I booked swim\") — an invented fact not in the request. 4) It claims Hale synced a calendar — also invented and calendar talk is explicitly prohibited. 5) It includes a URL (www.example.com) — explicitly forbidden. 6) It contains an emoji (😊) — forbidden. 7) It is entirely the wrong kind: a stop_ack should simply acknowledge the stop word and confirm Hale will no longer write in the group. None of the actual stop_ack content is present. Every single requirement is violated.",
-    "score": 1
-  }
-}

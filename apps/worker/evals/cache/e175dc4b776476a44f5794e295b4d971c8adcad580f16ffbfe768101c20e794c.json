@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message fails on almost every criterion. It is group_quiet_notice, which must be one sentence stating Hale is staying quiet in the group and why — no suggestion, no fix, no question. Instead, the message: (1) asks a question (\"You're the dad, right?\") when questions must be 0; (2) asserts/guesses a role nobody offered (\"the dad\"); (3) claims Hale booked something (\"I booked swim\") — an invented fact; (4) mentions calendar syncing — calendar talk is explicitly forbidden outside connect_link_1to1; (5) includes a URL (www.example.com) — forbidden; (6) includes an emoji (😊) — forbidden; (7) is not one sentence staying quiet in the group at all; (8) uses \"tu\" address but the message is in English so the tu/vous distinction doesn't apply here, though the register is wrong anyway. Essentially nothing about this message is correct.",
-    "score": 1
-  }
-}

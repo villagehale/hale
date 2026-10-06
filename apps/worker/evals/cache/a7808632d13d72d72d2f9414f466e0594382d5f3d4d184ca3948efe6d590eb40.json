@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in French and uses vous correctly for a group address. It lists all six required role words exactly as specified in mustMention (maman, papa, grand-parent, nounou, gardienne, pas de la famille), presents them as choices inside one question, and ends with a question mark — exactly one question. It does not assume a role from \"c'est moi lol\". It is short, plain, and warm enough. No exclamation marks, no emoji, no invented facts, no padding, no forbidden topics. The only mild weakness is that it is very bare — no warm opener or context — but terseness is not a fault, and the rules say a 5 reads like a friend: short and plain. All required role words are present and correctly offered as choices. This is a clean, correct execution.",
-    "score": 5
-  }
-}

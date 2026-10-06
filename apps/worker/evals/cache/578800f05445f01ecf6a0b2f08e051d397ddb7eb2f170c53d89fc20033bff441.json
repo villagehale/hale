@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message hits every requirement cleanly: Hale names itself and its job (kids' year planner), names Morgan (from mustMention), and asks one single question with all six role words listed as choices including \"not family.\" It is addressed to the group (vous context, though English so no pronoun issue). It does not number or list people, does not assert a count, does not invent any facts, has no exclamation marks, emoji, hype, URLs, calendar/link talk, second question, or padding. It is short, warm, first person, and plain. The question is last. All mustMention items (Hale, Morgan, mom, dad, grandparent, nanny, babysitter, not family) are present. A textbook execution.",
-    "score": 5
-  }
-}

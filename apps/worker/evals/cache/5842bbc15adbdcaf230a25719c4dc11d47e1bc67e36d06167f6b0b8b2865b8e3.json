@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in French, uses vous correctly for a group address, carries real accents (é, è), names Hale (mustMention), names Riley (mustMention), and lists every required role word as choices in exactly one question. It is short, warm, and first-person. No invented facts, no calendar/link talk, no exclamation marks or emoji, no hype, no second question, no guessing of roles, no forbidden items. All mustMention items appear: Hale, Riley, maman, papa, grand-parent, nounou, gardienne, pas de la famille. The structure is: brief greeting → Hale introduces itself → Riley family thread → one role question with all choices. This is a near-perfect execution.",
-    "score": 5
-  }
-}

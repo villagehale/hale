@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message commits multiple serious violations: 1) It guesses/asserts the role (\"You're the dad, right?\") instead of asking the new member to choose from the role options — a member_ask must never decide for the reader. 2) It claims Hale booked something (\"I booked swim\") — an invented fact not in the request. 3) It mentions calendar syncing — calendar talk is explicitly forbidden outside connect_link_1to1. 4) It includes a URL (www.example.com) — URLs are never allowed. 5) It uses an emoji (😊) — forbidden. 6) Hale does not introduce itself, yet Hale is in mustMention. 7) Riley is in mustMention but not mentioned. 8) The role words (mom, dad, grandparent, nanny, babysitter, not family) are not offered as choices in a single question. 9) The single required question is malformed as a yes/no guess rather than an open choice. This message fails on nearly every criterion.",
-    "score": 1
-  }
-}

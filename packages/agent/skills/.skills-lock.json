@@ -93,7 +93,11 @@
   },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
-    "sha256": "1bf409caba87f78d4da38dc03da43772018cc34b9612f72bdd9ffba43093794f"
+    "sha256": "70437d1a2b23140ce9378c9662183f47a2f21139a358de186094d0566527d025"
+  },
+  "group-roster-reading.md": {
+    "file": "group-roster-reading.md",
+    "sha256": "6a9301d78fcc8ea6ef799c4b11165941aeaed56cb95aed02ffc5dd7ceea7265f"
   },
   "identity-ask.md": {
     "file": "identity-ask.md",

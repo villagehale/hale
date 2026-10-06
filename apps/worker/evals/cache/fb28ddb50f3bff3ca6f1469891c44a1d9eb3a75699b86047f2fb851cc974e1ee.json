@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in French, uses vous correctly (group address), echoes back \"nounou\" as required by role_confirmed, contains no questions, no invented facts, no forbidden elements, and is warm and brief. \"Merci d'être là\" is a natural thanks, and \"Vous êtes la nounou de la famille\" says the role word back — exactly what role_confirmed requires. \"de la famille\" is a small addition not in the facts, but it is a neutral, non-assertive filler that doesn't claim anything specific. The line is short, plain, and correct. Minor note: \"de la famille\" is a tiny padding phrase not grounded in the request, but it doesn't rise to a LOW-score fault. Overall very strong.",
-    "score": 5
-  }
-}

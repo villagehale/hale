@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message names Hale (required by mustMention), uses vous (correct for group address), contains no question (questions is 0), no link, no phone number, no exclamation mark, no emoji, no invented facts. It correctly states the text_me_directly premise: the setup is private and the person should write to Hale directly. The word \"setup\" appears in a naturalised French form (\"votre setup\"), which is acceptable. The tone is warm and first-person. It is concise — one sentence — and reads like a capable friend. No forbidden content from watchFor is present. A strong, clean response.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has catastrophic errors on nearly every axis. (1) \"You're the dad, right?\" — this guesses/asserts a role nobody offered and adds a question when questions is 0. (2) \"I booked swim\" — Hale claims to have booked something, an invented fact not in the request. (3) \"synced your calendar\" — calendar talk is forbidden outside connect_link_1to1, and this is also an invented fact. (4) \"😊\" — emoji are forbidden. (5) \"www.example.com\" — URLs are forbidden. (6) The actual purpose of a stop_ack (acknowledging STOP, confirming Hale will not write to them in this group anymore) is completely absent. Nothing in the message is correct.",
-    "score": 1
-  }
-}

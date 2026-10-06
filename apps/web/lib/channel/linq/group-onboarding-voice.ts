@@ -1,15 +1,17 @@
+import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import {
-  type SpokenLineComposer,
-  type SpokenLineFallback,
-  speakLine,
-} from '~/lib/channel/voice/spoken-line';
-import { GROUP_ROLE_ASK_LOCKED } from './group-onboarding-copy';
+import { loadCronSkill } from '~/lib/cron/skill';
+import { composeVoice, firstJsonObject, voiceClient } from '~/lib/loop/voice/compose';
+import { postOpsSlack } from '~/lib/monitoring/ops-slack';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { forceToolJson } from '~/lib/pipeline/structured';
 import {
   type GroupOnboardingKind,
+  type GroupOnboardingLine,
   type GroupOnboardingRequest,
   groupOnboardingLineInput,
 } from './group-onboarding-line-input';
@@ -18,13 +20,12 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
 /**
  * Group onboarding v2 — say one who's-who line into the group.
  *
- * The model writes it (spoken-line engine, skill `group-onboarding-voice`); code owns the
+ * The model writes it (`composeVoice`, skill `group-onboarding-voice`); code owns the
  * facts and the ledger. Claim, send, stamp: the `channel_messages` row is the claim, so a
  * line goes out at most once per dedupe key, and `sms_reply_sent` is audited only after
- * it lands. A line the model could not write is `group_line_unsent`, audited, sends
- * nothing and claims nothing, so the next inbound in that chat tries again. The asks are
- * the exception: a person must still be asked, so an unsent ask falls back once to the
- * locked sentence, tagged `locked` and audited. A refused send releases its dedupe key.
+ * it lands. A line the model could not write is retried once, then `group_line_unsent`:
+ * nothing is sent, Slack #ops is paged, and the claim is not spent so the next inbound
+ * tries again. A refused send releases its dedupe key.
  */
 
 export type GroupLineSend = (input: {
@@ -33,41 +34,177 @@ export type GroupLineSend = (input: {
   replyTo?: string;
 }) => Promise<{ providerMessageId: string }>;
 
-export type GroupLineSource = 'composed' | 'retry' | 'locked';
+export type GroupLineSource = 'composed' | 'retry';
+
+export type GroupLineFallback =
+  | 'voice_unavailable'
+  | 'skill_unavailable'
+  | 'model_failed'
+  | 'unusable';
 
 export type GroupLineOutcome =
   | { outcome: 'sent'; source: GroupLineSource }
   | { outcome: 'already_sent' }
   | { outcome: 'not_sent'; code: string }
-  | { outcome: 'group_line_unsent'; fallback: SpokenLineFallback };
+  | { outcome: 'group_line_unsent'; fallback: GroupLineFallback };
 
-const LOCKED_FALLBACK: Partial<Record<GroupOnboardingKind, string>> = {
-  roster_ask: GROUP_ROLE_ASK_LOCKED,
-  member_ask: GROUP_ROLE_ASK_LOCKED,
-};
+/** Test seam. Production leaves this unset and uses {@link composeVoice}. */
+export interface GroupOnboardingComposer {
+  compose(
+    input: GroupOnboardingLine,
+    options?: { prompt?: 'full' | 'short' },
+  ): Promise<{ line: string }>;
+}
 
 interface SpokenGroupLine {
   body: string;
   source: GroupLineSource | 'unsent';
-  fallback: SpokenLineFallback | null;
+  fallback: GroupLineFallback | null;
+}
+
+function factStrings(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (typeof value === 'number') return [String(value)];
+  if (Array.isArray(value)) return value.flatMap(factStrings);
+  if (value && typeof value === 'object') return Object.values(value).flatMap(factStrings);
+  return [];
+}
+
+function parseSpokenLine(answer: string | null, questions: 0 | 1): { line: string } | null {
+  if (!answer) return null;
+  const raw = firstJsonObject(answer);
+  if (!raw) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  if (questions === 0 && typeof record.line === 'string' && record.line.trim()) {
+    return { line: record.line.trim() };
+  }
+  if (questions === 1 && typeof record.question === 'string' && record.question.trim()) {
+    const before = typeof record.before === 'string' ? record.before.trim() : '';
+    return { line: [before, record.question.trim()].filter(Boolean).join(' ') };
+  }
+  return null;
+}
+
+function lineUsable(line: string, input: GroupOnboardingLine): boolean {
+  if (input.questions === 1 && !line.includes('?')) return false;
+  if (input.questions === 0 && line.includes('?')) return false;
+  if (/https?:\/\//i.test(line)) return false;
+  return input.mustMention.every((slot) => line.includes(slot));
+}
+
+async function pageUnsent(kind: GroupOnboardingKind, fallback: GroupLineFallback): Promise<void> {
+  const outcome = await postOpsSlack(
+    `Hale group onboarding: a ${kind} line was not sent (${fallback}). Nothing went to the parent.`,
+  );
+  console.warn({ kind, fallback, page: outcome }, 'linq group onboarding: line not sent');
+}
+
+function productionComposer(
+  scope: { familyId: string; database: Database } | undefined,
+): GroupOnboardingComposer | undefined {
+  if (!process.env.ANTHROPIC_API_KEY || process.env.VOICE_DISABLED === 'true') return undefined;
+  return {
+    async compose(input, options) {
+      const skill = await loadCronSkill('group-onboarding-voice');
+      const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+      if (scope) {
+        const composed = await composeVoice({
+          skill,
+          context: { ...input, retry: options?.prompt === 'short' },
+          factSlots: [...input.mustMention, ...factStrings(input.facts)],
+          parse: (answer) => parseSpokenLine(answer, input.questions),
+          voiceStrings: (voice) => [voice.line],
+          client,
+          database: scope.database,
+          familyId: scope.familyId,
+          agentName: 'reply-copy',
+          traceName: 'reply-copy',
+          maxTokens: options?.prompt === 'short' ? 160 : 400,
+        });
+        if (!composed.voice) throw new Error(composed.reason ?? 'unusable');
+        return composed.voice;
+      }
+      const lane = pickLane(skill.meta.task);
+      const userMessage = JSON.stringify({ ...input, retry: options?.prompt === 'short' });
+      const maxTokens = options?.prompt === 'short' ? 160 : 400;
+      if (input.questions === 1) {
+        const result = await forceToolJson({
+          client,
+          lane,
+          system: skill.instructions,
+          userMessage,
+          toolName: 'send_group_line',
+          toolDescription: 'The one message Hale sends.',
+          inputJsonSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: { before: { type: 'string' }, question: { type: 'string' } },
+            required: ['before', 'question'],
+          },
+          schema: z.object({ before: z.string(), question: z.string() }),
+          maxTokens,
+        });
+        return { line: [result.value.before, result.value.question].filter(Boolean).join(' ') };
+      }
+      const result = await forceToolJson({
+        client,
+        lane,
+        system: skill.instructions,
+        userMessage,
+        toolName: 'send_group_line',
+        toolDescription: 'The one message Hale sends.',
+        inputJsonSchema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { line: { type: 'string' } },
+          required: ['line'],
+        },
+        schema: z.object({ line: z.string() }),
+        maxTokens,
+      });
+      return { line: result.value.line };
+    },
+  };
 }
 
 async function speak(
-  voice: SpokenLineComposer | undefined,
+  voice: GroupOnboardingComposer | undefined,
   request: GroupOnboardingRequest,
   language: ReplyLanguage,
   parentWords: string | null,
   scope: { familyId: string; database: Database } | undefined,
 ): Promise<SpokenGroupLine> {
-  const spoken = await speakLine(
-    voice,
-    groupOnboardingLineInput(request, language, { parentWords }),
-    scope ? { scope } : {},
-  );
-  if (spoken.source !== 'unsent') return spoken;
-  const locked = LOCKED_FALLBACK[request.kind];
-  if (!locked) return spoken;
-  return { body: locked, source: 'locked', fallback: spoken.fallback };
+  const input = groupOnboardingLineInput(request, language, { parentWords });
+  const composer = voice ?? productionComposer(scope);
+  if (!composer) {
+    await pageUnsent(request.kind, 'voice_unavailable');
+    return { body: '', source: 'unsent', fallback: 'voice_unavailable' };
+  }
+  let last: GroupLineFallback = 'model_failed';
+  for (const prompt of ['full', 'short'] as const) {
+    try {
+      const composed = await composer.compose(input, { prompt });
+      if (lineUsable(composed.line, input)) {
+        return {
+          body: composed.line,
+          source: prompt === 'full' ? 'composed' : 'retry',
+          fallback: null,
+        };
+      }
+      last = 'unusable';
+    } catch {
+      last = 'model_failed';
+    }
+  }
+  await pageUnsent(request.kind, last);
+  return { body: '', source: 'unsent', fallback: last };
 }
 
 async function deliver(
@@ -96,7 +233,7 @@ export async function sendGroupOnboardingLine(
     templateKey: string;
     dedupeKey: string;
     now: Date;
-    voice: SpokenLineComposer | undefined;
+    voice: GroupOnboardingComposer | undefined;
     send?: GroupLineSend;
   },
 ): Promise<GroupLineOutcome> {
@@ -130,17 +267,6 @@ export async function sendGroupOnboardingLine(
     console.warn({ kind, fallback }, 'linq group onboarding: line not sent');
     return { outcome: 'group_line_unsent', fallback };
   }
-  if (spoken.source === 'locked') {
-    await database.insert(schema.auditLog).values({
-      familyId: input.familyId,
-      actor: 'system',
-      actionTaken: 'group_line_locked_fallback',
-      targetTable: 'channel_messages',
-      targetId: input.familyId,
-      after: { kind, fallback: spoken.fallback },
-    });
-  }
-
   const [claimed] = await database
     .insert(schema.channelMessages)
     .values({
@@ -202,7 +328,7 @@ export async function sendUnledgeredGroupLine(input: {
   chatId: string;
   request: GroupOnboardingRequest;
   language: ReplyLanguage;
-  voice: SpokenLineComposer | undefined;
+  voice: GroupOnboardingComposer | undefined;
   send?: GroupLineSend;
 }): Promise<GroupLineOutcome> {
   const spoken = await speak(input.voice, input.request, input.language, null, undefined);

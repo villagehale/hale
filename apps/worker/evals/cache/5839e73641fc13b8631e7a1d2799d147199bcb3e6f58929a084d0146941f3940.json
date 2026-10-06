@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is one sentence, in French, with no question, no suggestion, no fix, no exclamation marks, no emoji, no hype, no URL, no invented facts. It correctly states the reason Hale is staying quiet (2 people haven't said who they are). It uses \"tu\" implicitly through the absence of any pronoun address — actually the sentence is impersonal and contains no vous/tu, which is fine for a one-sentence notice. mustMention is empty so Hale not naming itself is correct. The message is short, plain, and warm in register, and satisfies all group_quiet_notice requirements. No faults detected.",
-    "score": 5
-  }
-}

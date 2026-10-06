@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is a clean one-sentence group_quiet_notice in English addressed as tu (1:1), stating Hale is staying quiet and giving the correct reason (not_family). No question, no suggestion, no fix, no invented name, no blame, no exclamation mark, no emoji, no URL, no hype. It matches the watchFor requirements perfectly. The only minor issue is the phrase \"for now\" which could imply a future change (a mild suggestion), but it does not explicitly suggest any action or fix. Overall this is a very solid, warm, plain one-sentence notice.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has numerous critical faults: (1) It is in English, not French as required. (2) It uses \"you're the dad, right?\" — asserting/guessing a role and asking a question when questions is 0. (3) It claims Hale booked swim and synced a calendar — invented facts not in the request. (4) It includes a URL (www.example.com) — explicitly forbidden. (5) It contains an emoji (😊) — forbidden. (6) It is a stop_ack but makes no acknowledgement of the ARRET/stop request whatsoever. (7) It does not say Hale will stop writing — the core required content. Every single requirement is violated.",
-    "score": 1
-  }
-}

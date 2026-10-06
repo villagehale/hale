@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message has almost every possible fault: it asks a question (\"You're the dad, right?\") when questions is 0; it asserts/guesses a role nobody offered (\"the dad\"); it claims Hale booked something (\"I booked swim\") — an invented fact not in the request; it mentions calendar syncing — calendar talk is a LOW score trigger; it includes a URL (www.example.com) — explicitly forbidden; it contains an emoji (😊) — forbidden; it is a tu address but the content is irrelevant to group_quiet_notice entirely — the message should be one sentence saying Hale is staying quiet in the group and why (someone asked it to stop); instead it does none of that. It also uses \"You're the dad, right?\" which guesses a role. Essentially zero of the requirements are met and every major prohibition is violated.",
-    "score": 1
-  }
-}

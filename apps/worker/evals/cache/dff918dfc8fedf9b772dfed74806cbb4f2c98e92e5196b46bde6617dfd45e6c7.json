@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This message fails on nearly every requirement: it is in English instead of French; it uses an assertive guess (\"You're the dad, right?\") which is an ask that decides for the reader; it claims Hale booked something (\"I booked swim\") — an invented fact; it mentions calendar syncing — calendar talk outside connect_link_1to1; it includes a URL (www.example.com); it contains an emoji (😊); it asks a question when questions is 0; it is not a single sentence staying quiet in the group; it explains nothing about why Hale is staying quiet. Every core requirement is violated.",
-    "score": 1
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is short, warm, and in first person. It says the role word \"mom\" back exactly as the parent offered it — a clean role_confirmed acknowledgement. No question, no next steps, no plans, no calendar, no emoji, no exclamation marks, no invented facts, no hype. The address is a group (vous) but English has no tu/vous distinction so that is fine. mustMention includes \"mom\" and it is present. Perfectly matches what watchFor describes as correct.",
-    "score": 5
-  }
-}

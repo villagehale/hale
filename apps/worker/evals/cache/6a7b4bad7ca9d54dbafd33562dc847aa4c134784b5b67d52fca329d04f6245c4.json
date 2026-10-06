@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is a single sentence, states Hale is staying quiet in the group because someone in the chat is not family — matching the reason (not_family, count=1) from facts. No question, no suggestion, no fix, no invented names, no next step, no blame. It uses \"I'm\" (first person, warm, plain). Address is tu (1:1), and in English there's no tu/vous distinction to get wrong. No exclamation marks, emoji, hype, or forbidden elements. It is exactly what group_quiet_notice requires: one sentence saying Hale is staying quiet and why. A clean, correct execution.",
-    "score": 5
-  }
-}

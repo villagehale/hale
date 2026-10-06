@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is a clean, warm, one-sentence stop acknowledgement: it confirms receipt (\"Heard you\") and states Hale will no longer write to them in the group. No question, no pitch, no URL, no emoji, no exclamation mark, no invented facts, no mention of STOP or the word used (not required here since STOP is not in mustMention), no padding. wayOut is true and the message handles the opt-out correctly. The only minor note is \"I won't write to you\" uses \"you\" which is fine in English (address vous doesn't apply the tu/vous rule in English). Perfectly concise and on brief.",
-    "score": 5
-  }
-}

@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { seatParticipantAdded } from './group-members';
 import {
   MULTI_FAMILY_JOINED_TEXT,
   MULTI_FAMILY_SHARED_REPLY,
@@ -132,6 +133,16 @@ describe('multi-family joins', () => {
       .set({ linqGroupChatId: CHAT })
       .where(eq(schema.families.id, ada.familyId));
     const wire = sender();
+
+    const guessed = await seatParticipantAdded(db.database, {
+      chatId: CHAT,
+      participantHandle: PARENT_B,
+      actorHandle: PARENT_A,
+      isFromMe: false,
+      now: NOW,
+      send: wire.send,
+    });
+    expect(guessed).toEqual({ outcome: 'group_member_refused', reason: 'other_family' });
 
     const first = await takeMultiFamilyTurn(db.database, {
       chatId: CHAT,
