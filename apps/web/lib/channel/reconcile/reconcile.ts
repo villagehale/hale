@@ -115,7 +115,11 @@ export type RefusalReason =
   /** "I'll send an invite" — the invite path is the only thing that may say that. */
   | 'no_coparent_invite'
   /** "Want me to move swim?" with no draft waiting, or a draft the reviewer rejected. */
-  | 'no_calendar_draft';
+  | 'no_calendar_draft'
+  /** "(it needs another look before it's cleared)" — the gate, narrated. */
+  | 'internal_wording'
+  /** "Tuesday de cette semaine" — an English weekday inside a French reply. */
+  | 'mixed_weekday';
 
 export type ClaimResolution =
   | {
@@ -156,7 +160,11 @@ const VIOLATION: Record<RefusalReason, string> = {
   no_coparent_invite:
     'The message says an invite was sent or will be sent. Only the co-parent invite path may say that, and only after the message has actually left. Do not say you will invite someone or that you already have.',
   no_calendar_draft:
-    'The message asks them to confirm a move, an add, or a cancel, but no draft is waiting for their yes. Do not ask them to confirm it, and do not say it is already done. Say what is true in your own words.',
+    'The message asks them to confirm a move, an add, or a cancel, but no draft is waiting for their yes. Do not ask them to confirm it, and do not say it is already done. Do not offer a different day or time. Say what is true, with no question about doing the change.',
+  internal_wording:
+    'The message talks about a review, an approval, quiet hours, or another look. The parent does not see that. Do not mention approval, clearing, another look, or quiet hours. Do not offer a different day or time for a change that was not drafted. Say what is true, in one sentence, with no question about doing the change.',
+  mixed_weekday:
+    'A French reply named an English weekday. Name the day in French, from the date the tool resolved. Do not write Tuesday, Wednesday, or Thursday inside a French sentence.',
 };
 
 /** What a `watched_spots` row is a row ABOUT: one place in one class. The words the
@@ -254,6 +262,12 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
       return { claim, status: 'matched', matchedBy: 'pending_commitment' };
     }
     return { claim, status: 'refused', reason: 'no_calendar_draft' };
+  }
+  if (kind === 'reviewer_narration') {
+    return { claim, status: 'refused', reason: 'internal_wording' };
+  }
+  if (kind === 'french_weekday') {
+    return { claim, status: 'refused', reason: 'mixed_weekday' };
   }
   if (kind === 'activity_followup') {
     if (view.pendingKinds.has('activity_followup')) {

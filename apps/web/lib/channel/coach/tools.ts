@@ -564,7 +564,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: move to ${localWhen(startsAt, timeZone)}`,
         teenContent: event.teen,
       });
-      if (actionId === null) return { drafted: false as const, reason: 'not_approved' as const };
+      if (actionId === null) return { drafted: false as const, reason: 'not_drafted' as const };
       args.onCalendar?.({ verb: 'move', title: event.title, startsAt });
       return {
         drafted: true as const,
@@ -605,7 +605,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: cancel the ${localWhen(event.startsAt, timeZone)} item`,
         teenContent: event.teen,
       });
-      if (actionId === null) return { drafted: false as const, reason: 'not_approved' as const };
+      if (actionId === null) return { drafted: false as const, reason: 'not_drafted' as const };
       args.onCalendar?.({ verb: 'cancel', title: event.title, startsAt: event.startsAt });
       return { drafted: true as const, actionId };
     },
@@ -686,7 +686,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: add "${input.title}" on ${localWhen(startsAt, timeZone)}`,
         teenContent: false,
       });
-      if (actionId === null) return { drafted: false as const, reason: 'not_approved' as const };
+      if (actionId === null) return { drafted: false as const, reason: 'not_drafted' as const };
       args.onCalendar?.({ verb: 'add', title: input.title, startsAt });
       return { drafted: true as const, actionId, when: longWhen(startsAt, timeZone) };
     },
@@ -707,8 +707,8 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
    *   + save_memory, no skill prose                      3/3                     2/3
    *   + save_memory, 6-line section at the end           2/3                     1/3
    *
-   * That is the budget this lane already runs at (MAX_TOKENS 400, thinking and text
-   * sharing it — see runtime.ts), and a turn that stops reaching for the live web is a
+   * That is the budget this lane already runs at (MAX_TOKENS in runtime.ts, thinking
+   * and text sharing it), and a turn that stops reaching for the live web is a
    * parent handed nothing about the fall.
    *
    * The gap it would have closed is smaller than it looks: a durable fact stated over

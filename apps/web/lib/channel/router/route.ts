@@ -1888,7 +1888,28 @@ async function composeReconciledReply(
   let verdict: ReconcileVerdict | null = null;
 
   for (let attempt = 1; attempt <= MAX_RECONCILE_ATTEMPTS; attempt += 1) {
-    result = await deps.coach.respond({ ...args.turn, standingQuestions }, rejected);
+    try {
+      result = await deps.coach.respond({ ...args.turn, standingQuestions }, rejected);
+    } catch (err) {
+      // A trim that kept the first sentence and dropped the question is not a
+      // reply. Ask once more for a shorter one. A second miss fails the turn
+      // rather than sending the amputated sentence.
+      if (
+        attempt < MAX_RECONCILE_ATTEMPTS &&
+        err instanceof Error &&
+        err.message.includes('trim would drop the ask')
+      ) {
+        deps.log.error(
+          { attempt, reason: 'trim_dropped_ask' },
+          'channel router: the reply lost its ask when trimmed - asking again',
+        );
+        rejected = [
+          'The last reply did not fit in two texts without losing its question. Write it again so the question is still in what gets sent. Do not leave only the first sentence.',
+        ];
+        continue;
+      }
+      throw err;
+    }
     verdict = reconcile(extractStateClaims(result.reply), {
       ...(await view),
       // What THIS turn's tools already registered. A promise the router is about to write

@@ -37,7 +37,7 @@
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "e69a82c8493f691199692166dc7d3878f2b64fc79dda263280c9d8ad6d99aa5e"
+    "sha256": "5e3d70da142a4408f4e566cb7d8623544e5b81e3611f70dec7dddc7f16e74ee1"
   },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
@@ -57,7 +57,7 @@
   },
   "email-alert-voice.md": {
     "file": "email-alert-voice.md",
-    "sha256": "209645ceb7522e98735a89388d23bd138030963df0bf0f0a2ae8fbac609136f8"
+    "sha256": "90a39248ab7e7ee510cb5c11155bcaac7a6e3e2371cf119ac845c34c18ce51e7"
   },
   "extract-child-event.md": {
     "file": "extract-child-event.md",
@@ -145,11 +145,11 @@
   },
   "nudge-voice.md": {
     "file": "nudge-voice.md",
-    "sha256": "0058da39817bb85138bf334ab1b2e4f17cea042fb2de46cba4a82af95471a11c"
+    "sha256": "f5ec3b398f7a4d2571a10c37bb82bc874ac1e00b679c20f5a99ab48a31ed295e"
   },
   "offer-receipt.md": {
     "file": "offer-receipt.md",
-    "sha256": "e50268595830c7ee6dc2705163bfbdcb54a74aa5cea20723024819b93577ed7c"
+    "sha256": "1cb988aadbacbb804e441095f6503e0037f24c9fd1197a79d0fb48ee02fd285a"
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
@@ -209,7 +209,7 @@
   },
   "voice-register.md": {
     "file": "voice-register.md",
-    "sha256": "a0c9dc6e3310b72bc86699792fe2d089bd8aacd8f730afb59848ed25c5a80676"
+    "sha256": "1fe732e499e182e9689c39aa572f05db337f142d3326ae3630ba13c726f00778"
   },
   "week-summary.md": {
     "file": "week-summary.md",

@@ -154,6 +154,9 @@ export async function mintChannelCalendarDraft(
   const verdict = await reviewAction(
     {
       familyId: input.familyId,
+      // The parent just asked. Nothing here executes until they approve, so
+      // quiet hours — which bound a send Hale starts — do not refuse the draft.
+      awaitsParentApproval: true,
       draft: {
         id: actionId,
         eventId,

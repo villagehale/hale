@@ -1,6 +1,7 @@
-import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { distinctiveWords, mentionsActivity } from '~/lib/channel/followup/screen';
+import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
+import { foldOutboundLine } from '~/lib/integrations/outbound-line';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
 
 /**
@@ -178,7 +179,10 @@ export function plainText(text: string): string {
   for (const [pattern, replacement] of GSM7_SUBSTITUTIONS) {
     out = out.replace(pattern, replacement);
   }
-  return out.replace(/\s+/g, ' ').trim();
+  // The same fold receipts use. ç is not in GSM-7 (only Ç is), so "ça" would
+  // flip the whole reply to UCS-2 and a two-segment answer would be trimmed
+  // down to its first sentence. é, è, à, and ù stay.
+  return foldOutboundLine(out);
 }
 
 /**
@@ -243,16 +247,29 @@ function fitToBudget(
   );
   onTrimmed?.(overBy);
 
+  const dropsAsk = (candidate: string) => body.includes('?') && !candidate.includes('?');
   const parts = sentences(body);
   for (let count = parts.length - 1; count >= 1; count -= 1) {
     const candidate = parts.slice(0, count).join(' ');
-    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) {
+      // A prefix that lost the question is a dead end, not a shorter answer.
+      // Throw so the turn is asked again rather than sent this way.
+      if (dropsAsk(candidate)) {
+        throw new Error('channel coach: trim would drop the ask');
+      }
+      return candidate;
+    }
   }
 
   const words = (parts[0] ?? body).split(' ');
   for (let count = words.length - 1; count >= 1; count -= 1) {
     const candidate = `${words.slice(0, count).join(' ')}...`;
-    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) {
+      if (dropsAsk(candidate)) {
+        throw new Error('channel coach: trim would drop the ask');
+      }
+      return candidate;
+    }
   }
 
   // Not even the first word fits: a model returning one unbroken 300-character token,
@@ -344,10 +361,7 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
  * altogether (see the caller). A count is the least important thing in any message that
  * also carries a promise or a link.
  */
-function nearbyClause(
-  fittedBody: string,
-  nearby: SmsReplyArgs['nearby'],
-): string | null {
+function nearbyClause(fittedBody: string, nearby: SmsReplyArgs['nearby']): string | null {
   if (!nearby) return null;
   const haystack = [fittedBody.toLowerCase()];
   if (!namesInFull(haystack[0] as string, nearby.title)) return null;

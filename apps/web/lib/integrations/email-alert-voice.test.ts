@@ -192,6 +192,37 @@ describe('emailAlertAccepts', () => {
         FACTS,
       ),
     ).toBe('person');
+    expect(
+      emailAlertRejection(
+        'Riverside Pool, Gymnastics is on Sunday, Oct 4 at 9:00 a.m. Want this on my week?',
+        FACTS,
+      ),
+    ).toBe('person');
+    expect(
+      emailAlertRejection(
+        'Riverside Pool, Gymnastics is on Sunday, Oct 4 at 9:00 a.m. Want this on our week?',
+        FACTS,
+      ),
+    ).toBe('person');
+    expect(
+      emailAlertRejection(
+        'Riverside Pool, Gymnastics is on Sunday, Oct 4 at 9:00 a.m. Want this on my calendar?',
+        FACTS,
+      ),
+    ).toBe('person');
+    expect(
+      emailAlertRejection(
+        'Riverside Pool, Gymnastics is on Sunday, Oct 4 at 9:00 a.m. Want this on our calendar?',
+        FACTS,
+      ),
+    ).toBe('person');
+    expect(
+      emailAlertRejection(
+        'Riverside Pool, Gymnastics is on Sunday, Oct 4 at 9:00 a.m., the coach is sick. Want this on your week?',
+        FACTS,
+      ),
+    ).toBe('reason');
+    expect(emailAlertRejection(GOOD, FACTS)).toBeNull();
   });
 
   it('accepts a sender shortened at a word boundary, and still requires the place', () => {

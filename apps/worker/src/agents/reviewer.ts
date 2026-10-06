@@ -25,6 +25,12 @@ export type ReviewerAnthropicClient = Pick<Anthropic, 'messages'>;
 interface ReviewerRunInput {
   familyId: string;
   draft: DraftedAction;
+  /**
+   * The parent just asked for this change, and nothing runs until they approve.
+   * Quiet hours bound a proactive send. They do not bound a draft that is
+   * waiting on the yes the parent is about to give.
+   */
+  awaitsParentApproval?: boolean;
 }
 
 export interface ReviewerRunResult {
@@ -266,6 +272,34 @@ export async function runReviewer(
           startsAt: typeof p.startsAt === 'string' ? p.startsAt : '',
           durationMinutes: placementDurationMinutes(p.startsAt, p.endsAt),
         };
+      }
+      if (block.name === 'check_action_time_window' && input.awaitsParentApproval === true) {
+        // Quiet hours are for a send Hale starts. A calendar draft minted because
+        // the parent just texted does not execute until they approve it, so the
+        // drafting stamp is not an acting instant. The Sunday loop does not set
+        // this flag: a placement drafted at 03:00 is still outside the window.
+        // Named, not a silent ok (rule #11).
+        logger.info(
+          { familyId: input.familyId, actionType: input.draft.actionType },
+          'reviewer: quiet hours skipped; draft awaits parent approval',
+        );
+        const skipped = {
+          tool: 'check_action_time_window' as const,
+          ok: true,
+          result: {
+            withinWindow: true,
+            skipped: 'awaits_parent_approval',
+            windowDescription:
+              'quiet hours bound proactive sends; this draft waits for the parent who just asked',
+          },
+        };
+        collected.push(skipped);
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: JSON.stringify(skipped.result),
+        });
+        continue;
       }
       if (block.name === 'check_action_time_window') {
         // Same class as the conflict check: the model neither knows the family id

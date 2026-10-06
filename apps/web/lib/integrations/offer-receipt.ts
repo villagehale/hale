@@ -145,7 +145,7 @@ async function composeOfferReceiptLine(
       ...(tryIndex > 0
         ? {
             refused:
-              "The previous line was not sent. Copy title and when exactly, in the language given. It is this parent's own week: say your week, ta semaine, or votre semaine. Never say their week, a co-parent, or l'autre parent. One segment. Do not tell them which word to type, and do not name any other day, time, amount, or person.",
+              "The previous line was not sent. Copy title and when exactly, in the language given. The week belongs to the parent: say your week, ta semaine, or votre semaine, addressed to them. Never say my week, our week, ma semaine, notre semaine, my calendar, our calendar, their week, a co-parent, or l'autre parent. A decline means you did not add it; the occasion itself is unchanged. One segment. Do not tell them which word to type, and do not name any other day, time, amount, or person.",
           }
         : {}),
     },

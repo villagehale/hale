@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
-import { smsSegments } from '~/lib/channel/sms-segments';
+import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { MAX_REPLY_SEGMENTS, redactTeenNames, toSmsReply } from './reply';
 
 /**
@@ -178,6 +178,21 @@ describe('toSmsReply', () => {
 
   it('refuses to emit an empty body', () => {
     expect(() => toSmsReply('   \n  ', { children: [], now: NOW })).toThrow(/empty/i);
+  });
+
+  it('folds ça before counting segments and keeps the question', () => {
+    const raw = 'Tout ça est déjà passé. Tu veux que je la déplace à jeudi?';
+    const out = toSmsReply(raw, { children: [], now: NOW });
+    expect(out).toBe('Tout ca est déjà passé. Tu veux que je la déplace à jeudi?');
+    expect(smsEncoding(out)).toBe('gsm7');
+    expect(out).toContain('?');
+  });
+
+  it('refuses a trim that would drop the question', () => {
+    const lead = 'Swim is on Tuesday at the east pool this week. '.repeat(8);
+    const ask = 'Want me to move it to Thursday?';
+    expect(smsSegments(`${lead}${ask}`)).toBeGreaterThan(MAX_REPLY_SEGMENTS);
+    expect(() => toSmsReply(`${lead}${ask}`, { children: [], now: NOW })).toThrow(/ask/i);
   });
 });
 

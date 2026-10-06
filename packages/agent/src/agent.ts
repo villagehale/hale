@@ -285,9 +285,7 @@ const DEFAULT_MAX_TOKENS = 2048;
  * unaffected either way.
  */
 function buildSystem(skill: Skill): Anthropic.TextBlockParam[] {
-  return [
-    { type: 'text', text: skill.instructions, cache_control: { type: 'ephemeral' } },
-  ];
+  return [{ type: 'text', text: skill.instructions, cache_control: { type: 'ephemeral' } }];
 }
 
 /**
@@ -382,41 +380,38 @@ function wireLane(task: AgentTask, lane?: LaneConfig): WireLaneFields {
 }
 
 /**
- * Did this completion hit the token ceiling before producing anything usable?
+ * A `max_tokens` step that has nothing dispatchable.
  *
- * Text means the budget went where it was supposed to — a clipped sentence is still an
- * answer the post-processor can trim, and re-asking there would pay twice for something
- * already in hand.
+ * Silence and a clipped tool call are the old case. A sentence that started
+ * and was cut is the same failure: that text is not an answer, and shipping it
+ * is how a move proposal left a parent with only its first clause. The step is
+ * re-asked once with thinking off. The partial text is not returned.
  *
- * A tool call counts only if EVERY call in the completion PARSES. Under `max_tokens` the
- * last tool_use block is the one that was cut, and the API returns whatever JSON it had:
- * `propose_calendar_add {title}`, `{title,date}`, `{}`, an `offer_full_plan` with no
- * `offer` — all four are in the committed coach-eval cache. Dispatching one of those is
- * a ZodError inside invokeTool, fed back as `is_error`, costing a step at full budget to
- * learn nothing. Complete calls beside a clipped one are discarded and re-drawn rather
- * than half-run: every tool_use id in a turn needs a tool_result. A completion whose
- * calls all parse is dispatched even under `max_tokens` (cache `f9d26e00…`, a whole
- * `watch_for_opening` cut right after its last argument) — schema validity is the same
- * test invokeTool applies, so nothing this predicate accepts can fail there.
- *
- * An unknown tool NAME is left alone: handleToolUses throws loudly on it, and a re-ask
- * would turn a skill-config bug into a silent retry.
+ * A tool call counts only if EVERY call in the completion PARSES. Under
+ * `max_tokens` the last tool_use block is the one that was cut, and the API
+ * returns whatever JSON it had. Dispatching one of those is a ZodError inside
+ * invokeTool. A completion whose calls all parse is dispatched even under
+ * `max_tokens` (cache `f9d26e00…`) — schema validity is the same test
+ * invokeTool applies. An unknown tool NAME is left alone: handleToolUses
+ * throws loudly on it, and a re-ask would turn a skill-config bug into a
+ * silent retry.
  */
-function isTruncatedBeforeSpeaking(
+function isCutOffWithoutADispatch(
   response: Anthropic.Message,
   toolByName: Map<string, RegisteredTool>,
 ): boolean {
-  if (response.stop_reason !== 'max_tokens' || textFrom(response.content) !== null) return false;
+  if (response.stop_reason !== 'max_tokens') return false;
   const toolUses = response.content.filter(
     (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
   );
-  return (
-    toolUses.length === 0 ||
-    toolUses.some((b) => {
-      const tool = toolByName.get(b.name);
-      return tool !== undefined && !tool.inputSchema.safeParse(b.input).success;
-    })
-  );
+  if (toolUses.some((block) => !toolByName.has(block.name))) return false;
+  const dispatchable =
+    toolUses.length > 0 &&
+    toolUses.every((block) => {
+      const tool = toolByName.get(block.name);
+      return tool?.inputSchema.safeParse(block.input)?.success === true;
+    });
+  return !dispatchable;
 }
 
 function textFrom(content: Anthropic.ContentBlock[]): string | null {
@@ -551,9 +546,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
-  const messages: Anthropic.MessageParam[] = [
-    { role: 'user', content: initialUserContent(args) },
-  ];
+  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: initialUserContent(args) }];
 
   let promptTokens = 0;
   let cacheReadTokens = 0;
@@ -626,7 +619,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     // reason its way past its second tool (see the note on MAX_TOKENS in
     // apps/web/lib/channel/coach/runtime.ts). The room belongs to the turn that proved
     // it needed it.
-    if (isTruncatedBeforeSpeaking(response, toolByName)) {
+    if (isCutOffWithoutADispatch(response, toolByName)) {
       if (reaskLane !== null) {
         truncatedRetries += 1;
         response = await args.client.messages.create({
@@ -638,7 +631,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
         });
         meter(response.usage);
       }
-      if (reaskLane === null || isTruncatedBeforeSpeaking(response, toolByName)) {
+      if (reaskLane === null || isCutOffWithoutADispatch(response, toolByName)) {
         return {
           answer: null,
           steps,
@@ -718,9 +711,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
-  const messages: Anthropic.MessageParam[] = [
-    { role: 'user', content: initialUserContent(args) },
-  ];
+  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: initialUserContent(args) }];
 
   let promptTokens = 0;
   let cacheReadTokens = 0;
@@ -766,8 +757,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
         // reported honestly rather than hidden in a null answer (rule #11) — the re-ask
         // itself is a separate change.
         truncatedRetries: 0,
-        truncated:
-          response.stop_reason === 'max_tokens' && textFrom(response.content) === null,
+        truncated: response.stop_reason === 'max_tokens' && textFrom(response.content) === null,
         usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
       };
     }

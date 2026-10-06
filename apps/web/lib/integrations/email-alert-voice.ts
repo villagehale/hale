@@ -9,6 +9,7 @@ import {
   foldOutboundLine,
   foldedGsmLine,
   inventedName,
+  inventedReason,
   mentionsOtherPerson,
   mentionsSender,
   namesHale,
@@ -107,6 +108,7 @@ export function emailAlertRejection(
   const stray = straySchedule(line, allowedFacts(facts));
   if (stray) return stray;
   if (inventedName(line, allowedFacts(facts))) return 'stray_name';
+  if (inventedReason(line, allowedFacts(facts))) return 'reason';
   return null;
 }
 
@@ -255,7 +257,7 @@ async function composeEmailAlertLine(
       ...(tryIndex > 0
         ? {
             refused:
-              'The previous line was not sent. Copy the facts exactly. Speak as I, about your week. Do not open with Just a heads-up or Just a reminder, and do not say Hale did something. Do not name a person, amount, day, or time you were not given. Stay in two segments, and do not tell them which word to type. Leave the other-families clause out only if it was what made the line too long.',
+              'The previous line was not sent. Copy the facts exactly. Speak as I. The week belongs to the parent: say your week or your calendar, addressed to them. Never say my week, our week, my calendar, or our calendar. Do not open with Just a heads-up or Just a reminder, and do not say Hale did something. Do not add a reason or any other detail you were not given. Do not name a person, amount, day, or time you were not given. Stay in two segments, and do not tell them which word to type. Leave the other-families clause out only if it was what made the line too long.',
           }
         : {}),
     },

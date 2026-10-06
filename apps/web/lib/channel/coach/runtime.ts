@@ -116,22 +116,20 @@ const MAX_STEPS = 6;
  * gym" follow-up, whose antecedent was in the transcript at index 17 of 20 the whole
  * time. The context was never the problem on that turn. The budget was.
  *
- * THE FIX IS NOT A BIGGER NUMBER HERE, and the corpus is what settled that. Raising this
- * to 1,024 does cure the truncation, and it also makes the model reason its way past its
- * second source: across live re-records `registration-window-plus-a-find` went from 0/3
- * to 2/4 failures on "never called find_activities", and `village-one-verified-one-not`
- * from 2/3 to 4/4 on "never called search_village". 700 splits the difference and gets
- * neither — it still truncated `yes-with-nothing-open` on the full corpus run. Room given
- * to every turn is room the model finds something to do with.
+ * 400 was not enough once turns started writing the reply. A live daytime sample
+ * cut 3 of 20 coach steps mid-proposal: the move was half a sentence and the
+ * trim then kept only the first one. 1,024 is the ceiling that stopped that
+ * cut on the earlier corpus. It also gives the model room to reason past a
+ * second tool — measured then on `registration-window-plus-a-find` and
+ * `village-one-verified-one-not` — which is why this number stayed at 400 for
+ * so long. The live cuts are the worse failure, so the ceiling is 1,024.
  *
- * So the room goes to the turn that PROVED it needed it: `runAgent` re-asks a step that
- * hit the ceiling before saying anything, once, with thinking OFF at this same budget
- * (packages/agent/src/agent.ts `isTruncatedBeforeSpeaking`, model.ts `withoutThinking`)
- * — the one request shape on which 400 is a reply ceiling again, because no field on
- * Sonnet 5 bounds the thinking half. Ordinary turns keep the ceiling — and their
- * prompt-cache keys — untouched.
+ * A step that still hits the ceiling, including one that already started a
+ * sentence, is re-asked once with thinking OFF at this same budget
+ * (packages/agent/src/agent.ts). The partial text is not the answer. Ordinary
+ * turns that finish inside the ceiling are unchanged.
  */
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 1024;
 
 /** The agent_runs name for a texted turn (migration 0075). Separate from 'ask-hale'
  * because the two surfaces have different latency and cost shapes over one brain. */

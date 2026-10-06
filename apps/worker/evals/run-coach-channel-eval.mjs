@@ -170,7 +170,7 @@ const SPOTS_FIXTURES = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots',
 
 /** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 1024;
 /** Mirrors MAX_REPLY_SEGMENTS in apps/web/lib/channel/coach/reply.ts. */
 const MAX_REPLY_SEGMENTS = 2;
 /** Mirrors MAX_DRAFTS_PER_TURN in apps/web/lib/channel/coach/tools.ts. */
@@ -312,6 +312,14 @@ const GSM7_SUBSTITUTIONS = [
   [/[•·]/g, ''],
 ];
 
+/** Mirrors foldToGsm7 in apps/web/lib/loop/templates/weekly-plan/core.ts. ç → c;
+ * é stays. A French "ça" must not flip the graded reply to UCS-2. */
+function foldGsmChar(char) {
+  if (GSM7_BASIC.has(char) || GSM7_EXTENDED.has(char)) return char;
+  const base = char.normalize('NFD').replace(/\p{M}+/gu, '');
+  return base !== '' && (GSM7_BASIC.has(base) || GSM7_EXTENDED.has(base)) ? base : '';
+}
+
 function plainText(text) {
   let out = text;
   out = out.replace(/```[\s\S]*?```/g, ' ');
@@ -324,7 +332,7 @@ function plainText(text) {
   out = out.replace(/\*([^*]+)\*/g, '$1');
   out = out.replace(/(^|\s)_([^_]+)_(?=\s|$)/g, '$1$2');
   for (const [pattern, replacement] of GSM7_SUBSTITUTIONS) out = out.replace(pattern, replacement);
-  return out.replace(/\s+/g, ' ').trim();
+  return [...out].map(foldGsmChar).join('').replace(/\s+/g, ' ').trim();
 }
 
 /** Teens are age-derived here exactly as resolveChildNameLevel does. */
@@ -360,15 +368,22 @@ function sentences(body) {
 function fitToBudget(body, max, suffix = '') {
   const withSuffix = (text) => (suffix === '' ? text : `${text} ${suffix}`);
   if (smsSegments(withSuffix(body)) <= max) return body;
+  const dropsAsk = (candidate) => body.includes('?') && !candidate.includes('?');
   const parts = sentences(body);
   for (let count = parts.length - 1; count >= 1; count -= 1) {
     const candidate = parts.slice(0, count).join(' ');
-    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) {
+      if (dropsAsk(candidate)) return null;
+      return candidate;
+    }
   }
   const words = (parts[0] ?? body).split(' ');
   for (let count = words.length - 1; count >= 1; count -= 1) {
     const candidate = `${words.slice(0, count).join(' ')}...`;
-    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) {
+      if (dropsAsk(candidate)) return null;
+      return candidate;
+    }
   }
   return null;
 }

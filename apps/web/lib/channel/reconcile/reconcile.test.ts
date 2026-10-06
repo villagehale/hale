@@ -50,6 +50,30 @@ describe('reconcile — a confirmation ask needs a draft', () => {
       ),
     ).toEqual(['no_scheduled_row']);
   });
+
+  it('refuses a proposal that does not say want-me-to, when nothing was drafted', () => {
+    for (const ask of ["C'est ça que tu veux?", 'Je la déplace à jeudi?', 'Should I go ahead?']) {
+      expect(verdictFor(ask, view()).refused.map((refusal) => refusal.reason)).toEqual([
+        'no_calendar_draft',
+      ]);
+    }
+    expect(verdictFor('Should I go ahead?', view({ pendingCalendarDraft: true })).refused).toEqual(
+      [],
+    );
+  });
+
+  it('refuses reviewer wording and an English weekday inside French', () => {
+    expect(
+      verdictFor("(it needs another look before it's cleared).", view()).refused.map(
+        (refusal) => refusal.reason,
+      ),
+    ).toEqual(['internal_wording']);
+    expect(
+      verdictFor('Tuesday de cette semaine (le 6 octobre) est déjà passé.', view()).refused.map(
+        (refusal) => refusal.reason,
+      ),
+    ).toEqual(['mixed_weekday']);
+  });
 });
 
 describe('reconcile — the registration watch', () => {

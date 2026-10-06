@@ -105,6 +105,19 @@ describe('extractStateClaims — the false positives that would break production
       'calendar_confirm',
     ]);
     expect(kinds('Want me to check next week?')).toEqual([]);
+    expect(kinds('Want me to watch that morning and text you before it opens?')).toEqual([]);
+    expect(kinds('Should I go ahead?')).toEqual(['calendar_confirm']);
+    expect(kinds("C'est ça que tu veux?")).toEqual(['calendar_confirm']);
+    expect(kinds('Je la déplace à jeudi?')).toEqual(['calendar_confirm']);
+    expect(kinds('Want me to try a different day or time for swim?')).toEqual(['calendar_confirm']);
+  });
+
+  it('reads reviewer wording and an English weekday in French as claims', () => {
+    expect(kinds("(it needs another look before it's cleared).")).toEqual(['reviewer_narration']);
+    expect(kinds("Le changement n'a pas été approuvé.")).toEqual(['reviewer_narration']);
+    expect(kinds('Tuesday de cette semaine (le 6 octobre) est déjà passé.')).toEqual([
+      'french_weekday',
+    ]);
   });
 
   it('reads a done-claim as a scheduled event, not as a draft', () => {

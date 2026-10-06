@@ -28,12 +28,16 @@ export interface ReviewResult {
 }
 
 export async function reviewAction(
-  input: { familyId: string; draft: DraftedAction },
+  input: { familyId: string; draft: DraftedAction; awaitsParentApproval?: boolean },
   database: Database,
   client: AgentClient,
 ): Promise<ReviewResult> {
   const { verdict, runMetrics } = await runReviewer(
-    { familyId: input.familyId, draft: input.draft },
+    {
+      familyId: input.familyId,
+      draft: input.draft,
+      ...(input.awaitsParentApproval ? { awaitsParentApproval: true } : {}),
+    },
     {
       client,
       invokeTool: (name, toolInput) => invokeReviewerTool(name, toolInput, database),

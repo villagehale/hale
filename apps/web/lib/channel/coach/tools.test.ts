@@ -315,7 +315,7 @@ describe('propose_calendar_move', () => {
       weekday: 'tue',
     })) as { drafted: boolean; reason?: string };
 
-    expect(result).toEqual({ drafted: false, reason: 'not_approved' });
+    expect(result).toEqual({ drafted: false, reason: 'not_drafted' });
     expect(h.minted).toEqual([]);
     expect(h.signals).toEqual([]);
   });

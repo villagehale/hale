@@ -117,9 +117,67 @@ export function straySchedule(line: string, allowedRaw: string): StraySchedule |
   return null;
 }
 
-/** Their week, a co-parent, l'autre parent — none of which the facts contain. */
+/**
+ * The week is the parent's. "your week" and "ta semaine" address them.
+ * "my week", "our week", "ma semaine", and "my calendar" are Hale talking
+ * about Hale's own week, which the facts do not contain. Their week and a
+ * co-parent are the same class of person the facts never named.
+ */
 export function mentionsOtherPerson(line: string): boolean {
-  return /\btheir week\b|\bco-?parents?\b|\bautre parent\b|\bleur semaine\b/i.test(line);
+  return /\b(?:their|my|our) week\b|\b(?:my|our) calendar\b|\bco-?parents?\b|\bautre parent\b|\b(?:leur|ma|notre) semaine\b|\b(?:mon|notre) calendrier\b/i.test(
+    line,
+  );
+}
+
+const REASON_STOP = new Set([
+  'this',
+  'that',
+  'with',
+  'from',
+  'your',
+  'week',
+  'have',
+  'been',
+  'will',
+  'they',
+  'them',
+  'just',
+  'also',
+  'when',
+  'what',
+  'want',
+  'into',
+  'over',
+  'than',
+  'then',
+  'some',
+  'only',
+  'here',
+  'there',
+  'says',
+  'said',
+]);
+
+/**
+ * A reason clause whose content words are not in the facts.
+ *
+ * "the coach is sick" has no capital letter, so the invented-name check
+ * cannot see it. A because-clause, or a trailing "the X is Y", is a reason.
+ * Words that are already in the facts are the reason Hale was given.
+ */
+export function inventedReason(line: string, allowedRaw: string): boolean {
+  const allowed = foldOutboundLine(allowedRaw).toLowerCase();
+  const clauses: string[] = [];
+  const because = line.match(/\b(?:because|parce que)\b\s*([^?.!]{0,80})/i);
+  if (because?.[1]) clauses.push(because[1]);
+  for (const match of line.matchAll(/,\s*((?:the\s+)?[a-z][^,]{0,60}\bis\b[^,?.!]{0,40})/gi)) {
+    if (match[1]) clauses.push(match[1]);
+  }
+  for (const clause of clauses) {
+    const words = clause.toLowerCase().match(/[a-zà-ÿ]{4,}/g) ?? [];
+    if (words.some((word) => !REASON_STOP.has(word) && !allowed.includes(word))) return true;
+  }
+  return false;
 }
 
 /** Hale named as someone else. The caller strips the going clause first. */

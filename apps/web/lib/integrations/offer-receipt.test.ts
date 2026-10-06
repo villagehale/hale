@@ -109,6 +109,31 @@ describe('offerReceiptAccepts', () => {
     ).toBe(false);
     expect(offerReceiptAccepts('Gymnastics, dimanche 4 oct. à 9 h, leur semaine.', FR)).toBe(false);
     expect(
+      offerReceiptAccepts('I added Gymnastics on Sunday, Oct 4 at 9:00 a.m. to my week.', FACTS),
+    ).toBe(false);
+    expect(
+      offerReceiptAccepts('I added Gymnastics on Sunday, Oct 4 at 9:00 a.m. to our week.', FACTS),
+    ).toBe(false);
+    expect(
+      offerReceiptAccepts(
+        'I added Gymnastics on Sunday, Oct 4 at 9:00 a.m. to my calendar.',
+        FACTS,
+      ),
+    ).toBe(false);
+    expect(offerReceiptAccepts('Gymnastics, dimanche 4 oct. à 9 h, sur ma semaine.', FR)).toBe(
+      false,
+    );
+    expect(offerReceiptAccepts('Gymnastics, dimanche 4 oct. à 9 h, sur notre semaine.', FR)).toBe(
+      false,
+    );
+    expect(
+      offerReceiptAccepts('Gymnastics, dimanche 4 oct. à 9 h, sur notre calendrier.', FR),
+    ).toBe(false);
+    expect(offerReceiptAccepts(GOOD, FACTS)).toBe(true);
+    expect(offerReceiptAccepts('Gymnastics est sur ta semaine, dimanche 4 oct. à 9 h.', FR)).toBe(
+      true,
+    );
+    expect(
       offerReceiptAccepts(
         'Gymnastics was already on your week, Sunday, Oct 4 at 9:00 a.m. - let me know if you want it removed.',
         FACTS,

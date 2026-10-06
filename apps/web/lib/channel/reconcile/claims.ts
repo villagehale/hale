@@ -50,6 +50,15 @@ export type ClaimKind =
    * draft is already waiting for the yes. A question with no draft approves nothing.
    */
   | 'calendar_confirm'
+  /**
+   * "(it needs another look before it's cleared)" — reviewer machinery the
+   * parent was never meant to read. Nothing in the ledger makes it true.
+   */
+  | 'reviewer_narration'
+  /**
+   * "Tuesday de cette semaine" — a French reply that named an English weekday.
+   */
+  | 'french_weekday'
   /** "I'll cut the one sec messages and just answer." — a promise about Hale itself. */
   | 'self_referential'
   /**
@@ -163,15 +172,41 @@ const SCHEDULED_ASSERTION =
   /\b(?:is|are|'s|'re)\s+(?:booked|scheduled|confirmed|on\s+your\s+calendar|in\s+your\s+calendar)\b|\bi'?(?:ve|\s+have)\s+(?:booked|added|scheduled|put|moved|cancelled|canceled|set\s+it\s+up)\b|\byou'?re\s+(?:booked|registered|signed\s+up|all\s+set)\b|\bc'est\s+fait\b|\bje\s+l'ai\s+(?:d[eé]plac[eé]e?|ajout[eé]e?|annul[eé]e?|mis(?:e)?)(?![a-zà-ÿ])/i;
 
 /** A question that asks to move, add, or cancel. Permission Hale does not have
- * yet — unless a draft is already waiting, in which case the question is the ask. */
+ * yet — unless a draft is already waiting, in which case the question is the ask.
+ * "check" and "watch" are not in the verb list: those questions are not a draft. */
 const CALENDAR_ASK = /\b(?:want me to|shall i|should i|veux-tu|veux tu|tu veux que je)\b/i;
 const CALENDAR_VERB =
   /\b(?:moves?|moving|cancels?|cancel(?:l)?ing|reschedules?|adds?|adding|puts?|plac(?:e|es|ing)|d[eé]plac(?:e|es|er)|annul(?:e|es|er)|ajout(?:e|es|er))\b/i;
+const GO_AHEAD = /\bgo ahead\b/i;
+/** A confirm with no verb in it: "c'est ça que tu veux?", "is that what you want?" */
+const CONFIRM_WANTED =
+  /\bc['’]est (?:ça|ca) que tu veux\b|\bis that what you want\b|\bthat what you (?:want|wanted)\b/i;
+/** First person, present: "Je la déplace?" is the proposal, not a report of one. */
+const FIRST_PERSON_CHANGE = /\bje\s+(?:(?:la|le|les|l['’])\s*)?(?:d[eé]plac|ajout|annul)/i;
+/** A retry of the same change. Quiet hours will still be quiet hours. */
+const DIFFERENT_SLOT =
+  /\b(?:different|another)\s+(?:day|time|date)s?\b|\bun autre jour\b|\bune autre heure\b/i;
 
 function isCalendarConfirmAsk(sentence: string): boolean {
   const text = sentence.trimEnd();
   if (!text.endsWith('?')) return false;
-  return CALENDAR_ASK.test(text) && CALENDAR_VERB.test(text);
+  if (CONFIRM_WANTED.test(text) || FIRST_PERSON_CHANGE.test(text) || DIFFERENT_SLOT.test(text)) {
+    return true;
+  }
+  return CALENDAR_ASK.test(text) && (CALENDAR_VERB.test(text) || GO_AHEAD.test(text));
+}
+
+/** Reviewer and quiet-hours wording. The parent never sees the gate. */
+const REVIEWER_NARRATION =
+  /\banother look\b|\bbefore it(?:'s| is) cleared\b|\bquiet hours\b|\bnot been approved\b|\bhas(?: not|n't) been approved\b|\bwas(?: not|n't) approved\b|\bn['’]a pas (?:été|ete) approuv|\bpas (?:été|ete) approuv/i;
+
+const EN_WEEKDAY = /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
+/** A French function word or an accent, in the same sentence as the English day. */
+const FRENCH_MARKER =
+  /\b(?:le|la|les|de|du|des|est|cette|semaine|pas|pour|avec|une|au|aux|déjà|deja)\b|[àâéèêëïîôùûç]/i;
+
+function isFrenchWithEnglishWeekday(sentence: string): boolean {
+  return EN_WEEKDAY.test(sentence) && FRENCH_MARKER.test(sentence);
 }
 
 /** Words that carry no subject — dropped before a `scheduled_event` is matched against
@@ -247,6 +282,8 @@ function kindOf(sentence: string): ClaimKind | null {
   // nothing drafted approves nothing on the next yes. Every other question is
   // still a proposal: "Want me to watch that morning?" asks for permission Hale
   // does not yet have, and refusing it would refuse the honest move.
+  if (REVIEWER_NARRATION.test(sentence)) return 'reviewer_narration';
+  if (isFrenchWithEnglishWeekday(sentence)) return 'french_weekday';
   if (isCalendarConfirmAsk(sentence)) return 'calendar_confirm';
   if (sentence.trimEnd().endsWith('?')) return null;
 
