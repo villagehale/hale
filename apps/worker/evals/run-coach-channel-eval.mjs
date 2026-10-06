@@ -274,6 +274,30 @@ function smsEncoding(text) {
   return 'gsm7';
 }
 
+/**
+ * Segments of the model's own prose, with an appended offer or referral taken off.
+ * The same cut the composed-segment gate uses. A coaching answer with nothing
+ * appended is counted whole.
+ */
+function authoredSegments(answer, calls) {
+  const referralForward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
+  const appended = [
+    calls.find((call) => call.tool === 'offer_full_plan')?.offer,
+    referralForward ? `${referralForward} ${FIXTURE_REFERRAL_LINK}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const composedPlain = plainText(String(answer ?? ''));
+  const composedAuthored =
+    appended && composedPlain.toLowerCase().endsWith(appended.toLowerCase())
+      ? composedPlain.slice(0, -appended.length).trim()
+      : composedPlain;
+  return smsSegments(composedAuthored);
+}
+
+const LENGTH_REWRITE =
+  'The last reply was longer than two texts. Everything past the cut is never sent. Write the whole answer again in one short sentence so it fits in two texts.';
+
 function smsSegments(text) {
   let gsm7 = true;
   for (const char of text) {
@@ -1949,7 +1973,7 @@ async function main() {
         anthropicModel,
         subjectLatencies,
       );
-      const run = await agent.runAgent({
+      let run = await agent.runAgent({
         skill,
         context: turnContext,
         tools,
@@ -1977,6 +2001,24 @@ async function main() {
         continue;
       }
       truncatedRetries = run.truncatedRetries;
+      // The composed-segment gate grades this text, not the trimmed send. A
+      // five-year-old co-sleeping answer wrote a second sentence that became a
+      // third segment and was never sent. Ask once for a shorter whole answer.
+      // A rewrite that says nothing leaves the long one to fail that gate.
+      if (authoredSegments(run.answer, calls) > MAX_REPLY_SEGMENTS) {
+        const again = await agent.runAgent({
+          skill,
+          context: { ...turnContext, rejectedLastAttempt: [LENGTH_REWRITE] },
+          tools,
+          client,
+          maxSteps: MAX_STEPS,
+          maxTokens: MAX_TOKENS,
+          toolContext: { familyId: 'fixture-family', actor: 'fixture-parent' },
+          guardDeps: makeGuardDeps(auditLog, children),
+        });
+        truncatedRetries += again.truncatedRetries;
+        if (again.answer !== null) run = again;
+      }
       const forward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
       composed = run.answer;
       reply = toSmsReply(

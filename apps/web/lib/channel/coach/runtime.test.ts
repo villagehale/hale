@@ -189,6 +189,25 @@ describe('channelCoachRuntime', () => {
     expect(reply.startsWith('Sentence number 0')).toBe(true);
   });
 
+  it('asks once for a shorter answer when the first one is past two segments', async () => {
+    const long = Array.from({ length: 12 }, (_, i) => `Sentence number ${i} about swim.`).join(' ');
+    const short = 'Sit by his bed tonight and walk him back each time.';
+    const seen: Array<Record<string, unknown>> = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push(args.context as Record<string, unknown>);
+        return (seen.length === 1 ? answering(long) : answering(short))(args);
+      },
+    });
+
+    const { reply } = await channelCoachRuntime(p).respond(turn(), []);
+
+    expect(reply).toBe(short);
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).not.toHaveProperty('rejectedLastAttempt');
+    expect(seen[1]?.rejectedLastAttempt).toEqual([expect.stringMatching(/longer than two texts/)]);
+  });
+
   /** A throw is what the router turns into the honesty template. A runtime that
    * returned an apology string instead would make a failed turn indistinguishable from
    * an answered one — in the thread, in the logs, and in the metrics. */
