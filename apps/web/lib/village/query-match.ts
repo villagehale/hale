@@ -94,9 +94,13 @@ export function askedWeekdays(query: string): number[] | null {
   return days.size === 0 ? null : [...days];
 }
 
-/** Weekday of a bare calendar day. UTC noon so the civil date cannot shift. */
-export function weekdayOfEventDate(eventDate: string): number {
+/**
+ * Weekday of a bare calendar day, or null when the month is missing.
+ * UTC so the civil date cannot shift. A null means the row is not that day.
+ */
+export function weekdayOfEventDate(eventDate: string): number | null {
   const [year, month, day] = eventDate.split('-').map(Number);
+  if (year === undefined || month === undefined) return null;
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
 
@@ -105,7 +109,9 @@ function onAskedDay(row: VillageMatchRow, days: readonly number[] | null): boole
   // No date yet: not some other day. It stays in the set so `inVerification`
   // still counts a find the day filter cannot place.
   if (row.eventDate === null || row.eventDate === '') return true;
-  return days.includes(weekdayOfEventDate(row.eventDate));
+  const weekday = weekdayOfEventDate(row.eventDate);
+  if (weekday === null) return false;
+  return days.includes(weekday);
 }
 
 function rowHasToken(row: VillageMatchRow, token: string): boolean {

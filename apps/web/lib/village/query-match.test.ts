@@ -77,4 +77,16 @@ describe('filterVillageRows', () => {
 
     expect(kept.map((row) => row.title)).toEqual([STORY.title, UNVERIFIED.title]);
   });
+
+  it('does not treat a date with no month as the asked day', () => {
+    const broken: VillageMatchRow = {
+      title: 'Broken date',
+      summary: 'month missing',
+      eventDate: '2026',
+    };
+
+    expect(filterVillageRows([STORY, broken], 'Saturday').map((row) => row.title)).toEqual([
+      STORY.title,
+    ]);
+  });
 });
