@@ -1,6 +1,6 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { runDeletionSweep } from '~/lib/rights/delete';
@@ -25,10 +25,12 @@ let phones = 0;
 
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
   db = await createTestDb();
 });
 
 afterAll(async () => {
+  vi.unstubAllEnvs();
   await db.close();
 });
 
@@ -124,6 +126,29 @@ async function retentionAudit() {
     .from(schema.auditLog)
     .where(eq(schema.auditLog.actionTaken, 'linq_group_roster_numbers_released'));
 }
+
+describe('sweepRosterRetention — flag off', () => {
+  it("releases nothing and names flag_off, which is today's delete sweep", async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
+    const rosterId = await seedRoster({
+      chatId: 'chat-flag-off',
+      familyId: null,
+      status: 'no_family',
+      updatedAt: PAST_RETENTION,
+    });
+    const memberId = await seedMember({
+      rosterId,
+      chatId: 'chat-flag-off',
+      status: 'declined',
+      updatedAt: PAST_RETENTION,
+    });
+
+    expect(await sweepRosterRetention(db.database, NOW)).toEqual({ outcome: 'flag_off' });
+    expect(await rosterChats()).toEqual(['chat-flag-off']);
+    expect((await member(memberId))?.encrypted).not.toBeNull();
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+  });
+});
 
 describe('sweepRosterRetention — rosters that belong to no family', () => {
   it.each(['no_family', 'mixed_family', 'not_group', 'refused'] as const)(
