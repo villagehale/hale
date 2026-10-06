@@ -151,6 +151,8 @@ describe('parseLinqWebhook', () => {
         participantHandle: null,
         actorHandle: null,
         isFromMe: false,
+        handles: [],
+        isGroup: null,
       },
     });
 
@@ -209,6 +211,104 @@ describe('parseLinqWebhook', () => {
     expect(vote).toMatchObject({
       kind: 'signal',
       signal: { event: 'poll.vote.added', optionId: 'opt-1', senderHandle: '+12025559876' },
+    });
+  });
+
+  it('reads Hale being added to a group as an is_me participant.added', () => {
+    const added = parseLinqWebhook(
+      {
+        ...received(),
+        event_type: 'participant.added',
+        data: {
+          chat_id: 'chat-family-group',
+          handle: '+14165550100',
+          participant: {
+            id: 'handle-hale',
+            handle: '+14165550100',
+            is_me: true,
+            service: 'iMessage',
+            status: 'active',
+          },
+          added_at: '2026-10-06T12:00:00.000Z',
+        },
+      },
+      FALLBACK,
+    );
+    expect(added).toEqual({
+      kind: 'signal',
+      signal: {
+        event: 'participant.added',
+        chatId: 'chat-family-group',
+        messageId: null,
+        reactionType: null,
+        optionId: null,
+        senderHandle: null,
+        participantHandle: '+14165550100',
+        actorHandle: null,
+        isFromMe: true,
+        handles: [],
+        isGroup: null,
+      },
+    });
+  });
+
+  it('reads chat.created as a signal carrying the group flag and every member but Hale', () => {
+    const created = parseLinqWebhook(
+      {
+        ...received(),
+        event_type: 'chat.created',
+        data: {
+          id: 'chat-family-group',
+          display_name: 'Family',
+          service: 'iMessage',
+          handles: [
+            { id: 'h-0', handle: '+14165550100', is_me: true, service: 'iMessage' },
+            { id: 'h-1', handle: '+14165550101', is_me: false, service: 'iMessage' },
+            { id: 'h-2', handle: '+14165550102', is_me: false, service: 'iMessage' },
+            { id: 'h-3', is_me: false },
+          ],
+          is_group: true,
+          created_at: '2026-10-06T12:00:00.000Z',
+          updated_at: '2026-10-06T12:00:00.000Z',
+        },
+      },
+      FALLBACK,
+    );
+    expect(created).toEqual({
+      kind: 'signal',
+      signal: {
+        event: 'chat.created',
+        chatId: 'chat-family-group',
+        messageId: null,
+        reactionType: null,
+        optionId: null,
+        senderHandle: null,
+        participantHandle: null,
+        actorHandle: null,
+        isFromMe: false,
+        handles: ['+14165550101', '+14165550102'],
+        isGroup: true,
+      },
+    });
+
+    const direct = parseLinqWebhook(
+      {
+        ...received(),
+        event_type: 'chat.created',
+        data: {
+          id: 'chat-direct',
+          handles: [
+            { handle: '+14165550100', is_me: true },
+            { handle: '+14165550101', is_me: false },
+          ],
+          is_group: false,
+        },
+      },
+      FALLBACK,
+    );
+    expect(direct).toMatchObject({
+      kind: 'signal',
+      signal: { event: 'chat.created', chatId: 'chat-direct', isGroup: false },
     });
   });
 

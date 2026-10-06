@@ -29,10 +29,11 @@ export type LinqSignalEvent =
   | 'poll.vote.added'
   | 'poll.vote.removed'
   | 'participant.added'
-  | 'participant.removed';
+  | 'participant.removed'
+  | 'chat.created';
 
 /** A webhook this door records and does not route as a parent text. Handles
- * and phone numbers are not copied onto the signal. */
+ * are never logged. */
 export interface LinqSignal {
   event: LinqSignalEvent;
   chatId: string | null;
@@ -50,6 +51,13 @@ export interface LinqSignal {
   actorHandle: string | null;
   /** True when Linq says the event is ours. Our own tapback echo is not a parent. */
   isFromMe: boolean;
+  /**
+   * Every member but Hale, on `chat.created` only — the one webhook that lists
+   * them. Empty on every other signal. Never logged.
+   */
+  handles: string[];
+  /** Whether the new chat is a group, on `chat.created` only. Null otherwise. */
+  isGroup: boolean | null;
 }
 
 /** Delivery receipts the ledger already knows how to store. `read` is its own
@@ -124,6 +132,7 @@ const SIGNAL_EVENTS: readonly LinqSignalEvent[] = [
   'poll.vote.removed',
   'participant.added',
   'participant.removed',
+  'chat.created',
 ];
 
 const LOCATION_EVENTS: readonly LinqLocationEvent[] = [
@@ -235,6 +244,7 @@ function otherHandles(chat: Record<string, unknown>): string[] {
 function parseSignal(payload: Record<string, unknown>, event: LinqSignalEvent): LinqParsedWebhook {
   if (!isRecord(payload.data)) return { kind: 'ignored', reason: 'malformed' };
   const data = payload.data;
+  if (event === 'chat.created') return parseChatCreated(data);
   const chat = isRecord(data.chat) ? data.chat : null;
   const chatId = stringField(data.chat_id) || (chat && typeof chat.id === 'string' ? chat.id : '');
   const messageId = stringField(data.message_id) || stringField(data.id);
@@ -275,6 +285,28 @@ function parseSignal(payload: Record<string, unknown>, event: LinqSignalEvent): 
       participantHandle: participantHandle || null,
       actorHandle: actorHandle || null,
       isFromMe,
+      handles: [],
+      isGroup: null,
+    },
+  };
+}
+
+/** `chat.created` names the chat on `data.id`, not `data.chat_id`, and lists its members. */
+function parseChatCreated(data: Record<string, unknown>): LinqParsedWebhook {
+  return {
+    kind: 'signal',
+    signal: {
+      event: 'chat.created',
+      chatId: stringField(data.id) || null,
+      messageId: null,
+      reactionType: null,
+      optionId: null,
+      senderHandle: null,
+      participantHandle: null,
+      actorHandle: null,
+      isFromMe: false,
+      handles: otherHandles(data),
+      isGroup: data.is_group === true,
     },
   };
 }

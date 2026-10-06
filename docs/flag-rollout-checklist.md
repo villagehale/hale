@@ -59,6 +59,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `GOOGLE_WRITE_SCOPES_ENABLED` | `true` | off | unset, or anything except `true` | Noah |
 | `IMESSAGE_UPGRADE_ASK` | `on` | off | empty, or `off` | Sloane |
 | `LINQ_GROUP_MEMBERS_ENABLED` | `true` | off | `false` | Noah |
+| `LINQ_GROUP_ONBOARDING_V2_ENABLED` | `true` (trimmed) | off | empty, or `false` | Noah (copy: Sloane) |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | `true` | off | `false` | Noah |
 | `LINQ_POLLS` | `on` | off | empty, or `off` | Sloane |
 | `LOOP_SEND_ENABLED` | `true` | off | `false` | Noah |
@@ -182,6 +183,7 @@ These stay off for the first families. The kill value is in the inventory table.
 - `VILLAGE_INTROS_ENABLED`: cross-household intros stay off. A non-empty allowlist narrows the flag. It does not add families while the flag is off.
 - `IMESSAGE_UPGRADE_ASK`: the later year-retention ask stays off.
 - `GOOGLE_WRITE_SCOPES_ENABLED`: stays unset in production. Linq delivers inbound texts to the production webhook, so a preview URL cannot receive a parent text. `GOOGLE_WRITE_SCOPES_ALLOWLIST` is comma-separated Hale user ids: only those accounts are asked for `calendar.events` and `gmail.compose`, and only their placements and Gmail drafts write to Google. Everyone else keeps today's readonly consent, and a placement still writes `family_events` and sends the iTIP invite. Preview may set the flag to `true` with an empty allowlist. Flip the global flag in production only after Google verification approves those scopes.
+- `LINQ_GROUP_ONBOARDING_V2_ENABLED`: when Hale is added to a family's group, it reads who is in the chat (`linq_group_rosters`) and claims the chat for the one family whose verified parent is in it. It seats nobody and sends nothing. Leave it off until the who's-who asks, the roles-confirmed send gate, and 1:1 connect links ship. Before the flag goes on, a sandbox probe has to show which webhook fires when a person adds Hale's line, and the live Linq subscription (do not change it in this PR) has to include `chat.created` and `participant.added` (the Sep 23 snapshot subscribed to `message.*` only). With the flag on and no send gate, a claimed chat would receive proactive group lines before anyone has said who they are. Migration `0158_linq_group_roster` must be applied first; until it is, the roster step answers `not_migrated`. Green-bubble / MMS groups cannot add a Linq line.
 
 ## First five families
 

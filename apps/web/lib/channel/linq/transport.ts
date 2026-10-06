@@ -474,6 +474,12 @@ export function readLinqChatHandles(payload: unknown): string[] {
   return out;
 }
 
+function readLinqChatIsGroup(payload: unknown): boolean | null {
+  if (!isRecord(payload)) return null;
+  const chat = isRecord(payload.chat) ? payload.chat : payload;
+  return typeof chat.is_group === 'boolean' ? chat.is_group : null;
+}
+
 /**
  * Open a chat. One `to` handle is a 1:1. Two or more make a group. The
  * request does not set `preferred_service`, so Linq's chain applies to either
@@ -535,12 +541,14 @@ export async function updateLinqGroupChat(input: {
   });
 }
 
-/** GET the chat and return the other participants' handles. A miss is named. */
+/** GET the chat and return the other participants' handles and whether Linq says it
+ * is a group (null when the payload does not say). A miss is named. */
 export async function listLinqParticipantHandles(input: {
   chatId: string;
   fetch?: typeof fetch;
 }): Promise<
-  { status: 'ok'; handles: string[] } | Exclude<LinqEffectResult, { status: 'accepted' }>
+  | { status: 'ok'; handles: string[]; isGroup: boolean | null }
+  | Exclude<LinqEffectResult, { status: 'accepted' }>
 > {
   try {
     const result = await linqRequest({
@@ -556,7 +564,11 @@ export async function listLinqParticipantHandles(input: {
         permanent: result.permanent,
       };
     }
-    return { status: 'ok', handles: readLinqChatHandles(result.payload) };
+    return {
+      status: 'ok',
+      handles: readLinqChatHandles(result.payload),
+      isGroup: readLinqChatIsGroup(result.payload),
+    };
   } catch (err) {
     if (err instanceof LinqSendError && err.code === 'not_configured') {
       return { status: 'not_configured' };
