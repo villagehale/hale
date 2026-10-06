@@ -122,6 +122,7 @@ describe('proactiveLineInput', () => {
     expect(named.forbidden?.map((rule) => rule.name)).toEqual([
       'booking_claim',
       'been_there_claim',
+      'straight_from',
     ]);
 
     // No under-13 to name: the model is told so (null), never handed an empty list to
@@ -182,6 +183,15 @@ describe('the judge on a travel brief', () => {
         input,
       ),
     ).toEqual({ ok: false, reason: 'forbidden:been_there_claim' });
+    expect(
+      judgeSpokenLine(
+        GOOD_BRIEF.replace(
+          "That's off their own pages, not from anyone who's been.",
+          'Both details are straight from the venues own pages.',
+        ),
+        input,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:straight_from' });
     expect(
       judgeSpokenLine(
         GOOD_BRIEF.replace(

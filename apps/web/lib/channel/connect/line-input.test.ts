@@ -94,6 +94,12 @@ describe('connectLineInput', () => {
     ).toEqual({ ok: true });
     expect(
       judgeSpokenLine(
+        'Google may say Hale is not verified yet. This link will work while you wait.',
+        heads,
+      ),
+    ).toEqual({ ok: false, reason: 'link' });
+    expect(
+      judgeSpokenLine(
         "Google may say Hale is not verified yet, because we are still in Google's review.",
         heads,
       ),

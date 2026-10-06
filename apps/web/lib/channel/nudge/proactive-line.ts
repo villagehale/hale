@@ -35,6 +35,12 @@ export const BROKEN_CA_TINTERESSE = {
  * A travel find is off a venue's own page. Nobody has been; nobody recommends. A body
  * that says otherwise is claiming a review Hale does not hold.
  */
+/** "Both details are straight from" names the pages and drops the check, even in one sentence. */
+export const STRAIGHT_FROM_BOTH = {
+  name: 'straight_from',
+  pattern: /both details are straight from/i,
+};
+
 export const NO_BEEN_THERE_CLAIM = {
   name: 'been_there_claim',
   pattern:
@@ -125,7 +131,7 @@ export function proactiveLineInput(
             [pick.name, pick.when, pick.price].filter((v): v is string => v !== null),
           ),
         ],
-        forbidden: [NO_BOOKING_CLAIM, NO_BEEN_THERE_CLAIM],
+        forbidden: [NO_BOOKING_CLAIM, NO_BEEN_THERE_CLAIM, STRAIGHT_FROM_BOTH],
       };
     }
     case 'empty_saturday': {
