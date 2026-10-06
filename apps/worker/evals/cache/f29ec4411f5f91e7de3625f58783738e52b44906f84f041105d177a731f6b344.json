@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "the drive to swim is 40 min, can you find something closer",
+    "rationale": "\"drive\" refers to commute time, not Google Drive; no connection request present",
+    "confidence": 0.97
+  },
+  "latencyMs": 1750
+}

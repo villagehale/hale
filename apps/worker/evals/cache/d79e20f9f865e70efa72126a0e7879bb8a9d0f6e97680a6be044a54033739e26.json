@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "unlink my google calendar",
+    "rationale": "disconnect/unlink request, not a connect request",
+    "confidence": 0.97
+  },
+  "latencyMs": 1469
+}

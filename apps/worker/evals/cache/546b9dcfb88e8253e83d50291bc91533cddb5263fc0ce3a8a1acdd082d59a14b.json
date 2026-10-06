@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "both_free",
+    "verbatim": "quand est-ce qu'on est libres tous les deux cette semaine",
+    "rationale": "asks when both parents are free this week, in household group",
+    "confidence": 0.97
+  },
+  "latencyMs": 1698
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "connect_gcal",
+    "verbatim": "connecte mon agenda",
+    "rationale": "French request to connect calendar (\"agenda\")",
+    "confidence": 0.95
+  },
+  "latencyMs": 1420
+}

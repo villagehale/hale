@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "connect_gcal",
+    "verbatim": "sync our calendar please so you can see the kids stuff",
+    "rationale": "explicit request to sync calendar",
+    "confidence": 0.93
+  },
+  "latencyMs": 1732
+}

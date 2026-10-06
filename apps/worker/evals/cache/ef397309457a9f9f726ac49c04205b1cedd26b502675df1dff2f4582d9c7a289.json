@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "let's connect after I check the calendar tonight",
+    "rationale": "conversational use of \"connect\"/\"calendar\", not a request to link accounts",
+    "confidence": 0.95
+  },
+  "latencyMs": 1561
+}

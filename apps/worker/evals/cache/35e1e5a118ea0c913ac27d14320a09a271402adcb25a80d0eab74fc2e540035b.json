@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message directly answers the question with one plain line. It confirms Alex owns Leo's soccer on Saturday at 10:00am, using exact facts from the request. No question mark, no padding, no turn language, no stock phrases. It reads like a straightforward friend answering a direct question. Includes all required mentions: Alex, Leo, soccer, Saturday, 10:00am."
+  }
+}

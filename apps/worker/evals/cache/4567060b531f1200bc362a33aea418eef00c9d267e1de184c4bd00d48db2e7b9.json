@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message confirms all five required facts (Sam, Maya, swim, Thursday, 4:00pm) in plain, direct language. It states the owner and event as a fact without a question (0 questions required). The correction mechanism (\"If I've got that wrong, say so here\") is in the message's own words—natural and conversational, not the banned stock phrase \"Noted\" or \"I'll keep track.\" The tone is warm and straightforward, reading like a friend double-checking. It avoids pressure, scorekeeping, emoji, and padding. First person is implicit in the confirmation. This is exactly what the moment calls for."
+  }
+}

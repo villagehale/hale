@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "both_free",
+    "verbatim": "find us a time we are both off on saturday",
+    "rationale": "asks for shared free time on Saturday in household group",
+    "confidence": 0.95
+  },
+  "latencyMs": 1514
+}

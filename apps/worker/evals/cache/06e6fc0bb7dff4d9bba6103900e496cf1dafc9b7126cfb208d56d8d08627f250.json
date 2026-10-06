@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This is a travel_brief that perfectly executes the form. It names Ottawa, the 20th to the 21st, and Noah as required. It includes both picks (Canada Science and Technology Museum and Rideau Canal Skateway) with their exact details as provided: \"$18 adults\" for the museum and \"open dawn to dusk\" for the Skateway. Notably, it does NOT invent missing information—the museum has no time listed and the Skateway has no price, and the message correctly omits these rather than filling them in. It says in its own words (\"straight from the venues' own pages, so nobody has been to check them out yet\") that the details come from the venues' own pages. There is no question, as required (questions=0). The tone is plain, warm, and first-person appropriate for a friend texting a parent. It avoids all prohibited elements: no URL, no exclamation marks, no emoji, no hype, no \"we,\" no corporate register, no padding, no invented facts, and no question marks."
+  }
+}

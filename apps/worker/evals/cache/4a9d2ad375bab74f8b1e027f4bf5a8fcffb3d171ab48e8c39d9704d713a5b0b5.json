@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "what's on the calendar saturday",
+    "rationale": "Asking about calendar contents, not requesting a connection",
+    "confidence": 0.97
+  },
+  "latencyMs": 1758
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message violates the travel_brief format in multiple ways. It uses \"nobody has been to check\" which is awkward and deviates from the instruction to \"say in its own words that those details are off the venues' own pages.\" More critically, it says \"The kids will find the Biodome\" which implies a claim that Hale has booked or arranged this activity, violating the prohibition against claiming to have registered, booked, or signed anyone up. The instruction is to present options found, not to state what the kids will do. The message should present the Biodome as a find with its details, stated plainly that they come from the venue's own page, without implying booking or arrangement. The core problem is the assertion \"will find\" rather than simply naming what was found."
+  }
+}

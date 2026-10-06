@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message is excellent. It uses proper French with correct accents (côté, clés, supprimé), addresses the parent with \"tu\" as required, mentions \"Gmail\" verbatim as in mustMention, describes the disconnect accurately (keys deleted on Hale's side, Google still lists Hale), includes no URL despite linkFollows being true, asks no question, and uses warm first-person language. It says exactly what the moment calls for: what Hale did and what the parent can do next. The tone is friendly and straightforward like a trusted contact texting a peer."
+  }
+}

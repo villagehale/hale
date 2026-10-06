@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The message violates the core instruction for weekend_fallback: it says \"Il n'y a rien de vraiment bien\" (there is nothing really good), which is a judgement about the family having nothing planned. This is explicitly forbidden (\"a judgement about the family having nothing planned\"). Additionally, the message claims optionsSent was true by saying \"the options were for the weekend,\" but the facts show optionsSent is false—no options were actually sent yet. The moment requires saying \"I can find one\" / \"je peux chercher\" when nothing has been found yet, not retroactively referring to weekend options that were never sent."
+  }
+}

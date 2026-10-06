@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "connect_gcal",
+    "verbatim": "link my calendar",
+    "rationale": "explicit request to link calendar",
+    "confidence": 0.9
+  },
+  "latencyMs": 1402
+}

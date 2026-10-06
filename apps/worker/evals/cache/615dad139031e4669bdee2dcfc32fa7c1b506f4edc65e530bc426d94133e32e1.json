@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "please don't connect my calendar, I'd rather type things in",
+    "rationale": "negation - explicitly asks not to connect calendar",
+    "confidence": 0.97
+  },
+  "latencyMs": 1628
+}

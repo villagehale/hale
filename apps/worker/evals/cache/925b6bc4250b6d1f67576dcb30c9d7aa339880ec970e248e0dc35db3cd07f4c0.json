@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "connect_gcal",
+    "verbatim": "ok connect my google calendar. also leo has a cold so no swim this week",
+    "rationale": "explicit request to connect google calendar, plus unrelated note",
+    "confidence": 0.97
+  },
+  "latencyMs": 1641
+}

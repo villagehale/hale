@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message perfectly meets all criteria: it addresses the parent in French with tu and real accents (expiré, Paramètres avancés); it mentions all three required elements word-for-word (Google Agenda, 15, Paramètres avancés); it explains the Google warning and what to do in plain, friendly language; it contains no URL, no question, no apology, no blame; it is warm and conversational like a friend texting; it says exactly what the moment calls for (offering a fresh link after the old one expired) and nothing more; linkFollows is true so the message correctly ends with \"Ce lien\" pointing to where the URL will be appended on the next line."
+  }
+}

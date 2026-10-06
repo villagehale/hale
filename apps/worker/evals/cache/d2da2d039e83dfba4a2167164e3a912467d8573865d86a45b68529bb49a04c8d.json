@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "connect_gdrive",
+    "verbatim": "link my google drive, the school forms are in there",
+    "rationale": "explicit request to link Google Drive",
+    "confidence": 0.97
+  },
+  "latencyMs": 1412
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message is excellent. It uses correct French with tu and proper accents (relie, appuies). It includes all three required mentions: \"Gmail\", \"15\" (minutes), and \"Paramètres avancés\". It uses \"relier\" instead of \"connecter\" as required. It points to \"ce lien\" without including a URL (linkFollows indicates the URL will be appended separately). No questions, no exclamation marks, no corporate tone, no padding. It's warm, short, plain, and first-person, explaining exactly what the parent needs to do in this moment."
+  }
+}

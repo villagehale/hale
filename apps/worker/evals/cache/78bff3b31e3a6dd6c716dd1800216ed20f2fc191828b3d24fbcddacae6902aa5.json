@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "arrête de lire mon gmail",
+    "rationale": "request to stop reading gmail is a disconnect/stop, not a connect request",
+    "confidence": 0.97
+  },
+  "latencyMs": 1558
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "connect_gmail",
+    "verbatim": "connecte mon gmail stp",
+    "rationale": "explicit request to connect Gmail",
+    "confidence": 0.97
+  },
+  "latencyMs": 1469
+}

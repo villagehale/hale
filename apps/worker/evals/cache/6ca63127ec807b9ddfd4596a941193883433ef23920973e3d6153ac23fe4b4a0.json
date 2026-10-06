@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "is my calendar connected?",
+    "rationale": "Status question, not a request to connect",
+    "confidence": 0.97
+  },
+  "latencyMs": 1453
+}

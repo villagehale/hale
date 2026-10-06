@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The message is warm, first person, and one question ending with a question mark. It correctly references the weekend options just sent (\"this weekend\") without naming any specific program, place, or child. It offers to look on weekdays instead, which is the right move for weekend_fallback. However, it uses \"great\" as a judgment word about the options (\"nothing great is showing up\") rather than neutrally stating the situation. A 5 would be more direct like \"The weekend options I just sent aren't quite working out—want me to look for something on weekdays?\" But this is close to the mark."
+  }
+}

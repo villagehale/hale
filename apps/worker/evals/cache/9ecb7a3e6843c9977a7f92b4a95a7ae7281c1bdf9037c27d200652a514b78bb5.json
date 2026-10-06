@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "when are we both free this week",
+    "rationale": "both_free question but setting is own_thread, not household_group",
+    "confidence": 0.9
+  },
+  "latencyMs": 1412
+}

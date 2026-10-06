@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "my mom wants to connect her calendar too, can she",
+    "rationale": "question about possibility for someone else's account, not a request to connect own calendar",
+    "confidence": 0.9
+  },
+  "latencyMs": 1619
+}

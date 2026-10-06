@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "connect_gcal",
+    "verbatim": "tu peux brancher mon calendrier google",
+    "rationale": "\"brancher mon calendrier google\" = request to connect Google Calendar",
+    "confidence": 0.95
+  },
+  "latencyMs": 1606
+}

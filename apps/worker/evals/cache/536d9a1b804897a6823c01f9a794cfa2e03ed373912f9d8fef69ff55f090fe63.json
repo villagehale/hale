@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The message contains a fact not in the request: \"will be in Brooklyn\" - the request specifies only \"New York\" as the city and does not state that Mia and Leo \"will be\" there. Additionally, the message says \"Nobody has been to check them out yet,\" which is an invented claim not found in the facts. The travel_brief kind requires naming each find with its when and price exactly as written, saying in its own words that details are from the venues' own pages, and asking nothing - but inventing facts like \"will be\" and \"nobody has been to check\" violates the constraint that Hale wrote it from the facts in the request and nothing else."
+  }
+}

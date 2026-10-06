@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "connect_gmail",
+    "verbatim": "can you link my email",
+    "rationale": "Explicit request to link email account",
+    "confidence": 0.9
+  },
+  "latencyMs": 1408
+}

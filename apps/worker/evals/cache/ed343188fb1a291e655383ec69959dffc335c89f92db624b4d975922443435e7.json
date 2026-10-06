@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message is excellent. It uses correct French with \"tu\" address, has real accents, mentions both Gmail and Google Drive with their specific order (first/second links), states the 15-minute validity, includes \"Paramètres avancés\" for if Google warns, uses plain friendly language like a real person, contains no URL, no question, no exclamation marks, no emoji, no hype, no \"we\", no corporate register, and says exactly what the moment calls for in two clear sentences. It respects the linkFollows instruction (no URL written, just \"le premier lien\" and \"le second\"). The watchFor requirements are all met: French with tu and accents, correct structure with Gmail first and Google Drive second, 15 minutes mentioned, Paramètres avancés included, no connecter used, no URL, no question."
+  }
+}

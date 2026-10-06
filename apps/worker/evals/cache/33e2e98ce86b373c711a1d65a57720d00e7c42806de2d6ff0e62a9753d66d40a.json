@@ -1,0 +1,9 @@
+{
+  "value": {
+    "confidence": 0.98,
+    "intent": "connect_gcal",
+    "rationale": "Explicit request to connect Google Calendar",
+    "verbatim": "can you connect my google calendar"
+  },
+  "latencyMs": 1864
+}

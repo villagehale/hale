@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "calendar",
+    "rationale": "bare noun, no request to connect anything",
+    "confidence": 0.95
+  },
+  "latencyMs": 1374
+}

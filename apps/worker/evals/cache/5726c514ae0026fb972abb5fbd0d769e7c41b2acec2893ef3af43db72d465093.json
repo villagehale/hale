@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "the link expired, send a new one",
+    "rationale": "expired link request with no account named, per rules defaults to other",
+    "confidence": 0.9
+  },
+  "latencyMs": 1705
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "other",
+    "verbatim": "hey",
+    "rationale": "greeting with no actionable request",
+    "confidence": 0.98
+  },
+  "latencyMs": 1412
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "connect_gcal",
+    "verbatim": "hook up my gcal",
+    "rationale": "explicit request to connect Google Calendar",
+    "confidence": 0.97
+  },
+  "latencyMs": 1375
+}

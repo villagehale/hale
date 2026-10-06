@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message directly addresses Sam by name, includes the required mentions of \"Advanced\" and explains what to do if Google warns about the app. It states \"this link is just for you\" (appropriate since linkFollows is true, so code appends the URL). The single question about wanting kids' stuff on the calendar comes last as the final sentence. No URL is written out, Gmail is not mentioned, there are no exclamation marks or emoji, no padding, and nothing follows the question. The tone is plain and warm, exactly matching the watchFor requirements."
+  }
+}
