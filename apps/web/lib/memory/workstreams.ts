@@ -403,7 +403,7 @@ export async function listOpenWorkstreams(
 export function renderWorkstreamBlock(rows: readonly OpenWorkstreamView[]): string {
   if (rows.length === 0) return 'active_workstreams: none';
   const lines = [
-    'active_workstreams: threads in progress. Pick one up when it fits. If they ask what you are on, say these in your own words. A declined activity is dropped, never confirmed.',
+    'active_workstreams: jobs in progress, separate from the promise-kind workstreams line. Say them in your own words. A declined activity is dropped, never confirmed.',
   ];
   for (const row of rows.slice(0, SHOWN_LIMIT)) {
     const check = row.checkBackAt ? row.checkBackAt.toISOString().slice(0, 10) : 'none';

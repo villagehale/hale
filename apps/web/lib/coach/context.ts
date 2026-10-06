@@ -267,13 +267,6 @@ export interface AgentContext {
   intent: string | null;
   /** The Hale note this reply is grounding on, or null for the general thread. */
   sourceNote: SourceNoteContext | null;
-  /**
-   * Open threads Hale is in the middle of, compact. Present only when
-   * WORKSTREAMS_ENABLED is exactly `true`. Omitted otherwise so the serialized
-   * turn does not grow a field, and it rides the user message, after the
-   * cached skill prefix.
-   */
-  activeWorkstreams?: string;
 }
 
 function toChildContext(
@@ -438,8 +431,10 @@ export async function loadAgentContext(
     childRows.map((c) => [c.id, deriveStage(c.dateOfBirth, now)]),
   );
 
-  const memoryBrief = await assembleMemoryBrief(database, input.familyId, now);
-  const activeWorkstreams = await activeWorkstreamBlock(database, input.familyId, now);
+  const memoryBrief = briefWithActiveWorkstreams(
+    await assembleMemoryBrief(database, input.familyId, now),
+    await activeWorkstreamBlock(database, input.familyId, now),
+  );
 
   return {
     parentName: parentRows[0]?.name ?? null,
@@ -473,7 +468,27 @@ export async function loadAgentContext(
     question: input.question,
     intent: input.intent,
     sourceNote: input.sourceNote,
-    ...(activeWorkstreams === null ? {} : { activeWorkstreams }),
+  };
+}
+
+/**
+ * Job titles ride the brief the skills already tell the model to read.
+ * A null block (flag off) leaves the brief untouched, so a flag-off turn
+ * does not grow a line and does not add a second context field.
+ * An empty brief becomes `ok` once it carries this block: the skills treat
+ * `empty` as "you do not know", which would hide a job that is actually there.
+ */
+function briefWithActiveWorkstreams(brief: MemoryBrief, block: string | null): MemoryBrief {
+  if (block === null) return brief;
+  const status = brief.status === 'empty' ? 'ok' : brief.status;
+  const base =
+    status !== brief.status && brief.text.startsWith('memory_brief status=empty')
+      ? `memory_brief status=ok${brief.text.slice('memory_brief status=empty'.length)}`
+      : brief.text;
+  return {
+    ...brief,
+    text: base.length === 0 ? block : `${base}\n${block}`,
+    status,
   };
 }
 

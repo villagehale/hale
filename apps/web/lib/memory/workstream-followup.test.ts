@@ -232,7 +232,7 @@ describe('workstream prompt placement', () => {
     };
     await runAgent({
       skill,
-      context: { activeWorkstreams: `title=${TITLE}` },
+      context: { memoryBrief: { text: `active_workstreams:\ntitle=${TITLE}` } },
       tools: [],
       client,
       maxSteps: 1,

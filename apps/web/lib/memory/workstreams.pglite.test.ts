@@ -191,7 +191,9 @@ describe('workstream store', () => {
       db.database,
       NOW,
     );
-    expect(off.activeWorkstreams).toBeUndefined();
+    expect(off.memoryBrief.text).not.toContain(SWIM);
+    expect(off.memoryBrief.text).not.toContain('active_workstreams');
+    expect('activeWorkstreams' in off).toBe(false);
 
     vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true\n');
     const newline = await activeWorkstreamBlock(db.database, familyId, NOW);
@@ -210,7 +212,9 @@ describe('workstream store', () => {
       db.database,
       NOW,
     );
-    expect(on.activeWorkstreams).toContain(SWIM);
+    expect(on.memoryBrief.text).toContain(SWIM);
+    expect(on.memoryBrief.text.split(SWIM).length - 1).toBe(1);
+    expect('activeWorkstreams' in on).toBe(false);
   });
 
   it('leaves a teen-linked thread out of the prompt', async () => {
@@ -225,6 +229,50 @@ describe('workstream store', () => {
     vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
     const block = await activeWorkstreamBlock(db.database, familyId, NOW);
     expect(block).toBe('active_workstreams: none');
+  });
+});
+
+describe('promise kinds and job titles', () => {
+  it('puts both in the brief once, and does not copy either into the other line', async () => {
+    const { familyId } = await seedFamily(db.database, 'Both');
+    await db.database.insert(schema.agentCommitments).values({
+      familyId,
+      commitmentKind: 'first_find',
+      createdFrom: 'msg-promise',
+      summary: 'SECRET_SUMMARY',
+      dueAt: new Date('2026-08-20T15:00:00.000Z'),
+    });
+    await applyWorkstreamOp(db.database, {
+      familyId,
+      provenance: 'msg-job',
+      now: NOW,
+      op: { action: 'open', title: SWIM, status: 'waiting_on_parent' },
+    });
+    vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
+    const ctx = await loadAgentContext(
+      {
+        familyId,
+        question: 'what are you on?',
+        intent: null,
+        focusedChildId: null,
+        transcript: [],
+        sourceNote: null,
+      },
+      db.database,
+      NOW,
+    );
+    const text = ctx.memoryBrief.text;
+    const promiseLine = text.split('\n').find((line) => line.startsWith('workstreams:'));
+    const jobsAt = text.indexOf('active_workstreams:');
+    expect(promiseLine).toContain('first_find');
+    expect(promiseLine).not.toContain(SWIM);
+    expect(text).not.toContain('SECRET_SUMMARY');
+    expect(jobsAt).toBeGreaterThan(text.indexOf('workstreams:'));
+    expect(text.slice(0, jobsAt)).toContain('first_find');
+    expect(text.slice(jobsAt)).not.toContain('first_find');
+    expect(text.slice(jobsAt)).toContain(SWIM);
+    expect(text.split(SWIM).length - 1).toBe(1);
+    expect('activeWorkstreams' in ctx).toBe(false);
   });
 });
 
@@ -271,8 +319,9 @@ describe('a swim search carried across turns', () => {
       db.database,
       new Date('2026-08-13T15:00:00.000Z'),
     );
-    expect(later.activeWorkstreams).toContain(SWIM);
-    expect(later.activeWorkstreams).toContain('waiting_on_parent');
+    expect(later.memoryBrief.text).toContain(SWIM);
+    expect(later.memoryBrief.text).toContain('waiting_on_parent');
+    expect(later.memoryBrief.text.split(SWIM).length - 1).toBe(1);
 
     const parentPick = "Let's do the 9am one.";
     const haleClose = "I'll hold the 9am.";
