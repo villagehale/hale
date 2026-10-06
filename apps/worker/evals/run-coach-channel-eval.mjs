@@ -166,6 +166,13 @@ const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel
  */
 const SPOTS_URL_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots', 'url.ts');
 const SPOTS_READ_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots', 'availability.ts');
+/**
+ * The REAL `search_village` query filter (apps/web/lib/village/query-match.ts).
+ * Imported rather than copied: this file reaches for no `~/` alias, and a
+ * hand-rolled copy is what let `village-one-verified-one-not` pass while
+ * production returned an empty list for "Saturday kids activities".
+ */
+const VILLAGE_QUERY_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'village', 'query-match.ts');
 const SPOTS_FIXTURES = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots', 'fixtures');
 
 /** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
@@ -296,7 +303,7 @@ function authoredSegments(answer, calls) {
 }
 
 const LENGTH_REWRITE =
-  'The last reply was longer than two texts. Everything past the cut is never sent. Write the whole answer again in one sentence under 250 characters so it fits in two texts.';
+  'The last reply was longer than two texts. Everything past the cut is never sent. Write the whole answer again so it fits in two texts. A coaching reply with no offer is one sentence under 250 characters. An answer listing what is on may be two short sentences inside that same budget.';
 
 function smsSegments(text) {
   let gsm7 = true;
@@ -703,7 +710,38 @@ function refuseMismatchedWeekday(input, timeZone, tool) {
   );
 }
 
-function buildFixtureTools(agent, calls, village, spots) {
+/** Sat, Aug 8 of the fixture week — the mixed village's only dated find. */
+const MIXED_VILLAGE_EVENT_DATE = '2026-08-08';
+
+function usesVillageQueryFilter(fixture) {
+  return (
+    fixture.id === 'village-one-verified-one-not' ||
+    fixture.baseScenarioId === 'village-one-verified-one-not'
+  );
+}
+
+/**
+ * The offerable rows plus the nameless find the count stands for, run through
+ * the production matcher. `eventDate` is the row's date for the day filter; it
+ * is stripped before the model sees the candidate, matching the tool's return.
+ */
+function villageMixedForQuery(village, query, filterVillageRows) {
+  const offerable = village.candidates.map((candidate) => ({
+    ...candidate,
+    eventDate: MIXED_VILLAGE_EVENT_DATE,
+  }));
+  const unverified = { title: '', summary: '', eventDate: null, unverified: true };
+  const kept = filterVillageRows([...offerable, unverified], query);
+  return {
+    candidates: kept
+      .filter((row) => !row.unverified)
+      .map(({ eventDate: _date, unverified: _flag, ...candidate }) => candidate),
+    inVerification: kept.filter((row) => row.unverified).length,
+    standingOption: village.standingOption,
+  };
+}
+
+function buildFixtureTools(agent, calls, village, spots, filterVillageRows) {
   let draftsThisTurn = 0;
   let offerRefusals = 0;
 
@@ -811,11 +849,15 @@ function buildFixtureTools(agent, calls, village, spots) {
   const searchVillage = agent.defineTool({
     name: 'search_village',
     description:
-      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
+      "Local classes, groups, and activities already discovered for THIS family's area. An optional `query` narrows them: a named day is matched against each candidate's date, and any other meaningful word may match the title or summary. Day, time, and generic words (kids, activities, anything) do not have to appear in the text. A query that matches no title still returns the finds in that date window rather than an empty list. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
     inputSchema: passthrough(),
-    handler: async () => {
+    handler: async (input) => {
       record('search_village');
-      return village;
+      // Every other fixture returns its village unchanged. This one applies the
+      // production query filter, so a literal "Saturday kids activities" match
+      // comes back empty here the same way it did in the tool.
+      if (!filterVillageRows) return village;
+      return villageMixedForQuery(village, input?.query, filterVillageRows);
     },
   });
 
@@ -1850,6 +1892,7 @@ async function main() {
   const { _internal: contextInternal } = await tsImport(CONTEXT_SRC, import.meta.url);
   const { sanitizeSpotUrl } = await tsImport(SPOTS_URL_SRC, import.meta.url);
   const { readSpot } = await tsImport(SPOTS_READ_SRC, import.meta.url);
+  const { filterVillageRows } = await tsImport(VILLAGE_QUERY_SRC, import.meta.url);
   const spots = {
     sanitizeSpotUrl,
     readSpot,
@@ -1961,7 +2004,13 @@ async function main() {
       reply = toSmsReply(stand.reply, children);
     } else {
       const tools = [
-        ...buildFixtureTools(agent, calls, villageFor(fixture), spots),
+        ...buildFixtureTools(
+          agent,
+          calls,
+          villageFor(fixture),
+          spots,
+          usesVillageQueryFilter(fixture) ? filterVillageRows : null,
+        ),
         recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
       ];
       const client = makeCachedAgentClient(
