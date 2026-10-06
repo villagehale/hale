@@ -10,6 +10,7 @@ import {
 } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { rememberWorkstreamTurn } from '~/lib/memory/workstream-extract';
+import { workstreamsEnabled } from '~/lib/memory/workstreams';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { type ActionIntent, detectActionIntents } from './action-intent';
@@ -100,6 +101,11 @@ export interface AskHaleStreamHooks {
   onStep?: (step: number) => void;
   onToolCall?: (event: ToolCallEvent) => void;
   onToolResult?: (event: ToolResultEvent) => void;
+  /**
+   * Run after the answer is ready, without holding the caller. The coach
+   * route uses this so the `done` event is not waiting on extraction.
+   */
+  defer?: (work: () => Promise<void>) => void;
 }
 
 let defaultClient: Anthropic | undefined;
@@ -249,21 +255,28 @@ export async function askHale(
         topic: tagTopic(result.answer) ?? tagTopic(input.question),
       });
       await recordCoachRun(input.familyId, metrics, database, 'completed', trace.traceId);
-      try {
-        await rememberWorkstreamTurn({
-          database,
-          familyId: input.familyId,
-          parentText: input.question,
-          haleText: result.answer,
-          provenance,
-          now: new Date(),
-          client,
-        });
-      } catch (err) {
-        console.error(
-          { err: err instanceof Error ? err.name : 'unknown' },
-          'askHale: workstream extract failed',
-        );
+      if (workstreamsEnabled()) {
+        const haleText = result.answer;
+        const extract = async () => {
+          try {
+            await rememberWorkstreamTurn({
+              database,
+              familyId: input.familyId,
+              parentText: input.question,
+              haleText,
+              provenance,
+              now: new Date(),
+              client,
+            });
+          } catch (err) {
+            console.error(
+              { err: err instanceof Error ? err.name : 'unknown' },
+              'askHale: workstream extract failed',
+            );
+          }
+        };
+        if (streamHooks?.defer) streamHooks.defer(extract);
+        else void extract();
       }
 
       // Surface gated action chips the answer implied — these create DRAFTS the

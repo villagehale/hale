@@ -9,6 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const authMock = vi.fn();
 const askHaleMock = vi.fn();
 const loadUnlinkedMock = vi.fn();
+const { afterQueue } = vi.hoisted(() => ({
+  afterQueue: [] as Array<() => Promise<void> | void>,
+}));
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
@@ -23,6 +26,14 @@ vi.mock('~/lib/coach/agent', () => ({ askHale: (...a: unknown[]) => askHaleMock(
 vi.mock('~/lib/coach/attachments', () => ({
   loadUnlinkedAttachments: (...a: unknown[]) => loadUnlinkedMock(...a),
   MAX_ATTACHMENTS_PER_REQUEST: 5,
+}));
+// after() throws outside a Next request. Record the callback so a test can
+// show the done event is already on the wire before extraction starts.
+vi.mock('next/server', async (importActual) => ({
+  ...(await importActual<typeof import('next/server')>()),
+  after: (fn: () => Promise<void> | void) => {
+    afterQueue.push(fn);
+  },
 }));
 
 function configureAuth(on: boolean) {
@@ -50,6 +61,7 @@ describe('POST /api/coach — auth + spend gating', () => {
     vi.resetModules();
     authMock.mockReset();
     askHaleMock.mockReset();
+    afterQueue.length = 0;
   });
 
   afterEach(() => {
@@ -161,6 +173,44 @@ describe('POST /api/coach — auth + spend gating', () => {
     ]);
   });
 
+  it('puts done on the wire before the deferred extract runs', async () => {
+    configureAuth(true);
+    authMock.mockResolvedValue(session('google-1'));
+    const order: string[] = [];
+    askHaleMock.mockImplementation(
+      async (
+        _input: unknown,
+        _db: unknown,
+        _client: unknown,
+        hooks: { defer?: (work: () => Promise<void>) => void },
+      ) => {
+        hooks.defer?.(async () => {
+          order.push('extract');
+        });
+        return {
+          answer: 'Glad that one is booked.',
+          conversationId: 'conv-7',
+          actionIntents: [],
+          metrics: {
+            modelUsed: 'm',
+            promptTokens: 1,
+            completionTokens: 1,
+            costUsd: 0.001,
+            latencyMs: 5,
+          },
+        };
+      },
+    );
+
+    const res = await callPost({ question: 'booked the Sunday one, thanks' });
+    const events = await readEvents(res);
+    expect(events.map((event) => (event as { type: string }).type)).toContain('done');
+    expect(order).toEqual([]);
+    expect(afterQueue).toHaveLength(1);
+    await afterQueue[0]?.();
+    expect(order).toEqual(['extract']);
+  });
+
   it('threads a note reply (noteKey + redacted sourceNote) through to askHale', async () => {
     configureAuth(true);
     authMock.mockResolvedValue(session('google-1'));
@@ -168,7 +218,13 @@ describe('POST /api/coach — auth + spend gating', () => {
       answer: 'here is what that brief means for your week.',
       conversationId: 'conv-note-1',
       actionIntents: [],
-      metrics: { modelUsed: 'm', promptTokens: 1, completionTokens: 1, costUsd: 0.001, latencyMs: 5 },
+      metrics: {
+        modelUsed: 'm',
+        promptTokens: 1,
+        completionTokens: 1,
+        costUsd: 0.001,
+        latencyMs: 5,
+      },
     });
 
     const res = await callPost({
@@ -243,7 +299,13 @@ describe('POST /api/coach — attachments payload', () => {
       answer: 'here is what I see in that photo.',
       conversationId: 'conv-att',
       actionIntents: [],
-      metrics: { modelUsed: 'm', promptTokens: 1, completionTokens: 1, costUsd: 0.001, latencyMs: 5 },
+      metrics: {
+        modelUsed: 'm',
+        promptTokens: 1,
+        completionTokens: 1,
+        costUsd: 0.001,
+        latencyMs: 5,
+      },
     });
   });
 

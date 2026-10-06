@@ -2,12 +2,16 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, eq, gte, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
-import { deliverFamilyOutbound, familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
+import {
+  type FamilyOutboundTarget,
+  deliverFamilyOutbound,
+  familyOutboundTarget,
+} from '~/lib/channel/linq/family-outbound';
 import { OPT_OUT_LINE, OPT_OUT_SHORT } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -20,9 +24,12 @@ import { isGsm7 } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import { gsmSafe } from '~/lib/loop/templates/weekly-plan/core';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { isoWeekdayIndex, localDate, localWeekday, workstreamLanguage } from './workstream-time';
 import {
   type DueWorkstream,
   listDueWorkstreams,
@@ -45,7 +52,6 @@ export const WORKSTREAM_FOLLOWUP_TEMPLATE_KEY = 'workstream:followup';
 
 const TOOL_NAME = 'write_followup';
 const BODY_MAX = 160;
-const DAY_MS = 24 * 60 * 60 * 1000;
 const PAGE_ACTION = 'workstream_followup_unsent';
 
 const bodySchema = z.object({ body: z.string() });
@@ -69,37 +75,112 @@ export function workstreamFollowupClient(): AgentClient | null {
   return budgetedAnthropic({ timeout: 20_000, maxRetries: 0 });
 }
 
-function refuseBody(body: string): string | null {
+const WEEKDAY_ISO: Record<string, number> = {
+  monday: 0,
+  tuesday: 1,
+  wednesday: 2,
+  thursday: 3,
+  friday: 4,
+  saturday: 5,
+  sunday: 6,
+  lundi: 0,
+  mardi: 1,
+  mercredi: 2,
+  jeudi: 3,
+  vendredi: 4,
+  samedi: 5,
+  dimanche: 6,
+};
+
+const WEEKDAY_WORD = String.raw`\b(?:(next|prochain(?:e)?)\s+)?(mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b`;
+
+const FUTURE_PROMISE = /\b(i['’]ll|i will|je vais)\b/i;
+
+/**
+ * A promised weekday that is today or earlier this week. "next Thursday" is
+ * the following one, and a weekday with no promise attached is a status.
+ */
+export function promisedPassedWeekday(text: string, now: Date, timeZone: string): boolean {
+  if (!FUTURE_PROMISE.test(text)) return false;
+  const today = isoWeekdayIndex(now, timeZone);
+  for (const match of text.matchAll(new RegExp(WEEKDAY_WORD, 'gi'))) {
+    if (match[1]) continue;
+    const raw = match[2]?.toLowerCase() ?? '';
+    const iso = WEEKDAY_ISO[raw] ?? WEEKDAY_ISO[raw.replace(/s$/, '')];
+    if (iso !== undefined && iso <= today) return true;
+  }
+  return false;
+}
+
+/**
+ * The body that may be sent, after the same GSM fold the other French sends
+ * use (`gsmSafe`: em dash to hyphen, an accent the alphabet cannot carry to
+ * its base letter). What is left must still be GSM-7.
+ */
+function prepareBody(
+  body: string,
+  now: Date,
+  timeZone: string,
+): { ok: true; body: string } | { ok: false; reason: string } {
   const text = body.trim();
-  if (!text) return 'empty';
-  if (text.length > BODY_MAX) return 'too_long';
-  if (!isGsm7(text)) return 'encoding';
-  const folded = text.toLowerCase();
-  if (folded.includes('http://') || folded.includes('https://') || folded.includes('www.')) {
-    return 'link';
+  if (!text) return { ok: false, reason: 'empty' };
+  const folded = gsmSafe(text).trim();
+  if (!folded) return { ok: false, reason: 'empty' };
+  if (folded.length > BODY_MAX) return { ok: false, reason: 'too_long' };
+  if (!isGsm7(folded)) return { ok: false, reason: 'encoding' };
+  const lower = folded.toLowerCase();
+  if (lower.includes('http://') || lower.includes('https://') || lower.includes('www.')) {
+    return { ok: false, reason: 'link' };
   }
   if (
-    folded.includes(OPT_OUT_LINE.toLowerCase()) ||
-    folded.includes(OPT_OUT_SHORT.toLowerCase()) ||
-    folded.includes('reply yes')
+    lower.includes(OPT_OUT_LINE.toLowerCase()) ||
+    lower.includes(OPT_OUT_SHORT.toLowerCase()) ||
+    lower.includes('reply yes')
   ) {
-    return 'keyword_ask';
+    return { ok: false, reason: 'keyword_ask' };
   }
-  return null;
+  if (/^\s*just checking\b/i.test(folded)) return { ok: false, reason: 'stock_opener' };
+  if (promisedPassedWeekday(folded, now, timeZone)) return { ok: false, reason: 'past_weekday' };
+  return { ok: true, body: folded };
+}
+
+function whoseMove(status: string): 'parent' | 'third_party' | 'scheduled' | 'open' {
+  if (status === 'waiting_on_parent') return 'parent';
+  if (status === 'waiting_on_third_party') return 'third_party';
+  if (status === 'scheduled') return 'scheduled';
+  return 'open';
 }
 
 async function oneAttempt(
   client: AgentClient,
-  input: { title: string; status: string; nextStep: string | null; refusal: string | null },
+  input: {
+    title: string;
+    status: string;
+    nextStep: string | null;
+    refusal: string | null;
+    now: Date;
+    timeZone: string;
+    language: 'en' | 'fr';
+  },
 ): Promise<WorkstreamComposeResult> {
   const skill = await loadCronSkill('workstream-followup');
   const refusal = input.refusal ? `\nprevious attempt refused: ${input.refusal}` : '';
+  const userMessage = [
+    `today: ${localDate(input.now, input.timeZone)}`,
+    `weekday: ${localWeekday(input.now, input.timeZone, input.language)}`,
+    `timezone: ${input.timeZone}`,
+    `language: ${input.language}`,
+    `whose_move: ${whoseMove(input.status)}`,
+    `title: ${input.title}`,
+    `status: ${input.status}`,
+    `next: ${input.nextStep ?? 'none'}`,
+  ].join('\n');
   try {
     const { value } = await forceToolJson({
       client,
       lane: pickLane(skill.meta.task),
       system: skill.instructions,
-      userMessage: `title: ${input.title}\nstatus: ${input.status}\nnext: ${input.nextStep ?? 'none'}${refusal}`,
+      userMessage: `${userMessage}${refusal}`,
       toolName: TOOL_NAME,
       toolDescription: 'The one check-back text for this open thread.',
       inputJsonSchema: bodyJsonSchema as unknown as Anthropic.Tool.InputSchema,
@@ -107,9 +188,7 @@ async function oneAttempt(
       maxTokens: 256,
       transport: 'create',
     });
-    const reason = refuseBody(value.body);
-    if (reason) return { ok: false, reason };
-    return { ok: true, body: value.body.trim() };
+    return prepareBody(value.body, input.now, input.timeZone);
   } catch {
     return { ok: false, reason: 'model_failed' };
   }
@@ -124,17 +203,32 @@ export async function composeWorkstreamFollowup(input: {
   title: string;
   status: string;
   nextStep: string | null;
+  now?: Date;
+  timeZone?: string;
+  language?: 'en' | 'fr';
 }): Promise<WorkstreamComposeResult> {
-  const first = await oneAttempt(input.client, { ...input, refusal: null });
+  const attempt = {
+    client: input.client,
+    title: input.title,
+    status: input.status,
+    nextStep: input.nextStep,
+    now: input.now ?? new Date(),
+    timeZone: input.timeZone ?? DEFAULT_TIMEZONE,
+    language: input.language ?? 'en',
+  };
+  const first = await oneAttempt(attempt.client, { ...attempt, refusal: null });
   if (first.ok) return first;
-  return oneAttempt(input.client, { ...input, refusal: first.reason });
+  return oneAttempt(attempt.client, { ...attempt, refusal: first.reason });
 }
+
+/** Group-level holds are not the per-parent follow-up cap. */
+export type WorkstreamHoldReason = ProactiveHoldReason | 'group_cap' | 'coparent_ask';
 
 export interface WorkstreamFollowupResult {
   enabled: boolean;
   considered: number;
   sent: number;
-  held: Record<ProactiveHoldReason, number>;
+  held: Record<WorkstreamHoldReason, number>;
   skipped: {
     f14: number;
     already_claimed: number;
@@ -142,13 +236,21 @@ export interface WorkstreamFollowupResult {
     no_parent: number;
     no_phone: number;
     not_configured: number;
+    nothing_to_say: number;
     compose_failed: number;
   };
   failed: number;
 }
 
 function emptyHeld(): WorkstreamFollowupResult['held'] {
-  return { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 };
+  return {
+    not_enrolled: 0,
+    no_watch_consent: 0,
+    frequency_cap: 0,
+    quiet_hours: 0,
+    group_cap: 0,
+    coparent_ask: 0,
+  };
 }
 
 function emptyResult(enabled: boolean): WorkstreamFollowupResult {
@@ -164,6 +266,7 @@ function emptyResult(enabled: boolean): WorkstreamFollowupResult {
       no_parent: 0,
       no_phone: 0,
       not_configured: 0,
+      nothing_to_say: 0,
       compose_failed: 0,
     },
     failed: 0,
@@ -201,8 +304,21 @@ export interface WorkstreamFollowupDeps {
   thread?: typeof threadProactiveMessage;
   stamp?: (database: Database, id: string, now: Date) => Promise<void>;
   page?: (text: string) => Promise<unknown>;
-  alreadyPaged?: (database: Database, familyId: string, now: Date) => Promise<boolean>;
-  noteUnsent?: (database: Database, familyId: string, reason: string, now: Date) => Promise<void>;
+  alreadyPaged?: (
+    database: Database,
+    familyId: string,
+    now: Date,
+    workstream: { id: string; checkBackAt: Date },
+  ) => Promise<boolean>;
+  noteUnsent?: (
+    database: Database,
+    familyId: string,
+    reason: string,
+    now: Date,
+    workstreamId: string,
+    checkBackAt: Date,
+  ) => Promise<void>;
+  targetFor?: (database: Database, familyId: string) => Promise<FamilyOutboundTarget>;
   transport?: ChannelTransport;
 }
 
@@ -234,20 +350,30 @@ async function linkedTeen(
   return rows.some((row) => deriveStage(row.dateOfBirth, now) === 'teenager');
 }
 
-async function alreadyPaged(database: Database, familyId: string, now: Date): Promise<boolean> {
-  const since = new Date(now.getTime() - DAY_MS);
+async function alreadyPaged(
+  database: Database,
+  familyId: string,
+  _now: Date,
+  workstream: { id: string; checkBackAt: Date },
+): Promise<boolean> {
   const rows = await database
-    .select({ id: schema.auditLog.id })
+    .select({ after: schema.auditLog.after })
     .from(schema.auditLog)
     .where(
       and(
         eq(schema.auditLog.familyId, familyId),
         eq(schema.auditLog.actionTaken, PAGE_ACTION),
-        gte(schema.auditLog.occurredAt, since),
+        eq(schema.auditLog.targetId, workstream.id),
       ),
     )
-    .limit(1);
-  return rows.length > 0;
+    .limit(20);
+  const stamp = workstream.checkBackAt.toISOString();
+  return rows.some((row) => {
+    const after = row.after;
+    return (
+      !!after && typeof after === 'object' && 'checkBackAt' in after && after.checkBackAt === stamp
+    );
+  });
 }
 
 function unsentPage(familyId: string, reason: string): string {
@@ -259,25 +385,62 @@ async function noteUnsent(
   familyId: string,
   reason: string,
   now: Date,
+  workstreamId: string,
+  checkBackAt: Date,
 ): Promise<void> {
   await database.insert(schema.auditLog).values({
     familyId,
     actor: 'system',
     actionTaken: PAGE_ACTION,
     targetTable: 'family_workstreams',
-    after: { reason },
+    targetId: workstreamId,
+    after: { reason, checkBackAt: checkBackAt.toISOString() },
     occurredAt: now,
   });
 }
 
-async function defaultCompose(row: DueWorkstream): Promise<WorkstreamComposeResult> {
+async function followupSpeech(
+  database: Database,
+  familyId: string,
+): Promise<{ timeZone: string; language: 'en' | 'fr' }> {
+  const [family] = await database
+    .select({ primaryLanguage: schema.families.primaryLanguage })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  const [parent] = await database
+    .select({ timezone: schema.users.timezone })
+    .from(schema.familyMembers)
+    .innerJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, familyId),
+        eq(schema.familyMembers.role, 'primary_parent'),
+      ),
+    )
+    .limit(1);
+  return {
+    timeZone: parent?.timezone || DEFAULT_TIMEZONE,
+    language: workstreamLanguage(family?.primaryLanguage),
+  };
+}
+
+async function defaultCompose(
+  database: Database,
+  row: DueWorkstream,
+  now: Date,
+): Promise<WorkstreamComposeResult> {
   const client = workstreamFollowupClient();
   if (!client) return { ok: false, reason: 'not_configured' };
+  const speech = await followupSpeech(database, row.familyId);
   return composeWorkstreamFollowup({
     client,
     title: row.title,
     status: row.status,
     nextStep: row.nextStep,
+    now,
+    timeZone: speech.timeZone,
+    language: speech.language,
   });
 }
 
@@ -300,13 +463,14 @@ export async function runWorkstreamFollowupSweep(
   const buildGate = deps.buildGate ?? buildOutboundGatePorts;
   const claimed = deps.dedupeActive ?? ((db, key) => dedupeActive(key, db));
   const phoneFor = deps.resolvePhone ?? resolveSendablePhone;
-  const compose = deps.compose ?? defaultCompose;
+  const compose = deps.compose ?? ((row: DueWorkstream) => defaultCompose(database, row, now));
   const deliver = deps.deliver ?? deliverFamilyOutbound;
   const stamp = deps.stamp ?? markWorkstreamFollowedUp;
   const page = deps.page ?? postOpsSlack;
   const paged = deps.alreadyPaged ?? alreadyPaged;
   const recordMiss = deps.noteUnsent ?? noteUnsent;
   const thread = deps.thread ?? threadProactiveMessage;
+  const targetFor = deps.targetFor ?? familyOutboundTarget;
   const result = emptyResult(true);
 
   let due: readonly DueWorkstream[];
@@ -354,12 +518,26 @@ export async function runWorkstreamFollowupSweep(
       }
       const composed = await compose(row);
       if (!composed.ok) {
-        if (composed.reason === 'not_configured') result.skipped.not_configured += 1;
-        else result.skipped.compose_failed += 1;
-        if (!(await paged(database, row.familyId, now))) {
-          await page(unsentPage(row.familyId, composed.reason));
-          await recordMiss(database, row.familyId, composed.reason, now);
+        if (composed.reason === 'not_configured') {
+          result.skipped.not_configured += 1;
+          continue;
         }
+        // Empty is the model declining to send. A real failure retries once
+        // inside compose, then this check-back is backed off: one page per
+        // thread, not another pair of model calls on the next sweep.
+        const silent = composed.reason === 'empty';
+        if (silent) result.skipped.nothing_to_say += 1;
+        else result.skipped.compose_failed += 1;
+        if (!silent && !(await paged(database, row.familyId, now, row))) {
+          await page(unsentPage(row.familyId, composed.reason));
+          await recordMiss(database, row.familyId, composed.reason, now, row.id, row.checkBackAt);
+        }
+        await stamp(database, row.id, now);
+        continue;
+      }
+      if (!composed.body) {
+        await stamp(database, row.id, now);
+        result.skipped.nothing_to_say += 1;
         continue;
       }
       const to = await phoneFor(database, parentUserId);
@@ -367,7 +545,7 @@ export async function runWorkstreamFollowupSweep(
         result.skipped.no_phone += 1;
         continue;
       }
-      const target = await familyOutboundTarget(database, row.familyId);
+      const target = await targetFor(database, row.familyId);
       const transport = deps.transport ?? createOutboundTransport();
       const delivered = await deliver(database, {
         familyId: row.familyId,
@@ -379,7 +557,7 @@ export async function runWorkstreamFollowupSweep(
         bubbleKind: 'discretionary',
       });
       if (delivered.status === 'held') {
-        result.held.frequency_cap += 1;
+        result.held[delivered.reason] += 1;
         continue;
       }
       if (delivered.status !== 'sent') {
