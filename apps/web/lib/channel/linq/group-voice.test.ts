@@ -281,17 +281,33 @@ describe('the judge on group lines', () => {
         "Sam, the kids' stuff can show on your calendar. Want the kids' events on your calendar?",
         ask,
       ),
-    ).toEqual({ ok: true });
+    ).toEqual({ ok: false, reason: 'forbidden:ask_reason' });
     expect(
       judgeSpokenLine(
         "Sam, I can see what's already there for reminders. Want the kids' events on your calendar?",
         ask,
       ),
-    ).toEqual({ ok: true });
+    ).toEqual({ ok: false, reason: 'forbidden:calendar_reminder' });
+    expect(
+      judgeSpokenLine(
+        "Sam, would it help to see the kids' events on your calendar? That way you can keep an eye on what's coming up for reminders?",
+        ask,
+      ),
+    ).toEqual({ ok: false, reason: 'question' });
+    expect(judgeSpokenLine("Sam, want the kids' stuff on your calendar?", ask)).toEqual({
+      ok: true,
+    });
     const fr = groupLineInput({ kind: 'calendar_ask', name: 'Sam' }, 'fr');
     expect(
       judgeSpokenLine("Sam, ça te dit d'avoir l'année des enfants sur ton calendrier?", fr),
     ).toEqual({ ok: false, reason: 'forbidden:kids_year' });
+    const vous = groupLineInput({ kind: 'calendar_ask', name: 'Sam', address: 'vous' }, 'fr');
+    expect(
+      judgeSpokenLine('Sam, tu veux les choses des enfants sur ton calendrier?', vous),
+    ).toEqual({ ok: false, reason: 'french' });
+    expect(
+      judgeSpokenLine('Sam, vous voulez les choses des enfants sur votre calendrier?', vous),
+    ).toEqual({ ok: true });
   });
 
   it('splits the link note from the heads-up and refuses we, no worries, and coaching', () => {
@@ -316,6 +332,12 @@ describe('the judge on group lines', () => {
     ).toEqual({ ok: false, reason: 'link' });
     expect(
       judgeSpokenLine(
+        'Google may say Hale is not verified yet. The link works while you wait.',
+        heads,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:link_word' });
+    expect(
+      judgeSpokenLine(
         "Google may say Hale is not verified yet, because we are still in Google's review.",
         heads,
       ),
@@ -330,6 +352,29 @@ describe('the judge on group lines', () => {
       ok: false,
       reason: 'forbidden:google_coaching',
     });
+  });
+
+  it('refuses French on for Hale on an empty Saturday', () => {
+    const fr = groupLineInput({ kind: 'empty_saturday', name: null, kid: 'Maya' }, 'fr');
+    expect(
+      judgeSpokenLine(
+        "Le samedi de Maya a l'air libre. Vous voulez qu'on cherche quelque chose près de chez vous qui tourne ce jour-là?",
+        fr,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:on_for_hale' });
+    expect(
+      judgeSpokenLine(
+        "Le samedi de Maya a l'air libre. Vous voulez que je cherche quelque chose près de chez vous?",
+        fr,
+      ),
+    ).toEqual({ ok: true });
+    const en = groupLineInput({ kind: 'empty_saturday', name: 'Sam', kid: 'Maya' }, 'en');
+    expect(
+      judgeSpokenLine(
+        "Sam, Maya's Saturday looks open. Want me to find one thing nearby that's actually on that day?",
+        en,
+      ),
+    ).toEqual({ ok: true });
   });
 
   it('lets a 1:1 departure be tu and refuses vous there', () => {

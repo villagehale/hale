@@ -123,14 +123,49 @@ export const NO_BREAKUP = {
 };
 
 /**
- * Connecting a calendar does two things: kids' events can show on it, or Hale can
- * see what's already there for reminders. Sync, and keeping things straight between
- * two people, are a two-way claim this ask does not get to make.
+ * The calendar ask does not explain itself. Sync, and keeping things straight
+ * between two people, are a two-way claim this ask does not get to make.
+ * Reminders belong to a departure, not to a reason on this ask.
  */
 export const CALENDAR_SYNC_CLAIM = {
   name: 'calendar_sync',
   pattern:
     /\bsync\w*\b|keep\s+(?:the\s+kids['’]\s+|their\s+)?things\s+straight|between the two of you|two-way|two way|bidirectionn?el|garder les choses|en ordre entre/i,
+};
+
+/** A reminder is a departure fact. On the calendar ask it is a reason, and it fails. */
+export const CALENDAR_REMINDER = {
+  name: 'calendar_reminder',
+  pattern: /\breminders?\b|\brappels?\b/i,
+};
+
+/**
+ * The calendar ask is one question. A sentence before that question is a reason.
+ * The name may sit in the question ("Sam, want...?"). A period or exclamation
+ * before another sentence does not.
+ */
+export const CALENDAR_ASK_REASON = {
+  name: 'ask_reason',
+  pattern: /[.!]\s+\p{L}/u,
+};
+
+/**
+ * The heads-up bubble never names the connect link. "this link" is already
+ * refused when nothing follows. "the link" is the leak that check misses.
+ * Link bubbles (calendar_link, gmail_ask) still say "this link" and do not use this.
+ */
+export const NO_LINK_WORD = {
+  name: 'link_word',
+  pattern: /(?<![\p{L}])links?(?![\p{L}])|(?<![\p{L}])liens?(?![\p{L}])/iu,
+};
+
+/**
+ * French "on" is we. English "on Saturday" is a preposition, so this stays on
+ * French lines only.
+ */
+export const ON_FOR_HALE = {
+  name: 'on_for_hale',
+  pattern: /(?<![\p{L}])on(?![\p{L}])/iu,
 };
 
 const GOOGLE_HEADS_UP_FORBIDDEN = [GOOGLE_COACHING, NO_WE_FOR_HALE, NO_SOFT_SAFE];
@@ -183,7 +218,7 @@ function groupLineFields(
         facts: { name: request.name },
         questions: 1,
         mustMention: [request.name],
-        forbidden: [CALENDAR_SYNC_CLAIM],
+        forbidden: [CALENDAR_SYNC_CLAIM, CALENDAR_REMINDER, CALENDAR_ASK_REASON],
       };
     case 'calendar_link':
       return {
@@ -203,7 +238,7 @@ function groupLineFields(
         facts: { name: request.name },
         questions: 0,
         maxChars: BUBBLE_MAX_CHARS,
-        forbidden: GOOGLE_HEADS_UP_FORBIDDEN,
+        forbidden: [...GOOGLE_HEADS_UP_FORBIDDEN, NO_LINK_WORD],
       };
     case 'gmail_ask':
       return {
@@ -303,7 +338,7 @@ function groupLineFields(
         facts: { name: request.name, kid: request.kid, day },
         questions: 1,
         mustMention: unique([request.kid, request.name ?? '', day]),
-        forbidden: [NO_BOOKING_CLAIM],
+        forbidden: [NO_BOOKING_CLAIM, ...(language === 'fr' ? [ON_FOR_HALE] : [])],
       };
     }
   }
