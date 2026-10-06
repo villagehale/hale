@@ -532,24 +532,49 @@ describe('setLocationAction', () => {
 });
 
 describe('setPlanAction', () => {
-  it('updates the plan tier and audits family_plan_updated with before/after', async () => {
-    const { tx, inserts, updates } = makeTx([{ planTier: 'free' }]);
+  it('downgrades the plan to free and audits family_plan_updated with before/after', async () => {
+    const { tx, inserts, updates } = makeTx([{ planTier: 'plus' }]);
     fakeDbHandle = txDb(tx);
 
-    const result = await setPlanAction('plus');
+    const result = await setPlanAction('free');
 
     expect(result).toEqual({ status: 'updated' });
-    expect(valuesFor(updates, schema.families)).toEqual({ planTier: 'plus' });
+    expect(valuesFor(updates, schema.families)).toEqual({ planTier: 'free' });
     expect(valuesFor(inserts, schema.auditLog)).toMatchObject({
       familyId: FAMILY_ID,
       actor: USER_ID,
       actionTaken: 'family_plan_updated',
       targetTable: 'families',
       targetId: FAMILY_ID,
-      before: { planTier: 'free' },
-      after: { planTier: 'plus' },
+      before: { planTier: 'plus' },
+      after: { planTier: 'free' },
     });
   });
+
+  it.each(['plus', 'family'])(
+    'refuses a self-serve upgrade to %s: no plan write, and the attempt is audited',
+    async (paidTier) => {
+      const { tx, inserts, updates } = makeTx([{ planTier: 'free' }]);
+      const handle = { ...txDb(tx), insert: tx.insert };
+      fakeDbHandle = handle;
+
+      const result = await setPlanAction(paidTier);
+
+      expect(result).toEqual({ status: 'invalid' });
+      expect(updates).toHaveLength(0);
+      expect(handle.transaction).not.toHaveBeenCalled();
+      expect(inserts).toHaveLength(1);
+      expect(valuesFor(inserts, schema.auditLog)).toEqual({
+        familyId: FAMILY_ID,
+        actor: USER_ID,
+        actionTaken: 'family_plan_change_refused',
+        targetTable: 'families',
+        targetId: FAMILY_ID,
+        after: { requestedPlanTier: paidTier },
+      });
+      expect(revalidatePath).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects an unknown plan tier without touching the db', async () => {
     fakeDbHandle = {};
@@ -677,9 +702,9 @@ describe('IA split — each mutation revalidates the page that renders it', () =
   });
 
   it('revalidates /settings for a plan change (account config, not family)', async () => {
-    const { tx } = makeTx([{ planTier: 'free' }]);
+    const { tx } = makeTx([{ planTier: 'plus' }]);
     fakeDbHandle = txDb(tx);
-    await setPlanAction('plus');
+    await setPlanAction('free');
     expect(revalidatePath).toHaveBeenCalledWith('/settings');
     expect(revalidatePath).not.toHaveBeenCalledWith('/family/members');
   });

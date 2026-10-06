@@ -102,6 +102,7 @@ export const AUDIT_VERBS = [
   'child_removed',
   'family_location_updated',
   'family_plan_updated',
+  'family_plan_change_refused',
   'family_plan_comped',
   'family_intents_updated',
   'parent_name_updated',
@@ -575,6 +576,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   child_removed: { sentence: 'you removed a child', family: 'done' },
   family_location_updated: { sentence: 'you updated your family’s location', family: 'done' },
   family_plan_updated: { sentence: 'you changed your plan', family: 'done' },
+  family_plan_change_refused: {
+    sentence: 'a paid plan starts at checkout, so your plan did not change',
+    family: 'problem',
+  },
   family_plan_comped: {
     sentence: 'your family got the Family plan, free for life',
     family: 'done',
