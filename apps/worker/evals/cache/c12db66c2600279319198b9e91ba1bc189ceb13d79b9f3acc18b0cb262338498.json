@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message perfectly matches the watchFor guidance: it says \"March break is coming up\" using the exact phrase from mustMention, offers to find something nearby (\"Want me to look for something nearby?\"), contains exactly one question ending with a question mark, and includes no invented facts like specific dates, weekdays, times, programs, or places. The tone is warm and conversational in plain first person, exactly what the moment calls for."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "This message is warm, first-person, and appropriately offers to look on weekdays without naming specific programs, places, or days. It correctly has one question ending with a question mark. However, it says \"Nothing great is showing up nearby this weekend\" which implies the weekend options were already sent, but the facts show \"optionsSent\":false. Since no options were actually sent, this statement invents a fact that Hale sent weekend options when they didn't. The watchFor requires stating plainly that options were sent before referring to them. This is a factual error that prevents a 5."
+  }
+}

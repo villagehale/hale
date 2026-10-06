@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message is quiet, plain-spoken, and specific. It leads with the core fact (EarlyON drop-in), includes all required mentions (EarlyON drop-in, Tuesday, Mia), uses first person voice implicitly (\"There's\"), contains no invented details like times or urgency, states only the given facts without database-row recitation, and correctly uses \"Tuesday\" singular as instructed. No hype, brand voice, apologies, questions, or advice. The watchFor requirements are met: no invented clock time, Tuesday singular form, and no false urgency injected."
+  }
+}

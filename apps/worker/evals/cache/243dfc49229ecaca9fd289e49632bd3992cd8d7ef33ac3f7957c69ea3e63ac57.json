@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message correctly handles weekend_fallback: it acknowledges that nothing great came up nearby this weekend (the weekend options just sent), offers to look on weekdays instead (\"Would you want me to look\"), contains exactly one question formatted properly with a question mark, uses first person \"me\", avoids naming anyone, has no exclamation marks or emoji, and is warm and conversational like texting a parent. It lands naturally for both parents in the household group."
+  }
+}

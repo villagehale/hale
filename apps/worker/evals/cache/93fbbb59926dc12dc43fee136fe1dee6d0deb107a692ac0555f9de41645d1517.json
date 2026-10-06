@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message perfectly matches an empty_saturday template: it names both required facts (Léo and samedi), uses correct French with tu address and proper accents (à, ç), offers to search with \"je cherche quelque chose qui tourne vraiment\" without naming any activity/place/time/weather, ends with exactly one real question (\"Ça t'intéresse que je cherche quelque chose qui tourne vraiment?\"), uses first person \"je\", and reads naturally warm and brief like a friend texting one parent."
+  }
+}
