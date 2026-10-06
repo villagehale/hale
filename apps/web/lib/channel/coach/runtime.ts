@@ -142,7 +142,7 @@ const MAX_TOKENS = 1024;
  */
 const MAX_LENGTH_ATTEMPTS = 2;
 const LENGTH_REWRITE =
-  'The last reply was longer than two texts. Everything past the cut is never sent. Write the whole answer again in one short sentence so it fits in two texts.';
+  'The last reply was longer than two texts. Everything past the cut is never sent. Write the whole answer again in one sentence under 250 characters so it fits in two texts.';
 
 /** The agent_runs name for a texted turn (migration 0075). Separate from 'ask-hale'
  * because the two surfaces have different latency and cost shapes over one brain. */

@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
 import type Anthropic from '@anthropic-ai/sdk';
-import type { DraftedAction, ToolResult } from '@hale/types';
 import { REQUIRED_CHECKS, REVIEWER_TOOLS, type ReviewerToolName } from '@hale/tools-contracts';
-import { runReviewer, type ReviewerAnthropicClient } from './reviewer.js';
+import type { DraftedAction, ToolResult } from '@hale/types';
+import { describe, expect, it, vi } from 'vitest';
+import { type ReviewerAnthropicClient, runReviewer } from './reviewer.js';
 
 /**
  * These tests script the Anthropic SDK transport (messages.create), NOT the
@@ -172,7 +172,7 @@ describe('runReviewer — hard rule #3 coverage guard', () => {
 
     expect(verdict.kind).toBe('flag_for_human');
     expect(verdict.rationale).toContain('turn cap');
-    expect((client.messages.create as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(8);
+    expect(client.messages.create as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(8);
   });
 
   it('DOWNGRADES approve when every required check ran but one returned ok:false (cap exceeded)', async () => {
@@ -199,8 +199,8 @@ describe('runReviewer — hard rule #3 coverage guard', () => {
   });
 
   it('marks the reviewer system prefix cacheable, with the draft outside it', async () => {
-    const create = vi.fn(
-      async (_req: Anthropic.MessageCreateParamsNonStreaming) => assistantMessage([]),
+    const create = vi.fn(async (_req: Anthropic.MessageCreateParamsNonStreaming) =>
+      assistantMessage([]),
     );
     const client = { messages: { create } } as unknown as ReviewerAnthropicClient;
 
@@ -263,7 +263,10 @@ describe('runReviewer — calendar_conflict args are injected server-side (rule 
       [
         { name: 'check_action_time_window', input: { familyId } },
         { name: 'check_action_idempotency', input: { familyId } },
-        { name: 'check_calendar_conflict', input: { familyId: 'SPOOFED', startsAt: 'whenever', durationMinutes: 1 } },
+        {
+          name: 'check_calendar_conflict',
+          input: { familyId: 'SPOOFED', startsAt: 'whenever', durationMinutes: 1 },
+        },
       ],
       [{ name: VERDICT_TOOL, input: { verdict: 'approve', rationale: 'slot clear' } }],
     ]);
@@ -287,7 +290,7 @@ describe('runReviewer — calendar_conflict args are injected server-side (rule 
       durationMinutes: 45,
     });
   });
-})
+});
 
 describe('runReviewer — time_window args are injected server-side (rule #3)', () => {
   function timeWindowDraft(
@@ -310,7 +313,10 @@ describe('runReviewer — time_window args are injected server-side (rule #3)', 
 
   /** Runs a review where the model spoofs every check's args, and returns what
    * the reviewer actually handed the tool door. */
-  async function capturedTimeWindowInput(draftedAction: DraftedAction): Promise<unknown> {
+  async function capturedTimeWindowInput(
+    draftedAction: DraftedAction,
+    now?: Date,
+  ): Promise<unknown> {
     const client = scriptedClient([
       REQUIRED_CHECKS[draftedAction.actionType].map((name) => ({
         name,
@@ -330,7 +336,7 @@ describe('runReviewer — time_window args are injected server-side (rule #3)', 
 
     const { verdict } = await runReviewer(
       { familyId, draft: draftedAction },
-      { client, invokeTool: capturing, loadChildNames: noChildNames },
+      { client, invokeTool: capturing, loadChildNames: noChildNames, ...(now ? { now } : {}) },
     );
     expect(verdict.kind).toBe('approve');
     return seen.find((c) => c.name === 'check_action_time_window')?.input;
@@ -348,6 +354,21 @@ describe('runReviewer — time_window args are injected server-side (rule #3)', 
     );
 
     expect(input).toEqual({ familyId, proposedExecutionAt: '2026-07-06T10:00:00.000Z' });
+  });
+
+  it('reads an injected clock instead of the draft stamp', async () => {
+    // The process clock can sit inside quiet hours. A test passes daytime here
+    // and the door is asked about that instant, not draftedAt and not Date.now().
+    const input = await capturedTimeWindowInput(
+      timeWindowDraft(
+        'calendar_add',
+        { title: 'Swim class', startsAt: '2026-07-10T14:00:00.000Z' },
+        '2026-07-12T07:00:00.000Z',
+      ),
+      new Date('2026-07-12T16:00:00.000Z'),
+    );
+
+    expect(input).toEqual({ familyId, proposedExecutionAt: '2026-07-12T16:00:00.000Z' });
   });
 
   it("injects the ACTING instant, not the placement's own start time", async () => {
@@ -410,13 +431,16 @@ describe('runReviewer — time_window args are injected server-side (rule #3)', 
     // Kills: restoring the permissive `additionalProperties:true` fallback schema —
     // the model would resume authoring familyId/proposedExecutionAt itself, and a
     // check whose inputs the model chooses is not a check (rule #3).
-    const create = vi.fn(
-      async (_req: Anthropic.MessageCreateParamsNonStreaming) => assistantMessage([]),
+    const create = vi.fn(async (_req: Anthropic.MessageCreateParamsNonStreaming) =>
+      assistantMessage([]),
     );
     const client = { messages: { create } } as unknown as ReviewerAnthropicClient;
 
     await runReviewer(
-      { familyId, draft: timeWindowDraft('calendar_add', { startsAt: '2026-07-10T14:00:00.000Z' }) },
+      {
+        familyId,
+        draft: timeWindowDraft('calendar_add', { startsAt: '2026-07-10T14:00:00.000Z' }),
+      },
       { client, loadChildNames: noChildNames },
     );
 

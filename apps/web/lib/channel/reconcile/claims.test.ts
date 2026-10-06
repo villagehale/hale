@@ -31,6 +31,18 @@ describe('extractStateClaims — the audit sentences', () => {
     expect(kinds('Your well-baby visit is booked.')).toEqual(['scheduled_event']);
   });
 
+  it('reads a promise to perform an undrafted change, and not the next ask', () => {
+    expect(
+      kinds(
+        "Want me to cancel Monday swim at 4:30pm and Thursday swim at 5:15pm? I'll take care of cancelling soccer and the Wednesday appointment too.",
+      ),
+    ).toEqual(['calendar_confirm', 'undrafted_perform']);
+    expect(kinds("I'll line the rest up once these are settled.")).toEqual([]);
+    expect(claimsNoLedgerCanBack("I'll take care of cancelling soccer too.")).toEqual([
+      expect.objectContaining({ kind: 'undrafted_perform' }),
+    ]);
+  });
+
   it('carries the sentence span so a lane that cannot re-ask can drop it', () => {
     const body = "Swim runs Tuesdays at 4. I'll cut the one sec messages and just answer.";
     const [claim] = extractStateClaims(body);

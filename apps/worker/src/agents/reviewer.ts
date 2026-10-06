@@ -46,6 +46,13 @@ interface ReviewerDeps {
   /** Family children's names, injected into check_pii_leak so child_full_name
    * leaks can be matched. Injectable for tests; defaults to the DB lookup. */
   loadChildNames?: (familyId: string) => Promise<string[]>;
+  /**
+   * The clock quiet hours are read against. Absent, the draft's own
+   * `draftedAt` is the acting instant. A test injects daytime here so that
+   * path can run while the process clock is inside quiet hours. A malformed
+   * stamp is still passed raw when this is absent (rule #11).
+   */
+  now?: Date;
 }
 
 const verdictTool: Anthropic.Tool = {
@@ -313,7 +320,7 @@ export async function runReviewer(
         // stand in for some other moment's quiet hours (rule #11).
         toolInput = {
           familyId: input.familyId,
-          proposedExecutionAt: input.draft.draftedAt,
+          proposedExecutionAt: deps.now ? deps.now.toISOString() : input.draft.draftedAt,
         };
       }
       const result = await invokeTool(block.name as ReviewerToolName, toolInput);

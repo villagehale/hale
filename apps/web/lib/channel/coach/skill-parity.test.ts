@@ -80,6 +80,9 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     const budget = smsUnitsBudget('plain ascii', MAX_REPLY_SEGMENTS);
 
     expect(skill.instructions).toContain(`${budget} characters`);
+    // Coaching with nothing appended still has to land inside that budget. 250
+    // is under two segments (306) with room, so one long sentence is not a third.
+    expect(skill.instructions).toContain('250 characters');
   });
 
   it('asks a confirmation as a question and never requests a keyword (VIL-410)', async () => {

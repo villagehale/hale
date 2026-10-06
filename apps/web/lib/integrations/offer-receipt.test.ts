@@ -95,6 +95,15 @@ describe('offerReceiptAccepts', () => {
     expect(offerReceiptAccepts(`${base} Écris OUI pour le garder.`, FR)).toBe(false);
     expect(offerReceiptAccepts(`${base} Texte NON.`, FR)).toBe(false);
     expect(offerReceiptAccepts(`${base} Dis NON.`, FR)).toBe(false);
+    expect(offerReceiptAccepts(`${base} écris oui pour le garder.`, FR)).toBe(false);
+    expect(offerReceiptAccepts(`${base} Écris oui.`, FR)).toBe(false);
+    expect(offerReceiptAccepts(`${base} réponds OUI.`, FR)).toBe(false);
+    expect(offerReceiptAccepts(`${base} texte NON.`, FR)).toBe(false);
+    expect(offerReceiptAccepts(`${base} dis NON.`, FR)).toBe(false);
+    expect(offerReceiptAccepts(`${base} aussi jeu.`, FR)).toBe(false);
+    expect(offerReceiptAccepts(`${base} aussi mar.`, FR)).toBe(false);
+    expect(offerReceiptAccepts(`${base} et le 13/10.`, FR)).toBe(false);
+    expect(offerReceiptAccepts(`${base} le 04/10.`, FR)).toBe(false);
     expect(
       offerReceiptAccepts('Say STOP REMOVE. Gymnastics is on Sunday, Oct 4 at 9:00 a.m.', FACTS),
     ).toBe(false);

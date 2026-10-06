@@ -48,9 +48,12 @@ const REPLY_TOKENS = 'yes|no|oui|non|stop|remove|start|unstop';
  * no token, so it stays.
  */
 export function asksForKeyword(line: string, allowed = ''): boolean {
+  // `\b` is ASCII. é is not a word character, so `\bécris` never sees "écris oui".
+  const bound = '(?:^|[^\\p{L}\\p{N}])';
+  const boundEnd = '(?=$|[^\\p{L}\\p{N}])';
   const phrase = new RegExp(
-    `\\b(?:${REPLY_VERBS})\\b[^.?!]{0,40}\\b(?:${REPLY_TOKENS})\\b|\\byes to confirm\\b|\\bpour confirmer\\b`,
-    'i',
+    `${bound}(?:${REPLY_VERBS})${boundEnd}[^.?!]{0,40}${bound}(?:${REPLY_TOKENS})${boundEnd}|\\byes to confirm\\b|\\bpour confirmer\\b`,
+    'iu',
   );
   if (phrase.test(line)) return true;
   const facts = foldOutboundLine(allowed);
@@ -80,6 +83,10 @@ const FR_WEEKDAYS = [
   'samedi',
 ] as const;
 
+/** Short forms a French line uses when it does not spell the day out. They are
+ * not prefixes of the full names, so "dimanche" does not count as "dim". */
+const FR_WEEKDAY_ABBREV = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'] as const;
+
 const EN_MONTH =
   'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
 
@@ -97,7 +104,7 @@ export type StraySchedule = 'stray_date' | 'stray_weekday' | 'stray_clock' | 'st
 export function straySchedule(line: string, allowedRaw: string): StraySchedule | null {
   const allowed = foldOutboundLine(allowedRaw).toLowerCase().replace(/\./g, '');
   const dates = new RegExp(
-    `\\b(?:${EN_MONTH})\\.?\\s+\\d{1,2}\\b|\\b\\d{1,2}\\s+(?:${FR_MONTH})\\.?\\b|\\b(?:${FR_MONTH})\\.?\\s+\\d{1,2}\\b`,
+    `\\b(?:${EN_MONTH})\\.?\\s+\\d{1,2}\\b|\\b\\d{1,2}\\s+(?:${FR_MONTH})\\.?\\b|\\b(?:${FR_MONTH})\\.?\\s+\\d{1,2}\\b|\\b\\d{1,2}/\\d{1,2}(?:/\\d{2,4})?\\b`,
     'gi',
   );
   for (const mention of line.match(dates) ?? []) {
@@ -111,6 +118,13 @@ export function straySchedule(line: string, allowedRaw: string): StraySchedule |
   for (const day of [...EN_WEEKDAYS, ...FR_WEEKDAYS]) {
     const named = new RegExp(`\\b${day}\\b`, 'i');
     if (named.test(line) && !named.test(allowed)) return 'stray_weekday';
+  }
+  // "jeu." and "mar." are weekdays. The period is required so "Sam" is still a name.
+  // Facts are compared with periods already removed, so "jeu." in a label is "jeu".
+  for (const day of FR_WEEKDAY_ABBREV) {
+    const inLine = new RegExp(`\\b${day}\\.`, 'i');
+    const inFacts = new RegExp(`\\b${day}\\b`, 'i');
+    if (inLine.test(line) && !inFacts.test(allowed)) return 'stray_weekday';
   }
   const money = /\$\s?\d|\b\d+\s?(?:dollars?|euros?|cad)\b/i;
   if (money.test(line) && !money.test(allowedRaw)) return 'stray_money';

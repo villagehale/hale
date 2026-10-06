@@ -119,7 +119,9 @@ export type RefusalReason =
   /** "(it needs another look before it's cleared)" — the gate, narrated. */
   | 'internal_wording'
   /** "Tuesday de cette semaine" — an English weekday inside a French reply. */
-  | 'mixed_weekday';
+  | 'mixed_weekday'
+  /** "I'll take care of cancelling soccer too" — that change was not drafted. */
+  | 'undrafted_perform';
 
 export type ClaimResolution =
   | {
@@ -165,6 +167,8 @@ const VIOLATION: Record<RefusalReason, string> = {
     'The message talks about a review, an approval, quiet hours, or another look. The parent does not see that. Do not mention approval, clearing, another look, or quiet hours. Do not offer a different day or time for a change that was not drafted. Say what is true, in one sentence, with no question about doing the change.',
   mixed_weekday:
     'A French reply named an English weekday. Name the day in French, from the date the tool resolved. Do not write Tuesday, Wednesday, or Thursday inside a French sentence.',
+  undrafted_perform:
+    'The message promises to cancel, move, or take care of a change that was not drafted. Line the rest up once these are settled, as a next ask that still needs approval. Do not say you will perform it.',
 };
 
 /** What a `watched_spots` row is a row ABOUT: one place in one class. The words the
@@ -268,6 +272,9 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
   }
   if (kind === 'french_weekday') {
     return { claim, status: 'refused', reason: 'mixed_weekday' };
+  }
+  if (kind === 'undrafted_perform') {
+    return { claim, status: 'refused', reason: 'undrafted_perform' };
   }
   if (kind === 'activity_followup') {
     if (view.pendingKinds.has('activity_followup')) {

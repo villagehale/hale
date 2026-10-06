@@ -296,7 +296,7 @@ function authoredSegments(answer, calls) {
 }
 
 const LENGTH_REWRITE =
-  'The last reply was longer than two texts. Everything past the cut is never sent. Write the whole answer again in one short sentence so it fits in two texts.';
+  'The last reply was longer than two texts. Everything past the cut is never sent. Write the whole answer again in one sentence under 250 characters so it fits in two texts.';
 
 function smsSegments(text) {
   let gsm7 = true;

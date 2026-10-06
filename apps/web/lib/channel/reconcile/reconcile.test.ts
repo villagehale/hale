@@ -423,6 +423,25 @@ describe('reconcile — the booking claim', () => {
   });
 });
 
+describe('reconcile — a promise to perform an undrafted change', () => {
+  it('refuses it even when a draft is already waiting', () => {
+    const verdict = verdictFor(
+      "I'll take care of cancelling soccer and the Wednesday appointment too.",
+      view({ pendingCalendarDraft: true, scheduledTitles: ['Soccer practice'] }),
+    );
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['undrafted_perform']);
+    expect(reconcileViolations(verdict)[0]).toContain('was not drafted');
+  });
+
+  it('leaves the next ask that still needs approval', () => {
+    const body =
+      "Want me to cancel Mon and Thu swim? I'll line the rest up once these are settled.";
+    const verdict = verdictFor(body, view({ pendingCalendarDraft: true }));
+    expect(verdict.refused.map((r) => r.reason)).toEqual([]);
+    expect(withoutRefusedClaims(body, verdict)).toBe(body);
+  });
+});
+
 describe('reconcile — the promise nothing can back', () => {
   it('REFUSES a self-referential promise however full the ledger is', () => {
     const verdict = verdictFor(

@@ -65,7 +65,12 @@ export type ClaimKind =
    * "I'll send an invite to that number." The 2026-09-24 Linq turn: the model said
    * the invite left, and the number was never texted.
    */
-  | 'co_parent_invite';
+  | 'co_parent_invite'
+  /**
+   * "I'll take care of cancelling soccer too." A change this message did not
+   * draft. Lining the rest up, once these are settled, is the next ask.
+   */
+  | 'undrafted_perform';
 
 export interface StateClaim {
   /**
@@ -268,6 +273,10 @@ function withoutQuotedSpans(sentence: string): string {
   return sentence.replace(/["“”][^"“”]*["“”]/g, ' ');
 }
 
+/** A promise to perform a change, not a question about one that is already drafted.
+ * "I'll line the rest up once these are settled" does not name a cancel. */
+const UNDRAFTED_PERFORM = /\btake care of\s+cancel|\bcancel(?:l)?ing\b|\bcancel\b|\breschedul/i;
+
 /** Hale says it has invited someone, or that it is about to. Negation is already out. */
 function isCoParentInviteClaim(text: string): boolean {
   const future = /\bi(?:['’]ll|\s+will|['’]m\s+going\s+to|\s+am\s+going\s+to)\b/i;
@@ -297,6 +306,7 @@ function kindOf(sentence: string): ClaimKind | null {
 
   const speaks = FIRST_PERSON_FUTURE.test(text) || FIRST_PERSON_PROGRESSIVE.test(text);
   if (speaks) {
+    if (UNDRAFTED_PERFORM.test(text)) return 'undrafted_perform';
     if (CEASE_VERB.test(text) && OWN_OUTPUT.test(text)) return 'self_referential';
     if (
       NOTIFY_VERB.test(text) &&
@@ -349,6 +359,9 @@ export function claimsNoLedgerCanBack(body: string): StateClaim[] {
   // that makes it true, on Linq or anywhere else. The dispatch choke has no
   // database, so this is the gate that keeps the sentence off every template.
   return extractStateClaims(body).filter(
-    (claim) => claim.kind === 'self_referential' || claim.kind === 'co_parent_invite',
+    (claim) =>
+      claim.kind === 'self_referential' ||
+      claim.kind === 'co_parent_invite' ||
+      claim.kind === 'undrafted_perform',
   );
 }
