@@ -1,5 +1,5 @@
-import { type Database, schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
+import { and, eq } from 'drizzle-orm';
 import type { CorrelationCandidate } from './correlate';
 
 /**
@@ -25,7 +25,7 @@ export async function loadCorrelationCandidates(
       startsAt: schema.familyEvents.startsAt,
     })
     .from(schema.familyEvents)
-    .where(and(eq(schema.familyEvents.familyId, familyId), isNull(schema.familyEvents.deletedAt)));
+    .where(and(eq(schema.familyEvents.familyId, familyId), householdFamilyEvent()));
 
   const eventCandidates: CorrelationCandidate[] = events.map((row) => ({
     ref: { table: 'family_events', id: row.id },

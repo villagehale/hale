@@ -1,6 +1,6 @@
-import { type Database, schema } from '@hale/db';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
+import { and, asc, eq, gte, lte } from 'drizzle-orm';
 
 const PRIVATE_EVENT_TITLE = 'A private calendar item';
 
@@ -65,7 +65,7 @@ export async function readTeenSafeFamilyEventsInWindow(
     .where(
       and(
         eq(schema.familyEvents.familyId, familyId),
-        isNull(schema.familyEvents.deletedAt),
+        householdFamilyEvent(),
         gte(schema.familyEvents.startsAt, start),
         lte(schema.familyEvents.startsAt, end),
       ),

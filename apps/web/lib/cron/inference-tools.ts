@@ -1,5 +1,5 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { type Database, schema } from '@hale/db';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { type FamilyStage, deriveStage } from '@hale/types';
 import { and, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
@@ -408,7 +408,7 @@ async function loadDistillReceipts(
     database
       .select({ title: schema.familyEvents.title })
       .from(schema.familyEvents)
-      .where(and(eq(schema.familyEvents.familyId, familyId), isNull(schema.familyEvents.deletedAt)))
+      .where(and(eq(schema.familyEvents.familyId, familyId), householdFamilyEvent()))
       .limit(RECEIPT_LIMIT),
   ]);
   return [...bookings, ...events];

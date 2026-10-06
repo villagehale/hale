@@ -1,4 +1,4 @@
-import { type Database, schema } from '@hale/db';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, eq, gt, isNull, lte } from 'drizzle-orm';
 import { coparentDutyMemoryEnabled } from './flag';
 
@@ -141,7 +141,7 @@ export async function loadDutyMetrics(
     .where(
       and(
         eq(schema.familyEvents.familyId, familyId),
-        isNull(schema.familyEvents.deletedAt),
+        householdFamilyEvent(),
         gt(schema.familyEvents.startsAt, now),
         lte(schema.familyEvents.startsAt, horizon),
       ),
