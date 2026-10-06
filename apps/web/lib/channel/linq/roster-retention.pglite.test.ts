@@ -145,7 +145,7 @@ describe('sweepRosterRetention — flag off', () => {
 
     expect(await sweepRosterRetention(db.database, NOW)).toEqual({ outcome: 'flag_off' });
     expect(await rosterChats()).toEqual(['chat-flag-off']);
-    expect((await member(memberId))?.encrypted).not.toBeNull();
+    expect((await member(memberId.id))?.encrypted).not.toBeNull();
     vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
   });
 });

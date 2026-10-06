@@ -382,7 +382,7 @@ async function settleRoster(
           .update(schema.linqGroupRosterMembers)
           .set(fields)
           .where(eq(schema.linqGroupRosterMembers.id, row.id));
-      } else {
+      } else if (member.encrypted) {
         await tx
           .insert(schema.linqGroupRosterMembers)
           .values({

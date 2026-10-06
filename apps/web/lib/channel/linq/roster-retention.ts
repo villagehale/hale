@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
+import { and, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { linqGroupOnboardingV2Enabled } from './config';
 import { isUndefinedTable } from './roster';
 
@@ -103,7 +103,7 @@ export async function sweepRosterRetention(
 
       const released = await tx
         .update(members)
-        .set({ phoneE164Encrypted: null })
+        .set({ phoneE164Encrypted: sql`null` })
         .where(
           and(
             inArray(members.status, NUMBER_RELEASED_STATUSES),
