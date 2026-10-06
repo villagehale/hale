@@ -63,6 +63,7 @@ export type SpokenLineJudgeFailure =
   | 'french'
   | 'link'
   | 'emoji'
+  | 'close'
   | `forbidden:${string}`;
 
 const COMPLIANCE =
@@ -83,6 +84,13 @@ const FRENCH_ASCII_GAP =
   /\b(?:pres|age|adapt|prenoms?|ecole|ca|numero|reponds|annee|connecte|ajoute|a cote|idee|creneau|libere|quitte|desole)(?![\p{L}])/iu;
 
 const DANGLING_LINK = /\bthis link\b|\bce lien\b/i;
+
+/**
+ * The departure close. The words are the check; the sentence around them is the model's.
+ * `\b` is ASCII-only, so it never sees a boundary after "là".
+ */
+const STILL_HERE_EN = /\bstill here\b/i;
+const STILL_HERE_FR = /toujours\s+l[àa](?![\p{L}])/iu;
 
 const EMOJI = /\p{Extended_Pictographic}/u;
 
@@ -286,6 +294,9 @@ export function spokenLineRefusalFix(reason: SpokenLineJudgeFailure): string {
   if (reason === 'link') {
     return 'Say this link or ce lien only when linkFollows is true. Never write a URL.';
   }
+  if (reason === 'close') {
+    return 'A departure ends with the close that you are still here. English includes the words still here. French includes toujours là. Write that close in the line language and the address register. A line that stops after the continuity fact is refused.';
+  }
   return 'Rewrite so this refusal is gone. Use only the facts you were given.';
 }
 
@@ -385,6 +396,10 @@ export function judgeSpokenLine(
   }
 
   if (DANGLING_LINK.test(trimmed) && !input.linkFollows) return { ok: false, reason: 'link' };
+  if (input.kind === 'departure') {
+    const present = input.language === 'fr' ? STILL_HERE_FR.test(trimmed) : STILL_HERE_EN.test(trimmed);
+    if (!present) return { ok: false, reason: 'close' };
+  }
 
   for (const rule of input.forbidden ?? []) {
     if (rule.pattern.test(trimmed)) return { ok: false, reason: `forbidden:${rule.name}` };

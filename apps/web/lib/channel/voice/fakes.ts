@@ -61,7 +61,10 @@ export function fakeSpokenLineBody(input: SpokenLineInput): string {
       ),
     ),
   ];
-  const line = `${input.kind}: ${slots.join(', ')}${input.questions === 1 ? '?' : '.'}`;
+  // Departure is refused without this close. The words are the check's anchor, not a parent sentence.
+  const close =
+    input.kind === 'departure' ? (input.language === 'fr' ? ' toujours là' : ' still here') : '';
+  const line = `${input.kind}: ${slots.join(', ')}${close}${input.questions === 1 ? '?' : '.'}`;
   const judged = judgeSpokenLine(line, input);
   if (!judged.ok) {
     throw new Error(`fake voice wrote a line the judge refused (${judged.reason}): ${line}`);

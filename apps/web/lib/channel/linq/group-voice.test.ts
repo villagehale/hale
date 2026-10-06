@@ -257,6 +257,25 @@ describe('the judge on group lines', () => {
       reason: 'french',
     });
   });
+
+  it('refuses a departure that drops the still-here close', () => {
+    const tu = groupLineInput({ kind: 'departure', name: null, address: 'tu' }, 'fr');
+    expect(
+      judgeSpokenLine("Ton coparent s'en va. L'année des enfants continue comme avant.", tu),
+    ).toEqual({ ok: false, reason: 'close' });
+    expect(judgeSpokenLine("Ton coparent s'en va. Je reste là.", tu)).toEqual({
+      ok: false,
+      reason: 'close',
+    });
+    const en = groupLineInput({ kind: 'departure', name: 'Sam' }, 'en');
+    expect(judgeSpokenLine("Sam left. The kids' year stays as it is.", en)).toEqual({
+      ok: false,
+      reason: 'close',
+    });
+    expect(judgeSpokenLine("Sam left. The kids' year stays as it is. I'm still here.", en)).toEqual({
+      ok: true,
+    });
+  });
 });
 
 describe('speakGroupLine', () => {
