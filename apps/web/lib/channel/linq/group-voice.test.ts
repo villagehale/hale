@@ -207,18 +207,21 @@ describe('groupLineInput', () => {
       reason: 'link',
     });
     const link = groupLineInput({ kind: 'calendar_link', name: 'Sam' }, 'en');
+    expect(judgeSpokenLine('Sam, this link is just for you.', link)).toEqual({ ok: true });
+    expect(
+      judgeSpokenLine('Sam, this link is just for you. No worries if you would rather wait.', link),
+    ).toEqual({ ok: false, reason: 'forbidden:soft_safe' });
+    const heads = groupLineInput({ kind: 'calendar_heads_up', name: 'Sam' }, 'en');
     expect(
       judgeSpokenLine(
-        'Sam, this link is just for you. Google may say Hale is not verified yet, because the review is still open. No worries if you would rather wait.',
-        link,
+        "Google may say Hale is not verified yet, because I'm still in review. No problem if you'd rather wait.",
+        heads,
       ),
     ).toEqual({ ok: true });
-    expect(
-      judgeSpokenLine(
-        'Sam, this link is just for you. If Google warns you, tap Advanced and carry on.',
-        link,
-      ),
-    ).toEqual({ ok: false, reason: 'forbidden:google_coaching' });
+    expect(judgeSpokenLine('If Google warns you, tap Advanced and carry on.', heads)).toEqual({
+      ok: false,
+      reason: 'forbidden:google_coaching',
+    });
   });
 });
 

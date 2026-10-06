@@ -1,4 +1,5 @@
 import type { ReplyLanguage } from '../language';
+import { frenchAddress } from '../voice/address';
 import type { SpokenLineInput } from '../voice/judge';
 
 /**
@@ -36,9 +37,28 @@ export const GOOGLE_COACHING = {
   pattern: /tap advanced|carry on|it(?:'|’)s safe|paramètres avancés/i,
 };
 
+/** Hale speaks as itself. "we" is a company, and it fails. */
+export const NO_WE_FOR_HALE = {
+  name: 'we_for_hale',
+  pattern: /\bwe(?:'re|'ll|’re|’ll)?\b/i,
+};
+
+/** "No worries" right after "not verified" reads as "it's safe". */
+export const NO_SOFT_SAFE = {
+  name: 'soft_safe',
+  pattern: /no worries|pas de souci|aucun souci/i,
+};
+
+/** The link note stays a note. The heads-up is the next bubble. */
+export const HEADS_UP_IN_NOTE = {
+  name: 'heads_up_in_note',
+  pattern: /not verified|pas v[ée]rifi|en r[ée]vision|still in review|Google's review/i,
+};
+
 export type ConnectLineRequest =
   | { kind: 'offer'; account: ConnectAccount }
   | { kind: 'offer_both'; first: ConnectAccount; second: ConnectAccount }
+  | { kind: 'google_heads_up' }
   | { kind: 'revoked'; account: ConnectAccount }
   | { kind: 'not_connected'; account: ConnectAccount }
   | { kind: 'revoke_failed'; account: ConnectAccount }
@@ -61,23 +81,24 @@ export const NO_GOOGLE_SIDE_CLAIM = {
 };
 
 /**
- * Facts, limits, and anchors for one connect line. Always one parent in their own thread
- * (tu): the household group has its own voice for its own asks (linq/group-line-input.ts).
+ * Facts, limits, and anchors for one connect line. One parent in their own thread.
+ * A stored tu or vous wins; otherwise tu, the same register as the weekend line.
+ * The household group has its own voice for its own asks (linq/group-line-input.ts).
  */
 export function connectLineInput(
   request: ConnectLineRequest,
   language: ReplyLanguage,
-  options: { parentWords?: string | null } = {},
+  options: { parentWords?: string | null; address?: 'tu' | 'vous' | null } = {},
 ): SpokenLineInput {
   const base = {
     skill: CONNECT_VOICE_SKILL,
     kind: request.kind,
     language,
-    address: 'tu' as const,
+    address: frenchAddress(options.address),
     questions: 0 as const,
     maxChars: CONNECT_MAX_CHARS,
     parentWords: options.parentWords ?? null,
-    forbidden: [NO_CONNECT_KEYWORD_ASK, NO_GOOGLE_SIDE_CLAIM],
+    forbidden: [NO_CONNECT_KEYWORD_ASK, NO_GOOGLE_SIDE_CLAIM, NO_WE_FOR_HALE],
   };
   const name = (account: ConnectAccount) => CONNECT_ACCOUNT_NAME[language][account];
   const minutes = String(CONNECT_LINK_MINUTES);
@@ -92,7 +113,7 @@ export function connectLineInput(
           goodForMinutes: CONNECT_LINK_MINUTES,
         },
         mustMention: [name(request.account), minutes],
-        forbidden: [...(base.forbidden ?? []), GOOGLE_COACHING],
+        forbidden: [...(base.forbidden ?? []), GOOGLE_COACHING, NO_SOFT_SAFE, HEADS_UP_IN_NOTE],
       };
     case 'offer_both':
       return {
@@ -104,7 +125,13 @@ export function connectLineInput(
           goodForMinutes: CONNECT_LINK_MINUTES,
         },
         mustMention: [name(request.first), name(request.second), minutes],
-        forbidden: [...(base.forbidden ?? []), GOOGLE_COACHING],
+        forbidden: [...(base.forbidden ?? []), GOOGLE_COACHING, NO_SOFT_SAFE, HEADS_UP_IN_NOTE],
+      };
+    case 'google_heads_up':
+      return {
+        ...base,
+        facts: {},
+        forbidden: [...(base.forbidden ?? []), GOOGLE_COACHING, NO_SOFT_SAFE],
       };
     case 'revoked':
       return {

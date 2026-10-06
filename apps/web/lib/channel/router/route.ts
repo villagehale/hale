@@ -265,6 +265,11 @@ export type HandlerVerdict =
       outcome: string;
       reply: string | null;
       /**
+       * A second bubble, sent after `reply` without claiming the turn again.
+       * The connect door uses it for the Google heads-up. Absent on every other receipt.
+       */
+      followUp?: string;
+      /**
        * The ledger name for the message this reply goes out as — written onto its
        * `channel_messages` row exactly as a proactive send's is.
        *
@@ -840,6 +845,27 @@ async function routeChannelMessageInner(
       inboundBody: context.body,
     });
 
+  // The connect door's second bubble. No second claim: the turn was already
+  // answered by the link. A transport failure here is named and does not unsend it.
+  const sendFollowUp = async (body: string) => {
+    try {
+      await sendReply(deps, {
+        route,
+        body,
+        job,
+        conversationId,
+        templateKey: 'connector:google_heads_up',
+        beforeSend: stopTyping,
+        followUp: true,
+      });
+    } catch (err) {
+      deps.log.warn(
+        { code: err instanceof Error ? err.name : 'unknown', familyId: job.family_id },
+        'channel router: the link landed; the Google heads-up did not',
+      );
+    }
+  };
+
   // GATE 2a — DID HALE JUST ASK THIS PARENT TO PICK? (VIL-304, disambiguation.ts.)
   //
   // FIRST, ahead of the deterministic chain, and that ordering is the point rather than a
@@ -852,7 +878,7 @@ async function routeChannelMessageInner(
   //
   // A reply that picks nothing falls straight through to the chain below with the menu
   // SPENT — one shot, whatever the outcome.
-  const picked = await consumePendingDisambiguation(deps, turn, answer);
+  const picked = await consumePendingDisambiguation(deps, turn, answer, sendFollowUp);
   if (picked.status === 'handled') {
     return done(deps, job, {
       status: 'resolved',
@@ -891,7 +917,7 @@ async function routeChannelMessageInner(
     for (const handler of deps.handlers) {
       const verdict = await handler.handle(deps.database, turn);
       if (!verdict.claimed) continue;
-      await deliver(verdict, answer);
+      await deliver(verdict, answer, sendFollowUp);
       return done(deps, job, {
         status: 'handled',
         handler: handler.name,
@@ -911,7 +937,7 @@ async function routeChannelMessageInner(
   // is the same act as answering "yes", and a parent whose hour is spent must still be
   // able to approve, decline and opt out. It sits BELOW them because a free, exact read
   // must always win — no keyword was removed, only stopped being printed.
-  const natural = await resolveNaturalReply(deps, turn, answer);
+  const natural = await resolveNaturalReply(deps, turn, answer, sendFollowUp);
   if (natural.status === 'handled') {
     return done(deps, job, { ...natural.result, conversationId, lane: null });
   }
@@ -1162,6 +1188,7 @@ async function consumePendingDisambiguation(
   deps: ChannelRouterDeps,
   turn: HandlerContext,
   answer: (body: string) => Promise<string>,
+  sendFollowUp: (body: string) => Promise<void>,
 ): Promise<
   | { status: 'handled'; handler: string }
   /** Carried on — and whether a digit went with the menu rather than on down the chain. */
@@ -1223,7 +1250,7 @@ async function consumePendingDisambiguation(
     );
     return { status: 'carry_on', ordinalSpent };
   }
-  await deliver(verdict, answer);
+  await deliver(verdict, answer, sendFollowUp);
   return { status: 'handled', handler: owner.name };
 }
 
@@ -1392,6 +1419,7 @@ async function resolveNaturalReply(
   deps: ChannelRouterDeps,
   turn: HandlerContext,
   answer: (body: string) => Promise<string>,
+  sendFollowUp: (body: string) => Promise<void>,
 ): Promise<NaturalReplyOutcome> {
   const questions = await turn.openQuestions();
   // NO OPEN QUESTION, NO MODEL CALL. The precondition that makes this stage affordable on
@@ -1440,7 +1468,7 @@ async function resolveNaturalReply(
     );
     return { status: 'carry_on', questions };
   }
-  await deliver(verdict, answer);
+  await deliver(verdict, answer, sendFollowUp);
   return { status: 'handled', result: { status: 'resolved', handler: owner.name } };
 }
 
@@ -1460,6 +1488,7 @@ async function deliver(
     templateKey?: string | null,
     groupSync?: GroupActivityDecision,
   ) => Promise<string>,
+  sendFollowUp?: (body: string) => Promise<void>,
 ): Promise<void> {
   if (verdict.reply === null) return;
   const channelMessageId = await answer(
@@ -1470,6 +1499,12 @@ async function deliver(
     verdict.groupSync,
   );
   await verdict.afterSend?.(channelMessageId);
+  if (!verdict.followUp) return;
+  if (!sendFollowUp) {
+    console.warn('channel router: Google heads-up unsent - no follow-up sender');
+    return;
+  }
+  await sendFollowUp(verdict.followUp);
 }
 
 /**
@@ -2080,6 +2115,11 @@ async function sendReply(
     /** Runs before the transport call. The iMessage think-section uses it to
      * stop the typing bubble before the reply goes out. */
     beforeSend?: () => Promise<void> | void;
+    /**
+     * A second bubble on a turn that was already claimed. Skips the year-retention
+     * ask so the heads-up is not counted as another utility reply.
+     */
+    followUp?: boolean;
     /** The parent's words, when this reply is the turn's answer. A tapback or
      * a poll can stand in for the text. Absent on the caregiver line, which
      * keeps its sentence. */
@@ -2184,7 +2224,7 @@ async function sendReply(
   // ENG-1. After the utility reply, maybe the later year-retention ask.
   // Flag off returns before any read. A failure here must not unsend the
   // reply the parent already has.
-  if (args.conversationId && args.route.channel === 'imessage') {
+  if (!args.followUp && args.conversationId && args.route.channel === 'imessage') {
     try {
       await maybeOfferYearRetention(deps.database, {
         familyId: args.job.family_id,

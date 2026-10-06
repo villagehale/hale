@@ -41,26 +41,55 @@ export function defaultConnectVoice(): ConnectVoice | undefined {
 export interface ConnectLineResult {
   /** The whole text, link lines included, or null when the model could not write it. */
   body: string | null;
+  /**
+   * The Google heads-up, for a link offer only. Null when this kind has no second
+   * bubble, and null together with `body` when either bubble could not be written.
+   */
+  followUp: string | null;
   source: 'composed' | 'retry' | 'unsent';
 }
 
+const LINK_OFFER = new Set<ConnectLineRequest['kind']>(['offer', 'offer_both']);
+
 /**
- * One connect line with its real link(s) under it, or nothing. `body` is null when the
- * model could not write the prose after one retry; the caller then sends nothing (the
- * minted token simply expires unused) and names the outcome.
+ * One connect line with its real link(s) under it, or nothing. A link offer is two
+ * bubbles, both written before either is sent: the note, then the Google heads-up.
+ * `body` is null when either could not be written after one retry; the caller then
+ * sends nothing (the minted token simply expires unused) and names the outcome.
  */
 export async function speakConnectLine(
   voice: ConnectVoice | undefined,
   request: ConnectLineRequest,
   language: ReplyLanguage,
-  options: SpokenLineOptions & { urls?: readonly string[]; parentWords?: string | null } = {},
+  options: SpokenLineOptions & {
+    urls?: readonly string[];
+    parentWords?: string | null;
+    address?: 'tu' | 'vous' | null;
+  } = {},
 ): Promise<ConnectLineResult> {
-  const { urls, parentWords, ...speak } = options;
+  const { urls, parentWords, address, ...speak } = options;
   const spoken = await speakLine(
     voice,
-    connectLineInput(request, language, { parentWords }),
+    connectLineInput(request, language, { parentWords, address }),
     speak,
   );
-  if (spoken.source === 'unsent') return { body: null, source: 'unsent' };
-  return { body: withConnectLinks(spoken.body, urls ?? []), source: spoken.source };
+  if (spoken.source === 'unsent') return { body: null, followUp: null, source: 'unsent' };
+  if (!LINK_OFFER.has(request.kind)) {
+    return {
+      body: withConnectLinks(spoken.body, urls ?? []),
+      followUp: null,
+      source: spoken.source,
+    };
+  }
+  const heads = await speakLine(
+    voice,
+    connectLineInput({ kind: 'google_heads_up' }, language, { parentWords, address }),
+    speak,
+  );
+  if (heads.source === 'unsent') return { body: null, followUp: null, source: 'unsent' };
+  return {
+    body: withConnectLinks(spoken.body, urls ?? []),
+    followUp: heads.body,
+    source: spoken.source === 'retry' || heads.source === 'retry' ? 'retry' : 'composed',
+  };
 }

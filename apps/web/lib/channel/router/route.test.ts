@@ -3,13 +3,13 @@ import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
 import { EMERGENCY_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/lane';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -665,6 +665,59 @@ describe('threading', () => {
 // ── the order ────────────────────────────────────────────────────────────────
 
 describe('routing order', () => {
+  it('sends a follow-up bubble after the reply and claims the turn once', async () => {
+    const handler: DeterministicHandler = {
+      name: 'connector_link',
+      async handle() {
+        return {
+          claimed: true,
+          outcome: 'sent',
+          reply: 'Here is the link',
+          followUp: 'Google may say Hale is not verified yet.',
+        };
+      },
+    };
+    const h = harness({ handlers: [handler] });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('handled');
+    expect(h.transport.bodies()).toEqual([
+      'Here is the link',
+      'Google may say Hale is not verified yet.',
+    ]);
+    expect(h.turns.answered).toHaveLength(1);
+  });
+
+  it('keeps the link when the heads-up send fails', async () => {
+    const handler: DeterministicHandler = {
+      name: 'connector_link',
+      async handle() {
+        return {
+          claimed: true,
+          outcome: 'sent',
+          reply: 'Here is the link',
+          followUp: 'Google may say Hale is not verified yet.',
+        };
+      },
+    };
+    const h = harness({ handlers: [handler] });
+    const send = h.deps.transport.send.bind(h.deps.transport);
+    let calls = 0;
+    h.deps.transport.send = async (input) => {
+      calls += 1;
+      if (calls === 2) throw new Error('heads-up down');
+      return send(input);
+    };
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('handled');
+    expect(h.transport.bodies()).toEqual(['Here is the link']);
+    expect(h.turns.answered).toHaveLength(1);
+    expect(JSON.stringify(h.logs)).toContain('the Google heads-up did not');
+  });
+
   it('runs deterministic handlers BEFORE the coach and stops at the first claim', async () => {
     const health = claimingHandler('health', 'Filed — I won’t raise that one again.');
     const later = passingHandler('sequence');
@@ -1138,8 +1191,7 @@ describe('an offered full plan', () => {
     return {
       async respond() {
         return {
-          reply:
-            'Most 2-year-olds wake once or twice. Want me to send the full plan?',
+          reply: 'Most 2-year-olds wake once or twice. Want me to send the full plan?',
           activityPromise: null,
           spotWatch: null,
           planOffer: {

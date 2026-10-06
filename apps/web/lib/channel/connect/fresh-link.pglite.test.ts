@@ -67,7 +67,7 @@ describe('textFreshConnectorLink', () => {
     );
 
     expect(outcome).toBe('sent');
-    expect(transport.sent).toHaveLength(1);
+    expect(transport.sent).toHaveLength(2);
     const body = transport.sent[0]?.body ?? '';
     const [prose, link, ...rest] = body.split('\n');
     expect(prose).toBe(
@@ -75,6 +75,10 @@ describe('textFreshConnectorLink', () => {
     );
     expect(link).toContain('to=gmail');
     expect(rest).toEqual([]);
+    expect(transport.sent[1]?.body).toBe(
+      fakeSpokenLineBody(connectLineInput({ kind: 'google_heads_up' }, 'en')),
+    );
+    expect(transport.sent[1]?.body).not.toMatch(/https?:/i);
     expect(body).not.toMatch(/connect my calendar/i);
     expect(body).not.toContain('to=gcal');
     const [spent] = await db.database

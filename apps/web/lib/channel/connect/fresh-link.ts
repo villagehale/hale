@@ -33,6 +33,7 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
  */
 
 export const FRESH_CONNECTOR_LINK_TEMPLATE_KEY = 'connector:fresh_link';
+export const FRESH_CONNECTOR_HEADS_UP_TEMPLATE_KEY = 'connector:fresh_link_heads_up';
 
 export interface FreshLinkPorts {
   transport: ChannelTransport;
@@ -143,62 +144,92 @@ async function sendFresh(
     language,
     { urls: [minted.url], scope: { familyId: args.familyId, database } },
   );
-  if (line.body === null) {
+  // Both bubbles are written before either is sent. A failed read sends nothing.
+  if (line.body === null || line.followUp === null) {
     console.info(
       { familyId: args.familyId, provider: args.provider },
       'connector link: fresh link not sent - no line could be written',
     );
     return 'voice_unsent';
   }
-  const body = line.body;
   const channel = door.channel === 'imessage' ? 'imessage' : 'sms';
-  const [claimed] = await database
-    .insert(schema.channelMessages)
-    .values({
-      familyId: args.familyId,
-      parentUserId: args.parentUserId,
-      channel,
-      direction: 'out',
-      category: 'reply',
-      templateKey: FRESH_CONNECTOR_LINK_TEMPLATE_KEY,
-      providerChatId: chatId,
-      status: acceptedStatus(channel),
-      sentAt: args.now,
-    })
-    .returning({ id: schema.channelMessages.id });
-  if (!claimed) return 'errored';
 
-  let providerMessageId: string;
-  try {
-    if (door.channel === 'imessage') {
-      const send = ports.imessage;
-      if (!send || !chatId) throw new LinqSendError('imessage_not_configured', 0, true);
-      ({ providerMessageId } = await send({ chatId, body }));
-    } else {
-      ({ providerMessageId } = await sendResolvingNewChat(ports.transport, { to: phone, body }));
+  const deliverBubble = async (
+    body: string,
+    templateKey: string,
+  ): Promise<
+    { status: 'sent' } | { status: 'send_failed'; code: string } | { status: 'errored' }
+  > => {
+    const [claimed] = await database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        channel,
+        direction: 'out',
+        category: 'reply',
+        templateKey,
+        providerChatId: chatId,
+        status: acceptedStatus(channel),
+        sentAt: args.now,
+      })
+      .returning({ id: schema.channelMessages.id });
+    if (!claimed) return { status: 'errored' };
+
+    let providerMessageId: string;
+    try {
+      if (door.channel === 'imessage') {
+        const send = ports.imessage;
+        if (!send || !chatId) throw new LinqSendError('imessage_not_configured', 0, true);
+        ({ providerMessageId } = await send({ chatId, body }));
+      } else {
+        ({ providerMessageId } = await sendResolvingNewChat(ports.transport, { to: phone, body }));
+      }
+    } catch (err) {
+      const code = readSendRefusal(err)?.code ?? 'unknown';
+      await database
+        .update(schema.channelMessages)
+        .set(failedSendPatch(code))
+        .where(eq(schema.channelMessages.id, claimed.id));
+      return { status: 'send_failed', code };
     }
-  } catch (err) {
-    const code = readSendRefusal(err)?.code ?? 'unknown';
+
     await database
       .update(schema.channelMessages)
-      .set(failedSendPatch(code))
+      .set({ providerMessageId })
       .where(eq(schema.channelMessages.id, claimed.id));
+    await ports.threadMessage(database, {
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      body,
+    });
+    return { status: 'sent' };
+  };
+
+  const linkSent = await deliverBubble(line.body, FRESH_CONNECTOR_LINK_TEMPLATE_KEY);
+  if (linkSent.status !== 'sent') {
     console.error(
-      { familyId: args.familyId, provider: args.provider, code },
+      {
+        familyId: args.familyId,
+        provider: args.provider,
+        code: linkSent.status === 'send_failed' ? linkSent.code : 'unclaimed',
+      },
       'connector link: fresh link refused',
     );
-    return 'send_failed';
+    return linkSent.status === 'errored' ? 'errored' : 'send_failed';
   }
 
-  await database
-    .update(schema.channelMessages)
-    .set({ providerMessageId })
-    .where(eq(schema.channelMessages.id, claimed.id));
-  await ports.threadMessage(database, {
-    familyId: args.familyId,
-    parentUserId: args.parentUserId,
-    body,
-  });
+  const headsSent = await deliverBubble(line.followUp, FRESH_CONNECTOR_HEADS_UP_TEMPLATE_KEY);
+  if (headsSent.status !== 'sent') {
+    console.warn(
+      {
+        familyId: args.familyId,
+        provider: args.provider,
+        code: headsSent.status === 'send_failed' ? headsSent.code : 'unclaimed',
+      },
+      'connector link: Google heads-up unsent',
+    );
+  }
   console.info(
     { familyId: args.familyId, provider: args.provider },
     'connector link: fresh link sent',

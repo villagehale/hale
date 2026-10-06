@@ -409,7 +409,12 @@ export function connectorLinkHandler(
       ): Promise<HandlerVerdict> => {
         const line = await speak(request, urls);
         if (line.body === null) return { claimed: true, outcome: 'voice_unsent', reply: null };
-        return { claimed: true, outcome, reply: line.body };
+        return {
+          claimed: true,
+          outcome,
+          reply: line.body,
+          ...(line.followUp ? { followUp: line.followUp } : {}),
+        };
       };
 
       if (target === 'both') {

@@ -39,11 +39,12 @@ function without(text: string, literal: string | null): string {
 /**
  * The disclosure every brief must make, in the model's own words: these details are off
  * the venues' own pages. Any phrasing that ties "their / own / the venues'" to a page,
- * site or listing counts; what is refused is a body that never says where the facts came
- * from.
+ * site or listing counts, and so does the French equivalent ("des sites", "du site",
+ * "leurs sites", "pages des lieux"). What is refused is a body that never says where
+ * the facts came from.
  */
 const SAYS_PROVENANCE =
-  /\b(?:their|its|own|venues?['’]?s?)\b[^.!?]{0,40}\b(?:pages?|sites?|websites?|listings?)\b|\b(?:pages?|sites?|websites?|listings?)\b[^.!?]{0,20}\b(?:their|its|own|venues?)\b/i;
+  /\b(?:their|its|own|venues?['’]?s?)\b[^.!?]{0,40}\b(?:pages?|sites?|websites?|listings?)\b|\b(?:pages?|sites?|websites?|listings?)\b[^.!?]{0,20}\b(?:their|its|own|venues?)\b|\b(?:leur|leurs|des|du|aux)\s+sites?\b|\bsites?\s+(?:officiels?|des lieux)\b|\bpages?\s+(?:officielles?|des lieux)\b|\bviennent des sites\b|\bvient du site\b/i;
 
 /**
  * Everything wrong with the prose of a brief, named: no picks named, a question, a digit

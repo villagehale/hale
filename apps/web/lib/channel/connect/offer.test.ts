@@ -283,6 +283,7 @@ describe('connectorLinkHandler', () => {
     expect(prose).toBe(spoken({ kind: 'offer', account: 'gcal' }));
     expect(link).toMatch(/^https:\/\/app\.villagehale\.com\/connect\?t=.+&to=gcal$/);
     expect(rest).toEqual([]);
+    expect(verdict.followUp).toBe(spoken({ kind: 'google_heads_up' }));
     // The model read the message in the parent's own thread; the token never reached it.
     expect(reader.calls).toEqual([
       {
@@ -299,6 +300,7 @@ describe('connectorLinkHandler', () => {
     if (!verdict.claimed) throw new Error('expected the handler to claim');
     expect(verdict.reply?.split('\n')[0]).toBe(spoken({ kind: 'offer', account: 'gcal' }, 'fr'));
     expect(verdict.reply).toContain('Google Agenda');
+    expect(verdict.followUp).toBe(spoken({ kind: 'google_heads_up' }, 'fr'));
   });
 
   it("does NOT mint when the model reads a question about the calendar's contents as other", async () => {
@@ -329,6 +331,24 @@ describe('connectorLinkHandler', () => {
     if (!verdict.claimed) throw new Error('expected the handler to claim');
     expect(verdict.outcome).toBe('voice_unsent');
     expect(verdict.reply).toBeNull();
+    vi.restoreAllMocks();
+  });
+
+  it('sends nothing when the heads-up cannot be written, even if the note would have', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const verdict = await connectorLinkHandler({
+      intentReader: fakeRequestIntentReader(),
+      voice: fakeSpokenLineComposer({
+        body: (input) => {
+          if (input.kind === 'google_heads_up') throw new Error('heads-up failed');
+          return fakeSpokenLineBody(input);
+        },
+      }),
+    }).handle(db.database, turn('connect my google calendar'));
+    if (!verdict.claimed) throw new Error('expected the handler to claim');
+    expect(verdict.outcome).toBe('voice_unsent');
+    expect(verdict.reply).toBeNull();
+    expect('followUp' in verdict ? verdict.followUp : undefined).toBeUndefined();
     vi.restoreAllMocks();
   });
 

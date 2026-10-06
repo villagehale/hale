@@ -172,6 +172,14 @@ describe('travelBriefViolations', () => {
     expect(travelBriefViolations(silent, CONTEXT)).toContain('no_provenance');
   });
 
+  it('accepts a French provenance sentence', () => {
+    const base = GOOD_BRIEF.replace(" That's off their own pages, not from anyone who's been.", '');
+    const brief = `${base} Les détails viennent des sites, personne n'est allé vérifier sur place.`;
+    const violations = travelBriefViolations(brief, CONTEXT);
+    expect(violations).not.toContain('no_provenance');
+    expect(violations).not.toContain('not_gsm7');
+  });
+
   it('accepts the provenance in different words', () => {
     const base = GOOD_BRIEF.replace(" That's off their own pages, not from anyone who's been.", '');
     for (const closing of [

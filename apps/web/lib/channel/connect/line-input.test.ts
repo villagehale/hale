@@ -21,6 +21,7 @@ const EVERY_KIND: ConnectLineRequest[] = [
   { kind: 'offer', account: 'gmail' },
   { kind: 'offer', account: 'gdrive' },
   { kind: 'offer_both', first: 'gcal', second: 'gmail' },
+  { kind: 'google_heads_up' },
   { kind: 'revoked', account: 'gcal' },
   { kind: 'not_connected', account: 'gmail' },
   { kind: 'revoke_failed', account: 'gcal' },
@@ -39,11 +40,21 @@ describe('connectLineInput', () => {
         expect(input.questions).toBe(0);
         expect(input.maxChars).toBe(CONNECT_MAX_CHARS);
         expect(input.parentWords).toBe('connect it');
-        const coaching = request.kind === 'offer' || request.kind === 'offer_both';
+        const note = request.kind === 'offer' || request.kind === 'offer_both';
+        const heads = request.kind === 'google_heads_up';
         expect(input.forbidden?.map((rule) => rule.name)).toEqual(
-          coaching
-            ? ['keyword_ask', 'google_side_claim', 'google_coaching']
-            : ['keyword_ask', 'google_side_claim'],
+          note
+            ? [
+                'keyword_ask',
+                'google_side_claim',
+                'we_for_hale',
+                'google_coaching',
+                'soft_safe',
+                'heads_up_in_note',
+              ]
+            : heads
+              ? ['keyword_ask', 'google_side_claim', 'we_for_hale', 'google_coaching', 'soft_safe']
+              : ['keyword_ask', 'google_side_claim', 'we_for_hale'],
         );
         // The fake passes the judge the real model is held to, so the facts can be
         // carried by the kind's slots alone.
@@ -62,16 +73,41 @@ describe('connectLineInput', () => {
     expect(en.linkFollows).toBe(true);
     expect(
       judgeSpokenLine(
-        'Here you go - this link connects your Google Calendar and is good for 15 minutes. Google may say Hale is not verified yet, because the review is still open.',
+        'Here you go - this link connects your Google Calendar and is good for 15 minutes.',
         en,
       ),
     ).toEqual({ ok: true });
     expect(
       judgeSpokenLine(
-        'Here you go - this link connects your Google Calendar and is good for 15 minutes. If Google warns you, tap Advanced and carry on.',
+        'Here you go - this link connects your Google Calendar and is good for 15 minutes. Google may say Hale is not verified yet.',
         en,
       ),
-    ).toEqual({ ok: false, reason: 'forbidden:google_coaching' });
+    ).toEqual({ ok: false, reason: 'forbidden:heads_up_in_note' });
+    const heads = connectLineInput({ kind: 'google_heads_up' }, 'en');
+    expect(heads.linkFollows).toBeUndefined();
+    expect(heads.maxChars).toBe(CONNECT_MAX_CHARS);
+    expect(
+      judgeSpokenLine(
+        "Google may say Hale is not verified yet, because I'm still in review. No problem if you'd rather wait.",
+        heads,
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      judgeSpokenLine(
+        "Google may say Hale is not verified yet, because we are still in Google's review.",
+        heads,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:we_for_hale' });
+    expect(
+      judgeSpokenLine(
+        'Google may say Hale is not verified yet. No worries if you would rather wait.',
+        heads,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:soft_safe' });
+    expect(judgeSpokenLine('If Google warns you, tap Advanced and carry on.', heads)).toEqual({
+      ok: false,
+      reason: 'forbidden:google_coaching',
+    });
 
     const fr = connectLineInput({ kind: 'offer', account: 'gcal' }, 'fr');
     expect(fr.facts).toEqual({
@@ -81,6 +117,9 @@ describe('connectLineInput', () => {
     expect(
       judgeSpokenLine('Voilà - ce lien relie ton Google Agenda, bon pour 15 minutes.', fr),
     ).toEqual({ ok: true });
+    expect(
+      connectLineInput({ kind: 'offer', account: 'gcal' }, 'fr', { address: 'vous' }).address,
+    ).toBe('vous');
   });
 
   it('hands the two-link offer both names in order; code appends the links in that order', () => {
