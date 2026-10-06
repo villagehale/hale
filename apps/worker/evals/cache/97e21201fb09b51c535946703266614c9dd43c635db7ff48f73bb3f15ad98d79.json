@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message asks \"What should I call you?\" in singular form when addressing both parents (vous is the plural form). For a welcome to two parents, the question should be \"What should I call you both?\" or phrased for plural. Additionally, the message introduces itself (\"I'm Hale\") and explains the thread purpose, which is correct, but the singular question when the address is \"vous\" (both parents) creates a mismatch. The message should ask one question appropriate for both parents together, not as individuals."
+  }
+}
