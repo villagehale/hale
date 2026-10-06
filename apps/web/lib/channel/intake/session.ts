@@ -730,8 +730,6 @@ export interface SessionPatch {
   userId?: string;
   lastProviderId?: string;
   closedAt?: Date;
-  /** Stamped when a first-hello is persisted — live greet or VIL-332 recovery. */
-  firstReplyRecoveredAt?: Date;
   /** Set when the first reply is composed. Omitted patches keep the value already
    * on the session, so a later save cannot forget a win. */
   findWon?: boolean;
@@ -781,9 +779,6 @@ export async function saveSession(
       ...(patch.userId ? { userId: patch.userId } : {}),
       ...(patch.lastProviderId ? { lastProviderId: patch.lastProviderId } : {}),
       ...(patch.closedAt ? { closedAt: patch.closedAt } : {}),
-      ...(patch.firstReplyRecoveredAt
-        ? { firstReplyRecoveredAt: patch.firstReplyRecoveredAt }
-        : {}),
       updatedAt: now,
     })
     .where(eq(schema.smsIntakeSessions.id, session.id));
@@ -802,8 +797,17 @@ export function transcriptHasOutbound(transcript: readonly TranscriptEntry[]): b
   return transcript.some((entry) => entry.direction === 'out');
 }
 
-/** The encrypted transcript only, for recovery sweeps that have the blob and
- * must not decrypt the phone until they have decided to send. */
-export function decodeIntakeTranscript(dataEncrypted: string): TranscriptEntry[] {
-  return decodeData(dataEncrypted).transcript;
+/** What a recovery sweep reads from the blob: it must not decrypt the phone until it
+ * has decided to send. */
+export function decodeIntakeForRecovery(dataEncrypted: string): {
+  transcript: TranscriptEntry[];
+  firstTouch: FirstTouchPersisted | null;
+  ladderLanguage: ReplyLanguage | null;
+} {
+  const data = decodeData(dataEncrypted);
+  return {
+    transcript: data.transcript,
+    firstTouch: data.firstTouch ?? null,
+    ladderLanguage: data.ladderLanguage ?? null,
+  };
 }

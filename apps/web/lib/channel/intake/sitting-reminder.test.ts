@@ -67,6 +67,7 @@ function seedSession(
     familyId?: string | null;
     followUpCount?: number;
     dataEncrypted?: string;
+    lastProviderId?: string | null;
   } = {},
 ): string {
   const phoneE164 = over.phoneE164 ?? PHONE;
@@ -82,6 +83,7 @@ function seedSession(
     closedAt: over.closedAt === undefined ? null : over.closedAt,
     familyId: over.familyId === undefined ? null : over.familyId,
     followUpCount: over.followUpCount ?? 0,
+    lastProviderId: over.lastProviderId ?? null,
   };
   fake.db.insert(schema.smsIntakeSessions).values(values);
   const row = fake.rows(schema.smsIntakeSessions).at(-1);
@@ -445,17 +447,26 @@ describe('runSittingReminderCron', () => {
     expect(transport.bodies()).toHaveLength(1);
   });
 
-  it('does not nudge a cold-start that has already left the find', async () => {
+  it('does not nudge a family that answered after the find', async () => {
     vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
     const fake = makeFakeDb();
     const transport = new FakeTransport();
     seedSession(fake, {
       state: 'awaiting_cold_start',
       familyId: 'fam-1',
+      // The reply after provisioning moved this past the transcript's last inbound.
+      lastProviderId: 'SMreply',
       dataEncrypted: encryptString(
         JSON.stringify({
           collected: { children: [], postalCode: 'M5V 2T6' },
-          transcript: [],
+          transcript: [
+            {
+              direction: 'in',
+              body: 'Maya is 4, M5V 2T6',
+              providerId: 'SMprovision',
+              at: FIRST_HELLO_PREVIOUS_EVENING.toISOString(),
+            },
+          ],
           firstTouch: {
             language: 'en',
             place: null,

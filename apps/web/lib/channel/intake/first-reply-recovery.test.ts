@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { KNOWN_VENUE_HELLO } from './cold-start/copy';
 import {
   FIRST_TOUCH_SMS_BY_LANGUAGE,
@@ -12,10 +13,16 @@ import {
 import { type FakeDb, makeFakeDb } from './fakes';
 import {
   type FirstReplyRecoveryDeps,
-  defaultFirstReplyRecoveryDeps,
+  firstReplyRecoveryDeps,
   firstReplyRecoveryEligible,
+  firstReplyRecoveryQuiet,
   runFirstReplyRecoveryCron,
 } from './first-reply-recovery';
+import {
+  type FriendVoiceComposer,
+  type FriendVoiceInput,
+  friendVoiceContext,
+} from './friend-voice';
 import { FOUNDER_PAIR_SESSION_IDS } from './sitting-reminder';
 import { FakeTransport } from './transport';
 
@@ -30,6 +37,16 @@ const OTHER = '+14165555678';
 const INBOUND_SID = 'SM11111111111111111111111111111111';
 /** Friday 28 Aug 2026, 12:28 p.m. America/Toronto (EDT, UTC-4). */
 const SAME_DAY_NOON_ET = new Date('2026-08-28T16:28:00.000Z');
+/** The first text, ten minutes before the tick — past the sweep's minimum age. */
+const FIRST_TEXT_AT = new Date(SAME_DAY_NOON_ET.getTime() - 10 * 60_000);
+const FIRST_TEXT = [
+  {
+    direction: 'in' as const,
+    body: 'hi',
+    providerId: INBOUND_SID,
+    at: FIRST_TEXT_AT.toISOString(),
+  },
+];
 
 function dataBlob(
   transcript: Array<{
@@ -71,8 +88,9 @@ function seedSession(
     phoneEncrypted: encryptString(phoneE164),
     state: over.state ?? 'awaiting_details',
     sourceCode: over.sourceCode === undefined ? null : over.sourceCode,
-    dataEncrypted: dataBlob(over.transcript ?? []),
-    createdAt: over.createdAt ?? SAME_DAY_NOON_ET,
+    dataEncrypted: dataBlob(over.transcript ?? FIRST_TEXT),
+    createdAt: over.createdAt ?? FIRST_TEXT_AT,
+    updatedAt: over.createdAt ?? FIRST_TEXT_AT,
     lastProviderId: over.lastProviderId === undefined ? INBOUND_SID : over.lastProviderId,
     firstReplyRecoveredAt:
       over.firstReplyRecoveredAt === undefined ? null : over.firstReplyRecoveredAt,
@@ -86,7 +104,11 @@ function seedSession(
 }
 
 function deps(transport: FakeTransport): FirstReplyRecoveryDeps {
-  return { transport };
+  return {
+    transport,
+    limiter: new FakeRateLimiter(() => SAME_DAY_NOON_ET.getTime()),
+    preflight: async () => ({ proceed: true, health: null }),
+  };
 }
 
 describe('firstReplyRecoveryEligible', () => {
@@ -96,11 +118,21 @@ describe('firstReplyRecoveryEligible', () => {
     firstReplyRecoveredAt: null,
     familyId: null,
     lastProviderId: INBOUND_SID,
+    hasInbound: true,
     hasOutbound: false,
   };
 
-  it('accepts awaiting_details + SID + no outbound', () => {
+  it('accepts awaiting_details + SID + an inbound and no outbound', () => {
     expect(firstReplyRecoveryEligible(open)).toBe(true);
+  });
+
+  it('accepts the states an opening turn can leave, so a silent turn stays owed', () => {
+    expect(firstReplyRecoveryEligible({ ...open, state: 'awaiting_place' })).toBe(true);
+    expect(firstReplyRecoveryEligible({ ...open, state: 'awaiting_ages' })).toBe(true);
+  });
+
+  it('refuses a session whose inbound is not on the transcript yet', () => {
+    expect(firstReplyRecoveryEligible({ ...open, hasInbound: false })).toBe(false);
   });
 
   it('refuses a session that already has outbound', () => {
@@ -127,6 +159,7 @@ describe('runFirstReplyRecoveryCron', () => {
   });
   afterEach(() => {
     process.env.APP_ENCRYPTION_KEY = '';
+    vi.unstubAllEnvs();
   });
 
   it('sends the locked first-hello once for a session with SID and no outbound', async () => {
@@ -135,7 +168,7 @@ describe('runFirstReplyRecoveryCron', () => {
     seedSession(fake);
 
     const first = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
-    expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0 });
+    expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0, deferred: 0 });
     expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
     expect(transport.bodies()[0]).not.toBe(HALE_GREETING_EN);
     expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
@@ -193,7 +226,7 @@ describe('runFirstReplyRecoveryCron', () => {
     await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
     const second = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
 
-    expect(second).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });
+    expect(second).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0, deferred: 0 });
     expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
   });
 
@@ -226,8 +259,136 @@ describe('runFirstReplyRecoveryCron', () => {
     });
   });
 
+  it('does not send or claim during quiet hours', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    // 9:30 p.m. America/Toronto, inside 21:00–08:00. The text is an hour old.
+    const quiet = new Date('2026-08-29T01:30:00.000Z');
+    const textAt = new Date(quiet.getTime() - 60 * 60_000);
+    const id = seedSession(fake, {
+      createdAt: textAt,
+      transcript: [
+        { direction: 'in', body: 'hi', providerId: INBOUND_SID, at: textAt.toISOString() },
+      ],
+    });
+
+    const result = await runFirstReplyRecoveryCron(fake.db, deps(transport), quiet);
+
+    expect(firstReplyRecoveryQuiet(quiet)).toBe(true);
+    expect(result).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0, deferred: 0 });
+    expect(transport.bodies()).toEqual([]);
+    expect(fake.rows(schema.smsIntakeSessions).find((row) => row.id === id)).toMatchObject({
+      firstReplyRecoveredAt: null,
+    });
+  });
+
+  it('sends once on the first tick after quiet hours, and not on the tick before', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    // 8:30 p.m., before the window. 7:59 a.m. is still quiet; 8:00 a.m. is the first open minute.
+    const textAt = new Date('2026-08-29T00:30:00.000Z');
+    const stillQuiet = new Date('2026-08-29T11:59:00.000Z');
+    const open = new Date('2026-08-29T12:00:00.000Z');
+    seedSession(fake, {
+      createdAt: textAt,
+      transcript: [
+        { direction: 'in', body: 'hi', providerId: INBOUND_SID, at: textAt.toISOString() },
+      ],
+    });
+
+    const held = await runFirstReplyRecoveryCron(fake.db, deps(transport), stillQuiet);
+    expect(firstReplyRecoveryQuiet(stillQuiet)).toBe(true);
+    expect(held.sent).toBe(0);
+    expect(transport.bodies()).toEqual([]);
+    expect(fake.rows(schema.smsIntakeSessions)[0]?.firstReplyRecoveredAt).toBeNull();
+
+    const morning = await runFirstReplyRecoveryCron(fake.db, deps(transport), open);
+    expect(firstReplyRecoveryQuiet(open)).toBe(false);
+    expect(morning).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0, deferred: 0 });
+    expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
+    expect(fake.rows(schema.smsIntakeSessions)[0]?.firstReplyRecoveredAt).toEqual(open);
+  });
+
+  it('answers an 11:30 p.m. text the next morning, still inside the 24h window', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    /** 11:30 p.m. America/Toronto, Fri 28 Aug 2026. */
+    const late = new Date('2026-08-29T03:30:00.000Z');
+    /** 8:00 a.m. the next morning, when quiet hours end. */
+    const morning = new Date('2026-08-29T12:00:00.000Z');
+    seedSession(fake, {
+      createdAt: late,
+      transcript: [
+        { direction: 'in', body: 'hi', providerId: INBOUND_SID, at: late.toISOString() },
+      ],
+    });
+
+    const night = await runFirstReplyRecoveryCron(
+      fake.db,
+      deps(transport),
+      new Date(late.getTime() + 3 * 60_000),
+    );
+    expect(night.sent).toBe(0);
+    expect(fake.rows(schema.smsIntakeSessions)[0]?.firstReplyRecoveredAt).toBeNull();
+
+    const answered = await runFirstReplyRecoveryCron(fake.db, deps(transport), morning);
+    expect(answered).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0, deferred: 0 });
+    expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
+  });
+
+  it('puts the elapsed wait on the model brief, and leaves a two-minute text unmarked', async () => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    const inputs: FriendVoiceInput[] = [];
+    const voice: FriendVoiceComposer = {
+      async compose(input) {
+        inputs.push(input);
+        return { reply: "Hey, it's Hale. What's your postal code?" };
+      },
+    };
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    const hoursAgo = new Date(SAME_DAY_NOON_ET.getTime() - 4 * 3_600_000);
+    const twoMinutesAgo = new Date(SAME_DAY_NOON_ET.getTime() - 2 * 60_000);
+    seedSession(fake, {
+      createdAt: hoursAgo,
+      transcript: [
+        {
+          direction: 'in',
+          body: 'evening plans',
+          providerId: INBOUND_SID,
+          at: hoursAgo.toISOString(),
+        },
+      ],
+    });
+    seedSession(fake, {
+      phoneE164: OTHER,
+      createdAt: twoMinutesAgo,
+      transcript: [
+        {
+          direction: 'in',
+          body: 'just hi',
+          providerId: INBOUND_SID,
+          at: twoMinutesAgo.toISOString(),
+        },
+      ],
+    });
+
+    await runFirstReplyRecoveryCron(
+      fake.db,
+      { ...deps(transport), friendVoice: voice },
+      SAME_DAY_NOON_ET,
+    );
+
+    const byWords = new Map(inputs.map((input) => [input.parentWords, friendVoiceContext(input)]));
+    expect(byWords.get('evening plans')).toMatchObject({
+      lastInbound: { minutesAgo: 240, overnight: false, yesterday: false },
+    });
+    expect(byWords.get('just hi')).not.toHaveProperty('lastInbound');
+    expect(transport.sent).toHaveLength(2);
+  });
+
   it('wires the shared outbound leg into the default deps', async () => {
-    const { transport } = defaultFirstReplyRecoveryDeps();
+    const { transport } = firstReplyRecoveryDeps(makeFakeDb().db);
     vi.stubEnv('LINQ_API_KEY', '');
     vi.stubEnv('LINQ_FROM_E164', '');
     await expect(transport.send({ to: PHONE, body: greeting(null, 'en') })).rejects.toThrow(

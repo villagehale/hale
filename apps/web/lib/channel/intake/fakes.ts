@@ -300,6 +300,10 @@ function evaluate(tokens: WhereToken[], row: Record<string, unknown>): boolean {
   if (right?.kind !== 'value') throw new Error(`fake where: unsupported operator ${operator.text}`);
   if (operator.text === '=') return sameValue(value, right.value);
   if (operator.text === '<>') return !sameValue(value, right.value);
+  if (value instanceof Date && right.value instanceof Date) {
+    if (operator.text === '>=') return value.getTime() >= right.value.getTime();
+    if (operator.text === '<=') return value.getTime() <= right.value.getTime();
+  }
   throw new Error(`fake where: unsupported operator ${operator.text}`);
 }
 

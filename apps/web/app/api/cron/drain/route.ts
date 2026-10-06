@@ -1,4 +1,5 @@
 import { NextResponse, after } from 'next/server';
+import type { FirstReplyRecoveryResult } from '~/lib/channel/intake/first-reply-recovery';
 import { cronRoute } from '~/lib/cron/auth';
 import { DRAINABLE_QUEUES, isConnectionExhaustion, runDrainCron } from '~/lib/cron/drain';
 import { socialWatchlistEnabled } from '~/lib/social/flag';
@@ -66,6 +67,13 @@ export const GET = cronRoute('drain', async (req: Request) => {
     return NextResponse.json({ ok: true, kicked: true, queues }, { status: 202 });
   }
 
+  // A new parent whose first text got no reply is owed one within minutes, not at the
+  // next hourly slot, so the scheduled drain runs the first-reply sweep every minute.
+  // BEFORE the queues: it is one indexed read on almost every tick, it must not wait out
+  // a backlogged drain, and its own budget (FIRST_REPLY_RECOVERY_BUDGET_MS) fits inside
+  // the headroom the drain's wall budget leaves. A kicked run does not take it. A failed
+  // leg is named and the drain still runs.
+  const firstReply = await runFirstReplyLeg();
   try {
     const summary = await runDrainCron({ queues });
     // Signup-open watches need a tick inside two minutes of registration_opens_at.
@@ -85,7 +93,7 @@ export const GET = cronRoute('drain', async (req: Request) => {
         socialSignup = { skipped: 'tick_failed' };
       }
     }
-    return NextResponse.json({ ok: true, ...summary, socialSignup }, { status: 200 });
+    return NextResponse.json({ ok: true, ...summary, socialSignup, firstReply }, { status: 200 });
   } catch (err) {
     // Surface the failure instead of letting it 500 silently: log to the
     // platform, then re-throw so the run is still a real error, not a masked
@@ -105,3 +113,17 @@ export const GET = cronRoute('drain', async (req: Request) => {
     await flushTelemetry();
   }
 });
+
+async function runFirstReplyLeg(): Promise<FirstReplyRecoveryResult | { skipped: 'tick_failed' }> {
+  try {
+    const { firstReplyRecoveryDeps, runFirstReplyRecoveryCron } = await import(
+      '~/lib/channel/intake/first-reply-recovery'
+    );
+    const { db } = await import('~/lib/db');
+    const database = db();
+    return await runFirstReplyRecoveryCron(database, firstReplyRecoveryDeps(database));
+  } catch (err) {
+    console.error({ err, skipped: 'tick_failed' }, 'cron/drain first-reply leg failed');
+    return { skipped: 'tick_failed' };
+  }
+}

@@ -4,7 +4,12 @@ import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { SITTING_SESSION_REMINDER } from '~/lib/channel/intake/copy';
 import { type FriendVoiceComposer, speakFriend } from '~/lib/channel/intake/friend-voice';
 import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
-import { appendTranscript, loadOpenSession, saveSession } from '~/lib/channel/intake/session';
+import {
+  type IntakeSession,
+  appendTranscript,
+  loadOpenSession,
+  saveSession,
+} from '~/lib/channel/intake/session';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { PROACTIVE_QUIET_HOURS } from '~/lib/channel/outbound-gate';
 import {
@@ -309,6 +314,16 @@ async function recordSittingReminderOutbound(
   );
 }
 
+/**
+ * After provisioning, a parent's reply is ledgered on channel_messages rather than the
+ * transcript, and moves last_provider_id past the transcript's last inbound — the text
+ * that provisioned them.
+ */
+function repliedSinceFind(session: IntakeSession): boolean {
+  const lastInbound = [...session.transcript].reverse().find((entry) => entry.direction === 'in');
+  return (lastInbound?.providerId ?? null) !== session.lastProviderId;
+}
+
 async function firstTouchNudgeBody(
   database: Database,
   phoneE164: string,
@@ -318,8 +333,11 @@ async function firstTouchNudgeBody(
   const session = await loadOpenSession(database, phoneE164);
   const language = session?.ladderLanguage ?? session?.firstTouch?.language ?? 'en';
   const cold = session?.firstTouch?.coldStart ?? null;
-  // Null keeps the claim. Empty releases it so a missed model reply can retry.
-  if (state === 'awaiting_cold_start' && (!cold || cold.step !== 'pick')) return null;
+  // Null keeps the claim: there is no find to nudge about, or they already answered it.
+  // Empty releases it so a missed model reply can retry the next morning.
+  if (state === 'awaiting_cold_start' && (!session || !cold || repliedSinceFind(session))) {
+    return null;
+  }
   const findLines =
     state === 'awaiting_cold_start' && cold
       ? cold.findBody
