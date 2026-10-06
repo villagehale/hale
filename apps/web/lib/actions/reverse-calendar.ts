@@ -1,9 +1,12 @@
-import { and, eq, isNull } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
-import type { CalendarInviteReport, CalendarInviteRequest } from '@hale/worker/executor';
 import type { ActionType } from '@hale/types';
+import type { CalendarInviteReport, CalendarInviteRequest } from '@hale/worker/executor';
+import type { GoogleCalendarSyncReport } from '@hale/worker/google-calendar-placement';
+import { and, eq, isNull } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { productionChannels } from '~/lib/channel/adapters/production';
+import { createGoogleCalendarPlacement } from '~/lib/integrations/google-calendar-placement';
+import { googleWriteScopesEnabled } from '~/lib/integrations/google-write-flag';
 import { createCalendarInviteSender } from '~/lib/loop/calendar-invite';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
 import { productionCalendarVoice } from '~/lib/loop/voice/calendar-invite-voice';
@@ -19,7 +22,12 @@ export { UNDO_WINDOW_HOURS };
 export type WithdrawInvites = (request: CalendarInviteRequest) => Promise<CalendarInviteReport>;
 
 export type ReverseResult =
-  | { status: 200; familyEventId: string; invites: CalendarInviteReport }
+  | {
+      status: 200;
+      familyEventId: string;
+      invites: CalendarInviteReport;
+      google: GoogleCalendarSyncReport;
+    }
   | { status: 403; error: string }
   | { status: 404; error: string }
   | { status: 409; error: string };
@@ -62,11 +70,23 @@ export async function reverseExecutedCalendarAction(
     now?: Date;
     capture?: typeof captureServerEvent;
     withdrawInvites?: WithdrawInvites;
+    /** Deletes the Google event Hale created, when the flag and the scope allow it. */
+    googleCalendar?: {
+      sync: (request: {
+        familyId: string;
+        familyEventId: string;
+        op: 'delete';
+        actorUserId: string | null;
+      }) => Promise<GoogleCalendarSyncReport>;
+    };
   },
 ): Promise<ReverseResult> {
   const now = args.now ?? new Date();
   const capture = args.capture ?? captureServerEvent;
   const withdrawInvites = args.withdrawInvites ?? defaultWithdrawInvites(database);
+  const googleCalendar =
+    args.googleCalendar ??
+    (googleWriteScopesEnabled() ? createGoogleCalendarPlacement(database) : null);
 
   const rows = await database
     .select({
@@ -152,6 +172,22 @@ export async function reverseExecutedCalendarAction(
     return { status: 'errored', message } as const;
   });
 
+  const google = googleCalendar
+    ? await googleCalendar
+        .sync({
+          familyId: args.familyId,
+          familyEventId: handle,
+          op: 'delete',
+          actorUserId: args.revertedBy,
+        })
+        .catch((err: unknown) => {
+          console.error('google calendar undo failed (undo already committed)', {
+            status: err instanceof Error ? err.name : 'unknown',
+          });
+          return { status: 'failed', reason: 'google_error' } as const;
+        })
+    : ({ status: 'skipped', reason: 'flag_off' } as const);
+
   // X1 (VIL-227): fired only after the reversal transaction commits — an aborted
   // undo (a throw inside the tx) never emits it. Best-effort: a telemetry hiccup
   // must not turn an already-committed undo into a thrown error for the caller.
@@ -161,7 +197,7 @@ export async function reverseExecutedCalendarAction(
     });
   });
 
-  return { status: 200, familyEventId: handle, invites };
+  return { status: 200, familyEventId: handle, invites, google };
 }
 
 /** The real withdrawal: the same dispatch-backed sender the executor is given, so an

@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
 import type { ActionType } from '@hale/types';
-import { executeApprovedAction, type ExecuteApprovedDeps } from './index.js';
+import { describe, expect, it, vi } from 'vitest';
+import { type ExecuteApprovedDeps, executeApprovedAction } from './index.js';
 
 /**
  * Definition-of-done box 3, worker half: human-approve → execute. These are
@@ -118,6 +118,21 @@ describe('executeApprovedAction', () => {
     await executeApprovedAction({ actionId: ACTION, familyId: FAMILY, approvedBy: APPROVER }, deps);
 
     expect(deps.execute.mock.calls[0]?.[4]).toBe(calendarInvites);
+    expect(deps.execute.mock.calls[0]?.[6]).toBe(APPROVER);
+  });
+
+  it('hands the executor the caller\u2019s Google Calendar port and the approving parent (VIL-93)', async () => {
+    const googleCalendar = {
+      sync: async () => ({ status: 'skipped' as const, reason: 'flag_off' as const }),
+    };
+    const deps = { ...makeDeps(), googleCalendar } as never as Parameters<
+      typeof executeApprovedAction
+    >[1] & { execute: ReturnType<typeof vi.fn> };
+
+    await executeApprovedAction({ actionId: ACTION, familyId: FAMILY, approvedBy: APPROVER }, deps);
+
+    expect(deps.execute.mock.calls[0]?.[5]).toBe(googleCalendar);
+    expect(deps.execute.mock.calls[0]?.[6]).toBe(APPROVER);
   });
 
   it('drops (no execution) when the action is not in drafted_for_approval', async () => {

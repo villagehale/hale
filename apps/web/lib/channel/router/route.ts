@@ -15,6 +15,7 @@ import {
 import { readAffirmative } from '~/lib/channel/affirmative';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
+import { isGmailDraftNoticeUnsent } from '~/lib/channel/coach/gmail-draft-notice';
 import {
   CALL_TIMEOUT_MS,
   GATE_TIMEOUT,
@@ -1957,6 +1958,18 @@ async function disposeOfFailedTurn(
       reply: null,
       reason: 'broke_after_answering',
       log: { brokeAfterAnswering: true },
+    };
+  }
+
+  // The draft notice is the only sentence this turn was allowed to send. It could
+  // not be composed, so the parent hears nothing — a stock apology would be the
+  // canned line this path exists to avoid — and #ops is paged by the caller.
+  if (isGmailDraftNoticeUnsent(err)) {
+    return {
+      outcome: 'agent_failed',
+      reply: null,
+      reason: 'notice_unsent',
+      log: { gmailDraftNoticeUnsent: true },
     };
   }
 

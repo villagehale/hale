@@ -35,6 +35,7 @@ import {
   ensurePushWatchAfterConnect,
   googleJsonClient,
 } from '~/lib/integrations/google-push-runtime';
+import { grantedWriteScopesAllowed } from '~/lib/integrations/google-write-flag';
 import { otherParentHoldsGoogleAccount, saveConnection } from '~/lib/integrations/store';
 
 // Node runtime: node:crypto (state verify), fetch (token exchange), Drizzle.
@@ -192,12 +193,14 @@ export async function GET(req: NextRequest) {
     // one would silently hold power we never asked the parent to consent to).
     const scopes = (tokens.scope ?? '').split(' ').filter(Boolean);
     const expected = CONNECTOR_SCOPES[bound.provider];
-    // Profile is optional. Calendar-only (or mail-only, files-only) still connects.
-    // Anything outside the connector scopes plus that one profile scope is broader
-    // than what we asked, and is stored nowhere.
+    // Profile is optional. The two write scopes are optional too, and only when
+    // the flag asked for them: a parent who deselects calendar.events still
+    // connects, and a grant that carries them while the flag is off is broader
+    // than what we asked and is stored nowhere. gmail.send is never in this set.
     const allowed = new Set<string>([
       ...Object.values(CONNECTOR_SCOPES).flat(),
       GOOGLE_PROFILE_SCOPE,
+      ...grantedWriteScopesAllowed(),
     ]);
     const grantedOk =
       expected.every((sc) => scopes.includes(sc)) && scopes.every((sc) => allowed.has(sc));

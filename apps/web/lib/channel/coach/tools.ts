@@ -14,10 +14,16 @@ import { type SpotWatchPorts, watchForOpeningTool } from '~/lib/channel/spots/to
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { EXAMPLE_CHILD_ID, type OfferedCandidate } from '~/lib/coach/tools';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { googleWriteScopesEnabled } from '~/lib/integrations/google-write-flag';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
+import {
+  type GmailDraftNoticeBox,
+  type GmailDraftToolPorts,
+  prepareGmailDraftTool,
+} from './gmail-draft-tool';
 import { WEEKDAYS, weekdayOf, weekdayViolation } from './weekday';
 
 /**
@@ -249,6 +255,13 @@ export interface ChannelCoachToolArgs {
    * watch (rule #11).
    */
   onWatch?: (watch: SpotWatchIntent) => void;
+  /**
+   * Gmail drafts (VIL-93). Both halves travel together: a verb whose notice nobody
+   * collects would tell the parent a draft exists and then text them the model's
+   * own sentence instead. Absent in a test that is not exercising it.
+   */
+  gmailDrafts?: GmailDraftToolPorts;
+  onGmailNotice?: (box: GmailDraftNoticeBox) => void;
   now: Date;
 }
 
@@ -731,6 +744,11 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   // handler throws and the sweep's own gate, never a verb that quietly went missing.
   if (args.spots && args.onWatch) {
     tools.push(watchForOpeningTool({ ...args.spots, onWatch: args.onWatch }));
+  }
+  // Off in production, so the skill file the evals cache stays byte-identical.
+  // Preview sets the flag; loadSkill adds the same name to the allowlist.
+  if (args.gmailDrafts && args.onGmailNotice && googleWriteScopesEnabled()) {
+    tools.push(prepareGmailDraftTool(args.gmailDrafts, args.onGmailNotice));
   }
   return tools;
 }

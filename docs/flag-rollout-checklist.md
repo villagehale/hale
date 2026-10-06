@@ -56,6 +56,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `FOLLOWUP_ASKS_ENABLED` | `true` | off | `false` | Noah |
 | `GOING_COUNT_ENABLED` | `true` | off | `false` | Noah |
 | `GOOGLE_PUSH_SYNC_ENABLED` | `true` | off | `false` | Noah |
+| `GOOGLE_WRITE_SCOPES_ENABLED` | `true` | off | unset, or anything except `true` | Noah |
 | `IMESSAGE_UPGRADE_ASK` | `on` | off | empty, or `off` | Sloane |
 | `LINQ_GROUP_MEMBERS_ENABLED` | `true` | off | `false` | Noah |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | `true` | off | `false` | Noah |
@@ -177,6 +178,7 @@ These stay off for the first families. The kill value is in the inventory table.
 - `SOCIAL_WATCHLIST`: the watchlist poll stays off.
 - `VILLAGE_INTROS_ENABLED`: cross-household intros stay off. A non-empty allowlist narrows the flag. It does not add families while the flag is off.
 - `IMESSAGE_UPGRADE_ASK`: the later year-retention ask stays off.
+- `GOOGLE_WRITE_SCOPES_ENABLED`: off in production. On in the Vercel Preview environment only, so a Google OAuth verification demo can request `calendar.events` and `gmail.compose`. Flip it in production only after Google verification approves those scopes. While it is off, the consent URL is the readonly scopes parents already granted, and a placement still writes `family_events` and sends the iTIP invite.
 
 ## First five families
 

@@ -44,10 +44,10 @@ export type TurnStage =
 /**
  * WHY A TURN THAT ANSWERED WAS STILL A FAILURE.
  *
- * These are the four ways `disposeOfFailedTurn` can put words in front of a parent
- * without the coach having worked. They are DATA — they land in an audit row a PIPEDA
- * export renders — so they are snake_case enums that outlive the identifiers around
- * them.
+ * These are the ways `disposeOfFailedTurn` can put words in front of a parent
+ * without the coach having worked, plus a notice that was composed and then
+ * withheld. They are DATA — they land in an audit row a PIPEDA export renders —
+ * so they are snake_case enums that outlive the identifiers around them.
  */
 export type TurnFailureReason =
   /** The turn texted the parent and then broke on its own bookkeeping. They have their
@@ -61,7 +61,9 @@ export type TurnFailureReason =
   | 'apology_sent'
   /** The provider was gone AND the text named an emergency, so the fixed safety line
    * went out with no model in the loop (smoke-alarm.ts). */
-  | 'smoke_alarm';
+  | 'smoke_alarm'
+  /** A Gmail draft notice could not be composed. Nothing was texted. #ops is paged. */
+  | 'notice_unsent';
 
 /**
  * What became of an ANSWERED claim. 'already_answered' means another attempt's claim

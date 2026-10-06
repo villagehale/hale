@@ -35,6 +35,7 @@ import {
   defaultExecutorDeps,
   runExecutor,
 } from '../services/executor.js';
+import type { GoogleCalendarPlacement } from '../services/google-calendar-placement.js';
 import {
   getMemorySlice,
   hasAutonomousActionOptIn,
@@ -226,17 +227,25 @@ async function noteUnenforcedCeiling(input: {
  */
 export interface OrchestratorOptions {
   calendarInvites?: CalendarInviteSender;
+  /** Google Calendar writes for a placement. Unbound, the executor names the skip. */
+  googleCalendar?: GoogleCalendarPlacement;
 }
 
 /**
- * The executor deps with an injected invite sender folded in. UNDEFINED when the
- * caller has none, so the executor resolves its own defaults (including the unwired
- * sender that names itself) rather than this module deciding for it.
+ * The executor deps with the web-bound ports folded in. UNDEFINED when the caller
+ * has neither, so the executor resolves its own defaults (including the unwired
+ * sender and the unwired Google port) rather than this module deciding for it.
  */
-function executorDeps(calendarInvites?: CalendarInviteSender): ExecutorDeps | undefined {
-  return calendarInvites
-    ? { ...defaultExecutorDeps(), sendCalendarInvites: calendarInvites }
-    : undefined;
+function executorDeps(
+  calendarInvites?: CalendarInviteSender,
+  googleCalendar?: GoogleCalendarPlacement,
+): ExecutorDeps | undefined {
+  if (!calendarInvites && !googleCalendar) return undefined;
+  return {
+    ...defaultExecutorDeps(),
+    ...(calendarInvites ? { sendCalendarInvites: calendarInvites } : {}),
+    ...(googleCalendar ? { googleCalendar } : {}),
+  };
 }
 
 export async function runOrchestrator(
@@ -274,7 +283,13 @@ export async function runOrchestrator(
   // persisted teen_content, so an autonomous-eligible teen-content action that
   // crashed at the checkpoint is still capped on resume (never reaches executor).
   if (resume && resume.status === 'approved_pending_execute') {
-    await resumeIntoExecutor(familyId, resume.eventId, resume.teenContent, opts.calendarInvites);
+    await resumeIntoExecutor(
+      familyId,
+      resume.eventId,
+      resume.teenContent,
+      opts.calendarInvites,
+      opts.googleCalendar,
+    );
     return;
   }
 
@@ -361,13 +376,13 @@ export async function runOrchestrator(
       : skipEndedCalendar
         ? classifyEndedCalendarItem(job)
         : await runClassifier({
-          familyId,
-          source: job.source,
-          payload: job.payload,
-          childNames,
-          stages,
-          familyContextSlice: familyContext.contextSlice,
-        });
+            familyId,
+            source: job.source,
+            payload: job.payload,
+            childNames,
+            stages,
+            familyContextSlice: familyContext.contextSlice,
+          });
     // Child attribution: trust the classifier's concerns_child_id ONLY if it
     // names a real child of this family — a hallucinated or stale id is dropped
     // to null rather than written as a dangling reference. events.child_id is
@@ -778,7 +793,15 @@ export async function runOrchestrator(
   // FIX 1: the resumable pre-executor checkpoint. A crash after this and before
   // recordExecution leaves the event here; the redelivery re-drives the executor.
   await markEventStage(familyId, eventId, 'approved_pending_execute');
-  await executeAndRecord(familyId, eventId, actionId, approved, opts.calendarInvites);
+  await executeAndRecord(
+    familyId,
+    eventId,
+    actionId,
+    approved,
+    opts.calendarInvites,
+    opts.googleCalendar,
+    null,
+  );
 }
 
 /**
@@ -794,9 +817,14 @@ async function executeAndRecord(
   actionId: string,
   approved: ApprovedAction,
   calendarInvites?: CalendarInviteSender,
+  googleCalendar?: GoogleCalendarPlacement,
+  actorUserId?: string | null,
 ): Promise<void> {
   try {
-    const execution = await runExecutor({ familyId, approved }, executorDeps(calendarInvites));
+    const execution = await runExecutor(
+      { familyId, approved, actorUserId: actorUserId ?? null },
+      executorDeps(calendarInvites, googleCalendar),
+    );
     await recordExecution({ actionId, result: execution.detail, ok: execution.ok });
     await markEventStage(familyId, eventId, execution.ok ? 'actioned' : 'failed');
     logger.info({ familyId, actionId, ok: execution.ok }, 'orchestrator: action executed');
@@ -825,6 +853,7 @@ async function resumeIntoExecutor(
   eventId: string,
   teenContent: boolean,
   calendarInvites?: CalendarInviteSender,
+  googleCalendar?: GoogleCalendarPlacement,
 ): Promise<void> {
   const existing = await loadActionForEvent(eventId);
   if (!existing) {
@@ -874,7 +903,15 @@ async function resumeIntoExecutor(
     'orchestrator: resuming approved_pending_execute into executor',
   );
   const approved = mintApprovedAction(draft, verdict, coverageSatisfiedWithResults);
-  await executeAndRecord(familyId, eventId, existing.actionId, approved, calendarInvites);
+  await executeAndRecord(
+    familyId,
+    eventId,
+    existing.actionId,
+    approved,
+    calendarInvites,
+    googleCalendar,
+    null,
+  );
 }
 
 /**
@@ -887,6 +924,8 @@ export interface ExecuteApprovedDeps {
   /** The web-bound invite sender, threaded to the executor. Absent ⇒ the executor's
    * own {@link unwiredCalendarInvites}, which names itself in the execution detail. */
   calendarInvites?: CalendarInviteSender;
+  /** Google Calendar writes. Absent ⇒ the executor's unwired port (`not_configured`). */
+  googleCalendar?: GoogleCalendarPlacement;
   loadConsent: typeof loadCrossParentConsent;
   recordApproval: typeof recordHumanApproval;
   recordGate: typeof recordActionGate;
@@ -1024,5 +1063,13 @@ export async function executeApprovedAction(
       'actions.approved: human-approved action driving into execution',
     );
   }
-  await deps.execute(familyId, action.eventId, actionId, approved, deps.calendarInvites);
+  await deps.execute(
+    familyId,
+    action.eventId,
+    actionId,
+    approved,
+    deps.calendarInvites,
+    deps.googleCalendar,
+    approvedBy,
+  );
 }

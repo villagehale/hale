@@ -75,7 +75,10 @@ function makeClaimStore() {
     addToDigest: vi.fn(async () => 'written' as const),
     addToCalendar: vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'unset' })),
     moveCalendarEvent: vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'unset' })),
-    cancelCalendarEvent: vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'unset' })),
+    cancelCalendarEvent: vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'unset',
+    })),
     sendCalendarInvites: {
       send: vi.fn(
         async (): Promise<CalendarInviteReport> => ({
@@ -383,6 +386,7 @@ describe('runExecutor — calendar placements (VIL-219, internal-write)', () => 
       outcome: 'written',
       reversalHandle: 'fe-123',
       invites: { status: 'reported', parents: [], ask: 'not_needed' },
+      google: { status: 'skipped', reason: 'not_configured' },
     });
     expect(result.reversalHandle).toBeUndefined();
     expect(result.reversible).toBe(true);
@@ -390,9 +394,15 @@ describe('runExecutor — calendar placements (VIL-219, internal-write)', () => 
 
   it('calendar_add stamps sensitive=true when the payload is privacy-sensitive (VIL-223)', async () => {
     const { deps } = makeClaimStore();
-    deps.addToCalendar = vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'fe-1' }));
+    deps.addToCalendar = vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'fe-1',
+    }));
     await runExecutor(
-      { familyId, approved: approvedPlacement('calendar_add', { ...ADD_PAYLOAD, privacySensitive: true }) },
+      {
+        familyId,
+        approved: approvedPlacement('calendar_add', { ...ADD_PAYLOAD, privacySensitive: true }),
+      },
       deps,
     );
     expect(deps.addToCalendar).toHaveBeenCalledWith(expect.objectContaining({ sensitive: true }));
@@ -402,7 +412,10 @@ describe('runExecutor — calendar placements (VIL-219, internal-write)', () => 
     const { deps } = makeClaimStore();
     await expect(
       runExecutor(
-        { familyId, approved: approvedPlacement('calendar_add', { startsAt: '2026-07-10T14:00:00Z' }) },
+        {
+          familyId,
+          approved: approvedPlacement('calendar_add', { startsAt: '2026-07-10T14:00:00Z' }),
+        },
         deps,
       ),
     ).rejects.toThrow(/missing required field \(title\)/);
@@ -463,10 +476,7 @@ describe('runExecutor — calendar placements (VIL-219, internal-write)', () => 
   it('calendar_move/cancel throw when the reversal handle is missing', async () => {
     const { deps } = makeClaimStore();
     await expect(
-      runExecutor(
-        { familyId, approved: approvedPlacement('calendar_cancel', {}) },
-        deps,
-      ),
+      runExecutor({ familyId, approved: approvedPlacement('calendar_cancel', {}) }, deps),
     ).rejects.toThrow(/missing required field \(reversalHandle\)/);
     expect(deps.cancelCalendarEvent).not.toHaveBeenCalled();
   });
@@ -561,7 +571,10 @@ describe('runExecutor — the calendar invite each placement sends (VIL-249)', (
 
   it('invites on calendar_add, addressed to the row that was just written', async () => {
     const { deps } = makeClaimStore();
-    deps.addToCalendar = vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'fe-77' }));
+    deps.addToCalendar = vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'fe-77',
+    }));
     const { requests, sender } = inviteSender(TWO_PARENTS);
     deps.sendCalendarInvites = sender;
 
@@ -601,12 +614,18 @@ describe('runExecutor — the calendar invite each placement sends (VIL-249)', (
 
   it('re-invites on calendar_move (a REQUEST at a higher revision supersedes in place)', async () => {
     const { deps } = makeClaimStore();
-    deps.moveCalendarEvent = vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'fe-9' }));
+    deps.moveCalendarEvent = vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'fe-9',
+    }));
     const { requests, sender } = inviteSender(TWO_PARENTS);
     deps.sendCalendarInvites = sender;
 
     await runExecutor(
-      { familyId, approved: approvedPlacement('calendar_move', { ...ADD, reversalHandle: 'fe-9' }) },
+      {
+        familyId,
+        approved: approvedPlacement('calendar_move', { ...ADD, reversalHandle: 'fe-9' }),
+      },
       deps,
     );
 
@@ -615,8 +634,15 @@ describe('runExecutor — the calendar invite each placement sends (VIL-249)', (
 
   it('WITHDRAWS on calendar_cancel — the iTIP CANCEL, not another invite', async () => {
     const { deps } = makeClaimStore();
-    deps.cancelCalendarEvent = vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'fe-5' }));
-    const { requests, sender } = inviteSender({ status: 'reported', parents: [], ask: 'not_needed' });
+    deps.cancelCalendarEvent = vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'fe-5',
+    }));
+    const { requests, sender } = inviteSender({
+      status: 'reported',
+      parents: [],
+      ask: 'not_needed',
+    });
     deps.sendCalendarInvites = sender;
 
     const result = await runExecutor(
@@ -630,7 +656,10 @@ describe('runExecutor — the calendar invite each placement sends (VIL-249)', (
 
   it('names an unbound sender as not_configured rather than reporting a clean placement', async () => {
     const { deps } = makeClaimStore();
-    deps.addToCalendar = vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'fe-1' }));
+    deps.addToCalendar = vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'fe-1',
+    }));
     deps.sendCalendarInvites = unwiredCalendarInvites;
 
     const result = await runExecutor(
@@ -644,7 +673,10 @@ describe('runExecutor — the calendar invite each placement sends (VIL-249)', (
 
   it('keeps the placement when the invite send throws, and names the failure', async () => {
     const { deps } = makeClaimStore();
-    deps.addToCalendar = vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'fe-2' }));
+    deps.addToCalendar = vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'fe-2',
+    }));
     deps.sendCalendarInvites = {
       send: async () => {
         throw new Error('dispatch exploded');
@@ -662,6 +694,127 @@ describe('runExecutor — the calendar invite each placement sends (VIL-249)', (
       kind: 'calendar_placed',
       reversalHandle: 'fe-2',
       invites: { status: 'errored', message: 'dispatch exploded' },
+    });
+  });
+});
+
+describe('runExecutor — Google Calendar alongside the placement (VIL-93)', () => {
+  const ADD = {
+    title: 'Swim class',
+    startsAt: '2026-07-10T14:00:00Z',
+    endsAt: '2026-07-10T14:45:00Z',
+  };
+
+  it('asks Google to create, move, and cancel the same family event', async () => {
+    const calls: string[] = [];
+    const { deps } = makeClaimStore();
+    deps.addToCalendar = vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'fe-1',
+    }));
+    deps.moveCalendarEvent = vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'fe-1',
+    }));
+    deps.cancelCalendarEvent = vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'fe-1',
+    }));
+    deps.googleCalendar = {
+      sync: async (request) => {
+        calls.push(request.op);
+        expect(request.actorUserId).toBe('parent-a');
+        expect(request.familyEventId).toBe('fe-1');
+        return { status: 'written', googleEventId: 'g-1' };
+      },
+    };
+
+    const add = await runExecutor(
+      { familyId, approved: approvedPlacement('calendar_add', ADD), actorUserId: 'parent-a' },
+      deps,
+    );
+    const move = await runExecutor(
+      {
+        familyId,
+        approved: approvedPlacement('calendar_move', {
+          reversalHandle: 'fe-1',
+          startsAt: '2026-07-11T14:00:00Z',
+        }),
+        actorUserId: 'parent-a',
+      },
+      deps,
+    );
+    const cancel = await runExecutor(
+      {
+        familyId,
+        approved: approvedPlacement('calendar_cancel', { reversalHandle: 'fe-1' }),
+        actorUserId: 'parent-a',
+      },
+      deps,
+    );
+
+    expect(calls).toEqual(['create', 'update', 'delete']);
+    expect(add.detail).toMatchObject({ google: { status: 'written', googleEventId: 'g-1' } });
+    expect(move.detail).toMatchObject({ google: { status: 'written', googleEventId: 'g-1' } });
+    expect(cancel.detail).toMatchObject({ google: { status: 'written', googleEventId: 'g-1' } });
+  });
+
+  it('still emails the iTIP invite when Google throws', async () => {
+    const { deps } = makeClaimStore();
+    deps.addToCalendar = vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'fe-2',
+    }));
+    const sent: string[] = [];
+    deps.sendCalendarInvites = {
+      send: async (request) => {
+        sent.push(request.familyEventId);
+        return { status: 'reported', parents: [], ask: 'not_needed' };
+      },
+    };
+    deps.googleCalendar = {
+      sync: async () => {
+        throw new Error('google down');
+      },
+    };
+
+    const result = await runExecutor(
+      { familyId, approved: approvedPlacement('calendar_add', ADD) },
+      deps,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(sent).toEqual(['fe-2']);
+    expect(result.detail).toMatchObject({
+      invites: { status: 'reported' },
+      google: { status: 'failed', reason: 'google_error' },
+    });
+  });
+
+  it('still syncs Google when the Hale row was already written, and does not re-invite', async () => {
+    const { deps } = makeClaimStore();
+    deps.addToCalendar = vi.fn(async () => ({
+      outcome: 'already_written' as const,
+      familyEventId: 'fe-3',
+    }));
+    const sync = vi.fn(async () => ({
+      status: 'skipped' as const,
+      reason: 'already_present' as const,
+    }));
+    const send = vi.fn();
+    deps.googleCalendar = { sync };
+    deps.sendCalendarInvites = { send };
+
+    const result = await runExecutor(
+      { familyId, approved: approvedPlacement('calendar_add', ADD) },
+      deps,
+    );
+
+    expect(sync).toHaveBeenCalledOnce();
+    expect(send).not.toHaveBeenCalled();
+    expect(result.detail).toMatchObject({
+      invites: { status: 'skipped_already_written' },
+      google: { status: 'skipped', reason: 'already_present' },
     });
   });
 });

@@ -79,6 +79,14 @@
     "file": "general-answer.md",
     "sha256": "c0a6f0eb71c7e9ab925407bbeac82ed77ad41498ee37612b0368c1b5ce520744"
   },
+  "gmail-draft-coach.md": {
+    "file": "gmail-draft-coach.md",
+    "sha256": "f224f2f544890927c7ca41205c12556109ba24f26d2e3c120ff2db8f124365aa"
+  },
+  "gmail-draft-notice.md": {
+    "file": "gmail-draft-notice.md",
+    "sha256": "bbc089b1b8eda41ced0e4b6d8f0e209d101046fd6a05636d62efbb1fcab4d44b"
+  },
   "identity-ask.md": {
     "file": "identity-ask.md",
     "sha256": "85602f9dcaedf34dc490c99f42bf272ebc3555c40efddf2ef1eb553d1224c36c"
