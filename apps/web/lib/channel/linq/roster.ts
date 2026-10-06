@@ -329,7 +329,7 @@ async function settleRoster(
     source: schema.LinqGroupRosterSource;
     familyHint: string | null;
     /** One per real phone in the chat; Hale's line and non-phone handles already dropped. */
-    members: ReadonlyArray<{ hash: string; encrypted: string }>;
+    members: ReadonlyArray<{ hash: string; encrypted: string | null }>;
     skippedHandles: number;
     now: Date;
   },

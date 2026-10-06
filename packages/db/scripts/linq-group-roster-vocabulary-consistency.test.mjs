@@ -117,10 +117,21 @@ describe('0158_linq_group_roster is additive and protected', () => {
     );
   });
 
-  it('is journaled last with a `when` above every open migration claim', () => {
+  it('is journaled with a `when` above every open migration claim', () => {
     const journal = readJournal(drizzleDir);
-    const tail = journal[journal.length - 1];
-    expect(tail.tag).toBe(TAG);
-    expect(tail.when).toBeGreaterThanOrEqual(1781469751000);
+    const entry = journal.find((row) => row.tag === TAG);
+    expect(entry?.when).toBeGreaterThanOrEqual(1781469751000);
+  });
+});
+
+describe('0159_linq_roster_member_phone_nullable only relaxes a NOT NULL', () => {
+  it('is the one ALTER COLUMN … DROP NOT NULL the retention sweep needs, and nothing else', () => {
+    const sql = fs.readFileSync(
+      path.join(drizzleDir, '0159_linq_roster_member_phone_nullable.sql'),
+      'utf8',
+    );
+    expect(statementsOf(sql)).toEqual([
+      'ALTER TABLE "linq_group_roster_members" ALTER COLUMN "phone_e164_encrypted" DROP NOT NULL;',
+    ]);
   });
 });
