@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message contains multiple violations: (1) it uses \"would you like me to\" which implies Hale is making a claim about what Hale will do, (2) it asks a question that goes beyond the simple one requested - the question structure is too complex (\"Would you like me to catch school and camp emails too?\" is asking permission for a future action, not the straightforward yes/no the moment calls for), (3) the message adds explanation about the inbox that, while appropriate for a gmail_ask receipt, is padded with \"and nothing from your inbox shows up in this thread\" when the receipt should be simpler, and (4) the voice shifts from the direct receipt statement to asking permission, which muddies the message. The core facts (Sam, the link, the receipt that nothing from inbox shows) are correct, but the execution fails on warmth, directness, and the question structure. A proper 5 would simply state the receipt and ask plainly if Sam wants school and camp emails caught.",
+    "score": 2
+  }
+}

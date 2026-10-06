@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message violates the receipt format. It claims \"Je vais garder les choses des enfants en ordre\" (I will keep the kids' things straight), which is a future commitment Hale should not make. The receipt should state the factual outcome of the connection only: that the calendar is connected and Hale will pull out the kids' dates while the inbox stays private. The message also uses incorrect grammar (\"les choses des enfants\" is awkward for this context). It should be shorter, more direct, and use the correct receipt language without making promises about future calendar management.",
+    "score": 2
+  }
+}
