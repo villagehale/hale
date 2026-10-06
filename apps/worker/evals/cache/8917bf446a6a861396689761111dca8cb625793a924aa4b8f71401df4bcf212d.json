@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The message correctly mentions both required elements (Google Calendar and 15 minutes), points at \"this link\" rather than including a URL, asks no question, and has a warm, plain tone. However, it is missing the watchFor requirement about mentioning what to do if Google warns about an unverified app (tap \"Advanced\" and carry on). This is a specific instruction the parent needs to know for a successful connection, making this a 4 rather than a 5."
+  }
+}

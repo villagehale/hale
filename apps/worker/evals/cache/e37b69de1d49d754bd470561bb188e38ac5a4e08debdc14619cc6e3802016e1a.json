@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The message is in proper French with tu address, uses first person \"Je cherche\", and ends with exactly one question mark (\"ça t'intéresse?\"). It appropriately acknowledges that weekend options weren't promising and pivots to offering weekday searching. However, it lacks the real accents that the watchFor specifies as required for a 5 (\"fin de semaine\" or \"week-end\", \"semaine\", \"idée\"). The phrase \"Rien de terrible à proximité\" effectively communicates that weekend options weren't great without naming invented facts. The tone is warm and conversational like a friend. The single small issue—missing accents on French words—prevents a perfect 5."
+  }
+}

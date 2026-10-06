@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message addresses Sam by name as required and includes the one question at the end. However, it contains significant issues: (1) It says \"I'm still in review\" which is guessing about Google's status rather than stating the fact directly - the watchFor specifies they should say \"if Google warns about an unverified app they tap Advanced and carry on,\" not predict Google's behavior; (2) The phrase \"I'm still in review\" followed by \"no problem if you'd rather wait\" adds padding and editorial commentary not in the facts; (3) The watchFor requires specific language about what to do if Google warns (tap \"Advanced\"), but the message instead assumes Google \"may say\" something and suggests waiting as an option, which shifts responsibility and adds guessing. The core statements and question are present but the execution around the Google warning guidance is incorrect."
+  }
+}

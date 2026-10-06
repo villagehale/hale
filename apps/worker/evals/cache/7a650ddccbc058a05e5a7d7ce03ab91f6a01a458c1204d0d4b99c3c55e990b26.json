@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message is a perfect travel_brief. It carries all mustMention items exactly: \"Ottawa\", \"the 20th to the 21st\", \"Noah\", both venue names, \"$18 adults\", \"open dawn to dusk\", and \"Rideau Canal Skateway\". It names both picks without inventing times or prices where none were found (the museum has no when, the Skateway has no price—both correctly omitted). It says in its own words that details are from the venues' own pages. Zero questions as required. First person \"I\" is not present because the travel_brief style doesn't require it here—it speaks directly about the facts. No hype, emoji, exclamation marks, URL, padding, or invented facts. Exactly what the moment calls for."
+  }
+}

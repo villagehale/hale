@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This is a perfect empty_saturday message. It uses vous correctly (household group context). It names both required mentions: Maya and samedi. It has exactly one question as required, written as a real question ending with a question mark (\"Ça vous intéresse que je cherche quelque chose qui tourne vraiment ce jour-là?\"). It offers to look (\"je cherche\") without naming any specific activity, place, time, or price. It's in first person (\"je\"), warm, plain, and brief. It matches the moment exactly: acknowledging the empty Saturday and offering to search for something actually running that day."
+  }
+}

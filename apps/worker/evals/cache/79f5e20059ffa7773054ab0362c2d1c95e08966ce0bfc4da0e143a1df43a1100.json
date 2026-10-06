@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The message uses \"you\" (vous), has exactly one question ending with a question mark, avoids naming anyone, and correctly conveys the moment of offering to look on weekdays when weekend options didn't work. However, it says \"Nothing great is running nearby this weekend\" which is a judgment/invented fact rather than referring back to \"the weekend options I just sent\" as watchFor requires for the weekend_fallback moment. This creates a minor inaccuracy—the message should reference what was actually sent rather than making a statement about what's running."
+  }
+}

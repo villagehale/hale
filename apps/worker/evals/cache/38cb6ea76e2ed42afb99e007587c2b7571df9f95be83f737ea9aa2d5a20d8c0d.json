@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "The message correctly mentions Gmail and 15 minutes as required, uses \"relier\" instead of connecter, addresses the parent with tu, points to \"ce lien\" without a URL, and has no question. However, watchFor specifies that the message should explain what to do if Google warns them (tap \"Paramètres avancés\" and continue), and this important instruction is entirely missing. The message is incomplete for the moment."
+  }
+}

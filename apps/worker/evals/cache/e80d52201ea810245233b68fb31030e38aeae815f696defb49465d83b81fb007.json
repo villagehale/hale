@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message contains both required mentions (\"Google Drive\" and \"15\"), has no URL despite linkFollows being true, has no question, and uses plain, straightforward language appropriate for the moment. The tone is friendly and direct. However, there is a subtle issue: the message says \"This link connects Google Drive\" which reads slightly awkwardly - \"connects to\" would be more natural. The watchFor specifies an \"Advanced\" note should be included, which is not present in the message. The message also doesn't match the exact natural phrasing a friend would use (\"It's good for 15 minutes\" is functional but could be warmer).",
+    "score": 3
+  }
+}

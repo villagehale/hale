@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message is a complete travel_brief that meets all requirements: it names New York and \"the 12th to the 15th\" exactly as given, names both Mia and Leo, includes both venues with their when and price details exactly as written (\"Tue-Sun 10am-5pm\", \"$15 per person\", \"daily from 11am\", \"$8 a round\"), states in its own words that details come from the venues' own pages, contains no question, no recommendation, no invented facts, no URL, no hype or emoji, plain ASCII, and under 500 characters. The format is concise and direct."
+  }
+}

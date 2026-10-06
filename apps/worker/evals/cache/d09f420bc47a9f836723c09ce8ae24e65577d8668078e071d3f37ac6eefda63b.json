@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The message contains a critical error: it says \"I'll keep things straight between the two of you\" which is a false claim not in the request facts. The request provides only Sam's name; there is no second parent mentioned in the facts. Additionally, the message does not follow the required structure: it should have statements first (about the link being for Sam, about Google warnings), then end with ONE question. The watchFor guidance requires specific content about the link being for Sam and Google's unverified app warning before the final question. This message jumps straight to a question without the required preamble statements, and makes an unsupported claim about keeping things straight between two people when only one (Sam) is addressed in the facts."
+  }
+}
