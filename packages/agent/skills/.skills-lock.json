@@ -55,6 +55,10 @@
     "file": "draft-action.md",
     "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"
   },
+  "email-alert-voice.md": {
+    "file": "email-alert-voice.md",
+    "sha256": "8263f6f53257e77a1319e942309f24303eb8a1053360e33412c8c1ea4b270890"
+  },
   "extract-child-event.md": {
     "file": "extract-child-event.md",
     "sha256": "4989569d42cf0eb4ce3950082b53e3920a0fe002bec774c2a23e00a731a17dd6"

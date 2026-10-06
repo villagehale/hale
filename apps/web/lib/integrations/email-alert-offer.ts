@@ -19,8 +19,9 @@ import {
 /**
  * THE YES AT THE END OF AN EMAIL ALERT — the row it lands in, and what it does.
  *
- * The alert asks "Want me to add it to your week?" The earlier wording, "Reply YES and
- * it goes on your week," was shipped once with nothing behind it and removed in #649,
+ * The alert asks, in the model's own words, whether to put the occasion on the week.
+ * The earlier wording, "Reply YES and it goes on your week," was shipped once with
+ * nothing behind it and removed in #649,
  * because a parent doing exactly what the
  * text told them to do reached the coach with nothing drafted — or, with one unrelated
  * action pending, APPROVED THAT ONE (rule #4). This module is the thing that had to exist
