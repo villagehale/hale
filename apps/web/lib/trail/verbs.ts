@@ -447,6 +447,15 @@ export const AUDIT_VERBS = [
   // This household's own yes. The trail sentence names no other household.
   'same_activity_opt_in_recorded',
   'same_activity_opt_in_revoked',
+  // ── active workstreams (VIL-419) ────────────────────────────────────────
+  'workstream_opened',
+  'workstream_updated',
+  'workstream_closed',
+  'workstream_dropped',
+  'workstream_expired',
+  'workstream_refused',
+  'workstream_followed_up',
+  'workstream_followup_unsent',
 ] as const;
 
 export type AuditVerb = (typeof AUDIT_VERBS)[number];
@@ -1503,6 +1512,38 @@ const VERBS: Record<AuditVerb, Verb> = {
   same_activity_opt_in_revoked: {
     sentence: 'you took back a yes to a meet or a group',
     family: 'done',
+  },
+  workstream_opened: {
+    sentence: 'started keeping track of something for you',
+    family: 'note',
+  },
+  workstream_updated: {
+    sentence: 'updated something it is in the middle of',
+    family: 'note',
+  },
+  workstream_closed: {
+    sentence: 'finished something it was in the middle of',
+    family: 'done',
+  },
+  workstream_dropped: {
+    sentence: 'set aside something it was in the middle of',
+    family: 'done',
+  },
+  workstream_expired: {
+    sentence: 'let an old thread close itself',
+    family: 'done',
+  },
+  workstream_refused: {
+    sentence: 'did not open another thread because the list was full',
+    family: 'problem',
+  },
+  workstream_followed_up: {
+    sentence: 'checked back on something it is in the middle of',
+    family: 'done',
+  },
+  workstream_followup_unsent: {
+    sentence: 'could not write a check-back, so nothing was sent',
+    family: 'problem',
   },
 };
 

@@ -40,6 +40,22 @@ const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages
  * like a direct literal.
  */
 const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
+  // VIL-419. Open and drop share one ternary; close and update share another.
+  // Expired and refused are literals and are also listed here so the file's
+  // whole set is in one place.
+  'apps/web/lib/memory/workstreams.ts': [
+    'workstream_opened',
+    'workstream_updated',
+    'workstream_closed',
+    'workstream_dropped',
+    'workstream_expired',
+    'workstream_refused',
+  ],
+  // The unsent page is a constant. The sent check-back is a literal.
+  'apps/web/lib/memory/workstream-followup.ts': [
+    'workstream_followed_up',
+    'workstream_followup_unsent',
+  ],
   // VIL-399 — one helper writes the shared-group verbs. The literals in the
   // join and leave transactions are scanned directly as well.
   'apps/web/lib/channel/linq/multi-family.ts': [
