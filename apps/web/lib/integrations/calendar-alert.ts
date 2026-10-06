@@ -1,23 +1,23 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
-import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { asciiCopy, asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type ProactiveSendRequest,
   type ProactiveSendVerdict,
   holdStatus,
 } from '~/lib/channel/outbound-gate';
-import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
-import type { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   failedSendPatch,
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
+import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
 
 /**
@@ -459,7 +459,9 @@ async function rememberOnly(
 ): Promise<void> {
   const { integrationId, changes, now } = input;
   if (changes.length === 0) return;
-  const owed = new Set((await readSnapshots(database, integrationId, [])).map((row) => row.eventId));
+  const owed = new Set(
+    (await readSnapshots(database, integrationId, [])).map((row) => row.eventId),
+  );
   const timeZone = await ports.timeZone(parentUserId);
   const writes = new Map<string, SnapshotWrite>();
   for (const change of changes) {
@@ -837,10 +839,7 @@ async function writeSnapshots(
     .insert(schema.calendarEventSnapshots)
     .values([...writes.values()].map((write) => ({ integrationId, ...write, updatedAt: now })))
     .onConflictDoUpdate({
-      target: [
-        schema.calendarEventSnapshots.integrationId,
-        schema.calendarEventSnapshots.eventId,
-      ],
+      target: [schema.calendarEventSnapshots.integrationId, schema.calendarEventSnapshots.eventId],
       set: {
         recurringEventId: sql`excluded.recurring_event_id`,
         startAt: sql`excluded.start_at`,
@@ -943,8 +942,7 @@ function revive(
       eventId: row.eventId,
       recurringEventId: row.recurringEventId ?? undefined,
       updated: row.updatedStamp,
-      status:
-        row.status === 'cancelled' || row.status === 'tentative' ? row.status : 'confirmed',
+      status: row.status === 'cancelled' || row.status === 'tentative' ? row.status : 'confirmed',
       title: row.heldTitle,
       start: point(startAt),
       end: point(endAt),
@@ -1184,11 +1182,7 @@ function previousWhen(previous: PriorStart, span: EventSpan, timeZone: string): 
  * A series whose instances scatter says the first one instead — a pattern that is not
  * there is the one thing this sentence must not invent.
  */
-function renderCalendarSeriesAlert(
-  group: readonly Placed[],
-  timeZone: string,
-  now: Date,
-): string {
+function renderCalendarSeriesAlert(group: readonly Placed[], timeZone: string, now: Date): string {
   const lead = group[0];
   if (lead === undefined) throw new Error('renderCalendarSeriesAlert: an empty group');
   const title = seriesTitle(group);
@@ -1221,11 +1215,7 @@ function renderCalendarSeriesAlert(
 
 /** `Tuesdays 5:00-5:45 p.m.`, `Tuesdays` for an all-day series, or nothing when the
  * instances do not actually share a weekday and a clock. */
-function seriesPattern(
-  group: readonly Placed[],
-  timeZone: string,
-  now: Date,
-): string | null {
+function seriesPattern(group: readonly Placed[], timeZone: string, now: Date): string | null {
   const lead = group[0];
   if (lead === undefined) return null;
   const weekday = weekdayIn(lead.span.startMs, timeZone);
@@ -1382,9 +1372,7 @@ function gsm7(text: string): string {
  * scrubbed — a title with the address cut out of it is a sentence with a hole in it.
  */
 function eventTitle(change: CalendarChange): string {
-  return (
-    usableTitle(change) ?? (change.status === 'cancelled' ? UNTITLED_CANCELLED : UNTITLED)
-  );
+  return usableTitle(change) ?? (change.status === 'cancelled' ? UNTITLED_CANCELLED : UNTITLED);
 }
 
 /** The event's own name, or nothing when it has none Hale may say. */
