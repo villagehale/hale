@@ -36,7 +36,11 @@ describe('proactiveLineInput', () => {
         expect(input.address).toBe('tu');
         expect(input.questions).toBe(1);
         expect(input.maxChars).toBe(200);
-        expect(input.forbidden?.map((rule) => rule.name)).toEqual(['booking_claim']);
+        expect(input.forbidden?.map((rule) => rule.name)).toEqual(
+          request.kind === 'weekday_care' && request.ask.prompt === 'weekend_fallback'
+            ? ['booking_claim', 'ca_tinteresse_que']
+            : ['booking_claim'],
+        );
       }
     }
   });
@@ -74,6 +78,15 @@ describe('proactiveLineInput', () => {
       'en',
     );
     expect(sent.facts).toEqual({ prompt: 'weekend_fallback', optionsSent: true });
+    expect(
+      judgeSpokenLine(
+        "Rien de bon ce week-end. Ça t'intéresse que je cherche en semaine?",
+        fallback,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:ca_tinteresse_que' });
+    expect(
+      judgeSpokenLine("Rien de bon ce week-end. Je cherche en semaine, ça t'intéresse?", fallback),
+    ).toEqual({ ok: true });
   });
 
   it('carries a verified break label word for word and not its event key', () => {

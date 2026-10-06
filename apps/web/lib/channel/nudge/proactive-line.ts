@@ -29,6 +29,12 @@ export const TRAVEL_OPENING_MAX_CHARS = 110;
  * subtract it. Words that sit inside real city names (park, beach) are left out: the
  * judge tests the whole line, and "Long Beach" is a city.
  */
+/** "Ça t'intéresse que je cherche" stuffs the offer inside que. The question does not start that way. */
+export const BROKEN_CA_TINTERESSE = {
+  name: 'ca_tinteresse_que',
+  pattern: /ça t['’]int[ée]resse que\b/i,
+};
+
 export const NO_TRAVEL_FIND = {
   name: 'travel_find',
   pattern:
@@ -127,6 +133,7 @@ export function proactiveLineInput(
           return {
             ...base,
             facts: { prompt: 'weekend_fallback', optionsSent: ask.optionsSent === true },
+            forbidden: [NO_BOOKING_CLAIM, BROKEN_CA_TINTERESSE],
           };
       }
     }
