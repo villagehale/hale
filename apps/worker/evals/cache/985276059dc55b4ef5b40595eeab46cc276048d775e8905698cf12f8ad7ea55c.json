@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The message violates the travel_brief instructions in multiple ways: (1) It includes invented information (\"nobody has been to check them\") that is not in the facts and creates a claim Hale cannot make. (2) The phrasing \"both details are straight from the venues' own pages, and nobody has been to check them\" is awkward and does not say in Hale's own words that the details are from the venues' own pages. (3) Most critically, the travel_brief kind requires the message to be a complete standalone text with no list to follow—this reads like it could be followed by more options, violating the \"whole travel text\" requirement. The message should simply state the two picks with their details and indicate the source more naturally, matching what a friend would text."
+  }
+}

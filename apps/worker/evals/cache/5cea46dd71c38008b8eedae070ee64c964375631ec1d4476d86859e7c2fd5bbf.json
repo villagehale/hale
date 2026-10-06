@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message has multiple issues: (1) It addresses Sam by name correctly and includes one question at the end as required. (2) It correctly states the link is just for Sam and nothing from inbox shows up, which matches watchFor. (3) However, the message adds information not in the request - it mentions \"Google may say Hale is not verified yet\" and instructions to tap \"Advanced,\" which goes beyond what the facts provide and adds guidance not asked for. (4) The phrase \"I'm still in review\" is awkward and not the receipt language specified. (5) The watchFor explicitly states the message \"says that if Google warns about an unverified app they tap 'Advanced' and carry on\" - this instruction should be included directly but is phrased as speculation here (\"may say\"). (6) \"No problem if you'd rather wait\" is padding/unnecessary softening that dilutes the message. The core elements are present but execution is weakened by added content and improper framing of the verification warning."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message invents facts not in the request. \"Both running strong\" is a judgement not supported by the facts - the request provides only opening times and pricing, not operational status. The phrase \"nobody's been there yet to check\" is awkwardly phrased and doesn't cleanly convey that details come from venues' own pages. The message also uses \"are both running strong\" which implies invented confirmation. It should simply state the picks, their details exactly as given ($18 adults, open dawn to dusk), and note details come from the venues' own pages without embellishment."
+  }
+}

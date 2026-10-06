@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message perfectly matches the request: it's in French with proper tu address and real accents, mentions all three mustMention items (Gmail, Google Drive, 15), uses \"relie\" instead of \"connecter\", has no URL (linkFollows is true), no question, no exclamation marks, no padding, and is warm and friendly like a text from someone good at this. It directly addresses the parent's need with two links for the two services, each good for 15 minutes, in plain, short sentences."
+  }
+}

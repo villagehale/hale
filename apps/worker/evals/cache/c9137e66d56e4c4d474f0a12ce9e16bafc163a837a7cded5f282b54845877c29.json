@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Perfect execution for empty_saturday. Uses vous correctly for household group. Names both required facts: Maya and samedi. Offers to look (\"Je cherche quelque chose qui tourne vraiment\") without naming any activity, place, time, or price. Ends with exactly one real question (\"ça vous intéresse?\") with a question mark. First person \"Je\", no \"we/on\". Plain, warm, concise tone appropriate to the moment."
+  }
+}

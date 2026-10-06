@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message is short, warm, plain, and first person. It clearly states the weekend options didn't yield results (\"Nothing great turned up nearby this weekend\"), offers to search weekdays instead (\"Want me to check weekdays instead?\"), and ends with exactly one natural question mark. It names no child, program, place, day, or time. It doesn't ask about daycare or existing weekday care. It respects the weekend_fallback moment by acknowledging those options just sent were weekend ones and pivoting to a weekday offer without inventing facts."
+  }
+}

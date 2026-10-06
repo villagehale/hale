@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This message perfectly executes weekend_fallback: it acknowledges that weekend options weren't strong (\"Nothing great is showing nearby this weekend\"), references those weekend options without naming specific activities/times/places, and offers to search weekdays instead with exactly one question (\"Want me to look on weekdays instead?\"). It uses first person \"me,\" avoids names, maintains a warm conversational tone, and is short and direct. The question is properly formatted and ends with a question mark. It fits the household group context (vous address) and delivers exactly what the moment calls for."
+  }
+}

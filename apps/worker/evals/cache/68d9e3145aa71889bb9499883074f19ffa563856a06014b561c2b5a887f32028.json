@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message contains both required mentions (\"Google Calendar\" and \"15\") and correctly points at a link without including a URL. However, watchFor specifies that the message must mention what to do if Google warns about an unverified app (tap \"Advanced\" and carry on), which is completely absent. This is a critical omission for this moment, as it's explicitly called out as part of what \"right\" looks like. The message is otherwise appropriately short and plain, but missing this essential instruction significantly undermines its effectiveness."
+  }
+}

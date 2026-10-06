@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message fails several critical requirements: (1) It asks two questions instead of one (\"would it help\" and the implied setup for whether they want access), (2) It doesn't include the required statement about the link being just for Sam or mention what to do if Google warns about an unverified app, (3) The single question asked is not the correct question—it should be asking whether they want their calendar in the kids' year, not whether it would help to see events, (4) The watchFor specifies statements first then ONE question last, but this message structures it differently, (5) It doesn't address the critical instruction about \"Advanced\" for Google warnings or explain the link setup. The message is conversational but structurally violates the specific format required for this moment."
+  }
+}

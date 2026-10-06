@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The message contains a critical violation: it claims \"I threw them away\" which is an anthropomorphic characterization not supported by the facts. More importantly, the message says \"Google still lists me on your account until you remove me there\" - this is imprecise language that could be interpreted as Hale removing itself from the account, which watchFor explicitly forbids. The watchFor states \"Must NOT say Hale disconnected it 'from Google', told Google, or removed itself from their Google account.\" While the message doesn't explicitly say this, the phrasing \"until you remove me there\" dangerously implies Hale could remove itself. The message also uses \"I threw them away\" which is anthropomorphically inaccurate. Additionally, the message ends with \"You can do that with this link\" which is awkward given linkFollows=true (the URL follows on the next line). A proper message would say the link is where they remove Hale from their Google account, not \"do that.\""
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message contains a critical error: it says \"Je suis débarrassé de tes clés\" (I am rid of your keys), which is grammatically incorrect and confusing. It should be \"Je suis débarrassé de tes clés\" addressed properly or more likely \"Je me suis débarrassé de tes clés.\" More importantly, the message says \"Google te liste encore moi sur ton compte\" which is awkward and unclear French - it should be something like \"Google me liste encore sur ton compte\" or \"Tu me vois encore sur ton compte côté Google.\" The phrasing is confusing about who is doing what. While the message avoids a URL, questions, and respects the tu form, the French quality is poor and the core message is ambiguous about the state of the disconnection. The watchFor note emphasizes proper French with real accents (clés, côté) and clarity about what happened - this message fails on clarity of expression."
+  }
+}

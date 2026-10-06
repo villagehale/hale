@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message says \"PA day is coming up\" using \"PA day\" word for word (mustMention requirement). It offers to find something nearby without naming a program, place, date, weekday, or time (watchFor requirements). It has exactly one question at the end that ends with a question mark. The tone is warm and first person (\"I can find\"). It reads like a friend texting one parent, offering exactly what the moment calls for."
+  }
+}

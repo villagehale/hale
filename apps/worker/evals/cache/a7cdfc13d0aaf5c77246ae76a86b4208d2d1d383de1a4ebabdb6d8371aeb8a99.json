@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "The message includes facts not in the request: \"fun fit for the kids\" is a judgment, and \"nobody has been to check it out yet\" invents information not in the facts provided. The travel_brief kind requires naming each find with its when and price exactly as written, saying in its own words that details are from the venue's own pages, and asking nothing—all present here. However, the added judgments and invented detail about checking it out lower the score from 5. The core required elements are correct (Montreal, the 3rd, Biodome, hours, price, source attribution, no question), but the padding and judgment prevent it from reading like a plain, factual friend."
+  }
+}

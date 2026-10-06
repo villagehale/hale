@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The message violates the core requirement for weekend_fallback: it must say \"the weekend options I just sent\" or equivalent (\"ce que je viens de t'envoyer\"), but optionsSent is false, meaning no options were actually sent yet. The message says \"Pas grand-chose de terrible près de chez toi ce week-end\" which invents a fact (that there were weekend options) when none exist in the request. Additionally, weekend_fallback must reference the options that were just sent to establish context; inventing that options were sent is a critical error. The question mark and tu address are correct, but the invented premise disqualifies the message."
+  }
+}
