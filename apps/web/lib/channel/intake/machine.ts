@@ -141,10 +141,12 @@ import { firstTouchLadderEnabled, firstTouchLocationCardEnabled } from './first-
 import { type FirstTouchPlace, placeFromMessage, placeFromVenue } from './first-touch-place';
 import {
   type FriendChild,
+  type FriendFallback,
   type FriendStep,
   type FriendVoiceComposer,
   type FriendVoiceInput,
   type FriendVoiceResult,
+  OPENING_ATTEMPT_TIMEOUT_MS,
   type SpeakOptions,
   assembleFriendBody,
   judgeFriendReply,
@@ -321,6 +323,13 @@ export interface IntakeDeps {
 export type KeywordAck = 'sent' | 'provider_answered' | 'provider_refused';
 
 export type IntakeOutcome =
+  /**
+   * A new parent's opening turn sent nothing: the model could not write it. Never a
+   * step, because a step says Hale replied (rule #11). The session stays recoverable —
+   * awaiting_details with an inbound and no outbound — so the parent's own re-text
+   * re-runs the opening and the first-reply sweep owes it one reply.
+   */
+  | { status: 'first_touch_unsent'; reason: FriendFallback }
   | { status: 'greeted' }
   /** VIL-385 ladder beat that is not yet a provisioned family. */
   | { status: 'first_touch'; step: 'place_asked' | 'place_waiting' | 'find_sent' | 'ages_waiting' }
@@ -1137,6 +1146,17 @@ async function deliverFirstHello(
       outcome = { status: 'question_answered', source: offScript.source };
     }
   }
+  const postalCollected = postal
+    ? {
+        collected: {
+          children: [],
+          // The FSA when that is all they sent (D2) — the token the extractor is
+          // handed back as `already_known` on the next turn, so it has to read the
+          // way a parent's own postal code does.
+          postalCode: postal.postalCode ?? postal.areaCoarse,
+        },
+      }
+    : {};
   if (onboardingFriendVoiceEnabled() && outcome.status === 'greeted') {
     const spoken = await friendSpeak(
       deps,
@@ -1146,6 +1166,7 @@ async function deliverFirstHello(
         parentWords: args.inbound.body,
         placeLabel: postal?.areaCoarse ?? null,
       }),
+      { attemptTimeoutMs: OPENING_ATTEMPT_TIMEOUT_MS },
     );
     const voiced = friendOutbound(spoken);
     if (!voiced) {
@@ -1156,12 +1177,12 @@ async function deliverFirstHello(
           state: 'awaiting_details',
           transcript: recorded.transcript,
           lastProviderId: args.inbound.providerId,
-          firstReplyRecoveredAt: args.now,
+          ...postalCollected,
         },
         args.now,
       );
       await reportIntakeStep(deps, 'intake_started', session.id);
-      return outcome;
+      return { status: 'first_touch_unsent', reason: unsentReason(spoken) };
     }
     body = voiced;
   }
@@ -1174,19 +1195,7 @@ async function deliverFirstHello(
       state: 'awaiting_details',
       transcript,
       lastProviderId: args.inbound.providerId,
-      // So the hourly recovery sweep does not re-decrypt every sitting first-hello.
-      firstReplyRecoveredAt: args.now,
-      ...(postal
-        ? {
-            collected: {
-              children: [],
-              // The FSA when that is all they sent (D2) — the token the extractor is
-              // handed back as `already_known` on the next turn, so it has to read the
-              // way a parent's own postal code does.
-              postalCode: postal.postalCode ?? postal.areaCoarse,
-            },
-          }
-        : {}),
+      ...postalCollected,
     },
     args.now,
   );
@@ -1222,6 +1231,12 @@ async function friendSpeak(
 function friendOutbound(spoken: FriendVoiceResult): string | null {
   if (spoken.source === 'unsent' || spoken.body.trim().length === 0) return null;
   return spoken.body;
+}
+
+/** Why a reply {@link friendOutbound} refused did not go out. A judged draft with no
+ * words left carries no fallback of its own, and is the unusable case. */
+function unsentReason(spoken: FriendVoiceResult): FriendFallback {
+  return spoken.fallback ?? 'unusable';
 }
 
 function touchWithClarify(touch: FirstTouchPersisted, key: 'place' | 'ages'): FirstTouchPersisted {
@@ -1520,7 +1535,6 @@ async function friendOnboardingTurn(
         state: session.state === 'awaiting_ages' ? 'awaiting_ages' : 'awaiting_place',
         transcript,
         lastProviderId: inbound.providerId,
-        firstReplyRecoveredAt: now,
         ladderLanguage: language,
         firstTouch: session.firstTouch ?? {
           language,
@@ -1601,6 +1615,7 @@ async function friendOnboardingTurn(
     ),
     {
       pageScope: session.id,
+      ...(opening ? { attemptTimeoutMs: OPENING_ATTEMPT_TIMEOUT_MS } : {}),
       // Place and an age provision this turn: the map and the name ask are the
       // reply, written next. This draft is read for its facts only.
       replyDiscardedWhen: (capture) => {
@@ -1642,6 +1657,23 @@ async function friendOnboardingTurn(
     );
   }
   const voiced = friendOutbound(spoken);
+  if (!voiced && opening) {
+    await saveSession(
+      database,
+      session,
+      {
+        state: 'awaiting_details',
+        transcript,
+        collected,
+        lastProviderId: inbound.providerId,
+        ladderLanguage: language,
+        firstTouch: baseTouch,
+      },
+      now,
+    );
+    await reportIntakeStep(deps, 'intake_started', session.id);
+    return { status: 'first_touch_unsent', reason: unsentReason(spoken) };
+  }
   if (voiced) {
     ({ transcript } = await sendAndRecord(database, ctx, voiced, deps, transcript));
   }
@@ -1679,7 +1711,6 @@ async function friendOnboardingTurn(
       transcript,
       collected,
       lastProviderId: inbound.providerId,
-      firstReplyRecoveredAt: now,
       ladderLanguage: language,
       firstTouch: stuck ? touchWithClarify(baseTouch, clarifyKey) : baseTouch,
     },
@@ -1716,7 +1747,6 @@ async function openFirstTouch(
         state: 'awaiting_place',
         transcript: sent.transcript,
         lastProviderId: args.inbound.providerId,
-        firstReplyRecoveredAt: args.now,
         ladderLanguage: language,
         firstTouch: { language, place: null, locationRequest: null },
       },
@@ -1775,7 +1805,6 @@ async function openFirstTouch(
         transcript: asked.transcript,
         collected,
         lastProviderId: args.inbound.providerId,
-        firstReplyRecoveredAt: args.now,
         ladderLanguage: language,
         firstTouch: { ...touch, locationRequest: asked.locationRequest },
       },
@@ -2085,7 +2114,6 @@ async function sendWeekFindThenAgesOrProvision(
       transcript,
       collected: located.collected,
       lastProviderId: inbound.providerId,
-      firstReplyRecoveredAt: now,
       ladderLanguage: input.language,
       firstTouch: touch,
     },

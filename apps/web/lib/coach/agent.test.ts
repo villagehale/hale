@@ -1,7 +1,8 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, SONNET5_MODEL } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { WORKSTREAMS_ENABLED_ENV } from '~/lib/memory/workstreams';
 import { askHale } from './agent';
 
 /**
@@ -146,6 +147,10 @@ function fakeDb(capture: InsertCapture, existingConversationId?: string): Databa
 }
 
 describe('askHale — multi-turn persistence + conversationId', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('opens a conversation, persists the question and answer, and returns the conversationId', async () => {
     const capture: InsertCapture = { conversations: [], messages: [], agentRuns: [] };
     const db = fakeDb(capture);
@@ -360,5 +365,40 @@ describe('askHale — multi-turn persistence + conversationId', () => {
     // No NEW conversation was created — the existing thread was reused.
     expect(capture.conversations).toEqual([]);
     expect(capture.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+  });
+
+  it('returns the answer before a deferred workstream extract calls the model', async () => {
+    vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
+    const capture: InsertCapture = { conversations: [], messages: [], agentRuns: [] };
+    const create = vi.fn(() => new Promise(() => {}));
+    const client = fakeStreamingClient(['all set.']);
+    client.messages.create = create as unknown as AgentClient['messages']['create'];
+    let deferred: (() => Promise<void>) | undefined;
+
+    const result = await askHale(
+      {
+        familyId: FAMILY_ID,
+        question: 'booked the Sunday one, thanks',
+        intent: null,
+        conversationId: null,
+        focusedChildId: null,
+        actor: 'user-1',
+        noteKey: null,
+        sourceNote: null,
+      },
+      fakeDb(capture),
+      client,
+      {
+        onTextDelta: () => {},
+        onTurnReset: () => {},
+        defer: (work) => {
+          deferred = work;
+        },
+      },
+    );
+
+    expect(result.answer).toBe('all set.');
+    expect(create).not.toHaveBeenCalled();
+    expect(deferred).toEqual(expect.any(Function));
   });
 });

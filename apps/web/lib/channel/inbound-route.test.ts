@@ -541,6 +541,34 @@ describe('handoff to C1', () => {
 
     expect(outcome).toBe('handed_off');
   });
+
+  it.each(['what can you do', 'set me up'])(
+    'hands an enrolled parent asking "%s" to the coach, with the cold-start ladder on',
+    async (body) => {
+      vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+      const h = harness();
+      const { familyId, userId } = enrol(h.fake);
+      closeIntake(h.fake);
+
+      const outcome = await routeInboundText(h.deps, inbound({ body }), 0);
+
+      expect(outcome).toBe('handed_off');
+      const message = h.fake
+        .rows(schema.channelMessages)
+        .find((r) => r.providerMessageId === 'SM11111111111111111111111111111111');
+      expect(message).toMatchObject({ familyId, parentUserId: userId, direction: 'in', body });
+      expect(h.jobs).toEqual([
+        {
+          family_id: familyId,
+          parent_user_id: userId,
+          channel_message_id: message?.id,
+          provider_message_id: 'SM11111111111111111111111111111111',
+          received_at: NOW.toISOString(),
+        },
+      ]);
+      expect(h.transport.bodies()).toEqual([]);
+    },
+  );
 });
 
 describe('iMessage first-touch door', () => {
@@ -625,5 +653,39 @@ describe('iMessage first-touch door', () => {
     await pending;
     expect(h.transport.bodies().length).toBeGreaterThan(0);
     vi.unstubAllGlobals();
+  });
+});
+
+describe('a first text that got no reply', () => {
+  beforeEach(() => {
+    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
+  });
+
+  function withComposer(h: Harness, compose: () => Promise<{ reply: string }>): void {
+    const intake = h.deps.intake('sms');
+    intake.friendVoice = { compose };
+  }
+
+  it('is counted intake_unsent, never folded into intake', async () => {
+    const h = harness();
+    withComposer(h, async () => {
+      throw new Error('model down');
+    });
+
+    const outcome = await routeInboundText(h.deps, inbound(), 0);
+
+    expect(outcome).toBe('intake_unsent');
+    expect(h.transport.bodies()).toEqual([]);
+  });
+
+  it('stays intake when the opening reply was sent', async () => {
+    const h = harness();
+    withComposer(h, async () => ({ reply: "Hey, it's Hale. What's your postal code?" }));
+
+    const outcome = await routeInboundText(h.deps, inbound(), 0);
+
+    expect(outcome).toBe('intake');
+    expect(h.transport.bodies()).toHaveLength(1);
   });
 });

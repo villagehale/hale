@@ -1,5 +1,5 @@
-import { type Database, schema } from '@hale/db';
-import { and, eq, gte, inArray, isNull, lt, ne } from 'drizzle-orm';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
+import { and, eq, gte, inArray, lt, ne } from 'drizzle-orm';
 import { upcomingWeekend } from '~/lib/channel/intake/radar-decide';
 import { dayKeyOf } from '~/lib/format/datetime';
 
@@ -66,7 +66,7 @@ export async function loadSaturdayPlans(
     .where(
       and(
         eq(schema.familyEvents.familyId, familyId),
-        isNull(schema.familyEvents.deletedAt),
+        householdFamilyEvent(),
         gte(schema.familyEvents.startsAt, from),
         lt(schema.familyEvents.startsAt, until),
       ),

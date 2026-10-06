@@ -9,6 +9,7 @@ import {
 } from '~/lib/channel/connect/aha-read';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { loadOnboardingFriendShortSkill, loadOnboardingFriendSkill } from '~/lib/cron/skill';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
@@ -85,6 +86,14 @@ export const SCHEDULE_DAYS_AHEAD = 21;
 
 /** One model attempt. A hang past this retries on the smaller prompt. */
 export const FRIEND_ATTEMPT_TIMEOUT_MS = 12_000;
+
+/**
+ * One model attempt on a new parent's opening turn. Both attempts together stay under
+ * ten seconds, so a parent texting Hale for the first time is not left holding the
+ * phone for two full attempts; a turn that still sends nothing is owed its reply by the
+ * first-reply sweep a minute later (first-reply-recovery.ts), which has the full budget.
+ */
+export const OPENING_ATTEMPT_TIMEOUT_MS = 4_500;
 
 export const FRIEND_STEPS = [
   'place',
@@ -196,6 +205,22 @@ export interface FriendVoiceInput {
   checklist?: OnboardingChecklist;
   /** On the retry only: the draft that was not sent and why, so the second try fixes that. */
   retry?: { draft: string; problem: string } | null;
+  /**
+   * How long ago the parent's last inbound was, when this reply is picking it up
+   * after a real wait. Absent when that text just arrived. Facts only.
+   */
+  lastInbound?: LastInboundFact | null;
+}
+
+/**
+ * Facts about the parent's last inbound, for a reply that is no longer instant.
+ * `minutesAgo` is the wait. `overnight` means that text landed inside proactive
+ * quiet hours. `yesterday` means its Toronto calendar day is already over.
+ */
+export interface LastInboundFact {
+  minutesAgo: number;
+  overnight: boolean;
+  yesterday: boolean;
 }
 
 export interface FriendVoiceResult {
@@ -257,7 +282,8 @@ export interface SpeakOptions {
   prompt?: 'full' | 'short';
   /** Test hook. Production pages Slack #ops. */
   page?: (text: string) => Promise<unknown>;
-  /** Test hook. Production uses {@link FRIEND_ATTEMPT_TIMEOUT_MS}. */
+  /** Per attempt. Absent is {@link FRIEND_ATTEMPT_TIMEOUT_MS}; the opening turn passes
+   * {@link OPENING_ATTEMPT_TIMEOUT_MS}. */
   attemptTimeoutMs?: number;
   /**
    * The exact title or subject the model chose to mention. Null means the
@@ -547,6 +573,30 @@ export function upcomingDays(now: Date, language: ReplyLanguage): DayLabel[] {
   return days;
 }
 
+/**
+ * Under an hour the reply is still the answer to a message that just arrived —
+ * including the sweep's own two-minute pause. Past that, the model gets the wait
+ * as a number of minutes plus whether that text was overnight or yesterday.
+ * No sentence and no apology: the model words whatever it says.
+ */
+const LAST_INBOUND_MARK_MINUTES = 60;
+
+export function lastInboundFact(
+  inboundAt: Date,
+  now: Date,
+  timeZone: string = AHA_TIME_ZONE,
+): LastInboundFact | null {
+  const elapsedMs = now.getTime() - inboundAt.getTime();
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return null;
+  const minutesAgo = Math.floor(elapsedMs / 60_000);
+  if (minutesAgo < LAST_INBOUND_MARK_MINUTES) return null;
+  return {
+    minutesAgo,
+    overnight: inProactiveQuietHours(inboundAt, timeZone),
+    yesterday: dayKeyIn(inboundAt, timeZone) < dayKeyIn(now, timeZone),
+  };
+}
+
 /** What the model is handed. No link, no family id, no phone. */
 export function friendVoiceContext(input: FriendVoiceInput): unknown {
   const checklist = input.checklist ?? null;
@@ -581,6 +631,8 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
           occasion: 'your own message: the parent has not written since your last text',
         }
       : {}),
+    // Hours later, or the next morning: the wait, as facts. A just-arrived text omits it.
+    ...(input.lastInbound ? { lastInbound: input.lastInbound } : {}),
     recentTurns: input.recentTurns,
     order: [...ONBOARDING_ORDER],
     known: checklist,

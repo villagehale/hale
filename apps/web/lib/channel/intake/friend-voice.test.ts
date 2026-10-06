@@ -3,8 +3,10 @@ import { loadOnboardingFriendShortSkill, loadOnboardingFriendSkill } from '~/lib
 import {
   type FriendVoiceInput,
   assembleFriendBody,
+  friendVoiceContext,
   friendWeekAction,
   judgeFriendReply,
+  lastInboundFact,
   repairedProse,
   speakFriend,
 } from './friend-voice';
@@ -45,6 +47,51 @@ describe('ONBOARDING_FRIEND_VOICE_ENABLED', () => {
   });
 });
 
+describe('friend voice brief', () => {
+  it('gives the elapsed time for a several-hours-old text and does not flag a two-minute one', () => {
+    // 2:00 p.m. America/Toronto. Five hours earlier is 9:00 a.m., after quiet hours end.
+    const now = new Date('2026-08-28T18:00:00.000Z');
+    const hoursOld = new Date(now.getTime() - 5 * 3_600_000);
+    const brief = friendVoiceContext(
+      blank({
+        step: 'place',
+        introduce: true,
+        parentWords: 'hi',
+        lastInbound: lastInboundFact(hoursOld, now),
+      }),
+    );
+    expect(brief).toMatchObject({
+      lastInbound: { minutesAgo: 300, overnight: false, yesterday: false },
+    });
+    expect(JSON.stringify(brief)).not.toMatch(/sorry|apolog|error|fault|delay/i);
+
+    const justNow = friendVoiceContext(
+      blank({
+        step: 'place',
+        introduce: true,
+        parentWords: 'hi',
+        lastInbound: lastInboundFact(new Date(now.getTime() - 2 * 60_000), now),
+      }),
+    );
+    expect(justNow).not.toHaveProperty('lastInbound');
+
+    // 11:30 p.m. Toronto, answered at 8:00 a.m. when quiet hours end.
+    const late = new Date('2026-08-29T03:30:00.000Z');
+    const morning = new Date('2026-08-29T12:00:00.000Z');
+    const pickedUp = friendVoiceContext(
+      blank({
+        step: 'place',
+        introduce: true,
+        parentWords: 'hi',
+        lastInbound: lastInboundFact(late, morning),
+      }),
+    );
+    expect(pickedUp).toMatchObject({
+      lastInbound: { minutesAgo: 8 * 60 + 30, overnight: true, yesterday: true },
+    });
+  });
+});
+
 describe('friend week find', () => {
   it('skips the week bubble once ages are known, and skips an empty list', () => {
     expect(friendWeekAction(true, 3)).toBe('skip');
@@ -66,6 +113,8 @@ describe('onboarding friend fixtures', () => {
     expect(skill.instructions).toContain('ahaMention');
     expect(skill.instructions).toContain('**ack**');
     expect(skill.instructions).toContain('No STOP');
+    expect(skill.instructions).toContain('`lastInbound`');
+    expect(skill.instructions).toContain('minutesAgo');
   });
 
   it('stays lean: state and a playbook, with the gates left to code', async () => {
@@ -90,6 +139,7 @@ describe('onboarding friend fixtures', () => {
     expect(shortWords).toBeLessThan(700);
     expect(short.instructions).toContain('**find_show**');
     expect(short.instructions).toContain('**connected**');
+    expect(short.instructions).toContain('lastInbound');
     expect(short.meta.task).toBe('speak');
   });
 

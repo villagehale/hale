@@ -10,8 +10,9 @@ import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, or } from 'drizzle-or
  * It does not read the parent's words. A declined activity is stored as
  * `dropped`, never as an open or scheduled plan.
  *
- * Prompt injection and proactive follow-ups stay behind {@link WORKSTREAMS_ENABLED_ENV}.
- * Writing a row does not.
+ * Prompt injection, extraction, writes, and proactive follow-ups stay behind
+ * {@link WORKSTREAMS_ENABLED_ENV}. Exactly `true`. Anything else does not call
+ * the model and does not write a row.
  */
 
 export const WORKSTREAMS_ENABLED_ENV = 'WORKSTREAMS_ENABLED';
@@ -61,6 +62,34 @@ export interface WorkstreamOp {
   declined?: boolean | null;
 }
 
+/**
+ * A next step Hale would have to perform. Nothing in this system calls a desk,
+ * emails a centre, or follows up with a camp, so that sentence is not stored
+ * and is not handed back to the check-back as if it were a plan.
+ *
+ * Drop only when Hale is clearly the subject, or when a subjectless chase
+ * ("follow up with", "relancer", "ping") is already a third-party wait.
+ * A parent task ("Call the dentist", "Contacter le dentiste") stays, and so
+ * does a step whose subject is a person, a role, or the outside party.
+ * The status is never rewritten here.
+ */
+const HALE_SUBJECT =
+  /^(?:hale|i['’]ll|i will|i['’]m going to|je vais|je (?:re)?(?:regarde|v[ée]rifie|rev[ée]rifie|relance|rappelle|[ée]cris|ecris|contacte)|we['’]ll|we will|on va|nous allons)(?![\p{L}\p{N}])/iu;
+
+/** A chase with no subject. "Call the dentist" is not one of these. */
+const HALE_CHASE =
+  /^(?:follow up with|check back with|relancer|rev[ée]rifier|reverifier|ping|[ée]crire au|ecrire au|[ée]crire [àa]|ecrire a)(?![\p{L}\p{N}])/iu;
+
+export function haleActionNextStep(
+  nextStep: string | null | undefined,
+  status?: string | null,
+): boolean {
+  const text = nextStep?.trim();
+  if (!text) return false;
+  if (HALE_SUBJECT.test(text)) return true;
+  return status === 'waiting_on_third_party' && HALE_CHASE.test(text);
+}
+
 export type WorkstreamApplyResult =
   | { outcome: 'ignored' }
   | { outcome: 'opened' | 'updated' | 'closed' | 'dropped'; id: string; status: WorkstreamStatus }
@@ -75,6 +104,18 @@ function parseInstant(value: string | null | undefined): Date | null {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * A check-back that is already due would ride the next hourly sweep. A missing
+ * value stays missing (an update keeps the row's time). A past or unreadable
+ * value is stored as null.
+ */
+function storedCheckBack(value: string | null | undefined, now: Date): Date | null | undefined {
+  if (value === undefined) return undefined;
+  const parsed = parseInstant(value);
+  if (!parsed || parsed.getTime() <= now.getTime()) return null;
+  return parsed;
 }
 
 function isStatus(value: string | null | undefined): value is WorkstreamStatus {
@@ -270,7 +311,7 @@ export async function applyWorkstreamOp(
     parseInstant(op.expiresAt) ??
     (existing?.expiresAt && existing.expiresAt > now ? existing.expiresAt : null) ??
     new Date(now.getTime() + DEFAULT_WORKSTREAM_EXPIRY_MS);
-  const checkBackAt = op.checkBackAt === undefined ? undefined : parseInstant(op.checkBackAt);
+  const checkBackAt = storedCheckBack(op.checkBackAt, now);
   const nextStep =
     op.nextStep === undefined || op.nextStep === null ? op.nextStep : clip(op.nextStep, 240);
 

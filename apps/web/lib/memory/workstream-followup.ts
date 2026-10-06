@@ -2,12 +2,16 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, eq, gte, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
-import { deliverFamilyOutbound, familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
+import {
+  type FamilyOutboundTarget,
+  deliverFamilyOutbound,
+  familyOutboundTarget,
+} from '~/lib/channel/linq/family-outbound';
 import { OPT_OUT_LINE, OPT_OUT_SHORT } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -20,11 +24,16 @@ import { isGsm7 } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import { gsmSafe } from '~/lib/loop/templates/weekly-plan/core';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { addCalendarDays, formatLocalDate, localDateParts, timezoneOffsetMs } from './period';
+import { isoWeekdayIndex, localDate, localWeekday, workstreamLanguage } from './workstream-time';
 import {
   type DueWorkstream,
+  haleActionNextStep,
   listDueWorkstreams,
   markWorkstreamFollowedUp,
   workstreamsEnabled,
@@ -35,7 +44,8 @@ import {
  *
  * The model writes the text. This module stores nothing until a send is
  * allowed, and it never substitutes a sentence of its own. A second failure
- * sends nothing and names the miss to #ops.
+ * inside one sweep sends nothing. A real miss is retried on a later sweep,
+ * with backoff, and names the miss to #ops once. The cap is what stops it.
  *
  * Prompt context and this sweep stay behind WORKSTREAMS_ENABLED. The flag
  * check returns before any read.
@@ -45,8 +55,15 @@ export const WORKSTREAM_FOLLOWUP_TEMPLATE_KEY = 'workstream:followup';
 
 const TOOL_NAME = 'write_followup';
 const BODY_MAX = 160;
-const DAY_MS = 24 * 60 * 60 * 1000;
 const PAGE_ACTION = 'workstream_followup_unsent';
+const DEFER_ACTION = 'workstream_followup_deferred';
+const GAVE_UP_ACTION = 'workstream_followup_gave_up';
+
+/** Three real misses, then this check-back stops. The gaps are 6h and 24h. */
+export const FOLLOWUP_ATTEMPT_CAP = 3;
+
+/** Group quiet hours end at 08:00 local, the same window family outbound uses. */
+const GROUP_QUIET_END_HOUR = 8;
 
 const bodySchema = z.object({ body: z.string() });
 
@@ -69,37 +86,694 @@ export function workstreamFollowupClient(): AgentClient | null {
   return budgetedAnthropic({ timeout: 20_000, maxRetries: 0 });
 }
 
-function refuseBody(body: string): string | null {
+const WEEKDAY_ISO: Record<string, number> = {
+  monday: 0,
+  tuesday: 1,
+  wednesday: 2,
+  thursday: 3,
+  friday: 4,
+  saturday: 5,
+  sunday: 6,
+  mon: 0,
+  tue: 1,
+  tues: 1,
+  wed: 2,
+  thu: 3,
+  thur: 3,
+  thurs: 3,
+  fri: 4,
+  sat: 5,
+  sun: 6,
+  lundi: 0,
+  mardi: 1,
+  mercredi: 2,
+  jeudi: 3,
+  vendredi: 4,
+  samedi: 5,
+  dimanche: 6,
+  lun: 0,
+  jeu: 3,
+  ven: 4,
+};
+
+/**
+ * JS `\b` is ASCII-only, so it never fires beside é, à, or ô. Every check
+ * below uses a Unicode letter/number lookaround instead.
+ */
+const WB = String.raw`(?<![\p{L}\p{N}])`;
+const WE = String.raw`(?![\p{L}\p{N}])`;
+
+const WEEKDAY_WORD = String.raw`${WB}(?:(next|prochain(?:e)?)\s+)?(mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|mon|tues|tue|wed|thurs|thur|thu|fri|sat|sun|lun|jeu|ven)${WE}`;
+
+/**
+ * A future action whose subject is Hale: first person, first-person plural
+ * (we / on / nous), or Hale by name. "Let me know" asks the parent; "let me
+ * check" is Hale offering to act. "Want me to" / "tu veux que je" is a Hale
+ * promise only when an outreach verb follows ("call", "vérifie"), not when
+ * the offer is to note something the parent already decided. The sweep does
+ * not perform any of these.
+ */
+const OFFER_OUTREACH =
+  'follow up|reach out|contacte|contact|appelle|[ée]crive|v[ée]rifie|relance|demande|email|text|check|call|ask|chase';
+const COMMITMENT = new RegExp(
+  `${WB}(?:i['’]ll|i will|i['’]m going to|i am going to|i['’]d (?:follow up|check|call|email|reach out|look|ask)|i can (?:check|call|email|reach out|look|follow up|ask)|we['’]ll|we will|we['’]re going to|we are going to|hale(?:['’]s| is) going to|hale will|je vais|je relance|je rappelle|j['’](?:é|e)cris|je contacte|je v(?:é|e)rifie|je te tiens|je (?:te )?(?:redis|reviens|regarde|rev(?:é|e)rifie|m['’]en occupe|m['’]informe)|je reviens vers toi|on va|on relance|on (?:te )?revient|nous allons|qu['’]on (?:voie|v[ée]rifie|regarde|relance|appelle)|(?:want me to|tu veux que je|veux-tu que je)\\s+(?:${OFFER_OUTREACH}))${WE}|${WB}let me (?!know${WE})`,
+  'iu',
+);
+
+/**
+ * The greeting word is case-insensitive. The name that may follow is not:
+ * with the `i` flag, `\p{Lu}` matches any letter, and "following" gets eaten
+ * as a name. Runs after gsmSafe, so an em dash is already "-".
+ */
+const GREETING_WORD = new RegExp(`^(?:hey|hi|hello|bonjour|salut|coucou|allo)${WE}`, 'iu');
+const GREETING_TAIL = /^(?:\s+(?:there|[\p{Lu}][\p{Ll}][\p{L}'’–-]*))?\s*[!,.:-]*\s*/u;
+
+const STOCK_OPENER = new RegExp(
+  `^(?:just (?:checking|wanted to check|following up|circling back|a quick check-?in)|checking in${WE}|checking back${WE}|quick (?:follow-?up|check-?in)|hope your${WE}|hope you had${WE}|following up${WE}|circling back${WE}|touching base${WE}|(?:je fais )?(?:un )?petit suivi${WE}|juste un suivi${WE}|petit rappel${WE}|still need to know${WE})`,
+  'iu',
+);
+
+const PARENT_NEWS = new RegExp(
+  `${WB}(?:any news|on your end|heard anything|des nouvelles|de ton c[oô]t[eé])${WE}`,
+  'iu',
+);
+
+/** A question about whether a third party has answered. A status is not one. */
+const THIRD_PARTY_REPLY = new RegExp(
+  `${WB}(?:hear back|heard back|update from|any update|news from|r[eé]pondu|r[eé]ponse|get back to you|got back to you|replied|answer(?:ed)?|any word|say anything|recontact[ée]|t['’]est revenu|revenu vers toi)${WE}`,
+  'iu',
+);
+
+/** An order. "Faut-il …?" is a question and is not one of these. */
+const FRENCH_ORDER = new RegExp(
+  [
+    `${WB}(?:tu dois|tu devrais|vous devez|vous devriez|il faut que tu|il faudrait que tu|faudrait que tu|faut(?:\\s+juste)?\\s+que tu|il te faut|il faut choisir|il te reste [àa]|t['’]as (?:juste )?[àa]|n['’]oublie pas|(?:il )?faut qu['’]on)${WE}`,
+    `${WB}il faudrait\\s+\\p{L}+(?:er|ir|re)${WE}`,
+    `${WB}il faut(?!-il)\\s+\\p{L}+(?:er|ir|re)${WE}`,
+    `^faut\\s+\\p{L}+(?:er|ir|re)${WE}`,
+  ].join('|'),
+  'giu',
+);
+
+/** A reminder that opens the text. "Do you still need to…" does not. */
+const ENGLISH_ORDER_START = new RegExp(
+  `^(?:time to|need to|gotta|don['’]t forget|make sure|remember to|be sure to)${WE}`,
+  'iu',
+);
+
+/** An order aimed at the parent, wherever it sits in the line. */
+const ENGLISH_ORDER_ANY = new RegExp(
+  `${WB}(?:you need to|you have to|you['’]ve got to|you should|you must|don['’]t forget to|make sure (?:to|you))${WE}`,
+  'giu',
+);
+
+/**
+ * The auxiliary that turns "you need to" into a question: "do you need to",
+ * "will you need to", "what do you need to". It has to sit immediately
+ * before the order.
+ */
+const ORDER_QUESTION_AUX =
+  /(?<![\p{L}\p{N}])(?:do|does|did|will|would|can|could|should|might|may)\s+$/iu;
+
+/** A sentence that opens as a question, including "Est-ce que". */
+const QUESTION_SENTENCE = /^(?:is|are|was|were|has|have|did|does|do|est-ce que)(?![\p{L}\p{N}])/iu;
+
+/** "est-elle", "a-t-il", "sont-elles". Longer forms before the shorter ones. */
+const INVERTED_SUBJECT = /-(?:elles|elle|ils|il|on|tu)(?![\p{L}\p{N}])/iu;
+
+const BOOKED_CLAIM = new RegExp(
+  `${WB}(?:booked|is confirmed|you signed up|all set|c['’]est r[eé]gl[eé]|r[ée]servée?|confirmée?|inscrite?)${WE}`,
+  'giu',
+);
+
+const ATTRIBUTED = new RegExp(
+  `${WB}(?:you said|you mentioned|tu as dit|tu m['’]as dit|comme tu disais)${WE}`,
+  'iu',
+);
+
+const RELATIVE_DAY = new RegExp(
+  `${WB}(?:this\\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)|ce\\s+(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)|tomorrow|demain)${WE}`,
+  'giu',
+);
+
+const PARENT_ADDRESS = new RegExp(
+  `${WB}(?:did you|have you|do you|you get a chance|can you|could you|as-tu|t['’]as|tu peux|peux-tu|pourrais-tu)${WE}`,
+  'iu',
+);
+
+/**
+ * The line treats a step as already done. "When you called" and "what did
+ * the dentist say" are that. "Have you called yet?" asks, and is not.
+ */
+const PRESUMED_DONE = new RegExp(
+  [
+    `${WB}(?:when|since|after|now that|quand|depuis que|maintenant que)\\s+(?:you(?:['’]ve)?|tu as|t['’]as)\\s+(called|emailed|sent|spoke|talked|heard|booked|signed|appel[ée]|[ée]crit|envoy[ée]|parl[ée]|sign[ée])${WE}`,
+    `${WB}what did (?:the\\s+\\p{L}+|they|he|she) say${WE}`,
+    `${WB}qu['’]est-ce qu(?:['’](?:ils|elles|il|elle)|e\\s+(?:l['’]\\p{L}+|(?:le|la|les)\\s+\\p{L}+))\\s+(?:t['’]a dit|(?:ont|a) dit)${WE}`,
+  ].join('|'),
+  'giu',
+);
+
+const WEEKDAY_BY_ISO: Record<number, readonly string[]> = {
+  0: ['monday', 'lundi'],
+  1: ['tuesday', 'mardi'],
+  2: ['wednesday', 'mercredi'],
+  3: ['thursday', 'jeudi'],
+  4: ['friday', 'vendredi'],
+  5: ['saturday', 'samedi'],
+  6: ['sunday', 'dimanche'],
+};
+
+const MONTH_NAME =
+  'janvier|february|fevrier|février|january|septembre|september|novembre|november|decembre|décembre|december|octobre|october|juillet|august|avril|april|march|mars|juin|june|july|aout|août|sept|mai|may|jan|feb|mar|apr|jun|jul|aug|oct|nov|dec';
+
+/**
+ * A promised weekday that is today or earlier this week. "next Thursday" is
+ * the following one, and a weekday with no promise attached is a status.
+ * Short forms count: Thu, Thurs, jeu.
+ */
+export function promisedPassedWeekday(text: string, now: Date, timeZone: string): boolean {
+  if (!COMMITMENT.test(text)) return false;
+  const today = isoWeekdayIndex(now, timeZone);
+  for (const match of text.matchAll(new RegExp(WEEKDAY_WORD, 'giu'))) {
+    if (match[1]) continue;
+    const raw = match[2]?.toLowerCase() ?? '';
+    const iso = WEEKDAY_ISO[raw] ?? WEEKDAY_ISO[raw.replace(/s$/, '')];
+    if (iso !== undefined && iso <= today) return true;
+  }
+  return false;
+}
+
+/** Any Hale-subject plan, including one with no day attached. */
+export function inventedHalePromise(text: string): boolean {
+  return COMMITMENT.test(text);
+}
+
+function stockOpener(text: string): boolean {
+  const trimmed = text.trim();
+  if (STOCK_OPENER.test(trimmed)) return true;
+  const word = GREETING_WORD.exec(trimmed);
+  if (!word?.[0]) return false;
+  const afterWord = trimmed.slice(word[0].length);
+  const tail = GREETING_TAIL.exec(afterWord);
+  return STOCK_OPENER.test(afterWord.slice(tail?.[0].length ?? 0));
+}
+
+/**
+ * A question that asks the parent what a third party did. "Any news" and
+ * "des nouvelles" count even without a question mark, which is how the
+ * earlier lines were written. A statement that the camp has not written
+ * back is not a question.
+ */
+function asksParentForThirdPartyNews(text: string): boolean {
+  if (PARENT_NEWS.test(text)) return true;
+  if (!text.includes('?')) return false;
+  return THIRD_PARTY_REPLY.test(text);
+}
+
+/** Open and scheduled threads ask the parent for outside news just as often. */
+function thirdPartyNewsBlocked(status: string): boolean {
+  return status === 'waiting_on_third_party' || status === 'open' || status === 'scheduled';
+}
+
+function threadHas(term: string, title: string, nextStep: string | null | undefined): boolean {
+  const haystack = `${title}\n${nextStep ?? ''}`.toLowerCase();
+  return haystack.includes(term.toLowerCase());
+}
+
+/** The term as its own word. "called" is not "call", and "sent" is not "consent". */
+function threadHasWord(term: string, title: string, nextStep: string | null | undefined): boolean {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`${WB}${escaped}${WE}`, 'iu').test(`${title}\n${nextStep ?? ''}`);
+}
+
+/**
+ * A step the line treats as finished, when the title and the next step do
+ * not already say that. The captured verb is the step. "What did they say"
+ * needs "say" or "said". "Qu'est-ce qu'il a dit" needs "dit".
+ */
+function presumedDone(text: string, title: string, nextStep: string | null | undefined): boolean {
+  for (const match of text.matchAll(PRESUMED_DONE)) {
+    const verb = match[1];
+    if (verb) {
+      if (!threadHasWord(verb, title, nextStep)) return true;
+      continue;
+    }
+    const said = match[0].toLowerCase().includes('dit');
+    const tokens = said ? ['dit'] : ['say', 'says', 'said'];
+    if (!tokens.some((token) => threadHasWord(token, title, nextStep))) return true;
+  }
+  return false;
+}
+
+/**
+ * The person a next step names as the one who acts, when that person is not
+ * the parent. "Sam to email" is Sam. "Parent to call" and "Le parent doit"
+ * are the parent.
+ */
+function stepOwner(nextStep: string | null | undefined): string | null {
+  const text = nextStep?.trim() ?? '';
+  if (!text) return null;
+  if (
+    /^(?:parent|the parent|co-?parent|mom|dad|mum|maman|papa|le parent|l['’]autre parent|hale)(?![\p{L}\p{N}])/iu.test(
+      text,
+    )
+  ) {
+    return null;
+  }
+  const named =
+    /^([\p{Lu}][\p{L}–-]*)(?:['’]s\s+\p{L}+)?\s+(?:to|will|is going to|needs to|doit|va)(?![\p{L}\p{N}])/u.exec(
+      text,
+    );
+  const name = named?.[1];
+  if (!name || /^(?:hale|parent|mom|dad|mum)$/i.test(name)) return null;
+  return name;
+}
+
+/** The weekday of "this <day>" in the family's zone, including today. */
+function thisWeekdayMonthDay(
+  now: Date,
+  timeZone: string,
+  iso: number,
+): { month: number; day: number } {
+  const todayIso = isoWeekdayIndex(now, timeZone);
+  const delta = (iso - todayIso + 7) % 7;
+  const date = addCalendarDays(localDate(now, timeZone), delta);
+  const [, month, day] = date.split('-').map(Number) as [number, number, number];
+  return { month, day };
+}
+
+function tomorrowIso(now: Date, timeZone: string): number {
+  const next = addCalendarDays(localDate(now, timeZone), 1);
+  const [year, month, day] = next.split('-').map(Number) as [number, number, number];
+  return (new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 6) % 7;
+}
+
+/**
+ * "avant vendredi" names a deadline, not the day itself, so it does not make
+ * "demain" true. "Friday's dentist" does.
+ */
+function threadNamesEventWeekday(haystack: string, iso: number): boolean {
+  return (WEEKDAY_BY_ISO[iso] ?? []).some((name) =>
+    new RegExp(`${WB}(?<!avant\\s|before\\s)${name}${WE}`, 'iu').test(haystack),
+  );
+}
+
+function monthNumber(name: string): number | undefined {
+  const key = name
+    .toLowerCase()
+    .replace(/\./g, '')
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '');
+  const months: Record<string, number> = {
+    jan: 1,
+    january: 1,
+    janvier: 1,
+    feb: 2,
+    february: 2,
+    fevrier: 2,
+    mar: 3,
+    march: 3,
+    mars: 3,
+    apr: 4,
+    april: 4,
+    avril: 4,
+    may: 5,
+    mai: 5,
+    jun: 6,
+    june: 6,
+    juin: 6,
+    jul: 7,
+    july: 7,
+    juillet: 7,
+    aug: 8,
+    august: 8,
+    aout: 8,
+    sep: 9,
+    sept: 9,
+    september: 9,
+    septembre: 9,
+    oct: 10,
+    october: 10,
+    octobre: 10,
+    nov: 11,
+    november: 11,
+    novembre: 11,
+    dec: 12,
+    december: 12,
+    decembre: 12,
+  };
+  return months[key];
+}
+
+function explicitDates(haystack: string): Array<{ month: number; day: number }> {
+  const found: Array<{ month: number; day: number }> = [];
+  const push = (monthName: string, dayText: string) => {
+    const month = monthNumber(monthName);
+    const day = Number(dayText);
+    if (month && day >= 1 && day <= 31) found.push({ month, day });
+  };
+  for (const match of haystack.matchAll(
+    new RegExp(`${WB}(${MONTH_NAME})\\.?\\s+(\\d{1,2})${WE}`, 'giu'),
+  )) {
+    if (match[1] && match[2]) push(match[1], match[2]);
+  }
+  for (const match of haystack.matchAll(
+    new RegExp(`${WB}(\\d{1,2})\\s+(${MONTH_NAME})\\.?${WE}`, 'giu'),
+  )) {
+    if (match[1] && match[2]) push(match[2], match[1]);
+  }
+  for (const match of haystack.matchAll(new RegExp(`${WB}\\d{4}-(\\d{2})-(\\d{2})${WE}`, 'gu'))) {
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) found.push({ month, day });
+  }
+  return found;
+}
+
+function explicitDateContradicts(
+  haystack: string,
+  target: { month: number; day: number },
+): boolean {
+  return explicitDates(haystack).some(
+    (date) => date.month !== target.month || date.day !== target.day,
+  );
+}
+
+/** The next comma, stop, or spaced hyphen after `index`, or -1. */
+function nextBreak(text: string, index: number): number {
+  return text.slice(index).search(/[,;.!?]| - /);
+}
+
+/** The clause that holds `index`, split on a comma, a stop, or " - ". */
+function clauseHolding(text: string, index: number): string {
+  const before = text.slice(0, index);
+  let start = 0;
+  for (const mark of before.matchAll(/[,;.!?]| - /g)) {
+    start = (mark.index ?? 0) + mark[0].length;
+  }
+  const next = nextBreak(text, index);
+  const end = next < 0 ? text.length : index + next;
+  return text.slice(start, end);
+}
+
+/**
+ * A booking word is a question when its own clause ends in "?", or when the
+ * sentence ends in "?" and either opens as a question or inverts the subject
+ * in that clause. The comma in "inscrite au CPE, tu veux que je…?" still
+ * closes the claim: that sentence does not open as a question.
+ */
+function inQuestion(text: string, index: number): boolean {
+  const next = nextBreak(text, index);
+  if (next >= 0 && text.slice(index)[next] === '?') return true;
+  const before = text.slice(0, index);
+  let start = 0;
+  for (const mark of before.matchAll(/[.!?]/g)) {
+    start = (mark.index ?? 0) + mark[0].length;
+  }
+  const after = text.slice(index);
+  const endRel = after.search(/[.!?]/);
+  if (endRel < 0 || after[endRel] !== '?') return false;
+  const sentence = text.slice(start, index + endRel + 1).trim();
+  if (QUESTION_SENTENCE.test(sentence)) return true;
+  if (INVERTED_SUBJECT.test(clauseHolding(text, index))) return true;
+  return orAlternativeQuestion(text, index);
+}
+
+/**
+ * "C'est réglé, ou t'hésites encore?" asks. "Inscrite au CPE, tu veux que
+ * je le note?" states the booking and then asks something else.
+ */
+function orAlternativeQuestion(text: string, index: number): boolean {
+  const rest = text.slice(index);
+  const next = nextBreak(text, index);
+  if (next < 0 || rest[next] !== ',') return false;
+  const after = rest.slice(next + 1).trimStart();
+  if (!/^(?:ou|or)(?![\p{L}\p{N}])/iu.test(after)) return false;
+  const endRel = rest.search(/[.!?]/);
+  return endRel >= 0 && rest[endRel] === '?';
+}
+
+/**
+ * "What do you need to bring?" asks. "You should confirm." tells. The
+ * auxiliary has to sit immediately before the order, and the sentence that
+ * holds it has to end in "?". A comma does not end that sentence. An order
+ * that opens the line is decided before this runs.
+ */
+function exemptOrderQuestion(text: string, index: number): boolean {
+  if (!ORDER_QUESTION_AUX.test(text.slice(0, index))) return false;
+  const after = text.slice(index);
+  const endRel = after.search(/[.!?]/);
+  return endRel >= 0 && after[endRel] === '?';
+}
+
+/**
+ * "Est-ce que tu dois…?" and "Tu dois…, ou c'est déjà fait?" ask. "Tu dois
+ * appeler." tells. The sentence has to end in "?".
+ */
+function exemptFrenchOrder(text: string, index: number): boolean {
+  const before = text.slice(0, index);
+  let start = 0;
+  for (const mark of before.matchAll(/[.!?]/g)) {
+    start = (mark.index ?? 0) + mark[0].length;
+  }
+  const after = text.slice(index);
+  const endRel = after.search(/[.!?]/);
+  if (endRel < 0 || after[endRel] !== '?') return false;
+  const sentence = text.slice(start, index + endRel + 1).trim();
+  if (/^est-ce que(?![\p{L}\p{N}])/iu.test(sentence)) return true;
+  const ou = after.search(/,\s+ou(?![\p{L}\p{N}])/iu);
+  return ou >= 0 && ou < endRel;
+}
+
+function frenchOrder(text: string): boolean {
+  for (const match of text.matchAll(FRENCH_ORDER)) {
+    if (match.index === undefined) continue;
+    if (!exemptFrenchOrder(text, match.index)) return true;
+  }
+  return false;
+}
+
+function englishOrder(text: string): boolean {
+  if (ENGLISH_ORDER_START.test(text)) return true;
+  for (const match of text.matchAll(ENGLISH_ORDER_ANY)) {
+    if (match.index === undefined) continue;
+    if (!exemptOrderQuestion(text, match.index)) return true;
+  }
+  return false;
+}
+
+/**
+ * The named owner is who the question is about. Mentioning them elsewhere
+ * ("Sam needs to… — can you send that") does not make the ask theirs.
+ */
+function ownerIsQuestionSubject(text: string, owner: string): boolean {
+  const name = owner.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(
+    `${WB}(?:(?:did|has|have|does|do|will|is|was|can|could)\\s+${name}|do you know if\\s+${name}|${name}\\s+a(?:\\s+pu|\\s+eu)?)${WE}`,
+    'iu',
+  ).test(text);
+}
+
+function relativeDayAllowed(
+  term: string,
+  weekday: string | undefined,
+  title: string,
+  nextStep: string | null | undefined,
+  now: Date,
+  timeZone: string,
+): boolean {
+  if (threadHas(term, title, nextStep)) return true;
+  const haystack = `${title}\n${nextStep ?? ''}`;
+  const lower = term.toLowerCase();
+  if (lower === 'tomorrow' || lower === 'demain') {
+    return threadNamesEventWeekday(haystack, tomorrowIso(now, timeZone));
+  }
+  if (!weekday) return false;
+  const iso = WEEKDAY_ISO[weekday.toLowerCase()];
+  if (iso === undefined) return false;
+  if (!threadNamesEventWeekday(haystack, iso)) return false;
+  return !explicitDateContradicts(haystack, thisWeekdayMonthDay(now, timeZone, iso));
+}
+
+/**
+ * A fact the line states that the thread does not. A scheduled thread may
+ * say the plan is booked. A question about a booking is not a claim. A
+ * relative day is allowed when the thread names that weekday and no explicit
+ * date disagrees, and tomorrow when tomorrow's weekday is named.
+ */
+function inventedClaim(
+  text: string,
+  status: string,
+  title: string,
+  nextStep: string | null | undefined,
+  now: Date,
+  timeZone: string,
+): boolean {
+  if (status !== 'scheduled') {
+    for (const match of text.matchAll(BOOKED_CLAIM)) {
+      const claim = match[0];
+      if (!claim || inQuestion(text, match.index)) continue;
+      if (!threadHas(claim, title, nextStep)) return true;
+    }
+  }
+  const attributed = ATTRIBUTED.exec(text);
+  if (attributed?.[0] && !threadHas(attributed[0], title, nextStep)) return true;
+  for (const match of text.matchAll(RELATIVE_DAY)) {
+    const term = match[0];
+    if (!term) continue;
+    if (!relativeDayAllowed(term, match[1] ?? match[2], title, nextStep, now, timeZone)) {
+      return true;
+    }
+  }
+  if (addressedWrongOwner(text, nextStep)) return true;
+  if (presumedDone(text, title, nextStep)) return true;
+  return false;
+}
+
+/** The named owner, when the line asks the parent to do that person's step. */
+function addressedWrongOwner(text: string, nextStep: string | null | undefined): string | null {
+  const owner = stepOwner(nextStep);
+  if (!owner || !PARENT_ADDRESS.test(text) || ownerIsQuestionSubject(text, owner)) return null;
+  return owner;
+}
+
+/**
+ * An em dash between two letters becomes a spaced hyphen. Ranges (9—10) and
+ * an edge dash stay for `gsmSafe`, which folds every dash to a bare hyphen
+ * the way the other sends do. Spacing those changed their segment counts.
+ */
+function spaceFollowupEmDash(text: string): string {
+  return text.replace(/([A-Za-zÀ-ÿ])\u2014([A-Za-zÀ-ÿ])/g, '$1 - $2');
+}
+
+/**
+ * The body that may be sent. A follow-up spaces a word-bounded em dash, then
+ * uses the same GSM fold as the other sends (`gsmSafe`). What is left must
+ * still be GSM-7. An empty body is the model declining, not a failure.
+ */
+type PreparedBody = { ok: true; body: string } | { ok: false; reason: string; note?: string };
+
+function prepareBody(
+  body: string,
+  now: Date,
+  timeZone: string,
+  status: string,
+  title = '',
+  nextStep: string | null = null,
+): PreparedBody {
   const text = body.trim();
-  if (!text) return 'empty';
-  if (text.length > BODY_MAX) return 'too_long';
-  if (!isGsm7(text)) return 'encoding';
-  const folded = text.toLowerCase();
-  if (folded.includes('http://') || folded.includes('https://') || folded.includes('www.')) {
-    return 'link';
+  if (!text) return { ok: false, reason: 'empty' };
+  const folded = gsmSafe(spaceFollowupEmDash(text)).trim();
+  if (!folded) return { ok: false, reason: 'empty' };
+  if (folded.length > BODY_MAX) return { ok: false, reason: 'too_long' };
+  if (!isGsm7(folded)) return { ok: false, reason: 'encoding' };
+  const lower = folded.toLowerCase();
+  if (lower.includes('http://') || lower.includes('https://') || lower.includes('www.')) {
+    return { ok: false, reason: 'link' };
   }
   if (
-    folded.includes(OPT_OUT_LINE.toLowerCase()) ||
-    folded.includes(OPT_OUT_SHORT.toLowerCase()) ||
-    folded.includes('reply yes')
+    lower.includes(OPT_OUT_LINE.toLowerCase()) ||
+    lower.includes(OPT_OUT_SHORT.toLowerCase()) ||
+    lower.includes('reply yes')
   ) {
-    return 'keyword_ask';
+    return { ok: false, reason: 'keyword_ask' };
   }
-  return null;
+  if (stockOpener(folded)) return { ok: false, reason: 'stock_opener' };
+  if (frenchOrder(folded) || englishOrder(folded)) return { ok: false, reason: 'order' };
+  if (promisedPassedWeekday(folded, now, timeZone)) return { ok: false, reason: 'past_weekday' };
+  if (inventedHalePromise(folded)) return { ok: false, reason: 'invented_promise' };
+  if (thirdPartyNewsBlocked(status) && asksParentForThirdPartyNews(folded)) {
+    return { ok: false, reason: 'parent_news' };
+  }
+  const owner = addressedWrongOwner(folded, nextStep);
+  if (owner) {
+    return {
+      ok: false,
+      reason: 'invented_claim',
+      note: `invented_claim. The next step belongs to ${owner}. Ask about ${owner}, not you`,
+    };
+  }
+  if (presumedDone(folded, title, nextStep)) {
+    return {
+      ok: false,
+      reason: 'invented_claim',
+      note: "invented_claim. The next step isn't done yet. Ask whether it happened",
+    };
+  }
+  if (inventedClaim(folded, status, title, nextStep, now, timeZone)) {
+    return { ok: false, reason: 'invented_claim' };
+  }
+  return { ok: true, body: folded };
+}
+
+/** Why a draft cannot be sent, or null when it can. Empty is its own reason. */
+export function followupRefusal(
+  body: string,
+  now: Date,
+  timeZone: string,
+  status = 'waiting_on_parent',
+  thread: { title?: string; nextStep?: string | null } = {},
+): string | null {
+  const prepared = prepareBody(
+    body,
+    now,
+    timeZone,
+    status,
+    thread.title ?? '',
+    thread.nextStep ?? null,
+  );
+  return prepared.ok ? null : prepared.reason;
+}
+
+/** An order retry asks for a question. No sample sentence: that becomes the next draft. */
+function refusalLine(reason: string): string {
+  if (reason === 'order') {
+    return 'order. Rewrite it as a question about where things stand';
+  }
+  return reason;
+}
+
+function whoseMove(status: string): 'parent' | 'third_party' | 'scheduled' | 'open' {
+  if (status === 'waiting_on_parent') return 'parent';
+  if (status === 'waiting_on_third_party') return 'third_party';
+  if (status === 'scheduled') return 'scheduled';
+  return 'open';
 }
 
 async function oneAttempt(
   client: AgentClient,
-  input: { title: string; status: string; nextStep: string | null; refusal: string | null },
-): Promise<WorkstreamComposeResult> {
+  input: {
+    title: string;
+    status: string;
+    nextStep: string | null;
+    refusal: string | null;
+    refusalNote?: string;
+    now: Date;
+    timeZone: string;
+    language: 'en' | 'fr';
+  },
+): Promise<PreparedBody> {
   const skill = await loadCronSkill('workstream-followup');
-  const refusal = input.refusal ? `\nprevious attempt refused: ${input.refusal}` : '';
+  const refusal = input.refusal
+    ? `\nprevious attempt refused: ${input.refusalNote ?? refusalLine(input.refusal)}`
+    : '';
+  const userMessage = [
+    `today: ${localDate(input.now, input.timeZone)}`,
+    `weekday: ${localWeekday(input.now, input.timeZone, input.language)}`,
+    `timezone: ${input.timeZone}`,
+    `language: ${input.language}`,
+    `whose_move: ${whoseMove(input.status)}`,
+    `title: ${input.title}`,
+    `status: ${input.status}`,
+    `next: ${haleActionNextStep(input.nextStep, input.status) ? 'none' : (input.nextStep ?? 'none')}`,
+  ].join('\n');
   try {
     const { value } = await forceToolJson({
       client,
       lane: pickLane(skill.meta.task),
       system: skill.instructions,
-      userMessage: `title: ${input.title}\nstatus: ${input.status}\nnext: ${input.nextStep ?? 'none'}${refusal}`,
+      userMessage: `${userMessage}${refusal}`,
       toolName: TOOL_NAME,
       toolDescription: 'The one check-back text for this open thread.',
       inputJsonSchema: bodyJsonSchema as unknown as Anthropic.Tool.InputSchema,
@@ -107,34 +781,66 @@ async function oneAttempt(
       maxTokens: 256,
       transport: 'create',
     });
-    const reason = refuseBody(value.body);
-    if (reason) return { ok: false, reason };
-    return { ok: true, body: value.body.trim() };
+    return prepareBody(
+      value.body,
+      input.now,
+      input.timeZone,
+      input.status,
+      input.title,
+      input.nextStep,
+    );
   } catch {
     return { ok: false, reason: 'model_failed' };
   }
 }
 
 /**
- * One friend-voice sentence, then one retry. The second failure is a miss,
- * not a fallback sentence.
+ * One friend-voice sentence, then one retry when the first attempt actually
+ * failed. An empty body is the model declining to send, and is not retried.
+ * The second failure is a miss, not a fallback sentence.
  */
 export async function composeWorkstreamFollowup(input: {
   client: AgentClient;
   title: string;
   status: string;
   nextStep: string | null;
+  now?: Date;
+  timeZone?: string;
+  language?: 'en' | 'fr';
 }): Promise<WorkstreamComposeResult> {
-  const first = await oneAttempt(input.client, { ...input, refusal: null });
-  if (first.ok) return first;
-  return oneAttempt(input.client, { ...input, refusal: first.reason });
+  const attempt = {
+    client: input.client,
+    title: input.title,
+    status: input.status,
+    nextStep: input.nextStep,
+    now: input.now ?? new Date(),
+    timeZone: input.timeZone ?? DEFAULT_TIMEZONE,
+    language: input.language ?? 'en',
+  };
+  const first = await oneAttempt(attempt.client, { ...attempt, refusal: null });
+  if (first.ok || first.reason === 'empty') return publish(first);
+  const second = await oneAttempt(attempt.client, {
+    ...attempt,
+    refusal: first.reason,
+    refusalNote: first.note,
+  });
+  return publish(second);
 }
+
+/** The note stays on the retry. Callers only see the short reason. */
+function publish(result: PreparedBody): WorkstreamComposeResult {
+  if (result.ok) return { ok: true, body: result.body };
+  return { ok: false, reason: result.reason };
+}
+
+/** Group-level holds are not the per-parent follow-up cap. */
+export type WorkstreamHoldReason = ProactiveHoldReason | 'group_cap' | 'coparent_ask';
 
 export interface WorkstreamFollowupResult {
   enabled: boolean;
   considered: number;
   sent: number;
-  held: Record<ProactiveHoldReason, number>;
+  held: Record<WorkstreamHoldReason, number>;
   skipped: {
     f14: number;
     already_claimed: number;
@@ -142,13 +848,22 @@ export interface WorkstreamFollowupResult {
     no_parent: number;
     no_phone: number;
     not_configured: number;
+    nothing_to_say: number;
     compose_failed: number;
+    deferred: number;
   };
   failed: number;
 }
 
 function emptyHeld(): WorkstreamFollowupResult['held'] {
-  return { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 };
+  return {
+    not_enrolled: 0,
+    no_watch_consent: 0,
+    frequency_cap: 0,
+    quiet_hours: 0,
+    group_cap: 0,
+    coparent_ask: 0,
+  };
 }
 
 function emptyResult(enabled: boolean): WorkstreamFollowupResult {
@@ -164,7 +879,9 @@ function emptyResult(enabled: boolean): WorkstreamFollowupResult {
       no_parent: 0,
       no_phone: 0,
       not_configured: 0,
+      nothing_to_say: 0,
       compose_failed: 0,
+      deferred: 0,
     },
     failed: 0,
   };
@@ -201,9 +918,55 @@ export interface WorkstreamFollowupDeps {
   thread?: typeof threadProactiveMessage;
   stamp?: (database: Database, id: string, now: Date) => Promise<void>;
   page?: (text: string) => Promise<unknown>;
-  alreadyPaged?: (database: Database, familyId: string, now: Date) => Promise<boolean>;
-  noteUnsent?: (database: Database, familyId: string, reason: string, now: Date) => Promise<void>;
+  alreadyPaged?: (
+    database: Database,
+    familyId: string,
+    now: Date,
+    workstream: { id: string; checkBackAt: Date },
+  ) => Promise<boolean>;
+  noteUnsent?: (
+    database: Database,
+    familyId: string,
+    reason: string,
+    now: Date,
+    workstreamId: string,
+    checkBackAt: Date,
+  ) => Promise<void>;
+  noteGaveUp?: (
+    database: Database,
+    familyId: string,
+    reason: string,
+    now: Date,
+    workstreamId: string,
+    checkBackAt: Date,
+    attempt: number,
+  ) => Promise<void>;
+  pendingDeferral?: (
+    database: Database,
+    workstream: { id: string; familyId: string; checkBackAt: Date },
+    now: Date,
+  ) => Promise<FollowupDeferral | null>;
+  defer?: (
+    database: Database,
+    input: {
+      familyId: string;
+      workstreamId: string;
+      checkBackAt: Date;
+      until: Date;
+      reason: string;
+      attempt: number;
+      now: Date;
+    },
+  ) => Promise<void>;
+  timeZoneFor?: (database: Database, familyId: string) => Promise<string>;
+  targetFor?: (database: Database, familyId: string) => Promise<FamilyOutboundTarget>;
   transport?: ChannelTransport;
+}
+
+export interface FollowupDeferral {
+  until: Date;
+  attempt: number;
+  reason: string;
 }
 
 async function primaryParent(database: Database, familyId: string): Promise<string | null> {
@@ -234,24 +997,54 @@ async function linkedTeen(
   return rows.some((row) => deriveStage(row.dateOfBirth, now) === 'teenager');
 }
 
-async function alreadyPaged(database: Database, familyId: string, now: Date): Promise<boolean> {
-  const since = new Date(now.getTime() - DAY_MS);
+async function alreadyPaged(
+  database: Database,
+  familyId: string,
+  _now: Date,
+  workstream: { id: string; checkBackAt: Date },
+): Promise<boolean> {
   const rows = await database
-    .select({ id: schema.auditLog.id })
+    .select({ after: schema.auditLog.after })
     .from(schema.auditLog)
     .where(
       and(
         eq(schema.auditLog.familyId, familyId),
         eq(schema.auditLog.actionTaken, PAGE_ACTION),
-        gte(schema.auditLog.occurredAt, since),
+        eq(schema.auditLog.targetId, workstream.id),
       ),
     )
-    .limit(1);
-  return rows.length > 0;
+    .limit(20);
+  const stamp = workstream.checkBackAt.toISOString();
+  return rows.some((row) => {
+    const after = row.after;
+    return (
+      !!after && typeof after === 'object' && 'checkBackAt' in after && after.checkBackAt === stamp
+    );
+  });
 }
 
 function unsentPage(familyId: string, reason: string): string {
   return `workstream followup unsent family=${familyId} reason=${reason}`;
+}
+
+async function noteGaveUp(
+  database: Database,
+  familyId: string,
+  reason: string,
+  now: Date,
+  workstreamId: string,
+  checkBackAt: Date,
+  attempt: number,
+): Promise<void> {
+  await database.insert(schema.auditLog).values({
+    familyId,
+    actor: 'system',
+    actionTaken: GAVE_UP_ACTION,
+    targetTable: 'family_workstreams',
+    targetId: workstreamId,
+    after: { reason, attempt, checkBackAt: checkBackAt.toISOString() },
+    occurredAt: now,
+  });
 }
 
 async function noteUnsent(
@@ -259,25 +1052,171 @@ async function noteUnsent(
   familyId: string,
   reason: string,
   now: Date,
+  workstreamId: string,
+  checkBackAt: Date,
 ): Promise<void> {
   await database.insert(schema.auditLog).values({
     familyId,
     actor: 'system',
     actionTaken: PAGE_ACTION,
     targetTable: 'family_workstreams',
-    after: { reason },
+    targetId: workstreamId,
+    after: { reason, checkBackAt: checkBackAt.toISOString() },
     occurredAt: now,
   });
 }
 
-async function defaultCompose(row: DueWorkstream): Promise<WorkstreamComposeResult> {
+function parseDeferral(after: unknown, checkBackAt: string): FollowupDeferral | null {
+  if (!after || typeof after !== 'object') return null;
+  const row = after as Record<string, unknown>;
+  if (row.checkBackAt !== checkBackAt) return null;
+  if (typeof row.until !== 'string' || typeof row.attempt !== 'number') return null;
+  const until = new Date(row.until);
+  if (Number.isNaN(until.getTime())) return null;
+  return {
+    until,
+    attempt: row.attempt,
+    reason: typeof row.reason === 'string' ? row.reason : 'deferred',
+  };
+}
+
+async function pendingDeferral(
+  database: Database,
+  workstream: { id: string; familyId: string; checkBackAt: Date },
+  _now: Date,
+): Promise<FollowupDeferral | null> {
+  const rows = await database
+    .select({ after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, workstream.familyId),
+        eq(schema.auditLog.actionTaken, DEFER_ACTION),
+        eq(schema.auditLog.targetId, workstream.id),
+      ),
+    )
+    .orderBy(desc(schema.auditLog.occurredAt))
+    .limit(20);
+  const stamp = workstream.checkBackAt.toISOString();
+  for (const row of rows) {
+    const parsed = parseDeferral(row.after, stamp);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+async function noteDeferred(
+  database: Database,
+  input: {
+    familyId: string;
+    workstreamId: string;
+    checkBackAt: Date;
+    until: Date;
+    reason: string;
+    attempt: number;
+    now: Date;
+  },
+): Promise<void> {
+  await database.insert(schema.auditLog).values({
+    familyId: input.familyId,
+    actor: 'system',
+    actionTaken: DEFER_ACTION,
+    targetTable: 'family_workstreams',
+    targetId: input.workstreamId,
+    after: {
+      reason: input.reason,
+      checkBackAt: input.checkBackAt.toISOString(),
+      until: input.until.toISOString(),
+      attempt: input.attempt,
+    },
+    occurredAt: input.now,
+  });
+}
+
+/** The next local clock time strictly after `now`. Midnight is hour 0. */
+function nextLocalClock(now: Date, timeZone: string, hour: number, minute: number): Date {
+  const parts = localDateParts(now, timeZone);
+  const at = (year: number, month: number, day: number) => {
+    const guess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+    const offset = timezoneOffsetMs(guess, timeZone);
+    const instant = new Date(guess.getTime() - offset);
+    const atInstant = timezoneOffsetMs(instant, timeZone);
+    return atInstant === offset ? instant : new Date(guess.getTime() - atInstant);
+  };
+  let when = at(parts.year, parts.month, parts.day);
+  if (when.getTime() <= now.getTime()) {
+    const next = addCalendarDays(formatLocalDate(parts), 1);
+    const [year, month, day] = next.split('-').map(Number) as [number, number, number];
+    when = at(year, month, day);
+  }
+  return when;
+}
+
+/**
+ * How long a held send stays quiet when the clock is local. Quiet hours wait
+ * until 08:00. A co-parent ask waits until the next local midnight.
+ *
+ * A group cap does not. That budget is a rolling 24h (and 7d) counted in
+ * `family-outbound`, and the hold uses the `until` on the held result: the
+ * moment the binding message leaves the window. Midnight was a day late.
+ */
+export function workstreamHoldUntil(
+  reason: 'quiet_hours' | 'coparent_ask',
+  now: Date,
+  timeZone: string,
+): Date {
+  if (reason === 'quiet_hours') return nextLocalClock(now, timeZone, GROUP_QUIET_END_HOUR, 0);
+  return nextLocalClock(now, timeZone, 0, 0);
+}
+
+/** Attempt 1 waits 6 hours. Attempt 2 waits 24. The cap gives up before a third wait. */
+export function followupBackoffUntil(attempt: number, now: Date): Date {
+  const hours = attempt <= 1 ? 6 : 24;
+  return new Date(now.getTime() + hours * 60 * 60 * 1000);
+}
+
+async function followupSpeech(
+  database: Database,
+  familyId: string,
+): Promise<{ timeZone: string; language: 'en' | 'fr' }> {
+  const [family] = await database
+    .select({ primaryLanguage: schema.families.primaryLanguage })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  const [parent] = await database
+    .select({ timezone: schema.users.timezone })
+    .from(schema.familyMembers)
+    .innerJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, familyId),
+        eq(schema.familyMembers.role, 'primary_parent'),
+      ),
+    )
+    .limit(1);
+  return {
+    timeZone: parent?.timezone || DEFAULT_TIMEZONE,
+    language: workstreamLanguage(family?.primaryLanguage),
+  };
+}
+
+async function defaultCompose(
+  database: Database,
+  row: DueWorkstream,
+  now: Date,
+): Promise<WorkstreamComposeResult> {
   const client = workstreamFollowupClient();
   if (!client) return { ok: false, reason: 'not_configured' };
+  const speech = await followupSpeech(database, row.familyId);
   return composeWorkstreamFollowup({
     client,
     title: row.title,
     status: row.status,
     nextStep: row.nextStep,
+    now,
+    timeZone: speech.timeZone,
+    language: speech.language,
   });
 }
 
@@ -300,13 +1239,19 @@ export async function runWorkstreamFollowupSweep(
   const buildGate = deps.buildGate ?? buildOutboundGatePorts;
   const claimed = deps.dedupeActive ?? ((db, key) => dedupeActive(key, db));
   const phoneFor = deps.resolvePhone ?? resolveSendablePhone;
-  const compose = deps.compose ?? defaultCompose;
+  const compose = deps.compose ?? ((row: DueWorkstream) => defaultCompose(database, row, now));
   const deliver = deps.deliver ?? deliverFamilyOutbound;
   const stamp = deps.stamp ?? markWorkstreamFollowedUp;
   const page = deps.page ?? postOpsSlack;
   const paged = deps.alreadyPaged ?? alreadyPaged;
   const recordMiss = deps.noteUnsent ?? noteUnsent;
+  const recordGaveUp = deps.noteGaveUp ?? noteGaveUp;
+  const readDeferral = deps.pendingDeferral ?? pendingDeferral;
+  const defer = deps.defer ?? noteDeferred;
+  const zoneFor =
+    deps.timeZoneFor ?? (async (db, familyId) => (await followupSpeech(db, familyId)).timeZone);
   const thread = deps.thread ?? threadProactiveMessage;
+  const targetFor = deps.targetFor ?? familyOutboundTarget;
   const result = emptyResult(true);
 
   let due: readonly DueWorkstream[];
@@ -352,14 +1297,53 @@ export async function runWorkstreamFollowupSweep(
         result.held[verdict.reason] += 1;
         continue;
       }
+      const waiting = await readDeferral(database, row, now);
+      if (waiting && waiting.until.getTime() > now.getTime()) {
+        result.skipped.deferred += 1;
+        continue;
+      }
+      const backOff = async (reason: string) => {
+        const attempt = (waiting?.attempt ?? 0) + 1;
+        if (!(await paged(database, row.familyId, now, row))) {
+          await page(unsentPage(row.familyId, reason));
+          await recordMiss(database, row.familyId, reason, now, row.id, row.checkBackAt);
+        }
+        if (attempt >= FOLLOWUP_ATTEMPT_CAP) {
+          await stamp(database, row.id, now);
+          await recordGaveUp(database, row.familyId, reason, now, row.id, row.checkBackAt, attempt);
+          return;
+        }
+        await defer(database, {
+          familyId: row.familyId,
+          workstreamId: row.id,
+          checkBackAt: row.checkBackAt,
+          until: followupBackoffUntil(attempt, now),
+          reason,
+          attempt,
+          now,
+        });
+      };
       const composed = await compose(row);
       if (!composed.ok) {
-        if (composed.reason === 'not_configured') result.skipped.not_configured += 1;
-        else result.skipped.compose_failed += 1;
-        if (!(await paged(database, row.familyId, now))) {
-          await page(unsentPage(row.familyId, composed.reason));
-          await recordMiss(database, row.familyId, composed.reason, now);
+        if (composed.reason === 'not_configured') {
+          result.skipped.not_configured += 1;
+          continue;
         }
+        // Empty is the model declining to send. A real failure retries once
+        // inside compose, then waits out a backoff before the next sweep.
+        // One page per check-back. The cap is what drops it.
+        if (composed.reason === 'empty') {
+          result.skipped.nothing_to_say += 1;
+          await stamp(database, row.id, now);
+          continue;
+        }
+        result.skipped.compose_failed += 1;
+        await backOff(composed.reason);
+        continue;
+      }
+      if (!composed.body) {
+        await stamp(database, row.id, now);
+        result.skipped.nothing_to_say += 1;
         continue;
       }
       const to = await phoneFor(database, parentUserId);
@@ -367,23 +1351,50 @@ export async function runWorkstreamFollowupSweep(
         result.skipped.no_phone += 1;
         continue;
       }
-      const target = await familyOutboundTarget(database, row.familyId);
+      const target = await targetFor(database, row.familyId);
       const transport = deps.transport ?? createOutboundTransport();
-      const delivered = await deliver(database, {
-        familyId: row.familyId,
-        body: composed.body,
-        to,
-        legacy: transport,
-        target,
-        now,
-        bubbleKind: 'discretionary',
-      });
+      let delivered: Awaited<ReturnType<typeof deliver>>;
+      try {
+        delivered = await deliver(database, {
+          familyId: row.familyId,
+          body: composed.body,
+          to,
+          legacy: transport,
+          target,
+          now,
+          bubbleKind: 'discretionary',
+        });
+      } catch (err) {
+        // Linq and Twilio throw a transient failure. A returned skip and a
+        // throw are the same miss: backoff, one page, then stop.
+        result.failed += 1;
+        console.error(
+          { err: err instanceof Error ? err.name : 'unknown', familyId: row.familyId },
+          'workstream followup: send failed',
+        );
+        await backOff('send_failed');
+        continue;
+      }
       if (delivered.status === 'held') {
-        result.held.frequency_cap += 1;
+        result.held[delivered.reason] += 1;
+        const timeZone = await zoneFor(database, row.familyId);
+        await defer(database, {
+          familyId: row.familyId,
+          workstreamId: row.id,
+          checkBackAt: row.checkBackAt,
+          until:
+            delivered.reason === 'group_cap'
+              ? delivered.until
+              : workstreamHoldUntil(delivered.reason, now, timeZone),
+          reason: delivered.reason,
+          attempt: waiting?.attempt ?? 0,
+          now,
+        });
         continue;
       }
       if (delivered.status !== 'sent') {
         result.failed += 1;
+        await backOff(delivered.reason);
         continue;
       }
       if (deps.recordSend) {

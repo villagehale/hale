@@ -87,6 +87,8 @@ export const familyEvents = pgTable(
      * add). Set together with `integrationId`. The reminder cron reminds only
      * the connecting parent, and a second mirror of the same Google event
      * conflicts here instead of scheduling a second pair of reminders.
+     * Non-null is the household boundary: every household reader filters through
+     * `householdFamilyEvent()` (family-event-scope.ts), so a mirror reaches only its owner.
      */
     googleEventId: text('google_event_id'),
     /** The gcal connection this mirror was read from. Null on Hale-authored rows.

@@ -9,6 +9,7 @@ export type {
   NewWeekPlan,
 } from './schema/week-plans.js';
 export type { FamilyEvent, NewFamilyEvent } from './schema/family-events.js';
+export { householdFamilyEvent } from './family-event-scope.js';
 export type { ContentProvenance } from './schema/events.js';
 export type {
   MedicalReplySourceValue,

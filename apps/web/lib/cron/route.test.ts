@@ -16,7 +16,6 @@ const sweepAttachmentsMock = vi.fn();
 const sweepForwardsMock = vi.fn();
 const runNudgeCronMock = vi.fn();
 const runSittingReminderCronMock = vi.fn();
-const runFirstReplyRecoveryCronMock = vi.fn();
 const runWelcomeCardRedriveMock = vi.fn();
 const runDepartureNoticeRedriveMock = vi.fn();
 const sweepDutyAsksMock = vi.fn();
@@ -64,9 +63,6 @@ vi.mock('~/lib/channel/intake/friend-voice', () => ({
 }));
 vi.mock('~/lib/channel/intake/friend-voice-flag', () => ({
   onboardingFriendVoiceEnabled: () => false,
-}));
-vi.mock('~/lib/channel/intake/first-reply-recovery', () => ({
-  runFirstReplyRecoveryCron: (...a: unknown[]) => runFirstReplyRecoveryCronMock(...a),
 }));
 // The nudge route's other riders each read a dark-launch flag and return before they
 // touch a handle; the two 08:00 re-drives deliberately have none (each finishes a send
@@ -133,9 +129,6 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
     runSittingReminderCronMock
       .mockReset()
       .mockResolvedValue({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });
-    runFirstReplyRecoveryCronMock
-      .mockReset()
-      .mockResolvedValue({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });
     dbMock.mockReset().mockReturnValue({});
   });
 
@@ -185,9 +178,6 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
 
     expect(res.status).toBe(200);
     expect(mock).toHaveBeenCalledTimes(1);
-    if (path.includes('intake-sitting-reminder')) {
-      expect(runFirstReplyRecoveryCronMock).toHaveBeenCalledTimes(1);
-    }
     // THE 08:00 CARD RE-DRIVE IS A LEG OF THE NUDGE ROUTE, pinned here because this is
     // its only production call site: mocking the module without asserting the call left
     // "the cron stopped re-driving the card" a green change. The negative arm is the

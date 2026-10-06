@@ -43,7 +43,8 @@ export const DELIVERY_RATE_MIN_ATTEMPTED = 5;
 /** The registration/A2P class: refusals that mean the SENDER is misconfigured for a
  * whole destination class, so every send that way dies until a human fixes the
  * console. 30034 = US A2P 10DLC unregistered long code — the code that burned 8
- * prod sends unseen. A single occurrence pages. */
+ * prod sends unseen. A single occurrence pages. These are Twilio codes, so this can
+ * only fire on legacy Twilio-era sms rows; Linq (imessage) sends never write them. */
 export const REGISTRATION_ERROR_CODES = new Set(['30034']);
 
 /** What the ledger says about the trailing window: sends that reached the provider
@@ -82,7 +83,7 @@ export function evaluateDeliveryHealth(stats: DeliveryStats): DeliveryIncident |
 }
 
 /** The channels the sweep confirms delivery for — the only rows the rate may read. */
-const RECEIPT_CHANNELS = ['sms'] as const;
+const RECEIPT_CHANNELS = ['sms', 'imessage'] as const;
 
 /** The denominator is sends that REACHED the provider (queued/sent/delivered/failed).
  * Suppressions never enter it, and neither does email (terminal at accept, no
@@ -123,18 +124,27 @@ export async function loadDeliveryStats(database: Database, since: Date): Promis
  * one GSM-7 segment whatever the counts. */
 const ALERT_TOP_CODES = 2;
 
+/** A provider code is relayed as whatever string the provider sent (Linq passes
+ * `data.code` through), so the page keeps only an enum-shaped token: no spaces, no
+ * URLs, and never a digit run long enough to be a number a parent owns. */
+const ALERT_CODE_MAX_CHARS = 32;
+function alertCode(code: string): string {
+  const token = code.replace(/[^A-Za-z0-9_.:-]+/g, '_').slice(0, ALERT_CODE_MAX_CHARS);
+  return token.replace(/\d{7,}/g, (digits) => digits.slice(0, 6));
+}
+
 /** The Slack #ops page. Counts and provider error codes only — an error code is
- * Twilio's enum, never a parent's number or words (rule #1). ASCII on purpose. */
+ * a provider enum, never a parent's number or words (rule #1). ASCII on purpose. */
 export function composeDeliveryAlert(incident: DeliveryIncident): string {
   if (incident.kind === 'registration_error') {
-    return `Hale: SMS delivery failing. A2P/registration error ${incident.code} on ${incident.count} send(s) in 24h - sender registration broken. Check Twilio Messaging setup.`;
+    return `Hale: text delivery failing. A2P/registration error ${alertCode(incident.code)} on ${incident.count} send(s) in 24h - sender registration broken. Check Linq dashboard, channel_messages receipts.`;
   }
   const top = incident.codes
     .slice(0, ALERT_TOP_CODES)
-    .map((c) => `${c.code} x${c.count}`)
+    .map((c) => `${alertCode(c.code)} x${c.count}`)
     .join(', ');
   const codesPart = top ? ` Codes: ${top}.` : '';
-  return `Hale: SMS delivery failing. ${incident.failed} of ${incident.attempted} sends failed in 24h.${codesPart} Check Twilio delivery logs.`;
+  return `Hale: text delivery failing. ${incident.failed} of ${incident.attempted} sends failed in 24h.${codesPart} Check Linq dashboard, channel_messages receipts.`;
 }
 
 // ── dedupe: the rate_limits claim + the instance floor ───────────────────────

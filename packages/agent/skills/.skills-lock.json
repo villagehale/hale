@@ -73,7 +73,7 @@
   },
   "extract-workstream.md": {
     "file": "extract-workstream.md",
-    "sha256": "243539be0176f2de14b05fd4503217a0f8cd619df7385f4248e4fdcc4221bdf8"
+    "sha256": "22739e47888873130a72601a02c22a67a8a180426c8bdfef4c1152b6a9108361"
   },
   "followup-voice.md": {
     "file": "followup-voice.md",
@@ -145,11 +145,11 @@
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
-    "sha256": "6d01b7450609b15339e0bd3c96dde424f6dea673032e73f0740dabd5ea58e842"
+    "sha256": "18e9a6845972e3f3ea08eb7d7fa1b9e6e5451b7d518038df79ae441f1b9f6607"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "1bef58e091e2274decf2105a0aa603098467b820a84b8f9e0f9eed1dd9a23959"
+    "sha256": "2f6c6bb234225bd759fce4a10ca19a42e00ef7bc84251106e26233fdf6b2f80a"
   },
   "parse-civic-hours.md": {
     "file": "parse-civic-hours.md",
@@ -213,6 +213,6 @@
   },
   "workstream-followup.md": {
     "file": "workstream-followup.md",
-    "sha256": "11e1b7999a00594e115b281a1fa6e7bcc3fe358cb9f7295d5486e2fa478a6576"
+    "sha256": "96ee07a5fe9a4a28029ef04a79880f2bf59af03a9eb4c25dab10dbcbbf2f9b8a"
   }
 }
