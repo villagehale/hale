@@ -1,0 +1,15 @@
+{
+  "choice": "decline",
+  "probabilities": {
+    "assent": 0,
+    "decline": 0.98,
+    "ambiguous": 0.02
+  },
+  "latencyMs": 288,
+  "usage": {
+    "inputTokens": 1227,
+    "outputTokens": 43
+  },
+  "costUsd": 0.000051534,
+  "confidence": 0.97
+}
