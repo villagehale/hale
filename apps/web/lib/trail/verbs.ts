@@ -456,6 +456,8 @@ export const AUDIT_VERBS = [
   'workstream_refused',
   'workstream_followed_up',
   'workstream_followup_unsent',
+  'workstream_followup_deferred',
+  'workstream_followup_gave_up',
 ] as const;
 
 export type AuditVerb = (typeof AUDIT_VERBS)[number];
@@ -1543,6 +1545,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   workstream_followup_unsent: {
     sentence: 'could not write a check-back, so nothing was sent',
+    family: 'problem',
+  },
+  workstream_followup_deferred: {
+    sentence: 'left a check-back until it could send',
+    family: 'note',
+  },
+  workstream_followup_gave_up: {
+    sentence: 'stopped a check-back after it could not be sent',
     family: 'problem',
   },
 };

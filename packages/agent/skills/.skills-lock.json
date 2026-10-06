@@ -73,7 +73,7 @@
   },
   "extract-workstream.md": {
     "file": "extract-workstream.md",
-    "sha256": "b97b6fef08b183aae6bfcc71bd02d3659a93474e947c3f84d3c80e19243f8710"
+    "sha256": "22739e47888873130a72601a02c22a67a8a180426c8bdfef4c1152b6a9108361"
   },
   "followup-voice.md": {
     "file": "followup-voice.md",
@@ -213,6 +213,6 @@
   },
   "workstream-followup.md": {
     "file": "workstream-followup.md",
-    "sha256": "f6e50c7f02b60a0046d66de0155f29ac1f60fbb047d8153429deef6d868f3e47"
+    "sha256": "96ee07a5fe9a4a28029ef04a79880f2bf59af03a9eb4c25dab10dbcbbf2f9b8a"
   }
 }

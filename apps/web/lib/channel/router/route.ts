@@ -1,5 +1,6 @@
 import { type Database, type UnmetIntentLane, schema } from '@hale/db';
 import type { DeepResearchPayload } from '@hale/tools-contracts';
+import { waitUntil } from '@vercel/functions';
 import { eq } from 'drizzle-orm';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import { maybeOfferYearRetention } from '~/lib/billing/upgrade-ask';
@@ -619,9 +620,17 @@ export interface RouterResult {
 }
 
 /**
- * The extract starts when the reply is already out. Awaiting it inside the
- * turn would let a 20s model call trip the 90s deadline and record a
- * re-drive of a turn that already answered.
+ * The extract starts when the reply is already out. It is not part of the
+ * turn, and the job does not wait for it: waiting would hold this parent's
+ * queue on a model call that cannot change the text they already have.
+ *
+ * The drain runs inside `after()` on Vercel. When that callback returns, the
+ * invocation can be suspended and a detached promise is lost. `waitUntil`
+ * from `@vercel/functions` registers the same task on the request context, so
+ * the platform keeps the function alive until the extract settles. Outside a
+ * request the context has no `waitUntil` and the call is a no-op; the promise
+ * still runs. A failure is logged on the task itself and does not re-drive
+ * the turn.
  */
 function detachWorkstream(deps: ChannelRouterDeps, trailed: Promise<unknown>[]): ChannelRouterDeps {
   if (!deps.rememberWorkstream) return deps;
@@ -636,6 +645,7 @@ function detachWorkstream(deps: ChannelRouterDeps, trailed: Promise<unknown>[]):
         );
       });
       trailed.push(task);
+      waitUntil(task);
       return Promise.resolve();
     },
   };
@@ -650,7 +660,11 @@ export async function routeChannelMessage(
   const trailed: Promise<unknown>[] = [];
   const turnDeps = detachWorkstream(deps, trailed);
   try {
-    return await runTurnThen(signal, () => routeChannelMessageInner(turnDeps, job), trailed);
+    const result = await runTurnThen(signal, () => routeChannelMessageInner(turnDeps, job), []);
+    // The extract keeps running after the job returns. Holding the reference
+    // is what keeps the rejection handler attached for the life of the call.
+    void trailed;
+    return result;
   } catch (err) {
     if (!isTurnTimeout(err) && !signal.aborted) throw err;
     // Nothing goes out. The job fails so the per-parent key is free for the

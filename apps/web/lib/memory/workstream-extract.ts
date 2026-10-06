@@ -13,6 +13,7 @@ import {
   type WorkstreamApplyResult,
   type WorkstreamOp,
   applyWorkstreamOps,
+  haleActionNextStep,
   listOpenWorkstreams,
   workstreamsEnabled,
 } from './workstreams';
@@ -191,12 +192,24 @@ function normalizeOp(op: WorkstreamOp, ctx: ExtractContext, now: Date): Workstre
     if (!childId || !teenIds.has(childId) || childIds.includes(childId)) continue;
     childIds.push(childId);
   }
-  return {
+  return withoutHalePromise({
     ...op,
     childIds,
     eventIds,
     checkBackAt: asCheckBackIso(op.checkBackAt, now, ctx.timeZone),
-  };
+  });
+}
+
+/**
+ * A next step Hale would perform is not a plan. Drop that step only.
+ * The status stays as the model gave it: turning a parent task into a
+ * third-party wait is what merged a dentist call into a pickup thread.
+ */
+function withoutHalePromise(op: WorkstreamOp): WorkstreamOp {
+  if (op.action !== 'open' && op.action !== 'update') return op;
+  if (op.declined === true) return op;
+  if (!haleActionNextStep(op.nextStep, op.status)) return op;
+  return { ...op, nextStep: null };
 }
 
 async function loadExtractContext(

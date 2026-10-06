@@ -603,7 +603,11 @@ describe('group caps', () => {
       now: NOW,
       bubbleKind: 'discretionary',
     });
-    expect(second).toEqual({ status: 'held', reason: 'group_cap' });
+    expect(second).toEqual({
+      status: 'held',
+      reason: 'group_cap',
+      until: new Date(NOW.getTime() + 24 * 60 * 60 * 1000 + 1),
+    });
     await prior(seeded, {
       templateKey: 'proactive_nudge:weekly',
       category: 'nudge',
@@ -623,7 +627,11 @@ describe('group caps', () => {
       now: NOW,
       bubbleKind: 'weekly_followup',
     });
-    expect(weekly).toEqual({ status: 'held', reason: 'group_cap' });
+    expect(weekly).toEqual({
+      status: 'held',
+      reason: 'group_cap',
+      until: new Date(NOW.getTime() + 24 * 60 * 60 * 1000 + 1),
+    });
     expect(http.linqUrls()).toEqual([]);
     expect(legacy.sent).toEqual([]);
   });
