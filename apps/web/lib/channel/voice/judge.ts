@@ -91,6 +91,9 @@ const DANGLING_LINK = /\bthis link\b|\bce lien\b/i;
  */
 const STILL_HERE_EN = /\bstill here\b/i;
 const STILL_HERE_FR = /toujours\s+l[àa](?![\p{L}])/iu;
+/** After the close, only "for you" / "pour toi" / "pour vous" and the period. */
+const CLOSE_TAIL_EN = /^(?:\s+for you)?\s*[.!]?$/i;
+const CLOSE_TAIL_FR = /^(?:\s+pour (?:toi|vous))?\s*[.!]?$/iu;
 
 const EMOJI = /\p{Extended_Pictographic}/u;
 
@@ -295,7 +298,7 @@ export function spokenLineRefusalFix(reason: SpokenLineJudgeFailure): string {
     return 'Say this link or ce lien only when linkFollows is true. Never write a URL.';
   }
   if (reason === 'close') {
-    return 'A departure ends with the close that you are still here. English includes the words still here. French includes toujours là. Write that close in the line language and the address register. A line that stops after the continuity fact is refused.';
+    return "A departure ends on the close, and the close is the last sentence with nothing after it. The continuity fact (the kids' schedule and the reminders stay) is its own sentence before that close, not joined to it with and or et. English includes the words still here. French includes toujours là. A line that stops after the continuity fact, or that keeps talking after the close, is refused.";
   }
   return 'Rewrite so this refusal is gone. Use only the facts you were given.';
 }
@@ -335,6 +338,15 @@ function questionsBeyondFacts(body: string, slots: readonly string[]): number {
     if (slot.includes('?')) stripped = stripped.split(slot).join(' ');
   }
   return questionMarks(stripped);
+}
+
+/** The close is the last sentence. A clause joined with "and" is something after it. */
+function departureCloseIsLast(trimmed: string, language: 'en' | 'fr'): boolean {
+  const pattern = language === 'fr' ? STILL_HERE_FR : STILL_HERE_EN;
+  const match = pattern.exec(trimmed);
+  if (match?.index === undefined) return false;
+  const after = trimmed.slice(match.index + match[0].length);
+  return (language === 'fr' ? CLOSE_TAIL_FR : CLOSE_TAIL_EN).test(after);
 }
 
 function questionIsLast(body: string): boolean {
@@ -396,9 +408,8 @@ export function judgeSpokenLine(
   }
 
   if (DANGLING_LINK.test(trimmed) && !input.linkFollows) return { ok: false, reason: 'link' };
-  if (input.kind === 'departure') {
-    const present = input.language === 'fr' ? STILL_HERE_FR.test(trimmed) : STILL_HERE_EN.test(trimmed);
-    if (!present) return { ok: false, reason: 'close' };
+  if (input.kind === 'departure' && !departureCloseIsLast(trimmed, input.language)) {
+    return { ok: false, reason: 'close' };
   }
 
   for (const rule of input.forbidden ?? []) {

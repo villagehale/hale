@@ -269,6 +269,24 @@ describe('the judge on group lines', () => {
         "Sam, that way I can keep the kids' stuff in sync. Would you want it on your calendar?",
         ask,
       ),
+    ).toEqual({ ok: false, reason: 'forbidden:calendar_sync' });
+    expect(
+      judgeSpokenLine(
+        "Sam, I'll keep things straight between the two of you. Want the kids' events on your calendar?",
+        ask,
+      ),
+    ).toEqual({ ok: false, reason: 'forbidden:calendar_sync' });
+    expect(
+      judgeSpokenLine(
+        "Sam, the kids' stuff can show on your calendar. Want the kids' events on your calendar?",
+        ask,
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      judgeSpokenLine(
+        "Sam, I can see what's already there for reminders. Want the kids' events on your calendar?",
+        ask,
+      ),
     ).toEqual({ ok: true });
     const fr = groupLineInput({ kind: 'calendar_ask', name: 'Sam' }, 'fr');
     expect(
@@ -290,6 +308,12 @@ describe('the judge on group lines', () => {
         heads,
       ),
     ).toEqual({ ok: true });
+    expect(
+      judgeSpokenLine(
+        'Google may say Hale is not verified yet. This link will work while you wait.',
+        heads,
+      ),
+    ).toEqual({ ok: false, reason: 'link' });
     expect(
       judgeSpokenLine(
         "Google may say Hale is not verified yet, because we are still in Google's review.",
@@ -364,6 +388,18 @@ describe('the judge on group lines', () => {
         fr,
       ),
     ).toEqual({ ok: true });
+    expect(
+      judgeSpokenLine(
+        "Sam left. I'm still here for you, and the kids' schedule and reminders stay as they are.",
+        en,
+      ),
+    ).toEqual({ ok: false, reason: 'close' });
+    expect(
+      judgeSpokenLine(
+        "Sam a quitté le groupe. Je suis toujours là, et l'horaire des enfants et les rappels restent.",
+        fr,
+      ),
+    ).toEqual({ ok: false, reason: 'close' });
   });
 
   it('refuses the kids year, and you both unless two people remain', () => {

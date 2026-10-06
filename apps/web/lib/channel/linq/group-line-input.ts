@@ -122,6 +122,17 @@ export const NO_BREAKUP = {
   pattern: /moving on|s['’]en va/i,
 };
 
+/**
+ * Connecting a calendar does two things: kids' events can show on it, or Hale can
+ * see what's already there for reminders. Sync, and keeping things straight between
+ * two people, are a two-way claim this ask does not get to make.
+ */
+export const CALENDAR_SYNC_CLAIM = {
+  name: 'calendar_sync',
+  pattern:
+    /\bsync\w*\b|keep\s+(?:the\s+kids['’]\s+|their\s+)?things\s+straight|between the two of you|two-way|two way|bidirectionn?el|garder les choses|en ordre entre/i,
+};
+
 const GOOGLE_HEADS_UP_FORBIDDEN = [GOOGLE_COACHING, NO_WE_FOR_HALE, NO_SOFT_SAFE];
 
 function unique(values: readonly string[]): string[] {
@@ -172,6 +183,7 @@ function groupLineFields(
         facts: { name: request.name },
         questions: 1,
         mustMention: [request.name],
+        forbidden: [CALENDAR_SYNC_CLAIM],
       };
     case 'calendar_link':
       return {
