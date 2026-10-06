@@ -4,7 +4,6 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import { sendConnectorConnectedText } from '~/lib/channel/connect/connected-notice';
-import { coParentInviteBody, coParentInviteSentAck } from '~/lib/channel/coparent/copy';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
 import { createSession, saveSession } from '~/lib/channel/intake/session';
 import { FakeTransport } from '~/lib/channel/intake/transport';
@@ -18,9 +17,9 @@ import {
 } from './coparent-invite';
 
 /**
- * A number after the co-parent ask. SMS still texts the locked invite. Linq
- * does not note the number and does not send a second bubble: the co-parent
- * ask already told the parent how to start the group.
+ * A number after the co-parent ask. Hale never texts it: SMS answers the parent
+ * with the redirect. Linq does not note the number and does not send a second
+ * bubble: the co-parent ask already told the parent how to start the group.
  */
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
@@ -158,17 +157,14 @@ describe('a number on the Linq door', () => {
   it('does not note the number or send a second bubble', async () => {
     const seeded = await seedHousehold();
     const inboundId = await seedAsk(seeded, 'imessage');
-    const sendSms = vi.fn();
 
     const outcome = await deliverCoParentNumberInvite(db.database, {
       ...seeded,
       body: '9059629821',
       now: NOW,
       inboundChannelMessageId: inboundId,
-      sendSms,
     });
 
-    expect(sendSms).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
     expect(outcome).toEqual({ status: 'not_pending' });
     expect(await inviteStates()).toEqual([]);
@@ -188,7 +184,6 @@ describe('a number on the Linq door', () => {
       ...seeded,
       now: NOW,
       inboundChannelMessageId: inboundId,
-      sendSms: vi.fn(),
     };
     expect(await deliverCoParentNumberInvite(db.database, { ...send, body: 'Jimmy' })).toEqual({
       status: 'not_pending',
@@ -203,60 +198,51 @@ describe('a number on the Linq door', () => {
 });
 
 describe('a number on the SMS door', () => {
-  it('still texts the locked SMS body when the Linq group flag is on', async () => {
+  async function smsInviteTrace(): Promise<{ ledger: number; audits: string[] }> {
+    const ledger = await db.database
+      .select({ id: schema.channelMessages.id })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.templateKey, SMS_COPARENT_INVITE_TEMPLATE_KEY));
+    const audits = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken })
+      .from(schema.auditLog);
+    return { ledger: ledger.length, audits: audits.map((row) => row.actionTaken) };
+  }
+
+  it('texts nobody when the Linq group flag is on: Hale never texts a number first', async () => {
     vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
     const seeded = await seedHousehold();
     const inboundId = await seedAsk(seeded, 'sms');
-    const sendSms = vi.fn(async () => ({ providerMessageId: 'SM_invite_flag' }));
     const outcome = await deliverCoParentNumberInvite(db.database, {
       ...seeded,
       body: '9059629821',
       now: NOW,
       inboundChannelMessageId: inboundId,
-      sendSms,
     });
     expect(fetch).not.toHaveBeenCalled();
-    expect(sendSms).toHaveBeenCalledWith({
-      to: COPARENT_PHONE,
-      body: coParentInviteBody('Jimmy', 'en'),
-    });
-    expect(outcome.status).toBe('sent');
-    expect(await inviteStates()).toEqual(['awaiting_caregiver_reply']);
+    expect(outcome).toMatchObject({ status: 'refused', reply: CO_PARENT_REDIRECT });
+    expect(await smsInviteTrace()).toEqual({ ledger: 0, audits: [] });
+    expect(await inviteStates()).toEqual([]);
     expect(await groupChatId()).toBeNull();
   });
 
-  it('texts the locked SMS body and does not call Linq', async () => {
+  it('answers a number after the tagged ask with the redirect, with F14 armed, and texts nobody', async () => {
     const seeded = await seedHousehold();
     const inboundId = await seedAsk(seeded, 'sms');
-    const sendSms = vi.fn(async () => ({ providerMessageId: 'SM_invite' }));
     const outcome = await deliverCoParentNumberInvite(db.database, {
       ...seeded,
-      body: '9059629821',
+      body: 'Sam 905-962-9821',
       now: NOW,
       inboundChannelMessageId: inboundId,
-      sendSms,
     });
     expect(fetch).not.toHaveBeenCalled();
-    expect(sendSms).toHaveBeenCalledWith({
-      to: COPARENT_PHONE,
-      body: coParentInviteBody('Jimmy', 'en'),
-    });
     expect(outcome).toEqual({
-      status: 'sent',
-      reply: coParentInviteSentAck('them', 'en'),
-      templateKey: 'coparent:number_invite_ack',
+      status: 'refused',
+      reply: CO_PARENT_REDIRECT,
+      templateKey: 'coparent:number_invite_held',
     });
-    const [row] = await db.database
-      .select({
-        status: schema.channelMessages.status,
-        templateKey: schema.channelMessages.templateKey,
-        channel: schema.channelMessages.channel,
-      })
-      .from(schema.channelMessages)
-      .where(eq(schema.channelMessages.templateKey, SMS_COPARENT_INVITE_TEMPLATE_KEY));
-    expect(row).toMatchObject({ status: 'queued', channel: 'sms' });
-    expect(await inviteStates()).toEqual(['awaiting_caregiver_reply']);
-    expect(await groupChatId()).toBeNull();
+    expect(await smsInviteTrace()).toEqual({ ledger: 0, audits: [] });
+    expect(await inviteStates()).toEqual([]);
   });
 
   it('does not skip a YES the add-command is still waiting on', async () => {
@@ -273,16 +259,13 @@ describe('a number on the SMS door', () => {
       expiresAt: new Date(NOW.getTime() + 72 * 60 * 60 * 1000),
       createdAt: NOW,
     });
-    const sendSms = vi.fn();
     const outcome = await deliverCoParentNumberInvite(db.database, {
       ...seeded,
       body: '9059629821',
       now: NOW,
       inboundChannelMessageId: inboundId,
-      sendSms,
     });
     expect(outcome).toEqual({ status: 'not_pending' });
-    expect(sendSms).not.toHaveBeenCalled();
     expect(await inviteStates()).toEqual(['awaiting_parent_assent']);
   });
 
@@ -362,32 +345,26 @@ describe('a number on the SMS door', () => {
     expect(asks.map((row) => row.templateKey)).toContain(INTAKE_COPARENT_ASK_TEMPLATE_KEY);
     expect(transport.bodies().at(-1)).toBe('Would a group chat with the other parent help?');
 
-    const sendSms = vi.fn();
     const outcome = await deliverCoParentNumberInvite(db.database, {
       ...seeded,
       body: '9059629821',
       now: NOW,
       inboundChannelMessageId: null,
-      sendSms,
     });
     expect(outcome).toMatchObject({ status: 'refused', reply: CO_PARENT_REDIRECT });
-    expect(sendSms).not.toHaveBeenCalled();
   });
 
   it('redirects and does not text when the SMS flag is dark', async () => {
     vi.stubEnv('F14_ENABLED', '');
     const seeded = await seedHousehold();
     const inboundId = await seedAsk(seeded, 'sms');
-    const sendSms = vi.fn();
     const outcome = await deliverCoParentNumberInvite(db.database, {
       ...seeded,
       body: '9059629821',
       now: NOW,
       inboundChannelMessageId: inboundId,
-      sendSms,
     });
     expect(outcome).toMatchObject({ status: 'refused', reply: CO_PARENT_REDIRECT });
-    expect(sendSms).not.toHaveBeenCalled();
     expect(await inviteStates()).toEqual([]);
   });
 });

@@ -723,7 +723,7 @@ export function parentReading(
 
 function readingForModel(input: FriendVoiceInput): string | null {
   const cue = groupModeCue(input);
-  if (cue) return `parentWords is a yes to coparent, for ${GROUP_MODE_WORDS[cue]}`;
+  if (cue) return `if parentWords is a yes to coparent, it is for ${GROUP_MODE_WORDS[cue]}`;
   const reading = parentReading(input);
   if (!reading) return null;
   if (reading.kind === 'name') {
@@ -743,6 +743,7 @@ const EXISTING_GROUP_CUE =
   /\badd (?:you|yourself|hale)\b|\bajoute[- ]?toi\b|\b(?:our|my|the family) (?:family )?group\b|\bexisting\b|\bnotre groupe\b|\bgroupe (?:existant|de famille)\b/i;
 const NEW_GROUP_CUE =
   /\bnew (?:group|one|chat)\b|\bstart (?:one|a group)\b|\bnouveau\b|\bnouvelle?\b/i;
+// "pas" also catches "pas de problème": that yes names no group, and the model's reading stands.
 const NEGATION = /\b(?:no|nope|nah|not|non|pas|don['’]?t)\b/i;
 
 /**
@@ -763,14 +764,14 @@ function groupModeCue(input: FriendVoiceInput): CoparentGroupMode | null {
 }
 
 /**
- * The group a yes means, held to the parent's words. A cue decides over the model;
- * a yes that names no group means the one they already have.
+ * The group a yes means, held to the parent's words. A cue decides the group over
+ * the model but never makes a yes; a yes that names no group means the one they
+ * already have.
  */
 function withGroupMode(capture: OnboardingCapture, input: FriendVoiceInput): OnboardingCapture {
-  const cue = groupModeCue(input);
-  if (cue) return { ...capture, coparentGroup: true, coparentGroupMode: cue };
   if (capture.coparentGroup !== true) return { ...capture, coparentGroupMode: null };
-  return capture.coparentGroupMode ? capture : { ...capture, coparentGroupMode: 'existing' };
+  const mode = groupModeCue(input) ?? capture.coparentGroupMode ?? 'existing';
+  return { ...capture, coparentGroupMode: mode };
 }
 
 /**

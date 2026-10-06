@@ -81,6 +81,19 @@ describe('addThemYourselfRefusals', () => {
     expect(addThemYourselfRefusals('Have Sam text me here whenever.', SAM_SMS)).toEqual([]);
   });
 
+  it('refuses a group on SMS, where there is none', () => {
+    expect(
+      addThemYourselfRefusals('Sam can text me directly to join the family group.', SAM_SMS),
+    ).toEqual(['group_on_sms']);
+    expect(
+      addThemYourselfRefusals("Alex peut m'écrire directement pour rejoindre le groupe.", {
+        ...SAM_SMS,
+        language: 'fr',
+        name: 'Alex',
+      }),
+    ).toEqual(['group_on_sms']);
+  });
+
   it('refuses an empty reply and one over the budget', () => {
     expect(addThemYourselfRefusals('', GRAN_IMESSAGE)).toEqual(['empty']);
     const long = `Add grandma to your group with me. ${'x'.repeat(MAX_ADD_THEM_YOURSELF_CHARS)}`;

@@ -533,6 +533,11 @@ describe('golden onboarding conversation', () => {
     expect(joinProse).toMatch(/below/);
     expect(joinLines).toEqual(['+1 555-555-0100', LINQ_GROUP_ADD_THIS_NUMBER.en]);
     expect(joined.bodies.join('\n')).not.toContain(LINQ_GROUP_TRIGGER_PHRASE.en);
+    expect(
+      talk.fake
+        .rows(schema.channelMessages)
+        .filter((row) => row.templateKey === INTAKE_COPARENT_ASK_TEMPLATE_KEY),
+    ).toHaveLength(1);
 
     expect(joined.outcome).toBe('intake');
 

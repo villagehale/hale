@@ -49,7 +49,7 @@ export const LINQ_GROUP_TRIGGER_PHRASE: Record<ReplyLanguage, string> = {
  */
 export const LINQ_GROUP_ADD_THIS_NUMBER: Record<ReplyLanguage, string> = {
   en: 'Add this number to your group',
-  fr: 'Ajoute ce numero a ton groupe',
+  fr: 'Ajoute ce numéro à ton groupe',
 };
 
 /**

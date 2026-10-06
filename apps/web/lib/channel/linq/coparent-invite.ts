@@ -1,39 +1,29 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
-import {
-  familyHasCoParent,
-  loadPendingAssent,
-  recordCoParentAssent,
-  startCoParentInvite,
-} from '~/lib/channel/caregiver/invites';
-import {
-  CO_PARENT_REFUSAL_COPY,
-  coParentInviteBody,
-  coParentInviteSentAck,
-} from '~/lib/channel/coparent/copy';
-import { f14EnabledFor } from '~/lib/channel/f14';
+import { familyHasCoParent, loadPendingAssent } from '~/lib/channel/caregiver/invites';
+import { coParentInviteSentAck } from '~/lib/channel/coparent/copy';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
-import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
+import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
-import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 /**
  * A phone number texted after `intake:coparent_ask`.
  *
- * SMS still sends the locked invite body. Linq does not collect a number and
- * does not note an identity: the parent starts the iMessage group, and the
- * second real person in that group is the co-parent. A number on iMessage is
- * not this ask, so the turn is left alone.
+ * Hale never texts a number first. SMS answers the parent with the redirect and
+ * texts nobody. Linq does not collect a number and does not note an identity:
+ * the parent starts the iMessage group, and the second real person in that
+ * group is the co-parent. A number on iMessage is not this ask, so the turn is
+ * left alone.
  */
 
-/** The outbound row that proves the SMS invite left. */
+/** The outbound row of an SMS invite that left before Hale stopped texting numbers. */
 export const SMS_COPARENT_INVITE_TEMPLATE_KEY = 'sms:coparent_invite';
 
 /** The parent's ack on the SMS door. The body is {@link coParentInviteSentAck}. */
 export const COPARENT_NUMBER_ACK_TEMPLATE_KEY = 'coparent:number_invite_ack';
-/** A refusal, or a send that did not leave. The body is an existing locked line. */
+/** The answer to a number on SMS: nobody was texted. The body is an existing locked line. */
 export const COPARENT_NUMBER_HELD_TEMPLATE_KEY = 'coparent:number_invite_held';
 /**
  * The Linq parent's instructions. Not an invite ack: nobody was texted.
@@ -70,11 +60,6 @@ function inviteeLabel(name: string | null, language: ReplyLanguage): string {
   return language === 'fr' ? 'cette personne' : 'them';
 }
 
-export interface CoParentNumberDeps {
-  /** The Twilio door. Unused when this turn arrived on iMessage. */
-  sendSms(input: { to: string; body: string }): Promise<{ providerMessageId: string }>;
-}
-
 export type CoParentNumberOutcome =
   | { status: 'not_pending' }
   | {
@@ -88,7 +73,7 @@ export type CoParentNumberOutcome =
       templateKey: typeof LINQ_GROUP_INSTRUCTIONS_TEMPLATE_KEY;
     }
   | {
-      status: 'refused' | 'unreached';
+      status: 'refused';
       reply: string;
       templateKey: typeof COPARENT_NUMBER_HELD_TEMPLATE_KEY;
     };
@@ -97,8 +82,8 @@ export type CoParentNumberOutcome =
  * Answer a number reply, or decline the turn.
  *
  * `not_pending` means this message is not the answer to the ask: the handler
- * must not claim it. A number on iMessage is always `not_pending`. SMS's
- * reply is the locked sent-ack, and only after Twilio accepted the body.
+ * must not claim it. A number on iMessage is always `not_pending`. On SMS the
+ * number is answered with the redirect and nobody is texted.
  */
 export async function deliverCoParentNumberInvite(
   database: Database,
@@ -108,7 +93,6 @@ export async function deliverCoParentNumberInvite(
     body: string;
     now: Date;
     inboundChannelMessageId: string | null;
-    sendSms: CoParentNumberDeps['sendSms'];
   },
 ): Promise<CoParentNumberOutcome> {
   const parsed = parseCoParentNumberReply(input.body);
@@ -134,82 +118,15 @@ export async function deliverCoParentNumberInvite(
     };
   }
 
-  // The SMS add-command is waiting on YES. A bare number must not skip that
-  // confirm and text someone the parent has not authorised on that door.
+  // The SMS add-command is waiting on YES. A bare number must not answer past
+  // that confirm.
   const pending = await loadPendingAssent(database, input.parentUserId, input.now);
   if (pending?.role === 'co_parent') return { status: 'not_pending' };
 
-  const held = (reply: string): CoParentNumberOutcome => ({
-    status: 'refused',
-    reply,
-    templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
-  });
-
-  const parentPhone = await resolveSendablePhone(database, input.parentUserId);
-  if (!parentPhone) {
-    return {
-      status: 'unreached',
-      reply: CO_PARENT_REDIRECT,
-      templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
-    };
-  }
-
-  // Same gate as the YES that texts a stranger (D21). The ask can be on the
-  // thread while the flag is dark; the SMS send is what the flag holds.
-  if (!f14EnabledFor(input.familyId)) {
-    return held(CO_PARENT_REDIRECT);
-  }
-
-  const name = await parentName(database, input.parentUserId);
-  const started = await startCoParentInvite(database, {
-    familyId: input.familyId,
-    invitedByUserId: input.parentUserId,
-    inviterPhoneE164: parentPhone,
-    inviterName: name,
-    parsed: {
-      ok: true,
-      role: 'co_parent',
-      name: label,
-      phoneE164: parsed.phoneE164,
-    },
-    language,
-    now: input.now,
-  });
-  if (started.status === 'refused') {
-    return held(CO_PARENT_REFUSAL_COPY[started.reason][language]);
-  }
-  if (!name) return held(CO_PARENT_REFUSAL_COPY.referrer_unnamed[language]);
-
-  const sms = await input.sendSms({
-    to: parsed.phoneE164,
-    body: coParentInviteBody(name, language),
-  });
-  await ledgerSmsInvite(database, {
-    familyId: input.familyId,
-    parentUserId: input.parentUserId,
-    now: input.now,
-    providerMessageId: sms.providerMessageId,
-  });
-
-  const body = await recordCoParentAssent(database, {
-    invite: started.invite,
-    inviterName: name,
-    language,
-    verbatimReply: input.body,
-    channelMessageId: input.inboundChannelMessageId,
-    now: input.now,
-  });
-  if (body === null) {
-    console.warn(
-      { familyId: input.familyId },
-      'coparent number invite: the SMS send landed and the assent was already claimed',
-    );
-  }
-
   return {
-    status: 'sent',
-    reply: coParentInviteSentAck(label, language),
-    templateKey: COPARENT_NUMBER_ACK_TEMPLATE_KEY,
+    status: 'refused',
+    reply: CO_PARENT_REDIRECT,
+    templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
   };
 }
 
@@ -266,46 +183,4 @@ async function priorSmsInvite(database: Database, familyId: string): Promise<boo
       row.direction === 'out' &&
       row.templateKey === SMS_COPARENT_INVITE_TEMPLATE_KEY,
   );
-}
-
-async function parentName(database: Database, userId: string): Promise<string | null> {
-  const rows = await database
-    .select({ id: schema.users.id, name: schema.users.name })
-    .from(schema.users)
-    .where(eq(schema.users.id, userId));
-  return rows.find((row) => row.id === userId)?.name ?? null;
-}
-
-async function ledgerSmsInvite(
-  database: Database,
-  input: {
-    familyId: string;
-    parentUserId: string;
-    now: Date;
-    providerMessageId: string;
-  },
-): Promise<void> {
-  const [row] = await database
-    .insert(schema.channelMessages)
-    .values({
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      channel: 'sms',
-      direction: 'out',
-      category: 'co_parent_invite',
-      templateKey: SMS_COPARENT_INVITE_TEMPLATE_KEY,
-      providerMessageId: input.providerMessageId,
-      status: acceptedStatus('sms'),
-      sentAt: input.now,
-    })
-    .returning({ id: schema.channelMessages.id });
-  const id = row?.id;
-  if (!id) throw new Error('coparent number invite: channel_messages insert returned no row');
-  await database.insert(schema.auditLog).values({
-    familyId: input.familyId,
-    actor: input.parentUserId,
-    actionTaken: 'co_parent_sms_outbound',
-    targetTable: 'channel_messages',
-    targetId: id,
-  });
 }

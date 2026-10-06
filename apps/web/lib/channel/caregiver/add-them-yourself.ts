@@ -47,7 +47,8 @@ export type AddThemYourselfRefusal =
   | 'claims_contact'
   | 'too_many_questions'
   | 'name_missing'
-  | 'group_missing';
+  | 'group_missing'
+  | 'group_on_sms';
 
 /** Every reason this body may not be sent, so one retry can fix all of them. */
 export function addThemYourselfRefusals(
@@ -65,6 +66,7 @@ export function addThemYourselfRefusals(
     found.push('name_missing');
   }
   if (request.channel === 'imessage' && !GROUP_WORD.test(body)) found.push('group_missing');
+  if (request.channel === 'sms' && GROUP_WORD.test(body)) found.push('group_on_sms');
   return found;
 }
 

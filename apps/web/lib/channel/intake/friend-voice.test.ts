@@ -756,6 +756,15 @@ describe('the co-parent step: their group, or a new one', () => {
     expect(notNew.capture.coparentGroup).toBe(false);
     expect(notNew.capture.coparentGroupMode).toBeNull();
   });
+
+  it('never reads naming a group as a yes', async () => {
+    const theirs = await read('our group is just for the two of us', { coparentGroup: false });
+    expect(theirs.capture.coparentGroup).toBe(false);
+    expect(theirs.capture.coparentGroupMode).toBeNull();
+    const unread = await read("I'd rather keep our family group private", { coparentGroup: null });
+    expect(unread.capture.coparentGroup).toBeNull();
+    expect(unread.capture.coparentGroupMode).toBeNull();
+  });
 });
 
 describe('repairedProse', () => {
