@@ -1,5 +1,5 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { type Database, schema } from '@hale/db';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import type { CalendarPlacementPayload } from '@hale/types';
 import { and, asc, count, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -782,7 +782,7 @@ export function channelScheduleReader(database: Database, now: Date): ChannelSch
         .where(
           and(
             eq(schema.familyEvents.familyId, familyId),
-            isNull(schema.familyEvents.deletedAt),
+            householdFamilyEvent(),
             gte(schema.familyEvents.startsAt, start),
             lte(schema.familyEvents.startsAt, end),
           ),
@@ -802,7 +802,7 @@ export function channelScheduleReader(database: Database, now: Date): ChannelSch
           and(
             eq(schema.familyEvents.id, eventId),
             eq(schema.familyEvents.familyId, familyId),
-            isNull(schema.familyEvents.deletedAt),
+            householdFamilyEvent(),
           ),
         )
         .limit(1);

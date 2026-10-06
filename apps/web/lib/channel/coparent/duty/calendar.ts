@@ -1,5 +1,5 @@
-import { type Database, schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
+import { and, eq } from 'drizzle-orm';
 import { classifyKidCalendarItem, splitKidEvent } from '~/lib/channel/linq/kid-event';
 import {
   type DutyCopyLanguage,
@@ -109,7 +109,7 @@ export async function projectDutyOnFamilyEvent(
       dutyFactKey: schema.familyEvents.dutyFactKey,
     })
     .from(schema.familyEvents)
-    .where(and(eq(schema.familyEvents.familyId, input.familyId), isNull(schema.familyEvents.deletedAt)));
+    .where(and(eq(schema.familyEvents.familyId, input.familyId), householdFamilyEvent()));
 
   const live = rows.filter((row) => row.familyId === input.familyId && row.deletedAt === null);
   const byFact = live.filter((row) => row.dutyFactKey === input.factKey);

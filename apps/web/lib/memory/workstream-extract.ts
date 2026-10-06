@@ -1,8 +1,8 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
-import { type Database, schema } from '@hale/db';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
-import { and, desc, eq, gt, isNull, lt } from 'drizzle-orm';
+import { and, desc, eq, gt, lt } from 'drizzle-orm';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
@@ -252,7 +252,7 @@ async function loadExtractContext(
     .where(
       and(
         eq(schema.familyEvents.familyId, familyId),
-        isNull(schema.familyEvents.deletedAt),
+        householdFamilyEvent(),
         eq(schema.familyEvents.sensitive, false),
         gt(schema.familyEvents.startsAt, new Date(now.getTime() - EVENT_WINDOW_PAST_MS)),
         lt(schema.familyEvents.startsAt, new Date(now.getTime() + EVENT_WINDOW_FUTURE_MS)),
