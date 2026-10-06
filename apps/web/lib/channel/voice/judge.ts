@@ -239,6 +239,18 @@ function wouldBreakAQuestion(before: string): boolean {
 }
 
 /**
+ * The skills ask for a plain hyphen. An em dash or en dash still shows up, and
+ * neither judge was catching it, so this post-check replaces one before the
+ * line is judged or sent. No words are added.
+ */
+function plainDash(line: string): string {
+  return line
+    .replace(/[ \t]*[—–][ \t]*/gu, ' - ')
+    .replace(/ {2,}/gu, ' ')
+    .trim();
+}
+
+/**
  * Join the tool fields into the one bubble the parent would read.
  * A missing period is added only between a statement and a new sentence.
  * A question the model wrote is not closed with a full stop, and a question
@@ -248,15 +260,16 @@ export function assembleSpokenLine(
   questions: 0 | 1,
   value: { line?: string; before?: string; question?: string },
 ): string {
-  if (questions === 0) return (value.line ?? '').trim();
+  if (questions === 0) return plainDash((value.line ?? '').trim());
   const question = oneQuestion(value.question ?? '');
   const before = withoutRepeatedQuestion((value.before ?? '').trim(), question);
-  if (before.length === 0) return question;
-  if (question.length === 0) return before;
-  if (continuesSentence(question) || wouldBreakAQuestion(before)) {
-    return `${before} ${question}`;
-  }
-  return `${closeSentence(before)} ${question}`;
+  if (before.length === 0) return plainDash(question);
+  if (question.length === 0) return plainDash(before);
+  const joined =
+    continuesSentence(question) || wouldBreakAQuestion(before)
+      ? `${before} ${question}`
+      : `${closeSentence(before)} ${question}`;
+  return plainDash(joined);
 }
 
 /** What to tell the model on the one retry. Not a parent-facing sentence. */

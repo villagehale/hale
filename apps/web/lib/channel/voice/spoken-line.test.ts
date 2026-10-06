@@ -249,6 +249,20 @@ describe('assembleSpokenLine', () => {
     ).toBe('Ton coparent a quitté Hale. Tu veux que je reste?');
   });
 
+  it('replaces an em dash or en dash with a plain hyphen before the line is sent', () => {
+    expect(
+      assembleSpokenLine(0, {
+        line: 'The kids stay as they are—their schedule is unchanged.',
+      }),
+    ).toBe('The kids stay as they are - their schedule is unchanged.');
+    expect(
+      assembleSpokenLine(1, {
+        before: 'Got it–one note',
+        question: 'Want it?',
+      }),
+    ).toBe('Got it - one note. Want it?');
+  });
+
   it('does not insert a full stop through a question the model split across the two fields', () => {
     expect(
       assembleSpokenLine(1, {
