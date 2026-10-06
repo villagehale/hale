@@ -6,6 +6,11 @@ import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 
+// The seeded consent row carries a fabricated 'yes' verbatim; it must never reach a real ledger.
+if (process.env.NODE_ENV === 'production') {
+  throw new Error('lib/testing/texted-invite is test-only and cannot load in production');
+}
+
 /**
  * An invite Hale texted before it stopped texting people first: the parent's grant and
  * the row waiting on the invitee's reply. Hale no longer opens these, but the accept,
