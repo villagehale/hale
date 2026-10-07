@@ -105,10 +105,13 @@ describe('every locale renders the redesign', () => {
     expect(fr).toContain('L’inscription à ta place viendra plus tard, et seulement si tu dis oui.');
     expect(fr).toContain('Demande comment ça s’est passé');
     expect(fr).toContain('Texte Hale');
+    expect(fr).toContain('Pour toute la gang, chaque enfant, chaque personne qui aide.');
+    expect(rd(HTML.en)).toContain('For the whole crew, every kid, every helper.');
     const zh = rd(HTML.zh);
     expect(zh).toContain('它帮你找活动、让大家定下来');
     expect(zh).toContain('你点头后代你报名');
     expect(zh).toContain('几个孩子一次报完');
+    expect(zh).toContain('给整伙人，每个孩子，每个帮忙的人。');
     expect(zh).toContain('以后会推出代报名，前提是你先点头。');
     expect(zh).not.toContain('已报名');
   });

@@ -64,7 +64,7 @@ export function RedesignPricing({
     <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">03</span></div>
     <h3>$39 CAD/mo</h3>
     <p className="hs-tier-meta">{t("or $329 CAD/yr, about three months free")}</p>
-    <p className="hs-tier-body">{t("Everything in Plus, for every kid and everyone who helps.")}</p>
+    <p className="hs-tier-body">{t("For the whole crew, every kid, every helper.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Every kid, caregivers included")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Sign-ups for every kid in one go")}</span></li></ul>
     <div className="hs-tier-cta"><button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button></div>
    </li>
