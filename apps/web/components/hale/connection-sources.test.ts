@@ -35,8 +35,8 @@ function connection(overrides: Partial<FamilyConnectorView> = {}): FamilyConnect
   };
 }
 
-const render = (connections: FamilyConnectorView[]) =>
-  renderToStaticMarkup(h(ConnectionSources, { connections }));
+const render = (connections: FamilyConnectorView[], writeArmed = false) =>
+  renderToStaticMarkup(h(ConnectionSources, { connections, writeArmed }));
 
 describe('ConnectionSources — empty state is an invitation', () => {
   const html = render([]);
@@ -50,6 +50,28 @@ describe('ConnectionSources — empty state is an invitation', () => {
 
   it('renders no scope chips when nothing is granted', () => {
     expect(html).not.toContain('class="pill');
+  });
+
+  it('says each connection reads one service, and names daycare notices on Gmail', () => {
+    expect(html).toContain(
+      'Each connection reads one service. Disconnect any time, here or by telling Hale in your texts.',
+    );
+    expect(html).toContain('Daycare and school notices.');
+    expect(html).not.toContain('Each grant is read-only');
+  });
+
+  it('says a write-armed account can draft or change events before any write grant', () => {
+    const armed = render([], true);
+    expect(armed).toContain('can draft mail or change events if you allow it');
+  });
+
+  it('says so plainly once a write scope is actually granted', () => {
+    const html = render([
+      connection({ scopes: ['https://www.googleapis.com/auth/calendar.events'] }),
+    ]);
+    expect(html).toContain(
+      'Some connections can draft mail or change events. Disconnect any time, here or by telling Hale in your texts.',
+    );
   });
 });
 

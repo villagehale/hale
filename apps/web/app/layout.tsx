@@ -44,7 +44,7 @@ const fraunces = localFont({
 export const metadata: Metadata = {
   title: 'Hale · the family assistant you text',
   description:
-    "Hale is the family assistant you text — it takes the family admin off your plate, catches registration day before spots fill, and never acts without your say-so. This is the receipts room: approvals, history, settings. Your family's data stays in Canada.",
+    'Hale is the family assistant you text — it takes the family admin off your plate, catches registration day before spots fill, and never acts without your say-so. This is the receipts room: approvals, history, settings.',
 };
 
 export const viewport: Viewport = {

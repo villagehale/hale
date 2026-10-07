@@ -91,9 +91,7 @@ export function PublicActivityCard({
       <div className="flex items-baseline justify-between gap-4">
         <p className="eyebrow text-spruce">{villageKindLabel(activity.kind) ?? ''}</p>
         {typeof index === 'number' ? (
-          <span className="tabular text-sm text-faded-sage">
-            {String(index).padStart(2, '0')}
-          </span>
+          <span className="tabular text-sm text-faded-sage">{String(index).padStart(2, '0')}</span>
         ) : null}
       </div>
       <h2 className="font-display text-[1.5rem] lg:text-[1.875rem] leading-tight text-spruce">
@@ -120,7 +118,7 @@ export function PublicActivityCard({
  */
 export function JoinCta({
   heading = 'see what families near you are doing.',
-  sub = 'Hale is the family assistant your family texts — it watches the registration windows and the things that fill in minutes, and texts you when one matters. The families near you say which are worth it. Your family’s data stays in Canada.',
+  sub = 'Hale is the family assistant your family texts — it watches the registration windows and the things that fill in minutes, and texts you when one matters. The families near you say which are worth it.',
 }: {
   heading?: string;
   sub?: string;

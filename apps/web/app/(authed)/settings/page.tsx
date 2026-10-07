@@ -3,7 +3,6 @@ import {
   KeyRound,
   Link2,
   Mail,
-  MapPin,
   Phone,
   ScrollText,
   ShieldCheck,
@@ -40,6 +39,7 @@ import { listConsentRecordsForViewer } from '~/lib/consent-records';
 import { loadFamilyBasics, loadFamilyMembers } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
 import { currentFamilyId, currentUserId, listSeatsForUser, loadViewerProfile } from '~/lib/family';
+import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-flag';
 import { loadFamilyConnectors } from '~/lib/integrations/load';
 import { PRIVACY_URL, TERMS_URL } from '~/lib/legal-links';
 import { listMcpConnectionsForUser } from '~/lib/mcp/oauth-store';
@@ -267,7 +267,10 @@ export default async function SettingsPage() {
           </div>
           <div>
             <p className="eyebrow text-faded-sage mb-4">what hale can read</p>
-            <ConnectionSources connections={connections} />
+            <ConnectionSources
+              connections={connections}
+              writeArmed={googleWriteScopesEnabledFor(userId)}
+            />
           </div>
           <div>
             <p className="eyebrow text-faded-sage mb-4">assistants</p>
@@ -277,17 +280,17 @@ export default async function SettingsPage() {
       </SettingsSection>
 
       {/* ── Trust ───────────────────────────────────────────────────────── */}
-      <SettingsSection
-        id="trust"
-        label="Trust"
-        explainer="What Hale holds, where it lives, and your controls."
-      >
+      <SettingsSection id="trust" label="Trust" explainer="What Hale holds, and your controls.">
         <SettingsCard>
           {/* Two static statements — decided facts, not toggles (rule #1 posture). */}
           <SettingsRow
-            icon={MapPin}
-            label="Your family’s data stays in Canada"
-            value="Stored in Toronto, and it doesn’t leave."
+            icon={ShieldCheck}
+            label="Never sold."
+            value={
+              <a href={PRIVACY_URL} className="underline underline-offset-2">
+                Privacy policy
+              </a>
+            }
           />
           <SettingsRow
             icon={ShieldCheck}
@@ -370,7 +373,9 @@ export default async function SettingsPage() {
               </a>
             </li>
           </ul>
-          <p className="meta">Hale for Web · Version {APP_VERSION} · Hawaiian for &ldquo;home&rdquo;.</p>
+          <p className="meta">
+            Hale for Web · Version {APP_VERSION} · Hawaiian for &ldquo;home&rdquo;.
+          </p>
           {canSignOut ? (
             <form action={signOutAction}>
               <button type="submit" className="btn-secondary">
