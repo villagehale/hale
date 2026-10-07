@@ -79,10 +79,10 @@ describe('every locale renders the redesign', () => {
     expect(HTML.en).toContain('handled.');
     expect(HTML.en).toContain('Library playgroup');
     expect(rd(HTML.fr)).toContain('L’année de tes enfants,');
-    expect(rd(HTML.fr)).toContain('on s’en charge.');
+    expect(rd(HTML.fr)).toContain('sans casse-tête.');
     expect(rd(HTML.fr)).not.toContain('Your kids’ year,');
     expect(rd(HTML.zh)).toContain('孩子这一年，');
-    expect(rd(HTML.zh)).toContain('有人接手。');
+    expect(rd(HTML.zh)).toContain('交给 Hale。');
     expect(rd(HTML.zh)).not.toContain('Your kids’ year,');
     expect(rd(HTML.zh)).not.toContain('已报名');
   });

@@ -31,8 +31,8 @@ describe('siteJsonLd', () => {
     const app = nodes.find((n) => n['@type'] === 'SoftwareApplication');
     const h1 = {
       en: 'Your kids’ year, handled.',
-      fr: 'L’année de tes enfants, on s’en charge.',
-      zh: '孩子这一年，有人接手。',
+      fr: 'L’année de tes enfants, sans casse-tête.',
+      zh: '孩子这一年，交给 Hale。',
     }[locale];
     const planner = {
       en: 'planner for your kids’ year',

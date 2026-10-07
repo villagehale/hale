@@ -6,9 +6,9 @@
   },
   "HomeMeta": {
     "title": "Hale · un planificateur pour l’année de tes enfants",
-    "description": "L’année de tes enfants, on s’en charge. Hale trouve ce qui se passe, surveille les places et revient demander comment ça s’est passé. Pas d’appli, pas de compte.",
-    "ogDescription": "L’année de tes enfants, on s’en charge. Hale trouve ce qui se passe, surveille les places, puis revient demander comment ça s’est passé. Pas d’appli, pas de compte.",
-    "twitterDescription": "L’année de tes enfants, on s’en charge. Ce qui vaut la peine avec les enfants."
+    "description": "L’année de tes enfants, sans casse-tête. Hale trouve ce qui se passe, surveille les places et revient demander comment ça s’est passé. Pas d’appli, pas de compte.",
+    "ogDescription": "L’année de tes enfants, sans casse-tête. Hale trouve ce qui se passe, surveille les places, puis revient demander comment ça s’est passé. Pas d’appli, pas de compte.",
+    "twitterDescription": "L’année de tes enfants, sans casse-tête. Ce qui vaut la peine avec les enfants."
   },
   "Header": {
     "navPricing": "Tarifs",
@@ -775,7 +775,7 @@
   },
   "Text": {
     "metaTitle": "Texter Hale",
-    "metaDescription": "L’année de tes enfants, on s’en charge. Ce qui vaut la peine avec les enfants.",
+    "metaDescription": "L’année de tes enfants, sans casse-tête. Ce qui vaut la peine avec les enfants.",
     "headline": "Trouvez ce qu’il y a. Écoutez comment ça va.",
     "lede": "Ce qui vaut la peine avec les enfants.",
     "sentLabel": "Ce que vous enverrez :",
@@ -830,7 +830,7 @@
   },
   "Jsonld": {
     "orgDescription": "Hale est un planificateur pour l’année de tes enfants — il trouve ce qui se passe, surveille les inscriptions et revient prendre des nouvelles.",
-    "appDescription": "L’année de tes enfants, on s’en charge. Un planificateur pour l’année de tes enfants : Hale trouve ce qui se passe, surveille les places et revient demander comment ça s’est passé."
+    "appDescription": "L’année de tes enfants, sans casse-tête. Un planificateur pour l’année de tes enfants : Hale trouve ce qui se passe, surveille les places et revient demander comment ça s’est passé."
   },
   "Rd": {
     "0–11 months": "0–11 mois",
@@ -1154,7 +1154,7 @@
     "Your kids’ plans already live in group chats. Add Hale, and it finds what’s on, gets everyone to a yes, and puts it on the calendar.": "Les plans de tes enfants sont déjà dans les groupes texto. Ajoute Hale : il trouve quoi faire, aide tout le monde à s’entendre, et le met au calendrier.",
     "Your kids’ year,": "L’année de tes enfants,",
     "aloha@villagehale.com": "aloha@villagehale.com",
-    "handled.": "on s’en charge.",
+    "handled.": "sans casse-tête.",
     "in Swimmer 3, Saturdays 9:30. Here’s the": " en Swimmer 3, le samedi à 9 h 30. Voici la ",
     "is Hawaiian for home. The mark is a honu, a sea turtle.": "veut dire « maison » en hawaïen. La marque est une honu, une tortue de mer.",
     "library page": "page de la bibliothèque",

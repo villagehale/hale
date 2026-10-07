@@ -6,9 +6,9 @@
   },
   "HomeMeta": {
     "title": "Hale · 孩子这一年的规划",
-    "description": "孩子这一年，有人接手。Hale 帮你看看附近有什么、盯着名额，再回来问问怎么样。不用装应用，不用注册账号。",
-    "ogDescription": "孩子这一年，有人接手。Hale 帮你看看附近有什么、盯着名额，再回来问问怎么样。不用装应用，不用注册账号。",
-    "twitterDescription": "孩子这一年，有人接手。值得和孩子一起做的事。"
+    "description": "孩子这一年，交给 Hale。Hale 帮你看看附近有什么、盯着名额，再回来问问怎么样。不用装应用，不用注册账号。",
+    "ogDescription": "孩子这一年，交给 Hale。Hale 帮你看看附近有什么、盯着名额，再回来问问怎么样。不用装应用，不用注册账号。",
+    "twitterDescription": "孩子这一年，交给 Hale。值得和孩子一起做的事。"
   },
   "Header": {
     "navPricing": "价格",
@@ -752,7 +752,7 @@
   },
   "Text": {
     "metaTitle": "给 Hale 发短信",
-    "metaDescription": "孩子这一年，有人接手。值得和孩子一起做的事。",
+    "metaDescription": "孩子这一年，交给 Hale。值得和孩子一起做的事。",
     "headline": "看看有什么。听听怎么样。",
     "lede": "值得和孩子一起做的事。",
     "sentLabel": "你会发出的内容：",
@@ -807,7 +807,7 @@
   },
   "Jsonld": {
     "orgDescription": "Hale 是孩子这一年的规划——帮你看看附近有什么、盯着报名，再回来问问怎么样。",
-    "appDescription": "孩子这一年，有人接手。孩子这一年的规划：Hale 帮你看看附近有什么、盯着名额，再回来问问怎么样。"
+    "appDescription": "孩子这一年，交给 Hale。孩子这一年的规划：Hale 帮你看看附近有什么、盯着名额，再回来问问怎么样。"
   },
   "Rd": {
     "0–11 months": "0–11 个月",
@@ -1131,7 +1131,7 @@
     "Your kids’ plans already live in group chats. Add Hale, and it finds what’s on, gets everyone to a yes, and puts it on the calendar.": "孩子的安排本来就在群聊里。把 Hale 加进去，它帮你找活动、让大家定下来，再放进日历。",
     "Your kids’ year,": "孩子这一年，",
     "aloha@villagehale.com": "aloha@villagehale.com",
-    "handled.": "有人接手。",
+    "handled.": "交给 Hale。",
     "in Swimmer 3, Saturdays 9:30. Here’s the": "，Swimmer 3，周六上午 9:30。链接在",
     "is Hawaiian for home. The mark is a honu, a sea turtle.": "在夏威夷语里是「家」。标志是一只 honu，海龟。",
     "library page": "图书馆页面",
