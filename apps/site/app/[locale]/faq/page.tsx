@@ -10,6 +10,8 @@ import { buildAlternates, ogLocale } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
+import { RedesignFaq } from '~/components/redesign/faq';
+import { intakePrefill } from '~/lib/intake-prefill';
 import { FAQ, type FaqItem, faqJsonLd } from '~/lib/faq/index';
 import { chromeCta } from '~/lib/site/chrome-cta';
 import { readSmsNumber } from '~/lib/text-entry';
@@ -48,6 +50,22 @@ function faqItems(locale: Locale): readonly FaqItem[] {
 
 export default async function FaqPage({ params }: PageProps) {
   const { locale } = await params;
+  if (locale === 'en') {
+    return (
+      <>
+        <script
+          type="application/ld+json"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input).
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd(FAQ, locale)) }}
+        />
+        <RedesignFaq
+          locale={locale}
+          smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+          prefill={intakePrefill(locale)}
+        />
+      </>
+    );
+  }
   const t = getTranslator(locale, 'Faq');
   const items = faqItems(locale);
   const cta = chromeCta(locale);

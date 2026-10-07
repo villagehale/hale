@@ -6,6 +6,9 @@ import { type HeadlineSegment, WordsPullUp } from '~/components/words-pull-up';
 import { buildAlternates } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
+import { RedesignContact } from '~/components/redesign/contact';
+import { intakePrefill } from '~/lib/intake-prefill';
+import { readSmsNumber } from '~/lib/text-entry';
 import { getTranslator } from '~/i18n/server';
 
 interface PageProps {
@@ -35,6 +38,15 @@ const CHANNELS = [
 
 export default async function ContactPage({ params }: PageProps) {
   const { locale } = await params;
+  if (locale === 'en') {
+    return (
+      <RedesignContact
+        locale={locale}
+        smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+        prefill={intakePrefill(locale)}
+      />
+    );
+  }
   const t = getTranslator(locale, 'Contact');
   const channelCopy = t.raw('channels') as Record<string, { eyebrow: string; line: string }>;
 

@@ -6,9 +6,9 @@
   },
   "HomeMeta": {
     "title": "Hale · a planner for your kids’ year",
-    "description": "Find what’s on. Hear how it went. Hale finds what’s actually running near your kids — swim, camps, drop-ins, the EarlyON down the road — watches the sign-up mornings across {count} GTA municipalities, hands you the town’s own link the night before, and comes back to ask how it went. No app, no account. Your data stays in Canada.",
-    "ogDescription": "Find what’s on. Hear how it went. Hale finds what’s actually running near you and watches the sign-up mornings across {count} GTA municipalities, then comes back to ask how it went. No app, no account. Your data stays in Canada.",
-    "twitterDescription": "Find what’s on. Hear how it went. What’s worth doing with the kids. No app, no account. Your data stays in Canada."
+    "description": "Your kids’ plans already live in group chats. Add Hale, and it finds what’s on, gets everyone to a yes, and puts it on the calendar.",
+    "ogDescription": "Your kids’ plans already live in group chats. Add Hale, and it finds what’s on, gets everyone to a yes, and puts it on the calendar.",
+    "twitterDescription": "Your kids’ year, handled. Add Hale to the group chats you already have."
   },
   "Header": {
     "navPricing": "Pricing",
@@ -33,7 +33,7 @@
     "linkPrivacy": "Privacy policy",
     "linkTerms": "Terms of service",
     "copyright": "© {year} Hale. All rights reserved.",
-    "company": "Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada.",
+    "company": "Village Hale Technologies Inc.",
     "signIn": "Sign in"
   },
   "LanguageSwitcher": {
@@ -337,7 +337,7 @@
   },
   "About": {
     "metaTitle": "About · Hale",
-    "metaDescription": "Hale is a planner for your kids’ year. Find what’s on. Hear how it went. Barton Dong, CEO, and Eugene Song, CTO, at Village Hale Technologies Inc. in Georgetown, Ontario.",
+    "metaDescription": "Hale is a planner for your kids’ year. Barton Dong, CEO, and Eugene Song, CTO, at Village Hale Technologies Inc.",
     "eyebrow": "About Hale",
     "headline": [
       {
@@ -435,28 +435,35 @@
     "annualNote": "billed yearly — about three months free",
     "footnote": "Hale is free to start. Plus and Family open as their integrations ship.",
     "tierLines": {
-      "free": "Find what’s on and open the year. Watching mornings you’ve already set stays free.",
-      "plus": "Nudges when a weekend’s empty or a waitlist opens — plus year memory as it ships.",
-      "family": "One plan for the household. Co-parent stays in."
+      "free": "Unlimited chat, on your own or in your group chats. Hale finds what’s on, watches for spots and reminds you before sign-ups.",
+      "plus": "Nudges when a weekend’s empty or a waitlist opens, plus year memory as it ships.",
+      "family": "Everything in Plus, for every kid and everyone who helps."
     },
     "tierNames": {
       "free": "Free",
       "plus": "Plus",
-      "family": "Family"
+      "family": "Max"
     },
     "paidFeatures": {
       "plus": [
         "Everything in Free",
-        "Reminders and drafts, as they roll out",
-        "More of the year watched with you"
+        "A nudge when a weekend’s empty",
+        "Year memory, season to season",
+        "Sign-ups done for you, when you say yes"
       ],
       "family": [
         "Everything in Plus",
-        "A household view of the year, as it rolls out",
-        "Concierge + priority support"
+        "Every kid, caregivers included",
+        "Priority support",
+        "Sign-ups for every kid in one go"
       ]
     },
-    "freeFeatures": ["Text Hale", "Rec dates watched", "Answers", "Founding rate"]
+    "freeFeatures": [
+      "Unlimited chat",
+      "Live find",
+      "A text when a spot opens",
+      "Group chats and your co-parent"
+    ]
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
@@ -635,59 +642,67 @@
     "items": [
       {
         "question": "What is Hale?",
-        "answer": "A planner for your kids’ year. It finds what is actually running near your kids — swim, camps, drop-ins, the EarlyON down the road — watches the sign-up mornings where you live, hands you the town’s own link the night before, and comes back to ask how it went. It answers the parenting questions too. There is no app to install and no account to create."
+        "answer": "A planner for your kids’ year that lives in your texts. It finds what’s on near you, watches for spots, reminds you before sign-ups and asks how it went. It answers any other question you send it, too."
       },
       {
         "question": "How do I start?",
-        "answer": "You text the number and ask what’s worth doing with the kids near you. Hale asks for your kids’ names and ages and your postal code, and that is the whole setup — everything else it asks for later, only when it needs it. Hale never texts a number that hasn’t texted it first."
+        "answer": "Text the number. Hale asks where you are and how old the kids are, then shows you what’s on this week. Anything else it asks for later, only when it needs it. Hale never texts a number that hasn’t texted it first."
       },
       {
-        "question": "Does Hale do anything without asking?",
-        "answer": "No. Hale finds what’s on and asks how it went — it does not book a class or register you. Every message names what it found, and Hale keeps the full record of who asked, what was sent and when."
+        "question": "Do I need an app or an account?",
+        "answer": "No. Hale works in iMessage and regular texts. The website is only there if you want to look back at what Hale has sent."
       },
       {
-        "question": "Is my family’s data private?",
-        "answer": "Your data is stored in Canada and never leaves it, in line with PIPEDA and Quebec’s Law 25, and Hale never sells it. Every permission is granular and revocable in a text. Text messaging itself is not sealed the way an app is — a message crosses your carrier and Hale’s messaging provider — so Hale writes to that reality and names the task, never the diagnosis. A teenager’s content is redacted from parents by default."
+        "question": "Can Hale join our group chat?",
+        "answer": "Yes. Start a group with Hale and whoever shares the load: your co-parent, the carpool, other parents from the class. Ask in the chat and Hale answers there."
       },
       {
-        "question": "Is this a bot? Who actually reads my texts?",
-        "answer": "Hale is a planner for your kids’ year, and it never pretends to be a person. It is built and run by Village Hale Technologies Inc., a small parent-founded company in Georgetown, Ontario — and a real person reads anything you send to aloha@villagehale.com. Hale never texts a number that hasn’t texted it first, never asks you to text back a password, a card number or a code, and STOP ends the conversation at any time."
+        "question": "What does Hale do in a group?",
+        "answer": "Finds a plan when someone asks, keeps track of who’s in and who’s driving, and reminds the right person the night before. Otherwise it stays quiet."
       },
       {
-        "question": "What does Hale actually watch?",
-        "answer": "Municipal registration across 21 GTA municipalities — recreation programs, swim lessons, camps and after-school care — including the resident head start, the towns that register swimming on their own date, and the winter-break camps that open back in August. It also watches the waitlist clock, which is a day in some towns and two in others. And when the class you wanted is already full, Hale keeps watching it and texts you the minute a place opens."
+        "question": "What do other parents in the group see?",
+        "answer": "Only what’s said in that chat. Nothing from your own calendar, inbox or 1:1 texts with Hale shows up in a group."
+      },
+      {
+        "question": "Is my co-parent free?",
+        "answer": "Always. Same plan, same reminders, on their own phone."
+      },
+      {
+        "question": "Does Hale book or register for me?",
+        "answer": "Not yet. Hale finds the class, watches for spots and texts you the link before sign-ups open. You register yourself. Signing up for you is coming later, and only when you say yes."
+      },
+      {
+        "question": "What does Hale find?",
+        "answer": "Swim, camps, drop-ins, library programs, rec classes and things to do this weekend, picked for your kids’ ages and where you live. Every find comes with the page it came from."
+      },
+      {
+        "question": "Can I ask it other things?",
+        "answer": "Anything. Sleep, a rainy-day idea, what’s open Monday. Hale looks it up live and answers in a line or two."
       },
       {
         "question": "How often will Hale text me?",
-        "answer": "A heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. In the evening Hale asks one line about how the day went — reply LESS and that becomes weekly, NO and it stops. STOP works at any time."
+        "answer": "Only when there’s a reason: a heads-up before sign-ups, the link the night before, a question after the first class. Reply LESS for fewer, or STOP to end it."
       },
       {
-        "question": "Can Hale answer parenting questions, or only scheduling ones?",
-        "answer": "Both. Ask about sleep, starting solids, potty training, picky eating, tantrums, screen time or routines and you get an answer pitched at your child’s age, plus the offer of the whole plan — two or three texts you can start tonight. A few days later Hale asks how it went. It never diagnoses and never names a dose."
+        "question": "Will Hale tell me if a class is any good?",
+        "answer": "Not yet. Today Hale asks how it went, and uses your answer to pick what to send you next."
       },
       {
-        "question": "Is Hale free?",
-        "answer": "Hale is free while it is new, and families who start now keep their founding rate. A co-parent is always free — the same dates and nudges on their own number, never a second household to pay for."
+        "question": "Is it free?",
+        "answer": "Yes. Hale is free while it’s new, and families who start now keep their founding rate. Your co-parent is always free."
       },
       {
-        "question": "Do I need to use the website?",
-        "answer": "No. The finding and the check-ins happen in the text thread. The full record of what Hale has sent is yours whenever you want it — ask for it in the thread, or sign in with your phone number and read it there."
+        "question": "What will Plus and Max cost?",
+        "answer": "Plus will be $19 a month or $159 a year. Max will be $39 a month or $329 a year. Prices are in Canadian dollars, and neither plan is open yet."
       },
       {
-        "question": "Will you tell me whether a class is any good?",
-        "answer": "Not yet. Today Hale asks how it went. Telling the next parent what other families thought is what Hale wants to build next, and when it does it will be a count and a verdict — never anyone’s words."
+        "question": "What happens to our data?",
+        "answer": "It’s never sold or used for ads. Reply STOP and the texts stop. Our privacy policy covers what Hale keeps and why, and how to have it deleted."
       },
       {
-        "question": "Can you help when we travel?",
-        "answer": "Not yet. Today I watch registration and what’s on where you live, in the GTA."
-      },
-      {
-        "question": "Can you tell me who else is going?",
-        "answer": "Not yet. Today I only tell you about your own family, never anyone else’s."
-      },
-      {
-        "question": "Is Hale available outside Canada?",
-        "answer": "Not yet. Hale is Canada-first because keeping your family’s data on Canadian soil is a core promise rather than a setting, and the registration data it watches is GTA municipal data. Other regions are on the roadmap."
+        "question": "Is Hale a person?",
+        "answer": "No, and it never pretends to be. Hale is built by Village Hale Technologies Inc., a small parent-founded company. Write to aloha@villagehale.com and a real person reads it."
       }
     ]
   },
@@ -786,7 +801,7 @@
     "onLaptop": "On a laptop?",
     "scanHint": "Scan the code with your phone’s camera, or copy the number and text it from your phone. Standard message rates apply; reply STOP any time.",
     "numberComing": "The number’s coming — this page isn’t announced yet.",
-    "footerPre": "Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada —",
+    "footerPre": "Your data is never sold or used for ads; see our",
     "privacyLink": "privacy policy",
     "qrAria": "QR code — scan to text Hale",
     "chooserHeadline": "Welcome. Pick where we talk.",
@@ -823,7 +838,7 @@
     ]
   },
   "Jsonld": {
-    "orgDescription": "Hale is a planner for your kids’ year — it finds what’s on near your kids, watches city registration windows, and comes back to ask how it went. Every family’s data stays in Canada.",
-    "appDescription": "Find what’s on. Hear how it went. A planner for your kids’ year: Hale finds what’s on near your kids, watches registration dates, and comes back to ask how it went. Receipts for everything, and your family’s data never leaves Canada."
+    "orgDescription": "Hale is a planner for your kids’ year — it finds what’s on near your kids, watches for spots, and comes back to ask how it went.",
+    "appDescription": "Your kids’ year, handled. A planner for your kids’ year: Hale finds what’s on, watches for spots, and comes back to ask how it went."
   }
 }

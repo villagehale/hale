@@ -112,8 +112,11 @@ describe('/text (unlisted entry surface)', () => {
         searchParams: Promise.resolve({}),
       }),
     );
-    // Locked Hale #1. Em dashes and curly apostrophes are not HTML-escaped.
-    expect(en).toContain(LOCKED_PREVIEW_EN);
+    // English /text shows the cleared reply. French and Chinese keep the previous preview.
+    expect(en).toContain(
+      'Hey, it&#x27;s Hale. I find what&#x27;s on for kids near you. What&#x27;s your postal code? I&#x27;ll show you what&#x27;s on this week.',
+    );
+    expect(en).not.toContain(LOCKED_PREVIEW_EN);
     expect(zh).toContain(LOCKED_PREVIEW_EN);
     // French twin. ASCII apostrophes are the only characters React escapes.
     expect(fr).toContain(

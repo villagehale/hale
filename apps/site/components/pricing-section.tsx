@@ -1,4 +1,4 @@
-import { PLAN_TIERS_ORDERED, type PlanTier, formatPlanPrice } from '@hale/types';
+import { PLAN_DISPLAY, PLAN_TIERS_ORDERED, type PlanTier, formatPlanPrice } from '@hale/types';
 import { Check } from 'lucide-react';
 import { LandingCta } from '~/components/landing-cta';
 import { type Locale, routing } from '~/i18n/routing';
@@ -32,6 +32,77 @@ const TIER_PANEL = {
  * catalog still carries.
  */
 export function PricingSection({ locale = routing.defaultLocale }: { locale?: Locale }) {
+  if (locale === routing.defaultLocale) return <PricingCards locale={locale} />;
+  return <PricingSectionLegacy locale={locale} />;
+}
+
+/** English marketing cards. Prices and feature lines come from PLAN_DISPLAY. */
+function PricingCards({ locale }: { locale: Locale }) {
+  const cta = chromeCta(locale);
+  const cards = [
+    {
+      tier: 'free' as const,
+      kicker: 'Free for every family',
+      body: 'Unlimited chat, on your own or in your group chats. Hale finds what’s on, watches for spots and reminds you before sign-ups.',
+      price: '$0 CAD/mo',
+      meta: null as string | null,
+    },
+    {
+      tier: 'plus' as const,
+      kicker: null,
+      body: PLAN_DISPLAY.plus.tagline,
+      price: formatPlanPrice('plus', 'monthly'),
+      meta: `or ${formatPlanPrice('plus', 'annual')}, about three months free`,
+    },
+    {
+      tier: 'family' as const,
+      kicker: null,
+      body: PLAN_DISPLAY.family.tagline,
+      price: formatPlanPrice('family', 'monthly'),
+      meta: `or ${formatPlanPrice('family', 'annual')}, about three months free`,
+    },
+  ];
+  return (
+    <section id="pricing" className="rd">
+      <p>Only Free is available today.</p>
+      <p>Founding families keep their rate.</p>
+      <p>The first 100 families get a permanent founding badge, and first access when Plus and Max open.</p>
+      <ol>
+        {cards.map((card, i) => (
+          <li key={card.tier}>
+            <span>{PLAN_DISPLAY[card.tier].name}</span>
+            <span>0{i + 1}</span>
+            <h3>{card.price}</h3>
+            {card.meta ? <p>{card.meta}</p> : <p>{card.kicker}</p>}
+            <p>{card.body}</p>
+            <ul>
+              {PLAN_DISPLAY[card.tier].features.map((feature) => (
+                <li key={feature}>{feature}</li>
+              ))}
+            </ul>
+            {card.tier === 'free' ? (
+              <LandingCta
+                event="cta_text_click"
+                channel="sms"
+                placement="pricing_tier"
+                href={cta.href}
+                className="hs-btn-primary"
+              >
+                {cta.label}
+              </LandingCta>
+            ) : (
+              <button type="button" className="hs-btn-soon" disabled>
+                Coming soon
+              </button>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function PricingSectionLegacy({ locale = routing.defaultLocale }: { locale?: Locale }) {
   const t = getTranslator(locale, 'PricingSection');
   const tierLines: Record<PlanTier, string> = {
     free: t('tierLines.free'),

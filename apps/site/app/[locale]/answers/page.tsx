@@ -9,7 +9,10 @@ import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { publishedAnswers } from '~/lib/answers/index';
+import { RedesignAnswers } from '~/components/redesign/answers';
+import { intakePrefill } from '~/lib/intake-prefill';
 import { chromeCta } from '~/lib/site/chrome-cta';
+import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
   params: Promise<{ locale: Locale }>;
@@ -31,6 +34,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function AnswersIndexPage({ params }: PageProps) {
   const { locale } = await params;
+  if (locale === 'en') {
+    return (
+      <RedesignAnswers
+        locale={locale}
+        smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+        prefill={intakePrefill(locale)}
+      />
+    );
+  }
   const t = getTranslator(locale, 'Answers');
   const stageLabels = t.raw('stageLabels') as Record<string, string>;
   const answers = publishedAnswers;

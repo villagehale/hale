@@ -11,7 +11,10 @@ import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { allCities, publishedCities } from '~/lib/activities/index';
 import { hubJsonLd } from '~/lib/activities/structured-data';
+import { RedesignActivities } from '~/components/redesign/activities';
+import { intakePrefill } from '~/lib/intake-prefill';
 import { chromeCta } from '~/lib/site/chrome-cta';
+import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
   params: Promise<{ locale: Locale }>;
@@ -43,6 +46,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function ActivitiesHub({ params }: PageProps) {
   const { locale } = await params;
+  if (locale === 'en') {
+    return (
+      <RedesignActivities
+        locale={locale}
+        smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+        prefill={intakePrefill(locale)}
+      />
+    );
+  }
   const t = getTranslator(locale, 'Activities');
   // The one front door, resolved the same way the header and footer resolve theirs:
   // texting Hale (or the honest email fallback when no number is provisioned).

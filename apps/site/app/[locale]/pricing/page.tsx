@@ -3,6 +3,7 @@ import { CopyNumberButton } from '~/components/copy-number';
 import { CtaBand } from '~/components/cta-band';
 import { LandingCta } from '~/components/landing-cta';
 import { PricingSection } from '~/components/pricing-section';
+import { RedesignPricing } from '~/components/redesign/pricing';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { type HeadlineSegment, WordsPullUp } from '~/components/words-pull-up';
@@ -10,6 +11,7 @@ import { buildAlternates, ogLocale } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
+import { intakePrefill } from '~/lib/intake-prefill';
 import { chromeCta } from '~/lib/site/chrome-cta';
 import { readSmsNumber } from '~/lib/text-entry';
 
@@ -40,6 +42,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function PricingPage({ params }: PageProps) {
   const { locale } = await params;
+  if (locale === 'en') {
+    return (
+      <RedesignPricing
+        locale={locale}
+        smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+        prefill={intakePrefill(locale)}
+      />
+    );
+  }
   const t = getTranslator(locale, 'Pricing');
   // Texting Hale is the one front door: /onboarding was deleted in F14.
   const cta = chromeCta(locale);

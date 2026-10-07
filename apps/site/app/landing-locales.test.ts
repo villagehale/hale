@@ -19,6 +19,10 @@ import LandingPage from './[locale]/page.js';
 
 vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
 
+/** English renders the redesign. The registration-loop pins stay on the
+ * locales that still render the v4 landing. */
+const V4_LOCALES = routing.locales.filter((locale) => locale !== 'en');
+
 const HTML = Object.fromEntries(
   await Promise.all(
     routing.locales.map(async (locale) => [
@@ -91,7 +95,7 @@ function advanceEm(line: string): number {
 }
 
 describe('the registration loop renders in every locale', () => {
-  it.each(routing.locales)('%s runs four legs and seven bubbles, in order', (locale) => {
+  it.each(V4_LOCALES)('%s runs four legs and seven bubbles, in order', (locale) => {
     const html = transcript(HTML[locale]);
     expect(html, 'the transcript must render').toContain('v4-bubble');
     expect([...html.matchAll(/class="v4-thread-time"/g)]).toHaveLength(4);
@@ -118,18 +122,18 @@ describe('the registration loop renders in every locale', () => {
     ]);
   });
 
-  it.each(routing.locales)('%s carries the municipal link Hale really sends', (locale) => {
+  it.each(V4_LOCALES)('%s carries the municipal link Hale really sends', (locale) => {
     // Not translated: it is a URL. A locale that "translates" it points a parent
     // at a page that does not exist.
     expect(HTML[locale]).toContain('haltonhills.ca/Play/Recreation/Programs');
   });
 
-  it.each(routing.locales)('%s marks all three steps and both contrast cells', (locale) => {
+  it.each(V4_LOCALES)('%s marks all three steps and both contrast cells', (locale) => {
     expect([...HTML[locale].matchAll(/class="v4-when"/g)]).toHaveLength(3);
     expect([...HTML[locale].matchAll(/class="v4-contrast[^"]*"/g)]).toHaveLength(1);
   });
 
-  it.each(routing.locales)(
+  it.each(V4_LOCALES)(
     '%s states the watch in both contrast cells and one coverage line',
     (locale) => {
       const html = HTML[locale];
@@ -185,7 +189,7 @@ describe('the registration loop renders in every locale', () => {
     expect(html).not.toContain('hero_chip');
   });
 
-  it.each(routing.locales)(
+  it.each(V4_LOCALES)(
     '%s opens on the hero exchange — the ask and the find, before the transcript',
     (locale) => {
       // A believable request and Hale's find, above the fold, in every language.
@@ -204,7 +208,7 @@ describe('the registration loop renders in every locale', () => {
     },
   );
 
-  it.each(routing.locales)('%s answers about the town the hero asked about', (locale) => {
+  it.each(V4_LOCALES)('%s answers about the town the hero asked about', (locale) => {
     // Every other assertion over the hero is structural, so a translator could
     // leave one language answering about a town — and a cycle — the en copy has
     // moved off, and the suite would stay green. Reverting fr's reply to the
@@ -242,7 +246,7 @@ describe('the registration loop renders in every locale', () => {
     expect(advanceEm('之后便 安静下来。')).toBeGreaterThan(H1_COLUMN_EM.zh);
   });
 
-  it.each(routing.locales)('%s keeps BOTH demos evergreen — no calendar date', (locale) => {
+  it.each(V4_LOCALES)('%s keeps BOTH demos evergreen — no calendar date', (locale) => {
     // Run over the hero exchange as well as the transcript. A translator writing
     // the hero reply has the same temptation to print the cycle the row is drawn
     // from, and the hero is the one a first-time reader sees — scoping this to
@@ -291,7 +295,7 @@ describe('the registration loop renders in every locale', () => {
     expect(demo).toContain('3.');
   });
 
-  it.each(routing.locales)('%s says who is speaking, not only which side', (locale) => {
+  it.each(V4_LOCALES)('%s says who is speaking, not only which side', (locale) => {
     // Direction is drawn with align-self and a fill; in dark the out-bubble's
     // navy sits on a near-identical glass ground, so a reader who cannot see the
     // alignment does not know whose turn it was. Every bubble in both
@@ -309,5 +313,14 @@ describe('the registration loop renders in every locale', () => {
     expect(heroExchange(html)).toMatch(
       /^<div class="v4-hero-thread[^>]*><p class="sr-only">[^<]+</,
     );
+  });
+});
+
+describe('English renders the redesign, not the v4 loop', () => {
+  it('opens on the approved H1 and does not name a town', () => {
+    expect(HTML.en).toContain('Your kids’ year,');
+    expect(HTML.en).toContain('Library playgroup');
+    expect(HTML.en).not.toContain('v4-hero-thread');
+    expect(HTML.en).not.toContain('Stouffville');
   });
 });

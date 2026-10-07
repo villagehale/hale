@@ -2,7 +2,9 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
+import { RedesignText } from '~/components/redesign/text';
 import { TextEntry } from '~/components/text-entry';
+import { intakePrefill } from '~/lib/intake-prefill';
 import { buildAlternates } from '~/i18n/metadata';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
@@ -58,6 +60,15 @@ export default async function TextEntryPage({
   searchParams: Promise<{ s?: string | string[] }>;
 }) {
   const { locale } = await params;
+  if (locale === 'en') {
+    return (
+      <RedesignText
+        locale={locale}
+        smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+        prefill={intakePrefill(locale)}
+      />
+    );
+  }
   const { s } = await searchParams;
 
   // Ordering hint only — the matrix never gates a live mobile channel on it.

@@ -98,15 +98,16 @@ describe('PricingSection (landing pricing)', () => {
   });
 
   it('shows both monthly and annual prices for the paid tiers', () => {
-    expect(html).toContain('$9 CAD/mo');
-    expect(html).toContain('$79 CAD/yr');
+    expect(html).toContain('$0 CAD/mo');
     expect(html).toContain('$19 CAD/mo');
     expect(html).toContain('$159 CAD/yr');
+    expect(html).toContain('$39 CAD/mo');
+    expect(html).toContain('$329 CAD/yr');
   });
 
   it('leads with the core being free, and argues it without a metaphor to decode', () => {
     expect(html).toContain('Free');
-    expect(html).toContain('The whole core is free');
+    expect(html).toContain('Only Free is available today.');
     // "The village" as a synonym for Hale was a third governing metaphor at the
     // close (after chief of staff and radar) — a word the reader has to translate
     // before learning the price. It is earned in exactly one place now: the About
@@ -123,9 +124,9 @@ describe('PricingSection (landing pricing)', () => {
   it('states the locked year-attention one-liners, not Village or Companion', () => {
     // VIL-367, Sloane + Miles 2026-09-23. Exact bytes — the cards must not paraphrase.
     const locked = {
-      free: 'Find what’s on and open the year. Watching mornings you’ve already set stays free.',
-      plus: 'Nudges when a weekend’s empty or a waitlist opens — plus year memory as it ships.',
-      family: 'One plan for the household. Co-parent stays in.',
+      free: 'Unlimited chat, on your own or in your group chats. Hale finds what’s on, watches for spots and reminds you before sign-ups.',
+      plus: 'Nudges when a weekend’s empty or a waitlist opens, plus year memory as it ships.',
+      family: 'Everything in Plus, for every kid and everyone who helps.',
     } as const;
     expect(en.PricingSection.tierLines).toEqual(locked);
     for (const line of Object.values(locked)) {
@@ -143,20 +144,14 @@ describe('PricingSection (landing pricing)', () => {
     expect(html).not.toContain('Companion:');
   });
 
-  it('routes every tier to a LIVE action — no dead waitlist, checkout, or "Coming soon"', () => {
-    expect(html).not.toContain('Coming soon');
+  it('opens the composer on Free only — Plus and Max say Coming soon', () => {
+    expect(html).toContain('Coming soon');
+    expect([...html.matchAll(/Coming soon/g)]).toHaveLength(2);
     expect(html).not.toContain('#waitlist');
     expect(html.toLowerCase()).not.toContain('checkout');
-    // Free and paid alike open the one front door the site chrome offers. There is one
-    // CTA per tier, and all three carry the same destination — free vs paid differs in
-    // emphasis (btn-primary vs btn-secondary), not in where it goes.
     const { href, label } = chromeCta();
-    expect([...html.matchAll(new RegExp(escapeRe(href.replace(/&/g, '&amp;')), 'g'))]).toHaveLength(
-      PLAN_TIERS_ORDERED.length,
-    );
-    expect([...html.matchAll(new RegExp(escapeRe(label), 'g'))]).toHaveLength(
-      PLAN_TIERS_ORDERED.length,
-    );
+    expect([...html.matchAll(new RegExp(escapeRe(href.replace(/&/g, '&amp;')), 'g'))]).toHaveLength(1);
+    expect([...html.matchAll(new RegExp(`>${escapeRe(label)}<`, 'g'))]).toHaveLength(1);
   });
 
   /**
@@ -194,8 +189,8 @@ describe('PricingSection (landing pricing)', () => {
     expect(html).toContain('about three months free');
   });
 
-  it('carries the founding-families banner with the first-100 badge promise', () => {
-    expect(html).toContain('Founding families join free.');
+  it('carries the founding-families note with the first-100 badge promise', () => {
+    expect(html).toContain('Founding families keep their rate.');
     expect(html).toContain('first 100 families get a permanent founding badge');
   });
 });

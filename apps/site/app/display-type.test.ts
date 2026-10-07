@@ -704,9 +704,10 @@ describe('the wordmark is drawn art, not set type', () => {
       'landing/v4/landing-v4',
     ].map((name) => readFileSync(fileURLToPath(new URL(`../components/${name}.tsx`, import.meta.url)), 'utf8'));
     const drawn = components.flatMap((source) => [...source.matchAll(/<Wordmark\b/g)]);
-    // /text no longer draws its own mark. The shared header (site-header) is
-    // the lockup on that page, same turtle tile and wordmark as the landing.
-    expect(drawn).toHaveLength(4);
+    // /text and the legal pages no longer draw their own mark. The shared
+    // header is the lockup on those pages. French and Chinese still render
+    // the v4 landing, which keeps its closing Wordmark.
+    expect(drawn).toHaveLength(3);
     for (const source of components) {
       expect([...source.matchAll(/<span[^>]*>\s*Hale\s*<\/span>/g)], 'a typed mark survives').toEqual([]);
     }

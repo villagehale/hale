@@ -192,12 +192,20 @@ describe('city registration routes — landing chrome, not a blog', () => {
     }
   });
 
-  it('points at the new Toronto and Brampton URLs from /activities', async () => {
+  it('keeps the dated registration URLs off the English activities hub', async () => {
+    // The redesign hub is "near you". City guides and dated registration pages
+    // stay published; they are not linked from the new English hub.
     const html = renderToStaticMarkup(
       await ActivitiesHub({ params: Promise.resolve({ locale: 'en' as const }) }),
     );
-    expect(html).toContain('href="/toronto-fall-recreation-registration"');
-    expect(html).toContain('href="/toronto-swim-registration"');
-    expect(html).toContain('href="/brampton-swim-registration"');
+    expect(html).not.toContain('href="/toronto-fall-recreation-registration"');
+    expect(html).not.toContain('href="/toronto-swim-registration"');
+    expect(html).not.toContain('href="/brampton-swim-registration"');
+    const fr = renderToStaticMarkup(
+      await ActivitiesHub({ params: Promise.resolve({ locale: 'fr' as const }) }),
+    );
+    expect(fr).toContain('href="/fr/toronto-fall-recreation-registration"');
+    expect(fr).toContain('href="/fr/toronto-swim-registration"');
+    expect(fr).toContain('href="/fr/brampton-swim-registration"');
   });
 });

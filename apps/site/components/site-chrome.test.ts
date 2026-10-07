@@ -112,7 +112,12 @@ describe('one header, one footer, every page', () => {
     // amount, so the shore still starts at the top of the viewport and the glass
     // pill floats over it.
     const landing = await renderPage(PAGES['/'] as () => unknown);
-    expect(landing).toContain('v4-hero v4-hero-top');
+    expect(landing).toContain('class="stage"');
+    const redesign = readFileSync(
+      fileURLToPath(new URL('../app/redesign.css', import.meta.url)),
+      'utf8',
+    );
+    expect(redesign).toContain('margin-top: calc(-1 * var(--nav-h));');
     const css = readFileSync(fileURLToPath(new URL('../app/globals.css', import.meta.url)), 'utf8');
     expect(css).toContain('margin-top: calc(-1 * var(--nav-h));');
     expect(css).toContain('padding-top: var(--nav-h);');
@@ -260,7 +265,9 @@ describe('the footer says what the site is', () => {
     const footer = renderToStaticMarkup(createElement(SiteFooter));
     expect(footer).toContain('/HAH-leh/');
     expect(footer).toContain('Hawaiian for home');
-    expect(footer).toContain('Village Hale Technologies Inc., Georgetown, Ontario');
+    expect(footer).toContain('Village Hale Technologies Inc.');
+    expect(footer).not.toContain('Georgetown');
+    expect(footer).not.toContain('Your data stays in Canada');
     expect(footer).toContain('href="/privacy"');
     expect(footer).toContain('href="/terms"');
     // Legal lives in the bottom bar only — a column would duplicate it.

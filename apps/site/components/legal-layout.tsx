@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { LogoMark } from '~/components/logo-mark';
-import { Wordmark } from '~/components/wordmark';
+import { shoreSrc } from '~/components/redesign/assets';
+import { SiteFooter } from '~/components/site-footer';
+import { SiteHeader } from '~/components/site-header';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator, isoToDate } from '~/i18n/server';
@@ -11,9 +12,9 @@ import { getTranslator, isoToDate } from '~/i18n/server';
  * of contents that becomes a sticky sidebar on desktop, the not-legal-advice
  * note, and the cross-link to the other policy. Pages own only their copy.
  *
- * Deliberately without the site header and footer. The policies are a
- * destination a parent arrives at from a text message or an email footer, not a
- * step in a funnel — and the marketing chrome would pull them back into one.
+ * The redesign wears the same site header and footer as every other page.
+ * The policy itself stays a document: shore title, sticky contents, frosted
+ * panel, and no closing band.
  *
  * The shell chrome (the "Legal" eyebrow, the last-updated line, the
  * not-legal-advice note, the table-of-contents heading, the cross-link lead-in)
@@ -48,59 +49,57 @@ export function LegalLayout({
   const t = getTranslator(locale, 'Legal');
 
   return (
-    <main id="main" tabIndex={-1}>
-      <header className="shell legal-print-hide flex items-center justify-between py-6">
-        <a href={localeHref(locale, '/')} className="flex items-center gap-2.5" aria-label="Hale, home">
-          <LogoMark size={28} />
-          <Wordmark className="text-spruce" />
-        </a>
-      </header>
-
-      <section className="shell pb-24 pt-6">
-        {/* The only motion on a policy page: one quiet fade on the masthead. A
-            document a reader may be checking a legal promise in should not be
-            performing while they read it. */}
-        <div className="legal-measure rise rise-1">
-          <span className="eyebrow">{t('eyebrow')}</span>
-          <h1 className="legal-title mt-4">{title}</h1>
-          <p className="meta mt-3">{t('lastUpdated', { date: isoToDate(lastUpdatedIso) })}</p>
-
-          <div className="legal-intro mt-8">{intro}</div>
-
-          <p className="legal-disclaimer mt-6">
-            <em>{t('disclaimer')}</em>
-          </p>
+    <>
+      <SiteHeader locale={locale} />
+      <div className="rd">
+        <div className="stage sp-stage sp-legal">
+          <img className="shore-art" src={shoreSrc} alt="" aria-hidden="true" />
+          <span className="shore-drift sky" aria-hidden="true" />
+          <span className="shore-drift sea" aria-hidden="true" />
+          <span className="shore-scrim" aria-hidden="true" />
+          <main id="main" className="sp-hero">
+            <div className="sp-grid">
+              <div className="sp-copy">
+                <p className="hs-eyebrow">{t('eyebrow')}</p>
+                <h1 className="sp-h1">{title}</h1>
+                <p className="sp-lede">{t('lastUpdated', { date: isoToDate(lastUpdatedIso) })}</p>
+              </div>
+            </div>
+          </main>
         </div>
-
-        <div className="mt-12 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start lg:gap-16">
-          <nav className="legal-toc lg:sticky lg:top-8" aria-label={t('onThisPage')}>
-            <p className="eyebrow">{t('onThisPage')}</p>
-            <ol className="mt-3">
-              {sections.map((section) => (
-                <li key={section.id}>
-                  <a href={`#${section.id}`} className="link">
-                    {section.title}
+        <div className="hs-page">
+          <section className="hs lg hs-wash-a">
+            <div className="hs-wrap hs-grid lg-wrap">
+              <nav className="lg-toc" aria-label={t('onThisPage')}>
+                <p className="hs-eyebrow">{t('onThisPage')}</p>
+                <ol>
+                  {sections.map((section) => (
+                    <li key={section.id}>
+                      <a href={`#${section.id}`}>{section.title}</a>
+                    </li>
+                  ))}
+                </ol>
+              </nav>
+              <article className="hs-glass lg-doc">
+                <div className="legal-intro">{intro}</div>
+                <p>
+                  <em>{t('disclaimer')}</em>
+                </p>
+                {children}
+                <p>
+                  {t('seeAlsoPre')}{' '}
+                  <a href={localeHref(locale, crossLinkHref)} className="link">
+                    {crossLinkLabel}
                   </a>
-                </li>
-              ))}
-            </ol>
-          </nav>
-
-          <div className="legal-body legal-measure mt-10 lg:mt-0">{children}</div>
+                  .
+                </p>
+              </article>
+            </div>
+          </section>
         </div>
-
-        <div className="legal-measure mt-16">
-          <hr className="border-rule" />
-          <p className="meta mt-6">
-            {t('seeAlsoPre')}{' '}
-            <a href={localeHref(locale, crossLinkHref)} className="link">
-              {crossLinkLabel}
-            </a>
-            .
-          </p>
-        </div>
-      </section>
-    </main>
+      </div>
+      <SiteFooter locale={locale} />
+    </>
   );
 }
 

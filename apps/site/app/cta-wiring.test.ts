@@ -227,7 +227,7 @@ describe('the desktop path is wired the same way', () => {
     // text_entry) — a chip reappearing there would be a Stanley-grammar break,
     // not a coverage win.
     expect(copyChips.length).toBeGreaterThanOrEqual(10);
-    for (const placement of ['text_entry', 'faq', 'about', 'pricing_band', 'toronto_swim_dates']) {
+    for (const placement of ['text_entry', 'toronto_swim_dates']) {
       expect(chipPlacements, `the walk must reach the ${placement} chip`).toContain(placement);
     }
     expect(chipPlacements).not.toContain('hero');

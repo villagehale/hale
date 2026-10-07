@@ -24,13 +24,13 @@ describe('/faq — canonical product FAQ', () => {
    * not be opened at all — on the page whose whole job is answering the question
    * a parent came with. A native <details> has no such state.
    */
-  it('gives every item a native disclosure that opens without JavaScript', () => {
-    expect(html.match(/<details/g)).toHaveLength(FAQ.length);
-    expect(html.match(/<summary/g)).toHaveLength(FAQ.length);
-    // Exactly one is open on arrival — the group is exclusive through the shared
-    // `name`, which is the browser's own accordion rather than a state variable.
-    expect(html.match(/<details[^>]*\bopen\b/g)).toHaveLength(1);
-    expect(html.match(/name="product-faq"/g)).toHaveLength(FAQ.length);
+  it('prints every question in the server HTML, so it is readable with JavaScript off', () => {
+    // The redesign answers are open in the markup. A closed <details> accordion
+    // is gone: a reader, a crawler, and find-in-page all see the full list.
+    for (const item of FAQ) {
+      expect(html).toContain(item.question);
+    }
+    expect(html).not.toContain('<details');
   });
 
   it('renders every answer’s text, open or closed', () => {

@@ -241,7 +241,13 @@ describe('the dummy family is gone from apps/site', () => {
   // Assembled so this file cannot match its own patterns.
   const first = ['Ma', 'ya'].join('');
   const second = ['Th', 'eo'].join('');
-  const patterns = [new RegExp(`${first}(?:\\s|%20)+is`), new RegExp(`${second}(?:\\s|%20)+is`)];
+  // The ban is the old composer prefill (first name + "is 4", second + "is 18"),
+  // which two strangers would have had to edit before sending. The approved
+  // marketing examples use the second name at a different age.
+  const patterns = [
+    new RegExp(`${first}(?:\\s|%20)+is`),
+    new RegExp(`${second}(?:\\s|%20)+is(?:\\s|%20)+18`),
+  ];
 
   function walk(dir: string): string[] {
     const out: string[] = [];

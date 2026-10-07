@@ -14,6 +14,8 @@ import { buildAlternates } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
+import { RedesignAbout } from '~/components/redesign/about';
+import { intakePrefill } from '~/lib/intake-prefill';
 import { chromeCta } from '~/lib/site/chrome-cta';
 import { readSmsNumber } from '~/lib/text-entry';
 
@@ -65,6 +67,15 @@ interface FounderLine {
 
 export default async function AboutPage({ params }: PageProps) {
   const { locale } = await params;
+  if (locale === 'en') {
+    return (
+      <RedesignAbout
+        locale={locale}
+        smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+        prefill={intakePrefill(locale)}
+      />
+    );
+  }
   const t = getTranslator(locale, 'About');
   const ladder = t.raw('ladder') as Rung[];
   const founders = t.raw('founders') as FounderLine[];

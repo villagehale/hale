@@ -1,5 +1,8 @@
 import { LandingV4 } from '~/components/landing/v4/landing-v4';
+import { RedesignHome } from '~/components/redesign/home';
 import type { Locale } from '~/i18n/routing';
+import { intakePrefill } from '~/lib/intake-prefill';
+import { siteJsonLd } from '~/lib/site/structured-data';
 import { readSmsNumber } from '~/lib/text-entry';
 
 /**
@@ -13,7 +16,18 @@ import { readSmsNumber } from '~/lib/text-entry';
  */
 export default async function LandingPage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = await params;
-  return (
-    <LandingV4 locale={locale} smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)} />
-  );
+  const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
+  if (locale === 'en') {
+    return (
+      <>
+        <script
+          type="application/ld+json"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input).
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd(locale)) }}
+        />
+        <RedesignHome locale={locale} smsNumber={smsNumber} prefill={intakePrefill(locale)} />
+      </>
+    );
+  }
+  return <LandingV4 locale={locale} smsNumber={smsNumber} />;
 }

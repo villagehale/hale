@@ -10,10 +10,11 @@ import type { PlanTier } from './entitlements.js';
  * paid tiers are surfaced with soft CTAs (billing isn't wired). Prices are CAD
  * (Canada-first) — `formatPlanPrice` renders them with an explicit CAD label.
  * Annual is the better value: at these prices it saves about THREE months versus
- * paying monthly (Plus $108 → $79, 3.2 months; Family $228 → $159, 3.6). Every
- * surface that states the discount says "about three months free" — and
- * apps/site's pricing-section.test.ts derives the claim from these numbers, so a
- * reprice that makes the sentence untrue fails there before it ships.
+ * paying monthly (Plus $228 → $159; Max $468 → $329). Every surface that states
+ * the discount says "about three months free" — and apps/site's
+ * pricing-section.test.ts derives the claim from these numbers, so a reprice
+ * that makes the sentence untrue fails there before it ships.
+ * The `family` enum key is displayed as "Max". The key itself does not change.
  */
 export interface PlanDisplay {
   /** Public display name, e.g. "Free". Distinct from the PlanTier enum value. */
@@ -36,36 +37,38 @@ export interface PlanDisplay {
 export const PLAN_DISPLAY = {
   free: {
     name: 'Free',
-    tagline: 'Everything to get started — free for every family.',
+    tagline: 'Free for every family.',
     monthlyPriceCad: 0,
     annualPriceCad: 0,
     features: [
-      'Text Hale',
-      'Rec dates watched',
-      'Answers',
-      'Founding rate',
+      'Unlimited chat',
+      'Live find',
+      'A text when a spot opens',
+      'Group chats and your co-parent',
     ],
   },
   plus: {
     name: 'Plus',
-    tagline: 'More of the year in view, as those parts ship.',
-    monthlyPriceCad: 9,
-    annualPriceCad: 79,
-    features: [
-      'Everything in Free',
-      'Reminders and drafts, as they roll out',
-      'More of the year watched with you',
-    ],
-  },
-  family: {
-    name: 'Family',
-    tagline: 'The same watch for the whole household.',
+    tagline: 'Nudges when a weekend’s empty or a waitlist opens, plus year memory as it ships.',
     monthlyPriceCad: 19,
     annualPriceCad: 159,
     features: [
+      'Everything in Free',
+      'A nudge when a weekend’s empty',
+      'Year memory, season to season',
+      'Sign-ups done for you, when you say yes',
+    ],
+  },
+  family: {
+    name: 'Max',
+    tagline: 'Everything in Plus, for every kid and everyone who helps.',
+    monthlyPriceCad: 39,
+    annualPriceCad: 329,
+    features: [
       'Everything in Plus',
-      'A household view of the year, as it rolls out',
-      'Concierge + priority support',
+      'Every kid, caregivers included',
+      'Priority support',
+      'Sign-ups for every kid in one go',
     ],
   },
 } as const satisfies Record<PlanTier, PlanDisplay>;
@@ -78,7 +81,7 @@ export type BillingPeriod = 'monthly' | 'annual';
 
 /**
  * The price to show for a tier in a given period as a display string, e.g.
- * "$9 CAD/mo" or "$79 CAD/yr" — the CAD label is explicit (Canada-first). The
+ * "$19 CAD/mo" or "$159 CAD/yr" — the CAD label is explicit (Canada-first). The
  * free tier always reads "Free" regardless of period. Pure — no I/O.
  */
 export function formatPlanPrice(tier: PlanTier, period: BillingPeriod): string {

@@ -40,7 +40,7 @@ describe('AccountMenuView', () => {
 
   it('shows the tier name as the plan label for a paid tier', () => {
     expect(render({ planTier: 'plus' })).toContain('Plus');
-    expect(render({ planTier: 'family' })).toContain('Family');
+    expect(render({ planTier: 'family' })).toContain('Max');
   });
 
   it('shows the masked number as the secondary line once enrolled (Instinct chip: name + phone)', () => {

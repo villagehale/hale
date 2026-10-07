@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { routing } from '~/i18n/routing.js';
+import type { routing } from '~/i18n/routing.js';
 import ContactPage from './page.js';
 
 /**
@@ -32,16 +32,25 @@ function cardWith(html: string, eyebrow: string): string {
 }
 
 describe('/contact — each channel keeps its own inbox', () => {
-  it.each(routing.locales)('pairs the privacy card with privacy@ in %s', async (locale) => {
+  it('pairs the English privacy card with privacy@ and drops the city', async () => {
+    const html = await render('en');
+    const privacyCard = html.split('Privacy and your data')[1] ?? '';
+    expect(privacyCard).toContain('mailto:privacy@villagehale.com');
+    expect(privacyCard.split('mailto:aloha@villagehale.com')[0]).not.toContain(
+      'mailto:aloha@villagehale.com',
+    );
+    expect(html).toContain('mailto:aloha@villagehale.com');
+    expect(html).toContain('Hale is built by Village Hale Technologies Inc.');
+    expect(html).not.toContain('Georgetown');
+  });
+
+  it.each(['fr', 'zh'] as const)('pairs the privacy card with privacy@ in %s', async (locale) => {
     const html = await render(locale);
     const words = PRIVACY_WORDS[locale];
     if (!words) throw new Error(`no privacy eyebrow known for ${locale}`);
     const privacyCard = cardWith(html, words);
     expect(privacyCard).toContain('mailto:privacy@villagehale.com');
     expect(privacyCard).not.toContain('mailto:aloha@villagehale.com');
-    // Positive control: the general card exists in the same render and carries
-    // the OTHER inbox, so this passes because the pairing is right rather than
-    // because the page rendered one card or none.
     expect(html).toContain('mailto:aloha@villagehale.com');
   });
 });

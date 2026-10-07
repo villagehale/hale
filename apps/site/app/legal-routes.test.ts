@@ -73,10 +73,13 @@ describe('legal routes (unlinked until the flip)', () => {
     }
   });
 
-  it('offers no Sign in — legal chrome does not send a parent to the app', () => {
+  it('wears the shared header and footer, including the quiet sign-in', () => {
     for (const html of [termsHtml, privacyHtml]) {
-      expect(html).not.toContain('/sign-in');
-      expect(html).not.toContain('app.villagehale.com');
+      expect(html).toContain('<header');
+      expect(html).toContain('<footer');
+      expect(html).toContain('href="https://app.villagehale.com/sign-in"');
+      expect(html).not.toContain('/onboarding');
+      expect(html).not.toContain('Get started');
     }
   });
 });
@@ -156,9 +159,20 @@ describe('terms (migrated verbatim)', () => {
 describe('privacy (migrated verbatim, plus the SMS-transit disclosure)', () => {
   it('keeps the Canadian residency, teen-redaction, and rights sections', () => {
     expect(privacyHtml).toContain('redacted from parents by default');
-    expect(privacyHtml).toContain('Toronto');
+    expect(privacyHtml).toContain('Hosted in Canada (Toronto,');
+    expect(privacyHtml).toContain('ca-central-1');
+    expect(privacyHtml).toContain('stored in Canada');
     expect(privacyHtml).toContain('Office of the Privacy Commissioner of Canada');
     expect(privacyHtml).toContain('privacy@villagehale.com');
+  });
+
+  it('adds the Google API Limited Use disclosure and leaves the residency sentences', () => {
+    expect(privacyHtml).toContain('Google API Services User Data Policy');
+    expect(privacyHtml).toContain('including the Limited Use requirements');
+    expect(privacyHtml).toContain(
+      'https://developers.google.com/terms/api-services-user-data-policy',
+    );
+    expect(privacyHtml).toContain('your primary data store is in Canada');
   });
 
   /**

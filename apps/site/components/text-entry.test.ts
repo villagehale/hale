@@ -173,11 +173,11 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
     const trust = /<p class="meta mt-8">([\s\S]*?)<\/p>/.exec(liveHtml)?.[1] ?? '';
     expect(trust).toContain('Reply STOP anytime');
     expect(trust, 'the strip does not carry a second privacy link').not.toContain('<a');
-    // One privacy link in the column, on the Canada line.
+    // One privacy link in the column, on the trust line.
     expect([...liveHtml.matchAll(/href="\/privacy"/g)]).toHaveLength(1);
-    const canada = liveHtml.indexOf('Your data stays in Canada');
-    expect(canada).toBeGreaterThan(-1);
-    expect(liveHtml.indexOf('href="/privacy"')).toBeGreaterThan(canada);
+    const trustLine = liveHtml.indexOf('never sold or used for ads');
+    expect(trustLine).toBeGreaterThan(-1);
+    expect(liveHtml.indexOf('href="/privacy"')).toBeGreaterThan(trustLine);
     // The dark page has no number to STOP, and still the one legal link.
     expect(unsetHtml).not.toContain('Reply STOP anytime');
     expect([...unsetHtml.matchAll(/href="\/privacy"/g)]).toHaveLength(1);

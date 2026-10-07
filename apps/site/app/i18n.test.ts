@@ -251,7 +251,8 @@ describe('the positioning noun is gone from every bundle', () => {
 
   it('positive control: the anti-scam line the ban must not erase is still there', () => {
     const en = files.find((f) => f.locale === 'en')?.raw ?? '';
-    expect(en).toContain('Hale is a planner for your kids’ year, and it never pretends to be a person.');
+    expect(en).toContain('it never pretends to be');
+    expect(en).toContain('a real person reads it');
   });
 });
 
@@ -357,7 +358,7 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
       return [];
     }
 
-    for (const locale of ['en', 'fr', 'zh'] as const) {
+    for (const locale of ['fr', 'zh'] as const) {
       const bundle = bundles[locale] as {
         HomeMeta: { description: string; twitterDescription: string };
         Text: { metaDescription: string };
@@ -369,19 +370,26 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
       }
       expect(bundle.HomeMeta.description.startsWith(h1[locale])).toBe(true);
       expect(bundle.HomeMeta.twitterDescription).toContain(sub[locale]);
-      // zh sets the two locked sentences solid; en and fr take a word space.
+      // zh sets the two locked sentences solid; fr takes a word space.
       const textMeta =
         locale === 'zh' ? `${h1[locale]}${sub[locale]}` : `${h1[locale]} ${sub[locale]}`;
       expect(bundle.Text.metaDescription).toBe(textMeta);
       expect(bundle.Jsonld.appDescription.startsWith(h1[locale])).toBe(true);
     }
+    const enBlob = metaStrings(bundles.en, []).join('\n').toLowerCase();
+    for (const phrase of banned) {
+      expect(enBlob, `en meta must not say "${phrase}"`).not.toContain(phrase);
+    }
+    expect(bundles.en.HomeMeta.description).toContain('Your kids’ plans already live in group chats');
+    expect(bundles.en.Jsonld.appDescription.startsWith('Your kids’ year, handled.')).toBe(true);
   });
 
-  it('renders the locked About.cta on /about', async () => {
+  it('renders the cleared About page in English', async () => {
     const html = renderToStaticMarkup(
       await AboutPage({ params: Promise.resolve({ locale: 'en' as const }) }),
     );
-    expect(html).toContain('It starts with names, ages, and a postal code. No app, no account.');
+    expect(html).toContain('Parent-built in Georgetown');
+    expect(html).toContain('A planner for your kids’');
     expect(html).not.toContain('It starts with one text');
   });
 });

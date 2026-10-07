@@ -13,6 +13,7 @@ import { SITE_URL } from '~/lib/app-url';
 import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
 import { NO_FLASH_SCRIPT, THEME_COLOR } from '~/lib/site/theme';
 import '../globals.css';
+import '../redesign.css';
 
 // Self-hosted variable fonts (app/fonts/, Fontsource-packaged, OFL). next/font/google
 // fetched these from fonts.gstatic.com AT BUILD TIME, and a Google CDN outage failed

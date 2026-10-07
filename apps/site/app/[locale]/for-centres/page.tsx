@@ -13,6 +13,7 @@ import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { SITE_URL } from '~/lib/app-url';
 import type { FaqItem } from '~/lib/faq';
+import { RedesignForCentres } from '~/components/redesign/for-centres';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { MUNICIPALITIES, MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
 import { CONTACT_EMAIL, buildSmsHref, readSmsNumber } from '~/lib/text-entry';
@@ -78,6 +79,15 @@ interface ThreadRow {
 
 export default async function ForCentresPage({ params }: PageProps) {
   const { locale } = await params;
+  if (locale === 'en') {
+    return (
+      <RedesignForCentres
+        locale={locale}
+        smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+        prefill={intakePrefill(locale)}
+      />
+    );
+  }
   const t = getTranslator(locale, 'ForCentres');
   const landing = getTranslator(locale, 'Landing');
   const copy = getTranslator(locale, 'CopyNumber');
