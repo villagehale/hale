@@ -73,18 +73,11 @@ describe('the /text prefill and the bare-hello classifier agree', () => {
     expect(isBareFirstHello(prefill as string)).toBe(true);
     expect(isBareFirstHello(`${prefill} (via earlyon-richmondhill)`)).toBe(true);
     expect(looksLikeIntakeDetails(prefill as string)).toBe(false);
-    // FR twin: the composer constant, not a retype. sentGloss must be the same
-    // bytes, or the /text bubble and the SMS body drift apart.
+    // FR twin: the composer constant, not a retype. The unmounted /text bubble
+    // that used to mirror this string is gone; the constant is what still sends.
     const frPrefill = /export const INTAKE_PREFILL_FR = (["'])(.*?)\1;/.exec(src)?.[2];
     expect(frPrefill, 'INTAKE_PREFILL_FR must be a single literal').toBeTruthy();
     expect(frPrefill).toBe("Salut Hale, qu'est-ce qui se passe?");
-    const frBundle = JSON.parse(
-      readFileSync(
-        fileURLToPath(new URL('../../../../site/messages/fr.json', import.meta.url)),
-        'utf8',
-      ),
-    ) as { Text: { sentGloss: string } };
-    expect(frBundle.Text.sentGloss).toBe(frPrefill);
     expect(isBareFirstHello(frPrefill as string)).toBe(true);
     expect(isBareFirstHello(`${frPrefill} (via earlyon-richmondhill)`)).toBe(true);
     expect(isBareFirstHello('Salut Hale, qu\u2019est-ce qui se passe ?')).toBe(true);
