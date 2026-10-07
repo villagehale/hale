@@ -55,5 +55,15 @@
   },
   "organizeImports": {
     "enabled": true
-  }
+  },
+  "overrides": [
+    {
+      "include": ["**/*.module.css"],
+      "css": {
+        "parser": {
+          "cssModules": true
+        }
+      }
+    }
+  ]
 }
