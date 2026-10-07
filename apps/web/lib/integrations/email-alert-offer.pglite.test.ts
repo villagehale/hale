@@ -7,7 +7,13 @@ import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import type { HandlerContext, HandlerVerdict, ResolvedAnswer } from '~/lib/channel/router/route';
 import { defaultReminderRunDeps, runReminderCron } from '~/lib/loop/reminders/run';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { EMAIL_ALERT_EVENT_DURATION_MS, EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
+import {
+  EMAIL_ALERT_EVENT_DURATION_MS,
+  EMAIL_ALERT_OFFER_TTL_MS,
+  handleEmailAlertOfferReply,
+  loadOpenEmailAlertOffers,
+  recordEmailAlertOffer,
+} from './email-alert-offer';
 
 /**
  * THE YES AT THE END OF AN EMAIL ALERT, against the real DDL.
@@ -618,6 +624,91 @@ describe('two standing offers', () => {
     expect(verdict).toEqual({ claimed: false });
     await expect(events()).resolves.toHaveLength(0);
     await expect(offers()).resolves.toMatchObject([{ resolvedAt: null }, { resolvedAt: null }]);
+  });
+});
+
+/**
+ * VIL-410: a bare YES after a calendar offer put an event that had ALREADY HAPPENED on a
+ * real family's week, because the offer stood for a flat day whatever the occasion's own
+ * time. An offer is a question about a future occasion; once that occasion has started
+ * there is nothing left to put on the week.
+ */
+describe('an offer never outlives the occasion it is about (VIL-410)', () => {
+  const AN_HOUR = 60 * 60 * 1000;
+
+  function record(startsAt: Date, channelMessageId: string) {
+    return recordEmailAlertOffer(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      integrationId: randomUUID(),
+      messageId: randomUUID(),
+      channelMessageId,
+      draft: { kind: 'new_event', title: TITLE, startsAt, location: null },
+      now: NOW,
+    });
+  }
+
+  it('expires at the start of an occasion that begins inside the day', async () => {
+    const startsAt = new Date(NOW.getTime() + 2 * AN_HOUR);
+
+    await expect(record(startsAt, await sentAlert())).resolves.toBe('recorded');
+
+    const [offer] = await offers();
+    expect(offer?.expiresAt.toISOString()).toBe(startsAt.toISOString());
+  });
+
+  it('keeps the full day for an occasion further out - the CONTROL for the cap', async () => {
+    await expect(record(STARTS_AT, await sentAlert())).resolves.toBe('recorded');
+
+    const [offer] = await offers();
+    expect(offer?.expiresAt.getTime()).toBe(NOW.getTime() + EMAIL_ALERT_OFFER_TTL_MS);
+  });
+
+  it('writes no offer for an occasion that has already started', async () => {
+    const startedAt = new Date(NOW.getTime() - AN_HOUR);
+
+    await expect(record(startedAt, await sentAlert())).resolves.toBe('event_started');
+    await expect(record(NOW, await sentAlert())).resolves.toBe('event_started');
+
+    await expect(offers()).resolves.toEqual([]);
+  });
+
+  it('stops listing an offer once its occasion starts, even inside its expiry', async () => {
+    // Rows written before the cap carried a flat day. The reader is the one place every
+    // answer passes through, so it has to refuse them too.
+    await seedOffer({
+      title: 'Gymnastics',
+      startsAt: new Date(NOW.getTime() - AN_HOUR),
+      expiresAt: new Date(NOW.getTime() + 20 * AN_HOUR),
+    });
+    await seedOffer();
+
+    const open = await loadOpenEmailAlertOffers(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      now: NOW,
+    });
+
+    expect(open.map((offer) => offer.title)).toEqual([TITLE]);
+  });
+
+  it('answers a bare YES after the start with no_open_offer, and places nothing', async () => {
+    await seedOffer({
+      startsAt: new Date(NOW.getTime() - AN_HOUR),
+      expiresAt: new Date(NOW.getTime() + 20 * AN_HOUR),
+    });
+
+    await expect(
+      handleEmailAlertOfferReply(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        offerId: null,
+        polarity: 'yes',
+        language: 'en',
+        now: NOW,
+      }),
+    ).resolves.toEqual({ status: 'no_open_offer' });
+    await expect(events()).resolves.toEqual([]);
   });
 });
 

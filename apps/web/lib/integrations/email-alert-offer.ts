@@ -91,6 +91,12 @@ export interface EmailAlertOfferDraft {
  *
  * `onConflictDoNothing` on (connection, message): one email is one offer, forever, so a
  * re-fired sweep conflicts here instead of minting a second question.
+ *
+ * NEVER PAST THE OCCASION (VIL-410). The offer expires at the TTL or at `startsAt`,
+ * whichever comes first, and an occasion that has already started gets no row at all
+ * (`event_started`): once it has begun there is nothing left to put on the week, and a
+ * bare YES answering a stale offer put a class that had already happened on a real
+ * family's calendar.
  */
 export async function recordEmailAlertOffer(
   database: Database,
@@ -103,7 +109,9 @@ export async function recordEmailAlertOffer(
     draft: EmailAlertOfferDraft;
     now: Date;
   },
-): Promise<void> {
+): Promise<'recorded' | 'event_started'> {
+  const startsAt = input.draft.startsAt.getTime();
+  if (startsAt <= input.now.getTime()) return 'event_started';
   await database
     .insert(schema.emailAlertOffers)
     .values({
@@ -116,9 +124,10 @@ export async function recordEmailAlertOffer(
       startsAt: input.draft.startsAt,
       location: input.draft.location,
       channelMessageId: input.channelMessageId,
-      expiresAt: new Date(input.now.getTime() + EMAIL_ALERT_OFFER_TTL_MS),
+      expiresAt: new Date(Math.min(input.now.getTime() + EMAIL_ALERT_OFFER_TTL_MS, startsAt)),
     })
     .onConflictDoNothing();
+  return 'recorded';
 }
 
 /** A standing offer this parent may still answer. */
@@ -146,7 +155,8 @@ export interface OpenEmailAlertOffer {
  *
  * THE TTL IS APPLIED HERE, at the one reader, so an expired offer can never be listed as
  * an open question, never named in a clarifying sentence and never resolved — the same
- * discipline the plan, checkup and founder offers keep.
+ * discipline the plan, checkup and founder offers keep. So is THE OCCASION'S START: rows
+ * written before expiry was capped at `startsAt` still carry a flat day (VIL-410).
  *
  * PER PARENT, not per family. The offer was put to one phone; a co-parent who never saw
  * the text must not be able to answer it, for the same reason the intro opt-in and the
@@ -168,6 +178,7 @@ export async function loadOpenEmailAlertOffers(
         eq(schema.emailAlertOffers.parentUserId, input.parentUserId),
         isNull(schema.emailAlertOffers.resolvedAt),
         gt(schema.emailAlertOffers.expiresAt, input.now),
+        gt(schema.emailAlertOffers.startsAt, input.now),
       ),
     )
     .orderBy(desc(schema.emailAlertOffers.createdAt));
