@@ -40,6 +40,18 @@ const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages
  * like a direct literal.
  */
 const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
+  // One helper writes every passport verb. The "both kids" copy in actions.ts
+  // also writes interest_stamp_confirmed as a literal.
+  'apps/web/lib/passport/store.ts': [
+    'interest_stamp_inferred',
+    'interest_stamp_confirmed',
+    'interest_stamp_edited',
+    'interest_stamp_removed',
+    'interest_stamp_undone',
+    'interest_stamp_shared',
+    'interest_stamp_progress',
+    'interest_family_share_set',
+  ],
   // VIL-419. Open and drop share one ternary; close and update share another.
   // Expired and refused are literals and are also listed here so the file's
   // whole set is in one place.
