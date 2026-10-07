@@ -195,10 +195,7 @@ export function RedesignHome({
       instructions: t("Swipe or use arrow keys to change the group chat example"),
       previous: t("Previous group chat"),
       next: t("Next group chat"),
-      slide: (index, count) =>
-        t("Example {index} of {count}")
-          .replace("{index}", String(index + 1))
-          .replace("{count}", String(count)),
+      slide: t("Example {index} of {count}"),
     }}
   >
     {groupChatSlides(locale, true)}

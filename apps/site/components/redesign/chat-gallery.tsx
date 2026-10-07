@@ -25,7 +25,7 @@ const GALLERY_LABELS = {
   instructions: 'Swipe or use arrow keys to change the group chat example',
   previous: 'Previous group chat',
   next: 'Next group chat',
-  slide: (index: number, count: number) => `Example ${index + 1} of ${count}`,
+  slide: 'Example {index} of {count}',
 };
 
 /** Native swipe/scroll snap; only the settled center card owns playback. */
@@ -39,7 +39,7 @@ export function ChatGallery({
     instructions: string;
     previous: string;
     next: string;
-    slide: (index: number, count: number) => string;
+    slide: string;
   };
 }) {
   const track = useRef<HTMLDivElement>(null);
@@ -156,7 +156,9 @@ export function ChatGallery({
             className="gallery-slide"
             data-gallery-active={index === active}
             aria-roledescription="slide"
-            aria-label={labels.slide(index, count)}
+            aria-label={labels.slide
+              .replace('{index}', String(index + 1))
+              .replace('{count}', String(count))}
           >
             {child}
           </article>
