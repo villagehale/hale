@@ -212,6 +212,9 @@ jobs:
       - name: Identity ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:identity-ask
 
+      - name: Add-them-yourself reply composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:add-them-yourself
+
       - name: Reminder voice composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:reminder-voice
 

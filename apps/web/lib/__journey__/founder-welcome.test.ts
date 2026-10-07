@@ -1,17 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeTransport } from '~/lib/channel/intake/transport';
-import { createReplyTransport } from '~/lib/channel/router/reply-transport';
-import {
-  FakeIdentityAsk,
-  FakeExtractor,
-  FakeIntentReader,
-  fakeAckComposer,
-  fakeRadar,
-  fakeSilentAnswerComposer,
-} from '~/lib/channel/intake/fakes';
-import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import {
   FOUNDER_NOTE_DECLINED_ACK,
   FOUNDER_NOTE_SENT_ACK,
@@ -26,15 +15,26 @@ import {
   offerFounderWelcome,
 } from '~/lib/channel/founder/ping';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
-import { founderWelcomeHandler } from '~/lib/channel/router/handlers';
-import { channelRouterDeps, defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
-import { type ChannelRouterDeps, routeChannelMessage } from '~/lib/channel/router/route';
+import {
+  FakeExtractor,
+  FakeIdentityAsk,
+  FakeIntentReader,
+  fakeAckComposer,
+  fakeRadar,
+  fakeSilentAnswerComposer,
+} from '~/lib/channel/intake/fakes';
+import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
+import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { ChannelCoachRuntime } from '~/lib/channel/router/coach-runtime';
+import { founderWelcomeHandler } from '~/lib/channel/router/handlers';
+import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import { type ReplyResolver, toReading } from '~/lib/channel/router/resolve';
+import { type ChannelRouterDeps, routeChannelMessage } from '~/lib/channel/router/route';
+import { channelRouterDeps, defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
-import { encryptString } from '~/lib/crypto/string-cipher';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 
@@ -396,7 +396,7 @@ describe("the founder's welcome note", () => {
     expect(standing.map((q) => q.kind)).toEqual(['founder_welcome_offer']);
   });
 
-  it('YES puts the note in the new family\'s thread and closes the offer against it', async () => {
+  it("YES puts the note in the new family's thread and closes the offer against it", async () => {
     const { familyId } = await arriveFrom(GEORGETOWN, PARENT_PHONE);
 
     const transport = await founderTexts(
@@ -571,9 +571,7 @@ describe("the founder's welcome note", () => {
 
     // The founder was told, in the words he would have been told in either way.
     expect(pinged).toEqual({ status: 'not_pinged', reason: 'not_recorded' });
-    expect(pingTransport.sent).toEqual([
-      { to: FOUNDER_PHONE, body: founderPing('Georgetown') },
-    ]);
+    expect(pingTransport.sent).toEqual([{ to: FOUNDER_PHONE, body: founderPing('Georgetown') }]);
     expect(await messages(founderFamilyId, FOUNDER_PING_TEMPLATE_KEY)).toHaveLength(1);
 
     expect(await offers()).toEqual([]);

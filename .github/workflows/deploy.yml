@@ -1,7 +1,7 @@
 # Deployment pipeline — runs ONLY after the CI workflow ("CI") succeeds on main.
 # Keeps deploy concerns out of ci.yml (CI gates correctness; this gates release).
 #
-# ONE leg, gated on its secret being present:
+# ONE leg:
 #   - migrate : DB migrations against Supabase Toronto     (needs DATABASE_DIRECT_URL)
 #
 # VERCEL IS NOT DEPLOYED HERE. Both `site` (marketing) and `hale-web` (the app)
@@ -14,10 +14,15 @@
 # Scheduled work is Vercel Cron on hale-web (`/api/cron/*`), not a worker deploy.
 #
 # GATING CONTRACT (see preflight job):
-#   - A leg whose secret is ABSENT is SKIPPED with a notice — the pipeline stays
-#     green so a partially-credentialled environment can still deploy what it can.
-#   - A leg that DOES run but finds its required secret empty FAILS LOUD (the
-#     in-step assertion `exit 1`) — we never silently deploy without auth.
+#   - DATABASE_DIRECT_URL absent FAILS the workflow. A green deploy that skipped
+#     migrations is how production served code against a stale schema (VIL-330).
+#     The secret name is DATABASE_DIRECT_URL (Supabase direct, port 5432).
+#   - A leg that DOES run but finds its required secret empty FAILS LOUD.
+#
+# WEB (Vercel) does not wait for this workflow. hale-web's production build
+# applies migrations itself, before the deployment is aliased — see
+# packages/db/scripts/vercel-production-migrate.mjs. This leg still runs so a
+# cancelled CI (which skips this workflow) is not the only apply path.
 #
 # ROLLBACK (manual — see docs/deploy/README.md for full procedure):
 #   - Vercel : `vercel promote <previous-prod-url> --token=$VERCEL_TOKEN`
@@ -41,8 +46,9 @@ permissions:
   contents: read
 
 jobs:
-  # Gate the whole pipeline on CI success, and resolve which legs have secrets.
-  # Secrets can't be read in job-level `if:`, so we map presence to outputs here.
+  # Gate the whole pipeline on CI success. Secrets can't be read in job-level
+  # `if:`, so presence is asserted here. An absent DATABASE_DIRECT_URL fails
+  # the workflow instead of skipping the migrate leg.
   preflight:
     name: Preflight (CI gate + secret presence)
     if: github.event.workflow_run.conclusion == 'success'
@@ -55,11 +61,11 @@ jobs:
           DATABASE_DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
         run: |
           set -euo pipefail
-          db=false
-          [ -n "$DATABASE_DIRECT_URL" ] && db=true || echo "::notice::DATABASE_DIRECT_URL absent — DB migration leg will be SKIPPED."
-          {
-            echo "has_db=$db"
-          } >> "$GITHUB_OUTPUT"
+          if [ -z "$DATABASE_DIRECT_URL" ]; then
+            echo "::error::DATABASE_DIRECT_URL is not set. Refusing to deploy: production would ship code whose Drizzle migrations were never applied. Add the Supabase direct (port 5432, non-pooled) connection string as the Actions secret DATABASE_DIRECT_URL. The hale-web Vercel project needs the same name on the Production environment so the production build can migrate before the deployment is aliased."
+            exit 1
+          fi
+          echo "has_db=true" >> "$GITHUB_OUTPUT"
 
   # ── DB migrations → Supabase Toronto ──────────────────────────────────────
   migrate:
@@ -79,25 +85,23 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # drizzle.config.ts reads ./dist/schema/index.js — must build @hale/db first.
-      - run: pnpm --filter @hale/db build
-      - name: Apply migrations
+      - name: Apply migrations and fail if any journal hash is still missing
         env:
-          # Use the DIRECT (non-pooled) URL for migrations — drizzle-kit runs DDL
-          # in a transaction, which PgBouncer transaction-pooling can't hold.
+          # DIRECT (non-pooled) URL — DDL runs in a transaction, which PgBouncer
+          # transaction-pooling can't hold. migrate:guard takes the advisory lock,
+          # runs drizzle migrate, then the hash check.
           DATABASE_DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
         run: |
           set -euo pipefail
           if [ -z "${DATABASE_DIRECT_URL:-}" ]; then
             echo "::error::migrate leg ran without DATABASE_DIRECT_URL — refusing to proceed."; exit 1
           fi
-          pnpm --filter @hale/db migrate
-      - name: Verify no migration drift
-        # Post-apply safety net: assert the DB is now in sync with the journal.
-        # This is what would have caught prod drifting 12 migrations behind for
-        # 3 weeks (2026-06-14) — a green deploy is now proven schema-current, not
-        # merely assumed. Read-only; exits non-zero + lists any un-applied
-        # migration. See docs/deploy/README.md § Migration drift guard.
+          pnpm --filter @hale/db migrate:guard
+      - name: Verify no unapplied migrations
+        # Second, read-only pass of `pnpm db:check-migrations`. Exits non-zero
+        # when a journal file's sha256 is not in drizzle.__drizzle_migrations.
+        # A watermark-only "in sync" is not enough: drizzle will not apply a
+        # file whose `when` is already <= max(created_at).
         env:
           DATABASE_DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
-        run: pnpm --filter @hale/db drift-check
+        run: pnpm db:check-migrations

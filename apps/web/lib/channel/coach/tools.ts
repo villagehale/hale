@@ -1,5 +1,5 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { type Database, schema } from '@hale/db';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import type { CalendarPlacementPayload } from '@hale/types';
 import { and, asc, count, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -14,10 +14,16 @@ import { type SpotWatchPorts, watchForOpeningTool } from '~/lib/channel/spots/to
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { EXAMPLE_CHILD_ID, type OfferedCandidate } from '~/lib/coach/tools';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-flag';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
+import {
+  type GmailDraftNoticeBox,
+  type GmailDraftToolPorts,
+  prepareGmailDraftTool,
+} from './gmail-draft-tool';
 import { WEEKDAYS, weekdayOf, weekdayViolation } from './weekday';
 
 /**
@@ -249,6 +255,15 @@ export interface ChannelCoachToolArgs {
    * watch (rule #11).
    */
   onWatch?: (watch: SpotWatchIntent) => void;
+  /**
+   * Gmail drafts (VIL-93). Both halves travel together: a verb whose notice nobody
+   * collects would tell the parent a draft exists and then text them the model's
+   * own sentence instead. Absent in a test that is not exercising it.
+   */
+  gmailDrafts?: GmailDraftToolPorts;
+  onGmailNotice?: (box: GmailDraftNoticeBox) => void;
+  /** The texting parent. The allowlist arms this user while the global flag is unset. */
+  parentUserId?: string | null;
   now: Date;
 }
 
@@ -732,6 +747,11 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   if (args.spots && args.onWatch) {
     tools.push(watchForOpeningTool({ ...args.spots, onWatch: args.onWatch }));
   }
+  // Off for everyone who is not armed, so the skill file the evals cache stays
+  // byte-identical. An armed parent (global flag, or their user id) gets the verb.
+  if (args.gmailDrafts && args.onGmailNotice && googleWriteScopesEnabledFor(args.parentUserId)) {
+    tools.push(prepareGmailDraftTool(args.gmailDrafts, args.onGmailNotice));
+  }
   return tools;
 }
 
@@ -762,7 +782,7 @@ export function channelScheduleReader(database: Database, now: Date): ChannelSch
         .where(
           and(
             eq(schema.familyEvents.familyId, familyId),
-            isNull(schema.familyEvents.deletedAt),
+            householdFamilyEvent(),
             gte(schema.familyEvents.startsAt, start),
             lte(schema.familyEvents.startsAt, end),
           ),
@@ -782,7 +802,7 @@ export function channelScheduleReader(database: Database, now: Date): ChannelSch
           and(
             eq(schema.familyEvents.id, eventId),
             eq(schema.familyEvents.familyId, familyId),
-            isNull(schema.familyEvents.deletedAt),
+            householdFamilyEvent(),
           ),
         )
         .limit(1);

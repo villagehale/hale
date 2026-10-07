@@ -54,6 +54,7 @@ interface FamilyEventRow {
   createdBy: string | null;
   createdAt: Date;
   deletedAt: Date | null;
+  googleEventId: string | null;
 }
 
 interface Capture {
@@ -63,11 +64,14 @@ interface Capture {
 
 /** Resolves a family_events column marker to its row key, throwing on any column
  * the composer's query shouldn't touch — so a wrong-column filter fails loudly. */
-function eventKey(col: unknown): 'familyId' | 'startsAt' | 'source' | 'deletedAt' {
+function eventKey(
+  col: unknown,
+): 'familyId' | 'startsAt' | 'source' | 'deletedAt' | 'googleEventId' {
   if (col === schema.familyEvents.familyId) return 'familyId';
   if (col === schema.familyEvents.startsAt) return 'startsAt';
   if (col === schema.familyEvents.source) return 'source';
   if (col === schema.familyEvents.deletedAt) return 'deletedAt';
+  if (col === schema.familyEvents.googleEventId) return 'googleEventId';
   throw new Error('fakeDb: family_events query referenced an unexpected column');
 }
 
@@ -182,6 +186,7 @@ function makeEvent(
     createdBy: null,
     createdAt: new Date('2026-07-01T00:00:00Z'),
     deletedAt: null,
+    googleEventId: null,
     ...over,
   };
 }

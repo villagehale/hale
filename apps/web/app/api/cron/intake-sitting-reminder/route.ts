@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { runFirstReplyRecoveryCron } from '~/lib/channel/intake/first-reply-recovery';
 import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
 import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
 import {
@@ -16,12 +15,12 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 /**
- * GET /api/cron/intake-sitting-reminder — VIL-324 + VIL-332.
+ * GET /api/cron/intake-sitting-reminder — VIL-324.
  *
- * Hourly Vercel Cron. Two jobs, one schedule (the existing minute-8 slot):
- *   - VIL-332 same-day first-hello recovery — every hour, no clock gate.
- *     A session that got a SID and no outbound cannot wait until 8am.
- *   - VIL-324 next-morning Still here — only in the Toronto morning hour.
+ * Hourly Vercel Cron (the minute-8 slot): the next-morning Still here, only in the
+ * Toronto morning hour. The same-day first reply (VIL-332) is no longer here: a parent
+ * who heard nothing cannot wait for the hour, so the every-minute drain owns it
+ * (app/api/cron/drain/route.ts).
  *
  * Sitting sessions stay intakes — this route does not provision a family.
  *
@@ -30,7 +29,6 @@ export const maxDuration = 60;
  */
 export const GET = cronRoute('intake-sitting-reminder', async () => {
   const database = db();
-  const firstReply = await runFirstReplyRecoveryCron(database);
   const sitting = await runSittingReminderCron(
     database,
     onboardingFriendVoiceEnabled()
@@ -40,5 +38,5 @@ export const GET = cronRoute('intake-sitting-reminder', async () => {
         }
       : defaultSittingReminderDeps(),
   );
-  return NextResponse.json({ ok: true, ...sitting, firstReply }, { status: 200 });
+  return NextResponse.json({ ok: true, ...sitting }, { status: 200 });
 });

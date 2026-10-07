@@ -1,5 +1,6 @@
 import { type Database, type UnmetIntentLane, schema } from '@hale/db';
 import type { DeepResearchPayload } from '@hale/tools-contracts';
+import { waitUntil } from '@vercel/functions';
 import { eq } from 'drizzle-orm';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import { maybeOfferYearRetention } from '~/lib/billing/upgrade-ask';
@@ -15,6 +16,7 @@ import {
 import { readAffirmative } from '~/lib/channel/affirmative';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
+import { isGmailDraftNoticeUnsent } from '~/lib/channel/coach/gmail-draft-notice';
 import {
   CALL_TIMEOUT_MS,
   GATE_TIMEOUT,
@@ -67,7 +69,7 @@ import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
 import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
-import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { reportTurnFailures } from '~/lib/monitoring/failure-page';
 import { classifyChainedProviderFailure } from '~/lib/monitoring/provider-health';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -83,7 +85,7 @@ import {
   assertTurnLive,
   isCallTimeout,
   isTurnTimeout,
-  runTurn,
+  runTurnThen,
   turnSignalAborted,
   withTimeout,
 } from './deadline';
@@ -190,6 +192,12 @@ export interface InboundContext {
   /** Who a caregiver is pointed at (M6's copy), null when it cannot be resolved. */
   primaryParentName: string | null;
   reply: ReplyRoute | null;
+  /**
+   * The message arrived in this family's claimed Linq group, with group onboarding v2
+   * lit (wiring.ts). The coach is told its audience, the group gets its own thread, and
+   * a flood line goes 1:1 rather than into the group.
+   */
+  inGroup: boolean;
 }
 
 /**
@@ -205,7 +213,7 @@ export interface InboundContext {
  * answering an email by text. Non-null by construction: the router does not reach the
  * handlers without a route.
  */
-export interface HandlerContext extends Omit<ChannelTurn, 'standingQuestions'> {
+export interface HandlerContext extends Omit<ChannelTurn, 'standingQuestions' | 'audience'> {
   send(body: string): Promise<ReplySent>;
   /**
    * A decision the natural-reply stage already made about this message (resolve.ts), or
@@ -529,6 +537,22 @@ export interface ChannelRouterDeps {
   turnDeadlineMs?: number;
   /** Test seam for GATE 2c / 2c-bis. Production uses {@link CALL_TIMEOUT_MS}. */
   callTimeoutMs?: number;
+  /**
+   * After the reply is on its way, ask the model whether this turn opened,
+   * moved, or closed a workstream (VIL-419). Optional so a router assembled
+   * for a test that never reaches the coach does not grow a dependency.
+   * Production always sets it. The router starts it and does not await it
+   * inside the turn deadline: a slow extract must not log "nothing sent"
+   * or defer a turn whose reply already went out. A miss is logged inside
+   * the implementation and never fails the turn.
+   */
+  rememberWorkstream?(input: {
+    familyId: string;
+    parentText: string;
+    haleText: string;
+    provenance: string;
+    now: Date;
+  }): Promise<void>;
 }
 
 /** Why a turn went back to the queue instead of answering. `model_unreachable` is the
@@ -601,14 +625,52 @@ export interface RouterResult {
   lane: UnmetIntentLane | null;
 }
 
+/**
+ * The extract starts when the reply is already out. It is not part of the
+ * turn, and the job does not wait for it: waiting would hold this parent's
+ * queue on a model call that cannot change the text they already have.
+ *
+ * The drain runs inside `after()` on Vercel. When that callback returns, the
+ * invocation can be suspended and a detached promise is lost. `waitUntil`
+ * from `@vercel/functions` registers the same task on the request context, so
+ * the platform keeps the function alive until the extract settles. Outside a
+ * request the context has no `waitUntil` and the call is a no-op; the promise
+ * still runs. A failure is logged on the task itself and does not re-drive
+ * the turn.
+ */
+function detachWorkstream(deps: ChannelRouterDeps, trailed: Promise<unknown>[]): ChannelRouterDeps {
+  if (!deps.rememberWorkstream) return deps;
+  const remember = deps.rememberWorkstream;
+  return {
+    ...deps,
+    rememberWorkstream: (input) => {
+      const task = remember(input).catch((err: unknown) => {
+        deps.log.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'channel router: workstream extract failed',
+        );
+      });
+      trailed.push(task);
+      waitUntil(task);
+      return Promise.resolve();
+    },
+  };
+}
+
 export async function routeChannelMessage(
   deps: ChannelRouterDeps,
   job: ChannelMessageReceivedJob,
 ): Promise<RouterResult> {
   const deadlineMs = deps.turnDeadlineMs ?? TURN_DEADLINE_MS;
   const signal = AbortSignal.timeout(deadlineMs);
+  const trailed: Promise<unknown>[] = [];
+  const turnDeps = detachWorkstream(deps, trailed);
   try {
-    return await runTurn(signal, () => routeChannelMessageInner(deps, job));
+    const result = await runTurnThen(signal, () => routeChannelMessageInner(turnDeps, job), []);
+    // The extract keeps running after the job returns. Holding the reference
+    // is what keeps the rejection handler attached for the life of the call.
+    void trailed;
+    return result;
   } catch (err) {
     if (!isTurnTimeout(err) && !signal.aborted) throw err;
     // Nothing goes out. The job fails so the per-parent key is free for the
@@ -757,7 +819,9 @@ async function routeChannelMessageInner(
   // partial unique index so two texts arriving together cannot fork it.
   const conversationId = await resolveOrCreateNoteConversation(
     job.family_id,
-    channelSmsNoteKey(job.parent_user_id),
+    context.inGroup && route.channel === 'imessage'
+      ? channelGroupNoteKey(route.chatId)
+      : channelSmsNoteKey(job.parent_user_id),
     deps.database,
   );
   // Once per TEXT, not once per attempt. A deferred turn already put these words in the
@@ -1044,7 +1108,19 @@ async function routeChannelMessageInner(
       AGENT_TURN_LIMIT,
     );
     if (!decision.allowed) {
-      await answer(FLOOD_REPLY);
+      if (context.inGroup) {
+        // The parent's own budget is spent, which is no one else's news: the line goes
+        // to their phone, outside the group and outside the group's thread.
+        await sendReply(deps, {
+          route: { channel: 'sms', to: route.to },
+          body: FLOOD_REPLY,
+          job,
+          conversationId: null,
+          claim: claimAnswer,
+        });
+      } else {
+        await answer(FLOOD_REPLY);
+      }
       return done(deps, job, { status: 'flood_held', handler: null, conversationId, lane: null });
     }
   }
@@ -1135,6 +1211,7 @@ async function routeChannelMessageInner(
       // silence-plus-an-apology would read as Hale ignoring a decision the parent made.
       questions: natural.questions,
       unplacedAnswer: natural.status === 'unplaced' ? natural.answer : null,
+      audience: context.inGroup ? 'group' : 'direct',
     });
   } finally {
     await stopTyping();
@@ -1527,6 +1604,7 @@ async function runAgentTurn(
      * actually goes out — see {@link UnplacedAnswer}.
      */
     unplacedAnswer: UnplacedAnswer | null;
+    audience: ChannelTurn['audience'];
   },
 ): Promise<RouterResult> {
   try {
@@ -1632,6 +1710,22 @@ async function runAgentTurn(
         { arm: armed.status, host: spotWatch.host },
         'channel router: watched spot armed after the send',
       );
+    }
+    if (deps.rememberWorkstream) {
+      try {
+        await deps.rememberWorkstream({
+          familyId: args.turn.familyId,
+          parentText: args.turn.body,
+          haleText: reply,
+          provenance: args.job.channel_message_id,
+          now: args.turn.now,
+        });
+      } catch (err) {
+        deps.log.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'channel router: workstream extract failed',
+        );
+      }
     }
     return done(deps, args.job, {
       status: 'agent_replied',
@@ -1777,6 +1871,7 @@ async function composeReconciledReply(
   args: {
     turn: HandlerContext;
     questions: readonly OpenQuestion[];
+    audience: ChannelTurn['audience'];
   },
   view: Promise<ReconcileView>,
 ): Promise<ChannelTurnResult & { mints: readonly RegistrationWatchMint[] }> {
@@ -1786,7 +1881,10 @@ async function composeReconciledReply(
   let verdict: ReconcileVerdict | null = null;
 
   for (let attempt = 1; attempt <= MAX_RECONCILE_ATTEMPTS; attempt += 1) {
-    result = await deps.coach.respond({ ...args.turn, standingQuestions }, rejected);
+    result = await deps.coach.respond(
+      { ...args.turn, standingQuestions, audience: args.audience },
+      rejected,
+    );
     verdict = reconcile(extractStateClaims(result.reply), {
       ...(await view),
       // What THIS turn's tools already registered. A promise the router is about to write
@@ -1957,6 +2055,18 @@ async function disposeOfFailedTurn(
       reply: null,
       reason: 'broke_after_answering',
       log: { brokeAfterAnswering: true },
+    };
+  }
+
+  // The draft notice is the only sentence this turn was allowed to send. It could
+  // not be composed, so the parent hears nothing — a stock apology would be the
+  // canned line this path exists to avoid — and #ops is paged by the caller.
+  if (isGmailDraftNoticeUnsent(err)) {
+    return {
+      outcome: 'agent_failed',
+      reply: null,
+      reason: 'notice_unsent',
+      log: { gmailDraftNoticeUnsent: true },
     };
   }
 

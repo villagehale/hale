@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, ne, or, sql } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { linqGroupCoparentEnabled } from '~/lib/channel/linq/config';
+import { groupAudienceAllows } from '~/lib/channel/linq/group-audience';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
 import { checkoutPriceIdFromEnv } from '~/lib/webhooks/stripe-billing';
@@ -15,7 +16,8 @@ import { YEAR_RETENTION_COPY } from './upgrade-copy.js';
  *
  * Off unless IMESSAGE_UPGRADE_ASK is exactly `on`. Onboard and the first
  * utility reply stay free. A co-parent Linq group gets the ask when one
- * exists. With no group, Hale replies only in a thread the parent already
+ * exists and its audience may hear `family_settings` (group-audience.ts: with
+ * group onboarding v2 on, never). With no such group, Hale replies only in a thread the parent already
  * opened — it does not start a 1:1 to collect money. Yes sends a Payment
  * Link (or a Checkout Session URL). No leaves the free plan.
  */
@@ -161,6 +163,17 @@ async function priorUtilityReplyCount(
   return rows.length;
 }
 
+/** The claimed group, only when everyone in it may hear about the plan. */
+async function billingGroupChatId(
+  database: Database,
+  claimed: string | null,
+): Promise<string | null> {
+  const chatId = linqGroupCoparentEnabled() ? claimed?.trim() || null : null;
+  if (!chatId) return null;
+  const audience = await groupAudienceAllows(database, chatId, 'family_settings');
+  return audience.allowed ? chatId : null;
+}
+
 /**
  * Follow a utility reply with the year-retention ask, once.
  *
@@ -207,10 +220,7 @@ export async function maybeOfferYearRetention(
     input.familyId,
     input.excludeMessageId,
   );
-  const groupChatId =
-    linqGroupCoparentEnabled() && family.linqGroupChatId?.trim()
-      ? family.linqGroupChatId.trim()
-      : null;
+  const groupChatId = await billingGroupChatId(database, family.linqGroupChatId);
   const decision = decideUpgradeAsk({
     flagOn: true,
     channel: input.channel,
@@ -456,8 +466,7 @@ async function closeOffer(
   });
 
   if (!sync) return;
-  const groupChatId =
-    linqGroupCoparentEnabled() && sync.groupChatId?.trim() ? sync.groupChatId.trim() : null;
+  const groupChatId = await billingGroupChatId(database, sync.groupChatId);
   if (!groupChatId || !input.inboundChannelMessageId) return;
 
   const [inbound] = await database

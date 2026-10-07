@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
-import { type Database, schema } from '@hale/db';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, asc, eq, gte, isNotNull, isNull, lte } from 'drizzle-orm';
+import { and, asc, eq, gte, isNotNull, lte } from 'drizzle-orm';
 import { dutyFeedDescription } from '~/lib/channel/coparent/duty/calendar';
 import { generateFamilyIcs } from './ics.js';
 
@@ -155,7 +155,7 @@ export async function loadIcsFeed(
     .where(
       and(
         eq(schema.familyEvents.familyId, family.id),
-        isNull(schema.familyEvents.deletedAt),
+        householdFamilyEvent(),
         gte(schema.familyEvents.startsAt, windowStart),
         lte(schema.familyEvents.startsAt, windowEnd),
       ),

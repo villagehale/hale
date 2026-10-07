@@ -1,13 +1,22 @@
 import { appBaseUrl } from '~/lib/cron/email-compliance';
+import {
+  CALENDAR_EVENTS_SCOPE,
+  GMAIL_COMPOSE_SCOPE,
+  type WriteScopeEnv,
+  googleWriteScopesEnabledFor,
+} from './google-write-flag';
 import type { OAuthTokens } from './token-vault';
 
 /**
  * Google OAuth for CONNECTORS — a server-side authorization-code flow that adds two
  * things sign-in doesn't need: OFFLINE access (a refresh token, because connectors
  * sync in the background when the user isn't present) and INCREMENTAL authorization
- * for the per-connector read-only scope.
+ * for the per-connector scope.
  *
- * Read-only scopes only — connectors never mutate the user's Google data.
+ * {@link CONNECTOR_SCOPES} stay read-only. Calendar writes and Gmail drafts are
+ * requested only when this user is armed (VIL-93) — the global flag is exactly
+ * `true`, or their Hale user id is on `GOOGLE_WRITE_SCOPES_ALLOWLIST` — and only
+ * on the connector they belong to. Drive is never asked for a write.
  */
 
 export type ConnectorProvider = 'gcal' | 'gmail' | 'gdrive';
@@ -32,6 +41,24 @@ export const CONNECTOR_PROVIDERS = Object.keys(CONNECTOR_SCOPES) as ConnectorPro
 /** Narrow an arbitrary path segment to a connector provider (rejects the other integration_provider values). */
 export function isConnectorProvider(value: string): value is ConnectorProvider {
   return value === 'gcal' || value === 'gmail' || value === 'gdrive';
+}
+
+/**
+ * The scopes this consent screen asks for, not including the optional profile
+ * scope. A user who is not armed returns the readonly array itself, so the
+ * consent URL is byte-for-byte today's. An armed user appends `calendar.events`
+ * or `gmail.compose` to that connector only.
+ */
+export function requestedConnectorScopes(
+  provider: ConnectorProvider,
+  env: WriteScopeEnv = process.env,
+  userId?: string | null,
+): readonly string[] {
+  const base = CONNECTOR_SCOPES[provider];
+  if (!googleWriteScopesEnabledFor(userId, env)) return base;
+  if (provider === 'gcal') return [...base, CALENDAR_EVENTS_SCOPE];
+  if (provider === 'gmail') return [...base, GMAIL_COMPOSE_SCOPE];
+  return base;
 }
 
 const GOOGLE_AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -104,12 +131,17 @@ export function buildGoogleAuthUrl(opts: {
   provider: ConnectorProvider;
   state: string;
   redirectUri: string;
+  /** The connecting Hale user. Omitted, the allowlist cannot arm this URL. */
+  userId?: string | null;
 }): string {
   const params = new URLSearchParams({
     client_id: clientId(),
     redirect_uri: opts.redirectUri,
     response_type: 'code',
-    scope: [...CONNECTOR_SCOPES[opts.provider], GOOGLE_PROFILE_SCOPE].join(' '),
+    scope: [
+      ...requestedConnectorScopes(opts.provider, process.env, opts.userId),
+      GOOGLE_PROFILE_SCOPE,
+    ].join(' '),
     access_type: 'offline', // issue a refresh token for background sync
     prompt: 'consent', // force re-consent so the refresh token is (re)issued
     // Deliberately NOT include_granted_scopes: each connector's grant must be scoped

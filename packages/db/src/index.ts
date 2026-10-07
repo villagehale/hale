@@ -9,6 +9,7 @@ export type {
   NewWeekPlan,
 } from './schema/week-plans.js';
 export type { FamilyEvent, NewFamilyEvent } from './schema/family-events.js';
+export { householdFamilyEvent } from './family-event-scope.js';
 export type { ContentProvenance } from './schema/events.js';
 export type {
   MedicalReplySourceValue,
@@ -39,6 +40,12 @@ export type {
 } from './schema/civic.js';
 export type { CandidateAccess } from './schema/village.js';
 export type { AgentCommitment, NewAgentCommitment } from './schema/agent-commitments.js';
+export type {
+  FamilyWorkstream,
+  NewFamilyWorkstream,
+  WorkstreamStatus,
+} from './schema/workstreams.js';
+export { WORKSTREAM_STATUSES } from './schema/workstreams.js';
 export {
   ACTIVITY_REVIEW_AGE_BANDS,
   ACTIVITY_REVIEW_TAGS,

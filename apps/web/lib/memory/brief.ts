@@ -19,6 +19,10 @@ import { digestWindows } from './period';
  * Medical values, namespaced receipt keys, and every teen-attributed fact are
  * absent. Commitment summaries are absent too: the open-loop ledger's sentence
  * can repeat a thread, and the brief only needs the kind.
+ *
+ * The `workstreams:` line is those open commitments (kind, topic, due). It is
+ * not the job list. Job titles stay off this line so a turn does not say the
+ * same thread twice.
  */
 
 export const MEMORY_BRIEF_CHAR_BUDGET = 1800;

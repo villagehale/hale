@@ -1,8 +1,9 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { type Database, schema } from '@hale/db';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { type FamilyStage, deriveStage } from '@hale/types';
 import { and, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
+import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import {
   commitClassifiedMemory,
   modelClassificationShape,
@@ -234,6 +235,34 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
       observedAt: z.string().optional(),
       ...modelClassificationShape,
     }),
+    // Invented values only: examples are cached outside message protections (rule #1).
+    inputExamples: [
+      {
+        factType: 'routine',
+        factKey: 'afternoon_nap',
+        factValue: 'one nap, 1pm to 3pm, most days for a month',
+        confidence: 0.85,
+        memoryClass: 'enduring',
+        disposition: 'confirmed',
+      },
+      {
+        factType: 'preference',
+        factKey: 'saturday_swim_trial',
+        factValue: 'declined the Saturday swim trial',
+        confidence: 0.95,
+        observedAt: '2026-03-14T14:00:00.000Z',
+        memoryClass: 'obligation',
+        disposition: 'declined',
+      },
+      {
+        factType: 'preference',
+        factKey: 'toddler_pottery',
+        factValue: 'asked once about a toddler pottery class',
+        confidence: 0.8,
+        memoryClass: 'curiosity',
+        disposition: 'asked',
+      },
+    ],
     monetary: false,
     touchesChildContent: false,
     handler: async (input, ctx) => {
@@ -265,7 +294,6 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
         inferredBy: 'memory_inferencer',
         source: 'inferred',
         now,
-        omittedClass: 'curiosity',
         memoryClass: input.memoryClass,
         disposition: input.disposition,
         observedAt: input.observedAt,
@@ -408,7 +436,7 @@ async function loadDistillReceipts(
     database
       .select({ title: schema.familyEvents.title })
       .from(schema.familyEvents)
-      .where(and(eq(schema.familyEvents.familyId, familyId), isNull(schema.familyEvents.deletedAt)))
+      .where(and(eq(schema.familyEvents.familyId, familyId), householdFamilyEvent()))
       .limit(RECEIPT_LIMIT),
   ]);
   return [...bookings, ...events];
@@ -507,6 +535,36 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
       observedAt: z.string().optional(),
       ...modelClassificationShape,
     }),
+    // Invented values only (rule #1; see EXAMPLE_CHILD_ID).
+    inputExamples: [
+      {
+        childId: EXAMPLE_CHILD_ID,
+        category: 'routines',
+        factKey: 'afternoon_nap',
+        summary: 'naps once a day, 1pm to 3pm',
+        confidence: 0.95,
+        memoryClass: 'enduring',
+        disposition: 'confirmed',
+      },
+      {
+        childId: EXAMPLE_CHILD_ID,
+        category: 'preferences',
+        factKey: 'saturday_swim_trial',
+        summary: 'parent declined the Saturday swim trial',
+        confidence: 0.95,
+        observedAt: '2026-03-14T14:00:00.000Z',
+        memoryClass: 'obligation',
+        disposition: 'declined',
+      },
+      {
+        category: 'preferences',
+        factKey: 'toddler_pottery',
+        summary: 'parent asked once about a toddler pottery class',
+        confidence: 0.8,
+        memoryClass: 'curiosity',
+        disposition: 'asked',
+      },
+    ],
     monetary: false,
     // VIL-269: this input NAMES a child, so the guarded invoker's teen check resolves
     // it before the handler runs — the same gate get_child_profile gets. The redaction
@@ -548,7 +606,6 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
         inferredBy: 'chat_distiller',
         source: 'inferred',
         now,
-        omittedClass: 'curiosity',
         memoryClass: input.memoryClass,
         disposition: input.disposition,
         observedAt: input.observedAt,

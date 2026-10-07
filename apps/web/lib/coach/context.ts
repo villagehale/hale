@@ -9,6 +9,7 @@ import {
 } from '@hale/types';
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
+import { activeWorkstreamBlock } from '../memory/workstreams';
 import type { TranscriptMessage } from './conversation';
 
 /**
@@ -430,7 +431,10 @@ export async function loadAgentContext(
     childRows.map((c) => [c.id, deriveStage(c.dateOfBirth, now)]),
   );
 
-  const memoryBrief = await assembleMemoryBrief(database, input.familyId, now);
+  const memoryBrief = briefWithActiveWorkstreams(
+    await assembleMemoryBrief(database, input.familyId, now),
+    await activeWorkstreamBlock(database, input.familyId, now),
+  );
 
   return {
     parentName: parentRows[0]?.name ?? null,
@@ -464,6 +468,27 @@ export async function loadAgentContext(
     question: input.question,
     intent: input.intent,
     sourceNote: input.sourceNote,
+  };
+}
+
+/**
+ * Job titles ride the brief the skills already tell the model to read.
+ * A null block (flag off) leaves the brief untouched, so a flag-off turn
+ * does not grow a line and does not add a second context field.
+ * An empty brief becomes `ok` once it carries this block: the skills treat
+ * `empty` as "you do not know", which would hide a job that is actually there.
+ */
+function briefWithActiveWorkstreams(brief: MemoryBrief, block: string | null): MemoryBrief {
+  if (block === null) return brief;
+  const status = brief.status === 'empty' ? 'ok' : brief.status;
+  const base =
+    status !== brief.status && brief.text.startsWith('memory_brief status=empty')
+      ? `memory_brief status=ok${brief.text.slice('memory_brief status=empty'.length)}`
+      : brief.text;
+  return {
+    ...brief,
+    text: base.length === 0 ? block : `${base}\n${block}`,
+    status,
   };
 }
 

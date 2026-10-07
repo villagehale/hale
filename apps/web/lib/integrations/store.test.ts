@@ -1,4 +1,4 @@
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -62,8 +62,12 @@ function fakeDb(selectRows: unknown[]) {
         });
       },
     }),
-    update: () => ({
+    update: (table: unknown) => ({
       set: (v: Record<string, unknown>) => {
+        // The revoke's mirror retirement; its SQL is covered by revoke-mirrors.pglite.test.ts.
+        if (table === schema.familyEvents) {
+          return { where: () => Object.assign(Promise.resolve(), { returning: () => Promise.resolve([]) }) };
+        }
         cap.updated = v;
         return { where: () => Object.assign(Promise.resolve(), { returning: updateReturning }) };
       },
@@ -229,6 +233,7 @@ describe('integrations store', () => {
       provider: 'gcal',
       custody: UNNAMED_CUSTODY,
       via: 'settings',
+      calendarMirrorsRemoved: 0,
     });
   });
 
@@ -247,6 +252,7 @@ describe('integrations store', () => {
       provider: 'gcal',
       custody: UNNAMED_CUSTODY,
       via: 'sms',
+      calendarMirrorsRemoved: 0,
     });
   });
 

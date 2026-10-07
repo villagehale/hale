@@ -1,8 +1,9 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { connectorOfferReply } from '~/lib/channel/connect/copy';
-import { offerConnectorLink } from '~/lib/channel/connect/offer';
+import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
 import type { TextConnectProvider } from '~/lib/channel/connect/text-connect';
+import { intakeConnectorOffer } from '~/lib/channel/intake/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -11,6 +12,7 @@ import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import {
   createOutboundTransport,
   failedSendPatch,
+  plainTextWithoutLinks,
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
@@ -36,6 +38,9 @@ export interface FreshLinkPorts {
 
 export type FreshLinkOutcome =
   | 'sent'
+  /** A new Linq chat took only the words: the parent has a text that names a link and
+   * carries none. */
+  | 'link_omitted'
   | 'not_enrolled'
   | 'mint_failed'
   | 'no_send_target'
@@ -56,7 +61,8 @@ export async function textFreshConnectorLink(
   args: {
     familyId: string;
     parentUserId: string;
-    provider: TextConnectProvider;
+    /** `both` is one text carrying both links, minted together so neither spends the other. */
+    provider: TextConnectProvider | 'both';
     now: Date;
   },
   ports: FreshLinkPorts = defaultFreshLinkPorts(),
@@ -81,17 +87,13 @@ async function sendFresh(
   args: {
     familyId: string;
     parentUserId: string;
-    provider: TextConnectProvider;
+    provider: TextConnectProvider | 'both';
     now: Date;
   },
   ports: FreshLinkPorts,
 ): Promise<FreshLinkOutcome> {
-  const minted = await offerConnectorLink(database, {
-    familyId: args.familyId,
-    parentUserId: args.parentUserId,
-    provider: args.provider,
-    now: args.now,
-  });
+  const language = await familyLanguage(database, args.familyId);
+  const minted = await mintBody(database, args, language);
   if (minted.status !== 'minted') {
     console.info(
       { familyId: args.familyId, provider: args.provider, outcome: minted.status },
@@ -109,7 +111,9 @@ async function sendFresh(
     return 'no_send_target';
   }
 
-  const door = await resolveMessagingDoor(database, args.parentUserId);
+  const door = await resolveMessagingDoor(database, args.parentUserId, {
+    excludeChatId: await familyGroupChatId(database, args.familyId),
+  });
   const chatId = door.channel === 'imessage' ? door.chatId : null;
   if (door.channel === 'imessage' && !chatId) {
     console.info(
@@ -126,8 +130,7 @@ async function sendFresh(
     return 'send_failed';
   }
 
-  const language = await familyLanguage(database, args.familyId);
-  const body = connectorOfferReply(language, args.provider, minted.url);
+  const body = minted.body;
   const channel = door.channel === 'imessage' ? 'imessage' : 'sms';
   const [claimed] = await database
     .insert(schema.channelMessages)
@@ -146,13 +149,16 @@ async function sendFresh(
   if (!claimed) return 'errored';
 
   let providerMessageId: string;
+  let linkOmitted = false;
   try {
     if (door.channel === 'imessage') {
       const send = ports.imessage;
       if (!send || !chatId) throw new LinqSendError('imessage_not_configured', 0, true);
       ({ providerMessageId } = await send({ chatId, body }));
     } else {
-      ({ providerMessageId } = await sendResolvingNewChat(ports.transport, { to: phone, body }));
+      const sent = await sendResolvingNewChat(ports.transport, { to: phone, body });
+      providerMessageId = sent.providerMessageId;
+      linkOmitted = sent.linkOmitted !== undefined;
     }
   } catch (err) {
     const code = readSendRefusal(err)?.code ?? 'unknown';
@@ -174,13 +180,52 @@ async function sendFresh(
   await ports.threadMessage(database, {
     familyId: args.familyId,
     parentUserId: args.parentUserId,
-    body,
+    body: linkOmitted ? plainTextWithoutLinks(body) : body,
   });
+  if (linkOmitted) {
+    console.warn(
+      { familyId: args.familyId, provider: args.provider },
+      'connector link: fresh link text sent without its link',
+    );
+    return 'link_omitted';
+  }
   console.info(
     { familyId: args.familyId, provider: args.provider },
     'connector link: fresh link sent',
   );
   return 'sent';
+}
+
+async function mintBody(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    provider: TextConnectProvider | 'both';
+    now: Date;
+  },
+  language: ReplyLanguage,
+): Promise<{ status: 'minted'; body: string } | { status: 'not_enrolled' | 'mint_failed' }> {
+  const owner = { familyId: args.familyId, parentUserId: args.parentUserId, now: args.now };
+  if (args.provider === 'both') {
+    const minted = await offerConnectorLinks(database, { ...owner, providers: ['gcal', 'gmail'] });
+    return minted.status === 'minted'
+      ? { status: 'minted', body: intakeConnectorOffer(language, minted.urls[0], minted.urls[1]) }
+      : minted;
+  }
+  const minted = await offerConnectorLink(database, { ...owner, provider: args.provider });
+  return minted.status === 'minted'
+    ? { status: 'minted', body: connectorOfferReply(language, args.provider, minted.url) }
+    : minted;
+}
+
+/** A link is one person's: the family group is never its door. */
+async function familyGroupChatId(database: Database, familyId: string): Promise<string | null> {
+  const [row] = await database
+    .select({ linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  return row?.linqGroupChatId ?? null;
 }
 
 async function familyLanguage(database: Database, familyId: string): Promise<ReplyLanguage> {

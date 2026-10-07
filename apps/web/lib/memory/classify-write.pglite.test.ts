@@ -1,7 +1,10 @@
-import { schema } from '@hale/db';
+import { type RegisteredTool, compileToolSchema, invokeTool } from '@hale/agent';
+import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { ZodError } from 'zod';
 import { buildAskHaleTools } from '~/lib/coach/tools';
+import { buildCronGuardDeps } from '~/lib/cron/guards';
 import { buildDistillTools, buildInferenceTools } from '~/lib/cron/inference-tools';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { renderMemoryBrief } from './brief';
@@ -203,5 +206,102 @@ describe('declined events and passing questions', () => {
     const [row] = await rowsFor(familyId);
     expect(row?.memoryKind).toBe('one_off');
     expect(row?.factValue).toMatchObject({ disposition: 'asked', memoryClass: 'curiosity' });
+  });
+});
+
+const WRITERS: Array<{
+  writer: string;
+  tool: (database: Database) => RegisteredTool;
+  unclassified: Record<string, unknown>;
+}> = [
+  {
+    writer: 'nightly save_memory',
+    tool: (database) => toolNamed(buildInferenceTools(database, OCT_4), 'save_memory'),
+    unclassified: {
+      factType: 'preference',
+      factKey: 'winter_hockey',
+      factValue: { summary: 'Hockey this winter' },
+      confidence: 0.95,
+    },
+  },
+  {
+    writer: 'nightly save_child_fact',
+    tool: (database) => toolNamed(buildDistillTools(database, OCT_4), 'save_child_fact'),
+    unclassified: {
+      category: 'preferences',
+      factKey: 'winter_hockey',
+      summary: 'Hockey this winter',
+      confidence: 0.95,
+    },
+  },
+  {
+    writer: 'coach save_memory',
+    tool: (database) => toolNamed(buildAskHaleTools(database, OCT_4), 'save_memory'),
+    unclassified: {
+      factType: 'preference',
+      factKey: 'winter_hockey',
+      factValue: 'Hockey this winter',
+      confidence: 1,
+    },
+  },
+];
+
+async function auditsFor(familyId: string) {
+  return db.database.select().from(schema.auditLog).where(eq(schema.auditLog.familyId, familyId));
+}
+
+describe.each(WRITERS)('$writer — every save is classified', ({ tool, unclassified }) => {
+  it('sends memoryClass and disposition as required in the schema on the wire', () => {
+    const { schema: wire } = compileToolSchema(tool(db.database).inputSchema);
+
+    expect(wire.required).toEqual(expect.arrayContaining(['memoryClass', 'disposition']));
+    expect(wire.required).not.toContain('expiresAt');
+    expect(wire.required).not.toContain('correctsKey');
+  });
+
+  it('shows one example per class, each valid against its own schema', () => {
+    const save = tool(db.database);
+    const examples = save.inputExamples ?? [];
+
+    for (const example of examples) save.inputSchema.parse(example);
+    expect(examples.map((e) => `${e.memoryClass}/${e.disposition}`)).toEqual([
+      'enduring/confirmed',
+      'obligation/declined',
+      'curiosity/asked',
+    ]);
+    const declined = examples.find((e) => e.disposition === 'declined');
+    expect(typeof declined?.observedAt).toBe('string');
+  });
+
+  it('refuses an unclassified save before anything is audited or written', async () => {
+    const { familyId } = await seedFamily(db.database);
+
+    const refused = invokeTool(
+      tool(db.database),
+      unclassified,
+      ctx(familyId),
+      buildCronGuardDeps(db.database),
+    );
+
+    await expect(refused).rejects.toBeInstanceOf(ZodError);
+    await expect(refused).rejects.toThrow(/memoryClass[\s\S]*disposition/);
+    expect(await auditsFor(familyId)).toEqual([]);
+    expect(await rowsFor(familyId)).toEqual([]);
+  });
+
+  it('stores a labelled decline as declined, audited, never confirmed', async () => {
+    const { familyId } = await seedFamily(db.database);
+
+    await invokeTool(
+      tool(db.database),
+      { ...unclassified, memoryClass: 'obligation', disposition: 'declined', observedAt: OCT_1 },
+      ctx(familyId),
+      buildCronGuardDeps(db.database),
+    );
+
+    const [row] = await rowsFor(familyId);
+    expect(row?.memoryKind).toBe('temporary');
+    expect(row?.factValue).toMatchObject({ disposition: 'declined', memoryClass: 'obligation' });
+    expect(await auditsFor(familyId)).toHaveLength(1);
   });
 });

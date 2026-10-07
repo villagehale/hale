@@ -1,5 +1,5 @@
 import { and, eq, gt, gte, isNull, lt, ne, or, sql } from 'drizzle-orm';
-import { type Database, schema } from '@hale/db';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { REVIEWER_TOOLS, type ReviewerToolName } from '@hale/tools-contracts';
 import type { ToolResult } from '@hale/types';
 import { db } from '../db.js';
@@ -190,7 +190,7 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
       .where(
         and(
           eq(schema.familyEvents.familyId, input.familyId),
-          isNull(schema.familyEvents.deletedAt),
+          householdFamilyEvent(),
           lt(schema.familyEvents.startsAt, newEnd),
           or(
             and(

@@ -5,6 +5,7 @@ import {
   createLinqChat,
   createLinqPhoneTransport,
   createLinqTextTransport,
+  listLinqParticipantHandles,
   localityFromLocationPayload,
   markLinqChatRead,
   reactToLinqMessage,
@@ -221,6 +222,86 @@ function jsonFetch(status: number, body: unknown) {
     Response.json(body, { status }),
   );
 }
+
+describe('listLinqParticipantHandles', () => {
+  it('reads every member but Hale from the documented GET /chats/{id} shape', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = jsonFetch(200, {
+      id: CHAT,
+      is_group: true,
+      handles: [
+        { id: 'h-0', handle: '+14165550100', is_me: true, service: 'iMessage' },
+        { id: 'h-1', handle: '+14165550101', is_me: false, service: 'iMessage' },
+        { id: 'h-2', handle: '+14165550102', is_me: false, service: 'iMessage' },
+      ],
+    });
+    expect(await listLinqParticipantHandles({ chatId: CHAT, fetch: fetchMock })).toEqual({
+      status: 'ok',
+      handles: ['+14165550101', '+14165550102'],
+      isGroup: true,
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `https://api.linqapp.com/api/partner/v3/chats/${CHAT}`,
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('GET');
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined();
+  });
+
+  it('says when the chat is not a group, and when the payload does not say', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const oneToOne = jsonFetch(200, {
+      id: CHAT,
+      is_group: false,
+      handles: [
+        { handle: '+14165550100', is_me: true },
+        { handle: '+14165550101', is_me: false },
+      ],
+    });
+    expect(await listLinqParticipantHandles({ chatId: CHAT, fetch: oneToOne })).toEqual({
+      status: 'ok',
+      handles: ['+14165550101'],
+      isGroup: false,
+    });
+    const unsaid = jsonFetch(200, { id: CHAT, handles: [{ handle: '+14165550101' }] });
+    expect(await listLinqParticipantHandles({ chatId: CHAT, fetch: unsaid })).toEqual({
+      status: 'ok',
+      handles: ['+14165550101'],
+      isGroup: null,
+    });
+  });
+
+  it('names a refusal with its Linq code and does not throw', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const refused = jsonFetch(404, { error: { code: 2001, message: 'missing chat' } });
+    expect(await listLinqParticipantHandles({ chatId: CHAT, fetch: refused })).toEqual({
+      status: 'refused',
+      code: '2001',
+      httpStatus: 404,
+      permanent: true,
+    });
+  });
+
+  it('names a missing API key and does not call the network', async () => {
+    vi.stubEnv('LINQ_API_KEY', '');
+    const fetchMock = vi.fn();
+    expect(await listLinqParticipantHandles({ chatId: CHAT, fetch: fetchMock })).toEqual({
+      status: 'not_configured',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('names a network failure as unreachable', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const down = vi.fn(async () => {
+      throw new TypeError('fetch failed');
+    });
+    expect(await listLinqParticipantHandles({ chatId: CHAT, fetch: down })).toEqual({
+      status: 'unreachable',
+      reason: 'network',
+    });
+  });
+});
 
 describe('markLinqChatRead', () => {
   it('posts the chat read endpoint and names a missing key', async () => {

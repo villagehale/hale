@@ -13,6 +13,7 @@ import { runNudgeCron } from '~/lib/channel/nudge/run';
 import { runPlanCheckInSweep } from '~/lib/channel/plan/check-in';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
+import { runWorkstreamFollowupSweep } from '~/lib/memory/workstream-followup';
 import { reviewVerdictClient, runReviewCapture } from '~/lib/reviews/capture';
 import { createVerdictReader } from '~/lib/reviews/verdict';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
@@ -97,6 +98,11 @@ export const maxDuration = 300;
  * a design placeholder it holds the send. An answer that does come back is stored
  * on the same activity_reviews row VIL-366 already uses to reorder this household's
  * next find. It does not send an acknowledgment, and it does not read a price.
+ *
+ * THE WORKSTREAM CHECK-BACK (VIL-419) rides last. It is a follow-up on a thread
+ * Hale is still in the middle of, once that thread's check-back time has passed.
+ * Its own flag (WORKSTREAMS_ENABLED) is strict `true` and default off. While the
+ * flag is off the sweep returns before it reads anything.
  */
 export const GET = cronRoute('nudge', async () => {
   try {
@@ -129,6 +135,7 @@ export const GET = cronRoute('nudge', async () => {
       verdict: createVerdictReader(reviewVerdictClient),
       now: answeredAt,
     });
+    const workstreamFollowups = await runWorkstreamFollowupSweep(db());
     return NextResponse.json(
       {
         ok: true,
@@ -145,6 +152,7 @@ export const GET = cronRoute('nudge', async () => {
         reviewCapture,
         midActivityAsks,
         midActivityAnswers,
+        workstreamFollowups,
       },
       { status: 200 },
     );

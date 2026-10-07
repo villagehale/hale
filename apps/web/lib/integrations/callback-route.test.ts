@@ -13,7 +13,6 @@ const noticeMock = vi.fn();
 const readProfileMock = vi.fn();
 const readSubMock = vi.fn();
 const accountHeldMock = vi.fn();
-const groupReceiptMock = vi.fn();
 const holdNameMock = vi.fn();
 const kickMock = vi.fn();
 const freshMock = vi.fn();
@@ -48,9 +47,6 @@ vi.mock('~/lib/integrations/store', () => ({
 vi.mock('~/lib/integrations/google-profile', () => ({
   readGoogleGivenName: (...a: unknown[]) => readProfileMock(...a),
   readGoogleAccountSub: (...a: unknown[]) => readSubMock(...a),
-}));
-vi.mock('~/lib/channel/linq/group-coparent', () => ({
-  sendCoparentGroupCalendarReceipt: (...a: unknown[]) => groupReceiptMock(...a),
 }));
 vi.mock('~/lib/channel/identity/parent-call-name', () => ({
   holdGoogleGivenName: (...a: unknown[]) => holdNameMock(...a),
@@ -91,7 +87,6 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
       readProfileMock,
       readSubMock,
       accountHeldMock,
-      groupReceiptMock,
       holdNameMock,
       kickMock,
       freshMock,
@@ -105,7 +100,6 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
     readProfileMock.mockResolvedValue(null);
     readSubMock.mockResolvedValue(null);
     accountHeldMock.mockResolvedValue(false);
-    groupReceiptMock.mockResolvedValue('skipped');
     holdNameMock.mockResolvedValue('held');
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
@@ -235,7 +229,6 @@ describe('GET /api/integrations/callback — the text surface', () => {
     noticeMock.mockResolvedValue({ status: 'sent', channelMessageId: 'cm-1' });
     readSubMock.mockResolvedValue(null);
     accountHeldMock.mockResolvedValue(false);
-    groupReceiptMock.mockResolvedValue('skipped');
     authMock.mockResolvedValue({ user: { id: 'ext-minter' } });
     resolveUserIdMock.mockResolvedValue(MINTER);
   });
@@ -426,7 +419,6 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
       readProfileMock,
       readSubMock,
       accountHeldMock,
-      groupReceiptMock,
       holdNameMock,
       noticeMock,
       kickMock,
@@ -442,7 +434,6 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     readProfileMock.mockResolvedValue(null);
     readSubMock.mockResolvedValue(null);
     accountHeldMock.mockResolvedValue(false);
-    groupReceiptMock.mockResolvedValue('skipped');
     holdNameMock.mockResolvedValue('held');
     saveConnectionMock.mockResolvedValue({ connectId: CONNECT_ID });
     authMock.mockResolvedValue({ user: { id: 'ext-minter' } });
@@ -470,6 +461,76 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     });
     const res = await callCallback(await minterState());
     expect(location(res)).toContain('connect=denied');
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects calendar.events while the write-scope flag is off', async () => {
+    vi.stubEnv('GOOGLE_WRITE_SCOPES_ENABLED', '');
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+    });
+    const res = await callCallback(await minterState());
+    expect(location(res)).toContain('connect=denied');
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts calendar.events for an allowlisted user while the flag is unset', async () => {
+    vi.stubEnv('GOOGLE_WRITE_SCOPES_ENABLED', '');
+    vi.stubEnv('GOOGLE_WRITE_SCOPES_ALLOWLIST', MINTER);
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+    });
+    const accepted = await callCallback(await minterState());
+    expect(location(accepted)).toContain('connect=gcal');
+    expect(saveConnectionMock).toHaveBeenCalled();
+
+    saveConnectionMock.mockClear();
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/gmail.send',
+    });
+    const denied = await callCallback(await minterState());
+    expect(location(denied)).toContain('connect=denied');
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects calendar.events for a user who is not on the allowlist while the flag is unset', async () => {
+    vi.stubEnv('GOOGLE_WRITE_SCOPES_ENABLED', '');
+    vi.stubEnv('GOOGLE_WRITE_SCOPES_ALLOWLIST', '11111111-1111-4111-8111-111111111111');
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+    });
+    const res = await callCallback(await minterState());
+    expect(location(res)).toContain('connect=denied');
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts calendar.events when the write-scope flag is on, and still rejects gmail.send', async () => {
+    vi.stubEnv('GOOGLE_WRITE_SCOPES_ENABLED', 'true');
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+    });
+    const accepted = await callCallback(await minterState());
+    expect(location(accepted)).toContain('connect=gcal');
+    expect(saveConnectionMock).toHaveBeenCalled();
+
+    saveConnectionMock.mockClear();
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/gmail.send',
+    });
+    const denied = await callCallback(await minterState());
+    expect(location(denied)).toContain('connect=denied');
     expect(saveConnectionMock).not.toHaveBeenCalled();
   });
 
@@ -509,7 +570,6 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     expect(location(res)).toBe('https://app.example.com/connected?provider=gcal&status=own_link');
     expect(saveConnectionMock).not.toHaveBeenCalled();
     expect(noticeMock).not.toHaveBeenCalled();
-    expect(groupReceiptMock).not.toHaveBeenCalled();
     expect(holdNameMock).not.toHaveBeenCalled();
   });
 

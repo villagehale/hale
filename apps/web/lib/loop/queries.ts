@@ -1,5 +1,5 @@
-import { type Database, schema } from '@hale/db';
-import { and, asc, eq, gte, isNull, lte, ne } from 'drizzle-orm';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
+import { and, asc, eq, gte, lte, ne } from 'drizzle-orm';
 
 /**
  * Persistence for the weekly-plan composer (VIL-217 — "the Sunday brain"). Every
@@ -151,7 +151,7 @@ export async function listFamilyEventsInWindow(
         gte(schema.familyEvents.startsAt, startInstant),
         lte(schema.familyEvents.startsAt, endInstant),
         ne(schema.familyEvents.source, 'placement'),
-        isNull(schema.familyEvents.deletedAt),
+        householdFamilyEvent(),
       ),
     )
     .orderBy(asc(schema.familyEvents.startsAt));

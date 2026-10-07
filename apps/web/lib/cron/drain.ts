@@ -757,6 +757,9 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   const { loopTemplateRenderer } = await import('~/lib/loop/templates/registry');
   const { productionChannels } = await import('~/lib/channel/adapters/production');
   const { createCalendarInviteSender } = await import('~/lib/loop/calendar-invite');
+  const { createGoogleCalendarPlacement } = await import(
+    '~/lib/integrations/google-calendar-placement'
+  );
   const { productionCalendarVoice } = await import('~/lib/loop/voice/calendar-invite-voice');
 
   const channels = productionChannels(db());
@@ -765,6 +768,7 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   // through. Both execution paths get it: an approved placement (actions.approved) and
   // an autonomous one (events.ingested). Unbound, a placement would land on Hale's
   // calendar and nowhere else, which is the hole this closes.
+  const googlePlacement = createGoogleCalendarPlacement(db());
   const calendarInvites = createCalendarInviteSender(db(), {
     channels,
     renderer: loopTemplateRenderer,
@@ -792,9 +796,14 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
       {
         boss: boss as unknown as DrainBoss,
         handlers: {
-          runOrchestrator: (job) => runOrchestrator(job, { calendarInvites }),
+          runOrchestrator: (job) =>
+            runOrchestrator(job, { calendarInvites, googleCalendar: googlePlacement }),
           executeApprovedAction: (input) =>
-            executeApprovedAction(input, { ...defaultExecuteApprovedDeps(), calendarInvites }),
+            executeApprovedAction(input, {
+              ...defaultExecuteApprovedDeps(),
+              calendarInvites,
+              googleCalendar: googlePlacement,
+            }),
           rerank: (familyId) => upsertFeedRank(db(), familyId).then(() => undefined),
           channelSend: (message) =>
             dispatchLoopMessage(

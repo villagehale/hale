@@ -10,10 +10,13 @@ import {
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { linqApiKey, linqGroupCoparentEnabled } from './config';
 import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
+import { type GroupHoldReason, groupAudienceAllows } from './group-audience';
 import { groupPassedSyncLine, groupPickedSyncLine } from './group-coparent-copy';
+import { namesTeen } from './kid-event';
 import { LinqSendError, sendLinqChatMessage } from './transport';
 
 /**
@@ -24,10 +27,14 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * kill switch `LINQ_GROUP_COPARENT=off`, leaves the caller's current door.
  * A parent who texts Hale 1:1 is answered in that thread; this resolver is not
  * the reply door.
+ *
+ * With `LINQ_GROUP_ONBOARDING_V2_ENABLED`, a claimed chat is the target only for
+ * a `contentClass` everyone in it may see (group-audience.ts); otherwise the
+ * caller's 1:1 door, with the hold named in `reason`.
  */
 export type FamilyOutboundTarget =
   | { channel: 'group'; chatId: string; familyId: string }
-  | { channel: 'legacy' };
+  | { channel: 'legacy'; reason?: GroupHoldReason };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
@@ -54,6 +61,9 @@ const DISCRETIONARY_TEMPLATES = [
 
 const SYNC_TEMPLATE = 'linq:group_sync';
 
+/** A picked, passed or duty decision about a kid's activity: the household's schedule. */
+const DECISION_SYNC_CLASS: ContentClass = 'schedule';
+
 /**
  * How a group send spends the household budget.
  *
@@ -77,6 +87,7 @@ export type GroupBubbleKind =
 export async function familyOutboundTarget(
   database: Database,
   familyId: string,
+  options: { contentClass?: ContentClass } = {},
 ): Promise<FamilyOutboundTarget> {
   if (!linqGroupCoparentEnabled()) return { channel: 'legacy' };
   // A unit double with no query surface has no group to claim. Production
@@ -89,6 +100,12 @@ export async function familyOutboundTarget(
     .limit(1);
   const chatId = rows[0]?.linqGroupChatId;
   if (!chatId) return { channel: 'legacy' };
+  const audience = await groupAudienceAllows(
+    database,
+    chatId,
+    options.contentClass ?? 'unclassified',
+  );
+  if (!audience.allowed) return { channel: 'legacy', reason: audience.reason };
   return { channel: 'group', chatId, familyId };
 }
 
@@ -115,10 +132,14 @@ export async function familyOutboundTargetForUser(
   return familyOutboundTarget(database, seat.familyId);
 }
 
-interface GroupSpend {
+export interface GroupSpend {
   discretionaryDay: number;
   discretionaryWeek: number;
   ceilingToday: number;
+  /** Instants inside each window, oldest-first is not required. */
+  discretionaryDayAt: Date[];
+  discretionaryWeekAt: Date[];
+  ceilingTodayAt: Date[];
 }
 
 export async function readGroupBubbleSpend(
@@ -126,7 +147,14 @@ export async function readGroupBubbleSpend(
   input: { familyId: string; chatId: string; now: Date },
 ): Promise<GroupSpend> {
   if (typeof database.select !== 'function') {
-    return { discretionaryDay: 0, discretionaryWeek: 0, ceilingToday: 0 };
+    return {
+      discretionaryDay: 0,
+      discretionaryWeek: 0,
+      ceilingToday: 0,
+      discretionaryDayAt: [],
+      discretionaryWeekAt: [],
+      ceilingTodayAt: [],
+    };
   }
   const since = new Date(input.now.getTime() - WEEK_MS);
   const rows = await database
@@ -163,10 +191,15 @@ export async function readGroupBubbleSpend(
   const ceiling = sent.filter(
     (row) => row.category !== 'reply' || row.templateKey === SYNC_TEMPLATE,
   );
+  const discretionaryDayRows = discretionary.filter((row) => row.createdAt.getTime() >= dayAgo);
+  const ceilingTodayRows = ceiling.filter((row) => row.createdAt.getTime() >= dayAgo);
   return {
-    discretionaryDay: discretionary.filter((row) => row.createdAt.getTime() >= dayAgo).length,
+    discretionaryDay: discretionaryDayRows.length,
     discretionaryWeek: discretionary.length,
-    ceilingToday: ceiling.filter((row) => row.createdAt.getTime() >= dayAgo).length,
+    ceilingToday: ceilingTodayRows.length,
+    discretionaryDayAt: discretionaryDayRows.map((row) => row.createdAt),
+    discretionaryWeekAt: discretionary.map((row) => row.createdAt),
+    ceilingTodayAt: ceilingTodayRows.map((row) => row.createdAt),
   };
 }
 
@@ -212,6 +245,40 @@ async function householdQuiet(database: Database, familyId: string, now: Date): 
   return isWithinQuietHours(now, timeZone, QUIET_START, QUIET_END);
 }
 
+/**
+ * When a rolling cap releases. The pivot is the message that has to age out
+ * before the count drops below the max (`inWindow[count - max]`). Several
+ * caps can bind at once; the send stays held until the latest of them.
+ * `+ 1ms` is the first instant `createdAt >= now - window` no longer holds.
+ */
+function windowResetsAt(timestamps: readonly Date[], max: number, windowMs: number): Date | null {
+  if (max <= 0 || timestamps.length < max) return null;
+  const ordered = [...timestamps].sort((a, b) => a.getTime() - b.getTime());
+  const pivot = ordered[ordered.length - max];
+  if (!pivot) return null;
+  return new Date(pivot.getTime() + windowMs + 1);
+}
+
+export function groupCapResetsAt(kind: GroupBubbleKind, spend: GroupSpend, now: Date): Date {
+  const resets: Date[] = [];
+  const push = (at: Date | null) => {
+    if (at) resets.push(at);
+  };
+  if (kind !== 'uncapped' && kind !== 'rec_morning' && spend.ceilingToday >= GROUP_HARD_DAY_MAX) {
+    push(windowResetsAt(spend.ceilingTodayAt, GROUP_HARD_DAY_MAX, DAY_MS));
+  }
+  if (kind === 'discretionary') {
+    if (spend.discretionaryDay >= GROUP_DISCRETIONARY_DAY_MAX) {
+      push(windowResetsAt(spend.discretionaryDayAt, GROUP_DISCRETIONARY_DAY_MAX, DAY_MS));
+    }
+    if (spend.discretionaryWeek >= GROUP_DISCRETIONARY_WEEK_MAX) {
+      push(windowResetsAt(spend.discretionaryWeekAt, GROUP_DISCRETIONARY_WEEK_MAX, WEEK_MS));
+    }
+  }
+  if (resets.length === 0) return new Date(now.getTime() + DAY_MS + 1);
+  return resets.reduce((latest, at) => (at.getTime() > latest.getTime() ? at : latest));
+}
+
 function kindHeld(kind: GroupBubbleKind, spend: GroupSpend): 'group_cap' | null {
   if (kind === 'uncapped') return null;
   const ceiling = spend.ceilingToday >= GROUP_HARD_DAY_MAX;
@@ -235,7 +302,8 @@ export type FamilyOutboundDelivery =
       chatId: string | null;
       linkOmitted?: 'link_on_new_chat';
     }
-  | { status: 'held'; reason: 'group_cap' | 'quiet_hours' | 'coparent_ask' }
+  | { status: 'held'; reason: 'group_cap'; until: Date }
+  | { status: 'held'; reason: 'quiet_hours' | 'coparent_ask' }
   | { status: 'skipped'; reason: string };
 
 function skippedRefusal(familyId: string, err: unknown): FamilyOutboundDelivery | null {
@@ -317,7 +385,7 @@ export async function deliverFamilyOutbound(
         { familyId: input.familyId, kind },
         'family outbound: group cap reached — not sent, and not retried on SMS',
       );
-      return { status: 'held', reason: held };
+      return { status: 'held', reason: held, until: groupCapResetsAt(kind, spend, now) };
     }
     if (kind === 'rec_morning' && spend.ceilingToday >= GROUP_HARD_DAY_MAX) {
       console.warn(
@@ -440,10 +508,25 @@ export async function familySpeech(
   return { name, language };
 }
 
+/** The names of this family's 13+ children as of `now`: never said in a group line (rule #1). */
+async function familyTeenNames(database: Database, familyId: string, now: Date): Promise<string[]> {
+  const children = await database
+    .select({
+      id: schema.children.id,
+      name: schema.children.name,
+      dateOfBirth: schema.children.dateOfBirth,
+    })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  const teens = teenChildIds(children, now);
+  return children.filter((child) => teens.has(child.id)).map((child) => child.name);
+}
+
 /**
  * Queue one picked or passed activity from a 1:1 thread. The group hears it
  * only after the thread has been quiet. A question, a piece of advice, or a
- * decision this template does not cover is not queued.
+ * decision this template does not cover is not queued, and neither is one about a
+ * 13+ child.
  */
 export async function queueGroupActivityDecision(
   database: Database,
@@ -455,7 +538,9 @@ export async function queueGroupActivityDecision(
     now: Date;
   },
 ): Promise<'queued' | 'skipped'> {
-  const target = await familyOutboundTarget(database, input.familyId);
+  const target = await familyOutboundTarget(database, input.familyId, {
+    contentClass: DECISION_SYNC_CLASS,
+  });
   if (target.channel !== 'group') return 'skipped';
   if (input.originChatId !== null && input.originChatId === target.chatId) return 'skipped';
   const { decision } = input;
@@ -466,6 +551,8 @@ export async function queueGroupActivityDecision(
   if (decision.decision === 'duty' && !dutyTitleMayBeSpoken(decision.activity)) return 'skipped';
   const activity = decision.activity.trim();
   const kid = decision.kid.trim();
+  const teens = await familyTeenNames(database, input.familyId, input.now);
+  if (namesTeen(`${activity} ${kid}`, teens)) return 'skipped';
   const day = timed ? (decision.day?.trim() ?? null) : null;
   const time = timed ? (decision.time?.trim() ?? null) : null;
   const flushAfter = new Date(input.now.getTime() + SETTLE_MS);
@@ -538,7 +625,9 @@ export async function noteGroupSyncConversation(
   input: { familyId: string; originChatId: string | null; now: Date },
 ): Promise<void> {
   if (typeof database.update !== 'function') return;
-  const target = await familyOutboundTarget(database, input.familyId);
+  const target = await familyOutboundTarget(database, input.familyId, {
+    contentClass: DECISION_SYNC_CLASS,
+  });
   if (target.channel !== 'group') return;
   if (input.originChatId !== null && input.originChatId === target.chatId) return;
   await database
@@ -555,7 +644,8 @@ export async function noteGroupSyncConversation(
 /**
  * Send the waiting decisions whose 1:1 has been quiet. One bubble, at most
  * three lines, never a second bubble for the same sitting. Quiet hours hold
- * the bubble; the rows stay queued.
+ * the bubble; the rows stay queued. A row about a child who is 13+ by now is
+ * withheld: marked flushed and never said.
  */
 export async function flushGroupDecisionSyncs(
   database: Database,
@@ -589,8 +679,10 @@ export async function flushGroupDecisionSyncs(
   }
   let sent = 0;
   let held = 0;
-  for (const [familyId, rows] of byFamily) {
-    const target = await familyOutboundTarget(database, familyId);
+  for (const [familyId, queued] of byFamily) {
+    const target = await familyOutboundTarget(database, familyId, {
+      contentClass: DECISION_SYNC_CLASS,
+    });
     if (target.channel !== 'group') {
       await database
         .update(schema.groupDecisionSync)
@@ -603,6 +695,19 @@ export async function flushGroupDecisionSyncs(
         );
       continue;
     }
+    const teens = await familyTeenNames(database, familyId, input.now);
+    const withheld = queued
+      .filter((row) => namesTeen(`${row.activity} ${row.kid}`, teens))
+      .map((row) => row.id);
+    if (withheld.length > 0) {
+      await database
+        .update(schema.groupDecisionSync)
+        .set({ flushedAt: input.now })
+        .where(inArray(schema.groupDecisionSync.id, withheld));
+      console.info({ familyId, withheld: withheld.length }, 'family outbound: teen sync withheld');
+    }
+    const rows = queued.filter((row) => !withheld.includes(row.id));
+    if (rows.length === 0) continue;
     if (await householdQuiet(database, familyId, input.now)) {
       held += 1;
       continue;
@@ -722,8 +827,16 @@ export async function sendClaimedGroupLine(
     now: Date;
     dedupeKey: string;
     templateKey: string;
+    contentClass: ContentClass;
   },
-): Promise<'sent' | 'not_configured' | 'not_the_group' | 'already_sent' | 'not_sent'> {
+): Promise<
+  | 'sent'
+  | 'not_configured'
+  | 'not_the_group'
+  | 'already_sent'
+  | 'not_sent'
+  | 'group_audience_refused'
+> {
   if (!linqApiKey()) return 'not_configured';
   const [family] = await database
     .select({ linqGroupChatId: schema.families.linqGroupChatId })
@@ -732,6 +845,9 @@ export async function sendClaimedGroupLine(
     .limit(1);
   if (!family?.linqGroupChatId || family.linqGroupChatId !== input.chatId) {
     return 'not_the_group';
+  }
+  if (!(await groupAudienceAllows(database, input.chatId, input.contentClass)).allowed) {
+    return 'group_audience_refused';
   }
   const [claimed] = await database
     .insert(schema.channelMessages)

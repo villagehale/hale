@@ -39,13 +39,11 @@ export type PromptMemoryKind = ModelMemoryClass;
 export const modelClassificationShape = {
   memoryClass: z
     .enum(MODEL_MEMORY_CLASSES)
-    .optional()
     .describe(
       'enduring (who the family is, names, ages, home, a settled routine), obligation (a one-off event or a declined activity), or curiosity (a passing question).',
     ),
   disposition: z
     .enum(MODEL_DISPOSITIONS)
-    .optional()
     .describe(
       'confirmed, declined, or asked. A declined or rejected activity is declined, never confirmed.',
     ),
@@ -65,16 +63,10 @@ export const modelClassificationShape = {
 type MemoryFactType = FactWrite['factType'];
 
 export interface ModelClassificationInput {
-  memoryClass?: ModelMemoryClass | null;
-  disposition?: ModelDisposition | null;
+  memoryClass: ModelMemoryClass;
+  disposition: ModelDisposition;
   observedAt?: string | null;
   expiresAt?: string | null;
-  /**
-   * What an omitted class means for this writer. The coach's tool is a parent
-   * statement, so an omission is identity. The distiller's omission is a
-   * passing curiosity — an unclassified hunch must not become who the family is.
-   */
-  omittedClass: 'enduring' | 'curiosity';
 }
 
 interface ValuePatch {
@@ -100,10 +92,6 @@ function parseInstant(value: string | null | undefined): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function classOf(input: ModelClassificationInput): ModelMemoryClass {
-  return input.memoryClass ?? (input.omittedClass === 'enduring' ? 'enduring' : 'curiosity');
-}
-
 /**
  * Place one model write. Declined wins over whatever class the model also
  * sent. A question wins over an enduring class. Neither path consults the key.
@@ -112,8 +100,7 @@ export function acceptModelMemoryClass(
   input: ModelClassificationInput,
   now: Date,
 ): AcceptedClassification {
-  const memoryClass = classOf(input);
-  const disposition = input.disposition ?? (memoryClass === 'curiosity' ? 'asked' : 'confirmed');
+  const { memoryClass, disposition } = input;
   const eventAt = parseInstant(input.observedAt);
   const validFrom = resolveValidFrom(input.observedAt ?? undefined, now);
 
@@ -240,9 +227,8 @@ export interface ClassifiedCommit {
   inferredBy: string;
   source: MemorySource;
   now: Date;
-  omittedClass: 'enduring' | 'curiosity';
-  memoryClass?: ModelMemoryClass | null;
-  disposition?: ModelDisposition | null;
+  memoryClass: ModelMemoryClass;
+  disposition: ModelDisposition;
   observedAt?: string | null;
   expiresAt?: string | null;
   correctsKey?: string | null;

@@ -56,8 +56,10 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `FOLLOWUP_ASKS_ENABLED` | `true` | off | `false` | Noah |
 | `GOING_COUNT_ENABLED` | `true` | off | `false` | Noah |
 | `GOOGLE_PUSH_SYNC_ENABLED` | `true` | off | `false` | Noah |
+| `GOOGLE_WRITE_SCOPES_ENABLED` | `true` | off | unset, or anything except `true` | Noah |
 | `IMESSAGE_UPGRADE_ASK` | `on` | off | empty, or `off` | Sloane |
 | `LINQ_GROUP_MEMBERS_ENABLED` | `true` | off | `false` | Noah |
+| `LINQ_GROUP_ONBOARDING_V2_ENABLED` | `true` (trimmed) | off | empty, or `false` | Noah (copy: Sloane) |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | `true` | off | `false` | Noah |
 | `LINQ_POLLS` | `on` | off | empty, or `off` | Sloane |
 | `LOOP_SEND_ENABLED` | `true` | off | `false` | Noah |
@@ -71,6 +73,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `VILLAGE_INTROS_ENABLED` | `true` | off | `false` | Noah |
 | `WATCHED_SPOTS_ENABLED` | `true` | off | `false` | Noah |
 | `WEEKDAY_CARE_ENABLED` | `true` | off | `false` | Sloane |
+| `WORKSTREAMS_ENABLED` | `true` | off | `false` | Noah |
 
 Allowlists are separate reads. Empty in `.env.example`. A non-empty list turns those families on while the global flag is off. Two exceptions: `VILLAGE_INTROS_FAMILY_ALLOWLIST` only narrows a flag that is already `true`, and `MEMORY_DIGEST_FAMILY_ALLOWLIST` applies only together with `MEMORY_DIGEST_APPLY=true`. Live contents are unconfirmed, verify in Vercel env.
 
@@ -83,6 +86,7 @@ Allowlists are separate reads. Empty in `.env.example`. A non-empty list turns t
 | `FOLLOWUP_ASKS_FAMILY_ALLOWLIST` | `FOLLOWUP_ASKS_ENABLED` |
 | `MEMORY_DIGEST_FAMILY_ALLOWLIST` | `MEMORY_DIGEST_APPLY` (apply also needs this list) |
 | `TRAVEL_BRIEF_FAMILY_ALLOWLIST` | `TRAVEL_BRIEF_ENABLED` |
+| `GOOGLE_WRITE_SCOPES_ALLOWLIST` | `GOOGLE_WRITE_SCOPES_ENABLED` (Hale user ids, not family ids; a listed user is armed while the flag is unset) |
 | `VILLAGE_INTROS_FAMILY_ALLOWLIST` | `VILLAGE_INTROS_ENABLED` |
 | `METRICS_EXCLUDED_FAMILY_IDS` | none (drops those families from digest metrics) |
 
@@ -150,6 +154,7 @@ Code is merged. The repo still has these off. Flip one at a time, during a week 
 | `LOOP_SEND_ENABLED` | The weekly plan and calendar reminders are allowed to send. | `channel_messages` for `weekly_plan` and reminders with status `failed`, and new `email_opt_outs`. | `false` | Noah |
 | `WEEKDAY_CARE_ENABLED` | Hale asks once how the household covers weekdays. | A second weekday question to the same family. | `false` | Sloane |
 | `WATCHED_SPOTS_ENABLED` | Hale polls a spot the parent asked to watch. | Spot texts with status `failed`, or a text for a spot the parent did not name. | `false` | Noah |
+| `WORKSTREAMS_ENABLED` | Open workstreams ride the reply context, and a due check-back can send one follow-up. | A follow-up during quiet hours, or a second follow-up to the same family the same day. | `false` | Noah |
 | `TRAVEL_BRIEF_ENABLED` | A trip can produce a short brief. The family also has to pass `F14_ENABLED`. | A brief for a family that is dark on F14 (the count should stay `dark`). | `false` | Sloane |
 | `CHECK_IN_ANCHOR_ENABLED` | The evening check-in can name that day's activity. The lane still needs F14. | An evening text that names an activity from a different day. | `false` | Sloane |
 | `ACTIVITY_REVIEWS_ENABLED` | How an activity went is reduced to a verdict. This pass sends nothing. | Verdicts filed for a family that did not answer. | `false` | Noah |
@@ -177,6 +182,8 @@ These stay off for the first families. The kill value is in the inventory table.
 - `SOCIAL_WATCHLIST`: the watchlist poll stays off.
 - `VILLAGE_INTROS_ENABLED`: cross-household intros stay off. A non-empty allowlist narrows the flag. It does not add families while the flag is off.
 - `IMESSAGE_UPGRADE_ASK`: the later year-retention ask stays off.
+- `GOOGLE_WRITE_SCOPES_ENABLED`: stays unset in production. Linq delivers inbound texts to the production webhook, so a preview URL cannot receive a parent text. `GOOGLE_WRITE_SCOPES_ALLOWLIST` is comma-separated Hale user ids: only those accounts are asked for `calendar.events` and `gmail.compose`, and only their placements and Gmail drafts write to Google. Everyone else keeps today's readonly consent, and a placement still writes `family_events` and sends the iTIP invite. Preview may set the flag to `true` with an empty allowlist. Flip the global flag in production only after Google verification approves those scopes.
+- `LINQ_GROUP_ONBOARDING_V2_ENABLED`: when Hale is added to a family's group, it reads who is in the chat (`linq_group_rosters`) and claims the chat for the one family whose verified parent is in it. It seats nobody and sends nothing. Leave it off until the who's-who asks, the roles-confirmed send gate, and 1:1 connect links ship. Before the flag goes on, a sandbox probe has to show which webhook fires when a person adds Hale's line, and the live Linq subscription (do not change it in this PR) has to include `chat.created` and `participant.added` (the Sep 23 snapshot subscribed to `message.*` only). With the flag on and no send gate, a claimed chat would receive proactive group lines before anyone has said who they are. Migration `0158_linq_group_roster` must be applied first; until it is, the roster step answers `not_migrated`. Green-bubble / MMS groups cannot add a Linq line.
 
 ## First five families
 

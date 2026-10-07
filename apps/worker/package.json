@@ -8,7 +8,10 @@
     "./orchestrator": "./src/orchestrator/index.ts",
     "./reviewer": "./src/agents/reviewer.ts",
     "./redaction": "./src/redaction/redact.ts",
-    "./executor": "./src/services/executor.ts"
+    "./executor": "./src/services/executor.ts",
+    "./google-calendar-api": "./src/services/google-calendar-api.ts",
+    "./google-calendar-placement": "./src/services/google-calendar-placement.ts",
+    "./gmail-drafts": "./src/services/gmail-drafts.ts"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -38,6 +41,7 @@
     "eval:followup-voice": "node evals/run-followup-voice-eval.mjs --cached-only",
     "eval:calendar-voice": "node evals/run-calendar-voice-eval.mjs --cached-only",
     "eval:identity-ask": "node evals/run-identity-ask-eval.mjs --cached-only",
+    "eval:add-them-yourself": "node evals/run-add-them-yourself-eval.mjs --cached-only",
     "eval:reminder-voice": "node evals/run-reminder-voice-eval.mjs --cached-only",
     "eval:intro-voice": "node evals/run-intro-voice-eval.mjs --cached-only",
     "eval:reply-resolver": "node evals/run-reply-resolver-eval.mjs --cached-only",

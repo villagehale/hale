@@ -73,6 +73,26 @@ export function turnSignalAborted(): boolean {
 }
 
 /**
+ * Run the turn inside the deadline, then await work the turn scheduled but
+ * must not be timed by that deadline.
+ *
+ * A check-back extraction that is still inside `runTurn` can abort the turn
+ * after the reply has already gone out. The abort then logs "nothing sent"
+ * and records a deferred re-drive. Trailed work is awaited only after the
+ * turn has resolved, and a rejection from it is swallowed: the parent
+ * already has the text.
+ */
+export async function runTurnThen<T>(
+  signal: AbortSignal,
+  work: () => Promise<T>,
+  trailed: readonly Promise<unknown>[],
+): Promise<T> {
+  const result = await runTurn(signal, work);
+  await Promise.all(trailed.map((job) => Promise.resolve(job).catch(() => undefined)));
+  return result;
+}
+
+/**
  * Run `work` inside the turn's abort scope, and reject when `signal` aborts
  * even if `work` is still going. The rejection is {@link DeadlineError} with
  * {@link TURN_TIMEOUT}. `work` is still attached, so its later rejection is

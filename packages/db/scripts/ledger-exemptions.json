@@ -1,0 +1,38 @@
+{
+  "entries": [
+    {
+      "tag": "0055_family_events",
+      "reason": "Edited in place after it was applied (family_event_source enum, PR 320). The ledger holds the original file hash; the slot's created_at is that migration's when."
+    },
+    {
+      "tag": "0063_event_reminders",
+      "reason": "Edited in place after it was applied (RLS on event_reminders, PR 340). The ledger holds the original file hash."
+    },
+    {
+      "tag": "0098_coparent_join_link",
+      "reason": "Edited in place after it was applied so the Deploy migrate leg could re-run it (PRs 609 and 610). The ledger holds the original file hash."
+    },
+    {
+      "tag": "0105_channel_signin_token",
+      "reason": "Edited in place after it was applied so the Deploy migrate leg could re-run it (PRs 609 and 610). The ledger holds the original file hash."
+    },
+    {
+      "tag": "0144_family_trips_no_picks_backoff",
+      "reason": "Reused when 1781469638000, which production recorded for the reverted 0144_linq_contact_card_shares migration. drizzle migrate will not run this file. The travel-brief columns ship in 0150_family_trips_attempt_columns."
+    },
+    {
+      "tag": "0127_instinct_memory",
+      "reason": "Production's watermark passed this file without recording its hash or its when, so drizzle will not apply it. The same tables ship in 0155_instinct_memory_tables. This gap counts only after that later file's hash is in the ledger.",
+      "supersededBy": "0155_instinct_memory_tables"
+    },
+    {
+      "tag": "0049_conversation_note_key",
+      "reason": "conversations.note_key and conversations_family_note_key_idx already exist, but this file's hash and when were never recorded. Accepted only when the check sees that column and index. Not a blanket skip.",
+      "schema": {
+        "table": "conversations",
+        "column": "note_key",
+        "index": "conversations_family_note_key_idx"
+      }
+    }
+  ]
+}

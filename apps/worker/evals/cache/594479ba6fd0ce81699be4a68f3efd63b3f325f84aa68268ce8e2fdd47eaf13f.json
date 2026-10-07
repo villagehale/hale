@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message correctly handles an SMS add request. It clearly states Hale won't text Sam, names Sam by name, explains the correct process (Sam texts Hale directly), uses warm first-person language, and is concise without padding. No group chat is mentioned (correct for SMS), no phone number or link is provided, and the tone is friendly and straightforward."
+  }
+}

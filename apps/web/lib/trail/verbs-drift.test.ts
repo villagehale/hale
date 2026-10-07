@@ -40,6 +40,24 @@ const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages
  * like a direct literal.
  */
 const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
+  // VIL-419. Open and drop share one ternary; close and update share another.
+  // Expired and refused are literals and are also listed here so the file's
+  // whole set is in one place.
+  'apps/web/lib/memory/workstreams.ts': [
+    'workstream_opened',
+    'workstream_updated',
+    'workstream_closed',
+    'workstream_dropped',
+    'workstream_expired',
+    'workstream_refused',
+  ],
+  // The unsent page is a constant. The sent check-back is a literal.
+  'apps/web/lib/memory/workstream-followup.ts': [
+    'workstream_followed_up',
+    'workstream_followup_unsent',
+    'workstream_followup_deferred',
+    'workstream_followup_gave_up',
+  ],
   // VIL-399 — one helper writes the shared-group verbs. The literals in the
   // join and leave transactions are scanned directly as well.
   'apps/web/lib/channel/linq/multi-family.ts': [
@@ -198,6 +216,16 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'upgrade_already_paid',
   ],
   'apps/web/lib/integrations/store.ts': ['integration_connected', 'integration_revoked'],
+  // The placement and draft services forward the verb they already chose. The
+  // literals above the insert are scanned directly; this line is the pass-through.
+  'apps/web/lib/integrations/google-calendar-placement.ts': [
+    'integration.google_calendar_written',
+    'integration.google_calendar_failed',
+  ],
+  'apps/web/lib/integrations/gmail-draft-service.ts': [
+    'integration.gmail_draft_written',
+    'integration.gmail_draft_failed',
+  ],
   // A revive writes calendar_mirror_added; a start-time change writes calendar_mirror_moved.
   // The insert and the soft-delete are string literals and are scanned directly.
   'apps/web/lib/integrations/calendar-mirror.ts': [

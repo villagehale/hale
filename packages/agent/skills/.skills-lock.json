@@ -35,6 +35,10 @@
     "file": "classify-event.md",
     "sha256": "0f54e7398a8679da2ed8e8f5cbca1ca5c7fe567359c7e77f12858b41b36d2949"
   },
+  "coach-channel-group.md": {
+    "file": "coach-channel-group.md",
+    "sha256": "1268847e1b4f3e3b66de39437232c1c1aeff72fb3dd1d53c417a910ea9ba38f9"
+  },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
     "sha256": "86c425e7c5615b6ec71537d54d373a2deaffcc0bf1a9e59eb1fa53730a086594"
@@ -71,6 +75,10 @@
     "file": "extract-travel-booking.md",
     "sha256": "093b7bc5296211420219f72cb09d29cc84166854913360b3e3b5cb814b39a7dd"
   },
+  "extract-workstream.md": {
+    "file": "extract-workstream.md",
+    "sha256": "22739e47888873130a72601a02c22a67a8a180426c8bdfef4c1152b6a9108361"
+  },
   "followup-voice.md": {
     "file": "followup-voice.md",
     "sha256": "a40250614e7e1db958d96f55362ae1c46c6ca418b717e2ac9f842c7068837b79"
@@ -78,6 +86,22 @@
   "general-answer.md": {
     "file": "general-answer.md",
     "sha256": "c0a6f0eb71c7e9ab925407bbeac82ed77ad41498ee37612b0368c1b5ce520744"
+  },
+  "gmail-draft-coach.md": {
+    "file": "gmail-draft-coach.md",
+    "sha256": "67b457f08603daa8530c72c90ce31ba3ddd35c9906d144a5601ac69ce066f9c6"
+  },
+  "gmail-draft-notice.md": {
+    "file": "gmail-draft-notice.md",
+    "sha256": "bbc089b1b8eda41ced0e4b6d8f0e209d101046fd6a05636d62efbb1fcab4d44b"
+  },
+  "group-onboarding-voice.md": {
+    "file": "group-onboarding-voice.md",
+    "sha256": "1d9ba11f1e8c99debdd0c2ae308243e11992d39c78453dc17a27db6abcaf015a"
+  },
+  "group-roster-reading.md": {
+    "file": "group-roster-reading.md",
+    "sha256": "6a9301d78fcc8ea6ef799c4b11165941aeaed56cb95aed02ffc5dd7ceea7265f"
   },
   "identity-ask.md": {
     "file": "identity-ask.md",
@@ -133,11 +157,11 @@
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
-    "sha256": "6d01b7450609b15339e0bd3c96dde424f6dea673032e73f0740dabd5ea58e842"
+    "sha256": "18e9a6845972e3f3ea08eb7d7fa1b9e6e5451b7d518038df79ae441f1b9f6607"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "1bef58e091e2274decf2105a0aa603098467b820a84b8f9e0f9eed1dd9a23959"
+    "sha256": "2f6c6bb234225bd759fce4a10ca19a42e00ef7bc84251106e26233fdf6b2f80a"
   },
   "parse-civic-hours.md": {
     "file": "parse-civic-hours.md",
@@ -198,5 +222,9 @@
   "welcome-voice.md": {
     "file": "welcome-voice.md",
     "sha256": "de89851d9163a632d8b4dc0c0662f0f78b8d815df80862b13f5796b33a38d302"
+  },
+  "workstream-followup.md": {
+    "file": "workstream-followup.md",
+    "sha256": "96ee07a5fe9a4a28029ef04a79880f2bf59af03a9eb4c25dab10dbcbbf2f9b8a"
   }
 }

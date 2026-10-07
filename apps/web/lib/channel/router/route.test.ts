@@ -1,6 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
+
+const waitUntil = vi.hoisted(() => vi.fn());
+vi.mock('@vercel/functions', () => ({ waitUntil }));
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
@@ -431,6 +434,7 @@ function harness(
           role: 'primary_parent',
           primaryParentName: 'Sam',
           reply: SMS_ROUTE,
+          inGroup: false,
           ...options.context,
         };
 
@@ -1103,6 +1107,38 @@ describe('flood control', () => {
     expect(overflow.status).toBe('flood_held');
     expect(coach.calls).toBe(AGENT_TURNS_PER_HOUR);
     expect(h.transport.bodies().at(-1)).toBe(FLOOD_REPLY);
+  });
+
+  it('sends the flood line 1:1 on a family-group turn, never into the group', async () => {
+    const groupRoute: ReplyRoute = {
+      channel: 'imessage',
+      to: PHONE,
+      chatId: 'chat-family-group',
+      replyToMessageId: 'in-1',
+    };
+    const spent = async (inGroup: boolean) => {
+      const limiter = flooded();
+      for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
+        await limiter.check(PARENT, 'sms-agent-turn', {
+          limit: AGENT_TURNS_PER_HOUR,
+          windowSec: 3600,
+        });
+      }
+      const coach = fakeCoach();
+      const h = harness({ coach, limiter, context: { reply: groupRoute, inGroup } });
+      const result = await routeChannelMessage(h.deps, job());
+      return { result, coach, h };
+    };
+
+    const group = await spent(true);
+    expect(group.result.status).toBe('flood_held');
+    expect(group.coach.calls).toBe(0);
+    expect(group.h.transport.sent).toEqual([{ route: SMS_ROUTE, body: FLOOD_REPLY }]);
+
+    // Positive control: the same over-budget turn outside the group answers where it came from.
+    const direct = await spent(false);
+    expect(direct.result.status).toBe('flood_held');
+    expect(direct.h.transport.sent).toEqual([{ route: groupRoute, body: FLOOD_REPLY }]);
   });
 
   /**
@@ -3361,6 +3397,7 @@ describe('the disambiguation a clarifier owns', () => {
       role: 'primary_parent',
       primaryParentName: 'Sam',
       reply: SMS_ROUTE,
+      inGroup: false,
     });
     return {
       h,
@@ -3987,6 +4024,37 @@ describe('turn deadline (VIL-400)', () => {
     });
     expect(h.transport.sent).toEqual([]);
     expect(h.turns.deferredReasons).toEqual([expect.objectContaining({ reason: 'turn_timeout' })]);
+  });
+
+  it('returns the reply without waiting for the workstream extract', async () => {
+    waitUntil.mockClear();
+    let release: () => void = () => undefined;
+    const extracted = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started = false;
+    const h = harness({});
+    h.deps.rememberWorkstream = async () => {
+      started = true;
+      await extracted;
+    };
+
+    const result = await Promise.race([
+      routeChannelMessage(h.deps, job()),
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => reject(new Error('extract held the queue')), 2000);
+      }),
+    ]);
+
+    expect(result.status).toBe('agent_replied');
+    expect(started).toBe(true);
+    expect(h.transport.sent).toHaveLength(1);
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+    const pending = waitUntil.mock.calls[0]?.[0];
+    expect(pending).toBeInstanceOf(Promise);
+    release();
+    await extracted;
+    await pending;
   });
 
   it('treats a stalled stated-state read as nothing stated and still answers', async () => {

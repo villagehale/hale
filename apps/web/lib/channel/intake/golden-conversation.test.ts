@@ -215,12 +215,21 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
   if (capture.scheduleAdds.length > 0) {
     return { reply: 'Done, a weekly reminder for the swim.', capture };
   }
-  // A yes to the group: the number and phrase ride below the reply.
-  if (input.step === 'coparent' && capture.coparentGroup === true) {
+  // The test double is the model. Production does not read these phrases.
+  if (input.step === 'coparent' && /\bnew group\b/i.test(words)) {
     return {
-      reply: 'Start a group text with them and this number, then send the phrase below.',
-      capture,
+      reply: 'The number is below whenever you want.',
+      capture: { ...capture, coparentGroup: true, coparentGroupMode: 'new' },
     };
+  }
+  if (input.step === 'coparent' && /\bour group\b/i.test(words)) {
+    return {
+      reply: 'The number is below whenever you want to add me.',
+      capture: { ...capture, coparentGroup: true, coparentGroupMode: 'existing' },
+    };
+  }
+  if (input.step === 'coparent' && capture.coparentGroup === true) {
+    return { reply: 'Add the number below to your family group, whenever you like.', capture };
   }
   // A yes to the connector just asked is answered as a yes. The next ask
   // waits for the connect receipt or the next text.
@@ -513,11 +522,13 @@ describe('golden onboarding conversation', () => {
     expect(coparent.bodies.join('\n')).not.toMatch(/reminder/);
     assertTypingUntilSend(coparent.marks);
 
-    // A yes: the prose is the model's; the join line under it is real data, like a URL.
+    // Flag off: a yes is today's claim. The phrase rides under the model's prose.
+    // It is never an instruction to add Hale to a group this flag will not claim.
     const joined = await talk.say('yes');
     const [joinProse, ...joinLines] = (joined.bodies[0] ?? '').split('\n');
     expect(joinProse).toMatch(/below/);
     expect(joinLines.join('\n')).toContain(LINQ_GROUP_TRIGGER_PHRASE.en);
+    expect(joined.bodies.join('\n')).not.toMatch(/add this number to your group/i);
 
     expect(joined.outcome).toBe('intake');
 
@@ -527,6 +538,77 @@ describe('golden onboarding conversation', () => {
     expect(chat.marks).toContain('typing-start');
     expect(talk.transport.bodies().join('\n')).not.toMatch(/booked|enrolled|signed up|registered/i);
     expectNoCanned(talk.transport.bodies());
+  });
+
+  it('puts the phrase under a yes while the flag is off, including words about a new group', async () => {
+    const talk = conversation();
+    for (const words of [
+      'hi',
+      'M5V 2T6',
+      'Maya',
+      "she's 4",
+      'Dana',
+      'yes',
+      'ok',
+      'yes',
+      'ok',
+      'yes',
+    ]) {
+      await talk.say(words);
+    }
+    const ask = await talk.say('sounds good');
+    expect(ask.bodies.join('\n')).toMatch(/other parent\?$/);
+
+    const joined = await talk.say("let's start a new group");
+    expect(joined.bodies.join('\n')).toContain(LINQ_GROUP_TRIGGER_PHRASE.en);
+    expect(joined.bodies.join('\n')).not.toMatch(/add this number to your group/i);
+  });
+
+  it('with the flag on, puts only the number under an existing group and nothing under a plain yes', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const talk = conversation();
+    for (const words of [
+      'hi',
+      'M5V 2T6',
+      'Maya',
+      "she's 4",
+      'Dana',
+      'yes',
+      'ok',
+      'yes',
+      'ok',
+      'yes',
+    ]) {
+      await talk.say(words);
+    }
+    await talk.say('sounds good');
+
+    const plain = await talk.say('yes');
+    expect(plain.bodies.join('\n')).not.toContain(LINQ_GROUP_TRIGGER_PHRASE.en);
+    expect(plain.bodies.join('\n')).not.toContain('+1 555-555-0100');
+    expect(plain.bodies.join('\n')).not.toMatch(/add this number to your group/i);
+
+    const talk2 = conversation();
+    for (const words of [
+      'hi',
+      'M5V 2T6',
+      'Maya',
+      "she's 4",
+      'Dana',
+      'yes',
+      'ok',
+      'yes',
+      'ok',
+      'yes',
+      'sounds good',
+    ]) {
+      await talk2.say(words);
+    }
+    const existing = await talk2.say('add you to our group');
+    const lines = (existing.bodies[0] ?? '').split('\n');
+    expect(lines.at(-1)).toBe('+1 555-555-0100');
+    expect(existing.bodies.join('\n')).not.toContain(LINQ_GROUP_TRIGGER_PHRASE.en);
+    expect(existing.bodies.join('\n')).not.toMatch(/add this number to your group/i);
   });
 
   it('takes postal, kids, ages, a name, and both connections from the first message', async () => {

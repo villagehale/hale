@@ -3,17 +3,12 @@ import { eq, sql } from 'drizzle-orm';
 import { isCanaryInbound } from '~/lib/channel/canary/config';
 import { mediaUnsupportedReply } from '~/lib/channel/inbound-copy';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
-import { coldStartLadderEnabled } from '~/lib/channel/intake/cold-start/flags';
-import { judgeColdStartIntent } from '~/lib/channel/intake/cold-start/intent';
-import { planPull } from '~/lib/channel/intake/cold-start/pull';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type IntakeDeps, type KeywordAck, handleInboundSms } from '~/lib/channel/intake/machine';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
-import { replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { liveMemberMayTalk } from '~/lib/channel/linq/group-members';
 import { armDelayedImessageTyping } from '~/lib/channel/linq/presence';
-import { sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { isParentRole } from '~/lib/channel/role-scope';
 import type { MessageTransport } from '~/lib/channel/transport-address';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -110,6 +105,10 @@ export type InboundRouteOutcome =
   | 'duplicate'
   /** The machine handled it; its own outcome is the detail. */
   | 'intake'
+  /** A new parent's opening turn sent NOTHING: the model could not write it. Never
+   * folded into `intake`, which says Hale replied. The session stays owed a reply, and
+   * the first-reply sweep (intake/first-reply-recovery.ts) sends it within minutes. */
+  | 'intake_unsent'
   /** VIL-348 — a CASL keyword turn the machine did in full while sending NOTHING,
    * because the provider's own keyword handling had already answered the sender. Kept
    * out of `intake` because that value says Hale replied: the rate of this one is the
@@ -195,11 +194,16 @@ export async function routeInboundText(
     const outcome = await handleInboundSms(deps.database, inbound, intake);
     if (outcome.status === 'ignored' && outcome.reason === 'no_open_conversation') {
       await typing.stop();
-      const pulled = await maybeColdStartPull(deps, inbound);
-      if (pulled === 'sent') return 'intake';
       return handOffToConversation(deps, inbound);
     }
     if (outcome.status === 'ignored') return 'ignored';
+    if (outcome.status === 'first_touch_unsent') {
+      deps.log.error(
+        { providerMessageId: inbound.providerId, reason: outcome.reason },
+        'inbound: a first text got no reply; the first-reply sweep owes it one',
+      );
+      return 'intake_unsent';
+    }
     if (
       outcome.status === 'stopped' ||
       outcome.status === 'helped' ||
@@ -267,12 +271,16 @@ async function replyMediaUnsupported(
     return 'unsubscribed';
   }
 
-  const decision = await intake.limiter.check(
-    phoneBlindIndex(phoneE164),
-    'sms-inbound',
-    RATE_LIMITS['sms-inbound'],
-  );
-  if (!decision.allowed) return 'rate_limited';
+  // A family-group turn the Linq door already charged to the chat spends nothing here,
+  // exactly as in the machine.
+  if (inbound.budget !== 'chat') {
+    const decision = await intake.limiter.check(
+      phoneBlindIndex(phoneE164),
+      'sms-inbound',
+      RATE_LIMITS['sms-inbound'],
+    );
+    if (!decision.allowed) return 'rate_limited';
+  }
 
   if (intake.stopTyping) {
     try {
@@ -362,61 +370,6 @@ async function replyMediaUnsupported(
  * Nothing re-drives it inside the request: a retry arriving seconds later cannot tell a
  * dead attempt from one still in flight, and the reconciler can, because it uses age.
  */
-/**
- * VIL-392 pull. Flag off does not read. A placeholder does not leave: the
- * text falls through to C1 and the skip is logged.
- */
-async function maybeColdStartPull(
-  deps: InboundRouteDeps,
-  inbound: InboundMessage,
-): Promise<'sent' | 'skip'> {
-  if (!coldStartLadderEnabled()) return 'skip';
-  const judged = await judgeColdStartIntent({ text: inbound.body });
-  if (judged.intent !== 'set_me_up' && judged.intent !== 'what_can_you_do') return 'skip';
-  const phoneE164 = normalizePhoneE164(inbound.from);
-  if (!phoneE164) return 'skip';
-  const owner = await resolveVerifiedChannelByPhone(deps.database, phoneE164);
-  if (!owner) return 'skip';
-  const language = replyLanguage(inbound.body);
-  const plan = planPull({
-    intent: judged.intent,
-    language,
-    hasPlace: true,
-    hasAges: true,
-    channel: inbound.transport === 'imessage' ? 'imessage' : 'sms',
-    group: inbound.isGroup === true,
-    count: 0,
-    place: '',
-    ages: '',
-  });
-  if (!plan.mayLeave) {
-    deps.log.info(
-      { skipped: plan.skipped ?? 'copy_unlocked', intent: judged.intent },
-      'cold-start pull: not sent',
-    );
-    return 'skip';
-  }
-  const intake = deps.intake(inbound.transport ?? 'sms', linqTurnBind(inbound));
-  try {
-    await sendResolvingNewChat(intake.transport, { to: phoneE164, body: plan.body });
-  } catch (err) {
-    deps.log.error(
-      { err: err instanceof Error ? err.name : 'unknown', intent: judged.intent },
-      'cold-start pull: send failed',
-    );
-    return 'skip';
-  }
-  await deps.database.insert(schema.auditLog).values({
-    familyId: owner.familyId,
-    actor: owner.userId,
-    actionTaken: 'cold_start_pull',
-    targetTable: 'families',
-    targetId: owner.familyId,
-    after: { intent: judged.intent },
-  });
-  return 'sent';
-}
-
 async function handOffToConversation(
   deps: InboundRouteDeps,
   inbound: InboundMessage,

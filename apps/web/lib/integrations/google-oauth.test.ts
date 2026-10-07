@@ -16,6 +16,7 @@ describe('buildGoogleAuthUrl', () => {
   beforeEach(() => {
     process.env.GOOGLE_OAUTH_CLIENT_ID = 'client-123.apps.googleusercontent.com';
     process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'secret-abc';
+    process.env.GOOGLE_WRITE_SCOPES_ENABLED = undefined;
   });
   afterEach(() => {
     process.env = { ...prev };

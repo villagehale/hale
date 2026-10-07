@@ -7,6 +7,7 @@ import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { linqFromE164 } from './config';
 import { haleContactImageUrl } from './contact-card';
+import { groupAudienceAllows } from './group-audience';
 import {
   LinqSendError,
   addLinqParticipant,
@@ -228,7 +229,8 @@ export async function familyOwnsLinqGroupChat(
 
 /**
  * One text into a Linq chat Hale is already in, plus its ledger row.
- * A send that throws is `not_sent` — the caller already decided the claim.
+ * A send that throws is `not_sent` — the caller already decided the claim. A
+ * household group whose audience takes no reply is `group_audience_refused`.
  */
 export async function deliverLinqGroupNotice(
   database: Database,
@@ -242,7 +244,10 @@ export async function deliverLinqGroupNotice(
     fetch?: typeof fetch;
     send?: (notice: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
   },
-): Promise<'sent' | 'not_sent'> {
+): Promise<'sent' | 'not_sent' | 'group_audience_refused'> {
+  if (!(await groupAudienceAllows(database, input.chatId, 'reply')).allowed) {
+    return 'group_audience_refused';
+  }
   try {
     const sent = input.send
       ? await input.send({ chatId: input.chatId, text: input.text })

@@ -372,6 +372,7 @@ export async function setLocationAction(input: LocationInput): Promise<SetLocati
 }
 
 const PLAN_TIERS: readonly PlanTier[] = ['free', 'plus', 'family'];
+const SELF_SERVE_PLAN_TIER: PlanTier = 'free';
 
 function isPlanTier(value: string): value is PlanTier {
   return (PLAN_TIERS as readonly string[]).includes(value);
@@ -401,6 +402,20 @@ export async function setPlanAction(planTier: string): Promise<SetPlanResult> {
   }
   const userId = await requireUserIdForUser(externalAuthId, database);
 
+  // A paid tier is granted only by the Stripe billing webhook; from here a parent
+  // can only move their own family down to free.
+  if (planTier !== SELF_SERVE_PLAN_TIER) {
+    await database.insert(schema.auditLog).values({
+      familyId,
+      actor: userId,
+      actionTaken: 'family_plan_change_refused',
+      targetTable: 'families',
+      targetId: familyId,
+      after: { requestedPlanTier: planTier },
+    });
+    return { status: 'invalid' };
+  }
+
   await database.transaction(async (tx) => {
     const existing = await tx
       .select({ planTier: schema.families.planTier })
@@ -410,7 +425,7 @@ export async function setPlanAction(planTier: string): Promise<SetPlanResult> {
 
     await tx
       .update(schema.families)
-      .set({ planTier })
+      .set({ planTier: SELF_SERVE_PLAN_TIER })
       .where(eq(schema.families.id, familyId));
 
     await tx.insert(schema.auditLog).values({
@@ -420,7 +435,7 @@ export async function setPlanAction(planTier: string): Promise<SetPlanResult> {
       targetTable: 'families',
       targetId: familyId,
       before: { planTier: existing[0]?.planTier ?? null },
-      after: { planTier },
+      after: { planTier: SELF_SERVE_PLAN_TIER },
     });
   });
 

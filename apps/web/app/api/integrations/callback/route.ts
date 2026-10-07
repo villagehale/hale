@@ -17,7 +17,6 @@ import {
 } from '~/lib/channel/connect/text-connect';
 import { holdGoogleGivenName } from '~/lib/channel/identity/parent-call-name';
 import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
-import { sendCoparentGroupCalendarReceipt } from '~/lib/channel/linq/group-coparent';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { googleAccountBlindIndex } from '~/lib/crypto/blind-index';
 import { db } from '~/lib/db';
@@ -35,6 +34,7 @@ import {
   ensurePushWatchAfterConnect,
   googleJsonClient,
 } from '~/lib/integrations/google-push-runtime';
+import { grantedWriteScopesAllowed } from '~/lib/integrations/google-write-flag';
 import { otherParentHoldsGoogleAccount, saveConnection } from '~/lib/integrations/store';
 
 // Node runtime: node:crypto (state verify), fetch (token exchange), Drizzle.
@@ -192,12 +192,15 @@ export async function GET(req: NextRequest) {
     // one would silently hold power we never asked the parent to consent to).
     const scopes = (tokens.scope ?? '').split(' ').filter(Boolean);
     const expected = CONNECTOR_SCOPES[bound.provider];
-    // Profile is optional. Calendar-only (or mail-only, files-only) still connects.
-    // Anything outside the connector scopes plus that one profile scope is broader
-    // than what we asked, and is stored nowhere.
+    // Profile is optional. The two write scopes are optional too, and only when
+    // this user was armed (global flag, or their id on the allowlist): a parent
+    // who deselects calendar.events still connects, and a grant that carries
+    // them for anyone else is broader than what we asked and is stored nowhere.
+    // gmail.send is never in this set.
     const allowed = new Set<string>([
       ...Object.values(CONNECTOR_SCOPES).flat(),
       GOOGLE_PROFILE_SCOPE,
+      ...grantedWriteScopesAllowed(process.env, bound.userId),
     ]);
     const grantedOk =
       expected.every((sc) => scopes.includes(sc)) && scopes.every((sc) => allowed.has(sc));
@@ -368,24 +371,6 @@ export async function GET(req: NextRequest) {
       { familyId: bound.familyId, provider: textProvider, receipt: connectedNoticeLabel(receipt) },
       'connector connected from a text - the done page is up; this is what the receipt did',
     );
-    try {
-      const groupReceipt = await sendCoparentGroupCalendarReceipt(database, {
-        familyId: bound.familyId,
-        userId: bound.userId,
-        provider: textProvider,
-        connectId,
-        now: new Date(),
-      });
-      console.info(
-        { familyId: bound.familyId, provider: textProvider, groupReceipt },
-        'connector connected: group calendar receipt',
-      );
-    } catch (err) {
-      console.warn(
-        { familyId: bound.familyId, err: err instanceof Error ? err.name : 'unknown' },
-        'connector connected: group calendar receipt failed',
-      );
-    }
     return back('ok', 'text', textProvider);
   }
 

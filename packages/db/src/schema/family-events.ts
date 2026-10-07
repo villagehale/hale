@@ -87,6 +87,8 @@ export const familyEvents = pgTable(
      * add). Set together with `integrationId`. The reminder cron reminds only
      * the connecting parent, and a second mirror of the same Google event
      * conflicts here instead of scheduling a second pair of reminders.
+     * Non-null is the household boundary: every household reader filters through
+     * `householdFamilyEvent()` (family-event-scope.ts), so a mirror reaches only its owner.
      */
     googleEventId: text('google_event_id'),
     /** The gcal connection this mirror was read from. Null on Hale-authored rows.
@@ -94,6 +96,21 @@ export const familyEvents = pgTable(
     integrationId: uuid('integration_id').references(() => integrations.id, {
       onDelete: 'cascade',
     }),
+    /**
+     * The Google event Hale created for this placement (VIL-93). Null until a
+     * flagged write succeeds, and null on every mirror of an event the parent
+     * already had — those live in `googleEventId`. Move, cancel, and undo patch
+     * this id only. The mirror reconciler does not read it.
+     */
+    placedGoogleEventId: text('placed_google_event_id'),
+    /** The gcal connection whose token created `placedGoogleEventId`. Set null
+     * if that connection is removed; the Hale row stays. */
+    placedGoogleIntegrationId: uuid('placed_google_integration_id').references(
+      () => integrations.id,
+      {
+        onDelete: 'set null',
+      },
+    ),
   },
   (table) => ({
     // The composer's read is WHERE family_id = ? AND starts_at IN [window] — index
