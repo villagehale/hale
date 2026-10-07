@@ -72,6 +72,8 @@ import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conv
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { reportTurnFailures } from '~/lib/monitoring/failure-page';
 import { classifyChainedProviderFailure } from '~/lib/monitoring/provider-health';
+import { interestPassportEnabled } from '~/lib/passport/flag';
+import { foldPassportIntoOutbound } from '~/lib/passport/fold';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ApologyFallback, TurnApology } from './apology';
 import {
@@ -870,7 +872,7 @@ async function routeChannelMessageInner(
     // section has started the bubble.
     send: async (body: string) => {
       await stopTyping();
-      return deps.transport.send({ route, body });
+      return deps.transport.send({ route, body: await withPassport(body) });
     },
     now,
     resolved: null,
@@ -885,7 +887,19 @@ async function routeChannelMessageInner(
    * delivery — see sendReply. Null for every answer that is not the medical lane's, which
    * is all of them but one.
    */
-  const answer = (
+  const withPassport = async (body: string) => {
+    if (!interestPassportEnabled()) return body;
+    return foldPassportIntoOutbound({
+      database: deps.database,
+      familyId: job.family_id,
+      parentUserId: job.parent_user_id,
+      inboundBody: context.body,
+      outboundBody: body,
+      now,
+    });
+  };
+
+  const answer = async (
     body: string,
     medicalSource: MedicalReplySource | null = null,
     replySource: ReplySource | null = null,
@@ -894,7 +908,7 @@ async function routeChannelMessageInner(
   ) =>
     sendReply(deps, {
       route,
-      body,
+      body: await withPassport(body),
       job,
       conversationId,
       claim: claimAnswer,
