@@ -582,6 +582,16 @@ export const COACH_CHANNEL_FIXTURES = [
     },
   },
   {
+    id: 'find-activities-bare-ask',
+    text: "why don't u find some activities",
+    note: 'VIL-365. A bare ask: no day, no kind, no child. Ages are already in context and the tools attach the town from the postal area, so the turn searches and hands a verified find over. A clarifying question with no search is the failure. One question after the find, offering to narrow, is allowed.',
+    expect: {
+      mustCall: ['search_village'],
+      mustNotDraft: true,
+      mustMention: ['story time', 'bloor'],
+    },
+  },
+  {
     id: 'yes-with-nothing-open',
     text: 'Yes, please',
     // Georgetown, because the message they are answering is a Cartwheels one and a
