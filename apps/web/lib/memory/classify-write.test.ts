@@ -1,9 +1,36 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { renderMemoryBrief } from './brief';
-import { acceptModelMemoryClass } from './classify-write';
+import { acceptModelMemoryClass, modelClassificationShape } from './classify-write';
 
 const OCT_4 = new Date('2026-10-04T15:00:00.000Z');
 const OCT_1 = '2026-10-01T20:15:00.000Z';
+
+describe('modelClassificationShape', () => {
+  const shape = z.object(modelClassificationShape);
+
+  it('refuses a save that names neither memoryClass nor disposition', () => {
+    const parsed = shape.safeParse({ expiresAt: '2026-10-10T15:00:00.000Z' });
+
+    expect(parsed.success).toBe(false);
+    const missing = parsed.error?.issues.map((issue) => issue.path.join('.')).sort();
+    expect(missing).toEqual(['disposition', 'memoryClass']);
+  });
+
+  it('refuses a class without a disposition', () => {
+    const parsed = shape.safeParse({ memoryClass: 'enduring' });
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues.map((issue) => issue.path.join('.'))).toEqual(['disposition']);
+  });
+
+  it('accepts a classified save', () => {
+    expect(shape.safeParse({ memoryClass: 'obligation', disposition: 'declined' })).toEqual({
+      success: true,
+      data: { memoryClass: 'obligation', disposition: 'declined' },
+    });
+  });
+});
 
 describe('acceptModelMemoryClass', () => {
   it('keeps a declined Oct 1 activity declined, on Oct 1, not a confirmed Oct 4 fact', () => {
@@ -13,7 +40,6 @@ describe('acceptModelMemoryClass', () => {
         memoryClass: 'enduring',
         disposition: 'declined',
         observedAt: OCT_1,
-        omittedClass: 'curiosity',
       },
       OCT_4,
     );
@@ -32,7 +58,7 @@ describe('acceptModelMemoryClass', () => {
 
   it('does not store a passing question as a preference, even on an identity key', () => {
     const question = acceptModelMemoryClass(
-      { memoryClass: 'curiosity', disposition: 'asked', omittedClass: 'curiosity' },
+      { memoryClass: 'curiosity', disposition: 'asked' },
       OCT_4,
     );
     expect(question.memoryKind).toBe('one_off');
@@ -41,14 +67,14 @@ describe('acceptModelMemoryClass', () => {
 
     // `asked` wins over an enduring class. The key is not an input at all.
     const mislabeled = acceptModelMemoryClass(
-      { memoryClass: 'enduring', disposition: 'asked', omittedClass: 'curiosity' },
+      { memoryClass: 'enduring', disposition: 'asked' },
       OCT_4,
     );
     expect(mislabeled.memoryKind).toBe('one_off');
     expect(mislabeled.disposition).toBe('asked');
 
     const confirmedCuriosity = acceptModelMemoryClass(
-      { memoryClass: 'curiosity', disposition: 'confirmed', omittedClass: 'curiosity' },
+      { memoryClass: 'curiosity', disposition: 'confirmed' },
       OCT_4,
     );
     expect(confirmedCuriosity.memoryKind).toBe('one_off');
@@ -56,13 +82,13 @@ describe('acceptModelMemoryClass', () => {
 
   it('stores an enduring confirmed statement as identity, and a later one can replace a question', () => {
     const question = acceptModelMemoryClass(
-      { memoryClass: 'curiosity', disposition: 'asked', omittedClass: 'curiosity' },
+      { memoryClass: 'curiosity', disposition: 'asked' },
       OCT_4,
     );
     expect(question.memoryKind).toBe('one_off');
 
     const repeated = acceptModelMemoryClass(
-      { memoryClass: 'enduring', disposition: 'confirmed', omittedClass: 'curiosity' },
+      { memoryClass: 'enduring', disposition: 'confirmed' },
       OCT_4,
     );
     expect(repeated).toMatchObject({
@@ -80,7 +106,6 @@ describe('acceptModelMemoryClass', () => {
         memoryClass: 'obligation',
         disposition: 'confirmed',
         observedAt: '2026-10-10T15:00:00.000Z',
-        omittedClass: 'curiosity',
       },
       OCT_4,
     );

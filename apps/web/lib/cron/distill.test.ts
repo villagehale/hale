@@ -188,6 +188,8 @@ describe('save_child_fact — teen gate at the tool boundary (rule #1/#5)', () =
     factKey: 'school-stress',
     summary: 'Struggling with exam pressure',
     confidence: 0.9,
+    memoryClass: 'enduring' as const,
+    disposition: 'confirmed' as const,
   };
 
   it('REFUSES a fact scoped to a 13+ child — nothing written, nothing audited', async () => {

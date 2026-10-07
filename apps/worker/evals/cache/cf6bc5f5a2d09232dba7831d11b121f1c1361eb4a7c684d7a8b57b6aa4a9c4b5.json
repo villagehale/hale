@@ -1,0 +1,295 @@
+{
+  "request": {
+    "model": "claude-sonnet-4-6",
+    "thinking": {
+      "type": "disabled"
+    },
+    "output_config": {
+      "effort": "high"
+    },
+    "max_tokens": 1024,
+    "system": [
+      {
+        "type": "text",
+        "text": "# Memory inferencer\n\nYou run nightly to derive durable patterns and preferences from a family's\nrecent activity AND from their recent Ask Hale conversations. The facts you save\nbecome long-term memory that every other agent consults — so a wrong fact\npoisons every downstream answer. Bias hard toward precision: better to miss a\npattern than record a wrong one.\n\n## How to work\n\n1. Call `read_recent_memory` to see the family's recent events and episodes plus\n   the facts already on record.\n2. Call `read_recent_conversations` to see the family's recent Ask Hale turns.\n   Use them to distill durable, per-child facts (see \"Distilling from chat\").\n3. Diff: what NEW durable fact does the recent activity or conversation support\n   that is not already a current fact? Only consider patterns with real support.\n4. For an activity/episode pattern, call `save_memory`. For a fact distilled from\n   conversation about a specific child, call `save_child_fact` with the child id\n   and a category. Both REFUSE any save below 0.7 confidence — do not waste a\n   call on a hunch. If nothing clears the bar, save nothing and stop.\n5. Classify every save. You decide the class. The key name is not the class.\n   - `memoryClass: enduring` and `disposition: confirmed` — identity that stays:\n     who is in the family, a child's name and age, home area, a settled routine.\n   - `memoryClass: obligation` — a one-off event, or a declined activity. Pass\n     `observedAt` as that event's own time, not the time you are reading it. A\n     declined or rejected activity is `disposition: declined`, never\n     `confirmed`. A rejected Oct 1 activity stays Oct 1.\n   - `memoryClass: curiosity` and `disposition: asked` — a passing question or\n     a one-off interest. It is not a preference. Do not mark it enduring unless\n     the parent has stated that same preference again; a later save with\n     `enduring` and `confirmed` is what replaces the question.\n   Pass `expiresAt` when you know when an obligation stops mattering. When the\n   parent corrects a fact, save the new value on the same key, or pass\n   `correctsKey` with the old key. The old fact is superseded.\n6. When you are done, reply with a one-line summary of what you saved (or that\n   you saved nothing). That text is not shown to anyone — the saved facts are the\n   real output.\n\n## Distilling from chat\n\nFrom `read_recent_conversations`, capture durable, per-child facts in one of five\ncategories: **health, development, routines, preferences, concerns**. Save the\nchild id when the turn is about a specific child; omit it for a family-wide fact.\nA fact is saved only from what the parent said or confirmed. A `user` turn is\nthe parent. An `assistant` turn is Hale.\n\n- \"Mara naps twice a day\" → routines, childId = Mara.\n- \"We're going dairy-free for the baby\" → health, childId = the baby.\n- \"They love swimming\" → preferences.\n\n## Whose words count\n\nDo not save enrollment, registration, signup, or a \"your pick\" from any of these:\n\n- a list of suggested activities\n- anything Hale said it found\n- anything Hale proposed, offered, or listed\n\nThose are candidates Hale surfaced. They are not classes the family joined, and\nthey are not an age range the family stated.\n\nA summary must not contain \"enrolled\", \"enrollment\", \"enrolment\", \"signed up\",\n\"booked\", \"registered\", or \"registration\" unless a real activity booking or\nfamily event already records that activity. \"Your pick\" is never a fact. If the\nparent did not say it, save nothing. If you are unsure, save nothing.\n\nA 13+ child's turns arrive already reduced to category only — the raw text is\nwithheld (rule #1). For those, you may record at most a non-identifying\ncategory-level note (e.g. \"behavior topics came up\") and NEVER a child-scoped\nfact. Never reconstruct or guess a teen's raw content.\n\n## What to infer\n\n- \"Family prefers evening pediatric appointments\" — only after 3+ consistent\n  observations.\n- \"Co-parent A handles bedtime Tue/Thu\" — only with an explicit signal.\n- \"Diaper consumption averages ~9/day\" — from an actual order pattern.\n\n## What NOT to infer\n\n- Anything about a child's health from photos or off-hand mentions.\n- Anything that was not directly observed (don't extrapolate moods).\n- Sweeping personality traits (\"the family is anxious\") — never.\n- That the family enrolled, registered, signed up, booked, or picked an activity\n  Hale suggested or found. A suggestion list is not a signup.\n- That a declined or rejected activity happened. Save it as `obligation` and\n  `declined`, with `observedAt` set to the event, or save nothing.\n- That a single question is a preference. A passing question is `curiosity`.\n\n## Confidence calibration\n\n- 0.95+: stated explicitly by a parent.\n- 0.85: pattern observed 5+ times consistently.\n- 0.7: pattern observed 3 times with no counter-examples.\n- below 0.7: do not call `save_memory` — it will be refused.",
+        "cache_control": {
+          "type": "ephemeral"
+        }
+      }
+    ],
+    "tools": [
+      {
+        "name": "read_recent_memory",
+        "description": "Read THIS family's recent activity (events + episodes in the last week) and its currently-valid memory facts — the snapshot to diff against when inferring new facts. Each fact includes kind, disposition, source, and expiry so a declined or passing fact is not saved again as identity.",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "save_memory",
+        "description": "Persist ONE fact inferred about THIS family, with a confidence in [0,1]. Facts below 0.7 confidence are REFUSED. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies the same fact as enduring. Upserts on (factType, factKey). Pass correctsKey when this replaces a different key. Pass observedAt (ISO-8601) for WHEN it became true, not when you read it. Omit it if the source carries no time; never guess. Save only what the parent said or confirmed. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not write enrolled, enrollment, signed up, booked, or registered unless a booking or family event already records that activity.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "factType": {
+              "type": "string",
+              "enum": [
+                "preference",
+                "routine",
+                "medical",
+                "logistic",
+                "relationship",
+                "voice"
+              ]
+            },
+            "factKey": {
+              "type": "string",
+              "description": "At least 1 characters."
+            },
+            "factValue": {},
+            "confidence": {
+              "type": "number",
+              "description": "At least 0. At most 1."
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "memoryClass": {
+              "type": "string",
+              "enum": [
+                "enduring",
+                "obligation",
+                "curiosity"
+              ],
+              "description": "enduring (who the family is, names, ages, home, a settled routine), obligation (a one-off event or a declined activity), or curiosity (a passing question)."
+            },
+            "disposition": {
+              "type": "string",
+              "enum": [
+                "confirmed",
+                "declined",
+                "asked"
+              ],
+              "description": "confirmed, declined, or asked. A declined or rejected activity is declined, never confirmed."
+            },
+            "expiresAt": {
+              "type": "string"
+            },
+            "correctsKey": {
+              "type": "string",
+              "description": "At least 1 characters."
+            }
+          },
+          "required": [
+            "factType",
+            "factKey",
+            "confidence",
+            "memoryClass",
+            "disposition"
+          ],
+          "additionalProperties": false
+        },
+        "input_examples": [
+          {
+            "factType": "routine",
+            "factKey": "afternoon_nap",
+            "factValue": "one nap, 1pm to 3pm, most days for a month",
+            "confidence": 0.85,
+            "memoryClass": "enduring",
+            "disposition": "confirmed"
+          },
+          {
+            "factType": "preference",
+            "factKey": "saturday_swim_trial",
+            "factValue": "declined the Saturday swim trial",
+            "confidence": 0.95,
+            "observedAt": "2026-03-14T14:00:00.000Z",
+            "memoryClass": "obligation",
+            "disposition": "declined"
+          },
+          {
+            "factType": "preference",
+            "factKey": "toddler_pottery",
+            "factValue": "asked once about a toddler pottery class",
+            "confidence": 0.8,
+            "memoryClass": "curiosity",
+            "disposition": "asked"
+          }
+        ]
+      },
+      {
+        "name": "read_recent_conversations",
+        "description": "Read THIS family's recent Ask Hale conversation turns (the last two weeks). A 13+ child's turns are already reduced to category/summary — raw teen content is never shown (rule #1). Use these to distill durable, per-child facts.",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "save_child_fact",
+        "description": "Persist ONE categorized fact distilled from what the PARENT said or confirmed about a specific child (or family-wide with childId omitted), confidence in [0,1]. Categories: health, development, routines, preferences, concerns. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies it as enduring. Facts below 0.7 confidence are REFUSED. NEVER pass raw teen content — only a category/summary. Pass correctsKey when this replaces a different key. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not put enrolled, enrollment, signed up, booked, or registered in the summary unless a booking or family event already records that activity.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "childId": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            },
+            "category": {
+              "type": "string",
+              "enum": [
+                "health",
+                "development",
+                "routines",
+                "preferences",
+                "concerns"
+              ]
+            },
+            "factKey": {
+              "type": "string",
+              "description": "At least 1 characters."
+            },
+            "summary": {
+              "type": "string",
+              "description": "At least 1 characters."
+            },
+            "confidence": {
+              "type": "number",
+              "description": "At least 0. At most 1."
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "memoryClass": {
+              "type": "string",
+              "enum": [
+                "enduring",
+                "obligation",
+                "curiosity"
+              ],
+              "description": "enduring (who the family is, names, ages, home, a settled routine), obligation (a one-off event or a declined activity), or curiosity (a passing question)."
+            },
+            "disposition": {
+              "type": "string",
+              "enum": [
+                "confirmed",
+                "declined",
+                "asked"
+              ],
+              "description": "confirmed, declined, or asked. A declined or rejected activity is declined, never confirmed."
+            },
+            "expiresAt": {
+              "type": "string"
+            },
+            "correctsKey": {
+              "type": "string",
+              "description": "At least 1 characters."
+            }
+          },
+          "required": [
+            "category",
+            "factKey",
+            "summary",
+            "confidence",
+            "memoryClass",
+            "disposition"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true,
+        "input_examples": [
+          {
+            "childId": "00000000-0000-4000-8000-000000000000",
+            "category": "routines",
+            "factKey": "afternoon_nap",
+            "summary": "naps once a day, 1pm to 3pm",
+            "confidence": 0.95,
+            "memoryClass": "enduring",
+            "disposition": "confirmed"
+          },
+          {
+            "childId": "00000000-0000-4000-8000-000000000000",
+            "category": "preferences",
+            "factKey": "saturday_swim_trial",
+            "summary": "parent declined the Saturday swim trial",
+            "confidence": 0.95,
+            "observedAt": "2026-03-14T14:00:00.000Z",
+            "memoryClass": "obligation",
+            "disposition": "declined"
+          },
+          {
+            "category": "preferences",
+            "factKey": "toddler_pottery",
+            "summary": "parent asked once about a toddler pottery class",
+            "confidence": 0.8,
+            "memoryClass": "curiosity",
+            "disposition": "asked"
+          }
+        ]
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "{\"familyId\":\"aaaaaaa1-0000-4000-8000-000000000004\"}"
+      }
+    ]
+  },
+  "response": {
+    "model": "claude-sonnet-4-6",
+    "id": "msg_011CfkrMbRk3iCFKyM7fwxRm",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll start by reading the family's recent memory and conversations in parallel."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01FuPwgGGCjrQbbhvMBPy53c",
+        "name": "read_recent_memory",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01VnUASZcH62w9DTjVgSc7Jw",
+        "name": "read_recent_conversations",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 348,
+      "cache_creation_input_tokens": 3841,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 3841,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 75,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    },
+    "diagnostics": null
+  }
+}
