@@ -59,16 +59,6 @@
   color-scheme: light;
 }
 
-.stage h1,
-.stage h3,
-.stage p,
-.stage ul,
-.stage li,
-.stage button {
-  margin: 0;
-  padding: 0;
-}
-
 .stage a {
   color: inherit;
   text-decoration: none;
@@ -375,13 +365,16 @@
 .form {
   width: 100%;
   margin-top: var(--s6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-.form .btn {
+.stage .form .btn {
   margin-top: 0;
 }
 
-.gsi {
+.stage .gsi {
   width: 100%;
   height: 48px;
   display: inline-flex;
@@ -401,19 +394,19 @@
   white-space: nowrap;
 }
 
-.gsi .g {
+.stage .gsi .g {
   width: 24px;
   height: 24px;
   flex: none;
 }
 
-.gsi:disabled {
+.stage .gsi:disabled {
   opacity: 1;
   cursor: default;
 }
 
-.pending,
-.pending:disabled {
+.stage .pending,
+.stage .pending:disabled {
   opacity: 0.6;
 }
 
@@ -426,6 +419,7 @@
   font-family: var(--font-ui);
   font-size: 14px;
   font-weight: 600;
+  line-height: normal;
   color: var(--navy);
 }
 
@@ -526,6 +520,7 @@
   font-family: var(--font-ui);
   font-size: 12.8px;
   font-weight: 600;
+  line-height: normal;
   color: var(--meta);
 }
 
@@ -574,7 +569,7 @@
   margin-bottom: 2px;
 }
 
-.btn {
+.stage .btn {
   margin-top: var(--s6);
   display: inline-flex;
   align-items: center;
@@ -592,12 +587,12 @@
   box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.8), 0 18px 50px -34px rgb(12 26 54 / 0.55);
 }
 
-.btn svg {
+.stage .btn svg {
   width: 16px;
   height: 16px;
 }
 
-.secondary {
+.stage .secondary {
   display: inline-flex;
   align-items: center;
   gap: var(--s2);
@@ -666,6 +661,7 @@
   font-family: var(--font-ui);
   font-size: 12.8px;
   font-weight: 500;
+  line-height: normal;
   color: var(--navy);
 }
 
@@ -788,7 +784,7 @@
     margin-top: var(--s4);
   }
 
-  .btn {
+  .stage .btn {
     width: 100%;
     padding-top: 12px;
     padding-bottom: 12px;
