@@ -1,14 +1,10 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { routing } from '~/i18n/routing.js';
 import LandingPage from './[locale]/page.js';
 
 /**
- * French and Chinese use the same redesign as English. The old v4 registration
- * loop stays in the message bundles (its keys must not drift) but it is no longer
- * what a parent sees.
+ * French and Chinese use the same redesign as English.
  */
 
 vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
@@ -25,42 +21,6 @@ const HTML = Object.fromEntries(
 function rd(html: string): string {
   const found = html.match(/<div class="rd">[\s\S]*$/);
   return found?.[0] ?? '';
-}
-
-function landingBundle(locale: string): Record<string, unknown> {
-  return (
-    JSON.parse(
-      readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
-    ) as { Landing: Record<string, unknown> }
-  ).Landing;
-}
-
-/** The hero H1 is `max-width: 15ch` on the retired v4 landing. The pin stays on
- * the bundle so a translator cannot lengthen a line the old layout still stores. */
-const H1_COLUMN_EM: Record<(typeof routing.locales)[number], number> = {
-  en: 9.09,
-  fr: 9.09,
-  zh: 6.9,
-};
-
-function landingString(locale: string, key: string): string {
-  const value = landingBundle(locale)[key];
-  if (typeof value !== 'string') throw new Error(`${locale}.Landing.${key} is not a string`);
-  return value;
-}
-
-function accentSeparator(locale: string): string {
-  return locale === 'zh' ? '' : ' ';
-}
-
-function advanceEm(line: string): number {
-  let em = 0;
-  for (const ch of line) {
-    if (/[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]/u.test(ch)) em += 1;
-    else if (ch === ' ') em += 0.25;
-    else em += 0.42;
-  }
-  return em;
 }
 
 describe('every locale renders the redesign', () => {
@@ -121,64 +81,4 @@ describe('every locale renders the redesign', () => {
     expect(zh).toContain('以后会推出代报名，前提是你先点头。');
     expect(zh).not.toContain('已报名');
   });
-
-  it('carries every Landing key in all three bundles — no locale silently renders a key name', () => {
-    const keys = (locale: string) => Object.keys(landingBundle(locale)).sort();
-    const en = keys('en');
-    expect(en.length).toBeGreaterThan(30);
-    for (const locale of routing.locales) expect(keys(locale), locale).toEqual(en);
-  });
-
-  it.each(routing.locales)(
-    '%s fits each retired-landing hero H1 line inside the 15ch column',
-    (locale) => {
-      const lines = [
-        landingString(locale, 'heroH1a'),
-        `${landingString(locale, 'heroH1b')}${accentSeparator(locale)}${landingString(locale, 'heroH1Accent')}`,
-      ];
-      for (const line of lines) {
-        expect(advanceEm(line), `${locale}: "${line}"`).toBeLessThanOrEqual(H1_COLUMN_EM[locale]);
-      }
-    },
-  );
-
-  it('would have caught the zh accent that wrapped mid-compound', () => {
-    expect(advanceEm('之后便 安静下来。')).toBeGreaterThan(H1_COLUMN_EM.zh);
-  });
-
-  it.each(routing.locales)(
-    '%s hero demos in the bundle are the live find, with no watch YES',
-    (locale) => {
-      const landing = landingBundle(locale) as {
-        heroThread: Array<{ dir: string; text: string }>;
-        heroLoop: Array<{ rows: Array<{ dir: string; text: string }> }>;
-      };
-      expect(landing.heroThread.map((row) => row.dir)).toEqual(['out', 'in']);
-      expect(landing.heroLoop[0]?.rows.map((row) => row.dir)).toEqual(['out', 'in']);
-      const lead = {
-        en: 'Here’s what’s on for your kids this year:',
-        fr: 'Voici ce qu’il y a pour vos enfants cette année :',
-        zh: '孩子这一年，现在有这些：',
-      }[locale];
-      expect(landing.heroThread[1]?.text.startsWith(lead)).toBe(true);
-      expect(landing.heroLoop[0]?.rows[1]?.text.startsWith(lead)).toBe(true);
-      const demo = `${landing.heroThread.map((row) => row.text).join('\n')}\n${landing.heroLoop
-        .flatMap((beat) => beat.rows.map((row) => row.text))
-        .join('\n')}`;
-      for (const banned of [
-        'YES',
-        'OUI',
-        'keep an eye',
-        'garde un oeil',
-        '回复 YES',
-        '要不要我',
-        'Say YES',
-        'Répondez OUI',
-      ]) {
-        expect(demo, banned).not.toContain(banned);
-      }
-      expect(demo).toContain('1.');
-      expect(demo).toContain('3.');
-    },
-  );
 });

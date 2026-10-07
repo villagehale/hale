@@ -115,7 +115,9 @@ describe('city registration routes — landing chrome, not a blog', () => {
       // The QR block must stay a DESKTOP affordance: hidden on phones (where the
       // sms: CTA works) and flex from sm: up. CSS-hiding it everywhere would pass
       // the presence pins above while re-opening the desktop dead-end.
-      expect(body).toMatch(/class="[^"]*\bhidden\b[^"]*\bsm:flex\b[^"]*"[^>]*>(?:(?!<\/div>).)*aria-label="QR code/s);
+      expect(body).toMatch(
+        /class="[^"]*\bhidden\b[^"]*\bsm:flex\b[^"]*"[^>]*>(?:(?!<\/div>).)*aria-label="QR code/s,
+      );
       expect(body).toContain('On a laptop?');
       // No in-body hop to the chooser — /text belongs to the chrome pill alone.
       expect(body).not.toContain('href="/text"');
@@ -143,7 +145,9 @@ describe('city registration routes — landing chrome, not a blog', () => {
     const html = await render(BramptonPage);
     const locked = buildSmsHrefForBody(LIVE_NUMBER, INTAKE_PREFILL);
     expect(html).toContain(locked.replaceAll('&', '&amp;'));
-    const body = html.replace(/<header[\s\S]*?<\/header>/, '').replace(/<footer[\s\S]*?<\/footer>/, '');
+    const body = html
+      .replace(/<header[\s\S]*?<\/header>/, '')
+      .replace(/<footer[\s\S]*?<\/footer>/, '');
     expect(body).not.toContain('L3R');
     expect(html).not.toMatch(/body=When%20does%20swim/);
   });
@@ -192,14 +196,16 @@ describe('city registration routes — landing chrome, not a blog', () => {
     }
   });
 
-  it('links city guides from the activities hub and keeps dated registration URLs off it', async () => {
+  it('keeps dated registration URLs off the activities hub, and no city-guide links', async () => {
     for (const locale of ['en', 'fr'] as const) {
       const html = renderToStaticMarkup(
         await ActivitiesHub({ params: Promise.resolve({ locale }) }),
       );
       const prefix = locale === 'en' ? '' : `/${locale}`;
-      expect(html).toContain(`href="${prefix}/activities/toronto"`);
-      expect(html).toContain(`href="${prefix}/activities/montreal"`);
+      expect(html).not.toContain(`${prefix}/activities/toronto`);
+      expect(html).not.toContain(`${prefix}/activities/montreal`);
+      expect(html).not.toContain('By city');
+      expect(html).not.toContain('Par ville');
       expect(html).not.toContain('toronto-fall-recreation-registration');
       expect(html).not.toContain('toronto-swim-registration');
       expect(html).not.toContain('brampton-swim-registration');

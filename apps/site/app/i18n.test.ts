@@ -154,7 +154,10 @@ describe('the phone number is never literal text — messages included (hard rul
 describe('no bundle promises quiet, in any locale', () => {
   const files = (['en', 'fr', 'zh'] as const).map((locale) => ({
     locale,
-    raw: readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
+    raw: readFileSync(
+      fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)),
+      'utf8',
+    ),
   }));
 
   /**
@@ -201,7 +204,9 @@ describe('no bundle promises quiet, in any locale', () => {
     };
     for (const { locale, raw } of files) {
       for (const phrase of SUNDAY[locale] ?? []) {
-        expect(raw.toLowerCase(), `${locale}.json must not claim "${phrase}"`).not.toContain(phrase);
+        expect(raw.toLowerCase(), `${locale}.json must not claim "${phrase}"`).not.toContain(
+          phrase,
+        );
       }
     }
   });
@@ -209,7 +214,11 @@ describe('no bundle promises quiet, in any locale', () => {
   it('positive control: every bundle still says what Hale DOES send', () => {
     // The subtraction must leave the cadence described, not the page silent about
     // it — otherwise these absences would also pass on an empty bundle.
-    const say = { en: 'a heads-up the week a registration opens', fr: 'une inscription ouvre', zh: '报名开放' };
+    const say = {
+      en: 'a heads-up the week a registration opens',
+      fr: 'une inscription ouvre',
+      zh: '报名开放',
+    };
     for (const { locale, raw } of files) {
       expect(raw.toLowerCase()).toContain(say[locale].toLowerCase());
     }
@@ -219,7 +228,10 @@ describe('no bundle promises quiet, in any locale', () => {
 describe('the positioning noun is gone from every bundle', () => {
   const files = (['en', 'fr', 'zh'] as const).map((locale) => ({
     locale,
-    raw: readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
+    raw: readFileSync(
+      fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)),
+      'utf8',
+    ),
   }));
 
   /**
@@ -261,7 +273,9 @@ describe('the FAQ translation source mirrors the canonical English list', () => 
     const en = JSON.parse(
       readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'),
     );
-    expect(en.Faq.items).toEqual(FAQ.map((item) => ({ question: item.question, answer: item.answer })));
+    expect(en.Faq.items).toEqual(
+      FAQ.map((item) => ({ question: item.question, answer: item.answer })),
+    );
   });
 });
 
@@ -276,31 +290,13 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
   );
 
   /**
-   * The founder locked a SENTENCE, not an array index.
-   *
-   * It was pinned as `Landing.steps[0]`, an object in a three-step card grid that
-   * v5 retired — the sequence is the hero's spine now. So the pin follows the
-   * words into the how-it-works prose rather than dying with the array: what is
-   * locked is that the first text is names, ages and a postal code (never "hi"),
-   * that there is no app and no account, and that the thread has no menus. A pin
-   * on where the sentence sat would have made a layout change look like a
-   * founder decision being overturned.
+   * The founder locked a SENTENCE. It used to live in the Landing namespace,
+   * which left with the unmounted landing. About.cta is the copy that remains.
    */
-  const LOCKED: Record<string, string[]> = {
-    en: ['You text names, ages, and a postal code', 'No app, no account.', 'no menus'],
-    fr: ['les noms, les âges et un code postal', 'Pas d’appli, pas de compte.', 'pas de menus'],
-    zh: ['名字、年龄和一个邮编', '不用装应用，不用注册账号。', '没有菜单'],
-  };
-
-  it('keeps the locked words in the Landing namespace of every locale', () => {
+  it('drops the retired Landing namespace', () => {
     for (const locale of ['en', 'fr', 'zh'] as const) {
-      const landing = JSON.stringify(bundles[locale].Landing);
-      for (const phrase of LOCKED[locale] ?? []) {
-        expect(landing, `${locale}.Landing must still say "${phrase}"`).toContain(phrase);
-      }
-      expect(landing, `${locale} must not reopen "you say hi"`).not.toMatch(/You say hi|dites bonjour/i);
+      expect(bundles[locale].Landing, `${locale} still has a Landing namespace`).toBeUndefined();
     }
-    expect(JSON.stringify(bundles.en.Landing)).not.toMatch(/no forms/i);
   });
 
   it('pins About.cta exactly, in all three locales', () => {
@@ -380,7 +376,9 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
     for (const phrase of banned) {
       expect(enBlob, `en meta must not say "${phrase}"`).not.toContain(phrase);
     }
-    expect(bundles.en.HomeMeta.description).toContain('Your kids’ plans already live in group chats');
+    expect(bundles.en.HomeMeta.description).toContain(
+      'Your kids’ plans already live in group chats',
+    );
     expect(bundles.en.Jsonld.appDescription.startsWith('Your kids’ year, handled.')).toBe(true);
   });
 

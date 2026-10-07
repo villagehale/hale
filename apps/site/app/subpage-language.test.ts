@@ -5,7 +5,6 @@ import postcss from 'postcss';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import AboutPage from './[locale]/about/page.js';
-import ActivityCityRoute from './[locale]/activities/[city]/page.js';
 import ActivitiesHub from './[locale]/activities/page.js';
 import AnswerRoute from './[locale]/answers/[slug]/page.js';
 import AnswersIndexPage from './[locale]/answers/page.js';
@@ -67,9 +66,6 @@ const pages = {
 const slugHtml = await renderAsync(
   AnswerRoute({ params: Promise.resolve({ slug: 'introducing-peanuts-to-baby', ...EN }) }),
 );
-const cityHtml = await renderAsync(
-  ActivityCityRoute({ params: Promise.resolve({ city: 'toronto', ...EN }) }),
-);
 const torontoFallHtml = await renderAsync(TorontoFallPage({ params: Promise.resolve(EN) }));
 const torontoSwimHtml = await renderAsync(TorontoSwimPage({ params: Promise.resolve(EN) }));
 const bramptonSwimHtml = await renderAsync(BramptonSwimPage({ params: Promise.resolve(EN) }));
@@ -90,7 +86,6 @@ const REDESIGN_H1: [name: string, html: string, headline: string][] = [
 
 const PULLED_UP: [name: string, html: string, headline: string][] = [
   ['/answers/[slug]', slugHtml, 'When and how do I introduce peanuts to my baby?'],
-  ['/activities/[city]', cityHtml, 'Things to do with your kids in Toronto'],
   [
     '/toronto-fall-recreation-registration',
     torontoFallHtml,
@@ -158,9 +153,9 @@ describe('the pulled-up headline', () => {
   });
 
   it('staggers by word index, from zero, across the whole headline', () => {
-    const h1 = heading(cityHtml);
+    const h1 = heading(slugHtml);
     const indices = [...h1.matchAll(/--w:\s*(\d+)/g)].map((m) => Number(m[1]));
-    expect(indices).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(indices).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     // The beat runs across the style change rather than restarting at the accent.
     expect(h1.indexOf('--w:3')).toBeLessThan(h1.indexOf('--w:4'));
   });
@@ -181,13 +176,12 @@ describe('the pulled-up headline', () => {
     // (.v4-display / .v4-hero-h1), not the subpage pulled-up reveal. The two
     // never share the pull-word device — only the amber accent.
     const landing = readFileSync(
-      fileURLToPath(new URL('../components/landing/v4/landing-v4.tsx', import.meta.url)),
+      fileURLToPath(new URL('../components/redesign/home.tsx', import.meta.url)),
       'utf8',
     );
     expect(landing).not.toContain('pull-word');
     expect(landing).not.toContain('WordsPullUp');
-    expect(landing).toContain('v4-display');
-    expect(landing).toContain('v4-accent');
+    expect(landing).toContain('className="hero"');
   });
 });
 

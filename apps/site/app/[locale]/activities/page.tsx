@@ -4,7 +4,6 @@ import { buildAlternates, ogLocale } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
-import { publishedCities } from '~/lib/activities/index';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { readSmsNumber } from '~/lib/text-entry';
 
@@ -21,7 +20,6 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title,
     description,
     alternates: buildAlternates(locale, '/activities'),
-    robots: publishedCities.length > 0 ? undefined : { index: false, follow: true },
     openGraph: {
       type: 'website',
       title,

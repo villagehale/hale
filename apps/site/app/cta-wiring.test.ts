@@ -148,7 +148,12 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
     // page nobody rendered can pass as "all clear".
     expect(pageFiles.length).toBeGreaterThanOrEqual(14);
     expect(rendered.length + redirected.length).toBe(pageFiles.length);
-    expect([...redirected].sort()).toEqual(['/for-centres', '/milestones', '/milestones/[age]']);
+    expect([...redirected].sort()).toEqual([
+      '/activities/[city]',
+      '/for-centres',
+      '/milestones',
+      '/milestones/[age]',
+    ]);
   });
 
   it('fires cta_text_click from every composer link, on every page', () => {
@@ -207,7 +212,7 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
     // is provisioned the CTA degrades to `mailto:`, which is not a conversion and is not
     // wired. Finding those proves an empty result above means "none left", not "regex
     // matches nothing".
-    expect(rawAnchors('CONTACT_EMAIL').length).toBeGreaterThanOrEqual(3);
+    expect(rawAnchors('CONTACT_EMAIL').length).toBeGreaterThanOrEqual(1);
     expect(sourceFiles.length).toBeGreaterThanOrEqual(20);
   });
 });
@@ -305,9 +310,7 @@ describe('the money pages report engagement, not just clicks', () => {
       readFileSync(join(SITE_ROOT, 'components/registration-page.tsx'), 'utf8'),
     );
     expect(registration).toContain('<LandingScrollAnalytics page={guide.placement} />');
-    const landing = code(
-      readFileSync(join(SITE_ROOT, 'components/landing/v4/landing-v4.tsx'), 'utf8'),
-    );
+    const landing = code(readFileSync(join(SITE_ROOT, 'components/redesign/home.tsx'), 'utf8'));
     expect(landing).toContain('<LandingScrollAnalytics />');
   });
 });

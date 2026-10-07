@@ -1,5 +1,4 @@
 import type { MetadataRoute } from 'next';
-import { publishedCities } from '~/lib/activities/index';
 import { publishedAnswers } from '~/lib/answers/index';
 import { SITE_URL } from '~/lib/app-url';
 import { REGISTRATION_GUIDES } from '~/lib/registration/index';
@@ -9,18 +8,14 @@ import { REGISTRATION_GUIDES } from '~/lib/registration/index';
 // route must never be advertised for indexing.
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
-  const staticRoutes: MetadataRoute.Sitemap = [
-    '',
-    '/about',
-    '/contact',
-    '/faq',
-    '/pricing',
-  ].map((path) => ({
-    url: `${SITE_URL}${path}`,
-    lastModified,
-    changeFrequency: 'monthly',
-    priority: path === '' ? 1 : 0.7,
-  }));
+  const staticRoutes: MetadataRoute.Sitemap = ['', '/about', '/contact', '/faq', '/pricing'].map(
+    (path) => ({
+      url: `${SITE_URL}${path}`,
+      lastModified,
+      changeFrequency: 'monthly',
+      priority: path === '' ? 1 : 0.7,
+    }),
+  );
 
   // City-registration landings are English-first municipal calendars. They rot in
   // about six weeks, so they carry weekly change frequency and their own
@@ -53,26 +48,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
           })),
         ];
 
-  // City activity guides ride the same review-before-index gate: excluded until a
-  // human verifies a city's provincial-program details and flips `published`. The
-  // /activities hub enters with them.
-  const activityRoutes: MetadataRoute.Sitemap =
-    publishedCities.length === 0
-      ? []
-      : [
-          {
-            url: `${SITE_URL}/activities`,
-            lastModified,
-            changeFrequency: 'monthly',
-            priority: 0.6,
-          },
-          ...publishedCities.map((city) => ({
-            url: `${SITE_URL}/activities/${city.slug}`,
-            lastModified: new Date(city.updated),
-            changeFrequency: 'monthly' as const,
-            priority: 0.6,
-          })),
-        ];
+  // The activities hub stays. The per-city guides are retired (308 to this URL),
+  // so they are not advertised for indexing.
+  const activityRoutes: MetadataRoute.Sitemap = [
+    {
+      url: `${SITE_URL}/activities`,
+      lastModified,
+      changeFrequency: 'monthly',
+      priority: 0.6,
+    },
+  ];
 
   return [...staticRoutes, ...registrationRoutes, ...answerRoutes, ...activityRoutes];
 }

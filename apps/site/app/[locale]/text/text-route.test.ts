@@ -10,7 +10,7 @@ import TextPage, { generateMetadata } from './page.js';
 
 const meta = () => generateMetadata({ params: Promise.resolve({ locale: 'en' as const }) });
 
-/** Locked Hale #1, the same bytes as the SMS hello and Text.greeting (en and zh). */
+/** Locked Hale #1, the old SMS hello. The live page must not render it. */
 const LOCKED_PREVIEW_EN =
   'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.';
 
@@ -18,8 +18,8 @@ const LOCKED_PREVIEW_EN =
  * /text is the chooser (F14): the QR cards' destination AND the header pill's —
  * but still a handoff, not a page to rank. No sitemap row, noindex, and no
  * footer link; while the number is dark nothing points at it at all. These are
- * the structural guards; the page's own behaviour lives in
- * components/text-entry.test.ts.
+ * the structural guards. The locked greeting below is a negative pin: the live
+ * page must not render that old hello.
  */
 
 describe('/text (unlisted entry surface)', () => {
@@ -120,7 +120,9 @@ describe('/text (unlisted entry surface)', () => {
     expect(zh).toContain('嘿，我是 Hale。我帮你找附近孩子能参加的。');
     expect(zh).not.toContain(LOCKED_PREVIEW_EN);
     expect(zh).not.toContain('已报名');
-    expect(fr).toContain('Salut, c’est Hale. Je trouve ce qui se passe pour les enfants près de chez toi.');
+    expect(fr).toContain(
+      'Salut, c’est Hale. Je trouve ce qui se passe pour les enfants près de chez toi.',
+    );
     vi.unstubAllEnvs();
   });
 

@@ -79,7 +79,12 @@ describe('sitemap', () => {
     expect(urls.filter((u) => u.startsWith(`${SITE_URL}/milestones`))).toEqual([]);
     // Positive controls through the identical prefix filter.
     expect(urls.filter((u) => u.startsWith(`${SITE_URL}/answers`)).length).toBeGreaterThan(0);
-    expect(urls.filter((u) => u.startsWith(`${SITE_URL}/activities`)).length).toBeGreaterThan(0);
+    expect(urls.filter((u) => u === `${SITE_URL}/activities`)).toEqual([`${SITE_URL}/activities`]);
+  });
+
+  it('advertises the activities hub and no retired city guide', () => {
+    expect(urls).toContain(`${SITE_URL}/activities`);
+    expect(urls.filter((u) => /\/activities\/[^/]+/.test(u))).toEqual([]);
   });
 
   it('still carries no checkpoint slug anywhere in the sitemap', () => {
