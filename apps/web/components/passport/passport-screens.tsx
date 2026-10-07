@@ -21,13 +21,14 @@ export function PassportHomeScreen({ model }: { model: PassportModel }) {
           ) : null}
           {model.children.map((child) => {
             const toCheck = child.stamps.filter((stamp) => stamp.inferred).length;
+            const stamped = child.stamps.length - toCheck;
             return (
               <div className="pp-kid" key={child.id}>
                 <div>
                   <b>{child.name}</b>
                   <span>{child.meta}</span>
                   <div className="pp-meta">
-                    {child.stamps.length} stamp{child.stamps.length === 1 ? '' : 's'}
+                    {stamped} stamp{stamped === 1 ? '' : 's'}
                     {toCheck > 0 ? ` · ${toCheck} to check` : ''}
                   </div>
                 </div>

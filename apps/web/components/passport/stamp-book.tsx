@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { StampMark } from '~/components/passport/stamp-mark';
 import {
   confirmStampAction,
@@ -87,13 +88,17 @@ function StampSheet({
 }) {
   const [childId, setChildId] = useState(stamp.childId ?? kid.id);
   const [status, setStatus] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    setReady(true);
+  }, []);
   const fields = (form: FormData) => {
     form.set('stampId', stamp.id);
     form.set('childId', childId);
     form.set('returnChildId', kid.id);
     return form;
   };
-  return (
+  const sheet = (
     <>
       <button className="pp-sheet-dim" type="button" aria-label="Close stamp" onClick={onClose} />
       <dialog className="pp-sheet" open aria-label={stamp.activity} data-testid="stamp-sheet">
@@ -214,4 +219,8 @@ function StampSheet({
       </dialog>
     </>
   );
+  // The stamp card uses backdrop-filter, which makes it the containing block for
+  // position:fixed. Portaling to the body is what lets the sheet cover the page.
+  if (!ready) return null;
+  return createPortal(sheet, document.body);
 }
