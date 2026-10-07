@@ -240,10 +240,7 @@ export function RedesignHome({
     <h3 className="hs-h3">Finds what’s on near you</h3>
     <p className="hs-p">Swim, camps, drop-ins, the library down the street. Picked for your kids’ ages, from the places that run them.</p>
     <div className="hs-art"><div className="hs-card hs-art-pad hs-mini">
-     <div className="hs-msg in">Here’s what’s on near you this week:
-1. Parent &amp; tot swim (ages 2–4), Sat 9:15 a.m.
-2. Library storytime (ages 2–5), Tue 10:30 a.m.
-3. Little movers (ages 2–5), winter times not posted yet</div>
+     <div className="hs-msg in">{'Here’s what’s on near you this week:\n1. Parent & tot swim (ages 2–4), Sat 9:15 a.m.\n2. Library storytime (ages 2–5), Tue 10:30 a.m.\n3. Little movers (ages 2–5), winter times not posted yet'}</div>
     </div></div>
    </div>
    <div className="hs-beat hs-glass">

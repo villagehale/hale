@@ -47,10 +47,7 @@ export function RedesignForCentres({
   <div className="sp-split-r"><div className="sp-example">Example first text and reply. Names and places are made up.</div>
   <div className="hs-card hs-art-pad hs-mini sp-preview">
    <div className="hs-msg out">Hi! Mia is 4. Swim and fall programs near us?</div>
-   <div className="hs-msg in">Here’s what’s on near you:
-1. Parent &amp; tot swim (ages 2–4), Saturdays 9:15 a.m., from the town’s rec guide
-2. Preschool playtime (18 months to 4), drop-in, from the library’s page
-3. Little movers (ages 2–5), winter times not posted yet</div>
+   <div className="hs-msg in">{'Here’s what’s on near you:\n1. Parent & tot swim (ages 2–4), Saturdays 9:15\u00a0a.m., from the town’s rec\u00a0guide\n2. Preschool playtime (18 months to 4), drop-in, from the library’s page\n3. Little movers (ages 2–5), winter times not posted yet'}</div>
    <span className="hs-did"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>Watching: swim sign-ups</span>
   </div></div>
  </div>

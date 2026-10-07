@@ -49,11 +49,7 @@ export function RedesignActivities({
   <div className="sp-split-r"><div className="sp-example">Example chat. Places and times are made up.</div>
   <div className="hs-card hs-art-pad hs-mini sp-preview">
    <div className="hs-msg out">Anything for a 4-year-old this Saturday morning?</div>
-   <div className="hs-msg in">Three nearby:
-1. Parent &amp; tot swim (ages 2–4), 9:15 a.m.
-2. Library story time (ages 2–5), 10:30 a.m.
-3. Free drop-in play at the community centre, 10 to noon
-Want the links?</div>
+   <div className="hs-msg in">{'Three nearby:\n1. Parent & tot swim (ages 2–4), 9:15\u00a0a.m.\n2. Library story time (ages 2–5), 10:30\u00a0a.m.\n3. Free drop-in play at the community centre, 10 to noon\nWant the links?'}</div>
    <div className="hs-msg out">Story time! Link please</div>
    <div className="hs-msg in">Here’s the <span className="hs-link">library page</span>. No sign-up needed for this one.</div>
   </div></div>

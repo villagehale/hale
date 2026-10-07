@@ -2,11 +2,15 @@
    Tokens and measurements come from the approved home.html / subpages CSS.
    Design --nav-h is not set here: the shore pulls under the real sticky header. */
 
-.rd .stage { margin-top: calc(-1 * var(--nav-h)); }
+/* Shore runs under the sticky header; padding puts the type back below it,
+   the same pair production uses on .v4-hero-top. */
+.rd .stage {
+  margin-top: calc(-1 * var(--nav-h));
+  padding-top: var(--nav-h);
+}
 .rd {
   --font-ui: var(--font-sans);
   --font-body: var(--font-serif);
-  --font-mono: var(--font-mono);
 }
 .rd .lg-doc a.link,
 .rd .lg-toc a.link {
@@ -42,9 +46,11 @@
   --wash: rgb(23 41 74 / 0.04);
 
   --font-display: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif; /* production --font-display, unchanged */
-  --font-body: "Source Serif 4", Georgia, serif;
-  --font-ui: "Figtree", -apple-system, "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  /* next/font registers hashed families on html (--font-serif, --font-sans,
+     --font-mono). Literal "Source Serif 4" / Figtree names are not those
+     families, so they fell through to Georgia and the system sans. */
+  --font-body: var(--font-serif), Georgia, serif;
+  --font-ui: var(--font-sans), -apple-system, "Segoe UI", system-ui, sans-serif;
   --font-ios: -apple-system, "SF Pro Text", Inter, "Helvetica Neue", Arial, sans-serif;
 
   /* spacing scale 4/8/12/16/24/32/48/64 */
@@ -60,7 +66,7 @@
 
 .rd * { box-sizing: border-box; margin: 0; padding: 0; }
 .rd, .rd { background: var(--page); color: var(--navy); }
-.rd { font-family: var(--font-body); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+.rd { font-family: var(--font-body); line-height: normal; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 .rd img, .rd svg { display: block; }
 .rd a { color: inherit; text-decoration: none; }
 
@@ -1203,7 +1209,7 @@
 .rd .sp-stage { min-height: 0; }
 .rd .sp-hero { position: relative; padding: 96px var(--s5) 128px; }
 /* the band's own fade is the gap: the first section starts close under it */
-.rd .hs-page > section:first-child { padding-top: var(--s6); }
+.rd .sp-stage + .hs-page > section:first-child { padding-top: var(--s6); }
 .rd .sp-hero::before {
   content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
   background: radial-gradient(78% 68% at 50% 46%, rgb(253 252 250 / 0.66) 0%, rgb(253 252 250 / 0.66) 46%, transparent 100%);
@@ -1327,7 +1333,7 @@
   .rd .sp-split-r { margin-top: var(--s6); width: 100%; }
   .rd .sp-quote { padding: var(--s6) var(--s5); text-align: center; }
   .rd .sp-quote p { font-size: 22.4px; text-wrap: pretty; }
-  .rd .hs-page > section:first-child { padding-top: var(--s4); }
+  .rd .sp-stage + .hs-page > section:first-child { padding-top: var(--s4); }
   .rd .sp-qr { flex-direction: column; text-align: center; }
   .rd .sp-toc { display: none; }
   .rd .sp-filter { justify-content: center; }
@@ -1348,19 +1354,19 @@
 
 /* centred hero → the section right under it: centre a short intro head so the
    change from centred title to the 12-col grid reads as one composition */
-.rd .hs-page > section:first-child .hs-head { text-align: center; margin-inline: auto; }
-.rd .hs-page > section:first-child .hs-head .hs-lede { margin-inline: auto; text-wrap: balance; }
-.rd .hs-page > section:first-child .sp-filter { justify-content: center; }
+.rd .sp-stage + .hs-page > section:first-child .hs-head { text-align: center; margin-inline: auto; }
+.rd .sp-stage + .hs-page > section:first-child .hs-head .hs-lede { margin-inline: auto; text-wrap: balance; }
+.rd .sp-stage + .hs-page > section:first-child .sp-filter { justify-content: center; }
 .rd .sp-quote { text-align: center; }
 .rd .sp-quote p { max-width: 880px; margin-inline: auto; }
 .rd .sp-split-l.w6 { grid-column: 1 / span 6; }
 @media (max-width: 640px) { .rd .dbr { display: none; } }
 /* a split section keeps its head left, beside its example */
-.rd .hs-page > section:first-child .sp-split-l .hs-head { text-align: left; margin-inline: 0; }
-.rd .hs-page > section:first-child .sp-split-l .hs-head .hs-lede { margin-inline: 0; text-wrap: pretty; }
+.rd .sp-stage + .hs-page > section:first-child .sp-split-l .hs-head { text-align: left; margin-inline: 0; }
+.rd .sp-stage + .hs-page > section:first-child .sp-split-l .hs-head .hs-lede { margin-inline: 0; text-wrap: pretty; }
 @media (max-width: 640px) {
-  .rd .hs-page > section:first-child .sp-split-l .hs-head { text-align: center; margin-inline: auto; }
-  .rd .hs-page > section:first-child .sp-split-l .hs-head .hs-lede { margin-inline: auto; }
+  .rd .sp-stage + .hs-page > section:first-child .sp-split-l .hs-head { text-align: center; margin-inline: auto; }
+  .rd .sp-stage + .hs-page > section:first-child .sp-split-l .hs-head .hs-lede { margin-inline: auto; }
 }
 @media (max-width: 640px) {
   /* the jump list is hidden on phones, so its label goes too */
