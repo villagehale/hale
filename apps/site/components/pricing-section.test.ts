@@ -45,7 +45,8 @@ describe('PricingSection (landing pricing)', () => {
   it('renders French tier names and paid features, not the English list', () => {
     const french = renderToStaticMarkup(createElement(PricingSection, { locale: 'fr' }));
     expect(french).toContain('Gratuit');
-    expect(french).toContain('Famille');
+    expect(french).toContain('>Max<');
+    expect(french).not.toContain('Famille');
     expect(french).toContain('Tout ce qu’il y a dans Gratuit');
     expect(french).toContain('Tout ce qu’il y a dans Plus');
     expect(french).toContain('Rappels et brouillons, à mesure qu’ils arrivent');
@@ -74,13 +75,21 @@ describe('PricingSection (landing pricing)', () => {
     expect(fr.PricingSection.tierNames).toEqual({
       free: 'Gratuit',
       plus: 'Plus',
-      family: 'Famille',
+      family: 'Max',
     });
+    expect(french).toContain('$19 CAD/mo');
+    expect(french).toContain('$159 CAD/yr');
+    expect(french).toContain('$39 CAD/mo');
+    expect(french).toContain('$329 CAD/yr');
+    expect(french).toContain('Seul Gratuit est disponible aujourd’hui.');
+    expect(french).toContain('Bientôt disponible');
+    expect([...french.matchAll(/disabled/g)]).toHaveLength(2);
+    expect([...french.matchAll(/Bientôt disponible/g)]).toHaveLength(2);
   });
 
   it('renders Chinese tier names and paid features, not the English feature list', () => {
-    // Plus and Family stay the names the rest of the zh pricing page already uses.
-    // Free does not: the page says 免费, and the card was still saying Free.
+    // Plus stays the name the rest of the zh pricing page already uses. The
+    // family tier displays as Max. Free is 免费, not the English Free.
     const chinese = renderToStaticMarkup(createElement(PricingSection, { locale: 'zh' }));
     expect(chinese).toContain('>免费<');
     expect(chinese).toContain('免费档的全部');
@@ -94,7 +103,16 @@ describe('PricingSection (landing pricing)', () => {
     expect(chinese).not.toContain('>Free<');
     expect(zh.PricingSection.tierNames.free).toBe('免费');
     expect(zh.PricingSection.tierNames.plus).toBe('Plus');
-    expect(zh.PricingSection.tierNames.family).toBe('Family');
+    expect(zh.PricingSection.tierNames.family).toBe('Max');
+    expect(chinese).toContain('>Max<');
+    expect(chinese).not.toContain('Family');
+    expect(chinese).toContain('$19 CAD/mo');
+    expect(chinese).toContain('$159 CAD/yr');
+    expect(chinese).toContain('$39 CAD/mo');
+    expect(chinese).toContain('$329 CAD/yr');
+    expect(chinese).toContain('目前只有免费档可用。');
+    expect([...chinese.matchAll(/即将推出/g)]).toHaveLength(2);
+    expect([...chinese.matchAll(/disabled/g)]).toHaveLength(2);
   });
 
   it('shows both monthly and annual prices for the paid tiers', () => {

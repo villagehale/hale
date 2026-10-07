@@ -412,7 +412,7 @@
   },
   "Pricing": {
     "metaTitle": "Tarifs · Hale",
-    "metaDescription": "Gratuit tant que Hale est nouveau — chaque étape, chaque enfant. Plus et Famille ajoutent davantage de l’année planifiée avec vous, à mesure que ces parties arrivent. Vos données restent au Canada.",
+    "metaDescription": "Gratuit tant que Hale est nouveau — chaque étape, chaque enfant. Plus et Max ajoutent davantage de l’année planifiée avec vous, à mesure que ces parties arrivent. Vos données restent au Canada.",
     "eyebrow": "Tarifs",
     "headline": [
       {
@@ -423,7 +423,7 @@
         "accent": true
       }
     ],
-    "lede": "Tout l’essentiel — chaque étape, chaque enfant — est gratuit. Plus et Famille ajoutent davantage de l’année suivie avec vous, à mesure que chaque partie arrive.",
+    "lede": "Tout l’essentiel — chaque étape, chaque enfant — est gratuit. Plus et Max ajoutent davantage de l’année suivie avec vous, à mesure que chaque partie arrive.",
     "cta": "Commencez gratuitement aujourd’hui — et laissez Hale grandir vers le reste quand vous serez prêt."
   },
   "PricingSection": {
@@ -431,9 +431,10 @@
     "headline": "Tout l’essentiel est gratuit. Les forfaits payants ajoutent davantage de l’année, jamais un péage sur la surveillance.",
     "lede": "Tout ce que Hale fait aujourd’hui — la recherche, la surveillance, les plans, les réponses — est gratuit, à chaque étape et pour chaque enfant. Les forfaits payants n’ouvriront que lorsqu’il y aura davantage de l’année à planifier avec vous. Les familles qui commencent maintenant gardent leur tarif fondateur pour toujours. Un coparent est toujours gratuit.",
     "foundingTitle": "Les familles fondatrices adhèrent gratuitement.",
-    "foundingNote": "Les 100 premières familles reçoivent un insigne de fondateur permanent — et un accès prioritaire à l’ouverture de Plus et Famille.",
+    "foundingNote": "Les 100 premières familles reçoivent un insigne de fondateur permanent — et un accès prioritaire à l’ouverture de Plus et Max.",
     "annualNote": "facturé à l’année — environ trois mois gratuits",
-    "footnote": "Hale est gratuit pour commencer. Plus et Famille s’ouvrent à mesure que leurs intégrations arrivent.",
+    "footnote": "Seul Gratuit est disponible aujourd’hui.",
+    "comingSoon": "Bientôt disponible",
     "tierLines": {
       "free": "Trouvez ce qu’il y a et ouvrez l’année. Les matins que vous surveillez déjà restent gratuits.",
       "plus": "Des rappels quand un week-end est vide ou qu’une liste d’attente s’ouvre — plus la mémoire de l’année, à mesure qu’elle arrive.",
@@ -442,7 +443,7 @@
     "tierNames": {
       "free": "Gratuit",
       "plus": "Plus",
-      "family": "Famille"
+      "family": "Max"
     },
     "paidFeatures": {
       "plus": [

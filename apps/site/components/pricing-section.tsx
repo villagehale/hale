@@ -180,22 +180,25 @@ function PricingSectionLegacy({ locale = routing.defaultLocale }: { locale?: Loc
                   </li>
                 ))}
               </ul>
-              {/* Every tier opens the same door — you start by texting Hale — so the
-               * free and paid cards differ only in emphasis, not destination.
+              {/* Free is the only live door. Plus and Max stay on the card as
+               * disabled Coming soon controls, the same slot as the free CTA.
                * `mt-auto` drops the three actions onto one line across the grid. */}
               <div className="mt-auto pt-8">
-                {/* One placement for all three cards: which tier a reader tapped is not
-                    a different conversion — every card opens the same composer — and
-                    three placement names would split one number into three. */}
-                <LandingCta
-                  event="cta_text_click"
-                  channel="sms"
-                  placement="pricing_tier"
-                  href={cta.href}
-                  className={isFree ? 'btn-primary' : 'btn-secondary'}
-                >
-                  {cta.label}
-                </LandingCta>
+                {isFree ? (
+                  <LandingCta
+                    event="cta_text_click"
+                    channel="sms"
+                    placement="pricing_tier"
+                    href={cta.href}
+                    className="btn-primary"
+                  >
+                    {cta.label}
+                  </LandingCta>
+                ) : (
+                  <button type="button" className="btn-secondary" disabled>
+                    {t('comingSoon')}
+                  </button>
+                )}
               </div>
             </li>
           );

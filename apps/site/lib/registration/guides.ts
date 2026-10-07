@@ -23,7 +23,7 @@ const UNOFFICIAL =
   'Hale is unofficial. Confirm every date on the official link in this block — if the city page has moved, the city page wins.';
 
 const FOOTER =
-  'Hale is a planner for your kids’ year, not an app. Founding families keep their rate. Your data stays in Canada.';
+  'Hale is a planner for your kids’ year, not an app. Founding families keep their rate.';
 
 export const TORONTO_FALL: RegistrationGuide = {
   slug: 'toronto-fall-recreation-registration',

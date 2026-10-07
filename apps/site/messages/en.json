@@ -433,7 +433,8 @@
     "foundingTitle": "Founding families join free.",
     "foundingNote": "The first 100 families get a permanent founding badge — and first access when Plus and Family open.",
     "annualNote": "billed yearly — about three months free",
-    "footnote": "Hale is free to start. Plus and Family open as their integrations ship.",
+    "footnote": "Only Free is available today.",
+    "comingSoon": "Coming soon",
     "tierLines": {
       "free": "Unlimited chat, on your own or in your group chats. Hale finds what’s on, watches for spots and reminds you before sign-ups.",
       "plus": "Nudges when a weekend’s empty or a waitlist opens, plus year memory as it ships.",
