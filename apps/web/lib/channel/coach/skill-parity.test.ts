@@ -81,4 +81,18 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
 
     expect(skill.instructions).toContain(`${budget} characters`);
   });
+
+  /**
+   * VIL-365 · a parent who asks for activities already gave Hale enough. The ages
+   * are in context and the tools attach the town from the postal area, so the
+   * skill and the search tool both say to look before asking which.
+   */
+  it('tells the coach to search before asking when a parent wants activities', async () => {
+    const skill = await loadCronSkill('coach-channel-sms');
+    const village = searchVillageTool({} as never);
+
+    expect(skill.instructions).toContain('Search in this turn, before any question');
+    expect(skill.instructions).toContain('not an unresolved target');
+    expect(village.description).toContain('Do not ask which before you look');
+  });
 });

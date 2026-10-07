@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { parseAgeRange } from '~/lib/channel/intake/radar-decide';
+import { type RadarCandidate, parseAgeRange } from '~/lib/channel/intake/radar-decide';
+import { decideNudge } from '~/lib/channel/nudge/nudge-decide';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
+import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
 import {
+  CIVIC_SOURCE,
   type CivicSessionForFamily,
+  type ProjectedCivicCandidate,
   MAX_CIVIC_CANDIDATES_PER_FAMILY,
   MAX_RADIUS_KM,
   PREFERRED_RADIUS_KM,
@@ -166,9 +170,198 @@ describe('selectCivicSessions — dates and windows', () => {
     const many = Array.from({ length: 20 }, (_, i) =>
       session({ id: `s${i}`, title: `S${i}`, startsAt: new Date('2026-08-05T14:30:00Z') }),
     );
-    expect(selectCivicSessions(many, TODDLER, null, NOW, TZ).length).toBeLessThanOrEqual(8);
+    expect(selectCivicSessions(many, TODDLER, null, NOW, TZ).length).toBeLessThanOrEqual(
+      MAX_CIVIC_CANDIDATES_PER_FAMILY,
+    );
   });
 });
+
+/**
+ * VIL-365 · the Monday rebuild used to spend the whole cap on Monday and Tuesday.
+ * The empty-Saturday ask reads civic rows dated the coming Saturday, and a feed
+ * with none of those goes quiet for the rest of the week.
+ */
+describe('selectCivicSessions — spread across the window', () => {
+  const at = (day: string) => new Date(`${day}T14:30:00Z`);
+
+  function dayKey(offset: number): string {
+    const date = new Date('2026-08-03T00:00:00Z');
+    date.setUTCDate(date.getUTCDate() + offset);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function isWeekend(day: string): boolean {
+    const dow = new Date(`${day}T00:00:00Z`).getUTCDay();
+    return dow === 0 || dow === 6;
+  }
+
+  it('still gives a family with a full Monday and Tuesday a Saturday and a Sunday', () => {
+    const monday = Array.from({ length: 12 }, (_, i) =>
+      near({ id: `mon-${i}`, title: `Monday ${i}`, startsAt: at('2026-08-03') }),
+    );
+    const tuesday = Array.from({ length: 12 }, (_, i) =>
+      near({ id: `tue-${i}`, title: `Tuesday ${i}`, startsAt: at('2026-08-04') }),
+    );
+    const saturday = near({
+      id: 'sat',
+      title: 'Saturday storytime',
+      startsAt: at('2026-08-08'),
+    });
+    const sunday = near({ id: 'sun', title: 'Sunday storytime', startsAt: at('2026-08-09') });
+
+    const picks = selectCivicSessions(
+      [...monday, ...tuesday, saturday, sunday],
+      TODDLER,
+      SCARBOROUGH,
+      NOW,
+      TZ,
+    );
+    const dates = new Set(picks.map((pick) => pick.eventDate));
+
+    expect(picks.length).toBeLessThanOrEqual(MAX_CIVIC_CANDIDATES_PER_FAMILY);
+    expect(dates.has('2026-08-08')).toBe(true);
+    expect(dates.has('2026-08-09')).toBe(true);
+    expect(picks.every((pick) => pick.eventDate === '2026-08-03' || pick.eventDate === '2026-08-04')).toBe(
+      false,
+    );
+  });
+
+  it('keeps every Saturday and Sunday in the window, and ranks distance inside the day', () => {
+    // One nearby session on every day of the forward window, plus a second Saturday
+    // session that is still local but farther. The cap cannot hold every day, so
+    // the spread has to reach the later weekends, and the Saturday slot has to be
+    // the nearer of the two.
+    const days = Array.from({ length: 22 }, (_, offset) => dayKey(offset));
+    const sessions = days.map((day) =>
+      near({
+        id: day,
+        title: day === '2026-08-08' ? 'Near Saturday' : `Day ${day}`,
+        startsAt: at(day),
+        lat: SCARBOROUGH.lat + 0.004,
+        lng: SCARBOROUGH.lng,
+      }),
+    );
+    sessions.push(
+      near({
+        id: 'far-sat',
+        title: 'Far Saturday',
+        startsAt: at('2026-08-08'),
+        lat: SCARBOROUGH.lat + 0.05,
+        lng: SCARBOROUGH.lng,
+      }),
+    );
+
+    const nearKm = haversineKm(SCARBOROUGH, { lat: SCARBOROUGH.lat + 0.004, lng: SCARBOROUGH.lng });
+    const farKm = haversineKm(SCARBOROUGH, { lat: SCARBOROUGH.lat + 0.05, lng: SCARBOROUGH.lng });
+    expect(nearKm).toBeLessThan(farKm);
+    expect(farKm).toBeLessThan(PREFERRED_RADIUS_KM);
+
+    const picks = selectCivicSessions(sessions, TODDLER, SCARBOROUGH, NOW, TZ);
+    const dates = new Set(picks.map((pick) => pick.eventDate));
+    const weekends = days.filter((day) => isWeekend(day) && day <= '2026-08-24');
+
+    expect(picks.length).toBeLessThanOrEqual(MAX_CIVIC_CANDIDATES_PER_FAMILY);
+    for (const weekend of weekends) expect(dates.has(weekend)).toBe(true);
+    expect([...dates].some((day) => !isWeekend(day))).toBe(true);
+    const latest = [...dates].sort().at(-1);
+    expect(latest !== undefined && latest > '2026-08-10').toBe(true);
+    expect(picks.find((pick) => pick.eventDate === '2026-08-08')?.title).toBe('Near Saturday');
+    expect(picks.map((pick) => pick.title)).not.toContain('Far Saturday');
+  });
+
+  it('keeps the nearest sessions when a single day has more than the cap', () => {
+    const sessions = Array.from({ length: MAX_CIVIC_CANDIDATES_PER_FAMILY + 1 }, (_, i) =>
+      near({
+        id: `d${i}`,
+        title: `D${i}`,
+        lat: SCARBOROUGH.lat + i * 0.006,
+        lng: SCARBOROUGH.lng,
+        startsAt: at('2026-08-05'),
+      }),
+    );
+    const titles = selectCivicSessions(sessions, TODDLER, SCARBOROUGH, NOW, TZ).map(
+      (pick) => pick.title,
+    );
+    expect(titles).toContain('D0');
+    expect(titles).not.toContain(`D${MAX_CIVIC_CANDIDATES_PER_FAMILY}`);
+  });
+
+  it('does not spend a full nearby slate to reach a farther Saturday', () => {
+    const nearby = Array.from({ length: MAX_CIVIC_CANDIDATES_PER_FAMILY }, (_, i) =>
+      near({ id: `n${i}`, title: `Nearby ${i}`, startsAt: at('2026-08-03') }),
+    );
+    const saturday = midway({
+      id: 'sat',
+      title: 'Farther Saturday',
+      startsAt: at('2026-08-08'),
+    });
+
+    const titles = selectCivicSessions([...nearby, saturday], TODDLER, SCARBOROUGH, NOW, TZ).map(
+      (pick) => pick.title,
+    );
+    expect(titles).not.toContain('Farther Saturday');
+  });
+
+  it('leaves the empty-Saturday nudge a candidate', () => {
+    const monday = Array.from({ length: 12 }, (_, i) =>
+      near({ id: `mon-${i}`, title: `Monday ${i}`, startsAt: at('2026-08-03') }),
+    );
+    const picks = selectCivicSessions(
+      [
+        ...monday,
+        near({ id: 'sat', title: 'Saturday storytime', startsAt: at('2026-08-08') }),
+      ],
+      TODDLER,
+      SCARBOROUGH,
+      NOW,
+      TZ,
+    );
+    const saturday = picks.find((pick) => pick.eventDate === '2026-08-08');
+    expect(saturday).toBeDefined();
+
+    const decision = decideNudge({
+      children: [{ id: 'maya', name: 'Maya', ageMonths: 30, dobPrecision: 'exact' }],
+      candidates: picks.map((pick, index) => toRadar(pick, `cand-${index}`)),
+      windows: [],
+      weather: [],
+      teenChildIds: [],
+      healthChildren: [],
+      areaCoarse: null,
+      suppressedCheckpointRefs: new Set(),
+      claimedWindowIds: new Set(),
+      weekdayCare: 'disarmed',
+      saturdayPlans: { householdBusy: false, busyChildIds: new Set() },
+      householdBias: emptyHouseholdFindBias(),
+      now: NOW,
+      timeZone: TZ,
+    });
+
+    expect(decision.nudge).toMatchObject({
+      kind: 'empty_saturday',
+      saturday: '2026-08-08',
+      kidName: 'Maya',
+    });
+  });
+});
+
+function toRadar(pick: ProjectedCivicCandidate, id: string): RadarCandidate {
+  return {
+    id,
+    title: pick.title,
+    venueName: pick.venueName,
+    ageRange: pick.ageRange,
+    priceLevel: 'free',
+    indoorOutdoor: 'indoor',
+    eventDate: pick.eventDate,
+    seasons: null,
+    childId: null,
+    confidence: pick.confidence,
+    source: CIVIC_SOURCE,
+    sourceUrl: pick.sourceUrl,
+    access: pick.access,
+    whenLabel: pick.whenLabel,
+  };
+}
 
 describe('haversineKm', () => {
   /**

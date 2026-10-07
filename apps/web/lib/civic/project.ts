@@ -36,8 +36,16 @@ export const CIVIC_RUN_TYPE = 'civic';
 /** Which discovery provider produced the row, for village_candidates.source. */
 export const CIVIC_SOURCE = 'civic_registry';
 
-/** A feed is a shortlist, not a directory. Eight is enough to feel local without
- * burying the LLM feed's picks underneath a library's whole calendar. */
+/**
+ * A feed is a shortlist, not a directory. Eight is enough to feel local without
+ * burying the LLM feed's picks underneath a library's whole calendar.
+ *
+ * VIL-365 · those eight are spread across the forward window, one day at a time,
+ * with every Saturday and Sunday that has a session reserved first. A Monday
+ * rebuild that kept the eight nearest-then-earliest rows filled Monday and
+ * Tuesday. The empty-Saturday ask then had nothing dated that day, and once
+ * those two dates passed the feed went quiet until the next Monday.
+ */
 export const MAX_CIVIC_CANDIDATES_PER_FAMILY = 8;
 
 /** How far ahead a projected session may sit. Beyond this it is not this week's
@@ -260,8 +268,12 @@ export function nextOccurrenceDay(
  * municipality gate is again the only locality guarantee: a Places outage costs a
  * family precision, never their feed.
  *
- * Soonest first within each proximity tier; ties broken by distance then title so
- * a run is stable.
+ * Proximity tier still fills first: a full slate inside {@link PREFERRED_RADIUS_KM}
+ * is not opened up to make room for a farther Saturday. Inside a tier the days
+ * are spread across the window (every Saturday and Sunday that has a session is
+ * kept, soonest first if they would overflow the cap) and distance ranks only
+ * within a day. The returned order is still soonest-first within a tier, then
+ * distance, then title, so a run is stable.
  */
 export function selectCivicSessions(
   sessions: readonly CivicSessionForFamily[],
@@ -311,14 +323,171 @@ export function selectCivicSessions(
     });
   }
 
-  projected.sort(
+  const picked = spreadAcrossDays(projected, limit);
+  picked.sort(
     (a, b) =>
       proximityTier(a) - proximityTier(b) ||
       a.eventDate.localeCompare(b.eventDate) ||
       (a.distanceKm ?? 0) - (b.distanceKm ?? 0) ||
       a.title.localeCompare(b.title),
   );
-  return projected.slice(0, limit);
+  return picked;
+}
+
+/**
+ * VIL-365 · one shortlist spread across the window, not piled on the soonest days.
+ *
+ * Preferred-radius sessions fill before anything farther, the same as before — a
+ * Saturday across the city does not evict a week of genuinely local ones. Inside
+ * a tier, every Saturday and Sunday that has a session takes a slot first (the
+ * soonest ones, if the weekends alone would overflow the cap). Whatever room is
+ * left is spread across the other days of the window rather than given back to
+ * Monday. Distance orders the sessions inside a day and nowhere else.
+ */
+function spreadAcrossDays(
+  projected: readonly ProjectedCivicCandidate[],
+  limit: number,
+): ProjectedCivicCandidate[] {
+  const selected: ProjectedCivicCandidate[] = [];
+  for (const tier of [0, 1]) {
+    const room = limit - selected.length;
+    if (room <= 0) break;
+    selected.push(
+      ...spreadTier(
+        projected.filter((candidate) => proximityTier(candidate) === tier),
+        room,
+      ),
+    );
+  }
+  return selected;
+}
+
+function spreadTier(
+  pool: readonly ProjectedCivicCandidate[],
+  limit: number,
+): ProjectedCivicCandidate[] {
+  if (pool.length === 0 || limit <= 0) return [];
+
+  const buckets = new Map<string, ProjectedCivicCandidate[]>();
+  for (const candidate of pool) {
+    const list = buckets.get(candidate.eventDate);
+    if (list) list.push(candidate);
+    else buckets.set(candidate.eventDate, [candidate]);
+  }
+  for (const list of buckets.values()) {
+    list.sort(
+      (a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0) || a.title.localeCompare(b.title),
+    );
+  }
+
+  const days = [...buckets.keys()].sort();
+  const target = chooseSpreadDays(days, limit);
+  const cursors = new Map<string, number>();
+  const chosen: ProjectedCivicCandidate[] = [];
+
+  const take = (day: string): boolean => {
+    if (chosen.length >= limit) return false;
+    const list = buckets.get(day);
+    if (!list) return false;
+    const index = cursors.get(day) ?? 0;
+    const next = list[index];
+    if (!next) return false;
+    cursors.set(day, index + 1);
+    chosen.push(next);
+    return true;
+  };
+
+  for (const day of target) take(day);
+
+  let progressed = true;
+  while (chosen.length < limit && progressed) {
+    progressed = false;
+    for (const day of days) {
+      if (take(day)) progressed = true;
+      if (chosen.length >= limit) break;
+    }
+  }
+  return chosen;
+}
+
+/** Saturday and Sunday, read off the calendar date itself. The key is a
+ * `YYYY-MM-DD`, so UTC midnight is that civil day and not a zone conversion. */
+function isWeekendDay(day: string): boolean {
+  const dow = new Date(`${day}T00:00:00Z`).getUTCDay();
+  return dow === 0 || dow === 6;
+}
+
+/**
+ * Which days get a slot when there are more days than room.
+ *
+ * The sample is even across the whole window, then every weekend day the sample
+ * missed is swapped in — a weekday first, and only then a later weekend, so the
+ * soonest Saturday and Sunday survive when the cap cannot hold every one.
+ * Fewer days than room means every day; the caller fills the spare slots.
+ */
+function chooseSpreadDays(days: readonly string[], limit: number): string[] {
+  if (days.length <= limit) return [...days];
+
+  const weekends = days.filter(isWeekendDay);
+  const selected = new Set(evenSample(days, limit));
+
+  for (const weekend of weekends) {
+    if (selected.has(weekend)) continue;
+    const weekdays = [...selected].filter((day) => !isWeekendDay(day));
+    if (weekdays.length > 0) {
+      selected.delete(closestDay(weekdays, weekend));
+      selected.add(weekend);
+      continue;
+    }
+    const later = [...selected].filter((day) => day > weekend);
+    const victim = later.sort().at(-1);
+    if (!victim) continue;
+    selected.delete(victim);
+    selected.add(weekend);
+  }
+
+  return [...selected].sort();
+}
+
+function evenSample(days: readonly string[], limit: number): string[] {
+  if (limit <= 0 || days.length === 0) return [];
+  const first = days[0];
+  if (first === undefined) return [];
+  if (limit === 1) return [first];
+  const last = days.length - 1;
+  const seen = new Set<number>();
+  const picked: string[] = [];
+  const pushAt = (index: number) => {
+    const day = days[index];
+    if (day === undefined || seen.has(index)) return;
+    seen.add(index);
+    picked.push(day);
+  };
+  for (let i = 0; i < limit; i++) pushAt(Math.round((i * last) / (limit - 1)));
+  if (picked.length < limit) {
+    for (let index = 0; index < days.length && picked.length < limit; index++) pushAt(index);
+    picked.sort();
+  }
+  return picked;
+}
+
+/** The weekday closest to `target`. A tie drops the later day, so a Monday that
+ * is still this week's news survives a swap with a day the same distance away. */
+function closestDay(days: readonly string[], target: string): string {
+  const distance = (day: string) =>
+    Math.abs(Date.parse(`${day}T00:00:00Z`) - Date.parse(`${target}T00:00:00Z`));
+  const first = days[0];
+  if (first === undefined) return target;
+  let victim = first;
+  let best = distance(victim);
+  for (const day of days.slice(1)) {
+    const gap = distance(day);
+    if (gap < best || (gap === best && day > victim)) {
+      victim = day;
+      best = gap;
+    }
+  }
+  return victim;
 }
 
 /** 0 for genuinely local, 1 for the rest — so a nearby session later in the week
