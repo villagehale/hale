@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { findActivitiesTool } from '~/lib/channel/activity/tools';
 import { smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -85,14 +86,19 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
   /**
    * VIL-365 · a parent who asks for activities already gave Hale enough. The ages
    * are in context and the tools attach the town from the postal area, so the
-   * skill and the search tool both say to look before asking which.
+   * skill says to look before asking which, and `find_activities` says the same
+   * when the radar came back empty.
    */
   it('tells the coach to search before asking when a parent wants activities', async () => {
     const skill = await loadCronSkill('coach-channel-sms');
-    const village = searchVillageTool({} as never);
+    const find = findActivitiesTool({
+      reader: {} as never,
+      finder: {} as never,
+      onPromise: () => {},
+    });
 
     expect(skill.instructions).toContain('Search in this turn, before any question');
     expect(skill.instructions).toContain('not an unresolved target');
-    expect(village.description).toContain('Do not ask which before you look');
+    expect(find.description).toContain('do not stop to ask which child');
   });
 });
