@@ -38,12 +38,17 @@ const NO_FLASH_COLLAPSE = `(function(){try{document.documentElement.dataset.shel
 )})==='1'?'1':'0';}catch(e){}})();`;
 
 export default async function AuthedLayout({ children }: { children: React.ReactNode }) {
-  const requestHeaders = await headers();
   // Preview demo of the Mia/Leo passport. The middleware is the only writer of
   // this header, and only on /family and the two fixture kids. No session, no
   // database, no real family under the page.
-  if (interestPassportDemo() && requestHeaders.get(PASSPORT_DEMO_HEADER) === '1') {
-    return <main id="main-content">{children}</main>;
+  // headers() runs only when the demo gate is already true. The family gate
+  // redirects (or reaches its first loader) before any request-scope read when
+  // the demo is off, which is every production and local request.
+  if (interestPassportDemo()) {
+    const demoHeaders = await headers();
+    if (demoHeaders.get(PASSPORT_DEMO_HEADER) === '1') {
+      return <main id="main-content">{children}</main>;
+    }
   }
 
   const authEnabled = authConfigured();
@@ -86,6 +91,7 @@ export default async function AuthedLayout({ children }: { children: React.React
   // has already streamed a 200 and notFound() only swaps UI mid-stream. The
   // middleware is the only writer of this header (it strips client copies), and
   // the nested admin layout keeps its own gate as defense in depth.
+  const requestHeaders = await headers();
   if (requestHeaders.get(ADMIN_PROBE_HEADER) === '1' && adminGate.status !== 'admin') {
     notFound();
   }
