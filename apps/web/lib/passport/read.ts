@@ -3,6 +3,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { previewPassport } from '~/components/passport/fixture';
 import { db } from '~/lib/db';
 import { currentFamilyId, currentUserId } from '~/lib/family';
+import { interestPassportDemo } from './demo';
 import { type SourceType, iconFor, progressLabel, sourceLabel, stampFaceDate } from './signals';
 import { canUndo } from './signals';
 
@@ -97,6 +98,9 @@ function firstName(name: string | null): string | null {
 }
 
 export async function readPassportModel(now = new Date()): Promise<PassportModel> {
+  // Preview demo is the fixture only. Checked before the database so a preview
+  // that has DATABASE_URL still cannot read a real family.
+  if (interestPassportDemo()) return previewPassport();
   if (!process.env.DATABASE_URL) return previewPassport();
   const database = db();
   const familyId = await currentFamilyId(database);

@@ -8,6 +8,7 @@ import { authConfigured } from '~/lib/auth-config';
 import { db } from '~/lib/db';
 import { requireUserIdForUser, resolveFamilyForUser } from '~/lib/family';
 import { addChildAction } from '~/lib/family/children-actions';
+import { interestPassportDemo } from './demo';
 import { interestPassportEnabled } from './flag';
 import { type ExistingStamp, activityKeyOf, planStampWrite } from './signals';
 import {
@@ -33,6 +34,7 @@ async function context(): Promise<
   | { status: 'preview' | 'off' | 'unauthenticated' }
 > {
   if (!interestPassportEnabled()) return { status: 'off' };
+  if (interestPassportDemo()) return { status: 'preview' };
   if (!process.env.DATABASE_URL || !authConfigured()) return { status: 'preview' };
   const session = await auth();
   const externalId = session?.user?.id;
@@ -237,7 +239,7 @@ export async function saveBasicsAction(formData: FormData): Promise<void> {
 }
 
 export async function addPassportChildAction(formData: FormData): Promise<void> {
-  if (!interestPassportEnabled()) return;
+  if (!interestPassportEnabled() || interestPassportDemo()) return;
   await addChildAction({
     name: String(formData.get('name') ?? ''),
     dateOfBirth: String(formData.get('dateOfBirth') ?? ''),
