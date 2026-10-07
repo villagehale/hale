@@ -45,6 +45,7 @@ export const PLAN_DISPLAY = {
       'Live find',
       'A text when a spot opens',
       'Group chats and your co-parent',
+      'A nudge when a weekend’s empty',
     ],
   },
   plus: {
@@ -54,7 +55,6 @@ export const PLAN_DISPLAY = {
     annualPriceCad: 159,
     features: [
       'Everything in Free',
-      'A nudge when a weekend’s empty',
       'Year memory, season to season',
       'Sign-ups done for you, when you say yes',
     ],

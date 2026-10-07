@@ -168,7 +168,6 @@
     "paidFeatures": {
       "plus": [
         "Everything in Free",
-        "A nudge when a weekend’s empty",
         "Year memory, season to season",
         "Sign-ups done for you, when you say yes"
       ],
@@ -183,7 +182,8 @@
       "Unlimited chat",
       "Live find",
       "A text when a spot opens",
-      "Group chats and your co-parent"
+      "Group chats and your co-parent",
+      "A nudge when a weekend’s empty"
     ]
   },
   "Contact": {

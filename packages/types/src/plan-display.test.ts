@@ -65,6 +65,7 @@ describe('PLAN_DISPLAY (the displayed plan source of truth)', () => {
       'Live find',
       'A text when a spot opens',
       'Group chats and your co-parent',
+      'A nudge when a weekend’s empty',
     ]);
   });
 
@@ -78,7 +79,6 @@ describe('PLAN_DISPLAY (the displayed plan source of truth)', () => {
     expect(PLAN_DISPLAY.plus.tagline).toBe('More done for you, all year.');
     expect(PLAN_DISPLAY.plus.features).toEqual([
       'Everything in Free',
-      'A nudge when a weekend’s empty',
       'Year memory, season to season',
       'Sign-ups done for you, when you say yes',
     ]);

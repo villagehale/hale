@@ -156,10 +156,10 @@
       "family": "Max"
     },
     "paidFeatures": {
-      "plus": ["免费档里的全部", "周末空着的时候提你一句", "一年的记忆，一季一季", "你点头后代你报名"],
+      "plus": ["免费档里的全部", "一年的记忆，一季一季", "你点头后代你报名"],
       "family": ["Plus 里的全部", "搜索和盯名额，额度最高", "优先支持", "一整季的报名，一次办完"]
     },
-    "freeFeatures": ["给 Hale 发短信", "报名日期有人盯着", "有问必答", "创始价"]
+    "freeFeatures": ["给 Hale 发短信", "报名日期有人盯着", "有问必答", "创始价", "周末空着的时候提你一句"]
   },
   "Contact": {
     "metaTitle": "联系我们 · Hale",
@@ -626,7 +626,7 @@
     "Plans on your calendar": "安排进你的日历",
     "Playdate this weekend? Ava’s free Sat morning": "这周末约着玩？Ava 周六上午有空",
     "Playdate: story time + park": "约玩：故事会 + 公园",
-    "Plus is more done for you, all year: a nudge when a weekend’s empty, year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and sign-ups for a whole season in one go.": "Plus 是一整年更多事由它来做：周末空着时提你一句，记住这一年，你点头后代你报名。Max 是 Hale 能做的最多：Plus 里的全部，搜索和盯名额的额度最高，优先支持，一整季的报名一次办完。",
+    "Plus is more done for you, all year: year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and sign-ups for a whole season in one go.": "Plus 是一整年更多事由它来做：记住这一年，你点头后代你报名。Max 是 Hale 能做的最多：Plus 里的全部，搜索和盯名额的额度最高，优先支持，一整季的报名一次办完。",
     "Potty training goes best when it follows a child’s readiness signs rather than a fixed age. The physical and behavioural cues, and a low-pressure approach.": "如厕训练跟着孩子准备好的信号走，比卡一个年龄更顺。身体和行为上的迹象，以及不施压的做法。",
     "Practical guides to the questions parents search, grounded in trusted parenting-health frameworks and honest about their limits.": "家长常搜的那些问题，写成好用的指南。依据可信的育儿健康框架，也说清楚它做不到什么。",
     "Pricing": "价格",

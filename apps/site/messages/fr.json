@@ -168,7 +168,6 @@
     "paidFeatures": {
       "plus": [
         "Tout ce qu’il y a dans Gratuit",
-        "Un petit coup de pouce quand la fin de semaine est vide",
         "La mémoire de l’année, saison après saison",
         "Inscriptions faites pour toi, quand tu dis oui"
       ],
@@ -183,7 +182,8 @@
       "Textez Hale",
       "Dates d’inscription surveillées",
       "Réponses",
-      "Tarif fondateur"
+      "Tarif fondateur",
+      "Un petit coup de pouce quand la fin de semaine est vide"
     ]
   },
   "Contact": {
@@ -651,7 +651,7 @@
     "Plans on your calendar": "Les plans dans ton calendrier",
     "Playdate this weekend? Ava’s free Sat morning": "On se voit pour jouer cette fin de semaine? Ava est libre samedi matin",
     "Playdate: story time + park": "Rendez-vous de jeu : conte + parc",
-    "Plus is more done for you, all year: a nudge when a weekend’s empty, year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and sign-ups for a whole season in one go.": "Plus, c’est plus de choses faites pour toi, toute l’année : un rappel quand la fin de semaine est vide, la mémoire de l’année, et les inscriptions faites pour toi quand tu dis oui. Max, c’est le maximum de ce que Hale peut faire : tout Plus, les limites les plus hautes pour les recherches et la surveillance des places, le soutien prioritaire, et les inscriptions de toute une saison d’un coup.",
+    "Plus is more done for you, all year: year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and sign-ups for a whole season in one go.": "Plus, c’est plus de choses faites pour toi, toute l’année : la mémoire de l’année, et les inscriptions faites pour toi quand tu dis oui. Max, c’est le maximum de ce que Hale peut faire : tout Plus, les limites les plus hautes pour les recherches et la surveillance des places, le soutien prioritaire, et les inscriptions de toute une saison d’un coup.",
     "Potty training goes best when it follows a child’s readiness signs rather than a fixed age. The physical and behavioural cues, and a low-pressure approach.": "La propreté marche mieux quand on suit les signes que l’enfant est prêt, pas un âge fixe. Les signes physiques et de comportement, et une approche sans pression.",
     "Practical guides to the questions parents search, grounded in trusted parenting-health frameworks and honest about their limits.": "Des guides concrets pour les questions que les parents cherchent, appuyés sur des cadres reconnus en santé parentale, et honnêtes sur leurs limites.",
     "Pricing": "Tarifs",
