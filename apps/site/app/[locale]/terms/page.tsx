@@ -62,6 +62,7 @@ const SECTIONS: LegalSection[] = [
   { id: 'eligibility', title: 'Who can use Hale' },
   { id: 'privacy', title: 'Privacy' },
   { id: 'text-messages', title: 'Text messages, STOP, and carrier rates' },
+  { id: 'plans-and-billing', title: 'Free and planned paid plans' },
   { id: 'accounts', title: 'Your account and security' },
   { id: 'licence', title: 'Your licence to use Hale' },
   { id: 'acceptable-use', title: 'Acceptable use' },
@@ -85,7 +86,7 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
     <LegalLayout
       locale={locale}
       title="Terms of Service"
-      lastUpdatedIso="2026-08-20"
+      lastUpdatedIso="2026-10-07"
       intro={
         <p>
           These terms are an agreement between you and Village Hale Technologies Inc.
@@ -110,9 +111,11 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
         </p>
         <p>
           Hale watches for things that matter in your family&rsquo;s day — including municipal
-          registration dates and programs where you live — answers parenting questions, and asks
-          how it went. Hale does not book a class or register you. Hale is a tool to support you
-          as a parent; it does not replace your judgment.
+          registration dates and programs where you live — answers parenting questions, and asks how
+          it went. Today, Hale finds and reminds; you book or register yourself. Signing up for you
+          is a future paid feature, only when you say yes. A feature described as planned or coming
+          soon is not available today and has no guaranteed launch date. Hale is a tool to support
+          you as a parent; it does not replace your judgment.
         </p>
       </LegalSectionBlock>
 
@@ -154,6 +157,26 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
             our Privacy Policy
           </a>{' '}
           for what that means and for the limits we apply to what we put in a text.
+        </p>
+      </LegalSectionBlock>
+
+      <LegalSectionBlock id="plans-and-billing" title="Free and planned paid plans">
+        <p>
+          Only Free is available today. Hale charges no subscription fee for Free. Standard carrier
+          message and data rates, and fees charged by activity providers, are separate. Plus and Max
+          are not available to purchase, and mentioning them does not start a subscription or
+          authorize a charge. See{' '}
+          <a href={localeHref(locale, '/pricing')} className="link">
+            Pricing
+          </a>{' '}
+          for the planned features and prices.
+        </p>
+        <p>
+          Before paid plans open, we will provide the applicable price in Canadian dollars, taxes,
+          billing period, renewal, cancellation and refund terms for your review. No subscription
+          starts and no payment is taken without your express agreement. Future sign-ups also
+          require your approval of the specific activity and any provider charges; subscribing alone
+          does not authorize a booking or guarantee a place.
         </p>
       </LegalSectionBlock>
 

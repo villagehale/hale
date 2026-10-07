@@ -140,7 +140,7 @@ export function DesignText({ locale, textEntry }: { locale: Locale; textEntry: D
               <i />
               {' No account '}
               <i />
-              {' Reply STOP anytime'}
+              {' You’re in control'}
             </div>
           </div>
         </section>
@@ -161,9 +161,7 @@ export function DesignText({ locale, textEntry }: { locale: Locale; textEntry: D
                 </span>
                 <h2>{'Say hi to Hale.'}</h2>
                 <p className="hs-close-sub">
-                  {
-                    'Standard message rates apply; reply STOP any time. Your data stays in Canada, see our '
-                  }
+                  {'Standard message rates apply. Your data stays in Canada, see our '}
                   <a className="hs-link" href="/privacy">
                     {'privacy policy'}
                   </a>

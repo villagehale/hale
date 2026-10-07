@@ -78,6 +78,7 @@ const SECTIONS: LegalSection[] = [
   { id: 'teen-privacy', title: 'Teen privacy (children 13 and older)' },
   { id: 'ai-processing', title: 'AI and automated processing' },
   { id: 'how-we-share', title: 'Who your family’s data is shared with' },
+  { id: 'group-chats', title: 'Group chats with co-parents and other families' },
   { id: 'sub-processors', title: 'Sub-processors and cross-border processing' },
   { id: 'sms', title: 'Text messages (SMS)' },
   { id: 'residency-retention', title: 'Data residency, retention, and security' },
@@ -95,7 +96,7 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
     <LegalLayout
       locale={locale}
       title="Privacy Policy"
-      lastUpdatedIso="2026-08-27"
+      lastUpdatedIso="2026-10-07"
       intro={
         <p>
           Hale helps families across every stage of childhood, and that means we handle some of the
@@ -116,9 +117,12 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           parent or legal guardian) text the number and tell Hale about your children; there is no account to
           create, though you may sign in to the web app, and you may optionally connect tools you
           already use. Hale finds what&rsquo;s on near your kids, watches registration dates, and
-          asks how it went. It does not book a class or register you. Hale is operated by Village Hale Technologies Inc., a
-          company incorporated in Ontario, Canada, which is the organization responsible for your
-          family&rsquo;s data under PIPEDA; see{' '}
+          asks how it went. Today, Hale finds and reminds; you book or register yourself. Signing up
+          for you is a future paid feature, only when you say yes. Before it becomes available, we
+          will explain any additional information or sharing it requires and ask for your consent.
+          Hale is operated by Village Hale Technologies Inc., a company incorporated in Ontario,
+          Canada, which is the organization responsible for your family&rsquo;s data under PIPEDA;
+          see{' '}
           <a href="#contact" className="link">
             How to reach us
           </a>
@@ -152,11 +156,20 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             child&rsquo;s stage (newborn, toddler, child, or teenager).
           </li>
           <li>
-            <strong>Care and activity logs.</strong> The day-to-day entries you record — feeds,
-            naps, milestones, and similar notes about your child&rsquo;s routine.
+            <strong>Family plans and notes.</strong> The activities, plans, preferences and feedback
+            you choose to share. If you use the optional care-log tools, we also store the entries
+            you record there, such as feeds, naps or milestones. You do not need to keep care logs
+            to use Hale for activities and reminders.
           </li>
           <li>
-            <strong>Hale conversations.</strong> The questions you ask Hale and its answers.
+            <strong>Hale conversations.</strong> The messages you send Hale and its answers. When
+            you choose to use a group chat with Hale, this includes the messages and participant
+            details provided by the messaging service for that thread. Group messages are visible to
+            the other participants; see{' '}
+            <a href="#group-chats" className="link">
+              Group chats
+            </a>
+            .
           </li>
           <li>
             <strong>Coarse location only.</strong> If you opt in to local discovery, we store a
@@ -198,14 +211,15 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             week reaches you as a text rather than as a surprise.
           </li>
           <li>
-            <strong>How it went.</strong> What is stored: your one-line answer to Hale&rsquo;s
-            evening question, for thirty days, readable only by you and never shown to another
-            family.
+            <strong>How it went.</strong> What is stored: your private one-line answer to
+            Hale&rsquo;s evening question, for thirty days. Private feedback is not posted into a
+            group chat. If you choose to answer in a group instead, your message is visible to the
+            other participants in that thread.
           </li>
         </ul>
         <p>
           <strong>What Hale works out for itself.</strong> A structured memory of facts and patterns
-          Hale infers from your family&rsquo;s activity — for example, a usual nap window or a
+          Hale infers from your family&rsquo;s activity — for example, a preferred activity or a
           stated preference — so it can be more helpful over time. Inferred information about your
           family is your family&rsquo;s personal information too, and everything in this policy
           applies to it.
@@ -281,8 +295,9 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           the start, and separately again for each purpose that deserves its own answer: connecting
           an integration, sending your context to our AI provider, processing data across borders,
           letting Hale watch and text you unprompted, sharing a slice of your week with a caregiver
-          you name, letting a tool you connect read from Hale, being introduced to another household,
-          and unlocking any automated action. We record each consent — what was asked, the words you
+          you name, letting a tool you connect read from Hale, being introduced to another
+          household, choosing to share information in a co-parent or multi-family group chat, and
+          unlocking any automated action. We record each consent — what was asked, the words you
           answered in, the version of this policy, and the time — so the choice is verifiable
           afterwards, and you can withdraw it at any time (see{' '}
           <a href="#your-rights" className="link">
@@ -302,7 +317,9 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           it. A child&rsquo;s data is provided by you, their parent or guardian, and is processed on
           your authority and for your family&rsquo;s benefit. Optional and sensitive fields — such
           as gender — are exactly that: optional, and stored only if you provide them. A
-          child&rsquo;s information belongs to one family and is never visible to another family.
+          child&rsquo;s private profile stays with their family. Other families see only the
+          information you choose to share in a group or explicitly authorize us to disclose, as
+          described below. Share information about a child only if you have authority to do so.
         </p>
         <p>
           Hale is for parents and guardians. A child does not have a Hale account and does not text
@@ -378,8 +395,9 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
 
       <LegalSectionBlock id="how-we-share" title="Who your family’s data is shared with">
         <p>
-          Nothing about your family is shared by default. There are five kinds of recipient, and
-          three of them exist only because you asked for them.
+          Private family information is not shared with other families by default. The recipients
+          below receive information only for the purposes described here; caregivers, connected
+          tools, introductions and group chats require your choice or authorization.
         </p>
         <ul>
           <li>
@@ -415,6 +433,16 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             you can always see what was disclosed.
           </li>
           <li>
+            <strong>Co-parents and multi-family group chats.</strong> When group features are made
+            available and you choose to use them, the other participants see the messages you send
+            there and Hale&rsquo;s replies in that thread, including shared plans, RSVPs and driving
+            arrangements. This does not authorize sharing your private family profile. See{' '}
+            <a href="#group-chats" className="link">
+              Group chats
+            </a>{' '}
+            for the limits.
+          </li>
+          <li>
             <strong>Where the law requires it.</strong> To authorities and in legal process where we
             are required or permitted to, to protect a child or another person from serious harm,
             and to our professional advisers — lawyers, accountants, insurers — in the course of
@@ -423,6 +451,27 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             you.
           </li>
         </ul>
+      </LegalSectionBlock>
+
+      <LegalSectionBlock id="group-chats" title="Group chats with co-parents and other families">
+        <p>
+          Choose who is in the thread and check its participants before sharing personal
+          information. A co-parent or another family can see what you post there. Adding someone to
+          a group does not give them access to your private Hale conversations, children&rsquo;s
+          profiles, connected inbox or personal calendar. Hale does not bring information from those
+          private sources into a group reply.
+        </p>
+        <p>
+          Shared plans are based on what participants choose to discuss in that thread. Starting or
+          joining a group does not authorize Hale to contact a participant privately; each person
+          must start their own conversation or separately agree to receive messages.
+        </p>
+        <p>
+          Participants may save, forward or screenshot messages. Leaving a group or asking Hale to
+          delete your data cannot remove copies already held by other participants or their
+          messaging services. For questions about a disclosure or to exercise your data rights,
+          contact privacy@villagehale.com.
+        </p>
       </LegalSectionBlock>
 
       <LegalSectionBlock id="sub-processors" title="Sub-processors and cross-border processing">
@@ -689,9 +738,9 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
 
       <LegalSectionBlock id="contact" title="How to reach us">
         <p>
-          Our Privacy Officer &mdash; the person in charge of personal information under
-          Quebec&rsquo;s Law 25 &mdash; is <strong>Anzhe Dong, Founder</strong>. For any privacy
-          question, or to exercise your rights, contact us at{' '}
+          For any privacy question, or to exercise your rights, contact our
+          <strong> Privacy Officer</strong>, the person in charge of personal information under
+          Quebec&rsquo;s Law 25, at{' '}
           <a href="mailto:privacy@villagehale.com" className="link">
             privacy@villagehale.com
           </a>

@@ -141,9 +141,9 @@ export function DesignForCentres({ locale }: { locale: Locale }) {
                 <h3 className="hs-h3">{'Text it yourself first'}</h3>
                 <p className="hs-p">
                   {
-                    'Send the first message the way a parent would and read what comes back, so you know what you’re recommending. Reply STOP and '
+                    'Send the first message the way a parent would and read what comes back, so you know what you’re recommending. You can stop messages '
                   }
-                  <span className="nw">{'it ends.'}</span>
+                  <span className="nw">{'at any time.'}</span>
                 </p>
                 <div className="sp-card-foot">
                   <DesignCta locale={locale} className="btn btn-hero">
@@ -193,10 +193,10 @@ export function DesignForCentres({ locale }: { locale: Locale }) {
                 </p>
               </div>
               <div className="hs-card sp-card">
-                <h3 className="hs-h3">{'STOP ends it'}</h3>
+                <h3 className="hs-h3">{'You control the messages'}</h3>
                 <p className="hs-p">
                   {
-                    'A parent texts STOP and the messages stop. They can ask for their data, or for it to be deleted, '
+                    'A parent can stop messages at any time. They can ask for their data, or for it to be deleted, '
                   }
                   <span className="nw">{'at privacy@villagehale.com.'}</span>
                 </p>
@@ -270,12 +270,12 @@ export function DesignForCentres({ locale }: { locale: Locale }) {
                 </p>
               </div>
               <div className="hs-qa">
-                <h3 className="hs-h3">{'What does Hale refuse to do?'}</h3>
+                <h3 className="hs-h3">{'What are Hale’s limits today?'}</h3>
                 <p className="hs-p">
                   {
-                    'It doesn’t diagnose and never names a dose; a medical question goes back to the family’s care provider. It never fills in a registration form or holds a spot. It finds and reminds; the '
+                    'It doesn’t diagnose and never names a dose; a medical question goes back to the family’s care provider. Today, Hale finds and reminds. You book or register yourself. Signing up for you is a future paid feature, only when you '
                   }
-                  <span className="nw">{'parent registers.'}</span>
+                  <span className="nw">{'say yes.'}</span>
                 </p>
               </div>
             </div>

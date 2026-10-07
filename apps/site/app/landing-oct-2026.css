@@ -3163,6 +3163,70 @@
   font-style: italic;
   color: var(--slate);
 }
+/* Guide detail pages share the subpage shore and the legal pages' reading typography. */
+.design-marketing.sp-article .sp-hero {
+  padding: var(--s8) var(--s5) 96px;
+}
+.design-marketing.sp-article .sp-h1 {
+  font-size: clamp(32px, 4vw, 56px);
+  line-height: 1.12;
+}
+.design-marketing.sp-article .sp-lede {
+  max-width: 720px;
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+.design-marketing .guide-breadcrumb {
+  margin-bottom: var(--s5);
+}
+.design-marketing .guide-reviewed {
+  margin-top: var(--s5);
+}
+.design-marketing .guide-doc {
+  max-width: 808px;
+  margin: 0 auto;
+}
+.design-marketing .guide-takeaways,
+.design-marketing .guide-disclaimer {
+  padding: var(--s5);
+  background: var(--cream);
+  border-radius: var(--r-sm);
+}
+.design-marketing .guide-takeaways h2,
+.design-marketing .guide-disclaimer h2 {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.design-marketing .guide-disclaimer {
+  margin-top: var(--s7);
+}
+.design-marketing .guide-disclaimer h2 {
+  margin-top: var(--s3);
+}
+.design-marketing .guide-faqs {
+  display: grid;
+  gap: var(--s5);
+  margin-top: var(--s5);
+}
+.design-marketing .guide-faqs p {
+  margin-top: var(--s2);
+}
+.design-marketing .guide-sources {
+  gap: var(--s5);
+  overflow-wrap: anywhere;
+}
+.design-marketing .guide-sources svg {
+  display: inline-block;
+  margin-left: var(--s1);
+}
+.design-marketing .guide-related {
+  padding-top: 0;
+  padding-bottom: var(--s8);
+}
+.design-marketing .guide-related .hs-h3 {
+  margin: var(--s4) 0 var(--s5);
+}
 .design-marketing .lg-doc table {
   margin-top: var(--s4);
   width: 100%;

@@ -1,7 +1,9 @@
+import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { FRAMEWORK_SOURCES } from '~/lib/answers/frameworks.js';
 import { allAnswers, getAnswer } from '~/lib/answers/index.js';
-import { chromeCta } from '~/lib/site/chrome-cta.js';
+import { CONTACT_EMAIL } from '~/lib/text-entry.js';
 import AnswerPageRoute, { generateMetadata, generateStaticParams } from './[slug]/page.js';
 
 const LIVE_NUMBER = '+16475551234';
@@ -20,7 +22,9 @@ afterEach(() => {
 const SLUG = 'introducing-peanuts-to-baby';
 
 async function render(slug: string): Promise<string> {
-  const element = await AnswerPageRoute({ params: Promise.resolve({ slug, locale: 'en' as const }) });
+  const element = await AnswerPageRoute({
+    params: Promise.resolve({ slug, locale: 'en' as const }),
+  });
   return renderToStaticMarkup(element);
 }
 
@@ -68,33 +72,53 @@ describe('answers/[slug] route', () => {
     expect(html).toContain('href="/answers"');
   });
 
-  /**
-   * The guide's CTA delegates to the SAME front-door helper the site chrome uses,
-   * rather than hardcoding a door of its own. That is the whole fix: the page used to
-   * hardcode the app's /onboarding wizard, which no longer exists, so an acquisition
-   * page's only action 308'd the reader back to the marketing homepage — a funnel in
-   * a circle.
-   *
-   * Run against both configs the helper can be in (number provisioned, and not), so a
-   * page that re-hardcoded either URL fails on the other.
-   */
+  // Like the redesigned header, the server renders /text; the shared chooser
+  // retargets phones after hydration. Missing-number deployments offer email.
   it('delegates its CTA to the shared front door rather than hardcoding one', async () => {
     for (const number of [LIVE_NUMBER, '']) {
       vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', number);
       const html = await render(SLUG);
-      const { href, label } = chromeCta();
-      // The sms href carries a `&`, which the renderer escapes in the attribute.
-      expect(html).toContain(href.replace(/&/g, '&amp;'));
-      expect(html).toContain(label);
+      expect(html).toContain(`href="${number ? '/text' : `mailto:${CONTACT_EMAIL}`}"`);
+      expect(html).toContain(number ? 'Text Hale' : 'Email Hale');
     }
   });
 
   it('sends a reader to the texting door under the live config — never the deleted wizard', async () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
     const html = await render(SLUG);
-    expect(chromeCta().href).toMatch(/^sms:/);
-    expect(html).toContain(`sms:${LIVE_NUMBER}`);
+    expect(html).toContain('href="/text"');
     expect(html).not.toContain('/onboarding');
+  });
+
+  it('restyles every guide while preserving the full published content and source links', async () => {
+    const escaped = (text: string) =>
+      renderToStaticMarkup(createElement('span', null, text)).slice(6, -7);
+    for (const page of allAnswers) {
+      const html = await render(page.slug);
+      // Exclude JSON-LD so missing visible paragraphs cannot pass on SEO data alone.
+      const visible = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, '');
+      expect(visible.match(/<h1\b/g), page.slug).toHaveLength(1);
+      expect(visible).toContain('design-marketing sp-article');
+      expect(visible).toContain('shore-art');
+      expect(visible).toContain('guide-doc');
+      for (const text of [
+        page.question,
+        page.answer,
+        ...page.keyTakeaways,
+        ...page.sections.flatMap((section) => [section.heading, ...section.body]),
+        ...page.faqs.flatMap((faq) => [faq.question, faq.answer]),
+      ]) {
+        expect(visible, page.slug).toContain(escaped(text));
+      }
+      for (const citation of page.citations) {
+        const source = FRAMEWORK_SOURCES[citation.framework];
+        expect(visible).toContain(escaped(source.label));
+        expect(visible).toContain(escaped(citation.reference));
+        if (citation.excerpt) expect(visible).toContain(escaped(citation.excerpt));
+        if (source.home) expect(visible).toContain(`href="${source.home}"`);
+      }
+      for (const slug of page.related) expect(visible).toContain(`href="/answers/${slug}"`);
+    }
   });
 
   it('noindexes every unpublished (unreviewed) page (review-before-index gate)', async () => {

@@ -250,9 +250,7 @@ export function DesignActivities({ locale }: { locale: Locale }) {
                   </DesignCta>
                 </div>
                 <p className="hs-close-terms">
-                  {
-                    'Free to start. You text first; standard message rates apply, reply STOP any time.'
-                  }
+                  {'Free to start. You text first; standard message rates apply.'}
                 </p>
               </div>
             </div>

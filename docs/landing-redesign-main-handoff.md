@@ -1,6 +1,6 @@
 # Landing redesign — downloaded October 2026 handoff
 
-Local review draft. Implementation lives in `/private/tmp/hale-landing-main-redesign`, branch `feat/vil-428-landing-redesign` (renamed from `fix/landing-redesign-main`), based on main `586017f8`. Tracking: [VIL-428](https://linear.app/villagehale/issue/f55c5b6c-ba72-42c1-a131-01cd3596b32a), G5 · Marketing, Site & Brand. The original checkout and earlier experiments are preserved. Local checkpoint committed on the working branch at the user’s request; no push, merge or deployment. Linear issue created October 7.
+Local review draft. Implementation lives in `/private/tmp/hale-landing-main-redesign`, branch `feat/vil-428-landing-redesign` (renamed from `fix/landing-redesign-main`), based on main `586017f8`. Tracking: [VIL-428](https://linear.app/villagehale/issue/f55c5b6c-ba72-42c1-a131-01cd3596b32a), G5 · Marketing, Site & Brand. The original checkout and earlier experiments are preserved. Checkpoint `fd5b525f` was committed and pushed at the user's request; subsequent legal/copy and guide-detail revisions are included in the next commit on this review branch. No merge or deployment. Linear issue created October 7.
 
 ## Preview and source
 
@@ -13,11 +13,11 @@ Local review draft. Implementation lives in `/private/tmp/hale-landing-main-rede
 - English homepage and `/pricing`, `/faq`, `/about`, `/activities`, `/answers`, `/for-centres`, `/contact`, `/text`, `/privacy`, `/terms`.
 - Supplied shore composition, weekly calendar, group conversation phone, product chapters, tier cards and shared header/footer. No message-to-calendar morph.
 - Source fonts connected to existing self-hosted fonts. Display weight calibrated to 400 for the screenshot’s regular appearance on macOS. CSS motion is the supplied slow shore drift; reduced-motion stops it. No new dependencies.
-- Active Text Hale actions reuse the device-aware chooser and existing SMS prefill. `/text` preserves platform URI forms, source attribution, feature-flag greetings, QR, contact card and copy-number behavior. Missing-number deployments offer email.
-- Guide stage filters work; published guide destinations and body content remain in the existing corpus. FAQ jump links work, with JSON-LD generated from the visible supplied FAQ data. Founder LinkedIn and contact email actions use real destinations.
-- Legal pages use shared chrome and the shore presentation. Existing policy body, updated dates, disclaimers and section anchors are retained.
+- Active Text Hale actions reuse the device-aware chooser and existing SMS prefill. English `/text` now displays the settled postal-code greeting by default, while preserving the flagged Apple location-share greeting, platform URI forms, source attribution, QR, contact card and copy-number behavior. Missing-number deployments offer email. Backend rollout flags are unchanged.
+- Guide stage filters work; all 15 English guide detail pages now share the October shore/header/footer and reading layout. Published body content, takeaways, FAQs, sources, review dates, metadata and JSON-LD remain in the existing corpus. Detail CTAs use the same device-aware chooser as the redesigned chrome. FAQ jump links work, with JSON-LD generated from the visible supplied FAQ data. Founder LinkedIn and contact email actions use real destinations.
+- Legal pages use shared chrome and the shore presentation. The October 7 legal-copy draft adds group-chat boundaries, optional-log collection and current/future paid-plan terms, and uses the Privacy Officer role/contact pending name confirmation. Existing disclaimers remain; new TOC anchors are covered by legal-route checks. See the copy review document for the proposed changes and outstanding clearance.
 - Supplied catalog: Free; Plus $19 CAD/mo or $159 CAD/yr; Max $39 CAD/mo or $329 CAD/yr. Internal `family` entitlement key stays unchanged. Shared `PLAN_DISPLAY` updated so the app and marketing display agree; billing and entitlement enforcement unchanged. Paid actions are disabled and clearly coming soon.
-- Dated city guides remain reachable, but the new activities index no longer advertises them. Archived guide/city pages retain their existing presentation.
+- Dated city guides remain reachable, but the new activities index no longer advertises them. City guide pages retain their existing presentation.
 
 ## Scope still pending review
 

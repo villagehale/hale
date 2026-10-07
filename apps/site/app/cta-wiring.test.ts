@@ -167,7 +167,7 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
     // breakdown says which door produced it.
     const unnamed = smsAnchors.filter((anchor) => !/data-cta-placement="[^"]+"/.test(anchor.tag));
     expect(unnamed.map((anchor) => `${anchor.route} — ${anchor.tag}`)).toEqual([]);
-    expect(placements.size).toBeGreaterThanOrEqual(10);
+    expect(placements.size).toBeGreaterThanOrEqual(9);
   });
 
   it('leaves no bare composer anchor in a branch the render never reaches', () => {
@@ -188,8 +188,8 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
     // cta_message_click navigations to /text now, asserted below), and the walk
     // sees /text as an unknown platform, whose layout leads with the QR rather
     // than an sms: button — so the composer anchors left are the subpage bands,
-    // and the city guides' in-body doors.
-    expect(smsAnchors.length).toBeGreaterThanOrEqual(10);
+    // and the city guides' in-body doors. Guide details now use the chooser too.
+    expect(smsAnchors.length).toBeGreaterThanOrEqual(9);
     for (const placement of ['toronto_swim_dates', 'brampton_swim_dates']) {
       expect(placements, `the walk must reach the ${placement} CTA`).toContain(placement);
     }
@@ -289,6 +289,10 @@ describe('the chooser doors are wired the same way', () => {
         placement,
       );
     }
+    expect(
+      chooserAnchors.filter((anchor) => anchor.route === '/answers/[slug]'),
+      'guide details must expose both the shared header and closing chooser doors',
+    ).toHaveLength(2);
   });
 });
 

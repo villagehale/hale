@@ -82,9 +82,7 @@ export default async function TextEntryPage({
     const ladder = firstTouchLadderEnabled();
     const locationCard =
       firstTouchLocationCardEnabled() && (platform === 'apple' || platform === 'desktop-mac');
-    const greeting = ladder
-      ? t(locationCard ? 'greetingLadderImessage' : 'greetingLadderSms')
-      : t('greeting');
+    const greeting = t(ladder && locationCard ? 'greetingLadderImessage' : 'greetingLadderSms');
     return (
       <>
         <TextEntryAnalytics deviceHint={platform} channelsLive={number ? 'sms' : 'none'} />

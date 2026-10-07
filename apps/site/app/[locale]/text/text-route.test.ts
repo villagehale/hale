@@ -10,9 +10,11 @@ import TextPage, { generateMetadata } from './page.js';
 
 const meta = () => generateMetadata({ params: Promise.resolve({ locale: 'en' as const }) });
 
-/** Locked Hale #1, the same bytes as the SMS hello and Text.greeting (en and zh). */
-const LOCKED_PREVIEW_EN =
+/** Legacy preview retained by the existing ZH route until the English copy lock. */
+const LEGACY_PREVIEW =
   'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.';
+const POSTAL_GREETING_HTML =
+  'Hey, it&#x27;s Hale. I find what&#x27;s on for kids near you. What&#x27;s your postal code? I&#x27;ll show you what&#x27;s on this week.';
 
 /**
  * /text is the chooser (F14): the QR cards' destination AND the header pill's —
@@ -98,8 +100,7 @@ describe('/text (unlisted entry surface)', () => {
       expect(header).toContain('hale-logo');
       expect(header).toContain('viewBox="0 0 905.840370 590.701960"');
       // The column under the bar is still the conversion door. EN and ZH send
-      // the English hello; FR sends Sloane's ASCII line. The Hale reply is
-      // pinned below to the locked preview bytes — that bubble does not move.
+      // the English hello; FR sends Sloane's ASCII line.
       if (locale === 'fr') {
         expect(html).toContain('Salut Hale, qu&#x27;est-ce qui se passe?');
         expect(html).not.toContain('qu\u2019est-ce qui se passe ?');
@@ -125,9 +126,8 @@ describe('/text (unlisted entry surface)', () => {
         searchParams: Promise.resolve({}),
       }),
     );
-    // Locked Hale #1. Em dashes and curly apostrophes are not HTML-escaped.
-    expect(en).toContain(LOCKED_PREVIEW_EN);
-    expect(zh).toContain(LOCKED_PREVIEW_EN);
+    expect(en).toContain(POSTAL_GREETING_HTML);
+    expect(zh).toContain(LEGACY_PREVIEW);
     // French twin. ASCII apostrophes are the only characters React escapes.
     expect(fr).toContain(
       'Bonjour, je suis Hale. J&#x27;aide a planifier l&#x27;annee de vos enfants - ce qui se passe près d&#x27;eux, les matins d&#x27;inscription, et comment ca s&#x27;est passé. Le nom et l&#x27;age de vos enfants, et votre code postal - et je verrai ce qui arrive.',
@@ -135,22 +135,23 @@ describe('/text (unlisted entry surface)', () => {
     vi.unstubAllEnvs();
   });
 
-  it('when the ladder flag is exactly on, the preview is the postal-code first message', async () => {
-    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
-    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
-    const html = renderToStaticMarkup(
-      await TextPage({
-        params: Promise.resolve({ locale: 'en' }),
-        searchParams: Promise.resolve({}),
-      }),
-    );
-    expect(html).toContain('Hey Hale, what&#x27;s going on?');
-    expect(html).toContain(
-      'Hey, it&#x27;s Hale. I find what&#x27;s on for kids near you. What&#x27;s your postal code? I&#x27;ll show you what&#x27;s on this week.',
-    );
-    expect(html).not.toContain(LOCKED_PREVIEW_EN);
-    vi.unstubAllEnvs();
-  });
+  it.each(['', 'off', 'on'])(
+    'shows the settled postal greeting with ladder flag "%s"',
+    async (flag) => {
+      vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
+      vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', flag);
+      const html = renderToStaticMarkup(
+        await TextPage({
+          params: Promise.resolve({ locale: 'en' }),
+          searchParams: Promise.resolve({}),
+        }),
+      );
+      expect(html).toContain('Hey Hale, what&#x27;s going on?');
+      expect(html).toContain(POSTAL_GREETING_HTML);
+      expect(html).not.toContain(LEGACY_PREVIEW);
+      vi.unstubAllEnvs();
+    },
+  );
 });
 
 function chrome(html: string, tag: 'header' | 'footer'): string {

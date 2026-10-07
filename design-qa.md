@@ -132,3 +132,22 @@ Production desktop evidence: keyboard switching started with incoming opacity 0.
 - Extended the shared native screen/ink/meta/incoming tokens to the annual-flow mini conversations, notification and reminder, the logistics memory conversation and message previews on `/text`, `/activities` and `/for-centres`. Removed their forced light color schemes. Confirmation chips use the themed amber/ink pair; reminder body/dividers/date header also follow the theme.
 - Browser checks confirmed all four annual-flow preview containers have black backgrounds and white text in dark mode, with gray incoming bubbles. Both `/text` previews and the Activities/For centres conversation previews were also black. Existing phone styling and motion were preserved.
 - Six focused tests, Biome, production build/type validation and git diff --check passed. Evidence: `.local/design-qa/phone-gallery/dark-year-previews.png`.
+
+
+### October 7 legal and outward-copy review follow-up
+
+- Requested scope: the legal conflicts and outward-copy conflicts identified against the Linear handoff. Local review draft; no clearance, new commit, push, merge or deployment.
+- Privacy now distinguishes private family profiles/1:1 content from voluntary group messages, adds consent/recipient boundaries and a working group-chat TOC entry, and explains participants' retained copies. Optional feeds/naps remain disclosed because the app still has those collection paths. Privacy Officer is presented by role and email pending name confirmation.
+- Terms now describe today's Free-only availability and require express agreement to future paid pricing/billing terms and separate approval for provider sign-ups. Privacy, Terms and For centres describe registration as a future paid capability.
+- STOP wording removed from the English homepage and eight redesigned non-legal subpages. Exact opt-out instructions remain in both legal pages. FR/ZH marketing regeneration remains pending English clearance.
+- Regression checks failed on the old copy, then passed after the changes: 6 test files / 62 tests. Changed-file Biome lint, production build/type validation and git diff --check passed.
+- Final production-preview HTTP checks verified all nine marketing surfaces and both legal pages. Real Chrome verified the group-chat and planned-paid TOC links and rendered text, with no horizontal overflow at the normal desktop viewport. Evidence: `.local/design-qa/legal-copy/privacy-groups.png` and `terms-plans.png`.
+- Proposed wording, government drafting references and outstanding Barton decisions are in `docs/landing-redesign-copy-review.md`. This pass edits copy; it does not implement or certify group isolation, consent enforcement or billing.
+
+### October 7 — text greeting and guide detail follow-up
+
+- English `/text` now displays the settled postal-code greeting by default, using the existing ladder copy key. Flagged Apple location sharing and the outgoing prefill/URI/source/QR/contact behaviors are retained. This is a preview-copy change, without changing backend rollout flags.
+- All 15 English `/answers/[slug]` pages now use the October shared chrome, shore hero, reading panel, related cards and closing CTA. Corpus content, citations, review dates, metadata, JSON-LD and the review-before-index gate remain unchanged. FR/ZH retain their prior presentation pending English clearance.
+- Six focused test files / 65 tests passed, including every guide's visible paragraphs, takeaways, FAQ content and source links, both CTA configurations, default/disabled/enabled greeting flags and shared chrome. Biome lint, production build/type validation and `git diff --check` passed.
+- Real Chrome verified guide details in light/dark at desktop, and at 390px/320px widths. A long citation URL initially overflowed on mobile; scoped source wrapping resolved it, with document widths matching both viewports. `/text` was verified at 1440px/390px with the exact greeting and unchanged outgoing message. Theme and temporary viewport overrides were restored.
+- Evidence: `.local/design-qa/guide-details/desktop-light.png`, `desktop-dark.png`, `mobile-light.png`, `text-greeting.png`. Follow-up is local and uncommitted on `feat/vil-428-landing-redesign`; no merge or deployment.

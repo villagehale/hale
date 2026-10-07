@@ -74,7 +74,7 @@ export const DESIGN_FAQ_GROUPS = [
       {
         question: 'How often will Hale text me?',
         answer:
-          'Only when there’s a reason: a heads-up before sign-ups, the link the night before, a question after the first class. Reply LESS for fewer, or STOP to end it.',
+          'Only when there’s a reason: a heads-up before sign-ups, the link the night before, a question after the first class. Reply LESS for fewer messages. You can stop messages at any time.',
       },
       {
         question: 'Will Hale tell me if a class is any good?',
@@ -106,7 +106,7 @@ export const DESIGN_FAQ_GROUPS = [
       {
         question: 'Where is our data kept?',
         answer:
-          'In Canada, under PIPEDA and Quebec’s Law 25. It’s never sold. Reply STOP and the texts stop.',
+          'In Canada, under PIPEDA and Quebec’s Law 25. It’s never sold. You can stop messages at any time.',
       },
       {
         question: 'Is Hale a person?',
@@ -237,9 +237,7 @@ export function DesignFaq({ locale }: { locale: Locale }) {
                   </DesignCta>
                 </div>
                 <p className="hs-close-terms">
-                  {
-                    'Free to start. You text first; standard message rates apply, reply STOP any time.'
-                  }
+                  {'Free to start. You text first; standard message rates apply.'}
                 </p>
               </div>
             </div>

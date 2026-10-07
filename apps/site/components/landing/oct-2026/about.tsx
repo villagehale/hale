@@ -136,8 +136,8 @@ export function DesignAbout({ locale }: { locale: Locale }) {
                 </span>
                 <h3 className="hs-h3">{'Your data stays in Canada'}</h3>
                 <p className="hs-p">
-                  {'Never sold, and Hale shows no ads. Reply STOP and '}
-                  <span className="nw">{'it ends.'}</span>
+                  {'Never sold, and Hale shows no ads. You can stop messages '}
+                  <span className="nw">{'at any time.'}</span>
                 </p>
               </div>
             </div>
@@ -261,9 +261,7 @@ export function DesignAbout({ locale }: { locale: Locale }) {
                   </DesignCta>
                 </div>
                 <p className="hs-close-terms">
-                  {
-                    'Free to start. You text first; standard message rates apply, reply STOP any time.'
-                  }
+                  {'Free to start. You text first; standard message rates apply.'}
                 </p>
               </div>
             </div>

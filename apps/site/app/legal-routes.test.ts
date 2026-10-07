@@ -29,6 +29,30 @@ const privacyHtml = renderToStaticMarkup(await PrivacyPage(EN()));
 const termsMetadata = await termsGenerateMetadata(EN());
 const privacyMetadata = await privacyGenerateMetadata(EN());
 
+describe('October legal copy review', () => {
+  it('separates private family information from information parents choose to share in a group', () => {
+    expect(privacyHtml).toContain('Co-parents and multi-family group chats');
+    expect(privacyHtml).toContain('Adding someone to a group does not give them access');
+    expect(privacyHtml).not.toContain('never visible to another family');
+    expect(privacyHtml).toContain('If you use the optional care-log tools');
+    expect(privacyHtml).not.toContain('Anzhe Dong, Founder');
+  });
+
+  it('states today’s availability and requires agreement before any future paid subscription', () => {
+    for (const html of [privacyHtml, termsHtml]) {
+      expect(html).toContain('Today, Hale finds and reminds');
+      expect(html).toContain('future paid feature');
+    }
+    expect(termsHtml).toContain('id="plans-and-billing"');
+    expect(termsHtml).toContain('Plus and Max are not available to purchase');
+    expect(termsHtml).toContain(
+      'No subscription starts and no payment is taken without your express agreement',
+    );
+    expect(termsHtml).toContain('renewal, cancellation and refund terms');
+    expect(termsHtml).toContain('Reply STOP to any message');
+  });
+});
+
 /** Every TOC target must exist in the body — a dead anchor in a policy is a broken policy. */
 function danglingAnchors(html: string): string[] {
   const targets = [...html.matchAll(/href="#([a-z-]+)"/g)].flatMap((m) => (m[1] ? [m[1]] : []));

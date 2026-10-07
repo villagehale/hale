@@ -2,6 +2,7 @@ import { ArrowUpRight } from 'lucide-react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { LandingCta } from '~/components/landing-cta';
+import { DesignAnswerArticle } from '~/components/landing/oct-2026/answer-article';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { WordsPullUp } from '~/components/words-pull-up';
@@ -70,6 +71,7 @@ export default async function AnswerRoute({ params }: PageProps) {
   const { locale, slug } = await params;
   const page = getAnswer(slug);
   if (!page) notFound();
+  if (locale === 'en') return <DesignAnswerArticle locale={locale} page={page} />;
   const t = getTranslator(locale, 'AnswerArticle');
   const stageLabels = getTranslator(locale, 'Answers').raw('stageLabels') as Record<string, string>;
 

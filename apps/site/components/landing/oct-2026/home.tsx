@@ -1066,7 +1066,7 @@ export function DesignHome({ locale }: { locale: Locale }) {
                 <h3 className="hs-h3">{'What about our privacy?'}</h3>
                 <p className="hs-p">
                   {
-                    'Your family’s data stays in Canada and is never sold. Nothing from your inbox or personal calendar shows up in a group chat, and STOP ends it any time.'
+                    'Your family’s data stays in Canada and is never sold. Nothing from your inbox or personal calendar shows up in a group chat, and you can stop messages at any time.'
                   }
                 </p>
               </div>
@@ -1131,9 +1131,7 @@ export function DesignHome({ locale }: { locale: Locale }) {
                   </DesignCta>
                 </div>
                 <p className="hs-close-terms">
-                  {
-                    'Free to start. You text first; standard message rates apply, reply STOP any time.'
-                  }
+                  {'Free to start. You text first; standard message rates apply.'}
                 </p>
               </div>
             </div>
