@@ -41,11 +41,23 @@ describe('connect dark tokens', () => {
     expect(darkBlock).toContain('--focus: #9fd0ea');
   });
 
-  it('keeps Google’s dark-theme pill on the dark page', () => {
-    const gsi = darkBlock.slice(darkBlock.indexOf(':global(.dark) .stage .gsi {'));
-    expect(gsi).toContain('background: #131314');
-    expect(gsi).toContain('box-shadow: inset 0 0 0 1px #8e918f');
-    expect(gsi).toContain('color: #e3e3e3');
+  it('uses Google’s light pill, and the dark pill only under .dark', () => {
+    const light = css.slice(css.indexOf('.stage .gsi {'), css.indexOf('.stage .gsi .g'));
+    expect(light).toContain('height: 40px');
+    expect(light).toContain('padding: 0 12px');
+    expect(light).toContain('gap: 10px');
+    expect(light).toContain('font-size: 14px');
+    expect(light).toContain('line-height: 20px');
+    expect(light).toContain('background: #ffffff');
+    expect(light).toContain('box-shadow: inset 0 0 0 1px #747775');
+    expect(light).toContain('color: #1f1f1f');
+    expect(light).not.toContain('#131314');
+
+    const dark = darkBlock.slice(darkBlock.indexOf(':global(.dark) .stage .gsi {'));
+    expect(dark).toContain('background: #131314');
+    expect(dark).toContain('box-shadow: inset 0 0 0 1px #8e918f');
+    expect(dark).toContain('color: #e3e3e3');
+    expect(dark).not.toContain('#747775');
   });
 
   it('dims the shore and uses the night iMessage bubble', () => {
@@ -82,7 +94,8 @@ describe('connect dark contrast (WCAG AA)', () => {
     expect(contrast('#e2a75a', surfaces.card)).toBeGreaterThanOrEqual(AA);
   });
 
-  it('the Google dark pill and the night bubble clear AA', () => {
+  it('both Google pills and the night bubble clear AA', () => {
+    expect(contrast('#1f1f1f', '#ffffff')).toBeGreaterThanOrEqual(AA);
     expect(contrast('#e3e3e3', '#131314')).toBeGreaterThanOrEqual(AA);
     expect(contrast('#ffffff', '#262628')).toBeGreaterThanOrEqual(AA);
     expect(contrast('#0c1a36', '#f7f4ec')).toBeGreaterThanOrEqual(AA);

@@ -138,7 +138,7 @@ export function ChatIcon({ className }: IconProps) {
   );
 }
 
-/** Official four-colour G. The button spec is the dark pill; the mark stays the standard colour G. */
+/** Standard-colour Google G. Same mark on the light and dark pills. */
 export function GoogleG({ className }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 48 48" aria-hidden="true">
