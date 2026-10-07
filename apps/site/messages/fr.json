@@ -461,7 +461,8 @@
       "Dates d’inscription surveillées",
       "Réponses",
       "Tarif fondateur"
-    ]
+    ],
+    "futureBooking": "Prévu pour les offres payantes : aide à l’inscription et à la réservation. Pas encore disponible."
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
@@ -830,5 +831,87 @@
   "Jsonld": {
     "orgDescription": "Hale est un planificateur pour l’année de vos enfants — il trouve ce qui se passe près de vos enfants, surveille les fenêtres d’inscription des villes et revient prendre des nouvelles. Les données de chaque famille restent au Canada.",
     "appDescription": "Trouvez ce qu’il y a. Écoutez comment ça va. Un planificateur pour l’année de vos enfants : Hale trouve ce qui se passe près de vos enfants, surveille les dates d’inscription dans toute la région du Grand Toronto et revient prendre des nouvelles. Des preuves pour tout, et les données de votre famille ne quittent jamais le Canada."
+  },
+  "LandingRedo": {
+    "eyebrow": "Un peu plus de place pour la famille.",
+    "headline": "L’année de vos enfants, entre bonnes mains.",
+    "lede": "Trouver les activités. Garder les dates en vue. Savoir comment ça s’est passé — dans le fil de textos.",
+    "entry": "iMessage. Sans appli.",
+    "emailEntry": "Commencez par un bonjour.",
+    "weekdays": ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"],
+    "activities": ["Nage", "Jeu", "Camp"],
+    "calendarLabel": "Un exemple de calendrier familial pour {month}, avec nage, jeux et camp les samedis.",
+    "watchHeading": "Hale garde un œil sur",
+    "watchSteps": ["La nage samedi", "Un rappel avant de partir", "Comment ça s’est passé ?"],
+    "findLabel": "Une trouvaille pour votre famille",
+    "example": "Exemple de conversation",
+    "beats": [
+      {
+        "title": "La logistique des enfants, simplifiée.",
+        "body": "Trouver les activités, surveiller les dates, garder un calendrier familial et demander comment ça s’est passé."
+      },
+      {
+        "title": "Deux parents. Un seul fil.",
+        "body": "Vous, votre coparent et Hale dans un groupe iMessage. Les mêmes enfants, les mêmes projets, une conversation commune."
+      },
+      {
+        "title": "Plusieurs familles. Un seul fil.",
+        "body": "Rassemblez les familles autour des activités et des sorties des enfants, avec Hale dans la conversation de groupe."
+      }
+    ],
+    "steps": [
+      {
+        "title": "Trouver",
+        "body": "Des activités adaptées à vos enfants."
+      },
+      {
+        "title": "Surveiller",
+        "body": "Un rappel avant l’ouverture des inscriptions."
+      },
+      {
+        "title": "Faire le suivi",
+        "body": "Un petit bilan après la journée."
+      }
+    ],
+    "threads": [
+      {
+        "title": "Vous + coparent + Hale",
+        "messages": [
+          {
+            "speaker": "Vous",
+            "text": "Piscine samedi ?"
+          },
+          {
+            "speaker": "Coparent",
+            "text": "Ça nous convient."
+          },
+          {
+            "speaker": "Hale",
+            "text": "Nage parent-enfant · samedis, 9 h 15.",
+            "hale": true
+          }
+        ]
+      },
+      {
+        "title": "Deux familles + Hale",
+        "messages": [
+          {
+            "speaker": "Votre famille",
+            "text": "Une matinée au parc, ça vous dit ?"
+          },
+          {
+            "speaker": "Une autre famille",
+            "text": "On peut venir après la piscine."
+          },
+          {
+            "speaker": "Hale",
+            "text": "Vous voulez des idées tout près ?",
+            "hale": true
+          }
+        ]
+      }
+    ],
+    "closing": "Une année où l’on peut souffler.",
+    "closingBody": "Commencez par un texto. Un projet à la fois."
   }
 }

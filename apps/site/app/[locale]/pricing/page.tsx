@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { CopyNumberButton } from '~/components/copy-number';
 import { CtaBand } from '~/components/cta-band';
 import { LandingCta } from '~/components/landing-cta';
+import { DesignPricingPage } from '~/components/landing/oct-2026/pricing';
 import { PricingSection } from '~/components/pricing-section';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
@@ -40,6 +41,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function PricingPage({ params }: PageProps) {
   const { locale } = await params;
+  if (locale === 'en') return <DesignPricingPage locale={locale} />;
   const t = getTranslator(locale, 'Pricing');
   // Texting Hale is the one front door: /onboarding was deleted in F14.
   const cta = chromeCta(locale);

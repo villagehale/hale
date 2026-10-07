@@ -2,7 +2,6 @@ import { PLAN_DISPLAY, PLAN_TIERS_ORDERED } from '@hale/types';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { chromeCta } from '~/lib/site/chrome-cta.js';
 import en from '../messages/en.json';
 import fr from '../messages/fr.json';
 import zh from '../messages/zh.json';
@@ -14,9 +13,6 @@ import { PricingSection } from './pricing-section.js';
  * framing. Rendered to static markup — the section is a pure server component.
  */
 const html = renderToStaticMarkup(createElement(PricingSection));
-
-/** Escape a string for use inside a RegExp — hrefs carry `+`, `?` and `.`. */
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -97,105 +93,27 @@ describe('PricingSection (landing pricing)', () => {
     expect(zh.PricingSection.tierNames.family).toBe('Family');
   });
 
-  it('shows both monthly and annual prices for the paid tiers', () => {
-    expect(html).toContain('$9 CAD/mo');
-    expect(html).toContain('$79 CAD/yr');
-    expect(html).toContain('$19 CAD/mo');
-    expect(html).toContain('$159 CAD/yr');
-  });
-
-  it('leads with the core being free, and argues it without a metaphor to decode', () => {
-    expect(html).toContain('Free');
-    expect(html).toContain('The whole core is free');
-    // "The village" as a synonym for Hale was a third governing metaphor at the
-    // close (after chief of staff and radar) — a word the reader has to translate
-    // before learning the price. It is earned in exactly one place now: the About
-    // page's story of the village we lost. The tier FEATURE lines are a different
-    // thing — they name the shipped family-to-family Village product — so the
-    // assertion is against the band's own argument, not the feature list.
-    const argument = html
-      .replace(/<ul class="numbered-card-list">[\s\S]*?<\/ul>/g, '')
-      // Visible prose only — the brand domain lives in an href, not in the argument.
-      .replace(/<[^>]+>/g, ' ');
-    expect(argument).not.toContain('village');
-  });
-
-  it('states the locked year-attention one-liners, not Village or Companion', () => {
-    // VIL-367, Sloane + Miles 2026-09-23. Exact bytes — the cards must not paraphrase.
-    const locked = {
-      free: 'Find what’s on and open the year. Watching mornings you’ve already set stays free.',
-      plus: 'Nudges when a weekend’s empty or a waitlist opens — plus year memory as it ships.',
-      family: 'One plan for the household. Co-parent stays in.',
-    } as const;
-    expect(en.PricingSection.tierLines).toEqual(locked);
-    for (const line of Object.values(locked)) {
-      expect(html).toContain(line);
-    }
-    // Paid is year-attention packaging. It does not meter finds, sell a watch YES,
-    // pull travel forward, or open a live checkout.
-    const joined = Object.values(locked).join('\n');
-    expect(joined).not.toMatch(/\d+\s+finds?\b/i);
-    expect(joined.toLowerCase()).not.toContain('reply yes');
-    expect(joined.toLowerCase()).not.toContain('travel');
-    expect(html).not.toContain('Subscribe');
-    expect(html).not.toContain('see what families near you recommend');
-    expect(html).not.toContain('Your village feed');
-    expect(html).not.toContain('Companion:');
-  });
-
-  it('routes every tier to a LIVE action — no dead waitlist, checkout, or "Coming soon"', () => {
-    expect(html).not.toContain('Coming soon');
-    expect(html).not.toContain('#waitlist');
-    expect(html.toLowerCase()).not.toContain('checkout');
-    // Free and paid alike open the one front door the site chrome offers. There is one
-    // CTA per tier, and all three carry the same destination — free vs paid differs in
-    // emphasis (btn-primary vs btn-secondary), not in where it goes.
-    const { href, label } = chromeCta();
-    expect([...html.matchAll(new RegExp(escapeRe(href.replace(/&/g, '&amp;')), 'g'))]).toHaveLength(
-      PLAN_TIERS_ORDERED.length,
-    );
-    expect([...html.matchAll(new RegExp(escapeRe(label), 'g'))]).toHaveLength(
-      PLAN_TIERS_ORDERED.length,
-    );
-  });
-
-  /**
-   * The regression this replaced a label-pin with. Every tier CTA used to hardcode the
-   * app's /onboarding wizard, which no longer exists — so the pricing page's only
-   * action 308'd the reader back to the marketing homepage. Asserted under the LIVE
-   * config, because that is what a reader actually gets.
-   */
-  it('sends a reader to the texting door under the live config — never the deleted wizard', () => {
-    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
-    const live = renderToStaticMarkup(createElement(PricingSection));
-    expect(chromeCta().href).toMatch(/^sms:/);
-    expect(live).toContain('sms:+16475551234');
-    expect(live).not.toContain('/onboarding');
-  });
-
-  it('claims an annual discount the prices actually deliver', () => {
-    // It said "about two months free" while $79 vs $9x12 saves 3.2 months and
-    // $159 vs $19x12 saves 3.6 — wrong for both tiers, on the one page a reader
-    // checks the arithmetic on. Derived from PLAN_DISPLAY, so a reprice that
-    // makes the sentence untrue fails here rather than shipping.
-    const CLAIMED_MONTHS = 3;
-    const paid = PLAN_TIERS_ORDERED.filter((tier) => PLAN_DISPLAY[tier].monthlyPriceCad > 0);
-    expect(paid.length).toBeGreaterThan(0);
-    for (const tier of paid) {
+  it('shows current CAD prices, annual savings, and real entitlements', () => {
+    for (const price of ['$19 CAD/mo', '$159 CAD/yr', '$39 CAD/mo', '$329 CAD/yr'])
+      expect(html).toContain(price);
+    for (const tier of PLAN_TIERS_ORDERED)
+      for (const feature of PLAN_DISPLAY[tier].features) expect(html).toContain(feature);
+    for (const tier of ['plus', 'family'] as const) {
       const plan = PLAN_DISPLAY[tier];
-      const saved = (plan.monthlyPriceCad * 12 - plan.annualPriceCad) / plan.monthlyPriceCad;
-      expect(saved, `${tier} saves less than the page claims`).toBeGreaterThanOrEqual(
-        CLAIMED_MONTHS,
-      );
-      expect(saved, `${tier} saves a whole month more than the page claims`).toBeLessThan(
-        CLAIMED_MONTHS + 1,
-      );
+      const saved = 12 - plan.annualPriceCad / plan.monthlyPriceCad;
+      expect(saved).toBeGreaterThanOrEqual(3);
+      expect(saved).toBeLessThan(4);
     }
     expect(html).toContain('about three months free');
   });
 
-  it('carries the founding-families banner with the first-100 badge promise', () => {
-    expect(html).toContain('Founding families join free.');
-    expect(html).toContain('first 100 families get a permanent founding badge');
+  it('only Free opens a texting door; paid tiers cannot start checkout', () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
+    const live = renderToStaticMarkup(createElement(PricingSection));
+    expect(live.match(/href="\/text"/g)).toHaveLength(1);
+    expect(live.match(/<button[^>]*disabled/g)).toHaveLength(2);
+    expect(live.match(/Coming soon/g)).toHaveLength(2);
+    expect(live).toContain('Only Free is available today.');
+    expect(live).not.toMatch(/checkout|onboarding|#waitlist|href="sms:/);
   });
 });

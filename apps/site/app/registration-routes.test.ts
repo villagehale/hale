@@ -115,7 +115,9 @@ describe('city registration routes — landing chrome, not a blog', () => {
       // The QR block must stay a DESKTOP affordance: hidden on phones (where the
       // sms: CTA works) and flex from sm: up. CSS-hiding it everywhere would pass
       // the presence pins above while re-opening the desktop dead-end.
-      expect(body).toMatch(/class="[^"]*\bhidden\b[^"]*\bsm:flex\b[^"]*"[^>]*>(?:(?!<\/div>).)*aria-label="QR code/s);
+      expect(body).toMatch(
+        /class="[^"]*\bhidden\b[^"]*\bsm:flex\b[^"]*"[^>]*>(?:(?!<\/div>).)*aria-label="QR code/s,
+      );
       expect(body).toContain('On a laptop?');
       // No in-body hop to the chooser — /text belongs to the chrome pill alone.
       expect(body).not.toContain('href="/text"');
@@ -143,7 +145,9 @@ describe('city registration routes — landing chrome, not a blog', () => {
     const html = await render(BramptonPage);
     const locked = buildSmsHrefForBody(LIVE_NUMBER, INTAKE_PREFILL);
     expect(html).toContain(locked.replaceAll('&', '&amp;'));
-    const body = html.replace(/<header[\s\S]*?<\/header>/, '').replace(/<footer[\s\S]*?<\/footer>/, '');
+    const body = html
+      .replace(/<header[\s\S]*?<\/header>/, '')
+      .replace(/<footer[\s\S]*?<\/footer>/, '');
     expect(body).not.toContain('L3R');
     expect(html).not.toMatch(/body=When%20does%20swim/);
   });
@@ -192,12 +196,12 @@ describe('city registration routes — landing chrome, not a blog', () => {
     }
   });
 
-  it('points at the new Toronto and Brampton URLs from /activities', async () => {
+  it('leaves dated city archives unlinked on the new activities page', async () => {
     const html = renderToStaticMarkup(
       await ActivitiesHub({ params: Promise.resolve({ locale: 'en' as const }) }),
     );
-    expect(html).toContain('href="/toronto-fall-recreation-registration"');
-    expect(html).toContain('href="/toronto-swim-registration"');
-    expect(html).toContain('href="/brampton-swim-registration"');
+    expect(html).not.toContain('href="/toronto-fall-recreation-registration"');
+    expect(html).not.toContain('href="/toronto-swim-registration"');
+    expect(html).not.toContain('href="/brampton-swim-registration"');
   });
 });

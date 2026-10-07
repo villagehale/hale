@@ -2,6 +2,7 @@ import { ArrowUpRight } from 'lucide-react';
 import type { Metadata } from 'next';
 import { CtaBand } from '~/components/cta-band';
 import { LandingCta } from '~/components/landing-cta';
+import { DesignActivities } from '~/components/landing/oct-2026/activities';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { type HeadlineSegment, WordsPullUp } from '~/components/words-pull-up';
@@ -43,6 +44,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function ActivitiesHub({ params }: PageProps) {
   const { locale } = await params;
+  if (locale === 'en') return <DesignActivities locale={locale} />;
   const t = getTranslator(locale, 'Activities');
   // The one front door, resolved the same way the header and footer resolve theirs:
   // texting Hale (or the honest email fallback when no number is provisioned).

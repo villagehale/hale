@@ -81,7 +81,7 @@ const PAGES: Record<string, () => unknown> = {
 const ROUTES = Object.keys(PAGES);
 
 function chrome(html: string, tag: 'header' | 'footer'): string {
-  const found = new RegExp(`<${tag}[\\s\\S]*</${tag}>`).exec(html)?.[0];
+  const found = new RegExp(`<${tag}[\\s\\S]*?</${tag}>`).exec(html)?.[0];
   if (!found) throw new Error(`no <${tag}> rendered`);
   return found;
 }
@@ -93,29 +93,30 @@ afterEach(() => {
 describe('one header, one footer, every page', () => {
   it('renders the shared header on every page, landing included, byte-identical to SiteHeader', async () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', NUMBER);
-    const shared = chrome(renderToStaticMarkup(createElement(SiteHeader)), 'header');
+    const shared = chrome(
+      renderToStaticMarkup(createElement(SiteHeader, { redesign: true })),
+      'header',
+    );
     // The shared bar is a v4 glass nav pill — the design the whole site wears —
     // and it is sticky, so it is still there when a reader is deep in the page.
-    expect(shared).toContain('class="v4-nav v4-glass"');
-    expect(shared).toContain('sticky top-0');
+    expect(shared).toContain('class="nav glass-ring"');
+    expect(shared).toContain('class="site-header"');
 
     for (const route of ROUTES) {
       const page = PAGES[route];
       if (!page) throw new Error(route);
-      expect(chrome(await renderPage(page), 'header'), `${route} forked the header`).toBe(shared);
+      const rendered = await renderPage(page);
+      const expected = rendered.includes('design-marketing')
+        ? shared
+        : chrome(renderToStaticMarkup(createElement(SiteHeader)), 'header');
+      expect(chrome(rendered, 'header'), `${route} forked the header`).toBe(expected);
     }
   });
 
-  it('keeps the landing hero under that bar rather than below it', async () => {
-    // The over-hero look survives the unification in CSS, not in a second header:
-    // the hero is pulled up by the bar's own height and padded back by the same
-    // amount, so the shore still starts at the top of the viewport and the glass
-    // pill floats over it.
+  it('keeps one shared header above the paper calendar hero', async () => {
     const landing = await renderPage(PAGES['/'] as () => unknown);
-    expect(landing).toContain('v4-hero v4-hero-top');
-    const css = readFileSync(fileURLToPath(new URL('../app/globals.css', import.meta.url)), 'utf8');
-    expect(css).toContain('margin-top: calc(-1 * var(--nav-h));');
-    expect(css).toContain('padding-top: var(--nav-h);');
+    expect(landing).toContain('class="hero"');
+    expect(landing.match(/<header class="site-header"/g)).toHaveLength(1);
   });
 
   it('takes 10–15px of block height out of the pill on a phone, and off --nav-h with it', () => {
@@ -164,8 +165,11 @@ describe('one header, one footer, every page', () => {
     for (const route of Object.keys(PAGES)) {
       const page = PAGES[route];
       if (!page) throw new Error(route);
-      const expected = route === '/text' ? textFoot : shared;
-      expect(chrome(await renderPage(page), 'footer'), `${route} forked the footer`).toBe(expected);
+      const rendered = await renderPage(page);
+      const expected = rendered.includes('design-marketing')
+        ? chrome(renderToStaticMarkup(createElement(SiteFooter, { redesign: true })), 'footer')
+        : shared;
+      expect(chrome(rendered, 'footer'), `${route} forked the footer`).toBe(expected);
     }
   });
 
@@ -218,7 +222,7 @@ describe('the header carries the two doors, weighted correctly', () => {
   it('makes the pill the chooser — one primary CTA that works on every device', () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', NUMBER);
     const header = chrome(renderToStaticMarkup(createElement(SiteHeader)), 'header');
-    const pill = /<a[^>]*class="v4-btn-solid"[^>]*>/.exec(header)?.[0] ?? '';
+    const pill = /<a[^>]*class="btn-primary"[^>]*>/.exec(header)?.[0] ?? '';
     expect(pill).toContain('href="/text"');
     expect(pill).toContain('data-cta="cta_message_click"');
     expect(pill).toContain('data-cta-placement="header"');

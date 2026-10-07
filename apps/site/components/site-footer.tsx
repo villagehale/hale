@@ -33,9 +33,11 @@ import { APP_URL } from '~/lib/app-url';
 export function SiteFooter({
   locale = routing.defaultLocale,
   omitPrivacyLink = false,
+  redesign = false,
 }: {
   locale?: Locale;
   omitPrivacyLink?: boolean;
+  redesign?: boolean;
 }) {
   const t = getTranslator(locale, 'Footer');
   const theme = getTranslator(locale, 'ThemeSwitch');
@@ -62,15 +64,76 @@ export function SiteFooter({
   ];
 
   const legal = [
-    ...(omitPrivacyLink
-      ? []
-      : [{ label: t('linkPrivacy'), href: localeHref(locale, '/privacy') }]),
+    ...(omitPrivacyLink ? [] : [{ label: t('linkPrivacy'), href: localeHref(locale, '/privacy') }]),
     { label: t('linkTerms'), href: localeHref(locale, '/terms') },
     // The app is the receipts surface, not the daily one — sign-in lives in the
     // quietest spot the site has, beside the legal pair, for the parent who
     // already has an account. It sells nothing.
     { label: t('signIn'), href: `${APP_URL}/sign-in` },
   ];
+
+  if (redesign)
+    return (
+      <footer className="hs-footer">
+        <div className="hs-wrap">
+          <div className="hs-foot-top">
+            <div className="hs-foot-brand">
+              <a href={localeHref(locale, '/')} className="hs-foot-logo" aria-label="Hale, home">
+                <LogoMark size={28} />
+                <Wordmark />
+              </a>
+              <p className="hs-foot-blurb">{t('blurb')}</p>
+              <p className="hs-foot-say">
+                <span translate="no">
+                  {t('pronunciationPrefix')}{' '}
+                  <span className="hs-foot-pron">{t('pronunciation')}</span>
+                </span>{' '}
+                {t('pronunciationSuffix')}
+              </p>
+              <div className="hs-foot-ctrl">
+                <FooterThemeSwitch
+                  labels={{
+                    light: theme('light'),
+                    dark: theme('dark'),
+                    toLight: theme('toLight'),
+                    toDark: theme('toDark'),
+                  }}
+                />
+                <LanguageSelect locale={locale} label={lang('label')} />
+              </div>
+            </div>
+            <nav className="hs-foot-nav" aria-label="Footer">
+              {columns.map((column) => (
+                <div key={column.heading}>
+                  <h2>{column.heading}</h2>
+                  <ul>
+                    {column.links.map((item) => (
+                      <li key={item.href}>
+                        <a href={item.href}>{item.label}</a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </nav>
+          </div>
+          <hr className="hs-foot-hr" />
+          <div className="hs-foot-bot">
+            <div>
+              <p>{t('copyright', { year: String(new Date().getFullYear()) })}</p>
+              <p>{t('company')}</p>
+            </div>
+            <div className="hs-foot-legal">
+              {legal.map((item) => (
+                <a key={item.href} href={item.href}>
+                  {item.label}
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      </footer>
+    );
 
   return (
     <footer className="border-t border-rule">

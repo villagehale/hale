@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { CopyNumberButton } from '~/components/copy-number';
 import { CtaBand } from '~/components/cta-band';
 import { LandingCta } from '~/components/landing-cta';
+import { DesignForCentres } from '~/components/landing/oct-2026/for-centres';
 import { ProductFaqAccordion } from '~/components/product-faq-accordion';
 import { QrCode } from '~/components/qr-code';
 import { SiteFooter } from '~/components/site-footer';
@@ -78,6 +79,7 @@ interface ThreadRow {
 
 export default async function ForCentresPage({ params }: PageProps) {
   const { locale } = await params;
+  if (locale === 'en') return <DesignForCentres locale={locale} />;
   const t = getTranslator(locale, 'ForCentres');
   const landing = getTranslator(locale, 'Landing');
   const copy = getTranslator(locale, 'CopyNumber');

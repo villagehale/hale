@@ -1,9 +1,11 @@
 import { PLAN_TIERS_ORDERED, type PlanTier, formatPlanPrice } from '@hale/types';
 import { Check } from 'lucide-react';
-import { LandingCta } from '~/components/landing-cta';
+import { ChooserLink } from '~/components/chooser-link';
+import { DesignPricing } from '~/components/landing/oct-2026/pricing-section';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
-import { chromeCta } from '~/lib/site/chrome-cta';
+import { intakePrefill } from '~/lib/intake-prefill';
+import { CONTACT_EMAIL, readSmsNumber } from '~/lib/text-entry';
 
 // Marketing presentation per tier — the panel tint. Prices for the paid tiers
 // stay the CAD strings from formatPlanPrice. Names and feature lines are
@@ -32,6 +34,12 @@ const TIER_PANEL = {
  * catalog still carries.
  */
 export function PricingSection({ locale = routing.defaultLocale }: { locale?: Locale }) {
+  if (locale === 'en')
+    return (
+      <div className="design-marketing">
+        <DesignPricing locale={locale} />
+      </div>
+    );
   const t = getTranslator(locale, 'PricingSection');
   const tierLines: Record<PlanTier, string> = {
     free: t('tierLines.free'),
@@ -48,7 +56,8 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
     plus: t.raw('paidFeatures.plus') as string[],
     family: t.raw('paidFeatures.family') as string[],
   };
-  const cta = chromeCta(locale);
+  const common = getTranslator(locale, 'Common');
+  const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
   return (
     <section id="pricing" className="shell pb-20 lg:pb-28">
       <div className="max-w-2xl mb-10 lg:mb-12">
@@ -95,7 +104,8 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
               </h3>
               {isFree ? null : (
                 <p className="meta mt-2">
-                  <span className="tabular">{formatPlanPrice(tier, 'annual')}</span> {t('annualNote')}
+                  <span className="tabular">{formatPlanPrice(tier, 'annual')}</span>{' '}
+                  {t('annualNote')}
                 </p>
               )}
               <p className="mt-5" style={{ color: 'var(--color-spruce)', lineHeight: 1.6 }}>
@@ -109,22 +119,23 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
                   </li>
                 ))}
               </ul>
-              {/* Every tier opens the same door — you start by texting Hale — so the
-               * free and paid cards differ only in emphasis, not destination.
-               * `mt-auto` drops the three actions onto one line across the grid. */}
+              {!isFree && <p className="meta mt-4">{t('futureBooking')}</p>}
               <div className="mt-auto pt-8">
-                {/* One placement for all three cards: which tier a reader tapped is not
-                    a different conversion — every card opens the same composer — and
-                    three placement names would split one number into three. */}
-                <LandingCta
-                  event="cta_text_click"
-                  channel="sms"
-                  placement="pricing_tier"
-                  href={cta.href}
-                  className={isFree ? 'btn-primary' : 'btn-secondary'}
-                >
-                  {cta.label}
-                </LandingCta>
+                {smsNumber ? (
+                  <ChooserLink
+                    locale={locale}
+                    placement="pricing_tier"
+                    className="btn-primary"
+                    smsNumber={smsNumber}
+                    prefill={intakePrefill(locale)}
+                  >
+                    {common('textHale')}
+                  </ChooserLink>
+                ) : (
+                  <a href={`mailto:${CONTACT_EMAIL}`} className="btn-primary">
+                    {common('emailHale')}
+                  </a>
+                )}
               </div>
             </li>
           );

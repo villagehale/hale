@@ -5,10 +5,10 @@
     "skipToContent": "Skip to content"
   },
   "HomeMeta": {
-    "title": "Hale · a planner for your kids’ year",
-    "description": "Find what’s on. Hear how it went. Hale finds what’s actually running near your kids — swim, camps, drop-ins, the EarlyON down the road — watches the sign-up mornings across {count} GTA municipalities, hands you the town’s own link the night before, and comes back to ask how it went. No app, no account. Your data stays in Canada.",
-    "ogDescription": "Find what’s on. Hear how it went. Hale finds what’s actually running near you and watches the sign-up mornings across {count} GTA municipalities, then comes back to ask how it went. No app, no account. Your data stays in Canada.",
-    "twitterDescription": "Find what’s on. Hear how it went. What’s worth doing with the kids. No app, no account. Your data stays in Canada."
+    "title": "Your kids’ year, handled. · Hale",
+    "description": "Your kids’ year, handled. Hale finds activities, watches for spots, reminds you before sign-ups and asks how it went. Add Hale to your family’s group chat. No app, no account. Your data stays in Canada.",
+    "ogDescription": "Your kids’ year, handled. Hale finds activities, watches for spots, reminds you before sign-ups and asks how it went. Add Hale to your family’s group chat. No app, no account. Your data stays in Canada.",
+    "twitterDescription": "Your kids’ year, handled. Find what’s on with your co-parent or crew, by text. No app, no account."
   },
   "Header": {
     "navPricing": "Pricing",
@@ -412,7 +412,7 @@
   },
   "Pricing": {
     "metaTitle": "Pricing · Hale",
-    "metaDescription": "Free while Hale is new — every stage, every child. Plus and Family add more of the year planned with you, as those parts ship. Your data stays in Canada.",
+    "metaDescription": "Everything Hale does today is free, for every kid. Plus and Max are on the way, with year memory and sign-ups as those parts ship. Your data stays in Canada.",
     "eyebrow": "Pricing",
     "headline": [
       {
@@ -442,21 +442,29 @@
     "tierNames": {
       "free": "Free",
       "plus": "Plus",
-      "family": "Family"
+      "family": "Max"
     },
     "paidFeatures": {
       "plus": [
         "Everything in Free",
-        "Reminders and drafts, as they roll out",
-        "More of the year watched with you"
+        "A nudge when a weekend’s empty",
+        "Year memory, season to season",
+        "Sign-ups done for you, when you say yes"
       ],
       "family": [
         "Everything in Plus",
-        "A household view of the year, as it rolls out",
-        "Concierge + priority support"
+        "Every kid, caregivers included",
+        "Priority support",
+        "Sign-ups for every kid in one go"
       ]
     },
-    "freeFeatures": ["Text Hale", "Rec dates watched", "Answers", "Founding rate"]
+    "freeFeatures": [
+      "Unlimited chat",
+      "Live find",
+      "A text when a spot opens",
+      "Group chats and your co-parent"
+    ],
+    "futureBooking": "Planned for paid: assisted signup and booking. Not live today."
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
@@ -692,7 +700,7 @@
     ]
   },
   "Activities": {
-    "metaTitle": "Things to do with kids, by city · Hale",
+    "metaTitle": "Things to do with kids, near you · Hale",
     "metaDescription": "Free and low-cost activities for babies, toddlers, and young kids in Canadian cities — library story-times, drop-in play, parent-and-tot swim, parks, and local family programs.",
     "eyebrow": "Near you",
     "headline": [
@@ -769,7 +777,7 @@
   },
   "Text": {
     "metaTitle": "Text Hale",
-    "metaDescription": "Find what’s on. Hear how it went. What’s worth doing with the kids.",
+    "metaDescription": "Text Hale like you’d text a friend. Your first message is already written.",
     "headline": "Find what’s on. Hear how it went.",
     "lede": "What’s worth doing with the kids.",
     "sentLabel": "What you’ll send:",
@@ -824,6 +832,88 @@
   },
   "Jsonld": {
     "orgDescription": "Hale is a planner for your kids’ year — it finds what’s on near your kids, watches city registration windows, and comes back to ask how it went. Every family’s data stays in Canada.",
-    "appDescription": "Find what’s on. Hear how it went. A planner for your kids’ year: Hale finds what’s on near your kids, watches registration dates, and comes back to ask how it went. Receipts for everything, and your family’s data never leaves Canada."
+    "appDescription": "Your kids’ year, handled. Hale is a planner for your kids’ year. It finds activities, watches for spots, reminds you before sign-ups and asks how it went. Add Hale to your family’s group chat. No app, no account. Your data stays in Canada."
+  },
+  "LandingRedo": {
+    "eyebrow": "A little more room for family.",
+    "headline": "Your kids’ year, handled.",
+    "lede": "Find what’s on. Keep the dates in view. Hear how it went — all in the text thread.",
+    "entry": "iMessage. No app.",
+    "emailEntry": "Start with a hello.",
+    "weekdays": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    "activities": ["Swim", "Play", "Camp"],
+    "calendarLabel": "An example family calendar for {month}, with swim, play and camp on Saturdays.",
+    "watchHeading": "Hale is keeping an eye on",
+    "watchSteps": ["Swim on Saturday", "Reminder before you go", "How did it go?"],
+    "findLabel": "A find for your family",
+    "example": "Example conversation",
+    "beats": [
+      {
+        "title": "Kids logistics, handled.",
+        "body": "Find activities, watch the dates, keep a family calendar and check in on how it went."
+      },
+      {
+        "title": "Both parents. One thread.",
+        "body": "You, your co-parent and Hale in one iMessage group. Keep the conversation around the same kids and the same plans."
+      },
+      {
+        "title": "More families. One thread.",
+        "body": "Bring families together around the kids’ activities and hangouts, with Hale in the group conversation."
+      }
+    ],
+    "steps": [
+      {
+        "title": "Find",
+        "body": "Activities that fit your kids."
+      },
+      {
+        "title": "Watch",
+        "body": "A heads-up before registration opens."
+      },
+      {
+        "title": "How it went",
+        "body": "A check-in after the day."
+      }
+    ],
+    "threads": [
+      {
+        "title": "You + co-parent + Hale",
+        "messages": [
+          {
+            "speaker": "You",
+            "text": "Swim on Saturday?"
+          },
+          {
+            "speaker": "Co-parent",
+            "text": "That works for us."
+          },
+          {
+            "speaker": "Hale",
+            "text": "Parent & tot swim · Saturdays, 9:15 a.m.",
+            "hale": true
+          }
+        ]
+      },
+      {
+        "title": "Two families + Hale",
+        "messages": [
+          {
+            "speaker": "Your family",
+            "text": "Anyone up for a park morning?"
+          },
+          {
+            "speaker": "Another family",
+            "text": "We can join after swim."
+          },
+          {
+            "speaker": "Hale",
+            "text": "Want ideas for something nearby?",
+            "hale": true
+          }
+        ]
+      }
+    ],
+    "closing": "A year with room to breathe.",
+    "closingBody": "Start with a text. Take it one plan at a time."
   }
 }

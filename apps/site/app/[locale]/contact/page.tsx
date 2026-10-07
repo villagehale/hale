@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { SeaTurtle } from '~/components/illos';
+import { DesignContact } from '~/components/landing/oct-2026/contact';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { type HeadlineSegment, WordsPullUp } from '~/components/words-pull-up';
@@ -35,6 +36,7 @@ const CHANNELS = [
 
 export default async function ContactPage({ params }: PageProps) {
   const { locale } = await params;
+  if (locale === 'en') return <DesignContact locale={locale} />;
   const t = getTranslator(locale, 'Contact');
   const channelCopy = t.raw('channels') as Record<string, { eyebrow: string; line: string }>;
 
@@ -49,7 +51,10 @@ export default async function ContactPage({ params }: PageProps) {
           <SeaTurtle age="adult" style={{ width: 'clamp(96px, 16vw, 132px)', height: 'auto' }} />
           <span className="eyebrow mt-8">{t('eyebrow')}</span>
           <WordsPullUp className="mt-3" segments={t.raw('headline') as HeadlineSegment[]} />
-          <p className="mt-6 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
+          <p
+            className="mt-6 text-lg"
+            style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
+          >
             {t('lede')}
           </p>
           <a href="mailto:aloha@villagehale.com" className="btn-primary mt-8">

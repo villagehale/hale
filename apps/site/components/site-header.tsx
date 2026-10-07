@@ -26,7 +26,10 @@ import { CONTACT_EMAIL, readSmsNumber } from '~/lib/text-entry';
  * works everywhere. Every internal link carries the locale prefix.
  */
 
-export function SiteHeader({ locale = routing.defaultLocale }: { locale?: Locale }) {
+export function SiteHeader({
+  locale = routing.defaultLocale,
+  redesign = false,
+}: { locale?: Locale; redesign?: boolean }) {
   const t = getTranslator(locale, 'Header');
   const common = getTranslator(locale, 'Common');
   const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
@@ -41,31 +44,31 @@ export function SiteHeader({ locale = routing.defaultLocale }: { locale?: Locale
     <ChooserLink
       locale={locale}
       placement="header"
-      className="v4-btn-solid"
+      className={redesign ? 'btn' : 'btn-primary'}
       smsNumber={smsNumber}
       prefill={intakePrefill(locale)}
     >
       {common('textHale')}
     </ChooserLink>
   ) : (
-    <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid">
+    <a href={`mailto:${CONTACT_EMAIL}`} className={redesign ? 'btn' : 'btn-primary'}>
       {common('emailHale')}
     </a>
   );
 
   return (
-    <header className="sticky top-0 z-50 px-4 sm:px-6">
-      <nav className="v4-nav v4-glass" aria-label="Primary">
+    <header className={redesign ? 'site-header' : 'sticky top-0 z-50 px-4 sm:px-6'}>
+      <nav className={redesign ? 'nav glass-ring' : 'v4-nav v4-glass'} aria-label="Primary">
         <a
           href={localeHref(locale, '/')}
-          className="flex items-center gap-2.5"
+          className={redesign ? 'brand' : 'flex items-center gap-2.5'}
           aria-label="Hale, home"
         >
           <LogoMark size={28} />
           <Wordmark className="text-navy" />
         </a>
-        <div className="flex items-center gap-6">
-          <div className="v4-navlinks">
+        <div className={redesign ? 'nav-right' : 'flex items-center gap-6'}>
+          <div className={redesign ? 'nav-links' : 'v4-navlinks'}>
             {nav.map((item) => (
               <a key={item.label} href={item.href} className="v4-navlink">
                 {item.label}

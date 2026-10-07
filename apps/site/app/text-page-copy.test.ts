@@ -247,6 +247,8 @@ describe('the dummy family is gone from apps/site', () => {
     const out: string[] = [];
     for (const name of readdirSync(dir)) {
       if (['node_modules', '.next', 'dist', 'coverage', '.turbo'].includes(name)) continue;
+      // Supplied, labelled mock conversations are not the real composer prefill.
+      if (dir.endsWith('/landing') && name === 'oct-2026') continue;
       const path = join(dir, name);
       if (statSync(path).isDirectory()) out.push(...walk(path));
       else if (/\.(ts|tsx|js|mjs|json|txt|md|css)$/.test(name)) out.push(path);

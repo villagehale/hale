@@ -274,9 +274,7 @@ describe('TextEntry — the exchange is the hero', () => {
     expect(sent).not.toBe('var(--color-navy)');
     expect(sent).toBe('var(--color-sky-tint)');
     // …and the two bubbles are never the same fill as each other.
-    expect(declaration('.text-thread .v4-bubble-in', 'background')).toBe(
-      'var(--color-apricot-tint)',
-    );
+    expect(declaration('.text-thread .v4-bubble-in', 'background')).toBe('var(--color-cream)');
   });
 
   it('reuses the landing’s bubble primitives — no second bubble style on the site', () => {

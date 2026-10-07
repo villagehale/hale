@@ -7,6 +7,7 @@ import { CopyNumberButton } from '~/components/copy-number';
 import { CtaBand } from '~/components/cta-band';
 import { Village } from '~/components/illos';
 import { LandingCta } from '~/components/landing-cta';
+import { DesignAbout } from '~/components/landing/oct-2026/about';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { type HeadlineSegment, WordsPullUp } from '~/components/words-pull-up';
@@ -65,6 +66,7 @@ interface FounderLine {
 
 export default async function AboutPage({ params }: PageProps) {
   const { locale } = await params;
+  if (locale === 'en') return <DesignAbout locale={locale} />;
   const t = getTranslator(locale, 'About');
   const ladder = t.raw('ladder') as Rung[];
   const founders = t.raw('founders') as FounderLine[];

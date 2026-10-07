@@ -73,10 +73,11 @@ describe('legal routes (unlinked until the flip)', () => {
     }
   });
 
-  it('offers no Sign in — legal chrome does not send a parent to the app', () => {
+  it('uses shared chrome with quiet Sign in on legal pages', () => {
     for (const html of [termsHtml, privacyHtml]) {
-      expect(html).not.toContain('/sign-in');
-      expect(html).not.toContain('app.villagehale.com');
+      expect(html).toContain('https://app.villagehale.com/sign-in');
+      expect(html.match(/<header\b/g)).toHaveLength(1);
+      expect(html.match(/<footer\b/g)).toHaveLength(1);
     }
   });
 });

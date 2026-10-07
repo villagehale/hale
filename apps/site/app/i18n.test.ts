@@ -154,7 +154,10 @@ describe('the phone number is never literal text — messages included (hard rul
 describe('no bundle promises quiet, in any locale', () => {
   const files = (['en', 'fr', 'zh'] as const).map((locale) => ({
     locale,
-    raw: readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
+    raw: readFileSync(
+      fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)),
+      'utf8',
+    ),
   }));
 
   /**
@@ -201,7 +204,9 @@ describe('no bundle promises quiet, in any locale', () => {
     };
     for (const { locale, raw } of files) {
       for (const phrase of SUNDAY[locale] ?? []) {
-        expect(raw.toLowerCase(), `${locale}.json must not claim "${phrase}"`).not.toContain(phrase);
+        expect(raw.toLowerCase(), `${locale}.json must not claim "${phrase}"`).not.toContain(
+          phrase,
+        );
       }
     }
   });
@@ -209,7 +214,11 @@ describe('no bundle promises quiet, in any locale', () => {
   it('positive control: every bundle still says what Hale DOES send', () => {
     // The subtraction must leave the cadence described, not the page silent about
     // it — otherwise these absences would also pass on an empty bundle.
-    const say = { en: 'a heads-up the week a registration opens', fr: 'une inscription ouvre', zh: '报名开放' };
+    const say = {
+      en: 'a heads-up the week a registration opens',
+      fr: 'une inscription ouvre',
+      zh: '报名开放',
+    };
     for (const { locale, raw } of files) {
       expect(raw.toLowerCase()).toContain(say[locale].toLowerCase());
     }
@@ -219,7 +228,10 @@ describe('no bundle promises quiet, in any locale', () => {
 describe('the positioning noun is gone from every bundle', () => {
   const files = (['en', 'fr', 'zh'] as const).map((locale) => ({
     locale,
-    raw: readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
+    raw: readFileSync(
+      fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)),
+      'utf8',
+    ),
   }));
 
   /**
@@ -251,7 +263,9 @@ describe('the positioning noun is gone from every bundle', () => {
 
   it('positive control: the anti-scam line the ban must not erase is still there', () => {
     const en = files.find((f) => f.locale === 'en')?.raw ?? '';
-    expect(en).toContain('Hale is a planner for your kids’ year, and it never pretends to be a person.');
+    expect(en).toContain(
+      'Hale is a planner for your kids’ year, and it never pretends to be a person.',
+    );
   });
 });
 
@@ -260,7 +274,9 @@ describe('the FAQ translation source mirrors the canonical English list', () => 
     const en = JSON.parse(
       readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'),
     );
-    expect(en.Faq.items).toEqual(FAQ.map((item) => ({ question: item.question, answer: item.answer })));
+    expect(en.Faq.items).toEqual(
+      FAQ.map((item) => ({ question: item.question, answer: item.answer })),
+    );
   });
 });
 
@@ -297,7 +313,9 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
       for (const phrase of LOCKED[locale] ?? []) {
         expect(landing, `${locale}.Landing must still say "${phrase}"`).toContain(phrase);
       }
-      expect(landing, `${locale} must not reopen "you say hi"`).not.toMatch(/You say hi|dites bonjour/i);
+      expect(landing, `${locale} must not reopen "you say hi"`).not.toMatch(
+        /You say hi|dites bonjour/i,
+      );
     }
     expect(JSON.stringify(bundles.en.Landing)).not.toMatch(/no forms/i);
   });
@@ -315,12 +333,12 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
 
   it('keeps HomeMeta, page meta, and Jsonld on the kids-year lines', () => {
     const h1 = {
-      en: 'Find what’s on. Hear how it went.',
+      en: 'Your kids’ year, handled.',
       fr: 'Trouvez ce qu’il y a. Écoutez comment ça va.',
       zh: '看看有什么。听听怎么样。',
     } as const;
     const sub = {
-      en: 'What’s worth doing with the kids.',
+      en: 'Find what’s on with your co-parent or crew, by text.',
       fr: 'Ce qui vaut la peine avec les enfants.',
       zh: '值得和孩子一起做的事。',
     } as const;
@@ -372,7 +390,11 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
       // zh sets the two locked sentences solid; en and fr take a word space.
       const textMeta =
         locale === 'zh' ? `${h1[locale]}${sub[locale]}` : `${h1[locale]} ${sub[locale]}`;
-      expect(bundle.Text.metaDescription).toBe(textMeta);
+      expect(bundle.Text.metaDescription).toBe(
+        locale === 'en'
+          ? 'Text Hale like you’d text a friend. Your first message is already written.'
+          : textMeta,
+      );
       expect(bundle.Jsonld.appDescription.startsWith(h1[locale])).toBe(true);
     }
   });
@@ -381,7 +403,7 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
     const html = renderToStaticMarkup(
       await AboutPage({ params: Promise.resolve({ locale: 'en' as const }) }),
     );
-    expect(html).toContain('It starts with names, ages, and a postal code. No app, no account.');
-    expect(html).not.toContain('It starts with one text');
+    expect(html).toContain('A planner for your kids’');
+    expect(html).toContain('Hale finds and reminds. You register');
   });
 });

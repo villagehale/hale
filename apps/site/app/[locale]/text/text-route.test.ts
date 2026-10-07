@@ -63,11 +63,20 @@ describe('/text (unlisted entry surface)', () => {
       const header = chrome(html, 'header');
       const footer = chrome(html, 'footer');
       expect(header, `${locale} forked the header`).toBe(
-        chrome(renderToStaticMarkup(createElement(SiteHeader, { locale })), 'header'),
+        chrome(
+          renderToStaticMarkup(createElement(SiteHeader, { locale, redesign: locale === 'en' })),
+          'header',
+        ),
       );
       expect(footer, `${locale} forked the footer`).toBe(
         chrome(
-          renderToStaticMarkup(createElement(SiteFooter, { locale, omitPrivacyLink: true })),
+          renderToStaticMarkup(
+            createElement(SiteFooter, {
+              locale,
+              omitPrivacyLink: locale !== 'en',
+              redesign: locale === 'en',
+            }),
+          ),
           'footer',
         ),
       );
@@ -76,12 +85,16 @@ describe('/text (unlisted entry surface)', () => {
       const privacyHref = localeHref(locale, '/privacy');
       const privacyAt = html.indexOf(`href="${privacyHref}"`);
       expect(privacyAt, `${locale} missing the column privacy link`).toBeGreaterThan(-1);
-      expect(html.indexOf(`href="${privacyHref}"`, privacyAt + 1)).toBe(-1);
+      expect(html.match(new RegExp(`href="${privacyHref}"`, 'g'))).toHaveLength(
+        locale === 'en' ? 2 : 1,
+      );
       expect(privacyAt).toBeLessThan(html.indexOf('<footer'));
-      expect(footer).not.toContain(`href="${privacyHref}"`);
+      if (locale !== 'en') expect(footer).not.toContain(`href="${privacyHref}"`);
       // The shared bar is the glass pill, and the lockup is the turtle tile
       // beside the drawn wordmark — the same assets the landing header uses.
-      expect(header).toContain('class="v4-nav v4-glass"');
+      expect(header).toContain(
+        locale === 'en' ? 'class="nav glass-ring"' : 'class="v4-nav v4-glass"',
+      );
       expect(header).toContain('hale-logo');
       expect(header).toContain('viewBox="0 0 905.840370 590.701960"');
       // The column under the bar is still the conversion door. EN and ZH send

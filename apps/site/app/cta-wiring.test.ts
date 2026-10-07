@@ -188,9 +188,9 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
     // cta_message_click navigations to /text now, asserted below), and the walk
     // sees /text as an unknown platform, whose layout leads with the QR rather
     // than an sms: button — so the composer anchors left are the subpage bands,
-    // the pricing tiers, and the city guides' in-body doors.
-    expect(smsAnchors.length).toBeGreaterThanOrEqual(15);
-    for (const placement of ['faq', 'about', 'pricing_tier', 'answers', 'activities']) {
+    // and the city guides' in-body doors.
+    expect(smsAnchors.length).toBeGreaterThanOrEqual(10);
+    for (const placement of ['toronto_swim_dates', 'brampton_swim_dates']) {
       expect(placements, `the walk must reach the ${placement} CTA`).toContain(placement);
     }
     // The city pages' in-body door (2026-08 ad week): the dates table is what
@@ -226,8 +226,8 @@ describe('the desktop path is wired the same way', () => {
     // are gone by design (the chooser owns the clipboard path, placement
     // text_entry) — a chip reappearing there would be a Stanley-grammar break,
     // not a coverage win.
-    expect(copyChips.length).toBeGreaterThanOrEqual(10);
-    for (const placement of ['text_entry', 'faq', 'about', 'pricing_band', 'toronto_swim_dates']) {
+    expect(copyChips.length).toBeGreaterThanOrEqual(9);
+    for (const placement of ['text_entry', 'for_centres', 'toronto_swim_dates']) {
       expect(chipPlacements, `the walk must reach the ${placement} chip`).toContain(placement);
     }
     expect(chipPlacements).not.toContain('hero');
@@ -284,7 +284,7 @@ describe('the chooser doors are wired the same way', () => {
     const chooserPlacements = new Set(
       chooserAnchors.map((anchor) => /data-cta-placement="([^"]*)"/.exec(anchor.tag)?.[1] ?? ''),
     );
-    for (const placement of ['header', 'hero', 'closing']) {
+    for (const placement of ['header', 'landing_redesign']) {
       expect(chooserPlacements, `the walk must reach the ${placement} chooser door`).toContain(
         placement,
       );

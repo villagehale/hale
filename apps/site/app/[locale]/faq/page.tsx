@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { CopyNumberButton } from '~/components/copy-number';
 import { CtaBand } from '~/components/cta-band';
 import { LandingCta } from '~/components/landing-cta';
+import { DesignFaq } from '~/components/landing/oct-2026/faq';
 import { ProductFaqAccordion } from '~/components/product-faq-accordion';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
@@ -48,6 +49,7 @@ function faqItems(locale: Locale): readonly FaqItem[] {
 
 export default async function FaqPage({ params }: PageProps) {
   const { locale } = await params;
+  if (locale === 'en') return <DesignFaq locale={locale} />;
   const t = getTranslator(locale, 'Faq');
   const items = faqItems(locale);
   const cta = chromeCta(locale);

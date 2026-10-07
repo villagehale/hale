@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { CtaBand } from '~/components/cta-band';
 import { LandingCta } from '~/components/landing-cta';
+import { DesignAnswers } from '~/components/landing/oct-2026/answers';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { type HeadlineSegment, WordsPullUp } from '~/components/words-pull-up';
@@ -31,6 +32,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function AnswersIndexPage({ params }: PageProps) {
   const { locale } = await params;
+  if (locale === 'en') return <DesignAnswers locale={locale} />;
   const t = getTranslator(locale, 'Answers');
   const stageLabels = t.raw('stageLabels') as Record<string, string>;
   const answers = publishedAnswers;

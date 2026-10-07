@@ -1,8 +1,12 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
+import Image from 'next/image';
+import shoreNight from '~/assets/hale-shore-night.webp';
+import { DesignText } from '~/components/landing/oct-2026/text';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { TextEntry } from '~/components/text-entry';
+import { TextEntryAnalytics } from '~/components/text-entry-analytics';
 import { buildAlternates } from '~/i18n/metadata';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
@@ -71,6 +75,27 @@ export default async function TextEntryPage({
     ua = null;
   }
 
+  if (locale === 'en') {
+    const platform = platformFromUa(ua);
+    const number = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
+    const t = getTranslator(locale, 'Text');
+    const ladder = firstTouchLadderEnabled();
+    const locationCard =
+      firstTouchLocationCardEnabled() && (platform === 'apple' || platform === 'desktop-mac');
+    const greeting = ladder
+      ? t(locationCard ? 'greetingLadderImessage' : 'greetingLadderSms')
+      : t('greeting');
+    return (
+      <>
+        <TextEntryAnalytics deviceHint={platform} channelsLive={number ? 'sms' : 'none'} />
+        <DesignText
+          locale={locale}
+          textEntry={{ number, source: parseSourceCode(s), platform, greeting }}
+        />
+      </>
+    );
+  }
+
   return (
     <main id="main" tabIndex={-1} className="relative">
       <SiteHeader locale={locale} />
@@ -82,6 +107,9 @@ export default async function TextEntryPage({
         firstTouchLadder={firstTouchLadderEnabled()}
         firstTouchLocationCard={firstTouchLocationCardEnabled()}
       />
+      <div className="redo-text-shore" aria-hidden="true">
+        <Image src={shoreNight} alt="" fill sizes="100vw" />
+      </div>
       {/* The column already links the policy on the Canada line. Omitting the
           footer's copy leaves the rendered page with exactly one privacy link. */}
       <SiteFooter locale={locale} omitPrivacyLink />

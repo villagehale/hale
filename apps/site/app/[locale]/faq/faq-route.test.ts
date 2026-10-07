@@ -1,43 +1,29 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { FAQ } from '~/lib/faq/index.js';
+import { DESIGN_FAQ_GROUPS } from '~/components/landing/oct-2026/faq.js';
 import FaqPage from './page.js';
 
-const html = renderToStaticMarkup(await FaqPage({ params: Promise.resolve({ locale: 'en' as const }) }));
-
-describe('/faq — canonical product FAQ', () => {
-  it('renders every product question once in the visible accordion', () => {
-    for (const item of FAQ) {
-      expect(html).toContain(item.question);
+const html = renderToStaticMarkup(
+  await FaqPage({ params: Promise.resolve({ locale: 'en' as const }) }),
+);
+describe('/faq — supplied grouped FAQ', () => {
+  it('shows every answer without requiring JavaScript or opening a disclosure', () => {
+    for (const group of DESIGN_FAQ_GROUPS) {
+      expect(html).toContain(`href="#${group.id}"`);
+      expect(html).toContain(`id="${group.id}"`);
+      for (const item of group.items) {
+        expect(html).toContain(item.question);
+        expect(html).toContain(item.answer.replaceAll('&', '&amp;'));
+      }
     }
   });
-
-  it('keeps FAQPage structured data on the canonical route', () => {
-    expect(html).toContain('application/ld+json');
-    expect(html).toContain('"@type":"FAQPage"');
-  });
-
-  /**
-   * Every answer is openable from the server-rendered markup alone. The React
-   * accordion this replaced held the open index in useState, so with its
-   * JavaScript unarrived exactly one item was readable and the other six could
-   * not be opened at all — on the page whose whole job is answering the question
-   * a parent came with. A native <details> has no such state.
-   */
-  it('gives every item a native disclosure that opens without JavaScript', () => {
-    expect(html.match(/<details/g)).toHaveLength(FAQ.length);
-    expect(html.match(/<summary/g)).toHaveLength(FAQ.length);
-    // Exactly one is open on arrival — the group is exclusive through the shared
-    // `name`, which is the browser's own accordion rather than a state variable.
-    expect(html.match(/<details[^>]*\bopen\b/g)).toHaveLength(1);
-    expect(html.match(/name="product-faq"/g)).toHaveLength(FAQ.length);
-  });
-
-  it('renders every answer’s text, open or closed', () => {
-    // The closed items are collapsed by the UA, not withheld: a reader can find
-    // any answer with find-in-page or a print, and a crawler sees all seven.
-    for (const item of FAQ) {
-      expect(html).toContain(item.answer);
-    }
+  it('emits structured data from the same visible FAQ data', () => {
+    const schema = JSON.parse(
+      html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1] ?? '{}',
+    );
+    expect(schema['@type']).toBe('FAQPage');
+    expect(schema.mainEntity.map((item: { name: string }) => item.name)).toEqual(
+      DESIGN_FAQ_GROUPS.flatMap((group) => group.items.map((item) => item.question)),
+    );
   });
 });
