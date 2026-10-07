@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { StampMark } from '~/components/passport/stamp-mark';
 import {
@@ -89,9 +89,23 @@ function StampSheet({
   const [childId, setChildId] = useState(stamp.childId ?? kid.id);
   const [status, setStatus] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const statusRef = useRef<HTMLOutputElement>(null);
   useEffect(() => {
     setReady(true);
   }, []);
+  // The sheet is the scroll container. After confirm or save, move the line
+  // into that visible area. scrollIntoView alone can leave it on the outer page.
+  useEffect(() => {
+    const node = statusRef.current;
+    if (!status || !node) return;
+    const sheet = node.closest('.pp-sheet');
+    if (!(sheet instanceof HTMLElement)) return;
+    const padding = 24;
+    const sheetRect = sheet.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    const targetTop = sheetRect.top + Math.max(padding, (sheetRect.height - nodeRect.height) / 2);
+    sheet.scrollTop += nodeRect.top - targetTop;
+  }, [status]);
   const fields = (form: FormData) => {
     form.set('stampId', stamp.id);
     form.set('childId', childId);
@@ -197,6 +211,15 @@ function StampSheet({
             </button>
             <button type="submit">Save changes</button>
           </div>
+          <output
+            className="pp-status"
+            data-testid="stamp-status"
+            aria-live="polite"
+            aria-atomic="true"
+            ref={statusRef}
+          >
+            {status === 'preview' ? 'Preview — nothing was saved.' : status ? 'Saved.' : null}
+          </output>
         </form>
         <div className="pp-actions">
           <form action={shareStampAction}>
@@ -211,11 +234,6 @@ function StampSheet({
             <button type="submit">Not {kid.name}’s</button>
           </form>
         </div>
-        {status ? (
-          <p className="pp-status" data-testid="stamp-status">
-            {status === 'preview' ? 'Preview — nothing was saved.' : 'Saved.'}
-          </p>
-        ) : null}
       </dialog>
     </>
   );

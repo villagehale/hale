@@ -424,9 +424,15 @@
 }
 
 .pp-status {
+  display: block;
   margin-top: 8px;
   color: var(--pp-slate);
   font-size: 13px;
+  scroll-margin-block: 24px;
+}
+
+.pp-status:empty {
+  margin-top: 0;
 }
 
 .dark .pp-stamp,
