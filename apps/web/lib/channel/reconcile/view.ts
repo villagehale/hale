@@ -1,4 +1,4 @@
-import { type Database, schema } from '@hale/db';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { and, asc, eq, gte, isNull, or } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
@@ -102,7 +102,7 @@ async function loadScheduledTitles(
     .where(
       and(
         eq(schema.familyEvents.familyId, familyId),
-        isNull(schema.familyEvents.deletedAt),
+        householdFamilyEvent(),
         gte(schema.familyEvents.startsAt, now),
       ),
     )

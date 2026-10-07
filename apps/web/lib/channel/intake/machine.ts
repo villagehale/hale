@@ -39,13 +39,14 @@ import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { linqFromE164 } from '~/lib/channel/linq/config';
+import { linqFromE164, linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import {
   deliverHaleLinqContactCard,
   finishCardWithinReplyBudget,
   haleContactCardDay,
   shareHaleContactCardOnce,
 } from '~/lib/channel/linq/contact-card';
+import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import {
   LINQ_GROUP_LINE_MISSING_TEXT,
   LINQ_GROUP_TRIGGER_PHRASE,
@@ -53,6 +54,7 @@ import {
   linqCoParentAsk,
 } from '~/lib/channel/linq/group';
 import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
+import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
 import { offerYearFindPoll } from '~/lib/channel/linq/poll';
 import {
   EMERGENCY_REPLY,
@@ -141,10 +143,12 @@ import { firstTouchLadderEnabled, firstTouchLocationCardEnabled } from './first-
 import { type FirstTouchPlace, placeFromMessage, placeFromVenue } from './first-touch-place';
 import {
   type FriendChild,
+  type FriendFallback,
   type FriendStep,
   type FriendVoiceComposer,
   type FriendVoiceInput,
   type FriendVoiceResult,
+  OPENING_ATTEMPT_TIMEOUT_MS,
   type SpeakOptions,
   assembleFriendBody,
   judgeFriendReply,
@@ -165,6 +169,7 @@ import {
 } from './live-lookup';
 import { isOfficialPageAsk, officialPageFallbackReply } from './official-page';
 import {
+  type CoparentGroupMode,
   type OnboardingCapture,
   type OnboardingChecklist,
   type OnboardingItem,
@@ -321,6 +326,13 @@ export interface IntakeDeps {
 export type KeywordAck = 'sent' | 'provider_answered' | 'provider_refused';
 
 export type IntakeOutcome =
+  /**
+   * A new parent's opening turn sent nothing: the model could not write it. Never a
+   * step, because a step says Hale replied (rule #11). The session stays recoverable —
+   * awaiting_details with an inbound and no outbound — so the parent's own re-text
+   * re-runs the opening and the first-reply sweep owes it one reply.
+   */
+  | { status: 'first_touch_unsent'; reason: FriendFallback }
   | { status: 'greeted' }
   /** VIL-385 ladder beat that is not yet a provisioned family. */
   | { status: 'first_touch'; step: 'place_asked' | 'place_waiting' | 'find_sent' | 'ages_waiting' }
@@ -385,7 +397,18 @@ export type IntakeOutcome =
   | { status: 'region_unavailable' }
   | { status: 'rate_limited' }
   | { status: 'duplicate' }
-  | { status: 'ignored'; reason: 'invalid_number' | 'no_open_conversation' }
+  /**
+   * `group_stop` — a STOP inside the family group, with group onboarding v2 on. It is
+   * about the group (linq/roster-stop.ts answers it), so it revokes no channel here and
+   * nothing is acknowledged into the group from this door.
+   */
+  | {
+      status: 'ignored';
+      // `group_turn_during_intake` (group onboarding v2): a family-group message from a
+      // number whose own 1:1 intake is still open. Onboarding is a 1:1 conversation, so
+      // nothing of it is answered into the group.
+      reason: 'invalid_number' | 'no_open_conversation' | 'group_turn_during_intake';
+    }
   // VIL-241 · M6 — the caregiver branches. They share this entry point because a
   // caregiver texts the SAME number a parent does; what differs is who the number
   // belongs to, which is a lookup, not a second inbox.
@@ -413,6 +436,8 @@ interface Inbound {
   chatId?: string;
   /** A Linq group turn. The Name and Photo card is 1:1 only and never shares here. */
   isGroup?: boolean;
+  /** See `InboundMessage.budget` (intake/transport.ts). Absent is the sender's. */
+  budget?: 'sender' | 'chat';
   /** VIL-348 — the provider already answered this keyword itself; see
    * `InboundMessage.providerAnsweredKeyword` (intake/transport.ts) for what that means
    * and what it does NOT suppress. Optional here for the same reason it is optional
@@ -447,9 +472,12 @@ export async function handleInboundSms(
   // itself an outbound SMS, so answering a flood would hand an SMS-pumping attacker
   // exactly the amplification they came for. Keywords are the one exemption, and they
   // are still COUNTED — the flood budget is spent either way, only the drop is skipped.
-  const decision = await deps.limiter.check(phoneHash, INTAKE_ROUTE, RATE_LIMITS[INTAKE_ROUTE]);
-  if (!decision.allowed && !match) {
-    return { status: 'rate_limited' };
+  // A family-group turn the Linq door already charged to the chat spends nothing here.
+  if (inbound.budget !== 'chat') {
+    const decision = await deps.limiter.check(phoneHash, INTAKE_ROUTE, RATE_LIMITS[INTAKE_ROUTE]);
+    if (!decision.allowed && !match) {
+      return { status: 'rate_limited' };
+    }
   }
 
   const session = await loadOpenSession(database, phoneE164);
@@ -474,6 +502,18 @@ export async function handleInboundSms(
   // trading a rare double courtesy-ack for a CASL instruction that cannot be lost.
   if (match) {
     return handleKeyword(database, { match, phoneE164, inbound, session, now }, deps);
+  }
+
+  // 5b. Group onboarding v2 — onboarding is this number's 1:1 conversation. A message they
+  // send in the family group while it is open is not an onboarding turn, and its reply
+  // must not land in front of the whole group. Named, and nothing is sent.
+  if (
+    inbound.isGroup === true &&
+    session &&
+    session.state !== 'stopped' &&
+    linqGroupOnboardingV2Enabled()
+  ) {
+    return { status: 'ignored', reason: 'group_turn_during_intake' };
   }
 
   // 6. A live join code outranks whatever conversation this number is already in.
@@ -1137,6 +1177,17 @@ async function deliverFirstHello(
       outcome = { status: 'question_answered', source: offScript.source };
     }
   }
+  const postalCollected = postal
+    ? {
+        collected: {
+          children: [],
+          // The FSA when that is all they sent (D2) — the token the extractor is
+          // handed back as `already_known` on the next turn, so it has to read the
+          // way a parent's own postal code does.
+          postalCode: postal.postalCode ?? postal.areaCoarse,
+        },
+      }
+    : {};
   if (onboardingFriendVoiceEnabled() && outcome.status === 'greeted') {
     const spoken = await friendSpeak(
       deps,
@@ -1146,6 +1197,7 @@ async function deliverFirstHello(
         parentWords: args.inbound.body,
         placeLabel: postal?.areaCoarse ?? null,
       }),
+      { attemptTimeoutMs: OPENING_ATTEMPT_TIMEOUT_MS },
     );
     const voiced = friendOutbound(spoken);
     if (!voiced) {
@@ -1156,12 +1208,12 @@ async function deliverFirstHello(
           state: 'awaiting_details',
           transcript: recorded.transcript,
           lastProviderId: args.inbound.providerId,
-          firstReplyRecoveredAt: args.now,
+          ...postalCollected,
         },
         args.now,
       );
       await reportIntakeStep(deps, 'intake_started', session.id);
-      return outcome;
+      return { status: 'first_touch_unsent', reason: unsentReason(spoken) };
     }
     body = voiced;
   }
@@ -1174,19 +1226,7 @@ async function deliverFirstHello(
       state: 'awaiting_details',
       transcript,
       lastProviderId: args.inbound.providerId,
-      // So the hourly recovery sweep does not re-decrypt every sitting first-hello.
-      firstReplyRecoveredAt: args.now,
-      ...(postal
-        ? {
-            collected: {
-              children: [],
-              // The FSA when that is all they sent (D2) — the token the extractor is
-              // handed back as `already_known` on the next turn, so it has to read the
-              // way a parent's own postal code does.
-              postalCode: postal.postalCode ?? postal.areaCoarse,
-            },
-          }
-        : {}),
+      ...postalCollected,
     },
     args.now,
   );
@@ -1222,6 +1262,12 @@ async function friendSpeak(
 function friendOutbound(spoken: FriendVoiceResult): string | null {
   if (spoken.source === 'unsent' || spoken.body.trim().length === 0) return null;
   return spoken.body;
+}
+
+/** Why a reply {@link friendOutbound} refused did not go out. A judged draft with no
+ * words left carries no fallback of its own, and is the unusable case. */
+function unsentReason(spoken: FriendVoiceResult): FriendFallback {
+  return spoken.fallback ?? 'unusable';
 }
 
 function touchWithClarify(touch: FirstTouchPersisted, key: 'place' | 'ages'): FirstTouchPersisted {
@@ -1340,9 +1386,50 @@ function coparentJoinFor(ctx: SendContext, language: ReplyLanguage) {
   return { line: formatLinqLineForParent(from), phrase: LINQ_GROUP_TRIGGER_PHRASE[language] };
 }
 
-/** The real join data, appended under the model's prose like a URL. Never model-written. */
-function coparentTrailer(join: { line: string; phrase: string } | null): string | null {
-  return join ? `${join.line}\n${join.phrase}` : null;
+/**
+ * The real join data, appended under the model's prose like a URL. Never model-written.
+ * Flag off is today's claim: the number and the phrase. Flag on appends the number
+ * only after the model reads an existing iMessage group, and never a locked sentence
+ * or a phrase to text.
+ */
+function coparentTrailer(
+  join: { line: string; phrase: string } | null,
+  mode: CoparentGroupMode | null,
+): string | null {
+  if (!join) return null;
+  if (!linqGroupOnboardingV2Enabled()) return `${join.line}\n${join.phrase}`;
+  return mode === 'existing' ? join.line : null;
+}
+
+/**
+ * Flag on and the model chose a new group. Opens the household thread when a
+ * co-parent phone is already confirmed, or starts the existing co-parent invite
+ * when this message names a number that is not. Flag off returns before either.
+ */
+async function pursueNewHouseholdGroup(
+  database: Database,
+  args: {
+    mode: CoparentGroupMode | null;
+    familyId: string;
+    parentUserId: string;
+    parentPhoneE164: string;
+    now: Date;
+    inboundBody: string;
+  },
+  send: (body: string) => Promise<void>,
+): Promise<void> {
+  try {
+    const outcome = await openChosenHouseholdGroup(database, {
+      ...args,
+      namedPhone: parseCoParentNumberReply(args.inboundBody),
+    });
+    if (outcome.status === 'invite_started') await send(outcome.reply);
+  } catch (err) {
+    console.warn(
+      { familyId: args.familyId, code: err instanceof Error ? err.name : 'unknown' },
+      'linq group: choosing a new group threw',
+    );
+  }
 }
 
 function scheduledForModel(given: FirstTouchGiven | null, language: ReplyLanguage) {
@@ -1380,6 +1467,7 @@ function givenFromStored(
     gmailLater: boolean;
     scheduleDone: boolean;
     coparentGroup: boolean | null;
+    coparentGroupMode: CoparentGroupMode | null;
   },
   extra: { scheduled?: FirstTouchScheduled[] } = {},
 ): FirstTouchGiven | null {
@@ -1397,6 +1485,7 @@ function givenFromStored(
     scheduleDone: prior?.scheduleDone === true || capture.scheduleDone,
     scheduled,
     coparentGroup: capture.coparentGroup ?? prior?.coparentGroup ?? null,
+    coparentGroupMode: capture.coparentGroupMode ?? prior?.coparentGroupMode ?? null,
   };
   if (
     !given.parentName &&
@@ -1520,7 +1609,6 @@ async function friendOnboardingTurn(
         state: session.state === 'awaiting_ages' ? 'awaiting_ages' : 'awaiting_place',
         transcript,
         lastProviderId: inbound.providerId,
-        firstReplyRecoveredAt: now,
         ladderLanguage: language,
         firstTouch: session.firstTouch ?? {
           language,
@@ -1601,6 +1689,7 @@ async function friendOnboardingTurn(
     ),
     {
       pageScope: session.id,
+      ...(opening ? { attemptTimeoutMs: OPENING_ATTEMPT_TIMEOUT_MS } : {}),
       // Place and an age provision this turn: the map and the name ask are the
       // reply, written next. This draft is read for its facts only.
       replyDiscardedWhen: (capture) => {
@@ -1642,6 +1731,23 @@ async function friendOnboardingTurn(
     );
   }
   const voiced = friendOutbound(spoken);
+  if (!voiced && opening) {
+    await saveSession(
+      database,
+      session,
+      {
+        state: 'awaiting_details',
+        transcript,
+        collected,
+        lastProviderId: inbound.providerId,
+        ladderLanguage: language,
+        firstTouch: baseTouch,
+      },
+      now,
+    );
+    await reportIntakeStep(deps, 'intake_started', session.id);
+    return { status: 'first_touch_unsent', reason: unsentReason(spoken) };
+  }
   if (voiced) {
     ({ transcript } = await sendAndRecord(database, ctx, voiced, deps, transcript));
   }
@@ -1679,7 +1785,6 @@ async function friendOnboardingTurn(
       transcript,
       collected,
       lastProviderId: inbound.providerId,
-      firstReplyRecoveredAt: now,
       ladderLanguage: language,
       firstTouch: stuck ? touchWithClarify(baseTouch, clarifyKey) : baseTouch,
     },
@@ -1716,7 +1821,6 @@ async function openFirstTouch(
         state: 'awaiting_place',
         transcript: sent.transcript,
         lastProviderId: args.inbound.providerId,
-        firstReplyRecoveredAt: args.now,
         ladderLanguage: language,
         firstTouch: { language, place: null, locationRequest: null },
       },
@@ -1775,7 +1879,6 @@ async function openFirstTouch(
         transcript: asked.transcript,
         collected,
         lastProviderId: args.inbound.providerId,
-        firstReplyRecoveredAt: args.now,
         ladderLanguage: language,
         firstTouch: { ...touch, locationRequest: asked.locationRequest },
       },
@@ -2085,7 +2188,6 @@ async function sendWeekFindThenAgesOrProvision(
       transcript,
       collected: located.collected,
       lastProviderId: inbound.providerId,
-      firstReplyRecoveredAt: now,
       ladderLanguage: input.language,
       firstTouch: touch,
     },
@@ -2777,6 +2879,20 @@ async function friendColdTurn(
   };
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   let voiced = friendOutbound(spoken);
+  await pursueNewHouseholdGroup(
+    database,
+    {
+      mode: spoken.capture.coparentGroupMode,
+      familyId,
+      parentUserId: userId,
+      parentPhoneE164: session.phoneE164,
+      now,
+      inboundBody: inbound.body,
+    },
+    async (body) => {
+      await sendAndRecord(database, ctx, body, deps, recorded.transcript);
+    },
+  );
   if (!voiced) {
     await saveSession(
       database,
@@ -2790,8 +2906,9 @@ async function friendColdTurn(
     );
     return { status: 'first_touch', step: 'find_sent' };
   }
-  // The number and phrase go under the yes to the group chat, never under the ask.
-  const trailer = coparentTrailer(join);
+  // Flag off: the number and phrase go under a yes. Flag on: the number alone, and
+  // only when the model read an existing iMessage group. Never under the ask.
+  const trailer = coparentTrailer(join, spoken.capture.coparentGroupMode);
   if (trailer && spoken.capture.coparentGroup === true) {
     voiced = `${voiced}\n${trailer}`;
   }
@@ -4418,7 +4535,7 @@ async function handleLadder(
         parentWords: inbound.body,
         coparentJoin: join,
       }),
-      { trailer: coparentTrailer(join) },
+      { trailer: coparentTrailer(join, null) },
     );
     const voiced = friendOutbound(spoken);
     if (voiced) {
@@ -4857,6 +4974,10 @@ async function handleStop(
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
   const { phoneE164, inbound, session, now, language, providerAnswered } = args;
+
+  // A group STOP the roster answered (roster-stop.ts) never reaches here. One it could
+  // not answer — no roster yet, a roster that is not open, an unclaimed chat — takes this
+  // path, so a STOP never does less than it did before the roster existed.
 
   // VIL-241 · "Reply STOP anytime" is printed on the invite, so it has to reach the
   // invite: a STOP from someone we asked but who never accepted closes the invitation

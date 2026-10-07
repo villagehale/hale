@@ -24,8 +24,6 @@ import {
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { familyOutboundTarget, familySpeech } from '~/lib/channel/linq/family-outbound';
-import { groupCalendarReceipt, groupGmailReceipt } from '~/lib/channel/linq/group-coparent-copy';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import {
@@ -89,7 +87,7 @@ export interface ConnectedNoticePorts {
   /**
    * Friend voice for the 1:1 receipt when ONBOARDING_FRIEND_VOICE_ENABLED is on.
    * Absent, or a compose that fails, sends nothing canned. The next callback
-   * can retry. The group receipt stays the locked sentence: it names the parent.
+   * can retry.
    */
   friendVoice?: FriendVoiceComposer;
   /**
@@ -111,9 +109,6 @@ export type ConnectedNoticeOutcome =
   /** The last turn was iMessage and no ledger row stored a Linq chat. Nothing is
    * claimed, and nothing is sent on SMS: that would be a second identity. */
   | { status: 'not_sent'; reason: 'no_chat' }
-  /** The co-parent's locked group receipt owns this bubble. This path does not
-   * also send 1:1 or SMS. */
-  | { status: 'not_sent'; reason: 'group_home' }
   /** Friend voice could not write the receipt. The claim is released so a retry can. */
   | { status: 'not_sent'; reason: 'voice_unsent' }
   /** The provider refused it. `code` is Twilio's, or `unknown`. */
@@ -129,7 +124,6 @@ export type ConnectedNoticeLabel =
   | 'already_sent'
   | 'no_send_target'
   | 'no_chat'
-  | 'group_home'
   | 'voice_unsent'
   | 'errored'
   | `send_failed:${string}`;
@@ -236,24 +230,8 @@ async function sendReceipt(
 ): Promise<ConnectedNoticeOutcome> {
   const { familyId, parentUserId, provider, connectId, now } = args;
 
-  const group = await familyOutboundTarget(database, familyId);
-  if (group.channel === 'group') {
-    const members = await database
-      .select({
-        userId: schema.familyMembers.userId,
-        role: schema.familyMembers.role,
-        familyId: schema.familyMembers.familyId,
-      })
-      .from(schema.familyMembers)
-      .where(eq(schema.familyMembers.familyId, familyId));
-    const seat = members.find((row) => row.familyId === familyId && row.userId === parentUserId);
-    if (seat?.role === 'co_parent') {
-      // The locked group receipt is the one bubble. Do not also text 1:1 or SMS.
-      return { status: 'not_sent', reason: 'group_home' };
-    }
-    return sendGroupHomeReceipt(database, args, ports, group.chatId);
-  }
-
+  // A connect is the connecting parent's own business: the receipt, and the card that
+  // rides it, go 1:1 to them even when the family shares a group.
   const phone = await resolveSendablePhone(database, parentUserId);
   if (!phone) {
     console.warn(
@@ -452,77 +430,6 @@ async function familyReceiptLanguage(database: Database, familyId: string): Prom
     .where(eq(schema.families.id, familyId));
   const row = rows.find((candidate) => candidate.id === familyId);
   return row?.primaryLanguage === 'fr' ? 'fr' : 'en';
-}
-
-/**
- * A primary parent's connect receipt, in the claimed group. Not 1:1, not SMS.
- * The co-parent uses the locked group receipt instead of this sentence.
- */
-async function sendGroupHomeReceipt(
-  database: Database,
-  args: ConnectedNoticeArgs,
-  ports: ConnectedNoticePorts,
-  chatId: string,
-): Promise<ConnectedNoticeOutcome> {
-  const { familyId, parentUserId, provider, connectId, now } = args;
-  const speech = await familySpeech(database, familyId, parentUserId);
-  if (!speech.name || (provider !== 'gcal' && provider !== 'gmail')) {
-    return { status: 'not_sent', reason: 'group_home' };
-  }
-  const body =
-    provider === 'gmail'
-      ? groupGmailReceipt(speech.language, speech.name)
-      : groupCalendarReceipt(speech.language, speech.name);
-  const [claimed] = await database
-    .insert(schema.channelMessages)
-    .values({
-      familyId,
-      parentUserId,
-      channel: 'imessage',
-      direction: 'out',
-      category: 'reply',
-      templateKey: CONNECTOR_CONNECTED_TEMPLATE_KEY,
-      dedupeKey: connectorConnectedDedupeKey(connectId),
-      providerChatId: chatId,
-      status: acceptedStatus('imessage'),
-      sentAt: now,
-    })
-    .onConflictDoNothing()
-    .returning({ id: schema.channelMessages.id });
-  if (!claimed) return { status: 'not_sent', reason: 'already_sent' };
-  if (!ports.imessage) {
-    await database
-      .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: 'imessage_not_configured' })
-      .where(eq(schema.channelMessages.id, claimed.id));
-    return { status: 'not_sent', reason: 'send_failed', code: 'imessage_not_configured' };
-  }
-  let providerMessageId: string;
-  try {
-    ({ providerMessageId } = await ports.imessage({ chatId, body }));
-  } catch (err) {
-    const code = readSendRefusal(err)?.code ?? 'unknown';
-    await database
-      .update(schema.channelMessages)
-      .set(failedSendPatch(code))
-      .where(eq(schema.channelMessages.id, claimed.id));
-    console.error(
-      { familyId, provider, code },
-      'connector connected: the group refused the receipt',
-    );
-    return { status: 'not_sent', reason: 'send_failed', code };
-  }
-  await database
-    .update(schema.channelMessages)
-    .set({ providerMessageId })
-    .where(eq(schema.channelMessages.id, claimed.id));
-  await ports.threadMessage(database, { familyId, parentUserId, body });
-  await continueAfterReceipt(
-    database,
-    { familyId, parentUserId, provider, now, chatId, phone: '', receipt: body },
-    ports,
-  );
-  return { status: 'sent', channelMessageId: claimed.id };
 }
 
 /** The receipt's own door, as a transport the connector card can ride. */
@@ -961,9 +868,9 @@ async function rememberConnected(
 }
 
 /**
- * The locked 1:1 receipt stays out of the household group. If the last turn
- * was the group, use a personal Linq chat when one exists. Otherwise the
- * caller names `no_chat` and the group gets only its own receipt.
+ * The 1:1 receipt stays out of the household group. If the last turn was the
+ * group, use a personal Linq chat when one exists. Otherwise the caller names
+ * `no_chat` and nothing about the connect lands in the group.
  */
 async function imessageChatOutsideGroup(
   database: Database,

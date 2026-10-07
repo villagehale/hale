@@ -29,6 +29,21 @@ export function channelSmsNoteKey(parentUserId: string): string {
   return `${CHANNEL_SMS_NOTE_KEY_PREFIX}${parentUserId}`;
 }
 
+/**
+ * Group onboarding v2 — the family group's own thread, keyed by the Linq chat.
+ *
+ * A message in the group is said in front of everyone in it, so it must not land in one
+ * parent's 1:1 thread (and the coach, reading that thread back, must not answer the group
+ * from a parent's private history). Everything said there is already seen by the whole
+ * group, so the thread is family-visible like the general Ask thread. The colon keeps it
+ * out of NOTE_KEY_RE for the same reason as above.
+ */
+const CHANNEL_GROUP_NOTE_KEY_PREFIX = 'channel-group:';
+
+export function channelGroupNoteKey(chatId: string): string {
+  return `${CHANNEL_GROUP_NOTE_KEY_PREFIX}${chatId}`;
+}
+
 export function isChannelSmsNoteKey(noteKey: string | null): boolean {
   return noteKey?.startsWith(CHANNEL_SMS_NOTE_KEY_PREFIX) ?? false;
 }

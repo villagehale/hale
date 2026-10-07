@@ -14,11 +14,14 @@ import {
 } from '~/lib/channel/coparent/copy';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
+import { latestCoparentGroupMode } from '~/lib/channel/intake/session';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { linqGroupOnboardingV2Enabled } from './config';
+import { openChosenHouseholdGroup } from './open-chosen-group';
 /**
  * A phone number texted after `intake:coparent_ask`.
  *
@@ -87,11 +90,51 @@ export type CoParentNumberOutcome =
       reply: string;
       templateKey: typeof LINQ_GROUP_INSTRUCTIONS_TEMPLATE_KEY;
     }
+  | { status: 'group_opened'; reply: null; templateKey: 'linq:group_open' }
+  | { status: 'invite_started'; reply: string }
   | {
       status: 'refused' | 'unreached';
       reply: string;
       templateKey: typeof COPARENT_NUMBER_HELD_TEMPLATE_KEY;
     };
+
+/**
+ * iMessage, flag on, and the stored choice is a new group. A confirmed phone
+ * opens the household thread. A number that is not confirmed yet starts the
+ * existing co-parent invite. Flag off, and any other choice, leave the turn alone.
+ */
+async function answerNewGroupChoice(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    body: string;
+    now: Date;
+  },
+  parsed: { phoneE164: string; name: string | null },
+): Promise<CoParentNumberOutcome> {
+  if (!linqGroupOnboardingV2Enabled()) return { status: 'not_pending' };
+  const mode = await latestCoparentGroupMode(database, input.parentUserId);
+  if (mode !== 'new') return { status: 'not_pending' };
+  const parentPhone = await resolveSendablePhone(database, input.parentUserId);
+  if (!parentPhone) return { status: 'not_pending' };
+  const opened = await openChosenHouseholdGroup(database, {
+    mode,
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    parentPhoneE164: parentPhone,
+    now: input.now,
+    inboundBody: input.body,
+    namedPhone: parsed,
+  });
+  if (opened.status === 'opened' || opened.status === 'added') {
+    return { status: 'group_opened', reply: null, templateKey: 'linq:group_open' };
+  }
+  if (opened.status === 'invite_started') {
+    return { status: 'invite_started', reply: opened.reply };
+  }
+  return { status: 'not_pending' };
+}
 
 /**
  * Answer a number reply, or decline the turn.
@@ -117,7 +160,7 @@ export async function deliverCoParentNumberInvite(
   const door = await resolveMessagingDoor(database, input.parentUserId);
   // Sloane, 2026-09-25. A number on iMessage is not an invite and not a note.
   // The co-parent ask already told them how to start the group.
-  if (door.channel === 'imessage') return { status: 'not_pending' };
+  if (door.channel === 'imessage') return answerNewGroupChoice(database, input, parsed);
 
   const language = replyLanguage(input.body);
   const label = inviteeLabel(parsed.name, language);

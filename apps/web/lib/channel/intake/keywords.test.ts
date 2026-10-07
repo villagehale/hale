@@ -8,6 +8,22 @@ describe('matchKeyword', () => {
     }
   });
 
+  /**
+   * With the carrier's opt-out list gone, these are stopped by Hale's matcher or not at
+   * all: STOPALL, REVOKE and OPTOUT are in the set Twilio used to honour, and ARRÊTE /
+   * ARRÊTEZ are how a French-speaking parent tells someone to stop.
+   */
+  it('opts out on the words the carrier used to catch for us', () => {
+    for (const raw of ['STOPALL', 'OptOut', 'opt-out', 'REVOKE']) {
+      expect(matchKeyword(raw), raw).toEqual({ keyword: 'stop', language: 'en' });
+    }
+    for (const raw of ['Arrête', 'arrêtez', 'ARRETEZ.']) {
+      expect(matchKeyword(raw), raw).toEqual({ keyword: 'stop', language: 'fr' });
+    }
+    expect(matchKeyword('stopping')).toBeNull();
+    expect(matchKeyword('please stop texting')).toBeNull();
+  });
+
   it('matches the help and start words', () => {
     expect(matchKeyword('HELP')).toEqual({ keyword: 'help', language: 'en' });
     expect(matchKeyword('info')).toEqual({ keyword: 'help', language: 'en' });

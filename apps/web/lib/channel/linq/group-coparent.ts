@@ -13,7 +13,12 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { linqFromE164, linqGroupCoparentEnabled, linqGroupMembersEnabled } from './config';
+import {
+  linqFromE164,
+  linqGroupCoparentEnabled,
+  linqGroupMembersEnabled,
+  linqGroupOnboardingV2Enabled,
+} from './config';
 import {
   LINQ_GROUP_LINE_MISSING_TEXT,
   formatLinqLineForParent,
@@ -136,6 +141,10 @@ export async function considerGroupCoparent(
     if (!noted) return { type: 'none' };
     return sayUnclaimed(database, message, noted, language, ports);
   }
+
+  // V2 asks who they are and seats only on their reply. Flag off keeps today's
+  // automatic seat of the second person in the claimed group.
+  if (linqGroupOnboardingV2Enabled()) return { type: 'none' };
 
   if (linqGroupMembersEnabled()) return { type: 'none' };
 

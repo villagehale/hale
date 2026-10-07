@@ -174,6 +174,8 @@ export interface FirstTouchGiven {
   scheduled?: FirstTouchScheduled[];
   /** Their answer to the group chat. Absent until asked and answered. */
   coparentGroup?: boolean | null;
+  /** Which group their yes meant: theirs or a new one. Absent on older sessions. */
+  coparentGroupMode?: 'existing' | 'new' | null;
 }
 
 export interface ColdStartProgress {
@@ -396,6 +398,7 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     scheduleDone?: unknown;
     scheduled?: unknown;
     coparentGroup?: unknown;
+    coparentGroupMode?: unknown;
   };
   const parentName =
     typeof row.parentName === 'string' && row.parentName.trim() ? row.parentName : null;
@@ -418,6 +421,10 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
   const scheduled = decodeScheduled(row.scheduled);
   const coparentGroup =
     row.coparentGroup === true || row.coparentGroup === false ? row.coparentGroup : null;
+  const coparentGroupMode =
+    row.coparentGroupMode === 'existing' || row.coparentGroupMode === 'new'
+      ? row.coparentGroupMode
+      : null;
   if (
     !parentName &&
     activityPick == null &&
@@ -430,7 +437,8 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     !gmailLater &&
     !scheduleDone &&
     scheduled.length === 0 &&
-    coparentGroup == null
+    coparentGroup == null &&
+    coparentGroupMode == null
   ) {
     return null;
   }
@@ -447,6 +455,7 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     ...(scheduleDone ? { scheduleDone } : {}),
     ...(scheduled.length > 0 ? { scheduled } : {}),
     ...(coparentGroup != null ? { coparentGroup } : {}),
+    ...(coparentGroupMode != null ? { coparentGroupMode } : {}),
   };
 }
 
@@ -730,8 +739,6 @@ export interface SessionPatch {
   userId?: string;
   lastProviderId?: string;
   closedAt?: Date;
-  /** Stamped when a first-hello is persisted — live greet or VIL-332 recovery. */
-  firstReplyRecoveredAt?: Date;
   /** Set when the first reply is composed. Omitted patches keep the value already
    * on the session, so a later save cannot forget a win. */
   findWon?: boolean;
@@ -781,9 +788,6 @@ export async function saveSession(
       ...(patch.userId ? { userId: patch.userId } : {}),
       ...(patch.lastProviderId ? { lastProviderId: patch.lastProviderId } : {}),
       ...(patch.closedAt ? { closedAt: patch.closedAt } : {}),
-      ...(patch.firstReplyRecoveredAt
-        ? { firstReplyRecoveredAt: patch.firstReplyRecoveredAt }
-        : {}),
       updatedAt: now,
     })
     .where(eq(schema.smsIntakeSessions.id, session.id));
@@ -802,8 +806,43 @@ export function transcriptHasOutbound(transcript: readonly TranscriptEntry[]): b
   return transcript.some((entry) => entry.direction === 'out');
 }
 
-/** The encrypted transcript only, for recovery sweeps that have the blob and
- * must not decrypt the phone until they have decided to send. */
-export function decodeIntakeTranscript(dataEncrypted: string): TranscriptEntry[] {
-  return decodeData(dataEncrypted).transcript;
+/** What a recovery sweep reads from the blob: it must not decrypt the phone until it
+ * has decided to send. */
+export function decodeIntakeForRecovery(dataEncrypted: string): {
+  transcript: TranscriptEntry[];
+  firstTouch: FirstTouchPersisted | null;
+  ladderLanguage: ReplyLanguage | null;
+} {
+  const data = decodeData(dataEncrypted);
+  return {
+    transcript: data.transcript,
+    firstTouch: data.firstTouch ?? null,
+    ladderLanguage: data.ladderLanguage ?? null,
+  };
+}
+
+/** The newest stored co-parent group choice for this parent, including a closed session. */
+export async function latestCoparentGroupMode(
+  database: Database,
+  userId: string,
+): Promise<'existing' | 'new' | null> {
+  const rows = await database
+    .select({
+      userId: schema.smsIntakeSessions.userId,
+      dataEncrypted: schema.smsIntakeSessions.dataEncrypted,
+      updatedAt: schema.smsIntakeSessions.updatedAt,
+    })
+    .from(schema.smsIntakeSessions);
+  const mine = rows
+    .filter((row) => row.userId === userId && row.dataEncrypted)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  for (const row of mine) {
+    try {
+      const mode = decodeData(row.dataEncrypted).firstTouch?.given?.coparentGroupMode;
+      if (mode === 'existing' || mode === 'new') return mode;
+    } catch {
+      // A session blob that will not decrypt is not this choice.
+    }
+  }
+  return null;
 }

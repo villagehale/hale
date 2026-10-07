@@ -345,8 +345,8 @@ describe('matchFastPath — French and Chinese', () => {
    * AND an unsubscribe, and reading it as an approval decline would answer a parent asking
    * to be left alone with a calendar message. "annuler", "arrête" and 取消 are that same
    * word, and the reasoning does not weaken for being written in French or Chinese — it
-   * gets stronger, because `matchKeyword` claims only the keyword the carriers mandate
-   * (ARRET), so nothing upstream would catch the mistake on these either.
+   * gets stronger, because `matchKeyword` claims ARRET and ARRÊTE but not annuler or 取消,
+   * so nothing upstream would catch the mistake on those.
    *
    * They stay unread, which is not silence: an unmatched body goes to the coach, which
    * answers in the parent's language and can ask what they meant.

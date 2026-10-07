@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: (1) says \"I'll text them\" - directly violates the rule that Hale never texts a number first and must not say/imply Hale will text; (2) includes a phone number (647-555-0199) - explicitly forbidden; (3) includes a link (www.example.com) - explicitly forbidden; (4) does not explain how the person actually gets in (parent adds Nana to family group chat with Hale, or Nana texts Hale themselves). The message violates core rules about not texting first and not sharing contact info or links."
+  }
+}

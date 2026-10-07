@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadOnboardingFriendShortSkill, loadOnboardingFriendSkill } from '~/lib/cron/skill';
 import {
   type FriendVoiceInput,
   assembleFriendBody,
+  friendVoiceContext,
   friendWeekAction,
   judgeFriendReply,
+  lastInboundFact,
   repairedProse,
   speakFriend,
 } from './friend-voice';
@@ -45,6 +47,51 @@ describe('ONBOARDING_FRIEND_VOICE_ENABLED', () => {
   });
 });
 
+describe('friend voice brief', () => {
+  it('gives the elapsed time for a several-hours-old text and does not flag a two-minute one', () => {
+    // 2:00 p.m. America/Toronto. Five hours earlier is 9:00 a.m., after quiet hours end.
+    const now = new Date('2026-08-28T18:00:00.000Z');
+    const hoursOld = new Date(now.getTime() - 5 * 3_600_000);
+    const brief = friendVoiceContext(
+      blank({
+        step: 'place',
+        introduce: true,
+        parentWords: 'hi',
+        lastInbound: lastInboundFact(hoursOld, now),
+      }),
+    );
+    expect(brief).toMatchObject({
+      lastInbound: { minutesAgo: 300, overnight: false, yesterday: false },
+    });
+    expect(JSON.stringify(brief)).not.toMatch(/sorry|apolog|error|fault|delay/i);
+
+    const justNow = friendVoiceContext(
+      blank({
+        step: 'place',
+        introduce: true,
+        parentWords: 'hi',
+        lastInbound: lastInboundFact(new Date(now.getTime() - 2 * 60_000), now),
+      }),
+    );
+    expect(justNow).not.toHaveProperty('lastInbound');
+
+    // 11:30 p.m. Toronto, answered at 8:00 a.m. when quiet hours end.
+    const late = new Date('2026-08-29T03:30:00.000Z');
+    const morning = new Date('2026-08-29T12:00:00.000Z');
+    const pickedUp = friendVoiceContext(
+      blank({
+        step: 'place',
+        introduce: true,
+        parentWords: 'hi',
+        lastInbound: lastInboundFact(late, morning),
+      }),
+    );
+    expect(pickedUp).toMatchObject({
+      lastInbound: { minutesAgo: 8 * 60 + 30, overnight: true, yesterday: true },
+    });
+  });
+});
+
 describe('friend week find', () => {
   it('skips the week bubble once ages are known, and skips an empty list', () => {
     expect(friendWeekAction(true, 3)).toBe('skip');
@@ -66,6 +113,8 @@ describe('onboarding friend fixtures', () => {
     expect(skill.instructions).toContain('ahaMention');
     expect(skill.instructions).toContain('**ack**');
     expect(skill.instructions).toContain('No STOP');
+    expect(skill.instructions).toContain('`lastInbound`');
+    expect(skill.instructions).toContain('minutesAgo');
   });
 
   it('stays lean: state and a playbook, with the gates left to code', async () => {
@@ -90,6 +139,7 @@ describe('onboarding friend fixtures', () => {
     expect(shortWords).toBeLessThan(700);
     expect(short.instructions).toContain('**find_show**');
     expect(short.instructions).toContain('**connected**');
+    expect(short.instructions).toContain('lastInbound');
     expect(short.meta.task).toBe('speak');
   });
 
@@ -631,6 +681,95 @@ describe('speakFriend', () => {
         { ahaMention: 'Mia swim' },
       ),
     ).toEqual({ ok: true });
+  });
+});
+
+describe('the co-parent step: their group, or a new one', () => {
+  const join = { line: '+1 555-555-0100', phrase: 'this is our year' };
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function coparentTurn(parentWords: string, withJoin = true): FriendVoiceInput {
+    return blank({
+      step: 'coparent',
+      parentWords,
+      recentTurns: [
+        {
+          role: 'hale',
+          body: 'Want me in your family group, or a new group with the other parent?',
+        },
+      ],
+      coparentJoin: withJoin ? join : null,
+      checklist: {
+        postal: true,
+        kids: true,
+        ages: true,
+        name: true,
+        gmail: true,
+        calendar: true,
+        schedule: true,
+        coparent: false,
+      },
+    });
+  }
+
+  async function read(parentWords: string, capture: Record<string, unknown>, withJoin = true) {
+    return speakFriend(
+      {
+        async compose() {
+          return { reply: 'Great, the number is below for whenever you want.', capture };
+        },
+      },
+      coparentTurn(parentWords, withJoin),
+      { page: async () => undefined },
+    );
+  }
+
+  it('with the flag off, a yes is not their existing group, even when the words name one', async () => {
+    const spoken = await read('yes add you to our group', {
+      coparentGroup: true,
+      coparentGroupMode: 'existing',
+    });
+    expect(spoken.capture.coparentGroup).toBe(true);
+    expect(spoken.capture.coparentGroupMode).toBeNull();
+    const plain = await read('yes', { coparentGroup: true, coparentGroupMode: 'existing' });
+    expect(plain.capture.coparentGroupMode).toBeNull();
+  });
+
+  it('with the flag on, keeps the model reading and does not default a plain yes', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const existing = await read('yes add you to our group', {
+      coparentGroup: true,
+      coparentGroupMode: 'new',
+    });
+    expect(existing.capture.coparentGroupMode).toBe('new');
+    const fresh = await read("let's start a new group", {
+      coparentGroup: true,
+      coparentGroupMode: 'existing',
+    });
+    expect(fresh.capture.coparentGroupMode).toBe('existing');
+    const plain = await read('yes', { coparentGroup: true, coparentGroupMode: null });
+    expect(plain.capture.coparentGroup).toBe(true);
+    expect(plain.capture.coparentGroupMode).toBeNull();
+  });
+
+  it('with the flag on, an existing group this chat cannot hold becomes a new one', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const spoken = await read(
+      'add you to our group',
+      { coparentGroup: true, coparentGroupMode: 'existing' },
+      false,
+    );
+    expect(spoken.capture.coparentGroupMode).toBe('new');
+  });
+
+  it('keeps a no as a no', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const no = await read('no thanks', { coparentGroup: false, coparentGroupMode: 'new' });
+    expect(no.capture.coparentGroup).toBe(false);
+    expect(no.capture.coparentGroupMode).toBeNull();
   });
 });
 

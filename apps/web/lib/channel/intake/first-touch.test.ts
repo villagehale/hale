@@ -31,10 +31,12 @@ import {
   fakeSilentAnswerComposer,
   makeFakeDb,
 } from './fakes';
-import type { FriendVoiceInput } from './friend-voice';
+import { runFirstReplyRecoveryCron } from './first-reply-recovery';
+import type { FriendVoiceComposer, FriendVoiceInput } from './friend-voice';
 import { type IntakeDeps, handleInboundSms } from './machine';
 import { EMPTY_ONBOARDING_CAPTURE, type OnboardingCapture } from './onboarding-turn';
 import { loadOpenSession } from './session';
+import { runSittingReminderCron } from './sitting-reminder';
 import { type ChannelTransport, FakeTransport, type InboundMessage } from './transport';
 import { YEAR_OPEN_LEAD } from './year-open';
 
@@ -1041,11 +1043,12 @@ describe('friend voice onboarding', () => {
 
   it('sends nothing canned when the reply cannot be written', async () => {
     const { fake, transport, deps } = harness({ extractions: [EMPTY] });
-    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
+    const outcome = await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
+    expect(outcome).toEqual({ status: 'first_touch_unsent', reason: 'voice_unavailable' });
     expect(transport.bodies()).toEqual([]);
     expect(transport.bodies().join('\n')).not.toContain('How old are the kids?');
     const session = await loadOpenSession(fake.db, PHONE);
-    expect(session?.state).toBe('awaiting_place');
+    expect(session?.state).toBe('awaiting_details');
   });
 
   it('stores a postal code the model extracted even when the words are not a code', async () => {
@@ -1585,7 +1588,7 @@ describe('friend voice onboarding', () => {
         },
       };
       const outcome = await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), broken);
-      expect(outcome.status).toBe('first_touch');
+      expect(outcome).toEqual({ status: 'first_touch_unsent', reason: 'model_failed' });
       expect(attempts).toBe(2);
       expect(transport.bodies()).toEqual([]);
       expect(pages).toHaveLength(1);
@@ -1593,12 +1596,212 @@ describe('friend voice onboarding', () => {
       expect(pages[0]).toContain('reason=model_failed');
       expect(pages[0]).not.toContain('secret-token-123');
       expect(pages[0]).not.toContain('M5V');
-      // Code does not read the postal code itself, so nothing was stored and the
-      // ask is still open: the parent's next text is answered, not retired.
+      // Code does not read the postal code itself, so nothing was stored, and the
+      // opening is still owed: the parent's re-text re-runs it, and so does the sweep.
       const session = await loadOpenSession(fake.db, PHONE);
-      expect(session?.state).toBe('awaiting_place');
+      expect(session?.state).toBe('awaiting_details');
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('names a first text that got no reply, and leaves it recoverable', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    let modelUp = false;
+    const flaky: IntakeDeps = {
+      ...deps,
+      friendVoice: {
+        async compose(input) {
+          if (!modelUp) throw new Error('model down');
+          return { reply: scriptedTurn(input).reply };
+        },
+      },
+    };
+
+    const silent = await handleInboundSms(fake.db, inbound(transport, 'hi'), flaky);
+
+    expect(silent).toEqual({ status: 'first_touch_unsent', reason: 'model_failed' });
+    expect(transport.sent).toHaveLength(0);
+    const [row] = fake.rows(schema.smsIntakeSessions);
+    expect(row?.firstReplyRecoveredAt).toBeNull();
+    expect(row?.state).toBe('awaiting_details');
+    const stored = await loadOpenSession(fake.db, PHONE);
+    expect(stored?.transcript.map((entry) => entry.direction)).toEqual(['in']);
+
+    // Positive control: the parent's own re-text re-runs the opening, and a model that
+    // answers sends the reply this time.
+    modelUp = true;
+    const answered = await handleInboundSms(fake.db, inbound(transport, 'hello?'), flaky);
+    expect(answered).toEqual({ status: 'first_touch', step: 'place_asked' });
+    expect(transport.bodies()).toEqual(["Hey, it's Hale. What's your postal code?"]);
+    expect(fake.rows(schema.smsIntakeSessions)[0]?.firstReplyRecoveredAt).toBeNull();
+  });
+
+  it('is answered once by the first-reply sweep when the opening turn sent nothing', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    let modelUp = false;
+    const voice: FriendVoiceComposer = {
+      async compose(input) {
+        if (!modelUp) throw new Error('model down');
+        return { reply: scriptedTurn(input).reply };
+      },
+    };
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), { ...deps, friendVoice: voice });
+    const [row] = fake.rows(schema.smsIntakeSessions);
+    if (!row) throw new Error('no session row');
+    // The column defaults the fake does not apply: the silent turn ended five minutes ago.
+    row.createdAt = new Date(NOW.getTime() - 5 * 60_000);
+    row.updatedAt = row.createdAt;
+
+    modelUp = true;
+    const sweep = {
+      transport,
+      friendVoice: voice,
+      limiter: deps.limiter,
+      preflight: async () => ({ proceed: true as const, health: null }),
+    };
+    const first = await runFirstReplyRecoveryCron(fake.db, sweep, NOW);
+    const second = await runFirstReplyRecoveryCron(
+      fake.db,
+      sweep,
+      new Date(NOW.getTime() + 3 * 60_000),
+    );
+
+    expect(first.sent).toBe(1);
+    expect(second.sent).toBe(0);
+    expect(transport.bodies()).toEqual(["Hey, it's Hale. What's your postal code?"]);
+    expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_place');
+  });
+
+  it('bounds the opening turn model budget so the sweep can retry within minutes', async () => {
+    // The spec ceiling for both opening attempts together, not the production constant.
+    const OPENING_BUDGET_CEILING_MS = 10_000;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { fake, transport, deps } = harness({ voice: true });
+      const hung: IntakeDeps = {
+        ...deps,
+        friendVoice: { compose: () => new Promise(() => {}) },
+      };
+      let settled: unknown = null;
+      const turn = handleInboundSms(fake.db, inbound(transport, 'hi'), hung).then((outcome) => {
+        settled = outcome;
+      });
+      await vi.advanceTimersByTimeAsync(OPENING_BUDGET_CEILING_MS);
+      expect(settled).toEqual({ status: 'first_touch_unsent', reason: 'model_failed' });
+      await turn;
+      expect(transport.sent).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  describe('the morning nudge after a real provisioning', () => {
+    /** 7:00 p.m. Toronto the evening before the nudge. */
+    const EVENING_BEFORE = new Date('2026-07-30T23:00:00.000Z');
+    /** 8:05 a.m. Toronto the next morning — inside the nudge slot. */
+    const NEXT_MORNING = new Date('2026-07-31T12:05:00.000Z');
+    const swimRadar: IntakeDeps['radar'] = {
+      async compose() {
+        return {
+          message: '1. Swim (ages 3-5) - Saturday',
+          itemCount: 1,
+          followUpNeeded: false,
+          checkpointTold: null,
+          weekendPickOffered: false,
+          findWon: true,
+          firstFindPromised: false,
+          actionMove: null,
+          actionHeld: 'no_move',
+          voiceFallback: null,
+        };
+      },
+    };
+
+    const nudgeVoice: FriendVoiceComposer = {
+      async compose(input) {
+        if (input.step !== 'nudge_find') throw new Error(`unexpected step ${input.step}`);
+        return { reply: 'Still here if one of those looks good. Which of these looks good?' };
+      },
+    };
+
+    async function provisioned() {
+      vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+      const built = harness({ extractions: [MAYA, EMPTY], voice: true });
+      built.deps.radar = swimRadar;
+      const done = await handleInboundSms(
+        built.fake.db,
+        inbound(built.transport, 'Maya is 4 and Leo is 1, M5V 2T6'),
+        built.deps,
+      );
+      expect(done.status).toBe('provisioned');
+      const [row] = built.fake.rows(schema.smsIntakeSessions);
+      if (!row) throw new Error('provisioned: no session row');
+      // The column default the fake does not apply.
+      row.createdAt = EVENING_BEFORE;
+      return { ...built, row };
+    }
+
+    it('nudges a quiet family once, at 08:00 Toronto the next day', async () => {
+      const { fake, transport, row } = await provisioned();
+      await expect(loadOpenSession(fake.db, PHONE)).resolves.toMatchObject({
+        firstTouch: { coldStart: { step: 'names' } },
+      });
+      const before = transport.bodies().length;
+
+      const first = await runSittingReminderCron(
+        fake.db,
+        { transport, friendVoice: nudgeVoice },
+        NEXT_MORNING,
+      );
+      expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0 });
+      expect(transport.bodies().slice(before)).toHaveLength(1);
+      expect(transport.bodies().at(-1)).toContain('Still here if one of those looks good.');
+      expect(transport.bodies().at(-1)).toContain('1. Swim (ages 3-5) - Saturday');
+      expect(row.sittingReminderSentAt).toEqual(NEXT_MORNING);
+
+      const second = await runSittingReminderCron(
+        fake.db,
+        { transport, friendVoice: nudgeVoice },
+        NEXT_MORNING,
+      );
+      expect(second.sent).toBe(0);
+      expect(transport.bodies().slice(before)).toHaveLength(1);
+    });
+
+    it('does not nudge a family that replied after the find', async () => {
+      const { fake, transport, deps } = await provisioned();
+      await handleInboundSms(fake.db, inbound(transport, 'Dana'), deps);
+      const before = transport.bodies().length;
+
+      const result = await runSittingReminderCron(
+        fake.db,
+        { transport, friendVoice: nudgeVoice },
+        NEXT_MORNING,
+      );
+      expect(result.sent).toBe(0);
+      expect(transport.bodies()).toHaveLength(before);
+    });
+
+    it('releases the claim when the model writes nothing, so the next morning retries', async () => {
+      const { fake, transport, row } = await provisioned();
+      const before = transport.bodies().length;
+
+      const result = await runSittingReminderCron(
+        fake.db,
+        {
+          transport,
+          friendVoice: {
+            async compose() {
+              throw new Error('model down');
+            },
+          },
+        },
+        NEXT_MORNING,
+      );
+      expect(result).toEqual({ evaluated: 1, sent: 0, skipped: 0, failed: 1 });
+      expect(transport.bodies()).toHaveLength(before);
+      expect(row.sittingReminderSentAt).toBeNull();
+    });
   });
 });

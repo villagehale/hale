@@ -84,12 +84,22 @@ export interface IntakeKeywordMatch {
  */
 const VOCABULARY: Record<ReplyLanguage, Record<IntakeKeyword, readonly string[]>> = {
   en: {
-    stop: ['stop', 'unsubscribe', 'end', 'quit', 'cancel'],
+    stop: [
+      'stop',
+      'unsubscribe',
+      'end',
+      'quit',
+      'cancel',
+      'stopall',
+      'optout',
+      'opt-out',
+      'revoke',
+    ],
     help: ['help', 'info'],
     start: ['start'],
   },
   fr: {
-    stop: ['arret'],
+    stop: ['arret', 'arrete', 'arretez'],
     help: ['aide'],
     start: ['debut'],
   },

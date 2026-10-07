@@ -102,6 +102,7 @@ export const AUDIT_VERBS = [
   'child_removed',
   'family_location_updated',
   'family_plan_updated',
+  'family_plan_change_refused',
   'family_plan_comped',
   'family_intents_updated',
   'parent_name_updated',
@@ -176,6 +177,19 @@ export const AUDIT_VERBS = [
   'linq_group_member_unseated',
   'linq_group_member_refused',
   'linq_group_stranger_held',
+  'linq_group_roster_fetched',
+  'linq_group_roster_numbers_released',
+  'linq_group_ejected',
+  'linq_group_roster_asked',
+  'linq_group_role_confirmed',
+  'linq_group_role_declined',
+  'linq_group_role_reasked',
+  'linq_group_connect_link_sent',
+  'linq_group_sends_held',
+  'linq_group_stop',
+  'linq_group_coach_held',
+  'group_line_unsent',
+  'group_line_locked_fallback',
   'linq_multi_family_joined',
   'linq_multi_family_left',
   'linq_multi_family_unseated',
@@ -456,6 +470,8 @@ export const AUDIT_VERBS = [
   'workstream_refused',
   'workstream_followed_up',
   'workstream_followup_unsent',
+  'workstream_followup_deferred',
+  'workstream_followup_gave_up',
 ] as const;
 
 export type AuditVerb = (typeof AUDIT_VERBS)[number];
@@ -573,6 +589,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   child_removed: { sentence: 'you removed a child', family: 'done' },
   family_location_updated: { sentence: 'you updated your family’s location', family: 'done' },
   family_plan_updated: { sentence: 'you changed your plan', family: 'done' },
+  family_plan_change_refused: {
+    sentence: 'a paid plan starts at checkout, so your plan did not change',
+    family: 'problem',
+  },
   family_plan_comped: {
     sentence: 'your family got the Family plan, free for life',
     family: 'done',
@@ -679,6 +699,58 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   linq_group_stranger_held: {
     sentence: 'Hale answered a number that is not in this household',
+    family: 'note',
+  },
+  linq_group_roster_fetched: {
+    sentence: 'Hale read who is in your family group',
+    family: 'note',
+  },
+  linq_group_roster_numbers_released: {
+    sentence: 'Hale deleted numbers from your family group it no longer needed',
+    family: 'note',
+  },
+  linq_group_ejected: {
+    sentence: 'Hale left your family group and went back to texting you directly',
+    family: 'note',
+  },
+  linq_group_roster_asked: {
+    sentence: 'Hale asked the people in your family group who they are',
+    family: 'awaiting',
+  },
+  linq_group_role_confirmed: {
+    sentence: 'Someone in your family group said who they are, and Hale added them',
+    family: 'done',
+  },
+  linq_group_role_declined: {
+    sentence: 'Someone in your family group asked not to be included',
+    family: 'note',
+  },
+  linq_group_role_reasked: {
+    sentence: 'Hale asked someone in your family group again who they are',
+    family: 'note',
+  },
+  linq_group_connect_link_sent: {
+    sentence: 'Hale sent a parent in your family group their calendar and email links, one to one',
+    family: 'done',
+  },
+  linq_group_sends_held: {
+    sentence: 'Hale is keeping news out of your family group until everyone has said who they are',
+    family: 'awaiting',
+  },
+  linq_group_stop: {
+    sentence: 'Someone in your family group asked Hale to stop writing to them there',
+    family: 'note',
+  },
+  linq_group_coach_held: {
+    sentence: 'Hale kept an answer out of your family group until everyone there may hear it',
+    family: 'awaiting',
+  },
+  group_line_unsent: {
+    sentence: 'Hale held a message for your family group because it could not write it well',
+    family: 'problem',
+  },
+  group_line_locked_fallback: {
+    sentence: 'Hale used its standard wording to ask who is who in your family group',
     family: 'note',
   },
   linq_multi_family_joined: {
@@ -1543,6 +1615,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   workstream_followup_unsent: {
     sentence: 'could not write a check-back, so nothing was sent',
+    family: 'problem',
+  },
+  workstream_followup_deferred: {
+    sentence: 'left a check-back until it could send',
+    family: 'note',
+  },
+  workstream_followup_gave_up: {
+    sentence: 'stopped a check-back after it could not be sent',
     family: 'problem',
   },
 };

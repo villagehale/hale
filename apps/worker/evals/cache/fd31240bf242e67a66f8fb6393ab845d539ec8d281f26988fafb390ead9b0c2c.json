@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: (1) Says \"I'll text them\" - explicitly claiming Hale will text Sam, which is forbidden; (2) Includes a phone number (647-555-0199) which must not appear in the message; (3) Includes a link (www.example.com) which is not permitted; (4) SMS context means no mention of group or group chat should occur, and this message violates the core instruction that on SMS, the person must text Hale themselves, not the reverse."
+  }
+}

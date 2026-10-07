@@ -251,12 +251,16 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
       const now = ports.now();
-      const [skill, transcript, children, registrationWindows] = await Promise.all([
+      const [loadedSkill, transcript, children, registrationWindows] = await Promise.all([
         ports.loadSkill(turn.parentUserId),
         ports.loadTranscript(turn.conversationId),
         ports.loadChildren(turn.familyId),
         ports.loadRegistrationWindows(turn.familyId, now),
       ]);
+      // The 1:1 skill stays byte-identical. The group section is a second file,
+      // loaded only when this turn is the family group.
+      const skill =
+        turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill;
 
       const familyContext = await ports.loadContext({
         familyId: turn.familyId,
@@ -298,6 +302,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         // first attempt — the key does not appear at all rather than appearing empty, so
         // the ordinary turn's prompt bytes, and its cache prefix, are untouched.
         ...(rejectedLastAttempt.length > 0 ? { rejectedLastAttempt } : {}),
+        // THE FAMILY GROUP (group onboarding v2). Absent on a 1:1 turn for the reason the
+        // key above is: the ordinary turn's prompt bytes and cache prefix stay untouched.
+        ...(turn.audience === 'group' ? { audience: 'group' as const } : {}),
         // The hand-verified municipal open dates this family must act on, soonest
         // first, each saying whether Hale's ladder is already on it. Empty for a family
         // outside the covered set — and then the skill has nothing to claim.
@@ -451,6 +458,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       );
     },
   };
+}
+
+async function appendGroupCoachSkill(skill: Skill): Promise<Skill> {
+  const group = await loadCronSkill('coach-channel-group');
+  return { ...skill, instructions: `${skill.instructions}\n\n${group.instructions}` };
 }
 
 let defaultClient: Anthropic | undefined;

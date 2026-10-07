@@ -546,13 +546,19 @@ async function optOutForm(
  *   · `sms_coparent_invite_reply` — they answered YES to the one invite Hale sent them
  *     (coparent/accept.ts);
  *   · `sms_join_origination` — they texted a forwarded join link themselves
- *     (join/invites.ts).
+ *     (join/invites.ts);
+ *   · `linq_group_role_reply` — they said in the family's group that they are a parent,
+ *     in their own words (linq/roster-seat.ts).
  *
  * Read rather than re-derived from the seat, because the seat is not the consent: a
  * departure appends a `granted=false` row for every live scope AND revokes the channel
  * (coparent/depart.ts), so both doors shut on the ledger's own terms.
  */
-const CO_PARENT_SEATING_SCOPES = ['sms_coparent_invite_reply', 'sms_join_origination'] as const;
+const CO_PARENT_SEATING_SCOPES = [
+  'sms_coparent_invite_reply',
+  'sms_join_origination',
+  'linq_group_role_reply',
+] as const;
 
 /**
  * The parent's watch consent as it stands NOW: the newest row wins, and it only counts
@@ -639,8 +645,8 @@ async function readCoParentSeatingConsent(
     .orderBy(desc(schema.consentRecords.grantedAt), desc(schema.consentRecords.id))
     .limit(1);
   if (!(latest?.granted === true && latest.revokedAt === null)) return false;
-  // `consent_records.family_id` is nullable in general; BOTH seating writers stamp it
-  // (coparent/accept.ts, join/invites.ts), so a row without one did not come from a
+  // `consent_records.family_id` is nullable in general; every seating writer stamps it
+  // (coparent/accept.ts, join/invites.ts, linq/roster-seat.ts), so a row without one did not come from a
   // door this fallback knows about and there is no household whose watch answer could
   // be read. Refusing is the only honest answer — guessing the family from a seat would
   // be this gate inventing the consent it exists to check.

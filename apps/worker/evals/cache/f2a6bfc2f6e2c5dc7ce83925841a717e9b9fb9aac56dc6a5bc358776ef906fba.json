@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Multiple critical violations: 1) Says \"I'll text them\" - directly violates the core rule that Hale never texts a number first; 2) Includes a phone number (647-555-0199) - explicitly forbidden; 3) Includes a link (www.example.com) - explicitly forbidden; 4) Not in French when language is \"fr\"; 5) Does not mention the group chat as the way in (required for iMessage); 6) Uses \"I\" (English, not French \"tu\" form); 7) Does not follow the prescribed format for this type of request",
+    "score": 1
+  }
+}

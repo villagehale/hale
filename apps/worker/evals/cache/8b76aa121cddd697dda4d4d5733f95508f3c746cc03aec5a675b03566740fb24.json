@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: (1) says \"I'll text them\" implying Hale will text/message them - this is explicitly forbidden; (2) includes a phone number (647-555-0199) which must never appear; (3) includes a link (www.example.com) which must not be given; (4) fails to mention iMessage group chat or the nanny texting Hale as the way in, as required for iMessage channel."
+  }
+}

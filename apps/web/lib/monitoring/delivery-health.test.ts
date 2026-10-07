@@ -1,5 +1,6 @@
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SEND_RETRIES_EXHAUSTED } from '~/lib/channel/config';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   DELIVERY_RATE_MIN_ATTEMPTED,
@@ -127,6 +128,42 @@ describe('composeDeliveryAlert', () => {
     expect(body).toContain('30006');
     expect(body).not.toMatch(/\d{7,}/);
   });
+
+  it('a provider code is clamped to a short enum-shaped token before it reaches the page', () => {
+    // Linq relays `data.code` as whatever string the provider sent. The page must never
+    // carry free text or a digit run that could be a number a parent owns.
+    const body = composeDeliveryAlert({
+      kind: 'failure_rate',
+      failed: 10,
+      attempted: 10,
+      codes: [{ code: 'recipient 4165551234 blocked: see https://x.test/a?b=c', count: 10 }],
+    });
+
+    expect(body).not.toMatch(/\d{7,}/);
+    expect(body).not.toContain('https://');
+    expect(body).not.toContain(' blocked');
+    expect(body).toMatch(/Codes: [A-Za-z0-9_.:-]{1,32} x10\./);
+    expect(gsm7SingleSegment(body)).toBe(true);
+  });
+
+  it('both pages point ops at Linq and the receipts ledger, not Twilio', () => {
+    const bodies = [
+      composeDeliveryAlert({ kind: 'registration_error', code: '30034', count: 1 }),
+      composeDeliveryAlert({
+        kind: 'failure_rate',
+        failed: 10,
+        attempted: 10,
+        codes: [{ code: 'send_retries_exhausted', count: 10 }],
+      }),
+    ];
+
+    for (const body of bodies) {
+      expect(body).not.toMatch(/twilio/i);
+      expect(body).toContain('Linq');
+      expect(body).toContain('channel_messages');
+      expect(gsm7SingleSegment(body)).toBe(true);
+    }
+  });
 });
 
 describe('loadDeliveryStats (real DDL)', () => {
@@ -146,7 +183,7 @@ describe('loadDeliveryStats (real DDL)', () => {
 
   async function seed(over: {
     status: 'queued' | 'sent' | 'delivered' | 'failed' | 'suppressed_cap';
-    channel?: 'sms' | 'whatsapp' | 'email';
+    channel?: 'sms' | 'imessage' | 'whatsapp' | 'email';
     direction?: 'in' | 'out';
     errorCode?: string | null;
     createdAt?: Date;
@@ -190,6 +227,23 @@ describe('loadDeliveryStats (real DDL)', () => {
       { code: '30006', count: 1 },
       { code: '30034', count: 1 },
     ]);
+  });
+
+  it('counts Linq sends: failed imessage rows in the window are attempted, failed, and trip the rate incident', async () => {
+    for (let i = 0; i < 10; i++) {
+      await seed({ status: 'failed', channel: 'imessage', errorCode: SEND_RETRIES_EXHAUSTED });
+    }
+
+    const result = await loadDeliveryStats(db.database, new Date(NOW.getTime() - 24 * 3_600_000));
+
+    expect(result.attempted).toBe(10);
+    expect(result.failed).toBe(10);
+    expect(evaluateDeliveryHealth(result)).toEqual({
+      kind: 'failure_rate',
+      failed: 10,
+      attempted: 10,
+      codes: [{ code: SEND_RETRIES_EXHAUSTED, count: 10 }],
+    });
   });
 
   it('one page per incident kind per window: the claim is atomic and the second claimer loses', async () => {

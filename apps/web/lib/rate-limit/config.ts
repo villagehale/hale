@@ -91,6 +91,13 @@ export const RATE_LIMITS = {
   // it while stopping a script from running up spend or pumping SMS traffic. Over the
   // limit the machine goes SILENT — replying would hand an attacker the amplification.
   'sms-inbound': { limit: 30, windowSec: 3600 },
+  // Group onboarding v2 · the family GROUP, per CHAT (the Linq chat id). Spent only by a
+  // group message Hale decided to answer (linq/group-turn-policy.ts) — chatter between
+  // parents spends nothing — and in place of the sender's 'sms-inbound' above, so a busy
+  // group cannot use up a parent's own 1:1 hour. The same 30/hour: it is the same cost,
+  // a model call and a reply, and one chat is one conversation. Over it the group goes
+  // SILENT, for the reason 'sms-inbound' does.
+  'linq-group-inbound': { limit: 30, windowSec: 3600 },
   // Inbound EMAIL, per SENDER ADDRESS (the blind index — the raw address never reaches
   // the limiter table, same as the phone one above). The same budget as its SMS twin on
   // purpose: it is the same conversation arriving through a different door, so one

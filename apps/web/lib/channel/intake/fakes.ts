@@ -1,5 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import { Column, Param, SQL, StringChunk, is } from 'drizzle-orm';
+import type {
+  AddThemYourselfComposed,
+  AddThemYourselfRequest,
+  AddThemYourselfVoice,
+} from '~/lib/channel/caregiver/add-them-yourself';
 import type { OpenQuestionsForParent } from '~/lib/channel/caregiver/route';
 import type {
   IdentityAskOutcome,
@@ -129,6 +134,22 @@ export class FakeIdentityAsk implements IdentityAskVoice {
   constructor(private readonly outcome: IdentityAskOutcome = { status: 'composed', body: 'ASK' }) {}
 
   async compose(request: IdentityAskRequest): Promise<IdentityAskOutcome> {
+    this.calls.push(request);
+    return this.outcome;
+  }
+}
+
+/** The add-by-number reply composer, faked. Records what it was handed. */
+export class FakeAddThemYourself implements AddThemYourselfVoice {
+  readonly calls: AddThemYourselfRequest[] = [];
+  constructor(
+    private readonly outcome: AddThemYourselfComposed = {
+      status: 'composed',
+      body: 'ADD THEM YOURSELF',
+    },
+  ) {}
+
+  async compose(request: AddThemYourselfRequest): Promise<AddThemYourselfComposed> {
     this.calls.push(request);
     return this.outcome;
   }
@@ -300,6 +321,10 @@ function evaluate(tokens: WhereToken[], row: Record<string, unknown>): boolean {
   if (right?.kind !== 'value') throw new Error(`fake where: unsupported operator ${operator.text}`);
   if (operator.text === '=') return sameValue(value, right.value);
   if (operator.text === '<>') return !sameValue(value, right.value);
+  if (value instanceof Date && right.value instanceof Date) {
+    if (operator.text === '>=') return value.getTime() >= right.value.getTime();
+    if (operator.text === '<=') return value.getTime() <= right.value.getTime();
+  }
   throw new Error(`fake where: unsupported operator ${operator.text}`);
 }
 

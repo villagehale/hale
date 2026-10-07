@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Critical failures: (1) Message is in English, not French as required. (2) Says \"I'll text them\" - implying Hale will message Alex, which is explicitly forbidden. (3) Contains a phone number and link (647-555-0199 and www.example.com) - both prohibited. (4) Says \"see www.example.com\" which is padding/instruction for parent to send. (5) On SMS channel, should NOT mention group chat, and should say Alex writes to Hale - this says Hale will text instead. The message violates multiple core rules."
+  }
+}

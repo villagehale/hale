@@ -1476,6 +1476,32 @@ describe('intake · CASL keywords', () => {
     expect(withdrawal).toBeDefined();
   });
 
+  it('with group onboarding v2 on, a group STOP the roster did not answer still revokes and acks, as with v2 off', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const { fake, transport, deps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const result = await handleInboundSms(
+      fake.db,
+      transport.inbound(PHONE, 'STOP', {
+        transport: 'imessage',
+        chatId: 'chat-group',
+        isGroup: true,
+      }),
+      deps,
+    );
+
+    expect(result).toEqual({ status: 'stopped', ack: 'sent' });
+    expect(transport.bodies().at(-1)).toBe(STOP_ACK);
+    expect(
+      fake.writes.some(
+        (w) => w.op === 'update' && w.table === schema.parentChannels && w.payload.revokedAt,
+      ),
+    ).toBe(true);
+    vi.unstubAllEnvs();
+  });
+
   it('records the STOP even when Twilio permanently refuses the ack (21610 — the carrier already told them)', async () => {
     const { fake, transport, deps } = harness({});
     await text(fake, transport, deps, 'hi');
@@ -1758,6 +1784,29 @@ describe('intake · guards', () => {
     expect(result).toEqual({ status: 'rate_limited' });
     expect(transport.sent).toHaveLength(0);
     expect(fake.writes).toHaveLength(0);
+  });
+
+  it('does not spend the sender budget on a group turn the door already charged to the chat', async () => {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    const { fake, transport, deps } = harness({ limiter });
+    const hash = phoneBlindIndex(PHONE);
+    for (let i = 0; i < RATE_LIMITS['sms-inbound'].limit; i += 1) {
+      await limiter.check(hash, 'sms-inbound', RATE_LIMITS['sms-inbound']);
+    }
+    const group = { transport: 'imessage' as const, chatId: 'chat-group', isGroup: true };
+
+    // The control: the same exhausted sender budget silences an ordinary group turn.
+    expect(await handleInboundSms(fake.db, transport.inbound(PHONE, 'hi', group), deps)).toEqual({
+      status: 'rate_limited',
+    });
+
+    const charged = await handleInboundSms(
+      fake.db,
+      transport.inbound(PHONE, 'hi', { ...group, budget: 'chat' }),
+      deps,
+    );
+    expect(charged).not.toEqual({ status: 'rate_limited' });
+    expect(transport.bodies()).toEqual([greeting(null, 'en')]);
   });
 
   it('still unsubscribes a rate-limited ARRET — a CASL keyword is never throttled away', async () => {
@@ -2456,6 +2505,46 @@ describe('intake · one ladder job per reply', () => {
     expect(shareCardCalls(fetchMock)).toHaveLength(0);
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+  });
+
+  it('refuses a group turn while this number has an open intake, and says nothing into the group', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const h = harness({});
+    await text(h.fake, h.transport, h.deps, 'hi');
+    const before = h.transport.bodies().length;
+
+    const outcome = await handleInboundSms(
+      h.fake.db,
+      h.transport.inbound(PHONE, 'Maya is 4, Leo is 1. M5V 2T6', {
+        transport: 'imessage',
+        chatId: 'chat-group',
+        isGroup: true,
+      }),
+      h.deps,
+    );
+
+    expect(outcome).toEqual({ status: 'ignored', reason: 'group_turn_during_intake' });
+    expect(h.transport.bodies().slice(before)).toEqual([]);
+    vi.unstubAllEnvs();
+  });
+
+  it('keeps answering a group turn during intake while group onboarding v2 is dark', async () => {
+    const h = harness({});
+    await text(h.fake, h.transport, h.deps, 'hi');
+    const before = h.transport.bodies().length;
+
+    const outcome = await handleInboundSms(
+      h.fake.db,
+      h.transport.inbound(PHONE, 'Maya is 4, Leo is 1. M5V 2T6', {
+        transport: 'imessage',
+        chatId: 'chat-group',
+        isGroup: true,
+      }),
+      h.deps,
+    );
+
+    expect(outcome).not.toEqual({ status: 'ignored', reason: 'group_turn_during_intake' });
+    expect(h.transport.bodies().slice(before)).toEqual(['RADAR']);
   });
 
   it('releases a refused setup on the first hello so the year-find turn can share once', async () => {
