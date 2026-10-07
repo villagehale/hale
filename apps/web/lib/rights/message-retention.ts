@@ -93,7 +93,6 @@ const MESSAGE_JSON_KEYS = [
   'preview',
   'question',
   'raw',
-  'raw_content',
   'recipient',
   'reply_to',
   'replyTo',
