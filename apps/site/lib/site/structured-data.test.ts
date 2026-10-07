@@ -19,6 +19,13 @@ describe('siteJsonLd', () => {
     expect((byType('SoftwareApplication')?.publisher as { '@id': string })['@id']).toBe(orgId);
   });
 
+  it('does not name a country of service', () => {
+    expect(byType('Organization')).not.toHaveProperty('areaServed');
+    const json = JSON.stringify(siteJsonLd());
+    expect(json).not.toContain('areaServed');
+    expect(json).not.toContain('Country');
+  });
+
   it('declares the free tier as a concrete CAD Offer (the "is it free" AEO signal)', () => {
     const offer = byType('SoftwareApplication')?.offers as { price: string; priceCurrency: string };
     expect(offer.price).toBe('0');
