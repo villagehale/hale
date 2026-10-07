@@ -356,7 +356,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
         </div>
       </section>
 
-      {/* ── Privacy, the Canadian way ─────────────────────────────────────── */}
+      {/* ── Privacy ───────────────────────────────────────────────────────── */}
       <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow">{t('privacyEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">

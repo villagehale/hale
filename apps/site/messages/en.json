@@ -161,7 +161,7 @@
         "body": "I keep that watch. I find what’s on, the town’s link is ready the night before it opens, and I ask how it went."
       }
     ],
-    "coverageLine": "Across {count} municipalities in the GTA.",
+    "coverageLine": "Across {count} municipalities.",
     "watched": [
       {
         "title": "Swim lessons",
@@ -217,13 +217,13 @@
     "helpersRail": "Your helpers",
     "privacyEyebrow": "Privacy",
     "privacyH2a": "Privacy, the",
-    "privacyH2Accent": "Canadian way.",
-    "privacyBody1": "Your family’s data stays in Canada, and a child’s information is sensitive by default. Every permission is granted in a text and withdrawn in a text.",
+    "privacyH2Accent": "careful way.",
+    "privacyBody1": "A child’s information is sensitive by default. Every permission is granted in a text and withdrawn in a text.",
     "privacyLink": "How I handle your data",
     "closingH2a": "Founding families join",
     "closingH2Accent": "free.",
     "closingSub": "Free while I’m new — and families who start now keep their founding rate for good. No countdown, just the number.",
-    "heroTerms": "Free to start. You text first; standard message rates apply, reply STOP any time. Your data stays in Canada —",
+    "heroTerms": "Free to start. You text first; standard message rates apply, reply STOP any time —",
     "heroTermsLink": "privacy policy",
     "heroLoopCap": "One family’s thread with Hale, start to finish",
     "heroLoop": [
@@ -491,13 +491,11 @@
         "line": "Access, correction, or deletion requests, and anything about how we handle your family’s data."
       }
     },
-    "note": "Hale is built by Village Hale Technologies Inc., Georgetown, Ontario, Canada.",
     "centresNote": "Work at a centre, a library, or a community program?",
     "centresLink": "See what Hale means for the families you serve"
   },
   "ForCentres": {
     "metaTitle": "For centres and community partners · Hale",
-    "metaDescription": "What Hale means for the families your centre serves, and three ways to point a family at it. A planner for their kids’ year — no app, no account, and data that stays in Canada.",
     "eyebrow": "For centres and partners",
     "headline": [
       {
@@ -508,8 +506,6 @@
         "accent": true
       }
     ],
-    "lede": "Hale is a planner for a family’s kids’ year. It finds activities that fit their child, watches sign-up mornings in {count} GTA municipalities, and checks in on how it went.",
-    "notLine": "There is no app to install and no account to make. Nothing about a family is sold or shared, Hale is built in Ontario under PIPEDA, and a family’s data stays in Canada.",
     "townsLabel": "Towns watched",
     "getEyebrow": "What a family gets",
     "getHeadline": [
@@ -583,10 +579,6 @@
       {
         "title": "A child’s words stay with their parent",
         "body": "Hale talks to parents. For a child of 13 or older, a parent sees the topic and a summary rather than the words — unless there is a safety concern, and then the teen is told."
-      },
-      {
-        "title": "Built and kept in Canada",
-        "body": "Village Hale Technologies Inc., Georgetown, Ontario. Family data stays in Canada, under PIPEDA and Quebec’s Law 25."
       }
     ],
     "officialEyebrow": "If a family asks whether Hale is official",
@@ -639,7 +631,6 @@
     ],
     "lede": "The honest answers parents ask us most — about cost, privacy, and how Hale actually works.",
     "ctaHeading": "Still wondering? Just ask me.",
-    "ctaSub": "Free to start. Your data stays in Canada.",
     "items": [
       {
         "question": "What is Hale?",
@@ -709,7 +700,7 @@
   },
   "Activities": {
     "metaTitle": "Things to do with kids, by city · Hale",
-    "metaDescription": "Free and low-cost activities for babies, toddlers, and young kids in Canadian cities — library story-times, drop-in play, parent-and-tot swim, parks, and local family programs.",
+    "metaDescription": "Free and low-cost activities for babies, toddlers, and young kids — library story-times, drop-in play, parent-and-tot swim, parks, and local family programs.",
     "eyebrow": "Near you",
     "headline": [
       {
@@ -722,11 +713,7 @@
     ],
     "lede": "The free and low-cost outings families actually use — story-times, drop-in play, parent-and-tot swim, parks, and local programs. Pick your city to start.",
     "registrationLead": "Fall rec registration, by city — not this weekend’s outings:",
-    "linkTorontoFall": "Toronto fall rec",
-    "linkTorontoSwim": "Toronto swim",
-    "linkBramptonSwim": "Brampton swim (non-residents Sept 21)",
-    "ctaHeading": "Ask Hale what’s worth doing this weekend",
-    "ctaSub": "Text Hale your kids’ ages and a postal code and get three things worth doing near you, not thirty. Registration-day watching is the GTA for now. Free to start — your data stays in Canada."
+    "ctaHeading": "Ask Hale what’s worth doing this weekend"
   },
   "ActivityCity": {
     "metaTitle": "Things to do with kids in {city} · Hale",
@@ -736,7 +723,7 @@
     "commonQuestions": "Common questions about {city}",
     "disclaimer": "Programs and locations change — treat this as a starting point and confirm details with your city or the program directly. Last reviewed {date, date, long}.",
     "ctaHeading": "Ask Hale what’s worth doing this weekend in {city}",
-    "ctaSub": "Text Hale your kids’ ages and a postal code and get three things worth doing near you, not thirty. Registration-day watching is the GTA for now. Free to start — your data stays in Canada."
+    "ctaSub": "Text Hale your kids’ ages and a postal code and get three things worth doing near you, not thirty. Free to start."
   },
   "Answers": {
     "metaTitle": "Parenting guides · Hale",
@@ -754,7 +741,6 @@
     "lede": "Practical guides for the questions parents actually search — each one grounded in trusted parenting-health frameworks and honest about its limits. General guidance, never a replacement for your provider.",
     "empty": "Our first parenting guides are in review. In the meantime, the fastest way to get guidance for your own child — with their age and your family in mind — is to ask Hale.",
     "ctaHeading": "Have a question about your own child?",
-    "ctaSub": "Ask Hale — with your child’s age and your family in mind. Free to start, and your data stays in Canada.",
     "stageLabels": {
       "newborn": "Newborn · 0–11 months",
       "toddler": "Toddler · 1–3 years",

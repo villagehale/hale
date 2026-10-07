@@ -161,7 +161,7 @@
         "body": "Je tiens cette veille. Je trouve ce qu’il y a, le lien de votre ville est prêt la veille au soir, et je demande comment ça s’est passé."
       }
     ],
-    "coverageLine": "Dans {count} municipalités du Grand Toronto.",
+    "coverageLine": "Dans {count} municipalités.",
     "watched": [
       {
         "title": "Cours de natation",
@@ -217,13 +217,13 @@
     "helpersRail": "Vos aidants",
     "privacyEyebrow": "Confidentialité",
     "privacyH2a": "La confidentialité,",
-    "privacyH2Accent": "à la canadienne.",
-    "privacyBody1": "Les données de votre famille restent au Canada, et l’information d’un enfant est sensible par défaut. Chaque permission s’accorde par texto et se retire par texto.",
+    "privacyH2Accent": "pour de vrai.",
+    "privacyBody1": "L’information d’un enfant est sensible par défaut. Chaque permission s’accorde par texto et se retire par texto.",
     "privacyLink": "Comment je traite vos données",
     "closingH2a": "Les familles fondatrices adhèrent",
     "closingH2Accent": "gratuitement.",
     "closingSub": "Gratuit tant que je suis nouveau — et les familles qui commencent maintenant gardent leur tarif fondateur pour toujours. Pas de compte à rebours, juste le numéro.",
-    "heroTerms": "Gratuit pour commencer. C’est vous qui textez en premier; les tarifs de messagerie standards s’appliquent, répondez STOP à tout moment. Vos données restent au Canada —",
+    "heroTerms": "Gratuit pour commencer. C’est toi qui textes en premier; les tarifs de messagerie standards s’appliquent, réponds STOP à tout moment —",
     "heroTermsLink": "politique de confidentialité",
     "heroLoopCap": "Le fil d’une famille avec Hale, du début à la fin",
     "heroLoop": [
@@ -491,13 +491,11 @@
         "line": "Demandes d’accès, de correction ou de suppression, et tout ce qui touche la façon dont nous traitons les données de votre famille."
       }
     },
-    "note": "Hale est conçu par Village Hale Technologies Inc., Georgetown, Ontario, Canada.",
     "centresNote": "Vous travaillez dans un centre, une bibliothèque ou un programme communautaire ?",
     "centresLink": "Voyez ce que Hale change pour les familles que vous accueillez"
   },
   "ForCentres": {
     "metaTitle": "Pour les centres et les partenaires · Hale",
-    "metaDescription": "Ce que Hale change pour les familles que votre centre accueille, et trois façons d’y orienter une famille. Un planificateur pour l’année de leurs enfants — pas d’appli, pas de compte, et des données qui restent au Canada.",
     "eyebrow": "Pour les centres et les partenaires",
     "headline": [
       {
@@ -508,8 +506,6 @@
         "accent": true
       }
     ],
-    "lede": "Hale est un planificateur pour l’année des enfants d’une famille. Il trouve des activités qui conviennent à l’enfant, surveille les matins d’inscription dans {count} municipalités du Grand Toronto, et prend des nouvelles ensuite.",
-    "notLine": "Il n’y a pas d’appli à installer ni de compte à créer. Rien de ce qui touche une famille n’est vendu ni partagé, Hale est conçu en Ontario selon la LPRPDE, et les données d’une famille restent au Canada.",
     "townsLabel": "Villes surveillées",
     "getEyebrow": "Ce qu’une famille reçoit",
     "getHeadline": [
@@ -583,10 +579,6 @@
       {
         "title": "Les mots d’un enfant restent à son parent",
         "body": "Hale parle aux parents. Pour un enfant de 13 ans ou plus, le parent voit le sujet et un résumé plutôt que les mots — sauf s’il y a un enjeu de sécurité, et alors l’adolescent en est informé."
-      },
-      {
-        "title": "Conçu et gardé au Canada",
-        "body": "Village Hale Technologies Inc., Georgetown, Ontario. Les données des familles restent au Canada, selon la LPRPDE et la Loi 25 du Québec."
       }
     ],
     "officialEyebrow": "Si une famille demande si Hale est officiel",
@@ -639,7 +631,6 @@
     ],
     "lede": "Les réponses honnêtes aux questions que les parents nous posent le plus — sur le coût, la confidentialité et le fonctionnement réel de Hale.",
     "ctaHeading": "Encore des doutes? Demandez-moi, tout simplement.",
-    "ctaSub": "Gratuit pour commencer. Vos données restent au Canada.",
     "items": [
       {
         "question": "Qu’est-ce que Hale?",
@@ -652,18 +643,6 @@
       {
         "question": "Est-ce que Hale fait quoi que ce soit sans demander?",
         "answer": "Non. Hale trouve ce qui se passe et demande comment ça s’est passé — il ne réserve pas de cours et ne vous inscrit pas. Chaque message nomme ce qu’il a trouvé, et Hale garde le dossier complet de qui a demandé, de ce qui a été envoyé et de quand."
-      },
-      {
-        "question": "Est-ce que les données de ma famille sont privées?",
-        "answer": "Vos données sont stockées au Canada et n’en sortent jamais, conformément à la PIPEDA et à la Loi 25 du Québec, et Hale ne les vend jamais. Chaque permission est précise et révocable par texto. Le texto lui-même n’est pas scellé comme l’est une appli — un message traverse votre fournisseur de téléphonie et le fournisseur de messagerie de Hale — alors Hale écrit en tenant compte de cette réalité et nomme la tâche, jamais le diagnostic. Le contenu d’un adolescent est caviardé pour les parents par défaut."
-      },
-      {
-        "question": "Est-ce un robot? Qui lit vraiment mes textos?",
-        "answer": "Hale est un planificateur pour l’année de vos enfants, et il ne prétend jamais être une personne. Il est conçu et exploité par Village Hale Technologies Inc., une petite entreprise fondée par un parent à Georgetown, en Ontario — et une vraie personne lit tout ce que vous envoyez à aloha@villagehale.com. Hale ne texte jamais un numéro qui ne lui a pas écrit en premier, ne vous demande jamais de retexter un mot de passe, un numéro de carte ou un code, et STOP met fin à la conversation en tout temps."
-      },
-      {
-        "question": "Que surveille Hale, au juste?",
-        "answer": "Les inscriptions municipales dans 21 municipalités de la région du Grand Toronto — programmes de loisirs, cours de natation, camps et service de garde parascolaire — y compris la longueur d’avance réservée aux résidents, les villes qui ouvrent la natation à leur propre date, et les camps du congé des Fêtes dont les inscriptions ouvrent dès le mois d’août. Il surveille aussi le chrono des listes d’attente, qui est d’une journée dans certaines villes et de deux dans d’autres. Et quand le cours que vous vouliez est déjà complet, Hale continue de le surveiller et vous texte à la minute où une place se libère."
       },
       {
         "question": "À quelle fréquence Hale va-t-il me texter?",
@@ -686,16 +665,8 @@
         "answer": "Pas encore. Aujourd’hui, Hale demande comment ça s’est passé. Dire au prochain parent ce que d’autres familles en ont pensé, c’est ce que Hale veut bâtir ensuite — et quand ce sera fait, ce sera un nombre et un verdict, jamais les mots de qui que ce soit."
       },
       {
-        "question": "Pouvez-vous nous aider en voyage?",
-        "answer": "Pas encore. Aujourd’hui, je surveille les inscriptions et ce qui se passe là où vous habitez, dans la région du Grand Toronto."
-      },
-      {
         "question": "Pouvez-vous me dire qui d’autre y sera?",
         "answer": "Pas encore. Aujourd’hui, je ne vous parle que de votre propre famille, jamais de celle de quelqu’un d’autre."
-      },
-      {
-        "question": "Est-ce que Hale est offert à l’extérieur du Canada?",
-        "answer": "Pas encore. Hale est d’abord canadien parce que garder les données de votre famille en sol canadien est une promesse fondamentale plutôt qu’un réglage, et les données d’inscription qu’il surveille sont des données municipales de la région du Grand Toronto. D’autres régions sont prévues dans la feuille de route."
       }
     ]
   },
@@ -714,11 +685,7 @@
     ],
     "lede": "Les sorties gratuites et abordables que les familles utilisent vraiment — heures du conte, jeu libre sans inscription, bain parent-enfant, parcs et programmes locaux. Choisissez votre ville pour commencer.",
     "registrationLead": "Inscriptions d’automne, par ville — pas les sorties de la fin de semaine :",
-    "linkTorontoFall": "Rec d’automne à Toronto",
-    "linkTorontoSwim": "Natation à Toronto",
-    "linkBramptonSwim": "Natation à Brampton (non-résidents 21 sept.)",
-    "ctaHeading": "Demandez à Hale ce qui vaut le coup ce week-end",
-    "ctaSub": "Textez à Hale l’âge de vos enfants et un code postal, et recevez trois choses à faire près de chez vous, pas trente. La surveillance des jours d’inscription se limite pour l’instant à la région du Grand Toronto. Gratuit pour commencer — vos données restent au Canada."
+    "ctaHeading": "Demandez à Hale ce qui vaut le coup ce week-end"
   },
   "ActivityCity": {
     "metaTitle": "Activités à faire avec les enfants à {city} · Hale",
@@ -728,7 +695,7 @@
     "commonQuestions": "Questions fréquentes sur {city}",
     "disclaimer": "Les programmes et les lieux changent — voyez ceci comme un point de départ et confirmez les détails directement auprès de votre ville ou du programme. Dernière révision le {date, date, long}.",
     "ctaHeading": "Demandez à Hale ce qui vaut le coup ce week-end à {city}",
-    "ctaSub": "Textez à Hale l’âge de vos enfants et un code postal, et recevez trois choses à faire près de chez vous, pas trente. La surveillance des jours d’inscription se limite pour l’instant à la région du Grand Toronto. Gratuit pour commencer — vos données restent au Canada."
+    "ctaSub": "Texte à Hale l’âge de tes enfants et un code postal, et reçois trois choses à faire près de chez toi, pas trente. Gratuit pour commencer."
   },
   "Answers": {
     "metaTitle": "Guides parentaux · Hale",
@@ -746,7 +713,6 @@
     "lede": "Des guides pratiques pour les questions que les parents recherchent vraiment — chacun fondé sur des cadres de référence fiables en santé parentale et honnête quant à ses limites. Des conseils généraux, jamais un remplacement de votre professionnel de la santé.",
     "empty": "Nos premiers guides parentaux sont en révision. Entre-temps, le moyen le plus rapide d’obtenir des conseils pour votre propre enfant — en tenant compte de son âge et de votre famille — c’est de poser votre question à Hale.",
     "ctaHeading": "Vous avez une question sur votre propre enfant?",
-    "ctaSub": "Demandez à Hale — en tenant compte de l’âge de votre enfant et de votre famille. Gratuit pour commencer, et vos données restent au Canada.",
     "stageLabels": {
       "newborn": "Nouveau-né · 0–11 mois",
       "toddler": "Tout-petit · 1–3 ans",
@@ -794,7 +760,7 @@
     "onLaptop": "Sur un ordinateur portable?",
     "scanHint": "Scannez le code avec l’appareil photo de votre téléphone, ou copiez le numéro et textez-le depuis votre téléphone. Les tarifs de messagerie habituels s’appliquent; répondez STOP en tout temps.",
     "numberComing": "Le numéro s’en vient — cette page n’est pas encore annoncée.",
-    "footerPre": "Village Hale Technologies Inc., Georgetown, Ontario. Vos données restent au Canada —",
+    "footerPre": "Tes données ne sont jamais vendues ni utilisées pour la pub; vois notre",
     "privacyLink": "politique de confidentialité",
     "qrAria": "Code QR — scannez pour texter Hale",
     "chooserHeadline": "Bienvenue. Choisissez où on se parle.",
