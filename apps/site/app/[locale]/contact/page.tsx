@@ -1,15 +1,10 @@
 import type { Metadata } from 'next';
-import { SeaTurtle } from '~/components/illos';
-import { SiteFooter } from '~/components/site-footer';
-import { SiteHeader } from '~/components/site-header';
-import { type HeadlineSegment, WordsPullUp } from '~/components/words-pull-up';
-import { buildAlternates } from '~/i18n/metadata';
-import { localeHref } from '~/i18n/navigation';
-import type { Locale } from '~/i18n/routing';
 import { RedesignContact } from '~/components/redesign/contact';
+import { buildAlternates } from '~/i18n/metadata';
+import type { Locale } from '~/i18n/routing';
+import { getTranslator } from '~/i18n/server';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { readSmsNumber } from '~/lib/text-entry';
-import { getTranslator } from '~/i18n/server';
 
 interface PageProps {
   params: Promise<{ locale: Locale }>;
@@ -25,82 +20,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-/**
- * The two inbox addresses are structural, not copy — one general, one for privacy
- * — and each is keyed to the copy it belongs with. They used to zip positionally
- * against `t.raw('channels')`, so a locale that reordered or added a channel
- * silently labelled a privacy-request card with the general inbox.
- */
-const CHANNELS = [
-  { id: 'general', email: 'aloha@villagehale.com' },
-  { id: 'privacy', email: 'privacy@villagehale.com' },
-] as const;
-
 export default async function ContactPage({ params }: PageProps) {
   const { locale } = await params;
-  if (locale === 'en') {
-    return (
-      <RedesignContact
-        locale={locale}
-        smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
-        prefill={intakePrefill(locale)}
-      />
-    );
-  }
-  const t = getTranslator(locale, 'Contact');
-  const channelCopy = t.raw('channels') as Record<string, { eyebrow: string; line: string }>;
-
   return (
-    <main id="main" tabIndex={-1} className="relative">
-      <SiteHeader locale={locale} />
-
-      {/* One centred column, and nothing beside it. A contact page has exactly one
-          job, and a two-column hero gives the eye somewhere else to go. */}
-      <section className="shell pt-14 sm:pt-20 pb-16 lg:pb-24">
-        <div className="mx-auto flex max-w-xl flex-col items-center text-center">
-          <SeaTurtle age="adult" style={{ width: 'clamp(96px, 16vw, 132px)', height: 'auto' }} />
-          <span className="eyebrow mt-8">{t('eyebrow')}</span>
-          <WordsPullUp className="mt-3" segments={t.raw('headline') as HeadlineSegment[]} />
-          <p className="mt-6 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
-            {t('lede')}
-          </p>
-          <a href="mailto:aloha@villagehale.com" className="btn-primary mt-8">
-            {t('emailButton')}
-          </a>
-        </div>
-      </section>
-
-      <div className="band-cream grain">
-        <section className="shell py-16 lg:py-24">
-          <div className="mx-auto grid max-w-3xl grid-cols-1 gap-6 md:grid-cols-2 lg:gap-8">
-            {CHANNELS.map(({ id, email }) => {
-              const copy = channelCopy[id];
-              if (!copy) throw new Error(`Contact.channels is missing "${id}" in ${locale}`);
-              return (
-                <div key={email} className="glass-panel flex flex-col gap-4 p-6 sm:p-7">
-                  <span className="eyebrow">{copy.eyebrow}</span>
-                  <p style={{ color: 'var(--color-slate-green)', lineHeight: 1.55 }}>{copy.line}</p>
-                  <a href={`mailto:${email}`} className="link mt-auto self-start">
-                    {email}
-                  </a>
-                </div>
-              );
-            })}
-          </div>
-          <p className="meta mx-auto mt-8 max-w-3xl text-slate-green">{t('note')}</p>
-          {/* The one audience this page's two inboxes do not describe: staff at a
-              centre or a library, who want to know what Hale is before they
-              mention it to a family. */}
-          <p className="meta mx-auto mt-3 max-w-3xl text-slate-green">
-            {t('centresNote')}{' '}
-            <a href={localeHref(locale, '/for-centres')} className="link">
-              {t('centresLink')}
-            </a>
-          </p>
-        </section>
-      </div>
-
-      <SiteFooter locale={locale} />
-    </main>
+    <RedesignContact
+      locale={locale}
+      smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+      prefill={intakePrefill(locale)}
+    />
   );
 }

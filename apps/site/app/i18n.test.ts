@@ -317,8 +317,8 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
   it('keeps HomeMeta, page meta, and Jsonld on the kids-year lines', () => {
     const h1 = {
       en: 'Find what’s on. Hear how it went.',
-      fr: 'Trouvez ce qu’il y a. Écoutez comment ça va.',
-      zh: '看看有什么。听听怎么样。',
+      fr: 'L’année de tes enfants, on s’en charge.',
+      zh: '孩子这一年，有人接手。',
     } as const;
     const sub = {
       en: 'What’s worth doing with the kids.',

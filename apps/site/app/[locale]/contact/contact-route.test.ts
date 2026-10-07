@@ -14,9 +14,9 @@ import ContactPage from './page.js';
  */
 
 const PRIVACY_WORDS: Record<string, string> = {
-  en: 'Privacy &amp; your data',
-  fr: 'Confidentialité et vos données',
-  zh: '隐私与你的数据',
+  en: 'Privacy and your data',
+  fr: 'Confidentialité et tes données',
+  zh: '隐私和你的数据',
 };
 
 async function render(locale: (typeof routing.locales)[number]): Promise<string> {
@@ -25,10 +25,12 @@ async function render(locale: (typeof routing.locales)[number]): Promise<string>
 
 /** The card wrapping a given eyebrow, so an assertion is about ONE card. */
 function cardWith(html: string, eyebrow: string): string {
-  const cards = html.split('<div class="glass-panel flex flex-col gap-4 p-6 sm:p-7">');
-  const found = cards.find((card) => card.includes(eyebrow));
-  if (!found) throw new Error(`no contact card carries "${eyebrow}"`);
-  return found;
+  const at = html.indexOf(eyebrow);
+  if (at < 0) throw new Error(`no contact card carries "${eyebrow}"`);
+  const start = html.lastIndexOf('<div class="hs-glass sp-card">', at);
+  const end = html.indexOf('<p class="hs-meta', at);
+  if (start < 0 || end < 0) throw new Error(`contact card markup drifted around "${eyebrow}"`);
+  return html.slice(start, end);
 }
 
 describe('/contact — each channel keeps its own inbox', () => {

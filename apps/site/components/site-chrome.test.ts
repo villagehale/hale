@@ -268,6 +268,7 @@ describe('the footer says what the site is', () => {
     expect(footer).toContain('Village Hale Technologies Inc.');
     expect(footer).not.toContain('Georgetown');
     expect(footer).not.toContain('Your data stays in Canada');
+    expect(footer).not.toContain('for-centres');
     expect(footer).toContain('href="/privacy"');
     expect(footer).toContain('href="/terms"');
     // Legal lives in the bottom bar only — a column would duplicate it.

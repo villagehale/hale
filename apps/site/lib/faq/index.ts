@@ -87,11 +87,6 @@ export const FAQ: readonly FaqItem[] = [
       'Yes. Hale is free while it’s new, and families who start now keep their founding rate. Your co-parent is always free.',
   },
   {
-    question: 'What will Plus and Max cost?',
-    answer:
-      'Plus will be $19 a month or $159 a year. Max will be $39 a month or $329 a year. Prices are in Canadian dollars, and neither plan is open yet.',
-  },
-  {
     question: 'What happens to our data?',
     answer:
       'It’s never sold or used for ads. Reply STOP and the texts stop. Our privacy policy covers what Hale keeps and why, and how to have it deleted.',
@@ -100,6 +95,11 @@ export const FAQ: readonly FaqItem[] = [
     question: 'Is Hale a person?',
     answer:
       'No, and it never pretends to be. Hale is built by Village Hale Technologies Inc., a small parent-founded company. Write to aloha@villagehale.com and a real person reads it.',
+  },
+  {
+    question: 'Is Hale official?',
+    answer:
+      'Hale is independent. It isn’t run by a centre, a town, a region or a province. Every date it sends comes with the source page, and if the two ever disagree, the source page wins.',
   },
 ] as const;
 

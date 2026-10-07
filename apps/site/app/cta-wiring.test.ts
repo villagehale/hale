@@ -148,7 +148,7 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
     // page nobody rendered can pass as "all clear".
     expect(pageFiles.length).toBeGreaterThanOrEqual(14);
     expect(rendered.length + redirected.length).toBe(pageFiles.length);
-    expect([...redirected].sort()).toEqual(['/milestones', '/milestones/[age]']);
+    expect([...redirected].sort()).toEqual(['/for-centres', '/milestones', '/milestones/[age]']);
   });
 
   it('fires cta_text_click from every composer link, on every page', () => {
@@ -226,7 +226,8 @@ describe('the desktop path is wired the same way', () => {
     // are gone by design (the chooser owns the clipboard path, placement
     // text_entry) — a chip reappearing there would be a Stanley-grammar break,
     // not a coverage win.
-    expect(copyChips.length).toBeGreaterThanOrEqual(10);
+    // /for-centres took its chip with it. The floor is the pages that remain.
+    expect(copyChips.length).toBeGreaterThanOrEqual(9);
     for (const placement of ['text_entry', 'toronto_swim_dates']) {
       expect(chipPlacements, `the walk must reach the ${placement} chip`).toContain(placement);
     }

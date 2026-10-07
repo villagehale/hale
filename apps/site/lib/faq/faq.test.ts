@@ -38,9 +38,9 @@ describe('the FAQ this build serves', () => {
       'How often will Hale text me?',
       'Will Hale tell me if a class is any good?',
       'Is it free?',
-      'What will Plus and Max cost?',
       'What happens to our data?',
       'Is Hale a person?',
+      'Is Hale official?',
     ]);
   });
 
@@ -48,7 +48,7 @@ describe('the FAQ this build serves', () => {
     const blob = FAQ.map((item) => `${item.question} ${item.answer}`).join('\n');
     expect(blob).not.toMatch(/Georgetown|GTA|EarlyON|Stouffville|outside Canada|stored in Canada/i);
     expect(blob).toContain('Village Hale Technologies Inc., a small parent-founded company');
-    expect(blob).toContain('Canadian dollars');
+    expect(blob).toContain('Is Hale official?');
   });
 
   it('says signing up for you is later, and only with a yes', () => {

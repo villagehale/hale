@@ -216,8 +216,9 @@ describe('/about — the locked page', () => {
     expect(text).not.toMatch(/equity|ownership|cap table|cap-table/i);
   });
 
-  it('keeps the parent in charge of registering', () => {
-    expect(rawText(html)).toContain('You register, and nothing happens without a yes');
+  it('opens on the approved story line', () => {
+    expect(rawText(html)).toContain('Two parents building the helper we wanted.');
+    expect(rawText(html)).not.toContain('You register, and nothing happens without a yes');
   });
 
   it('lines up two founders, Barton and Eugene, with initials and LinkedIn text links', () => {

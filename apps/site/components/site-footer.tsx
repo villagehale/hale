@@ -55,7 +55,6 @@ export function SiteFooter({
       links: [
         { label: t('linkGuides'), href: localeHref(locale, '/answers') },
         { label: t('linkAbout'), href: localeHref(locale, '/about') },
-        { label: t('linkForCentres'), href: localeHref(locale, '/for-centres') },
         { label: t('linkContact'), href: localeHref(locale, '/contact') },
       ],
     },

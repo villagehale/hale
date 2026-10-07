@@ -67,6 +67,7 @@
 .rd * { box-sizing: border-box; margin: 0; padding: 0; }
 .rd, .rd { background: var(--page); color: var(--navy); }
 .rd { font-family: var(--font-body); line-height: normal; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+.rd h1, .rd h2, .rd h3, .rd p, .rd li, .rd .hs-h2, .rd .hs-h3, .rd .sp-h1, .rd .hs-p, .rd .sp-lede { overflow-wrap: break-word; }
 .rd img, .rd svg { display: block; }
 .rd a { color: inherit; text-decoration: none; }
 
@@ -207,6 +208,7 @@
 }
 .rd .chip svg { width: 14px; height: 14px; color: var(--navy); flex: none; }
 
+.rd h1.h1-fr { font-size: 52px; letter-spacing: -0.04em; }
 .rd h1 {
   margin-top: var(--s5);
   font-family: var(--font-display);
@@ -442,6 +444,7 @@
   .rd .visual-col { order: 1; }
   .rd .loop { order: 2; }
   .rd h1 { font-size: 54px; letter-spacing: -0.035em; line-height: 0.95; margin-left: 0; margin-top: var(--s5); } /* production @390: 54 / -1.89px / 51.3px */
+  .rd h1.h1-fr { font-size: 36px; letter-spacing: -0.04em; }
   .rd .sub { font-size: 16px; line-height: 1.45; margin-top: var(--s5); }                                          /* production @390: 16 / 23.2px */
   .rd .cta-row { margin-top: var(--s6); justify-content: center; }
   .rd .visual-col { margin-top: var(--s7); width: 100%; display: flex; justify-content: center; }
