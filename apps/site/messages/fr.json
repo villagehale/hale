@@ -412,7 +412,7 @@
   },
   "Pricing": {
     "metaTitle": "Tarifs · Hale",
-    "metaDescription": "Gratuit tant que Hale est nouveau — chaque étape, chaque enfant. Plus et Max ajoutent davantage de l’année planifiée avec toi, à mesure que ces parties arrivent.",
+    "metaDescription": "Gratuit tant que Hale est nouveau. Plus, c’est plus de choses faites pour toi, toute l’année. Max, c’est le maximum de ce que Hale peut faire.",
     "eyebrow": "Tarifs",
     "headline": [
       {
@@ -437,8 +437,8 @@
     "comingSoon": "Bientôt disponible",
     "tierLines": {
       "free": "Trouvez ce qu’il y a et ouvrez l’année. Les matins que vous surveillez déjà restent gratuits.",
-      "plus": "Des rappels quand un week-end est vide ou qu’une liste d’attente s’ouvre — plus la mémoire de l’année, à mesure qu’elle arrive.",
-      "family": "Un plan pour le foyer. Le coparent reste dedans."
+      "plus": "Plus de choses faites pour toi, toute l’année.",
+      "family": "Le maximum de ce que Hale peut faire."
     },
     "tierNames": {
       "free": "Gratuit",
@@ -448,13 +448,15 @@
     "paidFeatures": {
       "plus": [
         "Tout ce qu’il y a dans Gratuit",
-        "Rappels et brouillons, à mesure qu’ils arrivent",
-        "Davantage de l’année suivie avec vous"
+        "Un petit coup de pouce quand la fin de semaine est vide",
+        "La mémoire de l’année, saison après saison",
+        "Inscriptions faites pour toi, quand tu dis oui"
       ],
       "family": [
         "Tout ce qu’il y a dans Plus",
-        "La vue du foyer sur l’année, à mesure qu’elle arrive",
-        "Conciergerie et soutien prioritaire"
+        "Les limites les plus hautes pour les recherches et la surveillance des places",
+        "Soutien prioritaire",
+        "Les inscriptions de toute une saison, d’un coup"
       ]
     },
     "freeFeatures": [
@@ -899,9 +901,8 @@
     "Driving · Tue Tom, Thu Mei": "Conduite · mar. Tom, jeu. Mei",
     "Each plan comes as a calendar invite, so it lands in Google or Apple Calendar with one tap.": "Chaque plan arrive comme une invitation de calendrier : un tap et c’est dans Google ou Apple.",
     "Either way, you text first. Hale never messages a number that hasn’t messaged it.": "Dans les deux cas, c’est toi qui textes en premier. Hale n’écrit jamais à un numéro qui ne lui a pas écrit.",
-    "Every kid, caregivers included": "Chaque enfant, et ceux qui s’en occupent",
     "Every parent should have someone who knows what’s on near them, remembers the date that fills in two minutes, and asks how it went. Across every stage of childhood, from the first months to almost grown.": "Chaque parent devrait avoir quelqu’un qui sait ce qui se passe près de chez lui, qui retient la date qui se remplit en deux minutes, et qui demande comment ça s’est passé. De tout-petit jusqu’à presque adulte.",
-    "Everything Hale does today is free, for every kid: the finding, the watching, the reminders, the group chats and the answers. Plus and Max are on the way.": "Tout ce que Hale fait aujourd’hui est gratuit, pour chaque enfant : trouver, surveiller, rappeler, les groupes texto et les réponses. Plus et Max s’en viennent.",
+    "Everything Hale does today is free: the finding, the watching, the reminders, the group chats and the answers. Plus and Max are on the way.": "Tout ce que Hale fait aujourd’hui est gratuit : trouver, surveiller, rappeler, les groupes texto et les réponses. Plus et Max s’en viennent.",
     "Everything Hale does today is free: the finding, the watching, the reminders and the group chats. Plus and Max are on the way.": "Tout ce que Hale fait aujourd’hui est gratuit : trouver, surveiller, rappeler et les groupes texto. Plus et Max s’en viennent.",
     "Everything in Free": "Tout ce qu’il y a dans Gratuit",
     "Everything in Plus": "Tout ce qu’il y a dans Plus",
@@ -913,7 +914,6 @@
     "Finds activities": "Trouve quoi faire",
     "Finds what’s on near you": "Trouve ce qui se passe près de chez toi",
     "For school-age children, guidance shifts from fixed hour-caps to a family plan that protects sleep, activity, and family time. What that looks like in practice.": "Pour les enfants d’âge scolaire, on passe des plafonds d’heures à un plan de famille qui protège le sommeil, le jeu et le temps ensemble. À quoi ça ressemble vraiment.",
-    "For the whole crew, every kid, every helper.": "Pour toute la gang, chaque enfant, chaque personne qui aide.",
     "Founding families join free.": "Les familles fondatrices commencent gratuitement.",
     "Founding families keep their rate.": "Les familles fondatrices gardent leur tarif.",
     "Four small jobs, all year. Each one shows up as a text.": "Quatre petites jobs, toute l’année. Chacune arrive par texto.",
@@ -991,7 +991,7 @@
     "Not in a group?": "Pas dans un groupe?",
     "Not yet. Hale finds the class, watches for spots and texts you the link before sign-ups open. You register yourself. Signing up for you is coming later, and only when you say yes.": "Pas encore. Hale trouve le cours, surveille les places et t’envoie le lien avant l’ouverture des inscriptions. C’est toi qui t’inscris. L’inscription à ta place viendra plus tard, et seulement si tu dis oui.",
     "Not yet. Today Hale asks how it went, and uses your answer to pick what to send you next.": "Pas encore. Aujourd’hui Hale demande comment ça s’est passé, et s’en sert pour choisir ce qu’il t’envoie ensuite.",
-    "Nudges when a weekend’s empty or a waitlist opens, plus year memory as it ships.": "Un rappel quand la fin de semaine est vide ou qu’une liste d’attente bouge, plus la mémoire de l’année à mesure que ça arrive.",
+    "More done for you, all year.": "Plus de choses faites pour toi, toute l’année.",
     "On a laptop?": "Sur un ordinateur?",
     "On your own, or in a group.": "Tout seul, ou dans un groupe.",
     "One quick question after the first class. Your answer shapes what Hale sends you next.": "Une petite question après le premier cours. Ta réponse change ce que Hale t’envoie ensuite.",
@@ -1006,7 +1006,7 @@
     "Plans on your calendar": "Les plans dans ton calendrier",
     "Playdate this weekend? Ava’s free Sat morning": "On se voit pour jouer cette fin de semaine? Ava est libre samedi matin",
     "Playdate: story time + park": "Rendez-vous de jeu : conte + parc",
-    "Plus adds nudges when a weekend’s empty or a waitlist opens, and year memory. Max is everything in Plus, for every kid and everyone who helps, with priority support.": "Plus ajoute un rappel quand la fin de semaine est vide ou qu’une liste d’attente bouge, et la mémoire de l’année. Max, c’est tout Plus, pour chaque enfant et chaque personne qui aide, avec un soutien prioritaire.",
+    "Plus is more done for you, all year: a nudge when a weekend’s empty, year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and sign-ups for a whole season in one go.": "Plus, c’est plus de choses faites pour toi, toute l’année : un rappel quand la fin de semaine est vide, la mémoire de l’année, et les inscriptions faites pour toi quand tu dis oui. Max, c’est le maximum de ce que Hale peut faire : tout Plus, les limites les plus hautes pour les recherches et la surveillance des places, le soutien prioritaire, et les inscriptions de toute une saison d’un coup.",
     "Potty training goes best when it follows a child’s readiness signs rather than a fixed age. The physical and behavioural cues, and a low-pressure approach.": "La propreté marche mieux quand on suit les signes que l’enfant est prêt, pas un âge fixe. Les signes physiques et de comportement, et une approche sans pression.",
     "Practical guides to the questions parents search, grounded in trusted parenting-health frameworks and honest about their limits.": "Des guides concrets pour les questions que les parents cherchent, appuyés sur des cadres reconnus en santé parentale, et honnêtes sur leurs limites.",
     "Pricing": "Tarifs",
@@ -1049,7 +1049,7 @@
     "Short, fragmented newborn sleep is developmentally normal, not a problem to fix. What to expect in the first months and what actually helps.": "Le sommeil du nouveau-né, court et en morceaux, est normal pour son âge, pas un problème à régler. À quoi s’attendre les premiers mois, et ce qui aide vraiment.",
     "Sibling conflict is normal and even useful for learning to negotiate. How to step back from refereeing and coach conflict-resolution skills, grounded in Markham and Siegel.": "Les chicanes entre frères et sœurs sont normales, et même utiles pour apprendre à négocier. Comment arrêter d’arbitrer et les aider à se débrouiller, d’après Markham et Siegel.",
     "Sign-ups done for you, when you say yes": "Inscriptions faites pour toi, quand tu dis oui",
-    "Sign-ups for every kid in one go": "Inscriptions de tous les enfants d’un coup",
+    "Sign-ups for a whole season in one go": "Les inscriptions de toute une saison, d’un coup",
     "Six kinds of things worth doing.": "Six sortes de choses qui valent le coup.",
     "Soccer": "Soccer",
     "Soccer carpool 🚗": "Covoiturage de soccer 🚗",
@@ -1087,6 +1087,8 @@
     "Text the number. Hale asks where you are and how old the kids are, then shows you what’s on this week. Anything else it asks for later, only when it needs it. Hale never texts a number that hasn’t texted it first.": "Texte le numéro. Hale demande où tu es et l’âge des enfants, puis te montre ce qu’il y a cette semaine. Le reste, il le demande plus tard, seulement quand il en a besoin. Hale ne texte jamais un numéro qui ne lui a pas écrit en premier.",
     "Thanks, that helps. I’ll use it when I pick what to send you next.": "Merci, ça aide. Je m’en sers pour choisir ce que je t’envoie ensuite.",
     "The first 100 families get a permanent founding badge, and first access when Plus and Max open.": "Les 100 premières familles reçoivent un badge fondateur permanent, et passent en premier quand Plus et Max ouvrent.",
+    "The highest limits on searches and spot watches": "Les limites les plus hautes pour les recherches et la surveillance des places",
+    "The most Hale can do.": "Le maximum de ce que Hale peut faire.",
     "The logistics": "La logistique",
     "The people": "Les gens",
     "The widely recommended safe-sleep basics for babies — back to sleep, a bare crib, and room-sharing — with the Canadian guidance behind them.": "Les bases du sommeil sécuritaire, largement recommandées — sur le dos, un lit dégagé, et partager la chambre — avec les recommandations canadiennes derrière.",

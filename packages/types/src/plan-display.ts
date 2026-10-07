@@ -49,7 +49,7 @@ export const PLAN_DISPLAY = {
   },
   plus: {
     name: 'Plus',
-    tagline: 'Nudges when a weekend’s empty or a waitlist opens, plus year memory as it ships.',
+    tagline: 'More done for you, all year.',
     monthlyPriceCad: 19,
     annualPriceCad: 159,
     features: [
@@ -61,14 +61,14 @@ export const PLAN_DISPLAY = {
   },
   family: {
     name: 'Max',
-    tagline: 'Everything in Plus, for every kid and everyone who helps.',
+    tagline: 'The most Hale can do.',
     monthlyPriceCad: 39,
     annualPriceCad: 329,
     features: [
       'Everything in Plus',
-      'Every kid, caregivers included',
+      'The highest limits on searches and spot watches',
       'Priority support',
-      'Sign-ups for every kid in one go',
+      'Sign-ups for a whole season in one go',
     ],
   },
 } as const satisfies Record<PlanTier, PlanDisplay>;

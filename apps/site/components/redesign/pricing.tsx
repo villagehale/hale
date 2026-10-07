@@ -33,7 +33,7 @@ export function RedesignPricing({
    <div className="sp-copy">
     <p className="hs-eyebrow">{t("Pricing")}</p>
     <h1 className="sp-h1">{t("Free while Hale is new.")}</h1>
-    <p className="sp-lede">{t("Everything Hale does today is free, for every kid: the finding, the watching, the reminders, the group chats and the answers. Plus and Max are on the way.")}</p>
+    <p className="sp-lede">{t("Everything Hale does today is free: the finding, the watching, the reminders, the group chats and the answers. Plus and Max are on the way.")}</p>
     
    </div>
    
@@ -56,7 +56,7 @@ export function RedesignPricing({
     <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">02</span></div>
     <h3>$19 CAD/mo</h3>
     <p className="hs-tier-meta">{t("or $159 CAD/yr, about three months free")}</p>
-    <p className="hs-tier-body">{t("Nudges when a weekend’s empty or a waitlist opens, plus year memory as it ships.")}</p>
+    <p className="hs-tier-body">{t("More done for you, all year.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Free")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("A nudge when a weekend’s empty")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Year memory, season to season")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Sign-ups done for you, when you say yes")}</span></li></ul>
     <div className="hs-tier-cta"><button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button></div>
    </li>
@@ -64,8 +64,8 @@ export function RedesignPricing({
     <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">03</span></div>
     <h3>$39 CAD/mo</h3>
     <p className="hs-tier-meta">{t("or $329 CAD/yr, about three months free")}</p>
-    <p className="hs-tier-body">{t("For the whole crew, every kid, every helper.")}</p>
-    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Every kid, caregivers included")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Sign-ups for every kid in one go")}</span></li></ul>
+    <p className="hs-tier-body">{t("The most Hale can do.")}</p>
+    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches and spot watches")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Sign-ups for a whole season in one go")}</span></li></ul>
     <div className="hs-tier-cta"><button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button></div>
    </li>
   </ol>
@@ -75,7 +75,7 @@ export function RedesignPricing({
 </section><section className="hs hs-wash-d">
  <div className="hs-wrap hs-grid">
   <div className="hs-faq-l"><p className="hs-eyebrow">{t("About pricing")}</p><h2 className="hs-h2">{t("Fair questions.")}</h2></div>
-  <div className="hs-faq-r"><div className="hs-qa"><h3 className="hs-h3">{t("When do Plus and Max open?")}</h3><p className="hs-p">{t("When the parts they add are ready. Until then, everything Hale does is free.")}</p></div><div className="hs-qa"><h3 className="hs-h3">{t("What’s the difference between Plus and Max?")}</h3><p className="hs-p">{t("Plus adds nudges when a weekend’s empty or a waitlist opens, and year memory. Max is everything in Plus, for every kid and everyone who helps, with priority support.")}</p></div></div>
+  <div className="hs-faq-r"><div className="hs-qa"><h3 className="hs-h3">{t("When do Plus and Max open?")}</h3><p className="hs-p">{t("When the parts they add are ready. Until then, everything Hale does is free.")}</p></div><div className="hs-qa"><h3 className="hs-h3">{t("What’s the difference between Plus and Max?")}</h3><p className="hs-p">{t("Plus is more done for you, all year: a nudge when a weekend’s empty, year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and sign-ups for a whole season in one go.")}</p></div></div>
  </div>
 </section><section className="hs hs-close-sec" id="start">
  <div className="hs-wrap">

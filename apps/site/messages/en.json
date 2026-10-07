@@ -412,7 +412,7 @@
   },
   "Pricing": {
     "metaTitle": "Pricing · Hale",
-    "metaDescription": "Free while Hale is new — every stage, every child. Plus and Max add more of the year planned with you, as those parts ship. Prices are in Canadian dollars.",
+    "metaDescription": "Free while Hale is new. Plus is more done for you, all year. Max is the most Hale can do. Prices are in Canadian dollars.",
     "eyebrow": "Pricing",
     "headline": [
       {
@@ -437,8 +437,8 @@
     "comingSoon": "Coming soon",
     "tierLines": {
       "free": "Unlimited chat, on your own or in your group chats. Hale finds what’s on, watches for spots and reminds you before sign-ups.",
-      "plus": "Nudges when a weekend’s empty or a waitlist opens, plus year memory as it ships.",
-      "family": "Everything in Plus, for every kid and everyone who helps."
+      "plus": "More done for you, all year.",
+      "family": "The most Hale can do."
     },
     "tierNames": {
       "free": "Free",
@@ -454,9 +454,9 @@
       ],
       "family": [
         "Everything in Plus",
-        "Every kid, caregivers included",
+        "The highest limits on searches and spot watches",
         "Priority support",
-        "Sign-ups for every kid in one go"
+        "Sign-ups for a whole season in one go"
       ]
     },
     "freeFeatures": [

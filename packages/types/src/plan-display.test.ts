@@ -74,6 +74,30 @@ describe('PLAN_DISPLAY (the displayed plan source of truth)', () => {
     expect(features).not.toMatch(/companion/i);
   });
 
+  it('sells Plus and Max as features and usage, not seats', () => {
+    expect(PLAN_DISPLAY.plus.tagline).toBe('More done for you, all year.');
+    expect(PLAN_DISPLAY.plus.features).toEqual([
+      'Everything in Free',
+      'A nudge when a weekend’s empty',
+      'Year memory, season to season',
+      'Sign-ups done for you, when you say yes',
+    ]);
+    expect(PLAN_DISPLAY.family.tagline).toBe('The most Hale can do.');
+    expect(PLAN_DISPLAY.family.features).toEqual([
+      'Everything in Plus',
+      'The highest limits on searches and spot watches',
+      'Priority support',
+      'Sign-ups for a whole season in one go',
+    ]);
+    for (const tier of ['plus', 'family'] as const) {
+      const blob = `${PLAN_DISPLAY[tier].tagline} ${PLAN_DISPLAY[tier].features.join(' ')}`.toLowerCase();
+      expect(blob).not.toContain('every kid');
+      expect(blob).not.toContain('caregiver');
+      expect(blob).not.toContain('everyone who helps');
+      expect(blob).not.toContain('whole crew');
+    }
+  });
+
   it('never sells multi-child or co-parent as paid features — both are free', () => {
     // Multi-child and co-parent are NOT in PLAN_ENTITLEMENTS: the free tier already
     // delivers both. The paid tiers gate autonomy + execution integrations only, so

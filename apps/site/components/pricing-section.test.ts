@@ -49,14 +49,14 @@ describe('PricingSection (landing pricing)', () => {
     expect(french).not.toContain('Famille');
     expect(french).toContain('Tout ce qu’il y a dans Gratuit');
     expect(french).toContain('Tout ce qu’il y a dans Plus');
-    expect(french).toContain('Rappels et brouillons, à mesure qu’ils arrivent');
-    expect(french).toContain('La vue du foyer sur l’année, à mesure qu’elle arrive');
-    expect(french).toContain('Conciergerie et soutien prioritaire');
-    // VIL-367 FR twins, Sloane + Miles 2026-09-23. Exact bytes.
+    expect(french).toContain('Un petit coup de pouce quand la fin de semaine est vide');
+    expect(french).toContain('Les limites les plus hautes pour les recherches et la surveillance des places');
+    expect(french).toContain('Soutien prioritaire');
+    expect(french).toContain('Les inscriptions de toute une saison, d’un coup');
     const lockedFr = {
       free: 'Trouvez ce qu’il y a et ouvrez l’année. Les matins que vous surveillez déjà restent gratuits.',
-      plus: 'Des rappels quand un week-end est vide ou qu’une liste d’attente s’ouvre — plus la mémoire de l’année, à mesure qu’elle arrive.',
-      family: 'Un plan pour le foyer. Le coparent reste dedans.',
+      plus: 'Plus de choses faites pour toi, toute l’année.',
+      family: 'Le maximum de ce que Hale peut faire.',
     } as const;
     expect(fr.PricingSection.tierLines).toEqual(lockedFr);
     for (const line of Object.values(lockedFr)) {
@@ -92,10 +92,12 @@ describe('PricingSection (landing pricing)', () => {
     // family tier displays as Max. Free is 免费, not the English Free.
     const chinese = renderToStaticMarkup(createElement(PricingSection, { locale: 'zh' }));
     expect(chinese).toContain('>免费<');
-    expect(chinese).toContain('免费档的全部');
-    expect(chinese).toContain('提醒和草稿，随这些部分陆续上线');
-    expect(chinese).toContain('Plus 的全部');
-    expect(chinese).toContain('专属礼宾和优先支持');
+    expect(chinese).toContain('免费档里的全部');
+    expect(chinese).toContain('周末空着的时候提你一句');
+    expect(chinese).toContain('Plus 里的全部');
+    expect(chinese).toContain('搜索和盯名额，额度最高');
+    expect(chinese).toContain('优先支持');
+    expect(chinese).toContain('一整季的报名，一次办完');
     expect(chinese).toContain('给 Hale 发短信');
     expect(chinese).not.toContain('Everything in Free');
     expect(chinese).not.toContain('Rec dates watched');
@@ -143,8 +145,8 @@ describe('PricingSection (landing pricing)', () => {
     // VIL-367, Sloane + Miles 2026-09-23. Exact bytes — the cards must not paraphrase.
     const locked = {
       free: 'Unlimited chat, on your own or in your group chats. Hale finds what’s on, watches for spots and reminds you before sign-ups.',
-      plus: 'Nudges when a weekend’s empty or a waitlist opens, plus year memory as it ships.',
-      family: 'Everything in Plus, for every kid and everyone who helps.',
+      plus: 'More done for you, all year.',
+      family: 'The most Hale can do.',
     } as const;
     expect(en.PricingSection.tierLines).toEqual(locked);
     for (const line of Object.values(locked)) {

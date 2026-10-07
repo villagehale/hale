@@ -402,7 +402,7 @@
   },
   "Pricing": {
     "metaTitle": "价格 · Hale",
-    "metaDescription": "趁 Hale 还新，全程免费——每个阶段、每个孩子。Plus 和 Max 会在这些部分上线后，把一年里更多的事和你一起安排好。",
+    "metaDescription": "趁 Hale 还新，全程免费。Plus 是一整年更多事由它来做。Max 是 Hale 能做的最多。",
     "eyebrow": "价格",
     "headline": [
       {
@@ -427,8 +427,8 @@
     "comingSoon": "即将推出",
     "tierLines": {
       "free": "给 Hale 发短信，报名日期有人盯着，有问必答，享受创始价。",
-      "plus": "为那些你想把这一年看得更全的时候：提醒和草稿，覆盖每个孩子，随这些部分陆续上线。",
-      "family": "为整个家庭：每个孩子同一套盯着，外加随上线而来的专属礼宾和优先支持。"
+      "plus": "一整年，更多事由它来做。",
+      "family": "Hale 能做的，到这里最多。"
     },
     "tierNames": {
       "free": "免费",
@@ -436,8 +436,8 @@
       "family": "Max"
     },
     "paidFeatures": {
-      "plus": ["免费档的全部", "提醒和草稿，随这些部分陆续上线", "更多的一年，有人陪你盯着"],
-      "family": ["Plus 的全部", "全家这一年的视图，随上线而来", "专属礼宾和优先支持"]
+      "plus": ["免费档里的全部", "周末空着的时候提你一句", "一年的记忆，一季一季", "你点头后代你报名"],
+      "family": ["Plus 里的全部", "搜索和盯名额，额度最高", "优先支持", "一整季的报名，一次办完"]
     },
     "freeFeatures": ["给 Hale 发短信", "报名日期有人盯着", "有问必答", "创始价"]
   },
@@ -876,9 +876,8 @@
     "Driving · Tue Tom, Thu Mei": "接送 · 周二 Tom，周四 Mei",
     "Each plan comes as a calendar invite, so it lands in Google or Apple Calendar with one tap.": "每份安排都是一条日历邀请，点一下就进 Google 或 Apple 日历。",
     "Either way, you text first. Hale never messages a number that hasn’t messaged it.": "两种开始都一样：你先发。没给你发过短信的号码，Hale 不会先写。",
-    "Every kid, caregivers included": "每个孩子，照顾的人也算上",
     "Every parent should have someone who knows what’s on near them, remembers the date that fills in two minutes, and asks how it went. Across every stage of childhood, from the first months to almost grown.": "每个家长都该有个人，知道附近有什么、记得那个两分钟就满的日期，还会回来问怎么样。从刚出生，到快成年。",
-    "Everything Hale does today is free, for every kid: the finding, the watching, the reminders, the group chats and the answers. Plus and Max are on the way.": "Hale 现在做的都免费，每个孩子都算：找活动、盯名额、提醒、群聊，还有你问的那些。Plus 和 Max 还在路上。",
+    "Everything Hale does today is free: the finding, the watching, the reminders, the group chats and the answers. Plus and Max are on the way.": "Hale 现在做的都免费：找活动、盯名额、提醒、群聊，还有你问的那些。Plus 和 Max 还在路上。",
     "Everything Hale does today is free: the finding, the watching, the reminders and the group chats. Plus and Max are on the way.": "Hale 现在做的都免费：找活动、盯名额、提醒，还有群聊。Plus 和 Max 还在路上。",
     "Everything in Free": "免费档里的全部",
     "Everything in Plus": "Plus 里的全部",
@@ -890,7 +889,6 @@
     "Finds activities": "找活动",
     "Finds what’s on near you": "找你家附近有什么",
     "For school-age children, guidance shifts from fixed hour-caps to a family plan that protects sleep, activity, and family time. What that looks like in practice.": "到了学龄，建议不再卡死每天几小时，而是家里定一个计划，保住睡眠、活动和在一起的时间。实际怎么做。",
-    "For the whole crew, every kid, every helper.": "给整伙人，每个孩子，每个帮忙的人。",
     "Founding families join free.": "创始家庭免费加入。",
     "Founding families keep their rate.": "创始家庭一直按这个价。",
     "Four small jobs, all year. Each one shows up as a text.": "一年里四件小事。每件都是一条短信。",
@@ -968,7 +966,7 @@
     "Not in a group?": "不在群里？",
     "Not yet. Hale finds the class, watches for spots and texts you the link before sign-ups open. You register yourself. Signing up for you is coming later, and only when you say yes.": "还不会。Hale 帮你找到课、盯着名额，报名开始前把链接发给你。你自己报名。以后会推出代报名，前提是你先点头。",
     "Not yet. Today Hale asks how it went, and uses your answer to pick what to send you next.": "还不会。现在 Hale 会问上得怎么样，再用你的回答决定下次发什么。",
-    "Nudges when a weekend’s empty or a waitlist opens, plus year memory as it ships.": "周末空着，或者等候名单有动静，它提你一句；一年的记忆也会一点点加上。",
+    "More done for you, all year.": "一整年，更多事由它来做。",
     "On a laptop?": "在用电脑？",
     "On your own, or in a group.": "你自己，或者在群里。",
     "One quick question after the first class. Your answer shapes what Hale sends you next.": "上完第一节，问你一句。你怎么答，Hale 下次就怎么发。",
@@ -983,7 +981,7 @@
     "Plans on your calendar": "安排进你的日历",
     "Playdate this weekend? Ava’s free Sat morning": "这周末约着玩？Ava 周六上午有空",
     "Playdate: story time + park": "约玩：故事会 + 公园",
-    "Plus adds nudges when a weekend’s empty or a waitlist opens, and year memory. Max is everything in Plus, for every kid and everyone who helps, with priority support.": "Plus 多了周末空着或等候名单有动静时的提醒，还有一年的记忆。Max 是 Plus 的全部，每个孩子、每个帮忙的人都算，还有优先支持。",
+    "Plus is more done for you, all year: a nudge when a weekend’s empty, year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and sign-ups for a whole season in one go.": "Plus 是一整年更多事由它来做：周末空着时提你一句，记住这一年，你点头后代你报名。Max 是 Hale 能做的最多：Plus 里的全部，搜索和盯名额的额度最高，优先支持，一整季的报名一次办完。",
     "Potty training goes best when it follows a child’s readiness signs rather than a fixed age. The physical and behavioural cues, and a low-pressure approach.": "如厕训练跟着孩子准备好的信号走，比卡一个年龄更顺。身体和行为上的迹象，以及不施压的做法。",
     "Practical guides to the questions parents search, grounded in trusted parenting-health frameworks and honest about their limits.": "家长常搜的那些问题，写成好用的指南。依据可信的育儿健康框架，也说清楚它做不到什么。",
     "Pricing": "价格",
@@ -1026,7 +1024,7 @@
     "Short, fragmented newborn sleep is developmentally normal, not a problem to fix. What to expect in the first months and what actually helps.": "新生儿睡得碎、睡得短，是发育上的正常，不是要修的问题。头几个月会怎样，以及什么真的有用。",
     "Sibling conflict is normal and even useful for learning to negotiate. How to step back from refereeing and coach conflict-resolution skills, grounded in Markham and Siegel.": "兄弟姐妹吵架很正常，甚至是在学怎么商量。怎么从当裁判退一步，改成教他们自己解决。依据 Markham 和 Siegel。",
     "Sign-ups done for you, when you say yes": "你点头后代你报名",
-    "Sign-ups for every kid in one go": "几个孩子一次报完",
+    "Sign-ups for a whole season in one go": "一整季的报名，一次办完",
     "Six kinds of things worth doing.": "六类值得去做的事。",
     "Soccer": "足球",
     "Soccer carpool 🚗": "足球拼车 🚗",
@@ -1064,6 +1062,8 @@
     "Text the number. Hale asks where you are and how old the kids are, then shows you what’s on this week. Anything else it asks for later, only when it needs it. Hale never texts a number that hasn’t texted it first.": "给这个号码发短信。Hale 问你在哪、孩子几岁，然后给你看这周有什么。别的，以后真需要了才问。没先写过它的号码，它不会先发。",
     "Thanks, that helps. I’ll use it when I pick what to send you next.": "谢谢，有用。我下次挑发给你的内容时会用上。",
     "The first 100 families get a permanent founding badge, and first access when Plus and Max open.": "前 100 个家庭有一枚一直留着的创始徽章，Plus 和 Max 开放时也最先用上。",
+    "The highest limits on searches and spot watches": "搜索和盯名额，额度最高",
+    "The most Hale can do.": "Hale 能做的，到这里最多。",
     "The logistics": "接送这些事",
     "The people": "人",
     "The widely recommended safe-sleep basics for babies — back to sleep, a bare crib, and room-sharing — with the Canadian guidance behind them.": "被广泛推荐的婴儿安全睡眠要点——仰睡、小床里不放东西、和父母同屋不同床——背后是加拿大的建议。",
