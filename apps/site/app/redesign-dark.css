@@ -168,4 +168,10 @@
 :root:not([data-theme="light"]):not(.light) .rd .t-max h3, :root:not([data-theme="light"]):not(.light) .rd .t-max .hs-tier-body { color: #f7f4ec; }
 :root:not([data-theme="light"]):not(.light) .rd .t-max .hs-btn-soon { background: rgb(201 210 230 / 0.08); box-shadow: inset 0 0 0 1px rgb(201 210 230 / 0.28); color: rgb(247 244 236 / 0.88); }
 :root:not([data-theme="light"]):not(.light) .rd a:focus-visible, :root:not([data-theme="light"]):not(.light) .rd button:focus-visible, :root:not([data-theme="light"]):not(.light) .rd .btn:focus-visible, :root:not([data-theme="light"]):not(.light) .rd .hs-btn-primary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+:root:not([data-theme="light"]):not(.light) .rd .gallery-phone .hs-chat { border: 0; box-shadow: none; background: var(--ios-bg); }
+:root:not([data-theme="light"]):not(.light) .rd .gallery-phone .hs-chat-head { background: var(--ios-bg); border: 0; }
 }
+:root[data-theme="dark"] .rd .gallery-phone .hs-chat,
+:root.dark .rd .gallery-phone .hs-chat { border: 0; box-shadow: none; background: var(--ios-bg); }
+:root[data-theme="dark"] .rd .gallery-phone .hs-chat-head,
+:root.dark .rd .gallery-phone .hs-chat-head { background: var(--ios-bg); border: 0; }

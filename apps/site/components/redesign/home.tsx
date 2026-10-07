@@ -3,6 +3,9 @@ import { Phrase, tx } from './tx';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { logoSrc, shoreSrc } from './assets';
+import { ChatGallery } from './chat-gallery';
+import { groupChatSlides } from './group-chats';
+import { HomeMotion } from './home-motion';
 import { TextDoor } from './text-door';
 import { localeHref } from '~/i18n/navigation';
 import { LandingScrollAnalytics } from '~/components/landing-scroll-analytics';
@@ -73,7 +76,7 @@ export function RedesignHome({
     </section>
 
     <div className="visual-col">
-      <div className="visual" aria-label={t("Example: a family calendar filled in by Hale, and the text thread that added it")}>
+      <div className="visual" data-motion-scene="hero" aria-label={t("Example: a family calendar filled in by Hale, and the text thread that added it")}>
 
         <article className="cal">
           <div className="cal-head">
@@ -118,17 +121,17 @@ export function RedesignHome({
                 <div className="m">Leo <i /> <span className="mono">{t("5:30 PM")}</span></div>
               </div>
             </div>
-            <div className="ev new">
+            <div className="ev new" data-motion-step="2.5">
               <div className="d"><b>{t("SAT")}</b><span>17</span></div>
               <div>
                 <div className="t">{t("Playdate: story time + park")}</div>
                 <div className="m">Maya, Ava, Theo <i /> <span className="mono">{t("10:00 AM")}</span></div>
-                <div className="m who-row"><span className="mini-av">J</span>{t("Jen driving")} <span className="tag">{t("Just added")}</span></div>
+                <div className="m who-row" data-motion-step="3.2"><span className="mini-av">J</span>{t("Jen driving")} <span className="tag">{t("Just added")}</span></div>
               </div>
             </div>
           </div>
 
-          <div className="cal-foot">
+          <div className="cal-foot" data-motion-step="4">
             <div className="avs"><span className="av a">A</span><span className="av b">S</span></div>
             {t("Shared with your co-parent")}
           </div>
@@ -158,10 +161,10 @@ export function RedesignHome({
               <div className="who">Hale</div>
               <div className="row"><img className="pic" src={logoSrc} alt="" /><div className="msg in">{t("Story time at the library at 10, then the playground next door?")}</div></div>
               <div className="row"><img className="pic show" src={logoSrc} alt="" /><div className="msg in tail">{t("Want me to add it for everyone?")}</div></div>
-              <div className="who">Jen</div>
-              <div className="row"><span className="pic show mono-av">J</span><div className="msg in tail">{t("We’re in, I can drive")}</div></div>
-              <div className="who">Hale</div>
-              <div className="row"><img className="pic show" src={logoSrc} alt="" /><div className="msg in tail">{t("Done, it’s on everyone’s calendar. Jen’s driving.")}</div></div>
+              <div className="who" data-motion-step="0.6">Jen</div>
+              <div className="row" data-motion-step="0.6"><span className="pic show mono-av">J</span><div className="msg in tail">{t("We’re in, I can drive")}</div></div>
+              <div className="who" data-motion-step="1.6">Hale</div>
+              <div className="row" data-motion-step="1.6"><img className="pic show" src={logoSrc} alt="" /><div className="msg in tail">{t("Done, it’s on everyone’s calendar. Jen’s driving.")}</div></div>
             </div>
             <div className="compose">
               <span className="plus"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M6 1v10M1 6h10" /></svg></span>
@@ -172,6 +175,7 @@ export function RedesignHome({
         </div>
 
       </div>
+      <HomeMotion label={t("Replay example")} description={t("Replay the family plan example")} />
     </div>
   </div>
 </main>
@@ -184,42 +188,21 @@ export function RedesignHome({
    <h2 className="hs-h2">{t("Hale joins the chats you already have.")}</h2>
    <p className="hs-lede">{t("Ask in the chat. Hale answers in a line or two, keeps track of what you decided, then goes quiet.")}</p>
   </div>
-  <div className="hs-chats">
-   <div><div className="hs-chat-cap"><span className="n">01</span><h3 className="hs-h3">{t("A joint birthday party")}</h3></div><article className="hs-card hs-chat">
-  <div className="hs-chat-head"><div className="hs-avs"><span className="hs-av">D</span><img className="hs-av hale" src={logoSrc} alt="" /><span className="hs-av">M</span></div><div><div className="hs-chat-name">{t("Room 4 parents 🍎")}</div><div className="hs-chat-members">{t("Dana, Marco + 7 more")}</div></div></div>
-  <div className="hs-thread">
-<div className="hs-who">Dana</div>
-<div className="hs-row"><span className="hs-pic mono show">D</span><div className="hs-msg in">{t("Joint party for Leo and Aria? Somewhere indoor 🎈")}</div></div>
-<div className="hs-who">Hale</div>
-<div className="hs-row"><img className="hs-pic show" src={logoSrc} alt="" /><div className="hs-msg in">{t("Two nearby take Saturday groups of 8: the climbing gym (ages 3–7) or the clay café (ages 4+). Want me to track RSVPs?")}</div></div>
-<div className="hs-who">Dana</div>
-<div className="hs-row"><span className="hs-pic mono show">D</span><div className="hs-msg in">{t("Climbing gym! Booked Sat the 14th at 2")}</div></div>
-<span className="hs-did"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>{t("6 yes, 2 to go · on everyone’s calendar")}</span>
-  </div>
-</article></div>
-   <div><div className="hs-chat-cap"><span className="n">02</span><h3 className="hs-h3">{t("Who’s driving this week")}</h3></div><article className="hs-card hs-chat">
-  <div className="hs-chat-head"><div className="hs-avs"><span className="hs-av">M</span><img className="hs-av hale" src={logoSrc} alt="" /><span className="hs-av">T</span></div><div><div className="hs-chat-name">{t("Soccer carpool 🚗")}</div><div className="hs-chat-members">{t("Mei, Tom, Hale")}</div></div></div>
-  <div className="hs-thread">
-<div className="hs-msg out">{t("Can’t do Tuesday pickup this week 😩")}</div>
-<div className="hs-who">Tom</div>
-<div className="hs-row"><span className="hs-pic mono show">T</span><div className="hs-msg in">{t("I’ll grab both Tue. You do Thu?")}</div></div>
-<div className="hs-who">Hale</div>
-<div className="hs-row"><img className="hs-pic show" src={logoSrc} alt="" /><div className="hs-msg in">{t("Got it. Tom on Tuesday, Mei on Thursday, 5:30 after soccer. I’ll remind whoever’s driving the night before.")}</div></div>
-<span className="hs-did"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>{t("Driving · Tue Tom, Thu Mei")}</span>
-  </div>
-</article></div>
-   <div><div className="hs-chat-cap"><span className="n">03</span><h3 className="hs-h3">{t("Same swim class, three families")}</h3></div><article className="hs-card hs-chat">
-  <div className="hs-chat-head"><div className="hs-avs"><span className="hs-av">A</span><img className="hs-av hale" src={logoSrc} alt="" /><span className="hs-av">J</span></div><div><div className="hs-chat-name">{t("Swim this winter? 🏊")}</div><div className="hs-chat-members">{t("Aisha, Jordan, Kate, Hale")}</div></div></div>
-  <div className="hs-thread">
-<div className="hs-who">Aisha</div>
-<div className="hs-row"><span className="hs-pic mono show">A</span><div className="hs-msg in">{t("Same swim class for all three kids this winter?")}</div></div>
-<div className="hs-who">Hale</div>
-<div className="hs-row"><img className="hs-pic show" src={logoSrc} alt="" /><div className="hs-msg in">{t("Saturdays 9:30 at the community pool has room for all three. Sign-ups open Tuesday at 7. I’ll send you each the link the night before.")}</div></div>
-<span className="hs-did"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>{t("Reminder set · Mon 7 PM")}</span>
-<div className="hs-msg out">{t("Got in! 🙌")}</div>
-  </div>
-</article></div>
-  </div>
+  <div className="hs-chats hs-chats-static">{groupChatSlides(locale, false)}</div>
+  <ChatGallery
+    labels={{
+      carousel: t("Family group chat examples"),
+      instructions: t("Swipe or use arrow keys to change the group chat example"),
+      previous: t("Previous group chat"),
+      next: t("Next group chat"),
+      slide: (index, count) =>
+        t("Example {index} of {count}")
+          .replace("{index}", String(index + 1))
+          .replace("{count}", String(count)),
+    }}
+  >
+    {groupChatSlides(locale, true)}
+  </ChatGallery>
   <div className="hs-solo">
    <div className="hs-solo-l"><span className="hs-solo-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true"><path d="M10 3.5c3.9 0 7 2.6 7 5.8s-3.1 5.8-7 5.8c-.8 0-1.5-.1-2.2-.3L4.3 16.3l1-2.9C4 12.4 3 10.9 3 9.3 3 6.1 6.1 3.5 10 3.5z" /></svg></span><p className="hs-p"><b>{t("Not in a group?")}</b> {t("Text Hale on your own. Same finds, same reminders, just the two of you.")}</p></div>
    <TextDoor className="btn btn-hero" placement="home_solo" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true"><path d="M8 2.5c3.3 0 6 2.2 6 4.9s-2.7 4.9-6 4.9c-.7 0-1.3-.1-1.9-.2L3 13.5l.9-2.5C2.7 10.1 2 8.8 2 7.4 2 4.7 4.7 2.5 8 2.5z" /></svg>{t("Text Hale")}</TextDoor>

@@ -1375,3 +1375,330 @@
   /* the jump list is hidden on phones, so its label goes too */
   .rd .hs-faq-l:has(> .sp-toc) { display: none; }
 }
+
+/* Eugene's gallery, handset, and example motion (feat/vil-428, 3be8e9b4).
+   Desktop keeps the three-across still. Phones under 768px use the swipe gallery.
+   The stage clips overflow, so the replay control sits in reserved space. */
+
+.rd {
+  --oct-motion-enter-ms: 400;
+  --oct-motion-step-ms: 1000;
+  --oct-motion-distance: 8px;
+  --oct-motion-feedback: 200ms;
+  --oct-chat-step-ms: 1200;
+  --ios-screen: light-dark(#fff, #000);
+  --ios-ink: light-dark(#000, #fff);
+  --ios-meta: light-dark(#6b6b70, #98989e);
+  --ios-incoming: light-dark(#e9e9eb, #262628);
+}
+.rd .visual-col { padding-bottom: 52px; }
+.rd .hs-msg > [data-motion-step] { display: block; white-space: normal; }
+.rd .motion-replay {
+  position: absolute;
+  right: 0;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 44px;
+  padding: var(--s2) var(--s3);
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--ink-64);
+  font: 500 12px var(--font-ui);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.rd .motion-replay[hidden] { display: none; }
+.rd .motion-replay:hover { background: var(--wash); color: var(--navy); }
+@media (prefers-reduced-motion: no-preference) {
+  .rd .motion-replay {
+    transition: transform var(--oct-motion-feedback) var(--ease-breathe), background-color
+      var(--oct-motion-feedback) var(--ease-breathe), color var(--oct-motion-feedback)
+      var(--ease-breathe);
+  }
+}
+@media (max-width: 640px) {
+  .rd {
+    --oct-motion-step-ms: 700;
+    --oct-motion-distance: 4px;
+    --oct-chat-step-ms: 1100;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rd .shore-drift { animation: none; }
+  .rd .motion-replay { display: none; }
+}
+
+.rd .chat-gallery {
+  --gallery-card: min(360px, calc(100vw - 64px));
+  --gallery-lift: var(--s7);
+  position: relative;
+  margin-top: var(--s7);
+}
+.rd .chat-gallery .hs-chats {
+  position: relative;
+  display: flex;
+  gap: var(--s8);
+  margin-top: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+  padding: var(--s5) calc((100% - var(--gallery-card)) / 2) var(--s7);
+  mask-image: linear-gradient(to right, transparent, black 16%, black 84%, transparent);
+}
+.rd .chat-gallery .hs-chats::-webkit-scrollbar { display: none; }
+.rd .chat-gallery .hs-chats:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 4px;
+}
+.rd .chat-gallery .gallery-slide {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 var(--gallery-card);
+  min-width: 0;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  transform: translateY(var(--gallery-lift)) scale(0.8);
+  opacity: 0.25;
+}
+.rd .chat-gallery .hs-chat-cap {
+  justify-content: center;
+  align-items: center;
+  min-height: var(--s6);
+  text-align: center;
+}
+.rd .chat-gallery .hs-did { white-space: normal; }
+.rd .gallery-slide > div {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.rd .gallery-slide[data-gallery-active="true"] {
+  transform: scale(1);
+  opacity: 1;
+}
+.rd .gallery-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--s4);
+  margin-top: var(--s2);
+}
+.rd .gallery-controls[hidden] { display: none; }
+.rd .gallery-arrow {
+  position: absolute;
+  top: calc((100% - 24px) / 2);
+  z-index: 1;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-full);
+  background: var(--card);
+  color: var(--navy);
+  cursor: pointer;
+  font: 20px var(--font-ui);
+  box-shadow: var(--card-shadow);
+  touch-action: manipulation;
+}
+.rd .gallery-arrow:first-child { left: var(--s6); }
+.rd .gallery-arrow:last-child { right: var(--s6); }
+.rd .gallery-arrow:disabled { color: var(--meta); cursor: default; }
+.rd .gallery-arrow:not(:disabled):hover { background: var(--wash); }
+.rd .gallery-position { font: 12px var(--font-mono); color: var(--meta); }
+@media (prefers-reduced-motion: no-preference) {
+  .rd .gallery-slide { will-change: transform, opacity; }
+}
+@media (max-width: 640px) {
+  .rd .chat-gallery {
+    --gallery-lift: var(--s6);
+    --gallery-card: calc(100vw - 32px);
+    margin-top: var(--s6);
+  }
+  .rd .chat-gallery .hs-chats {
+    gap: var(--s4);
+    mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+  }
+  .rd .gallery-arrow { position: static; transform: none; }
+  .rd .gallery-phone .hs-msg { font-size: 13px; }
+}
+@media (min-width: 768px) {
+  .rd .chat-gallery { display: none; }
+}
+@media (max-width: 767.98px) {
+  .rd .hs-chats-static { display: none; }
+}
+
+.rd .phone,
+.rd .gallery-phone,
+.rd .hs-chat,
+.rd .hs-mini,
+.rd .hs-notif,
+.rd .hs-rem,
+.rd .hs-memory { color-scheme: inherit; }
+.rd .gallery-phone {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: calc(var(--gallery-card) * 1.62);
+  padding: 22.7% 7.8% 0;
+  overflow: hidden;
+  flex: none;
+  font-family: var(--font-ios);
+}
+.rd .gallery-phone::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: calc(var(--gallery-card) * 0.1055) 7.6% 0;
+  border-radius: calc(var(--gallery-card) * 0.12) calc(var(--gallery-card) * 0.12) 0 0;
+  background: var(--ios-screen);
+  pointer-events: none;
+}
+.rd .gallery-phone::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: calc(var(--gallery-card) * 0.13);
+  left: 36.1%;
+  width: 27.8%;
+  height: calc(var(--gallery-card) * 0.085);
+  border: 1px solid #16161a;
+  border-radius: var(--r-full);
+  background: radial-gradient(circle at 85% 50%, #18223c 0 3%, #090d17 4% 7%, #000 8%);
+  pointer-events: none;
+}
+.rd .gallery-phone-status {
+  position: absolute;
+  z-index: 2;
+  inset: calc(var(--gallery-card) * 0.14) 12.3% auto 18.5%;
+  height: calc(var(--gallery-card) * 0.065);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: calc(var(--gallery-card) * 0.04);
+  font-weight: 600;
+  color: var(--ios-ink);
+  pointer-events: none;
+}
+.rd .gallery-phone-status svg { width: 27%; height: auto; }
+.rd .gallery-phone-plate {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 12px 16px rgb(12 20 36 / 0.16));
+}
+.rd .gallery-phone .hs-chat {
+  position: relative;
+  z-index: 2;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--ios-screen);
+  color: var(--ios-ink);
+  color-scheme: inherit;
+}
+.rd .gallery-phone .hs-chat-head {
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s2) var(--s6) var(--s3);
+  text-align: center;
+  background: var(--ios-screen);
+  border: 0;
+}
+.rd .gallery-phone .hs-avs { height: var(--s7); }
+.rd .gallery-phone .hs-av {
+  width: var(--s6);
+  height: var(--s6);
+  line-height: var(--s6);
+  box-shadow: 0 0 0 2px var(--ios-screen);
+}
+.rd .gallery-phone .hs-av.hale { width: var(--s7); height: var(--s7); }
+.rd .gallery-phone .hs-chat-name { font-size: 14px; }
+.rd .gallery-phone .hs-chat-members { font-size: 10px; color: var(--ios-meta); }
+.rd .gallery-phone-nav {
+  position: absolute;
+  z-index: 3;
+  inset: calc(var(--gallery-card) * 0.281) 10.5% auto;
+  display: flex;
+  justify-content: space-between;
+  color: #0a84ff;
+  pointer-events: none;
+}
+.rd .gallery-phone-nav svg { width: var(--s5); height: var(--s5); stroke-width: 1.7; }
+.rd .gallery-phone .hs-thread { margin-top: 0; padding: var(--s3) var(--s2) var(--s5); }
+.rd .gallery-phone .hs-stamp {
+  font-size: 10px;
+  line-height: 1.5;
+  margin-bottom: var(--s4);
+  color: var(--ios-meta);
+}
+.rd .gallery-phone .hs-who { color: var(--ios-meta); }
+.rd .gallery-phone .hs-msg.in { background: var(--ios-incoming); color: var(--ios-ink); }
+.rd .gallery-phone .hs-row { position: relative; max-width: 94%; }
+.rd .gallery-phone .hs-pic { position: relative; z-index: 1; }
+.rd .gallery-phone .hs-msg {
+  position: relative;
+  isolation: isolate;
+  font-size: 14px;
+  border-radius: var(--r-lg);
+  transform-origin: bottom left;
+}
+.rd .gallery-phone .hs-msg.out { transform-origin: bottom right; }
+.rd .gallery-phone .hs-msg::before,
+.rd .gallery-phone .hs-msg::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+  background: inherit;
+}
+.rd .gallery-phone .hs-msg::after { width: 26px; background: var(--ios-screen); }
+.rd .gallery-phone .hs-msg.in::before { left: -7px; border-radius: 0 0 16px 0; }
+.rd .gallery-phone .hs-msg.in::after { left: -26px; border-radius: 0 0 10px 0; }
+.rd .gallery-phone .hs-msg.out::before { right: -7px; border-radius: 0 0 0 16px; }
+.rd .gallery-phone .hs-msg.out::after { right: -26px; border-radius: 0 0 0 10px; }
+.rd .gallery-phone .hs-did { font-size: 11px; line-height: 1.4; }
+.rd .chat-typing {
+  position: absolute;
+  top: 0;
+  left: calc(var(--s6) + var(--s1));
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: var(--s3);
+  border-radius: var(--r-full);
+  background: var(--ios-incoming);
+  opacity: 0;
+}
+.rd .chat-typing > span {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--ios-meta);
+}
+@media (max-width: 360px) {
+  .rd .gallery-phone .hs-chat-head { gap: var(--s1); padding-bottom: var(--s2); }
+  .rd .gallery-phone .hs-avs,
+  .rd .gallery-phone .hs-av.hale { width: auto; height: var(--s6); }
+  .rd .gallery-phone .hs-av.hale { width: var(--s6); }
+  .rd .gallery-phone .hs-msg { font-size: 12px; }
+  .rd .gallery-phone .hs-thread { padding-bottom: var(--s2); }
+  .rd .gallery-phone .hs-stamp { margin-bottom: var(--s2); }
+}
+
+/* Nav and footer share the 1200px content column. Chrome stays outside .rd. */
+body:has(.rd) header.sticky { padding-left: 24px; padding-right: 24px; }
+body:has(.rd) header.sticky .v4-nav { max-width: 1200px; width: 100%; }
+body:has(.rd) footer > .shell { max-width: calc(1200px + 48px); padding-inline: 24px; }
