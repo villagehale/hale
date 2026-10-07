@@ -1361,6 +1361,13 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 :root[data-theme="dark"] .theme-icon-light { display: none; }
 :root[data-theme="dark"] .theme-icon-dark { display: block; }
 
+/* The logo tile is navy on navy in dark. A faint cream ring lifts it, the same
+   hairline the redesign puts on .brand img / .hs-close-brand img. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .logo-tile { box-shadow: 0 0 0 1px rgb(247 244 236 / 0.22); }
+}
+:root[data-theme="dark"] .logo-tile { box-shadow: 0 0 0 1px rgb(247 244 236 / 0.22); }
+
 /* The bar's icon buttons — the theme cycle and the hamburger. 44px square, the
  * touch target, with the glyph sized well inside it. */
 .chrome-icon-btn {

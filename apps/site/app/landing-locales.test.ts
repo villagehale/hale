@@ -89,10 +89,28 @@ describe('every locale renders the redesign', () => {
 
   it('uses tu inside the French redesign', () => {
     const body = rd(HTML.fr);
-    expect(body).not.toMatch(/\bvous\b/i);
-    expect(body).not.toMatch(/\bvos\b/i);
-    expect(body).not.toMatch(/\bvotre\b/i);
+    // « Rendez-vous » is the playdate noun, not the vous pronoun.
+    const prose = body.replace(/rendez-vous/gi, '');
+    expect(prose).not.toMatch(/\bvous\b/i);
+    expect(prose).not.toMatch(/\bvos\b/i);
+    expect(prose).not.toMatch(/\bvotre\b/i);
     expect(body).toContain('camp');
+  });
+
+  it('keeps the FR and ZH hero and sign-up lines on the English promise', () => {
+    const fr = rd(HTML.fr);
+    expect(fr).toContain('aide tout le monde à s’entendre');
+    expect(fr).toContain('Inscriptions faites pour toi, quand tu dis oui');
+    expect(fr).toContain('Inscriptions de tous les enfants d’un coup');
+    expect(fr).toContain('L’inscription à ta place viendra plus tard, et seulement si tu dis oui.');
+    expect(fr).toContain('Demande comment ça s’est passé');
+    expect(fr).toContain('Texte Hale');
+    const zh = rd(HTML.zh);
+    expect(zh).toContain('它帮你找活动、让大家定下来');
+    expect(zh).toContain('你点头后代你报名');
+    expect(zh).toContain('几个孩子一次报完');
+    expect(zh).toContain('以后会推出代报名，前提是你先点头。');
+    expect(zh).not.toContain('已报名');
   });
 
   it('carries every Landing key in all three bundles — no locale silently renders a key name', () => {
@@ -119,36 +137,39 @@ describe('every locale renders the redesign', () => {
     expect(advanceEm('之后便 安静下来。')).toBeGreaterThan(H1_COLUMN_EM.zh);
   });
 
-  it.each(routing.locales)('%s hero demos in the bundle are the live find, with no watch YES', (locale) => {
-    const landing = landingBundle(locale) as {
-      heroThread: Array<{ dir: string; text: string }>;
-      heroLoop: Array<{ rows: Array<{ dir: string; text: string }> }>;
-    };
-    expect(landing.heroThread.map((row) => row.dir)).toEqual(['out', 'in']);
-    expect(landing.heroLoop[0]?.rows.map((row) => row.dir)).toEqual(['out', 'in']);
-    const lead = {
-      en: 'Here’s what’s on for your kids this year:',
-      fr: 'Voici ce qu’il y a pour vos enfants cette année :',
-      zh: '孩子这一年，现在有这些：',
-    }[locale];
-    expect(landing.heroThread[1]?.text.startsWith(lead)).toBe(true);
-    expect(landing.heroLoop[0]?.rows[1]?.text.startsWith(lead)).toBe(true);
-    const demo = `${landing.heroThread.map((row) => row.text).join('\n')}\n${landing.heroLoop
-      .flatMap((beat) => beat.rows.map((row) => row.text))
-      .join('\n')}`;
-    for (const banned of [
-      'YES',
-      'OUI',
-      'keep an eye',
-      'garde un oeil',
-      '回复 YES',
-      '要不要我',
-      'Say YES',
-      'Répondez OUI',
-    ]) {
-      expect(demo, banned).not.toContain(banned);
-    }
-    expect(demo).toContain('1.');
-    expect(demo).toContain('3.');
-  });
+  it.each(routing.locales)(
+    '%s hero demos in the bundle are the live find, with no watch YES',
+    (locale) => {
+      const landing = landingBundle(locale) as {
+        heroThread: Array<{ dir: string; text: string }>;
+        heroLoop: Array<{ rows: Array<{ dir: string; text: string }> }>;
+      };
+      expect(landing.heroThread.map((row) => row.dir)).toEqual(['out', 'in']);
+      expect(landing.heroLoop[0]?.rows.map((row) => row.dir)).toEqual(['out', 'in']);
+      const lead = {
+        en: 'Here’s what’s on for your kids this year:',
+        fr: 'Voici ce qu’il y a pour vos enfants cette année :',
+        zh: '孩子这一年，现在有这些：',
+      }[locale];
+      expect(landing.heroThread[1]?.text.startsWith(lead)).toBe(true);
+      expect(landing.heroLoop[0]?.rows[1]?.text.startsWith(lead)).toBe(true);
+      const demo = `${landing.heroThread.map((row) => row.text).join('\n')}\n${landing.heroLoop
+        .flatMap((beat) => beat.rows.map((row) => row.text))
+        .join('\n')}`;
+      for (const banned of [
+        'YES',
+        'OUI',
+        'keep an eye',
+        'garde un oeil',
+        '回复 YES',
+        '要不要我',
+        'Say YES',
+        'Répondez OUI',
+      ]) {
+        expect(demo, banned).not.toContain(banned);
+      }
+      expect(demo).toContain('1.');
+      expect(demo).toContain('3.');
+    },
+  );
 });

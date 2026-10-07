@@ -256,7 +256,7 @@
 }
 .rd .loop li { display: flex; flex-direction: column; align-items: flex-start; }
 .rd .loop svg { width: 20px; height: 20px; color: var(--navy); }
-.rd .loop b { margin-top: var(--s2); font-family: var(--font-ui); font-size: 14.72px; font-weight: 600; line-height: 1.65; color: var(--navy); white-space: nowrap; } /* production button/label type */
+.rd .loop b { margin-top: var(--s2); font-family: var(--font-ui); font-size: 14.72px; font-weight: 600; line-height: 1.65; color: var(--navy); } /* production button/label type; wraps when a locale label is longer than the column */
 .rd .loop small { font-family: var(--font-body); font-size: 13.6px; font-weight: 400; line-height: 1.5; color: var(--navy); opacity: 0.9; } /* production .v4-hero-terms */
 .rd .trust i { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-48); display: inline-block; }
 
