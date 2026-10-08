@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly handles the Google Calendar connection ask. It recognizes that the deterministic branch needs specific trigger words, tells Sam exactly what to text (\"connect my Google Calendar\"), and accurately describes what follows (a one-tap link, good for 15 minutes). This is the correct shape per the rubric: recalling a real feature, quoting the short ask verbatim so the next text lands, and not writing out any URL. No greeting, no sign-off, no markdown, one clean instruction. The only very minor blemish is the opening \"Yes, I can do that\" — slightly redundant since the instruction that follows is self-evidently affirmative — but it doesn't mislead or pad materially. Nearly a 5.",
+    "score": 5
+  }
+}

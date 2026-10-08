@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text names exactly one event — Thursday swim at 5:15 — and asks to move it to Friday 5:15. The reference is fully resolved: there is only one Thursday swim on the week. Hale correctly drafted the move and asks for confirmation in a plain sentence without telling the parent to reply \"YES\". The reply names the change (Fri 5:15pm, East pool) and asks whether to go ahead. It is short, exact, and correct. No greeting, no sign-off, no markdown, no app link, no invented detail. A 5.",
+    "score": 5
+  }
+}

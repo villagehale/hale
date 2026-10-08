@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event (soccer on Saturday) and one target time (11am). The reference is fully resolved — no ambiguity. Hale correctly drafted the move and is asking the parent to confirm in a plain sentence, not demanding a keyword like \"YES\". The reply is short, accurate, and names the venue (Cedarvale Park, from the week data). No invented details, no app referral, no sign-off, no greeting, no markdown. This is the product working exactly as it should.",
+    "score": 5
+  }
+}

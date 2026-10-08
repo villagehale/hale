@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that connecting a Google Calendar triggers a deterministic branch that sends a one-tap sign-in link, and it hands Sam the exact plain words to text to trigger it. This is the correct handling per the rules: it's recall of a real feature, not internal machinery, and quoting the short ask verbatim is what makes the parent's next text land. No URL invented, no referral to the app, no refusal. Clean and correct.",
+    "score": 5
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011CfoyfwjT5pv9f13etFtC4",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Saturday already has soccer practice at 10am at Cedarvale Park. No other checked finds for that day, but High Park is always an option — free Jamie Bell Adventure Playground, animal display, and splash pads, open daily."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1155,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19497,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 76,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 1736
+}

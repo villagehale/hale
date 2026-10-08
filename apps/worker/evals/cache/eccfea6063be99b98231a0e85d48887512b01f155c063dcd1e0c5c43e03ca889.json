@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply drafts a calendar add for Tiny Gym at Cartwheels on Sun Sep 13 at 9:30am — exactly the gymnastics class Hale itself named in an earlier thread message (\"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\"). That is recall, not invention. `drafted` is non-empty (calendar_add), and the reply names the change and asks in a plain sentence whether to go ahead — no \"reply YES\", no keyword prompt. One question, no greeting, no sign-off, no markdown. This is the product working correctly.",
+    "score": 5
+  }
+}

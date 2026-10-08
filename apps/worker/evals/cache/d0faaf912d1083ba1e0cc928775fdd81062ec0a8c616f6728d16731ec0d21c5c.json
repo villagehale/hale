@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Sam pasted a course-page link directly in their message, which is exactly the condition `watch_for_opening` requires. The reply correctly invokes that capability — watching the page and texting when a spot opens — which is a real feature. The reply names the class (Tuesday preschool swim), confirms it is full, and promises a text when a spot opens. No URL invented, no app referral, no markdown, no sign-off, no keyword-confirmation demand. The reply is clean and complete. The small blemish is the word \"genuinely\" which is a filler word adding no information — very minor, one word over what was needed.",
+    "score": 4
+  }
+}

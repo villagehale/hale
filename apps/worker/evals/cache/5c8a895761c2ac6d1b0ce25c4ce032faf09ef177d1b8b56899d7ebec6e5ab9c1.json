@@ -1,0 +1,45 @@
+{
+  "response": {
+    "id": "msg_011Cfoz2FPQ687YnKyG8mFqt",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "Eo8GCpQDCBIYAipAe11jzfE41i0e4ndkvXZLica2ANbtbllMBt1TOoA2zZIdmbD3TNculANWPS316fPfVFZE2e/JTHyFYHNI4TrNjzIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagByYCc1gbCAUkICRAAGhsBRGgCONYDTzcFqgsEJq0K2NIDTzcLrGkEJq0gAjIEEnHPJToEvgDgN0IE+a6pmUoENYOdilALWgTZBeFWYARoAXAB2gGgAQoWcHJlZml4X2JlZm9yZV9ibG9ja192MRIgOKL7ldWwDh43T512RuDMYa3jnN/vWy10auG2XWcQmioiQGMa2qc2sE1KX+yTkCOfAxXTVPx8iHIBOWBMqhu/idoX/zY959A5+e0pTS39GZMbUUgrCGqvZa69psNSkYZZzSgyIMLAE8hqnJLiL5ZvPYYXdo+LekTJAq3MCXv6HgmK+04fSAMSDHedTpgXTtfUjDB+hRoM18K2iS6nvbGw5SPsIjDWX+PY57zN3E7YTsXL3r9GGOHqSIuzQyezsawEa3K01U9viyTDVDFB9eT758e1YMkqpwKvaluheCC+iXq9VQgGrq0sHXpQcIaqjV4ejxVGrkwfilJDxaKyCH6VKxA+1Ufbia5+veS+vD9K22wsO8l0ELkq6yctLzFdBfr97Czl5wvylsYXuZsxEXoXnfKHHjpZ3zR7SaNuB0af0t8xqQelNDmKzQyK4xjK6fHwm9SyF/rZ3G+oZSBkq2kFtDuHeixhRB6P/0TPUNeHpuh1xxh8mMTcr7EPVHEiaDkdsCxeNJOrQS+M5VSJut2z0qCnI7h320fgAZLVf73qZcoRvHCT5wCdeGGlOfbgweP25u8ScxT8zKlLkwkI/jNUCEr2DT/f4UN8M/oObEKU1hfbAZ9I0eXYo7WlCJzCreP9+An3BbrELvf4KrmbIO+xmJ0FeX/+vmB7tHwvuT58GAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_0134Ra8NJFXM8jYGreweVjeL",
+        "name": "find_activities",
+        "input": {
+          "subject": "fall programs for kids",
+          "window": "fall 2026"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 740,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19497,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 165,
+      "output_tokens_details": {
+        "thinking_tokens": 83
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2956
+}

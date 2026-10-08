@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces Cedarvale Park from the week (soccer practice, Sat 10am) and offers Riverdale Farm from `offerable` (free outdoor farm, open daily, Sun Aug 9). Both are real, traceable sources. The reply is concise, no greeting or sign-off, no markdown, one question at most (none here). However, there's a small issue: the reply says \"I didn't turn up another park specifically\" which slightly undersells Riverdale Farm as a park option — it is an outdoor farm/park-adjacent venue and is being offered correctly, but the hedge \"specifically\" is a minor awkwardness. Also, the Central Library story time option from `offerable` is omitted, which is fine since it's indoor and not park-related — that's good judgment. The reply is otherwise clean, accurate, and actionable. The small blemish is the slight hedging phrasing (\"I didn't turn up another park specifically\") which weakens the offer of Riverdale Farm unnecessarily, but the core answer is correct and useful.",
+    "score": 4
+  }
+}

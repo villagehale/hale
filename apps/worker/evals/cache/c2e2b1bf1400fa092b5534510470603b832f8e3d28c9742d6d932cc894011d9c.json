@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that `watch_for_opening` requires a course-page link that the parent pasted in their own message, and there is no link here. Asking for the link is explicitly described as \"the right answer rather than a stall.\" The reply does exactly that — asks for the link and explains it will watch once it has it. No invention, no app referral, no internal machinery exposed, one question, clean and direct. This is the correct and complete handling.",
+    "score": 5
+  }
+}

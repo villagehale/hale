@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the one scheduled Saturday event (soccer at Cedarvale Park, 10am) from the week, then correctly offers the one verified offerable activity (Central Library story time at Bloor/Gladstone). Both details are grounded in `week` and `offerable` respectively. It mentions there is still one activity being checked — actually, it doesn't mention `stillBeingChecked:1`, but that's a minor omission rather than a wrong claim. The reply is concise, no greeting, no sign-off, no markdown, no app referral, no invented details. The only small issue is it doesn't acknowledge the teenager (who also might be covered by \"kids\"), but the parent said \"kids\" generically and Hale answered about Saturday's schedule, which is correct. Omitting mention of the one still-being-checked find is a minor blemish — a heads-up like \"still checking one more\" would be ideal — but the core answer is accurate and complete. This is a 4.",
+    "score": 4
+  }
+}

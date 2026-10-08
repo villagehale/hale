@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked which of the two Cartwheels classes Remy would be in, referencing the previous message where Hale named Tiny Gym (under 3.5, parent-and-me) and Mini Gym (3.5+, solo). Remy is 19 months, so under 3.5, meaning Tiny Gym is correct. The reply correctly identifies this, cites the age basis, and names the class with its descriptor. It's short, accurate, and directly answers the question. The only small issue is the gendered pronoun \"him\" — Remy's gender is not stated in `knows`, so this is a minor invention. Otherwise the reply is exactly right in shape and content.",
+    "score": 4
+  }
+}

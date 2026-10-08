@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Sam pasted a course-page link in their message, which is exactly the trigger for `watch_for_opening`. The reply correctly says Hale is watching it and will text when a spot opens. The link is present, the class is named, the promise is accurate, no markdown, no greeting, no sign-off, no app referral, no invented details. The only tiny blemish is the phrase \"it's genuinely full\" — that's a mild filler clause that adds nothing beyond what Sam already told Hale — but it's not wrong. Otherwise the reply is clean, short, and exactly the right shape.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that Hale needs the course-page link the parent pasted in order to use `watch_for_opening` — because no link was provided, asking for it is the right answer per the rules. The reply is clean, one question, no sign-off, no markdown, no invented details, no app referral. It accurately conveys what Hale will do once it has the link. This is the correct and complete handling of the situation.",
+    "score": 5
+  }
+}

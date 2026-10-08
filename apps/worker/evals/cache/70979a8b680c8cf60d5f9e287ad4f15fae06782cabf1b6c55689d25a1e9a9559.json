@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CfozCgTZTTyQ9Xh1eAZCP",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EvQJCpoDCBIYAipA85BRhBFUg2rjL2Oy0mBIMH8uHfjUuf7KpVe62nA3tB4gxgXa9gUZ5Ejk6WzWgrY2B2/UvoCUVTKKqpAO4aoGQDIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagB14Gc1gbCAU8ICxAAGiEBRGgCONYDTzcFZcEEJq0KCpgKw3YDTzcL0pQLMd4EJq0gAjIEEnHPJToEvgDgN0IE+a6pmUoENYOdilALWgTZBeFWYARoAXAB2gGgAQoWcHJlZml4X2JlZm9yZV9ibG9ja192MRIgNOIpFlFu4MbuaiewL2iRsjogB/US7paRRSBVdfrxj9AiQF/m7hANz9UgAlsCVhQ2BFdYZqd4qaRJGGCFbM5qgXPOF8O2HlDwjDWY6CV0nApkCJ/lBDqmlxlSXBjmj3fSOr0yIMLAE8hqnJLiL5ZvPYYXdo+LekTJAq3MCXv6HgmK+04fSAMSDA8r2y1HUaJKhf4Z4hoM1SAQOMm6Tdzw+vJsIjA50iURHXRfY7X/csIY5+RPgFCr2l4KS53ZmMxMa6EBF+LBotfobAKV8nnIAK2gcF4qhgazBIaccWHwFe/cJKcNwrD7INvniA+DnXgPcrRBBgT31HLgjvbbiHyyU7APEvw0aDuO1ko5I3s600hSp7FbRW8clRKAXuFbXedVNolZtbghluThhSQlyIY1hwI0mb9ImHYOS43YuAZ5DeApgow9tQt2ThXX9BmrPEQJ2liPzhVi/8IE2VtA9i0kUmcRw4a8NuRW6xveWGCqwnWUKzmHV8RyraMKzbX4x/ek+J7JhsXdOoLLr93teKnK638jVRjZ0/idEvt3iyFaIZjSBNzxbOBQOXxoHRpWu2rkbReCqHRIdILDnTDE+/AirhQv+yy3LuE4FqL1FE97VeP2dpM9hoagOLrFGrX9/ywVRngvmUwue3tc/nemUVcbeWmQL4vYGhlvMEHmWTk+I86dLAkOi57RQfYUZi4rkKwTJDQKu3haWjbzRSWVh92EPYjFBWeqNSS2yUbwbvcMP/QS7Yfm/4GUNpjnoqTWiuVUfUn5ftJ9HegHcEUYO/njvXXV9IIGGp7bT1xN1vv/gMvx4RCHrzCZcxCpMJCYGK2XIxl5VKcrXouakkKZUwZefNMaLhIxdw2/ZRC6clAfGSXURZvd9lllSgCt/bF1bMxOL+YwCxUMhgoL7BV0tVtgnubG6qejTI4LqqmQMDP/sane6hQRd6NSU8u8lyS4vac4kDJ6U4BggZjc5kEMoUn9mRhRyeshVWA2/naz4hGMDMyaxFykVL4dRXxvWwRvTl5/8fkpoHR094/dia/HbXe49DCVyPyI2Tsj5fLBRMFHvQThp6LBP87FYiXk+c6RuE8ZQNQzh17tVs9ooV6kL8xQhG1PycjYMcOTrIAb11yOhSBcQLPJCVYNCt4/9dvr5ABkLbgrNyR6XklCwD3srIE1J6scqMJa6dUUXK+/22DUpkbNEL2Ey3iGP2mBgxGiUnHzG6CcPxWGqbThxnOuG1VQ+udqRZMNKpp1AtAolgtZrj9E3g1iya9imbQEuxg2b/qqMMaINMihPyrxH6zvSgT+2w+M1hias7wJzfqfPVkYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Soccer practice already has you at Cedarvale Park, Sat 10am. I didn't turn up another park specifically, but Riverdale Farm is a free outdoor farm open daily if you want something different that day."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1250,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19497,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 339,
+      "output_tokens_details": {
+        "thinking_tokens": 268
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 4010
+}

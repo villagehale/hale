@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly pulls the Saturday event from the week (soccer practice at 10am at Cedarvale Park) and offers the one verified offerable find (Central Library story time at Bloor/Gladstone branch). Both pieces of information are grounded in what Hale knows. It doesn't mention the stillBeingChecked count (1 unverified find), which is correct since Hale has no name for it. No app referral, no invented detail, no greeting or sign-off, no markdown. The only very minor issue is the opening clause \"Saturday already has\" is a touch wordy, and it doesn't mention the story time is free/drop-in/all-ages — though those details would enrich the answer. Still, the reply is clean, correct, and actionable. A small opportunity missed by not including the \"free indoor drop-in, all ages\" detail that would help Sam decide, but it's not a blemish that downgrades it significantly — it's a trim, correct answer.",
+    "score": 4
+  }
+}

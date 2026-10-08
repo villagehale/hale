@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Sam asked for four cancels. The draft cap is 2. Hale correctly drafted the two swim lessons (Monday 4:30pm and Thursday 5:15pm) and explicitly said it will line up soccer and the Wednesday appointment next — the correct handling of overflow per the rules. The Wednesday appointment is a private calendar item, but Hale is being asked to cancel it, not identify it, so drafting its cancellation is appropriate (and will come next). The reply names both drafted items with their times, asks for confirmation in a natural sentence (no \"reply YES\" keyword trap), and correctly defers the remaining two. No greeting, no sign-off, no markdown, no app referral, no invented details. One small note: the question at the end is slightly implicit (\"Cancel Monday swim… and Thursday swim?\") but it is a clear confirmation ask in ordinary language. This is the product working exactly as designed.",
+    "score": 5
+  }
+}

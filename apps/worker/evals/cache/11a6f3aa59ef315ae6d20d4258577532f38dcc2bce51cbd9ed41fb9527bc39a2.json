@@ -1,0 +1,58 @@
+{
+  "response": {
+    "id": "msg_011Cfoykvg6vRGcJPEYyMsG7",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EvkECscCCBIYAipA9PUlSdMWirmqHhJGO9hZz6pB7mDNBcCIcsqvUCakAWaPTk2l2hJrlsTkVuXaFt07WJ7Lxpel4otSM6hnCw10njIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagB+f6b1gbCAT0IBRAAGg8BRGgCONYDTzcFBb0EJq0gAjIEEnHPJToEvgDgN0IE+a6pmUoENYOdilALWgTZBeFWYAJoAXAB2gFgChZwcmVmaXhfYmVmb3JlX2Jsb2NrX3YxEiBB9DDX4IyRzvAPB6NoUsiVL0pMGuOimjd35HAKgvmhyiIAMiDCwBPIapyS4i+Wbz2GF3aPi3pEyQKtzAl7+h4JivtOH0gDEgy19OWNckbLy+hx0IQaDOC8mLGHUj7832o3gSIwGyxFYo3qWWvYNTtOTdmga8Sz1Y8QxnzARpT2vqIHlv+rxgjSeqS2vZK6+GPv0k/tKt4BO89DfLij2q7+WoTAwNOabcVwfcWxxroBM5AKP09/JZudHRs+KkjQ+CANTHtiIrvoD7B+HDqlJLPdtxrvwuaa9XEbqSia4F0I+SGr5shHM0P5Pvp3Fzr6q/gEC+cRCwaINtA/6h0MO4fD0M+5YaDBV2D55+EZ7oTar2zANDcXdLqVcGRaz0S9n0QVkwW61lgNsd7YlQbQEqHTGNxzc1nhKQ0OOxPq4C1xo8G7GASYk9YC3V81VTMmx0dDkz7YERfjXuJfS2a8cWZKPr7tVoLaJPItvKWhGLtRkWSUjqELGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_0168FLoLVbxmr8bNUC281ckv",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "newborn",
+          "ageMonths": 5
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01GuULRQUPRXcJzxpjcMvyrt",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "solids",
+          "childId": "kid-theo",
+          "offer": "Want me to send the full first-foods plan?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 422,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19497,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 265,
+      "output_tokens_details": {
+        "thinking_tokens": 73
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3295
+}

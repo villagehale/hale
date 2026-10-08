@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the existing Saturday event (soccer practice at 10am, Cedarvale Park) and then offers the standing place (High Park) with its verified details (Jamie Bell Adventure Playground, animal display, splash pads, daily). It doesn't invent anything, doesn't send the parent to an app, correctly handles the stillBeingChecked count by saying \"no other checked finds\" without naming or detailing the unverified ones. It stays concise with no greeting, no sign-off, no markdown. Slight blemish: \"always an option\" plus the dash construction is a touch wordy, and \"open daily\" slightly over-promises on the seasonal water elements (the standingPlace notes water play is seasonal), but the core venue info is correct and the cadence note covers it. Minor imprecision on the seasonal caveat keeps this from a 5.",
+    "score": 4
+  }
+}
