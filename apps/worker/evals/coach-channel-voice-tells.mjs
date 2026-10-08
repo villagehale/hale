@@ -44,6 +44,7 @@ export const VOICE_TELLS = [
     /\b(?:happy|glad) to (?:help|assist)\b|\b(?:i'?d|i would) be happy to\b|\bhere to help\b/i,
     'chirpy filler',
   ],
+  [/\bdos(?:e|age|ing)\b/i, 'names a dose'],
   [
     /\b(?:i can only|more than i can|in one message|my limit)\b/i,
     "explains its own limits instead of the parent's week",
