@@ -52,6 +52,30 @@ export const STAMP_PROFILES: Record<string, Profile> = {
   'christmas-market': profile('shield', SEA, 9, 0.05),
 };
 
+/** One or two strokes. The full icon turns into a blob at 26px. */
+const MINI_GLYPHS: Record<string, string> = {
+  soccer: `<circle cx="12" cy="12" r="6.5"/>`,
+  swimming: `<path d="M2 9c2.2 2 4.2 2 6.4 0s4.2-2 6.4 0 4.2 2 6.4 0M2 15c2.2 2 4.2 2 6.4 0s4.2-2 6.4 0 4.2 2 6.4 0"/>`,
+  skating: `<path d="M8 3h6l2 11H6zM4 20h16"/>`,
+  zoo: `<circle cx="12" cy="13" r="6"/><path d="M9 12h.1M15 12h.1M10 16c1.2.8 2.8.8 4 0"/>`,
+  karate: `<path d="M7 3h10l2 18H5zM7 12h10"/>`,
+  aquarium: `<path d="M3 12c4-5 10-5 16 0-6 5-12 5-16 0z"/>`,
+  ballet: `<path d="M7 6c1 7 .5 10-.5 13M17 6c-1 7-.5 10 .5 13"/>`,
+  farm: `<path d="M3 12 L12 4 L21 12 V21 H3 Z"/>`,
+  hockey: `<path d="M15 2 L8 17 H3M14 19h7"/>`,
+  basketball: `<circle cx="12" cy="12" r="7"/><path d="M12 5v14M5 12h14"/>`,
+  taekwondo: `<path d="M8 3v8l-4 9M8 8l12-3"/>`,
+  dance: `<circle cx="13" cy="4" r="2"/><path d="M13 7l-1 7 4 6M12 14l-5 3"/>`,
+  'figure-skating': `<circle cx="12" cy="4" r="2"/><path d="M12 7l1 8M8 20h8"/>`,
+  golf: `<path d="M8 21V4l8 4-8 4M14 17h5"/>`,
+  mma: `<path d="M7 8V5h9v5a4 4 0 01-4 4H9a2 2 0 01-2-2z"/>`,
+  gymnastics: `<circle cx="12" cy="4" r="2"/><path d="M12 7v7M6 8l6 2 6-2M8 21l4-7 4 7"/>`,
+  baseball: `<circle cx="12" cy="12" r="7"/>`,
+  skiing: `<path d="M4 16 L20 8M6 20 L18 6"/>`,
+  museum: `<path d="M3 10l9-6 9 6M6 10v9M12 10v9M18 10v9M4 19h16"/>`,
+  'christmas-market': `<path d="M12 3l3 5h-2l3 5h-2l3 6H7l3-6H8l3-5H9z"/>`,
+};
+
 const LITES: Record<string, string> = {
   [NAVY]: '#C5CAF5',
   [SEA]: '#B9D7F2',
@@ -151,14 +175,15 @@ export function StampMark({
         <Edges shape={shape} inferred={inferred} heavy={mini} />
         {paths ? (
           <g
+            className={mini ? 'pp-mini-icon' : undefined}
             transform={iconTransform}
             fill="none"
-            stroke="currentColor"
-            strokeWidth={mini ? 5.2 : 1.9}
+            stroke={mini ? '#fff' : 'currentColor'}
+            strokeWidth={mini ? 3.2 : 1.9}
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <IconShapes markup={paths} />
+            <IconShapes markup={mini ? (MINI_GLYPHS[icon] ?? paths) : paths} />
           </g>
         ) : null}
         {mini ? null : arc ? (
@@ -208,6 +233,22 @@ export function StampMark({
   );
 }
 
+function FilledShape({ shape }: { shape: Shape }) {
+  const fill = {
+    fill: 'currentColor' as const,
+    stroke: 'none' as const,
+    className: 'pp-stamp-edge',
+  };
+  if (shape === 'rect') return <rect x="8" y="16" width="104" height="88" rx="8" {...fill} />;
+  if (shape === 'oct') {
+    return <polygon points="108,80 80,108 40,108 12,80 12,40 40,12 80,12 108,40" {...fill} />;
+  }
+  if (shape === 'oval') return <ellipse cx="60" cy="60" rx="52" ry="44" {...fill} />;
+  if (shape === 'shield')
+    return <path d="M60 8 L108 22 L104 74 Q60 112 16 74 L12 22 Z" {...fill} />;
+  return <circle cx="60" cy="60" r="52" {...fill} />;
+}
+
 function Edges({
   shape,
   inferred,
@@ -217,6 +258,7 @@ function Edges({
   inferred: boolean;
   heavy?: boolean;
 }) {
+  if (heavy) return <FilledShape shape={shape} />;
   const dash = inferred ? '5 4' : undefined;
   const outer = {
     fill: 'none' as const,

@@ -39,6 +39,47 @@
   font-family: var(--font-ui), Figtree, sans-serif;
 }
 
+/* Card copy and the Edit / Confirm / Fix buttons are Figtree, not Source Serif.
+   `.shell button { font: inherit }` would otherwise win. */
+.pp-surface .pp-kid b,
+.pp-surface .pp-row b,
+.pp-surface .pp-crow h3,
+.pp-surface .pp-meta,
+.pp-sheet .pp-meta,
+.pp-surface .pp-cell,
+.pp-surface .pp-cell b,
+.pp-surface .pp-cell small,
+.pp-surface .pp-src,
+.pp-surface .pp-src b,
+.pp-surface .pp-src span,
+.pp-surface .pp-share-row,
+.pp-surface .pp-share-row b,
+.pp-surface .pp-share-row span,
+.pp-surface .pp-basics,
+.pp-sheet .pp-src,
+.pp-sheet .pp-src b,
+.pp-sheet .pp-src span,
+.pp-sheet .pp-share-row,
+.pp-sheet .pp-share-row b,
+.pp-sheet .pp-share-row span,
+.pp-sheet h2,
+.pp-surface button.pp-ghost,
+.pp-surface a.pp-ghost,
+.pp-sheet button.pp-ghost,
+.pp-surface .pp-btns button,
+.pp-sheet .pp-sheet-foot button {
+  font-family: var(--font-ui), Figtree, sans-serif;
+  font-weight: 600;
+}
+
+.pp-surface button.pp-ghost,
+.pp-surface a.pp-ghost,
+.pp-sheet button.pp-ghost,
+.pp-surface .pp-btns button,
+.pp-sheet .pp-sheet-foot button {
+  font-size: 15px;
+}
+
 .pp-surface {
   min-width: 0;
 }
@@ -256,7 +297,7 @@
 .pp-row .pp-meta {
   color: var(--pp-slate);
   font-size: 13.6px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .pp-fkt {
@@ -440,7 +481,8 @@
 .pp-cell small {
   margin-top: 2px;
   color: var(--pp-slate);
-  font-size: 12.5px;
+  font-size: 13.6px;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -515,8 +557,18 @@
   opacity: 0.92;
 }
 
+.pp-mini .pp-stamp g.pp-mini-icon {
+  stroke: #fff;
+}
+
+.dark .pp-mini .pp-stamp g.pp-mini-icon,
+[data-theme="dark"] .pp-mini .pp-stamp g.pp-mini-icon {
+  stroke: #17294a;
+}
+
+/* Inferred stamps sit at 75% ink so teal, sea, and green stay readable. */
 .pp-stamp.is-inferred {
-  opacity: 0.65;
+  opacity: 0.75;
 }
 
 .pp-stamp-top,
@@ -528,8 +580,11 @@
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: rgb(12 26 54 / 0.38);
   border: 0;
+}
+
+button.pp-sheet-dim[type="button"] {
+  background: rgb(12 26 54 / 0.46);
 }
 
 dialog.pp-sheet {
@@ -598,8 +653,8 @@ dialog.pp-sheet {
 
 .pp-sheet h2 {
   margin: 0;
-  font-family: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
-  font-size: 23px;
+  font-family: var(--font-ui), Figtree, sans-serif;
+  font-size: 16px;
   font-weight: 600;
   line-height: 1.2;
   color: var(--pp-ink);
@@ -612,6 +667,7 @@ dialog.pp-sheet {
   padding: 12px;
   border-radius: 14px;
   background: #e7ebf0;
+  font-size: 14.5px;
 }
 
 .pp-src svg {
@@ -630,11 +686,13 @@ dialog.pp-sheet {
 
 .pp-src b {
   font-size: 14.5px;
+  font-weight: 600;
   color: var(--pp-ink);
 }
 
 .pp-src span {
   font-size: 13.6px;
+  font-weight: 600;
   line-height: 1.45;
   color: var(--pp-slate);
 }
@@ -714,6 +772,7 @@ dialog.pp-sheet {
 
 .pp-share-row b {
   font-size: 14.5px;
+  font-weight: 600;
   color: var(--pp-ink);
 }
 
@@ -994,6 +1053,10 @@ dialog.pp-sheet {
     align-items: stretch;
   }
 
+  .pp-open {
+    justify-content: center;
+  }
+
   .pp-book {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1030,5 +1093,14 @@ dialog.pp-sheet {
     max-height: calc(100vh - 96px);
     max-height: calc(100svh - 96px);
     border-radius: 24px;
+  }
+
+  .pp-grab {
+    display: none;
+  }
+
+  .pp-sheet .pp-top .pp-stamp {
+    width: 130px;
+    height: 130px;
   }
 }

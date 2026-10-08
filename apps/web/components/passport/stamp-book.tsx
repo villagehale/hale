@@ -10,6 +10,7 @@ import {
   shareStampAction,
   undoStampAction,
 } from '~/lib/passport/actions';
+import { sortStampsNewestFirst } from '~/lib/passport/order';
 import type { KidCard, StampCard } from '~/lib/passport/read';
 
 export function StampBook({
@@ -28,7 +29,7 @@ export function StampBook({
   const [localId, setLocalId] = useState<string | null>(initialStampId ?? null);
   const current = openId === undefined ? localId : openId;
   const setOpen = onOpenId ?? setLocalId;
-  const stamps = kid.stamps;
+  const stamps = sortStampsNewestFirst(kid.stamps);
   const stamp =
     stamps.find((item) => item.id === current) ??
     kid.removed.find((item) => item.id === current) ??

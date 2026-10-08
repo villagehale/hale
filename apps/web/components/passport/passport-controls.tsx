@@ -293,9 +293,11 @@ function BasicsCard({ kid }: { kid: KidCard }) {
       <div className="pp-row">
         <div>
           <b>{kid.grade ?? 'Grade'}</b>
-          <div className="pp-meta">
-            {kid.schoolDayEnds ? `School day ends ${kid.schoolDayEnds}` : 'School day'}
-          </div>
+          {kid.schoolDayEnds ? (
+            <div className="pp-meta">School day ends {kid.schoolDayEnds}</div>
+          ) : kid.grade === 'Daycare' ? null : (
+            <div className="pp-meta">School day</div>
+          )}
           {editing === 'grade' ? (
             <form action={saveBasicsAction} className="pp-reveal">
               <input type="hidden" name="childId" value={kid.id} />
