@@ -730,8 +730,15 @@ dialog.pp-sheet {
   padding: 0;
   border: 0;
   border-radius: 13px;
-  background: #d5dae3;
   cursor: pointer;
+}
+
+/* The portal shell sets `button { background: none }`, which beats a single
+   class. The off track is the same navy as the portal toggle, darkened until
+   it clears 3:1 on the white card (WCAG 1.4.11). */
+.pp-surface button.pp-tog,
+.pp-sheet button.pp-tog {
+  background: #7f899b;
 }
 
 .pp-tog::after {
@@ -746,7 +753,8 @@ dialog.pp-sheet {
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
 }
 
-.pp-tog.on {
+.pp-surface button.pp-tog.on,
+.pp-sheet button.pp-tog.on {
   background: var(--pp-primary);
 }
 
@@ -756,6 +764,13 @@ dialog.pp-sheet {
 
 .dark .pp-surface .pp-tog.on::after {
   background: #17294a;
+}
+
+.dark .pp-surface button.pp-tog:not(.on),
+.dark .pp-sheet button.pp-tog:not(.on),
+[data-theme="dark"] .pp-surface button.pp-tog:not(.on),
+[data-theme="dark"] .pp-sheet button.pp-tog:not(.on) {
+  background: #757e8e;
 }
 
 .pp-primary,
