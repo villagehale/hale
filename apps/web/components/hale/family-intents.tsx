@@ -1,10 +1,10 @@
 'use client';
 
+import type { OnboardingIntent } from '@hale/types';
 import { AlertCircle, Check } from 'lucide-react';
 import { useState } from 'react';
-import type { OnboardingIntent } from '@hale/types';
-import { Button } from '~/components/ui/button';
 import { IntentChips } from '~/components/hale/intent-chips';
+import { Button } from '~/components/ui/button';
 import { setIntentsAction } from '~/lib/family/children-actions';
 import { PREVIEW_NOTE, SIGNED_OUT_NOTE } from '~/lib/family/form-copy';
 
@@ -21,7 +21,13 @@ type State =
  * every chip is a valid "none". A save writes immediately and audits
  * family_intents_updated (rule #6).
  */
-export function FamilyIntents({ intents }: { intents: OnboardingIntent[] }) {
+export function FamilyIntents({
+  intents,
+  legend = "what you're hoping for",
+}: {
+  intents: OnboardingIntent[];
+  legend?: string;
+}) {
   const [selected, setSelected] = useState<OnboardingIntent[]>(intents);
   const [state, setState] = useState<State>({ kind: 'idle' });
 
@@ -53,7 +59,7 @@ export function FamilyIntents({ intents }: { intents: OnboardingIntent[] }) {
   return (
     <div className="space-y-5 max-w-lg">
       <IntentChips
-        legend="what you're hoping for"
+        legend={legend}
         selected={selected}
         onToggle={toggle}
         disabled={state.kind === 'saving'}

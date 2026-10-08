@@ -68,9 +68,9 @@ describe('shared nav definition', () => {
  * same resolved boolean and never disagree.
  */
 describe('receipts-room nav (flag on)', () => {
-  it('is exactly Family · Approvals · Settings, in that order (founder decisions 2026-08-30: Family is the landing, and a Home that is not home is a lie)', () => {
-    expect(RECEIPTS_NAV.map((n) => n.label)).toEqual(['Family', 'Approvals', 'Settings']);
-    expect(RECEIPTS_NAV.map((n) => n.href)).toEqual(['/family', '/approvals', '/settings']);
+  it('is exactly Home · Messages · Family · Settings', () => {
+    expect(RECEIPTS_NAV.map((n) => n.label)).toEqual(['Home', 'Messages', 'Family', 'Settings']);
+    expect(RECEIPTS_NAV.map((n) => n.href)).toEqual(['/home', '/messages', '/family', '/settings']);
   });
 
   it('every stop earns its place as a receipt or a control — no retired or demoted route is one', () => {
@@ -80,13 +80,13 @@ describe('receipts-room nav (flag on)', () => {
       expect(hrefs).not.toContain(retired);
     }
     // Demoted: still render, reachable by URL, but no longer destinations.
-    for (const demoted of ['/home', '/trail', '/messages', '/plan', '/village']) {
+    for (const demoted of ['/approvals', '/trail', '/plan', '/village']) {
       expect(hrefs).not.toContain(demoted);
     }
   });
 
   it('DEMOTED_NAV names the reachable-but-unlisted routes, and never a retired one', () => {
-    expect(DEMOTED_NAV.map((n) => n.href)).toEqual(['/trail', '/messages', '/plan', '/village']);
+    expect(DEMOTED_NAV.map((n) => n.href)).toEqual(['/approvals', '/trail', '/plan', '/village']);
     const stops = new Set<string>(RECEIPTS_NAV.map((n) => n.href));
     // A route cannot be both a stop and demoted, or the sidebar and the eyebrow
     // would disagree about whether it is a destination.
@@ -112,7 +112,7 @@ describe('receipts-room nav (flag on)', () => {
     expect(on.slice(0, RECEIPTS_NAV.length)).toEqual([...RECEIPTS_NAV]);
     // A route that is no longer a stop but STILL RENDERS keeps a label, so its page
     // does not lose the running-head eyebrow — the demoted Trail included.
-    for (const demoted of ['/trail', '/messages', '/plan', '/village']) {
+    for (const demoted of ['/approvals', '/trail', '/plan', '/village']) {
       expect(on.map((n) => n.href)).toContain(demoted);
     }
     const hrefs = on.map((n) => n.href);
@@ -151,8 +151,9 @@ describe('navWithAdmin', () => {
 
   it('splices Admin immediately before Settings under the receipts IA', () => {
     expect(navWithAdmin(RECEIPTS_NAV, true).map((n) => n.label)).toEqual([
+      'Home',
+      'Messages',
       'Family',
-      'Approvals',
       'Admin',
       'Settings',
     ]);
@@ -168,7 +169,7 @@ describe('navWithAdmin', () => {
 
   it('never mutates the input stops and never enters RECEIPTS_NAV itself', () => {
     navWithAdmin(RECEIPTS_NAV, true);
-    expect(RECEIPTS_NAV.map((n) => n.href)).toEqual(['/family', '/approvals', '/settings']);
+    expect(RECEIPTS_NAV.map((n) => n.href)).toEqual(['/home', '/messages', '/family', '/settings']);
   });
 
   it('ADMIN_NAV points at the portal with a distinct glyph', () => {

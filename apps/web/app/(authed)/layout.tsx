@@ -9,6 +9,7 @@ import { PageHero } from '~/components/hale/page-hero';
 import { ScrollReset } from '~/components/hale/scroll-reset';
 import { Sidebar } from '~/components/hale/sidebar';
 import { TopHeader } from '~/components/hale/top-header';
+import { PortalShell } from '~/components/portal/shell';
 import { resolveAdminGate } from '~/lib/admin/gate';
 import { IdentifyUser } from '~/lib/analytics/posthog-provider';
 import { authConfigured } from '~/lib/auth-config';
@@ -17,8 +18,8 @@ import { loadSmsChannel } from '~/lib/channels/sms-consent';
 import { loadNotifications } from '~/lib/dashboard/notifications';
 import { loadFamilyBasics } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
-import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { loadViewerName, resolveFamilyForUser } from '~/lib/family';
+import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { homeGreeting } from '~/lib/home/greeting';
 import { markFamilyActiveToday } from '~/lib/metrics/activity';
 import { SHELL_COLLAPSED_KEY } from '~/lib/shell';
@@ -107,6 +108,32 @@ export default async function AuthedLayout({ children }: { children: React.React
   // and handed to the two client nav consumers as a boolean — the sidebar and the
   // running head can never disagree about which IA they are rendering.
   const receiptsIa = receiptsIaEnabled();
+
+  const shellBanner = !authEnabled ? (
+    <output className="dev-preview-banner">
+      Auth disabled — development preview. This route group is unprotected because Google OAuth is
+      not configured.
+    </output>
+  ) : null;
+
+  if (receiptsIa) {
+    return (
+      <>
+        <a href="#main-content" className="skip-link">
+          Skip to content
+        </a>
+        {session?.user?.id ? <IdentifyUser userId={session.user.id} /> : null}
+        <PortalShell
+          showAdmin={adminGate.status === 'admin'}
+          canSignOut={authEnabled}
+          roots={roots}
+        >
+          {shellBanner}
+          {children}
+        </PortalShell>
+      </>
+    );
+  }
 
   return (
     <>

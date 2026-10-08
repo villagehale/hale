@@ -19,7 +19,7 @@ const LABEL: Record<State, string> = {
  * this only saves what the server returns. Honest states: pending in flight,
  * "downloaded" on success, the error surfaced — never a silent failure.
  */
-export function ExportDataButton() {
+export function ExportDataButton({ idleLabel = LABEL.idle }: { idleLabel?: string } = {}) {
   const [state, setState] = useState<State>('idle');
 
   async function download() {
@@ -53,7 +53,7 @@ export function ExportDataButton() {
       disabled={state === 'pending'}
       aria-live="polite"
     >
-      {LABEL[state]}
+      {state === 'idle' ? idleLabel : LABEL[state]}
     </button>
   );
 }

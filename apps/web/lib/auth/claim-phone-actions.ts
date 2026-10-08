@@ -4,6 +4,7 @@ import { AuthError } from 'next-auth';
 import { redirect } from 'next/navigation';
 import { signIn } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
+import { CLAIM_CODE_ERROR } from '~/lib/auth/claim-phone-copy';
 import { safeInternalRedirect } from '~/lib/auth/redirect';
 
 /**
@@ -21,7 +22,7 @@ import { safeInternalRedirect } from '~/lib/auth/redirect';
 
 export type ClaimByPhoneState = { status: 'idle' } | { status: 'error'; message: string };
 
-const GENERIC_ERROR = "That code didn't work. Try again, or send yourself a new one.";
+const GENERIC_ERROR = CLAIM_CODE_ERROR;
 
 export async function claimByPhoneAction(
   phone: string,

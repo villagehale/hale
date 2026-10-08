@@ -21,9 +21,14 @@ const LABEL: Record<State, string> = {
 export function ApproveButton({
   actionId,
   labelledBy,
+  idleLabel = LABEL.idle,
+  className = 'btn-primary',
 }: {
   actionId: string;
   labelledBy?: string;
+  /** Visible idle label. Defaults to the approvals-queue wording. */
+  idleLabel?: string;
+  className?: string;
 }) {
   const [state, setState] = useState<State>('idle');
   const selfId = useId();
@@ -42,7 +47,7 @@ export function ApproveButton({
     <button
       type="button"
       id={selfId}
-      className="btn-primary"
+      className={className}
       onClick={approve}
       disabled={state === 'pending' || state === 'approved'}
       aria-live="polite"
@@ -54,7 +59,7 @@ export function ApproveButton({
       // into a session replay (VIL-274, rule #1).
       aria-labelledby={labelledBy ? `${selfId} ${labelledBy}` : undefined}
     >
-      {LABEL[state]}
+      {state === 'idle' ? idleLabel : LABEL[state]}
     </button>
   );
 }

@@ -1,15 +1,15 @@
-import type { Route } from 'next';
 import {
-  ListChecks,
   CalendarDays,
   Gauge,
   History,
   House,
+  ListChecks,
   MessageSquare,
   Settings,
   Users,
   UsersRound,
 } from 'lucide-react';
+import type { Route } from 'next';
 
 /**
  * The single source of truth for the app's navigation, imported by BOTH the
@@ -43,22 +43,18 @@ export const SETTINGS_NAV = {
   icon: Settings,
 } as const satisfies NavItem;
 
-export const ALL_NAV = [
-  ...PRIMARY_NAV,
-  SETTINGS_NAV,
-] as const satisfies ReadonlyArray<NavItem>;
+export const ALL_NAV = [...PRIMARY_NAV, SETTINGS_NAV] as const satisfies ReadonlyArray<NavItem>;
 
 /**
- * VIL-244 · M9 — the receipts-room stops (D4/D20), behind F14_RECEIPTS_IA. The app's
- * job stops being "a place to read a daily feed" and becomes "the place you check what
- * Hale did and decide what's next": Home is the decision queue (/approvals — the full
- * record hangs off its foot), Family is the household editor, Settings is the dials.
- * A stop has to earn its place as a receipt or as a control that cannot live in a
- * text; the trail, the week and the village render but are not stops (DEMOTED_NAV).
+ * VIL-244 · M9 — the receipts-room stops, behind F14_RECEIPTS_IA. The parent portal
+ * is Home (the landing), Messages (the thread, what Hale did, and what's waiting),
+ * Family, and Settings. Approvals, the trail, the week and the village still render
+ * by URL but are not stops (DEMOTED_NAV).
  */
 export const RECEIPTS_NAV = [
+  { href: '/home', label: 'Home', icon: House },
+  { href: '/messages', label: 'Messages', icon: MessageSquare },
   { href: '/family', label: 'Family', icon: UsersRound },
-  { href: '/approvals', label: 'Approvals', icon: ListChecks },
   { href: '/settings', label: 'Settings', icon: Settings },
 ] as const satisfies ReadonlyArray<NavItem>;
 
@@ -70,8 +66,8 @@ export const RECEIPTS_NAV = [
  * label loses its eyebrow.
  */
 export const DEMOTED_NAV = [
+  { href: '/approvals', label: 'Approvals', icon: ListChecks },
   { href: '/trail', label: 'Trail', icon: History },
-  { href: '/messages', label: 'Messages', icon: MessageSquare },
   { href: '/plan', label: 'Week', icon: CalendarDays },
   { href: '/village', label: 'Village', icon: Users },
 ] as const satisfies ReadonlyArray<NavItem>;
@@ -116,13 +112,11 @@ export function navWithAdmin(
 }
 
 /**
- * Where the brand mark goes. It has to follow the same demotion the nav does: with
- * the reframe on, `/home` is a 302 to `/approvals`, so pointing the brand there would
- * make every logo click pay a redirect hop to reach the landing surface. Keeping this
- * equal to the middleware's forward target is what receipts-ia.test.ts asserts.
+ * Where the brand mark goes. Both IAs land on `/home`: flag-off is the daily feed,
+ * and the receipts portal's home is the landing itself (no redirect hop).
  */
 export function brandHref(receiptsIa: boolean): Route {
-  return receiptsIa ? '/family' : '/home';
+  return receiptsIa ? '/home' : '/home';
 }
 
 /**

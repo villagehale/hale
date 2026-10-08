@@ -54,7 +54,10 @@ async function mintSessionCookie(sub: string, email: string) {
 
 type Viewer = 'admin' | 'parent' | 'anonymous';
 
-async function openPage(browser: Browser, viewer: Viewer): Promise<{ page: Page; errors: string[] }> {
+async function openPage(
+  browser: Browser,
+  viewer: Viewer,
+): Promise<{ page: Page; errors: string[] }> {
   // reducedMotion: the app's `.rise` entry animation starts at opacity 0 (delays to
   // 760ms), so an un-reduced screenshot catches blank cards; the reduce arm in
   // globals.css renders everything settled — deterministic, eyeball-able artifacts.
@@ -90,20 +93,20 @@ test('sign-in renders the flag-on phone door (no cookie)', async ({ browser }) =
   expect(response?.status()).toBe(200);
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
   // Flag-on subtitle — with the flag off this page shows the email/Google door instead.
-  await expect(page.getByText('the number you text me on')).toBeVisible();
+  await expect(page.getByText('Use the number you text Hale from')).toBeVisible();
   await assertHealthy(page, errors, '01-sign-in');
 });
 
-test('/home forwards to /family — the middleware flag hinge (positive control that F14_RECEIPTS_IA is armed)', async ({
+test('/home is the portal landing — the middleware flag hinge (positive control that F14_RECEIPTS_IA is armed)', async ({
   browser,
 }) => {
   const { page, errors } = await openPage(browser, 'admin');
   const response = await page.goto('/home');
   expect(response?.status()).toBe(200);
-  // The 302 target: if the env were lost, /home would render the daily feed and this fails
-  // instead of the walk silently exercising flag-off pages.
-  await expect(page).toHaveURL(/\/family$/);
-  await assertHealthy(page, errors, '02-home-forward');
+  // If the env were lost, /home would render the daily feed and this marker would be absent.
+  await expect(page).toHaveURL(/\/home$/);
+  await expect(page.getByText('Waiting on you')).toBeVisible();
+  await assertHealthy(page, errors, '02-home');
 });
 
 test('/family renders the seeded family (RSC + DB path executed)', async ({ browser }) => {
@@ -121,8 +124,9 @@ test('/settings renders the reveal rows — the #577 page', async ({ browser }) 
   expect(response?.status()).toBe(200);
   // The SettingsRowReveal rows: a reintroduced RSC-serialization crash streams the
   // authed error boundary here instead of these controls.
-  await expect(page.getByRole('button', { name: 'Change' }).first()).toBeVisible();
-  await expect(page.getByText('How you reach Hale')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  await expect(page.getByText('Texts from Hale')).toBeVisible();
+  await expect(page.getByRole('link', { name: /Connections/ })).toBeVisible();
   await assertHealthy(page, errors, '04-settings');
 });
 
@@ -151,7 +155,9 @@ test('/admin renders The Line + attention strip for the allowlisted phone', asyn
   await expect(page.getByText('failures today')).toBeVisible();
   // The portal chrome: the tab bar and the sidebar's founder-only Admin stop.
   await expect(page.getByRole('navigation', { name: 'Admin sections' })).toBeVisible();
-  await expect(page.locator('.sidebar a[href="/admin"]')).toBeVisible();
+  await expect(
+    page.getByRole('complementary', { name: 'Portal' }).locator('a[href="/admin"]'),
+  ).toBeVisible();
   // assertHealthy also proves no panel fell into its boundary ("didn’t load — check the logs").
   await assertHealthy(page, errors, '07-admin');
 });
@@ -186,18 +192,13 @@ for (const tab of ADMIN_TAB_MARKERS) {
   });
 }
 
-test('the dial rides the URL: ?w=365 deep-loads and survives a tab switch', async ({
-  browser,
-}) => {
+test('the dial rides the URL: ?w=365 deep-loads and survives a tab switch', async ({ browser }) => {
   const { page, errors } = await openPage(browser, 'admin');
   const response = await page.goto('/admin/operations?w=365');
   expect(response?.status()).toBe(200);
   // Cold load: the dial thumb sits on 365, not the 30 default. That thumb is
   // in the server HTML, so it can be true before the client tab bar has hydrated.
-  await expect(page.getByRole('button', { name: '365d' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  await expect(page.getByRole('button', { name: '365d' })).toHaveAttribute('aria-pressed', 'true');
   // Tab switch preserves the window. Wait until the tab bar has finished
   // hydrating — a click before `data-ready` is dropped and the URL stays put.
   const tabs = page.getByRole('navigation', { name: 'Admin sections' });
@@ -209,10 +210,7 @@ test('the dial rides the URL: ?w=365 deep-loads and survives a tab switch', asyn
   // budget dies on a URL that already moved. Poll the URL instead.
   await engagement.click();
   await expect(page).toHaveURL(/\/admin\/engagement\?w=365$/);
-  await expect(page.getByRole('button', { name: '365d' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  await expect(page.getByRole('button', { name: '365d' })).toHaveAttribute('aria-pressed', 'true');
   await assertHealthy(page, errors, '16-admin-dial-deep-link');
 });
 

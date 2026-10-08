@@ -3,12 +3,9 @@
 import { Copy, UserPlus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { mintCoParentJoinLink, revokeCoParentJoinLinks } from '~/app/(authed)/family/join-actions';
 import { Button } from '~/components/ui/button';
 import { Modal } from '~/components/ui/modal';
-import {
-  mintCoParentJoinLink,
-  revokeCoParentJoinLinks,
-} from '~/app/(authed)/family/join-actions';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 
 /** The honest quota line — the single-use + 7-day TTL the join rail actually enforces. */
@@ -35,9 +32,18 @@ type MintState =
  */
 export function AddCoParentCard({
   openInvite,
+  title = 'Add your co-parent',
+  description = 'They get everything you get — full access, free.',
+  actionLabel = 'Create link',
+  plain = false,
 }: {
   /** The family's outstanding link, if one is out — status only, never the code. */
   openInvite: { expiresAt: string } | null;
+  title?: string;
+  description?: string;
+  actionLabel?: string;
+  /** Drop the oat panel so the card can sit inside another surface. */
+  plain?: boolean;
 }) {
   const router = useRouter();
   const capture = useAnalytics();
@@ -90,11 +96,9 @@ export function AddCoParentCard({
   }
 
   return (
-    <div className="panel-oat px-6 py-5 max-w-md">
-      <p className="font-medium text-spruce">Add your co-parent</p>
-      <p className="meta mt-1 leading-relaxed">
-        They get everything you get — full access, free.
-      </p>
+    <div className={plain ? undefined : 'panel-oat px-6 py-5 max-w-md'}>
+      <p className="font-medium text-spruce">{title}</p>
+      <p className="meta mt-1 leading-relaxed">{description}</p>
 
       {openInvite ? (
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -115,7 +119,7 @@ export function AddCoParentCard({
       ) : (
         <div className="mt-4">
           <Button icon={UserPlus} onClick={createLink} disabled={mint.kind === 'minting'}>
-            {mint.kind === 'minting' ? 'Creating…' : 'Create link'}
+            {mint.kind === 'minting' ? 'Creating…' : actionLabel}
           </Button>
         </div>
       )}
