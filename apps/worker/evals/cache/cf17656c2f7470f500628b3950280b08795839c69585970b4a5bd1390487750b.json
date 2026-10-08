@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply hands the parent their referral link, which is correct. It includes a short description of Hale that the parent can forward along with the link — that's the intended shape. The link matches `knows.referralLinkAppended` exactly, so it's recall, not invention. The instruction to \"forward\" it is correct per the rules. However, there are a couple of small issues: the reply is written in first person as if it's the parent speaking (\"I use Hale to keep our family week straight\"), which is a bit odd coming from Hale — it reads like Hale is putting words in the parent's mouth rather than giving them the link and a forwarding note. That said, the core job is done: link is present, forwarding framing is there, no app redirect, no machinery exposed. The phrasing is slightly awkward but not wrong. A small blemish, not a failure.",
+    "score": 4
+  }
+}

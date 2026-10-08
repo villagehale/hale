@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to connect their Google Calendar. The reply correctly identifies that a deterministic branch handles this and tells Sam the exact plain words to text (\"connect my Google Calendar\") to trigger the one-tap sign-in link. It recalls the real feature accurately (one-tap link, good for 15 minutes), doesn't send the parent to the app, doesn't write out a URL, and doesn't refuse the capability. The only minor issue is the slight redundancy of restating \"Connecting your Google Calendar is something I can do\" before getting to the instruction — a small extra clause — but the core shape is exactly right. A small blemish but does the job.",
+    "score": 4
+  }
+}

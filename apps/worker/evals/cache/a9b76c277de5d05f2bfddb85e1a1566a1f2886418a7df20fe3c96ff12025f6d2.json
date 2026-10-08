@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Sam pasted a course-page link in their own message, which is exactly the condition `can` describes for `watch_for_opening`. The reply correctly activates the watch (\"I've started watching that page\") and promises to text when a spot opens — that is the right shape and the right promise. The reply is short, direct, names the class correctly, and does not send Sam anywhere or ask anything unnecessary. No invented details, no machinery exposed, no sign-off. The only tiny blemish is the contraction opener \"It's genuinely full right now\" — slightly warmer than needed but not harmful, and the core beat lands cleanly.",
+    "score": 5
+  }
+}

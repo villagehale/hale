@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly names the soccer practice (from the week) and the offerable activity. The title \"Riverdale story time\" is quoted correctly. The URL is from the offerable entry so it is recall, not invention. The nearbyCount sentence is runtime-appended, not composed by Hale. However, the reply gives no age or time detail for the story time, which is fine — the offerable entry says \"all ages welcome\" and the URL covers it. There is no greeting, no sign-off, no markdown. The structure is clean and correct. One small issue: the reply does not name the date of soccer (it just says \"Saturday\"), which is fine. But it does say \"Sat, Aug 8\" for the story time — that date must be checked against the offerable entry, which lists \"Sat, Aug 8\" — correct. Everything checks out. This is a clean, complete, correct reply with no blemishes worth noting beyond perhaps a slightly long construction, but it is well within bounds. Score 5.",
+    "score": 5
+  }
+}

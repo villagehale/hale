@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly uses `watch_for_opening` on the course-page link Sam pasted in their own message — that is exactly the right capability per `knows.can`. It names the specific class (Tuesday preschool swim), confirms it is full, and says it will text when a spot opens. No invented details, no app referral, no markdown, no sign-off, no greeting, no superfluous questions. The only small blemish is the phrase \"with registration open\" — the parent said it is full, not that registration is open, so that detail is either redundant or slightly inaccurate framing (if it were open they could just register). It is a minor addition that does not mislead, but it is one unnecessary clause. Otherwise the reply is clean and correct.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly recalls the exact opening time (Sep 1, 7:00 a.m.) from `registrationWindows`, correctly notes the resident-first priority, and correctly states that watching is already active and that Hale will text before it opens — all of which are true per `watching: true`. It does not invent anything, does not hedge with \"their site says\", does not tell Sam to set an alarm or check the app, and does not overclaim (the watch is already registered). It is concise, direct, and complete. One very minor note: it omits naming the programs (\"Fall 2026 recreation programs\") and Milo specifically, but neither omission is a scoring criterion — the answer is fully actionable. This is the product working exactly as designed.",
+    "score": 5
+  }
+}

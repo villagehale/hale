@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent pasted a course-page link directly in their message, and `knows.can` confirms Hale can \"watch ONE FULL CLASS for a spot, with `watch_for_opening`, and only on a course-page link the parent pasted in their own message.\" The reply correctly claims it is watching that exact link and will text when a spot opens. The reply is short, accurate, and does exactly the job — no greeting, no sign-off, no markdown, no extra machinery explained, no app referral, no invented detail. One small note: the opening phrase \"It's genuinely full right now\" is a mild redundancy (the parent already said it was full), but it doesn't mislead and is only a marginal extra clause. Overall this is essentially a 5 with a very minor padding word at the start.",
+    "score": 4
+  }
+}

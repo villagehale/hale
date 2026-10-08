@@ -1,0 +1,58 @@
+{
+  "response": {
+    "id": "msg_011CfqaQkgrUapPHpEtEkUyC",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EtQECscCCBIYAipAAsWdEGABOHQregR7NbirBpm2NmkvaDup+LJMonT3zqyYvCIB9o1jloZkHFX6PC3sqk18MNaZntlfEiv98l65KTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagBvbig1gbCAT0IBRAAGg8BtNkCvzIDTzcFBb0EJq0gAjIEEnHPJToEU1DZrkIERwHOmEoENYOdilALWgTZBeFWYAJoAXAB2gFgChZwcmVmaXhfYmVmb3JlX2Jsb2NrX3YxEiBLNDHS02jGfgGmOrVQgW+8nFWB3LCreAjzXg31aziIEiIAMiDCwBPIapyS4i+Wbz2GF3aPi3pEyQKtzAl7+h4JivtOH0gDEgywSr6pb4XOW//ESpIaDOtmg0bZ3Pk6oWTO4yIwOOo3dtyuBz+3txOE0aBlC31AzQb5pw7/u6F5CT8w+7CUTIcnXXlVlVyr5kDEz8CyKrkBEUK78FNoowiYhpJFRTkGAZznMiPPbaKU0nZetlXftjz70PqSZNxaLwTZ3C/glbZBc3BJJHM15P54Pg5mziF+mtXSlbpgr3IxYD2uh4cSNm78OAjzr0DN7h2S8/d6O4I+Yy8yvH5d6BSAy6I+L8CWn6HQH2JQlZUU3//vRPnsrk7YRiu0qAhMirSL30C9DofVqPeudBhqSmDpVVoSIYlnC0QzHE+DuoI5UrCiWi7n90RdjR47Snwfu24YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01ES37bqmcgs2xCzSDFnJSLC",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "newborn",
+          "ageMonths": 5
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01DXuHE7S5BhUz1t8PnrhLXk",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "solids",
+          "childId": "kid-theo",
+          "offer": "Want me to send the full first-foods plan?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 422,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20486,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 251,
+      "output_tokens_details": {
+        "thinking_tokens": 59
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2559
+}

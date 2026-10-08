@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event — \"the thursday swim\" — and the week shows exactly one Thursday event: Swim lesson, Thu 5:15pm, East pool. The reference is fully resolved: no ambiguity, no second reading. Hale correctly drafted the cancel and is now asking Sam to confirm it in an ordinary sentence, naming the event details (time and venue) so Sam can verify at a glance. No greeting, no sign-off, no markdown, no keyword-confirmation demand (\"reply YES\"), one plain question. This is the contract working exactly as specified.",
+    "score": 5
+  }
+}

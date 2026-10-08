@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies both offerable activities by their full titles, correct days, free status, and fit for Milo (63 months) and Ada (101 months). It notes both URLs, which are the runtime-appended links for the activities in `knows.offerable` — those are recall, not invention. The teenager is not mentioned, which is fine since these are all-ages/outdoor activities and the teenager's presence or absence isn't a problem here. The days (Sat Aug 8, Sun Aug 9) match the `when` fields exactly. No greeting, no sign-off, no markdown. The two URLs at the end are a bit clunky visually but they belong to the two finds and are the correct runtime-appended links. The reply is a touch long with both URLs listed separately at the end, and there's no question or confirmation needed since these are just suggestions. One small blemish: the URLs are listed bare at the end rather than woven in naturally, but that's minor. Overall this is a clean, correct, complete reply.",
+    "score": 4
+  }
+}

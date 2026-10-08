@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's \"Yes, please\" is a bare agreement with no standing questions. The last assistant message said \"I'll keep watching and text you when they post.\" The parent is confirming that, and `knows.promises` lists \"Cartwheels Tiny Gym fall dates for toddler\" — so the watch/follow-up is already registered. The reply correctly identifies what the yes was about (the fall dates follow-up) and confirms Hale is on it. It names the specific thing (Cartwheels, Tiny Gym, fall dates), doesn't send the parent to the app, doesn't ask a clarifying question, and doesn't invent anything. It's concise and correct. A minor note: it slightly rephrases the promise rather than adding anything new, but that's the appropriate shape here — the parent just confirmed something Hale already committed to. Clean, exact, stops when done.",
+    "score": 5
+  }
+}

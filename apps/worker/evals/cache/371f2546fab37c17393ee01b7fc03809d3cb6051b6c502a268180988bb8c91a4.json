@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply does solid work: it spots that Cedarvale Park is already on the week (soccer Saturday 10am), which is a genuinely useful recall, and then offers Riverdale Farm from offerable with its correct day (Sun Aug 9), free status, and the URL the runtime appended. The title \"Riverdale Farm\" matches the offerable entry exactly. No invented details, no app referral, no greeting/sign-off, no markdown. The URL is the one from offerable, so it's runtime-appended recall, not an invention. One small blemish: the reply carries two separate pieces of information (the park already on the schedule + the offerable find) joined with a mild pivot phrase, which is natural and appropriate here. The sentence count is fine. Overall this is a clean, correct, useful reply that does exactly what the product requires — short, grounded, actionable.",
+    "score": 5
+  }
+}

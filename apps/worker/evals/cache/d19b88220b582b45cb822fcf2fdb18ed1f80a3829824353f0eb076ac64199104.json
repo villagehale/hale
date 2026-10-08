@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply offers both offerable activities with correct names, days, and venues — \"Central Library story time at Bloor/Gladstone\" matches the title closely (the full title is \"Central Library story time at Bloor/Gladstone branch\"), and \"Riverdale Farm\" is quoted correctly. The dates Aug 8 and Aug 9 match each activity's own `when`. Both URLs are from `offerable`, so the runtime appends them — recall, not invention. No greeting, no sign-off, no markdown. The children are 63 months (~5) and 101 months (~8), plus a teenager; both activities are \"all ages welcome\" / a farm open daily, so age fit is fine. No issues with the teenager's private items being surfaced. One small blemish: the library story time title in `offerable` is \"Central Library story time at Bloor/Gladstone branch\" — the reply drops \"branch\" and shortens it slightly, which is a minor paraphrase but not a meaningful miss. The reply is tight and correct overall, so this is a 4.",
+    "score": 4
+  }
+}

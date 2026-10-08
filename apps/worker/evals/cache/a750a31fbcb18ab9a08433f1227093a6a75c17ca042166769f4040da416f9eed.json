@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the referral link (which is appended by the runtime and present in knows.referralLinkAppended), hands it to Sam to forward themselves, and gives a brief description of what Hale does so the friend knows what they're signing up for. It does not send the parent to the app, does not invent any URLs, and the link matches exactly what was appended. The reply is concise, no greeting, no sign-off, no markdown, one clear message. This is the product working correctly.",
+    "score": 5
+  }
+}

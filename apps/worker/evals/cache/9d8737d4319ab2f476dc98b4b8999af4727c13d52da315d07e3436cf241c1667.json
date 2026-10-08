@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that `watch_for_opening` requires a course-page link pasted by the parent, and asks for it — exactly the right move per the rules (\"asking for the link is the right answer rather than a stall\"). The reply is concise, names what it needs and why, no greeting, no sign-off, no markdown. One small blemish: \"to start watching it\" is a mild redundancy after \"I can watch that for an opening,\" but it is minor. Otherwise the shape is correct and complete.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the one verified offerable activity with its full title (\"Fanous lantern craft\"), venue, day, time, and age range — all matching the offerable entry exactly. It also correctly notes the existing soccer practice from the week. The URL is the one appended by the runtime from the offerable entry, so that's fine. Milo is 63 months (5.25 years, just under 6) so technically outside the 6-12 range, but Ada at 101 months (~8.4 years) fits perfectly, and the teenager may also fit within 6-12 at the low end — the reply doesn't claim it fits all kids, just offers it. The activity fits at least one child clearly. The reply has no greeting, no sign-off, no markdown, no questions, is concise, and everything is traceable. One small note: the reply leads with the existing soccer practice, which is fine context, but it does add a sentence that wasn't strictly needed (the parent asked about fun things, not what's already on the schedule). This is a minor redundancy — helpful context but slightly more than needed. Overall this is very close to a 5, with a minor blemish for including the existing schedule item when the parent asked for \"fun things\" (soccer is already there), making it slightly more than necessary. That's a 4-level blemish at most.",
+    "score": 4
+  }
+}

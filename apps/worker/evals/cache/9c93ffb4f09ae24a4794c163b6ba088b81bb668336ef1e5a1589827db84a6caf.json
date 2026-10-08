@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the soccer practice from the week and offers the offerable activity \"Riverdale story time at Riverdale Library\" with the correct date (Sat Aug 8) and the correct URL from knows.offerable. However, there are two issues: (1) The title is paraphrased as \"free story time drop-in\" rather than quoted whole as \"Riverdale story time\" — the rules require the exact title. (2) The \"3 families near you say Riverdale Library is worth it\" is invented — nothing in knows, week, or offerable contains any social proof or neighbour endorsement data. That is a fabricated detail, which is a meaningful error. The URL is correctly from knows.offerable so that is fine. The structure is otherwise clean — no greeting, no sign-off, no markdown, one natural text. The invented social-proof line is the main problem, and the title paraphrase is a secondary one.",
+    "score": 2
+  }
+}

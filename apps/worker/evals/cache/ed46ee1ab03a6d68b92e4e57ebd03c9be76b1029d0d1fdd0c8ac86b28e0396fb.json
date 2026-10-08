@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands over the referral link (which is runtime-appended and real), tells Sam to forward it themselves, and gives a brief description of what Hale does so the friend knows what they're signing up for. The link matches `knows.referralLinkAppended` exactly. The reply is conversational, no greeting or sign-off, no markdown, no app mention, no machinery exposed. One small blemish: the reply is written partly in first person as if Hale is Sam (\"I use Hale\"), which is a slightly odd voice — it reads like a sample text for Sam to copy-paste rather than Hale's own message to Sam. This could confuse Sam about what to actually do (forward this message? write their own?). A cleaner reply would say \"here's your link to forward\" and let Sam compose their own message. But the core job — handing the link, saying Sam forwards it — is done correctly. That awkward framing is the one blemish.",
+    "score": 4
+  }
+}

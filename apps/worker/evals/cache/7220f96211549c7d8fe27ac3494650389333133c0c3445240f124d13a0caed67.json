@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent pasted a course-page link directly in their message, which is exactly the condition `can` lists for `watch_for_opening`. The reply correctly invokes that watch and tells Sam it will text when a spot opens. The link is present, the action is real, and the reply is clean — no greeting, no sign-off, no markdown, no app referral, no invented detail. The one minor issue is the casual opener \"It's genuinely full right now\" — that adds a small redundant clause (Sam already knows it's full; that's why they asked), but it doesn't mislead or harm. Otherwise the reply is tight and correct.",
+    "score": 4
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cfqe9a1DKjp3TQeUyXob6",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EuEICpoDCBIYAipA3e5AO3q2RbY1m+91DcoIhNI4u5CoQnM55SLlbyWvv0GAcoRRC0t/6m2H2gj0ZkmRx4sIShU2Njbi+Fu+yNWJwzIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagBvM+g1gbCAU8ICxAAGiEBZAkCVyIDTzcFiBYEJq0K7l8KBNQDTzcL9l0Lt6IEJq0gAjIEEnHPJToECPGXwEIE5cvIGEoENYOdilALWgTZBeFWYARoAXAB2gGgAQoWcHJlZml4X2JlZm9yZV9ibG9ja192MRIg68s9ALPf3HMNo+6bqG9cGRI8W3NNoKOdIxRQLfeUinYiQNDWuxD4B+v7RP7nOGFJbAA7NdwPnt3z+LAkZfux9vZJUG3ia2NYGHtBlQrtEbk9LxIHdQXCZOf8YTk/dYadIVIyIMLAE8hqnJLiL5ZvPYYXdo+LekTJAq3MCXv6HgmK+04fSAMSDOFWq9TkRfZqFJk70RoMJXPT3doGSf7TK0NNIjB9zzopwrxDFu4+sn9Furyunr0JKqIz95MxUie5hEr2hi6aYDb0sC7hEukKw25UsU0q8wTce4zAmKPW3CAtb1FkTu86Oe+u6m/UfzAZV+oFyxo9+TXj6xj+C8QV6zQrvYCVpdQw0JVk31cERSL7AtlKGyC4NQwXBAtlJmWdhoHvY9NrIY+L/u3IexyKRhzG//jQWl6WTxP3V8o6EgdO2RxbqsIV+1YX64WXZb0ihH0aj+hAFvEIu5YOKCBnrL3sfVPhw2MDSPaW4nCaojibZPeqkzYfJhXurunptLIWJXsAnbCCZmFBiQxdYaiA62s5WedwWtzSRFFe/IFE5xousnm2D7nHD6R5N55lwvAza8GoAU1hTgtaXthKF6ueayVNosYVXQ08Zdc5EwU6hC9ZlRdRYlgnNob0Zr1dgO6Z5sbsaHfIuPy+YisVkWGkR3N6Mj756bOiUdWOoReGQHTQUZE9jEbpaSPZ6439BB9fJp+QfLz9B4XnKx30eqAp3rVSbqaTmhSGR9hdze9dLraluxRgqSk2Yhcek1+3fbqiyUYFZOfaySlbr6hscXOkmHwHU0WsxseQ/KdnoiVXebLg45rD79Dj5a92Z3FNxXOZA9ZVprhmMUZYtvDiUllVGzA6cubravEMOb4Ijlk69cEy323eb8rtIeMZHfwJQp6P63dhMZbB346WsYL8rc9fR+s6U2hlKS+D3AL13HoSZ+gX2Kjh4HATi89MlMLbx0wUFF+eS+Pz7Mbw7ln8fNJOpzfsuVX/C6T3UPuBZx43q1nGxV2JCQLdJfLPpXdz4DotxZsyYLt8VfPyX/NLcX/xslyXERw1s47bBfXAOSdm0PGQKsfH+4jm2WC4ty9BzyIGA1bjWdD4ngBP8ku5UDsvY9Isooqmj+OHRjIYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "There's already Cedarvale Park on the week for soccer Sat 10am. For something else, Riverdale Farm is free and open daily, Sun Aug 9, if a farm visit works too."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1269,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20565,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 277,
+      "output_tokens_details": {
+        "thinking_tokens": 212
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 4044
+}

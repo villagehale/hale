@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply identifies the right event (soccer practice, the only one on the schedule), states the proposed new time (11:00am Saturday), retains the venue (Cedarvale Park), and asks for confirmation in a plain sentence — not with a keyword prompt like \"reply YES.\" It is short, exact, and correct. The draft is within the cap, the week shows exactly one soccer event so no ambiguity question was needed, and the reply doesn't send the parent anywhere or explain internal machinery. This is the product working perfectly.",
+    "score": 5
+  }
+}

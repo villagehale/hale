@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent is asking to connect Google Calendar. Per the rules, a plain-text ask that the branch didn't catch is handled by Hale saying the link is a text away and handing the parent the exact words to send — which is exactly what this reply does. It quotes the trigger phrase verbatim (\"connect my Google Calendar\"), explains the link is one-tap and time-limited (15 minutes), and does nothing else. No app referral, no URL invented, no machinery explained, no greeting or sign-off. The shape is precisely correct.",
+    "score": 5
+  }
+}

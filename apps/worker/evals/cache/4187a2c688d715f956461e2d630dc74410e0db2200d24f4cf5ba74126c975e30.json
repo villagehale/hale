@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies soccer at Cedarvale Park on Saturday and correctly offers the offerable find \"Riverdale story time at Riverdale Library\" with the right date (Sat Aug 8) and the correct URL from knows.offerable. However, there are two issues: (1) The title is not quoted whole — it says \"a free story time drop-in\" rather than \"Riverdale story time\" as listed in knows.offerable. Per the rules, a paraphrase of the name is a miss scoring 2 at most. (2) The \"3 families near you say Riverdale Library is worth it\" is an invented social proof detail — nothing in knows, week, or any source provides this testimonial count. That is an invented detail, which scores a 1. The invented detail is the more serious violation, pulling the score to 1.",
+    "score": 1
+  }
+}

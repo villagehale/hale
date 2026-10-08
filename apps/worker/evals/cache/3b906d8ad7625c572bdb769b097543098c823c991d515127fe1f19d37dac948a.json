@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to cancel the Thursday swim. There is exactly one swim on Thursday (5:15pm at East pool), so the reference is fully resolved — no ambiguity. Hale correctly drafted a cancel and is now asking for confirmation in a plain sentence naming the specific event. No greeting, no sign-off, no markdown, no keyword-confirmation trap (\"reply YES\"), no app mention, no invented details. Short and exact. The confirmation question is correctly phrased as an ordinary sentence. This is the product working perfectly.",
+    "score": 5
+  }
+}

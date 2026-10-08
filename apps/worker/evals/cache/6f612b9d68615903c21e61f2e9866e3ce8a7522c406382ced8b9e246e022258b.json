@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that connecting Google Calendar is a real feature, and it hands Sam the exact words to text to trigger the deterministic link-sending branch. This is the correct shape: it does not invent a URL, does not refuse the request, does not send the parent to the app, and does not explain internal machinery beyond what is needed. It is a clean, accurate, actionable reply. The only minor imperfection is the mild redundancy of restating \"Connecting your Google Calendar is something I can do\" before getting to the instruction — a tighter version would open straight with the instruction — but it does not mislead or add a question or a sign-off. Solid 4.",
+    "score": 4
+  }
+}

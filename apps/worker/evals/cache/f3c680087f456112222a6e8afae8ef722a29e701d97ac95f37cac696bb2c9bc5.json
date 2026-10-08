@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO events in the week (Mon 4:30pm at West pool and Thu 5:15pm at East pool), so ambiguity is genuine. Hale correctly identifies both and asks which one to cancel — exactly the right handling when the reference matches more than one event. The reply is clean, short, no greeting, no sign-off, one question. This is the product working correctly.",
+    "score": 5
+  }
+}

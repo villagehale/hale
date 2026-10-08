@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that piano is not visible on this week's calendar and offers to check next week — that is the honest, complete answer when nothing matches. There is no piano event in `week`, so Hale cannot draft a move. The private items cannot be surfaced as candidates (rule: never hedge a denial with them). The reply is concise, no greeting, no sign-off, no markdown, one question. This is exactly right.",
+    "score": 5
+  }
+}

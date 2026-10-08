@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply does the job well. It correctly surfaces the soccer practice from the week (exact time and venue from the schedule), then offers the offerable activity with its full title \"Fanous lantern craft at North York Central Library\", the correct time (2:00 p.m., matching the Aug 8 Saturday entry), the correct details (free drop-in, ages 6-12), and the URL from knows.offerable. The URL is recall from offerable, not invented. The ages 6-12 fit Milo (63 months / ~5.25 years — borderline, actually just under 6) and Ada (101 months / ~8.4 years, fits perfectly). Milo is 5 years 3 months, which is technically just under the 6-12 age range, which is a minor concern but not an outright wrong fit since it's close and the reply doesn't exclude him explicitly. The teenager's private items are not surfaced. No greeting, no sign-off, no markdown, no questions, no app referral. The reply is clean and direct. The only small issue is Milo at 63 months (~5y3m) is technically below the stated ages 6-12 for the craft, which could be seen as offering an activity that doesn't fully fit one child — but both children are close enough and Ada clearly fits, so this is a minor blemish rather than a clear wrong. Overall a strong, correct reply with just this one small age-fit concern.",
+    "score": 4
+  }
+}

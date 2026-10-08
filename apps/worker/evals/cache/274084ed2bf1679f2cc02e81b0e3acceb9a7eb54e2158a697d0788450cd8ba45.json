@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011Cfqdshqo4epLgYXUvngEh",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EtUDCscCCBIYAipAZlCpo0xzB9pusu4moyAZIFiaETMe4CxG7k9e/lZZBoYdCWCJNn9pDRXZ03NC33Eyp1WJHsDtqyaoYrMLzzV7RDIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagB482g1gbCAT0IBRAAGg8BZAkCVyIDTzcFRLUEJq0gAjIEEnHPJToECPGXwEIE5cvIGEoENYOdilALWgTZBeFWYAJoAXAB2gFgChZwcmVmaXhfYmVmb3JlX2Jsb2NrX3YxEiDOD5vDcQF4TeCvsx67BGoREg/jvDrkYxs0WPXDih+uCiIAMiDCwBPIapyS4i+Wbz2GF3aPi3pEyQKtzAl7+h4JivtOH0gDEgxq4rfLn1jk50NxhZkaDLezyPmni2eKsaRgaiIwAXVtsr81AA/xxNxQIuotKHNh1nJwzAaUiQGKhaYgmOdwVmx0RWT8wcmmE5IWZG2nKjuAJV7HIZaU0U35n8qHqgd0UB1ZEZErHQ/5w920TPwHWkhUtwCpBCiZ13aiZMJoP+q4e1KFW+et8ptUNRgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01AzV3Ab5SFkAqpkTB67iGMf",
+        "name": "share_referral_link",
+        "input": {
+          "forward": "Hale is a texting assistant that tracks your family's week - schedules, activities, and the stuff that slips through the cracks."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 376,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20565,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 106,
+      "output_tokens_details": {
+        "thinking_tokens": 15
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2132
+}

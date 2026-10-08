@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the soccer practice already on the calendar (Sat 10am, Cedarvale Park) and then offers the one offerable activity — \"Fanous lantern craft\" — with the correct title (quoted whole), correct venue (North York Central Library), correct day (Sat Aug 8), and correct time (2:00pm). The URL matches the one in `knows.offerable`, so it is runtime-appended recall, not invention. The activity is ages 6-12, fitting Milo (63 months / ~5.25 years — borderline but the reply doesn't misstate the age range) and Ada (101 months / ~8.4 years, clearly fits). The teenager is not addressed, which is appropriate since this is a drop-in for ages 6-12. No greeting, no sign-off, no markdown, no questions, no app referral. The reply is clean and complete. One minor note: Milo at ~5 years 3 months is technically outside the 6-12 range, but the reply doesn't claim he fits — it just offers the activity, which the parent can assess. That's not an invention and not a misrepresentation. Overall this is a tight, correct, well-shaped reply.",
+    "score": 5
+  }
+}

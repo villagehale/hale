@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The draft is correctly generated — there is exactly one Thursday swim (Thu 5:15pm, East pool), so the reference is fully resolved and drafting is the right move. The reply names the change and asks for confirmation in a plain sentence, which is the correct shape per the contract. No keyword-confirmation failure (\"reply YES\"), no app referral, no invented detail, no markdown, no greeting/sign-off. It is short and correct. A very minor blemish: the reply says \"Friday 5:15pm instead of Thursday\" but doesn't mention East pool or where it would move to, which is fine since the parent didn't specify a venue for Friday — that's not a flaw. The reply is clean and does exactly the job.",
+    "score": 5
+  }
+}
