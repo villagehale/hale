@@ -679,10 +679,16 @@
   height: 22px;
 }
 
-.tabOn {
+/* `.shell a` is more specific than `.tabOn`, so the ink color has to be
+   scoped or dark mode inherits cream onto the white pill. */
+.shell .tabOn {
   color: #17294a;
   background: rgb(255 255 255 / 0.85);
   box-shadow: 0 1px 2px rgb(12 26 54 / 0.06), 0 4px 12px rgb(12 26 54 / 0.08);
+}
+
+.shell .tabOn svg {
+  color: #17294a;
 }
 
 .mobileOut {
@@ -895,7 +901,8 @@
     color: var(--ink-78);
   }
 
-  .navOn {
+  .shell .navOn,
+  .shell .navOn:hover {
     background: rgb(255 255 255 / 0.85);
     backdrop-filter: blur(14px) saturate(1.15);
     -webkit-backdrop-filter: blur(14px) saturate(1.15);
@@ -903,6 +910,10 @@
       rgb(12 26 54 / 0.08);
     color: #17294a;
     font-weight: 650;
+  }
+
+  .shell .navOn svg {
+    color: #17294a;
   }
 
   .signout {
@@ -1066,6 +1077,18 @@
   background: rgb(12 26 54 / 0.92);
   border-top-color: rgb(247 244 236 / 0.1);
   box-shadow: 0 -1px 0 rgb(0 0 0 / 0.35);
+}
+
+:global(.dark) .shell .tabOn,
+:global(.dark) .shell .navOn,
+:global(.dark) .shell .navOn:hover {
+  color: #17294a;
+  background: rgb(255 255 255 / 0.92);
+}
+
+:global(.dark) .shell .tabOn svg,
+:global(.dark) .shell .navOn svg {
+  color: #17294a;
 }
 
 :global(.dark) .tile,
