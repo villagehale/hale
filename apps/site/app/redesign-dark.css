@@ -175,3 +175,11 @@
 :root.dark .rd .gallery-phone .hs-chat { border: 0; box-shadow: none; background: var(--ios-bg); }
 :root[data-theme="dark"] .rd .gallery-phone .hs-chat-head,
 :root.dark .rd .gallery-phone .hs-chat-head { background: var(--ios-bg); border: 0; }
+:root[data-theme="dark"] .rd .ev.new .tag,
+:root.dark .rd .ev.new .tag { color: #f0c98a; }
+:root[data-theme="dark"] .rd .ev.new .tag::before,
+:root.dark .rd .ev.new .tag::before { background: #f0c98a; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not(.light) .rd .ev.new .tag { color: #f0c98a; }
+  :root:not([data-theme="light"]):not(.light) .rd .ev.new .tag::before { background: #f0c98a; }
+}

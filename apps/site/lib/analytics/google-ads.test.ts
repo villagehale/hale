@@ -1,22 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Google Ads landing-page measurement on the MARKETING site.
+ * Google Ads on the MARKETING site loads only after the visitor taps Accept.
  *
- * The conversion id has to appear in the server-rendered document head — view-source
- * of a city rec/swim page is how Ads confirms the tag is present. A client-only
- * afterInteractive inject would measure, but would not be in the page source.
- *
- * The pairing this file gates:
- *   · the site-wide layout mounts the tag in `<head>`
- *   · the snippet loads gtag.js once and configs AW-18412881223
- *   · the product app does not ship it
- *   · the privacy policy names the tag, because it writes advertising cookies
- *     (the PostHog posture in posthog-config.test.ts stays memory-only)
+ * The tag is not in the server HTML. A client loader injects gtag.js and sets
+ * Consent Mode v2 (default denied, then granted) before config. The product
+ * app still does not ship it. The privacy policy names the tag, because it
+ * writes advertising cookies once the visitor has agreed.
  */
 
 const ADS_ID = 'AW-18412881223';
@@ -36,13 +28,12 @@ const webLayout = readFileSync(
   'utf8',
 );
 
-describe('Google Ads tag — marketing site, document head', () => {
-  it('mounts the tag inside the site-wide layout <head>, so every public page gets it', () => {
-    const head = layout.match(/<head>([\s\S]*?)<\/head>/)?.[1] ?? '';
-    expect(head).toContain('<GoogleAdsTag');
-    // Body is the PostHog / Speed Insights half of analytics; the Ads tag is a
-    // document-head script, not a client provider.
-    expect(layout).not.toMatch(/<body>[\s\S]*<GoogleAdsTag/);
+describe('Google Ads tag — marketing site, after consent', () => {
+  it('does not put gtag in the server HTML', () => {
+    expect(layout).not.toContain('GoogleAdsTag');
+    expect(layout).not.toContain('googletagmanager.com/gtag/js');
+    expect(layout).toContain('CONSENT_NO_FLASH_SCRIPT');
+    expect(layout).toContain('ConsentBanner');
   });
 
   it('never ships on the product app', () => {
@@ -53,22 +44,22 @@ describe('Google Ads tag — marketing site, document head', () => {
 });
 
 describe('Google Ads snippet', () => {
-  it('loads gtag.js once and configs the Ads id — a second product would add a config, not a second loader', async () => {
-    const { GOOGLE_ADS_ID, GOOGLE_ADS_GTAG_SRC, GOOGLE_ADS_BOOTSTRAP } = await import(
-      './google-ads.js'
-    );
-    const { GoogleAdsTag } = await import('./google-ads-tag.js');
+  it('loads gtag.js once, with Consent Mode denied then granted, before config', async () => {
+    const { GOOGLE_ADS_ID, GOOGLE_ADS_GTAG_SRC } = await import('./google-ads.js');
+    const client = readFileSync(fileURLToPath(new URL('./google-ads-client.ts', import.meta.url)), 'utf8');
 
     expect(GOOGLE_ADS_ID).toBe(ADS_ID);
     expect(GOOGLE_ADS_GTAG_SRC).toBe(`https://www.googletagmanager.com/gtag/js?id=${ADS_ID}`);
-    expect(GOOGLE_ADS_BOOTSTRAP).toContain(`gtag('config', '${ADS_ID}')`);
-    expect(GOOGLE_ADS_BOOTSTRAP).not.toContain('googletagmanager.com');
-
-    const html = renderToStaticMarkup(createElement(GoogleAdsTag));
-    expect(html).toContain(ADS_ID);
-    expect(html).toContain(GOOGLE_ADS_GTAG_SRC);
-    expect([...html.matchAll(/googletagmanager\.com\/gtag\/js/g)]).toHaveLength(1);
-    expect(html).toContain(`gtag('config', '${ADS_ID}')`);
+    const deniedAt = client.indexOf("gtag('consent', 'default'");
+    const grantedAt = client.indexOf("gtag('consent', 'update'");
+    const configAt = client.indexOf(`gtag('config', GOOGLE_ADS_ID)`);
+    expect(deniedAt).toBeGreaterThan(-1);
+    expect(deniedAt).toBeLessThan(grantedAt);
+    expect(grantedAt).toBeLessThan(configAt);
+    expect(client).toContain('ad_storage: \'denied\'');
+    expect(client).toContain('ad_storage: \'granted\'');
+    expect([...client.matchAll(/googletagmanager/g)]).toHaveLength(0);
+    expect(client).toContain('GOOGLE_ADS_GTAG_SRC');
   });
 });
 

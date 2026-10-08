@@ -209,8 +209,10 @@ describe('PricingSection (landing pricing)', () => {
     expect(html).toContain('about three months free');
   });
 
-  it('carries the founding-families note with the first-100 badge promise', () => {
+  it('carries the founding-families note for every family until paid plans start', () => {
     expect(html).toContain('Founding families keep their rate.');
-    expect(html).toContain('first 100 families get a permanent founding badge');
+    expect(html).toContain('Founding families get every feature free until paid plans start.');
+    expect(html).not.toMatch(/first\s+100/);
+    expect(html).not.toMatch(/founding\s+badge/);
   });
 });

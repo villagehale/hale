@@ -1,3 +1,4 @@
+import { CookieSettingsButton } from '~/components/cookie-settings-button';
 import { FooterThemeSwitch } from '~/components/landing/v4/theme-switch';
 import { LanguageSelect } from '~/components/language-select';
 import { LogoMark } from '~/components/logo-mark';
@@ -65,11 +66,9 @@ export function SiteFooter({
       ? []
       : [{ label: t('linkPrivacy'), href: localeHref(locale, '/privacy') }]),
     { label: t('linkTerms'), href: localeHref(locale, '/terms') },
-    // The app is the receipts surface, not the daily one — sign-in lives in the
-    // quietest spot the site has, beside the legal pair, for the parent who
-    // already has an account. It sells nothing.
-    { label: t('signIn'), href: `${APP_URL}/sign-in` },
   ];
+  // Sign-in stays last. Cookie settings sits between Terms and Sign in.
+  const signIn = { label: t('signIn'), href: `${APP_URL}/sign-in` };
 
   return (
     <footer className="border-t border-rule">
@@ -145,6 +144,13 @@ export function SiteFooter({
                 {item.label}
               </a>
             ))}
+            <CookieSettingsButton label={t('cookieSettings')} />
+            <a
+              href={signIn.href}
+              className="text-[13px] text-slate-green underline decoration-rule underline-offset-[4px] transition-colors hover:text-spruce hover:decoration-current"
+            >
+              {signIn.label}
+            </a>
           </div>
         </div>
       </div>

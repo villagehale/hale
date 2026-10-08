@@ -32,12 +32,19 @@
     "linkContact": "联系我们",
     "linkPrivacy": "隐私政策",
     "linkTerms": "服务条款",
+    "cookieSettings": "Cookie 设置",
     "copyright": "© {year} Hale。保留所有权利。",
     "company": "Village Hale Technologies Inc.",
     "signIn": "登录"
   },
   "LanguageSwitcher": {
     "label": "语言"
+  },
+  "Consent": {
+    "text": "Hale 用 Cookie 衡量广告效果，看看大家怎么用这个网站。你点同意之前，什么都不会加载。",
+    "reject": "不用了",
+    "accept": "同意",
+    "region": "Cookie"
   },
   "ThemeSwitch": {
     "light": "浅色",
@@ -122,11 +129,11 @@
   },
   "Pricing": {
     "metaTitle": "价格 · Hale",
-    "metaDescription": "免费，短信不限量。Plus 是一整年更多事由它来做。Max 是 Hale 能做的最多。",
+    "metaDescription": "免费，聊天不限量。Plus 是一整年更多事由它来做。Max 是 Hale 能做的最多。",
     "eyebrow": "价格",
     "headline": [
       {
-        "text": "免费，短信不限量。"
+        "text": "免费，聊天不限量。"
       }
     ],
     "lede": "整个核心功能——每个阶段、每个孩子——都是免费的。随着每一部分上线，Plus 和 Max 会让更多的一年有人陪你盯着。",
@@ -544,7 +551,11 @@
     "Free outings, parks and one‑time events, when you need an idea for Saturday.": "免费出门、公园、一次性的活动，周六不知道去哪的时候。",
     "Free to start. You text first; standard message rates apply, reply STOP any time.": "免费开始。你先发短信；按普通短信资费，随时回复 STOP。",
     "Founding families get everything free until paid plans start.": "创始家庭在付费方案开始前，全部免费。",
-    "Free, with unlimited chat.": "免费，短信不限量。",
+    "Founding families get every feature free until paid plans start.": "创始家庭在付费方案开始前，每项功能都免费。",
+    "Free, with unlimited chat.": "免费，聊天不限量。",
+    "$0 CAD/mo": "每月 0 加元",
+    "$19 CAD/mo": "每月 19 加元",
+    "$39 CAD/mo": "每月 39 加元",
     "From finding the class to hearing how it went.": "从找到课，到问问上得怎么样。",
     "General guidance, never a replacement for your provider.": "通用建议，代替不了你的医生。",
     "Getting started": "开始",
@@ -707,7 +718,6 @@
     "Text Hale. It answers with your child’s age in mind, in a line or two.": "给 Hale 发短信。它会按你孩子的年龄来答，一两句。",
     "Text the number. Hale asks where you are and how old the kids are, then shows you what’s on this week. Anything else it asks for later, only when it needs it. Hale never texts a number that hasn’t texted it first.": "给这个号码发短信。Hale 问你在哪、孩子几岁，然后给你看这周有什么。别的，以后真需要了才问。没先写过它的号码，它不会先发。",
     "Thanks, that helps. I’ll use it when I pick what to send you next.": "谢谢，有用。我下次挑发给你的内容时会用上。",
-    "The first 100 families get a permanent founding badge, and first access when Plus and Max open.": "前 100 个家庭有一枚一直留着的创始徽章，Plus 和 Max 开放时也最先用上。",
     "The highest limits on searches and spot watches": "搜索和盯名额，额度最高",
     "The most Hale can do.": "Hale 能做的，到这里最多。",
     "The logistics": "接送这些事",

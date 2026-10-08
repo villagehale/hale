@@ -32,12 +32,19 @@
     "linkContact": "Contact",
     "linkPrivacy": "Privacy policy",
     "linkTerms": "Terms of service",
+    "cookieSettings": "Cookie settings",
     "copyright": "© {year} Hale. All rights reserved.",
     "company": "Village Hale Technologies Inc.",
     "signIn": "Sign in"
   },
   "LanguageSwitcher": {
     "label": "Language"
+  },
+  "Consent": {
+    "text": "Hale uses cookies to measure ads and see how the site is used. Nothing loads unless you say yes.",
+    "reject": "No thanks",
+    "accept": "Accept",
+    "region": "Cookies"
   },
   "ThemeSwitch": {
     "light": "Light",

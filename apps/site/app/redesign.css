@@ -227,11 +227,11 @@
   text-wrap: pretty;
   color: var(--navy); opacity: 0.9;
 }
-.rd .cta-row { margin-top: var(--s6); display: flex; align-items: center; gap: var(--s5); }
+.rd .cta-row { margin-top: var(--s6); display: flex; align-items: center; flex-wrap: wrap; gap: var(--s5); }
 .rd .btn-hero svg { width: 16px; height: 16px; }
 .rd .rd-textlink {
   font-family: var(--font-ui); font-size: 14.72px; font-weight: 600; line-height: 1.65; color: var(--navy); /* production button type */
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex: none;
 }
 .rd .rd-textlink span { border-bottom: 1px solid rgb(23 41 74 / 0.28); padding-bottom: 1px; }
 .rd .trust {
@@ -254,9 +254,9 @@
   box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.8), 0 18px 50px -34px rgb(12 26 54 / 0.55);
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: var(--s4);
 }
-.rd .loop li { display: flex; flex-direction: column; align-items: flex-start; }
+.rd .loop li { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 .rd .loop svg { width: 20px; height: 20px; color: var(--navy); }
-.rd .loop b { margin-top: var(--s2); font-family: var(--font-ui); font-size: 14.72px; font-weight: 600; line-height: 1.65; color: var(--navy); } /* production button/label type; wraps when a locale label is longer than the column */
+.rd .loop b { margin-top: var(--s2); width: 100%; font-family: var(--font-ui); font-size: 14.72px; font-weight: 600; line-height: 1.65; color: var(--navy); overflow-wrap: break-word; } /* production button/label type; wraps inside the column */
 .rd .loop small { font-family: var(--font-body); font-size: 13.6px; font-weight: 400; line-height: 1.5; color: var(--navy); opacity: 0.9; } /* production .v4-hero-terms */
 .rd .trust i { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-48); display: inline-block; }
 
@@ -279,13 +279,15 @@
 .rd .cal-head { display: flex; align-items: flex-start; justify-content: space-between; }
 .rd .cal-kicker { font-family: var(--font-ui); font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-48); }
 .rd .cal-title { font-family: var(--font-ui); font-size: 17px; font-weight: 600; line-height: 1.65; color: var(--navy); }
-.rd .cal-head { align-items: center; }
-.rd .kids { display: flex; gap: 6px; }
+.rd .cal-head { align-items: center; flex-wrap: wrap; row-gap: 8px; }
+.rd .cal-title { white-space: nowrap; }
+.rd .kids { display: flex; flex-wrap: nowrap; gap: 6px; }
 .rd .kid {                       /* production .v4-pill (phone size) */
   padding: 0.34rem 0.72rem; border-radius: var(--r-full);
   display: inline-flex; align-items: center;
   background: var(--wash); border: 1px solid var(--hair);
   font-family: var(--font-ui); font-size: 12.8px; font-weight: 500; line-height: 1.2; color: var(--navy);
+  white-space: nowrap;
 }
 
 .rd .week { margin-top: var(--s5); display: grid; grid-template-columns: repeat(7, 1fr); }
@@ -325,10 +327,11 @@
 }
 .rd .ev.new .tag {
   margin-left: auto;
-  font-family: var(--font-ui); font-size: 12.8px; font-weight: 600; color: var(--amber);
+  font-family: var(--font-ui); font-size: 12.8px; font-weight: 600; color: #6b3c0a;
   display: inline-flex; align-items: center; gap: 4px;
 }
-.rd .ev.new .tag::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--amber); }
+.rd .ev.new .m { color: #3e4c63; }
+.rd .ev.new .tag::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #6b3c0a; }
 
 .rd .cal-foot {
   margin-top: var(--s4); padding-top: var(--s4); border-top: 1px solid var(--hair);
@@ -371,8 +374,8 @@
 .rd .status .icons { display: flex; align-items: center; gap: 4px; }
 .rd .status .icons svg { transform-origin: right center; }
 .rd .ihead {
-  flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 0 0 8px; position: relative;
+  flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 0 0 4px; position: relative;
   background: rgb(249 249 249 / 0.94);
   border-bottom: 0.5px solid rgb(0 0 0 / 0.12);
 }
@@ -390,7 +393,7 @@
 .rd .ihead .name { font-size: 11px; font-weight: 500; color: #000; display: flex; align-items: center; gap: 2px; }
 .rd .ihead .name svg { width: 5px; height: 9px; color: rgb(60 60 67 / 0.4); }
 
-.rd .thread { flex: 1; min-height: 0; overflow: hidden; padding: 8px 14px 8px; display: flex; flex-direction: column; justify-content: flex-end; }
+.rd .thread { flex: 1; min-height: 0; overflow: hidden; padding: 2px 22px 4px 12px; display: flex; flex-direction: column; justify-content: flex-end; }
 .rd .stamp { text-align: center; font-size: 10.5px; color: rgb(60 60 67 / 0.6); margin-bottom: 10px; }
 .rd .stamp b { font-weight: 600; }
 .rd .msg {
@@ -398,7 +401,7 @@
   max-width: 82%;
   padding: 7px 12px 8px;
   border-radius: 18px;
-  font-size: 12.5px; line-height: 1.34; letter-spacing: -0.005em;
+  font-size: 12px; line-height: 1.28; letter-spacing: -0.005em;
   overflow-wrap: break-word;
 }
 .rd .msg.in { align-self: flex-start; background: #e9e9eb; color: #000; }
@@ -416,8 +419,8 @@
 /* tails on the last bubble of each run */
 .rd .msg.tail::before, .rd .msg.tail::after { content: ""; position: absolute; bottom: 0; height: 18px; }
 .rd .msg.tail::after { height: 21px; } /* taller mask hides the tail's top edge at any zoom */
-.rd .msg.out.tail::before { right: -7px; width: 20px; background: #0a84ff; border-bottom-left-radius: 16px 14px; }
-.rd .msg.out.tail::after  { right: -26px; width: 26px; background: #fff; border-bottom-left-radius: 10px; }
+.rd .msg.out.tail::before { right: -5px; width: 14px; background: #0a84ff; border-bottom-left-radius: 16px 14px; }
+.rd .msg.out.tail::after  { right: -12px; width: 14px; background: var(--ios-screen, #fff); border-bottom-left-radius: 10px; }
 .rd .msg.in.tail::before  { left: -7px; width: 20px; background: #e9e9eb; border-bottom-right-radius: 16px 14px; }
 .rd .msg.in.tail::after   { left: -12px; width: 12px; background: #fff; border-bottom-right-radius: 10px; }
 .rd .read { align-self: flex-end; font-size: 10px; color: rgb(60 60 67 / 0.6); margin-top: 3px; margin-right: 2px; }
@@ -449,7 +452,7 @@
   .rd .sub { font-size: 16px; line-height: 1.45; margin-top: var(--s5); }                                          /* production @390: 16 / 23.2px */
   .rd .cta-row { margin-top: var(--s6); justify-content: center; }
   .rd .visual-col { margin-top: var(--s7); width: 100%; display: flex; justify-content: center; }
-  .rd .visual { zoom: calc(350 / 588); }   /* desktop composition scaled to the 350px content width */
+  .rd .visual { zoom: calc(342 / 588); }   /* 342px wide, so a 390px screen keeps the art inside the 24px gutters */
   /* below the artwork the four items sit on the canvas, so no glass plate is needed */
   .rd .loop {
     margin-top: var(--s7); width: 100%;
@@ -1508,12 +1511,13 @@
 @media (max-width: 640px) {
   .rd .chat-gallery {
     --gallery-lift: var(--s6);
-    --gallery-card: calc(100vw - 32px);
+    --gallery-card: min(342px, calc(100vw - 48px));
     margin-top: var(--s6);
   }
   .rd .chat-gallery .hs-chats {
     gap: var(--s4);
-    mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+    padding-bottom: 36px;
+    mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
   }
   .rd .gallery-arrow { position: static; transform: none; }
   .rd .gallery-phone .hs-msg { font-size: 13px; }
@@ -1543,6 +1547,12 @@
   background: var(--phone-metal);
   box-shadow: var(--phone-metal-shadow);
   flex: none;
+}
+@media (max-width: 640px) {
+  .rd .gallery-phone {
+    aspect-ratio: auto;
+    height: min(560px, calc(100svh - var(--nav-h) - 140px));
+  }
 }
 .rd .gallery-phone-screen {
   position: relative;
@@ -1642,7 +1652,7 @@
   pointer-events: none;
 }
 .rd .gallery-phone-nav svg { width: var(--s5); height: var(--s5); stroke-width: 1.7; }
-.rd .gallery-phone .hs-thread { margin-top: 0; padding: var(--s3) var(--s2) var(--s5); }
+.rd .gallery-phone .hs-thread { margin-top: 0; padding: var(--s3) 18px var(--s5); }
 .rd .gallery-phone .hs-stamp {
   font-size: 10px;
   line-height: 1.5;
@@ -1673,9 +1683,9 @@
 }
 .rd .gallery-phone .hs-msg::after { width: 26px; background: var(--ios-screen); }
 .rd .gallery-phone .hs-msg.in::before { left: -7px; border-radius: 0 0 16px 0; }
-.rd .gallery-phone .hs-msg.in::after { left: -26px; border-radius: 0 0 10px 0; }
-.rd .gallery-phone .hs-msg.out::before { right: -7px; border-radius: 0 0 0 16px; }
-.rd .gallery-phone .hs-msg.out::after { right: -26px; border-radius: 0 0 0 10px; }
+.rd .gallery-phone .hs-msg.in::after { left: -14px; width: 14px; border-radius: 0 0 10px 0; }
+.rd .gallery-phone .hs-msg.out::before { right: -5px; width: 12px; border-radius: 0 0 0 16px; }
+.rd .gallery-phone .hs-msg.out::after { right: -12px; width: 12px; border-radius: 0 0 0 10px; }
 .rd .gallery-phone .hs-did { font-size: 11px; line-height: 1.4; }
 .rd .chat-typing {
   position: absolute;
