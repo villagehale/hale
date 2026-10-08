@@ -442,7 +442,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                   referral: share ? referralBlock(share) : undefined,
                   activityLinks: [
                     ...offeredThisTurn.read().flatMap((item) =>
-                      item.url ? [{ title: item.title, url: item.url }] : [],
+                      item.url ? [{ title: item.title, url: item.url, venue: item.venue }] : [],
                     ),
                     ...offeredThisTurn.links(),
                   ],

@@ -60,6 +60,13 @@ describe('the register tells', () => {
     );
   });
 
+  it('catches happy-to-help and the close variants', () => {
+    expect(voiceTells('Happy to help.')).toContain('chirpy filler');
+    expect(voiceTells('Glad to help with Saturday.')).toContain('chirpy filler');
+    expect(voiceTells("I'd be happy to look again.")).toContain('chirpy filler');
+    expect(voiceTells('I am here to help whenever you need.')).toContain('chirpy filler');
+  });
+
   it('still catches the let-me-know family it was written with', () => {
     expect(voiceTells('Swim is at 4:30. Let me know if that works.')).toContain(
       'ends on a generic "let me know"',
