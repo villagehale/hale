@@ -1,5 +1,5 @@
 import PgBoss from 'pg-boss';
-import { config } from './config.js';
+import { requireDatabaseUrl } from './config.js';
 import { logger } from './logger.js';
 
 let boss: PgBoss | undefined;
@@ -7,7 +7,7 @@ let boss: PgBoss | undefined;
 export async function startQueue(): Promise<PgBoss> {
   if (boss) return boss;
   boss = new PgBoss({
-    connectionString: config.DATABASE_URL,
+    connectionString: requireDatabaseUrl(),
     schema: 'pgboss',
   });
   boss.on('error', (err) => logger.error({ err }, 'pg-boss error'));
