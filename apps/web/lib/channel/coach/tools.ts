@@ -594,7 +594,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const proposeAdd = defineTool({
     name: 'propose_calendar_add',
     description:
-      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
+      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. When the thread already names exactly one class, with its day and time, call this in the same turn; do not ask whether to add it first. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
     inputSchema: z.object({
       title: z.string().min(1).max(120),
       date: dayKey,

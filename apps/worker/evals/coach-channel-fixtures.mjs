@@ -413,7 +413,9 @@ export const COACH_CHANNEL_FIXTURES = [
       mustCall: ['lookup_week'],
       mustDraft: ['calendar_move'],
       onlyTargets: ['evt-swim-thu'],
-      mustMention: ['yes'],
+      // The confirmation is a question in ordinary words. The parent answers in
+      // their own words; the reply must not demand the token YES.
+      mustAsk: true,
     },
   },
   {
@@ -436,7 +438,7 @@ export const COACH_CHANNEL_FIXTURES = [
       mustCall: ['lookup_week'],
       mustDraft: ['calendar_cancel'],
       onlyTargets: ['evt-swim-thu'],
-      mustMention: ['yes'],
+      mustAsk: true,
     },
   },
   {
@@ -516,12 +518,9 @@ export const COACH_CHANNEL_FIXTURES = [
           /\bd'accord\b/i,
         ],
       },
-      // The literal token C1's fast-path matches (lib/channel/affirmative.ts). It is an
-      // English closed vocabulary with no French entries — "oui" resolves to `unclear` —
-      // so a French reply that asks for OUI would collect an answer the approval spine
-      // silently drops, and the parent's swim lesson never moves. The word stays YES even
-      // when the sentence around it does not.
-      mustMention: ['yes'],
+      // The confirmation is the question itself, in French. affirmative.ts reads
+      // "oui" and the other ordinary answers; the reply must not embed YES.
+      mustAsk: true,
     },
   },
   {
@@ -541,9 +540,10 @@ export const COACH_CHANNEL_FIXTURES = [
       mustCall: ['lookup_week'],
       maxDrafts: 2,
       onlyTargets: ['evt-swim-mon', 'evt-swim-thu', 'evt-soccer-sat', 'evt-dentist-wed'],
-      // The word YES is what C1's fast-path matches; "I'll" is the carry-forward — Hale
-      // keeping the outstanding two rather than parking them somewhere.
-      mustMention: ['yes', "i'll"],
+      // "I'll" is the carry-forward — Hale keeping the outstanding two rather than
+      // parking them somewhere. The confirmation is a question, not the token YES.
+      mustAsk: true,
+      mustMention: ["i'll"],
     },
   },
   {
@@ -901,10 +901,12 @@ export const COACH_CHANNEL_FIXTURES = [
       // must not guess, so the draft IS the gate: severing the thread turns this into a
       // clarifying question, which is what the severed run must produce.
       mustDraft: ['calendar_add'],
-      // YES is the word C1's fast-path matches, and the NAME is what makes the draft
-      // confirmable: a parent cannot approve "it". Naming it is also the half of this
-      // gate a severed run cannot fake - "Tiny Gym" exists nowhere but that message.
-      mustMention: ['yes', 'tiny gym'],
+      // The NAME is what makes the draft confirmable: a parent cannot approve "it".
+      // Naming it is also the half of this gate a severed run cannot fake - "Tiny Gym"
+      // exists nowhere but that message. The confirmation is a question in ordinary
+      // words, not the token YES.
+      mustAsk: true,
+      mustMention: ['tiny gym'],
       forbidden: [
         ...HEDGES,
         'which one did you mean',

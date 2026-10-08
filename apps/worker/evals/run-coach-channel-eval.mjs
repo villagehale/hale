@@ -385,6 +385,9 @@ function fitToBudget(body, max, suffix = '') {
  * what keeps "no preset bodies" true without giving the trim a chance to eat the half
  * that names the magic word.
  */
+/** Mirrors KEYWORD_INSTRUCTION in apps/web/lib/channel/plan/offer.ts. */
+const KEYWORD_INSTRUCTION = /\b(reply|say|text)\s+(yes|no)\b/i;
+
 function offerViolations(sentence) {
   const violations = [];
   const text = String(sentence).trim();
@@ -395,7 +398,11 @@ function offerViolations(sentence) {
   const questions = (text.match(/\?/g) ?? []).length;
   if (questions !== 1)
     violations.push(`The offer asks ${questions} questions; it must ask exactly one.`);
-  if (!/\byes\b/i.test(text)) violations.push('The offer never says YES.');
+  if (KEYWORD_INSTRUCTION.test(text)) {
+    violations.push(
+      'The offer tells them to reply with a keyword. Ask in a sentence, like "Want me to send it?"',
+    );
+  }
   if (smsEncoding(text) !== 'gsm7') violations.push('The offer is not plain ASCII.');
   if (smsSegments(text) > 1) violations.push('The offer is longer than one SMS segment.');
   return violations;
@@ -743,7 +750,7 @@ function buildFixtureTools(agent, calls, village, spots) {
   const proposeAdd = agent.defineTool({
     name: 'propose_calendar_add',
     description:
-      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
+      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. When the thread already names exactly one class, with its day and time, call this in the same turn; do not ask whether to add it first. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
     inputSchema: passthrough(),
     touchesChildContent: true,
     handler: async (input) => {
@@ -833,17 +840,17 @@ function buildFixtureTools(agent, calls, village, spots) {
     // model has to fill. Omitting them here made this replica a different tool from the
     // one that ships, which is exactly what a replicated fixture must not be.
     inputExamples: [
-      { topic: 'sleep', offer: "Want the full plan? Reply YES and I'll send it." },
+      { topic: 'sleep', offer: 'Want me to send the full plan?' },
       {
         topic: 'solids',
-        childId: 'child_0000000000example',
-        offer: 'Want the whole first-foods plan? Say YES and it is yours.',
+        childId: '00000000-0000-4000-8000-000000000000',
+        offer: 'Should I send the whole first-foods plan?',
       },
     ],
     monetary: false,
     touchesChildContent: true,
     description:
-      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters, and it must say YES, because that is the word the parent replies with. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
+      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters. Ask like a person ("Want me to send it?"). Do not say Reply YES or name a keyword. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
     handler: async (input) => {
       // The gate IS the recompose loop: a refused offer throws a sentence the model
       // reads mid-turn and answers by calling again. Replicated from
@@ -1356,10 +1363,12 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
     failures.push('never asks the clarifying question the ambiguity requires');
   }
 
-  // `mustMention: ['yes']` is not a style preference: YES is the literal word C1's
-  // fast-path matches (router/fast-path.ts YES_PHRASES). A reply that drafts a change
-  // and then asks the parent to "confirm" has left them holding a word the router will
-  // hand straight to the model instead of to the approvals spine.
+  // A drafted change is confirmed in an ordinary sentence. The parent answers in
+  // their own words (affirmative.ts reads yes, sure, oui, sounds good). Telling
+  // them which keyword to send is the failure, not the confirmation.
+  if (/\b(yes to confirm|reply yes)\b/i.test(lower)) {
+    failures.push('asks the parent to reply with a keyword');
+  }
   for (const token of expect.mustMention ?? []) {
     if (!lower.includes(token.toLowerCase())) {
       failures.push(`never says ${JSON.stringify(token)}`);
@@ -1367,7 +1376,8 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   }
   // Corpus-wide: a spoken promise must be a registered one. "I'll send/text/come
   // back" without promise_activity_followup recorded this turn is the unbacked
-  // promise the Aug-20 incident banned. (Plan offers carry their own YES flow.)
+  // promise the Aug-20 incident banned. (A plan offer is its own question, gated
+  // by offerViolations, and is not this promise.)
   //
   // A WATCHED REGISTRATION WINDOW is the second thing that can back one, added 2026-08-21
   // when the coach was first handed the radar. "I'll text you the week before" on a turn
@@ -1703,11 +1713,11 @@ const JUDGE_SYSTEM = [
   "saying the content is not Hale's to share is the CORRECT and complete answer — do not",
   'mark it down as evasive, and do not expect the activity to be named.',
   'THE CONTRACT, so you do not mark down the shape the product requires. Hale never',
-  'changes a schedule on its own: it DRAFTS, and the parent confirms by texting back the',
-  'literal word YES. When `drafted` is non-empty, a reply that names the change and ends',
-  '"...? YES to confirm." is exactly right — not robotic, and not a failure to act. A',
-  'warmer paraphrase that drops the word YES is WORSE: the answer would not be recognised',
-  'as consent. When `drafted` is empty, the correct reply is whichever of these fits —',
+  'changes a schedule on its own: it DRAFTS, and the parent confirms in their own words.',
+  'When `drafted` is non-empty, a reply that names the change and asks, in an ordinary',
+  'sentence, whether to go ahead is exactly right. Telling them to reply YES, or "YES to',
+  'confirm", is the failure: consent is read from what they actually say, not from a',
+  'keyword. When `drafted` is empty, the correct reply is whichever of these fits —',
   'asking WHICH of two matching events was meant, saying plainly that something is not on',
   'the schedule, giving the TIME of a private item without its content, or one short line',
   'answering a message that needs nothing done.',
@@ -1727,11 +1737,12 @@ const JUDGE_SYSTEM = [
   '1 = wrong: claims a change HAS been made when it was only drafted, invents a detail, or',
   'relays something it was told not to.',
   'ONE EXCEPTION on endings: a raising-kids question is answered with the advice and',
-  'then a FIXED line Hale appends itself - "Want the full plan? Reply YES and I\'ll send',
-  'it." That is the product working, not a dangling question or an invitation to chatter:',
-  'a complete plan really does follow a YES. Never mark a reply down for carrying it, and',
-  'judge the ADVICE in front of it as the whole answer - it is deliberately one short',
-  'beat, because the depth is in the plan being offered.',
+  'then a line Hale appends itself, a natural question such as "Want me to send the full',
+  'plan?" That is the product working, not a dangling question or an invitation to',
+  'chatter: a complete plan follows if they agree. Never mark a reply down for carrying',
+  'it, and do not mark it down for leaving out the word YES. Judge the ADVICE in front of',
+  'it as the whole answer - it is deliberately one short beat, because the depth is in',
+  'the plan being offered.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -1812,10 +1823,11 @@ async function main() {
   const model =
     process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? agent.pickModel(skill.meta.task);
   // Sonnet, not the Haiku the other evals judge with. Scoring a two-sentence text
-  // against a contract ("is `YES to confirm` the required shape or a robotic one?") is
-  // judgment-dense work run rarely, and Haiku flapped between 2 and 5 on replies that
-  // differed by a comma. A grader that noisy makes a 100% gate unreachable for reasons
-  // that have nothing to do with the agent. The run is cached, so the tier costs once.
+  // against a contract (a natural question is the confirmation; "reply YES" is the
+  // failure) is judgment-dense work run rarely, and Haiku flapped between 2 and 5 on
+  // replies that differed by a comma. A grader that noisy makes a 100% gate unreachable
+  // for reasons that have nothing to do with the agent. The run is cached, so the tier
+  // costs once.
   const judgeModel = (await readModelIds()).sonnet;
   // MEDIAN OF THREE, not one draw. The per-fixture floor is a hard gate and the judge is a
   // sampled model: `capability-park-nearby-again` failed CI at 2 on a committed draw while

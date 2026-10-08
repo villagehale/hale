@@ -84,12 +84,12 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
   });
 
   /**
-   * VIL-365 · a bare activity ask, and a what's-going-on ask, search the village
-   * before any question. A day or a place also reads the family's own week, and
-   * that day comes first. A checked find follows it and the turn stops. The
-   * live web is only when the radar has nothing to hand over. A full class with
-   * no link still asks for the page. Coaching is one sentence under 200
-   * characters, and the skill never narrates what it has verified.
+   * VIL-365 · a bare activity ask searches the village and does not open on the
+   * week. A day or a kind of place also reads the family's own week, and that
+   * day comes first. A checked find is named with its title as written. A full
+   * class with no link still asks for the page. Coaching is one sentence under
+   * 200 characters, and the skill never narrates what it has verified. A draft
+   * is confirmed in ordinary words, never by telling them to reply YES.
    */
   it('tells the coach to search before asking when a parent wants activities', async () => {
     const skill = await loadCronSkill('coach-channel-sms');
@@ -105,6 +105,14 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(skill.instructions).toContain("who's around this weekend");
     expect(skill.instructions).toContain('The live web only when');
     expect(skill.instructions).toContain('Their own day comes first');
+    expect(skill.instructions).toContain('Do not mention the week');
+    expect(skill.instructions).toContain(
+      'Copy the candidate `title` into the reply as it is written',
+    );
+    expect(skill.instructions).toContain('exactly one thing that fits');
+    expect(skill.instructions).toContain('Do not tell them to reply with a keyword');
+    expect(skill.instructions).not.toContain('YES to confirm');
+    expect(skill.instructions).not.toContain('Reply YES');
     expect(skill.instructions).toContain('Under 200 characters');
     expect(skill.instructions).not.toContain("what I've got verified");
     expect(skill.instructions).toContain('not them asking that nearby question again');
